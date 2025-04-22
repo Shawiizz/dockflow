@@ -10,10 +10,10 @@
     path: /etc/nginx/sites-enabled/default
     state: absent
 
-- name: Extract domain list from NGINX_CONFIGS_TO_COPY
+- name: Extract domain list from DEPLOY_NGINX_CONFIGS
   set_fact:
-    nginx_domains: "{{ (lookup('env', 'NGINX_CONFIGS_TO_COPY') | default('')).split(',') | list }}"
-  when: lookup('env', 'NGINX_CONFIGS_TO_COPY') | default('') | trim != ''
+    nginx_domains: "{{ (lookup('env', 'DEPLOY_NGINX_CONFIGS') | default('')).split(',') | list }}"
+  when: lookup('env', 'DEPLOY_NGINX_CONFIGS') | default('') | trim != ''
   tags:
     - deploy
 

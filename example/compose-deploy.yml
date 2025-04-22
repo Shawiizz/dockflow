@@ -1,0 +1,10 @@
+services:
+  app:
+    image: shawiizz-portfolio-frontend-${ENV}:${VERSION}
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    container_name: shawiizz_portfolio_frontend_${ENV}
+    restart: always
+    ports:
+      - "${APP_EXTERNAL_PORT}:3000"

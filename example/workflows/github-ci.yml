@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    name: Build Docker images from SERVICES_TO_DEPLOY
+    name: Build Docker images
 
     steps:
       - name: Checkout code
@@ -21,7 +21,11 @@ jobs:
         run: |
           TAG=${GITHUB_REF#refs/tags/}
           ENVIRONMENT="production"
-          [[ "$TAG" == *"-rc"* ]] && ENVIRONMENT="staging"
+
+          if [[ "$TAG" == *"-"* ]]; then
+            ENVIRONMENT="${TAG##*-}"
+          fi
+
           echo "env=$ENVIRONMENT" >> $GITHUB_OUTPUT
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
@@ -36,7 +40,7 @@ jobs:
           set +a
           export VERSION=${{ steps.vars.outputs.tag }}
 
-          IFS=',' read -ra SERVICES <<< "$SERVICES_TO_DEPLOY"
+          IFS=',' read -ra SERVICES <<< "$DEPLOY_DOCKER_SERVICES"
           for SERVICE in "${SERVICES[@]}"; do
             echo "Building service: $SERVICE"
 
@@ -68,14 +72,12 @@ jobs:
     runs-on: ubuntu-latest
     name: Deploy with Ansible
     needs: build
-    if: ${{ !contains(github.ref, '-rc') || contains(github.ref, '-rc') }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          token: ${{ secrets.SUBMODULE_GH_TOKEN }}
+          token: ${{ secrets.SUBMODULE_REPOSITORY_TOKEN }}
 
       - name: Update submodules
         run: |
@@ -91,14 +93,18 @@ jobs:
       - name: Set environment variables
         id: vars
         run: |
-          TAG=${GITHUB_REF#refs/tags/}
-          ENV="production"
-          SSH_SECRET="PRODUCTION_SSH_PRIVATE_KEY"
-          [[ "$TAG" == *"-rc"* ]] && ENV="staging" && SSH_SECRET="STAGING_SSH_PRIVATE_KEY"
-
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [[ "$TAG" == *"-"* ]]; then
+            ENV="${TAG##*-}"
+          else
+            ENV="production"
+          fi
+          
+          SSH_SECRET_NAME="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY"
+          
           echo "env=$ENV" >> $GITHUB_OUTPUT
           echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "SSH_KEY_SECRET_NAME=$SSH_SECRET" >> $GITHUB_ENV
+          echo "SSH_KEY_SECRET_NAME=$SSH_SECRET_NAME" >> $GITHUB_ENV
 
       - name: Setup SSH Key & Run Ansible
         run: |
@@ -109,7 +115,7 @@ jobs:
 
           # Inject secrets into env
           echo '${{ toJSON(secrets) }}' > secrets.json
-          for secret in $(echo "$SECRETS_TO_PIPE" | tr ',' '\n' | xargs); do
+          for secret in $(echo "$USE_SECRETS" | tr ',' '\n' | xargs); do
             value=$(jq -r --arg key "$secret" '.[$key] // empty' secrets.json)
             [ -n "$value" ] && export "$secret=$value"
           done
