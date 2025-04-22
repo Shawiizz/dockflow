@@ -112,3 +112,15 @@ In your repository actions secrets, add the following variables:
 - `ANSIBLE_BECOME_PASSWORD`: the password of the ansible user
 - `[YOUR_ENV_NAME]_SSH_PRIVATE_KEY`: the private key of the ansible user for your environment
 - `SUBMODULE_REPOSITORY_TOKEN`: the token to access the submodule repository (if needed)
+
+**Deploy specific docker services**   
+To specify which Docker services to build and deploy, use `DEPLOY_DOCKER_SERVICES=service_name_1,service_name_2` in your `.env.[YOUR_ENV_NAME]` (replace with the services names). 
+
+**Deploy Nginx configs**
+To deploy custom Nginx configs, create the template inside `roles/nginx/templates/config_name.conf.j2` and then, use `DEPLOY_NGINX_CONFIGS=config_name_1,config_name_2` in your `.env.[YOUR_ENV_NAME]` (without including `.conf.j2` in the config names).
+
+**Deploy SSH private keys**   
+To deploy ssh private keys files to your VM, create a CI secret (e.g. `SSH_PRIVATE_KEY_VM_BLABLA`) and in your `.env.[YOUR_ENV_NAME]`, use `DEPLOY_PRIVATE_SSH_KEYS=CI_SECRET_NAME_1,CI_SECRET_NAME_2` (replace with your own variables names).         
+
+**Deploy linux services**
+To deploy custom Linux services, create the template inside `roles/services/templates/service_name.service.j2` and then, use `DEPLOY_LINUX_SERVICES=service_name_1,service_name_2` in your `.env.[YOUR_ENV_NAME]` (without including `.service.j2` in the config names).

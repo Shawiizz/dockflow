@@ -113,9 +113,10 @@ jobs:
             [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && export "$line"
           done < .env.${{ steps.vars.outputs.env }}
 
-          # Inject secrets into env
+          # Inject secrets into env (including SSH keys)
           echo '${{ toJSON(secrets) }}' > secrets.json
-          for secret in $(echo "$USE_SECRETS" | tr ',' '\n' | xargs); do
+
+          for secret in $(echo "$USE_SECRETS,$DEPLOY_PRIVATE_SSH_KEYS" | tr ',' '\n' | xargs); do
             value=$(jq -r --arg key "$secret" '.[$key] // empty' secrets.json)
             [ -n "$value" ] && export "$secret=$value"
           done

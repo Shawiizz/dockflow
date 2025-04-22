@@ -1,0 +1,35 @@
+---
+- name: Get list of linux services from env var DEPLOY_LINUX_SERVICES
+  set_fact:
+    linux_services: "{{ (lookup('env', 'DEPLOY_LINUX_SERVICES') | default('')).split(',') | map('trim') | list }}"
+  when: lookup('env', 'DEPLOY_LINUX_SERVICES') | default('') | trim != ''
+  tags:
+    - deploy
+
+- name: Deploy systemd services templates
+  template:
+    src: "{{ item }}.service.j2"
+    dest: "/etc/systemd/system/{{ item }}.service"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: "{{ linux_services | default([]) }}"
+  when: linux_services is defined
+  tags:
+    - deploy
+
+- name: Reload systemd services
+  command: systemctl daemon-reload
+  when: linux_services is defined
+  tags:
+    - deploy
+
+- name: Enable and start specified services
+  service:
+    name: "{{ item }}"
+    enabled: yes
+    state: started
+  loop: "{{ linux_services | default([]) }}"
+  when: linux_services is defined
+  tags:
+    - deploy

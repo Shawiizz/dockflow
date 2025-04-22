@@ -6,6 +6,8 @@
   roles:
     - geerlingguy.docker
     - nginx
+    - private_ssh_keys
+    - services
   tasks:
     - name: List all .tar files on local server (where Ansible is running)
       find:

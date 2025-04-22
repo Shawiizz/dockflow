@@ -1,0 +1,39 @@
+---
+- name: Get list of private SSH keys to deploy from DEPLOY_PRIVATE_SSH_KEYS
+  set_fact:
+    ssh_keys: "{{ (lookup('env', 'DEPLOY_PRIVATE_SSH_KEYS') | default('')).split(',') | map('trim') | list }}"
+  when: lookup('env', 'DEPLOY_PRIVATE_SSH_KEYS') | default('') | trim != ''
+  tags:
+    - deploy
+
+- name: Deploy private SSH keys
+  copy:
+    content: "{{ lookup('env', item) }}"
+    dest: "/home/ansible/.ssh/{{ item }}"
+    owner: ansible
+    group: ansible
+    mode: '0600'
+  loop: "{{ ssh_keys | default([]) }}"
+  when: ssh_keys is defined
+  tags:
+    - deploy
+
+- name: Ensure ssh-agent is running
+  shell: |
+    eval "$(ssh-agent -s)"
+  environment:
+    SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+  args:
+    executable: /bin/bash
+  tags:
+    - deploy
+
+- name: Add SSH keys with ssh-add
+  shell: |
+    ssh-add /home/ansible/.ssh/{{ item }}
+  environment:
+    SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+  loop: "{{ ssh_keys | default([]) }}"
+  when: ssh_keys is defined
+  tags:
+    - deploy
