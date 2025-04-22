@@ -3,7 +3,7 @@
 The deployment of Docker applications on a server is handled via an Ansible playbook. A GitHub / GitLab CI has to be set up and will automatically deploy the applications using the Ansible configuration from this repository.  
 To function properly, this repository is configured as a submodule in the app's repositories.
 
-There are two deployment environments (you can add more if needed):
+Add the deployment environments you need, for example:
 - **Production**: accessible to all users
 - **Staging**: used to test new features before releasing them to production
 
@@ -18,10 +18,10 @@ XX.XX.XX.XX ansible_user=ansible ansible_ssh_private_key_file=ssh/staging_privat
 
 ### When does deployment occur?
 
-When a tag is created on the backend or frontend repositories.  
+When a tag is created on any branch.    
 See the versioning convention below:
 - `X.Y.Z`: deploys to production
-- `X.Y.Z-rc`: deploys to the staging environment
+- `X.Y.Z-[your_env_name]`: deploys to the specified environment
 
 *X is the major version, Y is the minor version, and Z is the patch.*
 
@@ -101,7 +101,7 @@ The CI is configured to build the Docker images and deploy them to the server. T
 1. In your GitHub / GitLab repository, copy the workflow example in `.github/workflows/deploy.yml` or `.gitlab-ci.yml`.
 2. Create a compose-deploy.yml file in the root of your repository. This file will be used to build the Docker images.
 3. Create your Dockerfile to build your application.
-4. Create a `.env.production` file in the root of your repository. This file will be used to set the environment variables for the CI.
+4. Create a `.env.[your_env_name]` file in the root of your repository. This file will be used to set the environment variables for the CI.
 5. Initialize the submodule in your repository (example file can be found in `example/.gitmodules`)
 ```bash
 git submodule init
@@ -110,5 +110,5 @@ git submodule update
 
 In your repository actions secrets, add the following variables:
 - `ANSIBLE_BECOME_PASSWORD`: the password of the ansible user
-- `PRODUCTION_SSH_PRIVATE_KEY`: the private key of the ansible user (for production environment in this example)
+- `[YOUR_ENV_NAME]_SSH_PRIVATE_KEY`: the private key of the ansible user for your environment
 - `SUBMODULE_REPOSITORY_TOKEN`: the token to access the submodule repository (if needed)
