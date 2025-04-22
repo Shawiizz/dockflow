@@ -32,7 +32,7 @@ jobs:
       - name: Install docker-decompose
         run: npm i -g shawiizz-decomposerize
 
-      - name: Build and export Docker images
+      - name: Build and export Docker images (${{ steps.vars.outputs.env }})
         run: |
           echo "Using env file: .env.${{ steps.vars.outputs.env }}"
           set -a
@@ -106,7 +106,7 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "SSH_KEY_SECRET_NAME=$SSH_SECRET_NAME" >> $GITHUB_ENV
 
-      - name: Setup SSH Key & Run Ansible
+      - name: Setup SSH Key & Run Ansible (${{ steps.vars.outputs.env }})
         run: |
           # Load env variables
           while read -r line; do
