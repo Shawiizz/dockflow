@@ -1,0 +1,49 @@
+---
+- name: Install Nginx
+  apt:
+    name: nginx
+    state: present
+    update_cache: yes
+
+- name: Remove default nginx configuration
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+
+- name: Extract domain list from NGINX_CONFIGS_TO_COPY
+  set_fact:
+    nginx_domains: "{{ (lookup('env', 'NGINX_CONFIGS_TO_COPY') | default('')).split(',') | list }}"
+  when: lookup('env', 'NGINX_CONFIGS_TO_COPY') | default('') | trim != ''
+  tags:
+    - deploy
+
+- name: Copy custom Nginx configs
+  template:
+    src: "{{ item }}.conf.j2"
+    dest: "/etc/nginx/sites-enabled/{{ item }}"
+  loop: "{{ nginx_domains | default([]) }}"
+  when: nginx_domains is defined
+  notify:
+    - Restart Nginx
+  tags:
+    - deploy
+
+- name: Copy Nginx portainer config
+  template:
+    src: portainer.conf.j2
+    dest: /etc/nginx/sites-enabled/portainer
+  notify:
+    - Restart Nginx
+  tags:
+    - configure_host
+
+- name: Enable Nginx
+  service:
+    name: nginx
+    enabled: yes
+    state: started
+
+- name: Nginx is running
+  service:
+    name: nginx
+    state: started

@@ -1,0 +1,11 @@
+---
+- name: Configure host machine
+  hosts: "{{ lookup('env', 'ENV') }}"
+  become: yes
+  vars_files:
+    - roles/portainer/vars/vault.yml
+
+  roles:
+    - geerlingguy.docker
+    - nginx
+    - portainer

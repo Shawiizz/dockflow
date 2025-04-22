@@ -1,0 +1,133 @@
+name: Deploy
+
+on:
+  push:
+    tags:
+      - '*' # Run on all tags
+    branches-ignore:
+      - '**' # Ignore pushes to branches
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build Docker images from SERVICES_TO_DEPLOY
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set environment variables
+        id: vars
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          ENVIRONMENT="production"
+          [[ "$TAG" == *"-rc"* ]] && ENVIRONMENT="staging"
+          echo "env=$ENVIRONMENT" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Install docker-decompose
+        run: npm i -g shawiizz-decomposerize
+
+      - name: Build and export Docker images
+        run: |
+          echo "Using env file: .env.${{ steps.vars.outputs.env }}"
+          set -a
+          source .env.${{ steps.vars.outputs.env }}
+          set +a
+          export VERSION=${{ steps.vars.outputs.tag }}
+
+          IFS=',' read -ra SERVICES <<< "$SERVICES_TO_DEPLOY"
+          for SERVICE in "${SERVICES[@]}"; do
+            echo "Building service: $SERVICE"
+
+            BUILD_CMD=$(decomposerize compose-deploy.yml --services="$SERVICE" --docker-build)
+            echo "Running: $BUILD_CMD"
+            eval "$BUILD_CMD"
+
+            IMAGE_NAME=$(echo "$BUILD_CMD" | sed -nE 's/.*-t\s+"?([^"]+)"?.*/\1/p')
+            IMAGE_NAME=$(eval echo "$IMAGE_NAME")
+            echo "Image built: $IMAGE_NAME"
+
+            TAR_NAME="${IMAGE_NAME//:/-}.tar"
+            docker save -o "$TAR_NAME" "$IMAGE_NAME"
+
+            echo "::group::Upload $TAR_NAME"
+            echo "artifact: image-${SERVICE}"
+            echo "Path: $(realpath "$TAR_NAME")"
+            echo "::endgroup::"
+          done
+
+      - name: Upload image artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-images
+          path: '*.tar'
+          retention-days: 1
+
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy with Ansible
+    needs: build
+    if: ${{ !contains(github.ref, '-rc') || contains(github.ref, '-rc') }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.SUBMODULE_GH_TOKEN }}
+
+      - name: Update submodules
+        run: |
+          git submodule init
+          git submodule update --init --recursive --remote --force
+
+      - name: Download Docker image artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-images
+          path: ./docker_images
+
+      - name: Set environment variables
+        id: vars
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          ENV="production"
+          SSH_SECRET="PRODUCTION_SSH_PRIVATE_KEY"
+          [[ "$TAG" == *"-rc"* ]] && ENV="staging" && SSH_SECRET="STAGING_SSH_PRIVATE_KEY"
+
+          echo "env=$ENV" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "SSH_KEY_SECRET_NAME=$SSH_SECRET" >> $GITHUB_ENV
+
+      - name: Setup SSH Key & Run Ansible
+        run: |
+          # Load env variables
+          while read -r line; do
+            [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && export "$line"
+          done < .env.${{ steps.vars.outputs.env }}
+
+          # Inject secrets into env
+          echo '${{ toJSON(secrets) }}' > secrets.json
+          for secret in $(echo "$SECRETS_TO_PIPE" | tr ',' '\n' | xargs); do
+            value=$(jq -r --arg key "$secret" '.[$key] // empty' secrets.json)
+            [ -n "$value" ] && export "$secret=$value"
+          done
+
+          export VERSION=${{ steps.vars.outputs.tag }}
+
+          # SSH Setup
+          mkdir -p deployment/ssh
+          echo "${{ secrets[env.SSH_KEY_SECRET_NAME] }}" | tr -d '\r' > deployment/ssh/${{ steps.vars.outputs.env }}_private_key
+          chmod 600 deployment/ssh/*
+          eval "$(ssh-agent -s)"
+          ssh-add deployment/ssh/${{ steps.vars.outputs.env }}_private_key
+
+          # Run Ansible
+          cd deployment
+          export ANSIBLE_HOST_KEY_CHECKING=False
+          export ANSIBLE_BECOME_PASSWORD=${{ secrets.ANSIBLE_BECOME_PASSWORD }}
+
+          npm i -g shawiizz-decomposerize
+          ansible-galaxy role install geerlingguy.docker
+          ansible-playbook -i hosts deploy.yml --skip-tags "configure_host"

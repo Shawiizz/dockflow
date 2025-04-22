@@ -1,0 +1,19 @@
+---
+- name: Remove existing Portainer container
+  command: docker rm -f portainer
+  ignore_errors: yes
+
+- name: Create Docker volume for Portainer data
+  command: docker volume create portainer_data
+  ignore_errors: yes
+
+- name: Generate admin password hash
+  command: "docker run --rm httpd:2.4-alpine htpasswd -nbB admin {{ lookup('env', 'PORTAINER_PASSWORD') }}"
+  register: password_hash_output
+
+- name: Extract password hash
+  set_fact:
+    admin_password_hash: "{{ password_hash_output.stdout.split(':')[1] }}"
+
+- name: Run Portainer container
+  command: "docker run -d -p 8000:8000 -p 9443:9443 -p {{ lookup('env', 'PORTAINER_HTTP_PORT') }}:9000 --name portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:lts --admin-password='{{ admin_password_hash }}'"
