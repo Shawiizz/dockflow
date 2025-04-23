@@ -18,21 +18,10 @@
   tags:
     - deploy
 
-- name: Ensure ssh-agent is running
+- name: Start ssh-agent and add SSH keys
   shell: |
     eval "$(ssh-agent -s)"
-  environment:
-    SSH_AUTH_SOCK: /tmp/ssh_agent.sock
-  args:
-    executable: /bin/bash
-  tags:
-    - deploy
-
-- name: Add SSH keys with ssh-add
-  shell: |
     ssh-add /home/ansible/.ssh/{{ item }}
-  environment:
-    SSH_AUTH_SOCK: /tmp/ssh_agent.sock
   loop: "{{ ssh_keys | default([]) }}"
   when: ssh_keys is defined
   tags:
