@@ -73,11 +73,18 @@ jobs:
     name: Deploy with Ansible
     needs: build
     steps:
-      - name: Checkout code
+      - name: Checkout code with token
+        if: secrets.SUBMODULE_REPOSITORY_TOKEN != ''
         uses: actions/checkout@v4
         with:
           submodules: recursive
           token: ${{ secrets.SUBMODULE_REPOSITORY_TOKEN }}
+
+      - name: Checkout code without token
+        if: secrets.SUBMODULE_REPOSITORY_TOKEN == ''
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Update submodules
         run: |
