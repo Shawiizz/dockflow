@@ -7,6 +7,9 @@ on:
     branches-ignore:
       - '**' # Ignore pushes to branches
 
+env:
+  SUBMODULE_TOKEN_PRESENT: ${{ secrets.SUBMODULE_REPOSITORY_TOKEN != '' }}
+  
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -74,14 +77,14 @@ jobs:
     needs: build
     steps:
       - name: Checkout code with token
-        if: secrets.SUBMODULE_REPOSITORY_TOKEN != ''
+        if: env.SUBMODULE_TOKEN_PRESENT == 'true'
         uses: actions/checkout@v4
         with:
           submodules: recursive
           token: ${{ secrets.SUBMODULE_REPOSITORY_TOKEN }}
 
       - name: Checkout code without token
-        if: secrets.SUBMODULE_REPOSITORY_TOKEN == ''
+        if: env.SUBMODULE_TOKEN_PRESENT != 'true'
         uses: actions/checkout@v4
         with:
           submodules: recursive
