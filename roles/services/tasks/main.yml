@@ -7,6 +7,7 @@
       - "*.mount.j2"
     recurse: false
   register: service_templates
+  delegate_to: localhost
   tags:
     - deploy
 

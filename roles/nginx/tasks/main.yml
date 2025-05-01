@@ -16,6 +16,7 @@
     patterns: "*.conf.j2"
     recurse: false
   register: nginx_config_files
+  delegate_to: localhost
   tags:
     - deploy
 
