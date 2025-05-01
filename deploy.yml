@@ -42,7 +42,7 @@
 
     - name: Generate Docker network, volume, and stop/remove commands as Jinja2 template
       shell: |
-        decomposerize "../compose-deploy.yml" \
+        decomposerize "../deployment/docker/compose-deploy.yml" \
           --create-networks \
           --create-volumes \
           --stop-and-remove \
@@ -85,7 +85,7 @@
 
     - name: Generate Docker run commands as Jinja2 template
       shell: |
-        decomposerize "../compose-deploy.yml" \
+        decomposerize "../deployment/docker/compose-deploy.yml" \
           --docker-run \
           --docker-run-detach \
           --ansible-env-vars-format > /tmp/decomposerize_runs.j2
