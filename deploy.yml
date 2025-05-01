@@ -1,6 +1,6 @@
 ---
 - name: Deploy Docker Images to Remote Server
-  hosts: "{{ lookup('env', 'ENV') }}"
+  hosts: main
   become: yes
   become_method: sudo
   roles:

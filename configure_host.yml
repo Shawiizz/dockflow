@@ -1,6 +1,6 @@
 ---
 - name: Configure host machine
-  hosts: "{{ lookup('env', 'ENV') }}"
+  hosts: main
   become: yes
   vars_files:
     - roles/portainer/vars/vault.yml

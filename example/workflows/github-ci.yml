@@ -9,7 +9,7 @@ on:
 
 env:
   SUBMODULE_TOKEN_PRESENT: ${{ secrets.SUBMODULE_REPOSITORY_TOKEN != '' }}
-  
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -37,12 +37,13 @@ jobs:
 
       - name: Build and export Docker images (${{ steps.vars.outputs.env }})
         run: |
-          echo "Using env file: .env.${{ steps.vars.outputs.env }}"
-          set -a
-          source .env.${{ steps.vars.outputs.env }}
-          set +a
+          # Load env variables
+          while read -r line; do
+          [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && export "$line"
+          done < deployment/env/.env.${{ steps.vars.outputs.env }}
           export VERSION=${{ steps.vars.outputs.tag }}
 
+          cd deployment/docker
           IFS=',' read -ra SERVICES <<< "$DEPLOY_DOCKER_SERVICES"
           for SERVICE in "${SERVICES[@]}"; do
             echo "Building service: $SERVICE"
@@ -89,10 +90,9 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Update submodules
+      - name: Update ansible submodule
         run: |
-          git submodule init
-          git submodule update --init --recursive --remote --force
+          git submodule update --init --recursive --remote --force ansible
 
       - name: Download Docker image artifacts
         uses: actions/download-artifact@v4
@@ -121,7 +121,7 @@ jobs:
           # Load env variables
           while read -r line; do
             [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && export "$line"
-          done < .env.${{ steps.vars.outputs.env }}
+          done < deployment/env/.env.${{ steps.vars.outputs.env }}
 
           # Inject secrets into env (including SSH keys)
           echo '${{ toJSON(secrets) }}' > secrets.json
@@ -134,14 +134,14 @@ jobs:
           export VERSION=${{ steps.vars.outputs.tag }}
 
           # SSH Setup
-          mkdir -p deployment/ssh
-          echo "${{ secrets[env.SSH_KEY_SECRET_NAME] }}" | tr -d '\r' > deployment/ssh/${{ steps.vars.outputs.env }}_private_key
-          chmod 600 deployment/ssh/*
+          mkdir -p ansible/ssh
+          echo "${{ secrets[env.SSH_KEY_SECRET_NAME] }}" | tr -d '\r' > ansible/ssh/${{ steps.vars.outputs.env }}_private_key
+          chmod 600 ansible/ssh/*
           eval "$(ssh-agent -s)"
-          ssh-add deployment/ssh/${{ steps.vars.outputs.env }}_private_key
+          ssh-add ansible/ssh/${{ steps.vars.outputs.env }}_private_key
 
           # Run Ansible
-          cd deployment
+          cd ansible
           export ANSIBLE_HOST_KEY_CHECKING=False
           export ANSIBLE_BECOME_PASSWORD=${{ secrets.ANSIBLE_BECOME_PASSWORD }}
 
