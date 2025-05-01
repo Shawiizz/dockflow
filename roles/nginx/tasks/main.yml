@@ -10,19 +10,21 @@
     path: /etc/nginx/sites-enabled/default
     state: absent
 
-- name: Extract domain list from DEPLOY_NGINX_CONFIGS
-  set_fact:
-    nginx_domains: "{{ (lookup('env', 'DEPLOY_NGINX_CONFIGS') | default('')).split(',') | list }}"
-  when: lookup('env', 'DEPLOY_NGINX_CONFIGS') | default('') | trim != ''
+- name: List enabled Nginx config templates (*.conf.j2 only)
+  find:
+    paths: "../deployment/templates/nginx"
+    patterns: "*.conf.j2"
+    recurse: false
+  register: nginx_config_files
   tags:
     - deploy
 
 - name: Copy custom Nginx configs
   template:
-    src: "{{ item }}.conf.j2"
-    dest: "/etc/nginx/sites-enabled/{{ item }}"
-  loop: "{{ nginx_domains | default([]) }}"
-  when: nginx_domains is defined
+    src: "{{ item.path }}"
+    dest: "/etc/nginx/sites-enabled/{{ item.path | basename | regex_replace('\\.j2$', '') }}"
+  loop: "{{ nginx_config_files.files }}"
+  when: nginx_config_files.matched > 0
   notify:
     - Restart Nginx
   tags:

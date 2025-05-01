@@ -1,20 +1,24 @@
 ---
-- name: Get list of linux services from env var DEPLOY_LINUX_SERVICES
-  set_fact:
-    linux_services: "{{ (lookup('env', 'DEPLOY_LINUX_SERVICES') | default('')).split(',') | map('trim') | list }}"
-  when: lookup('env', 'DEPLOY_LINUX_SERVICES') | default('') | trim != ''
+- name: List enabled systemd unit templates (*.service.j2 and *.mount.j2)
+  find:
+    paths: "../deployment/templates/services"
+    patterns:
+      - "*.service.j2"
+      - "*.mount.j2"
+    recurse: false
+  register: service_templates
   tags:
     - deploy
 
-- name: Deploy systemd services templates
+- name: Deploy systemd unit templates
   template:
-    src: "{{ item }}.service.j2"
-    dest: "/etc/systemd/system/{{ item }}.service"
+    src: "{{ item.path }}"
+    dest: "/etc/systemd/system/{{ item.path | basename | regex_replace('\\.j2$', '') }}"
     owner: root
     group: root
     mode: '0644'
-  loop: "{{ linux_services | default([]) }}"
-  when: linux_services is defined
+  loop: "{{ service_templates.files }}"
+  when: service_templates.matched > 0
   tags:
     - deploy
 
