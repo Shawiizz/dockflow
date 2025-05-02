@@ -41,6 +41,7 @@ jobs:
           while read -r line; do
           [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && export "$line"
           done < deployment/env/.env.${{ steps.vars.outputs.env }}
+          export ENV=${{ steps.vars.outputs.env }}
           export VERSION=${{ steps.vars.outputs.tag }}
 
           cd deployment/docker
@@ -69,7 +70,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: docker-images
-          path: '*.tar'
+          path: 'deployment/docker/*.tar'
           retention-days: 1
 
   deploy:
@@ -131,6 +132,7 @@ jobs:
             [ -n "$value" ] && export "$secret=$value"
           done
 
+          export ENV=${{ steps.vars.outputs.env }}
           export VERSION=${{ steps.vars.outputs.tag }}
 
           # SSH Setup
@@ -147,4 +149,4 @@ jobs:
 
           npm i -g shawiizz-decomposerize
           ansible-galaxy role install geerlingguy.docker
-          ansible-playbook -i hosts deploy.yml --skip-tags "configure_host"
+          ansible-playbook -i hosts.yml deploy.yml --skip-tags "configure_host"
