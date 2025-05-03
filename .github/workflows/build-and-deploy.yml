@@ -1,11 +1,16 @@
-name: Deploy
+name: Build and Deploy
 
 on:
-  push:
-    tags:
-      - '*' # Run on all tags
-    branches-ignore:
-      - '**' # Ignore pushes to branches
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+    secrets:
+      SUBMODULE_REPOSITORY_TOKEN:
+        required: false
+      ANSIBLE_BECOME_PASSWORD:
+        required: true
 
 env:
   SUBMODULE_TOKEN_PRESENT: ${{ secrets.SUBMODULE_REPOSITORY_TOKEN != '' }}
@@ -22,7 +27,7 @@ jobs:
       - name: Set environment variables
         id: vars
         run: |
-          TAG=${GITHUB_REF#refs/tags/}
+          TAG="${{ inputs.tag }}"
           ENVIRONMENT="production"
 
           if [[ "$TAG" == *"-"* ]]; then
@@ -37,9 +42,8 @@ jobs:
 
       - name: Build and export Docker images (${{ steps.vars.outputs.env }})
         run: |
-          # Load env variables
           while read -r line; do
-          [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && export "$line"
+            [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && export "$line"
           done < deployment/env/.env.${{ steps.vars.outputs.env }}
           export ENV=${{ steps.vars.outputs.env }}
           export VERSION=${{ steps.vars.outputs.tag }}
@@ -48,7 +52,6 @@ jobs:
           IFS=',' read -ra SERVICES <<< "$DEPLOY_DOCKER_SERVICES"
           for SERVICE in "${SERVICES[@]}"; do
             echo "Building service: $SERVICE"
-
             BUILD_CMD=$(decomposerize compose-deploy.yml --services="$SERVICE" --docker-build)
             echo "Running: $BUILD_CMD"
             eval "$BUILD_CMD"
@@ -77,6 +80,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Deploy with Ansible
     needs: build
+
     steps:
       - name: Checkout code with token
         if: env.SUBMODULE_TOKEN_PRESENT == 'true'
@@ -104,27 +108,25 @@ jobs:
       - name: Set environment variables
         id: vars
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
+          TAG="${{ inputs.tag }}"
           if [[ "$TAG" == *"-"* ]]; then
             ENV="${TAG##*-}"
           else
             ENV="production"
           fi
-          
+
           SSH_SECRET_NAME="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY"
-          
+
           echo "env=$ENV" >> $GITHUB_OUTPUT
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "SSH_KEY_SECRET_NAME=$SSH_SECRET_NAME" >> $GITHUB_ENV
 
       - name: Setup SSH Key & Run Ansible (${{ steps.vars.outputs.env }})
         run: |
-          # Load env variables
           while read -r line; do
             [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && export "$line"
           done < deployment/env/.env.${{ steps.vars.outputs.env }}
 
-          # Inject secrets into env (including SSH keys)
           echo '${{ toJSON(secrets) }}' > secrets.json
 
           for secret in $(echo "$USE_SECRETS,$DEPLOY_PRIVATE_SSH_KEYS" | tr ',' '\n' | xargs); do
@@ -135,14 +137,12 @@ jobs:
           export ENV=${{ steps.vars.outputs.env }}
           export VERSION=${{ steps.vars.outputs.tag }}
 
-          # SSH Setup
           mkdir -p ansible/ssh
           echo "${{ secrets[env.SSH_KEY_SECRET_NAME] }}" | tr -d '\r' > ansible/ssh/${{ steps.vars.outputs.env }}_private_key
           chmod 600 ansible/ssh/*
           eval "$(ssh-agent -s)"
           ssh-add ansible/ssh/${{ steps.vars.outputs.env }}_private_key
 
-          # Run Ansible
           cd ansible
           export ANSIBLE_HOST_KEY_CHECKING=False
           export ANSIBLE_BECOME_PASSWORD=${{ secrets.ANSIBLE_BECOME_PASSWORD }}
