@@ -6,11 +6,6 @@ on:
       tag:
         required: true
         type: string
-    secrets:
-      SUBMODULE_REPOSITORY_TOKEN:
-        required: false
-      ANSIBLE_BECOME_PASSWORD:
-        required: true
 
 env:
   SUBMODULE_TOKEN_PRESENT: ${{ secrets.SUBMODULE_REPOSITORY_TOKEN != '' }}
