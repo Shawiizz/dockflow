@@ -43,6 +43,7 @@
     - name: Generate Docker network, volume, and stop/remove commands as Jinja2 template
       shell: |
         decomposerize "../deployment/docker/compose-deploy.yml" \
+          --services="{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') }}"
           --create-networks \
           --create-volumes \
           --stop-and-remove \
@@ -86,6 +87,7 @@
     - name: Generate Docker run commands as Jinja2 template
       shell: |
         decomposerize "../deployment/docker/compose-deploy.yml" \
+          --services="{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') }}"
           --docker-run \
           --docker-run-detach \
           --ansible-env-vars-format > /tmp/decomposerize_runs.j2
@@ -120,5 +122,43 @@
       loop: "{{ run_commands }}"
       when: run_commands is defined and run_commands | length > 0
 
-    - name: Delete unused images
-      shell: "docker image prune -a -f"
+    # --------------------------------------------------------------------
+    # Delete unused images
+    # --------------------------------------------------------------------
+
+    - name: Generate Docker rmi commands as Jinja2 template
+      shell: |
+        decomposerize "../deployment/docker/compose-deploy.yml" \
+          --services="{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') }}"
+          --delete-images
+          --ansible-env-vars-format > /tmp/decomposerize_rmi.j2
+      delegate_to: localhost
+
+    - name: Render Docker rmi template with evaluated environment variables
+      template:
+        src: /tmp/decomposerize_rmi.j2
+        dest: /tmp/decomposerize_rmi_rendered.sh
+      delegate_to: localhost
+
+    - name: Read rendered Docker rmi script
+      slurp:
+        src: /tmp/decomposerize_rmi_rendered.sh
+      delegate_to: localhost
+      register: rendered_rmi
+
+    - name: Split rendered Docker rmi script into separate commands and remove empty lines
+      set_fact:
+        rmi_commands: >-
+          {{
+          rendered_rmi.content
+          | b64decode
+          | split('\n')
+          | map('trim')
+          | select('truthy')  
+          | list
+          }}
+
+    - name: Execute Docker rmi commands on the target host
+      shell: "{{ item }}"
+      loop: "{{ rmi_commands }}"
+      when: rmi_commands is defined and rmi_commands | length > 0
