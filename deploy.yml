@@ -43,7 +43,7 @@
     - name: Generate Docker network, volume, and stop/remove commands as Jinja2 template
       shell: |
         decomposerize "../deployment/docker/compose-deploy.yml" \
-          --services="{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') }}"
+          --services={{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | trim }} \
           --create-networks \
           --create-volumes \
           --stop-and-remove \
@@ -87,7 +87,7 @@
     - name: Generate Docker run commands as Jinja2 template
       shell: |
         decomposerize "../deployment/docker/compose-deploy.yml" \
-          --services="{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') }}"
+          --services={{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | trim }} \
           --docker-run \
           --docker-run-detach \
           --ansible-env-vars-format > /tmp/decomposerize_runs.j2
@@ -129,8 +129,8 @@
     - name: Generate Docker rmi commands as Jinja2 template
       shell: |
         decomposerize "../deployment/docker/compose-deploy.yml" \
-          --services="{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') }}"
-          --delete-images
+          --services={{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | trim }} \
+          --delete-images \
           --ansible-env-vars-format > /tmp/decomposerize_rmi.j2
       delegate_to: localhost
 
@@ -162,3 +162,4 @@
       shell: "{{ item }}"
       loop: "{{ rmi_commands }}"
       when: rmi_commands is defined and rmi_commands | length > 0
+      ignore_errors: yes # It will fail because new images are used by new running containers, so ignore this
