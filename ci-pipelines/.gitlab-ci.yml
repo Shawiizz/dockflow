@@ -1,0 +1,91 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  SUBMODULE_TOKEN_PRESENT: "${CI_SECRET_SUBMODULE_REPOSITORY_TOKEN != ''}"
+
+build:
+  stage: build
+  image: ubuntu:latest
+  before_script:
+    - apt-get update && apt-get install -y jq docker.io npm git
+    - npm install -g shawiizz-decomposerize
+  script:
+    - |
+      TAG=$CI_COMMIT_REF_NAME
+      ENVIRONMENT="production"
+
+      if [[ "$TAG" == *"-"* ]]; then
+        ENVIRONMENT="${TAG##*-}"
+      fi
+
+      while read -r line; do
+        [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && export "$line"
+      done < "deployment/env/.env.${ENVIRONMENT}"
+
+      export ENV=$ENVIRONMENT
+      export VERSION=$TAG
+
+      cd deployment/docker
+      IFS=',' read -ra SERVICES <<< "$DEPLOY_DOCKER_SERVICES"
+      for SERVICE in "${SERVICES[@]}"; do
+        echo "Building service: $SERVICE"
+        BUILD_CMD=$(decomposerize compose-deploy.yml --services="$SERVICE" --docker-build)
+        echo "Running: $BUILD_CMD"
+        eval "$BUILD_CMD"
+
+        IMAGE_NAME=$(echo "$BUILD_CMD" | sed -nE 's/.*-t\s+"?([^"]+)"?.*/\1/p')
+        IMAGE_NAME=$(eval echo "$IMAGE_NAME")
+        echo "Image built: $IMAGE_NAME"
+
+        TAR_NAME="${IMAGE_NAME//:/-}.tar"
+        docker save -o "$TAR_NAME" "$IMAGE_NAME"
+
+        echo "::group::Upload $TAR_NAME"
+        echo "artifact: image-${SERVICE}"
+        echo "Path: $(realpath "$TAR_NAME")"
+        echo "::endgroup::"
+      done
+
+  artifacts:
+    paths:
+      - deployment/docker/*.tar
+    expire_in: 1 day
+
+deploy:
+  stage: deploy
+  image: ubuntu:latest
+  before_script:
+    - apt-get update && apt-get install -y jq docker.io git
+  script:
+    - |
+      if [[ "$SUBMODULE_TOKEN_PRESENT" == "true" ]]; then
+        git submodule update --init --recursive --remote --force ansible
+      else
+        git submodule update --init --recursive
+      fi
+
+      # Download artifacts
+      mkdir -p ./docker_images
+      cp deployment/docker/*.tar ./docker_images/
+
+      TAG=$CI_COMMIT_REF_NAME
+      ENV="${TAG##*-}"
+      SSH_SECRET_NAME="${ENV}_SSH_PRIVATE_KEY"
+
+      # Setup SSH Key & Run Ansible
+      mkdir -p ansible/ssh
+      echo "$CI_SECRET_${SSH_SECRET_NAME}" | tr -d '\r' > ansible/ssh/${ENV}_private_key
+      chmod 600 ansible/ssh/*
+
+      eval "$(ssh-agent -s)"
+      ssh-add ansible/ssh/${ENV}_private_key
+
+      cd ansible
+      export ANSIBLE_HOST_KEY_CHECKING=False
+      export ANSIBLE_BECOME_PASSWORD=$CI_SECRET_ANSIBLE_BECOME_PASSWORD
+
+      npm i -g shawiizz-decomposerize
+      ansible-galaxy role install geerlingguy.docker
+      ansible-playbook -i hosts.yml deploy.yml --skip-tags "configure_host"
