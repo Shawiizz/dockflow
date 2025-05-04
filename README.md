@@ -124,3 +124,18 @@ To deploy ssh private keys files to your VM, create a CI secret (e.g. `SSH_PRIVA
 
 **Deploy linux services**
 To deploy custom Linux services, create the template inside `roles/services/templates/service_name.service.j2` and then, use `DEPLOY_LINUX_SERVICES=service_name_1,service_name_2` in your `.env.[YOUR_ENV_NAME]` (without including `.service.j2` in the config names).
+
+## Image for ci 
+
+A pre-made docker image containing Docker, Ansible, NodeJS and the module for extracting docker commands is avaiable at `shawiizz/devops-ci:latest`.        
+
+Building : 
+```bash
+docker build -t shawiizz/devops-ci:latest -f Dockerfile.ci .
+```
+
+Publishing to DockerHub : 
+```bash
+docker login
+docker push shawiizz/devops-ci:latest
+```

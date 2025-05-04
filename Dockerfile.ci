@@ -1,0 +1,30 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    gnupg \
+    ca-certificates \
+    lsb-release \
+    software-properties-common \
+    apt-transport-https \
+    unzip \
+    python3-pip \
+    python3-venv \
+    git \
+    && apt clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+RUN apt update && apt install -y nodejs
+
+RUN curl -fsSL https://get.docker.com | bash -
+RUN apt update && apt install -y docker-ce docker-ce-cli containerd.io
+
+RUN apt-add-repository ppa:ansible/ansible -y
+RUN apt update && apt install -y ansible
+
+RUN npm install -g shawiizz-decomposerize
+
+RUN apt clean && rm -rf /var/lib/apt/lists/*

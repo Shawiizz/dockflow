@@ -144,4 +144,4 @@ jobs:
 
           npm i -g shawiizz-decomposerize
           ansible-galaxy role install geerlingguy.docker
-          ansible-playbook -i hosts.yml deploy.yml --skip-tags "configure_host"
+          ansible-playbook deploy.yml --skip-tags "configure_host"
