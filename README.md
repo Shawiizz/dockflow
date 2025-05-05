@@ -73,6 +73,7 @@ docker compose run --rm \
   -e ANSIBLE_BECOME_PASSWORD=ansible_user_password \
   -e ANSIBLE_USER=ansible ansible
 ```
+*On Windows, you may need to use the command on one line, as the `\` character may not work as expected.*
 
 **The machine is now ready to receive deployments of any Docker applications.**
 

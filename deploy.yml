@@ -1,7 +1,6 @@
 ---
 - name: Deploy Docker Images to Remote Server
-  become: yes
-  become_method: sudo
+  hosts: all:!localhost
   roles:
     - geerlingguy.docker
     - nginx

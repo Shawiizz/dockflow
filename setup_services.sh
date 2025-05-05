@@ -1,10 +1,5 @@
 #!/bin/bash
 
-if [ -z "$ENV" ]; then
-  echo "ENV variable is not set. Please set it to your env name."
-  exit 1
-fi
-
 # Add private ssh host key
 mkdir -p ~/.ssh
 cat ssh/configure_host_private_key | tr -d '\r' > ~/.ssh/private_key
@@ -22,4 +17,7 @@ fi
 
 # Run ansible playbook
 export ANSIBLE_HOST_KEY_CHECKING=False
-ansible-playbook configure_host.yml -i "$HOST" --user="$ANSIBLE_USER" --private-key=ssh/configure_host_private_key --skip-tags "deploy"
+ansible-galaxy role install geerlingguy.docker
+ansible-playbook configure_host.yml -i "$HOST," --user="$ANSIBLE_USER" --private-key=ssh/configure_host_private_key --skip-tags "deploy"
+
+echo "ansible-playbook configure_host.yml -i $HOST, --user=$ANSIBLE_USER --private-key=ssh/configure_host_private_key --skip-tags deploy"
