@@ -1,0 +1,10 @@
+services:
+  app:
+    image: my-app-${ENV}:${VERSION}
+    build:
+      context: ../..
+      dockerfile: Dockerfile.app
+    container_name: my_app_${ENV}
+    restart: always
+    ports:
+      - "${APP_EXTERNAL_PORT}:3000"

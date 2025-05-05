@@ -1,3 +1,3 @@
-[submodule "deployment"]
-	path = deployment
+[submodule "ansible"]
+	path = ansible
 	url = https://github.com/Shawiizz/devops
