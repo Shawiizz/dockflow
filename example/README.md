@@ -1,6 +1,8 @@
 # Use case of this devops tool
 
-All of these files are examples, you can modify them to fit your needs.
+[!] All of these files are examples, you can modify them to fit your needs.     
+
+You have to copy the `.gitmodules` file and the `deployment` folder to your project root's directory.
 
 # CI
 

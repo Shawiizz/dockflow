@@ -8,7 +8,7 @@ on:
         type: string
 
 env:
-  SUBMODULE_TOKEN_PRESENT: ${{ secrets.SUBMODULE_REPOSITORY_TOKEN != '' }}
+  ANSIBLE_REPOSITORY_URL: https://github.com/Shawiizz/ansible.git
 
 jobs:
   build:
@@ -77,22 +77,8 @@ jobs:
     needs: build
 
     steps:
-      - name: Checkout code with token
-        if: env.SUBMODULE_TOKEN_PRESENT == 'true'
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          token: ${{ secrets.SUBMODULE_REPOSITORY_TOKEN }}
-
-      - name: Checkout code without token
-        if: env.SUBMODULE_TOKEN_PRESENT != 'true'
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Update ansible submodule
-        run: |
-          git submodule update --init --recursive --remote --force ansible
+      - name: Clone ansible repository
+        run: git clone ${{ env.ANSIBLE_REPOSITORY_URL }} ansible
 
       - name: Download Docker image artifacts
         uses: actions/download-artifact@v4
