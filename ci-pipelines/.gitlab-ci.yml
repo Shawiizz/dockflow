@@ -10,7 +10,7 @@ services:
 variables:
   DOCKER_HOST: tcp://docker:2375
   DOCKER_TLS_CERTDIR: ""
-  ANSIBLE_REPOSITORY_URL: https://github.com/Shawiizz/ansible.git
+  ANSIBLE_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
 
 before_script:
   - |

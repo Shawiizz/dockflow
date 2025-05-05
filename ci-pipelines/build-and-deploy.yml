@@ -8,7 +8,7 @@ on:
         type: string
 
 env:
-  ANSIBLE_REPOSITORY_URL: https://github.com/Shawiizz/ansible.git
+  ANSIBLE_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
 
 jobs:
   build:
