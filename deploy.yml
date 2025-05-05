@@ -1,6 +1,5 @@
 ---
 - name: Deploy Docker Images to Remote Server
-  hosts: main
   become: yes
   become_method: sudo
   roles:

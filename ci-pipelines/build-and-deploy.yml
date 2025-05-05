@@ -119,10 +119,10 @@ jobs:
           export VERSION=${{ steps.vars.outputs.tag }}
 
           mkdir -p ansible/ssh
-          echo "${{ secrets[env.SSH_KEY_SECRET_NAME] }}" | tr -d '\r' > ansible/ssh/${{ steps.vars.outputs.env }}_private_key
+          echo "${{ secrets[env.SSH_KEY_SECRET_NAME] }}" | tr -d '\r' > ansible/ssh/main_private_key
           chmod 600 ansible/ssh/*
           eval "$(ssh-agent -s)"
-          ssh-add ansible/ssh/${{ steps.vars.outputs.env }}_private_key
+          ssh-add ansible/ssh/main_private_key
 
           cd ansible
           export ANSIBLE_HOST_KEY_CHECKING=False
@@ -130,4 +130,4 @@ jobs:
 
           npm i -g shawiizz-decomposerize
           ansible-galaxy role install geerlingguy.docker
-          ansible-playbook deploy.yml --skip-tags "configure_host"
+          ansible-playbook deploy.yml -i "$HOST" --user="$ANSIBLE_USER" --private-key=ansible/ssh/main_private_key --skip-tags "configure_host"
