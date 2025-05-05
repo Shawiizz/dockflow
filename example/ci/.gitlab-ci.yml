@@ -3,7 +3,7 @@ stages:
   - deploy
 
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/heads/main/ci-pipelines/.gitlab-ci.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/heads/main/.gitlab/workflows/.gitlab-ci.yml'
 
 workflow:
   rules:

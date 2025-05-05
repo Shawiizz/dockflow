@@ -77,6 +77,9 @@ jobs:
     needs: build
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Clone ansible repository
         run: git clone ${{ env.ANSIBLE_REPOSITORY_URL }} ansible
 
