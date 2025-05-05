@@ -1,27 +1,13 @@
 #!/bin/bash
 
 if [ -z "$ENV" ]; then
-  echo "ENV variable is not set. Please set it to 'production' or 'staging'."
-  exit 1
-fi
-
-# Determine which key file to use based on environment
-if [ "$ENV" = "production" ]; then
-  PRIVATE_KEY_FILE="ssh/production_private_key"
-  INVENTORY_GROUP="production"
-  echo "Using production environment"
-elif [ "$ENV" = "staging" ]; then
-  PRIVATE_KEY_FILE="ssh/staging_private_key"
-  INVENTORY_GROUP="staging"
-  echo "Using staging environment"
-else
-  echo "Invalid ENV value: $ENV. Must be 'production' or 'staging'."
+  echo "ENV variable is not set. Please set it to your env name."
   exit 1
 fi
 
 # Add private ssh host key
 mkdir -p ~/.ssh
-cat $PRIVATE_KEY_FILE | tr -d '\r' > ~/.ssh/private_key
+cat ssh/configure_host_private_key | tr -d '\r' > ~/.ssh/private_key
 chmod 600 ~/.ssh/private_key
 eval `ssh-agent -s`
 ssh-add ~/.ssh/private_key
@@ -36,4 +22,4 @@ fi
 
 # Run ansible playbook
 export ANSIBLE_HOST_KEY_CHECKING=False
-ansible-playbook configure_host.yml -i hosts --limit $INVENTORY_GROUP --skip-tags "deploy,compose"
+ansible-playbook configure_host.yml -i "$HOST" --user="$ANSIBLE_USER" --private-key=ssh/configure_host_private_key --skip-tags "deploy"
