@@ -1,0 +1,22 @@
+include:
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/heads/main/.gitlab/ci-templates/build-steps.yml'
+
+stages:
+  - build
+
+build:
+  stage: build
+  image: shawiizz/devops-ci:1.0.0
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  extends: .build-docker
+  before_script:
+    - export ENV=build
+    - export VERSION=build
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: never
+    - when: always

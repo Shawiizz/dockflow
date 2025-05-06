@@ -1,0 +1,70 @@
+include:
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/heads/main/.gitlab/ci-templates/build-steps.yml'
+
+stages:
+  - deploy
+  - deploy-build
+
+.common-deploy:
+  image: shawiizz/devops-ci:1.0.0
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    ANSIBLE_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
+  before_script:
+    - |
+      TAG=$CI_COMMIT_REF_NAME
+      ENVIRONMENT="production"
+  
+      if [[ "$TAG" == *"-"* ]]; then
+        ENVIRONMENT="${TAG##*-}"
+      fi
+  
+      while read -r line; do
+        [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && export "$line"
+      done < "deployment/env/.env.${ENVIRONMENT}"
+  
+      export ENV=$ENVIRONMENT
+      export VERSION=$TAG
+
+deploy:build:
+  stage: deploy-build
+  rules:
+    - if: '$CI_COMMIT_TAG'
+  extends:
+    - .common-deploy
+    - .build-docker
+  artifacts:
+    paths:
+      - deployment/docker/*.tar
+    expire_in: 1 day
+
+deploy:
+  stage: deploy
+  needs: ["deploy:build"]
+  extends:
+      - .common-deploy
+  rules:
+    - if: '$CI_COMMIT_TAG'
+  script:
+    - |
+      git clone $ANSIBLE_REPOSITORY_URL ansible
+
+      mkdir -p ./docker_images
+      cp deployment/docker/*.tar ./docker_images/
+      
+      mkdir -p ansible/ssh
+      echo "$(printenv "$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY")" | tr -d '\r' > ansible/ssh/main_private_key
+      chmod 600 ansible/ssh/*
+      
+      eval "$(ssh-agent -s)"
+      ssh-add ansible/ssh/main_private_key
+
+      cd ansible
+      export ANSIBLE_HOST_KEY_CHECKING=False
+      export ANSIBLE_BECOME_PASSWORD=$ANSIBLE_BECOME_PASSWORD
+
+      ansible-galaxy role install geerlingguy.docker
+      ansible-playbook deploy.yml -i "$HOST," --user="$ANSIBLE_USER" --private-key=ansible/ssh/main_private_key --skip-tags "configure_host"
