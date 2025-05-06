@@ -1,6 +1,6 @@
 stages:
-  - build
   - deploy
+  - deploy-build
 
 image: shawiizz/devops-ci:1.0.0
 
@@ -28,8 +28,8 @@ before_script:
     export ENV=$ENVIRONMENT
     export VERSION=$TAG
 
-build:
-  stage: build
+deploy:build:
+  stage: deploy-build
   script:
     - |
       cd deployment/docker
@@ -60,7 +60,7 @@ build:
 
 deploy:
   stage: deploy
-  needs: ["build"]
+  needs: ["deploy:build"]
   rules:
     - if: '$CI_COMMIT_TAG'
   script:
