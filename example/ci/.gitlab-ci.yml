@@ -1,10 +1,8 @@
 stages:
   - build
+  - deploy-build
   - deploy
 
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/heads/main/.gitlab/workflows/.gitlab-ci.yml'
-
-workflow:
-  rules:
-    - if: '$CI_COMMIT_TAG'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.0/.gitlab/workflows/build.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.0/.gitlab/workflows/deploy.yml'
