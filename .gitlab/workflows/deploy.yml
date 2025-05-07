@@ -6,7 +6,7 @@ stages:
   - deploy-build
 
 .common-deploy:
-  image: shawiizz/devops-ci:1.0.0
+  image: shawiizz/devops-ci:1.0.1
   services:
     - docker:dind
   variables:
