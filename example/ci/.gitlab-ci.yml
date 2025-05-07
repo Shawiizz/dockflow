@@ -4,5 +4,5 @@ stages:
   - deploy
 
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.0/.gitlab/workflows/build.yml'
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.0/.gitlab/workflows/deploy.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.1/.gitlab/workflows/build.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.1/.gitlab/workflows/deploy.yml'
