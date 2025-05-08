@@ -1,5 +1,5 @@
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.1/.gitlab/ci-templates/build-steps.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.2/.gitlab/ci-templates/build-steps.yml'
 
 stages:
   - deploy
@@ -28,6 +28,11 @@ stages:
   
       export ENV=$ENVIRONMENT
       export VERSION=$TAG
+      
+      if [ ! -f "deployment/env/.env.${ENVIRONMENT}" ]; then
+          echo "File deployment/env/.env.${ENVIRONMENT} does not exist, cannot execute on unknown environment"
+          exit 1
+      fi
 
 deploy:build:
   stage: deploy-build

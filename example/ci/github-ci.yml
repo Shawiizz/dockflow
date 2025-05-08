@@ -1,4 +1,4 @@
-name: Build and Deploy
+name: Github CI/CD
 
 on:
   push:

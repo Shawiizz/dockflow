@@ -31,6 +31,11 @@ jobs:
 
           echo "env=$ENVIRONMENT" >> $GITHUB_OUTPUT
           echo "tag=$TAG" >> $GITHUB_OUTPUT
+          
+          if [ ! -f "deployment/env/.env.${ENVIRONMENT}" ]; then
+              echo "::error:: File deployment/env/.env.${ENVIRONMENT} does not exist, cannot execute on unknown environment"
+              exit 1
+          fi
 
       - name: Install docker-decompose
         run: npm i -g shawiizz-decomposerize
