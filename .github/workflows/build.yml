@@ -1,0 +1,28 @@
+name: Build
+
+on:
+  workflow_call:
+
+env:
+  DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build Docker images
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install docker-decompose
+        run: npm i -g shawiizz-decomposerize
+
+      - name: Clone devops repository
+        run: git clone "$DEVOPS_REPOSITORY_URL" ansible
+
+      - name: Build Docker images
+        run: |
+          export ENV=build
+          export VERSION=build
+          bash ansible/.github/scripts/build_docker_images.sh

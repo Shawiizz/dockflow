@@ -8,10 +8,10 @@ on:
         type: string
 
 env:
-  ANSIBLE_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
+  DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
 
 jobs:
-  build:
+  deploy-build:
     runs-on: ubuntu-latest
     name: Build Docker images
 
@@ -35,6 +35,9 @@ jobs:
       - name: Install docker-decompose
         run: npm i -g shawiizz-decomposerize
 
+      - name: Clone devops repository
+        run: git clone "$DEVOPS_REPOSITORY_URL" ansible
+
       - name: Build and export Docker images (${{ steps.vars.outputs.env }})
         run: |
           while read -r line; do
@@ -43,26 +46,7 @@ jobs:
           export ENV=${{ steps.vars.outputs.env }}
           export VERSION=${{ steps.vars.outputs.tag }}
 
-          cd deployment/docker
-          IFS=',' read -ra SERVICES <<< "$DEPLOY_DOCKER_SERVICES"
-          for SERVICE in "${SERVICES[@]}"; do
-            echo "Building service: $SERVICE"
-            BUILD_CMD=$(decomposerize compose-deploy.yml --services="$SERVICE" --docker-build)
-            echo "Running: $BUILD_CMD"
-            eval "$BUILD_CMD"
-
-            IMAGE_NAME=$(echo "$BUILD_CMD" | sed -nE 's/.*-t\s+"?([^"]+)"?.*/\1/p')
-            IMAGE_NAME=$(eval echo "$IMAGE_NAME")
-            echo "Image built: $IMAGE_NAME"
-
-            TAR_NAME="${IMAGE_NAME//:/-}.tar"
-            docker save -o "$TAR_NAME" "$IMAGE_NAME"
-
-            echo "::group::Upload $TAR_NAME"
-            echo "artifact: image-${SERVICE}"
-            echo "Path: $(realpath "$TAR_NAME")"
-            echo "::endgroup::"
-          done
+          bash ansible/.github/scripts/build_docker_images.sh
 
       - name: Upload image artifacts
         uses: actions/upload-artifact@v4
@@ -74,14 +58,14 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     name: Deploy with Ansible
-    needs: build
+    needs: deploy-build
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Clone ansible repository
-        run: git clone ${{ env.ANSIBLE_REPOSITORY_URL }} ansible
+      - name: Clone devops repository
+        run: git clone "$DEVOPS_REPOSITORY_URL" ansible
 
       - name: Download Docker image artifacts
         uses: actions/download-artifact@v4
@@ -113,9 +97,9 @@ jobs:
 
           echo '${{ toJSON(secrets) }}' > secrets.json
 
-          for secret in $(echo "$USE_SECRETS,$DEPLOY_PRIVATE_SSH_KEYS" | tr ',' '\n' | xargs); do
-            value=$(jq -r --arg key "$secret" '.[$key] // empty' secrets.json)
-            [ -n "$value" ] && export "$secret=$value"
+          for key in $(jq -r 'keys[]' secrets.json); do
+            value=$(jq -r --arg key "$key" '.[$key]' secrets.json)
+            export "$key=$value"
           done
 
           export ENV=${{ steps.vars.outputs.env }}

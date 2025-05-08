@@ -2,10 +2,19 @@ name: Build and Deploy
 
 on:
   push:
+    branches:
+      - '*'
+    tags:
+      - '*'
 
 jobs:
-  build-and-deploy:
-    uses: Shawiizz/devops/.github/workflows/build-and-deploy.yml@main
+  build:
+    if: github.ref_type == 'branch'
+    uses: Shawiizz/devops/.github/workflows/build.yml@main
+
+  deploy:
+    if: github.ref_type == 'tag'
+    uses: Shawiizz/devops/.github/workflows/deploy.yml@main
     with:
       tag: ${{ github.ref_name }}
     secrets: inherit
