@@ -1,19 +1,21 @@
 ## Deployment
 
 The deployment of Docker applications on a server is handled via GitLab/GitHub CI/CD and Ansible. This allows for easy and efficient deployment of Docker applications to a production server.     
+A compose file with a Dockerfile is needed to build the image and deploy it to the server (see steps below).        
+Note that built images are not pushed to DockerHub, but are instead built, uploaded as ci artifact and deployed directly to the server. 
 
 ### When does deployment occur?
 
 By default, when a tag is created on any branch, but you can customize it.    
 See the versioning convention below:
-- `X.Y.Z`: deploys to production
+- `X.Y.Z`: deploys to `production` env by default
 - `X.Y.Z-[your_env_name]`: deploys to the specified environment
 
 *X is the major version, Y is the minor version, and Z is the patch.*
 
-## Initialize the production server
+## Initialize the remote server
 
-The production server needs to be configured to receive application deployments. The following documentation explains how to install and configure the required services.
+The remote server needs to be configured to receive application deployments. The following documentation explains how to install and configure the required services.
 
 ### Prerequisites
 
@@ -56,14 +58,14 @@ sudo echo "YOUR_PUBLIC_KEY" >> /home/ansible/.ssh/authorized_keys
 
 Add the private key to the `ssh/configure_host_private_key` file in this repository (**DO NOT PUSH IT**), it will be used in the next step.
 
-### Launch the playbook
+### Run the playbook
 
 The playbook will install and configure the following services:
 - Docker
 - Nginx
 - Portainer
 
-To launch the playbook, run the following command, replacing the values accordingly:
+To run the playbook, run the following command, replacing the values accordingly:
 ```bash
 docker compose run --rm \
   -e PORTAINER_PASSWORD=your_password \
@@ -77,19 +79,24 @@ docker compose run --rm \
 
 **The machine is now ready to receive deployments of any Docker applications.**
 
-## Configure the CI
+## Configure the CI/CD
 
-The CI is configured to build the Docker images and deploy them to the server.      
+There are three main jobs available in the CI/CD process:
+1. **build**: This job builds the Docker image (your project) without uploading it, it can be used to test if your app is building.
+2. **deploy-build**: This job builds the Docker image and upload it to the GitHub/GitLab actions artifacts. It will be used by the `deploy` step to deploy the image(s) to the server.
+3. **deploy**: This job deploys the Docker image(s) to the server using Ansible.
 
-### Steps to configure the CI
+See the example files in the `examples/ci` directory for more details.
+
+### Steps to configure the CI/CD
 
 *Example files are provided in the `example` directory.*        
 
 1. Copy the CI configuration file (localed at `examples/ci` directory) to your repository:
 
 **GitHub users**:       
-    - Copy the `build_and_deploy.yml` file to the `.github/workflows` directory of your repository.     
-    - Fork this repository to your own account or the organization where the repository is and replace the `uses` url by yours inside the `build_and_deploy.yml` file.          
+    - Copy the `github-ci.yml` file to the `.github/workflows` directory of your repository.     
+    - Fork this repository to your own account or the organization where the repository is and replace the `uses` url by yours inside the `github-ci.yml` file.          
 **GitLab users** - Copy the `.gitlab-ci.yml` file to the root directory of your repository.
 
 2. Create the folder structure below at the root of your repository:
@@ -110,19 +117,35 @@ In your repository actions secrets, add the following variables:
 
 * Make sure all the secrets are in UPPERCASE.
 
-### Example of a `.env.[your_env_name]` file
-
-**Deploy specific docker services**   
-To specify which Docker services to build and deploy, use `DEPLOY_DOCKER_SERVICES=service_name_1,service_name_2`.
+### Deploy Nginx configs, Linux services and SSH private keys
 
 **Deploy Nginx configs**        
 To deploy custom Nginx configs, create the template inside `deployment/templates/nginx/config_name.conf.j2`.
 
-**Deploy SSH private keys**   
-To deploy ssh private keys files to your VM, create a CI secret (e.g. `SSH_PRIVATE_KEY_VM_BLABLA`) and in your `.env.[YOUR_ENV_NAME]`, use `DEPLOY_PRIVATE_SSH_KEYS=CI_SECRET_NAME_1,CI_SECRET_NAME_2` (replace with your own variables names).         
-
 **Deploy linux services**       
 To deploy custom Linux services, create the template inside `deployment/templates/services/service_name.service.j2`.
+
+*Note: j2 files are Jinja2 templates. You can use the variables from the `.env.[your_env_name]` file and GitHub/GitLab CI secrets inside them.*
+
+**Deploy SSH private keys**   
+*This can be useful if you plan to deploy a systemd service that requires SSH access to another server (a service that mounts a distant folder for example).*
+To deploy ssh private keys files to your VM, create a CI secret (e.g. `SSH_PRIVATE_KEY_VM_BLABLA`) and in your `.env.[YOUR_ENV_NAME]`, use `DEPLOY_PRIVATE_SSH_KEYS=CI_SECRET_NAME_1,CI_SECRET_NAME_2` (replace with your own variables names).
+
+### Managing env variables
+
+You can add environment variables to your `compose-deploy.yml` file like a classic Docker compose file.         
+You can use any variable from your `.env.[your_env_name]` and any variable from the GitLab/GitHub CI secrets.         
+**Env variables will only be added when running container, not when building the image (so it's safe to push the container).**
+
+Example:
+```yaml
+services:
+  app:
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+```
+
+This will bind the `DB_PASSWORD` variable from the GitLab/GitHub CI secrets or your env file to the `POSTGRES_PASSWORD` variable in the container.
 
 ## Image for ci 
 
