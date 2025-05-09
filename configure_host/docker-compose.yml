@@ -2,9 +2,9 @@ services:
   ansible:
     image: willhallonline/ansible:latest
     volumes:
-      - .:/ansible:ro
+      - ..:/ansible:ro
     working_dir: /ansible
-    command: /bin/sh -c "cat /ansible/setup_services.sh | sh"
+    command: /bin/sh -c "cat /ansible/configure_host/setup_services.sh | sh"
 
   generate_ssh_key:
     image: alpine:latest

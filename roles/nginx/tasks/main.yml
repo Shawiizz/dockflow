@@ -38,6 +38,7 @@
   notify:
     - Restart Nginx
   tags:
+    - portainer
     - configure_host
 
 - name: Enable Nginx
