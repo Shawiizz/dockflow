@@ -41,7 +41,6 @@
     - name: Generate Docker network, volume, and stop/remove commands as Jinja2 template
       shell: |
         decomposerize "../deployment/docker/compose-deploy.yml" \
-          --services={{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | trim }} \
           --create-networks \
           --create-volumes \
           --stop-and-remove \
@@ -85,7 +84,6 @@
     - name: Generate Docker run commands as Jinja2 template
       shell: |
         decomposerize "../deployment/docker/compose-deploy.yml" \
-          --services={{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | trim }} \
           --docker-run \
           --docker-run-detach \
           --ansible-env-vars-format > /tmp/decomposerize_runs.j2
@@ -127,7 +125,6 @@
     - name: Generate Docker rmi commands as Jinja2 template
       shell: |
         decomposerize "../deployment/docker/compose-deploy.yml" \
-          --services={{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | trim }} \
           --delete-images \
           --ansible-env-vars-format > /tmp/decomposerize_rmi.j2
       delegate_to: localhost
