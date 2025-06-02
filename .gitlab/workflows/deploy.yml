@@ -1,5 +1,5 @@
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.4/.gitlab/ci-templates/build-steps.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.5/.gitlab/ci-templates/build-steps.yml'
 
 stages:
   - deploy
@@ -30,9 +30,10 @@ stages:
           exit 1
       fi
       
-      while read -r line || [[ -n "$line" ]]; do
+      while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ "$line" =~ ^[[:space:]]*#.*$ || -z "$line" ]] && continue
         [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && export "$line"
-      done < "deployment/env/.env.${ENV}"  
+      done < <(cat "deployment/env/.env.${ENV}"; echo)
 
 deploy:build:
   stage: deploy-build

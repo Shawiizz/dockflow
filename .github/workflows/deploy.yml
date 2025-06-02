@@ -45,9 +45,10 @@ jobs:
 
       - name: Build and export Docker images (${{ steps.vars.outputs.env }})
         run: |
-          while read -r line || [[ -n "$line" ]]; do
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ "$line" =~ ^[[:space:]]*#.*$ || -z "$line" ]] && continue
             [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && export "$line"
-          done < deployment/env/.env.${{ steps.vars.outputs.env }}
+          done < <(cat "deployment/env/.env.${{ steps.vars.outputs.env }}"; echo)
           export ENV=${{ steps.vars.outputs.env }}
           export VERSION=${{ steps.vars.outputs.tag }}
 
@@ -96,9 +97,10 @@ jobs:
 
       - name: Setup SSH Key & Run Ansible (${{ steps.vars.outputs.env }})
         run: |
-          while read -r line || [[ -n "$line" ]]; do
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ "$line" =~ ^[[:space:]]*#.*$ || -z "$line" ]] && continue
             [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && export "$line"
-          done < deployment/env/.env.${{ steps.vars.outputs.env }}
+          done < <(cat "deployment/env/.env.${{ steps.vars.outputs.env }}"; echo)
 
           echo '${{ toJSON(secrets) }}' > secrets.json
 
