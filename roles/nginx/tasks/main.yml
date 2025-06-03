@@ -20,6 +20,19 @@
   tags:
     - deploy
 
+- name: Remove sites-enabled directory if test failed
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled
+    state: absent
+  when: nginx_config_test.rc != 0
+
+- name: Recreate sites-enabled directory if test failed
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled
+    state: directory
+    mode: '0755'
+  when: nginx_config_test.rc != 0
+
 - name: Backup Nginx sites-enabled directory
   ansible.builtin.copy:
     src: /etc/nginx/sites-enabled/
