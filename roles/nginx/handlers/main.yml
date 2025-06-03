@@ -1,6 +1,14 @@
 ---
+- name: Validate Nginx configuration
+  shell: /usr/local/bin/validate_nginx_config.sh
+  register: nginx_validation
+  failed_when: nginx_validation.rc != 0
+  changed_when: false
+  listen: Restart Nginx
+
 - name: Restart Nginx
   service:
     name: nginx
     state: restarted
+  when: nginx_validation.rc == 0
 

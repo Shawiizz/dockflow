@@ -1,12 +1,12 @@
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.5/.gitlab/ci-templates/build-steps.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.6/.gitlab/ci-templates/build-steps.yml'
 
 stages:
   - deploy
   - deploy-build
 
 .common-deploy:
-  image: shawiizz/devops-ci:1.0.1
+  image: shawiizz/devops-ci:1.0.2
   services:
     - docker:dind
   variables:
