@@ -25,10 +25,6 @@
     src: /etc/nginx/sites-enabled/
     dest: /tmp/nginx-sites-enabled-backup/
     remote_src: yes
-  tags:
-    - deploy
-    - portainer
-    - configure_host
 
 - name: Copy custom Nginx configs
   template:
@@ -47,15 +43,13 @@
   register: nginx_portainer_config
   tags:
     - portainer
+    - configure_host
 
 - name: Test Nginx configuration
   ansible.builtin.command: nginx -t
   register: nginx_config_test
   changed_when: false
   failed_when: false
-  tags:
-    - deploy
-    - portainer
 
 - name: Rollback Nginx configuration if test failed
   ansible.builtin.copy:
@@ -63,17 +57,11 @@
     dest: /etc/nginx/sites-enabled/
     remote_src: yes
   when: nginx_config_test.rc != 0
-  tags:
-    - deploy
-    - portainer
 
 - name: Fail if Nginx config test failed
   ansible.builtin.fail:
     msg: "Nginx configuration test failed: {{ nginx_config_test.stderr }}"
   when: nginx_config_test.rc != 0
-  tags:
-    - deploy
-    - portainer
 
 - name: Trigger Nginx restart if configs were changed and test passed
   ansible.builtin.debug:
@@ -82,9 +70,6 @@
   notify:
     - Restart Nginx
   when: nginx_config_test.rc == 0
-  tags:
-    - deploy
-    - portainer
 
 - name: Enable Nginx
   service:
