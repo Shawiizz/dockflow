@@ -9,14 +9,6 @@
   file:
     path: /etc/nginx/sites-enabled/default
     state: absent
-    
-- name: Copy Nginx config validation script
-  copy:
-    src: validate_nginx_config.sh
-    dest: /usr/local/bin/validate_nginx_config.sh
-    owner: root
-    group: root
-    mode: '0755'
 
 - name: List enabled Nginx config templates (*.conf.j2 only)
   find:
@@ -28,14 +20,23 @@
   tags:
     - deploy
 
+- name: Backup Nginx sites-enabled directory
+  ansible.builtin.copy:
+    src: /etc/nginx/sites-enabled/
+    dest: /tmp/nginx-sites-enabled-backup/
+    remote_src: yes
+  tags:
+    - deploy
+    - portainer
+    - configure_host
+
 - name: Copy custom Nginx configs
   template:
     src: "{{ item.path }}"
     dest: "/etc/nginx/sites-enabled/{{ item.path | basename | regex_replace('\\.conf\\.j2$', '') }}"
   loop: "{{ nginx_config_files.files }}"
   when: nginx_config_files.matched > 0
-  notify:
-    - Restart Nginx
+  register: nginx_config_copy
   tags:
     - deploy
 
@@ -43,11 +44,47 @@
   template:
     src: portainer.conf.j2
     dest: /etc/nginx/sites-enabled/portainer
-  notify:
-    - Restart Nginx
+  register: nginx_portainer_config
   tags:
     - portainer
-    - configure_host
+
+- name: Test Nginx configuration
+  ansible.builtin.command: nginx -t
+  register: nginx_config_test
+  changed_when: false
+  failed_when: false
+  tags:
+    - deploy
+    - portainer
+
+- name: Rollback Nginx configuration if test failed
+  ansible.builtin.copy:
+    src: /tmp/nginx-sites-enabled-backup/
+    dest: /etc/nginx/sites-enabled/
+    remote_src: yes
+  when: nginx_config_test.rc != 0
+  tags:
+    - deploy
+    - portainer
+
+- name: Fail if Nginx config test failed
+  ansible.builtin.fail:
+    msg: "Nginx configuration test failed: {{ nginx_config_test.stderr }}"
+  when: nginx_config_test.rc != 0
+  tags:
+    - deploy
+    - portainer
+
+- name: Trigger Nginx restart if configs were changed and test passed
+  ansible.builtin.debug:
+    msg: "Configuration test passed, triggering restart"
+  changed_when: (nginx_config_copy is defined and nginx_config_copy.changed) or (nginx_portainer_config is defined and nginx_portainer_config.changed)
+  notify:
+    - Restart Nginx
+  when: nginx_config_test.rc == 0
+  tags:
+    - deploy
+    - portainer
 
 - name: Enable Nginx
   service:
