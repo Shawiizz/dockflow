@@ -1,0 +1,24 @@
+---
+- name: List all .tar files on local server (where Ansible is running)
+  find:
+    paths: "../docker_images"
+    patterns: "*.tar"
+  delegate_to: localhost
+  register: tar_files
+
+- name: Copy all Docker images to remote server
+  copy:
+    src: "{{ item.path }}"
+    dest: "/tmp/{{ item.path | basename }}"
+  loop: "{{ tar_files.files | default([]) }}"
+  register: copy_output
+
+- name: Load Docker images on remote server
+  command: "docker load -i /tmp/{{ item.path | basename }}"
+  loop: "{{ tar_files.files | default([]) }}"
+
+- name: Delete loaded tar files
+  file:
+    path: "/tmp/{{ item.path | basename }}"
+    state: absent
+  loop: "{{ tar_files.files | default([]) }}"

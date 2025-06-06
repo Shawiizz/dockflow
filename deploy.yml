@@ -1,160 +1,75 @@
 ---
 - name: Deploy Docker Images to Remote Server
   hosts: all:!localhost
+  vars:
+    compose_path: "../deployment/docker/compose-deploy.yml"
+    tmp_dir: "/tmp"
+    decomposerize_types:
+      - name: "setup"
+        options: "--create-networks --create-volumes --stop-and-remove"
+        ignore_errors: yes  # Networks/volumes might already exist
+      - name: "run"
+        options: "--docker-run --docker-run-detach"
+        ignore_errors: no
+      - name: "cleanup"
+        options: "--delete-images"
+        ignore_errors: yes  # New images are used by containers
   roles:
-    - geerlingguy.docker
-    - nginx
-    - private_ssh_keys
-    - services
+    - role: geerlingguy.docker
+    - role: nginx
+      tags:
+        - nginx
+    - role: private_ssh_keys
+    - role: services
+    - role: image-transfer
+      tags:
+        - image-transfer
   tasks:
-    - name: List all .tar files on local server (where Ansible is running)
-      find:
-        paths: "../docker_images"
-        patterns: "*.tar"
-      delegate_to: localhost
-      register: tar_files
+    # Common task to process all decomposerize commands
+    - name: Process all Docker commands
+      block:
+        - name: Generate and execute all Docker commands
+          loop: "{{ decomposerize_types }}"
+          loop_control:
+            loop_var: cmd_type
+          block:
+            - name: Generate {{ cmd_type.name }} commands as template
+              shell: |
+                decomposerize "{{ compose_path }}" {{ cmd_type.options }} --ansible-env-vars-format > {{ tmp_dir }}/decomposerize_{{ cmd_type.name }}.j2
+              delegate_to: localhost
+              changed_when: false
 
-    - name: Copy all Docker images to remote server
-      copy:
-        src: "{{ item.path }}"
-        dest: "/tmp/{{ item.path | basename }}"
-      loop: "{{ tar_files.files }}"
-      when: tar_files.matched > 0
-      register: copy_output
+            - name: Render template with evaluated variables
+              template:
+                src: "{{ tmp_dir }}/decomposerize_{{ cmd_type.name }}.j2"
+                dest: "{{ tmp_dir }}/decomposerize_{{ cmd_type.name }}_rendered.sh"
+              delegate_to: localhost
+              changed_when: false
 
-    - name: Load Docker images on remote server
-      command: "docker load -i /tmp/{{ item.path | basename }}"
-      loop: "{{ tar_files.files }}"
-      when: tar_files.matched > 0
+            - name: Get rendered commands
+              slurp:
+                src: "{{ tmp_dir }}/decomposerize_{{ cmd_type.name }}_rendered.sh"
+              delegate_to: localhost
+              register: rendered_script
+              changed_when: false
 
-    - name: Delete loaded tar files
-      file:
-        path: "/tmp/{{ item.path | basename }}"
-        state: absent
-      loop: "{{ tar_files.files }}"
-      when: tar_files.matched > 0
+            - name: Split script into commands
+              set_fact:
+                current_commands: >-
+                  {{
+                    rendered_script.content
+                    | b64decode
+                    | split('\n')
+                    | map('trim')
+                    | select('truthy')  
+                    | list
+                  }}
+              changed_when: false
 
-    # --------------------------------------------------------------------
-    # Generate and execute Docker network/volume/cleanup commands
-    # --------------------------------------------------------------------
-
-    - name: Generate Docker network, volume, and stop/remove commands as Jinja2 template
-      shell: |
-        decomposerize "../deployment/docker/compose-deploy.yml" \
-          --create-networks \
-          --create-volumes \
-          --stop-and-remove \
-          --ansible-env-vars-format > /tmp/decomposerize_cmds.j2
-      delegate_to: localhost
-
-    - name: Render Jinja2 template to a final shell script with env vars evaluated locally
-      template:
-        src: /tmp/decomposerize_cmds.j2
-        dest: /tmp/decomposerize_cmds_rendered.sh
-      delegate_to: localhost
-
-    - name: Read rendered shell script content
-      slurp:
-        src: /tmp/decomposerize_cmds_rendered.sh
-      delegate_to: localhost
-      register: rendered_script
-
-    - name: Split rendered script into individual shell commands
-      set_fact:
-        decomposerize_commands: >-
-          {{
-            rendered_script.content
-            | b64decode
-            | split('\n')
-            | map('trim')
-            | select('truthy')  
-            | list
-            }}
-
-    - name: Execute all Docker network/volume/stop-remove commands on the target host
-      shell: "{{ item }}"
-      loop: "{{ decomposerize_commands }}"
-      when: decomposerize_commands is defined and decomposerize_commands | length > 0
-      ignore_errors: yes  # Some commands may fail if the resource already exists or is already stopped
-
-    # --------------------------------------------------------------------
-    # Generate and run Docker containers
-    # --------------------------------------------------------------------
-
-    - name: Generate Docker run commands as Jinja2 template
-      shell: |
-        decomposerize "../deployment/docker/compose-deploy.yml" \
-          --docker-run \
-          --docker-run-detach \
-          --ansible-env-vars-format > /tmp/decomposerize_runs.j2
-      delegate_to: localhost
-
-    - name: Render Docker run template with evaluated environment variables
-      template:
-        src: /tmp/decomposerize_runs.j2
-        dest: /tmp/decomposerize_runs_rendered.sh
-      delegate_to: localhost
-
-    - name: Read rendered Docker run script
-      slurp:
-        src: /tmp/decomposerize_runs_rendered.sh
-      delegate_to: localhost
-      register: rendered_runs
-
-    - name: Split rendered Docker run script into separate commands and remove empty lines
-      set_fact:
-        run_commands: >-
-          {{
-          rendered_runs.content
-          | b64decode
-          | split('\n')
-          | map('trim')
-          | select('truthy')  
-          | list
-          }}
-
-    - name: Execute Docker run commands on the target host
-      shell: "{{ item }}"
-      loop: "{{ run_commands }}"
-      when: run_commands is defined and run_commands | length > 0
-
-    # --------------------------------------------------------------------
-    # Delete unused images
-    # --------------------------------------------------------------------
-
-    - name: Generate Docker rmi commands as Jinja2 template
-      shell: |
-        decomposerize "../deployment/docker/compose-deploy.yml" \
-          --delete-images \
-          --ansible-env-vars-format > /tmp/decomposerize_rmi.j2
-      delegate_to: localhost
-
-    - name: Render Docker rmi template with evaluated environment variables
-      template:
-        src: /tmp/decomposerize_rmi.j2
-        dest: /tmp/decomposerize_rmi_rendered.sh
-      delegate_to: localhost
-
-    - name: Read rendered Docker rmi script
-      slurp:
-        src: /tmp/decomposerize_rmi_rendered.sh
-      delegate_to: localhost
-      register: rendered_rmi
-
-    - name: Split rendered Docker rmi script into separate commands and remove empty lines
-      set_fact:
-        rmi_commands: >-
-          {{
-          rendered_rmi.content
-          | b64decode
-          | split('\n')
-          | map('trim')
-          | select('truthy')  
-          | list
-          }}
-
-    - name: Execute Docker rmi commands on the target host
-      shell: "{{ item }}"
-      loop: "{{ rmi_commands }}"
-      when: rmi_commands is defined and rmi_commands | length > 0
-      ignore_errors: yes # It will fail because new images are used by new running containers, so ignore this
+            - name: Execute commands on target host
+              shell: "{{ item }}"
+              loop: "{{ current_commands }}"
+              when: current_commands is defined and current_commands | length > 0
+              ignore_errors: "{{ cmd_type.ignore_errors }}"
+              register: command_results
+              changed_when: command_results.rc == 0

@@ -6,6 +6,8 @@
     - roles/portainer/vars/vault.yml
 
   roles:
-    - geerlingguy.docker
-    - nginx
-    - portainer
+    - role: geerlingguy.docker
+    - role: nginx
+      tags:
+        - nginx
+    - role: portainer

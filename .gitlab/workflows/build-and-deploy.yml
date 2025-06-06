@@ -1,0 +1,67 @@
+include:
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.10/.gitlab/ci-templates/build-steps.yml'
+
+stages:
+  - build-and-deploy
+
+build-and-deploy:
+  stage: build-and-deploy
+  image: shawiizz/devops-ci:1.0.2
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    ANSIBLE_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
+  rules:
+    - if: '$CI_COMMIT_TAG'
+  before_script:
+    - |
+      TAG=$CI_COMMIT_REF_NAME
+      ENVIRONMENT="production"
+  
+      if [[ "$TAG" == *"-"* ]]; then
+        ENVIRONMENT="${TAG##*-}"
+      fi
+      
+      export ENV=$ENVIRONMENT
+      export VERSION=$TAG
+      
+      if [ ! -f "deployment/env/.env.${ENV}" ]; then
+          echo "File deployment/env/.env.${ENV} does not exist, cannot execute on unknown environment"
+          exit 1
+      fi
+      
+      while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ "$line" =~ ^[[:space:]]*#.*$ || -z "$line" ]] && continue
+        [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && export "$line"
+      done < <(cat "deployment/env/.env.${ENV}"; echo)
+  script:
+    - |
+      # Build Docker images (without saving tar files)
+      cd deployment/docker
+      BUILD_CMDS=$(decomposerize compose-deploy.yml --docker-build)
+      
+      while IFS= read -r BUILD_CMD; do
+        echo "Running: $BUILD_CMD"
+        eval "$BUILD_CMD"
+      done <<< "$BUILD_CMDS"
+      
+      cd ../..
+      
+      # Deploy with Ansible
+      git clone $ANSIBLE_REPOSITORY_URL ansible
+      
+      mkdir -p ansible/ssh
+      echo "$(printenv "$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY")" | tr -d '\r' > ansible/ssh/main_private_key
+      chmod 600 ansible/ssh/*
+      
+      eval "$(ssh-agent -s)"
+      ssh-add ansible/ssh/main_private_key
+
+      cd ansible
+      export ANSIBLE_HOST_KEY_CHECKING=False
+      export ANSIBLE_BECOME_PASSWORD=$ANSIBLE_BECOME_PASSWORD
+
+      ansible-galaxy role install geerlingguy.docker
+      ansible-playbook deploy.yml -i "$HOST," --user="$ANSIBLE_USER" --private-key=ansible/ssh/main_private_key --skip-tags "configure_host,image-transfer"

@@ -1,150 +1,115 @@
-## Deployment
+# DevOps Deployment Framework
 
-The deployment of Docker applications on a server is handled via GitLab/GitHub CI/CD and Ansible. This allows for easy and efficient deployment of Docker applications to a production server.     
-A compose file with a Dockerfile is needed to build the image and deploy it to the server (see steps below).        
-Note that built images are not pushed to DockerHub, but are instead built, uploaded as ci artifact and deployed directly to the server. 
+This framework automates Docker application deployments to servers using GitLab/GitHub CI/CD and Ansible.
 
-### When does deployment occur?
+## Deployment Workflow
 
-By default, when a tag is created on any branch, but you can customize it.    
-See the versioning convention below:
-- `X.Y.Z`: deploys to `production` env by default
-- `X.Y.Z-[your_env_name]`: deploys to the specified environment
+1. A Docker image is built from your Dockerfile
+2. The image is uploaded as a CI artifact (not to DockerHub)
+3. Ansible deploys the image to your target server
 
-*X is the major version, Y is the minor version, and Z is the patch.*
+### Deployment Triggers
 
-## Initialize the remote server
+Deployments are triggered when you create a tag following this versioning convention:
+- `X.Y.Z`: Deploys to `production` environment
+- `X.Y.Z-[env_name]`: Deploys to the specified environment
 
-The remote server needs to be configured to receive application deployments. The following documentation explains how to install and configure the required services.
+*Where X=major version, Y=minor version, Z=patch version*
 
-On your local machine (Windows or Linux), you have to install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and run it.        
+## Initial server Setup
 
 ### Prerequisites
 
-The machine must run Debian or Ubuntu. The playbook is not designed for other operating systems.
+- Remote server: Debian or Ubuntu only
+- Local machine: [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
 
-### Set up the host machine
-Execute the following commands to set up the host machine.  
+### Server Configuration
 
-Create the ansible user:
+Use the CLI tool to automatically configure your server (recommended):
+
+**Linux**:
 ```bash
-sudo useradd ansible
+docker run -it --rm \
+  -v ~/.ssh:/root/.ssh \
+  shawiizz/devops-cli:latest
 ```
 
-Add the user to the sudo group:
-```bash
-sudo adduser ansible sudo
+**Windows (PowerShell)**:
+```powershell
+docker run -it --rm `
+  -v ${HOME}/.ssh:/root/.ssh `
+  shawiizz/devops-cli:latest
 ```
 
-Set the password for the ansible user (make sure to remember it):
-```bash
-sudo passwd ansible
-```
+For manual server setup, follow the [detailed instructions](./MANUAL-REMOTE-SETUP.md).
 
-### Configure SSH access
-Execute the following commands to set up the host machine.
+## CI/CD Configuration
 
-Create the `.ssh` folder:
-```bash
-sudo mkdir -p /home/ansible/.ssh
-```
+### Available CI/CD Jobs
 
-Update permissions for the home directory:
-```bash
-sudo chown -R ansible:ansible /home/ansible/
-```
+1. **build**: Tests your Docker image build process without uploading
+2. **deploy-build**: Builds and uploads the Docker image as a CI artifact
+3. **deploy**: Deploys the image to your server using Ansible
+4. **build-and-deploy**: Combines the build and deploy steps into a single job (faster deployment without artifact storage)     
 
-Generate an SSH key on your PC, then copy the public key to the server using:
-```bash
-sudo echo "YOUR_PUBLIC_KEY" >> /home/ansible/.ssh/authorized_keys
-```
-*Tip: you can generate a private and public key using `docker-compose -f configure_host/docker-compose.yml run generate_ssh_key` (it will display both keys).*
+> **Direct Build & Deploy Mode**: The `build-and-deploy` job builds Docker images and deploys them directly without storing them as artifacts. This single-job mode offers:
+> - **Pros**: Faster deployment, less CI storage usage, simplified workflow
+> - **Cons**: No artifacts for debugging, cannot reuse built images across jobs, less suitable for complex deployments
 
-Add the private key to the `ssh/configure_host_private_key` file in this repository (**DO NOT PUSH IT**), it will be used in the next step.     
-Don't forget to add an empty new line at the end of the private key file.
 
-### Run the playbook
+### Setup Instructions
 
-The playbook will install and configure the following apps/services:
-- Docker
-- Nginx
-- Portainer (optional)
+1. **Copy CI Configuration File**:
+   - **GitHub**: Copy `example/ci/github-ci.yml` → `.github/workflows/` directory
+     - **Important note**: Fork this repository and update the `uses` URL in the workflow file
+   - **GitLab**: Copy `example/ci/gitlab-ci.yml` → root of your repository
 
-You are free to setup these services manually, but the playbook will do it for you if you want.
-To run the playbook, run the following command (interactive script).        
+2. **Create Project Structure**:
+   ```
+   deployment/
+   ├── docker/
+   │   ├── compose-deploy.yml
+   │   └── Dockerfile.[service_name]
+   └── env/
+       └── .env.[env_name]
+   ```
+   - Replace `[service_name]` with your service name (e.g., `app`, `api`)
+   - Replace `[env_name]` with your environment (e.g., `production`, `staging`)
 
-Linux:
-```bash
-chmod +x configure_host/setup_services_interactive.sh
-sh ./configure_host/setup_services_interactive.sh
-```
+3. **Add Repository Secrets**:
+   - `ANSIBLE_BECOME_PASSWORD`: Ansible user password
+   - `[ENV_NAME]_SSH_PRIVATE_KEY`: SSH private key for each environment
 
-Windows:
-```bash
-.\configure_host\setup_services_interactive.bat
-```
+   **Note**: All secret names must be in UPPERCASE
+   **Second Note**: On GitLab, secrets **must not be marked as protected**
 
-**The machine is now ready to receive deployments of any Docker applications.**
+## Advanced Configuration
 
-## Configure the CI/CD
+### Custom Deployment Templates
 
-There are three main jobs available in the CI/CD process:
-1. **build**: This job builds the Docker image (your project) without uploading it, it can be used to test if your app is building.
-2. **deploy-build**: This job builds the Docker image and upload it to the GitHub/GitLab actions artifacts. It will be used by the `deploy` step to deploy the image(s) to the server.
-3. **deploy**: This job deploys the Docker image(s) to the server using Ansible.
+#### Nginx Configurations
+Create templates at: `deployment/templates/nginx/[config_name].conf.j2`
 
-See the example files in the `examples/ci` directory for more details.
+#### Linux Services
+Create templates at: `deployment/templates/services/[service_name].[service|mount].j2`
 
-### Steps to configure the CI/CD
+#### SSH Private Keys
+To deploy SSH keys (useful for services requiring remote access):
+1. Create CI secret (e.g., `SSH_PRIVATE_KEY_VM_NAME`) 
+2. Add to your environment file: 
+   ```
+   DEPLOY_PRIVATE_SSH_KEYS=SECRET_NAME_1,SECRET_NAME_2
+   ```
 
-*Example files are provided in the `example` directory.*        
+> **Note**: All templates use Jinja2 format (`.j2`) and can access variables from `.env.[env_name]` and CI secrets
 
-1. Copy the CI configuration file (localed at `examples/ci` directory) to your repository:
+### Environment Variables
 
-**GitHub users**:       
-    - Copy the `github-ci.yml` file to the `.github/workflows` directory of your repository.     
-    - Fork this repository to your own account or the organization where the repository is and replace the `uses` url by yours inside the `github-ci.yml` file.          
-**GitLab users** - Copy the `.gitlab-ci.yml` file to the root directory of your repository.
+Environment variables in `compose-deploy.yml` can reference:
+- Values from your `.env.[env_name]` file
+- Values from GitLab/GitHub CI secrets
 
-2. Create the folder structure below at the root of your repository:
-```
-deployment/
-├── docker/
-│   ├── compose-deploy.yml
-│   └── Dockerfile.[service_name]
-└── env/
-    └── .env.[your_env_name]
-```
-* Replace `[service_name]` with the name of your service inside `compose-deploy.yml` file (e.g., `app`, `api`, etc.).
-* Replace `[your_env_name]` with the name of your environment (e.g., `production`, `staging`, etc.).
-
-In your repository actions secrets, add the following variables:
-- `ANSIBLE_BECOME_PASSWORD`: the password of the ansible user
-- `[YOUR_ENV_NAME]_SSH_PRIVATE_KEY`: the private key of the ansible user for your environment
-
-* Make sure all the secrets are in UPPERCASE.
-
-### Deploy Nginx configs, Linux services and SSH private keys
-
-**Deploy Nginx configs**        
-To deploy custom Nginx configs, create the template inside `deployment/templates/nginx/config_name.conf.j2`.
-
-**Deploy linux services**       
-To deploy custom Linux services, create the template inside `deployment/templates/services/service_name.service.j2`.
-
-*Note: j2 files are Jinja2 templates. You can use the variables from the `.env.[your_env_name]` file and GitHub/GitLab CI secrets inside them.*
-
-**Deploy SSH private keys**   
-*This can be useful if you plan to deploy a systemd service that requires SSH access to another server (a service that mounts a distant folder for example).*
-To deploy ssh private keys files to your VM, create a CI secret (e.g. `SSH_PRIVATE_KEY_VM_BLABLA`) and in your `.env.[YOUR_ENV_NAME]`, use `DEPLOY_PRIVATE_SSH_KEYS=CI_SECRET_NAME_1,CI_SECRET_NAME_2` (replace with your own variables names).
-
-### Managing env variables
-
-You can add environment variables to your `compose-deploy.yml` file like a classic Docker compose file.         
-You can use any variable from your `.env.[your_env_name]` and any variable from the GitLab/GitHub CI secrets.         
-**Env variables will only be added when running container, not when building the image (so it's safe to push the container).**
-
-Example:
+**Example**:
 ```yaml
 services:
   app:
@@ -153,20 +118,4 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
 ```
 
-This will bind the `DB_PASSWORD` variable from the GitLab/GitHub CI secrets or your env file to the `POSTGRES_PASSWORD` variable in the container,
-and it's the same for the `ENV` variable (it will bind it from `.env.[your_env_name]` file).      
-
-## Image for ci 
-
-A pre-made docker image containing Docker, Ansible, NodeJS and the module for extracting docker commands is available at `shawiizz/devops-ci:latest`.        
-
-Building : 
-```bash
-docker build -t shawiizz/devops-ci:latest -f Dockerfile.ci .
-```
-
-Publishing to DockerHub : 
-```bash
-docker login
-docker push shawiizz/devops-ci:latest
-```
+> **Security Note**: Environment variables are only added when running the container, not during image building, except if you add them manually inside the Dockerfile.
