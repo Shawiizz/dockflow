@@ -1,5 +1,5 @@
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.11/.gitlab/ci-templates/build-steps.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.12/.gitlab/ci-templates/build-steps.yml'
 
 stages:
   - deploy
@@ -66,11 +66,17 @@ deploy:
       chmod 600 ansible/ssh/*
       
       eval "$(ssh-agent -s)"
-      ssh-add ansible/ssh/main_private_key
-
+      ssh-add ansible/ssh/main_private_key      
+      
       cd ansible
       export ANSIBLE_HOST_KEY_CHECKING=False
       export ANSIBLE_BECOME_PASSWORD=$ANSIBLE_BECOME_PASSWORD
 
+      SKIP_TAGS="configure_host"
+      if [ ! -d "../deployment/templates/nginx" ] || [ -z "$(ls -A ../deployment/templates/nginx 2>/dev/null)" ]; then
+        echo "No nginx configuration found, skipping nginx role"
+        SKIP_TAGS="${SKIP_TAGS},nginx"
+      fi
+
       ansible-galaxy role install geerlingguy.docker
-      ansible-playbook deploy.yml -i "$HOST," --user="$ANSIBLE_USER" --private-key=ansible/ssh/main_private_key --skip-tags "configure_host"
+      ansible-playbook deploy.yml -i "$HOST," --user="$ANSIBLE_USER" --private-key=ansible/ssh/main_private_key --skip-tags "$SKIP_TAGS"
