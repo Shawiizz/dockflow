@@ -1,0 +1,39 @@
+- name: Generate {{ cmd_type.name }} commands as template
+  shell: decomposerize "{{ compose_path }}" {{ cmd_type.options }} --ansible-env-vars-format > {{ tmp_dir }}/decomposerize_{{ cmd_type.name }}.j2
+  delegate_to: localhost
+  changed_when: false
+
+- name: Render template with evaluated variables
+  template:
+    src: "{{ tmp_dir }}/decomposerize_{{ cmd_type.name }}.j2"
+    dest: "{{ tmp_dir }}/decomposerize_{{ cmd_type.name }}_rendered.sh"
+  delegate_to: localhost
+  changed_when: false
+
+- name: Get rendered commands
+  slurp:
+    src: "{{ tmp_dir }}/decomposerize_{{ cmd_type.name }}_rendered.sh"
+  delegate_to: localhost
+  register: rendered_script
+  changed_when: false
+
+- name: Split script into commands
+  set_fact:
+    current_commands: >-
+      {{
+        rendered_script.content
+        | b64decode
+        | split('\n')
+        | map('trim')
+        | select('truthy')
+        | list
+      }}
+  changed_when: false
+
+- name: Execute commands on target host
+  shell: "{{ item }}"
+  loop: "{{ current_commands }}"
+  when: current_commands is defined and current_commands | length > 0
+  ignore_errors: "{{ cmd_type.ignore_errors }}"
+  register: command_results
+  changed_when: command_results.rc == 0
