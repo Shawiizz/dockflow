@@ -1,6 +1,8 @@
 # Contributing Guide
 
-This document explains how to build and maintain the Docker images used in this project.
+This document explains how to contribute to this project and build/maintain the Docker images.
+
+I did this project alone, if you want a new functionnality, you can open an issue or open a pull request :)     
 
 > **IMPORTANT**: When pushing a new tag/release, remember to update all version references in example files and CI scripts to ensure users download the correct version. Particularly update tag references in:
 > - `.gitlab/ci-templates/build-steps.yml`
@@ -85,3 +87,7 @@ When creating a new release and pushing a new tag, follow these steps:
    ```
 
 This ensures that all references to the repository and Docker images are updated consistently.
+
+## License
+
+By contributing to this project, you agree that your contributions will be licensed under the project's [MIT License](./LICENSE).

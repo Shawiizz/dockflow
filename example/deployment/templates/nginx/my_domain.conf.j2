@@ -5,6 +5,6 @@ server {
     server_name my_domain.com;
 
     location / {
-        proxy_pass http://127.0.0.1:24000/;
+        proxy_pass http://127.0.0.1:{{ lookup('env', 'APP_EXTERNAL_PORT') }}/;
     }
 }
