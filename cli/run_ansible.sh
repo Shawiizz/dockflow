@@ -22,7 +22,7 @@ configure_services() {
 }
 
 run_ansible_playbook() {
-    print_heading "EXECUTING ANSIBLE PLAYBOOK DIRECTLY"
+    print_heading "EXECUTING ANSIBLE PLAYBOOK"
     
     echo "Setting up SSH key for Ansible..."
     # Ensure the key doesn't have Windows CRLF line endings
@@ -50,6 +50,16 @@ run_ansible_playbook() {
     
     cd "$CLI_SCRIPT_DIR/.." || exit 1
     ansible-playbook configure_host.yml -i "$HOST," --user="$ANSIBLE_USER" --private-key=~/.ssh/ansible_key --skip-tags "$SKIP_TAGS"
+    
+    # Check if Ansible playbook execution was successful
+    ANSIBLE_RETURN_CODE=$?
+    if [ $ANSIBLE_RETURN_CODE -ne 0 ]; then
+        echo -e "${RED}==========================================================="
+        echo "   ANSIBLE PLAYBOOK FAILED!"
+        echo -e "===========================================================${NC}"
+        echo -e "${YELLOW}The setup process encountered errors. Please check the logs above for details.${NC}"
+        exit 1
+    fi
 }
 
 display_completion() {

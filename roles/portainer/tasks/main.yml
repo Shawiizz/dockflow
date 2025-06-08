@@ -12,7 +12,7 @@
     - portainer
 
 - name: Generate admin password hash
-  command: "docker run --rm httpd:2.4-alpine htpasswd -nbB admin {{ lookup('env', 'PORTAINER_PASSWORD') }}"
+  shell: "docker run --rm httpd:2.4-alpine htpasswd -nbB admin {{ lookup('env', 'PORTAINER_PASSWORD') | quote }}"
   register: password_hash_output
   tags:
     - portainer
