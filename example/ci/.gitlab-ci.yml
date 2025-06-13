@@ -1,7 +1,10 @@
 stages:
+  # Jobs from option 1
   - build
   - deploy-build
   - deploy
+
+  # Job from option 2
   - build-and-deploy
 
 include:
