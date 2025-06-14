@@ -49,7 +49,7 @@ run_ansible_playbook() {
     ansible-galaxy role install geerlingguy.docker
     
     cd "$CLI_SCRIPT_DIR/.." || exit 1
-    ansible-playbook configure_host.yml -i "$HOST," --user="$ANSIBLE_USER" --private-key=~/.ssh/ansible_key --skip-tags "$SKIP_TAGS"
+    ansible-playbook ansible/configure_host.yml -i "$HOST," --user="$ANSIBLE_USER" --private-key=~/.ssh/ansible_key --skip-tags "$SKIP_TAGS"
     
     # Check if Ansible playbook execution was successful
     ANSIBLE_RETURN_CODE=$?

@@ -103,4 +103,4 @@ jobs:
           fi
           
           ansible-galaxy role install geerlingguy.docker
-          ansible-playbook deploy.yml -i "$HOST," --user="$ANSIBLE_USER" --private-key=ansible/ssh/main_private_key --skip-tags "$SKIP_TAGS"
+          ansible-playbook ansible/deploy.yml -i "$HOST," --user="$ANSIBLE_USER" --private-key=ansible/ssh/main_private_key --skip-tags "$SKIP_TAGS"

@@ -1,5 +1,5 @@
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.12/.gitlab/ci-templates/build-steps.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.13/.gitlab/ci-templates/build-steps.yml'
 
 stages:
   - deploy
@@ -79,4 +79,4 @@ deploy:
       fi
 
       ansible-galaxy role install geerlingguy.docker
-      ansible-playbook deploy.yml -i "$HOST," --user="$ANSIBLE_USER" --private-key=ansible/ssh/main_private_key --skip-tags "$SKIP_TAGS"
+      ansible-playbook ansible/deploy.yml -i "$HOST," --user="$ANSIBLE_USER" --private-key=ansible/ssh/main_private_key --skip-tags "$SKIP_TAGS"
