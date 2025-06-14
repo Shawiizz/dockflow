@@ -4,7 +4,6 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile.app
-    container_name: my_app_${ENV}
     environment:
       ENV: ${ENV}
     restart: always

@@ -189,7 +189,6 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile.app
-    container_name: my_app_${ENV}
     environment:
       ENV: ${ENV} # Pass the current env to your app through env vars
     restart: always
