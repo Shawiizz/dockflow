@@ -6,13 +6,14 @@ stages:
   - deploy-build
 
 .common-deploy:
-  image: shawiizz/devops-ci:1.0.2
+  image: shawiizz/devops-ci:1.0.3
   services:
     - docker:dind
   variables:
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
-    ANSIBLE_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
+    DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
+    DEVOPS_FRAMEWORK_VERSION: 1.0.13
   before_script:
     - |
       TAG=$CI_COMMIT_REF_NAME
@@ -56,7 +57,7 @@ deploy:
     - if: '$CI_COMMIT_TAG'
   script:
     - |
-      git clone $ANSIBLE_REPOSITORY_URL ansible
+      git clone --branch "$DEVOPS_FRAMEWORK_VERSION" "$DEVOPS_REPOSITORY_URL" ansible
 
       mkdir -p ./docker_images
       cp deployment/docker/*.tar ./docker_images/

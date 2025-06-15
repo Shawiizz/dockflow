@@ -6,7 +6,7 @@ stages:
 
 build:
   stage: build
-  image: shawiizz/devops-ci:1.0.2
+  image: shawiizz/devops-ci:1.0.3
   services:
     - docker:dind
   variables:

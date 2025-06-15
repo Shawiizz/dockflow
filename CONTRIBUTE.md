@@ -22,7 +22,8 @@ The `shawiizz/devops-ci:latest` image contains all the tools needed for CI opera
 ### Building the CI Image
 
 ```bash
-docker build -t shawiizz/devops-ci:latest -f Dockerfile.ci .
+docker build --no-cache -t shawiizz/devops-ci:latest -f Dockerfile.ci .
+docker build --no-cache -t shawiizz/devops-ci:1.0.3 -f Dockerfile.ci .
 ```
 
 ### Publishing to DockerHub
@@ -30,6 +31,7 @@ docker build -t shawiizz/devops-ci:latest -f Dockerfile.ci .
 ```bash
 docker login
 docker push shawiizz/devops-ci:latest
+docker push shawiizz/devops-ci:1.0.3
 ```
 
 ## CLI Docker Image
