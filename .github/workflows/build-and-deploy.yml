@@ -10,7 +10,7 @@ on:
 
 env:
   DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
-  DEVOPS_FRAMEWORK_VERSION: 1.0.17
+  DEVOPS_FRAMEWORK_VERSION: 1.0.18
 
 jobs:
   build-and-deploy:
@@ -103,5 +103,6 @@ jobs:
             SKIP_TAGS="${SKIP_TAGS},nginx"
           fi
           
+          sed -i "s/REMOTE_HOST/${ENV}/g" ansible/inventory.yml
           ansible-galaxy role install geerlingguy.docker
-          ansible-playbook ansible/deploy.yml -i "$HOST," --user="$ANSIBLE_USER" --private-key=ansible/ssh/remote_private_key --skip-tags "$SKIP_TAGS"
+          ansible-playbook ansible/deploy.yml -i ansible/inventory.yml --skip-tags "$SKIP_TAGS"

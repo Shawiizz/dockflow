@@ -1,6 +1,6 @@
 all:
   hosts:
-    "{{ lookup('env', 'ENV') }}":
+    REMOTE_HOST:
       ansible_host: "{{ lookup('env', 'HOST') }}"
       ansible_user: "{{ lookup('env', 'ANSIBLE_USER') }}"
       ansible_ssh_private_key_file: devops/ssh/remote_private_key
