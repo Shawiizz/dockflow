@@ -9,7 +9,7 @@ on:
 
 env:
   DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
-  DEVOPS_FRAMEWORK_VERSION: 1.0.16
+  DEVOPS_FRAMEWORK_VERSION: 1.0.17
 
 jobs:
   deploy-build:
