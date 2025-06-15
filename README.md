@@ -199,30 +199,49 @@ services:
 **More complex example with multiple services**:
 ```yaml
 services:
+  db:
+    image: myapp-db-${ENV}:${VERSION}
+    build:
+      context: ../..
+      dockerfile: Dockerfile.db
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD} # Defined inside the CI secrets
+    ports:
+      - "${DB_EXTERNAL_PORT}:5432" # Defined inside .env.[env_name] file
+    volumes:
+      - ${ENV}-postgres-data:/var/lib/postgresql/data
+    networks:
+      - network-${ENV}
+
   api:
     image: myapp-api-${ENV}:${VERSION}
+    build:
+      context: ../..
+      dockerfile: Dockerfile.api
+    environment:
+      DB_HOST: myapp-db-${ENV} # The image/container name as it's a external bridged network
+      # ... other credentials
     networks:
-      - network_${ENV}
+      - network-${ENV}
     volumes:
-      - data_${ENV}:/app/data
+      - myapp-data-${ENV}:/app/data
     environment:
       NODE_ENV: ${ENV}
-      
-  frontend:
-    image: myapp-frontend-${ENV}:${VERSION}
-    networks:
-      - network_${ENV}
-    environment:
-      API_URL: http://api:3000
 
 networks:
-  network_${ENV}:
+  network-${ENV}:
+    driver: bridge
+    external: true
     
 volumes:
-  data_${ENV}:
+  myapp-data-${ENV}:
+  ${ENV}-postgres-data:
 ```
 
-This ensures complete isolation between environments (production, staging, etc.) when they are deployed on the same server.
+This ensures complete isolation between environments (production, staging, etc.) when they are deployed on the same server.   
+
+**Important** : The order of the services in the compose file matters — they are deployed in the sequence they are defined. In the example above, this means the database will be deployed before the application.    
 
 ---
 
