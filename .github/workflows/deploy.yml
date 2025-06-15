@@ -9,7 +9,7 @@ on:
 
 env:
   DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
-  DEVOPS_FRAMEWORK_VERSION: 1.0.15
+  DEVOPS_FRAMEWORK_VERSION: 1.0.16
 
 jobs:
   deploy-build:
@@ -114,10 +114,10 @@ jobs:
           export VERSION=${{ steps.vars.outputs.tag }}
 
           mkdir -p devops/ssh
-          echo "${{ secrets[env.SSH_KEY_SECRET_NAME] }}" | tr -d '\r' > devops/ssh/main_private_key
+          echo "${{ secrets[env.SSH_KEY_SECRET_NAME] }}" | tr -d '\r' > devops/ssh/remote_private_key
           chmod 600 devops/ssh/*
           eval "$(ssh-agent -s)"
-          ssh-add devops/ssh/main_private_key
+          ssh-add devops/ssh/remote_private_key
 
           cd devops
           export ANSIBLE_HOST_KEY_CHECKING=False
@@ -130,5 +130,6 @@ jobs:
           fi
 
           npm i -g shawiizz-decomposerize
+          chmod +x ansible/inventory.sh
           ansible-galaxy role install geerlingguy.docker
-          ansible-playbook ansible/deploy.yml -i "$HOST," --user="$ANSIBLE_USER" --private-key=ansible/ssh/main_private_key --skip-tags "$SKIP_TAGS"
+          ansible-playbook ansible/deploy.yml -i ansible/inventory.sh --skip-tags "$SKIP_TAGS"

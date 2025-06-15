@@ -30,3 +30,4 @@
       loop: "{{ decomposerize_types }}"
       loop_control:
         loop_var: cmd_type
+      no_log: true

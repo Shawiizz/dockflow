@@ -1,5 +1,5 @@
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.15/.gitlab/ci-templates/build-steps.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.16/.gitlab/ci-templates/build-steps.yml'
 
 stages:
   - build-and-deploy
@@ -13,7 +13,7 @@ build-and-deploy:
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
     DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
-    DEVOPS_FRAMEWORK_VERSION: 1.0.15
+    DEVOPS_FRAMEWORK_VERSION: 1.0.16
   rules:
     - if: '$CI_COMMIT_TAG'
   before_script:
@@ -54,11 +54,11 @@ build-and-deploy:
       git clone --branch "$DEVOPS_FRAMEWORK_VERSION" "$DEVOPS_REPOSITORY_URL" devops
       
       mkdir -p devops/ssh
-      echo "$(printenv "$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY")" | tr -d '\r' > ansible/ssh/main_private_key
+      echo "$(printenv "$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY")" | tr -d '\r' > devops/ssh/remote_private_key
       chmod 600 devops/ssh/*
       
       eval "$(ssh-agent -s)"
-      ssh-add devops/ssh/main_private_key
+      ssh-add devops/ssh/remote_private_key
 
       cd devops
       export ANSIBLE_HOST_KEY_CHECKING=False
@@ -70,5 +70,6 @@ build-and-deploy:
         SKIP_TAGS="${SKIP_TAGS},nginx"
       fi
 
+      chmod +x ansible/inventory.sh
       ansible-galaxy role install geerlingguy.docker
-      ansible-playbook ansible/deploy.yml -i "$HOST," --user="$ANSIBLE_USER" --private-key=ansible/ssh/main_private_key --skip-tags "$SKIP_TAGS"
+      ansible-playbook ansible/deploy.yml -i ansible/inventory.sh --skip-tags "$SKIP_TAGS"
