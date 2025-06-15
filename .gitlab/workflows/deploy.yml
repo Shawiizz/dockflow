@@ -1,5 +1,5 @@
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.14/.gitlab/ci-templates/build-steps.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.15/.gitlab/ci-templates/build-steps.yml'
 
 stages:
   - deploy
@@ -13,7 +13,7 @@ stages:
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
     DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
-    DEVOPS_FRAMEWORK_VERSION: 1.0.14
+    DEVOPS_FRAMEWORK_VERSION: 1.0.15
   before_script:
     - |
       TAG=$CI_COMMIT_REF_NAME
@@ -57,19 +57,19 @@ deploy:
     - if: '$CI_COMMIT_TAG'
   script:
     - |
-      git clone --branch "$DEVOPS_FRAMEWORK_VERSION" "$DEVOPS_REPOSITORY_URL" ansible
+      git clone --branch "$DEVOPS_FRAMEWORK_VERSION" "$DEVOPS_REPOSITORY_URL" devops
 
       mkdir -p ./docker_images
       cp deployment/docker/*.tar ./docker_images/
       
-      mkdir -p ansible/ssh
+      mkdir -p devops/ssh
       echo "$(printenv "$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY")" | tr -d '\r' > ansible/ssh/main_private_key
-      chmod 600 ansible/ssh/*
+      chmod 600 devops/ssh/*
       
       eval "$(ssh-agent -s)"
-      ssh-add ansible/ssh/main_private_key      
+      ssh-add devops/ssh/main_private_key      
       
-      cd ansible
+      cd devops
       export ANSIBLE_HOST_KEY_CHECKING=False
       export ANSIBLE_BECOME_PASSWORD=$ANSIBLE_BECOME_PASSWORD
 

@@ -2,7 +2,7 @@
 - name: Deploy Docker Images to Remote Server
   hosts: all:!localhost
   vars:
-    compose_path: "../deployment/docker/compose-deploy.yml"
+    compose_path: "../../deployment/docker/compose-deploy.yml"
     tmp_dir: "/tmp"
     decomposerize_types:
       - name: "setup"

@@ -12,7 +12,7 @@
 
 - name: List enabled Nginx config templates (*.conf.j2 only)
   find:
-    paths: "../deployment/templates/nginx"
+    paths: "../../deployment/templates/nginx"
     patterns: "*.conf.j2"
     recurse: false
   register: nginx_config_files

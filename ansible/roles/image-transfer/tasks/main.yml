@@ -1,7 +1,7 @@
 ---
 - name: List all .tar files on local server (where Ansible is running)
   find:
-    paths: "../docker_images"
+    paths: "../../docker_images"
     patterns: "*.tar"
   delegate_to: localhost
   register: tar_files
