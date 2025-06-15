@@ -70,6 +70,5 @@ build-and-deploy:
         SKIP_TAGS="${SKIP_TAGS},nginx"
       fi
 
-      chmod +x ansible/inventory.sh
       ansible-galaxy role install geerlingguy.docker
-      ansible-playbook ansible/deploy.yml -i ansible/inventory.sh --skip-tags "$SKIP_TAGS"
+      ansible-playbook ansible/deploy.yml -i ansible/inventory.yml --skip-tags "$SKIP_TAGS"
