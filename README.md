@@ -172,6 +172,19 @@ services:
 
 > **Security note**: Environment variables are only added when running the container, not during image building, except if you add them manually inside the Dockerfile.
 
+#### Environment file configuration (.env.[env_name])
+
+In this env file, you have to set **HOST** and **ANSIBLE_USER** variables, this is the minimal configuration.      
+The `.env.[env_name]` file supports mapping CI/CD secrets to environment variables to hide sensitive data:
+
+```bash
+HOST=$PRODUCTION_HOST # Hide actual IP/hostname by mapping the "PRODUCTION_HOST" CI/CD secret (this is an example)
+# OR
+HOST=your_real_ip_adress # You can also set your real server ip address here directly (if you don't need to hide it)
+ANSIBLE_USER=ansible # Set to 'ansible' if you didn't customized it 
+# ... any other useful variable like applications ports...
+```
+
 ### Environment isolation with compose-deploy.yml
 
 The `compose-deploy.yml` file supports environment separation using the `${ENV}` variable. This allows you to:
