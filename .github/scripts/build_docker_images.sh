@@ -1,6 +1,18 @@
 #!/bin/bash
 set -e
 
+SKIP_ARTIFACT_UPLOAD=false
+for arg in "$@"; do
+  case $arg in
+    --skip-artifact-upload)
+      SKIP_ARTIFACT_UPLOAD=true
+      shift
+      ;;
+    *)
+      ;;
+  esac
+done
+
 cd deployment/docker
 
 BUILD_CMDS=$(decomposerize compose-deploy.yml --docker-build)
@@ -17,12 +29,19 @@ build_image() {
 
   if [[ "$ENV" != "build" ]]; then
     local TAR_NAME="${IMAGE_NAME//:/-}.tar"
-    docker save -o "$TAR_NAME" "$IMAGE_NAME"
-
-    echo "::group::Upload $TAR_NAME"
-    echo "artifact: image-${IMAGE_NAME}"
-    echo "Path: $(realpath "$TAR_NAME")"
-    echo "::endgroup::"
+    
+    mkdir -p ../../docker_images
+    
+    if [[ "$SKIP_ARTIFACT_UPLOAD" == "true" ]]; then
+      docker save -o "../../docker_images/$TAR_NAME" "$IMAGE_NAME"
+      echo "Image saved to: $(realpath "../../docker_images/$TAR_NAME")"
+    else
+      docker save -o "$TAR_NAME" "$IMAGE_NAME"
+      echo "::group::Upload $TAR_NAME"
+      echo "artifact: image-${IMAGE_NAME}"
+      echo "Path: $(realpath "$TAR_NAME")"
+      echo "::endgroup::"
+    fi
   fi
 }
 

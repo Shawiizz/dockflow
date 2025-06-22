@@ -1,5 +1,5 @@
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.22/.gitlab/ci-templates/build-steps.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.23/.gitlab/ci-templates/build-steps.yml'
 
 stages:
   - build-and-deploy
@@ -13,7 +13,7 @@ build-and-deploy:
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
     DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
-    DEVOPS_FRAMEWORK_VERSION: 1.0.22
+    DEVOPS_FRAMEWORK_VERSION: 1.0.23
   rules:
     - if: '$CI_COMMIT_TAG'
   before_script:
@@ -63,7 +63,7 @@ build-and-deploy:
       export ANSIBLE_HOST_KEY_CHECKING=False
       export ANSIBLE_BECOME_PASSWORD=$ANSIBLE_BECOME_PASSWORD
 
-      SKIP_TAGS="configure_host,image-transfer"
+      SKIP_TAGS="configure_host"
       if [ ! -d "../deployment/templates/nginx" ] || [ -z "$(ls -A ../deployment/templates/nginx 2>/dev/null)" ]; then
         echo "No nginx configuration found, skipping nginx role"
         SKIP_TAGS="${SKIP_TAGS},nginx"

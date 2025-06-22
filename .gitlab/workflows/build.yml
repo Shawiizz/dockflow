@@ -1,5 +1,5 @@
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.22/.gitlab/ci-templates/build-steps.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.23/.gitlab/ci-templates/build-steps.yml'
 
 stages:
   - build

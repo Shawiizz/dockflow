@@ -10,7 +10,7 @@ on:
 
 env:
   DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
-  DEVOPS_FRAMEWORK_VERSION: 1.0.22
+  DEVOPS_FRAMEWORK_VERSION: 1.0.23
 
 jobs:
   build-and-deploy:
@@ -68,16 +68,8 @@ jobs:
           #######################################
           ######### Build docker images #########
           #######################################
-          mkdir -p ./docker_images
-          cd deployment/docker
+          bash devops/.github/scripts/build_docker_images.sh --skip-artifact-upload
           
-          while IFS= read -r BUILD_CMD; do
-            echo "Running: $BUILD_CMD"
-            eval "$BUILD_CMD"
-          done <<< "$(decomposerize compose-deploy.yml --docker-build)"
-          
-          cd ../..
-
           #######################################
           ############ Setup SSH Key ############
           #######################################
@@ -94,7 +86,7 @@ jobs:
           export ANSIBLE_HOST_KEY_CHECKING=False
           export ANSIBLE_BECOME_PASSWORD=${{ secrets.ANSIBLE_BECOME_PASSWORD }}
 
-          SKIP_TAGS="configure_host,image-transfer"
+          SKIP_TAGS="configure_host"
           if [ ! -d "../deployment/templates/nginx" ] || [ -z "$(ls -A ../deployment/templates/nginx 2>/dev/null)" ]; then
             echo "No nginx configuration found, skipping nginx role"
             SKIP_TAGS="${SKIP_TAGS},nginx"
