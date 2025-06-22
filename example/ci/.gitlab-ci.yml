@@ -11,10 +11,10 @@ stages:
 
 include:
   # Continuous Integration (CI) template for building Docker images (not used for deployment)
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.20/.gitlab/workflows/build.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.21/.gitlab/workflows/build.yml'
 
   # Option 1: Traditional two-step build & deploy (recommended for larger projects)
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.20/.gitlab/workflows/deploy.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.21/.gitlab/workflows/deploy.yml'
   
   # Option 2: Combined build and deploy in one job (faster but no intermediate artifacts)
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.20/.gitlab/workflows/build-and-deploy.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.21/.gitlab/workflows/build-and-deploy.yml'

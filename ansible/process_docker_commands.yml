@@ -37,4 +37,3 @@
   ignore_errors: "{{ cmd_type.ignore_errors }}"
   register: command_results
   changed_when: command_results.rc == 0
-  no_log: true

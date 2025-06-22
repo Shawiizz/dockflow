@@ -10,7 +10,7 @@ on:
 
 env:
   DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
-  DEVOPS_FRAMEWORK_VERSION: 1.0.20
+  DEVOPS_FRAMEWORK_VERSION: 1.0.21
 
 jobs:
   build-and-deploy:
@@ -65,33 +65,31 @@ jobs:
           export ENV=${{ steps.vars.outputs.env }}
           export VERSION=${{ steps.vars.outputs.tag }}
 
-      - name: Build Docker images
-        run: |
-          # Create temporary directory for docker images
+          #######################################
+          ######### Build docker images #########
+          #######################################
           mkdir -p ./docker_images
           cd deployment/docker
           
-          # Build images without saving to files
-          BUILD_CMDS=$(decomposerize compose-deploy.yml --docker-build)
-          
-          # Execute build commands one by one
           while IFS= read -r BUILD_CMD; do
             echo "Running: $BUILD_CMD"
             eval "$BUILD_CMD"
-          done <<< "$BUILD_CMDS"
+          done <<< "$(decomposerize compose-deploy.yml --docker-build)"
           
           cd ../..
 
-      - name: Setup SSH Key for Ansible
-        run: |
+          #######################################
+          ############ Setup SSH Key ############
+          #######################################
           mkdir -p devops/ssh
           echo "${{ secrets[env.SSH_KEY_SECRET_NAME] }}" | tr -d '\r' > devops/ssh/remote_private_key
           chmod 600 devops/ssh/*
           eval "$(ssh-agent -s)"
           ssh-add devops/ssh/remote_private_key
 
-      - name: Deploy with Ansible
-        run: |
+          #######################################
+          ######### Deploy with Ansible #########
+          #######################################
           cd devops
           export ANSIBLE_HOST_KEY_CHECKING=False
           export ANSIBLE_BECOME_PASSWORD=${{ secrets.ANSIBLE_BECOME_PASSWORD }}

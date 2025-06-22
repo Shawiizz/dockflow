@@ -1,10 +1,11 @@
 ---
 - name: Deploy Docker Images to Remote Server
   hosts: all:!localhost
-  vars:
+  vars:    
     compose_path: "../../deployment/docker/compose-deploy.yml"
     tmp_dir: "/tmp"
-    decomposerize_types:
+    global_no_log: "{{ not (lookup('env', 'DISABLE_NO_LOG') | default('false', true) | bool) }}"
+  decomposerize_types:
       - name: "setup"
         options: "--create-networks --create-volumes --stop-and-remove"
         ignore_errors: yes  # Networks/volumes might already exist
@@ -23,11 +24,11 @@
     - role: services
     - role: image-transfer
       tags:
-        - image-transfer    
+        - image-transfer      
   tasks:
     - name: Process Docker commands for each type
       include_tasks: process_docker_commands.yml
       loop: "{{ decomposerize_types }}"
       loop_control:
         loop_var: cmd_type
-      no_log: true
+      no_log: "{{ global_no_log }}"

@@ -1,5 +1,5 @@
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.20/.gitlab/ci-templates/build-steps.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.21/.gitlab/ci-templates/build-steps.yml'
 
 stages:
   - build-and-deploy
@@ -13,7 +13,7 @@ build-and-deploy:
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
     DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
-    DEVOPS_FRAMEWORK_VERSION: 1.0.20
+    DEVOPS_FRAMEWORK_VERSION: 1.0.21
   rules:
     - if: '$CI_COMMIT_TAG'
   before_script:
