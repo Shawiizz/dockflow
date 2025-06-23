@@ -1,0 +1,88 @@
+.prepare-env:
+  before_script:
+    - |
+      TAG=$CI_COMMIT_REF_NAME
+      ENVIRONMENT="production"
+      
+      if [[ "$TAG" == *"-"* ]]; then
+        ENVIRONMENT="${TAG##*-}"
+      fi
+      
+      export ENV=$ENVIRONMENT
+      export VERSION=$TAG
+      
+      if [ ! -f "deployment/env/.env.${ENV}" ]; then
+          echo "File deployment/env/.env.${ENV} does not exist, cannot execute on unknown environment"
+          exit 1
+      fi
+
+      set -a
+      source deployment/env/.env.${ENV}
+      set +a
+
+.deploy-with-ansible:
+  after_script:
+    - |
+      git clone --branch "$DEVOPS_FRAMEWORK_VERSION" "$DEVOPS_REPOSITORY_URL" devops
+      
+      mkdir -p ./docker_images
+      cp deployment/docker/*.tar ./docker_images/
+      
+      mkdir -p devops/ssh
+      echo "$(printenv "$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY")" | tr -d '\r' > devops/ssh/remote_private_key
+      chmod 600 devops/ssh/*
+      
+      eval "$(ssh-agent -s)"
+      ssh-add devops/ssh/remote_private_key      
+      
+      cd devops
+      export ANSIBLE_HOST_KEY_CHECKING=False
+      export ANSIBLE_BECOME_PASSWORD=$ANSIBLE_BECOME_PASSWORD
+      
+      SKIP_TAGS="configure_host"
+      if [ ! -d "../deployment/templates/nginx" ] || [ -z "$(ls -A ../deployment/templates/nginx 2>/dev/null)" ]; then
+        echo "No nginx configuration found, skipping nginx role"
+        SKIP_TAGS="${SKIP_TAGS},nginx"
+      fi
+      
+      sed -i "s/REMOTE_HOST/${ENV}/g" ansible/inventory.yml
+      ansible-galaxy role install geerlingguy.docker
+      ansible-playbook ansible/deploy.yml -i ansible/inventory.yml --skip-tags "$SKIP_TAGS"
+      
+.build-docker-images:
+  script:
+    - |
+      cd deployment/docker
+
+      BUILD_CMDS=$(decomposerize compose-deploy.yml --docker-build)
+      PARALLEL_JOBS=$(nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 4)
+
+      build_image() {
+        local BUILD_CMD="$1"
+        echo "Running: $BUILD_CMD"
+        eval "$BUILD_CMD"
+
+        local IMAGE_NAME=$(echo "$BUILD_CMD" | sed -nE 's/.*-t\s+"?([^"]+)"?.*/\1/p')
+        IMAGE_NAME=$(eval echo "$IMAGE_NAME")
+        echo "Image built: $IMAGE_NAME"
+
+        if [[ "$ENV" != "build" ]]; then
+          local TAR_NAME="${IMAGE_NAME//:/-}.tar"
+          docker save -o "$TAR_NAME" "$IMAGE_NAME"
+        fi
+      }
+
+      export -f build_image
+
+      IMAGE_COUNT=$(echo "$BUILD_CMDS" | wc -l)
+      if [ "$IMAGE_COUNT" -gt 1 ]; then
+        echo "Detected $IMAGE_COUNT images to build. Running in parallel with $PARALLEL_JOBS jobs..."
+      
+        # Run builds in parallel
+        echo "$BUILD_CMDS" | parallel --jobs "$PARALLEL_JOBS" build_image
+      else
+        # Only one image, use the regular sequential approach
+        while IFS= read -r BUILD_CMD; do
+          build_image "$BUILD_CMD"
+        done <<< "$BUILD_CMDS"
+      fi

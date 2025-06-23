@@ -5,7 +5,7 @@ This document explains how to contribute to this project and build/maintain the 
 I did this project alone, if you want a new functionnality, you can open an issue or open a pull request :)     
 
 > **IMPORTANT**: When pushing a new tag/release, remember to update all version references in example files and CI scripts to ensure users download the correct version. Particularly update tag references in:
-> - `.gitlab/ci-templates/build-steps.yml`
+> - `.gitlab/common/build-steps.yml`
 > - `.gitlab/workflows/*.yml`
 > - `example/ci/*.yml`
 

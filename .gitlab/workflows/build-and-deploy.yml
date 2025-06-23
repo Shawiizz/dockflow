@@ -1,74 +1,16 @@
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.23/.gitlab/ci-templates/build-steps.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.23/.gitlab/common/steps.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.23/.gitlab/common/variables.yml'
 
 stages:
   - build-and-deploy
 
 build-and-deploy:
   stage: build-and-deploy
-  image: shawiizz/devops-ci:1.0.3
-  services:
-    - docker:dind
-  variables:
-    DOCKER_HOST: tcp://docker:2375
-    DOCKER_TLS_CERTDIR: ""
-    DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
-    DEVOPS_FRAMEWORK_VERSION: 1.0.23
   rules:
     - if: '$CI_COMMIT_TAG'
-  before_script:
-    - |
-      TAG=$CI_COMMIT_REF_NAME
-      ENVIRONMENT="production"
-  
-      if [[ "$TAG" == *"-"* ]]; then
-        ENVIRONMENT="${TAG##*-}"
-      fi
-      
-      export ENV=$ENVIRONMENT
-      export VERSION=$TAG
-      
-      if [ ! -f "deployment/env/.env.${ENV}" ]; then
-          echo "File deployment/env/.env.${ENV} does not exist, cannot execute on unknown environment"
-          exit 1
-      fi
-      
-      set -a
-      source deployment/env/.env.${ENV}
-      set +a
-  script:
-    - |
-      # Build Docker images (without saving tar files)
-      cd deployment/docker
-      BUILD_CMDS=$(decomposerize compose-deploy.yml --docker-build)
-      
-      while IFS= read -r BUILD_CMD; do
-        echo "Running: $BUILD_CMD"
-        eval "$BUILD_CMD"
-      done <<< "$BUILD_CMDS"
-      
-      cd ../..
-      
-      # Deploy with Ansible
-      git clone --branch "$DEVOPS_FRAMEWORK_VERSION" "$DEVOPS_REPOSITORY_URL" devops
-      
-      mkdir -p devops/ssh
-      echo "$(printenv "$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY")" | tr -d '\r' > devops/ssh/remote_private_key
-      chmod 600 devops/ssh/*
-      
-      eval "$(ssh-agent -s)"
-      ssh-add devops/ssh/remote_private_key
-
-      cd devops
-      export ANSIBLE_HOST_KEY_CHECKING=False
-      export ANSIBLE_BECOME_PASSWORD=$ANSIBLE_BECOME_PASSWORD
-
-      SKIP_TAGS="configure_host"
-      if [ ! -d "../deployment/templates/nginx" ] || [ -z "$(ls -A ../deployment/templates/nginx 2>/dev/null)" ]; then
-        echo "No nginx configuration found, skipping nginx role"
-        SKIP_TAGS="${SKIP_TAGS},nginx"
-      fi
-
-      sed -i "s/REMOTE_HOST/${ENV}/g" ansible/inventory.yml
-      ansible-galaxy role install geerlingguy.docker
-      ansible-playbook ansible/deploy.yml -i ansible/inventory.yml --skip-tags "$SKIP_TAGS"
+  extends:
+    - .common-variables
+    - .prepare-env
+    - .build-docker-images
+    - .deploy-with-ansible

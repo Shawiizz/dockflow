@@ -1,18 +1,15 @@
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.23/.gitlab/ci-templates/build-steps.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.23/.gitlab/common/steps.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops/refs/tags/1.0.23/.gitlab/common/variables.yml'
 
 stages:
   - build
 
 build:
   stage: build
-  image: shawiizz/devops-ci:1.0.3
-  services:
-    - docker:dind
-  variables:
-    DOCKER_HOST: tcp://docker:2375
-    DOCKER_TLS_CERTDIR: ""
-  extends: .build-docker
+  extends:
+    - .common-variables
+    - .build-docker-images
   before_script:
     - export ENV=build
     - export VERSION=build

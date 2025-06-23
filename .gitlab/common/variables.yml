@@ -1,0 +1,9 @@
+.common-variables:
+  image: shawiizz/devops-ci:1.0.3
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops.git
+    DEVOPS_FRAMEWORK_VERSION: 1.0.23
