@@ -118,5 +118,3 @@ generate_ansible_ssh_key() {
 
     export ANSIBLE_PUBLIC_KEY
 }
-
-CLI_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

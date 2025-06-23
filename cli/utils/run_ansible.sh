@@ -48,7 +48,7 @@ run_ansible_playbook() {
     export ANSIBLE_HOST_KEY_CHECKING=False
     ansible-galaxy role install geerlingguy.docker
     
-    cd "$CLI_SCRIPT_DIR/.." || exit 1
+    cd "$CLI_ROOT_DIR/.." || exit 1
     ansible-playbook ansible/configure_host.yml -i "$HOST," --user="$ANSIBLE_USER" --private-key=~/.ssh/ansible_key --skip-tags "$SKIP_TAGS"
     
     # Check if Ansible playbook execution was successful
@@ -72,5 +72,3 @@ display_completion() {
     echo ""
     echo -e "${GREEN}The machine is now ready to receive deployments of Docker applications.${NC}"
 }
-
-CLI_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

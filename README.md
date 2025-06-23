@@ -79,6 +79,7 @@ Use the CLI tool to automatically configure your server (recommended):
 ```bash
 docker run -it --rm \
   -v ~/.ssh:/root/.ssh \
+  -v .:/project
   shawiizz/devops-cli:latest
 ```
 
@@ -86,6 +87,7 @@ docker run -it --rm \
 ```powershell
 docker run -it --rm `
   -v ${HOME}/.ssh:/root/.ssh `
+  -v .:/project `
   shawiizz/devops-cli:latest
 ```
 

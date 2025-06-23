@@ -74,5 +74,3 @@ EOF
 
     rm "$TEMP_SCRIPT"
 }
-
-CLI_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
