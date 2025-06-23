@@ -153,6 +153,10 @@ To deploy SSH keys (useful for services requiring remote access. e.g. a mounting
    DEPLOY_PRIVATE_SSH_KEYS=SECRET_NAME_1,SECRET_NAME_2
    ```
 
+#### Executing bash scripts
+You can execute scripts on the remote directly and access Ansible variables if needed using Jinja2 syntax.
+Create scripts at: `deployment/templates/scripts/[script_name].sh.j2`      
+
 > **Note**: All templates use Jinja2 format (`.j2`) and can access variables from `.env.[env_name]` and CI secrets
 
 ### Environment variables

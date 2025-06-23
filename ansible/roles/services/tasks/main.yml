@@ -8,8 +8,6 @@
     recurse: false
   register: service_templates
   delegate_to: localhost
-  tags:
-    - deploy
 
 - name: Deploy systemd unit templates
   template:
@@ -20,14 +18,10 @@
     mode: '0644'
   loop: "{{ service_templates.files }}"
   when: service_templates.matched > 0
-  tags:
-    - deploy
 
 - name: Reload systemd services
   command: systemctl daemon-reload
   when: linux_services is defined
-  tags:
-    - deploy
 
 - name: Enable and start specified services
   service:
@@ -36,5 +30,3 @@
     state: started
   loop: "{{ linux_services | default([]) }}"
   when: linux_services is defined
-  tags:
-    - deploy

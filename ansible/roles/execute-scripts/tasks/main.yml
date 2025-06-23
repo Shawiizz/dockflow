@@ -1,0 +1,33 @@
+---
+- name: Create scripts directory in ansible home if it doesn't exist
+  ansible.builtin.file:
+    path: "/home/{{ lookup('env', 'ANSIBLE_USER') }}/scripts"
+    state: directory
+    owner: ansible
+    group: ansible
+    mode: '0755'
+
+- name: List script templates (*.sh.j2 only) 
+  find:
+    paths: "../../deployment/templates/scripts"
+    patterns: "*.sh.j2"
+    recurse: false
+  register: script_templates
+  delegate_to: localhost
+
+- name: Copy script templates to ansible home
+  template:
+    src: "{{ item.path }}"
+    dest: "/home/{{ lookup('env', 'ANSIBLE_USER') }}/scripts/{{ item.path | basename | regex_replace('\\.sh\\.j2$', '.sh') }}"
+    owner: ansible
+    group: ansible
+    mode: '0755'
+  loop: "{{ script_templates.files }}"
+  when: script_templates.matched > 0
+  register: scripts_copy
+
+- name: Execute all scripts in ansible home
+  ansible.builtin.command: "bash /home/{{ lookup('env', 'ANSIBLE_USER') }}/scripts/{{ item.path | basename | regex_replace('\\.sh\\.j2$', '.sh') }}"
+  loop: "{{ script_templates.files }}"
+  when: script_templates.matched > 0
+  register: scripts_execution

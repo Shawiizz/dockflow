@@ -21,10 +21,9 @@
       tags:
         - nginx
     - role: private_ssh_keys
-    - role: services
+    - role: services   
     - role: image-transfer
-      tags:
-        - image-transfer      
+    - role: execute-scripts
   tasks:
     - name: Process Docker commands for each type
       include_tasks: process_docker_commands.yml
