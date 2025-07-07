@@ -11,12 +11,12 @@ jobs:
   # Basic CI job to run on every push to branches (not used for deployment)
   build:
     if: github.ref_type == 'branch'
-    uses: Shawiizz/devops/.github/workflows/build.yml@1.0.24
+    uses: Shawiizz/devops-framework/.github/workflows/build.yml@1.0.24
 
   # Option 1: Traditional two-step build & deploy (recommended for larger projects)
   deploy:
     if: github.ref_type == 'tag'
-    uses: Shawiizz/devops/.github/workflows/deploy.yml@1.0.24
+    uses: Shawiizz/devops-framework/.github/workflows/deploy.yml@1.0.24
     with:
       tag: ${{ github.ref_name }}
     secrets: inherit
@@ -24,7 +24,7 @@ jobs:
   # Option 2: Combined build and deploy in one job (faster but no intermediate artifacts)
   build-and-deploy:
     if: github.ref_type == 'tag'
-    uses: Shawiizz/devops/.github/workflows/build-and-deploy.yml@1.0.24
+    uses: Shawiizz/devops-framework/.github/workflows/build-and-deploy.yml@1.0.24
     with:
       tag: ${{ github.ref_name }}
     secrets: inherit
