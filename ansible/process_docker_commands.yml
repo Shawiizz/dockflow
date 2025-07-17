@@ -1,5 +1,10 @@
+- name: Build decomposerize options
+  set_fact:
+    decomposerize_options: "{{ cmd_type.base_options }} {{ services_option }}"
+  changed_when: false
+
 - name: Generate {{ cmd_type.name }} commands as template
-  shell: decomposerize "{{ compose_path }}" {{ cmd_type.options }} --ansible-env-vars-format > {{ tmp_dir }}/decomposerize_{{ cmd_type.name }}.j2
+  shell: decomposerize "{{ compose_path }}" {{ decomposerize_options }} --ansible-env-vars-format > {{ tmp_dir }}/decomposerize_{{ cmd_type.name }}.j2
   delegate_to: localhost
   changed_when: false
 

@@ -5,15 +5,17 @@
     compose_path: "../../deployment/docker/compose-deploy.yml"
     tmp_dir: "/tmp"
     global_no_log: "{{ not (lookup('env', 'DISABLE_NO_LOG') | default('false', true) | bool) }}"
+    deploy_services: "{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true) }}"
+    services_option: "{{ '--services=' + deploy_services if deploy_services else '' }}"
     decomposerize_types:
       - name: "setup"
-        options: "--create-networks --create-volumes --stop-and-remove"
+        base_options: "--create-networks --create-volumes --stop-and-remove"
         ignore_errors: yes  # Networks/volumes might already exist
       - name: "run"
-        options: "--docker-run --docker-run-detach"
+        base_options: "--docker-run --docker-run-detach"
         ignore_errors: no
       - name: "cleanup"
-        options: "--delete-images"
+        base_options: "--delete-images"
         ignore_errors: yes  # New images are used by containers
   roles:
     - role: geerlingguy.docker
