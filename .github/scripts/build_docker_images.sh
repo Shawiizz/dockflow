@@ -1,11 +1,12 @@
 #!/bin/bash
 set -e
 
-SKIP_ARTIFACT_UPLOAD=false
+HOST_SUFFIX=""
+
 for arg in "$@"; do
   case $arg in
-    --skip-artifact-upload)
-      SKIP_ARTIFACT_UPLOAD=true
+    --host=*)
+      HOST_SUFFIX="${arg#*=}"
       shift
       ;;
     *)
@@ -13,9 +14,27 @@ for arg in "$@"; do
   esac
 done
 
+if [[ -n "$HOST_SUFFIX" ]]; then
+  OUTPUT_DIR="../../docker_images_${HOST_SUFFIX}"
+else
+  OUTPUT_DIR="../../docker_images"
+fi
+
 cd deployment/docker
 
-BUILD_CMDS=$(decomposerize compose-deploy.yml --docker-build)
+DECOMPOSERIZE_OPTIONS="--docker-build"
+if [[ -n "$DEPLOY_DOCKER_SERVICES" ]]; then
+  echo "Building services for host ${HOST_SUFFIX:-main}: $DEPLOY_DOCKER_SERVICES"
+  DECOMPOSERIZE_OPTIONS="$DECOMPOSERIZE_OPTIONS --services=$DEPLOY_DOCKER_SERVICES"
+fi
+
+BUILD_CMDS=$(decomposerize compose-deploy.yml $DECOMPOSERIZE_OPTIONS)
+
+if [[ -z "$BUILD_CMDS" ]]; then
+  echo "No services to build for host ${HOST_SUFFIX:-main}"
+  exit 0
+fi
+
 PARALLEL_JOBS=$(nproc 2>/dev/null || echo 4)
 
 build_image() {
@@ -30,18 +49,9 @@ build_image() {
   if [[ "$ENV" != "build" ]]; then
     local TAR_NAME="${IMAGE_NAME//:/-}.tar"
     
-    mkdir -p ../../docker_images
-    
-    if [[ "$SKIP_ARTIFACT_UPLOAD" == "true" ]]; then
-      docker save -o "../../docker_images/$TAR_NAME" "$IMAGE_NAME"
-      echo "Image saved to: $(realpath "../../docker_images/$TAR_NAME")"
-    else
-      docker save -o "$TAR_NAME" "$IMAGE_NAME"
-      echo "::group::Upload $TAR_NAME"
-      echo "artifact: image-${IMAGE_NAME}"
-      echo "Path: $(realpath "$TAR_NAME")"
-      echo "::endgroup::"
-    fi
+    mkdir -p "$OUTPUT_DIR"
+    docker save -o "$OUTPUT_DIR/$TAR_NAME" "$IMAGE_NAME"
+    echo "Image saved to: $(realpath "$OUTPUT_DIR/$TAR_NAME")"
   fi
 }
 
@@ -49,7 +59,7 @@ export -f build_image
 
 IMAGE_COUNT=$(echo "$BUILD_CMDS" | wc -l)
 if [ "$IMAGE_COUNT" -gt 1 ]; then
-  echo "Detected $IMAGE_COUNT images to build. Running in parallel with $PARALLEL_JOBS jobs..."
+  echo "Detected $IMAGE_COUNT images to build for host ${HOST_SUFFIX:-main}. Running in parallel with $PARALLEL_JOBS jobs..."
   
   if ! command -v parallel &>/dev/null; then
     echo "Installing GNU parallel..."

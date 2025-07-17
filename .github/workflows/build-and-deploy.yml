@@ -13,16 +13,19 @@ env:
   DEVOPS_FRAMEWORK_VERSION: 1.0.25
 
 jobs:
-  build-and-deploy:
+  discover-hosts:
     runs-on: ubuntu-latest
-    name: Build and Deploy Docker images
-
+    name: Discover deployment hosts
+    outputs:
+      hosts: ${{ steps.discover.outputs.hosts }}
+      env: ${{ steps.discover.outputs.env }}
+      tag: ${{ steps.discover.outputs.tag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set environment variables
-        id: vars
+        
+      - name: Discover hosts and environment
+        id: discover
         run: |
           TAG="${{ inputs.tag }}"
           ENVIRONMENT="production"
@@ -39,8 +42,52 @@ jobs:
               exit 1
           fi
           
-          # Determine SSH key secret name
-          SSH_SECRET_NAME="$(echo "${ENVIRONMENT}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY"
+          #######################################
+          ###### Discover hosts to deploy #######
+          #######################################
+          HOSTS="[]"
+          BASE_FILE="deployment/env/.env.${ENVIRONMENT}"
+          
+          if [ -f "$BASE_FILE" ]; then
+            HOSTS=$(echo "$HOSTS" | jq '. + ["main"]')
+          fi
+          
+          for env_file in deployment/env/.env.${ENVIRONMENT}.*; do
+            if [ -f "$env_file" ]; then
+              SUFFIX=$(basename "$env_file" | sed "s/\.env\.${ENVIRONMENT}\.//")
+              HOSTS=$(echo "$HOSTS" | jq --arg suffix "$SUFFIX" '. + [$suffix]')
+            fi
+          done
+          
+          echo "hosts=$HOSTS" >> $GITHUB_OUTPUT
+          echo "Discovered hosts: $HOSTS"
+
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    name: Build and Deploy to host ${{ matrix.host }}
+    needs: discover-hosts
+    strategy:
+      matrix:
+        host: ${{ fromJson(needs.discover-hosts.outputs.hosts) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup environment variables for host ${{ matrix.host }}
+        id: vars
+        run: |
+          ENV="${{ needs.discover-hosts.outputs.env }}"
+          HOST="${{ matrix.host }}"
+          
+          if [[ "$HOST" == "main" ]]; then
+            SSH_SECRET_NAME="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY"
+          else
+            SSH_SECRET_NAME="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_$(echo "${HOST}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY"
+          fi
+
+          echo "env=$ENV" >> $GITHUB_OUTPUT
+          echo "host=$HOST" >> $GITHUB_OUTPUT
+          echo "tag=${{ needs.discover-hosts.outputs.tag }}" >> $GITHUB_OUTPUT
           echo "SSH_KEY_SECRET_NAME=$SSH_SECRET_NAME" >> $GITHUB_ENV
 
       - name: Install docker-decompose
@@ -49,7 +96,7 @@ jobs:
       - name: Clone devops repository
         run: git clone --branch "$DEVOPS_FRAMEWORK_VERSION" "$DEVOPS_REPOSITORY_URL" devops
 
-      - name: Load environment variables
+      - name: Load environment variables and build/deploy for host ${{ matrix.host }}
         run: |          
           # Load secrets as environment variables
           echo '${{ toJSON(secrets) }}' > secrets.json
@@ -58,17 +105,34 @@ jobs:
             export "$key=$value"
           done
 
+          ENV="${{ steps.vars.outputs.env }}"
+          HOST="${{ steps.vars.outputs.host }}"
+          
+          # Charger le fichier de base
           set -a
-          source deployment/env/.env.${{ steps.vars.outputs.env }}
+          source "deployment/env/.env.${ENV}"
           set +a
           
-          export ENV=${{ steps.vars.outputs.env }}
-          export VERSION=${{ steps.vars.outputs.tag }}
+          # Si ce n'est pas l'hôte principal, charger aussi le fichier spécifique à l'hôte
+          if [[ "$HOST" != "main" ]]; then
+            if [ -f "deployment/env/.env.${ENV}.${HOST}" ]; then
+              set -a
+              source "deployment/env/.env.${ENV}.${HOST}"
+              set +a
+            fi
+          fi
+          
+          export ENV="${{ steps.vars.outputs.env }}"
+          export VERSION="${{ steps.vars.outputs.tag }}"
 
           #######################################
           ######### Build docker images #########
           #######################################
-          bash devops/.github/scripts/build_docker_images.sh --skip-artifact-upload
+          if [[ "$HOST" == "main" ]]; then
+            bash devops/.github/scripts/build_docker_images.sh
+          else
+            bash devops/.github/scripts/build_docker_images.sh --host="$HOST"
+          fi
           
           #######################################
           ############ Setup SSH Key ############
@@ -92,6 +156,13 @@ jobs:
             SKIP_TAGS="${SKIP_TAGS},nginx"
           fi
           
-          sed -i "s/REMOTE_HOST/${ENV}/g" ansible/inventory.yml
+          # Créer un inventaire spécifique pour cet hôte
+          if [[ "$HOST" == "main" ]]; then
+            INVENTORY_HOST="${ENV}"
+          else
+            INVENTORY_HOST="${ENV}-${HOST}"
+          fi
+          
+          sed -i "s/REMOTE_HOST/${INVENTORY_HOST}/g" ansible/inventory.yml
           ansible-galaxy role install geerlingguy.docker
           ansible-playbook ansible/deploy.yml -i ansible/inventory.yml --skip-tags "$SKIP_TAGS"

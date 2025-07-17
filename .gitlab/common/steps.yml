@@ -16,73 +16,191 @@
           exit 1
       fi
 
-      set -a
-      source deployment/env/.env.${ENV}
-      set +a
+      echo "Discovering hosts for environment: $ENV"
+      DEPLOYMENT_HOSTS="main"
+      
+      for env_file in deployment/env/.env.${ENV}.*; do
+        if [ -f "$env_file" ]; then
+          SUFFIX=$(basename "$env_file" | sed "s/\.env\.${ENV}\.//")
+          if [[ "$SUFFIX" != "${ENV}" ]]; then
+            DEPLOYMENT_HOSTS="$DEPLOYMENT_HOSTS $SUFFIX"
+            echo "Found host configuration: $SUFFIX"
+          fi
+        fi
+      done
+      
+      export DEPLOYMENT_HOSTS
+      echo "Deployment hosts: $DEPLOYMENT_HOSTS"
 
 .deploy-with-ansible:
   after_script:
     - |
       git clone --branch "$DEVOPS_FRAMEWORK_VERSION" "$DEVOPS_REPOSITORY_URL" devops
       
-      mkdir -p ./docker_images
-      cp deployment/docker/*.tar ./docker_images/
-      
-      mkdir -p devops/ssh
-      echo "$(printenv "$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY")" | tr -d '\r' > devops/ssh/remote_private_key
-      chmod 600 devops/ssh/*
-      
-      eval "$(ssh-agent -s)"
-      ssh-add devops/ssh/remote_private_key      
-      
-      cd devops
-      export ANSIBLE_HOST_KEY_CHECKING=False
-      export ANSIBLE_BECOME_PASSWORD=$ANSIBLE_BECOME_PASSWORD
-      
-      SKIP_TAGS="configure_host"
-      if [ ! -d "../deployment/templates/nginx" ] || [ -z "$(ls -A ../deployment/templates/nginx 2>/dev/null)" ]; then
-        echo "No nginx configuration found, skipping nginx role"
-        SKIP_TAGS="${SKIP_TAGS},nginx"
-      fi
-      
-      sed -i "s/REMOTE_HOST/${ENV}/g" ansible/inventory.yml
-      ansible-galaxy role install geerlingguy.docker
-      ansible-playbook ansible/deploy.yml -i ansible/inventory.yml --skip-tags "$SKIP_TAGS"
+      for HOST in $DEPLOYMENT_HOSTS; do
+        echo "========================================="
+        echo "Deploying to host: $HOST"
+        echo "========================================="
+        
+        if [[ "$HOST" == "main" ]]; then
+          HOST_SUFFIX=""
+        else
+          HOST_SUFFIX="$HOST"
+        fi
+        
+        if [[ -n "${HOST_SUFFIX}" ]]; then
+          if [ ! -d "deployment/docker/docker_images_${HOST_SUFFIX}" ] || [ -z "$(ls -A "deployment/docker/docker_images_${HOST_SUFFIX}" 2>/dev/null)" ]; then
+            echo "No Docker images found for host $HOST in deployment/docker/docker_images_${HOST_SUFFIX}, skipping deployment"
+            continue
+          fi
+        else
+          if [ ! -d "deployment/docker/docker_images" ] || [ -z "$(ls -A "deployment/docker/docker_images" 2>/dev/null)" ]; then
+            echo "No Docker images found for host $HOST in deployment/docker/docker_images, skipping deployment"
+            continue
+          fi
+        fi
+        
+        #######################################
+        ############ Setup SSH Key ############
+        #######################################
+        mkdir -p devops/ssh
+        
+        if [[ -n "${HOST_SUFFIX}" ]]; then
+          SSH_SECRET_NAME="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_$(echo "${HOST_SUFFIX}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY"
+        else
+          SSH_SECRET_NAME="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY"
+        fi
+        
+        # Vérifier que la clé SSH existe
+        if [ -z "$(printenv "$SSH_SECRET_NAME")" ]; then
+          echo "SSH key $SSH_SECRET_NAME not found for host $HOST, skipping deployment"
+          continue
+        fi
+        
+        echo "$(printenv "$SSH_SECRET_NAME")" | tr -d '\r' > devops/ssh/remote_private_key
+        chmod 600 devops/ssh/*
+        
+        eval "$(ssh-agent -s)"
+        ssh-add devops/ssh/remote_private_key      
+        
+        #######################################
+        ############# Run Ansible #############
+        #######################################
+        cd devops
+        export ANSIBLE_HOST_KEY_CHECKING=False
+        export ANSIBLE_BECOME_PASSWORD=$ANSIBLE_BECOME_PASSWORD
+        
+        SKIP_TAGS="configure_host"
+        if [ ! -d "../deployment/templates/nginx" ] || [ -z "$(ls -A ../deployment/templates/nginx 2>/dev/null)" ]; then
+          echo "No nginx configuration found, skipping nginx role"
+          SKIP_TAGS="${SKIP_TAGS},nginx"
+        fi
+        
+        if [[ -n "${HOST_SUFFIX}" ]]; then
+          INVENTORY_HOST="${ENV}-${HOST_SUFFIX}"
+        else
+          INVENTORY_HOST="${ENV}"
+        fi
+        
+        if [[ -n "${HOST_SUFFIX}" ]]; then
+          cp deployment/docker/docker_images_${HOST_SUFFIX}/*.tar devops/docker_images/ 2>/dev/null || echo "No Docker images to copy for host $HOST"
+        else
+          cp deployment/docker/docker_images/*.tar devops/docker_images/ 2>/dev/null || echo "No Docker images to copy for host $HOST"
+        fi
+        
+        cp ansible/inventory.yml ansible/inventory_${HOST}.yml
+        sed -i "s/REMOTE_HOST/${INVENTORY_HOST}/g" ansible/inventory_${HOST}.yml
+        
+        echo "Deploying to $INVENTORY_HOST (host: $HOST)"
+        ansible-galaxy role install geerlingguy.docker
+        ansible-playbook ansible/deploy.yml -i ansible/inventory_${HOST}.yml --skip-tags "$SKIP_TAGS"
+        
+        rm -f ansible/inventory_${HOST}.yml
+        rm -rf docker_images/*
+        cd ..
+        echo "Deployment completed for host: $HOST"
+      done
       
 .build-docker-images:
   script:
     - |
-      cd deployment/docker
-
-      BUILD_CMDS=$(decomposerize compose-deploy.yml --docker-build)
-      PARALLEL_JOBS=$(nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 4)
-
-      build_image() {
-        local BUILD_CMD="$1"
-        echo "Running: $BUILD_CMD"
-        eval "$BUILD_CMD"
-
-        local IMAGE_NAME=$(echo "$BUILD_CMD" | sed -nE 's/.*-t\s+"?([^"]+)"?.*/\1/p')
-        IMAGE_NAME=$(eval echo "$IMAGE_NAME")
-        echo "Image built: $IMAGE_NAME"
-
-        if [[ "$ENV" != "build" ]]; then
-          local TAR_NAME="${IMAGE_NAME//:/-}.tar"
-          docker save -o "$TAR_NAME" "$IMAGE_NAME"
+      for HOST in $DEPLOYMENT_HOSTS; do
+        echo "========================================="
+        echo "Building Docker images for host: $HOST"
+        echo "========================================="
+        
+        if [[ "$HOST" == "main" ]]; then
+          HOST_SUFFIX=""
+        else
+          HOST_SUFFIX="$HOST"
         fi
-      }
+        
+        cd deployment/docker
+        
+        if [[ -n "${HOST_SUFFIX}" ]]; then
+          OUTPUT_DIR="docker_images_${HOST_SUFFIX}"
+        else
+          OUTPUT_DIR="docker_images"
+        fi
+        mkdir -p "$OUTPUT_DIR"
 
-      export -f build_image
+        if [[ -n "${HOST_SUFFIX}" ]]; then
+          if [ -f "../env/.env.${ENV}.${HOST_SUFFIX}" ]; then
+            echo "Loading host-specific configuration for ${HOST_SUFFIX}"
+            set -a
+            source "../env/.env.${ENV}.${HOST_SUFFIX}"
+            set +a
+          fi
+        fi
 
-      IMAGE_COUNT=$(echo "$BUILD_CMDS" | wc -l)
-      if [ "$IMAGE_COUNT" -gt 1 ]; then
-        echo "Detected $IMAGE_COUNT images to build. Running in parallel with $PARALLEL_JOBS jobs..."
-      
-        # Run builds in parallel
-        echo "$BUILD_CMDS" | parallel --jobs "$PARALLEL_JOBS" build_image
-      else
-        # Only one image, use the regular sequential approach
-        while IFS= read -r BUILD_CMD; do
-          build_image "$BUILD_CMD"
-        done <<< "$BUILD_CMDS"
-      fi
+        DECOMPOSERIZE_OPTIONS="--docker-build"
+        if [[ -n "$DEPLOY_DOCKER_SERVICES" ]]; then
+          echo "Building services for host ${HOST_SUFFIX:-main}: $DEPLOY_DOCKER_SERVICES"
+          DECOMPOSERIZE_OPTIONS="$DECOMPOSERIZE_OPTIONS --services=$DEPLOY_DOCKER_SERVICES"
+        fi
+
+        BUILD_CMDS=$(decomposerize compose-deploy.yml $DECOMPOSERIZE_OPTIONS)
+        
+        if [[ -z "$BUILD_CMDS" ]]; then
+          echo "No services to build for host ${HOST_SUFFIX:-main}"
+          cd ../..
+          continue
+        fi
+
+        PARALLEL_JOBS=$(nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 4)
+
+        build_image() {
+          local BUILD_CMD="$1"
+          local OUTPUT_DIR="$2"
+          echo "Running: $BUILD_CMD"
+          eval "$BUILD_CMD"
+
+          local IMAGE_NAME=$(echo "$BUILD_CMD" | sed -nE 's/.*-t\s+"?([^"]+)"?.*/\1/p')
+          IMAGE_NAME=$(eval echo "$IMAGE_NAME")
+          echo "Image built: $IMAGE_NAME"
+
+          if [[ "$ENV" != "build" ]]; then
+            local TAR_NAME="${IMAGE_NAME//:/-}.tar"
+            docker save -o "$OUTPUT_DIR/$TAR_NAME" "$IMAGE_NAME"
+            echo "Image saved: $OUTPUT_DIR/$TAR_NAME"
+          fi
+        }
+
+        export -f build_image
+
+        IMAGE_COUNT=$(echo "$BUILD_CMDS" | wc -l)
+        if [ "$IMAGE_COUNT" -gt 1 ]; then
+          echo "Detected $IMAGE_COUNT images to build for host ${HOST_SUFFIX:-main}. Running in parallel with $PARALLEL_JOBS jobs..."
+        
+          # Run builds in parallel
+          echo "$BUILD_CMDS" | parallel --jobs "$PARALLEL_JOBS" build_image {} "$OUTPUT_DIR"
+        else
+          # Only one image, use the regular sequential approach
+          while IFS= read -r BUILD_CMD; do
+            build_image "$BUILD_CMD" "$OUTPUT_DIR"
+          done <<< "$BUILD_CMDS"
+        fi
+        
+        cd ../..
+        echo "Build completed for host: $HOST"
+      done
