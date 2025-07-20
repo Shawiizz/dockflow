@@ -104,17 +104,19 @@ deployment/
 │   ├── compose-deploy.yml
 │   └── Dockerfile.[service_name]
 └── env/
-    └── .env.[env_name]
+    ├── .env.[env_name]
+    └── .env.[env_name].[host_name]
 ```
 
 **3. Add repository secrets:**
 - `ANSIBLE_BECOME_PASSWORD`: Ansible user password
 - `[ENV_NAME]_SSH_PRIVATE_KEY`: SSH private key for each environment
-- For multi-host: `[ENV_NAME]_[HOST]_SSH_PRIVATE_KEY`
+- For multi-host: `[ENV_NAME]_[HOST_NAME]_SSH_PRIVATE_KEY`
 
 **Notes:**
 - All secret names must be UPPERCASE
 - GitLab secrets must NOT be marked as protected
+- The base `.env.[env_name]` file automatically maps to the `main` host. Don't create additional `.env.[env_name].main` files.
 
 ## Deployment
 
