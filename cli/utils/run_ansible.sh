@@ -1,11 +1,11 @@
 #!/bin/bash
 
-source "$(dirname "$0")/functions.sh"
+source "$CLI_UTILS_DIR/functions.sh"
 
 configure_services() {
     print_heading "CONFIGURING SERVICES"
     
-    read -rp "Do you want to install Portainer? (y/n): " INSTALL_PORTAINER
+    read -rp "Do you want to install Portainer? (y/n) [default: n]: " INSTALL_PORTAINER
     
     if [[ "$INSTALL_PORTAINER" == "y" || "$INSTALL_PORTAINER" == "Y" ]]; then
         read -srp "Portainer password: " PORTAINER_PASSWORD
@@ -58,6 +58,14 @@ run_ansible_playbook() {
         echo "   ANSIBLE PLAYBOOK FAILED!"
         echo -e "===========================================================${NC}"
         echo -e "${YELLOW}The setup process encountered errors. Please check the logs above for details.${NC}"
+        echo ""
+        echo -e "${YELLOW}Here is the SSH private key for ansible user (keep it secure):${NC}"
+        if [ -f ~/.ssh/ansible_key ]; then
+            cat ~/.ssh/ansible_key
+        fi
+        echo ""
+        echo -e "${RED}You need to investigate and fix the errors before the machine can receive deployments.${NC}"
+        echo -e "${YELLOW}Once fixed, you may need to re-run the setup process.${NC}"
         exit 1
     fi
 }

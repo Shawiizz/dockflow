@@ -30,23 +30,31 @@ setup_machine() {
         export ANSIBLE_PASSWORD
         
         print_heading "SSH KEY FOR ANSIBLE USER"
-        echo "1) Use existing SSH key file"
+        echo "1) Use existing SSH key file (select from available keys)"
         echo "2) Paste SSH private key directly"
         echo "3) Generate new SSH key"
         read -rp "Choose option (1/2/3): " SSH_KEY_OPTION
         
         if [ "$SSH_KEY_OPTION" = "1" ]; then
-            # Use existing SSH key file
-            read -rp "Path to the ansible user's private key: " ANSIBLE_KEY_PATH
+            # Use existing SSH key file with selection
+            if ! list_and_select_ssh_key; then
+                print_warning "No SSH key selected or available. Exiting..."
+                exit 1
+            fi
+            
+            ANSIBLE_KEY_PATH="$SSH_PRIVATE_KEY_PATH"
+            
             if [ ! -f "$ANSIBLE_KEY_PATH" ]; then
                 print_warning "Private key not found at $ANSIBLE_KEY_PATH. Please check the path and try again."
                 exit 1
             fi
             
-            print_success "Copying key to ~/.ssh/ansible_key"
-            mkdir -p ~/.ssh
-            cp "$ANSIBLE_KEY_PATH" ~/.ssh/ansible_key
-            chmod 600 ~/.ssh/ansible_key
+            # Ensure correct permissions on the selected key
+            chmod 600 "$ANSIBLE_KEY_PATH"
+            print_success "Using SSH key: $(basename "$ANSIBLE_KEY_PATH")"
+            
+            # Set the path for Ansible to use
+            export ANSIBLE_PRIVATE_KEY_PATH="$ANSIBLE_KEY_PATH"
         elif [ "$SSH_KEY_OPTION" = "2" ]; then
             # Paste SSH key directly
             print_warning "Please paste your SSH private key for the ansible user (end with a new line followed by EOF):"

@@ -19,7 +19,7 @@ show_main_menu() {
     echo -e "==========================================================${NC}"
 
     print_heading "MAIN MENU"
-    echo "1) Setup a remote machine"
+    echo "1) Setup a remote machine or modify installation"
     echo "2) Setup a new project"
     read -rp "Choose option (1/2): " MAIN_OPTION
 

@@ -1,11 +1,57 @@
 #!/bin/bash
 
-source "$(dirname "$0")/functions.sh"
+source "$CLI_UTILS_DIR/functions.sh"
+
+list_and_select_ssh_key() {
+    local ssh_dir="$HOME/.ssh"
+    
+    if [ ! -d "$ssh_dir" ]; then
+        print_warning "SSH directory $ssh_dir not found"
+        return 1
+    fi
+    
+    # Find private key files (exclude .pub, known_hosts, config, etc.)
+    local private_keys=()
+    while IFS= read -r -d '' file; do
+        # Check if it's likely a private key (not .pub, not known_hosts, not config)
+        local basename=$(basename "$file")
+        if [[ ! "$basename" =~ \.(pub|known_hosts|config)$ ]] && [[ "$basename" != "known_hosts" ]] && [[ "$basename" != "config" ]]; then
+            # Additional check: private keys typically start with specific headers
+            if head -1 "$file" 2>/dev/null | grep -q "BEGIN.*PRIVATE KEY\|BEGIN OPENSSH PRIVATE KEY\|BEGIN RSA PRIVATE KEY\|BEGIN DSA PRIVATE KEY\|BEGIN EC PRIVATE KEY"; then
+                private_keys+=("$file")
+            fi
+        fi
+    done < <(find "$ssh_dir" -type f -print0 2>/dev/null)
+    
+    if [ ${#private_keys[@]} -eq 0 ]; then
+        print_warning "No private SSH keys found in $ssh_dir"
+        return 1
+    fi
+    
+    print_heading "AVAILABLE SSH PRIVATE KEYS"
+    for i in "${!private_keys[@]}"; do
+        local key_file="${private_keys[$i]}"
+        local key_name=$(basename "$key_file")
+        echo "$((i+1))) $key_name ($(dirname "$key_file")/$key_name)"
+    done
+    
+    local choice
+    while true; do
+        read -rp "Select a private key (1-${#private_keys[@]}): " choice
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#private_keys[@]} ]; then
+            SSH_PRIVATE_KEY_PATH="${private_keys[$((choice-1))]}"
+            print_success "Selected: $(basename "$SSH_PRIVATE_KEY_PATH")"
+            return 0
+        else
+            print_warning "Invalid selection. Please choose a number between 1 and ${#private_keys[@]}"
+        fi
+    done
+}
 
 get_ssh_connection() {
     print_heading "CONNECTION METHOD"
     echo "1) Use password authentication"
-    echo "2) Use SSH key authentication (file path)"
+    echo "2) Use SSH key authentication (select from available keys)"
     echo "3) Use SSH key authentication (paste directly)"
     echo "4) Generate new SSH key pair"
     read -rp "Choose connection method (1/2/3/4): " CONNECTION_METHOD
@@ -17,10 +63,13 @@ get_ssh_connection() {
         echo ""
         AUTH_METHOD="password"
     elif [ "$CONNECTION_METHOD" = "2" ]; then
-        # SSH key authentication from file
+        # SSH key authentication from file selection
         read -rp "Remote server username: " REMOTE_USER
-        read -rp "Path to your SSH private key [default: ~/.ssh/id_rsa]: " SSH_PRIVATE_KEY_PATH
-        SSH_PRIVATE_KEY_PATH=${SSH_PRIVATE_KEY_PATH:-~/.ssh/id_rsa}
+        
+        if ! list_and_select_ssh_key; then
+            print_warning "No SSH key selected or available. Exiting..."
+            exit 1
+        fi
         
         if [ ! -f "$SSH_PRIVATE_KEY_PATH" ]; then
             print_warning "Error: SSH key not found at $SSH_PRIVATE_KEY_PATH"
@@ -96,16 +145,31 @@ generate_ansible_ssh_key() {
         rm -rf "$TEMP_KEY_DIR"
     else
         # Ask for existing key
-        read -rp "Path to the ansible user's private key: " ANSIBLE_PRIVATE_KEY_PATH
+        print_heading "SELECT EXISTING ANSIBLE PRIVATE KEY"
+        if ! list_and_select_ssh_key; then
+            print_warning "No SSH key selected or available. Exiting..."
+            exit 1
+        fi
+        
+        ANSIBLE_PRIVATE_KEY_PATH="$SSH_PRIVATE_KEY_PATH"
+        
         if [ ! -f "$ANSIBLE_PRIVATE_KEY_PATH" ]; then
             print_warning "Private key not found at $ANSIBLE_PRIVATE_KEY_PATH"
             exit 1
         fi
         
-        read -rp "Path to the ansible user's public key: " ANSIBLE_PUBLIC_KEY_PATH
+        # Check if corresponding public key exists
+        ANSIBLE_PUBLIC_KEY_PATH="${ANSIBLE_PRIVATE_KEY_PATH}.pub"
         if [ ! -f "$ANSIBLE_PUBLIC_KEY_PATH" ]; then
             print_warning "Public key not found at $ANSIBLE_PUBLIC_KEY_PATH"
-            exit 1
+            print_warning "Trying to generate public key from private key..."
+            ssh-keygen -y -f "$ANSIBLE_PRIVATE_KEY_PATH" > "$ANSIBLE_PUBLIC_KEY_PATH" 2>/dev/null
+            if [ $? -eq 0 ]; then
+                print_success "Public key generated successfully"
+            else
+                print_warning "Failed to generate public key. Please ensure the private key is valid."
+                exit 1
+            fi
         fi
         
         ANSIBLE_PUBLIC_KEY=$(cat "$ANSIBLE_PUBLIC_KEY_PATH")

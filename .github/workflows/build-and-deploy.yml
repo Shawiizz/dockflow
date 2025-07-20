@@ -45,22 +45,34 @@ jobs:
           #######################################
           ###### Discover hosts to deploy #######
           #######################################
-          HOSTS="[]"
+          HOSTS_LIST=()
           BASE_FILE="deployment/env/.env.${ENVIRONMENT}"
           
           if [ -f "$BASE_FILE" ]; then
-            HOSTS=$(echo "$HOSTS" | jq '. + ["main"]')
+            HOSTS_LIST+=("main")
           fi
           
           for env_file in deployment/env/.env.${ENVIRONMENT}.*; do
             if [ -f "$env_file" ]; then
               SUFFIX=$(basename "$env_file" | sed "s/\.env\.${ENVIRONMENT}\.//")
-              HOSTS=$(echo "$HOSTS" | jq --arg suffix "$SUFFIX" '. + [$suffix]')
+              if [[ "$SUFFIX" != "${ENVIRONMENT}" ]]; then
+                HOSTS_LIST+=("$SUFFIX")
+              fi
             fi
           done
           
-          echo "hosts=$HOSTS" >> $GITHUB_OUTPUT
-          echo "Discovered hosts: $HOSTS"
+          HOSTS_JSON="["
+          for i in "${!HOSTS_LIST[@]}"; do
+            if [ $i -eq 0 ]; then
+              HOSTS_JSON="$HOSTS_JSON\"${HOSTS_LIST[$i]}\""
+            else
+              HOSTS_JSON="$HOSTS_JSON,\"${HOSTS_LIST[$i]}\""
+            fi
+          done
+          HOSTS_JSON="$HOSTS_JSON]"
+          
+          echo "hosts=$HOSTS_JSON" >> $GITHUB_OUTPUT
+          echo "Discovered hosts: $HOSTS_JSON"
 
   build-and-deploy:
     runs-on: ubuntu-latest

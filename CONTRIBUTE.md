@@ -40,6 +40,8 @@ The CLI image provides an interactive tool for server configuration.
 
 ### Building the CLI Image
 
+For Windows users, make sure all `.sh` files are in `LF` mode and not `CRLF`.       
+
 ```bash
 docker build -t shawiizz/devops-cli:latest -f cli/Dockerfile.cli .
 ```

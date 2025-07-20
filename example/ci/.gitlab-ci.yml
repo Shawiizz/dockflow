@@ -2,19 +2,12 @@ stages:
   # Build stage for continuous integration
   - build
 
-  # Jobs from option 1
-  - deploy-build
-  - deploy
-
-  # Job from option 2
+  # Build and deploy stage with automatic multi-host support
   - build-and-deploy
 
 include:
   # Continuous Integration (CI) template for building Docker images (not used for deployment)
   - remote: 'https://raw.githubusercontent.com/Shawiizz/devops-framework/refs/tags/1.0.25/.gitlab/workflows/build.yml'
 
-  # Option 1: Traditional two-step build & deploy (recommended for larger projects)
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops-framework/refs/tags/1.0.25/.gitlab/workflows/deploy.yml'
-  
-  # Option 2: Combined build and deploy in one job (faster but no intermediate artifacts)
+  # Build and deploy in one job with automatic multi-host support
   - remote: 'https://raw.githubusercontent.com/Shawiizz/devops-framework/refs/tags/1.0.25/.gitlab/workflows/build-and-deploy.yml'

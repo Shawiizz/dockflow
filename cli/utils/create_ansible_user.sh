@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source "$(dirname "$0")/functions.sh"
+source "$CLI_UTILS_DIR/functions.sh"
 
 setup_ansible_user() {
     print_heading "ANSIBLE USER SETUP"
