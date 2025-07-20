@@ -11,12 +11,12 @@ jobs:
   # Basic CI job to run on every push to branches (not used for deployment)
   build:
     if: github.ref_type == 'branch'
-    uses: Shawiizz/devops-framework/.github/workflows/build.yml@1.0.25
+    uses: Shawiizz/devops-framework/.github/workflows/build.yml@1.0.26
 
   # Build and deploy in one job with automatic multi-host support
   build-and-deploy:
     if: github.ref_type == 'tag'
-    uses: Shawiizz/devops-framework/.github/workflows/build-and-deploy.yml@1.0.25
+    uses: Shawiizz/devops-framework/.github/workflows/build-and-deploy.yml@1.0.26
     with:
       tag: ${{ github.ref_name }}
     secrets: inherit

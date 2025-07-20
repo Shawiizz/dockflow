@@ -10,7 +10,7 @@ on:
 
 env:
   DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops-framework.git
-  DEVOPS_FRAMEWORK_VERSION: 1.0.25
+  DEVOPS_FRAMEWORK_VERSION: 1.0.26
 
 jobs:
   discover-hosts:
@@ -118,21 +118,20 @@ jobs:
           done
 
           ENV="${{ steps.vars.outputs.env }}"
-          HOST="${{ steps.vars.outputs.host }}"
+          HOSTNAME="${{ steps.vars.outputs.host }}"
           
-          # Charger le fichier de base
+          #######################################
+          ######### Load env variables ##########
+          #######################################
           set -a
           source "deployment/env/.env.${ENV}"
-          set +a
           
-          # Si ce n'est pas l'hôte principal, charger aussi le fichier spécifique à l'hôte
-          if [[ "$HOST" != "main" ]]; then
-            if [ -f "deployment/env/.env.${ENV}.${HOST}" ]; then
-              set -a
-              source "deployment/env/.env.${ENV}.${HOST}"
-              set +a
+          if [[ "$HOSTNAME" != "main" ]]; then
+            if [ -f "deployment/env/.env.${ENV}.${HOSTNAME}" ]; then
+              source "deployment/env/.env.${ENV}.${HOSTNAME}"
             fi
           fi
+          set +a
           
           export ENV="${{ steps.vars.outputs.env }}"
           export VERSION="${{ steps.vars.outputs.tag }}"
@@ -140,25 +139,28 @@ jobs:
           #######################################
           ######### Build docker images #########
           #######################################
-          if [[ "$HOST" == "main" ]]; then
+          if [[ "$HOSTNAME" == "main" ]]; then
             bash devops/.github/scripts/build_docker_images.sh
           else
-            bash devops/.github/scripts/build_docker_images.sh --host="$HOST"
+            bash devops/.github/scripts/build_docker_images.sh --host="$HOSTNAME"
           fi
+
+          ######### Change working directory #########
+          cd devops
           
           #######################################
           ############ Setup SSH Key ############
           #######################################
-          mkdir -p devops/ssh
-          echo "${{ secrets[env.SSH_KEY_SECRET_NAME] }}" | tr -d '\r' > devops/ssh/remote_private_key
-          chmod 600 devops/ssh/*
+          
+          mkdir -p ssh
+          echo "${!SSH_KEY_SECRET_NAME}" | tr -d '\r' > ssh/remote_private_key
+          chmod 600 ssh/*
           eval "$(ssh-agent -s)"
-          ssh-add devops/ssh/remote_private_key
+          ssh-add ssh/remote_private_key
 
           #######################################
           ######### Deploy with Ansible #########
           #######################################
-          cd devops
           export ANSIBLE_HOST_KEY_CHECKING=False
           export ANSIBLE_BECOME_PASSWORD=${{ secrets.ANSIBLE_BECOME_PASSWORD }}
 
@@ -168,11 +170,10 @@ jobs:
             SKIP_TAGS="${SKIP_TAGS},nginx"
           fi
           
-          # Créer un inventaire spécifique pour cet hôte
-          if [[ "$HOST" == "main" ]]; then
+          if [[ "$HOSTNAME" == "main" ]]; then
             INVENTORY_HOST="${ENV}"
           else
-            INVENTORY_HOST="${ENV}-${HOST}"
+            INVENTORY_HOST="${ENV}-${HOSTNAME}"
           fi
           
           sed -i "s/REMOTE_HOST/${INVENTORY_HOST}/g" ansible/inventory.yml
