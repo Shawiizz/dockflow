@@ -43,14 +43,14 @@
         echo "========================================="
         
         if [[ "$HOST" == "main" ]]; then
-          HOST_SUFFIX=""
+          HOSTNAME=""
         else
-          HOST_SUFFIX="$HOST"
+          HOSTNAME="$HOST"
         fi
         
-        if [[ -n "${HOST_SUFFIX}" ]]; then
-          if [ ! -d "deployment/docker/docker_images_${HOST_SUFFIX}" ] || [ -z "$(ls -A "deployment/docker/docker_images_${HOST_SUFFIX}" 2>/dev/null)" ]; then
-            echo "No Docker images found for host $HOST in deployment/docker/docker_images_${HOST_SUFFIX}, skipping deployment"
+        if [[ -n "${HOSTNAME}" ]]; then
+          if [ ! -d "deployment/docker/docker_images_${HOSTNAME}" ] || [ -z "$(ls -A "deployment/docker/docker_images_${HOSTNAME}" 2>/dev/null)" ]; then
+            echo "No Docker images found for host $HOST in deployment/docker/docker_images_${HOSTNAME}, skipping deployment"
             continue
           fi
         else
@@ -65,8 +65,8 @@
         #######################################
         mkdir -p devops/ssh
         
-        if [[ -n "${HOST_SUFFIX}" ]]; then
-          SSH_SECRET_NAME="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_$(echo "${HOST_SUFFIX}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY"
+        if [[ -n "${HOSTNAME}" ]]; then
+          SSH_SECRET_NAME="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_$(echo "${HOSTNAME}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY"
         else
           SSH_SECRET_NAME="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY"
         fi
@@ -96,14 +96,14 @@
           SKIP_TAGS="${SKIP_TAGS},nginx"
         fi
         
-        if [[ -n "${HOST_SUFFIX}" ]]; then
-          INVENTORY_HOST="${ENV}-${HOST_SUFFIX}"
+        if [[ -n "${HOSTNAME}" ]]; then
+          INVENTORY_HOST="${ENV}-${HOSTNAME}"
         else
           INVENTORY_HOST="${ENV}"
         fi
         
-        if [[ -n "${HOST_SUFFIX}" ]]; then
-          cp deployment/docker/docker_images_${HOST_SUFFIX}/*.tar devops/docker_images/ 2>/dev/null || echo "No Docker images to copy for host $HOST"
+        if [[ -n "${HOSTNAME}" ]]; then
+          cp deployment/docker/docker_images_${HOSTNAME}/*.tar devops/docker_images/ 2>/dev/null || echo "No Docker images to copy for host $HOST"
         else
           cp deployment/docker/docker_images/*.tar devops/docker_images/ 2>/dev/null || echo "No Docker images to copy for host $HOST"
         fi
@@ -130,39 +130,39 @@
         echo "========================================="
         
         if [[ "$HOST" == "main" ]]; then
-          HOST_SUFFIX=""
+          HOSTNAME=""
         else
-          HOST_SUFFIX="$HOST"
+          HOSTNAME="$HOST"
         fi
         
         cd deployment/docker
         
-        if [[ -n "${HOST_SUFFIX}" ]]; then
-          OUTPUT_DIR="docker_images_${HOST_SUFFIX}"
+        if [[ -n "${HOSTNAME}" ]]; then
+          OUTPUT_DIR="docker_images_${HOSTNAME}"
         else
           OUTPUT_DIR="docker_images"
         fi
         mkdir -p "$OUTPUT_DIR"
 
-        if [[ -n "${HOST_SUFFIX}" ]]; then
-          if [ -f "../env/.env.${ENV}.${HOST_SUFFIX}" ]; then
-            echo "Loading host-specific configuration for ${HOST_SUFFIX}"
+        if [[ -n "${HOSTNAME}" ]]; then
+          if [ -f "../env/.env.${ENV}.${HOSTNAME}" ]; then
+            echo "Loading host-specific configuration for ${HOSTNAME}"
             set -a
-            source "../env/.env.${ENV}.${HOST_SUFFIX}"
+            source "../env/.env.${ENV}.${HOSTNAME}"
             set +a
           fi
         fi
 
         DECOMPOSERIZE_OPTIONS="--docker-build"
         if [[ -n "$DEPLOY_DOCKER_SERVICES" ]]; then
-          echo "Building services for host ${HOST_SUFFIX:-main}: $DEPLOY_DOCKER_SERVICES"
+          echo "Building services for host ${HOSTNAME:-main}: $DEPLOY_DOCKER_SERVICES"
           DECOMPOSERIZE_OPTIONS="$DECOMPOSERIZE_OPTIONS --services=$DEPLOY_DOCKER_SERVICES"
         fi
 
         BUILD_CMDS=$(decomposerize compose-deploy.yml $DECOMPOSERIZE_OPTIONS)
         
         if [[ -z "$BUILD_CMDS" ]]; then
-          echo "No services to build for host ${HOST_SUFFIX:-main}"
+          echo "No services to build for host ${HOSTNAME:-main}"
           cd ../..
           continue
         fi
@@ -190,7 +190,7 @@
 
         IMAGE_COUNT=$(echo "$BUILD_CMDS" | wc -l)
         if [ "$IMAGE_COUNT" -gt 1 ]; then
-          echo "Detected $IMAGE_COUNT images to build for host ${HOST_SUFFIX:-main}. Running in parallel with $PARALLEL_JOBS jobs..."
+          echo "Detected $IMAGE_COUNT images to build for host ${HOSTNAME:-main}. Running in parallel with $PARALLEL_JOBS jobs..."
         
           # Run builds in parallel
           echo "$BUILD_CMDS" | parallel --jobs "$PARALLEL_JOBS" build_image {} "$OUTPUT_DIR"

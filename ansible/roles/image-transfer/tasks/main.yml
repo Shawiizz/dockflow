@@ -1,7 +1,7 @@
 ---
 - name: Determine docker images directory based on host
   set_fact:
-    docker_images_path: "{{ '../../docker_images_' + lookup('env', 'HOST_SUFFIX') if lookup('env', 'HOST_SUFFIX') and lookup('env', 'HOST_SUFFIX') != 'main' else '../../docker_images' }}"
+    docker_images_path: "{{ '../../docker_images_' + lookup('env', 'HOSTNAME') if lookup('env', 'HOSTNAME') and lookup('env', 'HOSTNAME') != 'main' else '../../docker_images' }}"
 
 - name: List all .tar files on local server (where Ansible is running)
   find:

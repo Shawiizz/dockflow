@@ -10,7 +10,7 @@ on:
 
 env:
   DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops-framework.git
-  DEVOPS_FRAMEWORK_VERSION: 1.0.26
+  DEVOPS_FRAMEWORK_VERSION: 1.0.27
 
 jobs:
   discover-hosts:
@@ -118,7 +118,7 @@ jobs:
           done
 
           ENV="${{ steps.vars.outputs.env }}"
-          HOSTNAME="${{ steps.vars.outputs.host }}"
+          export HOSTNAME="${{ steps.vars.outputs.host }}"
           
           #######################################
           ######### Load env variables ##########
