@@ -35,13 +35,17 @@ Deploy Docker applications to servers using GitLab/GitHub CI/CD and Ansible. Sup
 
 ## How it works
 
+**Compatibility:**
+- GitHub Actions
+- GitLab CI
+
 **Features:**
 - Multi-environment deployment (production, staging, etc.)
 - Multi-host deployment within same environment
 - Multi-container deployment from single repository
 - Environment isolation using `${ENV}` variable
 - SSH keys and secrets management
-- Support for GitHub Actions and GitLab CI
+- Ready-to-use separated CI/CD jobs (build validation + deployment)
 - Custom Nginx configurations deployment via templates
 - Linux services deployment and management
 - Automated script execution on remote servers
@@ -89,6 +93,10 @@ Manual setup: [See detailed instructions](./MANUAL-REMOTE-SETUP.md)
 
 ⚠️ **GitHub users**: Fork this repository and update the `uses` URL in the workflow file if your repository is in an organization.
 
+**Available CI/CD jobs:**
+- **build:** Validates Docker images build on every push
+- **deploy:** Deploys to target environment when pushing tags
+
 **2. Create project structure:**
 ```
 deployment/
@@ -126,7 +134,7 @@ The framework will:
 
 ### Environment files
 
-Create `.env.[env_name]` files with required variables:
+Create `deployment/env/.env.[env_name]` files with required variables:
 
 ```bash
 HOST=192.168.1.10              # Server IP or CI secret reference
@@ -169,7 +177,7 @@ REDIS_URL=redis://host-a:6379  # Add host-specific variable
 
 ### Compose file
 
-Your `compose-deploy.yml` can use environment variables:
+Your `deployment/docker/compose-deploy.yml` can use environment variables:
 
 ```yaml
 services:
@@ -177,7 +185,7 @@ services:
     image: my-app-${ENV}:${VERSION}
     environment:
       ENV: ${ENV}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_PASSWORD: ${DB_PASSWORD} # DB_PASSWORD can be defined in .env file or from CI secrets
     ports:
       - "${APP_PORT}:3000"
     networks:
@@ -192,9 +200,9 @@ networks:
 
 Create custom configurations in `deployment/templates/`:
 
-**Nginx:** `nginx/[name].conf.j2`
-**Services:** `services/[name].service.j2`
-**Scripts:** `scripts/[name].sh.j2`
+**Nginx:** `nginx/[name].conf.j2`     
+**Services:** `services/[name].service.j2`      
+**Scripts:** `scripts/[name].sh.j2`     
 
 All templates support Jinja2 syntax and can access environment variables.    
 
@@ -202,7 +210,7 @@ All templates support Jinja2 syntax and can access environment variables.
 
 ## Examples
 
-**Example files:** Check `example/deployment/` folder for complete configuration examples.
+**Example files:** Check `example/deployment/` folder for configuration examples.
 
 **Real projects using this framework:**
 - [MohistMC Frontend](https://github.com/MohistMC/mohistmc-frontend)

@@ -2,12 +2,12 @@ stages:
   # Build stage for continuous integration
   - build
 
-  # Build and deploy stage with automatic multi-host support
-  - build-and-deploy
+  # Deploy your application on tag push
+  - deploy
 
 include:
   # Continuous Integration (CI) template for building Docker images (not used for deployment)
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops-framework/refs/tags/1.0.27/.gitlab/workflows/build.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops-framework/refs/tags/1.0.28/.gitlab/workflows/build.yml'
 
-  # Build and deploy in one job with automatic multi-host support
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops-framework/refs/tags/1.0.27/.gitlab/workflows/build-and-deploy.yml'
+  # Deploy your application on tag push
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops-framework/refs/tags/1.0.28/.gitlab/workflows/deploy.yml'
