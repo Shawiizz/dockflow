@@ -55,9 +55,10 @@ Deploy Docker applications to servers using GitLab/GitHub CI/CD and Ansible. Sup
 2. Transfer images directly to target servers
 3. Ansible manages the deployment process
 
-**Tags deployment triggers:**
+**Deployment triggers:**
 - `X.Y.Z` → deploys to `production`
 - `X.Y.Z-[env_name]` → deploys to specified environment
+- Trigger on direct branch push → deploys to `production`
 
 ## Server setup
 
@@ -120,12 +121,15 @@ deployment/
 
 ## Deployment
 
-Create and push a git tag:
+**Via Git tags:**
 ```bash
 git tag 1.0.0              # Deploy to production
 git tag 1.0.0-staging      # Deploy to staging
 git push origin --tags
 ```
+
+**Via branch push:**
+You can also trigger deployments when pushing to a branch directly. This automatically deploys to the `production` environment.
 
 The framework will:
 1. Build your Docker images
