@@ -45,7 +45,7 @@
 .deploy-with-ansible:
   after_script:
     - |
-      git clone --branch "$DEVOPS_FRAMEWORK_VERSION" "$DEVOPS_REPOSITORY_URL" devops
+      git clone --branch "$DEVOPS_FRAMEWORK_VERSION" "$DEVOPS_REPOSITORY_URL" devops-framework
       
       for HOST in $DEPLOYMENT_HOSTS; do
         echo "========================================="
@@ -73,7 +73,7 @@
         #######################################
         ############ Setup SSH Key ############
         #######################################
-        mkdir -p devops/ssh
+        mkdir -p devops-framework/ssh
         
         if [[ -n "${HOSTNAME}" ]]; then
           SSH_SECRET_NAME="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_$(echo "${HOSTNAME}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY"
@@ -87,16 +87,16 @@
           continue
         fi
         
-        echo "$(printenv "$SSH_SECRET_NAME")" | tr -d '\r' > devops/ssh/remote_private_key
-        chmod 600 devops/ssh/*
+        echo "$(printenv "$SSH_SECRET_NAME")" | tr -d '\r' > devops-framework/ssh/remote_private_key
+        chmod 600 devops-framework/ssh/*
         
         eval "$(ssh-agent -s)"
-        ssh-add devops/ssh/remote_private_key      
+        ssh-add devops-framework/ssh/remote_private_key      
         
         #######################################
         ############# Run Ansible #############
         #######################################
-        cd devops
+        cd devops-framework
         export ANSIBLE_HOST_KEY_CHECKING=False
         export ANSIBLE_BECOME_PASSWORD=$ANSIBLE_BECOME_PASSWORD
         
@@ -110,12 +110,6 @@
           INVENTORY_HOST="${ENV}-${HOSTNAME}"
         else
           INVENTORY_HOST="${ENV}"
-        fi
-        
-        if [[ -n "${HOSTNAME}" ]]; then
-          cp deployment/docker/docker_images_${HOSTNAME}/*.tar devops/docker_images/ 2>/dev/null || echo "No Docker images to copy for host $HOST"
-        else
-          cp deployment/docker/docker_images/*.tar devops/docker_images/ 2>/dev/null || echo "No Docker images to copy for host $HOST"
         fi
         
         cp ansible/inventory.yml ansible/inventory_${HOST}.yml

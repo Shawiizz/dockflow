@@ -14,13 +14,15 @@ for arg in "$@"; do
   esac
 done
 
+cd deployment/docker
+
 if [[ -n "$HOST_SUFFIX" ]]; then
-  OUTPUT_DIR="../../docker_images_${HOST_SUFFIX}"
+  OUTPUT_DIR="docker_images_${HOST_SUFFIX}"
 else
-  OUTPUT_DIR="../../docker_images"
+  OUTPUT_DIR="docker_images"
 fi
 
-cd deployment/docker
+mkdir -p "$(dirname "$OUTPUT_DIR")"
 
 DECOMPOSERIZE_OPTIONS="--docker-build"
 if [[ -n "$DEPLOY_DOCKER_SERVICES" ]]; then
@@ -49,13 +51,25 @@ build_image() {
   if [[ "$ENV" != "build" ]]; then
     local TAR_NAME="${IMAGE_NAME//:/-}.tar"
     
+    if [[ -z "$OUTPUT_DIR" ]]; then
+      echo "Error: OUTPUT_DIR is empty"
+      return 1
+    fi
+    
     mkdir -p "$OUTPUT_DIR"
+    
+    if [[ ! -w "$OUTPUT_DIR" ]]; then
+      echo "Error: No write permission for $OUTPUT_DIR"
+      return 1
+    fi
+    
     docker save -o "$OUTPUT_DIR/$TAR_NAME" "$IMAGE_NAME"
     echo "Image saved to: $(realpath "$OUTPUT_DIR/$TAR_NAME")"
   fi
 }
 
 export -f build_image
+export OUTPUT_DIR
 
 IMAGE_COUNT=$(echo "$BUILD_CMDS" | wc -l)
 if [ "$IMAGE_COUNT" -gt 1 ]; then
