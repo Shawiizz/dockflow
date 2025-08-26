@@ -26,4 +26,4 @@ jobs:
         run: |
           export ENV=build
           export VERSION=build
-          bash devops/.github/scripts/build_docker_images.sh
+          bash devops-framework/.github/scripts/build_docker_images.sh
