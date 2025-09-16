@@ -14,7 +14,7 @@ for arg in "$@"; do
   esac
 done
 
-cd deployment/docker
+cd .deployment/docker
 
 if [[ -n "$HOST_SUFFIX" ]]; then
   OUTPUT_DIR="docker_images_${HOST_SUFFIX}"
@@ -28,6 +28,9 @@ DECOMPOSERIZE_OPTIONS="--docker-build"
 if [[ -n "$DEPLOY_DOCKER_SERVICES" ]]; then
   echo "Building services for host ${HOST_SUFFIX:-main}: $DEPLOY_DOCKER_SERVICES"
   DECOMPOSERIZE_OPTIONS="$DECOMPOSERIZE_OPTIONS --services=$DEPLOY_DOCKER_SERVICES"
+fi
+if [[ -z "$FRAMEWORK_OPTIONS_ENVIRONMENTIZE" || "$FRAMEWORK_OPTIONS_ENVIRONMENTIZE" == "true" ]]; then
+  DECOMPOSERIZE_OPTIONS="$DECOMPOSERIZE_OPTIONS --environmentize"
 fi
 
 BUILD_CMDS=$(decomposerize compose-deploy.yml $DECOMPOSERIZE_OPTIONS)

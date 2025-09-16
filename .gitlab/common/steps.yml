@@ -21,15 +21,25 @@
         export VERSION=$VERSION
       fi
       
-      if [ ! -f "deployment/env/.env.${ENV}" ]; then
-          echo "File deployment/env/.env.${ENV} does not exist, cannot execute on unknown environment"
+      if [ ! -f ".deployment/env/.env.${ENV}" ]; then
+          echo "File .deployment/env/.env.${ENV} does not exist, cannot execute on unknown environment"
           exit 1
+      fi
+
+      #######################################
+      ### Load framework config options #####
+      #######################################
+      if [ -f ".deployment/config.yml" ]; then
+        echo "Loading framework configuration options from .deployment/config.yml"
+        export $(yq e '.options | to_entries | map("FRAMEWORK_OPTIONS_" + .key + "=" + .value) | join(" ")' .deployment/config.yml | awk -F= '{printf "%s=%s ", toupper($1), $2}')
+      else
+        echo "No .deployment/config.yml found, skipping framework configuration options"
       fi
 
       echo "Discovering hosts for environment: $ENV"
       DEPLOYMENT_HOSTS="main"
       
-      for env_file in deployment/env/.env.${ENV}.*; do
+      for env_file in .deployment/env/.env.${ENV}.*; do
         if [ -f "$env_file" ]; then
           SUFFIX=$(basename "$env_file" | sed "s/\.env\.${ENV}\.//")
           if [[ "$SUFFIX" != "${ENV}" ]]; then
@@ -59,13 +69,13 @@
         fi
         
         if [[ -n "${HOSTNAME}" ]]; then
-          if [ ! -d "deployment/docker/docker_images_${HOSTNAME}" ] || [ -z "$(ls -A "deployment/docker/docker_images_${HOSTNAME}" 2>/dev/null)" ]; then
-            echo "No Docker images found for host $HOST in deployment/docker/docker_images_${HOSTNAME}, skipping deployment"
+          if [ ! -d ".deployment/docker/docker_images_${HOSTNAME}" ] || [ -z "$(ls -A ".deployment/docker/docker_images_${HOSTNAME}" 2>/dev/null)" ]; then
+            echo "No Docker images found for host $HOST in .deployment/docker/docker_images_${HOSTNAME}, skipping deployment"
             continue
           fi
         else
-          if [ ! -d "deployment/docker/docker_images" ] || [ -z "$(ls -A "deployment/docker/docker_images" 2>/dev/null)" ]; then
-            echo "No Docker images found for host $HOST in deployment/docker/docker_images, skipping deployment"
+          if [ ! -d ".deployment/docker/docker_images" ] || [ -z "$(ls -A ".deployment/docker/docker_images" 2>/dev/null)" ]; then
+            echo "No Docker images found for host $HOST in .deployment/docker/docker_images, skipping deployment"
             continue
           fi
         fi
@@ -101,7 +111,7 @@
         export ANSIBLE_BECOME_PASSWORD=$ANSIBLE_BECOME_PASSWORD
         
         SKIP_TAGS="configure_host"
-        if [ ! -d "../deployment/templates/nginx" ] || [ -z "$(ls -A ../deployment/templates/nginx 2>/dev/null)" ]; then
+        if [ ! -d "../.deployment/templates/nginx" ] || [ -z "$(ls -A ../.deployment/templates/nginx 2>/dev/null)" ]; then
           echo "No nginx configuration found, skipping nginx role"
           SKIP_TAGS="${SKIP_TAGS},nginx"
         fi
@@ -139,7 +149,7 @@
           HOSTNAME="$HOST"
         fi
         
-        cd deployment/docker
+        cd .deployment/docker
         
         if [[ -n "${HOSTNAME}" ]]; then
           OUTPUT_DIR="docker_images_${HOSTNAME}"
@@ -161,6 +171,9 @@
         if [[ -n "$DEPLOY_DOCKER_SERVICES" ]]; then
           echo "Building services for host ${HOSTNAME:-main}: $DEPLOY_DOCKER_SERVICES"
           DECOMPOSERIZE_OPTIONS="$DECOMPOSERIZE_OPTIONS --services=$DEPLOY_DOCKER_SERVICES"
+        fi
+        if [[ -z "$FRAMEWORK_OPTIONS_ENVIRONMENTIZE" || "$FRAMEWORK_OPTIONS_ENVIRONMENTIZE" == "true" ]]; then
+          DECOMPOSERIZE_OPTIONS="$DECOMPOSERIZE_OPTIONS --environmentize"
         fi
 
         BUILD_CMDS=$(decomposerize compose-deploy.yml $DECOMPOSERIZE_OPTIONS)

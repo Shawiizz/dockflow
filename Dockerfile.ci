@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-venv \
     git \
+    wget \
     parallel \
     && apt clean \
     && rm -rf /var/lib/apt/lists/*
@@ -27,5 +28,8 @@ RUN apt-add-repository ppa:ansible/ansible -y
 RUN apt update && apt install -y ansible
 
 RUN npm install -g shawiizz-decomposerize
+
+RUN wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq &&\
+    chmod +x /usr/local/bin/yq
 
 RUN apt clean && rm -rf /var/lib/apt/lists/*
