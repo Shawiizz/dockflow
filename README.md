@@ -10,7 +10,7 @@
 **Automated Docker deployment via CI/CD pipelines**
 
 [![License](https://img.shields.io/badge/License-MIT-00b0ff.svg?style=for-the-badge&logo=opensourceinitiative&logoColor=white)](https://opensource.org/licenses/MIT)
-![Version](https://img.shields.io/github/v/tag/Shawiizz/devops-framework?style=for-the-badge&logo=semver&logoColor=white&label=Latest%20Version&color=6F42C1)
+![Version](https://img.shields.io/github/v/tag/Shawiizz/devops-framework?style=for-the-badge&logo=semver&logoColor=white&label=Latest%20Release&color=6F42C1&filter=!*-dev*)
 
 </div>
 
