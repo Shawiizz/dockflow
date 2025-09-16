@@ -10,13 +10,13 @@ setup_project() {
     
     # Create directory structure
     mkdir -p "$CLI_PROJECT_DIR/ci"
-    mkdir -p "$CLI_PROJECT_DIR/deployment/docker"
-    mkdir -p "$CLI_PROJECT_DIR/deployment/env"
-    mkdir -p "$CLI_PROJECT_DIR/deployment/templates/nginx"
-    mkdir -p "$CLI_PROJECT_DIR/deployment/templates/scripts"
+    mkdir -p "$CLI_PROJECT_DIR/.deployment/docker"
+    mkdir -p "$CLI_PROJECT_DIR/.deployment/env"
+    mkdir -p "$CLI_PROJECT_DIR/.deployment/templates/nginx"
+    mkdir -p "$CLI_PROJECT_DIR/.deployment/templates/scripts"
     
     # Create .env.production with required configuration
-    ENV_PROD_FILE="$CLI_PROJECT_DIR/deployment/env/.env.production"
+    ENV_PROD_FILE="$CLI_PROJECT_DIR/.deployment/env/.env.production"
     if [ ! -f "$ENV_PROD_FILE" ]; then
         echo "HOST=to_replace" > "$ENV_PROD_FILE"
         echo "ANSIBLE_USER=ansible|to_replace" >> "$ENV_PROD_FILE"
@@ -45,8 +45,8 @@ setup_project() {
         fi
     fi
     
-    create_empty_file_if_not_exists "$CLI_PROJECT_DIR/deployment/docker/compose-deploy.yml"
-    create_empty_file_if_not_exists "$CLI_PROJECT_DIR/deployment/docker/Dockerfile.to_replace"
+    create_empty_file_if_not_exists "$CLI_PROJECT_DIR/.deployment/docker/compose-deploy.yml"
+    create_empty_file_if_not_exists "$CLI_PROJECT_DIR/.deployment/docker/Dockerfile.to_replace"
     
     print_success "Project structure set up successfully"
 }

@@ -1,0 +1,24 @@
+{
+  "name": "devops-framework",
+  "version": "1.0.33-dev2",
+  "ciImageVersion": "1.0.4-dev1",
+  "description": "DevOps Framework for automated deployment and CI/CD",
+  "scripts": {
+    "version:dev": "node scripts/version-manager.js dev",
+    "version:release": "node scripts/version-manager.js release",
+    "version:downgrade": "node scripts/version-manager.js downgrade",
+    "ci-image:dev": "node scripts/version-manager.js dev --ci-image",
+    "ci-image:release": "node scripts/version-manager.js release --ci-image",
+    "ci-image:downgrade": "node scripts/version-manager.js downgrade --ci-image"
+  },
+  "devDependencies": {
+    "fs": "^0.0.1-security",
+    "path": "^0.12.7"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Shawiizz/devops-framework.git"
+  },
+  "author": "Shawiizz",
+  "license": "MIT"
+}

@@ -100,7 +100,7 @@ Manual setup: [See detailed instructions](./MANUAL-REMOTE-SETUP.md)
 
 **2. Create project structure:**
 ```
-deployment/
+.deployment/
 ├── docker/
 │   ├── compose-deploy.yml
 │   └── Dockerfile.[service_name]
@@ -140,7 +140,7 @@ The framework will:
 
 ### Environment files
 
-Create `deployment/env/.env.[env_name]` files with required variables:
+Create `.deployment/env/.env.[env_name]` files with required variables:
 
 ```bash
 HOST=192.168.1.10              # Server IP or CI secret reference
@@ -160,7 +160,7 @@ You can also pass `$DB_SECRET` within env part of you docker compose file instea
 Deploy to multiple servers in the same environment:
 
 ```
-deployment/env/
+.deployment/env/
 ├── .env.production            # Main host
 ├── .env.production.a          # Host A
 ├── .env.production.b          # Host B
@@ -183,28 +183,107 @@ REDIS_URL=redis://host-a:6379  # Add host-specific variable
 
 ### Compose file
 
-Your `deployment/docker/compose-deploy.yml` can use environment variables:
+The `.deployment/docker/compose-deploy.yml` file can use environment variables.
 
+#### Standard compose file (recommended)
 ```yaml
 services:
-  app:
-    image: my-app-${ENV}:${VERSION}
+  db:
+    image: db
+    build:
+      context: ../..
+      dockerfile: Dockerfile.db
+    container_name: db # Optional, container_name is set as image name without tag by default
+    restart: always
     environment:
-      ENV: ${ENV}
+      POSTGRES_PASSWORD: ${DB_PASSWORD} # DB_PASSWORD can be defined in .env file or from CI secrets
+    ports:
+      - "${DB_EXTERNAL_PORT}:5432" # DB_EXTERNAL_PORT can be defined in .env file or from CI secrets
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - sample-network
+
+  app:
+    image: my-app
+    build:
+      context: ../..
+      dockerfile: Dockerfile.app
+    container_name: my-app # Optional, container_name is set as image name without tag by default
+    environment:
+      ENV: ${ENV} # Pass the current env to your app (if needed)
+      DB_HOST: my-app # Use db's container name as a network access for the database
       DB_PASSWORD: ${DB_PASSWORD} # DB_PASSWORD can be defined in .env file or from CI secrets
     ports:
-      - "${APP_PORT}:3000"
+      - "${APP_PORT}:3000" # APP_PORT can be defined inside .env file or CI secrets
     networks:
-      - network-${ENV}
+      - sample-network
+
+volumes:
+  postgres-data:
 
 networks:
-  network-${ENV}:
+  sample-network:
+    driver: bridge
+```
+
+**Environment isolation:**
+
+By default, the framework automatically adds `${ENV}` and `${VERSION}` to your image names, container names, volumes, and networks for environment isolation. This is done transparently during deployment.
+
+**To use manual environment variables:**
+
+Create `.deployment/config.yml`:
+```yaml
+options:
+  environmentize: false
+```
+
+Then manually add `${ENV}` and `${VERSION}` where needed for separation:
+```yaml
+services:
+  db:
+    image: db-${ENV}:${VERSION}
+    build:
+      context: ../..
+      dockerfile: Dockerfile.db
+    container_name: db-${ENV} # Optional, container_name is set as image name without tag by default
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD} # DB_PASSWORD can be defined in .env file or from CI secrets
+    ports:
+      - "${DB_EXTERNAL_PORT}:5432" # DB_EXTERNAL_PORT can be defined in .env file or from CI secrets
+    volumes:
+      - postgres-data-${ENV}:/var/lib/postgresql/data
+    networks:
+      - sample-network-${ENV}
+
+  app:
+    image: my-app-${ENV}:${VERSION}
+    build:
+      context: ../..
+      dockerfile: Dockerfile.app
+    container_name: my-app-${ENV} # Optional, container_name is set as image name without tag by default
+    environment:
+      ENV: ${ENV} # Pass the current env to your app (if needed)
+      DB_HOST: my-app-${ENV} # Use db's container name as a network access for the database
+      DB_PASSWORD: ${DB_PASSWORD} # DB_PASSWORD can be defined in .env file or from CI secrets
+    ports:
+      - "${APP_PORT}:3000" # APP_PORT can be defined inside .env file or CI secrets
+    networks:
+      - sample-network-${ENV}
+
+volumes:
+  postgres-data-${ENV}:
+
+networks:
+  sample-network-${ENV}:
     driver: bridge
 ```
 
 ### Advanced templates
 
-Create custom configurations in `deployment/templates/`:
+Create custom configurations in `.deployment/templates/`:
 
 **Nginx:** `nginx/[name].conf.j2`     
 **Services:** `services/[name].service.j2`      
@@ -216,7 +295,7 @@ All templates support Jinja2 syntax and can access environment variables.
 
 ## Examples
 
-**Example files:** Check `example/deployment/` folder for configuration examples.
+**Example files:** Check `example/.deployment/` folder for configuration examples.
 
 **Real projects using this framework:**
 - [MohistMC Frontend](https://github.com/MohistMC/mohistmc-frontend)
