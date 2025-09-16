@@ -8,7 +8,7 @@
     deploy_services: "{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true) }}"
     services_option: "{{ '--services=' + deploy_services if deploy_services else '' }}"
     environmentize: "{{ lookup('env', 'FRAMEWORK_OPTIONS_ENVIRONMENTIZE') | default('', true) }}"
-    environmentize_option: "{{ '--environmentize' + environmentize if environmentize else '' }}"
+    environmentize_option: "{{ '--environmentize' if environmentize else '' }}"
     decomposerize_types:
       - name: "setup"
         base_options: "--create-networks --create-volumes --stop-and-remove"

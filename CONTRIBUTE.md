@@ -70,16 +70,16 @@ This project includes an automated version management system that handles versio
 
 **Framework Version:**
 - **`npm run version:dev`** - Adds or increments development version
-  - `1.0.33` → `1.0.33-dev1`
-  - `1.0.33-dev1` → `1.0.33-dev2`
+  - `1.0.33-dev3` → `1.0.33-dev3-dev1`
+  - `1.0.33-dev3-dev1` → `1.0.33-dev3`
 
 - **`npm run version:release`** - Creates release version
-  - `1.0.33-dev1` → `1.0.34`
-  - `1.0.33` → `1.0.34`
+  - `1.0.33-dev3-dev1` → `1.0.33-dev3`
+  - `1.0.33-dev3` → `1.0.33-dev3`
 
 - **`npm run version:downgrade`** - Decrements version
-  - `1.0.33-dev2` → `1.0.33-dev1`
-  - `1.0.33-dev1` → `1.0.33` (removes dev)
+  - `1.0.33-dev3` → `1.0.33-dev3-dev1`
+  - `1.0.33-dev3-dev1` → `1.0.33-dev3` (removes dev)
 
 **CI Docker Image Version:**
 - **`npm run ci-image:dev`** - Adds or increments CI Docker image development version
