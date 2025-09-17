@@ -4,10 +4,10 @@
   vars:    
     compose_path: "../../.deployment/docker/compose-deploy.yml"
     tmp_dir: "/tmp"
-    global_no_log: {{ not (lookup('env', 'FRAMEWORK_OPTIONS_ENABLE_DEBUG_LOGS') | default('false') | bool) }}
+    global_no_log: "{{ not (lookup('env', 'FRAMEWORK_OPTIONS_ENABLE_DEBUG_LOGS') | default('false') | bool) }}"
     deploy_services: "{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true) }}"
     services_option: "{{ '--services=' + deploy_services if deploy_services else '' }}"
-    environmentize: {{ (lookup('env', 'FRAMEWORK_OPTIONS_ENVIRONMENTIZE') | default('true', true)) | bool }}
+    environmentize: "{{ (lookup('env', 'FRAMEWORK_OPTIONS_ENVIRONMENTIZE') | default('true', true)) | bool }}"
     environmentize_option: "{{ '--environmentize' if (environmentize | bool) else '' }}"
     decomposerize_types:
       - name: "setup"
