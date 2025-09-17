@@ -6,4 +6,4 @@
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
     DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops-framework.git
-    DEVOPS_FRAMEWORK_VERSION: 1.0.33-dev4
+    DEVOPS_FRAMEWORK_VERSION: 1.0.33-dev5
