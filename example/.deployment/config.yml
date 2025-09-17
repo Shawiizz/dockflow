@@ -1,2 +1,3 @@
 options:
   environmentize: true
+  enable_debug_logs: false
