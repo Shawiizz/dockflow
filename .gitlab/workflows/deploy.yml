@@ -1,6 +1,6 @@
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops-framework/refs/tags/1.0.33-dev10/.gitlab/common/steps.yml'
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops-framework/refs/tags/1.0.33-dev10/.gitlab/common/variables.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops-framework/refs/tags/1.0.34/.gitlab/common/steps.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops-framework/refs/tags/1.0.34/.gitlab/common/variables.yml'
 
 stages:
   - deploy
