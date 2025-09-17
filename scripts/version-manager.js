@@ -134,8 +134,8 @@ class VersionManager {
         const allFiles = this.findFilesRecursively(process.cwd());
         const filesWithVersion = [];
         
-        const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const versionRegex = new RegExp(escapedVersion, 'g');
+        const versionPattern = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const versionRegex = new RegExp(versionPattern, 'g');
         
         for (const filePath of allFiles) {
             if (filePath === this.packageJsonPath) continue;
@@ -149,10 +149,16 @@ class VersionManager {
                         filesWithVersion.push(filePath);
                     }
                 } else {
-                    // For normal mode, look for general version
-                    if (versionRegex.test(content) && !content.includes(`shawiizz/devops-ci:${version}`)) {
+                    // For normal mode, just check if the version appears anywhere (but not in Docker images)
+                    const hasVersion = versionRegex.test(content);
+                    const hasDockerImage = content.includes(`shawiizz/devops-ci:${version}`);
+                    
+                    if (hasVersion && !hasDockerImage) {
                         filesWithVersion.push(filePath);
                     }
+                    
+                    // Reset regex state for next iteration
+                    versionRegex.lastIndex = 0;
                 }
             } catch (error) {
                 console.warn(`⚠ Cannot read ${filePath}: ${error.message}`);
@@ -186,7 +192,7 @@ class VersionManager {
                     content = content.replace(new RegExp(`shawiizz/devops-ci:${oldVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'), `shawiizz/devops-ci:${newVersion}`);
                     content = content.replace(new RegExp(`devops-ci:${oldVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'), `devops-ci:${newVersion}`);
                 } else {
-                    // For normal mode, replace general version but avoid Docker images
+                    // For normal mode, simply replace all occurrences of the version (except in Docker images)
                     const lines = content.split('\n');
                     const updatedLines = lines.map(line => {
                         if (line.includes('shawiizz/devops-ci:') || line.includes('devops-ci:')) {
