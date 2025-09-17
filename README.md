@@ -281,6 +281,20 @@ networks:
     driver: bridge
 ```
 
+### Configuration file
+
+Create `.deployment/config.yml` to customize framework behavior:
+
+```yaml
+options:
+  environmentize: true        # Auto-add ENV/VERSION to names (default: true)
+  enable_debug_logs: false   # Enable detailed deployment logs (default: false)
+```
+
+**Options explained:**
+- **`environmentize`**: When `true`, automatically adds `${ENV}` and `${VERSION}` to image names, container names, volumes, and networks for environment isolation. Set to `false` if you want to manually manage environment variables. (Read the "Compose file" part to learn more about this option)
+- **`enable_debug_logs`**: When `true`, enables verbose logging during Ansible deployment for troubleshooting purposes.
+
 ### Advanced templates
 
 Create custom configurations in `.deployment/templates/`:
