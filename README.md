@@ -20,7 +20,7 @@ Deploy Docker applications to servers using GitLab/GitHub CI/CD and Ansible. Sup
 
 ## Quick Start
 
-1. [Setup your server](#server-setup) - Use our CLI tool
+1. [Setup your server](#server-setup) - Use CLI tool
 2. [Configure CI/CD](#cicd-setup) - Copy example files
 3. [Deploy](#deployment) - Push a git tag
 
@@ -102,11 +102,11 @@ Manual setup: [See detailed instructions](./MANUAL-REMOTE-SETUP.md)
 ```
 .deployment/
 ├── docker/
-│   ├── docker-compose.yml
-│   └── Dockerfile.[service_name]
+│   ├── docker-compose.yml        # Used to define services, volumes, networks, etc...
+│   └── Dockerfile.[service_name] # Dockerfile associated to a docker-compose.yml service
 └── env/
-    ├── .env.[env_name]
-    └── .env.[env_name].[host_name]
+    ├── .env.[env_name]             # Env file to declare variables
+    └── .env.[env_name].[host_name] # If using multi-host
 ```
 
 **3. Add repository secrets:**
@@ -117,14 +117,15 @@ Manual setup: [See detailed instructions](./MANUAL-REMOTE-SETUP.md)
 **Notes:**
 - All secret names must be UPPERCASE
 - GitLab secrets must NOT be marked as protected
-- The base `.env.[env_name]` file automatically maps to the `main` host. Don't create additional `.env.[env_name].main` files.
+- The base `.env.[env_name]` file automatically maps to the `main` host. DO NOT create additional `.env.[env_name].main` file.
 
 ## Deployment
 
 **Via Git tags:**
 ```bash
-git tag 1.0.0              # Deploy to production
-git tag 1.0.0-staging      # Deploy to staging
+git tag 1.0.0              # Deploy to production env
+git tag 1.0.0-staging      # Deploy to staging env
+git tag 1.0.0-whatever     # Deploy to whatever env
 git push origin --tags
 ```
 
@@ -148,12 +149,28 @@ ANSIBLE_USER=ansible           # SSH user (usually 'ansible')
 # Add any other variables your app needs
 ```
 
-You can reference CI secrets:
+You can reference CI secrets to hide sensitive data/credentials:
 ```bash
 HOST=$PRODUCTION_HOST          # Maps to CI secret 'PRODUCTION_HOST'
+ANSIBLE_USER=ansible           # SSH user (usually 'ansible')
 DB_PASSWORD=$DB_SECRET         # Maps to CI secret 'DB_SECRET'
 ```
-You can also pass `$DB_SECRET` within env part of you docker compose file instead of this way.
+
+In this way, you can separate variables for each of your environments.
+
+---
+
+You can also define variables inside the `environment` section of your docker compose file instead.
+In this case, all of your environments will receive the same variables:
+```yaml
+# This is an example
+services:
+  sample-app:
+    image: ...
+    ...
+    environment:
+      DB_PASSWORD: ${DB_SECRET} # DB_SECRET (or whatever you called it) can be defined in .env file or from CI secrets
+```
 
 ### Multi-host deployment
 
@@ -170,10 +187,16 @@ Deploy to multiple servers in the same environment:
 Host-specific files inherit variables from main file and can override them:
 
 ```bash
+# .env.production
+HOST=192.168.1.11
+API_PORT=3000        # Example : API Port variable          
+```
+
+```bash
 # .env.production.a
 HOST=192.168.1.11
 API_PORT=3001                  # Override main config
-REDIS_URL=redis://host-a:6379  # Add host-specific variable
+REDIS_URL=redis://host-a:6379  # Exemple : Add host-specific variable
 ```
 
 **SSH keys for each host:**
@@ -187,6 +210,7 @@ The `.deployment/docker/docker-compose.yml` file can use environment variables.
 
 #### Standard compose file (recommended)
 ```yaml
+# This is an example
 services:
   db:
     image: db
@@ -241,6 +265,7 @@ options:
 
 Then manually add `${ENV}` and `${VERSION}` where needed for separation:
 ```yaml
+# This is an example
 services:
   db:
     image: db-${ENV}:${VERSION}
