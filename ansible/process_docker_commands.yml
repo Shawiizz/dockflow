@@ -36,9 +36,46 @@
   changed_when: false
 
 - name: Execute commands on target host
-  shell: "{{ item }}"
+  shell: "( {{ item }} ) > /dev/null 2>&1"
   loop: "{{ current_commands }}"
+  loop_control:
+    label: >-
+      {{
+        (
+          (item | regex_search('^docker\s+run'))
+          and ('Running ' ~ ((item | regex_search('(?<=--name )\S+')) | default('container', true)) ~ ' container')
+        )
+        or (
+          (item | regex_search('^docker\s+stop'))
+          and ('Stopping ' ~ ((item | regex_search('(?<=^docker\s+stop\s+)\S+')) | default('container', true)) ~ ' container')
+        )
+        or (
+          (item | regex_search('^docker\s+rm'))
+          and ('Removing ' ~ ((item | regex_search('(?<=^docker\s+rm\s+)\S+')) | default('container', true)) ~ ' container')
+        )
+        or (
+          (item | regex_search('^docker\s+rmi'))
+          and ('Removing images for ' ~ ((item | regex_search('(?<=docker\s+images\s+)\S+')) | default('repository', true)))
+        )
+        or (
+          (item | regex_search('^docker\s+pull'))
+          and ('Pulling ' ~ ((item | regex_search('(?<=^docker\s+pull\s+)\S+')) | default('image', true)))
+        )
+        or 'Running docker command'
+      }}
   when: current_commands is defined and current_commands | length > 0
+  failed_when: false
   ignore_errors: "{{ cmd_type.ignore_errors }}"
   register: command_results
   changed_when: command_results.rc == 0
+
+- name: Show generic failure message for failed commands
+  debug:
+    msg: "Failed to run command"
+  loop: "{{ command_results.results | default([]) }}"
+  loop_control:
+    label: "{{ (item.item | default('')) | regex_replace('\\n', ' ') | truncate(120, true, '...') }}"
+  when:
+    - item.rc is defined and item.rc != 0
+    - not (cmd_type.ignore_errors | bool)
+  changed_when: false
