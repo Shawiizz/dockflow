@@ -45,7 +45,7 @@ setup_project() {
         fi
     fi
     
-    create_empty_file_if_not_exists "$CLI_PROJECT_DIR/.deployment/docker/compose-deploy.yml"
+    create_empty_file_if_not_exists "$CLI_PROJECT_DIR/.deployment/docker/docker-compose.yml"
     create_empty_file_if_not_exists "$CLI_PROJECT_DIR/.deployment/docker/Dockerfile.to_replace"
     
     print_success "Project structure set up successfully"

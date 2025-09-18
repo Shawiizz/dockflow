@@ -33,7 +33,7 @@ if [[ -z "$FRAMEWORK_OPTIONS_ENVIRONMENTIZE" || "$FRAMEWORK_OPTIONS_ENVIRONMENTI
   DECOMPOSERIZE_OPTIONS="$DECOMPOSERIZE_OPTIONS --environmentize"
 fi
 
-BUILD_CMDS=$(decomposerize compose-deploy.yml $DECOMPOSERIZE_OPTIONS)
+BUILD_CMDS=$(decomposerize docker-compose.yml $DECOMPOSERIZE_OPTIONS)
 
 if [[ -z "$BUILD_CMDS" ]]; then
   echo "No services to build for host ${HOST_SUFFIX:-main}"

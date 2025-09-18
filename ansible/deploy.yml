@@ -2,7 +2,7 @@
 - name: Deploy Docker Images to Remote Server
   hosts: all:!localhost
   vars:    
-    compose_path: "../../.deployment/docker/compose-deploy.yml"
+    compose_path: "../../.deployment/docker/docker-compose.yml"
     tmp_dir: "/tmp"
     global_no_log: "{{ not (lookup('env', 'FRAMEWORK_OPTIONS_ENABLE_DEBUG_LOGS') | default('false') | bool) }}"
     deploy_services: "{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true) }}"

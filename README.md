@@ -102,7 +102,7 @@ Manual setup: [See detailed instructions](./MANUAL-REMOTE-SETUP.md)
 ```
 .deployment/
 ├── docker/
-│   ├── compose-deploy.yml
+│   ├── docker-compose.yml
 │   └── Dockerfile.[service_name]
 └── env/
     ├── .env.[env_name]
@@ -183,7 +183,7 @@ REDIS_URL=redis://host-a:6379  # Add host-specific variable
 
 ### Compose file
 
-The `.deployment/docker/compose-deploy.yml` file can use environment variables.
+The `.deployment/docker/docker-compose.yml` file can use environment variables.
 
 #### Standard compose file (recommended)
 ```yaml
