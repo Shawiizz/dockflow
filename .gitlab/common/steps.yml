@@ -70,13 +70,21 @@
         
         if [[ -n "${HOSTNAME}" ]]; then
           if [ ! -d ".deployment/docker/docker_images_${HOSTNAME}" ] || [ -z "$(ls -A ".deployment/docker/docker_images_${HOSTNAME}" 2>/dev/null)" ]; then
-            echo "No Docker images found for host $HOST in .deployment/docker/docker_images_${HOSTNAME}, skipping deployment"
-            continue
+            if [[ "${FRAMEWORK_OPTIONS_REMOTE_BUILD}" != "true" ]]; then
+              echo "No Docker images found for host $HOST in .deployment/docker/docker_images_${HOSTNAME}, skipping deployment"
+              continue
+            else
+              echo "Remote build enabled - proceeding without local images"
+            fi
           fi
         else
           if [ ! -d ".deployment/docker/docker_images" ] || [ -z "$(ls -A ".deployment/docker/docker_images" 2>/dev/null)" ]; then
-            echo "No Docker images found for host $HOST in .deployment/docker/docker_images, skipping deployment"
-            continue
+            if [[ "${FRAMEWORK_OPTIONS_REMOTE_BUILD}" != "true" ]]; then
+              echo "No Docker images found for host $HOST in .deployment/docker/docker_images, skipping deployment"
+              continue
+            else
+              echo "Remote build enabled - proceeding without local images"
+            fi
           fi
         fi
         
@@ -109,6 +117,7 @@
         cd devops-framework
         export ANSIBLE_HOST_KEY_CHECKING=False
         export ANSIBLE_BECOME_PASSWORD=$ANSIBLE_BECOME_PASSWORD
+        export GIT_TOKEN=${GIT_TOKEN:-}
         
         SKIP_TAGS="configure_host"
         if [ ! -d "../.deployment/templates/nginx" ] || [ -z "$(ls -A ../.deployment/templates/nginx 2>/dev/null)" ]; then
@@ -138,6 +147,15 @@
 .build-docker-images:
   script:
     - |
+      # Check if remote build is enabled
+      if [[ "${FRAMEWORK_OPTIONS_REMOTE_BUILD}" == "true" ]]; then
+        echo "========================================="
+        echo "Remote build enabled - skipping local image build"
+        echo "Images will be built directly on the remote server"
+        echo "========================================="
+        exit 0
+      fi
+      
       for HOST in $DEPLOYMENT_HOSTS; do
         echo "========================================="
         echo "Building Docker images for host: $HOST"

@@ -49,10 +49,11 @@ Deploy Docker applications to servers using GitLab/GitHub CI/CD and Ansible. Sup
 - Custom Nginx configurations deployment via templates
 - Linux services deployment and management
 - Automated script execution on remote servers
+- **Flexible build strategies**: Build images locally in CI/CD or remotely on server
 
 **Workflow:**
-1. Build Docker images from your Dockerfiles
-2. Transfer images directly to target servers
+1. Build Docker images (locally in CI/CD or remotely on server, configurable)
+2. Transfer images or source code to target servers
 3. Ansible manages the deployment process
 
 **Deployment triggers:**
@@ -113,11 +114,15 @@ Manual setup: [See detailed instructions](./MANUAL-REMOTE-SETUP.md)
 - `ANSIBLE_BECOME_PASSWORD`: Ansible user password
 - `[ENV_NAME]_SSH_PRIVATE_KEY`: SSH private key for each environment
 - For multi-host: `[ENV_NAME]_[HOST_NAME]_SSH_PRIVATE_KEY`
+- **For remote build with private repos:** `GIT_TOKEN`: Personal access token (GitHub) or Project access token (GitLab)
 
 **Notes:**
 - All secret names must be UPPERCASE
 - GitLab secrets must NOT be marked as protected
 - The base `.env.[env_name]` file automatically maps to the `main` host. DO NOT create additional `.env.[env_name].main` file.
+- **Git Token Permissions** (only if using remote build with private repos): 
+  - GitHub: Needs `repo` scope (read access to private repos)
+  - GitLab: Needs `read_repository` scope (or use built-in `CI_JOB_TOKEN` automatically)
 
 ## Deployment
 
@@ -133,11 +138,30 @@ git push origin --tags
 You can also trigger deployments when pushing to a branch directly. This automatically deploys to the `production` environment.
 
 The framework will:
-1. Build your Docker images
+1. Build your Docker images (locally in CI/CD or remotely on server, depending on configuration)
 2. Deploy to specified environment
 3. Handle multiple services automatically
 
 ## Configuration
+
+### Build Strategy
+
+The framework supports two build strategies:
+
+**Local Build (default):**
+- Docker images are built in the CI/CD pipeline
+- Images are saved as `.tar` files and transferred to the remote server
+- **Best for:** Smaller images, fast network connections, shared CI/CD resources
+
+**Remote Build:**
+- Repository is cloned directly on the remote server via Git
+- Docker images are built on the remote server from the cloned repository
+- **Best for:** Large images, slow network connections, powerful remote servers
+- **Advantages:** Faster deployments, reduced bandwidth usage, no CI/CD storage limits
+- **Requirements:** Docker, Git, and build dependencies must be available on remote server
+- **Private repos:** Add `GIT_TOKEN` secret in your CI/CD secrets (automatically used for authentication)
+
+To enable remote build, set `remote_build: true` in `.deployment/config.yml` (see Configuration file section below).
 
 ### Environment files
 
@@ -314,11 +338,13 @@ Create `.deployment/config.yml` to customize framework behavior:
 options:
   environmentize: true        # Auto-add ENV/VERSION to names (default: true)
   enable_debug_logs: false   # Enable detailed deployment logs (default: false)
+  remote_build: false        # Build Docker images on remote server instead of CI/CD (default: false)
 ```
 
 **Options explained:**
 - **`environmentize`**: When `true`, automatically adds `${ENV}` and `${VERSION}` to image names, container names, volumes, and networks for environment isolation. Set to `false` if you want to manually manage environment variables. (Read the "Compose file" part to learn more about this option)
 - **`enable_debug_logs`**: When `true`, enables verbose logging during Ansible deployment for troubleshooting purposes.
+- **`remote_build`**: When `true`, Docker images are built directly on the remote server by cloning the Git repository. This can significantly reduce deployment time and bandwidth usage, especially for large images or slow network connections. The repository is cloned to the remote server for building. **Note:** Requires Docker, Git, and build dependencies to be available on the remote server. For private repositories, add a `GIT_TOKEN` secret to your CI/CD (see CI/CD setup section).
 
 ### Advanced templates
 

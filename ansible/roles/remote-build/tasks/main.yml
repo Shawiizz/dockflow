@@ -1,0 +1,98 @@
+---
+- name: Ensure Git is installed on remote server
+  apt:
+    name: git
+    state: present
+    update_cache: yes
+  become: yes
+
+- name: Create temporary build directory on remote
+  file:
+    path: /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}
+    state: directory
+    mode: '0755'
+
+- name: Get repository URL from Git
+  shell: git config --get remote.origin.url
+  delegate_to: localhost
+  register: repo_url_raw
+  changed_when: false
+
+- name: Set repository URL and prepare for cloning
+  set_fact:
+    repo_url: "{{ repo_url_raw.stdout | trim }}"
+    git_token: "{{ lookup('env', 'GIT_TOKEN') | default('', true) }}"
+    git_ref: "{{ lookup('env', 'GITHUB_SHA') or lookup('env', 'CI_COMMIT_SHA') or lookup('env', 'VERSION') }}"
+    ci_job_token: "{{ lookup('env', 'CI_JOB_TOKEN') | default('', true) }}"
+
+- name: Use CI_JOB_TOKEN if no explicit git_token provided (GitLab)
+  set_fact:
+    effective_git_token: "{{ git_token if git_token else ci_job_token }}"
+  no_log: true
+
+- name: Build authenticated Git URL for private repos
+  set_fact:
+    clone_url: >-
+      {%- if effective_git_token -%}
+        {%- if 'github.com' in repo_url -%}
+          {{ repo_url | regex_replace('^https://github.com/', 'https://x-access-token:' + effective_git_token + '@github.com/') | regex_replace('^git@github.com:', 'https://x-access-token:' + effective_git_token + '@github.com/') }}
+        {%- elif 'gitlab.com' in repo_url or 'gitlab' in repo_url -%}
+          {{ repo_url | regex_replace('^https://([^/]+)/', 'https://oauth2:' + effective_git_token + '@\\1/') | regex_replace('^git@([^:]+):', 'https://oauth2:' + effective_git_token + '@\\1/') }}
+        {%- else -%}
+          {{ repo_url }}
+        {%- endif -%}
+      {%- else -%}
+        {{ repo_url }}
+      {%- endif -%}
+  no_log: true
+
+- name: Clone repository to remote server
+  git:
+    repo: "{{ clone_url }}"
+    dest: /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}
+    version: "{{ git_ref }}"
+    force: yes
+    accept_hostkey: yes
+  environment:
+    GIT_TERMINAL_PROMPT: "0"
+  no_log: true
+
+- name: Generate build commands using decomposerize
+  shell: |
+    cd /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}/.deployment/docker
+    decomposerize docker-compose.yml --docker-build {{ services_option }} {{ environmentize_option }}
+  register: build_commands
+  changed_when: false
+
+- name: Display build commands
+  debug:
+    msg: "Build commands to execute: {{ build_commands.stdout_lines }}"
+  when: not global_no_log
+
+- name: Build Docker images on remote server
+  shell: |
+    cd /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}/.deployment/docker
+    {{ item }}
+  loop: "{{ build_commands.stdout_lines }}"
+  loop_control:
+    label: >-
+      {{
+        'Building ' ~ ((item | regex_search('-t\\s+"?([^"\\s]+)', '\\1')) | default('image', true))
+      }}
+  when: build_commands.stdout_lines is defined and build_commands.stdout_lines | length > 0
+  register: build_results
+
+- name: Show build failures
+  debug:
+    msg: "Failed to build image: {{ item.item }}"
+  loop: "{{ build_results.results | default([]) }}"
+  when:
+    - item.rc is defined
+    - item.rc != 0
+  failed_when: item.rc != 0
+
+- name: Cleanup temporary build directory
+  file:
+    path: /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}
+    state: absent
+  when: build_results is succeeded

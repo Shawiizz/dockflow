@@ -43,23 +43,23 @@
       {{
         (
           (item | regex_search('^docker\s+run'))
-          and ('Running ' ~ ((item | regex_search('(?<=--name )\S+')) | default('container', true)) ~ ' container')
+          and ('Running ' ~ ((item | regex_search('--name\\s+(\\S+)', '\\1')) | default('container', true)) ~ ' container')
         )
         or (
-          (item | regex_search('^docker\s+stop'))
-          and ('Stopping ' ~ ((item | regex_search('(?<=^docker\s+stop\s+)\S+')) | default('container', true)) ~ ' container')
+          (item | regex_search('^docker\\s+stop\\s+(\\S+)', '\\1'))
+          and ('Stopping ' ~ (item | regex_search('^docker\\s+stop\\s+(\\S+)', '\\1')) ~ ' container')
         )
         or (
-          (item | regex_search('^docker\s+rm'))
-          and ('Removing ' ~ ((item | regex_search('(?<=^docker\s+rm\s+)\S+')) | default('container', true)) ~ ' container')
+          (item | regex_search('^docker\\s+rm\\s+(\\S+)', '\\1'))
+          and ('Removing ' ~ (item | regex_search('^docker\\s+rm\\s+(\\S+)', '\\1')) ~ ' container')
         )
         or (
-          (item | regex_search('^docker\s+rmi'))
-          and ('Removing images for ' ~ ((item | regex_search('(?<=docker\s+images\s+)\S+')) | default('repository', true)))
+          (item | regex_search('^docker\\s+rmi'))
+          and ('Removing images for ' ~ ((item | regex_search('docker\\s+images\\s+(\\S+)', '\\1')) | default('repository', true)))
         )
         or (
-          (item | regex_search('^docker\s+pull'))
-          and ('Pulling ' ~ ((item | regex_search('(?<=^docker\s+pull\s+)\S+')) | default('image', true)))
+          (item | regex_search('^docker\\s+pull\\s+(\\S+)', '\\1'))
+          and ('Pulling ' ~ (item | regex_search('^docker\\s+pull\\s+(\\S+)', '\\1')))
         )
         or 'Running docker command'
       }}

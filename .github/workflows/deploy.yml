@@ -164,10 +164,16 @@ jobs:
           #######################################
           ######### Build docker images #########
           #######################################
-          if [[ "$HOSTNAME" == "main" ]]; then
-            bash devops-framework/.github/scripts/build_docker_images.sh
+          if [[ "${FRAMEWORK_OPTIONS_REMOTE_BUILD}" != "true" ]]; then
+            echo "Building Docker images locally in CI/CD..."
+            if [[ "$HOSTNAME" == "main" ]]; then
+              bash devops-framework/.github/scripts/build_docker_images.sh
+            else
+              bash devops-framework/.github/scripts/build_docker_images.sh --host="$HOSTNAME"
+            fi
           else
-            bash devops-framework/.github/scripts/build_docker_images.sh --host="$HOSTNAME"
+            echo "Remote build enabled - skipping local image build"
+            echo "Images will be built directly on the remote server"
           fi
 
           ######### Change working directory #########
@@ -188,6 +194,7 @@ jobs:
           #######################################
           export ANSIBLE_HOST_KEY_CHECKING=False
           export ANSIBLE_BECOME_PASSWORD=${{ secrets.ANSIBLE_BECOME_PASSWORD }}
+          export GIT_TOKEN=${{ secrets.GIT_TOKEN }}
 
           SKIP_TAGS="configure_host"
           if [ ! -d "../.deployment/templates/nginx" ] || [ -z "$(ls -A ../.deployment/templates/nginx 2>/dev/null)" ]; then
