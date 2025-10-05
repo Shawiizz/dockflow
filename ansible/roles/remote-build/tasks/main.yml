@@ -22,7 +22,8 @@
   set_fact:
     repo_url: "{{ repo_url_raw.stdout | trim }}"
     git_token: "{{ lookup('env', 'GIT_TOKEN') | default('', true) }}"
-    git_ref: "{{ lookup('env', 'GITHUB_SHA') or lookup('env', 'CI_COMMIT_SHA') or lookup('env', 'VERSION') }}"
+    git_ref: "{{ lookup('env', 'GITHUB_REF_NAME') or lookup('env', 'CI_COMMIT_REF_NAME') or lookup('env', 'VERSION') }}"
+    git_sha: "{{ lookup('env', 'GITHUB_SHA') or lookup('env', 'CI_COMMIT_SHA') or '' }}"
     ci_job_token: "{{ lookup('env', 'CI_JOB_TOKEN') | default('', true) }}"
 
 - name: Use CI_JOB_TOKEN if no explicit git_token provided (GitLab)
@@ -50,16 +51,19 @@
   debug:
     msg: 
       - "Repository: {{ repo_url }}"
-      - "Version to clone: {{ git_ref }}"
+      - "Branch to clone: {{ git_ref }}"
+      - "Commit SHA: {{ git_sha if git_sha else 'not available' }}"
       - "Has token: {{ 'yes' if effective_git_token else 'no' }}"
   when: not global_no_log
 
 - name: Clone repository to remote server
   shell: |
     rm -rf /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}
-    git clone {{ clone_url }} /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}
+    git clone --branch {{ git_ref }} --single-branch {{ clone_url }} /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}
+    {% if git_sha %}
     cd /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}
-    git checkout {{ git_ref }}
+    git checkout {{ git_sha }}
+    {% endif %}
   environment:
     GIT_TERMINAL_PROMPT: "0"
   register: git_clone_result
