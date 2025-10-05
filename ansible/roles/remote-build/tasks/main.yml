@@ -64,7 +64,6 @@
     GIT_TERMINAL_PROMPT: "0"
   register: git_clone_result
   failed_when: false
-  no_log: true
 
 - name: Show git clone error if failed
   debug:
