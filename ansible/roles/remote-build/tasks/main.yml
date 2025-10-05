@@ -46,16 +46,38 @@
       {%- endif -%}
   no_log: true
 
+- name: Display clone information (without token)
+  debug:
+    msg: 
+      - "Repository: {{ repo_url }}"
+      - "Version to clone: {{ git_ref }}"
+      - "Has token: {{ 'yes' if effective_git_token else 'no' }}"
+  when: not global_no_log
+
 - name: Clone repository to remote server
-  git:
-    repo: "{{ clone_url }}"
-    dest: /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}
-    version: "{{ git_ref }}"
-    force: yes
-    accept_hostkey: yes
+  shell: |
+    rm -rf /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}
+    git clone {{ clone_url }} /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}
+    cd /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}
+    git checkout {{ git_ref }}
   environment:
     GIT_TERMINAL_PROMPT: "0"
+  register: git_clone_result
+  failed_when: false
   no_log: true
+
+- name: Show git clone error if failed
+  debug:
+    msg: 
+      - "Git clone command failed"
+      - "Return code: {{ git_clone_result.rc }}"
+      - "Error output: {{ git_clone_result.stderr }}"
+  when: git_clone_result.rc is defined and git_clone_result.rc != 0
+
+- name: Fail if git clone failed
+  fail:
+    msg: "Failed to clone repository. Check if GIT_TOKEN is set for private repos or if the server has access to the repository."
+  when: git_clone_result.rc is defined and git_clone_result.rc != 0
 
 - name: Generate build commands using decomposerize
   shell: |
