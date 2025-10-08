@@ -88,14 +88,27 @@
   shell: |
     cd /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}/.deployment/docker
     decomposerize docker-compose.yml --docker-build {{ services_option }} {{ environmentize_option }}
-  register: build_commands
+  delegate_to: localhost
+  register: build_commands_raw
   changed_when: false
+
+- name: Evaluate environment variables in build commands
+  shell: |
+    eval "echo {{ item | quote }}"
+  loop: "{{ build_commands_raw.stdout_lines }}"
+  delegate_to: localhost
+  register: evaluated_commands
+  changed_when: false
+
+- name: Set evaluated build commands
+  set_fact:
+    build_commands: "{{ evaluated_commands.results | map(attribute='stdout') | list }}"
 
 - name: Build Docker images on remote server
   shell: |
     cd /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}/.deployment/docker
     {{ item }}
-  loop: "{{ build_commands.stdout_lines }}"
+  loop: "{{ build_commands }}"
   loop_control:
     label: >-
       {%- set image_match = item | regex_search('-t\\s+"?([^"\\s]+)"?') -%}
@@ -104,7 +117,7 @@
       {%- else -%}
         Building image
       {%- endif -%}
-  when: build_commands.stdout_lines is defined and build_commands.stdout_lines | length > 0
+  when: build_commands is defined and build_commands | length > 0
   register: build_results
 
 - name: Show build failures
