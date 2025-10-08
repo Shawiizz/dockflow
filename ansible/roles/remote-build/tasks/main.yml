@@ -86,7 +86,7 @@
 
 - name: Generate build commands using decomposerize
   shell: |
-    cd /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}/.deployment/docker
+    cd {{ lookup('env', 'PROJECT_ROOT') or '..' }}/.deployment/docker
     decomposerize docker-compose.yml --docker-build {{ services_option }} {{ environmentize_option }}
   delegate_to: localhost
   register: build_commands_raw
