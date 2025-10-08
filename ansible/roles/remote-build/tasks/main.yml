@@ -13,15 +13,28 @@
     mode: '0755'
 
 - name: Get repository URL from Git (from parent project directory)
-  shell: cd .. && git config --get remote.origin.url
+  shell: git config --get remote.origin.url
+  args:
+    chdir: "{{ lookup('env', 'PROJECT_ROOT') or '..' }}"
   delegate_to: localhost
   register: repo_url_raw
   changed_when: false
 
 - name: Get current branch name from Git (from parent project directory)
-  shell: cd .. && git rev-parse --abbrev-ref HEAD
+  shell: git rev-parse --abbrev-ref HEAD
+  args:
+    chdir: "{{ lookup('env', 'PROJECT_ROOT') or '..' }}"
   delegate_to: localhost
   register: branch_name_raw
+  changed_when: false
+  failed_when: false
+
+- name: Get current commit SHA from Git (from parent project directory)
+  shell: git rev-parse HEAD
+  args:
+    chdir: "{{ lookup('env', 'PROJECT_ROOT') or '..' }}"
+  delegate_to: localhost
+  register: commit_sha_raw
   changed_when: false
   failed_when: false
 
@@ -29,8 +42,8 @@
   set_fact:
     repo_url: "{{ repo_url_raw.stdout | trim }}"
     git_token: "{{ lookup('env', 'GIT_TOKEN') | default('', true) }}"
-    git_ref: "{{ lookup('env', 'GITHUB_REF_NAME') or lookup('env', 'CI_COMMIT_REF_NAME') or (branch_name_raw.stdout | default('main', true) | trim) }}"
-    git_sha: "{{ lookup('env', 'GITHUB_SHA') or lookup('env', 'CI_COMMIT_SHA') or '' }}"
+    git_ref: "{{ (branch_name_raw.stdout | default('main', true) | trim) }}"
+    git_sha: "{{ (commit_sha_raw.stdout | default('', true) | trim) }}"
     ci_job_token: "{{ lookup('env', 'CI_JOB_TOKEN') | default('', true) }}"
 
 - name: Use CI_JOB_TOKEN if no explicit git_token provided (GitLab)

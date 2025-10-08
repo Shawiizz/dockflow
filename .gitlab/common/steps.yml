@@ -118,6 +118,7 @@
         export ANSIBLE_HOST_KEY_CHECKING=False
         export ANSIBLE_BECOME_PASSWORD=$ANSIBLE_BECOME_PASSWORD
         export GIT_TOKEN=${GIT_TOKEN:-}
+        export PROJECT_ROOT=$(pwd)/..
         
         SKIP_TAGS="configure_host"
         if [ ! -d "../.deployment/templates/nginx" ] || [ -z "$(ls -A ../.deployment/templates/nginx 2>/dev/null)" ]; then
