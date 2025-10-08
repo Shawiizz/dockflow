@@ -67,14 +67,6 @@
       {%- endif -%}
   no_log: true
 
-- name: Display clone information (without token)
-  debug:
-    msg: 
-      - "Repository: {{ repo_url }}"
-      - "Branch to clone: {{ git_ref }}"
-      - "Commit SHA: {{ git_sha if git_sha else 'not available' }}"
-      - "Has token: {{ 'yes' if effective_git_token else 'no' }}"
-
 - name: Clone repository to remote server
   shell: |
     rm -rf /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}
@@ -86,15 +78,6 @@
   environment:
     GIT_TERMINAL_PROMPT: "0"
   register: git_clone_result
-  failed_when: false
-
-- name: Show git clone error if failed
-  debug:
-    msg: 
-      - "Git clone command failed"
-      - "Return code: {{ git_clone_result.rc }}"
-      - "Error output: {{ git_clone_result.stderr }}"
-  when: git_clone_result.rc is defined and git_clone_result.rc != 0
 
 - name: Fail if git clone failed
   fail:
@@ -108,11 +91,6 @@
   register: build_commands
   changed_when: false
 
-- name: Display build commands
-  debug:
-    msg: "Build commands to execute: {{ build_commands.stdout_lines }}"
-  when: not global_no_log
-
 - name: Build Docker images on remote server
   shell: |
     cd /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}/.deployment/docker
@@ -120,9 +98,12 @@
   loop: "{{ build_commands.stdout_lines }}"
   loop_control:
     label: >-
-      {{
-        'Building ' ~ ((item | regex_search('-t\\s+"?([^"\\s]+)', '\\1')) | default('image', true))
-      }}
+      {%- set image_match = item | regex_search('-t\\s+"?([^"\\s]+)"?') -%}
+      {%- if image_match -%}
+        Building {{ item | regex_replace('.*-t\\s+"?([^"\\s]+)"?.*', '\\1') }}
+      {%- else -%}
+        Building image
+      {%- endif -%}
   when: build_commands.stdout_lines is defined and build_commands.stdout_lines | length > 0
   register: build_results
 

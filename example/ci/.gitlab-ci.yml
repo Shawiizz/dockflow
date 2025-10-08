@@ -7,10 +7,10 @@ stages:
 
 include:
   # Continuous Integration (CI) template for building Docker images (not used for deployment)
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops-framework/refs/tags/1.0.37-dev9/.gitlab/workflows/build.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops-framework/refs/tags/1.0.37-dev10/.gitlab/workflows/build.yml'
 
   # Deploy your application on tag push
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops-framework/refs/tags/1.0.37-dev9/.gitlab/workflows/deploy.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops-framework/refs/tags/1.0.37-dev10/.gitlab/workflows/deploy.yml'
 
   # Deploy your application on branch push (will deploy to production environment)
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops-framework/refs/tags/1.0.37-dev9/.gitlab/workflows/deploy-branch.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/devops-framework/refs/tags/1.0.37-dev10/.gitlab/workflows/deploy-branch.yml'
