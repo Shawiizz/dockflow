@@ -18,17 +18,20 @@
   register: repo_url_raw
   changed_when: false
 
+- name: Get current branch name from Git
+  shell: git rev-parse --abbrev-ref HEAD
+  delegate_to: localhost
+  register: branch_name_raw
+  changed_when: false
+  failed_when: false
+
 - name: Set repository URL and prepare for cloning
   set_fact:
     repo_url: "{{ repo_url_raw.stdout | trim }}"
     git_token: "{{ lookup('env', 'GIT_TOKEN') | default('', true) }}"
-    raw_ref: "{{ lookup('env', 'GITHUB_REF_NAME') or lookup('env', 'CI_COMMIT_REF_NAME') or lookup('env', 'VERSION') }}"
+    git_ref: "{{ lookup('env', 'GITHUB_REF_NAME') or lookup('env', 'CI_COMMIT_REF_NAME') or (branch_name_raw.stdout | default('main', true) | trim) }}"
     git_sha: "{{ lookup('env', 'GITHUB_SHA') or lookup('env', 'CI_COMMIT_SHA') or '' }}"
     ci_job_token: "{{ lookup('env', 'CI_JOB_TOKEN') | default('', true) }}"
-
-- name: Extract branch name from version if needed
-  set_fact:
-    git_ref: "{{ raw_ref.split('-')[0] if '-' in raw_ref and (lookup('env', 'GITHUB_REF_NAME') == '' and lookup('env', 'CI_COMMIT_REF_NAME') == '') else raw_ref }}"
 
 - name: Use CI_JOB_TOKEN if no explicit git_token provided (GitLab)
   set_fact:
@@ -58,7 +61,6 @@
       - "Branch to clone: {{ git_ref }}"
       - "Commit SHA: {{ git_sha if git_sha else 'not available' }}"
       - "Has token: {{ 'yes' if effective_git_token else 'no' }}"
-  when: not global_no_log
 
 - name: Clone repository to remote server
   shell: |
