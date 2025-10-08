@@ -12,14 +12,14 @@
     state: directory
     mode: '0755'
 
-- name: Get repository URL from Git
-  shell: git config --get remote.origin.url
+- name: Get repository URL from Git (from parent project directory)
+  shell: cd .. && git config --get remote.origin.url
   delegate_to: localhost
   register: repo_url_raw
   changed_when: false
 
-- name: Get current branch name from Git
-  shell: git rev-parse --abbrev-ref HEAD
+- name: Get current branch name from Git (from parent project directory)
+  shell: cd .. && git rev-parse --abbrev-ref HEAD
   delegate_to: localhost
   register: branch_name_raw
   changed_when: false
