@@ -10,7 +10,7 @@
     environmentize: "{{ (lookup('env', 'FRAMEWORK_OPTIONS_ENVIRONMENTIZE') | default('true', true)) | bool }}"
     environmentize_option: "{{ '--environmentize' if (environmentize | bool) else '' }}"
     remote_build: "{{ (lookup('env', 'FRAMEWORK_OPTIONS_REMOTE_BUILD') | default('false', true)) | bool }}"
-    framework_version: "1.0.37-dev11"
+    framework_version: "1.0.37-dev12"
     decomposerize_types:
       - name: "setup"
         base_options: "--create-networks --create-volumes --stop-and-remove"

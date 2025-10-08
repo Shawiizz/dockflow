@@ -104,6 +104,11 @@
   set_fact:
     build_commands: "{{ evaluated_commands.results | map(attribute='stdout') | list }}"
 
+- name: Display evaluated build commands
+  debug:
+    msg: "Evaluated command: {{ item }}"
+  loop: "{{ build_commands }}"
+
 - name: Build Docker images on remote server
   shell: |
     cd /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}/.deployment/docker

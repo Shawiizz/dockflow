@@ -74,8 +74,8 @@ This project includes an automated version management system that handles versio
   - `1.0.33-dev1` → `1.0.33-dev2`
 
 - **`npm run version:release`** - Creates release version
-  - `1.0.33-dev1` → `1.0.37-dev11`
-  - `1.0.33` → `1.0.37-dev11`
+  - `1.0.33-dev1` → `1.0.37-dev12`
+  - `1.0.33` → `1.0.37-dev12`
 
 - **`npm run version:downgrade`** - Decrements version
   - `1.0.33-dev3` → `1.0.33-dev2`
