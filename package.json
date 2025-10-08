@@ -1,6 +1,6 @@
 {
   "name": "devops-framework",
-  "version": "1.0.37-dev5",
+  "version": "1.0.37-dev6",
   "ciImageVersion": "1.0.4-dev1",
   "description": "DevOps Framework for automated deployment and CI/CD",
   "scripts": {

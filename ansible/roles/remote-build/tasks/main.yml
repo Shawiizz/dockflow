@@ -22,9 +22,13 @@
   set_fact:
     repo_url: "{{ repo_url_raw.stdout | trim }}"
     git_token: "{{ lookup('env', 'GIT_TOKEN') | default('', true) }}"
-    git_ref: "{{ lookup('env', 'GITHUB_REF_NAME') or lookup('env', 'CI_COMMIT_REF_NAME') or lookup('env', 'VERSION') }}"
+    raw_ref: "{{ lookup('env', 'GITHUB_REF_NAME') or lookup('env', 'CI_COMMIT_REF_NAME') or lookup('env', 'VERSION') }}"
     git_sha: "{{ lookup('env', 'GITHUB_SHA') or lookup('env', 'CI_COMMIT_SHA') or '' }}"
     ci_job_token: "{{ lookup('env', 'CI_JOB_TOKEN') | default('', true) }}"
+
+- name: Extract branch name from version if needed
+  set_fact:
+    git_ref: "{{ raw_ref.split('-')[0] if '-' in raw_ref and (lookup('env', 'GITHUB_REF_NAME') == '' and lookup('env', 'CI_COMMIT_REF_NAME') == '') else raw_ref }}"
 
 - name: Use CI_JOB_TOKEN if no explicit git_token provided (GitLab)
   set_fact:
