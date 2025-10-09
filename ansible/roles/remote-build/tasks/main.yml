@@ -136,6 +136,8 @@
         Building image
       {%- endif -%}
   when: build_commands is defined and build_commands | length > 0
+  async: 3600  # Allow up to 1 hour for build
+  poll: 30     # Check status every 30 seconds
   register: build_results
 
 - name: Show build failures
