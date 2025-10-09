@@ -12,6 +12,20 @@
     state: directory
     mode: '0755'
 
+- name: Clean up old temporary build directories
+  shell: |
+    find /tmp -maxdepth 1 -name 'docker-build-*' -type d -mtime +1 -exec rm -rf {} + || true
+  register: cleanup_old_dirs
+  changed_when: false
+  ignore_errors: yes
+
+- name: Clean up Docker to free space
+  shell: |
+    docker image prune -af || true
+    docker builder prune -af || true
+  register: cleanup_result
+  changed_when: cleanup_result.rc == 0
+
 - name: Get repository URL from Git (from parent project directory)
   shell: git config --get remote.origin.url
   args:
@@ -122,31 +136,6 @@
     msg: "Evaluated command: {{ item }}"
   loop: "{{ build_commands }}"
 
-- name: Check available disk space
-  shell: df -h /var/lib/docker
-  register: disk_space
-  changed_when: false
-
-- name: Display disk space
-  debug:
-    msg: "{{ disk_space.stdout_lines }}"
-
-- name: Clean up Docker to free space
-  shell: |
-    docker system prune -af --volumes || true
-    docker builder prune -af || true
-  register: cleanup_result
-  changed_when: cleanup_result.rc == 0
-
-- name: Check disk space after cleanup
-  shell: df -h /var/lib/docker
-  register: disk_space_after
-  changed_when: false
-
-- name: Display disk space after cleanup
-  debug:
-    msg: "{{ disk_space_after.stdout_lines }}"
-
 - name: Build Docker images on remote server
   shell: |
     cd /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}/.deployment/docker
@@ -205,4 +194,4 @@
   file:
     path: /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}
     state: absent
-  when: build_results is succeeded
+  ignore_errors: yes
