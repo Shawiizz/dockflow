@@ -2,10 +2,16 @@ name: Build
 
 on:
   workflow_call:
+    inputs:
+      free-disk-space:
+        required: false
+        type: boolean
+        default: false
+        description: "Free disk space by removing unnecessary tools"
 
 env:
   DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops-framework.git
-  DEVOPS_FRAMEWORK_VERSION: 1.0.37
+  DEVOPS_FRAMEWORK_VERSION: 1.0.37-dev17
 
 jobs:
   build:
@@ -13,6 +19,12 @@ jobs:
     name: Build Docker images
 
     steps:
+      - name: Free Disk Space (Ubuntu)
+        if: ${{ inputs.free-disk-space }}
+        uses: jlumbroso/free-disk-space@main
+        with:
+          docker-images: false
+
       - name: Checkout code
         uses: actions/checkout@v4
 
