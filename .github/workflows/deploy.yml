@@ -94,6 +94,11 @@ jobs:
       matrix:
         host: ${{ fromJson(needs.discover-hosts.outputs.hosts) }}
     steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          docker-images: false
+
       - name: Checkout code
         uses: actions/checkout@v4
 
