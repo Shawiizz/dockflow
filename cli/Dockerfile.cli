@@ -1,5 +1,9 @@
 FROM shawiizz/devops-ci:latest
 
+# Install yq for YAML parsing
+RUN wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq && \
+    chmod +x /usr/bin/yq
+
 COPY . /setup/
 
 RUN chmod +x /setup/cli/cli.sh

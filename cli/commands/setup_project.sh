@@ -1,7 +1,16 @@
 #!/bin/bash
 
 setup_project() {
-    print_heading "PROJECT SETUP"
+    # Check if project exists
+    if quick_scan_project; then
+        # Project exists, show detailed analysis
+        display_project_analysis
+        show_project_menu
+        return
+    fi
+    
+    # New project setup
+    print_heading "NEW PROJECT SETUP"
             
     echo "Select CI/CD platform:"
     echo "1) GitHub Actions"
