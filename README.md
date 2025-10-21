@@ -111,7 +111,7 @@ Manual setup: [See detailed instructions](./MANUAL-REMOTE-SETUP.md)
 ```
 
 **3. Add repository secrets:**
-- `ANSIBLE_BECOME_PASSWORD`: Ansible user password
+- `USER_PASSWORD`: Deployment user password
 - `[ENV_NAME]_SSH_PRIVATE_KEY`: SSH private key for each environment
 - For multi-host: `[ENV_NAME]_[HOST_NAME]_SSH_PRIVATE_KEY`
 - **For remote build with private repos:** `GIT_TOKEN`: Personal access token (GitHub) or Project access token (GitLab)
@@ -169,14 +169,14 @@ Create `.deployment/env/.env.[env_name]` files with required variables:
 
 ```bash
 HOST=192.168.1.10              # Server IP or CI secret reference
-ANSIBLE_USER=ansible           # SSH user (usually 'ansible')
+USER=deploy                    # SSH user (usually 'deploy')
 # Add any other variables your app needs
 ```
 
 You can reference CI secrets to hide sensitive data/credentials:
 ```bash
 HOST=$PRODUCTION_HOST          # Maps to CI secret 'PRODUCTION_HOST'
-ANSIBLE_USER=ansible           # SSH user (usually 'ansible')
+USER=deploy                    # SSH user (usually 'deploy')
 DB_PASSWORD=$DB_SECRET         # Maps to CI secret 'DB_SECRET'
 ```
 

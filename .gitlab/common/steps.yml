@@ -116,7 +116,7 @@
         #######################################
         cd devops-framework
         export ANSIBLE_HOST_KEY_CHECKING=False
-        export ANSIBLE_BECOME_PASSWORD=$ANSIBLE_BECOME_PASSWORD
+        export USER_PASSWORD=$USER_PASSWORD
         export GIT_TOKEN=${GIT_TOKEN:-}
         export PROJECT_ROOT=$(pwd)/..
         

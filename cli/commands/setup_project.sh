@@ -31,7 +31,7 @@ setup_project() {
     ENV_PROD_FILE="$CLI_PROJECT_DIR/.deployment/env/.env.production"
     if [ ! -f "$ENV_PROD_FILE" ]; then
         echo "HOST=to_replace" > "$ENV_PROD_FILE"
-        echo "ANSIBLE_USER=ansible|to_replace" >> "$ENV_PROD_FILE"
+        echo "USER=deploy|to_replace" >> "$ENV_PROD_FILE"
         print_success "Created .env.production file with placeholder values"
     else
         print_warning ".env.production file already exists, skipping"

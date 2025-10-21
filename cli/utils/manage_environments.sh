@@ -41,16 +41,16 @@ add_environment() {
         return 1
     fi
     
-    # Ask for ANSIBLE_USER
-    read -rp "Ansible user name [default: ansible]: " ANSIBLE_USER_VALUE
-    ANSIBLE_USER_VALUE=${ANSIBLE_USER_VALUE:-ansible}
+    # Ask for USER
+    read -rp "User name [default: deploy]: " USER_VALUE
+    USER_VALUE=${USER_VALUE:-deploy}
     
     # Create the environment file
     mkdir -p "$CLI_PROJECT_DIR/.deployment/env"
     
     cat > "$env_file" <<EOF
 HOST=${HOST_VALUE}
-ANSIBLE_USER=${ANSIBLE_USER_VALUE}
+USER=${USER_VALUE}
 EOF
     
     print_success "Environment '${ENV_NAME}' created successfully!"
@@ -58,7 +58,7 @@ EOF
     echo -e "${CYAN}File created: ${env_file}${NC}"
     echo -e "${CYAN}Content:${NC}"
     echo "  HOST=${HOST_VALUE}"
-    echo "  ANSIBLE_USER=${ANSIBLE_USER_VALUE}"
+    echo "  USER=${USER_VALUE}"
     echo ""
     print_info "You can add more environment variables by editing: .deployment/env/.env.${ENV_NAME}"
 }

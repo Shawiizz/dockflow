@@ -7,9 +7,9 @@
 - name: Deploy private SSH keys
   copy:
     content: "{{ lookup('env', item) }}"
-    dest: "/home/{{ lookup('env', 'ANSIBLE_USER') }}/.ssh/{{ item }}"
-    owner: "{{ lookup('env', 'ANSIBLE_USER') }}"
-    group: "{{ lookup('env', 'ANSIBLE_USER') }}"
+    dest: "/home/{{ lookup('env', 'USER') }}/.ssh/{{ item }}"
+    owner: "{{ lookup('env', 'USER') }}"
+    group: "{{ lookup('env', 'USER') }}"
     mode: '0600'
   loop: "{{ ssh_keys | default([]) }}"
   when: ssh_keys is defined
@@ -17,6 +17,6 @@
 - name: Start ssh-agent and add SSH keys
   shell: |
     eval "$(ssh-agent -s)"
-    ssh-add /home/{{ lookup('env', 'ANSIBLE_USER') }}/.ssh/{{ item }}
+    ssh-add /home/{{ lookup('env', 'USER') }}/.ssh/{{ item }}
   loop: "{{ ssh_keys | default([]) }}"
   when: ssh_keys is defined

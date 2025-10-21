@@ -3,15 +3,15 @@
 source "$CLI_UTILS_DIR/functions.sh"
 
 setup_ansible_user() {
-    print_heading "ANSIBLE USER SETUP"
+    print_heading "USER SETUP"
     
-    read -rp "Ansible user name [default: ansible]: " ANSIBLE_USER
-    ANSIBLE_USER=${ANSIBLE_USER:-ansible}
-    read -srp "Password for ansible user: " ANSIBLE_PASSWORD
+    read -rp "User name [default: deploy]: " USER
+    USER=${USER:-deploy}
+    read -srp "Password for user: " USER_PASSWORD
     echo ""
     
-    export ANSIBLE_USER
-    export ANSIBLE_PASSWORD
+    export USER
+    export USER_PASSWORD
 }
 
 create_ansible_user_on_remote() {
@@ -20,33 +20,33 @@ create_ansible_user_on_remote() {
     cat > "$TEMP_SCRIPT" << EOF
 #!/bin/bash
 
-# Create ansible user
-echo "Creating ansible user..."
-useradd -m $ANSIBLE_USER
+# Create user
+echo "Creating user..."
+useradd -m $USER
 
 # Add user to sudo group
-echo "Adding $ANSIBLE_USER to sudo group..."
-adduser $ANSIBLE_USER sudo
+echo "Adding $USER to sudo group..."
+adduser $USER sudo
 
-# Set password for ansible user
-echo "Setting password for $ANSIBLE_USER..."
-echo "$ANSIBLE_USER:$ANSIBLE_PASSWORD" | chpasswd
+# Set password for user
+echo "Setting password for $USER..."
+echo "$USER:$USER_PASSWORD" | chpasswd
 
 # Setup SSH directory
 echo "Setting up SSH directory..."
-mkdir -p /home/$ANSIBLE_USER/.ssh
-chmod 700 /home/$ANSIBLE_USER/.ssh
+mkdir -p /home/$USER/.ssh
+chmod 700 /home/$USER/.ssh
 
 # Add public key to authorized_keys
 echo "Adding public key to authorized_keys..."
-echo "$ANSIBLE_PUBLIC_KEY" | tee /home/$ANSIBLE_USER/.ssh/authorized_keys > /dev/null
-chmod 600 /home/$ANSIBLE_USER/.ssh/authorized_keys
+echo "$ANSIBLE_PUBLIC_KEY" | tee /home/$USER/.ssh/authorized_keys > /dev/null
+chmod 600 /home/$USER/.ssh/authorized_keys
 
 # Set proper ownership
 echo "Setting proper ownership..."
-chown -R $ANSIBLE_USER:$ANSIBLE_USER /home/$ANSIBLE_USER/.ssh
+chown -R $USER:$USER /home/$USER/.ssh
 
-echo "User $ANSIBLE_USER has been created successfully."
+echo "User $USER has been created successfully."
 EOF
 
     chmod +x "$TEMP_SCRIPT"

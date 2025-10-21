@@ -13,23 +13,23 @@ setup_machine() {
     export SERVER_IP
     export SSH_PORT
 
-    read -rp "Do you want to setup an Ansible user? (y/n) [default: y]: " SETUP_ANSIBLE_USER
-    SETUP_ANSIBLE_USER=${SETUP_ANSIBLE_USER:-y}
+    read -rp "Do you want to setup an Ansible user? (y/n) [default: y]: " SETUP_USER
+    SETUP_USER=${SETUP_USER:-y}
 
-    if [ "$SETUP_ANSIBLE_USER" = "y" ] || [ "$SETUP_ANSIBLE_USER" = "Y" ]; then
+    if [ "$SETUP_USER" = "y" ] || [ "$SETUP_USER" = "Y" ]; then
         get_ssh_connection
         setup_ansible_user
         generate_ansible_ssh_key
-        ANSIBLE_USER_NEEDS_SETUP=true
+        USER_NEEDS_SETUP=true
     else
-        print_heading "EXISTING ANSIBLE USER INFORMATION"
-        read -rp "Ansible user name: " ANSIBLE_USER
-        read -srp "Sudo (become) password for ansible user: " ANSIBLE_PASSWORD
+        print_heading "EXISTING USER INFORMATION"
+        read -rp "User name: " USER
+        read -srp "Sudo (become) password for user: " USER_PASSWORD
         echo ""
-        export ANSIBLE_USER
-        export ANSIBLE_PASSWORD
+        export USER
+        export USER_PASSWORD
         
-        print_heading "SSH KEY FOR ANSIBLE USER"
+        print_heading "SSH KEY FOR USER"
         
         local options=(
             "Use existing SSH key file (select from available keys)"
@@ -47,49 +47,49 @@ setup_machine() {
                 exit 1
             fi
             
-            ANSIBLE_KEY_PATH="$SSH_PRIVATE_KEY_PATH"
+            USER_KEY_PATH="$SSH_PRIVATE_KEY_PATH"
             
-            if [ ! -f "$ANSIBLE_KEY_PATH" ]; then
-                print_warning "Private key not found at $ANSIBLE_KEY_PATH. Please check the path and try again."
+            if [ ! -f "$USER_KEY_PATH" ]; then
+                print_warning "Private key not found at $USER_KEY_PATH. Please check the path and try again."
                 exit 1
             fi
             
             # Ensure correct permissions on the selected key
-            chmod 600 "$ANSIBLE_KEY_PATH"
-            print_success "Using SSH key: $(basename "$ANSIBLE_KEY_PATH")"
+            chmod 600 "$USER_KEY_PATH"
+            print_success "Using SSH key: $(basename "$USER_KEY_PATH")"
             
             # Set the path for Ansible to use
-            export ANSIBLE_PRIVATE_KEY_PATH="$ANSIBLE_KEY_PATH"
+            export USER_PRIVATE_KEY_PATH="$USER_KEY_PATH"
         elif [ "$SSH_KEY_OPTION" = "1" ]; then
             # Paste SSH key directly
-            print_warning "Please paste your SSH private key for the ansible user (end with a new line followed by EOF):"
+            print_warning "Please paste your SSH private key for the user (end with a new line followed by EOF):"
             
             mkdir -p ~/.ssh
-            rm -f ~/.ssh/ansible_key
+            rm -f ~/.ssh/deploy_key
             
             while IFS= read -r line; do
                 [[ "$line" == "EOF" ]] && break
-                echo "$line" >> ~/.ssh/ansible_key
+                echo "$line" >> ~/.ssh/deploy_key
             done
             
-            chmod 600 ~/.ssh/ansible_key
-            print_success "SSH key saved to ~/.ssh/ansible_key"
+            chmod 600 ~/.ssh/deploy_key
+            print_success "SSH key saved to ~/.ssh/deploy_key"
         else
             generate_ansible_ssh_key
         fi
         
-        ANSIBLE_USER_NEEDS_SETUP=false
+        USER_NEEDS_SETUP=false
     fi
 
     print_heading "CONFIGURATION SUMMARY"
     echo "Remote server: $SERVER_IP:$SSH_PORT"
     echo "Remote user: $REMOTE_USER"
     echo "Authentication method: $AUTH_METHOD"
-    echo "Ansible user: $ANSIBLE_USER"
-    if [ "$ANSIBLE_USER_NEEDS_SETUP" = true ]; then
-        echo "Ansible user will be created: Yes"
+    echo "Deployment user: $USER"
+    if [ "$USER_NEEDS_SETUP" = true ]; then
+        echo "Deployment user will be created: Yes"
     else
-        echo "Using existing Ansible user: Yes"
+        echo "Using existing deployment user: Yes"
     fi
 
     read -rp "Do you want to proceed with this configuration? (y/n) [default: y]: " PROCEED
@@ -100,7 +100,7 @@ setup_machine() {
         exit 0
     fi
 
-    if [ "$ANSIBLE_USER_NEEDS_SETUP" = true ]; then
+    if [ "$USER_NEEDS_SETUP" = true ]; then
         create_ansible_user_on_remote
     fi
 

@@ -2,32 +2,32 @@
 
 This guide explains how to manually set up your server without using the automated CLI tool.
 
-## 1. Create Ansible User
+## 1. Create Deployment User
 
 Run these commands on your target server:
 
 ```bash
-# Create ansible user
-sudo useradd ansible
+# Create deployment user
+sudo useradd deploy
 
 # Add user to sudo group
-sudo adduser ansible sudo
+sudo adduser deploy sudo
 
 # Set password (save this password securely)
-sudo passwd ansible
+sudo passwd deploy
 ```
 
 ## 2. Configure SSH Access
 
 ```bash
 # Create .ssh directory
-sudo mkdir -p /home/ansible/.ssh
+sudo mkdir -p /home/deploy/.ssh
 
 # Set correct permissions
-sudo chown -R ansible:ansible /home/ansible/
+sudo chown -R deploy:deploy /home/deploy/
 
 # Add your public SSH key to authorized_keys
-sudo echo "YOUR_PUBLIC_KEY" >> /home/ansible/.ssh/authorized_keys
+sudo echo "YOUR_PUBLIC_KEY" >> /home/deploy/.ssh/authorized_keys
 ```
 
 > **Important**: Store the private key securely - you'll need it for CI/CD deployment configuration.

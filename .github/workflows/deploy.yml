@@ -209,7 +209,7 @@ jobs:
           ######### Deploy with Ansible #########
           #######################################
           export ANSIBLE_HOST_KEY_CHECKING=False
-          export ANSIBLE_BECOME_PASSWORD=${{ secrets.ANSIBLE_BECOME_PASSWORD }}
+          export USER_PASSWORD=${{ secrets.USER_PASSWORD }}
           export GIT_TOKEN=${{ secrets.GIT_TOKEN }}
 
           SKIP_TAGS="configure_host"
