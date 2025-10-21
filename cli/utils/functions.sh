@@ -29,6 +29,18 @@ print_info() {
     echo -e "${CYAN}$1${NC}"
 }
 
+print_error() {
+    echo -e "${RED}✗ $1${NC}"
+}
+
+print_step() {
+    echo -e "${BLUE}➜ $1${NC}"
+}
+
+print_tip() {
+    echo -e "${YELLOW}💡 Tip: $1${NC}"
+}
+
 # Interactive menu with arrow key navigation
 # Usage: interactive_menu "Prompt text" "Option 1" "Option 2" "Option 3" ...
 # Returns: Selected index (0-based)
@@ -53,6 +65,8 @@ interactive_menu() {
                 echo -e "    ${options[$i]}"
             fi
         done
+        echo ""
+        echo -e "${YELLOW}Navigation: ↑↓ arrows to move, Enter to select, 'q' to quit${NC}"
     }
     
     # Initial draw
@@ -91,13 +105,13 @@ interactive_menu() {
             'q'|'Q')  # Quit
                 tput cnorm
                 echo ""
-                print_warning "Cancelled by user"
+                print_warning "Exiting CLI..."
                 exit 0
                 ;;
         esac
         
-        # Clear previous menu (move up by number of options + 2 lines for prompt)
-        tput cuu $((num_options + 2))
+        # Clear previous menu (move up by number of options + 3 lines for prompt and help)
+        tput cuu $((num_options + 3))
         tput ed
         
         # Redraw menu

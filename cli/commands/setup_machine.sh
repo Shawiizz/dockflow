@@ -6,15 +6,23 @@ setup_machine() {
     echo -e "==========================================================${NC}"
 
     print_heading "REMOTE SERVER INFORMATION"
-    read -rp "Remote server IP address: " SERVER_IP
-    read -rp "SSH port [default: 22]: " SSH_PORT
-    SSH_PORT=${SSH_PORT:-22}
+    
+    echo -e "${CYAN}Enter your remote server details:${NC}"
+    echo ""
+    
+    # Use validation functions
+    prompt_host "Remote server IP address or hostname" SERVER_IP
+    prompt_port "SSH port" SSH_PORT "22"
 
     export SERVER_IP
     export SSH_PORT
 
-    read -rp "Do you want to setup an Ansible user? (y/n) [default: y]: " SETUP_USER
-    SETUP_USER=${SETUP_USER:-y}
+    echo ""
+    if confirm_action "Do you want to setup an Ansible user?" "y"; then
+        SETUP_USER="y"
+    else
+        SETUP_USER="n"
+    fi
 
     if [ "$SETUP_USER" = "y" ] || [ "$SETUP_USER" = "Y" ]; then
         get_ssh_connection
@@ -23,13 +31,19 @@ setup_machine() {
         USER_NEEDS_SETUP=true
     else
         print_heading "EXISTING USER INFORMATION"
-        read -rp "User name: " USER
+        
+        echo ""
+        prompt_username "User name" USER
+        
         read -srp "Sudo (become) password for user: " USER_PASSWORD
         echo ""
+        echo ""
+        
         export USER
         export USER_PASSWORD
         
         print_heading "SSH KEY FOR USER"
+        echo ""
         
         local options=(
             "Use existing SSH key file (select from available keys)"
@@ -82,21 +96,20 @@ setup_machine() {
     fi
 
     print_heading "CONFIGURATION SUMMARY"
-    echo "Remote server: $SERVER_IP:$SSH_PORT"
-    echo "Remote user: $REMOTE_USER"
-    echo "Authentication method: $AUTH_METHOD"
-    echo "Deployment user: $USER"
+    echo ""
+    echo -e "${CYAN}Remote server:${NC} $SERVER_IP:$SSH_PORT"
+    echo -e "${CYAN}Remote user:${NC} $REMOTE_USER"
+    echo -e "${CYAN}Authentication method:${NC} $AUTH_METHOD"
+    echo -e "${CYAN}Deployment user:${NC} $USER"
     if [ "$USER_NEEDS_SETUP" = true ]; then
-        echo "Deployment user will be created: Yes"
+        echo -e "${CYAN}Deployment user will be created:${NC} Yes"
     else
-        echo "Using existing deployment user: Yes"
+        echo -e "${CYAN}Using existing deployment user:${NC} Yes"
     fi
+    echo ""
 
-    read -rp "Do you want to proceed with this configuration? (y/n) [default: y]: " PROCEED
-    PROCEED=${PROCEED:-y}
-
-    if [ "$PROCEED" != "y" ] && [ "$PROCEED" != "Y" ]; then
-        print_warning "Setup aborted by user."
+    if ! confirm_action "Do you want to proceed with this configuration?" "y"; then
+        print_warning "Setup aborted by user"
         exit 0
     fi
 

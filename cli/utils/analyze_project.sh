@@ -245,6 +245,9 @@ show_project_menu() {
     
     local options=(
         "Add new environment"
+        "Edit existing environment"
+        "Delete environment"
+        "View environment details"
         "Back to main menu"
     )
     
@@ -255,8 +258,32 @@ show_project_menu() {
         0)
             echo ""
             add_environment
+            echo ""
+            read -rp "Press Enter to continue..."
+            show_project_menu
             ;;
         1)
+            echo ""
+            edit_environment
+            echo ""
+            read -rp "Press Enter to continue..."
+            show_project_menu
+            ;;
+        2)
+            echo ""
+            delete_environment
+            echo ""
+            read -rp "Press Enter to continue..."
+            show_project_menu
+            ;;
+        3)
+            echo ""
+            view_environment
+            echo ""
+            read -rp "Press Enter to continue..."
+            show_project_menu
+            ;;
+        4)
             return
             ;;
         *)

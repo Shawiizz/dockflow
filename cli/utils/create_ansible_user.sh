@@ -5,8 +5,11 @@ source "$CLI_UTILS_DIR/functions.sh"
 setup_ansible_user() {
     print_heading "USER SETUP"
     
-    read -rp "User name [default: deploy]: " USER
-    USER=${USER:-deploy}
+    echo -e "${CYAN}Configure the deployment user account:${NC}"
+    echo ""
+    
+    prompt_username "User name" USER "deploy"
+    
     read -srp "Password for user: " USER_PASSWORD
     echo ""
     

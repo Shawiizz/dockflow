@@ -47,6 +47,9 @@ list_and_select_ssh_key() {
 get_ssh_connection() {
     print_heading "CONNECTION METHOD"
     
+    echo -e "${CYAN}Choose how you want to connect to the remote server:${NC}"
+    echo ""
+    
     local options=(
         "Use password authentication"
         "Use SSH key authentication (select from available keys)"
@@ -57,16 +60,19 @@ get_ssh_connection() {
     interactive_menu "Choose connection method:" "${options[@]}"
     CONNECTION_METHOD=$?
 
+    echo ""
+    
     if [ "$CONNECTION_METHOD" = "0" ]; then
         # Password authentication
-        read -rp "Remote server username: " REMOTE_USER
+        prompt_username "Remote server username" REMOTE_USER
         read -srp "Remote server password: " REMOTE_PASSWORD
         echo ""
         AUTH_METHOD="password"
     elif [ "$CONNECTION_METHOD" = "1" ]; then
         # SSH key authentication from file selection
-        read -rp "Remote server username: " REMOTE_USER
+        prompt_username "Remote server username" REMOTE_USER
         
+        echo ""
         if ! list_and_select_ssh_key; then
             print_warning "No SSH key selected or available. Exiting..."
             exit 1
@@ -79,7 +85,9 @@ get_ssh_connection() {
         AUTH_METHOD="key"
     elif [ "$CONNECTION_METHOD" = "2" ]; then
         # SSH key authentication from direct input
-        read -rp "Remote server username: " REMOTE_USER
+        prompt_username "Remote server username" REMOTE_USER
+        
+        echo ""
         print_warning "Please paste your SSH private key (end with a new line followed by EOF):"
         
         # Create temporary directory and file for the key
@@ -96,19 +104,29 @@ get_ssh_connection() {
         AUTH_METHOD="key"
     else
         # Generate new SSH key pair
-        read -rp "Remote server username: " REMOTE_USER
+        prompt_username "Remote server username" REMOTE_USER
         
         # Create directory for the new key
         TEMP_KEY_DIR=$(mktemp -d)
         SSH_PRIVATE_KEY_PATH="$TEMP_KEY_DIR/id_ssh"
         
+        echo ""
         print_success "Generating new SSH key pair..."
         ssh-keygen -t ed25519 -f "$SSH_PRIVATE_KEY_PATH" -N "" -C "$REMOTE_USER-automation"
         
-        echo -e "\n${YELLOW}Here's your new public key:${NC}"
+        echo ""
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${YELLOW}Here's your new public key:${NC}"
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         cat "${SSH_PRIVATE_KEY_PATH}.pub"
-        echo -e "\n${YELLOW}You need to add this public key to ~/.ssh/authorized_keys on your remote server for $REMOTE_USER${NC}"
-        echo -e "${YELLOW}Example command to run on the remote server:${NC}"
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo -e "${CYAN}📋 Instructions:${NC}"
+        echo "  1. Copy the public key above"
+        echo "  2. Add it to ~/.ssh/authorized_keys on your remote server for $REMOTE_USER"
+        echo ""
+        echo -e "${CYAN}💡 Quick command to run on the remote server:${NC}"
+        echo ""
         echo "mkdir -p ~/.ssh && echo '$(cat ${SSH_PRIVATE_KEY_PATH}.pub)' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
         echo ""
 
@@ -126,8 +144,13 @@ get_ssh_connection() {
 
 generate_ansible_ssh_key() {
     print_heading "SSH KEY SETUP"
-    read -rp "Do you want to generate a new SSH key for the deployment user? (y/n) [default: y]: " GENERATE_ANSIBLE_KEY
-    GENERATE_ANSIBLE_KEY=${GENERATE_ANSIBLE_KEY:-y}
+    
+    echo ""
+    if confirm_action "Do you want to generate a new SSH key for the deployment user?" "y"; then
+        GENERATE_ANSIBLE_KEY="y"
+    else
+        GENERATE_ANSIBLE_KEY="n"
+    fi
 
     if [ "$GENERATE_ANSIBLE_KEY" = "y" ] || [ "$GENERATE_ANSIBLE_KEY" = "Y" ]; then
         TEMP_KEY_DIR=$(mktemp -d)
@@ -135,8 +158,12 @@ generate_ansible_ssh_key() {
         ANSIBLE_PUBLIC_KEY=$(cat "$TEMP_KEY_DIR/deploy_key.pub")
         ANSIBLE_PRIVATE_KEY=$(cat "$TEMP_KEY_DIR/deploy_key")
         
+        echo ""
         print_success "SSH key pair generated for deployment user"
-        echo -e "${YELLOW}Public key:${NC} $ANSIBLE_PUBLIC_KEY"
+        echo ""
+        echo -e "${CYAN}Public key:${NC}"
+        echo "$ANSIBLE_PUBLIC_KEY"
+        echo ""
         
         print_success "Saving private key to ~/.ssh/deploy_key"
         mkdir -p ~/.ssh
@@ -148,6 +175,8 @@ generate_ansible_ssh_key() {
     else
         # Ask for existing key
         print_heading "SELECT EXISTING PRIVATE KEY"
+        
+        echo ""
         if ! list_and_select_ssh_key; then
             print_warning "No SSH key selected or available. Exiting..."
             exit 1

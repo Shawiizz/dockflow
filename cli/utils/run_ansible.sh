@@ -5,19 +5,28 @@ source "$CLI_UTILS_DIR/functions.sh"
 configure_services() {
     print_heading "CONFIGURING SERVICES"
     
-    read -rp "Do you want to install Portainer? (y/n) [default: n]: " INSTALL_PORTAINER
+    echo -e "${CYAN}Optional: Install Portainer for container management${NC}"
+    echo ""
     
-    if [[ "$INSTALL_PORTAINER" == "y" || "$INSTALL_PORTAINER" == "Y" ]]; then
+    if confirm_action "Do you want to install Portainer?" "n"; then
+        INSTALL_PORTAINER="y"
+        
+        echo ""
         read -srp "Portainer password: " PORTAINER_PASSWORD
         echo ""
-        read -rp "Port HTTP for Portainer [default: 9000]: " PORTAINER_HTTP_PORT
-        PORTAINER_HTTP_PORT=${PORTAINER_HTTP_PORT:-9000}
-        read -rp "Portainer domain name: " PORTAINER_DOMAIN_NAME
+        
+        echo ""
+        prompt_port "HTTP port for Portainer" PORTAINER_HTTP_PORT "9000"
+        
+        echo ""
+        prompt_domain_name "Portainer domain name" PORTAINER_DOMAIN_NAME true
         
         export PORTAINER_INSTALL=true
         export PORTAINER_PASSWORD
         export PORTAINER_HTTP_PORT
         export PORTAINER_DOMAIN_NAME
+    else
+        INSTALL_PORTAINER="n"
     fi
 }
 
