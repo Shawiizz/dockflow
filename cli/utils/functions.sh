@@ -50,23 +50,36 @@ interactive_menu() {
     local options=("$@")
     local selected=0
     local num_options=${#options[@]}
+    local lines_drawn=0
     
     # Hide cursor
     tput civis
     
     # Function to draw menu
     draw_menu() {
+        # Count lines as we draw
+        lines_drawn=0
+        
         echo -e "${CYAN}${prompt}${NC}"
+        ((lines_drawn++))
+        
         echo ""
+        ((lines_drawn++))
+        
         for i in "${!options[@]}"; do
             if [ $i -eq $selected ]; then
                 echo -e "  ${GREEN}▸ ${options[$i]}${NC}"
             else
                 echo -e "    ${options[$i]}"
             fi
+            ((lines_drawn++))
         done
+        
         echo ""
+        ((lines_drawn++))
+        
         echo -e "${YELLOW}Navigation: ↑↓ arrows to move, Enter to select, 'q' to quit${NC}"
+        ((lines_drawn++))
     }
     
     # Initial draw
@@ -110,8 +123,8 @@ interactive_menu() {
                 ;;
         esac
         
-        # Clear previous menu (move up by number of options + 3 lines for prompt and help)
-        tput cuu $((num_options + 3))
+        # Clear previous menu
+        tput cuu $lines_drawn
         tput ed
         
         # Redraw menu
