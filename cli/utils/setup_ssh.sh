@@ -29,40 +29,41 @@ list_and_select_ssh_key() {
     fi
     
     print_heading "AVAILABLE SSH PRIVATE KEYS"
-    for i in "${!private_keys[@]}"; do
-        local key_file="${private_keys[$i]}"
+    
+    local options=()
+    for key_file in "${private_keys[@]}"; do
         local key_name=$(basename "$key_file")
-        echo "$((i+1))) $key_name ($(dirname "$key_file")/$key_name)"
+        options+=("$key_name ($(dirname "$key_file")/$key_name)")
     done
     
-    local choice
-    while true; do
-        read -rp "Select a private key (1-${#private_keys[@]}): " choice
-        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#private_keys[@]} ]; then
-            SSH_PRIVATE_KEY_PATH="${private_keys[$((choice-1))]}"
-            print_success "Selected: $(basename "$SSH_PRIVATE_KEY_PATH")"
-            return 0
-        else
-            print_warning "Invalid selection. Please choose a number between 1 and ${#private_keys[@]}"
-        fi
-    done
+    interactive_menu "Select a private key:" "${options[@]}"
+    local choice=$?
+    
+    SSH_PRIVATE_KEY_PATH="${private_keys[$choice]}"
+    print_success "Selected: $(basename "$SSH_PRIVATE_KEY_PATH")"
+    return 0
 }
 
 get_ssh_connection() {
     print_heading "CONNECTION METHOD"
-    echo "1) Use password authentication"
-    echo "2) Use SSH key authentication (select from available keys)"
-    echo "3) Use SSH key authentication (paste directly)"
-    echo "4) Generate new SSH key pair"
-    read -rp "Choose connection method (1/2/3/4): " CONNECTION_METHOD
+    
+    local options=(
+        "Use password authentication"
+        "Use SSH key authentication (select from available keys)"
+        "Use SSH key authentication (paste directly)"
+        "Generate new SSH key pair"
+    )
+    
+    interactive_menu "Choose connection method:" "${options[@]}"
+    CONNECTION_METHOD=$?
 
-    if [ "$CONNECTION_METHOD" = "1" ]; then
+    if [ "$CONNECTION_METHOD" = "0" ]; then
         # Password authentication
         read -rp "Remote server username: " REMOTE_USER
         read -srp "Remote server password: " REMOTE_PASSWORD
         echo ""
         AUTH_METHOD="password"
-    elif [ "$CONNECTION_METHOD" = "2" ]; then
+    elif [ "$CONNECTION_METHOD" = "1" ]; then
         # SSH key authentication from file selection
         read -rp "Remote server username: " REMOTE_USER
         
@@ -76,7 +77,7 @@ get_ssh_connection() {
             exit 1
         fi
         AUTH_METHOD="key"
-    elif [ "$CONNECTION_METHOD" = "3" ]; then
+    elif [ "$CONNECTION_METHOD" = "2" ]; then
         # SSH key authentication from direct input
         read -rp "Remote server username: " REMOTE_USER
         print_warning "Please paste your SSH private key (end with a new line followed by EOF):"
@@ -109,6 +110,7 @@ get_ssh_connection() {
         echo -e "\n${YELLOW}You need to add this public key to ~/.ssh/authorized_keys on your remote server for $REMOTE_USER${NC}"
         echo -e "${YELLOW}Example command to run on the remote server:${NC}"
         echo "mkdir -p ~/.ssh && echo '$(cat ${SSH_PRIVATE_KEY_PATH}.pub)' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+        echo ""
         
         read -rp "Press Enter when the public key has been added to the remote server to continue..." CONTINUE_KEY
         

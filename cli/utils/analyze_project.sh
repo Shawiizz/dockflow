@@ -242,44 +242,21 @@ display_project_analysis() {
 show_project_menu() {
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
-    echo "What would you like to do?"
-    echo ""
-    echo "1) Configure repository secrets (GitHub/GitLab)"
-    echo "2) Add new environment"
-    echo "3) Modify configuration"
-    echo "4) Validate setup"
-    echo "5) Create project structure (if not exists)"
-    echo "6) Back to main menu"
-    echo ""
-    read -rp "Choose option (1-6): " PROJECT_MENU_OPTION
+    
+    local options=(
+        "Add new environment"
+        "Back to main menu"
+    )
+    
+    interactive_menu "What would you like to do?" "${options[@]}"
+    PROJECT_MENU_OPTION=$?
     
     case "$PROJECT_MENU_OPTION" in
+        0)
+            echo ""
+            add_environment
+            ;;
         1)
-            echo ""
-            print_info "Configuring repository secrets..."
-            # TODO: Implement setup_github_secrets or setup_gitlab_secrets
-            ;;
-        2)
-            echo ""
-            print_info "Adding new environment..."
-            # TODO: Implement add_environment function
-            ;;
-        3)
-            echo ""
-            print_info "Modifying configuration..."
-            # TODO: Implement modify_config function
-            ;;
-        4)
-            echo ""
-            print_info "Validating setup..."
-            # TODO: Implement validate_setup function
-            ;;
-        5)
-            echo ""
-            # Call original setup_project function
-            setup_project
-            ;;
-        6)
             return
             ;;
         *)

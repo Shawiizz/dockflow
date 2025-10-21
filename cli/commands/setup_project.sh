@@ -11,11 +11,14 @@ setup_project() {
     
     # New project setup
     print_heading "NEW PROJECT SETUP"
-            
-    echo "Select CI/CD platform:"
-    echo "1) GitHub Actions"
-    echo "2) GitLab CI"
-    read -rp "Choose option (1/2): " CI_OPTION
+    
+    local options=(
+        "GitHub Actions"
+        "GitLab CI"
+    )
+    
+    interactive_menu "Select CI/CD platform:" "${options[@]}"
+    CI_OPTION=$?
     
     # Create directory structure
     mkdir -p "$CLI_PROJECT_DIR/ci"
@@ -35,7 +38,7 @@ setup_project() {
     fi
     
     # Setup CI configuration based on user choice
-    if [ "$CI_OPTION" = "1" ]; then
+    if [ "$CI_OPTION" = "0" ]; then
         mkdir -p "$CLI_PROJECT_DIR/.github/workflows"
         GITHUB_CI_FILE="$CLI_PROJECT_DIR/.github/workflows/github-ci.yml"
         if [ ! -f "$GITHUB_CI_FILE" ]; then
