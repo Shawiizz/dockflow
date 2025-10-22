@@ -176,7 +176,7 @@ Create `.deployment/env/.env.[environment]` with your variables:
 ```bash
 # .env.production
 HOST=192.168.1.10              # Server IP
-ANSIBLE_USER=ansible           # SSH user
+USER=deploy                    # SSH user
 DB_PASSWORD=$DB_SECRET         # Reference to CI secret
 API_PORT=3000
 ```
