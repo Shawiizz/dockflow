@@ -39,9 +39,12 @@ Push a tag, grab a coffee, and your app is deployed.
 # 1. Setup your server (one command!)
 docker run -it --rm -v ${HOME}/.ssh:/root/.ssh -v .:/project shawiizz/devops-cli:latest
 
-# 2. Copy example CI config to your repo
-# 3. Add the needed ci secrets
-# 4. Push a tag
+# 2. Initialize project structure (CLI is optional)
+docker run -it --rm -e HOST_PWD="$(pwd)" -v .:/project shawiizz/devops-cli:latest
+
+# 3. Configure your .deployment files
+# 4. Add the needed CI secrets
+# 5. Push a tag
 git tag 1.0.0 && git push origin --tags
 ```
 
@@ -133,14 +136,32 @@ example/ci/gitlab-ci.yml → .gitlab-ci.yml
 
 #### 2.2 Create Project Structure
 
+You can use the CLI to automatically generate the project structure:
+
+```bash
+# GitHub Actions project
+docker run -it --rm -v .:/project shawiizz/devops-cli:latest init github
+
+# GitLab CI project
+docker run -it --rm -v .:/project shawiizz/devops-cli:latest init gitlab
+```
+
+This creates the following structure:
+
 ```
 .deployment/
 ├── docker/
 │   ├── docker-compose.yml           # Define your services
 │   └── Dockerfile.[service]         # One per service
-└── env/
-    └── .env.[environment]           # Environment variables
+├── env/
+│   └── .env.[environment]           # Environment variables (HOST, USER, etc.)
+└── templates/
+    ├── nginx/                       # Custom Nginx configs (optional)
+    ├── services/                    # Custom systemd services (optional)
+    └── scripts/                     # Custom scripts (optional)
 ```
+
+**Or create the structure manually if you prefer.**
 
 #### 2.3 Add Repository Secrets
 
