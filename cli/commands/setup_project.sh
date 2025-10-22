@@ -1,5 +1,64 @@
 #!/bin/bash
 
+# Common function to create project structure
+create_project_structure() {
+    local ci_platform="$1"  # "github" or "gitlab"
+    
+    print_step "Creating directory structure..."
+    
+    # Create directory structure
+    mkdir -p "$CLI_PROJECT_DIR/.deployment/docker"
+    mkdir -p "$CLI_PROJECT_DIR/.deployment/env"
+    mkdir -p "$CLI_PROJECT_DIR/.deployment/templates/nginx"
+    mkdir -p "$CLI_PROJECT_DIR/.deployment/templates/scripts"
+    
+    # Create .env.production with required configuration
+    ENV_PROD_FILE="$CLI_PROJECT_DIR/.deployment/env/.env.production"
+    if [ ! -f "$ENV_PROD_FILE" ]; then
+        echo "HOST=to_replace" > "$ENV_PROD_FILE"
+        echo "USER=deploy" >> "$ENV_PROD_FILE"
+        print_success "Created .env.production file"
+    else
+        print_warning ".env.production file already exists, skipping"
+    fi
+    
+    # Setup CI configuration based on platform choice
+    if [ "$ci_platform" = "github" ]; then
+        mkdir -p "$CLI_PROJECT_DIR/.github/workflows"
+        GITHUB_CI_FILE="$CLI_PROJECT_DIR/.github/workflows/github-ci.yml"
+        if [ ! -f "$GITHUB_CI_FILE" ]; then
+            touch "$GITHUB_CI_FILE"
+            print_success "Created GitHub Actions CI configuration"
+        else
+            print_warning "GitHub Actions CI configuration already exists, skipping"
+        fi
+    else
+        GITLAB_CI_FILE="$CLI_PROJECT_DIR/.gitlab-ci.yml"
+        if [ ! -f "$GITLAB_CI_FILE" ]; then
+            touch "$GITLAB_CI_FILE"
+            print_success "Created GitLab CI configuration"
+        else
+            print_warning "GitLab CI configuration already exists, skipping"
+        fi
+    fi
+    
+    # Create docker files
+    if [ ! -f "$CLI_PROJECT_DIR/.deployment/docker/docker-compose.yml" ]; then
+        touch "$CLI_PROJECT_DIR/.deployment/docker/docker-compose.yml"
+        print_success "Created docker-compose.yml"
+    else
+        print_warning "docker-compose.yml already exists, skipping"
+    fi
+    
+    if [ ! -f "$CLI_PROJECT_DIR/.deployment/docker/Dockerfile.app" ]; then
+        touch "$CLI_PROJECT_DIR/.deployment/docker/Dockerfile.app"
+        print_success "Created Dockerfile.app"
+    else
+        print_warning "Dockerfile.app already exists, skipping"
+    fi
+}
+
+# Interactive setup
 setup_project() {
     # Check if project exists
     if quick_scan_project; then
@@ -20,58 +79,36 @@ setup_project() {
     interactive_menu "Select CI/CD platform:" "${options[@]}"
     CI_OPTION=$?
     
-    # Create directory structure
-    mkdir -p "$CLI_PROJECT_DIR/ci"
-    mkdir -p "$CLI_PROJECT_DIR/.deployment/docker"
-    mkdir -p "$CLI_PROJECT_DIR/.deployment/env"
-    mkdir -p "$CLI_PROJECT_DIR/.deployment/templates/nginx"
-    mkdir -p "$CLI_PROJECT_DIR/.deployment/templates/scripts"
+    echo ""
     
-    # Create .env.production with required configuration
-    ENV_PROD_FILE="$CLI_PROJECT_DIR/.deployment/env/.env.production"
-    if [ ! -f "$ENV_PROD_FILE" ]; then
-        echo "HOST=to_replace" > "$ENV_PROD_FILE"
-        echo "USER=deploy|to_replace" >> "$ENV_PROD_FILE"
-        print_success "Created .env.production file with placeholder values"
-    else
-        print_warning ".env.production file already exists, skipping"
-    fi
-    
-    # Setup CI configuration based on user choice
+    # Determine platform
+    local ci_platform
     if [ "$CI_OPTION" = "0" ]; then
-        mkdir -p "$CLI_PROJECT_DIR/.github/workflows"
-        GITHUB_CI_FILE="$CLI_PROJECT_DIR/.github/workflows/github-ci.yml"
-        if [ ! -f "$GITHUB_CI_FILE" ]; then
-            touch "$GITHUB_CI_FILE"
-            print_success "Created empty GitHub Actions CI configuration"
-        else
-            print_warning "GitHub Actions CI configuration already exists, skipping"
-        fi
+        ci_platform="github"
     else
-        GITLAB_CI_FILE="$CLI_PROJECT_DIR/.gitlab-ci.yml"
-        if [ ! -f "$GITLAB_CI_FILE" ]; then
-            touch "$GITLAB_CI_FILE"
-            print_success "Created empty GitLab CI configuration"
-        else
-            print_warning "GitLab CI configuration already exists, skipping"
-        fi
+        ci_platform="gitlab"
     fi
     
-    create_empty_file_if_not_exists "$CLI_PROJECT_DIR/.deployment/docker/docker-compose.yml"
-    create_empty_file_if_not_exists "$CLI_PROJECT_DIR/.deployment/docker/Dockerfile.to_replace"
+    # Create structure using common function
+    create_project_structure "$ci_platform"
     
-    print_success "Project structure set up successfully"
+    echo ""
+    echo -e "${GREEN}=========================================================="
+    echo "   PROJECT INITIALIZED SUCCESSFULLY"
+    echo -e "==========================================================${NC}"
+    echo ""
+    print_success "Project structure has been created in the current directory"
+    echo ""
+    echo -e "${CYAN}Next steps:${NC}"
+    echo "  1. Configure your .deployment/env/.env.production file"
+    echo "  2. Set up your docker-compose.yml and Dockerfiles"
+    echo "  3. Configure CI/CD secrets in your repository"
+    echo "  4. Push your changes and create a tag to deploy"
+    echo ""
+    
+    tput cnorm  # Restore cursor
+    exit 0
 }
 
-create_empty_file_if_not_exists() {
-    local file_path="$1"
-    if [ ! -f "$file_path" ]; then
-        touch "$file_path"
-        print_success "Created empty file: $(basename "$file_path")"
-    else
-        print_warning "File already exists, skipping: $(basename "$file_path")"
-    fi
-}
-
+export -f create_project_structure
 export -f setup_project
-export -f create_empty_file_if_not_exists

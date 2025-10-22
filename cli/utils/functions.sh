@@ -9,6 +9,7 @@ NC='\033[0m'
 
 cleanup() {
     echo -e "\n\n${YELLOW}Script interrupted by user. Goodbye!${NC}"
+    tput cnorm  # Show cursor
     jobs -p | xargs -r kill
     exit 1
 }
@@ -117,6 +118,7 @@ interactive_menu() {
                 ;;
             'q'|'Q')  # Quit
                 tput cnorm
+                echo ""
                 echo ""
                 print_warning "Exiting CLI..."
                 exit 0

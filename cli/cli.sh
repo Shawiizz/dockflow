@@ -20,6 +20,7 @@ $(echo -e "========================================================${NC}")
 
 $(echo -e "${CYAN}USAGE:${NC}")
     docker run -it --rm \\
+        -e HOST_PWD="\$(pwd)" \\
         -v \${HOME}/.ssh:/root/.ssh \\
         -v .:/project \\
         shawiizz/devops-cli:latest [OPTIONS]
@@ -27,6 +28,7 @@ $(echo -e "${CYAN}USAGE:${NC}")
 $(echo -e "${CYAN}OPTIONS:${NC}")
     -h, --help              Show this help message
     -v, --version           Show version information
+    init [github|gitlab]    Initialize project structure (default: github)
     
 $(echo -e "${CYAN}DESCRIPTION:${NC}")
     This CLI tool helps you:
@@ -56,9 +58,22 @@ $(echo -e "${CYAN}REQUIREMENTS:${NC}")
 $(echo -e "${CYAN}EXAMPLES:${NC}")
     # Start interactive setup
     docker run -it --rm \\
+        -e HOST_PWD="\$(pwd)" \\
         -v \${HOME}/.ssh:/root/.ssh \\
         -v .:/project \\
         shawiizz/devops-cli:latest
+    
+    # Initialize project structure directly
+    docker run -it --rm \\
+        -v \${HOME}/.ssh:/root/.ssh \\
+        -v .:/project \\
+        shawiizz/devops-cli:latest init
+    
+    # Initialize with specific platform
+    docker run -it --rm \\
+        -v \${HOME}/.ssh:/root/.ssh \\
+        -v .:/project \\
+        shawiizz/devops-cli:latest init gitlab
     
     # Show help
     docker run -it --rm shawiizz/devops-cli:latest --help
@@ -83,6 +98,48 @@ show_version() {
     echo -e "License: MIT"
 }
 
+# Source dependencies first
+source "$CLI_UTILS_DIR/functions.sh"
+source "$CLI_UTILS_DIR/validators.sh"
+source "$CLI_UTILS_DIR/setup_ssh.sh"
+source "$CLI_UTILS_DIR/create_ansible_user.sh"
+source "$CLI_UTILS_DIR/run_ansible.sh"
+source "$CLI_UTILS_DIR/quick_scan.sh"
+source "$CLI_UTILS_DIR/analyze_project.sh"
+source "$CLI_UTILS_DIR/manage_environments.sh"
+
+source "$CLI_COMMANDS_DIR/setup_machine.sh"
+source "$CLI_COMMANDS_DIR/setup_project.sh"
+
+trap cleanup SIGINT
+trap 'tput cnorm' EXIT  # Always restore cursor on exit
+
+# Function to initialize project structure (non-interactive)
+init_project_non_interactive() {
+    local ci_platform="$1"
+    
+    echo -e "${GREEN}=========================================================="
+    echo "   INITIALIZING PROJECT STRUCTURE"
+    echo -e "==========================================================${NC}"
+    echo ""
+    echo -e "${CYAN}CI/CD Platform:${NC} $ci_platform"
+    echo -e "${CYAN}Target Directory:${NC} .deployment/"
+    echo ""
+    
+    # Use the common function from setup_project.sh
+    create_project_structure "$ci_platform"
+    
+    echo ""
+    echo -e "${GREEN}✓ Project initialized successfully in .deployment/${NC}"
+    echo ""
+    echo -e "${CYAN}Next steps:${NC}"
+    echo "  1. Configure your .deployment/env/.env.production file"
+    echo "  2. Set up your docker-compose.yml and Dockerfiles"
+    echo "  3. Configure CI/CD secrets in your repository"
+    echo "  4. Push your changes and create a tag to deploy"
+    echo ""
+}
+
 # Parse command line arguments
 parse_arguments() {
     case "${1:-}" in
@@ -92,6 +149,19 @@ parse_arguments() {
             ;;
         -v|--version)
             show_version
+            exit 0
+            ;;
+        init|--init)
+            # Initialize project structure directly (non-interactive)
+            local ci_platform="${2:-github}"
+            
+            # Validate platform
+            if [[ "$ci_platform" != "github" && "$ci_platform" != "gitlab" ]]; then
+                echo -e "${RED}Error: Invalid CI platform '$ci_platform'. Use 'github' or 'gitlab'.${NC}"
+                exit 1
+            fi
+            
+            init_project_non_interactive "$ci_platform"
             exit 0
             ;;
         "")
@@ -107,52 +177,57 @@ parse_arguments() {
     esac
 }
 
-# Parse arguments before showing menu
+# Parse arguments after functions are defined
 parse_arguments "$@"
 
-source "$CLI_UTILS_DIR/functions.sh"
-source "$CLI_UTILS_DIR/validators.sh"
-source "$CLI_UTILS_DIR/setup_ssh.sh"
-source "$CLI_UTILS_DIR/create_ansible_user.sh"
-source "$CLI_UTILS_DIR/run_ansible.sh"
-source "$CLI_UTILS_DIR/quick_scan.sh"
-source "$CLI_UTILS_DIR/analyze_project.sh"
-source "$CLI_UTILS_DIR/manage_environments.sh"
-
-source "$CLI_COMMANDS_DIR/setup_machine.sh"
-source "$CLI_COMMANDS_DIR/setup_project.sh"
-
-trap cleanup SIGINT
-
 show_main_menu() {
-    echo -e "${GREEN}=========================================================="
-    echo "   DEVOPS AUTOMATION CLI v$CLI_VERSION"
-    echo -e "==========================================================${NC}"
-    
-    # Quick scan of the project
-    display_quick_scan
-    local project_exists=$?
+    while true; do
+        clear
+        echo -e "${GREEN}=========================================================="
+        echo "   DEVOPS AUTOMATION CLI v$CLI_VERSION"
+        echo -e "==========================================================${NC}"
+        
+        # Show current directory (only if HOST_PWD is set)
+        if [ -n "$HOST_PWD" ]; then
+            echo ""
+            echo -e "${CYAN}Working directory:${NC} $HOST_PWD"
+            echo ""
+        fi
+        
+        # Quick scan of the project
+        display_quick_scan
+        local project_exists=$?
 
-    local options=()
-    options+=("Setup a remote machine or modify installation")
-    
-    if [ $project_exists -eq 0 ]; then
-        options+=("Edit current project")
-    else
-        options+=("Setup a new project")
-    fi
-    
-    interactive_menu "Select an option:" "${options[@]}"
-    MAIN_OPTION=$?
+        local options=()
+        options+=("Setup a remote machine or modify installation")
+        
+        if [ $project_exists -eq 0 ]; then
+            options+=("Edit current project")
+        else
+            options+=("Initialize project structure in the current directory")
+        fi
+        
+        options+=("Exit")
+        
+        interactive_menu "Select an option:" "${options[@]}"
+        MAIN_OPTION=$?
 
-    if [ "$MAIN_OPTION" = "0" ]; then
-        setup_machine
-    elif [ "$MAIN_OPTION" = "1" ]; then
-        setup_project
-    else
-        print_warning "Invalid option."
-        exit 1
-    fi
+        if [ "$MAIN_OPTION" = "0" ]; then
+            setup_machine
+            echo ""
+        elif [ "$MAIN_OPTION" = "1" ]; then
+            setup_project
+            echo ""
+        elif [ "$MAIN_OPTION" = "2" ]; then
+            echo ""
+            tput cnorm  # Restore cursor
+            print_success "Thank you for using DevOps CLI. Goodbye!"
+            exit 0
+        else
+            print_warning "Invalid option."
+            exit 1
+        fi
+    done
 }
 
 show_main_menu

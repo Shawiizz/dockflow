@@ -240,56 +240,60 @@ display_project_analysis() {
 
 # Interactive menu after analysis
 show_project_menu() {
-    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    
-    local options=(
-        "Add new environment"
-        "Edit existing environment"
-        "Delete environment"
-        "View environment details"
-        "Back to main menu"
-    )
-    
-    interactive_menu "What would you like to do?" "${options[@]}"
-    PROJECT_MENU_OPTION=$?
-    
-    case "$PROJECT_MENU_OPTION" in
-        0)
-            echo ""
-            add_environment
-            echo ""
-            read -rp "Press Enter to continue..."
-            show_project_menu
-            ;;
-        1)
-            echo ""
-            edit_environment
-            echo ""
-            read -rp "Press Enter to continue..."
-            show_project_menu
-            ;;
-        2)
-            echo ""
-            delete_environment
-            echo ""
-            read -rp "Press Enter to continue..."
-            show_project_menu
-            ;;
-        3)
-            echo ""
-            view_environment
-            echo ""
-            read -rp "Press Enter to continue..."
-            show_project_menu
-            ;;
-        4)
-            return
-            ;;
-        *)
-            print_warning "Invalid option"
-            ;;
-    esac
+    while true; do
+        echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        
+        local options=(
+            "Add new environment"
+            "Edit existing environment"
+            "Delete environment"
+            "View environment details"
+            "Back to main menu"
+        )
+        
+        interactive_menu "What would you like to do?" "${options[@]}"
+        PROJECT_MENU_OPTION=$?
+        
+        case "$PROJECT_MENU_OPTION" in
+            0)
+                echo ""
+                add_environment
+                echo ""
+                read -rp "Press Enter to continue..."
+                echo ""
+                ;;
+            1)
+                echo ""
+                edit_environment
+                echo ""
+                read -rp "Press Enter to continue..."
+                echo ""
+                ;;
+            2)
+                echo ""
+                delete_environment
+                echo ""
+                read -rp "Press Enter to continue..."
+                echo ""
+                ;;
+            3)
+                echo ""
+                view_environment
+                echo ""
+                read -rp "Press Enter to continue..."
+                echo ""
+                ;;
+            4)
+                echo ""
+                return 0
+                ;;
+            *)
+                print_warning "Invalid option"
+                echo ""
+                ;;
+        esac
+    done
 }
 
 export -f check_deployment_dir
