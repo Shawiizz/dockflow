@@ -52,3 +52,21 @@
         loop_var: cmd_type
       no_log: true
       when: global_no_log
+
+  post_tasks:
+    - name: Load health checks configuration
+      include_vars:
+        file: "{{ lookup('env', 'PROJECT_ROOT') }}/.deployment/config.yml"
+        name: deployment_config
+      when: lookup('pipe', 'test -f ' + (lookup('env', 'PROJECT_ROOT') | default('.')) + '/.deployment/config.yml && echo true || echo false') == 'true'
+      ignore_errors: yes
+
+    - name: Set health checks configuration
+      set_fact:
+        health_checks_config: "{{ deployment_config.health_checks | default({}) }}"
+      when: deployment_config is defined
+
+    - name: Run health checks
+      include_role:
+        name: health-check
+      when: health_checks_config is defined or (deployment_config.health_checks is defined)

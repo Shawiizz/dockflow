@@ -2,3 +2,32 @@ options:
   environmentize: true        # Auto-add ENV/VERSION to names (default: true)
   enable_debug_logs: false   # Enable detailed deployment logs (default: false)
   remote_build: false        # Build Docker images on remote server instead of CI/CD (default: false)
+
+# Health checks configuration (optional)
+health_checks:
+  enabled: true              # Enable post-deployment health checks
+  startup_delay: 15          # Wait X seconds after deployment before checking
+  on_failure: "notify"       # Action on failure: "fail" (stop), "notify" (warn), "ignore"
+  
+  endpoints:
+    # Example: Main application health endpoint
+    - name: "Main Application Health"
+      url: "http://localhost:3000/health"
+      method: "GET"
+      expected_status: 200
+      timeout: 30
+      retries: 3
+      retry_delay: 5
+      validate_certs: false
+    
+    # Example: API endpoint
+    - name: "API Status"
+      url: "http://localhost:3000/api/status"
+      expected_status: 200
+      timeout: 10
+    
+    # Example: Database connectivity check
+    - name: "Database Connection"
+      url: "http://localhost:3000/health/db"
+      expected_status: 200
+      timeout: 15

@@ -372,13 +372,72 @@ options:
   environmentize: true          # Auto-add ENV/VERSION (default: true)
   enable_debug_logs: false      # Verbose logging (default: false)
   remote_build: false           # Build on server (default: false)
+
+health_checks:
+  enabled: true                 # Enable post-deployment health checks
+  startup_delay: 15             # Wait before checking (seconds)
+  on_failure: "notify"          # Action: "fail", "notify", or "ignore"
+  
+  endpoints:
+    - name: "Main Application"
+      url: "http://localhost:3000/health"
+      expected_status: 200
+      timeout: 30
+      retries: 3
 ```
+
+#### Configuration Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `environmentize` | Auto-add `${ENV}` and `${VERSION}` to names | `true` |
 | `enable_debug_logs` | Enable detailed Ansible logs | `false` |
 | `remote_build` | Build images on remote server | `false` |
+
+#### Health Checks Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `enabled` | Enable post-deployment health checks | `false` |
+| `startup_delay` | Seconds to wait before checking | `10` |
+| `on_failure` | Action on failure: `fail` (stop deployment), `notify` (warn), `ignore` | `notify` |
+
+**Health Check Endpoint Properties:**
+
+| Property | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `name` | Friendly name for the check | URL | No |
+| `url` | Endpoint URL to check | - | Yes |
+| `method` | HTTP method | `GET` | No |
+| `expected_status` | Expected HTTP status code | `200` | No |
+| `timeout` | Request timeout in seconds | `30` | No |
+| `retries` | Number of retries on failure | `3` | No |
+| `retry_delay` | Delay between retries (seconds) | `5` | No |
+| `validate_certs` | Validate SSL certificates | `true` | No |
+
+**Example with multiple endpoints:**
+
+```yaml
+health_checks:
+  enabled: true
+  startup_delay: 20
+  on_failure: "fail"  # Stop deployment if checks fail
+  
+  endpoints:
+    - name: "API Health"
+      url: "http://localhost:3000/health"
+      expected_status: 200
+      timeout: 30
+    
+    - name: "Database Connection"
+      url: "http://localhost:3000/health/db"
+      expected_status: 200
+    
+    - name: "External Service"
+      url: "https://api.example.com/status"
+      validate_certs: true
+      retries: 5
+```
 
 ---
 

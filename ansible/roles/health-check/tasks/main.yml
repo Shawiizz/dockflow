@@ -1,0 +1,105 @@
+---
+- name: Check if health checks are enabled
+  set_fact:
+    health_checks_enabled: "{{ health_checks_config.enabled | default(false) | bool }}"
+    health_check_endpoints: "{{ health_checks_config.endpoints | default([]) }}"
+    health_check_on_failure: "{{ health_checks_config.on_failure | default('notify') }}"
+  when: health_checks_config is defined
+
+- name: Display health checks configuration
+  debug:
+    msg: "Health checks enabled: {{ health_checks_enabled | default(false) }}, On failure action: {{ health_check_on_failure | default('notify') }}"
+
+- name: Wait for containers to be ready
+  pause:
+    seconds: "{{ health_checks_config.startup_delay | default(10) }}"
+  when: 
+    - health_checks_enabled | default(false)
+    - health_check_endpoints | length > 0
+
+- name: Perform health checks on endpoints
+  uri:
+    url: "{{ item.url }}"
+    method: "{{ item.method | default('GET') }}"
+    status_code: "{{ item.expected_status | default(200) }}"
+    timeout: "{{ item.timeout | default(30) }}"
+    validate_certs: "{{ item.validate_certs | default(true) }}"
+    return_content: yes
+  register: health_check_results
+  loop: "{{ health_check_endpoints }}"
+  when: 
+    - health_checks_enabled | default(false)
+    - health_check_endpoints | length > 0
+  ignore_errors: "{{ health_check_on_failure != 'fail' }}"
+  retries: "{{ item.retries | default(3) }}"
+  delay: "{{ item.retry_delay | default(5) }}"
+  loop_control:
+    label: "{{ item.name | default(item.url) }}"
+
+- name: Display health check results
+  debug:
+    msg: |
+      Health Check: {{ item.item.name | default(item.item.url) }}
+      Status: {{ 'PASSED' if item.status == (item.item.expected_status | default(200)) else 'FAILED' }}
+      Response Code: {{ item.status }}
+      Response Time: {{ item.elapsed }}s
+  loop: "{{ health_check_results.results | default([]) }}"
+  when: 
+    - health_checks_enabled | default(false)
+    - health_check_results.results is defined
+  loop_control:
+    label: "{{ item.item.name | default(item.item.url) }}"
+
+- name: Check for failed health checks
+  set_fact:
+    failed_health_checks: "{{ health_check_results.results | selectattr('failed', 'equalto', true) | list }}"
+  when: 
+    - health_checks_enabled | default(false)
+    - health_check_results.results is defined
+
+- name: Display summary of failed checks
+  debug:
+    msg: |
+      ⚠️  HEALTH CHECK FAILURES DETECTED ⚠️
+      Failed endpoints:
+      {% for check in failed_health_checks %}
+      - {{ check.item.name | default(check.item.url) }}: {{ check.msg | default('HTTP ' + (check.status | string)) }}
+      {% endfor %}
+  when:
+    - health_checks_enabled | default(false)
+    - failed_health_checks is defined
+    - failed_health_checks | length > 0
+
+- name: Fail deployment if health checks failed and on_failure is 'fail'
+  fail:
+    msg: |
+      Deployment failed due to health check failures.
+      Failed checks: {{ failed_health_checks | length }}/{{ health_check_endpoints | length }}
+      Action: {{ health_check_on_failure }}
+  when:
+    - health_checks_enabled | default(false)
+    - failed_health_checks is defined
+    - failed_health_checks | length > 0
+    - health_check_on_failure == 'fail'
+
+- name: Send notification on health check failure
+  debug:
+    msg: |
+      ⚠️  Health checks failed but deployment continues (on_failure: {{ health_check_on_failure }})
+      Please investigate the following endpoints:
+      {% for check in failed_health_checks %}
+      - {{ check.item.name | default(check.item.url) }}
+      {% endfor %}
+  when:
+    - health_checks_enabled | default(false)
+    - failed_health_checks is defined
+    - failed_health_checks | length > 0
+    - health_check_on_failure == 'notify'
+
+- name: Display success message
+  debug:
+    msg: "✅ All health checks passed ({{ health_check_endpoints | length }}/{{ health_check_endpoints | length }})"
+  when:
+    - health_checks_enabled | default(false)
+    - health_check_results.results is defined
+    - (failed_health_checks | default([]) | length) == 0
