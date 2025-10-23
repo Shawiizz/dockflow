@@ -19,41 +19,19 @@
         ignore_errors: no
       - name: "cleanup"
         base_options: "--delete-images"
-        ignore_errors: yes  # New uploaded images are used by containers (cleanup is executed last)
+        ignore_errors: yes  # Will be skipped if rollback is configured
+        skip_on_rollback: yes
   pre_tasks:
     - name: Display DevOps Framework version
       debug:
         msg: "DevOps Framework v{{ framework_version }}"
-  roles:
-    - role: geerlingguy.docker
-    - role: nginx
-      tags:
-        - nginx
-    - role: private_ssh_keys
-    - role: services   
-    - role: remote-build
-      when: remote_build | bool
-    - role: image-transfer
-      when: not (remote_build | bool)
-    - role: execute-scripts
-  tasks:
-    - name: Process Docker commands for each type (with logs)
-      include_tasks: process_docker_commands.yml
-      loop: "{{ decomposerize_types }}"
-      loop_control:
-        loop_var: cmd_type
-      no_log: false
-      when: not global_no_log
-
-    - name: Process Docker commands for each type (silent)
-      include_tasks: process_docker_commands.yml
-      loop: "{{ decomposerize_types }}"
-      loop_control:
-        loop_var: cmd_type
-      no_log: true
-      when: global_no_log
-
-  post_tasks:
+    
+    - name: Ensure rollback directory exists
+      file:
+        path: /var/lib/devops-framework
+        state: directory
+        mode: '0755'
+    
     - name: Check if config.yml exists
       stat:
         path: "{{ lookup('env', 'PROJECT_ROOT') }}/.deployment/config.yml"
@@ -69,13 +47,51 @@
       when: config_file.stat.exists
       changed_when: false
 
-    - name: Load health checks configuration from rendered template
+    - name: Load deployment configuration from rendered template
       include_vars:
         file: "{{ tmp_dir }}/config_rendered.yml"
         name: deployment_config
       when: config_file.stat.exists
       ignore_errors: yes
+  roles:
+    - role: geerlingguy.docker
+    - role: nginx
+      tags:
+        - nginx
+    - role: private_ssh_keys
+    - role: services   
+    - role: remote-build
+      when: remote_build | bool
+    - role: image-transfer
+      when: not (remote_build | bool)
+    - role: execute-scripts
+  tasks:
+    - name: Check if rollback is configured
+      set_fact:
+        rollback_configured: "{{ (deployment_config.health_checks.on_failure | default('notify')) == 'rollback' }}"
+      when: deployment_config is defined and deployment_config.health_checks is defined
 
+    - name: Process Docker commands for each type (with logs)
+      include_tasks: process_docker_commands.yml
+      loop: "{{ decomposerize_types }}"
+      loop_control:
+        loop_var: cmd_type
+      no_log: false
+      when:
+        - not global_no_log
+        - not (cmd_type.skip_on_rollback | default(false) and rollback_configured | default(false))
+
+    - name: Process Docker commands for each type (silent)
+      include_tasks: process_docker_commands.yml
+      loop: "{{ decomposerize_types }}"
+      loop_control:
+        loop_var: cmd_type
+      no_log: true
+      when:
+        - global_no_log
+        - not (cmd_type.skip_on_rollback | default(false) and rollback_configured | default(false))
+
+  post_tasks:
     - name: Set health checks configuration
       set_fact:
         health_checks_config: "{{ deployment_config.health_checks | default({}) }}"

@@ -35,6 +35,28 @@
       }}
   changed_when: false
 
+- name: Store docker run commands for rollback tracking
+  set_fact:
+    docker_run_commands: "{{ current_commands | select('match', '^docker\\s+run') | list }}"
+  when:
+    - cmd_type.name == 'run'
+    - current_commands is defined
+    - current_commands | length > 0
+
+- name: Save current docker run commands for rollback (before deployment)
+  copy:
+    content: "{{ item }}"
+    dest: "/var/lib/devops-framework/rollback-{{ item.split() | last | regex_replace('[/:]', '_') }}.sh"
+    mode: '0755'
+  loop: "{{ docker_run_commands | default([]) }}"
+  when:
+    - cmd_type.name == 'run'
+    - docker_run_commands is defined
+    - docker_run_commands | length > 0
+  failed_when: false
+  loop_control:
+    label: "Saving rollback for: {{ item.split() | last }}"
+
 - name: Execute commands on target host
   shell: "( {{ item }} ) > /dev/null 2>&1"
   loop: "{{ current_commands }}"

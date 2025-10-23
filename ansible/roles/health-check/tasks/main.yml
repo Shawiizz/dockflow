@@ -6,6 +6,16 @@
     health_check_on_failure: "{{ health_checks_config.on_failure | default('notify') }}"
   when: health_checks_config is defined
 
+- name: Extract deployed images from docker run commands
+  set_fact:
+    deployed_images: "{{ deployed_images | default([]) + [item.split() | last] }}"
+  loop: "{{ hostvars[inventory_hostname].get('docker_run_commands', []) }}"
+  when:
+    - health_checks_enabled | default(false)
+    - hostvars[inventory_hostname].get('docker_run_commands', []) | length > 0
+  loop_control:
+    label: "{{ item.split() | last }}"
+
 - name: Display health checks configuration
   debug:
     msg: "Health checks enabled: {{ health_checks_enabled | default(false) }}, On failure action: {{ health_check_on_failure | default('notify') }}"
@@ -82,6 +92,15 @@
     - failed_health_checks | length > 0
     - health_check_on_failure == 'fail'
 
+- name: Trigger rollback if health checks failed and on_failure is 'rollback'
+  include_role:
+    name: rollback
+  when:
+    - health_checks_enabled | default(false)
+    - failed_health_checks is defined
+    - failed_health_checks | length > 0
+    - health_check_on_failure == 'rollback'
+
 - name: Send notification on health check failure
   debug:
     msg: |
@@ -98,7 +117,7 @@
 
 - name: Display success message
   debug:
-    msg: "✅ All health checks passed ({{ health_check_endpoints | length }}/{{ health_check_endpoints | length }})"
+    msg: "All health checks passed ({{ health_check_endpoints | length }}/{{ health_check_endpoints | length }})"
   when:
     - health_checks_enabled | default(false)
     - health_check_results.results is defined

@@ -16,7 +16,8 @@ health_checks:
   # - "fail": Stop the deployment and mark it as failed
   # - "notify": Continue deployment but show warnings
   # - "ignore": Run checks but don't affect deployment status
-  on_failure: "notify"
+  # - "rollback": Stop new containers, remove new images, and restart previous containers
+  on_failure: "rollback"
   
   # List of endpoints to check
   # You can use Jinja2 templating with environment variables:

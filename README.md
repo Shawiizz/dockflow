@@ -410,7 +410,7 @@ health_checks:
 |--------|-------------|---------|
 | `enabled` | Enable post-deployment health checks | `false` |
 | `startup_delay` | Seconds to wait before checking | `10` |
-| `on_failure` | Action on failure: `fail` (stop deployment), `notify` (warn), `ignore` | `notify` |
+| `on_failure` | Action on failure: `fail` (stop), `notify` (warn), `ignore`, `rollback` (restore previous) | `notify` |
 
 **Health Check Endpoint Properties:**
 
@@ -448,6 +448,21 @@ health_checks:
       validate_certs: true
       retries: 5
 ```
+
+**Automatic Rollback:**
+
+Set `on_failure: "rollback"` to automatically restore previous deployment on health check failure:
+
+```yaml
+health_checks:
+  enabled: true
+  on_failure: "rollback"  # Auto-rollback on failure
+  endpoints:
+    - name: "Health"
+      url: "http://localhost:{{ lookup('env', 'APP_PORT') }}/health"
+```
+
+See [HEALTH-CHECKS.md](HEALTH-CHECKS.md) and [ROLLBACK-SYSTEM.md](ROLLBACK-SYSTEM.md) for complete documentation.
 
 ---
 

@@ -1,0 +1,131 @@
+---
+- name: Display rollback initiation message
+  debug:
+    msg: |
+      ⚠️  INITIATING ROLLBACK ⚠️
+      Health checks failed - rolling back to previous deployment
+
+- name: Get currently running containers by image
+  shell: |
+    docker ps --filter "ancestor={{ item }}" --format "{{.Names}}"
+  register: current_containers
+  loop: "{{ deployed_images | default([]) }}"
+  when: deployed_images is defined and deployed_images | length > 0
+  changed_when: false
+  failed_when: false
+  loop_control:
+    label: "{{ item }}"
+
+- name: Stop new containers
+  shell: "docker stop {{ item.stdout }}"
+  loop: "{{ current_containers.results | default([]) }}"
+  when:
+    - current_containers.results is defined
+    - item.stdout is defined
+    - item.stdout != ''
+  failed_when: false
+  loop_control:
+    label: "Stopping container: {{ item.stdout | default('N/A') }}"
+
+- name: Get images used by new containers
+  shell: |
+    docker inspect {{ item.stdout }} --format "{{.Image}}" 2>/dev/null || echo ""
+  register: new_images
+  loop: "{{ current_containers.results | default([]) }}"
+  when:
+    - current_containers.results is defined
+    - item.stdout is defined
+    - item.stdout != ''
+  changed_when: false
+  failed_when: false
+  loop_control:
+    label: "Getting image for: {{ item.stdout | default('N/A') }}"
+
+- name: Remove new containers
+  shell: "docker rm {{ item.stdout }}"
+  loop: "{{ current_containers.results | default([]) }}"
+  when:
+    - current_containers.results is defined
+    - item.stdout is defined
+    - item.stdout != ''
+  failed_when: false
+  loop_control:
+    label: "Removing container: {{ item.stdout | default('N/A') }}"
+
+- name: Remove new images
+  shell: "docker rmi {{ item.stdout }}"
+  loop: "{{ new_images.results | default([]) }}"
+  when:
+    - new_images.results is defined
+    - item.stdout is defined
+    - item.stdout != ''
+  failed_when: false
+  ignore_errors: yes
+  loop_control:
+    label: "Removing image: {{ item.stdout | default('N/A') }}"
+
+- name: Find rollback script files
+  find:
+    paths: /var/lib/devops-framework
+    patterns: 'rollback-*.sh'
+  register: rollback_files
+
+- name: Load and execute rollback commands
+  block:
+    - name: Read rollback scripts
+      slurp:
+        src: "{{ item.path }}"
+      register: rollback_data
+      loop: "{{ rollback_files.files }}"
+      when: rollback_files.files is defined and rollback_files.files | length > 0
+      loop_control:
+        label: "Reading: {{ item.path | basename }}"
+
+    - name: Parse rollback commands
+      set_fact:
+        rollback_commands: "{{ rollback_commands | default([]) + [(item.content | b64decode | trim)] }}"
+      loop: "{{ rollback_data.results | default([]) }}"
+      when:
+        - rollback_data.results is defined
+        - item.content is defined
+        - (item.content | b64decode | trim) != ''
+      loop_control:
+        label: "Parsing rollback script"
+
+    - name: Execute rollback docker run commands
+      shell: "{{ item }}"
+      loop: "{{ rollback_commands | default([]) }}"
+      when: rollback_commands is defined and rollback_commands | length > 0
+      register: rollback_execution
+      failed_when: false
+      loop_control:
+        label: "Restarting: {{ item.split() | last }}"
+
+    - name: Display rollback results
+      debug:
+        msg: |
+          {% if rollback_execution.results | selectattr('rc', 'equalto', 0) | list | length == rollback_commands | length %}
+          ✅ Rollback completed successfully
+          Restored {{ rollback_commands | length }} container(s) to previous state
+          {% else %}
+          ⚠️  Rollback completed with errors
+          Successful: {{ rollback_execution.results | selectattr('rc', 'equalto', 0) | list | length }}/{{ rollback_commands | length }}
+          {% endif %}
+      when: rollback_execution.results is defined
+
+  when: rollback_files.files is defined and rollback_files.files | length > 0
+
+- name: Display rollback failure message
+  debug:
+    msg: |
+      ⚠️  No rollback data found
+      Previous deployment state cannot be restored automatically
+      Manual intervention may be required
+  when: rollback_files.files is not defined or rollback_files.files | length == 0
+
+- name: Fail deployment after rollback
+  fail:
+    msg: |
+      Deployment failed and has been rolled back
+      Health checks did not pass
+      Previous deployment state has been restored
