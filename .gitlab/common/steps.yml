@@ -21,11 +21,6 @@
         export VERSION=$VERSION
       fi
       
-      if [ ! -f ".deployment/env/.env.${ENV}" ]; then
-          echo "File .deployment/env/.env.${ENV} does not exist, cannot execute on unknown environment"
-          exit 1
-      fi
-
       #######################################
       ### Load framework config options #####
       #######################################
@@ -37,8 +32,14 @@
       fi
 
       echo "Discovering hosts for environment: $ENV"
-      DEPLOYMENT_HOSTS="main"
+      DEPLOYMENT_HOSTS=""
       
+      # Check if main env file exists
+      if [ -f ".deployment/env/.env.${ENV}" ]; then
+        DEPLOYMENT_HOSTS="main"
+      fi
+      
+      # Check for host-specific env files
       for env_file in .deployment/env/.env.${ENV}.*; do
         if [ -f "$env_file" ]; then
           SUFFIX=$(basename "$env_file" | sed "s/\.env\.${ENV}\.//")
@@ -48,6 +49,12 @@
           fi
         fi
       done
+      
+      # If no env files found, deploy to main host using CI secrets only
+      if [ -z "$DEPLOYMENT_HOSTS" ]; then
+        echo "No .env files found for environment ${ENV}, will use CI secrets only"
+        DEPLOYMENT_HOSTS="main"
+      fi
       
       export DEPLOYMENT_HOSTS
       echo "Deployment hosts: $DEPLOYMENT_HOSTS"
@@ -68,6 +75,72 @@
           HOSTNAME="$HOST"
         fi
         
+        #######################################
+        ######### Load env variables ##########
+        #######################################
+        set -a
+        if [ -f ".deployment/env/.env.${ENV}" ]; then
+          echo "Loading .deployment/env/.env.${ENV}"
+          source ".deployment/env/.env.${ENV}"
+        else
+          echo "No .deployment/env/.env.${ENV} file found, using CI secrets only"
+        fi
+        
+        if [[ -n "${HOSTNAME}" ]]; then
+          if [ -f ".deployment/env/.env.${ENV}.${HOSTNAME}" ]; then
+            echo "Loading .deployment/env/.env.${ENV}.${HOSTNAME}"
+            source ".deployment/env/.env.${ENV}.${HOSTNAME}"
+          fi
+        fi
+        set +a
+        
+        # Override variables from CI secrets if defined
+        ENV_PREFIX="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_"
+        
+        if [[ -z "${HOSTNAME}" ]]; then
+          # Main host: process ENV_* variables
+          echo "Processing CI secrets with prefix: ${ENV_PREFIX}"
+          for var in $(printenv | cut -d= -f1); do
+            if [[ "$var" == ${ENV_PREFIX}* ]]; then
+              # Remove ENV_ prefix
+              var_name="${var#${ENV_PREFIX}}"
+              var_value="$(printenv "$var")"
+              export "$var_name=$var_value"
+              echo "Exported $var_name from CI secret $var"
+            fi
+          done
+        else
+          # Specific host: process ENV_HOSTNAME_* variables
+          ENV_HOSTNAME_PREFIX="${ENV_PREFIX}$(echo "${HOSTNAME}" | tr '[:lower:]' '[:upper:]')_"
+          echo "Processing CI secrets with prefix: ${ENV_HOSTNAME_PREFIX}"
+          for var in $(printenv | cut -d= -f1); do
+            if [[ "$var" == ${ENV_HOSTNAME_PREFIX}* ]]; then
+              # Remove ENV_HOSTNAME_ prefix
+              var_name="${var#${ENV_HOSTNAME_PREFIX}}"
+              var_value="$(printenv "$var")"
+              export "$var_name=$var_value"
+              echo "Exported $var_name from CI secret $var"
+            fi
+          done
+        fi
+        
+        # Set default USER if not already set
+        if [ -z "$USER" ]; then
+          export USER="deploy"
+        fi
+        
+        # Verify that HOST is defined
+        if [ -z "$HOST" ]; then
+          echo "ERROR: HOST is not defined. Please set it in .env file or as CI secret (${ENV_PREFIX}HOST or ${ENV_HOSTNAME_PREFIX}HOST)"
+          exit 1
+        fi
+        
+        # Verify that SSH_PRIVATE_KEY is defined
+        if [ -z "$SSH_PRIVATE_KEY" ]; then
+          echo "ERROR: SSH_PRIVATE_KEY is not defined. Please set it as CI secret (${ENV_PREFIX}SSH_PRIVATE_KEY or ${ENV_HOSTNAME_PREFIX}SSH_PRIVATE_KEY)"
+          exit 1
+        fi
+                        
         if [[ -n "${HOSTNAME}" ]]; then
           if [ ! -d ".deployment/docker/docker_images_${HOSTNAME}" ] || [ -z "$(ls -A ".deployment/docker/docker_images_${HOSTNAME}" 2>/dev/null)" ]; then
             if [[ "${FRAMEWORK_OPTIONS_REMOTE_BUILD}" != "true" ]]; then
@@ -93,19 +166,7 @@
         #######################################
         mkdir -p devops-framework/ssh
         
-        if [[ -n "${HOSTNAME}" ]]; then
-          SSH_SECRET_NAME="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_$(echo "${HOSTNAME}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY"
-        else
-          SSH_SECRET_NAME="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY"
-        fi
-        
-        # Vérifier que la clé SSH existe
-        if [ -z "$(printenv "$SSH_SECRET_NAME")" ]; then
-          echo "SSH key $SSH_SECRET_NAME not found for host $HOST, skipping deployment"
-          continue
-        fi
-        
-        echo "$(printenv "$SSH_SECRET_NAME")" | tr -d '\r' > devops-framework/ssh/remote_private_key
+        echo "$SSH_PRIVATE_KEY" | tr -d '\r' > devops-framework/ssh/remote_private_key
         chmod 600 devops-framework/ssh/*
         
         eval "$(ssh-agent -s)"

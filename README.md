@@ -120,21 +120,7 @@ For manual configuration, check [MANUAL-REMOTE-SETUP.md](./MANUAL-REMOTE-SETUP.m
 
 ### Step 2: CI/CD Configuration
 
-#### 2.1 Copy CI Config File
-
-**GitHub Actions:**
-```bash
-example/ci/github-ci.yml → .github/workflows/deploy.yml
-```
-
-**GitLab CI:**
-```bash
-example/ci/gitlab-ci.yml → .gitlab-ci.yml
-```
-
-> ⚠️ **GitHub users in organizations**: Fork this repo and update the `uses` URL in your workflow file.
-
-#### 2.2 Create Project Structure
+#### 2.1 Create Project Structure
 
 You can use the CLI to automatically generate the project structure:
 
@@ -153,15 +139,29 @@ This creates the following structure:
 ├── docker/
 │   ├── docker-compose.yml           # Define your services
 │   └── Dockerfile.[service]         # One per service
-├── env/
-│   └── .env.[environment]           # Environment variables (HOST, USER, etc.)
+├── env/                             # OPTIONAL: Can use CI secrets instead
+│   └── .env.[environment]           # OPTIONAL: Environment variables (HOST, USER, etc.)
 └── templates/
     ├── nginx/                       # Custom Nginx configs (optional)
     ├── services/                    # Custom systemd services (optional)
     └── scripts/                     # Custom scripts (optional)
 ```
 
-**Or create the structure manually if you prefer.**
+**Note:** The `env/` folder and `.env` files are optional. You can configure everything using CI secrets with the `[ENV]_*` naming pattern.
+
+#### 2.2 Copy CI Config File
+
+**GitHub Actions:**
+```bash
+example/ci/github-ci.yml → .github/workflows/deploy.yml
+```
+
+**GitLab CI:**
+```bash
+example/ci/gitlab-ci.yml → .gitlab-ci.yml
+```
+
+> ⚠️ **GitHub users in organizations**: Fork this repo and update the `uses` URL in your workflow file.
 
 #### 2.3 Add Repository Secrets
 
@@ -170,13 +170,29 @@ Required secrets in your CI/CD settings:
 | Secret Name | Description | Example |
 |-------------|-------------|---------|
 | `USER_PASSWORD` | Deployment user password | `your-password` |
-| `[ENV]_SSH_PRIVATE_KEY` | SSH key per environment | `PRODUCTION_SSH_PRIVATE_KEY` |
+| `[ENV]_SSH_PRIVATE_KEY` | SSH key for main host | `PRODUCTION_SSH_PRIVATE_KEY` |
+| `[ENV]_[HOSTNAME]_SSH_PRIVATE_KEY` | SSH key for specific host | `PRODUCTION_SERVER_A_SSH_PRIVATE_KEY` |
 | `GIT_TOKEN` | For private repos (remote build) | GitHub/GitLab token |
+
+**Dynamic Variable Override System:**
+
+Any CI secret starting with `[ENV]_` or `[ENV]_[HOSTNAME]_` will automatically override corresponding environment variables:
+
+| Pattern | Example Secret | Exported As | Use Case |
+|---------|---------------|-------------|----------|
+| `[ENV]_*` | `PRODUCTION_HOST` | `HOST` | Override main host variables |
+| `[ENV]_*` | `PRODUCTION_USER` | `USER` | Override main host SSH user |
+| `[ENV]_*` | `PRODUCTION_DB_PASSWORD` | `DB_PASSWORD` | Override any main host variable |
+| `[ENV]_[HOSTNAME]_*` | `PRODUCTION_SERVER_A_HOST` | `HOST` | Override specific host variables |
+| `[ENV]_[HOSTNAME]_*` | `PRODUCTION_SERVER_A_API_KEY` | `API_KEY` | Override any specific host variable |
 
 **Important notes:**
 - ✅ All secret names must be **UPPERCASE**
 - ✅ GitLab secrets must **NOT** be protected
 - ✅ Main env file maps to `main` host automatically
+- 💡 CI secrets with `[ENV]_` prefix will override values from `.env.[environment]` files
+- 💡 CI secrets with `[ENV]_[HOSTNAME]_` prefix will override values from `.env.[environment].[hostname]` files
+- 🔒 Use this system to keep sensitive data (passwords, API keys, IPs) out of your repository
 
 <details>
 <summary>Git Token Permissions (only for remote build with private repos)</summary>
@@ -192,17 +208,30 @@ Required secrets in your CI/CD settings:
 
 ### Environment Files
 
-Create `.deployment/env/.env.[environment]` with your variables:
+**Environment files are optional!** You can use CI secrets exclusively or combine them with `.env` files.
+
+Create `.deployment/env/.env.[environment]` with your variables (optional):
 
 ```bash
 # .env.production
-HOST=192.168.1.10              # Server IP
-USER=deploy                    # SSH user
-DB_PASSWORD=$DB_SECRET         # Reference to CI secret
-API_PORT=3000
+HOST=192.168.1.10              # Can be overridden by PRODUCTION_HOST CI secret
+USER=deploy                    # Can be overridden by PRODUCTION_USER CI secret
+DB_PASSWORD=$DB_SECRET         # Reference to CI secret (if you need 1 variable and use it in several envs without duplicating ci secret)
+API_PORT=3000                  # Can be overridden by PRODUCTION_API_PORT CI secret
 ```
 
-**Pro tip:** Use `$VARIABLE_NAME` to reference CI secrets and keep sensitive data secure!
+**Configuration options:**
+
+1. **CI Secrets Only**: Don't create `.env` files, set all variables as `[ENV]_*` CI secrets
+2. **Mixed Approach**: Use `.env` files for non-sensitive data, CI secrets for sensitive values
+3. **Environment Files**: Store everything in `.env` files (not recommended for sensitive data)
+
+**Pro tips:** 
+- Use `$VARIABLE_NAME` to reference CI secrets directly in `.env` files
+- Any variable can be overridden using `[ENV]_VARIABLE_NAME` CI secrets (e.g., `PRODUCTION_HOST`, `PRODUCTION_API_PORT`)
+- For multi-host setups, use `[ENV]_[HOSTNAME]_VARIABLE_NAME` pattern (e.g., `PRODUCTION_SERVER_A_HOST`)
+- Keep sensitive data in CI secrets, not in `.env` files committed to the repository
+- **Required**: At minimum, `HOST` must be defined (either in `.env` file or as CI secret)
 
 ---
 
@@ -320,11 +349,17 @@ API_PORT=3000
 ```bash
 # .env.production.server-a
 HOST=192.168.1.11
-API_PORT=3001                    # Override
+API_PORT=3001                    # Override main config
 REDIS_URL=redis://server-a:6379 # Additional config
 ```
 
-**SSH Keys:** `PRODUCTION_SSH_PRIVATE_KEY`, `PRODUCTION_SERVER_A_SSH_PRIVATE_KEY`, etc.
+**Required CI Secrets:**
+- `PRODUCTION_SSH_PRIVATE_KEY` (for main host)
+- `PRODUCTION_SERVER_A_SSH_PRIVATE_KEY` (for server-a)
+
+**Optional CI Secrets (to override any variable):**
+- Main host: `PRODUCTION_*` (e.g., `PRODUCTION_HOST`, `PRODUCTION_USER`, `PRODUCTION_API_PORT`)
+- Server A: `PRODUCTION_SERVER_A_*` (e.g., `PRODUCTION_SERVER_A_HOST`, `PRODUCTION_SERVER_A_USER`, `PRODUCTION_SERVER_A_REDIS_URL`)
 
 ---
 

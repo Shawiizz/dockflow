@@ -54,21 +54,18 @@ jobs:
           echo "env=$ENVIRONMENT" >> $GITHUB_OUTPUT
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           
-          if [ ! -f ".deployment/env/.env.${ENVIRONMENT}" ]; then
-              echo "::error:: File .deployment/env/.env.${ENVIRONMENT} does not exist, cannot execute on unknown environment"
-              exit 1
-          fi
-          
           #######################################
           ###### Discover hosts to deploy #######
           #######################################
           HOSTS_LIST=()
           BASE_FILE=".deployment/env/.env.${ENVIRONMENT}"
           
+          # Check if main env file exists
           if [ -f "$BASE_FILE" ]; then
             HOSTS_LIST+=("main")
           fi
           
+          # Check for host-specific env files
           for env_file in .deployment/env/.env.${ENVIRONMENT}.*; do
             if [ -f "$env_file" ]; then
               SUFFIX=$(basename "$env_file" | sed "s/\.env\.${ENVIRONMENT}\.//")
@@ -77,6 +74,12 @@ jobs:
               fi
             fi
           done
+          
+          # If no env files found, deploy to main host using CI secrets only
+          if [ ${#HOSTS_LIST[@]} -eq 0 ]; then
+            echo "No .env files found for environment ${ENVIRONMENT}, will use CI secrets only"
+            HOSTS_LIST+=("main")
+          fi
           
           HOSTS_JSON="["
           for i in "${!HOSTS_LIST[@]}"; do
@@ -113,17 +116,10 @@ jobs:
         run: |
           ENV="${{ needs.discover-hosts.outputs.env }}"
           HOST="${{ matrix.host }}"
-          
-          if [[ "$HOST" == "main" ]]; then
-            SSH_SECRET_NAME="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY"
-          else
-            SSH_SECRET_NAME="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_$(echo "${HOST}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY"
-          fi
 
           echo "env=$ENV" >> $GITHUB_OUTPUT
           echo "host=$HOST" >> $GITHUB_OUTPUT
           echo "tag=${{ needs.discover-hosts.outputs.tag }}" >> $GITHUB_OUTPUT
-          echo "SSH_KEY_SECRET_NAME=$SSH_SECRET_NAME" >> $GITHUB_ENV
 
       - name: Install dependencies
         run: |
@@ -150,15 +146,68 @@ jobs:
           ######### Load env variables ##########
           #######################################
           set -a
-          source ".deployment/env/.env.${ENV}"
+          if [ -f ".deployment/env/.env.${ENV}" ]; then
+            echo "Loading .deployment/env/.env.${ENV}"
+            source ".deployment/env/.env.${ENV}"
+          else
+            echo "No .deployment/env/.env.${ENV} file found, using CI secrets only"
+          fi
           
           if [[ "$HOSTNAME" != "main" ]]; then
             if [ -f ".deployment/env/.env.${ENV}.${HOSTNAME}" ]; then
+              echo "Loading .deployment/env/.env.${ENV}.${HOSTNAME}"
               source ".deployment/env/.env.${ENV}.${HOSTNAME}"
             fi
           fi
           set +a
           
+          # Override variables from CI secrets if defined
+          ENV_PREFIX="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_"
+          
+          if [[ "$HOSTNAME" == "main" ]]; then
+            # Main host: process ENV_* variables
+            echo "Processing CI secrets with prefix: ${ENV_PREFIX}"
+            for var in $(compgen -e); do
+              if [[ "$var" == ${ENV_PREFIX}* ]]; then
+                # Remove ENV_ prefix
+                var_name="${var#${ENV_PREFIX}}"
+                var_value="${!var}"
+                export "$var_name=$var_value"
+                echo "Exported $var_name from CI secret $var"
+              fi
+            done
+          else
+            # Specific host: process ENV_HOSTNAME_* variables
+            ENV_HOSTNAME_PREFIX="${ENV_PREFIX}$(echo "${HOSTNAME}" | tr '[:lower:]' '[:upper:]')_"
+            echo "Processing CI secrets with prefix: ${ENV_HOSTNAME_PREFIX}"
+            for var in $(compgen -e); do
+              if [[ "$var" == ${ENV_HOSTNAME_PREFIX}* ]]; then
+                # Remove ENV_HOSTNAME_ prefix
+                var_name="${var#${ENV_HOSTNAME_PREFIX}}"
+                var_value="${!var}"
+                export "$var_name=$var_value"
+                echo "Exported $var_name from CI secret $var"
+              fi
+            done
+          fi
+          
+          # Set default USER if not already set
+          if [ -z "$USER" ]; then
+            export USER="deploy"
+          fi
+          
+          # Verify that HOST is defined
+          if [ -z "$HOST" ]; then
+            echo "::error:: HOST is not defined. Please set it in .env file or as CI secret (${ENV_PREFIX}HOST)"
+            exit 1
+          fi
+          
+          # Verify that SSH_PRIVATE_KEY is defined
+          if [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "::error:: SSH_PRIVATE_KEY is not defined. Please set it as CI secret (${ENV_PREFIX}SSH_PRIVATE_KEY)"
+            exit 1
+          fi
+                              
           export ENV="${{ steps.vars.outputs.env }}"
           export VERSION="${{ steps.vars.outputs.tag }}"
 
@@ -200,7 +249,7 @@ jobs:
           #######################################
           
           mkdir -p ssh
-          echo "${!SSH_KEY_SECRET_NAME}" | tr -d '\r' > ssh/remote_private_key
+          echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ssh/remote_private_key
           chmod 600 ssh/*
           eval "$(ssh-agent -s)"
           ssh-add ssh/remote_private_key
