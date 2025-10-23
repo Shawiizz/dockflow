@@ -19,7 +19,7 @@ on:
 
 env:
   DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops-framework.git
-  DEVOPS_FRAMEWORK_VERSION: 1.0.38
+  DEVOPS_FRAMEWORK_VERSION: 1.0.38-dev1
 
 jobs:
   discover-hosts:
