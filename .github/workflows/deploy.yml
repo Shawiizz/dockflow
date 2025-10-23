@@ -173,7 +173,6 @@ jobs:
                 var_name="${var#${ENV_PREFIX}}"
                 var_value="${!var}"
                 export "$var_name=$var_value"
-                echo "Exported $var_name from CI secret $var"
               fi
             done
           else
@@ -186,7 +185,6 @@ jobs:
                 var_name="${var#${ENV_HOSTNAME_PREFIX}}"
                 var_value="${!var}"
                 export "$var_name=$var_value"
-                echo "Exported $var_name from CI secret $var"
               fi
             done
           fi
