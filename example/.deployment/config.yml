@@ -5,29 +5,42 @@ options:
 
 # Health checks configuration (optional)
 health_checks:
-  enabled: true              # Enable post-deployment health checks
-  startup_delay: 15          # Wait X seconds after deployment before checking
-  on_failure: "notify"       # Action on failure: "fail" (stop), "notify" (warn), "ignore"
+  # Enable or disable health checks (default: false)
+  enabled: true
   
+  # Time to wait after deployment before running health checks (in seconds)
+  # This allows your application time to fully start up
+  startup_delay: 15
+  
+  # What to do when a health check fails:
+  # - "fail": Stop the deployment and mark it as failed
+  # - "notify": Continue deployment but show warnings
+  # - "ignore": Run checks but don't affect deployment status
+  on_failure: "notify"
+  
+  # List of endpoints to check
+  # You can use Jinja2 templating with environment variables:
+  # - {{ lookup('env', 'VARIABLE_NAME') }}
+  # - {{ ansible_env.VARIABLE_NAME }}
   endpoints:
-    # Example: Main application health endpoint
+    # Example: Main application health endpoint with dynamic port
     - name: "Main Application Health"
-      url: "http://localhost:3000/health"
-      method: "GET"
+      url: "http://localhost:{{ lookup('env', 'APP_EXTERNAL_PORT') }}/health"
       expected_status: 200
       timeout: 30
       retries: 3
       retry_delay: 5
-      validate_certs: false
     
-    # Example: API endpoint
+    # Example: API status endpoint
     - name: "API Status"
-      url: "http://localhost:3000/api/status"
+      url: "http://localhost:{{ lookup('env', 'APP_EXTERNAL_PORT') }}/api/status"
       expected_status: 200
-      timeout: 10
+      timeout: 15
     
     # Example: Database connectivity check
     - name: "Database Connection"
-      url: "http://localhost:3000/health/db"
+      url: "http://localhost:{{ lookup('env', 'APP_EXTERNAL_PORT') }}/health/db"
       expected_status: 200
-      timeout: 15
+      timeout: 20
+      retries: 5
+      retry_delay: 10

@@ -365,7 +365,17 @@ REDIS_URL=redis://server-a:6379 # Additional config
 
 ### Configuration File Options
 
-Create `.deployment/config.yml` to customize behavior:
+Create `.deployment/config.yml` to customize behavior.
+
+**Important**: The `config.yml` file supports Jinja2 templating, allowing you to use environment variables dynamically:
+```yaml
+health_checks:
+  endpoints:
+    - name: "API Health"
+      url: "http://localhost:{{ lookup('env', 'APP_EXTERNAL_PORT') }}/health"
+```
+
+**Configuration example:**
 
 ```yaml
 options:
@@ -380,7 +390,7 @@ health_checks:
   
   endpoints:
     - name: "Main Application"
-      url: "http://localhost:3000/health"
+      url: "http://localhost:{{ lookup('env', 'APP_EXTERNAL_PORT') }}/health"
       expected_status: 200
       timeout: 30
       retries: 3

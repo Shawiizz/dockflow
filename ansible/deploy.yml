@@ -54,11 +54,26 @@
       when: global_no_log
 
   post_tasks:
-    - name: Load health checks configuration
+    - name: Check if config.yml exists
+      stat:
+        path: "{{ lookup('env', 'PROJECT_ROOT') }}/.deployment/config.yml"
+      delegate_to: localhost
+      register: config_file
+      changed_when: false
+
+    - name: Render config.yml template with evaluated variables
+      template:
+        src: "{{ lookup('env', 'PROJECT_ROOT') }}/.deployment/config.yml"
+        dest: "{{ tmp_dir }}/config_rendered.yml"
+      delegate_to: localhost
+      when: config_file.stat.exists
+      changed_when: false
+
+    - name: Load health checks configuration from rendered template
       include_vars:
-        file: "{{ lookup('env', 'PROJECT_ROOT') }}/.deployment/config.yml"
+        file: "{{ tmp_dir }}/config_rendered.yml"
         name: deployment_config
-      when: lookup('pipe', 'test -f ' + (lookup('env', 'PROJECT_ROOT') | default('.')) + '/.deployment/config.yml && echo true || echo false') == 'true'
+      when: config_file.stat.exists
       ignore_errors: yes
 
     - name: Set health checks configuration
