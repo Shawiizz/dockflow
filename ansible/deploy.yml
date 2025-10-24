@@ -39,9 +39,16 @@
       register: config_file
       changed_when: false
 
+    - name: Remove comments from config.yml before templating
+      shell: |
+        grep -v '^\s*#' "{{ lookup('env', 'PROJECT_ROOT') }}/.deployment/config.yml" > "{{ tmp_dir }}/config_clean.yml" || true
+      delegate_to: localhost
+      when: config_file.stat.exists
+      changed_when: false
+
     - name: Render config.yml template with evaluated variables
       template:
-        src: "{{ lookup('env', 'PROJECT_ROOT') }}/.deployment/config.yml"
+        src: "{{ tmp_dir }}/config_clean.yml"
         dest: "{{ tmp_dir }}/config_rendered.yml"
       delegate_to: localhost
       when: config_file.stat.exists
