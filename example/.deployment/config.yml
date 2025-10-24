@@ -3,6 +3,19 @@ options:
   enable_debug_logs: false   # Enable detailed deployment logs (default: false)
   remote_build: false        # Build Docker images on remote server instead of CI/CD (default: false)
 
+# Image management configuration (optional)
+image_management:
+  # Number of healthy versions to keep (each version can have multiple images)
+  # Older healthy versions will be automatically cleaned up
+  # Default: 2 (current + 1 previous healthy version)
+  keep_healthy_versions: 2
+  
+  # Clean up failed deployment images immediately
+  # When true: if health check fails with on_failure='fail', stops containers and deletes images
+  # When false: failed images are kept on the system
+  # Default: true
+  cleanup_on_failure: true
+
 # Health checks configuration (optional)
 health_checks:
   # Enable or disable health checks (default: false)

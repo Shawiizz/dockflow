@@ -5,6 +5,44 @@
       ⚠️  INITIATING ROLLBACK ⚠️
       Health checks failed - rolling back to previous deployment
 
+- name: Check for available healthy versions for rollback
+  find:
+    paths: /var/lib/devops-framework/images
+    patterns: "{{ lookup('env', 'ENV') }}_*_healthy.json"
+  register: available_healthy_versions
+
+- name: Sort healthy versions by date
+  set_fact:
+    sorted_healthy_versions: "{{ available_healthy_versions.files | sort(attribute='mtime', reverse=true) }}"
+  when: available_healthy_versions.files | length > 0
+
+- name: Check if rollback is possible
+  set_fact:
+    can_rollback: "{{ sorted_healthy_versions | length > 0 }}"
+    rollback_version_file: "{{ sorted_healthy_versions[0].path if sorted_healthy_versions | length > 0 else '' }}"
+  when: sorted_healthy_versions is defined
+
+- name: Display no healthy version available
+  debug:
+    msg: |
+      ❌ ROLLBACK NOT POSSIBLE ❌
+      No previous healthy version found to rollback to.
+      This is likely the first deployment or all previous versions have been cleaned up.
+      
+      Actions taken:
+      - New deployment will be stopped and removed
+      - System will be left in a clean state (no running containers)
+      
+      Manual intervention required to deploy a working version.
+  when: not (can_rollback | default(false))
+
+- name: Display rollback target information
+  debug:
+    msg: |
+      Rollback target found: {{ (lookup('file', rollback_version_file) | from_json).version }}
+      Timestamp: {{ (lookup('file', rollback_version_file) | from_json).timestamp }}
+  when: can_rollback | default(false)
+
 - name: Get currently running containers by image
   shell: |
     docker ps --filter "ancestor={{ item }}" --format "{{.Names}}"
@@ -69,6 +107,7 @@
     paths: /var/lib/devops-framework
     patterns: 'rollback-*.sh'
   register: rollback_files
+  when: can_rollback | default(false)
 
 - name: Load and execute rollback commands
   block:
@@ -113,19 +152,42 @@
           {% endif %}
       when: rollback_execution.results is defined
 
-  when: rollback_files.files is defined and rollback_files.files | length > 0
+  when: 
+    - can_rollback | default(false)
+    - rollback_files.files is defined 
+    - rollback_files.files | length > 0
 
 - name: Display rollback failure message
   debug:
     msg: |
-      ⚠️  No rollback data found
+      ⚠️  No rollback scripts found
       Previous deployment state cannot be restored automatically
-      Manual intervention may be required
-  when: rollback_files.files is not defined or rollback_files.files | length == 0
+      This may happen if:
+      - This is the first deployment
+      - Rollback scripts were manually deleted
+      - Previous deployment did not complete successfully
+  when: 
+    - can_rollback | default(false)
+    - (rollback_files.files is not defined or rollback_files.files | length == 0)
 
-- name: Fail deployment after rollback
+- name: Fail deployment after rollback (with previous version restored)
   fail:
     msg: |
       Deployment failed and has been rolled back
       Health checks did not pass
       Previous deployment state has been restored
+  when: 
+    - can_rollback | default(false)
+    - rollback_files.files is defined
+    - rollback_files.files | length > 0
+
+- name: Fail deployment after cleanup (no rollback available)
+  fail:
+    msg: |
+      Deployment failed - NO ROLLBACK AVAILABLE
+      Health checks did not pass
+      No previous healthy version exists for rollback
+      
+      The failed deployment has been stopped and removed.
+      Manual deployment of a working version is required.
+  when: not (can_rollback | default(false))

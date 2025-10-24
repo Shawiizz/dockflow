@@ -17,10 +17,6 @@
       - name: "run"
         base_options: "--docker-run --docker-run-detach"
         ignore_errors: no
-      - name: "cleanup"
-        base_options: "--delete-images"
-        ignore_errors: yes  # Will be skipped if rollback is configured
-        skip_on_rollback: yes
   pre_tasks:
     - name: Display DevOps Framework version
       debug:
@@ -66,7 +62,8 @@
       tags:
         - nginx
     - role: private_ssh_keys
-    - role: services   
+    - role: services
+    - role: image-tracking   # Track images before deployment
     - role: remote-build
       when: remote_build | bool
     - role: image-transfer
@@ -108,3 +105,21 @@
       include_role:
         name: health-check
       when: health_checks_config is defined or (deployment_config.health_checks is defined)
+
+    - name: Mark deployment as healthy if checks passed or disabled
+      include_role:
+        name: image-tracking
+        tasks_from: mark_healthy
+      vars:
+        health_check_passed: "{{ (failed_health_checks | default([]) | length) == 0 }}"
+      when: 
+        - (failed_health_checks | default([]) | length) == 0 or not (health_checks_config.enabled | default(false))
+
+    - name: Clean up old unhealthy images
+      include_role:
+        name: image-tracking
+        tasks_from: cleanup
+      vars:
+        deployment_config: "{{ deployment_config | default({}) }}"
+      when:
+        - (failed_health_checks | default([]) | length) == 0 or not (health_checks_config.enabled | default(false))

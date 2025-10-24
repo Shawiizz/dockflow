@@ -1,0 +1,116 @@
+---
+- name: Get configuration for number of versions to keep
+  set_fact:
+    keep_healthy_versions: "{{ deployment_config.image_management.keep_healthy_versions | default(2) | int }}"
+  when: deployment_config is defined and deployment_config.image_management is defined
+
+- name: Set default if not configured
+  set_fact:
+    keep_healthy_versions: 2
+  when: keep_healthy_versions is not defined
+
+- name: Get all tracked healthy image files for this environment
+  find:
+    paths: /var/lib/devops-framework/images
+    patterns: "{{ lookup('env', 'ENV') }}_*_healthy.json"
+  register: healthy_image_files
+
+- name: Sort healthy files by modification time (newest first)
+  set_fact:
+    sorted_healthy_files: "{{ healthy_image_files.files | sort(attribute='mtime', reverse=true) }}"
+
+- name: Determine versions to keep and versions to remove
+  set_fact:
+    versions_to_keep: "{{ sorted_healthy_files[:keep_healthy_versions | int] }}"
+    versions_to_remove: "{{ sorted_healthy_files[keep_healthy_versions | int:] }}"
+
+- name: Display version management plan
+  debug:
+    msg: |
+      Image Management Configuration:
+      - Keep healthy versions: {{ keep_healthy_versions }}
+      - Total tracked versions: {{ sorted_healthy_files | length }}
+      - Versions to keep: {{ versions_to_keep | length }}
+      - Versions to remove: {{ versions_to_remove | length }}
+  when: not global_no_log
+
+- name: Extract images from versions to keep
+  set_fact:
+    protected_images: []
+
+- name: Build list of protected images from versions to keep
+  block:
+    - name: Read each version file to keep
+      slurp:
+        src: "{{ item.path }}"
+      register: protected_version_content
+      loop: "{{ versions_to_keep }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+
+    - name: Extract image names from protected versions
+      set_fact:
+        protected_images: "{{ protected_images + (item.content | b64decode | from_json).images | map(attribute='name') | list }}"
+      loop: "{{ protected_version_content.results }}"
+      when: item.content is defined
+      loop_control:
+        label: "{{ (item.content | b64decode | from_json).version | default('unknown') }}"
+
+- name: Get all images on system
+  command: docker images --format "{{'{{'}}.Repository{{'}}'}}:{{'{{'}}.Tag{{'}}'}}"
+  register: all_docker_images
+  changed_when: false
+
+- name: Filter images to delete (not in protected list and not 'latest' tag)
+  set_fact:
+    images_to_delete: "{{ all_docker_images.stdout_lines | reject('in', protected_images) | reject('search', ':latest$') | list }}"
+
+- name: Display cleanup plan
+  debug:
+    msg: |
+      Cleanup Plan:
+      - Total images on system: {{ all_docker_images.stdout_lines | length }}
+      - Protected images (from {{ versions_to_keep | length }} versions): {{ protected_images | length }}
+      - Images to delete: {{ images_to_delete | length }}
+      {% if protected_images | length > 0 %}
+      
+      Protected images:
+      {% for image in protected_images %}
+      - {{ image }}
+      {% endfor %}
+      {% endif %}
+      {% if images_to_delete | length > 0 %}
+      
+      Images to delete:
+      {% for image in images_to_delete %}
+      - {{ image }}
+      {% endfor %}
+      {% endif %}
+  when: not global_no_log
+
+- name: Delete images not in protected versions
+  command: "docker rmi {{ item }}"
+  loop: "{{ images_to_delete }}"
+  when: images_to_delete | length > 0
+  ignore_errors: yes
+  register: image_deletion
+  loop_control:
+    label: "{{ item }}"
+
+- name: Remove old version tracking files
+  file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ versions_to_remove }}"
+  when: versions_to_remove | length > 0
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Display cleanup summary
+  debug:
+    msg: |
+      Cleanup Summary:
+      - Removed {{ versions_to_remove | length }} old version tracking files
+      - Deleted {{ image_deletion.results | selectattr('rc', 'equalto', 0) | list | length }} images
+      - Kept {{ versions_to_keep | length }} healthy versions with {{ protected_images | length }} images
+  when: not global_no_log

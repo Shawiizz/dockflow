@@ -1,0 +1,17 @@
+---
+- name: Mark current deployment as healthy
+  copy:
+    content: |
+      {
+        "env": "{{ lookup('env', 'ENV') }}",
+        "version": "{{ lookup('env', 'VERSION') }}",
+        "timestamp": "{{ ansible_date_time.iso8601 }}",
+        "images": {{ new_deployed_images | to_nice_json }},
+        "health_check_passed": {{ health_check_passed | default(true) }}
+      }
+    dest: "/var/lib/devops-framework/images/{{ lookup('env', 'ENV') }}_{{ lookup('env', 'VERSION') }}_healthy.json"
+    mode: '0644'
+
+- name: Display healthy image marking
+  debug:
+    msg: "Marked {{ new_deployed_images | length }} images as healthy for {{ lookup('env', 'ENV') }}/{{ lookup('env', 'VERSION') }}"
