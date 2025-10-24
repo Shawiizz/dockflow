@@ -1,4 +1,3 @@
----
 - name: Display rollback initiation message
   debug:
     msg: |
@@ -8,7 +7,7 @@
 - name: Check for available healthy versions for rollback
   find:
     paths: /var/lib/devops-framework/images
-    patterns: "{{ lookup('env', 'ENV') }}_*_healthy.json"
+    patterns: "{{ env }}_{{ project_id }}_{{ sanitized_branch_name }}_*.json"
   register: available_healthy_versions
 
 - name: Sort healthy versions by date
@@ -21,6 +20,16 @@
     can_rollback: "{{ sorted_healthy_versions | length > 0 }}"
     rollback_version_file: "{{ sorted_healthy_versions[0].path if sorted_healthy_versions | length > 0 else '' }}"
   when: sorted_healthy_versions is defined
+
+- name: Read rollback version file for display
+  slurp:
+    src: "{{ rollback_version_file }}"
+  register: rollback_version_content_for_debug
+  when:
+    - rollback_version_file is defined
+    - rollback_version_file != ''
+  changed_when: false
+  failed_when: false
 
 - name: Display no healthy version available
   debug:
@@ -39,13 +48,17 @@
 - name: Display rollback target information
   debug:
     msg: |
-      Rollback target found: {{ (lookup('file', rollback_version_file) | from_json).version }}
-      Timestamp: {{ (lookup('file', rollback_version_file) | from_json).timestamp }}
+      {% if rollback_version_content_for_debug is defined and rollback_version_content_for_debug.content is defined %}
+      Rollback target found: {{ (rollback_version_content_for_debug.content | b64decode | from_json).version }}
+      Timestamp: {{ (rollback_version_content_for_debug.content | b64decode | from_json).timestamp }}
+      {% else %}
+      Rollback version file: {{ rollback_version_file }} (could not read contents)
+      {% endif %}
   when: can_rollback | default(false)
 
 - name: Get currently running containers by image
   shell: |
-    docker ps --filter "ancestor={{ item }}" --format "{{.Names}}"
+    docker ps --filter "ancestor={{ item }}" --format {% raw %}"{{.Names}}"{% endraw %}
   register: current_containers
   loop: "{{ deployed_images | default([]) }}"
   when: deployed_images is defined and deployed_images | length > 0
@@ -67,7 +80,7 @@
 
 - name: Get images used by new containers
   shell: |
-    docker inspect {{ item.stdout }} --format "{{.Image}}" 2>/dev/null || echo ""
+    docker inspect {{ item.stdout }} --format {% raw %}"{{.Image}}"{% endraw %} 2>/dev/null || echo ""
   register: new_images
   loop: "{{ current_containers.results | default([]) }}"
   when:
@@ -105,9 +118,37 @@
 - name: Find rollback script files
   find:
     paths: /var/lib/devops-framework
-    patterns: 'rollback-*.sh'
+    patterns: '*___*.run'
   register: rollback_files
   when: can_rollback | default(false)
+
+- name: Read selected healthy version file to get protected images
+  slurp:
+    src: "{{ rollback_version_file }}"
+  register: rollback_version_content
+  when:
+    - can_rollback | default(false)
+    - rollback_version_file is defined and rollback_version_file != ''
+
+- name: Extract image names from healthy version
+  set_fact:
+    previous_images: "{{ (rollback_version_content.content | b64decode | from_json).images | map(attribute='name') | list }}"
+  when:
+    - rollback_version_content is defined
+    - rollback_version_content.content is defined
+
+- name: Build allowed rollback script paths from previous images
+  set_fact:
+    allowed_rollback_paths: "{{ allowed_rollback_paths | default([]) + ['/var/lib/devops-framework/' + item.split(':')[0] + '___' + (item.split(':')[1] | default('latest')) + '.run'] }}"
+  loop: "{{ previous_images | default([]) }}"
+  when: previous_images is defined
+
+- name: Filter rollback files to only those matching previous healthy images
+  set_fact:
+    rollback_files_filtered: "{{ rollback_files.files | selectattr('path','in', allowed_rollback_paths) | list }}"
+  when:
+    - rollback_files is defined
+    - allowed_rollback_paths is defined
 
 - name: Load and execute rollback commands
   block:
@@ -115,8 +156,8 @@
       slurp:
         src: "{{ item.path }}"
       register: rollback_data
-      loop: "{{ rollback_files.files }}"
-      when: rollback_files.files is defined and rollback_files.files | length > 0
+      loop: "{{ rollback_files_filtered | default([]) }}"
+      when: rollback_files_filtered is defined and rollback_files_filtered | length > 0
       loop_control:
         label: "Reading: {{ item.path | basename }}"
 
@@ -154,8 +195,8 @@
 
   when: 
     - can_rollback | default(false)
-    - rollback_files.files is defined 
-    - rollback_files.files | length > 0
+    - rollback_files_filtered is defined 
+    - rollback_files_filtered | length > 0
 
 - name: Display rollback failure message
   debug:
@@ -168,7 +209,7 @@
       - Previous deployment did not complete successfully
   when: 
     - can_rollback | default(false)
-    - (rollback_files.files is not defined or rollback_files.files | length == 0)
+    - (rollback_files_filtered is not defined or rollback_files_filtered | length == 0)
 
 - name: Fail deployment after rollback (with previous version restored)
   fail:
@@ -178,8 +219,8 @@
       Previous deployment state has been restored
   when: 
     - can_rollback | default(false)
-    - rollback_files.files is defined
-    - rollback_files.files | length > 0
+    - rollback_files_filtered is defined
+    - rollback_files_filtered | length > 0
 
 - name: Fail deployment after cleanup (no rollback available)
   fail:

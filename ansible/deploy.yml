@@ -2,14 +2,14 @@
 - name: Deploy Docker Images to Remote Server
   hosts: all:!localhost
   vars:    
-    compose_path: "{{ lookup('env', 'PROJECT_ROOT') }}/.deployment/docker/docker-compose.yml"
+    compose_path: "{{ lookup('env', 'ROOT_PATH') }}/.deployment/docker/docker-compose.yml"
     tmp_dir: "/tmp"
     global_no_log: "{{ not (lookup('env', 'FRAMEWORK_OPTIONS_ENABLE_DEBUG_LOGS') | default('false') | bool) }}"
     deploy_services: "{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true) }}"
     services_option: "{{ '--services=' + deploy_services if deploy_services else '' }}"
     environmentize_option: "{{ '--environmentize' if ((lookup('env', 'FRAMEWORK_OPTIONS_ENVIRONMENTIZE') | default('true', true)) | bool) else '' }}"
     remote_build: "{{ (lookup('env', 'FRAMEWORK_OPTIONS_REMOTE_BUILD') | default('false', true)) | bool }}"
-    framework_version: "1.0.38-dev4"
+    framework_version: "1.0.38-dev48"
     decomposerize_types:
       - name: "setup"
         base_options: "--create-networks --create-volumes --stop-and-remove"
@@ -18,6 +18,15 @@
         base_options: "--docker-run --docker-run-detach"
         ignore_errors: no
   pre_tasks:
+    - name: Load environment variables from YAML file
+      include_vars:
+        file: /tmp/ansible_env_vars.yml
+
+    - name: Set computed variables
+      set_fact:
+        sanitized_branch_name: "{{ branch_name | regex_replace('[^a-zA-Z0-9-]', '_') }}"
+      when: branch_name is defined
+    
     - name: Display DevOps Framework version
       debug:
         msg: "DevOps Framework v{{ framework_version }}"
@@ -30,14 +39,14 @@
     
     - name: Check if config.yml exists
       stat:
-        path: "{{ lookup('env', 'PROJECT_ROOT') }}/.deployment/config.yml"
+        path: "{{ root_path }}/.deployment/config.yml"
       delegate_to: localhost
       register: config_file
       changed_when: false
 
     - name: Remove comments from config.yml before templating
       shell: |
-        grep -v '^\s*#' "{{ lookup('env', 'PROJECT_ROOT') }}/.deployment/config.yml" > "{{ tmp_dir }}/config_clean.yml" || true
+        grep -v '^\s*#' "{{ root_path }}/.deployment/config.yml" > "{{ tmp_dir }}/config_clean.yml" || true
       delegate_to: localhost
       when: config_file.stat.exists
       changed_when: false
@@ -63,7 +72,7 @@
         - nginx
     - role: private_ssh_keys
     - role: services
-    - role: image-tracking   # Track images before deployment
+    - role: image-tracking
     - role: remote-build
       when: remote_build | bool
     - role: image-transfer
@@ -75,25 +84,13 @@
         rollback_configured: "{{ (deployment_config.health_checks.on_failure | default('notify')) == 'rollback' }}"
       when: deployment_config is defined and deployment_config.health_checks is defined
 
-    - name: Process Docker commands for each type (with logs)
+    - name: Process Docker commands for each type
       include_tasks: process_docker_commands.yml
       loop: "{{ decomposerize_types }}"
       loop_control:
         loop_var: cmd_type
-      no_log: false
-      when:
-        - not global_no_log
-        - not (cmd_type.skip_on_rollback | default(false) and rollback_configured | default(false))
-
-    - name: Process Docker commands for each type (silent)
-      include_tasks: process_docker_commands.yml
-      loop: "{{ decomposerize_types }}"
-      loop_control:
-        loop_var: cmd_type
-      no_log: true
-      when:
-        - global_no_log
-        - not (cmd_type.skip_on_rollback | default(false) and rollback_configured | default(false))
+      no_log: "{{ global_no_log }}"
+      when: not (cmd_type.skip_on_rollback | default(false) and rollback_configured | default(false))
 
   post_tasks:
     - name: Set health checks configuration
@@ -105,6 +102,19 @@
       include_role:
         name: health-check
       when: health_checks_config is defined or (deployment_config.health_checks is defined)
+
+    - name: Build list of newly deployed images for marking healthy
+      set_fact:
+        new_deployed_images: []
+      changed_when: false
+
+    - name: Populate new_deployed_images from aggregated docker run commands
+      set_fact:
+        new_deployed_images: "{{ new_deployed_images + [{'name': item.split() | last, 'timestamp': ansible_date_time.iso8601}] }}"
+      loop: "{{ hostvars[inventory_hostname].get('all_docker_run_commands', []) }}"
+      when: hostvars[inventory_hostname].get('all_docker_run_commands', []) | length > 0
+      loop_control:
+        label: "{{ item.split() | last }}"
 
     - name: Mark deployment as healthy if checks passed or disabled
       include_role:
@@ -119,7 +129,5 @@
       include_role:
         name: image-tracking
         tasks_from: cleanup
-      vars:
-        deployment_config: "{{ deployment_config | default({}) }}"
       when:
         - (failed_health_checks | default([]) | length) == 0 or not (health_checks_config.enabled | default(false))

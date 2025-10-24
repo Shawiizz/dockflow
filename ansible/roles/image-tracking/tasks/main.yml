@@ -5,28 +5,36 @@
     state: directory
     mode: '0755'
 
+- name: Check if current deployment is already marked as healthy
+  stat:
+    path: "/var/lib/devops-framework/images/{{ env }}_{{ project_id }}_{{ branch_name }}_{{ version }}_healthy.json"
+  register: current_healthy_image_stat
+  changed_when: false
+
 - name: Get current healthy image info (if exists)
   slurp:
-    src: "/var/lib/devops-framework/images/{{ lookup('env', 'ENV') }}_{{ lookup('env', 'VERSION') }}_healthy.json"
+    src: "{{ current_healthy_image_stat.stat.path }}"
   register: current_healthy_image
-  ignore_errors: yes
+  when: current_healthy_image_stat.stat.exists
   changed_when: false
+  ignore_errors: yes
 
 - name: Parse current healthy image
   set_fact:
     previous_healthy_images: "{{ (current_healthy_image.content | b64decode | from_json).images | default([]) }}"
-  when: current_healthy_image is succeeded
+  when: current_healthy_image is defined and current_healthy_image is succeeded
   ignore_errors: yes
 
-- name: Extract new images from docker run commands
+- name: Initialize new_deployed_images
   set_fact:
     new_deployed_images: []
+  changed_when: false
 
-- name: Build list of newly deployed images
+- name: Build list of newly deployed images (use aggregated variable)
   set_fact:
     new_deployed_images: "{{ new_deployed_images + [{'name': item.split() | last, 'timestamp': ansible_date_time.iso8601}] }}"
-  loop: "{{ hostvars[inventory_hostname].get('docker_run_commands', []) }}"
-  when: hostvars[inventory_hostname].get('docker_run_commands', []) | length > 0
+  loop: "{{ hostvars[inventory_hostname].get('all_docker_run_commands', []) }}"
+  when: hostvars[inventory_hostname].get('all_docker_run_commands', []) | length > 0
   loop_control:
     label: "{{ item.split() | last }}"
 

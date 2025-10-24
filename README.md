@@ -372,7 +372,7 @@ Create `.deployment/config.yml` to customize behavior.
 health_checks:
   endpoints:
     - name: "API Health"
-      url: "http://localhost:{{ lookup('env', 'APP_EXTERNAL_PORT') }}/health"
+      url: "http://localhost:{{ app_external_port }}/health"
 ```
 
 **Configuration example:**
@@ -390,7 +390,7 @@ health_checks:
   
   endpoints:
     - name: "Main Application"
-      url: "http://localhost:{{ lookup('env', 'APP_EXTERNAL_PORT') }}/health"
+      url: "http://localhost:{{ app_external_port }}/health"
       expected_status: 200
       timeout: 30
       retries: 3
@@ -459,7 +459,7 @@ health_checks:
   on_failure: "rollback"  # Auto-rollback on failure
   endpoints:
     - name: "Health"
-      url: "http://localhost:{{ lookup('env', 'APP_PORT') }}/health"
+      url: "http://localhost:{{ app_port }}/health"
 ```
 
 See [HEALTH-CHECKS.md](HEALTH-CHECKS.md) and [ROLLBACK-SYSTEM.md](ROLLBACK-SYSTEM.md) for complete documentation.
@@ -532,10 +532,10 @@ git push origin main
 ```nginx
 server {
     listen 80;
-    server_name {{ lookup('env', 'DOMAIN') }};
+    server_name {{ domain }};
 
     location / {
-        proxy_pass http://localhost:{{ lookup('env', 'APP_PORT') }};
+        proxy_pass http://localhost:{{ app_port }};
         proxy_set_header Host $host;
     }
 }
@@ -549,13 +549,13 @@ server {
 
 ```ini
 [Unit]
-Description={{ lookup('env', 'SERVICE_DESCRIPTION') }}
+Description={{ service_description }}
 After=docker.service
 
 [Service]
 Type=simple
-ExecStart={{ lookup('env', 'SCRIPT_PATH') }}
-Environment="ENV={{ lookup('env', 'ENV') }}"
+ExecStart={{ script_path }}
+Environment="ENV={{ env }}"
 Restart=always
 
 [Install]
@@ -570,7 +570,7 @@ WantedBy=multi-user.target
 
 ```bash
 #!/bin/bash
-echo "Starting cleanup for {{ lookup('env', 'ENV') }}..."
+echo "Starting cleanup for {{ env }}..."
 
 # Clean old Docker images
 docker image prune -af --filter "until=24h"
@@ -578,7 +578,7 @@ docker image prune -af --filter "until=24h"
 echo "Cleanup complete!"
 ```
 
-All variables come from your `.env` files or CI/CD secrets and are available in templates using the `lookup('env', 'VARIABLE_NAME')` syntax.
+All variables from your `.env` files or CI/CD secrets are automatically available in templates. Simply use `{{ variable_name }}` syntax with lowercase variable names.
 
 ---
 

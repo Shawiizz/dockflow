@@ -9,20 +9,17 @@
     keep_healthy_versions: 2
   when: keep_healthy_versions is not defined
 
-- name: Get all tracked healthy image files for this environment
+- name: Get all tracked healthy image files for this environment, project and branch
   find:
     paths: /var/lib/devops-framework/images
-    patterns: "{{ lookup('env', 'ENV') }}_*_healthy.json"
+    patterns: "{{ env }}_{{ project_id }}_{{ sanitized_branch_name }}_*.json"
   register: healthy_image_files
 
-- name: Sort healthy files by modification time (newest first)
+- name: Sort and determine versions to keep/remove
   set_fact:
     sorted_healthy_files: "{{ healthy_image_files.files | sort(attribute='mtime', reverse=true) }}"
-
-- name: Determine versions to keep and versions to remove
-  set_fact:
-    versions_to_keep: "{{ sorted_healthy_files[:keep_healthy_versions | int] }}"
-    versions_to_remove: "{{ sorted_healthy_files[keep_healthy_versions | int:] }}"
+    versions_to_keep: "{{ (healthy_image_files.files | sort(attribute='mtime', reverse=true))[:keep_healthy_versions | int] }}"
+    versions_to_remove: "{{ (healthy_image_files.files | sort(attribute='mtime', reverse=true))[keep_healthy_versions | int:] }}"
 
 - name: Display version management plan
   debug:
@@ -88,14 +85,52 @@
       {% endif %}
   when: not global_no_log
 
-- name: Delete images not in protected versions
-  command: "docker rmi {{ item }}"
-  loop: "{{ images_to_delete }}"
-  when: images_to_delete | length > 0
-  ignore_errors: yes
-  register: image_deletion
+- name: Skip deletion if no protected images were found (safe-guard)
+  debug:
+    msg: "No protected images found for this environment; skipping image deletion to avoid removing in-use images"
+  when: protected_images | length == 0
+
+- name: Attempt to delete images not in protected versions (skip if containers reference them)
+  block:
+    - name: Check for containers using images (batch)
+      command: docker ps -a --filter ancestor={{ item }} --format "{{'{{'}}.ID{{'}}'}}"
+      loop: "{{ images_to_delete }}"
+      register: containers_using_image_results
+      changed_when: false
+      failed_when: false
+
+    - name: Delete image if no containers reference it
+      command: "docker rmi {{ item.item }}"
+      loop: "{{ containers_using_image_results.results | default([]) }}"
+      when: item.stdout_lines | length == 0
+      register: image_deletion_results
+      failed_when: false
+      loop_control:
+        label: "{{ item.item }}"
+  when: images_to_delete | length > 0 and protected_images | length > 0
+
+- name: Read version files to remove for extracting image names (before deletion)
+  slurp:
+    src: "{{ item.path }}"
+  register: removed_version_content
+  loop: "{{ versions_to_remove }}"
+  when: versions_to_remove | length > 0
   loop_control:
-    label: "{{ item }}"
+    label: "{{ item.path | basename }}"
+
+- name: Extract image names from removed versions
+  set_fact:
+    removed_images: "{{ removed_version_content.results | map(attribute='content') | map('b64decode') | map('from_json') | map(attribute='images') | flatten | map(attribute='name') | list }}"
+  when: versions_to_remove | length > 0 and removed_version_content.results is defined
+
+- name: Remove corresponding rollback scripts for removed images
+  file:
+    path: "/var/lib/devops-framework/{{ item.split(':')[0] }}___{{ item.split(':')[1] | default('latest') }}.run"
+    state: absent
+  loop: "{{ removed_images | default([]) }}"
+  when: removed_images is defined and removed_images | length > 0
+  loop_control:
+    label: "{{ item.split(':')[0] }}___{{ item.split(':')[1] | default('latest') }}.run"
 
 - name: Remove old version tracking files
   file:
@@ -111,6 +146,6 @@
     msg: |
       Cleanup Summary:
       - Removed {{ versions_to_remove | length }} old version tracking files
-      - Deleted {{ image_deletion.results | selectattr('rc', 'equalto', 0) | list | length }} images
+      - Deleted {{ image_deletion_results.results | default([]) | selectattr('changed', 'equalto', true) | list | length }} images
       - Kept {{ versions_to_keep | length }} healthy versions with {{ protected_images | length }} images
   when: not global_no_log

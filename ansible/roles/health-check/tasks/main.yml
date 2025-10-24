@@ -8,13 +8,15 @@
 
 - name: Extract deployed images from docker run commands
   set_fact:
-    deployed_images: "{{ deployed_images | default([]) + [item.split() | last] }}"
-  loop: "{{ hostvars[inventory_hostname].get('docker_run_commands', []) }}"
+    deployed_images: >-
+      {{ hostvars[inventory_hostname]
+         .get('docker_run_commands', [])
+         | map('split')
+         | map('last')
+         | list }}
   when:
     - health_checks_enabled | default(false)
     - hostvars[inventory_hostname].get('docker_run_commands', []) | length > 0
-  loop_control:
-    label: "{{ item.split() | last }}"
 
 - name: Display health checks configuration
   debug:

@@ -1,7 +1,7 @@
 ---
-- name: Determine docker images directory based on host
+- name: Set docker images path based on hostname
   set_fact:
-    docker_images_path: "{{ '../../.deployment/docker/docker_images_' + lookup('env', 'HOSTNAME') if lookup('env', 'HOSTNAME') and lookup('env', 'HOSTNAME') != 'main' else '../../.deployment/docker/docker_images' }}"
+    docker_images_path: "{{ '../../.deployment/docker/docker_images_' + hostname if hostname and hostname != 'main' else '../../.deployment/docker/docker_images' }}"
 
 - name: List all .tar files on local server (where Ansible is running)
   find:
@@ -21,9 +21,23 @@
   loop: "{{ tar_files.files | default([]) }}"
   register: copy_output
 
-- name: Load Docker images on remote server
+- name: Load Docker images on remote server (parallel)
   command: "docker load -i /tmp/{{ item.path | basename }}"
   loop: "{{ tar_files.files | default([]) }}"
+  async: 600
+  poll: 0
+  register: load_jobs
+
+- name: Wait for all image loads to complete
+  async_status:
+    jid: "{{ item.ansible_job_id }}"
+  loop: "{{ load_jobs.results }}"
+  register: load_results
+  until: load_results.finished
+  retries: 60
+  delay: 10
+  loop_control:
+    label: "Loading {{ item.item.path | basename }}"
 
 - name: Delete loaded tar files
   file:

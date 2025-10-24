@@ -174,6 +174,19 @@
         export USER_PASSWORD=$USER_PASSWORD
         export GIT_TOKEN=${GIT_TOKEN:-}
         export PROJECT_ROOT=$(pwd)/..
+        export PROJECT_ID=$CI_PROJECT_ID
+        
+        # Get original branch name instead of tag name
+        if [[ -n "$CI_COMMIT_TAG" ]]; then
+          ORIGINAL_BRANCH=$(git branch -r --contains $CI_COMMIT_TAG | grep -v "HEAD" | head -n1 | sed 's/.*origin\///')
+          if [ -n "$ORIGINAL_BRANCH" ]; then
+            export BRANCH_NAME=$ORIGINAL_BRANCH
+          else
+            export BRANCH_NAME=$CI_DEFAULT_BRANCH
+          fi
+        else
+          export BRANCH_NAME=$CI_COMMIT_REF_NAME
+        fi
         
         SKIP_TAGS="configure_host"
         if [ ! -d "../.deployment/templates/nginx" ] || [ -z "$(ls -A ../.deployment/templates/nginx 2>/dev/null)" ]; then
