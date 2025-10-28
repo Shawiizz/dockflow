@@ -16,7 +16,7 @@
 
 ---
 
-## What is this?
+## What is Dockflow?
 
 A complete framework to **automate Docker deployments** from GitHub/GitLab CI/CD to your servers. 
 
