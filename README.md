@@ -215,7 +215,7 @@ Create `.deployment/env/.env.[environment]` with your variables (optional):
 ```bash
 # .env.production
 HOST=192.168.1.10              # Can be overridden by PRODUCTION_HOST CI secret
-USER=deploy                    # Can be overridden by PRODUCTION_USER CI secret
+USER=dockflow                  # Can be overridden by PRODUCTION_USER CI secret
 DB_PASSWORD=$DB_SECRET         # Reference to CI secret (if you need 1 variable and use it in several envs without duplicating ci secret)
 API_PORT=3000                  # Can be overridden by PRODUCTION_API_PORT CI secret
 ```

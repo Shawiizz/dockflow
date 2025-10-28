@@ -78,7 +78,7 @@ add_environment() {
     
     # Ask for USER with validation
     echo ""
-    prompt_username "User name" USER_VALUE "deploy"
+    prompt_username "User name" USER_VALUE "dockflow"
     
     # Create the environment file
     mkdir -p "$CLI_PROJECT_DIR/.deployment/env"
@@ -177,7 +177,7 @@ edit_environment() {
             local current_user=$(grep "^USER=" "$env_file" 2>/dev/null | cut -d'=' -f2-)
             echo -e "${CYAN}Current USER:${NC} $current_user"
             echo ""
-            prompt_username "New USER value" NEW_USER_VALUE "deploy"
+            prompt_username "New USER value" NEW_USER_VALUE "dockflow"
             
             # Update file
             sed -i "s|^USER=.*|USER=${NEW_USER_VALUE}|" "$env_file"

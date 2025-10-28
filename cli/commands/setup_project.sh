@@ -16,7 +16,7 @@ create_project_structure() {
     ENV_PROD_FILE="$CLI_PROJECT_DIR/.deployment/env/.env.production"
     if [ ! -f "$ENV_PROD_FILE" ]; then
         echo "HOST=to_replace" > "$ENV_PROD_FILE"
-        echo "USER=deploy" >> "$ENV_PROD_FILE"
+        echo "USER=dockflow" >> "$ENV_PROD_FILE"
         print_success "Created .env.production file"
     else
         print_warning ".env.production file already exists, skipping"

@@ -8,26 +8,26 @@ Run these commands on your target server:
 
 ```bash
 # Create deployment user
-sudo useradd deploy
+sudo useradd dockflow
 
 # Add user to sudo group
-sudo adduser deploy sudo
+sudo adduser dockflow sudo
 
 # Set password (save this password securely)
-sudo passwd deploy
+sudo passwd dockflow
 ```
 
 ## 2. Configure SSH Access
 
 ```bash
 # Create .ssh directory
-sudo mkdir -p /home/deploy/.ssh
+sudo mkdir -p /home/dockflow/.ssh
 
 # Set correct permissions
-sudo chown -R deploy:deploy /home/deploy/
+sudo chown -R dockflow:dockflow /home/dockflow/
 
 # Add your public SSH key to authorized_keys
-sudo echo "YOUR_PUBLIC_KEY" >> /home/deploy/.ssh/authorized_keys
+sudo echo "YOUR_PUBLIC_KEY" >> /home/dockflow/.ssh/authorized_keys
 ```
 
 > **Important**: Store the private key securely - you'll need it for CI/CD deployment configuration.
