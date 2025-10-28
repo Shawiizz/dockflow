@@ -23,7 +23,7 @@ $(echo -e "${CYAN}USAGE:${NC}")
         -e HOST_PWD="\$(pwd)" \\
         -v \${HOME}/.ssh:/root/.ssh \\
         -v .:/project \\
-        shawiizz/devops-cli:latest [OPTIONS]
+        shawiizz/dockflow-cli:latest [OPTIONS]
 
 $(echo -e "${CYAN}OPTIONS:${NC}")
     -h, --help              Show this help message
@@ -61,25 +61,25 @@ $(echo -e "${CYAN}EXAMPLES:${NC}")
         -e HOST_PWD="\$(pwd)" \\
         -v \${HOME}/.ssh:/root/.ssh \\
         -v .:/project \\
-        shawiizz/devops-cli:latest
+        shawiizz/dockflow-cli:latest
     
     # Initialize project structure directly
     docker run -it --rm \\
         -v \${HOME}/.ssh:/root/.ssh \\
         -v .:/project \\
-        shawiizz/devops-cli:latest init
+        shawiizz/dockflow-cli:latest init
     
     # Initialize with specific platform
     docker run -it --rm \\
         -v \${HOME}/.ssh:/root/.ssh \\
         -v .:/project \\
-        shawiizz/devops-cli:latest init gitlab
+        shawiizz/dockflow-cli:latest init gitlab
     
     # Show help
-    docker run -it --rm shawiizz/devops-cli:latest --help
+    docker run -it --rm shawiizz/dockflow-cli:latest --help
     
     # Show version
-    docker run -it --rm shawiizz/devops-cli:latest --version
+    docker run -it --rm shawiizz/dockflow-cli:latest --version
     
 $(echo -e "${CYAN}DOCUMENTATION:${NC}")
     Full documentation: https://github.com/Shawiizz/dockflow
@@ -92,7 +92,7 @@ EOF
 }
 
 show_version() {
-    echo -e "${GREEN}DevOps Automation CLI${NC}"
+    echo -e "${GREEN}Dockflow CLI${NC}"
     echo -e "Version: ${CYAN}$CLI_VERSION${NC}"
     echo -e "Repository: ${BLUE}https://github.com/Shawiizz/dockflow${NC}"
     echo -e "License: MIT"
@@ -184,7 +184,7 @@ show_main_menu() {
     while true; do
         clear
         echo -e "${GREEN}=========================================================="
-        echo "   DEVOPS AUTOMATION CLI v$CLI_VERSION"
+        echo "   Dockflow CLI v$CLI_VERSION"
         echo -e "==========================================================${NC}"
         
         # Show current directory (only if HOST_PWD is set)
@@ -221,7 +221,7 @@ show_main_menu() {
         elif [ "$MAIN_OPTION" = "2" ]; then
             echo ""
             tput cnorm  # Restore cursor
-            print_success "Thank you for using DevOps CLI. Goodbye!"
+            print_success "Thank you for using Dockflow CLI. Goodbye!"
             exit 0
         else
             print_warning "Invalid option."

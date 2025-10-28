@@ -37,10 +37,10 @@ Push a tag, grab a coffee, and your app is deployed.
 
 ```bash
 # 1. Setup your server (one command!)
-docker run -it --rm -v ${HOME}/.ssh:/root/.ssh -v .:/project shawiizz/devops-cli:latest
+docker run -it --rm -v ${HOME}/.ssh:/root/.ssh -v .:/project shawiizz/dockflow-cli:latest
 
 # 2. Initialize project structure (CLI is optional)
-docker run -it --rm -e HOST_PWD="$(pwd)" -v .:/project shawiizz/devops-cli:latest
+docker run -it --rm -e HOST_PWD="$(pwd)" -v .:/project shawiizz/dockflow-cli:latest
 
 # 3. Configure your .deployment files
 # 4. Add the needed CI secrets
@@ -104,7 +104,7 @@ graph LR
 #### Automated Setup (Recommended)
 
 ```bash
-docker run -it --rm -v ${HOME}/.ssh:/root/.ssh -v .:/project shawiizz/devops-cli:latest
+docker run -it --rm -v ${HOME}/.ssh:/root/.ssh -v .:/project shawiizz/dockflow-cli:latest
 ```
 
 The CLI will guide you through the setup process interactively.
@@ -126,10 +126,10 @@ You can use the CLI to automatically generate the project structure:
 
 ```bash
 # GitHub Actions project
-docker run -it --rm -v .:/project shawiizz/devops-cli:latest init github
+docker run -it --rm -v .:/project shawiizz/dockflow-cli:latest init github
 
 # GitLab CI project
-docker run -it --rm -v .:/project shawiizz/devops-cli:latest init gitlab
+docker run -it --rm -v .:/project shawiizz/dockflow-cli:latest init gitlab
 ```
 
 This creates the following structure:
