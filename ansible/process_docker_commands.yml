@@ -81,6 +81,8 @@
   register: command_results
   changed_when: command_results.rc == 0
   no_log: "{{ global_no_log }}"
+  loop_control:
+    label: "Executing command"
 
 - name: Show generic failure message for failed commands
   debug:
@@ -91,3 +93,5 @@
     - not (cmd_type.ignore_errors | bool)
   changed_when: false
   no_log: "{{ global_no_log }}"
+  loop_control:
+    label: "Checking command result"
