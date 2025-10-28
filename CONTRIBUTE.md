@@ -30,7 +30,7 @@ The `shawiizz/dockflow-ci:latest` image contains all the tools needed for CI ope
 
 ```bash
 docker build --no-cache -t shawiizz/dockflow-ci:latest -f Dockerfile.ci .
-docker build --no-cache -t shawiizz/dockflow-ci:1.0.4-dev1 -f Dockerfile.ci .
+docker build --no-cache -t shawiizz/dockflow-ci:1.0.5 -f Dockerfile.ci .
 ```
 
 ### Publishing to DockerHub
@@ -38,7 +38,7 @@ docker build --no-cache -t shawiizz/dockflow-ci:1.0.4-dev1 -f Dockerfile.ci .
 ```bash
 docker login
 docker push shawiizz/dockflow-ci:latest
-docker push shawiizz/dockflow-ci:1.0.4-dev1
+docker push shawiizz/dockflow-ci:1.0.5
 ```
 
 ## CLI Docker Image
@@ -74,8 +74,8 @@ This project includes an automated version management system that handles versio
   - `1.0.33-dev1` → `1.0.33-dev2`
 
 - **`npm run version:release`** - Creates release version
-  - `1.0.33-dev1` → `1.0.38-dev48`
-  - `1.0.33` → `1.0.38-dev48`
+  - `1.0.33-dev1` → `1.0.39`
+  - `1.0.33` → `1.0.39`
 
 - **`npm run version:downgrade`** - Decrements version
   - `1.0.33-dev3` → `1.0.33-dev2`
