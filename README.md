@@ -1,6 +1,6 @@
 <div align="center">
 
-# DevOps Deployment Framework
+# Dockflow
 
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 ![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=for-the-badge&logo=ansible&logoColor=white)
@@ -10,7 +10,7 @@
 **Deploy your Docker apps with a simple `git push` (with or without tags)**
 
 [![License](https://img.shields.io/badge/License-MIT-00b0ff.svg?style=for-the-badge&logo=opensourceinitiative&logoColor=white)](https://opensource.org/licenses/MIT)
-![Version](https://img.shields.io/github/v/tag/Shawiizz/devops-framework?style=for-the-badge&logo=semver&logoColor=white&label=Latest%20Release&color=6F42C1&filter=!*-dev*)
+![Version](https://img.shields.io/github/v/tag/Shawiizz/dockflow?style=for-the-badge&logo=semver&logoColor=white&label=Latest%20Release&color=6F42C1&filter=!*-dev*)
 
 </div>
 

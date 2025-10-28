@@ -11,7 +11,7 @@
 
 - name: Get all tracked healthy image files for this environment, project and branch
   find:
-    paths: /var/lib/devops-framework/images
+    paths: /var/lib/dockflow/images
     patterns: "{{ env }}_{{ project_id }}_{{ sanitized_branch_name }}_*.json"
   register: healthy_image_files
 
@@ -125,7 +125,7 @@
 
 - name: Remove corresponding rollback scripts for removed images
   file:
-    path: "/var/lib/devops-framework/{{ item.split(':')[0] }}___{{ item.split(':')[1] | default('latest') }}.run"
+    path: "/var/lib/dockflow/{{ item.split(':')[0] }}___{{ item.split(':')[1] | default('latest') }}.run"
     state: absent
   loop: "{{ removed_images | default([]) }}"
   when: removed_images is defined and removed_images | length > 0

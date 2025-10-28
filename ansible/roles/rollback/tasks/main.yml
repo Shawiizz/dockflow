@@ -6,7 +6,7 @@
 
 - name: Check for available healthy versions for rollback
   find:
-    paths: /var/lib/devops-framework/images
+    paths: /var/lib/dockflow/images
     patterns: "{{ env }}_{{ project_id }}_{{ sanitized_branch_name }}_*.json"
   register: available_healthy_versions
 
@@ -117,7 +117,7 @@
 
 - name: Find rollback script files
   find:
-    paths: /var/lib/devops-framework
+    paths: /var/lib/dockflow
     patterns: '*___*.run'
   register: rollback_files
   when: can_rollback | default(false)
@@ -139,7 +139,7 @@
 
 - name: Build allowed rollback script paths from previous images
   set_fact:
-    allowed_rollback_paths: "{{ allowed_rollback_paths | default([]) + ['/var/lib/devops-framework/' + item.split(':')[0] + '___' + (item.split(':')[1] | default('latest')) + '.run'] }}"
+    allowed_rollback_paths: "{{ allowed_rollback_paths | default([]) + ['/var/lib/dockflow/' + item.split(':')[0] + '___' + (item.split(':')[1] | default('latest')) + '.run'] }}"
   loop: "{{ previous_images | default([]) }}"
   when: previous_images is defined
 

@@ -27,13 +27,13 @@
         sanitized_branch_name: "{{ branch_name | regex_replace('[^a-zA-Z0-9-]', '_') }}"
       when: branch_name is defined
     
-    - name: Display DevOps Framework version
+    - name: Display Dockflow version
       debug:
-        msg: "DevOps Framework v{{ framework_version }}"
-    
+        msg: "Dockflow v{{ framework_version }}"
+
     - name: Ensure rollback directory exists
       file:
-        path: /var/lib/devops-framework
+        path: /var/lib/dockflow
         state: directory
         mode: '0755'
     

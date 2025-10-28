@@ -14,8 +14,8 @@ NC='\033[0m'
 show_help() {
     cat << EOF
 $(echo -e "${GREEN}========================================================")
-$(echo -e "   DEVOPS AUTOMATION CLI v$CLI_VERSION")
-$(echo -e "   Setup and manage your DevOps infrastructure")
+$(echo -e "   Dockflow CLI v$CLI_VERSION")
+$(echo -e "   Setup and manage your infrastructure")
 $(echo -e "========================================================${NC}")
 
 $(echo -e "${CYAN}USAGE:${NC}")
@@ -82,8 +82,8 @@ $(echo -e "${CYAN}EXAMPLES:${NC}")
     docker run -it --rm shawiizz/devops-cli:latest --version
     
 $(echo -e "${CYAN}DOCUMENTATION:${NC}")
-    Full documentation: https://github.com/Shawiizz/devops-framework
-    Report issues: https://github.com/Shawiizz/devops-framework/issues
+    Full documentation: https://github.com/Shawiizz/dockflow
+    Report issues: https://github.com/Shawiizz/dockflow/issues
     
 $(echo -e "${CYAN}LICENSE:${NC}")
     MIT License - Copyright (c) Shawiizz
@@ -94,7 +94,7 @@ EOF
 show_version() {
     echo -e "${GREEN}DevOps Automation CLI${NC}"
     echo -e "Version: ${CYAN}$CLI_VERSION${NC}"
-    echo -e "Repository: ${BLUE}https://github.com/Shawiizz/devops-framework${NC}"
+    echo -e "Repository: ${BLUE}https://github.com/Shawiizz/dockflow${NC}"
     echo -e "License: MIT"
 }
 

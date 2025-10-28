@@ -10,7 +10,7 @@
         "timestamp": "{{ ansible_date_time.iso8601 }}",
         "images": {{ new_deployed_images | to_nice_json }}
       }
-    dest: "/var/lib/devops-framework/images/{{ env }}_{{ project_id }}_{{ sanitized_branch_name }}_{{ version }}.json"
+    dest: "/var/lib/dockflow/images/{{ env }}_{{ project_id }}_{{ sanitized_branch_name }}_{{ version }}.json"
     mode: '0644'
 
 - name: Log successful deployment

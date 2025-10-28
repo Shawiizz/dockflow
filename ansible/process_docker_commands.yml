@@ -54,7 +54,7 @@
 - name: Save current docker run commands for rollback (before deployment)
   copy:
     content: "{{ item }}"
-    dest: "/var/lib/devops-framework/{{ (item.split() | last).split(':')[0] }}___{{ (item.split() | last).split(':')[1] | default('latest') }}.run"
+    dest: "/var/lib/dockflow/{{ (item.split() | last).split(':')[0] }}___{{ (item.split() | last).split(':')[1] | default('latest') }}.run"
     mode: '0755'
   loop: "{{ docker_run_commands | default([]) }}"
   when:

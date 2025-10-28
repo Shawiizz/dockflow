@@ -1,8 +1,8 @@
 {
-  "name": "devops-framework",
+  "name": "dockflow",
   "version": "1.0.38-dev48",
   "ciImageVersion": "1.0.4-dev1",
-  "description": "DevOps Framework for automated deployment and CI/CD",
+  "description": "Framework for automated deployment and continuous integration.",
   "scripts": {
     "version:dev": "node scripts/version-manager.js dev",
     "version:release": "node scripts/version-manager.js release",
@@ -17,7 +17,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Shawiizz/devops-framework.git"
+    "url": "https://github.com/Shawiizz/dockflow.git"
   },
   "author": "Shawiizz",
   "license": "MIT"

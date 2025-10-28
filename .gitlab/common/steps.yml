@@ -62,7 +62,7 @@
 .deploy-with-ansible:
   after_script:
     - |
-      git clone --branch "$DEVOPS_FRAMEWORK_VERSION" "$DEVOPS_REPOSITORY_URL" devops-framework
+      git clone --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" dockflow
       
       for HOST in $DEPLOYMENT_HOSTS; do
         echo "========================================="
@@ -158,18 +158,18 @@
         #######################################
         ############ Setup SSH Key ############
         #######################################
-        mkdir -p devops-framework/ssh
+        mkdir -p dockflow/ssh
         
-        echo "$SSH_PRIVATE_KEY" | tr -d '\r' > devops-framework/ssh/remote_private_key
-        chmod 600 devops-framework/ssh/*
+        echo "$SSH_PRIVATE_KEY" | tr -d '\r' > dockflow/ssh/remote_private_key
+        chmod 600 dockflow/ssh/*
         
         eval "$(ssh-agent -s)"
-        ssh-add devops-framework/ssh/remote_private_key      
+        ssh-add dockflow/ssh/remote_private_key      
         
         #######################################
         ############# Run Ansible #############
         #######################################
-        cd devops-framework
+        cd dockflow
         export ANSIBLE_HOST_KEY_CHECKING=False
         export USER_PASSWORD=$USER_PASSWORD
         export GIT_TOKEN=${GIT_TOKEN:-}

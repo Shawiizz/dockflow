@@ -1,13 +1,13 @@
 ---
 - name: Ensure tracking directory exists
   file:
-    path: /var/lib/devops-framework/images
+    path: /var/lib/dockflow/images
     state: directory
     mode: '0755'
 
 - name: Check if current deployment is already marked as healthy
   stat:
-    path: "/var/lib/devops-framework/images/{{ env }}_{{ project_id }}_{{ branch_name }}_{{ version }}_healthy.json"
+    path: "/var/lib/dockflow/images/{{ env }}_{{ project_id }}_{{ branch_name }}_{{ version }}_healthy.json"
   register: current_healthy_image_stat
   changed_when: false
 
