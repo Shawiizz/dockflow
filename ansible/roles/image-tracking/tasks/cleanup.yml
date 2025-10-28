@@ -1,12 +1,12 @@
 ---
 - name: Get configuration for number of versions to keep
   set_fact:
-    keep_healthy_versions: "{{ deployment_config.image_management.keep_healthy_versions | default(2) | int }}"
+    keep_healthy_versions: "{{ deployment_config.image_management.keep_healthy_versions | default(1) | int }}"
   when: deployment_config is defined and deployment_config.image_management is defined
 
 - name: Set default if not configured
   set_fact:
-    keep_healthy_versions: 2
+    keep_healthy_versions: 1
   when: keep_healthy_versions is not defined
 
 - name: Get all tracked healthy image files for this environment, project and branch

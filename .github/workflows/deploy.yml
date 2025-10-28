@@ -19,7 +19,7 @@ on:
 
 env:
   DOCKFLOW_REPOSITORY_URL: https://github.com/Shawiizz/dockflow.git
-  DOCKFLOW_FRAMEWORK_VERSION: 1.0.40
+  DOCKFLOW_FRAMEWORK_VERSION: 1.0.40-dev1
 
 jobs:
   discover-hosts:
@@ -183,14 +183,21 @@ jobs:
           fi
 
           # Export all environment variables to YAML file for Ansible
-          > /tmp/ansible_env_vars.yml
-          env | while IFS='=' read -r name value; do
-            if [ -n "$name" ] && [ "$name" != "_" ] && [ "$name" != "OLDPWD" ]; then
-              name_lower=$(echo "$name" | tr '[:upper:]' '[:lower:]')
-              value_escaped=$(echo "$value" | sed 's/\\/\\\\/g; s/"/\\"/g')
-              echo "${name_lower}: \"${value_escaped}\"" >> /tmp/ansible_env_vars.yml
-            fi
-          done
+          python3 << 'PYTHON_EOF'
+          import os
+          import yaml
+
+          env_vars = {}
+          for key, value in os.environ.items():
+              if key and key not in ['_', 'OLDPWD']:
+                  # Convert to lowercase for consistency
+                  key_lower = key.lower()
+                  env_vars[key_lower] = value
+
+          # Write as proper YAML with multiline support
+          with open('/tmp/ansible_env_vars.yml', 'w') as f:
+              yaml.dump(env_vars, f, default_flow_style=False, allow_unicode=True)
+          PYTHON_EOF
 
           SKIP_TAGS="configure_host"
           if [ ! -d "../.deployment/templates/nginx" ] || [ -z "$(ls -A ../.deployment/templates/nginx 2>/dev/null)" ]; then

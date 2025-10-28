@@ -203,6 +203,23 @@
         cp ansible/inventory.yml ansible/inventory_${HOST}.yml
         sed -i "s/REMOTE_HOST/${INVENTORY_HOST}/g" ansible/inventory_${HOST}.yml
         
+        # Export all environment variables to YAML file for Ansible
+        python3 << 'PYTHON_EOF'
+        import os
+        import yaml
+
+        env_vars = {}
+        for key, value in os.environ.items():
+            if key and key not in ['_', 'OLDPWD']:
+                # Convert to lowercase for consistency
+                key_lower = key.lower()
+                env_vars[key_lower] = value
+
+        # Write as proper YAML with multiline support
+        with open('/tmp/ansible_env_vars.yml', 'w') as f:
+            yaml.dump(env_vars, f, default_flow_style=False, allow_unicode=True)
+        PYTHON_EOF
+        
         echo "Deploying to $INVENTORY_HOST (host: $HOST)"
         ansible-galaxy role install geerlingguy.docker
         ansible-playbook ansible/deploy.yml -i ansible/inventory_${HOST}.yml --skip-tags "$SKIP_TAGS"

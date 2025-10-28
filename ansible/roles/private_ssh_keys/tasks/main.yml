@@ -3,6 +3,7 @@
   set_fact:
     ssh_keys: "{{ (lookup('env', 'DEPLOY_PRIVATE_SSH_KEYS') | default('')).split(',') | map('trim') | list }}"
   when: lookup('env', 'DEPLOY_PRIVATE_SSH_KEYS') | default('') | trim != ''
+  no_log: true
 
 - name: Deploy private SSH keys
   copy:
@@ -13,6 +14,7 @@
     mode: '0600'
   loop: "{{ ssh_keys | default([]) }}"
   when: ssh_keys is defined
+  no_log: true
 
 - name: Start ssh-agent and add SSH keys
   shell: |
@@ -20,3 +22,4 @@
     ssh-add /home/{{ lookup('env', 'USER') }}/.ssh/{{ item }}
   loop: "{{ ssh_keys | default([]) }}"
   when: ssh_keys is defined
+  no_log: true

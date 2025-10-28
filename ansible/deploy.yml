@@ -9,7 +9,7 @@
     services_option: "{{ '--services=' + deploy_services if deploy_services else '' }}"
     environmentize_option: "{{ '--environmentize' if ((lookup('env', 'FRAMEWORK_OPTIONS_ENVIRONMENTIZE') | default('true', true)) | bool) else '' }}"
     remote_build: "{{ (lookup('env', 'FRAMEWORK_OPTIONS_REMOTE_BUILD') | default('false', true)) | bool }}"
-    framework_version: "1.0.40"
+    framework_version: "1.0.40-dev1"
     decomposerize_types:
       - name: "setup"
         base_options: "--create-networks --create-volumes --stop-and-remove"
@@ -21,11 +21,13 @@
     - name: Load environment variables from YAML file
       include_vars:
         file: /tmp/ansible_env_vars.yml
+      no_log: "{{ global_no_log }}"
 
     - name: Set computed variables
       set_fact:
         sanitized_branch_name: "{{ branch_name | regex_replace('[^a-zA-Z0-9-]', '_') }}"
       when: branch_name is defined
+      no_log: "{{ global_no_log }}"
     
     - name: Display Dockflow version
       debug:
@@ -89,7 +91,6 @@
       loop: "{{ decomposerize_types }}"
       loop_control:
         loop_var: cmd_type
-      no_log: "{{ global_no_log }}"
       when: not (cmd_type.skip_on_rollback | default(false) and rollback_configured | default(false))
 
   post_tasks:

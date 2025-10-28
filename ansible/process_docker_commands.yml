@@ -3,11 +3,13 @@
     decomposerize_options: "{{ cmd_type.base_options }} {{ services_option }} {{ environmentize_option }} --ansible-env-vars-format"
     all_docker_run_commands: "{{ all_docker_run_commands | default([]) }}"
   changed_when: false
+  no_log: "{{ global_no_log }}"
 
 - name: Generate {{ cmd_type.name }} commands as template
   shell: decomposerize "{{ compose_path }}" {{ decomposerize_options }} > {{ tmp_dir }}/decomposerize_{{ cmd_type.name }}.j2
   delegate_to: localhost
   changed_when: false
+  no_log: "{{ global_no_log }}"
 
 - name: Render template with evaluated variables
   template:
@@ -15,6 +17,7 @@
     dest: "{{ tmp_dir }}/decomposerize_{{ cmd_type.name }}_rendered.sh"
   delegate_to: localhost
   changed_when: false
+  no_log: "{{ global_no_log }}"
 
 - name: Get rendered commands from controller
   slurp:
@@ -22,6 +25,7 @@
   delegate_to: localhost
   register: rendered_script
   changed_when: false
+  no_log: "{{ global_no_log }}"
 
 - name: Split script into commands
   set_fact:
@@ -36,6 +40,7 @@
       }}
   changed_when: false
   when: rendered_script is defined
+  no_log: "{{ global_no_log }}"
 
 - name: Store docker run commands for rollback tracking
   set_fact:
@@ -43,6 +48,7 @@
   when:
     - cmd_type.name == 'run'
     - current_commands is defined
+  no_log: "{{ global_no_log }}"
 
 - name: Aggregate all docker run commands in hostvars
   set_fact:
@@ -50,6 +56,7 @@
   when:
     - cmd_type.name == 'run'
     - docker_run_commands is defined
+  no_log: "{{ global_no_log }}"
 
 - name: Save current docker run commands for rollback (before deployment)
   copy:
@@ -64,6 +71,7 @@
   failed_when: false
   loop_control:
     label: "Saving rollback for: {{ item.split() | last }}"
+  no_log: "{{ global_no_log }}"
 
 - name: Execute commands on target host
   shell: "( {{ item }} ) > /dev/null 2>&1"
@@ -72,6 +80,7 @@
   ignore_errors: "{{ cmd_type.ignore_errors }}"
   register: command_results
   changed_when: command_results.rc == 0
+  no_log: "{{ global_no_log }}"
 
 - name: Show generic failure message for failed commands
   debug:
@@ -81,3 +90,4 @@
     - item.rc is defined and item.rc != 0
     - not (cmd_type.ignore_errors | bool)
   changed_when: false
+  no_log: "{{ global_no_log }}"

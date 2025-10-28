@@ -57,6 +57,7 @@
     git_ref: "{{ (branch_name_raw.stdout | default('main', true) | trim) }}"
     git_sha: "{{ (commit_sha_raw.stdout | default('', true) | trim) }}"
     ci_job_token: "{{ lookup('env', 'CI_JOB_TOKEN') | default('', true) }}"
+  no_log: true
 
 - name: Use CI_JOB_TOKEN if no explicit git_token provided (GitLab)
   set_fact:
@@ -90,6 +91,7 @@
   environment:
     GIT_TERMINAL_PROMPT: "0"
   register: git_clone_result
+  no_log: true
 
 - name: Fail if git clone failed
   fail:
