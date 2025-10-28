@@ -1,0 +1,234 @@
+- name: Display rollback initiation message
+  debug:
+    msg: |
+      ⚠️  INITIATING ROLLBACK ⚠️
+      Health checks failed - rolling back to previous deployment
+
+- name: Check for available healthy versions for rollback
+  find:
+    paths: /var/lib/dockflow/images
+    patterns: "{{ env }}_{{ project_id }}_{{ sanitized_branch_name }}_*.json"
+  register: available_healthy_versions
+
+- name: Sort healthy versions by date
+  set_fact:
+    sorted_healthy_versions: "{{ available_healthy_versions.files | sort(attribute='mtime', reverse=true) }}"
+  when: available_healthy_versions.files | length > 0
+
+- name: Check if rollback is possible
+  set_fact:
+    can_rollback: "{{ sorted_healthy_versions | length > 0 }}"
+    rollback_version_file: "{{ sorted_healthy_versions[0].path if sorted_healthy_versions | length > 0 else '' }}"
+  when: sorted_healthy_versions is defined
+
+- name: Read rollback version file for display
+  slurp:
+    src: "{{ rollback_version_file }}"
+  register: rollback_version_content_for_debug
+  when:
+    - rollback_version_file is defined
+    - rollback_version_file != ''
+  changed_when: false
+  failed_when: false
+
+- name: Display no healthy version available
+  debug:
+    msg: |
+      ❌ ROLLBACK NOT POSSIBLE ❌
+      No previous healthy version found to rollback to.
+      This is likely the first deployment or all previous versions have been cleaned up.
+      
+      Actions taken:
+      - New deployment will be stopped and removed
+      - System will be left in a clean state (no running containers)
+      
+      Manual intervention required to deploy a working version.
+  when: not (can_rollback | default(false))
+
+- name: Display rollback target information
+  debug:
+    msg: |
+      {% if rollback_version_content_for_debug is defined and rollback_version_content_for_debug.content is defined %}
+      Rollback target found: {{ (rollback_version_content_for_debug.content | b64decode | from_json).version }}
+      Timestamp: {{ (rollback_version_content_for_debug.content | b64decode | from_json).timestamp }}
+      {% else %}
+      Rollback version file: {{ rollback_version_file }} (could not read contents)
+      {% endif %}
+  when: can_rollback | default(false)
+
+- name: Get currently running containers by image
+  shell: |
+    docker ps --filter "ancestor={{ item }}" --format {% raw %}"{{.Names}}"{% endraw %}
+  register: current_containers
+  loop: "{{ deployed_images | default([]) }}"
+  when: deployed_images is defined and deployed_images | length > 0
+  changed_when: false
+  failed_when: false
+  loop_control:
+    label: "{{ item }}"
+
+- name: Stop new containers
+  shell: "docker stop {{ item.stdout }}"
+  loop: "{{ current_containers.results | default([]) }}"
+  when:
+    - current_containers.results is defined
+    - item.stdout is defined
+    - item.stdout != ''
+  failed_when: false
+  loop_control:
+    label: "Stopping container: {{ item.stdout | default('N/A') }}"
+
+- name: Get images used by new containers
+  shell: |
+    docker inspect {{ item.stdout }} --format {% raw %}"{{.Image}}"{% endraw %} 2>/dev/null || echo ""
+  register: new_images
+  loop: "{{ current_containers.results | default([]) }}"
+  when:
+    - current_containers.results is defined
+    - item.stdout is defined
+    - item.stdout != ''
+  changed_when: false
+  failed_when: false
+  loop_control:
+    label: "Getting image for: {{ item.stdout | default('N/A') }}"
+
+- name: Remove new containers
+  shell: "docker rm {{ item.stdout }}"
+  loop: "{{ current_containers.results | default([]) }}"
+  when:
+    - current_containers.results is defined
+    - item.stdout is defined
+    - item.stdout != ''
+  failed_when: false
+  loop_control:
+    label: "Removing container: {{ item.stdout | default('N/A') }}"
+
+- name: Remove new images
+  shell: "docker rmi {{ item.stdout }}"
+  loop: "{{ new_images.results | default([]) }}"
+  when:
+    - new_images.results is defined
+    - item.stdout is defined
+    - item.stdout != ''
+  failed_when: false
+  ignore_errors: yes
+  loop_control:
+    label: "Removing image: {{ item.stdout | default('N/A') }}"
+
+- name: Find rollback script files
+  find:
+    paths: /var/lib/dockflow
+    patterns: '*___*.run'
+  register: rollback_files
+  when: can_rollback | default(false)
+
+- name: Read selected healthy version file to get protected images
+  slurp:
+    src: "{{ rollback_version_file }}"
+  register: rollback_version_content
+  when:
+    - can_rollback | default(false)
+    - rollback_version_file is defined and rollback_version_file != ''
+
+- name: Extract image names from healthy version
+  set_fact:
+    previous_images: "{{ (rollback_version_content.content | b64decode | from_json).images | map(attribute='name') | list }}"
+  when:
+    - rollback_version_content is defined
+    - rollback_version_content.content is defined
+
+- name: Build allowed rollback script paths from previous images
+  set_fact:
+    allowed_rollback_paths: "{{ allowed_rollback_paths | default([]) + ['/var/lib/dockflow/' + item.split(':')[0] + '___' + (item.split(':')[1] | default('latest')) + '.run'] }}"
+  loop: "{{ previous_images | default([]) }}"
+  when: previous_images is defined
+
+- name: Filter rollback files to only those matching previous healthy images
+  set_fact:
+    rollback_files_filtered: "{{ rollback_files.files | selectattr('path','in', allowed_rollback_paths) | list }}"
+  when:
+    - rollback_files is defined
+    - allowed_rollback_paths is defined
+
+- name: Load and execute rollback commands
+  block:
+    - name: Read rollback scripts
+      slurp:
+        src: "{{ item.path }}"
+      register: rollback_data
+      loop: "{{ rollback_files_filtered | default([]) }}"
+      when: rollback_files_filtered is defined and rollback_files_filtered | length > 0
+      loop_control:
+        label: "Reading: {{ item.path | basename }}"
+
+    - name: Parse rollback commands
+      set_fact:
+        rollback_commands: "{{ rollback_commands | default([]) + [(item.content | b64decode | trim)] }}"
+      loop: "{{ rollback_data.results | default([]) }}"
+      when:
+        - rollback_data.results is defined
+        - item.content is defined
+        - (item.content | b64decode | trim) != ''
+      loop_control:
+        label: "Parsing rollback script"
+
+    - name: Execute rollback docker run commands
+      shell: "{{ item }}"
+      loop: "{{ rollback_commands | default([]) }}"
+      when: rollback_commands is defined and rollback_commands | length > 0
+      register: rollback_execution
+      failed_when: false
+      loop_control:
+        label: "Restarting: {{ item.split() | last }}"
+
+    - name: Display rollback results
+      debug:
+        msg: |
+          {% if rollback_execution.results | selectattr('rc', 'equalto', 0) | list | length == rollback_commands | length %}
+          ✅ Rollback completed successfully
+          Restored {{ rollback_commands | length }} container(s) to previous state
+          {% else %}
+          ⚠️  Rollback completed with errors
+          Successful: {{ rollback_execution.results | selectattr('rc', 'equalto', 0) | list | length }}/{{ rollback_commands | length }}
+          {% endif %}
+      when: rollback_execution.results is defined
+
+  when: 
+    - can_rollback | default(false)
+    - rollback_files_filtered is defined 
+    - rollback_files_filtered | length > 0
+
+- name: Display rollback failure message
+  debug:
+    msg: |
+      ⚠️  No rollback scripts found
+      Previous deployment state cannot be restored automatically
+      This may happen if:
+      - This is the first deployment
+      - Rollback scripts were manually deleted
+      - Previous deployment did not complete successfully
+  when: 
+    - can_rollback | default(false)
+    - (rollback_files_filtered is not defined or rollback_files_filtered | length == 0)
+
+- name: Fail deployment after rollback (with previous version restored)
+  fail:
+    msg: |
+      Deployment failed and has been rolled back
+      Health checks did not pass
+      Previous deployment state has been restored
+  when: 
+    - can_rollback | default(false)
+    - rollback_files_filtered is defined
+    - rollback_files_filtered | length > 0
+
+- name: Fail deployment after cleanup (no rollback available)
+  fail:
+    msg: |
+      Deployment failed - NO ROLLBACK AVAILABLE
+      Health checks did not pass
+      No previous healthy version exists for rollback
+      
+      The failed deployment has been stopped and removed.
+      Manual deployment of a working version is required.
+  when: not (can_rollback | default(false))

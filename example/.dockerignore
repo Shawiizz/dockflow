@@ -14,9 +14,9 @@ yarn-error.log*
 .gitlab
 .gitlab-ci.yml
 
-# DevOps
+# Dockflow
 .deployment
-devops-framework
+dockflow
 
 # IDE
 .vscode

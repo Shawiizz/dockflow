@@ -20,7 +20,7 @@ I did this project alone, if you want a new functionnality, you can open an issu
 
 ## CI Docker Image
 
-The `shawiizz/devops-ci:latest` image contains all the tools needed for CI operations:
+The `shawiizz/dockflow-ci:latest` image contains all the tools needed for CI operations:
 - Docker
 - Ansible
 - NodeJS
@@ -29,16 +29,16 @@ The `shawiizz/devops-ci:latest` image contains all the tools needed for CI opera
 ### Building the CI Image
 
 ```bash
-docker build --no-cache -t shawiizz/devops-ci:latest -f Dockerfile.ci .
-docker build --no-cache -t shawiizz/devops-ci:1.0.4-dev1 -f Dockerfile.ci .
+docker build --no-cache -t shawiizz/dockflow-ci:latest -f Dockerfile.ci .
+docker build --no-cache -t shawiizz/dockflow-ci:1.0.4-dev1 -f Dockerfile.ci .
 ```
 
 ### Publishing to DockerHub
 
 ```bash
 docker login
-docker push shawiizz/devops-ci:latest
-docker push shawiizz/devops-ci:1.0.4-dev1
+docker push shawiizz/dockflow-ci:latest
+docker push shawiizz/dockflow-ci:1.0.4-dev1
 ```
 
 ## CLI Docker Image
@@ -50,14 +50,14 @@ The CLI image provides an interactive tool for server configuration.
 For Windows users, make sure all `.sh` files are in `LF` mode and not `CRLF`.       
 
 ```bash
-docker build -t shawiizz/devops-cli:latest -f cli/Dockerfile.cli .
+docker build -t shawiizz/dockflow-cli:latest -f cli/Dockerfile.cli .
 ```
 
 ### Publishing to DockerHub
 
 ```bash
 docker login
-docker push shawiizz/devops-cli:latest
+docker push shawiizz/dockflow-cli:latest
 ```
 
 CLI tool run commands are available [there](./README.md).
@@ -74,8 +74,8 @@ This project includes an automated version management system that handles versio
   - `1.0.33-dev1` → `1.0.33-dev2`
 
 - **`npm run version:release`** - Creates release version
-  - `1.0.33-dev1` → `1.0.38`
-  - `1.0.33` → `1.0.38`
+  - `1.0.33-dev1` → `1.0.38-dev48`
+  - `1.0.33` → `1.0.38-dev48`
 
 - **`npm run version:downgrade`** - Decrements version
   - `1.0.33-dev3` → `1.0.33-dev2`
@@ -106,7 +106,7 @@ This project includes an automated version management system that handles versio
 
 **CI Docker Image Version Management:**
 - `package.json` ciImageVersion field
-- Docker image references (`shawiizz/devops-ci:X.Y.Z`)
+- Docker image references (`shawiizz/dockflow-ci:X.Y.Z`)
 - CI configuration files that use the Docker image
 
 ## Creating New Releases
@@ -129,16 +129,16 @@ When creating a new release and pushing a new tag, follow these steps:
 2. **Update the Docker image tags** if needed:
    ```bash
    # For CI image
-   docker build -t shawiizz/devops-ci:X.Y.Z -f Dockerfile.ci .
-   docker tag shawiizz/devops-ci:X.Y.Z shawiizz/devops-ci:latest
-   docker push shawiizz/devops-ci:X.Y.Z
-   docker push shawiizz/devops-ci:latest
+   docker build -t shawiizz/dockflow-ci:X.Y.Z -f Dockerfile.ci .
+   docker tag shawiizz/dockflow-ci:X.Y.Z shawiizz/dockflow-ci:latest
+   docker push shawiizz/dockflow-ci:X.Y.Z
+   docker push shawiizz/dockflow-ci:latest
    
    # For CLI image
-   docker build -t shawiizz/devops-cli:X.Y.Z -f cli/Dockerfile.cli .
-   docker tag shawiizz/devops-cli:X.Y.Z shawiizz/devops-cli:latest
-   docker push shawiizz/devops-cli:X.Y.Z
-   docker push shawiizz/devops-cli:latest
+   docker build -t shawiizz/dockflow-cli:X.Y.Z -f cli/Dockerfile.cli .
+   docker tag shawiizz/dockflow-cli:X.Y.Z shawiizz/dockflow-cli:latest
+   docker push shawiizz/dockflow-cli:X.Y.Z
+   docker push shawiizz/dockflow-cli:latest
    ```
 
 3. **Create the new tag** and push it:

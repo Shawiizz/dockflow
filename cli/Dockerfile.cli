@@ -1,4 +1,4 @@
-FROM shawiizz/devops-ci:latest
+FROM shawiizz/dockflow-ci:latest
 
 COPY . /setup/
 

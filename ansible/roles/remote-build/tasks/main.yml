@@ -6,9 +6,9 @@
     update_cache: yes
   become: yes
 
-- name: Create temporary build directory on remote
+- name: Create temporary directory for git clone
   file:
-    path: /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}
+    path: /tmp/docker-build-{{ env }}-{{ version }}
     state: directory
     mode: '0755'
 
@@ -20,16 +20,14 @@
   ignore_errors: yes
 
 - name: Clean up Docker to free space
-  shell: |
-    docker image prune -af || true
-    docker builder prune -af || true
+  shell: docker system prune -af || true
   register: cleanup_result
-  changed_when: cleanup_result.rc == 0
+  changed_when: cleanup_result.stdout is search('deleted') or cleanup_result.stdout is search('freed')
 
 - name: Get repository URL from Git (from parent project directory)
   shell: git config --get remote.origin.url
   args:
-    chdir: "{{ lookup('env', 'PROJECT_ROOT') or '..' }}"
+    chdir: "{{ root_path or '..' }}"
   delegate_to: localhost
   register: repo_url_raw
   changed_when: false
@@ -37,7 +35,7 @@
 - name: Get current branch name from Git (from parent project directory)
   shell: git rev-parse --abbrev-ref HEAD
   args:
-    chdir: "{{ lookup('env', 'PROJECT_ROOT') or '..' }}"
+    chdir: "{{ root_path or '..' }}"
   delegate_to: localhost
   register: branch_name_raw
   changed_when: false
@@ -46,7 +44,7 @@
 - name: Get current commit SHA from Git (from parent project directory)
   shell: git rev-parse HEAD
   args:
-    chdir: "{{ lookup('env', 'PROJECT_ROOT') or '..' }}"
+    chdir: "{{ root_path or '..' }}"
   delegate_to: localhost
   register: commit_sha_raw
   changed_when: false
@@ -83,10 +81,10 @@
 
 - name: Clone repository to remote server
   shell: |
-    rm -rf /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}
-    git clone --branch {{ git_ref }} --single-branch {{ clone_url }} /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}
+    rm -rf /tmp/docker-build-{{ env }}-{{ version }}
+    git clone --branch {{ git_ref }} --single-branch {{ clone_url }} /tmp/docker-build-{{ env }}-{{ version }}
     {% if git_sha %}
-    cd /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}
+    cd /tmp/docker-build-{{ env }}-{{ version }}
     git checkout {{ git_sha }}
     {% endif %}
   environment:
@@ -100,7 +98,7 @@
 
 - name: Generate build commands using decomposerize
   shell: |
-    cd {{ lookup('env', 'PROJECT_ROOT') or '..' }}/.deployment/docker
+    cd {{ root_path or '..' }}/.deployment/docker
     decomposerize docker-compose.yml --docker-build {{ services_option }} {{ environmentize_option }} --ansible-env-vars-format > /tmp/decomposerize_build.j2
   delegate_to: localhost
   changed_when: false
@@ -138,7 +136,7 @@
 
 - name: Build Docker images on remote server
   shell: |
-    cd /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}/.deployment/docker
+    cd /tmp/docker-build-{{ env }}-{{ version }}/.deployment/docker
     {{ item }} 2>&1
   loop: "{{ build_commands }}"
   loop_control:
@@ -192,6 +190,6 @@
 
 - name: Cleanup temporary build directory
   file:
-    path: /tmp/docker-build-{{ lookup('env', 'ENV') }}-{{ lookup('env', 'VERSION') }}
+    path: /tmp/docker-build-{{ env }}-{{ version }}
     state: absent
   ignore_errors: yes

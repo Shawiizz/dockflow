@@ -1,7 +1,7 @@
 #!/bin/bash
 
 CLI_VERSION="1.0.0"
-CLI_NAME="DevOps Automation CLI"
+CLI_NAME="Dockflow CLI"
 
 export CLI_PROJECT_DIR="/project"
 export CLI_ROOT_DIR="/setup/cli"

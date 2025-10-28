@@ -1,6 +1,6 @@
 <div align="center">
 
-# DevOps Deployment Framework
+# Dockflow
 
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 ![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=for-the-badge&logo=ansible&logoColor=white)
@@ -10,13 +10,13 @@
 **Deploy your Docker apps with a simple `git push` (with or without tags)**
 
 [![License](https://img.shields.io/badge/License-MIT-00b0ff.svg?style=for-the-badge&logo=opensourceinitiative&logoColor=white)](https://opensource.org/licenses/MIT)
-![Version](https://img.shields.io/github/v/tag/Shawiizz/devops-framework?style=for-the-badge&logo=semver&logoColor=white&label=Latest%20Release&color=6F42C1&filter=!*-dev*)
+![Version](https://img.shields.io/github/v/tag/Shawiizz/dockflow?style=for-the-badge&logo=semver&logoColor=white&label=Latest%20Release&color=6F42C1&filter=!*-dev*)
 
 </div>
 
 ---
 
-## What is this?
+## What is Dockflow?
 
 A complete framework to **automate Docker deployments** from GitHub/GitLab CI/CD to your servers. 
 
@@ -37,11 +37,14 @@ Push a tag, grab a coffee, and your app is deployed.
 
 ```bash
 # 1. Setup your server (one command!)
-docker run -it --rm -v ${HOME}/.ssh:/root/.ssh -v .:/project shawiizz/devops-cli:latest
+docker run -it --rm -v ${HOME}/.ssh:/root/.ssh -v .:/project shawiizz/dockflow-cli:latest
 
-# 2. Copy example CI config to your repo
-# 3. Add the needed ci secrets
-# 4. Push a tag
+# 2. Initialize project structure (CLI is optional)
+docker run -it --rm -e HOST_PWD="$(pwd)" -v .:/project shawiizz/dockflow-cli:latest
+
+# 3. Configure your .deployment files
+# 4. Add the needed CI secrets
+# 5. Push a tag
 git tag 1.0.0 && git push origin --tags
 ```
 
@@ -101,7 +104,7 @@ graph LR
 #### Automated Setup (Recommended)
 
 ```bash
-docker run -it --rm -v ${HOME}/.ssh:/root/.ssh -v .:/project shawiizz/devops-cli:latest
+docker run -it --rm -v ${HOME}/.ssh:/root/.ssh -v .:/project shawiizz/dockflow-cli:latest
 ```
 
 The CLI will guide you through the setup process interactively.
@@ -117,7 +120,36 @@ For manual configuration, check [MANUAL-REMOTE-SETUP.md](./MANUAL-REMOTE-SETUP.m
 
 ### Step 2: CI/CD Configuration
 
-#### 2.1 Copy CI Config File
+#### 2.1 Create Project Structure
+
+You can use the CLI to automatically generate the project structure:
+
+```bash
+# GitHub Actions project
+docker run -it --rm -v .:/project shawiizz/dockflow-cli:latest init github
+
+# GitLab CI project
+docker run -it --rm -v .:/project shawiizz/dockflow-cli:latest init gitlab
+```
+
+This creates the following structure:
+
+```
+.deployment/
+├── docker/
+│   ├── docker-compose.yml           # Define your services
+│   └── Dockerfile.[service]         # One per service
+├── env/                             # OPTIONAL: Can use CI secrets instead
+│   └── .env.[environment]           # OPTIONAL: Environment variables (HOST, USER, etc.)
+└── templates/
+    ├── nginx/                       # Custom Nginx configs (optional)
+    ├── services/                    # Custom systemd services (optional)
+    └── scripts/                     # Custom scripts (optional)
+```
+
+**Note:** The `env/` folder and `.env` files are optional. You can configure everything using CI secrets with the `[ENV]_*` naming pattern.
+
+#### 2.2 Copy CI Config File
 
 **GitHub Actions:**
 ```bash
@@ -131,31 +163,36 @@ example/ci/gitlab-ci.yml → .gitlab-ci.yml
 
 > ⚠️ **GitHub users in organizations**: Fork this repo and update the `uses` URL in your workflow file.
 
-#### 2.2 Create Project Structure
-
-```
-.deployment/
-├── docker/
-│   ├── docker-compose.yml           # Define your services
-│   └── Dockerfile.[service]         # One per service
-└── env/
-    └── .env.[environment]           # Environment variables
-```
-
 #### 2.3 Add Repository Secrets
 
 Required secrets in your CI/CD settings:
 
 | Secret Name | Description | Example |
 |-------------|-------------|---------|
-| `ANSIBLE_BECOME_PASSWORD` | Ansible user password | `your-password` |
-| `[ENV]_SSH_PRIVATE_KEY` | SSH key per environment | `PRODUCTION_SSH_PRIVATE_KEY` |
+| `USER_PASSWORD` | Deployment user password | `your-password` |
+| `[ENV]_SSH_PRIVATE_KEY` | SSH key for main host | `PRODUCTION_SSH_PRIVATE_KEY` |
+| `[ENV]_[HOSTNAME]_SSH_PRIVATE_KEY` | SSH key for specific host | `PRODUCTION_SERVER_A_SSH_PRIVATE_KEY` |
 | `GIT_TOKEN` | For private repos (remote build) | GitHub/GitLab token |
+
+**Dynamic Variable Override System:**
+
+Any CI secret starting with `[ENV]_` or `[ENV]_[HOSTNAME]_` will automatically override corresponding environment variables:
+
+| Pattern | Example Secret | Exported As | Use Case |
+|---------|---------------|-------------|----------|
+| `[ENV]_*` | `PRODUCTION_HOST` | `HOST` | Override main host variables |
+| `[ENV]_*` | `PRODUCTION_USER` | `USER` | Override main host SSH user |
+| `[ENV]_*` | `PRODUCTION_DB_PASSWORD` | `DB_PASSWORD` | Override any main host variable |
+| `[ENV]_[HOSTNAME]_*` | `PRODUCTION_SERVER_A_HOST` | `HOST` | Override specific host variables |
+| `[ENV]_[HOSTNAME]_*` | `PRODUCTION_SERVER_A_API_KEY` | `API_KEY` | Override any specific host variable |
 
 **Important notes:**
 - ✅ All secret names must be **UPPERCASE**
 - ✅ GitLab secrets must **NOT** be protected
 - ✅ Main env file maps to `main` host automatically
+- 💡 CI secrets with `[ENV]_` prefix will override values from `.env.[environment]` files
+- 💡 CI secrets with `[ENV]_[HOSTNAME]_` prefix will override values from `.env.[environment].[hostname]` files
+- 🔒 Use this system to keep sensitive data (passwords, API keys, IPs) out of your repository
 
 <details>
 <summary>Git Token Permissions (only for remote build with private repos)</summary>
@@ -171,17 +208,30 @@ Required secrets in your CI/CD settings:
 
 ### Environment Files
 
-Create `.deployment/env/.env.[environment]` with your variables:
+**Environment files are optional!** You can use CI secrets exclusively or combine them with `.env` files.
+
+Create `.deployment/env/.env.[environment]` with your variables (optional):
 
 ```bash
 # .env.production
-HOST=192.168.1.10              # Server IP
-ANSIBLE_USER=ansible           # SSH user
-DB_PASSWORD=$DB_SECRET         # Reference to CI secret
-API_PORT=3000
+HOST=192.168.1.10              # Can be overridden by PRODUCTION_HOST CI secret
+USER=deploy                    # Can be overridden by PRODUCTION_USER CI secret
+DB_PASSWORD=$DB_SECRET         # Reference to CI secret (if you need 1 variable and use it in several envs without duplicating ci secret)
+API_PORT=3000                  # Can be overridden by PRODUCTION_API_PORT CI secret
 ```
 
-**Pro tip:** Use `$VARIABLE_NAME` to reference CI secrets and keep sensitive data secure!
+**Configuration options:**
+
+1. **CI Secrets Only**: Don't create `.env` files, set all variables as `[ENV]_*` CI secrets
+2. **Mixed Approach**: Use `.env` files for non-sensitive data, CI secrets for sensitive values
+3. **Environment Files**: Store everything in `.env` files (not recommended for sensitive data)
+
+**Pro tips:** 
+- Use `$VARIABLE_NAME` to reference CI secrets directly in `.env` files
+- Any variable can be overridden using `[ENV]_VARIABLE_NAME` CI secrets (e.g., `PRODUCTION_HOST`, `PRODUCTION_API_PORT`)
+- For multi-host setups, use `[ENV]_[HOSTNAME]_VARIABLE_NAME` pattern (e.g., `PRODUCTION_SERVER_A_HOST`)
+- Keep sensitive data in CI secrets, not in `.env` files committed to the repository
+- **Required**: At minimum, `HOST` must be defined (either in `.env` file or as CI secret)
 
 ---
 
@@ -299,30 +349,120 @@ API_PORT=3000
 ```bash
 # .env.production.server-a
 HOST=192.168.1.11
-API_PORT=3001                    # Override
+API_PORT=3001                    # Override main config
 REDIS_URL=redis://server-a:6379 # Additional config
 ```
 
-**SSH Keys:** `PRODUCTION_SSH_PRIVATE_KEY`, `PRODUCTION_SERVER_A_SSH_PRIVATE_KEY`, etc.
+**Required CI Secrets:**
+- `PRODUCTION_SSH_PRIVATE_KEY` (for main host)
+- `PRODUCTION_SERVER_A_SSH_PRIVATE_KEY` (for server-a)
+
+**Optional CI Secrets (to override any variable):**
+- Main host: `PRODUCTION_*` (e.g., `PRODUCTION_HOST`, `PRODUCTION_USER`, `PRODUCTION_API_PORT`)
+- Server A: `PRODUCTION_SERVER_A_*` (e.g., `PRODUCTION_SERVER_A_HOST`, `PRODUCTION_SERVER_A_USER`, `PRODUCTION_SERVER_A_REDIS_URL`)
 
 ---
 
 ### Configuration File Options
 
-Create `.deployment/config.yml` to customize behavior:
+Create `.deployment/config.yml` to customize behavior.
+
+**Important**: The `config.yml` file supports Jinja2 templating, allowing you to use environment variables dynamically:
+```yaml
+health_checks:
+  endpoints:
+    - name: "API Health"
+      url: "http://localhost:{{ app_external_port }}/health"
+```
+
+**Configuration example:**
 
 ```yaml
 options:
   environmentize: true          # Auto-add ENV/VERSION (default: true)
   enable_debug_logs: false      # Verbose logging (default: false)
   remote_build: false           # Build on server (default: false)
+
+health_checks:
+  enabled: true                 # Enable post-deployment health checks
+  startup_delay: 15             # Wait before checking (seconds)
+  on_failure: "notify"          # Action: "fail", "notify", or "ignore"
+  
+  endpoints:
+    - name: "Main Application"
+      url: "http://localhost:{{ app_external_port }}/health"
+      expected_status: 200
+      timeout: 30
+      retries: 3
 ```
+
+#### Configuration Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `environmentize` | Auto-add `${ENV}` and `${VERSION}` to names | `true` |
 | `enable_debug_logs` | Enable detailed Ansible logs | `false` |
 | `remote_build` | Build images on remote server | `false` |
+
+#### Health Checks Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `enabled` | Enable post-deployment health checks | `false` |
+| `startup_delay` | Seconds to wait before checking | `10` |
+| `on_failure` | Action on failure: `fail` (stop), `notify` (warn), `ignore`, `rollback` (restore previous) | `notify` |
+
+**Health Check Endpoint Properties:**
+
+| Property | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `name` | Friendly name for the check | URL | No |
+| `url` | Endpoint URL to check | - | Yes |
+| `method` | HTTP method | `GET` | No |
+| `expected_status` | Expected HTTP status code | `200` | No |
+| `timeout` | Request timeout in seconds | `30` | No |
+| `retries` | Number of retries on failure | `3` | No |
+| `retry_delay` | Delay between retries (seconds) | `5` | No |
+| `validate_certs` | Validate SSL certificates | `true` | No |
+
+**Example with multiple endpoints:**
+
+```yaml
+health_checks:
+  enabled: true
+  startup_delay: 20
+  on_failure: "fail"  # Stop deployment if checks fail
+  
+  endpoints:
+    - name: "API Health"
+      url: "http://localhost:3000/health"
+      expected_status: 200
+      timeout: 30
+    
+    - name: "Database Connection"
+      url: "http://localhost:3000/health/db"
+      expected_status: 200
+    
+    - name: "External Service"
+      url: "https://api.example.com/status"
+      validate_certs: true
+      retries: 5
+```
+
+**Automatic Rollback:**
+
+Set `on_failure: "rollback"` to automatically restore previous deployment on health check failure:
+
+```yaml
+health_checks:
+  enabled: true
+  on_failure: "rollback"  # Auto-rollback on failure
+  endpoints:
+    - name: "Health"
+      url: "http://localhost:{{ app_port }}/health"
+```
+
+See [HEALTH-CHECKS.md](HEALTH-CHECKS.md) and [ROLLBACK-SYSTEM.md](ROLLBACK-SYSTEM.md) for complete documentation.
 
 ---
 
@@ -392,10 +532,10 @@ git push origin main
 ```nginx
 server {
     listen 80;
-    server_name {{ lookup('env', 'DOMAIN') }};
+    server_name {{ domain }};
 
     location / {
-        proxy_pass http://localhost:{{ lookup('env', 'APP_PORT') }};
+        proxy_pass http://localhost:{{ app_port }};
         proxy_set_header Host $host;
     }
 }
@@ -409,13 +549,13 @@ server {
 
 ```ini
 [Unit]
-Description={{ lookup('env', 'SERVICE_DESCRIPTION') }}
+Description={{ service_description }}
 After=docker.service
 
 [Service]
 Type=simple
-ExecStart={{ lookup('env', 'SCRIPT_PATH') }}
-Environment="ENV={{ lookup('env', 'ENV') }}"
+ExecStart={{ script_path }}
+Environment="ENV={{ env }}"
 Restart=always
 
 [Install]
@@ -430,7 +570,7 @@ WantedBy=multi-user.target
 
 ```bash
 #!/bin/bash
-echo "Starting cleanup for {{ lookup('env', 'ENV') }}..."
+echo "Starting cleanup for {{ env }}..."
 
 # Clean old Docker images
 docker image prune -af --filter "until=24h"
@@ -438,7 +578,7 @@ docker image prune -af --filter "until=24h"
 echo "Cleanup complete!"
 ```
 
-All variables come from your `.env` files or CI/CD secrets and are available in templates using the `lookup('env', 'VARIABLE_NAME')` syntax.
+All variables from your `.env` files or CI/CD secrets are automatically available in templates. Simply use `{{ variable_name }}` syntax with lowercase variable names.
 
 ---
 

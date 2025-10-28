@@ -1,6 +1,6 @@
 services:
   app:
-    image: my-app-${ENV}:${VERSION}
+    image: my-app
     build:
       context: ../..
       dockerfile: Dockerfile.app

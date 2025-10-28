@@ -144,14 +144,14 @@ class VersionManager {
             try {
                 const content = fs.readFileSync(filePath, 'utf8');
                 if (this.ciImageMode) {
-                    // For CI image mode, look specifically for devops-ci image references
-                    if (content.includes(`shawiizz/devops-ci:${version}`) || content.includes(`devops-ci:${version}`)) {
+                    // For CI image mode, look specifically for dockflow-ci image references
+                    if (content.includes(`shawiizz/dockflow-ci:${version}`) || content.includes(`dockflow-ci:${version}`)) {
                         filesWithVersion.push(filePath);
                     }
                 } else {
                     // For normal mode, just check if the version appears anywhere (but not in Docker images)
                     const hasVersion = versionRegex.test(content);
-                    const hasDockerImage = content.includes(`shawiizz/devops-ci:${version}`);
+                    const hasDockerImage = content.includes(`shawiizz/dockflow-ci:${version}`);
                     
                     if (hasVersion && !hasDockerImage) {
                         filesWithVersion.push(filePath);
@@ -189,13 +189,13 @@ class VersionManager {
                 
                 if (this.ciImageMode) {
                     // For CI image mode, replace specifically image references
-                    content = content.replace(new RegExp(`shawiizz/devops-ci:${oldVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'), `shawiizz/devops-ci:${newVersion}`);
-                    content = content.replace(new RegExp(`devops-ci:${oldVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'), `devops-ci:${newVersion}`);
+                    content = content.replace(new RegExp(`shawiizz/dockflow-ci:${oldVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'), `shawiizz/dockflow-ci:${newVersion}`);
+                    content = content.replace(new RegExp(`dockflow-ci:${oldVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'), `dockflow-ci:${newVersion}`);
                 } else {
                     // For normal mode, simply replace all occurrences of the version (except in Docker images)
                     const lines = content.split('\n');
                     const updatedLines = lines.map(line => {
-                        if (line.includes('shawiizz/devops-ci:') || line.includes('devops-ci:')) {
+                        if (line.includes('shawiizz/dockflow-ci:') || line.includes('dockflow-ci:')) {
                             return line; // Don't modify lines containing Docker references
                         }
                         return line.replace(new RegExp(oldVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), newVersion);

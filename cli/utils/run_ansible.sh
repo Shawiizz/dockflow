@@ -5,19 +5,28 @@ source "$CLI_UTILS_DIR/functions.sh"
 configure_services() {
     print_heading "CONFIGURING SERVICES"
     
-    read -rp "Do you want to install Portainer? (y/n) [default: n]: " INSTALL_PORTAINER
+    echo -e "${CYAN}Optional: Install Portainer for container management${NC}"
+    echo ""
     
-    if [[ "$INSTALL_PORTAINER" == "y" || "$INSTALL_PORTAINER" == "Y" ]]; then
+    if confirm_action "Do you want to install Portainer?" "n"; then
+        INSTALL_PORTAINER="y"
+        
+        echo ""
         read -srp "Portainer password: " PORTAINER_PASSWORD
         echo ""
-        read -rp "Port HTTP for Portainer [default: 9000]: " PORTAINER_HTTP_PORT
-        PORTAINER_HTTP_PORT=${PORTAINER_HTTP_PORT:-9000}
-        read -rp "Portainer domain name: " PORTAINER_DOMAIN_NAME
+        
+        echo ""
+        prompt_port "HTTP port for Portainer" PORTAINER_HTTP_PORT "9000"
+        
+        echo ""
+        prompt_domain_name "Portainer domain name" PORTAINER_DOMAIN_NAME true
         
         export PORTAINER_INSTALL=true
         export PORTAINER_PASSWORD
         export PORTAINER_HTTP_PORT
         export PORTAINER_DOMAIN_NAME
+    else
+        INSTALL_PORTAINER="n"
     fi
 }
 
@@ -26,13 +35,13 @@ run_ansible_playbook() {
     
     echo "Setting up SSH key for Ansible..."
     # Ensure the key doesn't have Windows CRLF line endings
-    if [ -f ~/.ssh/ansible_key ]; then
-        cat ~/.ssh/ansible_key | tr -d '\r' > ~/.ssh/ansible_key.tmp
-        mv ~/.ssh/ansible_key.tmp ~/.ssh/ansible_key
-        chmod 600 ~/.ssh/ansible_key
+    if [ -f ~/.ssh/deploy_key ]; then
+        cat ~/.ssh/deploy_key | tr -d '\r' > ~/.ssh/deploy_key.tmp
+        mv ~/.ssh/deploy_key.tmp ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
     fi
     eval "$(ssh-agent -s)"
-    ssh-add ~/.ssh/ansible_key
+    ssh-add ~/.ssh/deploy_key
     
     # Determine skip tags
     SKIP_TAGS="deploy"
@@ -41,15 +50,15 @@ run_ansible_playbook() {
     fi
     
     export HOST=$SERVER_IP
-    export ANSIBLE_USER
-    export ANSIBLE_BECOME_PASSWORD=$ANSIBLE_PASSWORD
+    export USER
+    export USER_PASSWORD
     
     echo "Running Ansible playbook..."
     export ANSIBLE_HOST_KEY_CHECKING=False
     ansible-galaxy role install geerlingguy.docker
     
     cd "$CLI_ROOT_DIR/.." || exit 1
-    ansible-playbook ansible/configure_host.yml -i "$HOST," --user="$ANSIBLE_USER" --private-key=~/.ssh/ansible_key --skip-tags "$SKIP_TAGS"
+    ansible-playbook ansible/configure_host.yml -i "$HOST," --user="$USER" --private-key=~/.ssh/deploy_key --skip-tags "$SKIP_TAGS"
     
     # Check if Ansible playbook execution was successful
     ANSIBLE_RETURN_CODE=$?
@@ -59,9 +68,9 @@ run_ansible_playbook() {
         echo -e "===========================================================${NC}"
         echo -e "${YELLOW}The setup process encountered errors. Please check the logs above for details.${NC}"
         echo ""
-        echo -e "${YELLOW}Here is the SSH private key for ansible user (keep it secure):${NC}"
-        if [ -f ~/.ssh/ansible_key ]; then
-            cat ~/.ssh/ansible_key
+        echo -e "${YELLOW}Here is the SSH private key for deployment user (keep it secure):${NC}"
+        if [ -f ~/.ssh/deploy_key ]; then
+            cat ~/.ssh/deploy_key
         fi
         echo ""
         echo -e "${RED}You need to investigate and fix the errors before the machine can receive deployments.${NC}"
@@ -75,8 +84,8 @@ display_completion() {
     echo "   REMOTE MACHINE SETUP COMPLETED"
     echo -e "===========================================================${NC}"
     echo ""
-    echo -e "${YELLOW}Here is the SSH private key for ansible user (keep it secure):${NC}"
-    cat ~/.ssh/ansible_key
+    echo -e "${YELLOW}Here is the SSH private key for deployment user (keep it secure):${NC}"
+    cat ~/.ssh/deploy_key
     echo ""
     echo -e "${GREEN}The machine is now ready to receive deployments of Docker applications.${NC}"
 }

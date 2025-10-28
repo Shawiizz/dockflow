@@ -18,8 +18,8 @@ on:
         description: "Free disk space by removing unnecessary tools"
 
 env:
-  DEVOPS_REPOSITORY_URL: https://github.com/Shawiizz/devops-framework.git
-  DEVOPS_FRAMEWORK_VERSION: 1.0.38
+  DOCKFLOW_REPOSITORY_URL: https://github.com/Shawiizz/dockflow.git
+  DOCKFLOW_FRAMEWORK_VERSION: 1.0.38-dev48
 
 jobs:
   discover-hosts:
@@ -54,40 +54,14 @@ jobs:
           echo "env=$ENVIRONMENT" >> $GITHUB_OUTPUT
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           
-          if [ ! -f ".deployment/env/.env.${ENVIRONMENT}" ]; then
-              echo "::error:: File .deployment/env/.env.${ENVIRONMENT} does not exist, cannot execute on unknown environment"
-              exit 1
-          fi
+          # Clone dockflow framework to access discovery script
+          git clone --depth 1 --branch "${{ env.DOCKFLOW_FRAMEWORK_VERSION }}" "${{ env.DOCKFLOW_REPOSITORY_URL }}" /tmp/dockflow
           
-          #######################################
-          ###### Discover hosts to deploy #######
-          #######################################
-          HOSTS_LIST=()
-          BASE_FILE=".deployment/env/.env.${ENVIRONMENT}"
+          # Make scripts executable
+          chmod +x /tmp/dockflow/.github/scripts/*.sh
           
-          if [ -f "$BASE_FILE" ]; then
-            HOSTS_LIST+=("main")
-          fi
-          
-          for env_file in .deployment/env/.env.${ENVIRONMENT}.*; do
-            if [ -f "$env_file" ]; then
-              SUFFIX=$(basename "$env_file" | sed "s/\.env\.${ENVIRONMENT}\.//")
-              if [[ "$SUFFIX" != "${ENVIRONMENT}" ]]; then
-                HOSTS_LIST+=("$SUFFIX")
-              fi
-            fi
-          done
-          
-          HOSTS_JSON="["
-          for i in "${!HOSTS_LIST[@]}"; do
-            if [ $i -eq 0 ]; then
-              HOSTS_JSON="$HOSTS_JSON\"${HOSTS_LIST[$i]}\""
-            else
-              HOSTS_JSON="$HOSTS_JSON,\"${HOSTS_LIST[$i]}\""
-            fi
-          done
-          HOSTS_JSON="$HOSTS_JSON]"
-          
+          # Discover hosts
+          HOSTS_JSON=$(/tmp/dockflow/.github/scripts/discover_hosts.sh "$ENVIRONMENT")
           echo "hosts=$HOSTS_JSON" >> $GITHUB_OUTPUT
           echo "Discovered hosts: $HOSTS_JSON"
 
@@ -113,17 +87,10 @@ jobs:
         run: |
           ENV="${{ needs.discover-hosts.outputs.env }}"
           HOST="${{ matrix.host }}"
-          
-          if [[ "$HOST" == "main" ]]; then
-            SSH_SECRET_NAME="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY"
-          else
-            SSH_SECRET_NAME="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_$(echo "${HOST}" | tr '[:lower:]' '[:upper:]')_SSH_PRIVATE_KEY"
-          fi
 
           echo "env=$ENV" >> $GITHUB_OUTPUT
           echo "host=$HOST" >> $GITHUB_OUTPUT
           echo "tag=${{ needs.discover-hosts.outputs.tag }}" >> $GITHUB_OUTPUT
-          echo "SSH_KEY_SECRET_NAME=$SSH_SECRET_NAME" >> $GITHUB_ENV
 
       - name: Install dependencies
         run: |
@@ -131,8 +98,8 @@ jobs:
           wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq &&\
           chmod +x /usr/local/bin/yq
 
-      - name: Clone devops repository
-        run: git clone --branch "$DEVOPS_FRAMEWORK_VERSION" "$DEVOPS_REPOSITORY_URL" devops-framework
+      - name: Clone dockflow repository
+        run: git clone --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" dockflow
 
       - name: Deploy to host ${{ matrix.host }}
         run: |          
@@ -146,19 +113,9 @@ jobs:
           ENV="${{ steps.vars.outputs.env }}"
           export HOSTNAME="${{ steps.vars.outputs.host }}"
           
-          #######################################
-          ######### Load env variables ##########
-          #######################################
-          set -a
-          source ".deployment/env/.env.${ENV}"
-          
-          if [[ "$HOSTNAME" != "main" ]]; then
-            if [ -f ".deployment/env/.env.${ENV}.${HOSTNAME}" ]; then
-              source ".deployment/env/.env.${ENV}.${HOSTNAME}"
-            fi
-          fi
-          set +a
-          
+          # Load environment variables using helper script
+          source dockflow/.github/scripts/load_env.sh "$ENV" "$HOSTNAME"
+                              
           export ENV="${{ steps.vars.outputs.env }}"
           export VERSION="${{ steps.vars.outputs.tag }}"
 
@@ -178,9 +135,9 @@ jobs:
           if [[ "${FRAMEWORK_OPTIONS_REMOTE_BUILD}" != "true" ]]; then
             echo "Building Docker images locally in CI/CD..."
             if [[ "$HOSTNAME" == "main" ]]; then
-              bash devops-framework/.github/scripts/build_docker_images.sh
+              bash dockflow/.github/scripts/build_docker_images.sh
             else
-              bash devops-framework/.github/scripts/build_docker_images.sh --host="$HOSTNAME"
+              bash dockflow/.github/scripts/build_docker_images.sh --host="$HOSTNAME"
             fi
           else
             echo "Remote build enabled - skipping local image build"
@@ -190,17 +147,17 @@ jobs:
           #######################################
           ######### Save project root path ######
           #######################################
-          export PROJECT_ROOT=$(pwd)
+          export ROOT_PATH=$(pwd)
 
           ######### Change working directory #########
-          cd devops-framework
+          cd dockflow
           
           #######################################
           ############ Setup SSH Key ############
           #######################################
           
           mkdir -p ssh
-          echo "${!SSH_KEY_SECRET_NAME}" | tr -d '\r' > ssh/remote_private_key
+          echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ssh/remote_private_key
           chmod 600 ssh/*
           eval "$(ssh-agent -s)"
           ssh-add ssh/remote_private_key
@@ -209,8 +166,31 @@ jobs:
           ######### Deploy with Ansible #########
           #######################################
           export ANSIBLE_HOST_KEY_CHECKING=False
-          export ANSIBLE_BECOME_PASSWORD=${{ secrets.ANSIBLE_BECOME_PASSWORD }}
+          export USER_PASSWORD=${{ secrets.USER_PASSWORD }}
           export GIT_TOKEN=${{ secrets.GIT_TOKEN }}
+          export PROJECT_ID="${{ github.repository_id }}"
+          
+          # Get original branch name instead of tag name
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            ORIGINAL_BRANCH=$(git branch -r --contains ${{ github.ref_name }} | grep -v "HEAD" | head -n1 | sed 's/.*origin\///')
+            if [ -n "$ORIGINAL_BRANCH" ]; then
+              export BRANCH_NAME=$ORIGINAL_BRANCH
+            else
+              export BRANCH_NAME=$(git remote show origin | grep "HEAD branch" | cut -d ":" -f 2 | xargs)
+            fi
+          else
+            export BRANCH_NAME=${{ github.ref_name }}
+          fi
+
+          # Export all environment variables to YAML file for Ansible
+          > /tmp/ansible_env_vars.yml
+          env | while IFS='=' read -r name value; do
+            if [ -n "$name" ] && [ "$name" != "_" ] && [ "$name" != "OLDPWD" ]; then
+              name_lower=$(echo "$name" | tr '[:upper:]' '[:lower:]')
+              value_escaped=$(echo "$value" | sed 's/\\/\\\\/g; s/"/\\"/g')
+              echo "${name_lower}: \"${value_escaped}\"" >> /tmp/ansible_env_vars.yml
+            fi
+          done
 
           SKIP_TAGS="configure_host"
           if [ ! -d "../.deployment/templates/nginx" ] || [ -z "$(ls -A ../.deployment/templates/nginx 2>/dev/null)" ]; then
@@ -218,11 +198,7 @@ jobs:
             SKIP_TAGS="${SKIP_TAGS},nginx"
           fi
           
-          if [[ "$HOSTNAME" == "main" ]]; then
-            INVENTORY_HOST="${ENV}"
-          else
-            INVENTORY_HOST="${ENV}-${HOSTNAME}"
-          fi
+          INVENTORY_HOST="${ENV}$([[ "$HOSTNAME" != "main" ]] && echo "-${HOSTNAME}" || echo "")"
           
           sed -i "s/REMOTE_HOST/${INVENTORY_HOST}/g" ansible/inventory.yml
           ansible-galaxy role install geerlingguy.docker

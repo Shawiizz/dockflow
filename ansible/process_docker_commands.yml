@@ -1,6 +1,7 @@
-- name: Build decomposerize options
+- name: Initialize variables and build decomposerize options
   set_fact:
     decomposerize_options: "{{ cmd_type.base_options }} {{ services_option }} {{ environmentize_option }} --ansible-env-vars-format"
+    all_docker_run_commands: "{{ all_docker_run_commands | default([]) }}"
   changed_when: false
 
 - name: Generate {{ cmd_type.name }} commands as template
@@ -15,7 +16,7 @@
   delegate_to: localhost
   changed_when: false
 
-- name: Get rendered commands
+- name: Get rendered commands from controller
   slurp:
     src: "{{ tmp_dir }}/decomposerize_{{ cmd_type.name }}_rendered.sh"
   delegate_to: localhost
@@ -34,32 +35,39 @@
         | list
       }}
   changed_when: false
+  when: rendered_script is defined
+
+- name: Store docker run commands for rollback tracking
+  set_fact:
+    docker_run_commands: "{{ current_commands | select('search', '(?i)docker.*run') | list }}"
+  when:
+    - cmd_type.name == 'run'
+    - current_commands is defined
+
+- name: Aggregate all docker run commands in hostvars
+  set_fact:
+    all_docker_run_commands: "{{ (all_docker_run_commands | default([])) + (docker_run_commands | default([])) }}"
+  when:
+    - cmd_type.name == 'run'
+    - docker_run_commands is defined
+
+- name: Save current docker run commands for rollback (before deployment)
+  copy:
+    content: "{{ item }}"
+    dest: "/var/lib/dockflow/{{ (item.split() | last).split(':')[0] }}___{{ (item.split() | last).split(':')[1] | default('latest') }}.run"
+    mode: '0755'
+  loop: "{{ docker_run_commands | default([]) }}"
+  when:
+    - cmd_type.name == 'run'
+    - docker_run_commands is defined
+    - docker_run_commands | length > 0
+  failed_when: false
+  loop_control:
+    label: "Saving rollback for: {{ item.split() | last }}"
 
 - name: Execute commands on target host
   shell: "( {{ item }} ) > /dev/null 2>&1"
   loop: "{{ current_commands }}"
-  loop_control:
-    label: >-
-      {{
-        (
-          (item | regex_search('^docker\s+run'))
-          and ('Running ' ~ ((item | regex_search('--name\\s+(\\S+)', '\\1') | default('container', true))) ~ ' container')
-        )
-        or (
-          (item | regex_search('^docker\\s+stop\\s+(\\S+)'))
-          and ('Stopping ' ~ ((item | regex_search('^docker\\s+stop\\s+(\\S+)', '\\1') | default('container', true))) ~ ' container')
-        )
-        or (
-          (item | regex_search('^docker\\s+rm\\s+(\\S+)'))
-          and ('Removing ' ~ ((item | regex_search('^docker\\s+rm\\s+(\\S+)', '\\1') | default('container', true))) ~ ' container')
-        )
-        or (
-          (item | regex_search('^docker\\s+rmi'))
-          and ('Removing images for ' ~ ((item | regex_search('docker\\s+images\\s+(\\S+)', '\\1') | default('repository', true))))
-        )
-        or 'Running docker command'
-      }}
-  when: current_commands is defined and current_commands | length > 0
   failed_when: false
   ignore_errors: "{{ cmd_type.ignore_errors }}"
   register: command_results
@@ -69,8 +77,6 @@
   debug:
     msg: "Failed to run command"
   loop: "{{ command_results.results | default([]) }}"
-  loop_control:
-    label: "{{ (item.item | default('')) | regex_replace('\\n', ' ') | truncate(120, true, '...') }}"
   when:
     - item.rc is defined and item.rc != 0
     - not (cmd_type.ignore_errors | bool)

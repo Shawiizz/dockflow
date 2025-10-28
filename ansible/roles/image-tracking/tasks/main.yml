@@ -1,0 +1,46 @@
+---
+- name: Ensure tracking directory exists
+  file:
+    path: /var/lib/dockflow/images
+    state: directory
+    mode: '0755'
+
+- name: Check if current deployment is already marked as healthy
+  stat:
+    path: "/var/lib/dockflow/images/{{ env }}_{{ project_id }}_{{ branch_name }}_{{ version }}_healthy.json"
+  register: current_healthy_image_stat
+  changed_when: false
+
+- name: Get current healthy image info (if exists)
+  slurp:
+    src: "{{ current_healthy_image_stat.stat.path }}"
+  register: current_healthy_image
+  when: current_healthy_image_stat.stat.exists
+  changed_when: false
+  ignore_errors: yes
+
+- name: Parse current healthy image
+  set_fact:
+    previous_healthy_images: "{{ (current_healthy_image.content | b64decode | from_json).images | default([]) }}"
+  when: current_healthy_image is defined and current_healthy_image is succeeded
+  ignore_errors: yes
+
+- name: Initialize new_deployed_images
+  set_fact:
+    new_deployed_images: []
+  changed_when: false
+
+- name: Build list of newly deployed images (use aggregated variable)
+  set_fact:
+    new_deployed_images: "{{ new_deployed_images + [{'name': item.split() | last, 'timestamp': ansible_date_time.iso8601}] }}"
+  loop: "{{ hostvars[inventory_hostname].get('all_docker_run_commands', []) }}"
+  when: hostvars[inventory_hostname].get('all_docker_run_commands', []) | length > 0
+  loop_control:
+    label: "{{ item.split() | last }}"
+
+- name: Display tracking information
+  debug:
+    msg: |
+      Previous healthy images: {{ previous_healthy_images | default([]) | length }}
+      New deployed images: {{ new_deployed_images | length }}
+  when: not global_no_log
