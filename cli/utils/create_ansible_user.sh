@@ -8,7 +8,7 @@ setup_ansible_user() {
     echo -e "${CYAN}Configure the deployment user account:${NC}"
     echo ""
     
-    prompt_username "User name" USER "deploy"
+    prompt_username "User name" USER "dockflow"
     
     read -srp "Password for user: " USER_PASSWORD
     echo ""
