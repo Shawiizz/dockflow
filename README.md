@@ -169,10 +169,11 @@ Required secrets in your CI/CD settings:
 
 | Secret Name | Description | Example |
 |-------------|-------------|---------|
-| `USER_PASSWORD` | Deployment user password | `your-password` |
+| `USER` | Remote user name | `dockflow` (default) |
+| `USER_PASSWORD` | Remote user password | `your-password` |
 | `[ENV]_SSH_PRIVATE_KEY` | SSH key for main host | `PRODUCTION_SSH_PRIVATE_KEY` |
 | `[ENV]_[HOSTNAME]_SSH_PRIVATE_KEY` | SSH key for specific host | `PRODUCTION_SERVER_A_SSH_PRIVATE_KEY` |
-| `GIT_TOKEN` | For private repos (remote build) | GitHub/GitLab token |
+| `GIT_TOKEN` | OPTIONAL: Remote build option : for private repos | GitHub/GitLab token |
 
 **Dynamic Variable Override System:**
 
@@ -198,7 +199,7 @@ Any CI secret starting with `[ENV]_` or `[ENV]_[HOSTNAME]_` will automatically o
 <summary>Git Token Permissions (only for remote build with private repos)</summary>
 
 - **GitHub**: `repo` scope (read access)
-- **GitLab**: `read_repository` scope (or use built-in `CI_JOB_TOKEN`)
+- **GitLab**: No token is required, `CI_JOB_TOKEN` variable is automatically used by the CI/CD workflow 
 
 </details>
 
@@ -227,11 +228,12 @@ API_PORT=3000                  # Can be overridden by PRODUCTION_API_PORT CI sec
 3. **Environment Files**: Store everything in `.env` files (not recommended for sensitive data)
 
 **Pro tips:** 
-- Use `$VARIABLE_NAME` to reference CI secrets directly in `.env` files
+- Use `$VARIABLE_NAME` to reference CI secrets directly in `.env` files if you need 1 same secret for several environments
 - Any variable can be overridden using `[ENV]_VARIABLE_NAME` CI secrets (e.g., `PRODUCTION_HOST`, `PRODUCTION_API_PORT`)
 - For multi-host setups, use `[ENV]_[HOSTNAME]_VARIABLE_NAME` pattern (e.g., `PRODUCTION_SERVER_A_HOST`)
 - Keep sensitive data in CI secrets, not in `.env` files committed to the repository
 - **Required**: At minimum, `HOST` must be defined (either in `.env` file or as CI secret)
+- Default `USER` is called dockflow.
 
 ---
 
@@ -245,7 +247,7 @@ services:
     image: my-app
     build:
       context: ../..
-      dockerfile: .deployment/docker/Dockerfile.app
+      dockerfile: Dockerfile.app
     ports:
       - "${APP_PORT}:3000"
     environment:
@@ -461,8 +463,6 @@ health_checks:
     - name: "Health"
       url: "http://localhost:{{ app_port }}/health"
 ```
-
-See [HEALTH-CHECKS.md](HEALTH-CHECKS.md) and [ROLLBACK-SYSTEM.md](ROLLBACK-SYSTEM.md) for complete documentation.
 
 ---
 
