@@ -270,7 +270,7 @@ By default, `${ENV}` and `${VERSION}` are automatically added to:
 
 This ensures **complete isolation** between environments (production, staging, etc.)
 
-**No manual work needed!** The framework handles it transparently.
+**No manual work needed!** Dockflow handles it transparently.
 
 <details>
 <summary>Manual environment isolation (advanced)</summary>
@@ -388,7 +388,7 @@ options:
 health_checks:
   enabled: true                 # Enable post-deployment health checks
   startup_delay: 15             # Wait before checking (seconds)
-  on_failure: "notify"          # Action: "fail", "notify", or "ignore"
+  on_failure: "notify"          # Action: "fail", "notify", "ignore" or "rollback"
   
   endpoints:
     - name: "Main Application"
@@ -476,6 +476,7 @@ Add custom configs in `.deployment/templates/`:
 │   └── my-app.conf.j2           # Custom Nginx config
 ├── services/
 │   └── my-service.service.j2    # Systemd service
+|   └── my-service.mount.j2      # Mount service (sshfs for example. You can also deploy ssh private keys using Dockflow)
 └── scripts/
     └── pre-deploy.sh.j2         # Custom script (executed before deploying)
 ```
@@ -504,6 +505,7 @@ git push origin --tags
 
 ### Deploy on Branch Push
 
+Before using, you need to configure your Github/GitLab workflow (see example folder).            
 You can also trigger deployments on direct branch pushes (deploys to `production`):
 
 ```bash
