@@ -1,6 +1,6 @@
 #!/bin/bash
 # Export environment variables to YAML and render all Docker files with Ansible
-# Usage: export_vars_and_render_docker_files.sh
+# Usage: export_to_ansible_vars_and_render.sh
 
 set -e
 

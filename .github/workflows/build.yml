@@ -11,7 +11,7 @@ on:
 
 env:
   DOCKFLOW_REPOSITORY_URL: https://github.com/Shawiizz/dockflow.git
-  DOCKFLOW_FRAMEWORK_VERSION: 1.0.42
+  DOCKFLOW_FRAMEWORK_VERSION: 1.0.43
 
 jobs:
   build:
@@ -46,6 +46,6 @@ jobs:
           source dockflow/.github/scripts/load_env.sh "$ENV"
           
           # Export vars and render all docker files
-          bash dockflow/.github/scripts/export_vars_and_render_docker_files.sh
+          bash dockflow/.github/scripts/export_to_ansible_vars_and_render.sh
           
           bash dockflow/.github/scripts/build_docker_images.sh
