@@ -1,0 +1,38 @@
+---
+# Generic Ansible playbook to render any file with Jinja2 templating
+# Usage: ansible-playbook render_template.yml -e input_file=/path/to/file.yml -e output_file=/path/to/file.yml
+
+- name: Render template file with variables
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    input_file: "{{ input_file }}"
+    output_file: "{{ output_file }}"
+  
+  tasks:
+    - name: Load environment variables from YAML file
+      include_vars:
+        file: /tmp/ansible_env_vars.yml
+      no_log: true
+
+    - name: Check if input file exists
+      stat:
+        path: "{{ input_file }}"
+      register: input_stat
+
+    - name: Fail if input file doesn't exist
+      fail:
+        msg: "Input file {{ input_file }} not found"
+      when: not input_stat.stat.exists
+
+    - name: Render template file
+      template:
+        src: "{{ input_file }}"
+        dest: "{{ output_file }}"
+        mode: '0644'
+      no_log: true
+
+    - name: Display success message
+      debug:
+        msg: "Successfully rendered {{ input_file }} to {{ output_file }}"

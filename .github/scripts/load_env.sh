@@ -6,6 +6,18 @@ ENV="$1"
 HOSTNAME="${2:-main}"
 
 #######################################
+######### Load secrets ################
+#######################################
+# Load secrets as environment variables from secrets.json if it exists
+if [ -f "secrets.json" ]; then
+  echo "Loading secrets from secrets.json"
+  for key in $(jq -r 'keys[]' secrets.json); do
+    value=$(jq -r --arg key "$key" '.[$key]' secrets.json)
+    export "$key=$value"
+  done
+fi
+
+#######################################
 ######### Load env variables ##########
 #######################################
 set -a
@@ -15,7 +27,12 @@ if [ -f ".deployment/env/.env.${ENV}" ]; then
   echo "Loading .deployment/env/.env.${ENV}"
   source ".deployment/env/.env.${ENV}"
 else
-  echo "No .deployment/env/.env.${ENV} file found, using CI secrets only"
+  if [[ "$ENV" == "build" ]] && [ -f ".deployment/env/.env.production" ]; then
+    echo "No .deployment/env/.env.${ENV} file found, loading .deployment/env/.env.production instead"
+    source ".deployment/env/.env.production"
+  else
+    echo "No .deployment/env/.env.${ENV} file found, using CI secrets only"
+  fi
 fi
 
 # Load host-specific file if not main

@@ -260,6 +260,8 @@ networks:
   app-network:
 ```
 
+**Note:** All files in `.deployment/docker/` (including `docker-compose.yml`, `Dockerfile`, etc.) are automatically processed with Jinja2 templating. You can use `{{ variable_name }}` syntax with any variable from `.env` files or CI secrets (automatically converted to lowercase).
+
 #### Environment Isolation (Automatic)
 
 By default, `${ENV}` and `${VERSION}` are automatically added to:
@@ -462,6 +464,21 @@ health_checks:
   endpoints:
     - name: "Health"
       url: "http://localhost:{{ app_port }}/health"
+```
+
+#### Image Management Options
+
+Control how Docker images are managed over time:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `keep_healthy_versions` | Number of successful deployment versions to keep | `1` |
+| `cleanup_on_failure` | Remove images immediately on failed deployment | `true` |
+
+```yaml
+image_management:
+  keep_healthy_versions: 2      # Keep 2 successful versions for quick rollback
+  cleanup_on_failure: true      # Clean up failed deployments automatically
 ```
 
 ---

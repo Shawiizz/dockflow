@@ -103,17 +103,13 @@ jobs:
 
       - name: Deploy to host ${{ matrix.host }}
         run: |          
-          # Load secrets as environment variables
+          # Prepare secrets file for load_env.sh
           echo '${{ toJSON(secrets) }}' > secrets.json
-          for key in $(jq -r 'keys[]' secrets.json); do
-            value=$(jq -r --arg key "$key" '.[$key]' secrets.json)
-            export "$key=$value"
-          done
 
           ENV="${{ steps.vars.outputs.env }}"
           export HOSTNAME="${{ steps.vars.outputs.host }}"
           
-          # Load environment variables using helper script
+          # Load environment variables using helper script (will also load secrets)
           source dockflow/.github/scripts/load_env.sh "$ENV" "$HOSTNAME"
                               
           export ENV="${{ steps.vars.outputs.env }}"
@@ -182,22 +178,8 @@ jobs:
             export BRANCH_NAME=${{ github.ref_name }}
           fi
 
-          # Export all environment variables to YAML file for Ansible
-          python3 << 'PYTHON_EOF'
-          import os
-          import yaml
-
-          env_vars = {}
-          for key, value in os.environ.items():
-              if key and key not in ['_', 'OLDPWD']:
-                  # Convert to lowercase for consistency
-                  key_lower = key.lower()
-                  env_vars[key_lower] = value
-
-          # Write as proper YAML with multiline support
-          with open('/tmp/ansible_env_vars.yml', 'w') as f:
-              yaml.dump(env_vars, f, default_flow_style=False, allow_unicode=True)
-          PYTHON_EOF
+          # Export vars and render all docker files with Jinja2 templating
+          bash export_vars_and_render_docker_files.sh
 
           SKIP_TAGS="configure_host"
           if [ ! -d "../.deployment/templates/nginx" ] || [ -z "$(ls -A ../.deployment/templates/nginx 2>/dev/null)" ]; then

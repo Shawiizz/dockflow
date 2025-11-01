@@ -87,7 +87,7 @@
       when: deployment_config is defined and deployment_config.health_checks is defined
 
     - name: Process Docker commands for each type
-      include_tasks: process_docker_commands.yml
+      include_tasks: playbooks/process_docker_commands.yml
       loop: "{{ decomposerize_types }}"
       loop_control:
         loop_var: cmd_type

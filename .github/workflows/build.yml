@@ -36,6 +36,16 @@ jobs:
 
       - name: Build Docker images
         run: |
-          export ENV=build
-          export VERSION=build
+          # Prepare secrets file for load_env.sh
+          echo '${{ toJSON(secrets) }}' > secrets.json
+
+          export ENV="build"
+          export VERSION="build"
+
+          # Load environment variables using helper script (will also load secrets)
+          source dockflow/.github/scripts/load_env.sh "$ENV"
+          
+          # Export vars and render all docker files
+          bash dockflow/.github/scripts/export_vars_and_render_docker_files.sh
+          
           bash dockflow/.github/scripts/build_docker_images.sh
