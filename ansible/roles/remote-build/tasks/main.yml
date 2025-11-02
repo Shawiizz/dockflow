@@ -102,28 +102,12 @@
     msg: "Failed to clone repository. Check if GIT_TOKEN is set for private repos or if the server has access to the repository."
   when: git_clone_result.rc is defined and git_clone_result.rc != 0
 
-- name: Export environment variables to YAML file on remote server
-  copy:
-    content: "{{ hostvars[inventory_hostname] | to_nice_yaml }}"
-    dest: /tmp/ansible_env_vars.yml
-    mode: '0644'
-
-- name: Find all files in docker directory on remote server
-  find:
-    paths: "{{ tmp_build_dir }}/.deployment/docker"
-    file_type: file
-    recurse: yes
-  register: docker_files
-
-- name: Render each docker file with Jinja2 on remote server
-  template:
-    src: "{{ item.path }}"
-    dest: "{{ item.path }}"
-    mode: '0644'
-  loop: "{{ docker_files.files }}"
-  loop_control:
-    label: "Rendering {{ item.path | basename }}"
-  when: docker_files.files | length > 0
+- name: Copy rendered docker files to remote server
+  synchronize:
+    src: "{{ root_path | default('..') }}/.deployment/docker/"
+    dest: "{{ tmp_build_dir }}/.deployment/docker/"
+    delete: no
+    recursive: yes
 
 - name: Generate build commands using decomposerize
   shell: |
