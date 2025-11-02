@@ -108,12 +108,27 @@ jobs:
 
           ENV="${{ steps.vars.outputs.env }}"
           export HOSTNAME="${{ steps.vars.outputs.host }}"
-          
+          export ROOT_PATH=$(pwd)
+
           # Load environment variables using helper script (will also load secrets)
           source dockflow/.github/scripts/load_env.sh "$ENV" "$HOSTNAME"
                               
           export ENV="${{ steps.vars.outputs.env }}"
           export VERSION="${{ steps.vars.outputs.tag }}"
+          export ANSIBLE_HOST_KEY_CHECKING=False
+          export PROJECT_ID="${{ github.repository_id }}"
+          
+          # Get original branch name instead of tag name
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            ORIGINAL_BRANCH=$(git branch -r --contains ${{ github.ref_name }} | grep -v "HEAD" | head -n1 | sed 's/.*origin\///')
+            if [ -n "$ORIGINAL_BRANCH" ]; then
+              export BRANCH_NAME=$ORIGINAL_BRANCH
+            else
+              export BRANCH_NAME=$(git remote show origin | grep "HEAD branch" | cut -d ":" -f 2 | xargs)
+            fi
+          else
+            export BRANCH_NAME=${{ github.ref_name }}
+          fi
 
           #######################################
           ### Load framework config options #####
@@ -146,11 +161,6 @@ jobs:
             echo "Images will be built directly on the remote server"
           fi
 
-          #######################################
-          ######### Save project root path ######
-          #######################################
-          export ROOT_PATH=$(pwd)
-
           ######### Change working directory #########
           cd dockflow
           
@@ -167,23 +177,6 @@ jobs:
           #######################################
           ######### Deploy with Ansible #########
           #######################################
-          export ANSIBLE_HOST_KEY_CHECKING=False
-          export USER_PASSWORD=${{ secrets.USER_PASSWORD }}
-          export GIT_TOKEN=${{ secrets.GIT_TOKEN }}
-          export PROJECT_ID="${{ github.repository_id }}"
-          
-          # Get original branch name instead of tag name
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            ORIGINAL_BRANCH=$(git branch -r --contains ${{ github.ref_name }} | grep -v "HEAD" | head -n1 | sed 's/.*origin\///')
-            if [ -n "$ORIGINAL_BRANCH" ]; then
-              export BRANCH_NAME=$ORIGINAL_BRANCH
-            else
-              export BRANCH_NAME=$(git remote show origin | grep "HEAD branch" | cut -d ":" -f 2 | xargs)
-            fi
-          else
-            export BRANCH_NAME=${{ github.ref_name }}
-          fi
-
           SKIP_TAGS="configure_host"
           if [ ! -d "../.deployment/templates/nginx" ] || [ -z "$(ls -A ../.deployment/templates/nginx 2>/dev/null)" ]; then
             echo "No nginx configuration found, skipping nginx role"
