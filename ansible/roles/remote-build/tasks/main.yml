@@ -102,17 +102,11 @@
     msg: "Failed to clone repository. Check if GIT_TOKEN is set for private repos or if the server has access to the repository."
   when: git_clone_result.rc is defined and git_clone_result.rc != 0
 
-- name: Copy rendered docker files to remote server
-  synchronize:
+- name: Copy rendered docker directory to remote server
+  copy:
     src: "{{ root_path | default('..') }}/.deployment/docker/"
     dest: "{{ tmp_build_dir }}/.deployment/docker/"
-    delete: no
-    recursive: yes
-    rsync_opts:
-      - "--no-perms"
-      - "--no-owner"
-      - "--no-group"
-  become: no
+    mode: '0755'
 
 - name: Generate build commands using decomposerize
   shell: |
