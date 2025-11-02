@@ -120,7 +120,7 @@ jobs:
           #######################################
           if [ -f ".deployment/config.yml" ]; then
             echo "Loading framework configuration options from .deployment/config.yml"
-            export $(yq e '.options | to_entries | map("FRAMEWORK_OPTIONS_" + .key + "=" + .value) | join(" ")' .deployment/config.yml | awk -F= '{printf "%s=%s ", toupper($1), $2}')
+            export $(yq e '.options | to_entries | map("FRAMEWORK_OPTIONS_" + (.key | upcase) + "=" + (.value | tostring)) | join(" ")' .deployment/config.yml)
           else
             echo "No .deployment/config.yml found, skipping framework configuration options"
           fi
