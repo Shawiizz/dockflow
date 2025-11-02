@@ -108,6 +108,11 @@
     dest: "{{ tmp_build_dir }}/.deployment/docker/"
     delete: no
     recursive: yes
+    rsync_opts:
+      - "--no-perms"
+      - "--no-owner"
+      - "--no-group"
+  become: no
 
 - name: Generate build commands using decomposerize
   shell: |
