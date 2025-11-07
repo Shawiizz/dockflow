@@ -416,6 +416,8 @@ health_checks:
 | `startup_delay` | Seconds to wait before checking | `10` |
 | `on_failure` | Action on failure: `fail` (stop), `notify` (warn), `ignore`, `rollback` (restore previous) | `notify` |
 
+> **Note:** Dockflow health checks are **external** to the containers. They verify service accessibility from the host after deployment. To test inter-container connections (e.g., via custom DNS), use [Docker Compose native health checks](https://docs.docker.com/compose/compose-file/05-services/#healthcheck) directly in your `docker-compose.yml`.
+
 **Health Check Endpoint Properties:**
 
 | Property | Description | Default | Required |
