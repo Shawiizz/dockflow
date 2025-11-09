@@ -6,21 +6,19 @@
   gather_facts: false
   vars:
     tmp_dir: "/tmp"
-    framework_version: "1.0.48"
+    framework_version: "1.0.48-dev37"
+    root_path: "{{ lookup('env', 'ROOT_PATH') }}"
   
-  tasks:
+  pre_tasks:
     - name: Display Dockflow version
       debug:
         msg: "Dockflow v{{ framework_version }} - Build Mode"
 
-    - name: Load framework configuration
-      include_role:
-        name: load-config
-
-    - name: Prepare deployment (export vars and render templates)
-      include_role:
-        name: prepare-deployment
-
+  roles:
+    - role: ../roles/load-config
+    - role: ../roles/prepare-deployment
+  
+  tasks:
     - name: Load environment variables from YAML file
       include_vars:
         file: /tmp/ansible_env_vars.yml
@@ -34,4 +32,4 @@
 
     - name: Build Docker images
       include_role:
-        name: local-build
+        name: ../roles/local-build

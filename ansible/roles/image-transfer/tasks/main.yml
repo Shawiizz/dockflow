@@ -1,7 +1,7 @@
 ---
 - name: Set docker images path based on hostname
   set_fact:
-    docker_images_path: "{{ '../../.deployment/docker/docker_images_' + hostname if hostname and hostname != 'main' else '../../.deployment/docker/docker_images' }}"
+    docker_images_path: "{{ root_path }}/.deployment/docker/docker_images{{ '_' + hostname if hostname and hostname != 'main' else '' }}"
 
 - name: List all .tar files on local server (where Ansible is running)
   find:

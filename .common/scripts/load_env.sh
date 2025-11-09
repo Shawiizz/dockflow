@@ -72,14 +72,37 @@ fi
 # Set default USER if not already set
 export USER="${USER:-deploy}"
 
-# Verify that HOST is defined
-if [ -z "$HOST" ]; then
+# Verify that HOST is defined (skip for build environment)
+if [ -z "$HOST" ] && [[ "$ENV" != "build" ]]; then
   echo "::error:: HOST is not defined. Please set it in .env file or as CI secret (${ENV_PREFIX}HOST)"
   exit 1
 fi
 
-# Verify that SSH_PRIVATE_KEY is defined
-if [ -z "$SSH_PRIVATE_KEY" ]; then
+# Verify that SSH_PRIVATE_KEY is defined (skip for build environment)
+if [ -z "$SSH_PRIVATE_KEY" ] && [[ "$ENV" != "build" ]]; then
   echo "::error:: SSH_PRIVATE_KEY is not defined. Please set it as CI secret (${ENV_PREFIX}SSH_PRIVATE_KEY)"
   exit 1
 fi
+
+#######################################
+######### Export env to YAML ##########
+#######################################
+echo "Exporting environment variables to /tmp/ansible_env_vars.yml..."
+
+python3 << 'PYTHON_EOF'
+import os
+import yaml
+
+env_vars = {}
+for key, value in os.environ.items():
+    if key and key not in ['_', 'OLDPWD']:
+        # Convert to lowercase for consistency
+        key_lower = key.lower()
+        env_vars[key_lower] = value
+
+# Write as proper YAML with multiline support
+with open('/tmp/ansible_env_vars.yml', 'w') as f:
+    yaml.dump(env_vars, f, default_flow_style=False, allow_unicode=True)
+PYTHON_EOF
+
+echo "✓ Environment variables exported to /tmp/ansible_env_vars.yml"

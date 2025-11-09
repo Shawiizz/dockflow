@@ -2,9 +2,10 @@
 - name: Deploy Docker Images to Remote Server
   hosts: all:!localhost
   vars:    
-    compose_path: "{{ lookup('env', 'ROOT_PATH') }}/.deployment/docker/docker-compose.yml"
+    root_path: "{{ lookup('env', 'ROOT_PATH') }}"
+    compose_path: "{{ root_path }}/.deployment/docker/docker-compose.yml"
     tmp_dir: "/tmp"
-    framework_version: "1.0.48"
+    framework_version: "1.0.48-dev37"
     decomposerize_types:
       - name: "setup"
         base_options: "--create-networks --create-volumes --stop-and-remove"
@@ -20,13 +21,13 @@
       delegate_to: localhost
 
     - name: Load framework configuration
-      include_role:
+      import_role:
         name: load-config
       run_once: true
       delegate_to: localhost
 
-    - name: Prepare deployment (export vars and render templates)
-      include_role:
+    - name: Prepare deployment (render Docker templates)
+      import_role:
         name: prepare-deployment
       run_once: true
       delegate_to: localhost
@@ -34,7 +35,8 @@
     - name: Load environment variables from YAML file
       include_vars:
         file: /tmp/ansible_env_vars.yml
-      no_log: "{{ not (deployment_config.options.enable_debug_logs | default(false) | bool) }}"
+      delegate_to: localhost
+      run_once: true
 
     - name: Set computed variables
       set_fact:

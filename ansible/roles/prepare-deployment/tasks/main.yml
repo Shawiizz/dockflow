@@ -1,30 +1,7 @@
 ---
-# Prepare deployment role - exports environment variables and renders Docker templates
+# Prepare deployment role - renders Docker templates
 # This role runs on localhost before the actual deployment
-
-- name: Export environment variables to YAML file
-  shell: |
-    python3 << 'PYTHON_EOF'
-    import os
-    import yaml
-
-    env_vars = {}
-    for key, value in os.environ.items():
-        if key and key not in ['_', 'OLDPWD']:
-            # Convert to lowercase for consistency
-            key_lower = key.lower()
-            env_vars[key_lower] = value
-
-    # Write as proper YAML with multiline support
-    with open('/tmp/ansible_env_vars.yml', 'w') as f:
-        yaml.dump(env_vars, f, default_flow_style=False, allow_unicode=True)
-    PYTHON_EOF
-  delegate_to: localhost
-  changed_when: false
-
-- name: Display environment export confirmation
-  debug:
-    msg: "Environment variables exported to /tmp/ansible_env_vars.yml"
+# Note: Environment variables export is now done in the CI/CD workflow
 
 - name: Check if docker directory exists
   stat:

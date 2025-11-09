@@ -4,7 +4,7 @@
 
 - name: Set docker images output directory based on hostname
   set_fact:
-    docker_images_dir: "{{ '../../.deployment/docker/docker_images_' + hostname if hostname and hostname != 'main' else '../../.deployment/docker/docker_images' }}"
+    docker_images_dir: "{{ root_path }}/.deployment/docker/docker_images{{ '_' + hostname if hostname and hostname != 'main' else '' }}"
   delegate_to: localhost
 
 - name: Create docker images directory
@@ -71,18 +71,25 @@
 
 - name: Extract and save built images to tar files
   shell: |
-    IMAGE_NAME=$(echo "{{ item.item }}" | sed -nE 's/.*-t\s+"?([^"]+)"?.*/\1/p')
+    # Extract image name from build command (stop at first space after image name)
+    IMAGE_NAME=$(echo "{{ item.item }}" | sed -nE 's/.*-t[[:space:]]+"?([^"[:space:]]+)"?.*/\1/p')
     IMAGE_NAME=$(eval echo "$IMAGE_NAME")
-    TAR_NAME="${IMAGE_NAME//:/-}.tar"
+    TAR_NAME=$(echo "$IMAGE_NAME" | sed 's/:/-/g').tar
+    TAR_PATH="{{ docker_images_dir }}/$TAR_NAME"
     
-    docker save -o "{{ docker_images_dir }}/$TAR_NAME" "$IMAGE_NAME"
-    echo "Saved: {{ docker_images_dir }}/$TAR_NAME"
+    docker save -o "$TAR_PATH" "$IMAGE_NAME"
+    
+    # Fix permissions so Ansible can read the file
+    chmod 644 "$TAR_PATH" || sudo chmod 644 "$TAR_PATH"
+  args:
+    executable: /bin/bash
   loop: "{{ build_results.results }}"
   delegate_to: localhost
   when:
     - build_results is defined
     - build_results.results is defined
     - item.rc == 0
+    - env != 'build'
   loop_control:
     label: "Saving {{ item.item | regex_replace('.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') }}"
 
@@ -90,3 +97,10 @@
   debug:
     msg: "✓ Successfully built and saved {{ build_commands | length }} image(s) to {{ docker_images_dir }}"
   delegate_to: localhost
+  when: env != 'build'
+
+- name: Display build validation completion
+  debug:
+    msg: "✓ Successfully validated {{ build_commands | length }} Docker image(s) build"
+  delegate_to: localhost
+  when: env == 'build'

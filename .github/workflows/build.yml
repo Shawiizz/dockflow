@@ -11,7 +11,7 @@ on:
 
 env:
   DOCKFLOW_REPOSITORY_URL: https://github.com/Shawiizz/dockflow.git
-  DOCKFLOW_FRAMEWORK_VERSION: 1.0.48
+  DOCKFLOW_FRAMEWORK_VERSION: 1.0.48-dev37
 
 jobs:
   build:
@@ -46,10 +46,9 @@ jobs:
           export VERSION="build"
           export ROOT_PATH=$(pwd)
 
-          # Load environment variables using helper script (will also load secrets)
-          source dockflow/.github/scripts/load_env.sh "$ENV"
-          
-          cd dockflow
-          
+          # Load environment variables using helper script (will also load secrets and export to YAML)
+          source dockflow/.common/scripts/load_env.sh "$ENV"
+                    
           # Run Ansible playbook to build images
+          cd dockflow
           ansible-playbook ansible/playbooks/build_images.yml --connection=local
