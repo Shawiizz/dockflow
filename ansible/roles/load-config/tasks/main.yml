@@ -1,0 +1,49 @@
+---
+# Load framework configuration from .deployment/config.yml
+
+- name: Check if config.yml exists
+  stat:
+    path: "{{ root_path }}/.deployment/config.yml"
+  delegate_to: localhost
+  register: config_file
+  changed_when: false
+
+- name: Set default deployment_config if no config file
+  set_fact:
+    deployment_config:
+      options:
+        environmentize: true
+        enable_debug_logs: false
+        remote_build: false
+  when: not config_file.stat.exists
+
+- name: Load config.yml if it exists
+  block:
+    - name: Remove comments from config.yml before templating
+      shell: |
+        grep -v '^\s*#' "{{ root_path }}/.deployment/config.yml" > /tmp/config_clean.yml || true
+      delegate_to: localhost
+      changed_when: false
+
+    - name: Render config.yml template with evaluated variables
+      template:
+        src: /tmp/config_clean.yml
+        dest: /tmp/config_rendered.yml
+      delegate_to: localhost
+      changed_when: false
+
+    - name: Load deployment configuration from rendered template
+      include_vars:
+        file: /tmp/config_rendered.yml
+        name: deployment_config
+      ignore_errors: yes
+
+  when: config_file.stat.exists
+
+- name: Display loaded framework configuration
+  debug:
+    msg:
+      - "Framework Configuration:"
+      - "  - Environmentize: {{ deployment_config.options.environmentize | default(true) }}"
+      - "  - Debug Logs: {{ deployment_config.options.enable_debug_logs | default(false) }}"
+      - "  - Remote Build: {{ deployment_config.options.remote_build | default(false) }}"

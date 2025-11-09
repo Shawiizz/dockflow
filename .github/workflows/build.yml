@@ -28,8 +28,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install docker-decompose
-        run: npm i -g shawiizz-decomposerize
+      - name: Install dependencies
+        run: |
+          npm i -g shawiizz-decomposerize
+          sudo apt-get update && sudo apt-get install -y python3-pip ansible
+          pip3 install pyyaml
 
       - name: Clone dockflow repository
         run: git clone --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" dockflow
@@ -41,11 +44,12 @@ jobs:
 
           export ENV="build"
           export VERSION="build"
+          export ROOT_PATH=$(pwd)
 
           # Load environment variables using helper script (will also load secrets)
           source dockflow/.github/scripts/load_env.sh "$ENV"
           
-          # Export vars and render all docker files
-          bash dockflow/.github/scripts/export_to_ansible_vars_and_render.sh
+          cd dockflow
           
-          bash dockflow/.github/scripts/build_docker_images.sh
+          # Run Ansible playbook to build images
+          ansible-playbook ansible/playbooks/build_images.yml --connection=local

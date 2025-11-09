@@ -1,0 +1,92 @@
+---
+# Local build role - builds Docker images locally in CI/CD
+# This role runs on localhost (CI/CD runner) before transferring images
+
+- name: Set docker images output directory based on hostname
+  set_fact:
+    docker_images_dir: "{{ '../../.deployment/docker/docker_images_' + hostname if hostname and hostname != 'main' else '../../.deployment/docker/docker_images' }}"
+  delegate_to: localhost
+
+- name: Create docker images directory
+  file:
+    path: "{{ docker_images_dir }}"
+    state: directory
+    mode: '0755'
+  delegate_to: localhost
+
+- name: Generate build commands using decomposerize
+  shell: |
+    cd {{ root_path }}/.deployment/docker
+    decomposerize docker-compose.yml --docker-build {{ services_option }} {{ environmentize_option }} --ansible-env-vars-format > /tmp/decomposerize_build.j2
+  delegate_to: localhost
+  changed_when: false
+
+- name: Render build template with evaluated variables
+  template:
+    src: /tmp/decomposerize_build.j2
+    dest: /tmp/decomposerize_build_rendered.sh
+  delegate_to: localhost
+  changed_when: false
+
+- name: Get rendered build commands
+  slurp:
+    src: /tmp/decomposerize_build_rendered.sh
+  delegate_to: localhost
+  register: rendered_build_script
+  changed_when: false
+
+- name: Set evaluated build commands
+  set_fact:
+    build_commands: >-
+      {{
+        rendered_build_script.content
+        | b64decode
+        | split('\n')
+        | map('trim')
+        | select('truthy')
+        | list
+      }}
+
+- name: Display build information
+  debug:
+    msg: "Building {{ build_commands | length }} Docker image(s) locally for host {{ hostname | default('main') }}"
+  delegate_to: localhost
+
+- name: Build Docker images locally
+  shell: |
+    cd {{ root_path }}/.deployment/docker
+    {{ item }}
+  loop: "{{ build_commands }}"
+  delegate_to: localhost
+  register: build_results
+  loop_control:
+    label: >-
+      {%- set image_match = item | regex_search('-t\\s+"?([^"\\s]+)"?') -%}
+      {%- if image_match -%}
+        Building {{ item | regex_replace('.*-t\\s+"?([^"\\s]+)"?.*', '\\1') }}
+      {%- else -%}
+        Building image
+      {%- endif -%}
+  when: build_commands is defined and build_commands | length > 0
+
+- name: Extract and save built images to tar files
+  shell: |
+    IMAGE_NAME=$(echo "{{ item.item }}" | sed -nE 's/.*-t\s+"?([^"]+)"?.*/\1/p')
+    IMAGE_NAME=$(eval echo "$IMAGE_NAME")
+    TAR_NAME="${IMAGE_NAME//:/-}.tar"
+    
+    docker save -o "{{ docker_images_dir }}/$TAR_NAME" "$IMAGE_NAME"
+    echo "Saved: {{ docker_images_dir }}/$TAR_NAME"
+  loop: "{{ build_results.results }}"
+  delegate_to: localhost
+  when:
+    - build_results is defined
+    - build_results.results is defined
+    - item.rc == 0
+  loop_control:
+    label: "Saving {{ item.item | regex_replace('.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') }}"
+
+- name: Display build completion
+  debug:
+    msg: "✓ Successfully built and saved {{ build_commands | length }} image(s) to {{ docker_images_dir }}"
+  delegate_to: localhost

@@ -4,11 +4,6 @@
   vars:    
     compose_path: "{{ lookup('env', 'ROOT_PATH') }}/.deployment/docker/docker-compose.yml"
     tmp_dir: "/tmp"
-    global_no_log: "{{ not (lookup('env', 'FRAMEWORK_OPTIONS_ENABLE_DEBUG_LOGS') | default('false') | bool) }}"
-    deploy_services: "{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true) }}"
-    services_option: "{{ '--services=' + deploy_services if deploy_services else '' }}"
-    environmentize_option: "{{ '--environmentize' if ((lookup('env', 'FRAMEWORK_OPTIONS_ENVIRONMENTIZE') | default('true', true)) | bool) else '' }}"
-    remote_build: "{{ (lookup('env', 'FRAMEWORK_OPTIONS_REMOTE_BUILD') | default('false', true)) | bool }}"
     framework_version: "1.0.48"
     decomposerize_types:
       - name: "setup"
@@ -18,55 +13,44 @@
         base_options: "--docker-run --docker-run-detach"
         ignore_errors: no
   pre_tasks:
-    - name: Load environment variables from YAML file
-      include_vars:
-        file: /tmp/ansible_env_vars.yml
-      no_log: "{{ global_no_log }}"
-
-    - name: Set computed variables
-      set_fact:
-        sanitized_branch_name: "{{ branch_name | regex_replace('[^a-zA-Z0-9-]', '_') }}"
-      when: branch_name is defined
-      no_log: "{{ global_no_log }}"
-    
     - name: Display Dockflow version
       debug:
         msg: "Dockflow v{{ framework_version }}"
+      run_once: true
+      delegate_to: localhost
+
+    - name: Load framework configuration
+      include_role:
+        name: load-config
+      run_once: true
+      delegate_to: localhost
+
+    - name: Prepare deployment (export vars and render templates)
+      include_role:
+        name: prepare-deployment
+      run_once: true
+      delegate_to: localhost
+
+    - name: Load environment variables from YAML file
+      include_vars:
+        file: /tmp/ansible_env_vars.yml
+      no_log: "{{ not (deployment_config.options.enable_debug_logs | default(false) | bool) }}"
+
+    - name: Set computed variables
+      set_fact:
+        global_no_log: "{{ not (deployment_config.options.enable_debug_logs | default(false) | bool) }}"
+        deploy_services: "{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true) }}"
+        services_option: "{{ '--services=' + lookup('env', 'DEPLOY_DOCKER_SERVICES') if lookup('env', 'DEPLOY_DOCKER_SERVICES') else '' }}"
+        environmentize_option: "{{ '--environmentize' if (deployment_config.options.environmentize | default(true) | bool) else '' }}"
+        remote_build: "{{ deployment_config.options.remote_build | default(false) | bool }}"
+        sanitized_branch_name: "{{ branch_name | regex_replace('[^a-zA-Z0-9-]', '_') }}"
+      no_log: "{{ not (deployment_config.options.enable_debug_logs | default(false) | bool) }}"
 
     - name: Ensure rollback directory exists
       file:
         path: /var/lib/dockflow
         state: directory
         mode: '0755'
-    
-    - name: Check if config.yml exists
-      stat:
-        path: "{{ root_path }}/.deployment/config.yml"
-      delegate_to: localhost
-      register: config_file
-      changed_when: false
-
-    - name: Remove comments from config.yml before templating
-      shell: |
-        grep -v '^\s*#' "{{ root_path }}/.deployment/config.yml" > "{{ tmp_dir }}/config_clean.yml" || true
-      delegate_to: localhost
-      when: config_file.stat.exists
-      changed_when: false
-
-    - name: Render config.yml template with evaluated variables
-      template:
-        src: "{{ tmp_dir }}/config_clean.yml"
-        dest: "{{ tmp_dir }}/config_rendered.yml"
-      delegate_to: localhost
-      when: config_file.stat.exists
-      changed_when: false
-
-    - name: Load deployment configuration from rendered template
-      include_vars:
-        file: "{{ tmp_dir }}/config_rendered.yml"
-        name: deployment_config
-      when: config_file.stat.exists
-      ignore_errors: yes
   roles:
     - role: geerlingguy.docker
     - role: nginx
@@ -75,6 +59,10 @@
     - role: private_ssh_keys
     - role: services
     - role: image-tracking
+    - role: local-build
+      when: not (remote_build | bool)
+      delegate_to: localhost
+      run_once: true
     - role: remote-build
       when: remote_build | bool
     - role: image-transfer
