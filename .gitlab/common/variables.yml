@@ -6,4 +6,4 @@
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
     DOCKFLOW_REPOSITORY_URL: https://github.com/Shawiizz/dockflow.git
-    DOCKFLOW_FRAMEWORK_VERSION: 1.0.48-dev38
+    DOCKFLOW_FRAMEWORK_VERSION: 1.0.48-dev39

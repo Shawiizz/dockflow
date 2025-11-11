@@ -19,7 +19,7 @@
 
 - name: Load config.yml if it exists
   block:
-    - name: Remove comments from config.yml before templating
+    - name: Remove comments and render config template
       shell: |
         grep -v '^\s*#' "{{ root_path }}/.deployment/config.yml" > /tmp/config_clean.yml || true
       delegate_to: localhost

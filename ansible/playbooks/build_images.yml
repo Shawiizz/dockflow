@@ -6,7 +6,7 @@
   gather_facts: false
   vars:
     tmp_dir: "/tmp"
-    framework_version: "1.0.48-dev38"
+    framework_version: "1.0.48-dev39"
     root_path: "{{ lookup('env', 'ROOT_PATH') }}"
   
   pre_tasks:
@@ -26,7 +26,7 @@
     - name: Set computed variables
       set_fact:
         deploy_services: "{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true) }}"
-        services_option: "{{ '--services=' + lookup('env', 'DEPLOY_DOCKER_SERVICES') if lookup('env', 'DEPLOY_DOCKER_SERVICES') else '' }}"
+        services_option: "{{ ('--services=' + lookup('env', 'DEPLOY_DOCKER_SERVICES')) if lookup('env', 'DEPLOY_DOCKER_SERVICES') else '' }}"
         environmentize_option: "{{ '--environmentize' if (deployment_config.options.environmentize | default(true) | bool) else '' }}"
         hostname: "main"
 

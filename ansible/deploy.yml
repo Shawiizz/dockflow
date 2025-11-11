@@ -5,7 +5,7 @@
     root_path: "{{ lookup('env', 'ROOT_PATH') }}"
     compose_path: "{{ root_path }}/.deployment/docker/docker-compose.yml"
     tmp_dir: "/tmp"
-    framework_version: "1.0.48-dev38"
+    framework_version: "1.0.48-dev39"
     decomposerize_types:
       - name: "setup"
         base_options: "--create-networks --create-volumes --stop-and-remove"
@@ -42,10 +42,11 @@
       set_fact:
         global_no_log: "{{ not (deployment_config.options.enable_debug_logs | default(false) | bool) }}"
         deploy_services: "{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true) }}"
-        services_option: "{{ '--services=' + lookup('env', 'DEPLOY_DOCKER_SERVICES') if lookup('env', 'DEPLOY_DOCKER_SERVICES') else '' }}"
+        services_option: "{{ ('--services=' + lookup('env', 'DEPLOY_DOCKER_SERVICES')) if lookup('env', 'DEPLOY_DOCKER_SERVICES') else '' }}"
         environmentize_option: "{{ '--environmentize' if (deployment_config.options.environmentize | default(true) | bool) else '' }}"
         remote_build: "{{ deployment_config.options.remote_build | default(false) | bool }}"
         sanitized_branch_name: "{{ branch_name | regex_replace('[^a-zA-Z0-9-]', '_') }}"
+        rollback_configured: "{{ (deployment_config.health_checks.on_failure | default('notify')) == 'rollback' }}"
       no_log: "{{ not (deployment_config.options.enable_debug_logs | default(false) | bool) }}"
 
     - name: Ensure rollback directory exists
@@ -71,11 +72,6 @@
       when: not (remote_build | bool)
     - role: execute-scripts
   tasks:
-    - name: Check if rollback is configured
-      set_fact:
-        rollback_configured: "{{ (deployment_config.health_checks.on_failure | default('notify')) == 'rollback' }}"
-      when: deployment_config is defined and deployment_config.health_checks is defined
-
     - name: Process Docker commands for each type
       include_tasks: playbooks/process_docker_commands.yml
       loop: "{{ decomposerize_types }}"
@@ -84,41 +80,29 @@
       when: not (cmd_type.skip_on_rollback | default(false) and rollback_configured | default(false))
 
   post_tasks:
-    - name: Set health checks configuration
-      set_fact:
-        health_checks_config: "{{ deployment_config.health_checks | default({}) }}"
-      when: deployment_config is defined
-
     - name: Run health checks
       include_role:
         name: health-check
-      when: health_checks_config is defined or (deployment_config.health_checks is defined)
+      vars:
+        health_checks_config: "{{ deployment_config.health_checks | default({}) }}"
+      when: deployment_config is defined
 
     - name: Build list of newly deployed images for marking healthy
       set_fact:
-        new_deployed_images: []
+        new_deployed_images: "{{ hostvars[inventory_hostname].get('all_docker_run_commands', []) | map('split') | map('last') | map('regex_replace', '^(.*)$', '{\"name\": \"\\1\", \"timestamp\": \"' + ansible_date_time.iso8601 + '\"}') | map('from_json') | list }}"
       changed_when: false
 
-    - name: Populate new_deployed_images from aggregated docker run commands
-      set_fact:
-        new_deployed_images: "{{ new_deployed_images + [{'name': item.split() | last, 'timestamp': ansible_date_time.iso8601}] }}"
-      loop: "{{ hostvars[inventory_hostname].get('all_docker_run_commands', []) }}"
-      when: hostvars[inventory_hostname].get('all_docker_run_commands', []) | length > 0
-      loop_control:
-        label: "{{ item.split() | last }}"
+    - name: Mark deployment as healthy and cleanup
+      block:
+        - name: Mark deployment as healthy
+          include_role:
+            name: image-tracking
+            tasks_from: mark_healthy
+          vars:
+            health_check_passed: "{{ (failed_health_checks | default([]) | length) == 0 }}"
 
-    - name: Mark deployment as healthy if checks passed or disabled
-      include_role:
-        name: image-tracking
-        tasks_from: mark_healthy
-      vars:
-        health_check_passed: "{{ (failed_health_checks | default([]) | length) == 0 }}"
-      when: 
-        - (failed_health_checks | default([]) | length) == 0 or not (health_checks_config.enabled | default(false))
-
-    - name: Clean up old unhealthy images
-      include_role:
-        name: image-tracking
-        tasks_from: cleanup
-      when:
-        - (failed_health_checks | default([]) | length) == 0 or not (health_checks_config.enabled | default(false))
+        - name: Clean up old unhealthy images
+          include_role:
+            name: image-tracking
+            tasks_from: cleanup
+      when: (failed_health_checks | default([]) | length) == 0 or not (deployment_config.health_checks.enabled | default(false))

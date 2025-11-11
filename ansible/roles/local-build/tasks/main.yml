@@ -60,27 +60,16 @@
   delegate_to: localhost
   register: build_results
   loop_control:
-    label: >-
-      {%- set image_match = item | regex_search('-t\\s+"?([^"\\s]+)"?') -%}
-      {%- if image_match -%}
-        Building {{ item | regex_replace('.*-t\\s+"?([^"\\s]+)"?.*', '\\1') }}
-      {%- else -%}
-        Building image
-      {%- endif -%}
+    label: "Building {{ item | regex_replace('.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') }}"
   when: build_commands is defined and build_commands | length > 0
 
 - name: Extract and save built images to tar files
   shell: |
-    # Extract image name from build command (stop at first space after image name)
     IMAGE_NAME=$(echo "{{ item.item }}" | sed -nE 's/.*-t[[:space:]]+"?([^"[:space:]]+)"?.*/\1/p')
     IMAGE_NAME=$(eval echo "$IMAGE_NAME")
     TAR_NAME=$(echo "$IMAGE_NAME" | sed 's/:/-/g').tar
-    TAR_PATH="{{ docker_images_dir }}/$TAR_NAME"
-    
-    docker save -o "$TAR_PATH" "$IMAGE_NAME"
-    
-    # Fix permissions so Ansible can read the file
-    chmod 644 "$TAR_PATH" || sudo chmod 644 "$TAR_PATH"
+    docker save -o "{{ docker_images_dir }}/$TAR_NAME" "$IMAGE_NAME"
+    chmod 644 "{{ docker_images_dir }}/$TAR_NAME" 2>/dev/null || sudo chmod 644 "{{ docker_images_dir }}/$TAR_NAME"
   args:
     executable: /bin/bash
   loop: "{{ build_results.results }}"
