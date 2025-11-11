@@ -20,41 +20,13 @@
         export ENV=$ENVIRONMENT
         export VERSION=$VERSION
       fi
-      
-      #######################################
-      ### Load framework config options #####
-      #######################################
-      if [ -f ".deployment/config.yml" ]; then
-        echo "Loading framework configuration options from .deployment/config.yml"
-        export $(yq e '.options | to_entries | map("FRAMEWORK_OPTIONS_" + (.key | upcase) + "=" + (.value | tostring)) | join(" ")' .deployment/config.yml)
-      else
-        echo "No .deployment/config.yml found, skipping framework configuration options"
-      fi
 
+      # Clone dockflow framework
+      git clone --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" dockflow
+      
+      # Discover deployment hosts using common script
       echo "Discovering hosts for environment: $ENV"
-      DEPLOYMENT_HOSTS=""
-      
-      # Check if main env file exists
-      if [ -f ".deployment/env/.env.${ENV}" ]; then
-        DEPLOYMENT_HOSTS="main"
-      fi
-      
-      # Check for host-specific env files
-      for env_file in .deployment/env/.env.${ENV}.*; do
-        if [ -f "$env_file" ]; then
-          SUFFIX=$(basename "$env_file" | sed "s/\.env\.${ENV}\.//")
-          if [[ "$SUFFIX" != "${ENV}" ]]; then
-            DEPLOYMENT_HOSTS="$DEPLOYMENT_HOSTS $SUFFIX"
-            echo "Found host configuration: $SUFFIX"
-          fi
-        fi
-      done
-      
-      # If no env files found, deploy to main host using CI secrets only
-      if [ -z "$DEPLOYMENT_HOSTS" ]; then
-        echo "No .env files found for environment ${ENV}, will use CI secrets only"
-        DEPLOYMENT_HOSTS="main"
-      fi
+      DEPLOYMENT_HOSTS=$(bash dockflow/.common/scripts/discover_hosts.sh "$ENV" | jq -r '.[]' | tr '\n' ' ')
       
       export DEPLOYMENT_HOSTS
       echo "Deployment hosts: $DEPLOYMENT_HOSTS"
@@ -62,118 +34,15 @@
 .deploy-with-ansible:
   after_script:
     - |
-      git clone --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" dockflow
-      
       for HOST in $DEPLOYMENT_HOSTS; do
         echo "========================================="
         echo "Deploying to host: $HOST"
         echo "========================================="
         
-        if [[ "$HOST" == "main" ]]; then
-          HOSTNAME=""
-        else
-          HOSTNAME="$HOST"
-        fi
-        
-        #######################################
-        ######### Load env variables ##########
-        #######################################
-        set -a
-        if [ -f ".deployment/env/.env.${ENV}" ]; then
-          echo "Loading .deployment/env/.env.${ENV}"
-          source ".deployment/env/.env.${ENV}"
-        else
-          echo "No .deployment/env/.env.${ENV} file found, using CI secrets only"
-        fi
-        
-        if [[ -n "${HOSTNAME}" ]]; then
-          if [ -f ".deployment/env/.env.${ENV}.${HOSTNAME}" ]; then
-            echo "Loading .deployment/env/.env.${ENV}.${HOSTNAME}"
-            source ".deployment/env/.env.${ENV}.${HOSTNAME}"
-          fi
-        fi
-        set +a
-        
-        # Override variables from CI secrets if defined
-        ENV_PREFIX="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_"
-        
-        if [[ -z "${HOSTNAME}" ]]; then
-          # Main host: process ENV_* variables
-          while IFS= read -r var; do
-            if [[ "$var" =~ ^${ENV_PREFIX}.+ ]]; then
-              var_name="${var#${ENV_PREFIX}}"
-              var_value="$(printenv "$var")"
-              export "$var_name=$var_value"
-            fi
-          done < <(env | awk -F= -v prefix="$ENV_PREFIX" '$1 ~ "^"prefix {print $1}')
-        else
-          # Specific host: process ENV_HOSTNAME_* variables
-          ENV_HOSTNAME_PREFIX="${ENV_PREFIX}$(echo "${HOSTNAME}" | tr '[:lower:]' '[:upper:]')_"
-          while IFS= read -r var; do
-            if [[ "$var" =~ ^${ENV_HOSTNAME_PREFIX}.+ ]]; then
-              var_name="${var#${ENV_HOSTNAME_PREFIX}}"
-              var_value="$(printenv "$var")"
-              export "$var_name=$var_value"
-            fi
-          done < <(env | awk -F= -v prefix="$ENV_HOSTNAME_PREFIX" '$1 ~ "^"prefix {print $1}')
-        fi
-        
-        # Set default USER if not already set
-        if [ -z "$USER" ]; then
-          export USER="deploy"
-        fi
-        
-        # Verify that HOST is defined
-        if [ -z "$HOST" ]; then
-          echo "ERROR: HOST is not defined. Please set it in .env file or as CI secret (${ENV_PREFIX}HOST or ${ENV_HOSTNAME_PREFIX}HOST)"
-          exit 1
-        fi
-        
-        # Verify that SSH_PRIVATE_KEY is defined
-        if [ -z "$SSH_PRIVATE_KEY" ]; then
-          echo "ERROR: SSH_PRIVATE_KEY is not defined. Please set it as CI secret (${ENV_PREFIX}SSH_PRIVATE_KEY or ${ENV_HOSTNAME_PREFIX}SSH_PRIVATE_KEY)"
-          exit 1
-        fi
-                        
-        if [[ -n "${HOSTNAME}" ]]; then
-          if [ ! -d ".deployment/docker/docker_images_${HOSTNAME}" ] || [ -z "$(ls -A ".deployment/docker/docker_images_${HOSTNAME}" 2>/dev/null)" ]; then
-            if [[ "${FRAMEWORK_OPTIONS_REMOTE_BUILD}" != "true" ]]; then
-              echo "No Docker images found for host $HOST in .deployment/docker/docker_images_${HOSTNAME}, skipping deployment"
-              continue
-            else
-              echo "Remote build enabled - proceeding without local images"
-            fi
-          fi
-        else
-          if [ ! -d ".deployment/docker/docker_images" ] || [ -z "$(ls -A ".deployment/docker/docker_images" 2>/dev/null)" ]; then
-            if [[ "${FRAMEWORK_OPTIONS_REMOTE_BUILD}" != "true" ]]; then
-              echo "No Docker images found for host $HOST in .deployment/docker/docker_images, skipping deployment"
-              continue
-            else
-              echo "Remote build enabled - proceeding without local images"
-            fi
-          fi
-        fi
-        
-        #######################################
-        ############ Setup SSH Key ############
-        #######################################
-        mkdir -p dockflow/ssh
-        
-        echo "$SSH_PRIVATE_KEY" | tr -d '\r' > dockflow/ssh/remote_private_key
-        chmod 600 dockflow/ssh/*
-        
-        eval "$(ssh-agent -s)"
-        ssh-add dockflow/ssh/remote_private_key      
-        
-        #######################################
-        ############# Run Ansible #############
-        #######################################
-        cd dockflow
+        # Set required environment variables for deployment
+        export ROOT_PATH=$(pwd)
+        export HOSTNAME="$HOST"
         export ANSIBLE_HOST_KEY_CHECKING=False
-        export USER_PASSWORD=$USER_PASSWORD
-        export GIT_TOKEN=${GIT_TOKEN:-}
-        export PROJECT_ROOT=$(pwd)/..
         export PROJECT_ID=$CI_PROJECT_ID
         
         # Get original branch name instead of tag name
@@ -188,140 +57,10 @@
           export BRANCH_NAME=$CI_COMMIT_REF_NAME
         fi
         
-        SKIP_TAGS="configure_host"
-        if [ ! -d "../.deployment/templates/nginx" ] || [ -z "$(ls -A ../.deployment/templates/nginx 2>/dev/null)" ]; then
-          echo "No nginx configuration found, skipping nginx role"
-          SKIP_TAGS="${SKIP_TAGS},nginx"
-        fi
+        source dockflow/.common/scripts/load_env.sh "$ENV" "$HOSTNAME"
         
-        if [[ -n "${HOSTNAME}" ]]; then
-          INVENTORY_HOST="${ENV}-${HOSTNAME}"
-        else
-          INVENTORY_HOST="${ENV}"
-        fi
+        # Run deployment script
+        bash dockflow/.common/scripts/deploy_with_ansible.sh
         
-        cp ansible/inventory.yml ansible/inventory_${HOST}.yml
-        sed -i "s/REMOTE_HOST/${INVENTORY_HOST}/g" ansible/inventory_${HOST}.yml
-        
-        # Export all environment variables to YAML file for Ansible
-        python3 << 'PYTHON_EOF'
-        import os
-        import yaml
-
-        env_vars = {}
-        for key, value in os.environ.items():
-            if key and key not in ['_', 'OLDPWD']:
-                # Convert to lowercase for consistency
-                key_lower = key.lower()
-                env_vars[key_lower] = value
-
-        # Write as proper YAML with multiline support
-        with open('/tmp/ansible_env_vars.yml', 'w') as f:
-            yaml.dump(env_vars, f, default_flow_style=False, allow_unicode=True)
-        PYTHON_EOF
-        
-        echo "Deploying to $INVENTORY_HOST (host: $HOST)"
-        ansible-galaxy role install geerlingguy.docker
-        ansible-playbook ansible/deploy.yml -i ansible/inventory_${HOST}.yml --skip-tags "$SKIP_TAGS"
-        
-        rm -f ansible/inventory_${HOST}.yml
-        rm -rf docker_images/*
-        cd ..
         echo "Deployment completed for host: $HOST"
-      done
-      
-.build-docker-images:
-  script:
-    - |
-      # Check if remote build is enabled
-      if [[ "${FRAMEWORK_OPTIONS_REMOTE_BUILD}" == "true" ]]; then
-        echo "========================================="
-        echo "Remote build enabled - skipping local image build"
-        echo "Images will be built directly on the remote server"
-        echo "========================================="
-        exit 0
-      fi
-      
-      for HOST in $DEPLOYMENT_HOSTS; do
-        echo "========================================="
-        echo "Building Docker images for host: $HOST"
-        echo "========================================="
-        
-        if [[ "$HOST" == "main" ]]; then
-          HOSTNAME=""
-        else
-          HOSTNAME="$HOST"
-        fi
-        
-        cd .deployment/docker
-        
-        if [[ -n "${HOSTNAME}" ]]; then
-          OUTPUT_DIR="docker_images_${HOSTNAME}"
-        else
-          OUTPUT_DIR="docker_images"
-        fi
-        mkdir -p "$OUTPUT_DIR"
-
-        if [[ -n "${HOSTNAME}" ]]; then
-          if [ -f "../env/.env.${ENV}.${HOSTNAME}" ]; then
-            echo "Loading host-specific configuration for ${HOSTNAME}"
-            set -a
-            source "../env/.env.${ENV}.${HOSTNAME}"
-            set +a
-          fi
-        fi
-
-        DECOMPOSERIZE_OPTIONS="--docker-build"
-        if [[ -n "$DEPLOY_DOCKER_SERVICES" ]]; then
-          echo "Building services for host ${HOSTNAME:-main}: $DEPLOY_DOCKER_SERVICES"
-          DECOMPOSERIZE_OPTIONS="$DECOMPOSERIZE_OPTIONS --services=$DEPLOY_DOCKER_SERVICES"
-        fi
-        if [[ -z "$FRAMEWORK_OPTIONS_ENVIRONMENTIZE" || "$FRAMEWORK_OPTIONS_ENVIRONMENTIZE" == "true" ]]; then
-          DECOMPOSERIZE_OPTIONS="$DECOMPOSERIZE_OPTIONS --environmentize"
-        fi
-
-        BUILD_CMDS=$(decomposerize docker-compose.yml $DECOMPOSERIZE_OPTIONS)
-        
-        if [[ -z "$BUILD_CMDS" ]]; then
-          echo "No services to build for host ${HOSTNAME:-main}"
-          cd ../..
-          continue
-        fi
-
-        PARALLEL_JOBS=$(nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 4)
-
-        build_image() {
-          local BUILD_CMD="$1"
-          local OUTPUT_DIR="$2"
-          echo "Running: $BUILD_CMD"
-          eval "$BUILD_CMD"
-
-          local IMAGE_NAME=$(echo "$BUILD_CMD" | sed -nE 's/.*-t\s+"?([^"]+)"?.*/\1/p')
-          IMAGE_NAME=$(eval echo "$IMAGE_NAME")
-          echo "Image built: $IMAGE_NAME"
-
-          if [[ "$ENV" != "build" ]]; then
-            local TAR_NAME="${IMAGE_NAME//:/-}.tar"
-            docker save -o "$OUTPUT_DIR/$TAR_NAME" "$IMAGE_NAME"
-            echo "Image saved: $OUTPUT_DIR/$TAR_NAME"
-          fi
-        }
-
-        export -f build_image
-
-        IMAGE_COUNT=$(echo "$BUILD_CMDS" | wc -l)
-        if [ "$IMAGE_COUNT" -gt 1 ]; then
-          echo "Detected $IMAGE_COUNT images to build for host ${HOSTNAME:-main}. Running in parallel with $PARALLEL_JOBS jobs..."
-        
-          # Run builds in parallel
-          echo "$BUILD_CMDS" | parallel --jobs "$PARALLEL_JOBS" build_image {} "$OUTPUT_DIR"
-        else
-          # Only one image, use the regular sequential approach
-          while IFS= read -r BUILD_CMD; do
-            build_image "$BUILD_CMD" "$OUTPUT_DIR"
-          done <<< "$BUILD_CMDS"
-        fi
-        
-        cd ../..
-        echo "Build completed for host: $HOST"
       done

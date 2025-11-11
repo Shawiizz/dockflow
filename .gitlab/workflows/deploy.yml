@@ -12,5 +12,4 @@ deploy:
   extends:
     - .common-variables
     - .prepare-env
-    - .build-docker-images
     - .deploy-with-ansible
