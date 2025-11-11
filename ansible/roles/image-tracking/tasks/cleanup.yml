@@ -59,13 +59,18 @@
     patterns: "*.json"
   register: all_tracked_image_files
 
-- name: Build list of all protected images from all projects
+- name: Filter out files that will be removed from global protection
+  set_fact:
+    files_to_remove_paths: "{{ versions_to_remove | map(attribute='path') | list }}"
+    files_to_keep_globally: "{{ all_tracked_image_files.files | rejectattr('path', 'in', versions_to_remove | map(attribute='path') | list) | list }}"
+
+- name: Build list of all protected images from all projects (excluding versions to remove)
   block:
-    - name: Read all tracked version files
+    - name: Read all tracked version files (excluding versions to remove)
       slurp:
         src: "{{ item.path }}"
       register: all_tracked_content
-      loop: "{{ all_tracked_image_files.files }}"
+      loop: "{{ files_to_keep_globally }}"
       loop_control:
         label: "{{ item.path | basename }}"
 
@@ -114,7 +119,7 @@
       - Total images on system: {{ all_docker_images.stdout_lines | length }}
       - Protected images (current project): {{ protected_images | length }}
       - Globally protected images (all projects): {{ globally_protected_images | length }}
-      - Removed versions (current project): {{ removed_images | length }}
+      - Images from removed versions: {{ removed_images | length }}
       - Images to delete: {{ images_to_delete | length }}
       {% if protected_images | length > 0 %}
       
@@ -123,9 +128,16 @@
       - {{ image }}
       {% endfor %}
       {% endif %}
+      {% if removed_images | length > 0 %}
+      
+      Images from removed versions:
+      {% for image in removed_images %}
+      - {{ image }}
+      {% endfor %}
+      {% endif %}
       {% if images_to_delete | length > 0 %}
       
-      Images to delete (old versions of current project only):
+      Images to delete:
       {% for image in images_to_delete %}
       - {{ image }}
       {% endfor %}
