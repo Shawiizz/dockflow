@@ -36,32 +36,25 @@ jobs:
       - name: Discover hosts and environment
         id: discover
         run: |
-          if [ -n "${{ inputs.tag }}" ]; then
-            TAG="${{ inputs.tag }}"
-            ENVIRONMENT="production"
-            
-            if [[ "$TAG" == *"-"* ]]; then
-              ENVIRONMENT="${TAG##*-}"
-            fi
-          elif [ -n "${{ inputs.version }}" ]; then
-            TAG="${{ inputs.version }}"
-            ENVIRONMENT="production"
-          else
-            echo "::error:: Either tag or version input must be provided"
+          # Determine tag and environment
+          TAG="${{ inputs.tag || inputs.version }}"
+          if [ -z "$TAG" ]; then
+            echo "::error::Either tag or version input must be provided"
             exit 1
           fi
-
-          echo "env=$ENVIRONMENT" >> $GITHUB_OUTPUT
+          
+          ENV="${TAG##*-}"
+          [[ "$TAG" == "$ENV" ]] && ENV="production"
+          
+          echo "env=$ENV" >> $GITHUB_OUTPUT
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           
-          # Clone dockflow framework to access discovery script
+          # Clone dockflow framework
           git clone --depth 1 --branch "${{ env.DOCKFLOW_FRAMEWORK_VERSION }}" "${{ env.DOCKFLOW_REPOSITORY_URL }}" /tmp/dockflow
-          
-          # Make scripts executable
           chmod +x /tmp/dockflow/.common/scripts/*.sh
           
           # Discover hosts
-          HOSTS_JSON=$(/tmp/dockflow/.common/scripts/discover_hosts.sh "$ENVIRONMENT")
+          HOSTS_JSON=$(/tmp/dockflow/.common/scripts/discover_hosts.sh "$ENV")
           echo "hosts=$HOSTS_JSON" >> $GITHUB_OUTPUT
           echo "Discovered hosts: $HOSTS_JSON"
 
@@ -82,16 +75,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup environment variables for host ${{ matrix.host }}
-        id: vars
-        run: |
-          ENV="${{ needs.discover-hosts.outputs.env }}"
-          HOST="${{ matrix.host }}"
-
-          echo "env=$ENV" >> $GITHUB_OUTPUT
-          echo "host=$HOST" >> $GITHUB_OUTPUT
-          echo "tag=${{ needs.discover-hosts.outputs.tag }}" >> $GITHUB_OUTPUT
-
       - name: Install dependencies
         run: |
           npm i -g shawiizz-decomposerize
@@ -99,34 +82,27 @@ jobs:
           pip3 install pyyaml
 
       - name: Clone dockflow repository
-        run: git clone --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" dockflow
+        run: git clone --depth 1 --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" dockflow
 
       - name: Deploy to host ${{ matrix.host }}
-        run: |          
-          # Prepare secrets file for load_env.sh
+        run: |
           echo '${{ toJSON(secrets) }}' > secrets.json
-
-          export ENV="${{ steps.vars.outputs.env }}"
-          export HOSTNAME="${{ steps.vars.outputs.host }}"
-          export VERSION="${{ steps.vars.outputs.tag }}"
+          
+          export ENV="${{ needs.discover-hosts.outputs.env }}"
+          export HOSTNAME="${{ matrix.host }}"
+          export VERSION="${{ needs.discover-hosts.outputs.tag }}"
           export ANSIBLE_HOST_KEY_CHECKING=False
           export PROJECT_ID="${{ github.repository_id }}"
-          export ROOT_PATH=$(pwd)
-
-          # Get original branch name instead of tag name
+          export ROOT_PATH="$(pwd)"
+          
+          # Determine branch name
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            ORIGINAL_BRANCH=$(git branch -r --contains ${{ github.ref_name }} | grep -v "HEAD" | head -n1 | sed 's/.*origin\///')
-            if [ -n "$ORIGINAL_BRANCH" ]; then
-              export BRANCH_NAME=$ORIGINAL_BRANCH
-            else
-              export BRANCH_NAME=$(git remote show origin | grep "HEAD branch" | cut -d ":" -f 2 | xargs)
-            fi
+            BRANCH_NAME=$(git branch -r --contains "${{ github.ref_name }}" | grep -v "HEAD" | head -n1 | sed 's/.*origin\///')
+            BRANCH_NAME="${BRANCH_NAME:-$(git remote show origin | grep "HEAD branch" | cut -d ":" -f 2 | xargs)}"
           else
-            export BRANCH_NAME=${{ github.ref_name }}
+            BRANCH_NAME="${{ github.ref_name }}"
           fi
-
-          # Load environment variables using helper script (will also load secrets and export to YAML)
+          export BRANCH_NAME
+          
           source dockflow/.common/scripts/load_env.sh "$ENV" "$HOSTNAME"
-
-          # Run deployment script
           bash dockflow/.common/scripts/deploy_with_ansible.sh
