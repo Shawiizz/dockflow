@@ -1,65 +1,51 @@
 .prepare-env:
   before_script:
     - |
-      ENVIRONMENT="production"
-      
-      if [[ "$CI_COMMIT_TAG" != "" ]]; then
-        TAG=$CI_COMMIT_TAG
-        
-        if [[ "$TAG" == *"-"* ]]; then
-          ENVIRONMENT="${TAG##*-}"
-        fi
-        
-        export ENV=$ENVIRONMENT
-        export VERSION=$TAG
+      # Determine environment and version
+      if [[ -n "$CI_COMMIT_TAG" ]]; then
+        VERSION="$CI_COMMIT_TAG"
+        ENV="${VERSION##*-}"
+        [[ "$VERSION" == "$ENV" ]] && ENV="production"
       else
-        BRANCH_NAME=$CI_COMMIT_REF_NAME
-        SHORT_SHA=${CI_COMMIT_SHA:0:8}
-        VERSION="${BRANCH_NAME}-${SHORT_SHA}"
-        
-        export ENV=$ENVIRONMENT
-        export VERSION=$VERSION
+        ENV="production"
+        VERSION="${CI_COMMIT_REF_NAME}-${CI_COMMIT_SHA:0:8}"
       fi
+      
+      export ENV VERSION
 
       # Clone dockflow framework
-      git clone --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" dockflow
+      git clone --depth 1 --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" dockflow
       
-      # Discover deployment hosts using common script
+      # Discover deployment hosts
       echo "Discovering hosts for environment: $ENV"
-      DEPLOYMENT_HOSTS=$(bash dockflow/.common/scripts/discover_hosts.sh "$ENV" | jq -r '.[]' | tr '\n' ' ')
-      
-      export DEPLOYMENT_HOSTS
+      export DEPLOYMENT_HOSTS=$(bash dockflow/.common/scripts/discover_hosts.sh "$ENV" | jq -r '.[]' | tr '\n' ' ')
       echo "Deployment hosts: $DEPLOYMENT_HOSTS"
 
 .deploy-with-ansible:
   after_script:
     - |
+      # Set common environment variables
+      export ROOT_PATH="$(pwd)"
+      export ANSIBLE_HOST_KEY_CHECKING=False
+      export PROJECT_ID="$CI_PROJECT_ID"
+      
+      # Determine branch name once
+      if [[ -n "$CI_COMMIT_TAG" ]]; then
+        BRANCH_NAME=$(git branch -r --contains "$CI_COMMIT_TAG" | grep -v "HEAD" | head -n1 | sed 's/.*origin\///')
+        BRANCH_NAME="${BRANCH_NAME:-$CI_DEFAULT_BRANCH}"
+      else
+        BRANCH_NAME="$CI_COMMIT_REF_NAME"
+      fi
+      export BRANCH_NAME
+      
+      # Deploy to each host
       for HOST in $DEPLOYMENT_HOSTS; do
         echo "========================================="
         echo "Deploying to host: $HOST"
         echo "========================================="
         
-        # Set required environment variables for deployment
-        export ROOT_PATH=$(pwd)
         export HOSTNAME="$HOST"
-        export ANSIBLE_HOST_KEY_CHECKING=False
-        export PROJECT_ID=$CI_PROJECT_ID
-        
-        # Get original branch name instead of tag name
-        if [[ -n "$CI_COMMIT_TAG" ]]; then
-          ORIGINAL_BRANCH=$(git branch -r --contains $CI_COMMIT_TAG | grep -v "HEAD" | head -n1 | sed 's/.*origin\///')
-          if [ -n "$ORIGINAL_BRANCH" ]; then
-            export BRANCH_NAME=$ORIGINAL_BRANCH
-          else
-            export BRANCH_NAME=$CI_DEFAULT_BRANCH
-          fi
-        else
-          export BRANCH_NAME=$CI_COMMIT_REF_NAME
-        fi
-        
         source dockflow/.common/scripts/load_env.sh "$ENV" "$HOSTNAME"
-        
-        # Run deployment script
         bash dockflow/.common/scripts/deploy_with_ansible.sh
         
         echo "Deployment completed for host: $HOST"
