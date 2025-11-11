@@ -4,7 +4,7 @@
 # It expects the following environment variables to be set:
 # - SSH_PRIVATE_KEY: The SSH private key for remote access
 # - ENV: The environment (production, staging, etc.)
-# - HOSTNAME: The hostname to deploy to (can be empty for main host)
+# - HOSTNAME: The hostname to deploy to
 # - ROOT_PATH: The root path of the project
 # - SKIP_NGINX_CHECK: Optional, set to "true" to skip nginx configuration check
 
