@@ -29,7 +29,7 @@ echo "Loading test environment variables..."
 
 # Generate secrets.json from .secrets file, substituting SSH_PRIVATE_KEY variables with file content
 SECRETS_FILE="$ROOT_PATH/dockflow/testing/e2e/test-app/.deployment/e2e-test/.secrets"
-SSH_KEY_DIR="$SCRIPT_DIR/ssh-keys"
+SSH_KEY_DIR="/tmp/ssh-keys-copy"
 
 # Check if secrets file exists
 if [ ! -f "$SECRETS_FILE" ]; then

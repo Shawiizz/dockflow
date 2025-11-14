@@ -7,6 +7,12 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 export ROOT_PATH="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+SSH_KEY_DIR="/tmp/ssh-keys"
+
+# Create SSH key directory in /tmp to avoid Windows permission issues
+echo "Creating SSH key directory in /tmp..."
+mkdir -p "$SSH_KEY_DIR"
+chmod 700 "$SSH_KEY_DIR"
 
 cd "$ROOT_PATH"
 
@@ -52,7 +58,7 @@ echo ""
 
 # Clean up old SSH known_hosts to avoid host key conflicts
 echo "Cleaning up old SSH known_hosts..."
-rm -f "$ROOT_DIR/ssh-keys/known_hosts" 2>/dev/null || true
+rm -f "$SSH_KEY_DIR/known_hosts" 2>/dev/null || true
 echo "✓ SSH known_hosts cleaned"
 echo ""
 
@@ -73,7 +79,7 @@ echo ""
 # Don't install Portainer in tests to keep it simple
 docker run --rm \
     --network docker_test-network \
-    -v "$ROOT_DIR/ssh-keys:/root/.ssh" \
+    -v "$SSH_KEY_DIR:/root/.ssh" \
     -e SKIP_DOCKER_INSTALL=true \
     dockflow-cli:test setup-machine \
     --host "$SSH_HOST" \
@@ -87,6 +93,28 @@ docker run --rm \
 if [ $? -ne 0 ]; then
     echo "ERROR: CLI setup-machine command failed"
     exit 1
+fi
+
+# Fix SSH key ownership and permissions (keys created by Docker are owned by root)
+echo "Fixing SSH key ownership and permissions..."
+# Get current user inside bash (not from parent shell)
+CURRENT_USER=$(id -un)
+CURRENT_GROUP=$(id -gn)
+
+# Change ownership to current user if owned by root
+if [ "$(stat -c '%U' "$SSH_KEY_DIR/deploy_key" 2>/dev/null)" = "root" ]; then
+    echo "Changing ownership from root to $CURRENT_USER..."
+    sudo chown -R "$CURRENT_USER:$CURRENT_GROUP" "$SSH_KEY_DIR" 2>/dev/null || {
+        echo "WARNING: Could not change ownership. SSH key authentication may fail."
+        echo "You may need to manually run: sudo chown -R $CURRENT_USER:$CURRENT_GROUP $SSH_KEY_DIR"
+    }
+fi
+
+# Set proper permissions
+chmod 700 "$SSH_KEY_DIR" 2>/dev/null || true
+chmod 600 "$SSH_KEY_DIR/deploy_key" 2>/dev/null || true
+if [ -f "$SSH_KEY_DIR/deploy_key.pub" ]; then
+    chmod 644 "$SSH_KEY_DIR/deploy_key.pub" 2>/dev/null || true
 fi
 
 echo "✓ CLI setup-machine completed successfully"
@@ -139,7 +167,7 @@ echo "TEST 4: Verify SSH key authentication"
 echo "=========================================="
 echo ""
 
-DEPLOY_KEY_PATH="$ROOT_DIR/ssh-keys/deploy_key"
+DEPLOY_KEY_PATH="$SSH_KEY_DIR/deploy_key"
 
 if [ ! -f "$DEPLOY_KEY_PATH" ]; then
     echo "ERROR: Deploy key not found at $DEPLOY_KEY_PATH"
@@ -148,7 +176,7 @@ fi
 
 echo "Testing SSH connection with deploy user..."
 echo "Note: Using port $SSH_PORT for host -> container access"
-# Fix permissions
+# Fix permissions (important for SSH to accept the key)
 chmod 600 "$DEPLOY_KEY_PATH" 2>/dev/null || true
 
 # From the host, we use the mapped port (SSH_PORT)

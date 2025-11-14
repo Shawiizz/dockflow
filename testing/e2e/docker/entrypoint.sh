@@ -27,37 +27,6 @@ for i in {1..30}; do
     sleep 1
 done
 
-# 3. Install SSH public key
-if [ -f /ssh-keys/deploy_key.pub ]; then
-    log "Installing SSH public key..."
-    SSH_USER="${SSH_USER:-deploy}"
-    
-    # Determine SSH directory based on user
-    if [ "${SSH_USER}" = "root" ]; then
-        SSH_DIR="/root/.ssh"
-    else
-        SSH_DIR="/home/${SSH_USER}/.ssh"
-    fi
-    
-    mkdir -p "${SSH_DIR}"
-    cat /ssh-keys/deploy_key.pub >> "${SSH_DIR}/authorized_keys"
-    chmod 700 "${SSH_DIR}"
-    chmod 600 "${SSH_DIR}/authorized_keys"
-    
-    # Only chown if not root (root already owns /root)
-    if [ "${SSH_USER}" != "root" ]; then
-        chown -R "${SSH_USER}:${SSH_USER}" "${SSH_DIR}"
-    fi
-    
-    log "SSH key installed for user '${SSH_USER}'."
-fi
-
-# 4. Prepare deployment log file
-log "Preparing deployment log file..."
-mkdir -p /var/log/deployment
-touch /var/log/deployment/deployment.log
-chmod 666 /var/log/deployment/deployment.log
-
 # 5. Start SSH Server
 log "Starting SSH server..."
 log "Container is ready. Listening on:"

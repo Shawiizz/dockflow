@@ -6,31 +6,15 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-SSH_KEY_DIR="${ROOT_DIR}/ssh-keys"
+SSH_KEY_DIR="/tmp/ssh-keys"
 SSH_KEY_PATH="${SSH_KEY_DIR}/deploy_key"
 
+# Create SSH key directory in /tmp to avoid Windows permission issues
+echo "Creating SSH key directory in /tmp..."
+mkdir -p "$SSH_KEY_DIR"
+chmod 700 "$SSH_KEY_DIR"
+
 echo "Setting up E2E testing environment..."
-
-# Create SSH keys directory (force clean if exists)
-if [ -d "$SSH_KEY_DIR" ]; then
-    echo "SSH keys directory already exists."
-else
-    mkdir -p "$SSH_KEY_DIR"
-fi
-
-# Generate SSH key pair if it doesn't exist
-if [ ! -f "$SSH_KEY_PATH" ]; then
-    echo "Generating SSH key pair..."
-    ssh-keygen -t ed25519 -f "$SSH_KEY_PATH" -N "" -C "dockflow"
-    chmod 600 "$SSH_KEY_PATH"
-    chmod 644 "${SSH_KEY_PATH}.pub"
-    echo "SSH key pair generated."
-else
-    echo "SSH key pair already exists."
-    # Fix permissions if needed (important for WSL/Windows)
-    chmod 600 "$SSH_KEY_PATH" 2>/dev/null || true
-    chmod 644 "${SSH_KEY_PATH}.pub" 2>/dev/null || true
-fi
 
 # Start the test environment
 echo "Starting Docker Compose services..."

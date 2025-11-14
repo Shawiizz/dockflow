@@ -31,6 +31,10 @@ useradd -m $USER
 echo "Adding $USER to sudo group..."
 adduser $USER sudo
 
+# Add user to docker group
+echo "Adding $USER to docker group..."
+usermod -aG docker $USER
+
 # Set password for user
 echo "Setting password for $USER..."
 echo "$USER:$USER_PASSWORD" | chpasswd
