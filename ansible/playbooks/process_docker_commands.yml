@@ -1,7 +1,6 @@
 - name: Initialize variables and build decomposerize options
   set_fact:
     decomposerize_options: "{{ cmd_type.base_options }} {{ services_option }} {{ environmentize_option }} --ansible-env-vars-format"
-    all_docker_run_commands: "{{ all_docker_run_commands | default([]) }}"
   changed_when: false
   no_log: "{{ global_no_log }}"
 
@@ -29,33 +28,18 @@
 
 - name: Split script into commands
   set_fact:
-    current_commands: >-
-      {{
-        rendered_script.content
-        | b64decode
-        | split('\n')
-        | map('trim')
-        | select('truthy')
-        | list
-      }}
+    current_commands: "{{ rendered_script.content | b64decode | split('\n') | map('trim') | select('truthy') | list }}"
   changed_when: false
   when: rendered_script is defined
   no_log: "{{ global_no_log }}"
 
-- name: Store docker run commands for rollback tracking
+- name: Store and aggregate docker run commands
   set_fact:
     docker_run_commands: "{{ current_commands | select('search', '(?i)docker.*run') | list }}"
+    all_docker_run_commands: "{{ (all_docker_run_commands | default([])) + (current_commands | select('search', '(?i)docker.*run') | list) }}"
   when:
     - cmd_type.name == 'run'
     - current_commands is defined
-  no_log: "{{ global_no_log }}"
-
-- name: Aggregate all docker run commands in hostvars
-  set_fact:
-    all_docker_run_commands: "{{ (all_docker_run_commands | default([])) + (docker_run_commands | default([])) }}"
-  when:
-    - cmd_type.name == 'run'
-    - docker_run_commands is defined
   no_log: "{{ global_no_log }}"
 
 - name: Save current docker run commands for rollback (before deployment)
@@ -76,7 +60,6 @@
 - name: Execute commands on target host
   shell: "( {{ item }} ) > /dev/null 2>&1"
   loop: "{{ current_commands }}"
-  failed_when: false
   ignore_errors: "{{ cmd_type.ignore_errors }}"
   register: command_results
   changed_when: command_results.rc == 0
@@ -84,14 +67,13 @@
   loop_control:
     label: "Executing command"
 
-- name: Show generic failure message for failed commands
+- name: Show failure message for failed commands
   debug:
     msg: "Failed to run command"
   loop: "{{ command_results.results | default([]) }}"
   when:
-    - item.rc is defined and item.rc != 0
+    - item.rc is defined
+    - item.rc != 0
     - not (cmd_type.ignore_errors | bool)
-  changed_when: false
-  no_log: "{{ global_no_log }}"
   loop_control:
     label: "Checking command result"

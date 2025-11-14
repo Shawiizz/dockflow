@@ -154,7 +154,7 @@ generate_ansible_ssh_key() {
 
     if [ "$GENERATE_ANSIBLE_KEY" = "y" ] || [ "$GENERATE_ANSIBLE_KEY" = "Y" ]; then
         TEMP_KEY_DIR=$(mktemp -d)
-        ssh-keygen -t ed25519 -f "$TEMP_KEY_DIR/deploy_key" -N "" -C "deploy-automation"
+        ssh-keygen -t ed25519 -f "$TEMP_KEY_DIR/deploy_key" -N "" -C "dockflow"
         ANSIBLE_PUBLIC_KEY=$(cat "$TEMP_KEY_DIR/deploy_key.pub")
         ANSIBLE_PRIVATE_KEY=$(cat "$TEMP_KEY_DIR/deploy_key")
         

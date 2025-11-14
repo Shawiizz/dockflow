@@ -1,0 +1,35 @@
+---
+# Playbook to build Docker images locally (used by build workflow)
+- name: Build Docker Images Locally
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    tmp_dir: "/tmp"
+    framework_version: "1.0.48-dev40"
+    root_path: "{{ lookup('env', 'ROOT_PATH') }}"
+  
+  pre_tasks:
+    - name: Display Dockflow version
+      debug:
+        msg: "Dockflow v{{ framework_version }} - Build Mode"
+
+  roles:
+    - role: ../roles/load-config
+    - role: ../roles/prepare-deployment
+  
+  tasks:
+    - name: Load environment variables from YAML file
+      include_vars:
+        file: /tmp/ansible_env_vars.yml
+
+    - name: Set computed variables
+      set_fact:
+        deploy_services: "{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true) }}"
+        services_option: "{{ ('--services=' + lookup('env', 'DEPLOY_DOCKER_SERVICES')) if lookup('env', 'DEPLOY_DOCKER_SERVICES') else '' }}"
+        environmentize_option: "{{ '--environmentize' if (deployment_config.options.environmentize | default(true) | bool) else '' }}"
+        hostname: "main"
+
+    - name: Build Docker images
+      include_role:
+        name: ../roles/local-build

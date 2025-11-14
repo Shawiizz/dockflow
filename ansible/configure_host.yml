@@ -7,7 +7,10 @@
 
   roles:
     - role: geerlingguy.docker
+      when: not (skip_docker_install | default(false) | bool)
     - role: nginx
       tags:
         - nginx
     - role: portainer
+      tags:
+        - portainer

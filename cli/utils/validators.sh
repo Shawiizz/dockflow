@@ -10,27 +10,29 @@
 # Validate IP address (IPv4)
 validate_ip_address() {
     local ip="$1"
-    local ip_regex='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
     
-    if [[ ! "$ip" =~ $ip_regex ]]; then
+    # Regex that matches valid IP addresses (0-255 for each octet)
+    # Matches: 0-9, 10-99, 100-199, 200-249, 250-255
+    local octet='(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)'
+    local ip_regex="^${octet}\.${octet}\.${octet}\.${octet}$"
+    
+    if [[ "$ip" =~ $ip_regex ]]; then
+        return 0
+    else
         return 1
     fi
-    
-    # Check each octet is between 0-255
-    local IFS='.'
-    local -a octets=($ip)
-    for octet in "${octets[@]}"; do
-        if ((octet < 0 || octet > 255)); then
-            return 1
-        fi
-    done
-    
-    return 0
 }
 
 # Validate hostname/domain name
 validate_hostname() {
     local hostname="$1"
+    
+    # Reject if it looks like an IP address (all digits and dots)
+    # This prevents invalid IPs like 999.999.999.999 from being accepted as hostnames
+    if [[ "$hostname" =~ ^[0-9.]+$ ]]; then
+        return 1
+    fi
+    
     local hostname_regex='^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$'
     
     if [[ ! "$hostname" =~ $hostname_regex ]]; then

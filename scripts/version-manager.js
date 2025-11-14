@@ -187,20 +187,24 @@ class VersionManager {
                 let content = fs.readFileSync(fullPath, 'utf8');
                 const originalContent = content;
                 
+                // Detect original line ending style
+                const hasWindowsLineEndings = content.includes('\r\n');
+                const lineEnding = hasWindowsLineEndings ? '\r\n' : '\n';
+                
                 if (this.ciImageMode) {
                     // For CI image mode, replace specifically image references
                     content = content.replace(new RegExp(`shawiizz/dockflow-ci:${oldVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'), `shawiizz/dockflow-ci:${newVersion}`);
                     content = content.replace(new RegExp(`dockflow-ci:${oldVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'), `dockflow-ci:${newVersion}`);
                 } else {
                     // For normal mode, simply replace all occurrences of the version (except in Docker images)
-                    const lines = content.split('\n');
+                    const lines = content.split(/\r?\n/);
                     const updatedLines = lines.map(line => {
                         if (line.includes('shawiizz/dockflow-ci:') || line.includes('dockflow-ci:')) {
                             return line; // Don't modify lines containing Docker references
                         }
                         return line.replace(new RegExp(oldVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), newVersion);
                     });
-                    content = updatedLines.join('\n');
+                    content = updatedLines.join(lineEnding);
                 }
                 
                 if (content !== originalContent) {

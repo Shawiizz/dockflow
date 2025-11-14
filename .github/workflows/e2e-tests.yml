@@ -1,0 +1,110 @@
+name: E2E Tests
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  e2e-tests:
+    name: Run E2E Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create SSH key directory
+        run: |
+          mkdir -p /tmp/ssh-keys
+          chmod 700 /tmp/ssh-keys
+
+      - name: Start test environment
+        working-directory: testing/e2e/docker
+        run: |
+          docker compose --env-file ../.env up -d --build
+          echo "Waiting for services to be ready..."
+          sleep 10
+
+      - name: Wait for test VM to be healthy
+        run: |
+          timeout=60
+          elapsed=0
+          while [ $elapsed -lt $timeout ]; do
+            if docker ps | grep -q "healthy.*dockflow-test-vm"; then
+              echo "✓ Test VM is healthy"
+              exit 0
+            fi
+            sleep 2
+            elapsed=$((elapsed + 2))
+          done
+          echo "ERROR: Test VM did not become healthy in time"
+          docker compose -f testing/e2e/docker/docker-compose.yml logs test-vm
+          exit 1
+
+      - name: Run CLI tests (machine setup)
+        working-directory: testing/e2e
+        run: |
+          bash cli/run-tests.sh
+
+      - name: Build Ansible runner container
+        working-directory: testing/e2e/docker
+        run: |
+          docker compose --env-file ../.env build ansible-runner
+
+      - name: Run deployment tests
+        working-directory: testing/e2e/docker
+        run: |
+          docker compose --env-file ../.env run --rm ansible-runner bash -c "
+            set -e
+            # Copy source and test app to workspace
+            cp -r /mnt-src/dockflow/testing/e2e/test-app/. /workspace/
+            cp -r /mnt-src/dockflow /workspace/
+            
+            echo 'Configuring SSH key permissions inside container...'
+            # Use deploy_key created by CLI tests from /tmp/ssh-keys
+            cp -r /ssh-keys /tmp/ssh-keys-copy
+            chmod 700 /tmp/ssh-keys-copy
+            chmod 600 /tmp/ssh-keys-copy/deploy_key 2>/dev/null || true
+            
+            # Export SSH_KEY_PATH for the test script
+            export SSH_KEY_PATH=/tmp/ssh-keys-copy/deploy_key
+            
+            # Run the deployment test script
+            cd /workspace/dockflow/testing/e2e
+            bash common/run-deployment-test.sh
+          "
+
+      - name: Verify application is deployed
+        run: |
+          echo "Verifying deployed application..."
+          RESPONSE=$(docker exec dockflow-test-vm curl -sf http://localhost:8080/ 2>&1)
+          if echo "$RESPONSE" | grep -q "DOCKFLOW_E2E_TEST_APP_DEPLOYED"; then
+            echo "✓ Application is correctly deployed and accessible"
+          else
+            echo "ERROR: Application verification failed"
+            echo "Response received:"
+            echo "$RESPONSE"
+            exit 1
+          fi
+
+      - name: Show test VM logs on failure
+        if: failure()
+        run: |
+          echo "=== Test VM Logs ==="
+          docker compose -f testing/e2e/docker/docker-compose.yml logs test-vm
+          echo ""
+          echo "=== Container logs inside test VM ==="
+          docker exec dockflow-test-vm docker logs test-web-app-test 2>&1 || echo "Could not fetch app logs"
+
+      - name: Cleanup
+        if: always()
+        working-directory: testing/e2e/docker
+        run: |
+          docker compose --env-file ../.env down -v
+          rm -rf /tmp/ssh-keys

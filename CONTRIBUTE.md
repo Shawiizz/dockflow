@@ -1,154 +1,145 @@
 # Contributing Guide
 
-This document explains how to contribute to this project and build/maintain the Docker images.
+Welcome! Contributions are appreciated. Open an issue or pull request to suggest features or improvements.
 
-I did this project alone, if you want a new functionnality, you can open an issue or open a pull request :)     
+## Architecture Overview
 
-> **IMPORTANT**: When pushing a new tag/release, use the automated version manager to update all version references:
-> ```bash
-> npm run version:release      # For stable releases
-> npm run version:dev          # For development versions
-> npm run version:downgrade    # To revert version changes
-> npm run ci-image:release     # For CI Docker image stable releases
-> npm run ci-image:dev         # For CI Docker image development versions
-> npm run ci-image:downgrade   # To revert CI image version changes
-> ```
-> The script automatically updates version references in example files and CI scripts. You can also manually verify updates in:
-> - `.gitlab/common/build-steps.yml`
-> - `.gitlab/workflows/*.yml`
-> - `example/ci/*.yml`
+Dockflow uses two Docker images:
 
-## CI Docker Image
-
-The `shawiizz/dockflow-ci:latest` image contains all the tools needed for CI operations:
-- Docker
-- Ansible
-- NodeJS
-- Docker commands extraction module
-
-### Building the CI Image
-
-```bash
-docker build --no-cache -t shawiizz/dockflow-ci:latest -f Dockerfile.ci .
-docker build --no-cache -t shawiizz/dockflow-ci:1.0.5 -f Dockerfile.ci .
+```mermaid
+graph TB
+    subgraph "Development & Setup"
+        CLI[dockflow-cli:latest<br/>Interactive CLI Tool]
+        CLI -->|Setup| Remote[Remote Server]
+        CLI -->|Initialize| Local[Local Project Structure]
+    end
+    
+    subgraph "CI/CD Pipeline"
+        CI[dockflow-ci:latest<br/>CI/CD Image]
+        CI -->|Contains| Tools[Docker + Ansible + NodeJS]
+        CI -->|Used by| GitLab[GitLab CI]
+        GitHub[GitHub Actions<br/>Uses native ubuntu-latest]
+    end
+    
+    subgraph "Deployment"
+        CI -->|Deploys to| Remote
+        GitHub -->|Deploys to| Remote
+        Remote -->|Runs| App[Your Docker App]
+    end
+    
+    style CLI fill:#2496ED
+    style CI fill:#FC6D26
+    style GitHub fill:#2088FF
+    style Remote fill:#EE0000
 ```
 
-### Publishing to DockerHub
+| Image | Purpose | Contains |
+|-------|---------|----------|
+| **dockflow-cli** | Machine setup & project initialization | Interactive CLI tool |
+| **dockflow-ci** | GitLab CI/CD deployments | Docker, Ansible, NodeJS, deployment scripts |
+
+> **Note:** GitHub Actions uses `ubuntu-latest` which already includes required tools.
+
+---
+
+## Before Contributing
+
+**Run E2E tests** before submitting a PR → See [Developer Guide](./DEVELOPERS.md)
+
+**Use version management scripts** when bumping versions to maintain consistency across all project files (CI configs, examples, Docker images). See [Version Management](#version-management) section.
+
+---
+
+## Building Docker Images
+
+### CLI Image
+
+**Windows users:** Ensure `.sh` files use `LF` (not `CRLF`)
 
 ```bash
+# Build
+docker build -t shawiizz/dockflow-cli:X.Y.Z -f cli/Dockerfile.cli .
+
+# Publish
 docker login
-docker push shawiizz/dockflow-ci:latest
-docker push shawiizz/dockflow-ci:1.0.5
-```
-
-## CLI Docker Image
-
-The CLI image provides an interactive tool for server configuration.
-
-### Building the CLI Image
-
-For Windows users, make sure all `.sh` files are in `LF` mode and not `CRLF`.       
-
-```bash
-docker build -t shawiizz/dockflow-cli:latest -f cli/Dockerfile.cli .
-```
-
-### Publishing to DockerHub
-
-```bash
-docker login
+docker tag shawiizz/dockflow-cli:X.Y.Z shawiizz/dockflow-cli:latest
+docker push shawiizz/dockflow-cli:X.Y.Z
 docker push shawiizz/dockflow-cli:latest
 ```
 
-CLI tool run commands are available [there](./README.md).
+### CI Image
+
+```bash
+# Build
+docker build --no-cache -t shawiizz/dockflow-ci:X.Y.Z -f Dockerfile.ci .
+
+# Publish
+docker login
+docker tag shawiizz/dockflow-ci:X.Y.Z shawiizz/dockflow-ci:latest
+docker push shawiizz/dockflow-ci:X.Y.Z
+docker push shawiizz/dockflow-ci:latest
+```
+
+---
 
 ## Version Management
 
-This project includes an automated version management system that handles version increments and updates across all project files.
+Automated scripts handle version updates across all files.
 
-### Available Commands
+### Commands
 
-**Framework Version:**
-- **`npm run version:dev`** - Adds or increments development version
-  - `1.0.33` → `1.0.33-dev1`
-  - `1.0.33-dev1` → `1.0.33-dev2`
+**Framework versions:**
+```bash
+npm run version:dev        # Add/increment dev version (1.0.33 → 1.0.33-dev1)
+npm run version:release    # Create release (1.0.33-dev1 → 1.0.34)
+npm run version:downgrade  # Decrement version
+```
 
-- **`npm run version:release`** - Creates release version
-  - `1.0.33-dev1` → `1.0.48`
-  - `1.0.33` → `1.0.48`
-
-- **`npm run version:downgrade`** - Decrements version
-  - `1.0.33-dev3` → `1.0.33-dev2`
-  - `1.0.33-dev1` → `1.0.33` (removes dev)
-
-**CI Docker Image Version:**
-- **`npm run ci-image:dev`** - Adds or increments CI Docker image development version
-  - `1.0.4` → `1.0.4-dev1`
-  - `1.0.4-dev1` → `1.0.4-dev2`
-
-- **`npm run ci-image:release`** - Creates CI Docker image release version
-  - `1.0.4-dev1` → `1.0.5`
-  - `1.0.4` → `1.0.5`
-
-- **`npm run ci-image:downgrade`** - Decrements CI Docker image version
-  - `1.0.4-dev2` → `1.0.4-dev1`
-  - `1.0.4-dev1` → `1.0.4` (removes dev)
-  - `1.0.4` → `1.0.3`
+**CI image versions:**
+```bash
+npm run ci-image:dev        # Add/increment dev version
+npm run ci-image:release    # Create release version
+npm run ci-image:downgrade  # Decrement version
+```
 
 ### What Gets Updated
 
-**Framework Version Management:**
-- `package.json` version field
-- All `.yml` and `.yaml` files (CI/CD configurations)
-- Example files in `example/ci/`
-- GitLab workflow files
-- Other project configuration files (excludes Docker image references)
+| Type | Files Updated |
+|------|---------------|
+| **Framework** | `package.json`, CI/CD configs (`*.yml`), example files |
+| **CI Image** | `package.json` (ciImageVersion), Docker image references |
 
-**CI Docker Image Version Management:**
-- `package.json` ciImageVersion field
-- Docker image references (`shawiizz/dockflow-ci:X.Y.Z`)
-- CI configuration files that use the Docker image
+---
 
 ## Creating New Releases
 
-When creating a new release and pushing a new tag, follow these steps:
+```bash
+# 1. Update versions
+npm run version:release      # Framework version
+npm run ci-image:release     # CI image version (if needed)
 
-1. **Update all version references** in the repository using the automated version manager:
-   ```bash
-   # Framework version management
-   npm run version:dev       # For development versions
-   npm run version:release   # For release versions
-   npm run version:downgrade # To downgrade version
-   
-   # CI Docker image version management (separate from framework)
-   npm run ci-image:dev        # For CI Docker development versions
-   npm run ci-image:release    # For CI Docker release versions
-   npm run ci-image:downgrade  # To downgrade CI image version
-   ```
-    
-2. **Update the Docker image tags** if needed:
-   ```bash
-   # For CI image
-   docker build -t shawiizz/dockflow-ci:X.Y.Z -f Dockerfile.ci .
-   docker tag shawiizz/dockflow-ci:X.Y.Z shawiizz/dockflow-ci:latest
-   docker push shawiizz/dockflow-ci:X.Y.Z
-   docker push shawiizz/dockflow-ci:latest
-   
-   # For CLI image
-   docker build -t shawiizz/dockflow-cli:X.Y.Z -f cli/Dockerfile.cli .
-   docker tag shawiizz/dockflow-cli:X.Y.Z shawiizz/dockflow-cli:latest
-   docker push shawiizz/dockflow-cli:X.Y.Z
-   docker push shawiizz/dockflow-cli:latest
-   ```
+# 2. Build and publish Docker images (if needed)
+# See "Building Docker Images" section above
 
-3. **Create the new tag** and push it:
-   ```bash
-   git tag -a X.Y.Z -m "Version X.Y.Z"
-   git push origin X.Y.Z
-   ```
+# 3. Create and push Git tag
+git tag -a X.Y.Z -m "Version X.Y.Z"
+git push origin X.Y.Z
+```
 
-This ensures that all references to the repository and Docker images are updated consistently.
+---
+
+## Cleaning Up Dev Tags
+
+To delete all development tags for a specific version:
+
+```bash
+node scripts/delete-dev-tags.js 1.0.48
+```
+
+This removes all `1.0.48-dev*` tags locally and remotely.
+
+---
 
 ## License
 
-By contributing to this project, you agree that your contributions will be licensed under the project's [MIT License](./LICENSE).
+Contributions are licensed under the [MIT License](./LICENSE).

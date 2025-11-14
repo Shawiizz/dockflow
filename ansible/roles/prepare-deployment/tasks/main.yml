@@ -1,0 +1,38 @@
+---
+# Prepare deployment role - renders Docker templates
+# This role runs on localhost before the actual deployment
+# Note: Environment variables export is now done in the CI/CD workflow
+
+- name: Check if docker directory exists
+  stat:
+    path: "{{ root_path }}/.deployment/docker"
+  delegate_to: localhost
+  register: docker_dir
+  changed_when: false
+
+- name: Find all files in docker directory to render
+  find:
+    paths: "{{ root_path }}/.deployment/docker"
+    file_type: file
+    recurse: yes
+  delegate_to: localhost
+  register: docker_files
+  when: docker_dir.stat.exists
+
+- name: Render Docker templates with Jinja2
+  template:
+    src: "{{ item.path }}"
+    dest: "{{ item.path }}"
+    mode: '0644'
+  loop: "{{ docker_files.files | default([]) }}"
+  delegate_to: localhost
+  when: 
+    - docker_dir.stat.exists
+    - docker_files.files is defined
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Display rendering completion
+  debug:
+    msg: "✓ Rendered {{ docker_files.matched | default(0) }} file(s) in .deployment/docker/"
+  when: docker_dir.stat.exists

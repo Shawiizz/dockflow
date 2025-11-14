@@ -1,0 +1,8 @@
+services:
+  web:
+    image: test-web-app
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    ports:
+      - "${WEB_PORT}:80"

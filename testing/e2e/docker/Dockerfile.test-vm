@@ -1,0 +1,68 @@
+
+# Use Ubuntu as base for apt/Ansible compatibility
+FROM ubuntu:22.04
+
+# Build arguments
+ARG SSH_USER=deploy
+ARG SSH_PASSWORD=deploy123
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Update system and install required dependencies
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+        openssh-server \
+        sudo \
+        bash \
+        curl \
+        git \
+        python3 \
+        python3-pip \
+        python3-apt \
+        jq \
+        rsync \
+        netcat-openbsd \
+        nginx \
+        docker.io \
+    && pip3 install --no-cache-dir pyyaml \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configure SSH
+RUN mkdir -p /var/run/sshd && \
+    sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#Port 22/Port 22/' /etc/ssh/sshd_config
+
+# Set root password
+RUN echo "root:${SSH_PASSWORD}" | chpasswd
+
+# Create deploy user with sudo privileges (only if SSH_USER is not root)
+RUN if [ "${SSH_USER}" != "root" ]; then \
+        useradd -m -s /bin/bash ${SSH_USER} && \
+        echo "${SSH_USER}:${SSH_PASSWORD}" | chpasswd && \
+        echo "${SSH_USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+        mkdir -p /home/${SSH_USER}/.ssh && \
+        chmod 700 /home/${SSH_USER}/.ssh && \
+        chown -R ${SSH_USER}:${SSH_USER} /home/${SSH_USER} && \
+        usermod -aG docker ${SSH_USER}; \
+    else \
+        mkdir -p /root/.ssh && \
+        chmod 700 /root/.ssh; \
+    fi
+
+# Copie les scripts
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+COPY healthcheck.sh /healthcheck.sh
+RUN chmod +x /healthcheck.sh
+
+EXPOSE 22 2375 2376 80 443
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
+    CMD /healthcheck.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

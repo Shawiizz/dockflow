@@ -23,12 +23,36 @@ $(echo -e "${CYAN}USAGE:${NC}")
         -e HOST_PWD="\$(pwd)" \\
         -v \${HOME}/.ssh:/root/.ssh \\
         -v .:/project \\
-        shawiizz/dockflow-cli:latest [OPTIONS]
+        shawiizz/dockflow-cli:latest [COMMAND] [OPTIONS]
 
-$(echo -e "${CYAN}OPTIONS:${NC}")
+$(echo -e "${CYAN}COMMANDS:${NC}")
+    (no command)            Start interactive mode (default)
     -h, --help              Show this help message
     -v, --version           Show version information
     init [github|gitlab]    Initialize project structure (default: github)
+    setup-machine           Setup remote machine for deployment (non-interactive)
+    
+$(echo -e "${CYAN}SETUP-MACHINE OPTIONS:${NC}")
+    Required:
+      --host HOST                    Remote server IP or hostname
+      --remote-user USER             Remote user for initial connection
+      --remote-password PASS         Password for remote user
+        OR
+      --remote-key PATH              SSH private key for remote user
+    
+    Deploy User (optional - if provided, a new user will be created):
+      --deploy-user USER             Name of deployment user to create
+      --deploy-password PASS         Password for deployment user (required if --deploy-user)
+      --deploy-key PATH              SSH private key for deployment user
+      --generate-key y|n             Generate new SSH key (default: n)
+    
+    Optional:
+      --port PORT                    SSH port (default: 22)
+      --install-portainer y|n        Install Portainer (default: n)
+      --portainer-password PASS      Portainer admin password
+      --portainer-port PORT          Portainer HTTP port (default: 9000)
+      --portainer-domain DOMAIN      Portainer domain name (optional)
+    
     
 $(echo -e "${CYAN}DESCRIPTION:${NC}")
     This CLI tool helps you:
@@ -69,11 +93,38 @@ $(echo -e "${CYAN}EXAMPLES:${NC}")
         -v .:/project \\
         shawiizz/dockflow-cli:latest init
     
-    # Initialize with specific platform
+    # Setup machine with password and create deploy user
     docker run -it --rm \\
         -v \${HOME}/.ssh:/root/.ssh \\
-        -v .:/project \\
-        shawiizz/dockflow-cli:latest init gitlab
+        shawiizz/dockflow-cli:latest setup-machine \\
+          --host 192.168.1.10 \\
+          --remote-user root \\
+          --remote-password "rootpass" \\
+          --deploy-user dockflow \\
+          --deploy-password "deploypass" \\
+          --generate-key y
+    
+    # Setup machine with SSH key (no new user creation)
+    docker run -it --rm \\
+        -v \${HOME}/.ssh:/root/.ssh \\
+        shawiizz/dockflow-cli:latest setup-machine \\
+          --host server.example.com \\
+          --remote-user admin \\
+          --remote-key /root/.ssh/id_rsa
+    
+    # Setup with Portainer installation
+    docker run -it --rm \\
+        -v \${HOME}/.ssh:/root/.ssh \\
+        shawiizz/dockflow-cli:latest setup-machine \\
+          --host prod.example.com \\
+          --remote-user root \\
+          --remote-password "pass" \\
+          --deploy-user dockflow \\
+          --deploy-password "deploypass" \\
+          --generate-key y \\
+          --install-portainer y \\
+          --portainer-password "portainerpass" \\
+          --portainer-domain portainer.example.com
     
     # Show help
     docker run -it --rm shawiizz/dockflow-cli:latest --help
@@ -98,9 +149,101 @@ show_version() {
     echo -e "License: MIT"
 }
 
+show_setup_machine_help() {
+    cat << EOF
+$(echo -e "${GREEN}========================================================")
+$(echo -e "   Setup Machine - Non-Interactive Mode")
+$(echo -e "========================================================${NC}")
+
+$(echo -e "${CYAN}USAGE:${NC}")
+    docker run -it --rm \\
+        -v \${HOME}/.ssh:/root/.ssh \\
+        shawiizz/dockflow-cli:latest setup-machine [OPTIONS]
+
+$(echo -e "${CYAN}REQUIRED OPTIONS:${NC}")
+    --host HOST                    Remote server IP or hostname
+    --remote-user USER             Remote user for initial connection
+    
+    Authentication (choose one):
+      --remote-password PASS       Password for remote user
+      --remote-key PATH            SSH private key path for remote user
+
+$(echo -e "${CYAN}DEPLOY USER OPTIONS (optional):${NC}")
+    If you provide --deploy-user, a new user will be created on the remote server.
+    If not provided, the remote user will be used for deployments.
+    
+    --deploy-user USER             Name of deployment user to create
+    --deploy-password PASS         Password for deployment user (required if --deploy-user)
+    
+    SSH Key for deploy user (choose one):
+      --deploy-key PATH            Use existing SSH private key
+      --generate-key y             Generate new SSH key pair
+
+$(echo -e "${CYAN}OPTIONAL SETTINGS:${NC}")
+    --port PORT                    SSH port (default: 22)
+
+$(echo -e "${CYAN}PORTAINER OPTIONS (optional):${NC}")
+    --install-portainer y          Install Portainer for container management
+    --portainer-password PASS      Portainer admin password (required if installing)
+    --portainer-port PORT          Portainer HTTP port (default: 9000)
+    --portainer-domain DOMAIN      Portainer domain name (optional)
+
+$(echo -e "${CYAN}EXAMPLES:${NC}")
+    
+    $(echo -e "${YELLOW}1. Basic setup with password (creates deploy user):${NC}")
+    docker run -it --rm -v \${HOME}/.ssh:/root/.ssh \\
+        shawiizz/dockflow-cli:latest setup-machine \\
+        --host 192.168.1.10 \\
+        --remote-user root \\
+        --remote-password "mypassword" \\
+        --deploy-user dockflow \\
+        --deploy-password "deploypass" \\
+        --generate-key y
+    
+    $(echo -e "${YELLOW}2. Setup with SSH key (no new user):${NC}")
+    docker run -it --rm -v \${HOME}/.ssh:/root/.ssh \\
+        shawiizz/dockflow-cli:latest setup-machine \\
+        --host server.example.com \\
+        --remote-user admin \\
+        --remote-key /root/.ssh/id_rsa
+    
+    $(echo -e "${YELLOW}3. Setup with existing deploy key:${NC}")
+    docker run -it --rm -v \${HOME}/.ssh:/root/.ssh \\
+        shawiizz/dockflow-cli:latest setup-machine \\
+        --host prod.example.com \\
+        --remote-user root \\
+        --remote-password "pass" \\
+        --deploy-user dockflow \\
+        --deploy-password "deploypass" \\
+        --deploy-key /root/.ssh/deploy_rsa
+    
+    $(echo -e "${YELLOW}4. Full setup with Portainer:${NC}")
+    docker run -it --rm -v \${HOME}/.ssh:/root/.ssh \\
+        shawiizz/dockflow-cli:latest setup-machine \\
+        --host 192.168.1.10 \\
+        --remote-user root \\
+        --remote-password "rootpass" \\
+        --deploy-user dockflow \\
+        --deploy-password "deploypass" \\
+        --generate-key y \\
+        --install-portainer y \\
+        --portainer-password "portainerpass" \\
+        --portainer-port 9000 \\
+        --portainer-domain portainer.example.com
+
+$(echo -e "${CYAN}NOTES:${NC}")
+    • If --deploy-user is provided, a new user will be created
+    • If --deploy-user is omitted, the remote user will be used for deployments
+    • SSH keys are stored in ~/.ssh/deploy_key for later use
+    • Portainer domain is optional and used for reverse proxy configuration
+    
+EOF
+}
+
 # Source dependencies first
 source "$CLI_UTILS_DIR/functions.sh"
 source "$CLI_UTILS_DIR/validators.sh"
+source "$CLI_UTILS_DIR/parse_args.sh"
 source "$CLI_UTILS_DIR/setup_ssh.sh"
 source "$CLI_UTILS_DIR/create_ansible_user.sh"
 source "$CLI_UTILS_DIR/run_ansible.sh"
@@ -109,6 +252,7 @@ source "$CLI_UTILS_DIR/analyze_project.sh"
 source "$CLI_UTILS_DIR/manage_environments.sh"
 
 source "$CLI_COMMANDS_DIR/setup_machine.sh"
+source "$CLI_COMMANDS_DIR/setup_machine_non_interactive.sh"
 source "$CLI_COMMANDS_DIR/setup_project.sh"
 
 trap cleanup SIGINT
@@ -164,14 +308,31 @@ parse_arguments() {
             init_project_non_interactive "$ci_platform"
             exit 0
             ;;
+        setup-machine)
+            # Setup machine in non-interactive mode
+            shift  # Remove 'setup-machine' from arguments
+            
+            # Check if --help is requested
+            if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+                show_setup_machine_help
+                exit 0
+            fi
+            
+            # Parse setup-machine arguments
+            parse_setup_machine_args "$@"
+            
+            # Run non-interactive setup
+            setup_machine_non_interactive
+            exit 0
+            ;;
         "")
             # No arguments, continue to interactive mode
             return 0
             ;;
         *)
-            echo -e "${RED}Error: Unknown option '$1'${NC}"
+            echo -e "${RED}Error: Unknown command '$1'${NC}"
             echo ""
-            echo "Run with --help to see available options"
+            echo "Run with --help to see available commands"
             exit 1
             ;;
     esac

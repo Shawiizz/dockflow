@@ -1,6 +1,6 @@
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/1.0.48/.gitlab/common/steps.yml'
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/1.0.48/.gitlab/common/variables.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/1.0.48-dev40/.gitlab/common/steps.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/1.0.48-dev40/.gitlab/common/variables.yml'
 
 stages:
   - deploy
@@ -12,5 +12,4 @@ deploy-branch:
   extends:
     - .common-variables
     - .prepare-env
-    - .build-docker-images
     - .deploy-with-ansible
