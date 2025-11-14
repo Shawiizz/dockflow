@@ -37,10 +37,10 @@ docker-compose --env-file "$SCRIPT_DIR/.env" run --rm ansible-runner bash -c "
     echo 'Configuring SSH key permissions inside container...'
     cp -r /ssh-keys /tmp/ssh-keys-copy
     chmod 700 /tmp/ssh-keys-copy
-    chmod 600 /tmp/ssh-keys-copy/id_ed25519
+    chmod 600 /tmp/ssh-keys-copy/deploy_key
     
     # Export SSH_KEY_PATH for the test script
-    export SSH_KEY_PATH=/tmp/ssh-keys-copy/id_ed25519
+    export SSH_KEY_PATH=/tmp/ssh-keys-copy/deploy_key
     
     # Run the main test script
     cd /workspace/dockflow/testing/e2e

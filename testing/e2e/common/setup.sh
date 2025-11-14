@@ -7,7 +7,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SSH_KEY_DIR="${ROOT_DIR}/ssh-keys"
-SSH_KEY_PATH="${SSH_KEY_DIR}/id_ed25519"
+SSH_KEY_PATH="${SSH_KEY_DIR}/deploy_key"
 
 echo "Setting up E2E testing environment..."
 
@@ -21,7 +21,7 @@ fi
 # Generate SSH key pair if it doesn't exist
 if [ ! -f "$SSH_KEY_PATH" ]; then
     echo "Generating SSH key pair..."
-    ssh-keygen -t ed25519 -f "$SSH_KEY_PATH" -N "" -C "dockflow-e2e-test-key"
+    ssh-keygen -t ed25519 -f "$SSH_KEY_PATH" -N "" -C "dockflow"
     chmod 600 "$SSH_KEY_PATH"
     chmod 644 "${SSH_KEY_PATH}.pub"
     echo "SSH key pair generated."

@@ -28,14 +28,27 @@ for i in {1..30}; do
 done
 
 # 3. Install SSH public key
-if [ -f /ssh-keys/id_ed25519.pub ]; then
+if [ -f /ssh-keys/deploy_key.pub ]; then
     log "Installing SSH public key..."
     SSH_USER="${SSH_USER:-deploy}"
-    mkdir -p "/home/${SSH_USER}/.ssh"
-    cat /ssh-keys/id_ed25519.pub >> "/home/${SSH_USER}/.ssh/authorized_keys"
-    chmod 700 "/home/${SSH_USER}/.ssh"
-    chmod 600 "/home/${SSH_USER}/.ssh/authorized_keys"
-    chown -R "${SSH_USER}:${SSH_USER}" "/home/${SSH_USER}/.ssh"
+    
+    # Determine SSH directory based on user
+    if [ "${SSH_USER}" = "root" ]; then
+        SSH_DIR="/root/.ssh"
+    else
+        SSH_DIR="/home/${SSH_USER}/.ssh"
+    fi
+    
+    mkdir -p "${SSH_DIR}"
+    cat /ssh-keys/deploy_key.pub >> "${SSH_DIR}/authorized_keys"
+    chmod 700 "${SSH_DIR}"
+    chmod 600 "${SSH_DIR}/authorized_keys"
+    
+    # Only chown if not root (root already owns /root)
+    if [ "${SSH_USER}" != "root" ]; then
+        chown -R "${SSH_USER}:${SSH_USER}" "${SSH_DIR}"
+    fi
+    
     log "SSH key installed for user '${SSH_USER}'."
 fi
 

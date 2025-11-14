@@ -45,7 +45,7 @@ run_ansible_playbook() {
     
     # Determine skip tags
     SKIP_TAGS="deploy"
-    if [[ "$INSTALL_PORTAINER" != "y" && "$INSTALL_PORTAINER" != "Y" ]]; then
+    if [[ "$INSTALL_PORTAINER" != "y" && "$INSTALL_PORTAINER" != "Y" && "${PORTAINER_INSTALL:-false}" != "true" ]]; then
         SKIP_TAGS="$SKIP_TAGS,portainer,nginx"
     fi
     
@@ -58,7 +58,7 @@ run_ansible_playbook() {
     ansible-galaxy role install geerlingguy.docker
     
     cd "$CLI_ROOT_DIR/.." || exit 1
-    ansible-playbook ansible/configure_host.yml -i "$HOST," --user="$USER" --private-key=~/.ssh/deploy_key --skip-tags "$SKIP_TAGS"
+    ansible-playbook ansible/configure_host.yml -i "$HOST," --user="$USER" --private-key=~/.ssh/deploy_key --skip-tags "$SKIP_TAGS" --extra-vars "skip_docker_install=${SKIP_DOCKER_INSTALL:-false}"
     
     # Check if Ansible playbook execution was successful
     ANSIBLE_RETURN_CODE=$?

@@ -60,19 +60,19 @@ EOF
         # Using sshpass if available, otherwise using expect
         if command -v sshpass &> /dev/null; then
             echo "Using sshpass for password authentication..."
-            SSHPASS="$REMOTE_PASSWORD" sshpass -e scp -P "$SSH_PORT" -o StrictHostKeyChecking=no "$TEMP_SCRIPT" "$REMOTE_USER@$SERVER_IP:/tmp/setup_ansible.sh"
-            SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no "$REMOTE_USER@$SERVER_IP" "sudo bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
+            SSHPASS="$REMOTE_PASSWORD" sshpass -e scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$TEMP_SCRIPT" "$REMOTE_USER@$SERVER_IP:/tmp/setup_ansible.sh"
+            SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "sudo bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
         else
             echo "sshpass is not installed. Using interactive SSH..."
             print_warning "You will be prompted for the password of $REMOTE_USER@$SERVER_IP"
-            scp -P "$SSH_PORT" -o StrictHostKeyChecking=no "$TEMP_SCRIPT" "$REMOTE_USER@$SERVER_IP:/tmp/setup_ansible.sh"
-            ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no "$REMOTE_USER@$SERVER_IP" "sudo bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
+            scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$TEMP_SCRIPT" "$REMOTE_USER@$SERVER_IP:/tmp/setup_ansible.sh"
+            ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "sudo bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
         fi
     else
         # Using SSH key authentication
         echo "Using SSH key authentication..."
-        scp -P "$SSH_PORT" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no "$TEMP_SCRIPT" "$REMOTE_USER@$SERVER_IP:/tmp/setup_ansible.sh"
-        ssh -p "$SSH_PORT" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no "$REMOTE_USER@$SERVER_IP" "sudo bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
+        scp -P "$SSH_PORT" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$TEMP_SCRIPT" "$REMOTE_USER@$SERVER_IP:/tmp/setup_ansible.sh"
+        ssh -p "$SSH_PORT" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "sudo bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
     fi
 
     rm "$TEMP_SCRIPT"

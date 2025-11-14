@@ -72,7 +72,7 @@ setup_machine_non_interactive() {
             # Generate new SSH key
             print_step "Generating new SSH key for deployment user..."
             TEMP_KEY_DIR=$(mktemp -d)
-            ssh-keygen -t ed25519 -f "$TEMP_KEY_DIR/deploy_key" -N "" -C "deploy-automation"
+            ssh-keygen -t ed25519 -f "$TEMP_KEY_DIR/deploy_key" -N "" -C "dockflow"
             export ANSIBLE_PUBLIC_KEY=$(cat "$TEMP_KEY_DIR/deploy_key.pub")
             
             print_success "SSH key pair generated"
