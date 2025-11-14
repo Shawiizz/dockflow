@@ -128,6 +128,18 @@ git push origin X.Y.Z
 
 ---
 
+## Cleaning Up Dev Tags
+
+To delete all development tags for a specific version:
+
+```bash
+node scripts/delete-dev-tags.js 1.0.48
+```
+
+This removes all `1.0.48-dev*` tags locally and remotely.
+
+---
+
 ## License
 
 Contributions are licensed under the [MIT License](./LICENSE).
