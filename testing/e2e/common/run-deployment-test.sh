@@ -89,12 +89,17 @@ fi
 
 # Check if web app is accessible using docker exec (verbose output)
 echo "Checking web application accessibility..."
-if docker exec dockflow-test-vm curl -sf http://localhost:8080/health > /dev/null; then
-    echo "Web application is accessible."
+RESPONSE=$(docker exec dockflow-test-vm curl -sf http://localhost:8080/ 2>&1)
+if echo "$RESPONSE" | grep -q "DOCKFLOW_E2E_TEST_APP_DEPLOYED"; then
+    echo "✓ Web application is accessible and serving the correct content."
 else
-    echo "WARNING: Web application health check failed."
-    echo "Verbose output:"
-    docker exec dockflow-test-vm curl -v http://localhost:8080/health
+    echo "ERROR: Web application is not serving the expected content."
+    echo "Response received:"
+    echo "$RESPONSE"
+    echo ""
+    echo "Verbose curl output:"
+    docker exec dockflow-test-vm curl -v http://localhost:8080/
+    exit 1
 fi
 
 echo ""

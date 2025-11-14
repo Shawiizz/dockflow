@@ -81,6 +81,7 @@ docker run --rm \
     --network docker_test-network \
     -v "$SSH_KEY_DIR:/root/.ssh" \
     -e SKIP_DOCKER_INSTALL=true \
+    -e PORTAINER_INSTALL=false \
     dockflow-cli:test setup-machine \
     --host "$SSH_HOST" \
     --port "22" \

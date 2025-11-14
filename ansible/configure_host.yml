@@ -12,3 +12,5 @@
       tags:
         - nginx
     - role: portainer
+      tags:
+        - portainer
