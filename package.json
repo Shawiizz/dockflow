@@ -1,6 +1,6 @@
 {
   "name": "dockflow",
-  "version": "1.0.50",
+  "version": "1.0.51",
   "ciImageVersion": "1.0.5",
   "description": "Framework for automated deployment and continuous integration.",
   "scripts": {
