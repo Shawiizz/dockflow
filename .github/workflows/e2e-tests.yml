@@ -30,7 +30,7 @@ jobs:
       - name: Start test environment
         working-directory: testing/e2e/docker
         run: |
-          docker-compose --env-file ../.env up -d --build
+          docker compose --env-file ../.env up -d --build
           echo "Waiting for services to be ready..."
           sleep 10
 
@@ -47,7 +47,7 @@ jobs:
             elapsed=$((elapsed + 2))
           done
           echo "ERROR: Test VM did not become healthy in time"
-          docker-compose -f testing/e2e/docker/docker-compose.yml logs test-vm
+          docker compose -f testing/e2e/docker/docker-compose.yml logs test-vm
           exit 1
 
       - name: Run CLI tests (machine setup)
@@ -58,12 +58,12 @@ jobs:
       - name: Build Ansible runner container
         working-directory: testing/e2e/docker
         run: |
-          docker-compose --env-file ../.env build ansible-runner
+          docker compose --env-file ../.env build ansible-runner
 
       - name: Run deployment tests
         working-directory: testing/e2e/docker
         run: |
-          docker-compose --env-file ../.env run --rm ansible-runner bash -c "
+          docker compose --env-file ../.env run --rm ansible-runner bash -c "
             set -e
             # Copy source and test app to workspace
             cp -r /mnt-src/dockflow/testing/e2e/test-app/. /workspace/
@@ -100,7 +100,7 @@ jobs:
         if: failure()
         run: |
           echo "=== Test VM Logs ==="
-          docker-compose -f testing/e2e/docker/docker-compose.yml logs test-vm
+          docker compose -f testing/e2e/docker/docker-compose.yml logs test-vm
           echo ""
           echo "=== Container logs inside test VM ==="
           docker exec dockflow-test-vm docker logs test-web-app-test 2>&1 || echo "Could not fetch app logs"
@@ -109,5 +109,5 @@ jobs:
         if: always()
         working-directory: testing/e2e/docker
         run: |
-          docker-compose --env-file ../.env down -v
+          docker compose --env-file ../.env down -v
           rm -rf /tmp/ssh-keys
