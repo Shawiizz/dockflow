@@ -3,8 +3,8 @@
 FROM ubuntu:22.04
 
 # Build arguments
-ARG SSH_USER=deploy
-ARG SSH_PASSWORD=deploy123
+ARG SSH_USER=dockflow
+ARG SSH_PASSWORD=dockflow123
 
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive

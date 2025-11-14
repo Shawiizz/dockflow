@@ -46,8 +46,8 @@ else
   done < <(env | awk -F= -v prefix="$ENV_HOSTNAME_PREFIX" '$1 ~ "^"prefix {print $1}')
 fi
 
-# Set USER (override if CI, default to 'deploy')
-[[ "$IS_CI_USER" == "true" ]] && export USER="deploy" || export USER="${USER:-deploy}"
+# Set USER (override if CI, default to 'dockflow')
+[[ "$IS_CI_USER" == "true" ]] && export USER="dockflow" || export USER="${USER:-dockflow}"
 
 # Verify required variables (skip for build environment)
 if [[ "$ENV" != "build" ]]; then
