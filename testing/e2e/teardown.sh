@@ -12,7 +12,7 @@ cd "$SCRIPT_DIR/docker"
 
 # Stop and remove containers
 echo "Stopping and removing containers..."
-docker-compose down -v --remove-orphans
+docker-compose --env-file "$SCRIPT_DIR/.env" down -v --remove-orphans
 
 # Optional: Remove SSH keys
 read -p "Remove SSH keys? (y/N): " -n 1 -r

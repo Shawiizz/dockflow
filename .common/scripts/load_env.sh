@@ -6,6 +6,10 @@ ENV="$1"
 HOSTNAME="${2:-main}"
 IS_CI_USER=$([[ -n "$USER" ]] && echo "true" || echo "false")
 
+if [ -d ".deployment" ]; then
+  find .deployment -type f -exec sed -i 's/\r$//' {} \; 2>/dev/null || true
+fi
+
 # Load secrets from secrets.json
 if [ -f "secrets.json" ]; then
   echo "Loading secrets from secrets.json"

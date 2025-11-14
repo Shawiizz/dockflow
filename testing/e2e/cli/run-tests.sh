@@ -35,9 +35,9 @@ fi
 source "$ROOT_DIR/.env" 2>/dev/null || true
 
 # Verify environment variables
-if [ -z "$SSH_HOST" ] || [ -z "$SSH_PORT" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PASSWORD" ]; then
+if [ -z "$SSH_HOST" ] || [ -z "$SSH_PORT" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PASSWORD" ] || [ -z "$DEPLOY_USER" ]; then
     echo "ERROR: Required environment variables are not set."
-    echo "Required: SSH_HOST, SSH_PORT, SSH_USER, SSH_PASSWORD"
+    echo "Required: SSH_HOST, SSH_PORT, SSH_USER, SSH_PASSWORD, DEPLOY_USER"
     exit 1
 fi
 
@@ -46,7 +46,7 @@ echo "   Remote Host: $SSH_HOST"
 echo "   SSH Port (host): $SSH_PORT"
 echo "   SSH Port (docker network): 22"
 echo "   Remote User: $SSH_USER"
-echo "   Deploy User: dockflow"
+echo "   Deploy User: $DEPLOY_USER"
 echo ""
 
 # Build the CLI Docker image
@@ -87,7 +87,7 @@ docker run --rm \
     --port "22" \
     --remote-user "$SSH_USER" \
     --remote-password "$SSH_PASSWORD" \
-    --deploy-user "dockflow" \
+    --deploy-user "$DEPLOY_USER" \
     --deploy-password "dockflow123" \
     --generate-key y
 
@@ -143,18 +143,18 @@ echo "TEST 3: Verify deploy user creation"
 echo "=========================================="
 echo ""
 
-echo "Checking if deploy user 'dockflow' exists..."
-if docker exec dockflow-test-vm id dockflow >/dev/null 2>&1; then
-    USER_INFO=$(docker exec dockflow-test-vm id dockflow)
+echo "Checking if deploy user '$DEPLOY_USER' exists..."
+if docker exec dockflow-test-vm id "$DEPLOY_USER" >/dev/null 2>&1; then
+    USER_INFO=$(docker exec dockflow-test-vm id "$DEPLOY_USER")
     echo "✓ Deploy user exists: $USER_INFO"
 else
-    echo "ERROR: Deploy user 'dockflow' was not created"
+    echo "ERROR: Deploy user '$DEPLOY_USER' was not created"
     exit 1
 fi
 
 # Check if user is in docker group
 echo "Checking if deploy user is in docker group..."
-if docker exec dockflow-test-vm groups dockflow | grep -q docker; then
+if docker exec dockflow-test-vm groups "$DEPLOY_USER" | grep -q docker; then
     echo "✓ Deploy user is in docker group"
 else
     echo "ERROR: Deploy user is not in docker group"
@@ -186,13 +186,13 @@ if ssh -i "$DEPLOY_KEY_PATH" \
     -o UserKnownHostsFile=/dev/null \
     -o ConnectTimeout=5 \
     -p "$SSH_PORT" \
-    dockflow@localhost \
+    "${DEPLOY_USER}@localhost" \
     "echo 'SSH authentication successful'" >/dev/null 2>&1; then
     echo "✓ SSH key authentication works for deploy user"
 else
     echo "ERROR: SSH key authentication failed for deploy user"
     echo "Trying to debug..."
-    docker exec dockflow-test-vm cat /home/dockflow/.ssh/authorized_keys 2>/dev/null || echo "Could not read authorized_keys"
+    docker exec dockflow-test-vm cat "/home/${DEPLOY_USER}/.ssh/authorized_keys" 2>/dev/null || echo "Could not read authorized_keys"
     exit 1
 fi
 echo ""
@@ -209,7 +209,7 @@ if ssh -i "$DEPLOY_KEY_PATH" \
     -o UserKnownHostsFile=/dev/null \
     -o ConnectTimeout=5 \
     -p "$SSH_PORT" \
-    dockflow@localhost \
+    "${DEPLOY_USER}@localhost" \
     "docker ps" >/dev/null 2>&1; then
     echo "✓ Deploy user can run Docker commands"
 else
@@ -237,7 +237,7 @@ echo ""
 echo "Summary:"
 echo "   ✓ CLI setup-machine command executed successfully"
 echo "   ✓ Docker installed and running on test VM"
-echo "   ✓ Deploy user 'dockflow' created"
+echo "   ✓ Deploy user '$DEPLOY_USER' created"
 echo "   ✓ Deploy user added to docker group"
 echo "   ✓ SSH key authentication configured"
 echo "   ✓ Deploy user can run Docker commands"
