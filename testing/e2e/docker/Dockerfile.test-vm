@@ -1,15 +1,15 @@
 
-# Utilise Ubuntu comme base pour compatibilité apt/Ansible
+# Use Ubuntu as base for apt/Ansible compatibility
 FROM ubuntu:22.04
 
-# Arguments de build
+# Build arguments
 ARG SSH_USER=deploy
 ARG SSH_PASSWORD=deploy123
 
-# Empêche les prompts interactifs
+# Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Met à jour le système et installe les dépendances nécessaires
+# Update system and install required dependencies
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
@@ -36,7 +36,7 @@ RUN mkdir -p /var/run/sshd && \
     sed -i 's/#PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config && \
     sed -i 's/#Port 22/Port 22/' /etc/ssh/sshd_config
 
-# Crée l'utilisateur deploy avec sudo
+# Create deploy user with sudo privileges
 RUN useradd -m -s /bin/bash ${SSH_USER} && \
     echo "${SSH_USER}:${SSH_PASSWORD}" | chpasswd && \
     echo "${SSH_USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
@@ -44,15 +44,8 @@ RUN useradd -m -s /bin/bash ${SSH_USER} && \
     chmod 700 /home/${SSH_USER}/.ssh && \
     chown -R ${SSH_USER}:${SSH_USER} /home/${SSH_USER}
 
-# Ajoute l'utilisateur deploy au groupe docker
+# Add deploy user to docker group
 RUN usermod -aG docker ${SSH_USER}
-
-# Crée les dossiers nécessaires
-RUN mkdir -p /opt/docker-compose \
-    /var/log/deployment \
-    /home/${SSH_USER}/deployments && \
-    chown -R ${SSH_USER}:${SSH_USER} /home/${SSH_USER}/deployments \
-    /var/log/deployment
 
 # Copie les scripts
 COPY entrypoint.sh /entrypoint.sh
