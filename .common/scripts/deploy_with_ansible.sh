@@ -37,4 +37,11 @@ INVENTORY_HOST="${ENV}$([[ "$HOSTNAME" != "main" ]] && echo "-${HOSTNAME}" || ec
 
 sed -i "s/REMOTE_HOST/${INVENTORY_HOST}/g" ansible/inventory.yml
 ansible-galaxy role install geerlingguy.docker
-ansible-playbook ansible/deploy.yml -i ansible/inventory.yml --skip-tags "$SKIP_TAGS"
+
+# Build extra vars for Ansible
+EXTRA_VARS=""
+if [ "${SKIP_DOCKER_INSTALL}" = "true" ]; then
+  EXTRA_VARS="-e skip_docker_install=true"
+fi
+
+ansible-playbook ansible/deploy.yml -i ansible/inventory.yml --skip-tags "$SKIP_TAGS" $EXTRA_VARS

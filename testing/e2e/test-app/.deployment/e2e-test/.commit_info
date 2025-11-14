@@ -1,0 +1,6 @@
+ENV=test
+HOSTNAME=main
+VERSION=1.0.0-test
+PROJECT_ID=test
+BRANCH_NAME=main
+SKIP_DOCKER_INSTALL=true

@@ -1,0 +1,75 @@
+services:
+  # Test deployment VM - simulates a production server
+  test-vm:
+    build:
+      context: .
+      dockerfile: Dockerfile.test-vm
+      args:
+        SSH_USER: ${SSH_USER}
+        SSH_PASSWORD: ${SSH_PASSWORD}
+    container_name: dockflow-test-vm
+    hostname: ${SSH_HOST}
+    privileged: true
+    ports:
+      - "${SSH_PORT:-2222}:22"
+      - "${DOCKER_PORT:-2375}:2375"
+      - "8080:8080" # For web app healthcheck
+    volumes:
+      - /tmp
+      - ../ssh-keys:/ssh-keys:ro
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "22"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # Ansible runner - executes deployment scripts
+  ansible-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.ansible
+    container_name: dockflow-ansible-runner
+    working_dir: /workspace
+    volumes:
+      # --- Lecture seule du code source hôte ---
+      - ../../../:/mnt-src/dockflow:ro
+
+      # --- Volume anonyme : copie isolée (non persistante) ---
+      - /workspace
+
+      # --- SSH keys & docker socket (facultatifs) ---
+      - ../ssh-keys:/ssh-keys:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    environment:
+      - ANSIBLE_HOST_KEY_CHECKING=False
+    networks:
+      - test-network
+    profiles:
+      - tools
+
+  # Optional: Portainer for visual Docker management during tests
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: dockflow-test-portainer
+    restart: unless-stopped
+    ports:
+      - "${PORTAINER_PORT:-9443}:9443"
+      - "${PORTAINER_HTTP_PORT:-9000}:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer-data:/data
+    networks:
+      - test-network
+    profiles:
+      - with-portainer
+
+networks:
+  test-network:
+    driver: bridge
+
+volumes:
+  portainer-data:
