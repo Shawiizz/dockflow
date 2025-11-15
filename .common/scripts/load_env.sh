@@ -4,8 +4,9 @@
 
 ENV="$1"
 HOSTNAME="${2:-main}"
-IS_CI_USER=$([[ -n "$USER" ]] && echo "true" || echo "false")
+USER_VAR_DEFINED_BY_CI="$USER"
 
+# Convert Windows line endings to Unix line endings in .deployment files
 if [ -d ".deployment" ]; then
   find .deployment -type f -exec sed -i 's/\r$//' {} \; 2>/dev/null || true
 fi
@@ -51,7 +52,7 @@ else
 fi
 
 # Set USER (override if CI, default to 'dockflow')
-[[ "$IS_CI_USER" == "true" ]] && export USER="dockflow" || export USER="${USER:-dockflow}"
+[[ -n "$USER" && "$USER" != "$USER_VAR_DEFINED_BY_CI" ]] && export USER="$USER" || export USER="dockflow"
 
 # Verify required variables (skip for build environment)
 if [[ "$ENV" != "build" ]]; then
