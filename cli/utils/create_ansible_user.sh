@@ -81,3 +81,42 @@ EOF
 
     rm "$TEMP_SCRIPT"
 }
+
+create_ansible_user_locally() {
+    print_heading "CREATING DEPLOYMENT USER LOCALLY"
+    
+    echo "Creating user $USER on local machine..."
+    
+    # Create user
+    echo "$BECOME_PASSWORD" | sudo -S useradd -m "$USER" 2>/dev/null || {
+        echo "User $USER may already exist, continuing..."
+    }
+    
+    # Set password for user
+    echo "Setting password for $USER..."
+    echo "$USER:$USER_PASSWORD" | sudo chpasswd
+    
+    # Add user to sudo group
+    echo "Adding $USER to sudo group..."
+    sudo usermod -aG sudo "$USER"
+    
+    # Add user to docker group (will be created by Ansible if not exists)
+    echo "Adding $USER to docker group..."
+    sudo usermod -aG docker "$USER" 2>/dev/null || echo "Docker group will be created by Ansible..."
+    
+    # Setup SSH directory
+    echo "Setting up SSH directory..."
+    sudo mkdir -p "/home/$USER/.ssh"
+    sudo chmod 700 "/home/$USER/.ssh"
+    
+    # Add public key to authorized_keys
+    echo "Adding public key to authorized_keys..."
+    echo "$ANSIBLE_PUBLIC_KEY" | sudo tee "/home/$USER/.ssh/authorized_keys" > /dev/null
+    sudo chmod 600 "/home/$USER/.ssh/authorized_keys"
+    
+    # Set proper ownership
+    echo "Setting proper ownership..."
+    sudo chown -R "$USER:$USER" "/home/$USER/.ssh"
+    
+    print_success "User $USER has been created successfully on local machine."
+}

@@ -329,6 +329,7 @@ source "$CLI_UTILS_DIR/analyze_project.sh"
 source "$CLI_UTILS_DIR/manage_environments.sh"
 
 source "$CLI_COMMANDS_DIR/setup_machine.sh"
+source "$CLI_COMMANDS_DIR/setup_machine_interactive.sh"
 source "$CLI_COMMANDS_DIR/setup_machine_non_interactive.sh"
 source "$CLI_COMMANDS_DIR/setup_project.sh"
 
@@ -437,7 +438,7 @@ show_main_menu() {
         local project_exists=$?
 
         local options=()
-        options+=("Setup a remote machine or modify installation")
+        options+=("Setup a machine for deployment")
         
         if [ $project_exists -eq 0 ]; then
             options+=("Edit current project")
@@ -451,7 +452,7 @@ show_main_menu() {
         MAIN_OPTION=$?
 
         if [ "$MAIN_OPTION" = "0" ]; then
-            setup_machine
+            setup_machine_interactive
             echo ""
         elif [ "$MAIN_OPTION" = "1" ]; then
             setup_project
