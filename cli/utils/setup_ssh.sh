@@ -145,31 +145,89 @@ get_ssh_connection() {
 generate_ansible_ssh_key() {
     print_heading "SSH KEY SETUP"
     
-    echo ""
-    if confirm_action "Do you want to generate a new SSH key for the deployment user?" "y"; then
-        GENERATE_ANSIBLE_KEY="y"
+    # Check if SSH key already exists for the deployment user on the target server
+    KEY_EXISTS=false
+    EXISTING_PUBLIC_KEY=""
+    
+    # Determine if we're setting up local or remote
+    if [ "${SERVER_IP:-}" = "127.0.0.1" ] || [ "${SERVER_IP:-}" = "localhost" ]; then
+        # Local setup - check if key exists for deployment user locally
+        if [ -n "${USER:-}" ] && [ "$USER" != "$(whoami)" ]; then
+            # Different user - check in their home directory using stored sudo password
+            if echo "${BECOME_PASSWORD:-}" | sudo -S test -f "/home/$USER/.ssh/dockflow_key" 2>/dev/null; then
+                KEY_EXISTS=true
+                EXISTING_PUBLIC_KEY=$(echo "${BECOME_PASSWORD:-}" | sudo -S cat "/home/$USER/.ssh/dockflow_key.pub" 2>/dev/null || echo "")
+            fi
+        else
+            # Same user - check in current home
+            if [ -f ~/.ssh/dockflow_key ]; then
+                KEY_EXISTS=true
+                EXISTING_PUBLIC_KEY=$(cat ~/.ssh/dockflow_key.pub 2>/dev/null || echo "")
+            fi
+        fi
     else
-        GENERATE_ANSIBLE_KEY="n"
+        # Remote setup - check if key exists on remote server for deployment user
+        if [ -n "${SERVER_IP:-}" ] && [ -n "${REMOTE_USER:-}" ]; then
+            if [ "${AUTH_METHOD:-}" = "password" ]; then
+                if command -v sshpass &> /dev/null && [ -n "${REMOTE_PASSWORD:-}" ]; then
+                    REMOTE_KEY_CHECK=$(SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "sudo test -f /home/$USER/.ssh/dockflow_key && echo 'EXISTS' || echo 'NOTFOUND'" 2>/dev/null)
+                    if [ "$REMOTE_KEY_CHECK" = "EXISTS" ]; then
+                        KEY_EXISTS=true
+                        EXISTING_PUBLIC_KEY=$(SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "sudo cat /home/$USER/.ssh/dockflow_key.pub" 2>/dev/null || echo "")
+                    fi
+                fi
+            elif [ -n "${SSH_PRIVATE_KEY_PATH:-}" ]; then
+                REMOTE_KEY_CHECK=$(ssh -p "${SSH_PORT:-22}" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "sudo test -f /home/$USER/.ssh/dockflow_key && echo 'EXISTS' || echo 'NOTFOUND'" 2>/dev/null)
+                if [ "$REMOTE_KEY_CHECK" = "EXISTS" ]; then
+                    KEY_EXISTS=true
+                    EXISTING_PUBLIC_KEY=$(ssh -p "${SSH_PORT:-22}" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "sudo cat /home/$USER/.ssh/dockflow_key.pub" 2>/dev/null || echo "")
+                fi
+            fi
+        fi
+    fi
+    
+    # If key exists, ask if user wants to regenerate
+    if [ "$KEY_EXISTS" = true ]; then
+        echo ""
+        print_step "SSH key already exists for user $USER on the target server"
+        echo ""
+        
+        if confirm_action "Do you want to regenerate the SSH key for user $USER?" "n"; then
+            print_warning "A new SSH key will be generated (the old one will be backed up)"
+            GENERATE_ANSIBLE_KEY="y"
+        else
+            print_success "Using existing SSH key for user $USER"
+            GENERATE_ANSIBLE_KEY="n"
+            
+            # Use the existing public key
+            if [ -n "$EXISTING_PUBLIC_KEY" ]; then
+                ANSIBLE_PUBLIC_KEY="$EXISTING_PUBLIC_KEY"
+                export ANSIBLE_PUBLIC_KEY
+            fi
+            
+            return 0
+        fi
+    else
+        # No key exists, generate one
+        GENERATE_ANSIBLE_KEY="y"
     fi
 
     if [ "$GENERATE_ANSIBLE_KEY" = "y" ] || [ "$GENERATE_ANSIBLE_KEY" = "Y" ]; then
+        echo ""
+        print_success "Generating new SSH key pair for deployment user $USER..."
+        
         TEMP_KEY_DIR=$(mktemp -d)
-        ssh-keygen -t ed25519 -f "$TEMP_KEY_DIR/deploy_key" -N "" -C "dockflow"
-        ANSIBLE_PUBLIC_KEY=$(cat "$TEMP_KEY_DIR/deploy_key.pub")
-        ANSIBLE_PRIVATE_KEY=$(cat "$TEMP_KEY_DIR/deploy_key")
+        ssh-keygen -t ed25519 -f "$TEMP_KEY_DIR/dockflow_key" -N "" -C "dockflow-$USER"
+        ANSIBLE_PUBLIC_KEY=$(cat "$TEMP_KEY_DIR/dockflow_key.pub")
+        ANSIBLE_PRIVATE_KEY=$(cat "$TEMP_KEY_DIR/dockflow_key")
         
-        echo ""
-        print_success "SSH key pair generated for deployment user"
-        echo ""
-        echo -e "${CYAN}Public key:${NC}"
-        echo "$ANSIBLE_PUBLIC_KEY"
-        echo ""
-        
-        print_success "Saving private key to ~/.ssh/deploy_key"
+        # Copy to ~/.ssh/deploy_key locally for CLI use
         mkdir -p ~/.ssh
         echo "$ANSIBLE_PRIVATE_KEY" > ~/.ssh/deploy_key
         chmod 600 ~/.ssh/deploy_key
-        print_success "Private key saved to ~/.ssh/deploy_key"
+        
+        print_success "SSH key pair generated successfully"
+        echo ""
         
         rm -rf "$TEMP_KEY_DIR"
     else

@@ -8,10 +8,59 @@ setup_ansible_user() {
     echo -e "${CYAN}Configure the deployment user account:${NC}"
     echo ""
     
-    prompt_username "User name" USER "dockflow"
+    # Check if default user "dockflow" already exists on the target server
+    DEFAULT_USER="dockflow"
+    USER_EXISTS=false
     
-    read -srp "Password for user: " USER_PASSWORD
-    echo ""
+    # Determine if we're setting up local or remote
+    if [ "${SERVER_IP:-}" = "127.0.0.1" ] || [ "${SERVER_IP:-}" = "localhost" ]; then
+        # Local setup - check if user exists locally
+        if id "$DEFAULT_USER" &>/dev/null; then
+            USER_EXISTS=true
+        fi
+    else
+        # Remote setup - check if user exists on remote server
+        if [ -n "${SERVER_IP:-}" ] && [ -n "${REMOTE_USER:-}" ]; then
+            if [ "${AUTH_METHOD:-}" = "password" ]; then
+                if command -v sshpass &> /dev/null && [ -n "${REMOTE_PASSWORD:-}" ]; then
+                    REMOTE_USER_CHECK=$(SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "id $DEFAULT_USER && echo 'EXISTS' || echo 'NOTFOUND'" 2>/dev/null)
+                    if echo "$REMOTE_USER_CHECK" | grep -q "EXISTS"; then
+                        USER_EXISTS=true
+                    fi
+                fi
+            elif [ -n "${SSH_PRIVATE_KEY_PATH:-}" ]; then
+                REMOTE_USER_CHECK=$(ssh -p "${SSH_PORT:-22}" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "id $DEFAULT_USER && echo 'EXISTS' || echo 'NOTFOUND'" 2>/dev/null)
+                if echo "$REMOTE_USER_CHECK" | grep -q "EXISTS"; then
+                    USER_EXISTS=true
+                fi
+            fi
+        fi
+    fi
+    
+    # If user exists, ask if we should use it or create a new one
+    if [ "$USER_EXISTS" = true ]; then
+        echo ""
+        print_step "User '$DEFAULT_USER' already exists on the target server"
+        echo ""
+        
+        if confirm_action "Do you want to use the existing user '$DEFAULT_USER'?" "y"; then
+            USER="$DEFAULT_USER"
+            print_success "Using existing user '$DEFAULT_USER'"
+            echo ""
+            read -srp "Password for user $USER: " USER_PASSWORD
+            echo ""
+        else
+            echo ""
+            prompt_username "Enter a new user name" USER ""
+            read -srp "Password for user $USER: " USER_PASSWORD
+            echo ""
+        fi
+    else
+        # User doesn't exist, prompt for username with default
+        prompt_username "User name" USER "dockflow"
+        read -srp "Password for user $USER: " USER_PASSWORD
+        echo ""
+    fi
     
     export USER
     export USER_PASSWORD
@@ -28,7 +77,7 @@ echo "Creating user..."
 useradd -m $USER
 
 # Add user to sudo group
-echo "Adding $USER to sudo group..."
+echo "Adding \$USER to sudo group..."
 adduser $USER sudo
 
 # Add user to docker group
@@ -49,6 +98,15 @@ echo "Adding public key to authorized_keys..."
 echo "$ANSIBLE_PUBLIC_KEY" | tee /home/$USER/.ssh/authorized_keys > /dev/null
 chmod 600 /home/$USER/.ssh/authorized_keys
 
+# Save private key for the deployment user
+if [ -n "\$ANSIBLE_PRIVATE_KEY" ]; then
+    echo "Saving private key to /home/$USER/.ssh/dockflow_key..."
+    echo "\$ANSIBLE_PRIVATE_KEY" > /home/$USER/.ssh/dockflow_key
+    chmod 600 /home/$USER/.ssh/dockflow_key
+    echo "$ANSIBLE_PUBLIC_KEY" > /home/$USER/.ssh/dockflow_key.pub
+    chmod 644 /home/$USER/.ssh/dockflow_key.pub
+fi
+
 # Set proper ownership
 echo "Setting proper ownership..."
 chown -R $USER:$USER /home/$USER/.ssh
@@ -65,21 +123,28 @@ EOF
         if command -v sshpass &> /dev/null; then
             echo "Using sshpass for password authentication..."
             SSHPASS="$REMOTE_PASSWORD" sshpass -e scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$TEMP_SCRIPT" "$REMOTE_USER@$SERVER_IP:/tmp/setup_ansible.sh"
-            SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "sudo bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
+            SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "ANSIBLE_PRIVATE_KEY='$ANSIBLE_PRIVATE_KEY' sudo -E bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
         else
             echo "sshpass is not installed. Using interactive SSH..."
             print_warning "You will be prompted for the password of $REMOTE_USER@$SERVER_IP"
             scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$TEMP_SCRIPT" "$REMOTE_USER@$SERVER_IP:/tmp/setup_ansible.sh"
-            ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "sudo bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
+            ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "ANSIBLE_PRIVATE_KEY='$ANSIBLE_PRIVATE_KEY' sudo -E bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
         fi
     else
         # Using SSH key authentication
         echo "Using SSH key authentication..."
         scp -P "$SSH_PORT" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$TEMP_SCRIPT" "$REMOTE_USER@$SERVER_IP:/tmp/setup_ansible.sh"
-        ssh -p "$SSH_PORT" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "sudo bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
+        ssh -p "$SSH_PORT" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "ANSIBLE_PRIVATE_KEY='$ANSIBLE_PRIVATE_KEY' sudo -E bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
     fi
 
     rm "$TEMP_SCRIPT"
+    
+    # Copy the private key locally to ~/.ssh/deploy_key for CLI use
+    if [ -n "${ANSIBLE_PRIVATE_KEY:-}" ]; then
+        mkdir -p ~/.ssh
+        echo "$ANSIBLE_PRIVATE_KEY" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+    fi
 }
 
 create_ansible_user_locally() {
@@ -114,9 +179,25 @@ create_ansible_user_locally() {
     echo "$ANSIBLE_PUBLIC_KEY" | sudo tee "/home/$USER/.ssh/authorized_keys" > /dev/null
     sudo chmod 600 "/home/$USER/.ssh/authorized_keys"
     
+    # Save private key for the deployment user
+    if [ -n "${ANSIBLE_PRIVATE_KEY:-}" ]; then
+        echo "Saving private key to /home/$USER/.ssh/dockflow_key..."
+        echo "$ANSIBLE_PRIVATE_KEY" | sudo tee "/home/$USER/.ssh/dockflow_key" > /dev/null
+        sudo chmod 600 "/home/$USER/.ssh/dockflow_key"
+        echo "$ANSIBLE_PUBLIC_KEY" | sudo tee "/home/$USER/.ssh/dockflow_key.pub" > /dev/null
+        sudo chmod 644 "/home/$USER/.ssh/dockflow_key.pub"
+    fi
+    
     # Set proper ownership
     echo "Setting proper ownership..."
     sudo chown -R "$USER:$USER" "/home/$USER/.ssh"
+    
+    # Copy the private key locally to ~/.ssh/deploy_key for CLI use
+    if [ -n "${ANSIBLE_PRIVATE_KEY:-}" ]; then
+        mkdir -p ~/.ssh
+        echo "$ANSIBLE_PRIVATE_KEY" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+    fi
     
     print_success "User $USER has been created successfully on local machine."
 }

@@ -438,7 +438,7 @@ show_main_menu() {
         local project_exists=$?
 
         local options=()
-        options+=("Setup a machine for deployment")
+        options+=("Configure remote machine for deployment")
         
         if [ $project_exists -eq 0 ]; then
             options+=("Edit current project")

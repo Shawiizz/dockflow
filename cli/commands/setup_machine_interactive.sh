@@ -71,19 +71,38 @@ setup_machine_interactive() {
             export USER="$CURRENT_USER"
             export USER_PASSWORD="$BECOME_PASSWORD"
             
-            # Generate SSH key if needed
-            if [ ! -f ~/.ssh/id_rsa ]; then
-                print_step "Generating SSH key for local deployment..."
-                ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "" -C "dockflow-local-$(hostname)"
-                cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+            # Generate SSH key if needed for current user
+            SHOULD_GENERATE=false
+            USER_SSH_KEY="$HOME/.ssh/dockflow_key"
+            
+            if [ ! -f "$USER_SSH_KEY" ]; then
+                print_step "Generating SSH key for local deployment (user: $CURRENT_USER)..."
+                SHOULD_GENERATE=true
+            else
+                print_step "SSH key already exists for user $CURRENT_USER at $USER_SSH_KEY"
+                echo ""
+                if confirm_action "Do you want to regenerate the SSH key?" "n"; then
+                    print_warning "Regenerating SSH key..."
+                    SHOULD_GENERATE=true
+                else
+                    print_success "Using existing SSH key"
+                fi
+            fi
+            
+            if [ "$SHOULD_GENERATE" = true ]; then
+                ssh-keygen -t ed25519 -f "$USER_SSH_KEY" -N "" -C "dockflow-local-$(hostname)"
+                cat "${USER_SSH_KEY}.pub" >> ~/.ssh/authorized_keys
+                chmod 600 ~/.ssh/authorized_keys
+                print_success "SSH key generated successfully"
+            fi
+            
+            # Ensure the key is in authorized_keys for local SSH
+            if ! grep -q "$(cat ${USER_SSH_KEY}.pub)" ~/.ssh/authorized_keys 2>/dev/null; then
+                cat "${USER_SSH_KEY}.pub" >> ~/.ssh/authorized_keys
                 chmod 600 ~/.ssh/authorized_keys
             fi
             
-            # Use the existing SSH key
-            cp ~/.ssh/id_rsa ~/.ssh/deploy_key
-            chmod 600 ~/.ssh/deploy_key
-            
-            export USER_PRIVATE_KEY_PATH="$HOME/.ssh/deploy_key"
+            export USER_PRIVATE_KEY_PATH="$HOME/.ssh/dockflow_key"
             USER_NEEDS_SETUP=false
         fi
         
@@ -156,8 +175,17 @@ EOF
             echo "   LOCAL MACHINE SETUP COMPLETED"
             echo -e "===========================================================${NC}"
             echo ""
-            echo -e "${YELLOW}Here is the SSH private key for deployment user (keep it secure):${NC}"
-            cat ~/.ssh/deploy_key
+            echo -e "${YELLOW}Here is the SSH private key for deployment user $USER (keep it secure):${NC}"
+            
+            # Retrieve the private key from deployment user's home
+            if [ "$USER" != "$(whoami)" ]; then
+                # Different user - read from their home with sudo
+                echo "${BECOME_PASSWORD}" | sudo -S cat "/home/$USER/.ssh/dockflow_key" 2>/dev/null || echo "[Error: Could not retrieve private key]"
+            else
+                # Same user - read from current home
+                cat "$HOME/.ssh/dockflow_key" 2>/dev/null || echo "[Error: Could not retrieve private key]"
+            fi
+            
             echo ""
             echo -e "${GREEN}This machine is now ready to receive deployments of Docker applications.${NC}"
             echo ""
