@@ -38,6 +38,22 @@ if [[ "$HOSTNAME" != "main" && -f ".deployment/env/.env.${ENV}.${HOSTNAME}" ]]; 
 fi
 set +a
 
+# Parse CONNECTION string if provided (format: base64 encoded JSON with host, port, user, privateKey)
+CONNECTION_VAR_NAME="${ENV_PREFIX}CONNECTION"
+if [[ -n "${!CONNECTION_VAR_NAME}" ]]; then
+  echo "Parsing ${CONNECTION_VAR_NAME}..."
+  CONNECTION_JSON=$(echo "${!CONNECTION_VAR_NAME}" | base64 -d 2>/dev/null)
+  if [[ $? -eq 0 && -n "$CONNECTION_JSON" ]]; then
+    export HOST=$(echo "$CONNECTION_JSON" | jq -r '.host // empty')
+    export PORT=$(echo "$CONNECTION_JSON" | jq -r '.port // empty')
+    export USER=$(echo "$CONNECTION_JSON" | jq -r '.user // empty')
+    export SSH_PRIVATE_KEY=$(echo "$CONNECTION_JSON" | jq -r '.privateKey // empty')
+    echo "✓ Connection details loaded from ${CONNECTION_VAR_NAME}"
+  else
+    echo "::warning:: Failed to decode ${CONNECTION_VAR_NAME}, skipping..."
+  fi
+fi
+
 # Override from CI secrets
 ENV_PREFIX="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_"
 if [[ "$HOSTNAME" == "main" ]]; then

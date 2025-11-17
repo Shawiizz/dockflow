@@ -13,6 +13,7 @@ setup_machine_interactive() {
     local options=(
         "Setup a remote machine (via SSH)"
         "Setup this local machine (localhost)"
+        "Display connection information for existing user"
     )
     
     interactive_menu "Select setup type:" "${options[@]}"
@@ -31,14 +32,54 @@ setup_machine_interactive() {
         CURRENT_USER=$(whoami)
         
         echo -e "${CYAN}Detected configuration:${NC}"
-        echo -e "${BLUE}  • Server:${NC} 127.0.0.1 (local machine)"
         echo -e "${BLUE}  • Current user:${NC} $CURRENT_USER"
         echo ""
         
-        # Pre-fill the server variables
+        # Try to get the real IP address of the server for connection string
+        DEFAULT_IP="127.0.0.1"
+        # Try to get public IP first
+        PUBLIC_IP=$(curl -s -4 ifconfig.me 2>/dev/null || curl -s -4 icanhazip.com 2>/dev/null || curl -s -4 api.ipify.org 2>/dev/null)
+        if [ -n "$PUBLIC_IP" ] && [[ "$PUBLIC_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            DEFAULT_IP="$PUBLIC_IP"
+        else
+            # Fallback to local IP
+            LOCAL_IP=$(ip route get 1 2>/dev/null | awk '{print $7; exit}' || hostname -I 2>/dev/null | awk '{print $1}')
+            if [ -n "$LOCAL_IP" ] && [[ "$LOCAL_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                DEFAULT_IP="$LOCAL_IP"
+            fi
+        fi
+        
+        # Try to get the real SSH port from configuration
+        DEFAULT_SSH_PORT="22"
+        # Check SSH config file
+        if [ -f /etc/ssh/sshd_config ]; then
+            CONFIG_PORT=$(grep -E "^Port " /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}')
+            if [ -n "$CONFIG_PORT" ] && [[ "$CONFIG_PORT" =~ ^[0-9]+$ ]]; then
+                DEFAULT_SSH_PORT="$CONFIG_PORT"
+            fi
+        fi
+        # Alternatively, check which port sshd is listening on
+        if [ "$DEFAULT_SSH_PORT" = "22" ]; then
+            LISTENING_PORT=$(ss -tlnp 2>/dev/null | grep sshd | grep -oP ':\K[0-9]+' | head -1)
+            if [ -n "$LISTENING_PORT" ] && [[ "$LISTENING_PORT" =~ ^[0-9]+$ ]]; then
+                DEFAULT_SSH_PORT="$LISTENING_PORT"
+            fi
+        fi
+        
+        # Ask for server details (for connection string)
+        echo -e "${CYAN}Server connection details (for connection string):${NC}"
+        prompt_host "Server IP address" REAL_SERVER_IP "$DEFAULT_IP"
+        prompt_port "SSH port" REAL_SSH_PORT "$DEFAULT_SSH_PORT"
+        echo ""
+        
+        # Pre-fill the server variables for local connection
         export SERVER_IP="127.0.0.1"
         export SSH_PORT="22"
         export REMOTE_USER="$CURRENT_USER"
+        
+        # Store real server details for connection string
+        export REAL_SERVER_IP
+        export REAL_SSH_PORT
         
         # Ask for sudo password for the current user
         read -srp "Enter your sudo password: " BECOME_PASSWORD
@@ -175,18 +216,11 @@ EOF
             echo "   LOCAL MACHINE SETUP COMPLETED"
             echo -e "===========================================================${NC}"
             echo ""
-            echo -e "${YELLOW}Here is the SSH private key for deployment user $USER (keep it secure):${NC}"
             
-            # Retrieve the private key from deployment user's home
-            if [ "$USER" != "$(whoami)" ]; then
-                # Different user - read from their home with sudo
-                echo "${BECOME_PASSWORD}" | sudo -S cat "/home/$USER/.ssh/dockflow_key" 2>/dev/null || echo "[Error: Could not retrieve private key]"
-            else
-                # Same user - read from current home
-                cat "$HOME/.ssh/dockflow_key" 2>/dev/null || echo "[Error: Could not retrieve private key]"
-            fi
+            # Display connection information with private key and connection string
+            # Use real server details if available (for local setup), otherwise use SERVER_IP
+            display_deployment_connection_info "${REAL_SERVER_IP:-$SERVER_IP}" "${REAL_SSH_PORT:-$SSH_PORT}" "${USER}"
             
-            echo ""
             echo -e "${GREEN}This machine is now ready to receive deployments of Docker applications.${NC}"
             echo ""
         else
@@ -196,6 +230,58 @@ EOF
             echo -e "${YELLOW}The setup process encountered errors. Please check the logs above for details.${NC}"
             echo ""
         fi
+        
+        echo ""
+        read -p "Press Enter to exit..." -n 1 -r
+        echo ""
+        exit 0
+    elif [ "$SETUP_TYPE" = "2" ]; then
+        # Display connection information only
+        echo ""
+        echo -e "${CYAN}Display connection information for an existing deployment user${NC}"
+        echo ""
+        
+        # Try to get the real IP address of the server
+        DEFAULT_IP="127.0.0.1"
+        # Try to get public IP first
+        PUBLIC_IP=$(curl -s -4 ifconfig.me 2>/dev/null || curl -s -4 icanhazip.com 2>/dev/null || curl -s -4 api.ipify.org 2>/dev/null)
+        if [ -n "$PUBLIC_IP" ] && [[ "$PUBLIC_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            DEFAULT_IP="$PUBLIC_IP"
+        else
+            # Fallback to local IP
+            LOCAL_IP=$(ip route get 1 2>/dev/null | awk '{print $7; exit}' || hostname -I 2>/dev/null | awk '{print $1}')
+            if [ -n "$LOCAL_IP" ] && [[ "$LOCAL_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                DEFAULT_IP="$LOCAL_IP"
+            fi
+        fi
+        
+        # Ask for server details
+        prompt_host "Server IP address (for connection string)" SERVER_IP "$DEFAULT_IP"
+        prompt_port "SSH port (for connection string)" SSH_PORT "22"
+        
+        # Ask for deployment user
+        prompt_username "Deployment user name" DISPLAY_USER "dockflow"
+        
+        echo ""
+        
+        # Ask for sudo password to read the local key
+        read -srp "Enter your sudo password to retrieve the SSH key: " BECOME_PASSWORD
+        echo ""
+        echo ""
+        
+        export SERVER_IP
+        export SSH_PORT
+        export USER="$DISPLAY_USER"
+        export BECOME_PASSWORD
+        
+        echo ""
+        echo -e "${GREEN}==========================================================="
+        echo "   CONNECTION INFORMATION"
+        echo -e "===========================================================${NC}"
+        echo ""
+        
+        # Display connection information
+        display_deployment_connection_info "${SERVER_IP}" "${SSH_PORT}" "${USER}"
         
         echo ""
         read -p "Press Enter to exit..." -n 1 -r

@@ -69,26 +69,10 @@ run_ansible_playbook() {
         echo -e "===========================================================${NC}"
         echo -e "${YELLOW}The setup process encountered errors. Please check the logs above for details.${NC}"
         echo ""
-        echo -e "${YELLOW}Here is the SSH private key for deployment user $USER (keep it secure):${NC}"
         
-        # Retrieve the private key from the remote server
-        if [ "${SERVER_IP:-}" = "127.0.0.1" ] || [ "${SERVER_IP:-}" = "localhost" ]; then
-            # Local - read directly
-            if [ "$USER" != "$(whoami)" ]; then
-                echo "${BECOME_PASSWORD}" | sudo -S cat "/home/$USER/.ssh/dockflow_key" 2>/dev/null || echo "[Error: Could not retrieve private key]"
-            else
-                cat "$HOME/.ssh/dockflow_key" 2>/dev/null || echo "[Error: Could not retrieve private key]"
-            fi
-        else
-            # Remote - retrieve via SSH
-            if [ "${AUTH_METHOD:-}" = "password" ] && command -v sshpass &> /dev/null; then
-                SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=no "$REMOTE_USER@$SERVER_IP" "sudo cat /home/$USER/.ssh/dockflow_key" 2>/dev/null || echo "[Error: Could not retrieve private key]"
-            elif [ -n "${SSH_PRIVATE_KEY_PATH:-}" ]; then
-                ssh -p "${SSH_PORT:-22}" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no "$REMOTE_USER@$SERVER_IP" "sudo cat /home/$USER/.ssh/dockflow_key" 2>/dev/null || echo "[Error: Could not retrieve private key]"
-            fi
-        fi
+        # Display connection information even on failure
+        display_deployment_connection_info "${SERVER_IP}" "${SSH_PORT}" "${USER}"
         
-        echo ""
         echo -e "${RED}You need to investigate and fix the errors before the machine can receive deployments.${NC}"
         echo -e "${YELLOW}Once fixed, you may need to re-run the setup process.${NC}"
         exit 1
@@ -100,25 +84,9 @@ display_completion() {
     echo "   REMOTE MACHINE SETUP COMPLETED"
     echo -e "===========================================================${NC}"
     echo ""
-    echo -e "${YELLOW}Here is the SSH private key for deployment user $USER (keep it secure):${NC}"
     
-    # Retrieve the private key from the remote server
-    if [ "${SERVER_IP:-}" = "127.0.0.1" ] || [ "${SERVER_IP:-}" = "localhost" ]; then
-        # Local - read directly
-        if [ "$USER" != "$(whoami)" ]; then
-            echo "${BECOME_PASSWORD}" | sudo -S cat "/home/$USER/.ssh/dockflow_key" 2>/dev/null || echo "[Error: Could not retrieve private key]"
-        else
-            cat "$HOME/.ssh/dockflow_key" 2>/dev/null || echo "[Error: Could not retrieve private key]"
-        fi
-    else
-        # Remote - retrieve via SSH
-        if [ "${AUTH_METHOD:-}" = "password" ] && command -v sshpass &> /dev/null; then
-            SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=no "$REMOTE_USER@$SERVER_IP" "sudo cat /home/$USER/.ssh/dockflow_key" 2>/dev/null || echo "[Error: Could not retrieve private key]"
-        elif [ -n "${SSH_PRIVATE_KEY_PATH:-}" ]; then
-            ssh -p "${SSH_PORT:-22}" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no "$REMOTE_USER@$SERVER_IP" "sudo cat /home/$USER/.ssh/dockflow_key" 2>/dev/null || echo "[Error: Could not retrieve private key]"
-        fi
-    fi
+    # Display connection information with private key and connection string
+    display_deployment_connection_info "${SERVER_IP}" "${SSH_PORT}" "${USER}"
     
-    echo ""
     echo -e "${GREEN}The machine is now ready to receive deployments of Docker applications.${NC}"
 }
