@@ -81,13 +81,9 @@ setup_machine_interactive() {
         export REAL_SERVER_IP
         export REAL_SSH_PORT
         
-        # Ask for sudo password for the current user
-        read -srp "Enter your sudo password: " BECOME_PASSWORD
-        echo ""
-        echo ""
-        
-        export REMOTE_PASSWORD="$BECOME_PASSWORD"
-        export AUTH_METHOD="password"
+        # Pre-fill authentication for local connection (no password needed, using local connection)
+        export REMOTE_USER="$CURRENT_USER"
+        export AUTH_METHOD="local"
         
         # Ask if user wants to create a deployment user
         echo ""
@@ -110,7 +106,6 @@ setup_machine_interactive() {
             print_heading "USING CURRENT USER FOR DEPLOYMENT"
             
             export USER="$CURRENT_USER"
-            export USER_PASSWORD="$BECOME_PASSWORD"
             
             # Generate SSH key if needed for current user
             SHOULD_GENERATE=false
@@ -195,14 +190,15 @@ setup_machine_interactive() {
         TEMP_INVENTORY=$(mktemp)
         cat > "$TEMP_INVENTORY" << EOF
 [all]
-local ansible_connection=local ansible_become_password=$BECOME_PASSWORD
+local ansible_connection=local
 EOF
         
-        # Pass the become password directly via inventory instead of extra-vars for security
+        # Use -K to ask for become password interactively (more secure)
         ansible-playbook ansible/configure_host.yml \
             --inventory="$TEMP_INVENTORY" \
             --become \
             --become-method=sudo \
+            --ask-become-pass \
             --skip-tags "$SKIP_TAGS" \
             --extra-vars "skip_docker_install=${SKIP_DOCKER_INSTALL:-false} ansible_user=$USER"
         
@@ -264,18 +260,12 @@ EOF
         
         echo ""
         
-        # Ask for sudo password to read the local key
-        read -srp "Enter your sudo password to retrieve the SSH key: " BECOME_PASSWORD
-        echo ""
-        echo ""
-        
         export SERVER_IP
         export SSH_PORT
         export USER="$DISPLAY_USER"
-        export BECOME_PASSWORD
         
         echo ""
-        echo -e "${GREEN}==========================================================="
+        echo -e "${GREEN}=========================================================="
         echo "   CONNECTION INFORMATION"
         echo -e "===========================================================${NC}"
         echo ""

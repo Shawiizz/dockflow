@@ -38,6 +38,8 @@ if [[ "$HOSTNAME" != "main" && -f ".deployment/env/.env.${ENV}.${HOSTNAME}" ]]; 
 fi
 set +a
 
+ENV_PREFIX="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_"
+
 # Parse CONNECTION string if provided (format: base64 encoded JSON with host, port, user, privateKey)
 CONNECTION_VAR_NAME="${ENV_PREFIX}CONNECTION"
 if [[ -n "${!CONNECTION_VAR_NAME}" ]]; then
@@ -55,7 +57,6 @@ if [[ -n "${!CONNECTION_VAR_NAME}" ]]; then
 fi
 
 # Override from CI secrets
-ENV_PREFIX="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_"
 if [[ "$HOSTNAME" == "main" ]]; then
   while IFS= read -r var; do
     [[ "$var" =~ ^${ENV_PREFIX}.+ ]] && export "${var#${ENV_PREFIX}}=${!var}"

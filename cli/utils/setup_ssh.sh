@@ -112,7 +112,7 @@ get_ssh_connection() {
         
         echo ""
         print_success "Generating new SSH key pair..."
-        ssh-keygen -t ed25519 -f "$SSH_PRIVATE_KEY_PATH" -N "" -C "$REMOTE_USER-automation"
+        ssh-keygen -t ed25519 -f "$SSH_PRIVATE_KEY_PATH" -N "" -C "$REMOTE_USER-automation" >/dev/null 2>&1
         
         echo ""
         echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -217,7 +217,7 @@ generate_ansible_ssh_key() {
         print_success "Generating new SSH key pair for deployment user $USER..."
         
         TEMP_KEY_DIR=$(mktemp -d)
-        ssh-keygen -t ed25519 -f "$TEMP_KEY_DIR/dockflow_key" -N "" -C "dockflow-$USER"
+        ssh-keygen -t ed25519 -f "$TEMP_KEY_DIR/dockflow_key" -N "" -C "dockflow-$USER" >/dev/null 2>&1
         ANSIBLE_PUBLIC_KEY=$(cat "$TEMP_KEY_DIR/dockflow_key.pub")
         ANSIBLE_PRIVATE_KEY=$(cat "$TEMP_KEY_DIR/dockflow_key")
         
