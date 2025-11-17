@@ -121,6 +121,7 @@ setup_machine_interactive() {
         fi
         
         export HOST=$SERVER_IP
+        export PORT=$SSH_PORT
         
         echo "Running Ansible playbook on local machine..."
         export ANSIBLE_HOST_KEY_CHECKING=False

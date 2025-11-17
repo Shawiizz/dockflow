@@ -216,6 +216,7 @@ Create `.deployment/env/.env.[environment]` with your variables (optional):
 ```bash
 # .env.production
 HOST=192.168.1.10              # Can be overridden by PRODUCTION_HOST CI secret
+PORT=22                        # Can be overridden by PRODUCTION_PORT CI secret (SSH port, default: 22)
 USER=dockflow                  # Can be overridden by PRODUCTION_USER CI secret
 DB_PASSWORD=$DB_SECRET         # Reference to CI secret (if you need 1 variable and use it in several envs without duplicating ci secret)
 API_PORT=3000                  # Can be overridden by PRODUCTION_API_PORT CI secret
@@ -347,12 +348,14 @@ Deploy to multiple servers in the same environment:
 ```bash
 # .env.production (main)
 HOST=192.168.1.10
+PORT=22
 API_PORT=3000
 ```
 
 ```bash
 # .env.production.server-a
 HOST=192.168.1.11
+PORT=2222                        # Override SSH port if different
 API_PORT=3001                    # Override main config
 REDIS_URL=redis://server-a:6379 # Additional config
 ```

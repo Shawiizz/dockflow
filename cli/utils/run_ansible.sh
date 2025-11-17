@@ -50,6 +50,7 @@ run_ansible_playbook() {
     fi
     
     export HOST=$SERVER_IP
+    export PORT=$SSH_PORT
     export USER
     export USER_PASSWORD
     
