@@ -454,20 +454,26 @@ show_main_menu() {
 
         if [ "$MAIN_OPTION" = "0" ]; then
             setup_machine_interactive
-            echo ""
+            # Return to main menu after completion
+            continue
         elif [ "$MAIN_OPTION" = "1" ]; then
             setup_project
-            echo ""
+            # Return to main menu after completion
+            continue
         elif [ "$MAIN_OPTION" = "2" ]; then
             echo ""
             tput cnorm  # Restore cursor
             print_success "Thank you for using Dockflow CLI. Goodbye!"
             exit 0
         else
-            print_warning "Invalid option."
-            exit 1
+            # User pressed 'q' or invalid option
+            echo ""
+            tput cnorm  # Restore cursor
+            print_success "Thank you for using Dockflow CLI. Goodbye!"
+            exit 0
         fi
     done
 }
 
+# Only show main menu if script wasn't interrupted
 show_main_menu

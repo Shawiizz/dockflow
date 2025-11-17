@@ -140,6 +140,6 @@ echo -e "${BLUE}[5/5] Starting Dockflow CLI...${NC}"
 echo ""
 
 cd "$EXTRACTED_DIR"
-./cli/cli.sh "$@"
+exec bash -c "./cli/cli.sh $*" < /dev/tty
 
 # Cleanup is handled by trap
