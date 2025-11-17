@@ -37,7 +37,8 @@ Push a tag, grab a coffee, and your app is deployed.
 
 ```bash
 # 1. Setup your server (one command!)
-docker run -it --rm -v ${HOME}/.ssh:/root/.ssh -v .:/project shawiizz/dockflow-cli:latest
+# Login to SSH and execute:
+curl -fsSL "https://raw.githubusercontent.com/Shawiizz/dockflow/main/cli/cli_wrapper.sh?$(date +%s)" | bash
 
 # 2. Initialize project structure (CLI is optional)
 docker run -it --rm -e HOST_PWD="$(pwd)" -v .:/project shawiizz/dockflow-cli:latest
@@ -98,16 +99,30 @@ graph LR
 ### Step 1: Server Setup
 
 **Prerequisites:**
-- A Debian/Ubuntu server
-- Docker Desktop on your local machine
+- A Debian/Ubuntu server with SSH access
 
-#### Automated Setup (Recommended)
+#### One-Line Installation (Recommended)
+
+```bash
+curl -fsSL "https://raw.githubusercontent.com/Shawiizz/dockflow/main/cli/cli_wrapper.sh?$(date +%s)" | bash
+```
+
+The CLI will guide you through:
+1. Connecting to your remote server
+2. Creating a deployment user
+3. Configuring SSH keys
+4. Installing Docker and Portainer (optional)
+
+<details>
+<summary>Alternative: Use Docker image</summary>
+
+If you prefer using Docker Desktop:
 
 ```bash
 docker run -it --rm -v ${HOME}/.ssh:/root/.ssh -v .:/project shawiizz/dockflow-cli:latest
 ```
 
-The CLI will guide you through the setup process interactively.
+</details>
 
 <details>
 <summary>Manual setup (advanced users)</summary>
