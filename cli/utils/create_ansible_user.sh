@@ -82,30 +82,9 @@ setup_ansible_user() {
     fi
     
     # Prompt for password with validation
-    echo ""
     if [ "$USER_EXISTS" = true ]; then
         # User exists - verify the password is correct
-        while true; do
-            read -srp "Password for existing user $DOCKFLOW_USER: " DOCKFLOW_PASSWORD
-            echo ""
-            
-            # Validate password is not empty
-            if [ -z "$DOCKFLOW_PASSWORD" ]; then
-                print_warning "Password cannot be empty. Please try again."
-                echo ""
-                continue
-            fi
-            
-            # Verify password against the system using su
-            print_step "Verifying password..."
-            if echo "$DOCKFLOW_PASSWORD" | su -c "true" "$DOCKFLOW_USER" 2>/dev/null; then
-                print_success "Password verified successfully"
-                break
-            else
-                print_warning "Invalid password. Please try again."
-                echo ""
-            fi
-        done
+        prompt_and_validate_user_password "$DOCKFLOW_USER" "DOCKFLOW_PASSWORD"
     else
         # New user - double confirmation
         while true; do

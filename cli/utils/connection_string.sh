@@ -107,9 +107,8 @@ display_deployment_connection_info() {
     # Prompt for password if not provided
     local DOCKFLOW_PASSWORD_LOCAL=""
     if [ -z "$DOCKFLOW_PASSWORD_PARAM" ]; then
-        echo ""
-        read -srp "Password for user $DOCKFLOW_USER: " DOCKFLOW_PASSWORD_LOCAL
-        echo ""
+        # Verify password against the system
+        prompt_and_validate_user_password "$DOCKFLOW_USER" "DOCKFLOW_PASSWORD_LOCAL"
         echo ""
     else
         DOCKFLOW_PASSWORD_LOCAL="$DOCKFLOW_PASSWORD_PARAM"

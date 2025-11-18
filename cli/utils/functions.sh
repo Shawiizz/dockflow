@@ -183,3 +183,56 @@ prompt_and_validate_sudo_password() {
     done
 }
 
+# Verify user password
+# Usage: verify_user_password "username" "password"
+# Returns: 0 if password is valid, 1 if invalid
+verify_user_password() {
+    local username="$1"
+    local password="$2"
+    
+    if [ -z "$username" ] || [ -z "$password" ]; then
+        return 1
+    fi
+    
+    # Use sudo to verify the password (works even when running as root)
+    sudo -k -S -u "$username" true 2>&1 <<< "$password" >/dev/null 2>&1
+    return $?
+}
+
+# Prompt and validate user password
+# Usage: prompt_and_validate_user_password "username" [variable_name]
+# Sets: The specified variable name (default: USER_PASSWORD)
+# Returns: 0 on success
+prompt_and_validate_user_password() {
+    local username="$1"
+    local var_name="${2:-USER_PASSWORD}"
+    local user_password=""
+    
+    if [ -z "$username" ]; then
+        print_error "Username is required"
+        return 1
+    fi
+    
+    while true; do
+        echo ""
+        read -srp "Password for user $username: " user_password
+        echo ""
+        
+        # Validate password is not empty
+        if [ -z "$user_password" ]; then
+            print_warning "Password cannot be empty. Please try again."
+            continue
+        fi
+        
+        # Verify password using sudo
+        print_step "Verifying password..."
+        if verify_user_password "$username" "$user_password"; then
+            print_success "Password verified successfully"
+            eval "$var_name='$user_password'"
+            return 0
+        else
+            print_warning "Invalid password. Please try again."
+        fi
+    done
+}
+
