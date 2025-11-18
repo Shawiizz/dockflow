@@ -100,7 +100,7 @@ setup_machine() {
     echo -e "${CYAN}Remote server:${NC} $SERVER_IP:$SSH_PORT"
     echo -e "${CYAN}Remote user:${NC} $REMOTE_USER"
     echo -e "${CYAN}Authentication method:${NC} $AUTH_METHOD"
-    echo -e "${CYAN}Deployment user:${NC} $USER"
+    echo -e "${CYAN}Deployment user:${NC} $DOCKFLOW_USER"
     if [ "$USER_NEEDS_SETUP" = true ]; then
         echo -e "${CYAN}Deployment user will be created:${NC} Yes"
     else

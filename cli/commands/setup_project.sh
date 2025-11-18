@@ -15,8 +15,10 @@ create_project_structure() {
     # Create .env.production with required configuration
     ENV_PROD_FILE="$CLI_PROJECT_DIR/.deployment/env/.env.production"
     if [ ! -f "$ENV_PROD_FILE" ]; then
-        echo "HOST=to_replace" > "$ENV_PROD_FILE"
-        echo "USER=dockflow" >> "$ENV_PROD_FILE"
+        mkdir -p "$(dirname "$ENV_PROD_FILE")"
+        echo "DOCKFLOW_HOST=to_replace" > "$ENV_PROD_FILE"
+        echo "DOCKFLOW_PORT=22" >> "$ENV_PROD_FILE"
+        echo "DOCKFLOW_USER=dockflow" >> "$ENV_PROD_FILE"
         print_success "Created .env.production file"
     else
         print_warning ".env.production file already exists, skipping"

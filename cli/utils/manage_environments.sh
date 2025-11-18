@@ -83,18 +83,19 @@ add_environment() {
     # Create the environment file
     mkdir -p "$CLI_PROJECT_DIR/.deployment/env"
     
-    cat > "$env_file" <<EOF
-HOST=${HOST_VALUE}
-USER=${USER_VALUE}
+        # Write the .env file with basic structure
+    cat > "$env_file" << EOF
+# Server connection
+DOCKFLOW_HOST=${DOCKFLOW_HOST_VALUE}
+DOCKFLOW_PORT=22
 EOF
     
     echo ""
-    print_success "Environment '${ENV_NAME}' created successfully!"
+    print_success "Environment file created: $env_file"
     echo ""
-    echo -e "${CYAN}File created:${NC} .deployment/env/.env.${ENV_NAME}"
-    echo -e "${CYAN}Content:${NC}"
-    echo "  HOST=${HOST_VALUE}"
-    echo "  USER=${USER_VALUE}"
+    echo -e "${CYAN}Configuration:${NC}"
+    echo "  DOCKFLOW_HOST=${DOCKFLOW_HOST_VALUE}"
+    echo "  DOCKFLOW_PORT=22"
     echo ""
     print_info "💡 You can add more environment variables by editing the file"
     echo ""
@@ -220,11 +221,10 @@ edit_environment() {
             # Convert to uppercase
             VAR_NAME=$(echo "$VAR_NAME" | tr '[:lower:]' '[:upper:]')
             
-            # Prevent removing HOST and USER
-            if [ "$VAR_NAME" = "HOST" ] || [ "$VAR_NAME" = "USER" ]; then
-                print_warning "Cannot remove required variable: $VAR_NAME"
-                return 1
-            fi
+                        
+            # Prevent removing DOCKFLOW_HOST and USER
+            if [ "$VAR_NAME" = "DOCKFLOW_HOST" ] || [ "$VAR_NAME" = "USER" ]; then
+                print_error "Cannot remove $VAR_NAME (required variable)"
             
             if grep -q "^${VAR_NAME}=" "$env_file" 2>/dev/null; then
                 if confirm_action "Are you sure you want to remove ${VAR_NAME}?" "n"; then

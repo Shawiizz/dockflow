@@ -105,7 +105,7 @@ setup_machine_interactive() {
             # Use current user for deployment
             print_heading "USING CURRENT USER FOR DEPLOYMENT"
             
-            export USER="$CURRENT_USER"
+            export DOCKFLOW_USER="$CURRENT_USER"
             
             # Generate SSH key if needed for current user
             SHOULD_GENERATE=false
@@ -146,7 +146,7 @@ setup_machine_interactive() {
         echo ""
         echo -e "${CYAN}Target:${NC} Local machine (127.0.0.1)"
         echo -e "${CYAN}Current user:${NC} $CURRENT_USER"
-        echo -e "${CYAN}Deployment user:${NC} $USER"
+        echo -e "${CYAN}Deployment user:${NC} $DOCKFLOW_USER"
         if [ "$USER_NEEDS_SETUP" = true ]; then
             echo -e "${CYAN}Deployment user will be created:${NC} Yes"
         else
@@ -175,8 +175,8 @@ setup_machine_interactive() {
             SKIP_TAGS="$SKIP_TAGS,portainer,nginx"
         fi
         
-        export HOST=$SERVER_IP
-        export PORT=$SSH_PORT
+        export DOCKFLOW_HOST=$SERVER_IP
+        export DOCKFLOW_PORT=$SSH_PORT
         
         echo "Running Ansible playbook on local machine..."
         export ANSIBLE_HOST_KEY_CHECKING=False
@@ -198,11 +198,10 @@ EOF
             --inventory="$TEMP_INVENTORY" \
             --become \
             --become-method=sudo \
-            --ask-become-pass \
-            --skip-tags "$SKIP_TAGS" \
-            --extra-vars "skip_docker_install=${SKIP_DOCKER_INSTALL:-false} ansible_user=$USER"
-        
-        ANSIBLE_RETURN_CODE=$?
+            -K \
+            --skip-tags="$SKIP_TAGS" \
+            --extra-vars "skip_docker_install=${SKIP_DOCKER_INSTALL:-false} ansible_user=$DOCKFLOW_USER"        
+            ANSIBLE_RETURN_CODE=$?
         
         # Clean up temporary inventory
         rm -f "$TEMP_INVENTORY"
@@ -262,7 +261,7 @@ EOF
         
         export SERVER_IP
         export SSH_PORT
-        export USER="$DISPLAY_USER"
+        export DOCKFLOW_USER="$DISPLAY_USER"
         
         echo ""
         echo -e "${GREEN}=========================================================="

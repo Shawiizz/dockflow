@@ -49,9 +49,9 @@ run_ansible_playbook() {
         SKIP_TAGS="$SKIP_TAGS,portainer,nginx"
     fi
     
-    export HOST=$SERVER_IP
-    export PORT=$SSH_PORT
-    export USER
+    export DOCKFLOW_HOST=$SERVER_IP
+    export DOCKFLOW_PORT=$SSH_PORT
+    export DOCKFLOW_USER
     export USER_PASSWORD
     
     echo "Running Ansible playbook..."
@@ -59,7 +59,7 @@ run_ansible_playbook() {
     ansible-galaxy role install geerlingguy.docker
     
     cd "$CLI_ROOT_DIR/.." || exit 1
-    ansible-playbook ansible/configure_host.yml -i "$HOST," --user="$USER" --private-key=~/.ssh/deploy_key --skip-tags "$SKIP_TAGS" --extra-vars "skip_docker_install=${SKIP_DOCKER_INSTALL:-false}"
+    ansible-playbook ansible/configure_host.yml -i "$DOCKFLOW_HOST," --user="$DOCKFLOW_USER" --private-key=~/.ssh/deploy_key --skip-tags "$SKIP_TAGS" --extra-vars "skip_docker_install=${SKIP_DOCKER_INSTALL:-false}"
     
     # Check if Ansible playbook execution was successful
     ANSIBLE_RETURN_CODE=$?
@@ -71,7 +71,7 @@ run_ansible_playbook() {
         echo ""
         
         # Display connection information even on failure
-        display_deployment_connection_info "${SERVER_IP}" "${SSH_PORT}" "${USER}"
+        display_deployment_connection_info "${SERVER_IP}" "${SSH_PORT}" "${DOCKFLOW_USER}"
         
         echo -e "${RED}You need to investigate and fix the errors before the machine can receive deployments.${NC}"
         echo -e "${YELLOW}Once fixed, you may need to re-run the setup process.${NC}"
@@ -86,7 +86,7 @@ display_completion() {
     echo ""
     
     # Display connection information with private key and connection string
-    display_deployment_connection_info "${SERVER_IP}" "${SSH_PORT}" "${USER}"
+    display_deployment_connection_info "${SERVER_IP}" "${SSH_PORT}" "${DOCKFLOW_USER}"
     
     echo -e "${GREEN}The machine is now ready to receive deployments of Docker applications.${NC}"
 }

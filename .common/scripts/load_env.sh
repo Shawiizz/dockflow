@@ -4,7 +4,7 @@
 
 ENV="$1"
 HOSTNAME="${2:-main}"
-USER_VAR_DEFINED_BY_CI="$USER"
+SYSTEM_USER="$USER"
 
 # Convert Windows line endings to Unix line endings in .deployment files
 if [ -d ".deployment" ]; then
@@ -46,10 +46,11 @@ if [[ -n "${!CONNECTION_VAR_NAME}" ]]; then
   echo "Parsing ${CONNECTION_VAR_NAME}..."
   CONNECTION_JSON=$(echo "${!CONNECTION_VAR_NAME}" | base64 -d 2>/dev/null)
   if [[ $? -eq 0 && -n "$CONNECTION_JSON" ]]; then
-    export HOST=$(echo "$CONNECTION_JSON" | jq -r '.host // empty')
-    export PORT=$(echo "$CONNECTION_JSON" | jq -r '.port // empty')
-    export USER=$(echo "$CONNECTION_JSON" | jq -r '.user // empty')
+    export DOCKFLOW_HOST=$(echo "$CONNECTION_JSON" | jq -r '.host // empty')
+    export DOCKFLOW_PORT=$(echo "$CONNECTION_JSON" | jq -r '.port // empty')
+    export DOCKFLOW_USER=$(echo "$CONNECTION_JSON" | jq -r '.user // empty')
     export SSH_PRIVATE_KEY=$(echo "$CONNECTION_JSON" | jq -r '.privateKey // empty')
+    unset "${CONNECTION_VAR_NAME}"
     echo "✓ Connection details loaded from ${CONNECTION_VAR_NAME}"
   else
     echo "::warning:: Failed to decode ${CONNECTION_VAR_NAME}, skipping..."
@@ -68,12 +69,12 @@ else
   done < <(env | awk -F= -v prefix="$ENV_HOSTNAME_PREFIX" '$1 ~ "^"prefix {print $1}')
 fi
 
-# Set USER (override if CI, default to 'dockflow')
-[[ -n "$USER" && "$USER" != "$USER_VAR_DEFINED_BY_CI" ]] && export USER="$USER" || export USER="dockflow"
+# Set DOCKFLOW_USER (override if CI, default to 'dockflow')
+[[ -n "$DOCKFLOW_USER" && "$DOCKFLOW_USER" != "$SYSTEM_USER" ]] && export DOCKFLOW_USER="$DOCKFLOW_USER" || export DOCKFLOW_USER="dockflow"
 
 # Verify required variables (skip for build environment)
 if [[ "$ENV" != "build" ]]; then
-  [[ -z "$HOST" ]] && echo "::error:: HOST is not defined. Please set it in .env file or as CI secret (${ENV_PREFIX}HOST)" && exit 1
+  [[ -z "$DOCKFLOW_HOST" ]] && echo "::error:: DOCKFLOW_HOST is not defined. Please set it in .env file or as CI secret (${ENV_PREFIX}DOCKFLOW_HOST)" && exit 1
   [[ -z "$SSH_PRIVATE_KEY" ]] && echo "::error:: SSH_PRIVATE_KEY is not defined. Please set it as CI secret (${ENV_PREFIX}SSH_PRIVATE_KEY)" && exit 1
 fi
 

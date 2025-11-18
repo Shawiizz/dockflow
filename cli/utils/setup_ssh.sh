@@ -152,11 +152,11 @@ generate_ansible_ssh_key() {
     # Determine if we're setting up local or remote
     if [ "${SERVER_IP:-}" = "127.0.0.1" ] || [ "${SERVER_IP:-}" = "localhost" ]; then
         # Local setup - check if key exists for deployment user locally
-        if [ -n "${USER:-}" ] && [ "$USER" != "$(whoami)" ]; then
+        if [ -n "${DOCKFLOW_USER:-}" ] && [ "$DOCKFLOW_USER" != "$(whoami)" ]; then
             # Different user - check in their home directory using stored sudo password
-            if echo "${BECOME_PASSWORD:-}" | sudo -S test -f "/home/$USER/.ssh/dockflow_key" 2>/dev/null; then
+            if echo "${BECOME_PASSWORD:-}" | sudo -S test -f "/home/$DOCKFLOW_USER/.ssh/dockflow_key" 2>/dev/null; then
                 KEY_EXISTS=true
-                EXISTING_PUBLIC_KEY=$(echo "${BECOME_PASSWORD:-}" | sudo -S cat "/home/$USER/.ssh/dockflow_key.pub" 2>/dev/null || echo "")
+                EXISTING_PUBLIC_KEY=$(echo "${BECOME_PASSWORD:-}" | sudo -S cat "/home/$DOCKFLOW_USER/.ssh/dockflow_key.pub" 2>/dev/null || echo "")
             fi
         else
             # Same user - check in current home
@@ -170,17 +170,17 @@ generate_ansible_ssh_key() {
         if [ -n "${SERVER_IP:-}" ] && [ -n "${REMOTE_USER:-}" ]; then
             if [ "${AUTH_METHOD:-}" = "password" ]; then
                 if command -v sshpass &> /dev/null && [ -n "${REMOTE_PASSWORD:-}" ]; then
-                    REMOTE_KEY_CHECK=$(SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "sudo test -f /home/$USER/.ssh/dockflow_key && echo 'EXISTS' || echo 'NOTFOUND'" 2>/dev/null)
+                    REMOTE_KEY_CHECK=$(SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "sudo test -f /home/$DOCKFLOW_USER/.ssh/dockflow_key && echo 'EXISTS' || echo 'NOTFOUND'" 2>/dev/null)
                     if [ "$REMOTE_KEY_CHECK" = "EXISTS" ]; then
                         KEY_EXISTS=true
-                        EXISTING_PUBLIC_KEY=$(SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "sudo cat /home/$USER/.ssh/dockflow_key.pub" 2>/dev/null || echo "")
+                        EXISTING_PUBLIC_KEY=$(SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "sudo cat /home/$DOCKFLOW_USER/.ssh/dockflow_key.pub" 2>/dev/null || echo "")
                     fi
                 fi
             elif [ -n "${SSH_PRIVATE_KEY_PATH:-}" ]; then
-                REMOTE_KEY_CHECK=$(ssh -p "${SSH_PORT:-22}" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "sudo test -f /home/$USER/.ssh/dockflow_key && echo 'EXISTS' || echo 'NOTFOUND'" 2>/dev/null)
+                REMOTE_KEY_CHECK=$(ssh -p "${SSH_PORT:-22}" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "sudo test -f /home/$DOCKFLOW_USER/.ssh/dockflow_key && echo 'EXISTS' || echo 'NOTFOUND'" 2>/dev/null)
                 if [ "$REMOTE_KEY_CHECK" = "EXISTS" ]; then
                     KEY_EXISTS=true
-                    EXISTING_PUBLIC_KEY=$(ssh -p "${SSH_PORT:-22}" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "sudo cat /home/$USER/.ssh/dockflow_key.pub" 2>/dev/null || echo "")
+                    EXISTING_PUBLIC_KEY=$(ssh -p "${SSH_PORT:-22}" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "sudo cat /home/$DOCKFLOW_USER/.ssh/dockflow_key.pub" 2>/dev/null || echo "")
                 fi
             fi
         fi
@@ -189,14 +189,14 @@ generate_ansible_ssh_key() {
     # If key exists, ask if user wants to regenerate
     if [ "$KEY_EXISTS" = true ]; then
         echo ""
-        print_step "SSH key already exists for user $USER on the target server"
+        print_step "SSH key already exists for user $DOCKFLOW_USER on the target server"
         echo ""
         
-        if confirm_action "Do you want to regenerate the SSH key for user $USER?" "n"; then
+        if confirm_action "Do you want to regenerate the SSH key for user $DOCKFLOW_USER?" "n"; then
             print_warning "A new SSH key will be generated (the old one will be backed up)"
             GENERATE_ANSIBLE_KEY="y"
         else
-            print_success "Using existing SSH key for user $USER"
+            print_success "Using existing SSH key for user $DOCKFLOW_USER"
             GENERATE_ANSIBLE_KEY="n"
             
             # Use the existing public key
@@ -214,10 +214,10 @@ generate_ansible_ssh_key() {
 
     if [ "$GENERATE_ANSIBLE_KEY" = "y" ] || [ "$GENERATE_ANSIBLE_KEY" = "Y" ]; then
         echo ""
-        print_success "Generating new SSH key pair for deployment user $USER..."
+        print_success "Generating new SSH key pair for deployment user $DOCKFLOW_USER..."
         
         TEMP_KEY_DIR=$(mktemp -d)
-        ssh-keygen -t ed25519 -f "$TEMP_KEY_DIR/dockflow_key" -N "" -C "dockflow-$USER" >/dev/null 2>&1
+        ssh-keygen -t ed25519 -f "$TEMP_KEY_DIR/dockflow_key" -N "" -C "dockflow-$DOCKFLOW_USER" >/dev/null 2>&1
         ANSIBLE_PUBLIC_KEY=$(cat "$TEMP_KEY_DIR/dockflow_key.pub")
         ANSIBLE_PRIVATE_KEY=$(cat "$TEMP_KEY_DIR/dockflow_key")
         

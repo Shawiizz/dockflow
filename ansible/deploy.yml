@@ -37,6 +37,7 @@
         file: /tmp/ansible_env_vars.yml
       delegate_to: localhost
       run_once: true
+      no_log: true
 
     - name: Set computed variables
       set_fact:

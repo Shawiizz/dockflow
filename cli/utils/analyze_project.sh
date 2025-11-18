@@ -56,9 +56,9 @@ parse_env_file() {
     # Extract key variables
     local host=$(grep "^HOST=" "$env_file" 2>/dev/null | cut -d'=' -f2-)
     local user=$(grep "^USER=" "$env_file" 2>/dev/null | cut -d'=' -f2-)
-    local var_count=$(grep -c "^[A-Z_]*=" "$env_file" 2>/dev/null || echo "0")
+    local var_count=$(grep -c "^[A-Z_]\+=" "$env_file" 2>/dev/null || echo "0")
     
-    echo "HOST:${host}|USER:${user}|VAR_COUNT:${var_count}"
+    echo "DOCKFLOW_HOST:${host}|USER:${user}|VAR_COUNT:${var_count}"
 }
 
 # Detect CI/CD platform

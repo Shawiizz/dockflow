@@ -22,11 +22,11 @@ setup_machine_non_interactive() {
     local CREATE_USER=false
     if [ -n "$ARG_DEPLOY_USER" ]; then
         CREATE_USER=true
-        export USER="$ARG_DEPLOY_USER"
+        export DOCKFLOW_USER="$ARG_DEPLOY_USER"
         export USER_PASSWORD="$ARG_DEPLOY_PASSWORD"
     else
         # Use remote user as deploy user
-        export USER="$ARG_REMOTE_USER"
+        export DOCKFLOW_USER="$ARG_REMOTE_USER"
     fi
     
     # Setup authentication method for remote connection
@@ -46,10 +46,10 @@ setup_machine_non_interactive() {
     echo -e "${CYAN}Authentication method:${NC} $AUTH_METHOD"
     
     if [ "$CREATE_USER" = true ]; then
-        echo -e "${CYAN}Deployment user (to be created):${NC} $USER"
+        echo -e "${CYAN}Deployment user (to be created):${NC} $DOCKFLOW_USER"
         echo -e "${CYAN}Create new user:${NC} Yes"
     else
-        echo -e "${CYAN}Deployment user:${NC} $USER (existing user)"
+        echo -e "${CYAN}Deployment user:${NC} $DOCKFLOW_USER (existing user)"
         echo -e "${CYAN}Create new user:${NC} No"
     fi
     
