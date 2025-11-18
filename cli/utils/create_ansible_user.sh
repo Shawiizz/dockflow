@@ -49,11 +49,11 @@ setup_ansible_user() {
         else
             echo ""
             prompt_username "Enter a new user name" DOCKFLOW_USER ""
+
+            echo ""
+            read -srp "Password for user $DOCKFLOW_USER: " USER_PASSWORD
+            echo ""
         fi
-        
-        echo ""
-        read -srp "Password for user $DOCKFLOW_USER: " USER_PASSWORD
-        echo ""
     else
         # User doesn't exist, prompt for username with default
         prompt_username "User name" DOCKFLOW_USER "dockflow"
