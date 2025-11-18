@@ -87,7 +87,7 @@ setup_machine_interactive() {
         
         # Ask if user wants to create a deployment user
         echo ""
-        if confirm_action "Do you want to create a dedicated deployment user (dockflow)?" "y"; then
+        if confirm_action "Do you want to create or modify a dedicated deployment user (dockflow)?" "y"; then
             SETUP_USER="y"
         else
             SETUP_USER="n"

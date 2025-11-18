@@ -139,10 +139,24 @@ interactive_menu() {
 # Sets: BECOME_PASSWORD (global variable)
 # Returns: 0 on success, exits on failure
 prompt_and_validate_sudo_password() {
+    local CURRENT_USER=$(whoami)
+    
+    # Check if user is already root
+    if [ "$EUID" -eq 0 ] || [ "$(id -u)" -eq 0 ]; then
+        export BECOME_PASSWORD=""
+        return 0
+    fi
+    
+    # Check if user can sudo without password
+    if sudo -n true 2>/dev/null; then
+        export BECOME_PASSWORD=""
+        return 0
+    fi
+    
+    # User needs to provide password
     local SUDO_PASSWORD_VALID=false
     local SUDO_ATTEMPTS=0
     local MAX_SUDO_ATTEMPTS=3
-    local CURRENT_USER=$(whoami)
     
     echo ""
     

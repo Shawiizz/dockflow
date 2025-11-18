@@ -193,7 +193,7 @@ generate_ansible_ssh_key() {
         echo ""
         
         if confirm_action "Do you want to regenerate the SSH key for user $DOCKFLOW_USER?" "n"; then
-            print_warning "A new SSH key will be generated (the old one will be backed up)"
+            print_warning "A new SSH key will be generated"
             GENERATE_ANSIBLE_KEY="y"
         else
             print_success "Using existing SSH key for user $DOCKFLOW_USER"
