@@ -65,27 +65,29 @@ setup_ansible_user() {
     export USER_PASSWORD
 }
 
-create_ansible_user_on_remote() {
-    # Create temporary script for remote execution
-    TEMP_SCRIPT=$(mktemp)
-    cat > "$TEMP_SCRIPT" << EOF
+# Generate the user creation script
+# This script will be executed either locally or remotely
+generate_user_creation_script() {
+    cat << 'EOF'
 #!/bin/bash
 
 # Create user
 echo "Creating user..."
-useradd -m $DOCKFLOW_USER
+useradd -m $DOCKFLOW_USER 2>/dev/null || echo "User $DOCKFLOW_USER may already exist, continuing..."
+
+# Set password for user if provided
+if [ -n "$USER_PASSWORD" ]; then
+    echo "Setting password for $DOCKFLOW_USER..."
+    echo "$DOCKFLOW_USER:$USER_PASSWORD" | chpasswd
+fi
 
 # Add user to sudo group
-echo "Adding \$DOCKFLOW_USER to sudo group..."
-adduser $DOCKFLOW_USER sudo
+echo "Adding $DOCKFLOW_USER to sudo group..."
+usermod -aG sudo $DOCKFLOW_USER 2>/dev/null || adduser $DOCKFLOW_USER sudo 2>/dev/null
 
 # Add user to docker group
 echo "Adding $DOCKFLOW_USER to docker group..."
-usermod -aG docker $DOCKFLOW_USER
-
-# Set password for user
-echo "Setting password for $DOCKFLOW_USER..."
-echo "$DOCKFLOW_USER:$USER_PASSWORD" | chpasswd
+usermod -aG docker $DOCKFLOW_USER 2>/dev/null || echo "Docker group will be created later..."
 
 # Setup SSH directory
 echo "Setting up SSH directory..."
@@ -94,13 +96,13 @@ chmod 700 /home/$DOCKFLOW_USER/.ssh
 
 # Add public key to authorized_keys
 echo "Adding public key to authorized_keys..."
-echo "$ANSIBLE_PUBLIC_KEY" | tee /home/$DOCKFLOW_USER/.ssh/authorized_keys > /dev/null
+echo "$ANSIBLE_PUBLIC_KEY" > /home/$DOCKFLOW_USER/.ssh/authorized_keys
 chmod 600 /home/$DOCKFLOW_USER/.ssh/authorized_keys
 
 # Save private key for the deployment user
-if [ -n "\$ANSIBLE_PRIVATE_KEY" ]; then
+if [ -n "$ANSIBLE_PRIVATE_KEY" ]; then
     echo "Saving private key to /home/$DOCKFLOW_USER/.ssh/dockflow_key..."
-    echo "\$ANSIBLE_PRIVATE_KEY" > /home/$DOCKFLOW_USER/.ssh/dockflow_key
+    echo "$ANSIBLE_PRIVATE_KEY" > /home/$DOCKFLOW_USER/.ssh/dockflow_key
     chmod 600 /home/$DOCKFLOW_USER/.ssh/dockflow_key
     echo "$ANSIBLE_PUBLIC_KEY" > /home/$DOCKFLOW_USER/.ssh/dockflow_key.pub
     chmod 644 /home/$DOCKFLOW_USER/.ssh/dockflow_key.pub
@@ -110,30 +112,36 @@ fi
 echo "Setting proper ownership..."
 chown -R $DOCKFLOW_USER:$DOCKFLOW_USER /home/$DOCKFLOW_USER/.ssh
 
-echo "User $DOCKFLOW_USER has been created successfully."
+echo "User $DOCKFLOW_USER has been configured successfully."
 EOF
+}
 
+create_ansible_user_on_remote() {
+    print_heading "EXECUTING REMOTE SETUP"
+    
+    # Create temporary script for remote execution
+    TEMP_SCRIPT=$(mktemp)
+    generate_user_creation_script > "$TEMP_SCRIPT"
     chmod +x "$TEMP_SCRIPT"
 
     # Execute remote commands based on authentication method
-    print_heading "EXECUTING REMOTE SETUP"
     if [ "$AUTH_METHOD" = "password" ]; then
         # Using sshpass if available, otherwise using expect
         if command -v sshpass &> /dev/null; then
             echo "Using sshpass for password authentication..."
             SSHPASS="$REMOTE_PASSWORD" sshpass -e scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$TEMP_SCRIPT" "$REMOTE_USER@$SERVER_IP:/tmp/setup_ansible.sh"
-            SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "ANSIBLE_PRIVATE_KEY='$ANSIBLE_PRIVATE_KEY' sudo -E bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
+            SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "DOCKFLOW_USER='$DOCKFLOW_USER' USER_PASSWORD='$USER_PASSWORD' ANSIBLE_PUBLIC_KEY='$ANSIBLE_PUBLIC_KEY' ANSIBLE_PRIVATE_KEY='$ANSIBLE_PRIVATE_KEY' sudo -E bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
         else
             echo "sshpass is not installed. Using interactive SSH..."
             print_warning "You will be prompted for the password of $REMOTE_USER@$SERVER_IP"
             scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$TEMP_SCRIPT" "$REMOTE_USER@$SERVER_IP:/tmp/setup_ansible.sh"
-            ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "ANSIBLE_PRIVATE_KEY='$ANSIBLE_PRIVATE_KEY' sudo -E bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
+            ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "DOCKFLOW_USER='$DOCKFLOW_USER' USER_PASSWORD='$USER_PASSWORD' ANSIBLE_PUBLIC_KEY='$ANSIBLE_PUBLIC_KEY' ANSIBLE_PRIVATE_KEY='$ANSIBLE_PRIVATE_KEY' sudo -E bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
         fi
     else
         # Using SSH key authentication
         echo "Using SSH key authentication..."
         scp -P "$SSH_PORT" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$TEMP_SCRIPT" "$REMOTE_USER@$SERVER_IP:/tmp/setup_ansible.sh"
-        ssh -p "$SSH_PORT" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "ANSIBLE_PRIVATE_KEY='$ANSIBLE_PRIVATE_KEY' sudo -E bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
+        ssh -p "$SSH_PORT" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "DOCKFLOW_USER='$DOCKFLOW_USER' USER_PASSWORD='$USER_PASSWORD' ANSIBLE_PUBLIC_KEY='$ANSIBLE_PUBLIC_KEY' ANSIBLE_PRIVATE_KEY='$ANSIBLE_PRIVATE_KEY' sudo -E bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
     fi
 
     rm "$TEMP_SCRIPT"
@@ -151,45 +159,19 @@ create_ansible_user_locally() {
     
     echo "Creating user $DOCKFLOW_USER on local machine..."
     
-    # Create user
-    echo "$BECOME_PASSWORD" | sudo -S useradd -m "$DOCKFLOW_USER" 2>/dev/null || {
-        echo "User $DOCKFLOW_USER may already exist, continuing..."
-    }
+    # Create temporary script for local execution
+    TEMP_SCRIPT=$(mktemp)
+    generate_user_creation_script > "$TEMP_SCRIPT"
+    chmod +x "$TEMP_SCRIPT"
     
-    # Set password for user
-    echo "Setting password for $DOCKFLOW_USER..."
-    echo "$DOCKFLOW_USER:$USER_PASSWORD" | sudo chpasswd
+    # Execute locally with sudo
+    DOCKFLOW_USER="$DOCKFLOW_USER" \
+    USER_PASSWORD="$USER_PASSWORD" \
+    ANSIBLE_PUBLIC_KEY="$ANSIBLE_PUBLIC_KEY" \
+    ANSIBLE_PRIVATE_KEY="$ANSIBLE_PRIVATE_KEY" \
+    sudo -E bash "$TEMP_SCRIPT"
     
-    # Add user to sudo group
-    echo "Adding $DOCKFLOW_USER to sudo group..."
-    sudo usermod -aG sudo "$DOCKFLOW_USER"
-    
-    # Add user to docker group (will be created by Ansible if not exists)
-    echo "Adding $DOCKFLOW_USER to docker group..."
-    sudo usermod -aG docker "$DOCKFLOW_USER" 2>/dev/null || echo "Docker group will be created by Ansible..."
-    
-    # Setup SSH directory
-    echo "Setting up SSH directory..."
-    sudo mkdir -p "/home/$DOCKFLOW_USER/.ssh"
-    sudo chmod 700 "/home/$DOCKFLOW_USER/.ssh"
-    
-    # Add public key to authorized_keys
-    echo "Adding public key to authorized_keys..."
-    echo "$ANSIBLE_PUBLIC_KEY" | sudo tee "/home/$DOCKFLOW_USER/.ssh/authorized_keys" > /dev/null
-    sudo chmod 600 "/home/$DOCKFLOW_USER/.ssh/authorized_keys"
-    
-    # Save private key for the deployment user
-    if [ -n "${ANSIBLE_PRIVATE_KEY:-}" ]; then
-        echo "Saving private key to /home/$DOCKFLOW_USER/.ssh/dockflow_key..."
-        echo "$ANSIBLE_PRIVATE_KEY" | sudo tee "/home/$DOCKFLOW_USER/.ssh/dockflow_key" > /dev/null
-        sudo chmod 600 "/home/$DOCKFLOW_USER/.ssh/dockflow_key"
-        echo "$ANSIBLE_PUBLIC_KEY" | sudo tee "/home/$DOCKFLOW_USER/.ssh/dockflow_key.pub" > /dev/null
-        sudo chmod 644 "/home/$DOCKFLOW_USER/.ssh/dockflow_key.pub"
-    fi
-    
-    # Set proper ownership
-    echo "Setting proper ownership..."
-    sudo chown -R "$DOCKFLOW_USER:$DOCKFLOW_USER" "/home/$DOCKFLOW_USER/.ssh"
+    rm "$TEMP_SCRIPT"
     
     # Copy the private key locally to ~/.ssh/deploy_key for CLI use
     if [ -n "${ANSIBLE_PRIVATE_KEY:-}" ]; then
