@@ -71,7 +71,7 @@ run_ansible_playbook() {
         echo ""
         
         # Display connection information even on failure
-        display_deployment_connection_info "${SERVER_IP}" "${SSH_PORT}" "${DOCKFLOW_USER}"
+        display_deployment_connection_info "${SERVER_IP}" "${SSH_PORT}" "${DOCKFLOW_USER}" "${DOCKFLOW_PASSWORD}"
         
         echo -e "${RED}You need to investigate and fix the errors before the machine can receive deployments.${NC}"
         echo -e "${YELLOW}Once fixed, you may need to re-run the setup process.${NC}"
@@ -86,7 +86,7 @@ display_completion() {
     echo ""
     
     # Display connection information with private key and connection string
-    display_deployment_connection_info "${SERVER_IP}" "${SSH_PORT}" "${DOCKFLOW_USER}"
+    display_deployment_connection_info "${SERVER_IP}" "${SSH_PORT}" "${DOCKFLOW_USER}" "${DOCKFLOW_PASSWORD}"
     
     echo -e "${GREEN}The machine is now ready to receive deployments of Docker applications.${NC}"
 }

@@ -97,10 +97,22 @@ display_deployment_connection_info() {
     local DOCKFLOW_HOST="${1:-${SERVER_IP:-127.0.0.1}}"
     local PORT="${2:-${SSH_PORT:-22}}"
     local DOCKFLOW_USER="${3:-${DOCKFLOW_USER}}"
+    local DOCKFLOW_PASSWORD_PARAM="${4:-}"
     
     if [ -z "$DOCKFLOW_USER" ]; then
         echo -e "${RED}[Error: DOCKFLOW_USER not defined]${NC}"
         return 1
+    fi
+    
+    # Prompt for password if not provided
+    local DOCKFLOW_PASSWORD_LOCAL=""
+    if [ -z "$DOCKFLOW_PASSWORD_PARAM" ]; then
+        echo ""
+        read -srp "Password for user $DOCKFLOW_USER: " DOCKFLOW_PASSWORD_LOCAL
+        echo ""
+        echo ""
+    else
+        DOCKFLOW_PASSWORD_LOCAL="$DOCKFLOW_PASSWORD_PARAM"
     fi
     
     # Retrieve the private key from deployment user's home (local only)
@@ -119,5 +131,5 @@ display_deployment_connection_info() {
     fi
     
     # Display connection information
-    display_connection_info "$DOCKFLOW_HOST" "$PORT" "$DOCKFLOW_USER" "$PRIVATE_KEY" "$DOCKFLOW_PASSWORD"
+    display_connection_info "$DOCKFLOW_HOST" "$PORT" "$DOCKFLOW_USER" "$PRIVATE_KEY" "$DOCKFLOW_PASSWORD_LOCAL"
 }

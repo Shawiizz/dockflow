@@ -221,7 +221,7 @@ EOF
             
             # Display connection information with private key and connection string
             # Use real server details if available (for local setup), otherwise use SERVER_IP
-            display_deployment_connection_info "${REAL_SERVER_IP:-$SERVER_IP}" "${REAL_SSH_PORT:-$SSH_PORT}" "${DOCKFLOW_USER}"
+            display_deployment_connection_info "${REAL_SERVER_IP:-$SERVER_IP}" "${REAL_SSH_PORT:-$SSH_PORT}" "${DOCKFLOW_USER}" "${DOCKFLOW_PASSWORD}"
             
             echo -e "${GREEN}This machine is now ready to receive deployments of Docker applications.${NC}"
             echo ""
