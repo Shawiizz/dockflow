@@ -133,3 +133,39 @@ interactive_menu() {
         draw_menu
     done
 }
+
+# Prompt for sudo password and validate it
+# Usage: prompt_and_validate_sudo_password
+# Sets: BECOME_PASSWORD (global variable)
+# Returns: 0 on success, exits on failure
+prompt_and_validate_sudo_password() {
+    local SUDO_PASSWORD_VALID=false
+    local SUDO_ATTEMPTS=0
+    local MAX_SUDO_ATTEMPTS=3
+    local CURRENT_USER=$(whoami)
+    
+    echo ""
+    
+    while [ "$SUDO_PASSWORD_VALID" = false ] && [ $SUDO_ATTEMPTS -lt $MAX_SUDO_ATTEMPTS ]; do
+        echo -ne "${CYAN}Enter sudo password for user ${BLUE}$CURRENT_USER${CYAN}: ${NC}"
+        read -s BECOME_PASSWORD
+        echo ""
+        
+        # Test if the password is correct
+        if echo "$BECOME_PASSWORD" | sudo -S -v 2>/dev/null; then
+            SUDO_PASSWORD_VALID=true
+            print_success "Password verified successfully"
+            export BECOME_PASSWORD
+            return 0
+        else
+            SUDO_ATTEMPTS=$((SUDO_ATTEMPTS + 1))
+            if [ $SUDO_ATTEMPTS -lt $MAX_SUDO_ATTEMPTS ]; then
+                print_warning "Incorrect password. Please try again. (Attempt $SUDO_ATTEMPTS/$MAX_SUDO_ATTEMPTS)"
+            else
+                print_error "Maximum password attempts reached. Setup aborted."
+                exit 1
+            fi
+        fi
+    done
+}
+

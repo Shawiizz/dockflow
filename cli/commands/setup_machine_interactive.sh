@@ -193,15 +193,22 @@ setup_machine_interactive() {
 local ansible_connection=local
 EOF
         
-        # Use -K to ask for become password interactively (more secure)
+        prompt_and_validate_sudo_password
+        
+        echo ""
+        
+        # Run ansible playbook with the validated password
         ansible-playbook ansible/configure_host.yml \
             --inventory="$TEMP_INVENTORY" \
             --become \
             --become-method=sudo \
-            -K \
+            --extra-vars "ansible_become_password=$BECOME_PASSWORD" \
             --skip-tags="$SKIP_TAGS" \
             --extra-vars "skip_docker_install=${SKIP_DOCKER_INSTALL:-false} ansible_user=$DOCKFLOW_USER"        
             ANSIBLE_RETURN_CODE=$?
+        
+        # Clear the password from memory
+        unset BECOME_PASSWORD
         
         # Clean up temporary inventory
         rm -f "$TEMP_INVENTORY"
@@ -214,7 +221,7 @@ EOF
             
             # Display connection information with private key and connection string
             # Use real server details if available (for local setup), otherwise use SERVER_IP
-            display_deployment_connection_info "${REAL_SERVER_IP:-$SERVER_IP}" "${REAL_SSH_PORT:-$SSH_PORT}" "${USER}"
+            display_deployment_connection_info "${REAL_SERVER_IP:-$SERVER_IP}" "${REAL_SSH_PORT:-$SSH_PORT}" "${DOCKFLOW_USER}"
             
             echo -e "${GREEN}This machine is now ready to receive deployments of Docker applications.${NC}"
             echo ""
@@ -270,7 +277,7 @@ EOF
         echo ""
         
         # Display connection information
-        display_deployment_connection_info "${SERVER_IP}" "${SSH_PORT}" "${USER}"
+        display_deployment_connection_info "${SERVER_IP}" "${SSH_PORT}" "${DOCKFLOW_USER}"
         
         echo ""
         read -p "Press Enter to exit..." -n 1 -r
