@@ -23,7 +23,7 @@ setup_machine_non_interactive() {
     if [ -n "$ARG_DEPLOY_USER" ]; then
         CREATE_USER=true
         export DOCKFLOW_USER="$ARG_DEPLOY_USER"
-        export USER_PASSWORD="$ARG_DEPLOY_PASSWORD"
+        export DOCKFLOW_PASSWORD="$ARG_DEPLOY_PASSWORD"
     else
         # Use remote user as deploy user
         export DOCKFLOW_USER="$ARG_REMOTE_USER"
@@ -153,17 +153,17 @@ setup_machine_non_interactive() {
     fi
     
     # Set user password for Ansible (needed for sudo)
-    if [ -z "$USER_PASSWORD" ]; then
+    if [ -z "$DOCKFLOW_PASSWORD" ]; then
         # If we're not creating a user and no password was provided,
         # we need to prompt or use remote password
         if [ -n "$ARG_REMOTE_PASSWORD" ]; then
-            export USER_PASSWORD="$ARG_REMOTE_PASSWORD"
+            export DOCKFLOW_PASSWORD="$ARG_REMOTE_PASSWORD"
         else
             # For key-based auth without user creation, we might not have a password
             # This is okay if the user has NOPASSWD sudo configured
             echo -e "${YELLOW}Warning: No password provided for sudo operations${NC}"
             echo -e "${YELLOW}Make sure the user has NOPASSWD sudo configured, or provide --deploy-password${NC}"
-            export USER_PASSWORD=""
+            export DOCKFLOW_PASSWORD=""
         fi
     fi
     

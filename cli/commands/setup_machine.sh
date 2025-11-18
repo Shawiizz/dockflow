@@ -35,12 +35,12 @@ setup_machine() {
         echo ""
         prompt_username "User name" USER
         
-        read -srp "Sudo (become) password for user: " USER_PASSWORD
+        read -srp "Sudo (become) password for user: " DOCKFLOW_PASSWORD
         echo ""
         echo ""
         
         export USER
-        export USER_PASSWORD
+        export DOCKFLOW_PASSWORD
         
         print_heading "SSH KEY FOR USER"
         echo ""

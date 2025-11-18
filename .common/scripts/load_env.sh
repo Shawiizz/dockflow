@@ -40,7 +40,7 @@ set +a
 
 ENV_PREFIX="$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_"
 
-# Parse CONNECTION string if provided (format: base64 encoded JSON with host, port, user, privateKey)
+# Parse CONNECTION string if provided (format: base64 encoded JSON with host, port, user, privateKey, password)
 CONNECTION_VAR_NAME="${ENV_PREFIX}CONNECTION"
 if [[ -n "${!CONNECTION_VAR_NAME}" ]]; then
   echo "Parsing ${CONNECTION_VAR_NAME}..."
@@ -50,6 +50,7 @@ if [[ -n "${!CONNECTION_VAR_NAME}" ]]; then
     export DOCKFLOW_PORT=$(echo "$CONNECTION_JSON" | jq -r '.port // empty')
     export DOCKFLOW_USER=$(echo "$CONNECTION_JSON" | jq -r '.user // empty')
     export SSH_PRIVATE_KEY=$(echo "$CONNECTION_JSON" | jq -r '.privateKey // empty')
+    export DOCKFLOW_PASSWORD=$(echo "$CONNECTION_JSON" | jq -r '.password // empty')
     unset "${CONNECTION_VAR_NAME}"
     echo "✓ Connection details loaded from ${CONNECTION_VAR_NAME}"
   else

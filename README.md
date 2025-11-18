@@ -185,7 +185,7 @@ Required secrets in your CI/CD settings:
 | Secret Name | Description | Example |
 |-------------|-------------|---------|
 | `USER` | Remote user name | `dockflow` (default) |
-| `USER_PASSWORD` | Remote user password | `your-password` |
+| `DOCKFLOW_PASSWORD` | Remote user password | `your-password` |
 | `[ENV]_SSH_PRIVATE_KEY` | SSH key for main host | `PRODUCTION_SSH_PRIVATE_KEY` |
 | `[ENV]_[HOSTNAME]_SSH_PRIVATE_KEY` | SSH key for specific host | `PRODUCTION_SERVER_A_SSH_PRIVATE_KEY` |
 | `GIT_TOKEN` | OPTIONAL: Remote build option : for private repos | GitHub/GitLab token |

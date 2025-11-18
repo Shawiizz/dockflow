@@ -49,20 +49,93 @@ setup_ansible_user() {
         else
             echo ""
             prompt_username "Enter a new user name" DOCKFLOW_USER ""
-
-            echo ""
-            read -srp "Password for user $DOCKFLOW_USER: " USER_PASSWORD
-            echo ""
+            # Check if the new user also exists
+            if [ "${SERVER_IP:-}" = "127.0.0.1" ] || [ "${SERVER_IP:-}" = "localhost" ]; then
+                if id "$DOCKFLOW_USER" &>/dev/null; then
+                    USER_EXISTS=true
+                else
+                    USER_EXISTS=false
+                fi
+            else
+                if [ "${AUTH_METHOD:-}" = "password" ]; then
+                    if command -v sshpass &> /dev/null && [ -n "${REMOTE_PASSWORD:-}" ]; then
+                        REMOTE_USER_CHECK=$(SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "id $DOCKFLOW_USER && echo 'EXISTS' || echo 'NOTFOUND'" 2>/dev/null)
+                        if echo "$REMOTE_USER_CHECK" | grep -q "EXISTS"; then
+                            USER_EXISTS=true
+                        else
+                            USER_EXISTS=false
+                        fi
+                    fi
+                elif [ -n "${SSH_PRIVATE_KEY_PATH:-}" ]; then
+                    REMOTE_USER_CHECK=$(ssh -p "${SSH_PORT:-22}" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "id $DOCKFLOW_USER && echo 'EXISTS' || echo 'NOTFOUND'" 2>/dev/null)
+                    if echo "$REMOTE_USER_CHECK" | grep -q "EXISTS"; then
+                        USER_EXISTS=true
+                    else
+                        USER_EXISTS=false
+                    fi
+                fi
+            fi
         fi
     else
         # User doesn't exist, prompt for username with default
         prompt_username "User name" DOCKFLOW_USER "dockflow"
-        read -srp "Password for user $DOCKFLOW_USER: " USER_PASSWORD
-        echo ""
+    fi
+    
+    # Prompt for password with validation
+    echo ""
+    if [ "$USER_EXISTS" = true ]; then
+        # User exists - verify the password is correct
+        while true; do
+            read -srp "Password for existing user $DOCKFLOW_USER: " DOCKFLOW_PASSWORD
+            echo ""
+            
+            # Validate password is not empty
+            if [ -z "$DOCKFLOW_PASSWORD" ]; then
+                print_warning "Password cannot be empty. Please try again."
+                echo ""
+                continue
+            fi
+            
+            # Verify password against the system using su
+            print_step "Verifying password..."
+            if echo "$DOCKFLOW_PASSWORD" | su -c "true" "$DOCKFLOW_USER" 2>/dev/null; then
+                print_success "Password verified successfully"
+                break
+            else
+                print_warning "Invalid password. Please try again."
+                echo ""
+            fi
+        done
+    else
+        # New user - double confirmation
+        while true; do
+            read -srp "Password for new user $DOCKFLOW_USER: " DOCKFLOW_PASSWORD
+            echo ""
+            
+            # Validate password is not empty
+            if [ -z "$DOCKFLOW_PASSWORD" ]; then
+                print_warning "Password cannot be empty. Please try again."
+                echo ""
+                continue
+            fi
+            
+            # Confirm password
+            read -srp "Confirm password: " DOCKFLOW_PASSWORD_CONFIRM
+            echo ""
+            
+            # Check if passwords match
+            if [ "$DOCKFLOW_PASSWORD" = "$DOCKFLOW_PASSWORD_CONFIRM" ]; then
+                print_success "Password confirmed"
+                break
+            else
+                print_warning "Passwords do not match. Please try again."
+                echo ""
+            fi
+        done
     fi
     
     export DOCKFLOW_USER
-    export USER_PASSWORD
+    export DOCKFLOW_PASSWORD
 }
 
 # Generate the user creation script
@@ -76,9 +149,9 @@ echo "Creating user..."
 useradd -m $DOCKFLOW_USER 2>/dev/null || echo "User $DOCKFLOW_USER may already exist, continuing..."
 
 # Set password for user if provided
-if [ -n "$USER_PASSWORD" ]; then
+if [ -n "$DOCKFLOW_PASSWORD" ]; then
     echo "Setting password for $DOCKFLOW_USER..."
-    echo "$DOCKFLOW_USER:$USER_PASSWORD" | chpasswd
+    echo "$DOCKFLOW_USER:$DOCKFLOW_PASSWORD" | chpasswd
 fi
 
 # Add user to sudo group
@@ -130,18 +203,18 @@ create_ansible_user_on_remote() {
         if command -v sshpass &> /dev/null; then
             echo "Using sshpass for password authentication..."
             SSHPASS="$REMOTE_PASSWORD" sshpass -e scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$TEMP_SCRIPT" "$REMOTE_USER@$SERVER_IP:/tmp/setup_ansible.sh"
-            SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "DOCKFLOW_USER='$DOCKFLOW_USER' USER_PASSWORD='$USER_PASSWORD' ANSIBLE_PUBLIC_KEY='$ANSIBLE_PUBLIC_KEY' ANSIBLE_PRIVATE_KEY='$ANSIBLE_PRIVATE_KEY' sudo -E bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
+            SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "DOCKFLOW_USER='$DOCKFLOW_USER' DOCKFLOW_PASSWORD='$DOCKFLOW_PASSWORD' ANSIBLE_PUBLIC_KEY='$ANSIBLE_PUBLIC_KEY' ANSIBLE_PRIVATE_KEY='$ANSIBLE_PRIVATE_KEY' sudo -E bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
         else
             echo "sshpass is not installed. Using interactive SSH..."
             print_warning "You will be prompted for the password of $REMOTE_USER@$SERVER_IP"
             scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$TEMP_SCRIPT" "$REMOTE_USER@$SERVER_IP:/tmp/setup_ansible.sh"
-            ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "DOCKFLOW_USER='$DOCKFLOW_USER' USER_PASSWORD='$USER_PASSWORD' ANSIBLE_PUBLIC_KEY='$ANSIBLE_PUBLIC_KEY' ANSIBLE_PRIVATE_KEY='$ANSIBLE_PRIVATE_KEY' sudo -E bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
+            ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "DOCKFLOW_USER='$DOCKFLOW_USER' DOCKFLOW_PASSWORD='$DOCKFLOW_PASSWORD' ANSIBLE_PUBLIC_KEY='$ANSIBLE_PUBLIC_KEY' ANSIBLE_PRIVATE_KEY='$ANSIBLE_PRIVATE_KEY' sudo -E bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
         fi
     else
         # Using SSH key authentication
         echo "Using SSH key authentication..."
         scp -P "$SSH_PORT" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$TEMP_SCRIPT" "$REMOTE_USER@$SERVER_IP:/tmp/setup_ansible.sh"
-        ssh -p "$SSH_PORT" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "DOCKFLOW_USER='$DOCKFLOW_USER' USER_PASSWORD='$USER_PASSWORD' ANSIBLE_PUBLIC_KEY='$ANSIBLE_PUBLIC_KEY' ANSIBLE_PRIVATE_KEY='$ANSIBLE_PRIVATE_KEY' sudo -E bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
+        ssh -p "$SSH_PORT" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "DOCKFLOW_USER='$DOCKFLOW_USER' DOCKFLOW_PASSWORD='$DOCKFLOW_PASSWORD' ANSIBLE_PUBLIC_KEY='$ANSIBLE_PUBLIC_KEY' ANSIBLE_PRIVATE_KEY='$ANSIBLE_PRIVATE_KEY' sudo -E bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
     fi
 
     rm "$TEMP_SCRIPT"
@@ -166,7 +239,7 @@ create_ansible_user_locally() {
     
     # Execute locally with sudo
     DOCKFLOW_USER="$DOCKFLOW_USER" \
-    USER_PASSWORD="$USER_PASSWORD" \
+    DOCKFLOW_PASSWORD="$DOCKFLOW_PASSWORD" \
     ANSIBLE_PUBLIC_KEY="$ANSIBLE_PUBLIC_KEY" \
     ANSIBLE_PRIVATE_KEY="$ANSIBLE_PRIVATE_KEY" \
     sudo -E bash "$TEMP_SCRIPT"

@@ -52,7 +52,7 @@ run_ansible_playbook() {
     export DOCKFLOW_HOST=$SERVER_IP
     export DOCKFLOW_PORT=$SSH_PORT
     export DOCKFLOW_USER
-    export USER_PASSWORD
+    export DOCKFLOW_PASSWORD
     
     echo "Running Ansible playbook..."
     export ANSIBLE_HOST_KEY_CHECKING=False

@@ -8,11 +8,13 @@ source "$CLI_UTILS_DIR/functions.sh"
 #   $2 - PORT
 #   $3 - DOCKFLOW_USER
 #   $4 - PRIVATE_KEY
+#   $5 - DOCKFLOW_PASSWORD (optional)
 generate_connection_string() {
     local DOCKFLOW_HOST="$1"
     local PORT="$2"
     local DOCKFLOW_USER="$3"
     local PRIVATE_KEY="$4"
+    local DOCKFLOW_PASSWORD="$5"
 
     if [ -z "$DOCKFLOW_HOST" ] || [ -z "$PORT" ] || [ -z "$DOCKFLOW_USER" ] || [ -z "$PRIVATE_KEY" ]; then
         echo "[Error: Missing required parameters for connection string]"
@@ -22,8 +24,15 @@ generate_connection_string() {
     # Escape private key for JSON (replace newlines with \n)
     local ESCAPED_KEY=$(echo "$PRIVATE_KEY" | sed ':a;N;$!ba;s/\n/\\n/g' | sed 's/"/\\"/g')
     
-    # Create JSON with connection info
-    local JSON="{\"host\":\"$DOCKFLOW_HOST\",\"port\":$PORT,\"user\":\"$DOCKFLOW_USER\",\"privateKey\":\"$ESCAPED_KEY\"}"
+    # Escape password for JSON
+    local ESCAPED_PASSWORD=$(echo "$DOCKFLOW_PASSWORD" | sed 's/"/\\"/g')
+    
+    # Create JSON with connection info (including password if provided)
+    if [ -n "$DOCKFLOW_PASSWORD" ]; then
+        local JSON="{\"host\":\"$DOCKFLOW_HOST\",\"port\":$PORT,\"user\":\"$DOCKFLOW_USER\",\"privateKey\":\"$ESCAPED_KEY\",\"password\":\"$ESCAPED_PASSWORD\"}"
+    else
+        local JSON="{\"host\":\"$DOCKFLOW_HOST\",\"port\":$PORT,\"user\":\"$DOCKFLOW_USER\",\"privateKey\":\"$ESCAPED_KEY\"}"
+    fi
 
     # Encode to base64
     local CONNECTION_STRING=$(echo -n "$JSON" | base64 -w 0 2>/dev/null || echo -n "$JSON" | base64)
@@ -37,11 +46,13 @@ generate_connection_string() {
 #   $2 - PORT (SSH port)
 #   $3 - DOCKFLOW_USER (deployment user)
 #   $4 - PRIVATE_KEY (SSH private key content)
+#   $5 - DOCKFLOW_PASSWORD (optional)
 display_connection_info() {
     local DOCKFLOW_HOST="$1"
     local PORT="$2"
     local DOCKFLOW_USER="$3"
     local PRIVATE_KEY="$4"
+    local DOCKFLOW_PASSWORD="$5"
     
     # Display private key
     echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -52,7 +63,7 @@ display_connection_info() {
     echo ""
     
     # Generate connection string
-    local CONNECTION_STRING=$(generate_connection_string "$DOCKFLOW_HOST" "$PORT" "$DOCKFLOW_USER" "$PRIVATE_KEY")
+    local CONNECTION_STRING=$(generate_connection_string "$DOCKFLOW_HOST" "$PORT" "$DOCKFLOW_USER" "$PRIVATE_KEY" "$DOCKFLOW_PASSWORD")
     
     if [ $? -eq 0 ] && [ -n "$CONNECTION_STRING" ]; then
         echo -e "${RED}╔═══════════════════════════════════════════════════════════════════════╗${NC}"
@@ -108,5 +119,5 @@ display_deployment_connection_info() {
     fi
     
     # Display connection information
-    display_connection_info "$DOCKFLOW_HOST" "$PORT" "$DOCKFLOW_USER" "$PRIVATE_KEY"
+    display_connection_info "$DOCKFLOW_HOST" "$PORT" "$DOCKFLOW_USER" "$PRIVATE_KEY" "$DOCKFLOW_PASSWORD"
 }
