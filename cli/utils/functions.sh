@@ -194,9 +194,16 @@ verify_user_password() {
         return 1
     fi
     
-    # Use sudo to verify the password (works even when running as root)
-    sudo -k -S -u "$username" true 2>&1 <<< "$password" >/dev/null 2>&1
-    return $?
+    # If running as root, run the verification as the target user to avoid su bypass
+    if [ "$(id -u)" -eq 0 ]; then
+        # Run the su command as the target user (forces password check)
+        sudo -u "$username" bash -c "echo '$password' | /bin/su --command true - '$username' 2>/dev/null"
+        return $?
+    else
+        # Not root, use su directly
+        echo "$password" | /bin/su --command true - "$username" 2>/dev/null
+        return $?
+    fi
 }
 
 # Prompt and validate user password
