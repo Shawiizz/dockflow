@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-IFS=$'\\n\\t'
+IFS=$'\n\t'
 
 setup_machine_interactive() {
     echo -e "${GREEN}=========================================================="

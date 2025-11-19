@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-IFS=$'\\n\\t'
+IFS=$'\n\t'
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'

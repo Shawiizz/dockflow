@@ -22,7 +22,7 @@ if [ -f "$BASE_FILE" ]; then
 fi
 
 # Check for host-specific env files
-for env_file in .deployment/env/.env.${ENVIRONMENT}.*; do
+for env_file in .deployment/env/.env."${ENVIRONMENT}".*; do
   if [ -f "$env_file" ]; then
     SUFFIX=$(basename "$env_file" | sed "s/\.env\.${ENVIRONMENT}\.//")
     if [[ "$SUFFIX" != "${ENVIRONMENT}" ]]; then

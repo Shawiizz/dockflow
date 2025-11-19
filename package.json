@@ -10,6 +10,8 @@
     "ci-image:dev": "node scripts/version-manager.js dev --ci-image",
     "ci-image:release": "node scripts/version-manager.js release --ci-image",
     "ci-image:downgrade": "node scripts/version-manager.js downgrade --ci-image"
+    ,
+    "lint:shell": "bash scripts/lint-shell.sh"
   },
   "devDependencies": {
     "fs": "^0.0.1-security",

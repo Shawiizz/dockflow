@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-IFS=$'\\n\\t'
+IFS=$'\n\t'
 
 # ============================================
 # PROJECT ANALYSIS UTILITIES

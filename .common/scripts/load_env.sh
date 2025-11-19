@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-IFS=$'\\n\\t'
+IFS=$'\n\t'
 # Load environment variables from .env files and override with CI secrets
 # Usage: source load_env.sh <environment> <hostname>
 
@@ -48,11 +48,16 @@ if [[ -n "${!CONNECTION_VAR_NAME}" ]]; then
   echo "Parsing ${CONNECTION_VAR_NAME}..."
   CONNECTION_JSON=$(echo "${!CONNECTION_VAR_NAME}" | base64 -d 2>/dev/null)
   if [[ $? -eq 0 && -n "$CONNECTION_JSON" ]]; then
-    export DOCKFLOW_HOST=$(echo "$CONNECTION_JSON" | jq -r '.host // empty')
-    export DOCKFLOW_PORT=$(echo "$CONNECTION_JSON" | jq -r '.port // empty')
-    export DOCKFLOW_USER=$(echo "$CONNECTION_JSON" | jq -r '.user // empty')
-    export SSH_PRIVATE_KEY=$(echo "$CONNECTION_JSON" | jq -r '.privateKey // empty')
-    export DOCKFLOW_PASSWORD=$(echo "$CONNECTION_JSON" | jq -r '.password // empty')
+    DOCKFLOW_HOST=$(echo "$CONNECTION_JSON" | jq -r '.host // empty')
+    export DOCKFLOW_HOST
+    DOCKFLOW_PORT=$(echo "$CONNECTION_JSON" | jq -r '.port // empty')
+    export DOCKFLOW_PORT
+    DOCKFLOW_USER=$(echo "$CONNECTION_JSON" | jq -r '.user // empty')
+    export DOCKFLOW_USER
+    SSH_PRIVATE_KEY=$(echo "$CONNECTION_JSON" | jq -r '.privateKey // empty')
+    export SSH_PRIVATE_KEY
+    DOCKFLOW_PASSWORD=$(echo "$CONNECTION_JSON" | jq -r '.password // empty')
+    export DOCKFLOW_PASSWORD
     unset "${CONNECTION_VAR_NAME}"
     echo "✓ Connection details loaded from ${CONNECTION_VAR_NAME}"
   else
@@ -62,18 +67,22 @@ fi
 
 # Override from CI secrets
 if [[ "$HOSTNAME" == "main" ]]; then
-  while IFS= read -r var; do
-    [[ "$var" =~ ^${ENV_PREFIX}.+ ]] && export "${var#${ENV_PREFIX}}=${!var}"
+    while IFS= read -r var; do
+    [[ "$var" =~ ^${ENV_PREFIX}.+ ]] && export "${var#"${ENV_PREFIX}"}=${!var}"
   done < <(env | awk -F= -v prefix="$ENV_PREFIX" '$1 ~ "^"prefix {print $1}')
 else
   ENV_HOSTNAME_PREFIX="${ENV_PREFIX}$(echo "${HOSTNAME}" | tr '[:lower:]' '[:upper:]')_"
-  while IFS= read -r var; do
-    [[ "$var" =~ ^${ENV_HOSTNAME_PREFIX}.+ ]] && export "${var#${ENV_HOSTNAME_PREFIX}}=${!var}"
+    while IFS= read -r var; do
+    [[ "$var" =~ ^${ENV_HOSTNAME_PREFIX}.+ ]] && export "${var#"${ENV_HOSTNAME_PREFIX}"}=${!var}"
   done < <(env | awk -F= -v prefix="$ENV_HOSTNAME_PREFIX" '$1 ~ "^"prefix {print $1}')
 fi
 
 # Set DOCKFLOW_USER (override if CI, default to 'dockflow')
-[[ -n "$DOCKFLOW_USER" && "$DOCKFLOW_USER" != "$SYSTEM_USER" ]] && export DOCKFLOW_USER="$DOCKFLOW_USER" || export DOCKFLOW_USER="dockflow"
+if [[ -n "$DOCKFLOW_USER" && "$DOCKFLOW_USER" != "$SYSTEM_USER" ]]; then
+  export DOCKFLOW_USER="$DOCKFLOW_USER"
+else
+  export DOCKFLOW_USER="dockflow"
+fi
 
 # Verify required variables (skip for build environment)
 if [[ "$ENV" != "build" ]]; then

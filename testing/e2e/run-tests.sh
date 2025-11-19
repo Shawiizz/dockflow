@@ -2,7 +2,7 @@
 # Run E2E tests inside Ansible container (avoids WSL permission issues)
 
 set -euo pipefail
-IFS=$'\\n\\t'
+IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SSH_KEY_DIR="/tmp/ssh-keys"

@@ -5,7 +5,7 @@
 # The ?$(date +%s) adds a timestamp to bypass GitHub's CDN cache
 
 set -euo pipefail
-IFS=$'\\n\\t'
+IFS=$'\n\t'
 
 # Branch to use (default: main)
 BRANCH="${BRANCH:-main}"
@@ -106,7 +106,7 @@ echo -e "${GREEN}✓ Ansible $ANSIBLE_VERSION detected${NC}"
 # Create temporary directory
 echo -e "${BLUE}[4/5] Downloading Dockflow CLI...${NC}"
 TEMP_DIR=$(mktemp -d -t dockflow-XXXXXXXXXX)
-trap "rm -rf $TEMP_DIR" EXIT
+trap 'rm -rf "$TEMP_DIR"' EXIT
 
 cd "$TEMP_DIR"
 

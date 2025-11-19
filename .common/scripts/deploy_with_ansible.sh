@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-IFS=$'\\n\\t'
+IFS=$'\n\t'
 
 # This script handles the SSH setup and Ansible deployment
 # It expects the following environment variables to be set:
@@ -46,4 +46,4 @@ if [ "${SKIP_DOCKER_INSTALL}" = "true" ]; then
   EXTRA_VARS="-e skip_docker_install=true"
 fi
 
-ansible-playbook ansible/deploy.yml -i ansible/inventory.yml --skip-tags "$SKIP_TAGS" $EXTRA_VARS
+ansible-playbook ansible/deploy.yml -i ansible/inventory.yml --skip-tags "$SKIP_TAGS" "$EXTRA_VARS"
