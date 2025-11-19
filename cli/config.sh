@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+IFS=$'\\n\\t'
 
 CLI_VERSION="1.0.0"
 CLI_NAME="Dockflow CLI"

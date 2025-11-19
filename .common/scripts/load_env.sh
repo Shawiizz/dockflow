@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+IFS=$'\\n\\t'
 # Load environment variables from .env files and override with CI secrets
 # Usage: source load_env.sh <environment> <hostname>
 

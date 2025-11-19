@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+IFS=$'\\n\\t'
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -235,7 +237,7 @@ prompt_and_validate_user_password() {
         print_step "Verifying password..."
         if verify_user_password "$username" "$user_password"; then
             print_success "Password verified successfully"
-            eval "$var_name='$user_password'"
+            printf -v "$var_name" '%s' "$user_password"
             return 0
         else
             print_warning "Invalid password. Please try again."

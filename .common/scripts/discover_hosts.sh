@@ -1,5 +1,7 @@
 #!/bin/bash
-set -e
+set -euo pipefail
+IFS=$'\\n\\t'
+ 
 
 # Discover deployment hosts based on environment
 # Usage: discover_hosts.sh <environment>

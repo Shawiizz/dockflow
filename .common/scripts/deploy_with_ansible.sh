@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+IFS=$'\\n\\t'
 
 # This script handles the SSH setup and Ansible deployment
 # It expects the following environment variables to be set:
@@ -8,7 +10,7 @@
 # - ROOT_PATH: The root path of the project
 # - SKIP_NGINX_CHECK: Optional, set to "true" to skip nginx configuration check
 
-set -e
+ 
 
 ######### Change working directory #########
 cd "$ROOT_PATH/dockflow"

@@ -2,7 +2,8 @@
 # E2E test runner for DockFlow framework
 # Simulates a CI/CD deployment process
 
-set -e
+set -euo pipefail
+IFS=$'\\n\\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export ROOT_PATH="$(cd "${SCRIPT_DIR}/../../.." && pwd)"

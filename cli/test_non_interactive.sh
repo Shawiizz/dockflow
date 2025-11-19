@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+IFS=$'\\n\\t'
 
 # ============================================
 # TEST SCRIPT FOR NON-INTERACTIVE MODE

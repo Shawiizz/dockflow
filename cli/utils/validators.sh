@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+IFS=$'\\n\\t'
 
 # ============================================
 # VALIDATION UTILITIES
@@ -162,13 +164,13 @@ prompt_with_validation() {
         
         # Skip validation if empty and no default (optional field)
         if [ -z "$input_value" ] && [ -z "$default_value" ]; then
-            eval "$var_name=''"
+                printf -v "$var_name" ''
             return 0
         fi
         
         # Validate
         if $validator_function "$input_value"; then
-            eval "$var_name='$input_value'"
+                printf -v "$var_name" '%s' "$input_value"
             return 0
         else
             print_warning "$error_message"
@@ -295,7 +297,7 @@ prompt_domain_name() {
     if [ "$allow_empty" = "true" ]; then
         read -rp "$prompt_text (optional): " input_value
         if [ -z "$input_value" ]; then
-            eval "$var_name=''"
+                printf -v "$var_name" ''
             return 0
         fi
     fi

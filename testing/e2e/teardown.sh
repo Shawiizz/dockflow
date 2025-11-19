@@ -2,7 +2,8 @@
 # Teardown script for E2E testing environment
 # Stops and removes all test containers and volumes
 
-set -e
+set -euo pipefail
+IFS=$'\\n\\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

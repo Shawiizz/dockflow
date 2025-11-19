@@ -4,7 +4,8 @@
 # Usage with specific branch: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/cli/cli_wrapper.sh?$(date +%s) | BRANCH=main bash
 # The ?$(date +%s) adds a timestamp to bypass GitHub's CDN cache
 
-set -e
+set -euo pipefail
+IFS=$'\\n\\t'
 
 # Branch to use (default: main)
 BRANCH="${BRANCH:-main}"
