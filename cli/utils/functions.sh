@@ -141,7 +141,8 @@ interactive_menu() {
 # Sets: BECOME_PASSWORD (global variable)
 # Returns: 0 on success, exits on failure
 prompt_and_validate_sudo_password() {
-    local CURRENT_USER=$(whoami)
+    local CURRENT_USER
+    CURRENT_USER=$(whoami)
     
     # Check if user is already root
     if [ "$EUID" -eq 0 ] || [ "$(id -u)" -eq 0 ]; then

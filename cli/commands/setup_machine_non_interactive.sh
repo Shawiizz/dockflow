@@ -86,7 +86,7 @@ setup_machine_non_interactive() {
             # Save private key
             print_step "Saving private key to ~/.ssh/deploy_key"
             mkdir -p ~/.ssh
-            cat "$TEMP_KEY_DIR/deploy_key" > ~/.ssh/deploy_key
+            cp "$TEMP_KEY_DIR/deploy_key" ~/.ssh/deploy_key
             chmod 600 ~/.ssh/deploy_key
             print_success "Private key saved"
             

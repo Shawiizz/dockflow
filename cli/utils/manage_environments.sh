@@ -17,7 +17,8 @@ list_environments() {
     
     # Find all main .env.* files (exclude host-specific)
     find "$env_dir" -maxdepth 1 -name ".env.*" -type f 2>/dev/null | while read -r env_file; do
-        local filename=$(basename "$env_file")
+        local filename
+        filename=$(basename "$env_file")
         local env_name="${filename#.env.}"
         
         # Only list main env files (not host-specific)
@@ -36,7 +37,8 @@ get_env_file_path() {
 # Check if environment exists
 environment_exists() {
     local env_name="$1"
-    local env_file=$(get_env_file_path "$env_name")
+    local env_file
+    env_file=$(get_env_file_path "$env_name")
     
     if [ -f "$env_file" ]; then
         return 0
@@ -56,7 +58,8 @@ add_environment() {
     prompt_env_name "Environment name" ENV_NAME
     
     # Create env file path
-    local env_file=$(get_env_file_path "$ENV_NAME")
+    local env_file
+    env_file=$(get_env_file_path "$ENV_NAME")
     
     # Check if environment already exists
     if environment_exists "$ENV_NAME"; then
@@ -135,16 +138,17 @@ edit_environment() {
         return 1
     fi
     
-    local env_file=$(get_env_file_path "$ENV_NAME")
+    local env_file
+    env_file=$(get_env_file_path "$ENV_NAME")
     
     echo ""
     print_info "Current configuration for '${ENV_NAME}':"
     echo ""
-    cat "$env_file" | while IFS= read -r line; do
+    while IFS= read -r line; do
         if [[ "$line" =~ ^[A-Z_]+= ]]; then
             echo "  $line"
         fi
-    done
+    done < "$env_file"
     echo ""
     
     # Ask what to edit
@@ -163,7 +167,8 @@ edit_environment() {
         0)
             # Edit HOST
             echo ""
-            local current_host=$(grep "^HOST=" "$env_file" 2>/dev/null | cut -d'=' -f2-)
+            local current_host
+            current_host=$(grep "^HOST=" "$env_file" 2>/dev/null | cut -d'=' -f2-)
             echo -e "${CYAN}Current HOST:${NC} $current_host"
             echo ""
             prompt_host "New HOST value" NEW_HOST_VALUE
@@ -175,7 +180,8 @@ edit_environment() {
         1)
             # Edit USER
             echo ""
-            local current_user=$(grep "^USER=" "$env_file" 2>/dev/null | cut -d'=' -f2-)
+            local current_user
+            current_user=$(grep "^USER=" "$env_file" 2>/dev/null | cut -d'=' -f2-)
             echo -e "${CYAN}Current USER:${NC} $current_user"
             echo ""
             prompt_username "New USER value" NEW_USER_VALUE "dockflow"
@@ -277,7 +283,8 @@ delete_environment() {
         return 1
     fi
     
-    local env_file=$(get_env_file_path "$ENV_NAME")
+    local env_file
+    env_file=$(get_env_file_path "$ENV_NAME")
     
     echo ""
     print_warning "⚠️  This will permanently delete the environment '${ENV_NAME}'"
@@ -287,11 +294,11 @@ delete_environment() {
     
     # Show content before deletion
     echo -e "${CYAN}Current content:${NC}"
-    cat "$env_file" | while IFS= read -r line; do
+    while IFS= read -r line; do
         if [[ "$line" =~ ^[A-Z_]+= ]]; then
             echo "  $line"
         fi
-    done
+    done < "$env_file"
     echo ""
     
     # Confirm deletion
@@ -353,14 +360,15 @@ view_environment() {
             echo -e "${GREEN}Environment: ${env}${NC}"
             echo -e "${GREEN}═══════════════════════════════════════${NC}"
             
-            local env_file=$(get_env_file_path "$env")
-            cat "$env_file" | while IFS= read -r line; do
+            local env_file
+            env_file=$(get_env_file_path "$env")
+            while IFS= read -r line; do
                 if [[ "$line" =~ ^[A-Z_]+= ]]; then
                     local key="${line%%=*}"
                     local value="${line#*=}"
                     echo -e "  ${CYAN}${key}:${NC} ${value}"
                 fi
-            done
+            done < "$env_file"
             
             # Check for host-specific files
             local env_dir="$CLI_PROJECT_DIR/.deployment/env"
@@ -368,7 +376,8 @@ view_environment() {
             
             for host_file in "$env_dir/.env.${env}."*; do
                 if [ -f "$host_file" ]; then
-                    local host_name=$(basename "$host_file" | sed "s/.env.${env}.//")
+                    local host_name
+                    host_name=$(basename "$host_file" | sed "s/.env.${env}.//")
                     if [ $hosts_found -eq 0 ]; then
                         echo ""
                         echo -e "  ${YELLOW}Multi-host configurations:${NC}"
@@ -385,20 +394,21 @@ view_environment() {
             return 1
         fi
         
-        local env_file=$(get_env_file_path "$ENV_NAME")
+        local env_file
+        env_file=$(get_env_file_path "$ENV_NAME")
         
         echo ""
         echo -e "${GREEN}Environment: ${ENV_NAME}${NC}"
         echo -e "${GREEN}File: .deployment/env/.env.${ENV_NAME}${NC}"
         echo ""
         
-        cat "$env_file" | while IFS= read -r line; do
+        while IFS= read -r line; do
             if [[ "$line" =~ ^[A-Z_]+= ]]; then
                 local key="${line%%=*}"
                 local value="${line#*=}"
                 echo -e "  ${CYAN}${key}:${NC} ${value}"
             fi
-        done
+        done < "$env_file"
     fi
     
     echo ""

@@ -20,7 +20,7 @@ cd "$ROOT_PATH/dockflow"
 #######################################
 
 mkdir -p ssh
-echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ssh/remote_private_key
+printf '%s' "$SSH_PRIVATE_KEY" | tr -d '\r' > ssh/remote_private_key
 chmod 600 ssh/*
 eval "$(ssh-agent -s)"
 ssh-add ssh/remote_private_key

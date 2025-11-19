@@ -30,7 +30,8 @@ detect_environments() {
     
     # Find all .env.* files
     find "$env_dir" -maxdepth 1 -name ".env.*" -type f 2>/dev/null | while read -r env_file; do
-        local filename=$(basename "$env_file")
+        local filename
+        filename=$(basename "$env_file")
         # Extract environment name (e.g., .env.production -> production)
         local env_name="${filename#.env.}"
         
@@ -56,9 +57,12 @@ parse_env_file() {
     fi
     
     # Extract key variables
-    local host=$(grep "^HOST=" "$env_file" 2>/dev/null | cut -d'=' -f2-)
-    local user=$(grep "^USER=" "$env_file" 2>/dev/null | cut -d'=' -f2-)
-    local var_count=$(grep -c "^[A-Z_]\+=" "$env_file" 2>/dev/null || echo "0")
+    local host
+    host=$(grep "^HOST=" "$env_file" 2>/dev/null | cut -d'=' -f2-)
+    local user
+    user=$(grep "^USER=" "$env_file" 2>/dev/null | cut -d'=' -f2-)
+    local var_count
+    var_count=$(grep -c "^[A-Z_]\+\=" "$env_file" 2>/dev/null || echo "0")
     
     echo "DOCKFLOW_HOST:${host}|USER:${user}|VAR_COUNT:${var_count}"
 }
@@ -66,7 +70,8 @@ parse_env_file() {
 # Detect CI/CD platform
 detect_cicd_platform() {
     if [ -d "$CLI_PROJECT_DIR/.github/workflows" ]; then
-        local workflow_files=$(find "$CLI_PROJECT_DIR/.github/workflows" -name "*.yml" -o -name "*.yaml" 2>/dev/null | wc -l)
+        local workflow_files
+        workflow_files=$(find "$CLI_PROJECT_DIR/.github/workflows" -name "*.yml" -o -name "*.yaml" 2>/dev/null | wc -l)
         if [ "$workflow_files" -gt 0 ]; then
             echo "github"
             return
@@ -110,14 +115,18 @@ get_service_details() {
     fi
     
     if command -v yq &> /dev/null; then
-        local image=$(yq eval ".services.${service_name}.image" "$compose_file" 2>/dev/null)
-        local dockerfile=$(yq eval ".services.${service_name}.build.dockerfile" "$compose_file" 2>/dev/null)
-        local ports=$(yq eval ".services.${service_name}.ports[]" "$compose_file" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+        local image
+        image=$(yq eval ".services.${service_name}.image" "$compose_file" 2>/dev/null)
+        local dockerfile
+        dockerfile=$(yq eval ".services.${service_name}.build.dockerfile" "$compose_file" 2>/dev/null)
+        local ports
+        ports=$(yq eval ".services.${service_name}.ports[]" "$compose_file" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
         
         echo "IMAGE:${image}|DOCKERFILE:${dockerfile}|PORTS:${ports}"
     else
         # Fallback: basic grep parsing
-        local image=$(grep -A 20 "^  ${service_name}:" "$compose_file" | grep "image:" | head -n1 | awk '{print $2}')
+        local image
+        image=$(grep -A 20 "^  ${service_name}:" "$compose_file" | grep "image:" | head -n1 | awk '{print $2}')
         echo "IMAGE:${image}|DOCKERFILE:unknown|PORTS:unknown"
     fi
 }
@@ -132,9 +141,12 @@ parse_config_yml() {
     fi
     
     if command -v yq &> /dev/null; then
-        local environmentize=$(yq eval '.options.environmentize // true' "$config_file" 2>/dev/null)
-        local remote_build=$(yq eval '.options.remote_build // false' "$config_file" 2>/dev/null)
-        local debug_logs=$(yq eval '.options.enable_debug_logs // false' "$config_file" 2>/dev/null)
+        local environmentize
+        environmentize=$(yq eval '.options.environmentize // true' "$config_file" 2>/dev/null)
+        local remote_build
+        remote_build=$(yq eval '.options.remote_build // false' "$config_file" 2>/dev/null)
+        local debug_logs
+        debug_logs=$(yq eval '.options.enable_debug_logs // false' "$config_file" 2>/dev/null)
         
         echo "ENVIRONMENTIZE:${environmentize}|REMOTE_BUILD:${remote_build}|DEBUG_LOGS:${debug_logs}"
     else
@@ -160,7 +172,8 @@ display_project_analysis() {
     
     # Detect environments
     echo -e "${CYAN}ENVIRONMENTS:${NC}"
-    local envs=$(detect_environments)
+    local envs
+    envs=$(detect_environments)
     
     if [ -z "$envs" ]; then
         echo -e "  ${YELLOW}⚠ No environments found${NC}"
@@ -172,7 +185,8 @@ display_project_analysis() {
                 echo -e "  ${GREEN}• ${env_name}${NC} (.env.${env_name})"
                 
                 # Parse and display env details
-                local env_info=$(parse_env_file "$env_file")
+                local env_info
+                env_info=$(parse_env_file "$env_file")
                 IFS='|' read -ra INFO_PARTS <<< "$env_info"
                 for part in "${INFO_PARTS[@]}"; do
                     local key="${part%%:*}"
@@ -190,7 +204,8 @@ display_project_analysis() {
     
     # Detect Docker services
     echo -e "${CYAN}DOCKER SERVICES:${NC}"
-    local services=$(parse_docker_compose)
+    local services
+    services=$(parse_docker_compose)
     
     if [ -z "$services" ]; then
         echo -e "  ${YELLOW}⚠ No services found in docker-compose.yml${NC}"
@@ -204,12 +219,14 @@ display_project_analysis() {
     
     # Configuration
     echo -e "${CYAN}CONFIGURATION:${NC}"
-    local config=$(parse_config_yml)
+    local config
+    config=$(parse_config_yml)
     IFS='|' read -ra CONFIG_PARTS <<< "$config"
     for part in "${CONFIG_PARTS[@]}"; do
         local key="${part%%:*}"
         local value="${part#*:}"
-        local display_key=$(echo "$key" | tr '_' ' ' | awk '{for(i=1;i<=NF;i++) $i=tolower($i); print}')
+        local display_key
+        display_key=$(echo "$key" | tr '_' ' ' | awk '{for(i=1;i<=NF;i++) $i=tolower($i); print}')
         
         if [ "$value" = "true" ]; then
             echo -e "  ${GREEN}✓${NC} ${display_key}: enabled"
@@ -223,7 +240,8 @@ display_project_analysis() {
     
     # CI/CD Platform
     echo -e "${CYAN}CI/CD PLATFORM:${NC}"
-    local cicd=$(detect_cicd_platform)
+    local cicd
+    cicd=$(detect_cicd_platform)
     case "$cicd" in
         github)
             echo -e "  ${GREEN}✓ GitHub Actions${NC}"

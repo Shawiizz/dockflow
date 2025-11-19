@@ -38,7 +38,7 @@ run_ansible_playbook() {
     echo "Setting up SSH key for Ansible..."
     # Ensure the key doesn't have Windows CRLF line endings
     if [ -f ~/.ssh/deploy_key ]; then
-        cat ~/.ssh/deploy_key | tr -d '\r' > ~/.ssh/deploy_key.tmp
+        tr -d '\r' < ~/.ssh/deploy_key > ~/.ssh/deploy_key.tmp
         mv ~/.ssh/deploy_key.tmp ~/.ssh/deploy_key
         chmod 600 ~/.ssh/deploy_key
     fi

@@ -17,8 +17,7 @@ echo ""
 
 # Run CLI tests first (which will setup test VM and configure it)
 echo "Step 1: Running CLI E2E tests (setup + configuration)..."
-bash "$SCRIPT_DIR/cli/run-tests.sh"
-if [ $? -ne 0 ]; then
+if ! bash "$SCRIPT_DIR/cli/run-tests.sh"; then
     echo "ERROR: CLI tests failed."
     exit 1
 fi

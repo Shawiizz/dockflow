@@ -78,7 +78,7 @@ echo ""
 # The SSH_PORT (2222) is only for host -> container access
 # Set SKIP_DOCKER_INSTALL=true since Docker is already installed in test-vm
 # Don't install Portainer in tests to keep it simple
-docker run --rm \
+if ! docker run --rm \
     --network docker_test-network \
     -v "$SSH_KEY_DIR:/root/.ssh" \
     -e SKIP_DOCKER_INSTALL=true \
@@ -90,9 +90,7 @@ docker run --rm \
     --remote-password "$SSH_PASSWORD" \
     --deploy-user "$DEPLOY_USER" \
     --deploy-password "dockflow123" \
-    --generate-key y
-
-if [ $? -ne 0 ]; then
+    --generate-key y; then
     echo "ERROR: CLI setup-machine command failed"
     exit 1
 fi

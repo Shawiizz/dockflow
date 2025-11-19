@@ -145,153 +145,141 @@ fi
 
 # Test 5: Missing required --host
 test_case "Missing required --host (should fail)"
-(parse_setup_machine_args \
+if (parse_setup_machine_args \
     --remote-user "root" \
-    --remote-password "pass" 2>/dev/null)
-if [ $? -ne 0 ]; then
-    assert_pass
-else
+    --remote-password "pass" >/dev/null 2>&1); then
     assert_fail "Should have failed but didn't"
+else
+    assert_pass
 fi
 
 # Test 6: Missing required --remote-user
 test_case "Missing required --remote-user (should fail)"
-(parse_setup_machine_args \
+if (parse_setup_machine_args \
     --host "192.168.1.10" \
-    --remote-password "pass" 2>/dev/null)
-if [ $? -ne 0 ]; then
-    assert_pass
-else
+    --remote-password "pass" >/dev/null 2>&1); then
     assert_fail "Should have failed but didn't"
+else
+    assert_pass
 fi
 
 # Test 7: Missing authentication method
 test_case "Missing authentication method (should fail)"
-(parse_setup_machine_args \
+if (parse_setup_machine_args \
     --host "192.168.1.10" \
-    --remote-user "root" 2>/dev/null)
-if [ $? -ne 0 ]; then
-    assert_pass
-else
+    --remote-user "root" >/dev/null 2>&1); then
     assert_fail "Should have failed but didn't"
+else
+    assert_pass
 fi
 
 # Test 8: Both password and key provided (should fail)
 test_case "Both password and key provided (should fail)"
-(parse_setup_machine_args \
+if (parse_setup_machine_args \
     --host "192.168.1.10" \
     --remote-user "root" \
     --remote-password "pass" \
-    --remote-key "/tmp/test_ssh/test_key" 2>/dev/null)
-if [ $? -ne 0 ]; then
-    assert_pass
-else
+    --remote-key "/tmp/test_ssh/test_key" >/dev/null 2>&1); then
     assert_fail "Should have failed but didn't"
+else
+    assert_pass
 fi
 
 # Test 9: Invalid IP address
 test_case "Invalid IP address (should fail)"
-(parse_setup_machine_args \
+if (parse_setup_machine_args \
     --host "999.999.999.999" \
     --remote-user "root" \
-    --remote-password "pass" 2>/dev/null)
-if [ $? -ne 0 ]; then
-    assert_pass
-else
+    --remote-password "pass" >/dev/null 2>&1); then
     assert_fail "Should have failed but didn't"
+else
+    assert_pass
 fi
 
 # Test 10: Invalid port number
 test_case "Invalid port number (should fail)"
-(parse_setup_machine_args \
+if (parse_setup_machine_args \
     --host "192.168.1.10" \
     --port "99999" \
     --remote-user "root" \
-    --remote-password "pass" 2>/dev/null)
-if [ $? -ne 0 ]; then
-    assert_pass
-else
+    --remote-password "pass" >/dev/null 2>&1); then
     assert_fail "Should have failed but didn't"
+else
+    assert_pass
 fi
 
 # Test 11: Deploy user without password
 test_case "Deploy user without password (should fail)"
-(parse_setup_machine_args \
+if (parse_setup_machine_args \
     --host "192.168.1.10" \
     --remote-user "root" \
     --remote-password "pass" \
     --deploy-user "dockflow" \
-    --generate-key "y" 2>/dev/null)
-if [ $? -ne 0 ]; then
-    assert_pass
-else
+    --generate-key "y" >/dev/null 2>&1); then
     assert_fail "Should have failed but didn't"
+else
+    assert_pass
 fi
 
 # Test 12: Deploy user without key method
 test_case "Deploy user without key method (should fail)"
-(parse_setup_machine_args \
+if (parse_setup_machine_args \
     --host "192.168.1.10" \
     --remote-user "root" \
     --remote-password "pass" \
     --deploy-user "dockflow" \
-    --deploy-password "deploypass" 2>/dev/null)
-if [ $? -ne 0 ]; then
-    assert_pass
-else
+    --deploy-password "deploypass" >/dev/null 2>&1); then
     assert_fail "Should have failed but didn't"
+else
+    assert_pass
 fi
 
 # Test 13: Portainer without password
 test_case "Portainer installation without password (should fail)"
-(parse_setup_machine_args \
+if (parse_setup_machine_args \
     --host "192.168.1.10" \
     --remote-user "root" \
     --remote-password "pass" \
-    --install-portainer "y" 2>/dev/null)
-if [ $? -ne 0 ]; then
-    assert_pass
-else
+    --install-portainer "y" >/dev/null 2>&1); then
     assert_fail "Should have failed but didn't"
+else
+    assert_pass
 fi
 
 # Test 14: Invalid username format
 test_case "Invalid username format (should fail)"
-(parse_setup_machine_args \
+if (parse_setup_machine_args \
     --host "192.168.1.10" \
     --remote-user "INVALID USER" \
-    --remote-password "pass" 2>/dev/null)
-if [ $? -ne 0 ]; then
-    assert_pass
-else
+    --remote-password "pass" >/dev/null 2>&1); then
     assert_fail "Should have failed but didn't"
+else
+    assert_pass
 fi
 
 # Test 15: Invalid domain name
 test_case "Invalid domain name for Portainer (should fail)"
-(parse_setup_machine_args \
+if (parse_setup_machine_args \
     --host "192.168.1.10" \
     --remote-user "root" \
     --remote-password "pass" \
     --install-portainer "y" \
     --portainer-password "pass" \
-    --portainer-domain "invalid_domain" 2>/dev/null)
-if [ $? -ne 0 ]; then
-    assert_pass
-else
+    --portainer-domain "invalid_domain" >/dev/null 2>&1); then
     assert_fail "Should have failed but didn't"
+else
+    assert_pass
 fi
 
 # Test 16: Non-existent SSH key file
 test_case "Non-existent SSH key file (should fail)"
-(parse_setup_machine_args \
+if (parse_setup_machine_args \
     --host "192.168.1.10" \
     --remote-user "root" \
-    --remote-key "/non/existent/key" 2>/dev/null)
-if [ $? -ne 0 ]; then
-    assert_pass
-else
+    --remote-key "/non/existent/key" >/dev/null 2>&1); then
     assert_fail "Should have failed but didn't"
+else
+    assert_pass
 fi
 
 # Test 17: Custom port

@@ -16,7 +16,8 @@ list_and_select_ssh_key() {
     local private_keys=()
     while IFS= read -r -d '' file; do
         # Check if it's likely a private key (not .pub, not known_hosts, not config)
-        local basename=$(basename "$file")
+        local basename
+        basename=$(basename "$file")
         if [[ ! "$basename" =~ \.(pub|known_hosts|config)$ ]] && [[ "$basename" != "known_hosts" ]] && [[ "$basename" != "config" ]]; then
             # Additional check: private keys typically start with specific headers
             if head -1 "$file" 2>/dev/null | grep -q "BEGIN.*PRIVATE KEY\|BEGIN OPENSSH PRIVATE KEY\|BEGIN RSA PRIVATE KEY\|BEGIN DSA PRIVATE KEY\|BEGIN EC PRIVATE KEY"; then
@@ -34,7 +35,8 @@ list_and_select_ssh_key() {
     
     local options=()
     for key_file in "${private_keys[@]}"; do
-        local key_name=$(basename "$key_file")
+        local key_name
+        key_name=$(basename "$key_file")
         options+=("$key_name ($(dirname "$key_file")/$key_name)")
     done
     
@@ -129,7 +131,7 @@ get_ssh_connection() {
         echo ""
         echo -e "${CYAN}💡 Quick command to run on the remote server:${NC}"
         echo ""
-        echo "mkdir -p ~/.ssh && echo '$(cat ${SSH_PRIVATE_KEY_PATH}.pub)' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+        echo "mkdir -p ~/.ssh && echo '$(cat "${SSH_PRIVATE_KEY_PATH}.pub")' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
         echo ""
 
         read -rp "Press Enter when the public key has been added to the remote server to continue..." CONTINUE_KEY

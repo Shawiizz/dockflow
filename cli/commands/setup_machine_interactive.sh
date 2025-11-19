@@ -135,7 +135,7 @@ setup_machine_interactive() {
             fi
             
             # Ensure the key is in authorized_keys for local SSH
-            if ! grep -q "$(cat ${USER_SSH_KEY}.pub)" ~/.ssh/authorized_keys 2>/dev/null; then
+            if ! grep -q "$(cat "${USER_SSH_KEY}.pub")" ~/.ssh/authorized_keys 2>/dev/null; then
                 cat "${USER_SSH_KEY}.pub" >> ~/.ssh/authorized_keys
                 chmod 600 ~/.ssh/authorized_keys
             fi

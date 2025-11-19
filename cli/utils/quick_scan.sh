@@ -27,7 +27,8 @@ count_environments() {
     
     # Count unique base environments (exclude host-specific files)
     find "$env_dir" -maxdepth 1 -name ".env.*" -type f 2>/dev/null | while read -r env_file; do
-        local filename=$(basename "$env_file")
+        local filename
+        filename=$(basename "$env_file")
         local env_name="${filename#.env.}"
         
         # Only count main env files (not host-specific)
@@ -59,8 +60,10 @@ display_quick_scan() {
         return 1
     fi
     
-    local env_count=$(count_environments)
-    local service_count=$(count_docker_services)
+    local env_count
+    env_count=$(count_environments)
+    local service_count
+    service_count=$(count_docker_services)
     
     echo ""
     echo -e "${GREEN}✓ Project detected${NC}"
