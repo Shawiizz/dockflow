@@ -1,10 +1,10 @@
 ---
 - name: Create scripts directory in user home if it doesn't exist
   ansible.builtin.file:
-    path: "/home/{{ user }}/scripts"
+    path: "/home/{{ dockflow_user }}/scripts"
     state: directory
-    owner: "{{ user }}"
-    group: "{{ user }}"
+    owner: "{{ dockflow_user }}"
+    group: "{{ dockflow_user }}"
     mode: '0755'
 
 - name: List script templates (*.sh.j2 only) 
@@ -18,16 +18,16 @@
 - name: Copy script templates to user home
   template:
     src: "{{ item.path }}"
-    dest: "/home/{{ user }}/scripts/{{ item.path | basename | regex_replace('\\.sh\\.j2$', '.sh') }}"
-    owner: "{{ user }}"
-    group: "{{ user }}"
+    dest: "/home/{{ dockflow_user }}/scripts/{{ item.path | basename | regex_replace('\\.sh\\.j2$', '.sh') }}"
+    owner: "{{ dockflow_user }}"
+    group: "{{ dockflow_user }}"
     mode: '0755'
   loop: "{{ script_templates.files }}"
   when: script_templates.matched > 0
   register: scripts_copy
 
 - name: Execute all scripts in user home
-  ansible.builtin.command: "bash /home/{{ user }}/scripts/{{ item.path | basename | regex_replace('\\.sh\\.j2$', '.sh') }}"
+  ansible.builtin.command: "bash /home/{{ dockflow_user }}/scripts/{{ item.path | basename | regex_replace('\\.sh\\.j2$', '.sh') }}"
   loop: "{{ script_templates.files }}"
   when: script_templates.matched > 0
   register: scripts_execution
