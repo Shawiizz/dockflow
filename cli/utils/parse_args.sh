@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -eo pipefail
 IFS=$'\n\t'
 
 # ============================================
@@ -10,20 +10,16 @@ IFS=$'\n\t'
 
 # Parse setup-machine arguments
 parse_setup_machine_args() {
-    # Initialize all variables with defaults
-    ARG_HOST=""
+    # Reset all variables
+    unset ARG_HOST ARG_PORT ARG_REMOTE_USER ARG_REMOTE_PASSWORD ARG_REMOTE_KEY
+    unset ARG_DEPLOY_USER ARG_DEPLOY_PASSWORD ARG_DEPLOY_KEY ARG_GENERATE_KEY
+    unset ARG_INSTALL_PORTAINER ARG_PORTAINER_PASSWORD ARG_PORTAINER_PORT ARG_PORTAINER_DOMAIN
+    
+    # Default values
     ARG_PORT="22"
-    ARG_REMOTE_USER=""
-    ARG_REMOTE_PASSWORD=""
-    ARG_REMOTE_KEY=""
-    ARG_DEPLOY_USER=""
-    ARG_DEPLOY_PASSWORD=""
-    ARG_DEPLOY_KEY=""
     ARG_GENERATE_KEY="n"
     ARG_INSTALL_PORTAINER="n"
-    ARG_PORTAINER_PASSWORD=""
     ARG_PORTAINER_PORT="9000"
-    ARG_PORTAINER_DOMAIN=""
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
