@@ -134,7 +134,7 @@ get_ssh_connection() {
         echo "mkdir -p ~/.ssh && echo '$(cat "${SSH_PRIVATE_KEY_PATH}.pub")' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
         echo ""
 
-        read -rp "Press Enter when the public key has been added to the remote server to continue..." CONTINUE_KEY
+        read -rp "Press Enter when the public key has been added to the remote server to continue..." _
         
         chmod 600 "$SSH_PRIVATE_KEY_PATH"
         AUTH_METHOD="key"
@@ -256,8 +256,7 @@ generate_ansible_ssh_key() {
         if [ ! -f "$ANSIBLE_PUBLIC_KEY_PATH" ]; then
             print_warning "Public key not found at $ANSIBLE_PUBLIC_KEY_PATH"
             print_warning "Trying to generate public key from private key..."
-            ssh-keygen -y -f "$ANSIBLE_PRIVATE_KEY_PATH" > "$ANSIBLE_PUBLIC_KEY_PATH" 2>/dev/null
-            if [ $? -eq 0 ]; then
+            if ssh-keygen -y -f "$ANSIBLE_PRIVATE_KEY_PATH" > "$ANSIBLE_PUBLIC_KEY_PATH" 2>/dev/null; then
                 print_success "Public key generated successfully"
             else
                 print_warning "Failed to generate public key. Please ensure the private key is valid."

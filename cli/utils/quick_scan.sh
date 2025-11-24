@@ -50,7 +50,7 @@ count_docker_services() {
     if command -v yq &> /dev/null; then
         yq eval '.services | keys | .[]' "$compose_file" 2>/dev/null | wc -l | tr -d ' '
     else
-        grep -E "^  [a-z0-9_-]+:" "$compose_file" 2>/dev/null | grep -v "^#" | wc -l | tr -d ' '
+        grep -E -c "^  [a-z0-9_-]+:" "$compose_file" 2>/dev/null
     fi
 }
 

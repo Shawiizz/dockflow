@@ -2,8 +2,8 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-CLI_VERSION="1.0.0"
-CLI_NAME="Dockflow CLI"
+export CLI_VERSION="1.0.0"
+export CLI_NAME="Dockflow CLI"
 
 # Detect if running in Docker or natively
 if [ -f "/.dockerenv" ] || grep -q docker /proc/1/cgroup 2>/dev/null; then

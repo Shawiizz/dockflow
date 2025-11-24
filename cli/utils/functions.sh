@@ -70,7 +70,7 @@ interactive_menu() {
         ((lines_drawn++))
         
         for i in "${!options[@]}"; do
-            if [ $i -eq $selected ]; then
+            if [ "$i" -eq "$selected" ]; then
                 echo -e "  ${GREEN}▸ ${options[$i]}${NC}"
             else
                 echo -e "    ${options[$i]}"
@@ -100,13 +100,13 @@ interactive_menu() {
                 case "$key" in
                     '[A')  # Up arrow
                         ((selected--))
-                        if [ $selected -lt 0 ]; then
+                        if [ "$selected" -lt 0 ]; then
                             selected=$((num_options - 1))
                         fi
                         ;;
                     '[B')  # Down arrow
                         ((selected++))
-                        if [ $selected -ge $num_options ]; then
+                        if [ "$selected" -ge "$num_options" ]; then
                             selected=0
                         fi
                         ;;
@@ -165,7 +165,7 @@ prompt_and_validate_sudo_password() {
     
     while [ "$SUDO_PASSWORD_VALID" = false ] && [ $SUDO_ATTEMPTS -lt $MAX_SUDO_ATTEMPTS ]; do
         echo -ne "${CYAN}Enter sudo password for user ${BLUE}$CURRENT_USER${CYAN}: ${NC}"
-        read -s BECOME_PASSWORD
+        read -rs BECOME_PASSWORD
         echo ""
         
         # Test if the password is correct
@@ -176,7 +176,7 @@ prompt_and_validate_sudo_password() {
             return 0
         else
             SUDO_ATTEMPTS=$((SUDO_ATTEMPTS + 1))
-            if [ $SUDO_ATTEMPTS -lt $MAX_SUDO_ATTEMPTS ]; then
+            if [ "$SUDO_ATTEMPTS" -lt "$MAX_SUDO_ATTEMPTS" ]; then
                 print_warning "Incorrect password. Please try again. (Attempt $SUDO_ATTEMPTS/$MAX_SUDO_ATTEMPTS)"
             else
                 print_error "Maximum password attempts reached. Setup aborted."

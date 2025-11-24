@@ -29,7 +29,7 @@ generate_connection_string() {
     
     # Escape password for JSON
         local ESCAPED_PASSWORD
-        ESCAPED_PASSWORD=$(echo "$DOCKFLOW_PASSWORD" | sed 's/"/\\"/g')
+        ESCAPED_PASSWORD=${DOCKFLOW_PASSWORD//\"/\\\"}
     
     # Create JSON with connection info (including password if provided)
     if [ -n "$DOCKFLOW_PASSWORD" ]; then
@@ -69,9 +69,7 @@ display_connection_info() {
     
     # Generate connection string
         local CONNECTION_STRING
-        CONNECTION_STRING=$(generate_connection_string "$DOCKFLOW_HOST" "$PORT" "$DOCKFLOW_USER" "$PRIVATE_KEY" "$DOCKFLOW_PASSWORD")
-    
-    if [ $? -eq 0 ] && [ -n "$CONNECTION_STRING" ]; then
+    if CONNECTION_STRING=$(generate_connection_string "$DOCKFLOW_HOST" "$PORT" "$DOCKFLOW_USER" "$PRIVATE_KEY" "$DOCKFLOW_PASSWORD") && [ -n "$CONNECTION_STRING" ]; then
         echo -e "${RED}╔═══════════════════════════════════════════════════════════════════════╗${NC}"
         echo -e "${RED}║                        ⚠️  DO NOT SHARE  ⚠️                             ║${NC}"
         echo -e "${RED}║                                                                       ║${NC}"

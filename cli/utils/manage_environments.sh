@@ -109,7 +109,7 @@ edit_environment() {
     print_heading "EDIT ENVIRONMENT"
     
     # List available environments
-    local envs=($(list_environments))
+    mapfile -t envs < <(list_environments)
     
     if [ ${#envs[@]} -eq 0 ]; then
         print_warning "No environments found"
@@ -231,14 +231,15 @@ edit_environment() {
             # Prevent removing DOCKFLOW_HOST and USER
             if [ "$VAR_NAME" = "DOCKFLOW_HOST" ] || [ "$VAR_NAME" = "USER" ]; then
                 print_error "Cannot remove $VAR_NAME (required variable)"
-            
-            if grep -q "^${VAR_NAME}=" "$env_file" 2>/dev/null; then
-                if confirm_action "Are you sure you want to remove ${VAR_NAME}?" "n"; then
-                    sed -i "/^${VAR_NAME}=/d" "$env_file"
-                    print_success "Variable ${VAR_NAME} removed"
-                fi
             else
-                print_warning "Variable ${VAR_NAME} not found"
+                if grep -q "^${VAR_NAME}=" "$env_file" 2>/dev/null; then
+                    if confirm_action "Are you sure you want to remove ${VAR_NAME}?" "n"; then
+                        sed -i "/^${VAR_NAME}=/d" "$env_file"
+                        print_success "Variable ${VAR_NAME} removed"
+                    fi
+                else
+                    print_warning "Variable ${VAR_NAME} not found"
+                fi
             fi
             ;;
         4)
@@ -256,7 +257,7 @@ delete_environment() {
     print_heading "DELETE ENVIRONMENT"
     
     # List available environments
-    local envs=($(list_environments))
+    mapfile -t envs < <(list_environments)
     
     if [ ${#envs[@]} -eq 0 ]; then
         print_warning "No environments found"
@@ -336,7 +337,7 @@ view_environment() {
     print_heading "VIEW ENVIRONMENT"
     
     # List available environments
-    local envs=($(list_environments))
+    mapfile -t envs < <(list_environments)
     
     if [ ${#envs[@]} -eq 0 ]; then
         print_warning "No environments found"
