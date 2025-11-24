@@ -25,7 +25,7 @@ jobs:
 
       - name: Install shfmt
         run: |
-          go install mvdan.cc/sh/v3/cmd/shfmt@v3.5.3
+          go install mvdan.cc/sh/v3/cmd/shfmt@latest
           echo "$HOME/go/bin" >> $GITHUB_PATH
 
       - name: Run ShellCheck and shfmt
