@@ -25,9 +25,11 @@ fi
 set -a
 if [ -f ".deployment/env/.env.${ENV}" ]; then
   echo "Loading .deployment/env/.env.${ENV}"
+  # shellcheck source=/dev/null
   source ".deployment/env/.env.${ENV}"
 elif [[ "$ENV" == "build" ]] && [ -f ".deployment/env/.env.production" ]; then
   echo "No .deployment/env/.env.${ENV} file found, loading .deployment/env/.env.production instead"
+  # shellcheck source=/dev/null
   source ".deployment/env/.env.production"
 else
   echo "No .deployment/env/.env.${ENV} file found, using CI secrets only"
@@ -36,6 +38,7 @@ fi
 # Load host-specific file
 if [[ "$HOSTNAME" != "main" && -f ".deployment/env/.env.${ENV}.${HOSTNAME}" ]]; then
   echo "Loading .deployment/env/.env.${ENV}.${HOSTNAME}"
+  # shellcheck source=/dev/null
   source ".deployment/env/.env.${ENV}.${HOSTNAME}"
 fi
 set +a

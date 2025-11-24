@@ -38,7 +38,8 @@ assert_fail() {
 # Setup test environment
 setup_test_env() {
     echo "  → Setting environment variables..."
-    export CLI_ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    CLI_ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    export CLI_ROOT_DIR
     export CLI_UTILS_DIR="$CLI_ROOT_DIR/utils"
     export CLI_COMMANDS_DIR="$CLI_ROOT_DIR/commands"
     

@@ -75,7 +75,8 @@ setup_machine_non_interactive() {
             print_step "Generating new SSH key for deployment user..."
             TEMP_KEY_DIR=$(mktemp -d)
             ssh-keygen -t ed25519 -f "$TEMP_KEY_DIR/deploy_key" -N "" -C "dockflow"
-            export ANSIBLE_PUBLIC_KEY=$(cat "$TEMP_KEY_DIR/deploy_key.pub")
+            ANSIBLE_PUBLIC_KEY=$(cat "$TEMP_KEY_DIR/deploy_key.pub")
+            export ANSIBLE_PUBLIC_KEY
             
             print_success "SSH key pair generated"
             echo ""
@@ -98,11 +99,13 @@ setup_machine_non_interactive() {
             # Check if public key exists
             local pub_key_path="${ARG_DEPLOY_KEY}.pub"
             if [ -f "$pub_key_path" ]; then
-                export ANSIBLE_PUBLIC_KEY=$(cat "$pub_key_path")
+                ANSIBLE_PUBLIC_KEY=$(cat "$pub_key_path")
+                export ANSIBLE_PUBLIC_KEY
             else
                 # Try to generate public key from private key
                 print_step "Generating public key from private key..."
-                export ANSIBLE_PUBLIC_KEY=$(ssh-keygen -y -f "$ARG_DEPLOY_KEY" 2>/dev/null)
+                ANSIBLE_PUBLIC_KEY=$(ssh-keygen -y -f "$ARG_DEPLOY_KEY" 2>/dev/null)
+                export ANSIBLE_PUBLIC_KEY
                 if [ -z "$ANSIBLE_PUBLIC_KEY" ]; then
                     echo -e "${RED}Error: Cannot read public key from $ARG_DEPLOY_KEY${NC}"
                     exit 1

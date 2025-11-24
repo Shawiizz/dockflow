@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-IFS=$'\\n\\t'
+IFS=$'\n\t'
  
 
 # Discover deployment hosts based on environment

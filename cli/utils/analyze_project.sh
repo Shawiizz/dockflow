@@ -178,10 +178,8 @@ display_project_analysis() {
     if [ -z "$envs" ]; then
         echo -e "  ${YELLOW}⚠ No environments found${NC}"
     else
-        local current_env=""
         while IFS='|' read -r env_name host_name env_file; do
             if [ "$host_name" = "main" ]; then
-                current_env="$env_name"
                 echo -e "  ${GREEN}• ${env_name}${NC} (.env.${env_name})"
                 
                 # Parse and display env details
@@ -191,7 +189,7 @@ display_project_analysis() {
                 for part in "${INFO_PARTS[@]}"; do
                     local key="${part%%:*}"
                     local value="${part#*:}"
-                    if [ ! -z "$value" ] && [ "$value" != "null" ]; then
+                    if [ -n "$value" ] && [ "$value" != "null" ]; then
                         echo -e "    ├─ ${key}: ${value}"
                     fi
                 done
