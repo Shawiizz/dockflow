@@ -9,9 +9,16 @@ RED='\033[0;31m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+# Safe tput wrapper that handles missing TERM variable
+safe_tput() {
+    if [ -n "${TERM:-}" ] && command -v tput >/dev/null 2>&1; then
+        tput "$@" 2>/dev/null || true
+    fi
+}
+
 cleanup() {
     echo -e "\n\n${YELLOW}Script interrupted by user. Goodbye!${NC}"
-    tput cnorm  # Show cursor
+    safe_tput cnorm  # Show cursor
     jobs -p | xargs -r kill
     exit 1
 }
@@ -56,7 +63,7 @@ interactive_menu() {
     local lines_drawn=0
     
     # Hide cursor
-    tput civis
+    safe_tput civis
     
     # Function to draw menu
     draw_menu() {
@@ -114,12 +121,12 @@ interactive_menu() {
                 ;;
             '')  # Enter key
                 # Show cursor
-                tput cnorm
+                safe_tput cnorm
                 echo ""
                 return $selected
                 ;;
             'q'|'Q')  # Quit
-                tput cnorm
+                safe_tput cnorm
                 echo ""
                 echo ""
                 print_warning "Exiting CLI..."
@@ -128,8 +135,8 @@ interactive_menu() {
         esac
         
         # Clear previous menu
-        tput cuu $lines_drawn
-        tput ed
+        safe_tput cuu $lines_drawn
+        safe_tput ed
         
         # Redraw menu
         draw_menu

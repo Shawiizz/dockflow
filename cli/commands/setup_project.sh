@@ -110,7 +110,7 @@ setup_project() {
     echo "  4. Push your changes and create a tag to deploy"
     echo ""
     
-    tput cnorm  # Restore cursor
+    safe_tput cnorm  # Restore cursor
     exit 0
 }
 

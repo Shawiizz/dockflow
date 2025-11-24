@@ -337,7 +337,7 @@ source "$CLI_COMMANDS_DIR/setup_machine_non_interactive.sh"
 source "$CLI_COMMANDS_DIR/setup_project.sh"
 
 trap cleanup SIGINT
-trap 'tput cnorm' EXIT  # Always restore cursor on exit
+trap 'safe_tput cnorm' EXIT  # Always restore cursor on exit
 
 # Function to initialize project structure (non-interactive)
 init_project_non_interactive() {
@@ -464,13 +464,13 @@ show_main_menu() {
             continue
         elif [ "$MAIN_OPTION" = "2" ]; then
             echo ""
-            tput cnorm  # Restore cursor
+            safe_tput cnorm  # Restore cursor
             print_success "Thank you for using Dockflow CLI. Goodbye!"
             exit 0
         else
             # User pressed 'q' or invalid option
             echo ""
-            tput cnorm  # Restore cursor
+            safe_tput cnorm  # Restore cursor
             print_success "Thank you for using Dockflow CLI. Goodbye!"
             exit 0
         fi
