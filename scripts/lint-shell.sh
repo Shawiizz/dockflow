@@ -18,6 +18,7 @@ fi
 
 echo "Running ShellCheck on ${#MAPFILE[@]} file(s)..."
 # Use shellcheck -x to allow external sourced files when running shellcheck manually
+# Exclude SC1091 (not following sourced files) as this is expected in CI
 if ! command -v shellcheck >/dev/null 2>&1; then
   echo "Error: shellcheck not found on PATH. Please install it to run linting."
   echo "Installation options (choose one):"
@@ -27,7 +28,7 @@ if ! command -v shellcheck >/dev/null 2>&1; then
   echo "  - Windows (Chocolatey): choco install shellcheck";
   exit 1
 fi
-printf '%s\0' "${MAPFILE[@]}" | xargs -0 shellcheck -x
+printf '%s\0' "${MAPFILE[@]}" | xargs -0 shellcheck -x --exclude=SC1091
 
 # Optionally run shfmt to check formatting
 # The pipeline reports differences without writing them
