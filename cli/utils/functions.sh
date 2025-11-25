@@ -1,6 +1,4 @@
 #!/bin/bash
-set -eo pipefail
-IFS=$'\n\t'
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -71,10 +69,10 @@ interactive_menu() {
         lines_drawn=0
         
         echo -e "${CYAN}${prompt}${NC}"
-        ((lines_drawn++))
+        lines_drawn=$((lines_drawn + 1))
         
         echo ""
-        ((lines_drawn++))
+        lines_drawn=$((lines_drawn + 1))
         
         for i in "${!options[@]}"; do
             if [ "$i" -eq "$selected" ]; then
@@ -82,14 +80,14 @@ interactive_menu() {
             else
                 echo -e "    ${options[$i]}"
             fi
-            ((lines_drawn++))
+            lines_drawn=$((lines_drawn + 1))
         done
         
         echo ""
-        ((lines_drawn++))
+        lines_drawn=$((lines_drawn + 1))
         
         echo -e "${YELLOW}Navigation: ↑↓ arrows to move, Enter to select, 'q' to quit${NC}"
-        ((lines_drawn++))
+        lines_drawn=$((lines_drawn + 1))
     }
     
     # Initial draw
@@ -106,13 +104,13 @@ interactive_menu() {
                 read -rsn2 -t 0.1 key  # Read the rest of the escape sequence
                 case "$key" in
                     '[A')  # Up arrow
-                        ((selected--))
+                        selected=$((selected - 1))
                         if [ "$selected" -lt 0 ]; then
                             selected=$((num_options - 1))
                         fi
                         ;;
                     '[B')  # Down arrow
-                        ((selected++))
+                        selected=$((selected + 1))
                         if [ "$selected" -ge "$num_options" ]; then
                             selected=0
                         fi
@@ -252,4 +250,71 @@ prompt_and_validate_user_password() {
         fi
     done
 }
+
+# Detect public IP address
+detect_public_ip() {
+    # Try to get public IP from external services
+    local public_ip=""
+    
+    if command -v curl >/dev/null 2>&1; then
+        public_ip=$(curl -s --connect-timeout 2 https://ifconfig.me 2>/dev/null || \
+                   curl -s --connect-timeout 2 https://api.ipify.org 2>/dev/null || \
+                   curl -s --connect-timeout 2 https://icanhazip.com 2>/dev/null)
+    elif command -v wget >/dev/null 2>&1; then
+        public_ip=$(wget -qO- --timeout=2 https://ifconfig.me 2>/dev/null || \
+                   wget -qO- --timeout=2 https://api.ipify.org 2>/dev/null || \
+                   wget -qO- --timeout=2 https://icanhazip.com 2>/dev/null)
+    fi
+    
+    # Validate the IP
+    if [[ -n "$public_ip" ]] && [[ "$public_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "$public_ip"
+        return 0
+    fi
+    
+    # Fallback to first non-loopback interface IP
+    if command -v hostname >/dev/null 2>&1; then
+        local local_ip
+        local_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+        if [[ -n "$local_ip" ]]; then
+            echo "$local_ip"
+            return 0
+        fi
+    fi
+    
+    # Final fallback
+    echo "127.0.0.1"
+    return 0
+}
+
+# Detect SSH port
+detect_ssh_port() {
+    local default_port="22"
+    
+    # Check SSH config file
+    if [ -f /etc/ssh/sshd_config ]; then
+        local config_port
+        config_port=$(grep -E "^Port " /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}')
+        if [[ -n "$config_port" ]] && [[ "$config_port" =~ ^[0-9]+$ ]]; then
+            echo "$config_port"
+            return 0
+        fi
+    fi
+    
+    # Alternatively, check which port sshd is listening on
+    if command -v ss >/dev/null 2>&1; then
+        local listening_port
+        listening_port=$(ss -tlnp 2>/dev/null | grep sshd | grep -oP ':\K[0-9]+' | head -1)
+        if [[ -n "$listening_port" ]] && [[ "$listening_port" =~ ^[0-9]+$ ]]; then
+            echo "$listening_port"
+            return 0
+        fi
+    fi
+    
+    echo "$default_port"
+    return 0
+}
+
+export -f detect_public_ip
+export -f detect_ssh_port
 

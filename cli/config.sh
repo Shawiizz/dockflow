@@ -1,6 +1,4 @@
 #!/bin/bash
-set -eo pipefail
-IFS=$'\n\t'
 
 export CLI_VERSION="1.0.0"
 export CLI_NAME="Dockflow CLI"

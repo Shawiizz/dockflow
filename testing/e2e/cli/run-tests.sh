@@ -104,13 +104,10 @@ CLI_OUTPUT=$(sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserK
     bash cli/cli.sh setup-machine \
     --host dockflow-test-vm \
     --port 22 \
-    --remote-user $SSH_USER \
-    --remote-password '$SSH_PASSWORD' \
     --deploy-user $DEPLOY_USER \
     --deploy-password 'dockflow123' \
     --generate-key y \
-    --skip-docker-install \
-    --local 2>&1")
+    --skip-docker-install 2>&1")
 
 CLI_EXIT_CODE=$?
 set -e

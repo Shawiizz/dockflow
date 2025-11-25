@@ -1,6 +1,4 @@
 #!/bin/bash
-set -eo pipefail
-IFS=$'\n\t'
 
 source "$CLI_UTILS_DIR/functions.sh"
 

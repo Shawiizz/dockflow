@@ -108,7 +108,7 @@ curl -fsSL "https://raw.githubusercontent.com/Shawiizz/dockflow/main/cli/cli_wra
 ```
 
 The CLI will guide you through:
-1. Connecting to your remote server
+1. Configuring this server
 2. Creating a deployment user
 3. Configuring SSH keys
 4. Installing Docker and Portainer (optional)
@@ -116,18 +116,11 @@ The CLI will guide you through:
 <details>
 <summary>Alternative: Use Docker image</summary>
 
-If you prefer using Docker Desktop:
+If you prefer using Docker:
 
 ```bash
 docker run -it --rm -v ${HOME}/.ssh:/root/.ssh -v .:/project shawiizz/dockflow-cli:latest
 ```
-
-</details>
-
-<details>
-<summary>Manual setup (advanced users)</summary>
-
-For manual configuration, check [MANUAL-REMOTE-SETUP.md](./MANUAL-REMOTE-SETUP.md)
 
 </details>
 

@@ -1,6 +1,4 @@
 #!/bin/bash
-set -eo pipefail
-IFS=$'\n\t'
 
 # ============================================
 # QUICK PROJECT SCAN

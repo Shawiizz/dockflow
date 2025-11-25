@@ -1,25 +1,38 @@
 #!/bin/bash
-set -eo pipefail
-IFS=$'\n\t'
 
 # ============================================
 # NON-INTERACTIVE MACHINE SETUP
 # ============================================
-# Setup remote machine without user interaction
+# Setup local machine without user interaction
 # Uses command-line arguments only
 # ============================================
 
 setup_machine_non_interactive() {
     echo -e "${GREEN}=========================================================="
-    echo "   SETUP REMOTE MACHINE FOR DEPLOYMENT (NON-INTERACTIVE)"
+    echo "   SETUP LOCAL MACHINE FOR DEPLOYMENT (NON-INTERACTIVE)"
     echo -e "==========================================================${NC}"
     echo ""
     
     # Set variables from arguments
-    export SERVER_IP="$ARG_HOST"
-    export SSH_PORT="$ARG_PORT"
-    export REMOTE_USER="$ARG_REMOTE_USER"
-    export IS_LOCAL_RUN="${ARG_LOCAL:-false}"
+    export SERVER_IP="127.0.0.1"
+    
+    # Determine Public Host
+    if [ -n "$ARG_HOST" ]; then
+        export PUBLIC_HOST="$ARG_HOST"
+    else
+        # Auto-detect if not provided
+        export PUBLIC_HOST=$(detect_public_ip)
+    fi
+    
+    # Determine SSH Port
+    if [ -n "$ARG_PORT" ]; then
+        export SSH_PORT="$ARG_PORT"
+    else
+        # Auto-detect if not provided
+        export SSH_PORT=$(detect_ssh_port)
+    fi
+    
+    export IS_LOCAL_RUN="true"
     export SKIP_DOCKER_INSTALL="${ARG_SKIP_DOCKER_INSTALL:-false}"
     
     # Determine if we're creating a new user
@@ -29,31 +42,22 @@ setup_machine_non_interactive() {
         export DOCKFLOW_USER="$ARG_DEPLOY_USER"
         export DOCKFLOW_PASSWORD="$ARG_DEPLOY_PASSWORD"
     else
-        # Use remote user as deploy user
-        export DOCKFLOW_USER="$ARG_REMOTE_USER"
-    fi
-    
-    # Setup authentication method for remote connection
-    if [ -n "$ARG_REMOTE_PASSWORD" ]; then
-        export REMOTE_PASSWORD="$ARG_REMOTE_PASSWORD"
-        export AUTH_METHOD="password"
-    else
-        export SSH_PRIVATE_KEY_PATH="$ARG_REMOTE_KEY"
-        export AUTH_METHOD="key"
+        # Use current user as deploy user
+        export DOCKFLOW_USER="$(whoami)"
     fi
     
     # Display configuration
     print_heading "CONFIGURATION SUMMARY"
     echo ""
-    echo -e "${CYAN}Remote server:${NC} $SERVER_IP:$SSH_PORT"
-    echo -e "${CYAN}Remote user (for connection):${NC} $REMOTE_USER"
-    echo -e "${CYAN}Authentication method:${NC} $AUTH_METHOD"
+    echo -e "${CYAN}Target:${NC} Local Machine"
+    echo -e "${CYAN}Public Host (for connection string):${NC} $PUBLIC_HOST"
+    echo -e "${CYAN}SSH Port:${NC} $SSH_PORT"
     
     if [ "$CREATE_USER" = true ]; then
         echo -e "${CYAN}Deployment user (to be created):${NC} $DOCKFLOW_USER"
         echo -e "${CYAN}Create new user:${NC} Yes"
     else
-        echo -e "${CYAN}Deployment user:${NC} $DOCKFLOW_USER (existing user)"
+        echo -e "${CYAN}Deployment user:${NC} $DOCKFLOW_USER (current user)"
         echo -e "${CYAN}Create new user:${NC} No"
     fi
     
@@ -133,9 +137,9 @@ setup_machine_non_interactive() {
         fi
         echo ""
         
-        # Create user on remote
-        print_heading "CREATING DEPLOYMENT USER ON REMOTE SERVER"
-        create_ansible_user_on_remote
+        # Create user locally
+        print_heading "CREATING DEPLOYMENT USER"
+        create_ansible_user_locally
         echo ""
     else
         # Not creating a user, but we need a deploy key for Ansible
@@ -147,16 +151,8 @@ setup_machine_non_interactive() {
             cp "$ARG_DEPLOY_KEY" ~/.ssh/deploy_key
             chmod 600 ~/.ssh/deploy_key
             export USER_PRIVATE_KEY_PATH="$ARG_DEPLOY_KEY"
-        elif [ -n "$ARG_REMOTE_KEY" ]; then
-            # Use remote key as deploy key
-            print_step "Using remote connection key as deploy key"
-            mkdir -p ~/.ssh
-            cp "$ARG_REMOTE_KEY" ~/.ssh/deploy_key
-            chmod 600 ~/.ssh/deploy_key
-            export USER_PRIVATE_KEY_PATH="$ARG_REMOTE_KEY"
         else
-            echo -e "${RED}Error: No deploy key available${NC}"
-            exit 1
+            echo -e "${YELLOW}No deploy key provided. Assuming existing key or passwordless sudo.${NC}"
         fi
         echo ""
     fi
@@ -169,26 +165,21 @@ setup_machine_non_interactive() {
         export PORTAINER_DOMAIN_NAME="$ARG_PORTAINER_DOMAIN"
     fi
     
-    # Set user password for Ansible (needed for sudo)
-    if [ -z "$DOCKFLOW_PASSWORD" ]; then
-        # If we're not creating a user and no password was provided,
-        # we need to prompt or use remote password
-        if [ -n "$ARG_REMOTE_PASSWORD" ]; then
-            export DOCKFLOW_PASSWORD="$ARG_REMOTE_PASSWORD"
-        else
-            # For key-based auth without user creation, we might not have a password
-            # This is okay if the user has NOPASSWD sudo configured
-            echo -e "${YELLOW}Warning: No password provided for sudo operations${NC}"
-            echo -e "${YELLOW}Make sure the user has NOPASSWD sudo configured, or provide --deploy-password${NC}"
-            export DOCKFLOW_PASSWORD=""
-        fi
-    fi
-    
     # Run Ansible playbook
     run_ansible_playbook
     
     # Display completion
     display_completion
+}
+
+display_completion() {
+    print_heading "SETUP COMPLETE"
+    
+    echo -e "${GREEN}The machine has been successfully configured!${NC}"
+    echo ""
+    
+    # Display connection string
+    display_deployment_connection_info "$PUBLIC_HOST" "$SSH_PORT" "$DOCKFLOW_USER" "$DOCKFLOW_PASSWORD"
 }
 
 export -f setup_machine_non_interactive

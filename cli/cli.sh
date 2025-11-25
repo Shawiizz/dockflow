@@ -1,6 +1,4 @@
 #!/bin/bash
-set -eo pipefail
-IFS=$'\n\t'
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,16 +39,9 @@ $(echo -e "${CYAN}COMMANDS:${NC}")
     -h, --help              Show this help message
     -v, --version           Show version information
     init [github|gitlab]    Initialize project structure (default: github)
-    setup-machine           Setup remote machine for deployment (non-interactive)
+    setup-machine           Setup machine for deployment (non-interactive)
     
 $(echo -e "${CYAN}SETUP-MACHINE OPTIONS:${NC}")
-    Required:
-      --host HOST                    Remote server IP or hostname
-      --remote-user USER             Remote user for initial connection
-      --remote-password PASS         Password for remote user
-        OR
-      --remote-key PATH              SSH private key for remote user
-    
     Deploy User (optional - if provided, a new user will be created):
       --deploy-user USER             Name of deployment user to create
       --deploy-password PASS         Password for deployment user (required if --deploy-user)
@@ -58,7 +49,6 @@ $(echo -e "${CYAN}SETUP-MACHINE OPTIONS:${NC}")
       --generate-key y|n             Generate new SSH key (default: n)
     
     Optional:
-      --port PORT                    SSH port (default: 22)
       --install-portainer y|n        Install Portainer (default: n)
       --portainer-password PASS      Portainer admin password
       --portainer-port PORT          Portainer HTTP port (default: 9000)
@@ -67,7 +57,7 @@ $(echo -e "${CYAN}SETUP-MACHINE OPTIONS:${NC}")
     
 $(echo -e "${CYAN}DESCRIPTION:${NC}")
     This CLI tool helps you:
-    • Setup remote machines for Docker deployment
+    • Setup machines for Docker deployment
     • Configure deployment users and SSH keys
     • Initialize project deployment structures
     • Manage multiple environments (production, staging, etc.)
@@ -85,9 +75,8 @@ $(echo -e "${CYAN}FEATURES:${NC}")
     • CI/CD pipeline setup (GitHub Actions, GitLab CI)
     
 $(echo -e "${CYAN}REQUIREMENTS:${NC}")
-    • Remote server: Debian/Ubuntu with SSH access
+    • Debian/Ubuntu OS
     • Local machine: Ansible installed (native mode) or Docker Desktop (Docker mode)
-    • SSH access to remote server
     
 $(echo -e "${CYAN}EXAMPLES:${NC}")
 EOF
@@ -114,8 +103,6 @@ EOF
         -v \${HOME}/.ssh:/root/.ssh \\
         shawiizz/dockflow-cli:latest setup-machine \\
           --host 192.168.1.10 \\
-          --remote-user root \\
-          --remote-password "rootpass" \\
           --deploy-user dockflow \\
           --deploy-password "deploypass" \\
           --generate-key y
@@ -133,8 +120,6 @@ EOF
     # Setup machine with password
     ./cli/cli.sh setup-machine \\
       --host 192.168.1.10 \\
-      --remote-user root \\
-      --remote-password "rootpass" \\
       --deploy-user dockflow \\
       --deploy-password "deploypass" \\
       --generate-key y
@@ -142,14 +127,12 @@ EOF
     # Setup machine with SSH key
     ./cli/cli.sh setup-machine \\
       --host server.example.com \\
-      --remote-user admin \\
-      --remote-key ~/.ssh/id_rsa
+      --deploy-user dockflow \\
+      --deploy-key ~/.ssh/id_rsa
     
     # Setup with Portainer
     ./cli/cli.sh setup-machine \\
       --host prod.example.com \\
-      --remote-user root \\
-      --remote-password "pass" \\
       --deploy-user dockflow \\
       --deploy-password "deploypass" \\
       --generate-key y \\
@@ -202,16 +185,15 @@ $(echo -e "${CYAN}USAGE:${NC}")
     $usage_cmd
 
 $(echo -e "${CYAN}REQUIRED OPTIONS:${NC}")
-    --host HOST                    Remote server IP or hostname
-    --remote-user USER             Remote user for initial connection
-    
-    Authentication (choose one):
-      --remote-password PASS       Password for remote user
-      --remote-key PATH            SSH private key path for remote user
+    None. The script runs on the current machine.
+
+$(echo -e "${CYAN}CONNECTION STRING OPTIONS:${NC}")
+    --host HOST                    Public IP or Hostname (used for connection string generation)
+    --port PORT                    SSH port (default: 22)
 
 $(echo -e "${CYAN}DEPLOY USER OPTIONS (optional):${NC}")
-    If you provide --deploy-user, a new user will be created on the remote server.
-    If not provided, the remote user will be used for deployments.
+    If you provide --deploy-user, a new user will be created.
+    If not provided, the current user will be used for deployments.
     
     --deploy-user USER             Name of deployment user to create
     --deploy-password PASS         Password for deployment user (required if --deploy-user)
@@ -219,9 +201,6 @@ $(echo -e "${CYAN}DEPLOY USER OPTIONS (optional):${NC}")
     SSH Key for deploy user (choose one):
       --deploy-key PATH            Use existing SSH private key
       --generate-key y             Generate new SSH key pair
-
-$(echo -e "${CYAN}OPTIONAL SETTINGS:${NC}")
-    --port PORT                    SSH port (default: 22)
 
 $(echo -e "${CYAN}PORTAINER OPTIONS (optional):${NC}")
     --install-portainer y          Install Portainer for container management
@@ -239,8 +218,6 @@ EOF
     docker run -it --rm -v \${HOME}/.ssh:/root/.ssh \\
         shawiizz/dockflow-cli:latest setup-machine \\
         --host 192.168.1.10 \\
-        --remote-user root \\
-        --remote-password "mypassword" \\
         --deploy-user dockflow \\
         --deploy-password "deploypass" \\
         --generate-key y
@@ -249,15 +226,13 @@ EOF
     docker run -it --rm -v \${HOME}/.ssh:/root/.ssh \\
         shawiizz/dockflow-cli:latest setup-machine \\
         --host server.example.com \\
-        --remote-user admin \\
-        --remote-key /root/.ssh/id_rsa
+        --deploy-user dockflow \\
+        --deploy-key /root/.ssh/id_rsa
     
     $(echo -e "${YELLOW}3. Full setup with Portainer:${NC}")
     docker run -it --rm -v \${HOME}/.ssh:/root/.ssh \\
         shawiizz/dockflow-cli:latest setup-machine \\
         --host 192.168.1.10 \\
-        --remote-user root \\
-        --remote-password "rootpass" \\
         --deploy-user dockflow \\
         --deploy-password "deploypass" \\
         --generate-key y \\
@@ -269,35 +244,23 @@ EOF
     else
         cat << EOF
     
-    $(echo -e "${YELLOW}1. Basic setup with password (creates deploy user):${NC}")
+    $(echo -e "${YELLOW}1. Basic setup (creates deploy user):${NC}")
     ./cli/cli.sh setup-machine \\
         --host 192.168.1.10 \\
-        --remote-user root \\
-        --remote-password "mypassword" \\
         --deploy-user dockflow \\
         --deploy-password "deploypass" \\
         --generate-key y
     
-    $(echo -e "${YELLOW}2. Setup with SSH key (no new user):${NC}")
+    $(echo -e "${YELLOW}2. Setup with existing deploy key:${NC}")
     ./cli/cli.sh setup-machine \\
-        --host server.example.com \\
-        --remote-user admin \\
-        --remote-key ~/.ssh/id_rsa
-    
-    $(echo -e "${YELLOW}3. Setup with existing deploy key:${NC}")
-    ./cli/cli.sh setup-machine \\
-        --host prod.example.com \\
-        --remote-user root \\
-        --remote-password "pass" \\
+        --host my-server.com \\
         --deploy-user dockflow \\
         --deploy-password "deploypass" \\
         --deploy-key ~/.ssh/deploy_rsa
     
-    $(echo -e "${YELLOW}4. Full setup with Portainer:${NC}")
+    $(echo -e "${YELLOW}3. Full setup with Portainer:${NC}")
     ./cli/cli.sh setup-machine \\
         --host 192.168.1.10 \\
-        --remote-user root \\
-        --remote-password "rootpass" \\
         --deploy-user dockflow \\
         --deploy-password "deploypass" \\
         --generate-key y \\
@@ -311,8 +274,9 @@ EOF
     cat << EOF
 
 $(echo -e "${CYAN}NOTES:${NC}")
+    • This command must be run on the target machine
     • If --deploy-user is provided, a new user will be created
-    • If --deploy-user is omitted, the remote user will be used for deployments
+    • If --deploy-user is omitted, the current user will be used
     • SSH keys are stored in ~/.ssh/deploy_key for later use
     • Portainer domain is optional and used for reverse proxy configuration
     
@@ -437,8 +401,11 @@ show_main_menu() {
         fi
         
         # Quick scan of the project
-        display_quick_scan
-        local project_exists=$?
+        if display_quick_scan; then
+            local project_exists=0
+        else
+            local project_exists=1
+        fi
 
         local options=()
         options+=("Configure remote machine for deployment")
@@ -457,10 +424,14 @@ show_main_menu() {
         if [ "$MAIN_OPTION" = "0" ]; then
             setup_machine_interactive
             # Return to main menu after completion
+            echo ""
+            read -p "Press Enter to return to main menu..." -n 1 -r
             continue
         elif [ "$MAIN_OPTION" = "1" ]; then
             setup_project
             # Return to main menu after completion
+            echo ""
+            read -p "Press Enter to return to main menu..." -n 1 -r
             continue
         elif [ "$MAIN_OPTION" = "2" ]; then
             echo ""

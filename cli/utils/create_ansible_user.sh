@@ -1,6 +1,4 @@
 #!/bin/bash
-set -eo pipefail
-IFS=$'\n\t'
 
 source "$CLI_UTILS_DIR/functions.sh"
 
@@ -10,39 +8,18 @@ setup_ansible_user() {
     echo -e "${CYAN}Configure the deployment user account:${NC}"
     echo ""
     
-    # Check if default user "dockflow" already exists on the target server
+    # Check if default user "dockflow" already exists
     DEFAULT_USER="dockflow"
     USER_EXISTS=false
     
-    # Determine if we're setting up local or remote
-    if [ "${SERVER_IP:-}" = "127.0.0.1" ] || [ "${SERVER_IP:-}" = "localhost" ]; then
-        # Local setup - check if user exists locally
-        if id "$DEFAULT_USER" &>/dev/null; then
-            USER_EXISTS=true
-        fi
-    else
-        # Remote setup - check if user exists on remote server
-        if [ -n "${SERVER_IP:-}" ] && [ -n "${REMOTE_USER:-}" ]; then
-            if [ "${AUTH_METHOD:-}" = "password" ]; then
-                if command -v sshpass &> /dev/null && [ -n "${REMOTE_PASSWORD:-}" ]; then
-                    REMOTE_USER_CHECK=$(SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "id $DEFAULT_USER && echo 'EXISTS' || echo 'NOTFOUND'" 2>/dev/null)
-                    if echo "$REMOTE_USER_CHECK" | grep -q "EXISTS"; then
-                        USER_EXISTS=true
-                    fi
-                fi
-            elif [ -n "${SSH_PRIVATE_KEY_PATH:-}" ]; then
-                REMOTE_USER_CHECK=$(ssh -p "${SSH_PORT:-22}" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "id $DEFAULT_USER && echo 'EXISTS' || echo 'NOTFOUND'" 2>/dev/null)
-                if echo "$REMOTE_USER_CHECK" | grep -q "EXISTS"; then
-                    USER_EXISTS=true
-                fi
-            fi
-        fi
+    if id "$DEFAULT_USER" &>/dev/null; then
+        USER_EXISTS=true
     fi
     
     # If user exists, ask if we should use it or create a new one
     if [ "$USER_EXISTS" = true ]; then
         echo ""
-        print_step "User '$DEFAULT_USER' already exists on the target server"
+        print_step "User '$DEFAULT_USER' already exists"
         echo ""
         
         if confirm_action "Do you want to use the existing user '$DEFAULT_USER'?" "y"; then
@@ -52,30 +29,10 @@ setup_ansible_user() {
             echo ""
             prompt_username "Enter a new user name" DOCKFLOW_USER ""
             # Check if the new user also exists
-            if [ "${SERVER_IP:-}" = "127.0.0.1" ] || [ "${SERVER_IP:-}" = "localhost" ]; then
-                if id "$DOCKFLOW_USER" &>/dev/null; then
-                    USER_EXISTS=true
-                else
-                    USER_EXISTS=false
-                fi
+            if id "$DOCKFLOW_USER" &>/dev/null; then
+                USER_EXISTS=true
             else
-                if [ "${AUTH_METHOD:-}" = "password" ]; then
-                    if command -v sshpass &> /dev/null && [ -n "${REMOTE_PASSWORD:-}" ]; then
-                        REMOTE_USER_CHECK=$(SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "id $DOCKFLOW_USER && echo 'EXISTS' || echo 'NOTFOUND'" 2>/dev/null)
-                        if echo "$REMOTE_USER_CHECK" | grep -q "EXISTS"; then
-                            USER_EXISTS=true
-                        else
-                            USER_EXISTS=false
-                        fi
-                    fi
-                elif [ -n "${SSH_PRIVATE_KEY_PATH:-}" ]; then
-                    REMOTE_USER_CHECK=$(ssh -p "${SSH_PORT:-22}" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "id $DOCKFLOW_USER && echo 'EXISTS' || echo 'NOTFOUND'" 2>/dev/null)
-                    if echo "$REMOTE_USER_CHECK" | grep -q "EXISTS"; then
-                        USER_EXISTS=true
-                    else
-                        USER_EXISTS=false
-                    fi
-                fi
+                USER_EXISTS=false
             fi
         fi
     else
@@ -170,53 +127,10 @@ echo "User $DOCKFLOW_USER has been configured successfully."
 EOF
 }
 
-create_ansible_user_on_remote() {
-    if [ "${IS_LOCAL_RUN:-false}" = "true" ]; then
-        create_ansible_user_locally
-        return
-    fi
-
-    print_heading "EXECUTING REMOTE SETUP"
-    
-    # Create temporary script for remote execution
-    TEMP_SCRIPT=$(mktemp)
-    generate_user_creation_script > "$TEMP_SCRIPT"
-    chmod +x "$TEMP_SCRIPT"
-
-    # Execute remote commands based on authentication method
-    if [ "$AUTH_METHOD" = "password" ]; then
-        # Using sshpass if available, otherwise using expect
-        if command -v sshpass &> /dev/null; then
-            echo "Using sshpass for password authentication..."
-            SSHPASS="$REMOTE_PASSWORD" sshpass -e scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$TEMP_SCRIPT" "$REMOTE_USER@$SERVER_IP:/tmp/setup_ansible.sh"
-            SSHPASS="$REMOTE_PASSWORD" sshpass -e ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "DOCKFLOW_USER='$DOCKFLOW_USER' DOCKFLOW_PASSWORD='$DOCKFLOW_PASSWORD' ANSIBLE_PUBLIC_KEY='$ANSIBLE_PUBLIC_KEY' ANSIBLE_PRIVATE_KEY='$ANSIBLE_PRIVATE_KEY' sudo -E bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
-        else
-            echo "sshpass is not installed. Using interactive SSH..."
-            print_warning "You will be prompted for the password of $REMOTE_USER@$SERVER_IP"
-            scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$TEMP_SCRIPT" "$REMOTE_USER@$SERVER_IP:/tmp/setup_ansible.sh"
-            ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "DOCKFLOW_USER='$DOCKFLOW_USER' DOCKFLOW_PASSWORD='$DOCKFLOW_PASSWORD' ANSIBLE_PUBLIC_KEY='$ANSIBLE_PUBLIC_KEY' ANSIBLE_PRIVATE_KEY='$ANSIBLE_PRIVATE_KEY' sudo -E bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
-        fi
-    else
-        # Using SSH key authentication
-        echo "Using SSH key authentication..."
-        scp -P "$SSH_PORT" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$TEMP_SCRIPT" "$REMOTE_USER@$SERVER_IP:/tmp/setup_ansible.sh"
-        ssh -p "$SSH_PORT" -i "$SSH_PRIVATE_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$REMOTE_USER@$SERVER_IP" "DOCKFLOW_USER='$DOCKFLOW_USER' DOCKFLOW_PASSWORD='$DOCKFLOW_PASSWORD' ANSIBLE_PUBLIC_KEY='$ANSIBLE_PUBLIC_KEY' ANSIBLE_PRIVATE_KEY='$ANSIBLE_PRIVATE_KEY' sudo -E bash /tmp/setup_ansible.sh && rm /tmp/setup_ansible.sh"
-    fi
-
-    rm "$TEMP_SCRIPT"
-    
-    # Copy the private key locally to ~/.ssh/deploy_key for CLI use
-    if [ -n "${ANSIBLE_PRIVATE_KEY:-}" ]; then
-        mkdir -p ~/.ssh
-        echo "$ANSIBLE_PRIVATE_KEY" > ~/.ssh/deploy_key
-        chmod 600 ~/.ssh/deploy_key
-    fi
-}
-
 create_ansible_user_locally() {
-    print_heading "CREATING DEPLOYMENT USER LOCALLY"
+    print_heading "CREATING DEPLOYMENT USER"
     
-    echo "Creating user $DOCKFLOW_USER on local machine..."
+    echo "Creating user $DOCKFLOW_USER..."
     
     # Create temporary script for local execution
     TEMP_SCRIPT=$(mktemp)
@@ -239,5 +153,5 @@ create_ansible_user_locally() {
         chmod 600 ~/.ssh/deploy_key
     fi
     
-    print_success "User $DOCKFLOW_USER has been created successfully on local machine."
+    print_success "User $DOCKFLOW_USER has been created successfully."
 }

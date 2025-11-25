@@ -1,6 +1,4 @@
 #!/bin/bash
-set -eo pipefail
-IFS=$'\n\t'
 
 # ============================================
 # ARGUMENT PARSING UTILITIES
@@ -11,7 +9,7 @@ IFS=$'\n\t'
 # Parse setup-machine arguments
 parse_setup_machine_args() {
     # Reset all variables
-    unset ARG_HOST ARG_PORT ARG_REMOTE_USER ARG_REMOTE_PASSWORD ARG_REMOTE_KEY
+    unset ARG_HOST ARG_PORT
     unset ARG_DEPLOY_USER ARG_DEPLOY_PASSWORD ARG_DEPLOY_KEY ARG_GENERATE_KEY
     unset ARG_INSTALL_PORTAINER ARG_PORTAINER_PASSWORD ARG_PORTAINER_PORT ARG_PORTAINER_DOMAIN
     
@@ -30,18 +28,6 @@ parse_setup_machine_args() {
                 ;;
             --port)
                 ARG_PORT="$2"
-                shift 2
-                ;;
-            --remote-user)
-                ARG_REMOTE_USER="$2"
-                shift 2
-                ;;
-            --remote-password)
-                ARG_REMOTE_PASSWORD="$2"
-                shift 2
-                ;;
-            --remote-key)
-                ARG_REMOTE_KEY="$2"
                 shift 2
                 ;;
             --deploy-user)
@@ -76,10 +62,6 @@ parse_setup_machine_args() {
                 ARG_PORTAINER_DOMAIN="$2"
                 shift 2
                 ;;
-            --local)
-                ARG_LOCAL="true"
-                shift 1
-                ;;
             --skip-docker-install)
                 ARG_SKIP_DOCKER_INSTALL="true"
                 shift 1
@@ -93,53 +75,19 @@ parse_setup_machine_args() {
         esac
     done
     
-    # Validate required arguments
-    if [ -z "$ARG_HOST" ]; then
-        echo -e "${RED}Error: --host is required${NC}"
-        exit 1
+    # Validate host if provided (optional, but recommended for connection string)
+    if [ -n "$ARG_HOST" ]; then
+        if ! validate_host "$ARG_HOST"; then
+            echo -e "${RED}Error: Invalid host '$ARG_HOST'${NC}"
+            echo "Must be a valid IP address or hostname"
+            exit 1
+        fi
     fi
-    
-    if [ -z "$ARG_REMOTE_USER" ]; then
-        echo -e "${RED}Error: --remote-user is required${NC}"
-        exit 1
-    fi
-    
-    # Validate remote user
-    if ! validate_username "$ARG_REMOTE_USER"; then
-        echo -e "${RED}Error: Invalid remote user '$ARG_REMOTE_USER'${NC}"
-        echo "Must be lowercase alphanumeric with underscores/hyphens (2-32 chars)"
-        exit 1
-    fi
-    
-    # Validate host
-    if ! validate_host "$ARG_HOST"; then
-        echo -e "${RED}Error: Invalid host '$ARG_HOST'${NC}"
-        echo "Must be a valid IP address or hostname"
-        exit 1
-    fi
-    
+
     # Validate port
     if ! validate_port "$ARG_PORT"; then
         echo -e "${RED}Error: Invalid port '$ARG_PORT'${NC}"
         echo "Must be a number between 1 and 65535"
-        exit 1
-    fi
-    
-    # Validate remote authentication: either password or key must be provided
-    if [ -z "$ARG_REMOTE_PASSWORD" ] && [ -z "$ARG_REMOTE_KEY" ]; then
-        echo -e "${RED}Error: Either --remote-password or --remote-key must be provided${NC}"
-        exit 1
-    fi
-    
-    if [ -n "$ARG_REMOTE_PASSWORD" ] && [ -n "$ARG_REMOTE_KEY" ]; then
-        echo -e "${RED}Error: Cannot use both --remote-password and --remote-key${NC}"
-        echo "Please choose one authentication method"
-        exit 1
-    fi
-    
-    # Validate remote key exists if provided
-    if [ -n "$ARG_REMOTE_KEY" ] && [ ! -f "$ARG_REMOTE_KEY" ]; then
-        echo -e "${RED}Error: Remote key file not found: $ARG_REMOTE_KEY${NC}"
         exit 1
     fi
     
@@ -207,10 +155,10 @@ parse_setup_machine_args() {
     fi
     
     # Export all variables
-    export ARG_HOST ARG_PORT ARG_REMOTE_USER ARG_REMOTE_PASSWORD ARG_REMOTE_KEY
+    export ARG_HOST ARG_PORT
     export ARG_DEPLOY_USER ARG_DEPLOY_PASSWORD ARG_DEPLOY_KEY ARG_GENERATE_KEY
     export ARG_INSTALL_PORTAINER ARG_PORTAINER_PASSWORD ARG_PORTAINER_PORT ARG_PORTAINER_DOMAIN
-    export ARG_LOCAL ARG_SKIP_DOCKER_INSTALL
+    export ARG_SKIP_DOCKER_INSTALL
     
     return 0
 }
