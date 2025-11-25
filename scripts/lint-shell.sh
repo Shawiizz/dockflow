@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-IFS=$'\n\t'
 
 # Run shellcheck and shfmt on repository shell scripts
 # Excludes testing directory and vendor-like directories

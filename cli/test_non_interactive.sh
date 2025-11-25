@@ -1,6 +1,5 @@
 #!/bin/bash
 
-IFS=$'\n\t'
 
 # ============================================
 # TEST SCRIPT FOR NON-INTERACTIVE MODE

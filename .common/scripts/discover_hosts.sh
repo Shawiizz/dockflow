@@ -1,6 +1,5 @@
 #!/bin/bash
 
-IFS=$'\n\t'
  
 
 # Discover deployment hosts based on environment

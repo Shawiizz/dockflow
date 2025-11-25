@@ -1,6 +1,5 @@
 #!/bin/bash
 
-IFS=$'\n\t'
 
 # This script handles the SSH setup and Ansible deployment
 # It expects the following environment variables to be set:

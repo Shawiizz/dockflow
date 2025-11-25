@@ -1,8 +1,9 @@
 #!/bin/bash
 
-IFS=$'\n\t'
-# Load environment variables from .env files and override with CI secrets
-# Usage: source load_env.sh <environment> <hostname>
+
+
+# Function to load environment variables from .env files
+# Usage: load_env [environment] [hostname]
 
 ENV="$1"
 HOSTNAME="${2:-main}"

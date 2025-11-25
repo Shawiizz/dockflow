@@ -1,12 +1,10 @@
 #!/bin/bash
 # Teardown script for E2E testing environment
-# Stops and removes all test containers and volumes
+# Stops and removes the test VM and cleans up resources
 
 
-IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 echo "Tearing down E2E testing environment..."
 
 cd "$SCRIPT_DIR/docker"

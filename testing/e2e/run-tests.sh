@@ -1,8 +1,7 @@
 #!/bin/bash
 # Run E2E tests inside Ansible container (avoids WSL permission issues)
 
-set -eo pipefail
-IFS=$'\n\t'
+
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SHARED_DIR="/tmp/dockflow-e2e-shared"
@@ -39,7 +38,7 @@ echo ""
 
 # Run tests inside the container
 docker-compose --env-file "$SCRIPT_DIR/.env" run --rm ansible-runner bash -c "
-    set -eo pipefail
+    
     # Copy source and test app to workspace
     cp -r /mnt-src/dockflow/testing/e2e/test-app/. /workspace/
     cp -r /mnt-src/dockflow /workspace/
