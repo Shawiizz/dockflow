@@ -6,13 +6,6 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-SHARED_DIR="/tmp/dockflow-e2e-shared"
-SSH_KEY_PATH="${SHARED_DIR}/deploy_key"
-
-# Create shared directory in /tmp to avoid Windows permission issues
-echo "Creating shared directory in /tmp..."
-mkdir -p "$SHARED_DIR"
-chmod 700 "$SHARED_DIR"
 
 echo "Setting up E2E testing environment..."
 
@@ -56,19 +49,14 @@ if [ -n "$SSH_PASSWORD" ] && command -v sshpass >/dev/null 2>&1; then
         docker-compose logs test-vm | tail -n 20
     fi
 else
-    if ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -p "$SSH_PORT" "${SSH_USER}@localhost" "$SSH_TEST_CMD" >/dev/null 2>&1; then
-        echo "SSH connection test passed (with key)."
-    else
-        echo "WARNING: SSH connection test failed. Checking container status..."
-        docker-compose logs test-vm | tail -n 20
-    fi
+    echo "WARNING: sshpass not found or SSH_PASSWORD not set. Skipping SSH connection test."
 fi
 
 echo ""
 echo "E2E testing environment is ready."
 echo ""
 echo "Connection details:"
-echo "   SSH: ssh -i ${SSH_KEY_PATH} -p ${SSH_PORT} ${SSH_USER}@localhost"
+echo "   SSH: ssh -p ${SSH_PORT} ${SSH_USER}@localhost"
 echo "   Docker API: http://localhost:${DOCKER_PORT:-2375}"
 echo ""
 echo "To run tests: cd ${SCRIPT_DIR} && bash common/run-tests.sh"

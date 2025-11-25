@@ -13,14 +13,6 @@ cd "$SCRIPT_DIR/docker"
 echo "Stopping and removing containers..."
 docker-compose --env-file "$SCRIPT_DIR/.env" down -v --remove-orphans
 
-# Optional: Remove SSH keys
-read -p "Remove shared temp directory? (y/N): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    rm -rf "/tmp/dockflow-e2e-shared"
-    echo "Shared temp directory removed."
-fi
-
 # Optional: Remove .env file
 read -p "Remove .env file? (y/N): " -n 1 -r
 echo

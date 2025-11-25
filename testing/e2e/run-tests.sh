@@ -4,19 +4,27 @@
 
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SHARED_DIR="/tmp/dockflow-e2e-shared"
-
-# Create shared directory in /tmp to avoid Windows permission issues
-echo "Creating shared directory in /tmp..."
-mkdir -p "$SHARED_DIR"
 
 echo "Running E2E tests in Ansible container"
 echo ""
 
 # Run CLI tests first (which will setup test VM and configure it)
 echo "Step 1: Running CLI E2E tests (setup + configuration)..."
-if ! bash "$SCRIPT_DIR/cli/run-tests.sh"; then
+
+# Capture connection string while streaming output
+exec 5>&1
+TEST_CONNECTION_OUTPUT=$(bash "$SCRIPT_DIR/cli/run-tests.sh" | tee /dev/fd/5 | grep "^::CONNECTION_STRING::" | tail -n 1)
+CLI_EXIT_CODE=${PIPESTATUS[0]}
+
+if [ $CLI_EXIT_CODE -ne 0 ]; then
     echo "ERROR: CLI tests failed."
+    exit 1
+fi
+
+TEST_CONNECTION=${TEST_CONNECTION_OUTPUT#*::CONNECTION_STRING::}
+
+if [ -z "$TEST_CONNECTION" ]; then
+    echo "ERROR: Could not capture connection string from CLI tests."
     exit 1
 fi
 
@@ -37,7 +45,9 @@ echo "Step 4: Running deployment tests in Ansible container..."
 echo ""
 
 # Run tests inside the container
-docker-compose --env-file "$SCRIPT_DIR/.env" run --rm ansible-runner bash -c "
+docker-compose --env-file "$SCRIPT_DIR/.env" run --rm \
+    -e TEST_CONNECTION="$TEST_CONNECTION" \
+    ansible-runner bash -c "
     
     # Copy source and test app to workspace
     cp -r /mnt-src/dockflow/testing/e2e/test-app/. /workspace/
