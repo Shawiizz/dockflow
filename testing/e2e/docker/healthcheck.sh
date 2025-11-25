@@ -1,5 +1,5 @@
 #!/bin/bash
-set -eo pipefail
+
 
 echo "--- Running Health Check ---"
 

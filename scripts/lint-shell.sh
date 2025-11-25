@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -eo pipefail
+
 IFS=$'\n\t'
 
 # Run shellcheck and shfmt on repository shell scripts

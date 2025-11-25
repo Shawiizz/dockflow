@@ -1,5 +1,5 @@
 #!/bin/bash
-set -eo pipefail
+
 IFS=$'\n\t'
 
 # This script handles the SSH setup and Ansible deployment

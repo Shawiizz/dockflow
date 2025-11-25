@@ -13,7 +13,6 @@ SHARED_DIR="/tmp/dockflow-e2e-shared"
 # Create shared directory in /tmp to avoid Windows permission issues
 echo "Creating shared directory in /tmp..."
 mkdir -p "$SHARED_DIR"
-chmod 700 "$SHARED_DIR"
 
 cd "$ROOT_PATH"
 
