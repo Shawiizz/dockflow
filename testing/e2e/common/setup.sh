@@ -2,18 +2,18 @@
 # Setup script for E2E testing environment
 # This script initializes the test VM and generates SSH keys
 
-set -euo pipefail
+set -eo pipefail
 IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-SSH_KEY_DIR="/tmp/ssh-keys"
-SSH_KEY_PATH="${SSH_KEY_DIR}/deploy_key"
+SHARED_DIR="/tmp/dockflow-e2e-shared"
+SSH_KEY_PATH="${SHARED_DIR}/deploy_key"
 
-# Create SSH key directory in /tmp to avoid Windows permission issues
-echo "Creating SSH key directory in /tmp..."
-mkdir -p "$SSH_KEY_DIR"
-chmod 700 "$SSH_KEY_DIR"
+# Create shared directory in /tmp to avoid Windows permission issues
+echo "Creating shared directory in /tmp..."
+mkdir -p "$SHARED_DIR"
+chmod 700 "$SHARED_DIR"
 
 echo "Setting up E2E testing environment..."
 
@@ -41,7 +41,9 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
 done
 
 # Load environment variables
-source "$ROOT_DIR/.env" 2>/dev/null || true
+if [ -f "$ROOT_DIR/.env" ]; then
+    source "$ROOT_DIR/.env" 2>/dev/null || true
+fi
 
 # Test SSH connection
 echo "Testing SSH connection..."

@@ -19,6 +19,8 @@ setup_machine_non_interactive() {
     export SERVER_IP="$ARG_HOST"
     export SSH_PORT="$ARG_PORT"
     export REMOTE_USER="$ARG_REMOTE_USER"
+    export IS_LOCAL_RUN="${ARG_LOCAL:-false}"
+    export SKIP_DOCKER_INSTALL="${ARG_SKIP_DOCKER_INSTALL:-false}"
     
     # Determine if we're creating a new user
     local CREATE_USER=false
@@ -89,6 +91,11 @@ setup_machine_non_interactive() {
             mkdir -p ~/.ssh
             cp "$TEMP_KEY_DIR/deploy_key" ~/.ssh/deploy_key
             chmod 600 ~/.ssh/deploy_key
+            
+            # Export private key for user creation script
+            ANSIBLE_PRIVATE_KEY=$(cat "$TEMP_KEY_DIR/deploy_key")
+            export ANSIBLE_PRIVATE_KEY
+            
             print_success "Private key saved"
             
             rm -rf "$TEMP_KEY_DIR"
@@ -117,6 +124,11 @@ setup_machine_non_interactive() {
             mkdir -p ~/.ssh
             cp "$ARG_DEPLOY_KEY" ~/.ssh/deploy_key
             chmod 600 ~/.ssh/deploy_key
+            
+            # Export private key for user creation script
+            ANSIBLE_PRIVATE_KEY=$(cat "$ARG_DEPLOY_KEY")
+            export ANSIBLE_PRIVATE_KEY
+            
             print_success "Private key copied"
         fi
         echo ""

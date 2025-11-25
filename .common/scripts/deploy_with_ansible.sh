@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -eo pipefail
 IFS=$'\n\t'
 
 # This script handles the SSH setup and Ansible deployment
@@ -20,7 +20,7 @@ cd "$ROOT_PATH/dockflow"
 #######################################
 
 mkdir -p ssh
-printf '%s' "$SSH_PRIVATE_KEY" | tr -d '\r' > ssh/remote_private_key
+printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ssh/remote_private_key
 chmod 600 ssh/*
 eval "$(ssh-agent -s)"
 ssh-add ssh/remote_private_key

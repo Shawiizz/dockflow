@@ -76,6 +76,14 @@ parse_setup_machine_args() {
                 ARG_PORTAINER_DOMAIN="$2"
                 shift 2
                 ;;
+            --local)
+                ARG_LOCAL="true"
+                shift 1
+                ;;
+            --skip-docker-install)
+                ARG_SKIP_DOCKER_INSTALL="true"
+                shift 1
+                ;;
             *)
                 echo -e "${RED}Error: Unknown option '$1'${NC}"
                 echo ""
@@ -202,6 +210,7 @@ parse_setup_machine_args() {
     export ARG_HOST ARG_PORT ARG_REMOTE_USER ARG_REMOTE_PASSWORD ARG_REMOTE_KEY
     export ARG_DEPLOY_USER ARG_DEPLOY_PASSWORD ARG_DEPLOY_KEY ARG_GENERATE_KEY
     export ARG_INSTALL_PORTAINER ARG_PORTAINER_PASSWORD ARG_PORTAINER_PORT ARG_PORTAINER_DOMAIN
+    export ARG_LOCAL ARG_SKIP_DOCKER_INSTALL
     
     return 0
 }

@@ -19,7 +19,7 @@ services:
       - "8080:8080" # For web app healthcheck
     volumes:
       - /tmp
-      - /tmp/ssh-keys:/ssh-keys:ro
+      - /tmp/dockflow-e2e-shared:/ssh-keys:ro
     networks:
       - test-network
     healthcheck:
@@ -44,7 +44,7 @@ services:
       - /workspace
 
       # --- SSH keys & docker socket (facultatifs) ---
-      - /tmp/ssh-keys:/ssh-keys:ro
+      - /tmp/dockflow-e2e-shared:/ssh-keys:ro
       - /var/run/docker.sock:/var/run/docker.sock
 
     environment:

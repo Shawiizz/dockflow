@@ -58,6 +58,9 @@ run_ansible_playbook() {
     
     echo "Running Ansible playbook..."
     export ANSIBLE_HOST_KEY_CHECKING=False
+    # Explicitly set config file to avoid world-writable directory warning
+    export ANSIBLE_CONFIG="$CLI_ROOT_DIR/../ansible.cfg"
+    
     ansible-galaxy role install geerlingguy.docker
     
     cd "$CLI_ROOT_DIR/.." || exit 1

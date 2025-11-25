@@ -171,6 +171,11 @@ EOF
 }
 
 create_ansible_user_on_remote() {
+    if [ "${IS_LOCAL_RUN:-false}" = "true" ]; then
+        create_ansible_user_locally
+        return
+    fi
+
     print_heading "EXECUTING REMOTE SETUP"
     
     # Create temporary script for remote execution

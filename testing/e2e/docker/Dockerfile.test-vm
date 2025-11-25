@@ -26,7 +26,9 @@ RUN apt-get update && \
         netcat-openbsd \
         nginx \
         docker.io \
-    && pip3 install --no-cache-dir pyyaml \
+        sshpass \
+        unzip \
+    && pip3 install --no-cache-dir pyyaml ansible \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure SSH

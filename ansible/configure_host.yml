@@ -1,6 +1,6 @@
 ---
 - name: Configure host machine
-  hosts: all:!localhost
+  hosts: all
   become: yes
   vars_files:
     - roles/portainer/vars/vault.yml
