@@ -1,0 +1,67 @@
+# Advanced Usage
+
+## Custom Templates
+
+Add custom configs in `.deployment/templates/`:
+
+```
+.deployment/templates/
+├── nginx/
+│   └── my-app.conf.j2           # Custom Nginx config
+├── services/
+│   └── my-service.service.j2    # Systemd service
+|   └── my-service.mount.j2      # Mount service
+└── scripts/
+    └── pre-deploy.sh.j2         # Custom script (executed before deploying)
+```
+
+All templates support **Jinja2 syntax** and have access to environment variables.
+
+### Custom Nginx Configuration
+
+**Example:** Create `.deployment/templates/nginx/my-app.conf.j2`
+
+```nginx
+server {
+    listen 80;
+    server_name {{ domain }};
+
+    location / {
+        proxy_pass http://localhost:{{ app_port }};
+        proxy_set_header Host $host;
+    }
+}
+```
+
+### Custom Systemd Service
+
+**Example:** Create `.deployment/templates/services/my-worker.service.j2`
+
+```ini
+[Unit]
+Description={{ service_description }}
+After=docker.service
+
+[Service]
+Type=simple
+ExecStart={{ script_path }}
+Environment="ENV={{ env }}"
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Post-Deployment Scripts
+
+**Example:** Create `.deployment/templates/scripts/cleanup.sh.j2`
+
+```bash
+#!/bin/bash
+echo "Starting cleanup for {{ env }}..."
+
+# Clean old Docker images
+docker image prune -af --filter "until=24h"
+
+echo "Cleanup complete!"
+```
