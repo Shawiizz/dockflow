@@ -23,28 +23,28 @@ echo ""
 
 # Function to check if a command exists
 command_exists() {
-    command -v "$1" >/dev/null 2>&1
+	command -v "$1" >/dev/null 2>&1
 }
 
 # Function to install package
 install_package() {
-    local package="$1"
-    echo -e "${YELLOW}Installing $package...${NC}"
-    
-    if command_exists apt-get; then
-        sudo apt-get update -qq
-        sudo apt-get install -y "$package"
-    elif command_exists yum; then
-        sudo yum install -y "$package"
-    elif command_exists dnf; then
-        sudo dnf install -y "$package"
-    elif command_exists pacman; then
-        sudo pacman -S --noconfirm "$package"
-    else
-        echo -e "${RED}Error: Could not detect package manager${NC}"
-        echo -e "${YELLOW}Please install $package manually${NC}"
-        exit 1
-    fi
+	local package="$1"
+	echo -e "${YELLOW}Installing $package...${NC}"
+
+	if command_exists apt-get; then
+		sudo apt-get update -qq
+		sudo apt-get install -y "$package"
+	elif command_exists yum; then
+		sudo yum install -y "$package"
+	elif command_exists dnf; then
+		sudo dnf install -y "$package"
+	elif command_exists pacman; then
+		sudo pacman -S --noconfirm "$package"
+	else
+		echo -e "${RED}Error: Could not detect package manager${NC}"
+		echo -e "${YELLOW}Please install $package manually${NC}"
+		exit 1
+	fi
 }
 
 echo -e "${BLUE}[1/5] Checking required dependencies...${NC}"
@@ -53,46 +53,46 @@ echo -e "${BLUE}[1/5] Checking required dependencies...${NC}"
 MISSING_DEPS=()
 
 if ! command_exists curl; then
-    MISSING_DEPS+=("curl")
+	MISSING_DEPS+=("curl")
 fi
 
 if ! command_exists unzip; then
-    MISSING_DEPS+=("unzip")
+	MISSING_DEPS+=("unzip")
 fi
 
 if ! command_exists ansible; then
-    MISSING_DEPS+=("ansible")
+	MISSING_DEPS+=("ansible")
 fi
 
 if ! command_exists jq; then
-    MISSING_DEPS+=("jq")
+	MISSING_DEPS+=("jq")
 fi
 
 if ! command_exists sshpass; then
-    MISSING_DEPS+=("sshpass")
+	MISSING_DEPS+=("sshpass")
 fi
 
 if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
-    echo -e "${YELLOW}Missing dependencies detected: ${MISSING_DEPS[*]}${NC}"
-    echo -e "${YELLOW}Installing missing dependencies...${NC}"
-    
-    for dep in "${MISSING_DEPS[@]}"; do
-        install_package "$dep"
-    done
-    
-    echo -e "${GREEN}✓ All dependencies installed${NC}"
+	echo -e "${YELLOW}Missing dependencies detected: ${MISSING_DEPS[*]}${NC}"
+	echo -e "${YELLOW}Installing missing dependencies...${NC}"
+
+	for dep in "${MISSING_DEPS[@]}"; do
+		install_package "$dep"
+	done
+
+	echo -e "${GREEN}✓ All dependencies installed${NC}"
 else
-    echo -e "${GREEN}✓ All dependencies are already installed${NC}"
+	echo -e "${GREEN}✓ All dependencies are already installed${NC}"
 fi
 
 # Check Python version
 echo -e "${BLUE}[2/5] Checking Python version...${NC}"
 if command_exists python3; then
-    PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
-    echo -e "${GREEN}✓ Python $PYTHON_VERSION detected${NC}"
+	PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
+	echo -e "${GREEN}✓ Python $PYTHON_VERSION detected${NC}"
 else
-    echo -e "${RED}Error: Python 3 is required but not found${NC}"
-    install_package "python3"
+	echo -e "${RED}Error: Python 3 is required but not found${NC}"
+	install_package "python3"
 fi
 
 # Check Ansible version
@@ -112,9 +112,9 @@ ARCHIVE_URL="https://github.com/Shawiizz/dockflow/archive/refs/heads/${BRANCH}.z
 echo -e "${YELLOW}Downloading repository archive from ${BRANCH} branch...${NC}"
 
 if ! curl -fsSL -o dockflow.zip "$ARCHIVE_URL"; then
-    echo -e "${RED}Error: Failed to download repository archive${NC}"
-    echo -e "${YELLOW}Please check that the branch '${BRANCH}' exists${NC}"
-    exit 1
+	echo -e "${RED}Error: Failed to download repository archive${NC}"
+	echo -e "${YELLOW}Please check that the branch '${BRANCH}' exists${NC}"
+	exit 1
 fi
 
 # Extract archive
@@ -125,8 +125,8 @@ unzip -q dockflow.zip
 EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "dockflow-*" | head -n 1)
 
 if [ -z "$EXTRACTED_DIR" ]; then
-    echo -e "${RED}Error: Could not find extracted directory${NC}"
-    exit 1
+	echo -e "${RED}Error: Could not find extracted directory${NC}"
+	exit 1
 fi
 
 echo -e "${GREEN}✓ Dockflow CLI downloaded${NC}"
@@ -139,6 +139,6 @@ echo -e "${BLUE}[5/5] Starting Dockflow CLI...${NC}"
 echo ""
 
 cd "$EXTRACTED_DIR" || exit 1
-exec bash -c "./cli/cli.sh $*" < /dev/tty
+exec bash -c "./cli/cli.sh $*" </dev/tty
 
 # Cleanup is handled by trap

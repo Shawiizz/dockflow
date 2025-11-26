@@ -15,17 +15,17 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 show_help() {
-    if [ "$RUNNING_IN_DOCKER" = true ]; then
-        local usage_cmd="docker run -it --rm \\
+	if [ "$RUNNING_IN_DOCKER" = true ]; then
+		local usage_cmd="docker run -it --rm \\
         -e HOST_PWD=\"\$(pwd)\" \\
         -v \${HOME}/.ssh:/root/.ssh \\
         -v .:/project \\
         shawiizz/dockflow-cli:latest [COMMAND] [OPTIONS]"
-    else
-        local usage_cmd="./cli/cli.sh [COMMAND] [OPTIONS]"
-    fi
-    
-    cat << EOF
+	else
+		local usage_cmd="./cli/cli.sh [COMMAND] [OPTIONS]"
+	fi
+
+	cat <<EOF
 $(echo -e "${GREEN}========================================================")
 $(echo -e "   Dockflow CLI v$CLI_VERSION")
 $(echo -e "   Setup and manage your infrastructure")
@@ -80,9 +80,9 @@ $(echo -e "${CYAN}REQUIREMENTS:${NC}")
     
 $(echo -e "${CYAN}EXAMPLES:${NC}")
 EOF
-    
-    if [ "$RUNNING_IN_DOCKER" = true ]; then
-        cat << EOF
+
+	if [ "$RUNNING_IN_DOCKER" = true ]; then
+		cat <<EOF
     ${YELLOW}# Docker Mode Examples${NC}
     
     # Start interactive setup
@@ -107,8 +107,8 @@ EOF
           --deploy-password "deploypass" \\
           --generate-key y
 EOF
-    else
-        cat << EOF
+	else
+		cat <<EOF
     ${YELLOW}# Native Mode Examples${NC}
     
     # Start interactive setup
@@ -146,9 +146,9 @@ EOF
     # Show version
     ./cli/cli.sh --version
 EOF
-    fi
-    
-    cat << EOF
+	fi
+
+	cat <<EOF
     
 $(echo -e "${CYAN}DOCUMENTATION:${NC}")
     Full documentation: https://github.com/Shawiizz/dockflow
@@ -161,22 +161,22 @@ EOF
 }
 
 show_version() {
-    echo -e "${GREEN}Dockflow CLI${NC}"
-    echo -e "Version: ${CYAN}$CLI_VERSION${NC}"
-    echo -e "Repository: ${BLUE}https://github.com/Shawiizz/dockflow${NC}"
-    echo -e "License: MIT"
+	echo -e "${GREEN}Dockflow CLI${NC}"
+	echo -e "Version: ${CYAN}$CLI_VERSION${NC}"
+	echo -e "Repository: ${BLUE}https://github.com/Shawiizz/dockflow${NC}"
+	echo -e "License: MIT"
 }
 
 show_setup_machine_help() {
-    if [ "$RUNNING_IN_DOCKER" = true ]; then
-        local usage_cmd="docker run -it --rm \\
+	if [ "$RUNNING_IN_DOCKER" = true ]; then
+		local usage_cmd="docker run -it --rm \\
         -v \${HOME}/.ssh:/root/.ssh \\
         shawiizz/dockflow-cli:latest setup-machine [OPTIONS]"
-    else
-        local usage_cmd="./cli/cli.sh setup-machine [OPTIONS]"
-    fi
-    
-    cat << EOF
+	else
+		local usage_cmd="./cli/cli.sh setup-machine [OPTIONS]"
+	fi
+
+	cat <<EOF
 $(echo -e "${GREEN}========================================================")
 $(echo -e "   Setup Machine - Non-Interactive Mode")
 $(echo -e "========================================================${NC}")
@@ -210,9 +210,9 @@ $(echo -e "${CYAN}PORTAINER OPTIONS (optional):${NC}")
 
 $(echo -e "${CYAN}EXAMPLES:${NC}")
 EOF
-    
-    if [ "$RUNNING_IN_DOCKER" = true ]; then
-        cat << EOF
+
+	if [ "$RUNNING_IN_DOCKER" = true ]; then
+		cat <<EOF
     
     $(echo -e "${YELLOW}1. Basic setup with password (creates deploy user):${NC}")
     docker run -it --rm -v \${HOME}/.ssh:/root/.ssh \\
@@ -241,8 +241,8 @@ EOF
         --portainer-port 9000 \\
         --portainer-domain portainer.example.com
 EOF
-    else
-        cat << EOF
+	else
+		cat <<EOF
     
     $(echo -e "${YELLOW}1. Basic setup (creates deploy user):${NC}")
     ./cli/cli.sh setup-machine \\
@@ -269,9 +269,9 @@ EOF
         --portainer-port 9000 \\
         --portainer-domain portainer.example.com
 EOF
-    fi
-    
-    cat << EOF
+	fi
+
+	cat <<EOF
 
 $(echo -e "${CYAN}NOTES:${NC}")
     • This command must be run on the target machine
@@ -301,151 +301,151 @@ source "$CLI_COMMANDS_DIR/setup_machine_non_interactive.sh"
 source "$CLI_COMMANDS_DIR/setup_project.sh"
 
 trap cleanup SIGINT
-trap 'safe_tput cnorm' EXIT  # Always restore cursor on exit
+trap 'safe_tput cnorm' EXIT # Always restore cursor on exit
 
 # Function to initialize project structure (non-interactive)
 init_project_non_interactive() {
-    local ci_platform="$1"
-    
-    echo -e "${GREEN}=========================================================="
-    echo "   INITIALIZING PROJECT STRUCTURE"
-    echo -e "==========================================================${NC}"
-    echo ""
-    echo -e "${CYAN}CI/CD Platform:${NC} $ci_platform"
-    echo -e "${CYAN}Target Directory:${NC} .deployment/"
-    echo ""
-    
-    # Use the common function from setup_project.sh
-    create_project_structure "$ci_platform"
-    
-    echo ""
-    echo -e "${GREEN}✓ Project initialized successfully in .deployment/${NC}"
-    echo ""
-    echo -e "${CYAN}Next steps:${NC}"
-    echo "  1. Configure your .deployment/env/.env.production file"
-    echo "  2. Set up your docker-compose.yml and Dockerfiles"
-    echo "  3. Configure CI/CD secrets in your repository"
-    echo "  4. Push your changes and create a tag to deploy"
-    echo ""
+	local ci_platform="$1"
+
+	echo -e "${GREEN}=========================================================="
+	echo "   INITIALIZING PROJECT STRUCTURE"
+	echo -e "==========================================================${NC}"
+	echo ""
+	echo -e "${CYAN}CI/CD Platform:${NC} $ci_platform"
+	echo -e "${CYAN}Target Directory:${NC} .deployment/"
+	echo ""
+
+	# Use the common function from setup_project.sh
+	create_project_structure "$ci_platform"
+
+	echo ""
+	echo -e "${GREEN}✓ Project initialized successfully in .deployment/${NC}"
+	echo ""
+	echo -e "${CYAN}Next steps:${NC}"
+	echo "  1. Configure your .deployment/env/.env.production file"
+	echo "  2. Set up your docker-compose.yml and Dockerfiles"
+	echo "  3. Configure CI/CD secrets in your repository"
+	echo "  4. Push your changes and create a tag to deploy"
+	echo ""
 }
 
 # Parse command line arguments
 parse_arguments() {
-    case "${1:-}" in
-        -h|--help)
-            show_help
-            exit 0
-            ;;
-        -v|--version)
-            show_version
-            exit 0
-            ;;
-        init|--init)
-            # Initialize project structure directly (non-interactive)
-            local ci_platform="${2:-github}"
-            
-            # Validate platform
-            if [[ "$ci_platform" != "github" && "$ci_platform" != "gitlab" ]]; then
-                echo -e "${RED}Error: Invalid CI platform '$ci_platform'. Use 'github' or 'gitlab'.${NC}"
-                exit 1
-            fi
-            
-            init_project_non_interactive "$ci_platform"
-            exit 0
-            ;;
-        setup-machine)
-            # Setup machine in non-interactive mode
-            shift  # Remove 'setup-machine' from arguments
-            
-            # Check if --help is requested
-            if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
-                show_setup_machine_help
-                exit 0
-            fi
-            
-            # Parse setup-machine arguments
-            parse_setup_machine_args "$@"
-            
-            # Run non-interactive setup
-            setup_machine_non_interactive
-            exit 0
-            ;;
-        "")
-            # No arguments, continue to interactive mode
-            return 0
-            ;;
-        *)
-            echo -e "${RED}Error: Unknown command '$1'${NC}"
-            echo ""
-            echo "Run with --help to see available commands"
-            exit 1
-            ;;
-    esac
+	case "${1:-}" in
+	-h | --help)
+		show_help
+		exit 0
+		;;
+	-v | --version)
+		show_version
+		exit 0
+		;;
+	init | --init)
+		# Initialize project structure directly (non-interactive)
+		local ci_platform="${2:-github}"
+
+		# Validate platform
+		if [[ "$ci_platform" != "github" && "$ci_platform" != "gitlab" ]]; then
+			echo -e "${RED}Error: Invalid CI platform '$ci_platform'. Use 'github' or 'gitlab'.${NC}"
+			exit 1
+		fi
+
+		init_project_non_interactive "$ci_platform"
+		exit 0
+		;;
+	setup-machine)
+		# Setup machine in non-interactive mode
+		shift # Remove 'setup-machine' from arguments
+
+		# Check if --help is requested
+		if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+			show_setup_machine_help
+			exit 0
+		fi
+
+		# Parse setup-machine arguments
+		parse_setup_machine_args "$@"
+
+		# Run non-interactive setup
+		setup_machine_non_interactive
+		exit 0
+		;;
+	"")
+		# No arguments, continue to interactive mode
+		return 0
+		;;
+	*)
+		echo -e "${RED}Error: Unknown command '$1'${NC}"
+		echo ""
+		echo "Run with --help to see available commands"
+		exit 1
+		;;
+	esac
 }
 
 # Parse arguments after functions are defined
 parse_arguments "$@"
 
 show_main_menu() {
-    while true; do
-        clear
-        echo -e "${GREEN}=========================================================="
-        echo "   Dockflow CLI v$CLI_VERSION"
-        echo -e "==========================================================${NC}"
-        
-        # Show current directory (only if HOST_PWD is set)
-        if [ -n "$HOST_PWD" ]; then
-            echo ""
-            echo -e "${CYAN}Working directory:${NC} $HOST_PWD"
-            echo ""
-        fi
-        
-        # Quick scan of the project
-        if display_quick_scan; then
-            local project_exists=0
-        else
-            local project_exists=1
-        fi
+	while true; do
+		clear
+		echo -e "${GREEN}=========================================================="
+		echo "   Dockflow CLI v$CLI_VERSION"
+		echo -e "==========================================================${NC}"
 
-        local options=()
-        options+=("Configure remote machine for deployment")
-        
-        if [ $project_exists -eq 0 ]; then
-            options+=("Edit current project")
-        else
-            options+=("Initialize project structure in the current directory")
-        fi
-        
-        options+=("Exit")
-        
-        interactive_menu "Select an option:" "${options[@]}"
-        MAIN_OPTION=$?
+		# Show current directory (only if HOST_PWD is set)
+		if [ -n "$HOST_PWD" ]; then
+			echo ""
+			echo -e "${CYAN}Working directory:${NC} $HOST_PWD"
+			echo ""
+		fi
 
-        if [ "$MAIN_OPTION" = "0" ]; then
-            setup_machine_interactive
-            # Return to main menu after completion
-            echo ""
-            read -p "Press Enter to return to main menu..." -n 1 -r
-            continue
-        elif [ "$MAIN_OPTION" = "1" ]; then
-            setup_project
-            # Return to main menu after completion
-            echo ""
-            read -p "Press Enter to return to main menu..." -n 1 -r
-            continue
-        elif [ "$MAIN_OPTION" = "2" ]; then
-            echo ""
-            safe_tput cnorm  # Restore cursor
-            print_success "Thank you for using Dockflow CLI. Goodbye!"
-            exit 0
-        else
-            # User pressed 'q' or invalid option
-            echo ""
-            safe_tput cnorm  # Restore cursor
-            print_success "Thank you for using Dockflow CLI. Goodbye!"
-            exit 0
-        fi
-    done
+		# Quick scan of the project
+		if display_quick_scan; then
+			local project_exists=0
+		else
+			local project_exists=1
+		fi
+
+		local options=()
+		options+=("Configure remote machine for deployment")
+
+		if [ $project_exists -eq 0 ]; then
+			options+=("Edit current project")
+		else
+			options+=("Initialize project structure in the current directory")
+		fi
+
+		options+=("Exit")
+
+		interactive_menu "Select an option:" "${options[@]}"
+		MAIN_OPTION=$?
+
+		if [ "$MAIN_OPTION" = "0" ]; then
+			setup_machine_interactive
+			# Return to main menu after completion
+			echo ""
+			read -p "Press Enter to return to main menu..." -n 1 -r
+			continue
+		elif [ "$MAIN_OPTION" = "1" ]; then
+			setup_project
+			# Return to main menu after completion
+			echo ""
+			read -p "Press Enter to return to main menu..." -n 1 -r
+			continue
+		elif [ "$MAIN_OPTION" = "2" ]; then
+			echo ""
+			safe_tput cnorm # Restore cursor
+			print_success "Thank you for using Dockflow CLI. Goodbye!"
+			exit 0
+		else
+			# User pressed 'q' or invalid option
+			echo ""
+			safe_tput cnorm # Restore cursor
+			print_success "Thank you for using Dockflow CLI. Goodbye!"
+			exit 0
+		fi
+	done
 }
 
 # Only show main menu if script wasn't interrupted

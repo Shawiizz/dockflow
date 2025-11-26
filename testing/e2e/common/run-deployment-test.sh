@@ -2,8 +2,6 @@
 # E2E test runner for DockFlow framework
 # Simulates a CI/CD deployment process
 
-
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export ROOT_PATH="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
@@ -14,8 +12,8 @@ echo ""
 
 # Check if test VM is running
 if ! docker ps | grep -q "dockflow-test-vm"; then
-    echo "ERROR: Test VM is not running. Run setup.sh first."
-    exit 1
+	echo "ERROR: Test VM is not running. Run setup.sh first."
+	exit 1
 fi
 
 echo "Setting up CI/CD environment simulation..."
@@ -29,16 +27,16 @@ echo "Loading test environment variables..."
 
 # Use TEST_CONNECTION env var
 if [ -n "$TEST_CONNECTION" ]; then
-    CONNECTION_STRING="$TEST_CONNECTION"
-    echo "Using connection string from environment variable."
+	CONNECTION_STRING="$TEST_CONNECTION"
+	echo "Using connection string from environment variable."
 else
-    echo "ERROR: Connection string not found (env var TEST_CONNECTION)"
-    exit 1
+	echo "ERROR: Connection string not found (env var TEST_CONNECTION)"
+	exit 1
 fi
 
 # Generate secrets.json with TEST_CONNECTION
 # We use TEST_CONNECTION because ENV=test in .commit_info
-echo "{\"TEST_CONNECTION\":\"$CONNECTION_STRING\"}" > secrets.json
+echo "{\"TEST_CONNECTION\":\"$CONNECTION_STRING\"}" >secrets.json
 
 source dockflow/.common/scripts/load_env.sh "$ENV" "$HOSTNAME"
 bash dockflow/.common/scripts/deploy_with_ansible.sh
@@ -51,25 +49,25 @@ sleep 5
 # Check if container is running using docker exec
 echo "Checking container status..."
 if docker exec dockflow-test-vm docker ps --filter name=test-web-app --format '{{.Names}}' | grep -q "test-web-app"; then
-    echo "Container is running."
+	echo "Container is running."
 else
-    echo "ERROR: Container is not running."
-    exit 1
+	echo "ERROR: Container is not running."
+	exit 1
 fi
 
 # Check if web app is accessible using docker exec (verbose output)
 echo "Checking web application accessibility..."
 RESPONSE=$(docker exec dockflow-test-vm curl -sf http://localhost:8080/ 2>&1)
 if echo "$RESPONSE" | grep -q "DOCKFLOW_E2E_TEST_APP_DEPLOYED"; then
-    echo "✓ Web application is accessible and serving the correct content."
+	echo "✓ Web application is accessible and serving the correct content."
 else
-    echo "ERROR: Web application is not serving the expected content."
-    echo "Response received:"
-    echo "$RESPONSE"
-    echo ""
-    echo "Verbose curl output:"
-    docker exec dockflow-test-vm curl -v http://localhost:8080/
-    exit 1
+	echo "ERROR: Web application is not serving the expected content."
+	echo "Response received:"
+	echo "$RESPONSE"
+	echo ""
+	echo "Verbose curl output:"
+	docker exec dockflow-test-vm curl -v http://localhost:8080/
+	exit 1
 fi
 
 echo ""

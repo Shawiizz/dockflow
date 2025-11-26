@@ -2,8 +2,6 @@
 # E2E test runner for DockFlow CLI
 # Tests the CLI setup-machine command in non-interactive mode
 
-
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 export ROOT_PATH="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
@@ -17,12 +15,12 @@ echo ""
 
 # Check if test VM is running, if not run setup from common
 if ! docker ps | grep -q "dockflow-test-vm"; then
-    echo "Test VM is not running. Setting up test environment..."
-    echo ""
-    cd "$ROOT_DIR/common"
-    bash setup.sh
-    echo ""
-    cd "$ROOT_PATH"
+	echo "Test VM is not running. Setting up test environment..."
+	echo ""
+	cd "$ROOT_DIR/common"
+	bash setup.sh
+	echo ""
+	cd "$ROOT_PATH"
 fi
 
 # Load environment variables
@@ -30,9 +28,9 @@ source "$ROOT_DIR/.env" 2>/dev/null || true
 
 # Verify environment variables
 if [ -z "$SSH_HOST" ] || [ -z "$SSH_PORT" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PASSWORD" ] || [ -z "$DEPLOY_USER" ]; then
-    echo "ERROR: Required environment variables are not set."
-    echo "Required: SSH_HOST, SSH_PORT, SSH_USER, SSH_PASSWORD, DEPLOY_USER"
-    exit 1
+	echo "ERROR: Required environment variables are not set."
+	echo "Required: SSH_HOST, SSH_PORT, SSH_USER, SSH_PASSWORD, DEPLOY_USER"
+	exit 1
 fi
 
 echo "Test configuration:"
@@ -54,30 +52,30 @@ REMOTE_TEMP_DIR="/tmp/dockflow-cli-$$"
 
 # Test SSH connection first (silent)
 if ! sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p "$SSH_PORT" "${SSH_USER}@localhost" "true" >/dev/null 2>&1; then
-    echo "ERROR: Cannot establish SSH connection to remote server" >&2
-    echo "Debug: SSH_USER='$SSH_USER', SSH_PORT='$SSH_PORT'" >&2
-    echo "Checking if container is running..." >&2
-    docker ps | grep dockflow-test-vm >&2
-    exit 1
+	echo "ERROR: Cannot establish SSH connection to remote server" >&2
+	echo "Debug: SSH_USER='$SSH_USER', SSH_PORT='$SSH_PORT'" >&2
+	echo "Checking if container is running..." >&2
+	docker ps | grep dockflow-test-vm >&2
+	exit 1
 fi
 
 # Create temporary directory on remote server
 if ! sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
-    "mkdir -p $REMOTE_TEMP_DIR" >/dev/null 2>&1; then
-    echo "ERROR: Failed to create temporary directory on remote server" >&2
-    exit 1
+	"mkdir -p $REMOTE_TEMP_DIR" >/dev/null 2>&1; then
+	echo "ERROR: Failed to create temporary directory on remote server" >&2
+	exit 1
 fi
 echo "✓ SSH connection established and temp directory created"
 
 # Transfer project using tar (mimics how the wrapper downloads the repo)
 echo "Transferring project to remote server..."
-tar -czf - -C "$ROOT_PATH" --exclude='.git' --exclude='.idea' --exclude='.vscode' --exclude='node_modules' --exclude='testing/e2e/docker/data' . | \
-    sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
-    "cat > $REMOTE_TEMP_DIR/project.tar.gz && cd $REMOTE_TEMP_DIR && tar -xzf project.tar.gz && rm project.tar.gz"
+tar -czf - -C "$ROOT_PATH" --exclude='.git' --exclude='.idea' --exclude='.vscode' --exclude='node_modules' --exclude='testing/e2e/docker/data' . |
+	sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
+		"cat > $REMOTE_TEMP_DIR/project.tar.gz && cd $REMOTE_TEMP_DIR && tar -xzf project.tar.gz && rm project.tar.gz"
 
 if [ $? -ne 0 ]; then
-    echo "ERROR: Failed to transfer project to remote server"
-    exit 1
+	echo "ERROR: Failed to transfer project to remote server"
+	exit 1
 fi
 
 echo "✓ Project transferred to remote server"
@@ -93,7 +91,7 @@ echo ""
 # Don't install Portainer in tests to keep it simple
 set +e
 CLI_OUTPUT=$(sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
-    "cd $REMOTE_TEMP_DIR && \
+	"cd $REMOTE_TEMP_DIR && \
     bash cli/cli.sh setup-machine \
     --host dockflow-test-vm \
     --port 22 \
@@ -110,11 +108,11 @@ echo "$CLI_OUTPUT"
 echo ""
 
 if [ $CLI_EXIT_CODE -ne 0 ]; then
-    echo "ERROR: CLI setup-machine command failed with exit code $CLI_EXIT_CODE"
-    # Cleanup remote temp directory
-    sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
-        "rm -rf $REMOTE_TEMP_DIR" 2>/dev/null || true
-    exit 1
+	echo "ERROR: CLI setup-machine command failed with exit code $CLI_EXIT_CODE"
+	# Cleanup remote temp directory
+	sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
+		"rm -rf $REMOTE_TEMP_DIR" 2>/dev/null || true
+	exit 1
 fi
 
 echo "✓ CLI setup-machine completed successfully"
@@ -127,12 +125,12 @@ echo "Extracting connection string from CLI output..."
 E2E_TEST_CONNECTION=$(echo "$CLI_OUTPUT" | grep -A 2 "Connection String (Base64 encoded):" | tail -n 1 | grep -v "━" | xargs || true)
 
 if [ -z "$E2E_TEST_CONNECTION" ]; then
-    echo "ERROR: Failed to extract connection string from CLI output"
-    echo "This is the expected output format from the CLI."
-    # Cleanup remote temp directory
-    sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
-        "rm -rf $REMOTE_TEMP_DIR" 2>/dev/null || true
-    exit 1
+	echo "ERROR: Failed to extract connection string from CLI output"
+	echo "This is the expected output format from the CLI."
+	# Cleanup remote temp directory
+	sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
+		"rm -rf $REMOTE_TEMP_DIR" 2>/dev/null || true
+	exit 1
 fi
 
 echo "✓ Connection string extracted successfully"
@@ -143,11 +141,11 @@ echo "Decoding connection string (mimicking load_env.sh behavior)..."
 CONNECTION_JSON=$(echo "$E2E_TEST_CONNECTION" | base64 -d 2>/dev/null)
 
 if [ -z "$CONNECTION_JSON" ]; then
-    echo "ERROR: Failed to decode connection string"
-    # Cleanup remote temp directory
-    sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
-        "rm -rf $REMOTE_TEMP_DIR" 2>/dev/null || true
-    exit 1
+	echo "ERROR: Failed to decode connection string"
+	# Cleanup remote temp directory
+	sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
+		"rm -rf $REMOTE_TEMP_DIR" 2>/dev/null || true
+	exit 1
 fi
 
 # Extract connection details from JSON (using jq like load_env.sh)
@@ -171,12 +169,12 @@ echo ""
 
 # Verify we got all required information from the connection string
 if [ -z "$DOCKFLOW_HOST" ] || [ -z "$DOCKFLOW_PORT" ] || [ -z "$DOCKFLOW_USER" ] || [ -z "$SSH_PRIVATE_KEY" ]; then
-    echo "ERROR: Connection string is missing required fields"
-    echo "Expected: host, port, user, privateKey"
-    # Cleanup remote temp directory
-    sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
-        "rm -rf $REMOTE_TEMP_DIR" 2>/dev/null || true
-    exit 1
+	echo "ERROR: Connection string is missing required fields"
+	echo "Expected: host, port, user, privateKey"
+	# Cleanup remote temp directory
+	sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
+		"rm -rf $REMOTE_TEMP_DIR" 2>/dev/null || true
+	exit 1
 fi
 
 echo "✓ All connection details validated"
@@ -186,7 +184,7 @@ echo ""
 # Cleanup remote temp directory
 echo "Cleaning up remote temporary directory..."
 sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
-    "rm -rf $REMOTE_TEMP_DIR" 2>/dev/null || true
+	"rm -rf $REMOTE_TEMP_DIR" 2>/dev/null || true
 echo "✓ Remote cleanup completed"
 echo ""
 
@@ -198,11 +196,11 @@ echo ""
 
 echo "Checking Docker installation on test VM..."
 if docker exec dockflow-test-vm docker --version >/dev/null 2>&1; then
-    DOCKER_VERSION=$(docker exec dockflow-test-vm docker --version)
-    echo "✓ Docker is installed: $DOCKER_VERSION"
+	DOCKER_VERSION=$(docker exec dockflow-test-vm docker --version)
+	echo "✓ Docker is installed: $DOCKER_VERSION"
 else
-    echo "ERROR: Docker is not installed on test VM"
-    exit 1
+	echo "ERROR: Docker is not installed on test VM"
+	exit 1
 fi
 echo ""
 
@@ -214,20 +212,20 @@ echo ""
 
 echo "Checking if deploy user '$DOCKFLOW_USER' exists..."
 if docker exec dockflow-test-vm id "$DOCKFLOW_USER" >/dev/null 2>&1; then
-    USER_INFO=$(docker exec dockflow-test-vm id "$DOCKFLOW_USER")
-    echo "✓ Deploy user exists: $USER_INFO"
+	USER_INFO=$(docker exec dockflow-test-vm id "$DOCKFLOW_USER")
+	echo "✓ Deploy user exists: $USER_INFO"
 else
-    echo "ERROR: Deploy user '$DOCKFLOW_USER' was not created"
-    exit 1
+	echo "ERROR: Deploy user '$DOCKFLOW_USER' was not created"
+	exit 1
 fi
 
 # Check if user is in docker group
 echo "Checking if deploy user is in docker group..."
 if docker exec dockflow-test-vm groups "$DOCKFLOW_USER" | grep -q docker; then
-    echo "✓ Deploy user is in docker group"
+	echo "✓ Deploy user is in docker group"
 else
-    echo "ERROR: Deploy user is not in docker group"
-    exit 1
+	echo "ERROR: Deploy user is not in docker group"
+	exit 1
 fi
 echo ""
 

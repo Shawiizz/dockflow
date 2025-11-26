@@ -2,8 +2,6 @@
 # Teardown script for E2E testing environment
 # Stops and removes the test VM and cleans up resources
 
-
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo "Tearing down E2E testing environment..."
 
@@ -17,8 +15,8 @@ docker compose --env-file "$SCRIPT_DIR/.env" down -v --remove-orphans
 read -p "Remove .env file? (y/N): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    rm -f "${SCRIPT_DIR}/.env"
-    echo ".env file removed."
+	rm -f "${SCRIPT_DIR}/.env"
+	echo ".env file removed."
 fi
 
 echo "Teardown complete."
