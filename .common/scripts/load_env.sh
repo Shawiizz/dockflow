@@ -88,8 +88,8 @@ fi
 
 # Verify required variables (skip for build environment)
 if [[ "$ENV" != "build" ]]; then
-	[[ -z "$DOCKFLOW_HOST" ]] && echo "::error:: DOCKFLOW_HOST is not defined. Please set it in .env file or as CI secret (${ENV_PREFIX}DOCKFLOW_HOST)" && exit 1
-	[[ -z "$SSH_PRIVATE_KEY" ]] && echo "::error:: SSH_PRIVATE_KEY is not defined. Please set it as CI secret (${ENV_PREFIX}SSH_PRIVATE_KEY)" && exit 1
+	[[ -z "$DOCKFLOW_HOST" ]] && echo "::error:: DOCKFLOW_HOST is not defined. Please set it in .env file or as CI secret (${ENV_PREFIX}DOCKFLOW_HOST or ${ENV_PREFIX}CONNECTION)" && exit 1
+	[[ -z "$SSH_PRIVATE_KEY" ]] && echo "::error:: SSH_PRIVATE_KEY is not defined. Please set it as CI secret (${ENV_PREFIX}SSH_PRIVATE_KEY or ${ENV_PREFIX}CONNECTION)" && exit 1
 fi
 
 # Export to YAML

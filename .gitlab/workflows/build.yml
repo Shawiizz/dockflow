@@ -1,5 +1,5 @@
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/1.0.53/.gitlab/common/variables.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/1.0.54/.gitlab/common/variables.yml'
 
 stages:
   - build
