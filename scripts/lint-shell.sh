@@ -41,8 +41,13 @@ if ! command -v shfmt >/dev/null 2>&1; then
   echo "shfmt not installed; skipping shfmt check"
 else
   # shfmt lists files that are not properly formatted
-  # Using -d to show diffs in CI logs is often more helpful than just filenames
-  if ! printf '%s\0' "${MAPFILE[@]}" | xargs -0 shfmt -d; then
+  # Using -l to list filenames instead of -d (diff) to avoid cluttering logs
+  FORMAT_ISSUES=$(printf '%s\0' "${MAPFILE[@]}" | xargs -0 shfmt -l)
+  
+  if [ -n "$FORMAT_ISSUES" ]; then
+      echo "The following files have formatting issues:"
+      echo "$FORMAT_ISSUES"
+      echo "Run 'shfmt -w .' locally to fix them."
       FAILED=1
   fi
 fi
