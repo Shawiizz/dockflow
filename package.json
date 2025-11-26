@@ -1,6 +1,6 @@
 {
   "name": "dockflow",
-  "version": "1.0.51-dev4",
+  "version": "1.0.53",
   "ciImageVersion": "1.0.5",
   "description": "Framework for automated deployment and continuous integration.",
   "scripts": {
@@ -9,8 +9,7 @@
     "version:downgrade": "node scripts/version-manager.js downgrade",
     "ci-image:dev": "node scripts/version-manager.js dev --ci-image",
     "ci-image:release": "node scripts/version-manager.js release --ci-image",
-    "ci-image:downgrade": "node scripts/version-manager.js downgrade --ci-image"
-    ,
+    "ci-image:downgrade": "node scripts/version-manager.js downgrade --ci-image",
     "lint:shell": "bash scripts/lint-shell.sh"
   },
   "devDependencies": {
