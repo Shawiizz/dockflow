@@ -37,9 +37,9 @@ sed -i "s/REMOTE_HOST/${INVENTORY_HOST}/g" ansible/inventory.yml
 ansible-galaxy role install geerlingguy.docker
 
 # Build extra vars for Ansible
-EXTRA_VARS=""
+EXTRA_VARS=()
 if [ "${SKIP_DOCKER_INSTALL}" = "true" ]; then
-	EXTRA_VARS="-e skip_docker_install=true"
+	EXTRA_VARS+=("-e" "skip_docker_install=true")
 fi
 
-ansible-playbook ansible/deploy.yml -i ansible/inventory.yml --skip-tags "$SKIP_TAGS" "$EXTRA_VARS"
+ansible-playbook ansible/deploy.yml -i ansible/inventory.yml --skip-tags "$SKIP_TAGS" "${EXTRA_VARS[@]}"
