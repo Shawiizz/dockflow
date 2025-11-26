@@ -38,14 +38,14 @@ fi
 echo ""
 echo "Step 3: Building Ansible runner container..."
 cd "$SCRIPT_DIR/docker"
-docker-compose --env-file "$SCRIPT_DIR/.env" build ansible-runner
+docker compose --env-file "$SCRIPT_DIR/.env" build ansible-runner
 
 echo ""
 echo "Step 4: Running deployment tests in Ansible container..."
 echo ""
 
 # Run tests inside the container
-docker-compose --env-file "$SCRIPT_DIR/.env" run --rm \
+docker compose --env-file "$SCRIPT_DIR/.env" run --rm \
     -e TEST_CONNECTION="$TEST_CONNECTION" \
     ansible-runner bash -c "
     

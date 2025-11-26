@@ -11,7 +11,7 @@ cd "$SCRIPT_DIR/docker"
 
 # Stop and remove containers
 echo "Stopping and removing containers..."
-docker-compose --env-file "$SCRIPT_DIR/.env" down -v --remove-orphans
+docker compose --env-file "$SCRIPT_DIR/.env" down -v --remove-orphans
 
 # Optional: Remove .env file
 read -p "Remove .env file? (y/N): " -n 1 -r

@@ -12,20 +12,20 @@ echo "Setting up E2E testing environment..."
 # Start the test environment
 echo "Starting Docker Compose services..."
 cd "$ROOT_DIR/docker"
-docker-compose --env-file "$ROOT_DIR/.env" up -d --build
+docker compose --env-file "$ROOT_DIR/.env" up -d --build
 
 # Wait for the test VM to be healthy
 echo "Waiting for test VM to be ready..."
 MAX_WAIT=60
 ELAPSED=0
 while [ $ELAPSED -lt $MAX_WAIT ]; do
-    if docker-compose --env-file "$ROOT_DIR/.env" ps | grep -q "healthy"; then
+    if docker compose --env-file "$ROOT_DIR/.env" ps | grep -q "healthy"; then
         echo "Test VM is healthy."
         break
     fi
     if [ $ELAPSED -eq $((MAX_WAIT - 1)) ]; then
         echo "ERROR: Test VM did not become healthy in time."
-        docker-compose logs test-vm
+        docker compose logs test-vm
         exit 1
     fi
     sleep 1
@@ -46,7 +46,7 @@ if [ -n "$SSH_PASSWORD" ] && command -v sshpass >/dev/null 2>&1; then
         echo "SSH connection test passed (with password)."
     else
         echo "WARNING: SSH connection test failed. Checking container status..."
-        docker-compose logs test-vm | tail -n 20
+        docker compose logs test-vm | tail -n 20
     fi
 else
     echo "WARNING: sshpass not found or SSH_PASSWORD not set. Skipping SSH connection test."
