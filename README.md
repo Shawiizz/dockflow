@@ -37,7 +37,8 @@ Push a tag, grab a coffee, and your app is deployed.
 
 ```bash
 # 1. Setup your server (one command!)
-docker run -it --rm -v ${HOME}/.ssh:/root/.ssh -v .:/project shawiizz/dockflow-cli:latest
+# Login to SSH and execute:
+curl -fsSL "https://raw.githubusercontent.com/Shawiizz/dockflow/main/cli/cli_wrapper.sh?$(date +%s)" | bash
 
 # 2. Initialize project structure (CLI is optional)
 docker run -it --rm -e HOST_PWD="$(pwd)" -v .:/project shawiizz/dockflow-cli:latest
@@ -98,21 +99,28 @@ graph LR
 ### Step 1: Server Setup
 
 **Prerequisites:**
-- A Debian/Ubuntu server
-- Docker Desktop on your local machine
+- A Debian/Ubuntu server with SSH access
 
-#### Automated Setup (Recommended)
+#### One-Line Installation (Recommended)
+
+```bash
+curl -fsSL "https://raw.githubusercontent.com/Shawiizz/dockflow/main/cli/cli_wrapper.sh?$(date +%s)" | bash
+```
+
+The CLI will guide you through:
+1. Configuring this server
+2. Creating a deployment user
+3. Configuring SSH keys
+4. Installing Docker and Portainer (optional)
+
+<details>
+<summary>Alternative: Use Docker image</summary>
+
+If you prefer using Docker:
 
 ```bash
 docker run -it --rm -v ${HOME}/.ssh:/root/.ssh -v .:/project shawiizz/dockflow-cli:latest
 ```
-
-The CLI will guide you through the setup process interactively.
-
-<details>
-<summary>Manual setup (advanced users)</summary>
-
-For manual configuration, check [MANUAL-REMOTE-SETUP.md](./MANUAL-REMOTE-SETUP.md)
 
 </details>
 
@@ -140,7 +148,7 @@ This creates the following structure:
 │   ├── docker-compose.yml           # Define your services
 │   └── Dockerfile.[service]         # One per service
 ├── env/                             # OPTIONAL: Can use CI secrets instead
-│   └── .env.[environment]           # OPTIONAL: Environment variables (HOST, USER, etc.)
+│   └── .env.[environment]           # OPTIONAL: Environment variables (DOCKFLOW_HOST, DOCKFLOW_USER, etc.)
 └── templates/
     ├── nginx/                       # Custom Nginx configs (optional)
     ├── services/                    # Custom systemd services (optional)
@@ -170,7 +178,7 @@ Required secrets in your CI/CD settings:
 | Secret Name | Description | Example |
 |-------------|-------------|---------|
 | `USER` | Remote user name | `dockflow` (default) |
-| `USER_PASSWORD` | Remote user password | `your-password` |
+| `DOCKFLOW_PASSWORD` | Remote user password | `your-password` |
 | `[ENV]_SSH_PRIVATE_KEY` | SSH key for main host | `PRODUCTION_SSH_PRIVATE_KEY` |
 | `[ENV]_[HOSTNAME]_SSH_PRIVATE_KEY` | SSH key for specific host | `PRODUCTION_SERVER_A_SSH_PRIVATE_KEY` |
 | `GIT_TOKEN` | OPTIONAL: Remote build option : for private repos | GitHub/GitLab token |
@@ -181,10 +189,10 @@ Any CI secret starting with `[ENV]_` or `[ENV]_[HOSTNAME]_` will automatically o
 
 | Pattern | Example Secret | Exported As | Use Case |
 |---------|---------------|-------------|----------|
-| `[ENV]_*` | `PRODUCTION_HOST` | `HOST` | Override main host variables |
-| `[ENV]_*` | `PRODUCTION_USER` | `USER` | Override main host SSH user |
+| `[ENV]_*` | `PRODUCTION_DOCKFLOW_HOST` | `DOCKFLOW_HOST` | Override main host variables |
+| `[ENV]_*` | `PRODUCTION_DOCKFLOW_USER` | `DOCKFLOW_USER` | Override main host SSH user |
 | `[ENV]_*` | `PRODUCTION_DB_PASSWORD` | `DB_PASSWORD` | Override any main host variable |
-| `[ENV]_[HOSTNAME]_*` | `PRODUCTION_SERVER_A_HOST` | `HOST` | Override specific host variables |
+| `[ENV]_[HOSTNAME]_*` | `PRODUCTION_SERVER_A_DOCKFLOW_HOST` | `DOCKFLOW_HOST` | Override specific host variables |
 | `[ENV]_[HOSTNAME]_*` | `PRODUCTION_SERVER_A_API_KEY` | `API_KEY` | Override any specific host variable |
 
 **Important notes:**
@@ -215,8 +223,9 @@ Create `.deployment/env/.env.[environment]` with your variables (optional):
 
 ```bash
 # .env.production
-HOST=192.168.1.10              # Can be overridden by PRODUCTION_HOST CI secret
-USER=dockflow                  # Can be overridden by PRODUCTION_USER CI secret
+DOCKFLOW_HOST=192.168.1.10              # Can be overridden by PRODUCTION_DOCKFLOW_HOST CI secret
+DOCKFLOW_PORT=22                        # Can be overridden by PRODUCTION_DOCKFLOW_PORT CI secret (SSH port, default: 22)
+DOCKFLOW_USER=dockflow                  # Can be overridden by PRODUCTION_DOCKFLOW_USER CI secret
 DB_PASSWORD=$DB_SECRET         # Reference to CI secret (if you need 1 variable and use it in several envs without duplicating ci secret)
 API_PORT=3000                  # Can be overridden by PRODUCTION_API_PORT CI secret
 ```
@@ -229,11 +238,11 @@ API_PORT=3000                  # Can be overridden by PRODUCTION_API_PORT CI sec
 
 **Pro tips:** 
 - Use `$VARIABLE_NAME` to reference CI secrets directly in `.env` files if you need 1 same secret for several environments
-- Any variable can be overridden using `[ENV]_VARIABLE_NAME` CI secrets (e.g., `PRODUCTION_HOST`, `PRODUCTION_API_PORT`)
-- For multi-host setups, use `[ENV]_[HOSTNAME]_VARIABLE_NAME` pattern (e.g., `PRODUCTION_SERVER_A_HOST`)
+- Any variable can be overridden using `[ENV]_VARIABLE_NAME` CI secrets (e.g., `PRODUCTION_DOCKFLOW_HOST`, `PRODUCTION_API_PORT`)
+- For multi-host setups, use `[ENV]_[HOSTNAME]_VARIABLE_NAME` pattern (e.g., `PRODUCTION_SERVER_A_DOCKFLOW_HOST`)
 - Keep sensitive data in CI secrets, not in `.env` files committed to the repository
-- **Required**: At minimum, `HOST` must be defined (either in `.env` file or as CI secret)
-- Default `USER` is called dockflow.
+- **Required**: At minimum, `DOCKFLOW_HOST` must be defined (either in `.env` file or as CI secret)
+- Default `DOCKFLOW_USER` is called dockflow.
 
 ---
 
@@ -346,13 +355,15 @@ Deploy to multiple servers in the same environment:
 
 ```bash
 # .env.production (main)
-HOST=192.168.1.10
+DOCKFLOW_HOST=192.168.1.10
+DOCKFLOW_PORT=22
 API_PORT=3000
 ```
 
 ```bash
 # .env.production.server-a
-HOST=192.168.1.11
+DOCKFLOW_HOST=192.168.1.11
+DOCKFLOW_PORT=2222                        # Override SSH port if different
 API_PORT=3001                    # Override main config
 REDIS_URL=redis://server-a:6379 # Additional config
 ```
@@ -362,8 +373,8 @@ REDIS_URL=redis://server-a:6379 # Additional config
 - `PRODUCTION_SERVER_A_SSH_PRIVATE_KEY` (for server-a)
 
 **Optional CI Secrets (to override any variable):**
-- Main host: `PRODUCTION_*` (e.g., `PRODUCTION_HOST`, `PRODUCTION_USER`, `PRODUCTION_API_PORT`)
-- Server A: `PRODUCTION_SERVER_A_*` (e.g., `PRODUCTION_SERVER_A_HOST`, `PRODUCTION_SERVER_A_USER`, `PRODUCTION_SERVER_A_REDIS_URL`)
+- Main host: `PRODUCTION_*` (e.g., `PRODUCTION_DOCKFLOW_HOST`, `PRODUCTION_DOCKFLOW_USER`, `PRODUCTION_API_PORT`)
+- Server A: `PRODUCTION_SERVER_A_*` (e.g., `PRODUCTION_SERVER_A_DOCKFLOW_HOST`, `PRODUCTION_SERVER_A_DOCKFLOW_USER`, `PRODUCTION_SERVER_A_REDIS_URL`)
 
 ---
 

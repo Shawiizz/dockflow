@@ -1,0 +1,37 @@
+# Deployment
+
+## Deploy with Git Tags
+
+```bash
+# Production deployment
+git tag 1.0.0
+git push origin --tags
+
+# Staging deployment
+git tag 1.0.0-staging
+git push origin --tags
+
+# Custom environment
+git tag 1.0.0-whatever
+git push origin --tags
+```
+
+## Deploy on Branch Push
+
+Before using, you need to configure your Github/GitLab workflow.
+You can also trigger deployments on direct branch pushes (deploys to `production`):
+
+```bash
+git push origin main
+```
+
+## What Happens During Deployment
+
+1. **Build** - Docker images are built (locally or remotely)
+2. **Transfer** - Images/code sent to target servers
+3. **Deploy** - Ansible orchestrates the deployment
+4. **Done** - Your app is live!
+
+**CI/CD Jobs Available:**
+- `build` - Validates Docker builds on every push
+- `deploy` - Deploys when you push a tag

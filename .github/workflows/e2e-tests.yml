@@ -19,11 +19,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Create SSH key directory
-        run: |
-          mkdir -p /tmp/ssh-keys
-          chmod 700 /tmp/ssh-keys
-
       - name: Start test environment
         working-directory: testing/e2e/docker
         run: |
@@ -47,38 +42,9 @@ jobs:
           docker compose -f testing/e2e/docker/docker-compose.yml logs test-vm
           exit 1
 
-      - name: Run CLI tests (machine setup)
-        working-directory: testing/e2e
+      - name: Run E2E Test Suite
         run: |
-          bash cli/run-tests.sh
-
-      - name: Build Ansible runner container
-        working-directory: testing/e2e/docker
-        run: |
-          docker compose --env-file ../.env build ansible-runner
-
-      - name: Run deployment tests
-        working-directory: testing/e2e/docker
-        run: |
-          docker compose --env-file ../.env run --rm ansible-runner bash -c "
-            set -e
-            # Copy source and test app to workspace
-            cp -r /mnt-src/dockflow/testing/e2e/test-app/. /workspace/
-            cp -r /mnt-src/dockflow /workspace/
-            
-            echo 'Configuring SSH key permissions inside container...'
-            # Use deploy_key created by CLI tests from /tmp/ssh-keys
-            cp -r /ssh-keys /tmp/ssh-keys-copy
-            chmod 700 /tmp/ssh-keys-copy
-            chmod 600 /tmp/ssh-keys-copy/deploy_key 2>/dev/null || true
-            
-            # Export SSH_KEY_PATH for the test script
-            export SSH_KEY_PATH=/tmp/ssh-keys-copy/deploy_key
-            
-            # Run the deployment test script
-            cd /workspace/dockflow/testing/e2e
-            bash common/run-deployment-test.sh
-          "
+          bash testing/e2e/run-tests.sh
 
       - name: Verify application is deployed
         run: |
@@ -107,4 +73,3 @@ jobs:
         working-directory: testing/e2e/docker
         run: |
           docker compose --env-file ../.env down -v
-          rm -rf /tmp/ssh-keys

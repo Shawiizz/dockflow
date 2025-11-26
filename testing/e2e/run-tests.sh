@@ -1,58 +1,55 @@
 #!/bin/bash
 # Run E2E tests inside Ansible container (avoids WSL permission issues)
 
-set -e
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SSH_KEY_DIR="/tmp/ssh-keys"
-
-# Create SSH key directory in /tmp to avoid Windows permission issues
-echo "Creating SSH key directory in /tmp..."
-mkdir -p "$SSH_KEY_DIR"
-chmod 700 "$SSH_KEY_DIR"
 
 echo "Running E2E tests in Ansible container"
 echo ""
 
 # Run CLI tests first (which will setup test VM and configure it)
 echo "Step 1: Running CLI E2E tests (setup + configuration)..."
-bash "$SCRIPT_DIR/cli/run-tests.sh"
-if [ $? -ne 0 ]; then
-    echo "ERROR: CLI tests failed."
-    exit 1
+
+# Capture connection string while streaming output
+exec 5>&1
+TEST_CONNECTION_OUTPUT=$(bash "$SCRIPT_DIR/cli/run-tests.sh" | tee /dev/fd/5 | grep "^::CONNECTION_STRING::" | tail -n 1)
+CLI_EXIT_CODE=${PIPESTATUS[0]}
+
+if [ $CLI_EXIT_CODE -ne 0 ]; then
+	echo "ERROR: CLI tests failed."
+	exit 1
+fi
+
+TEST_CONNECTION=${TEST_CONNECTION_OUTPUT#*::CONNECTION_STRING::}
+
+if [ -z "$TEST_CONNECTION" ]; then
+	echo "ERROR: Could not capture connection string from CLI tests."
+	exit 1
 fi
 
 echo ""
 echo "Step 2: Verifying test VM is ready..."
 if ! docker ps | grep -q "dockflow-test-vm"; then
-    echo "ERROR: Test VM is not running after CLI setup."
-    exit 1
+	echo "ERROR: Test VM is not running after CLI setup."
+	exit 1
 fi
 
 echo ""
 echo "Step 3: Building Ansible runner container..."
 cd "$SCRIPT_DIR/docker"
-docker-compose --env-file "$SCRIPT_DIR/.env" build ansible-runner
+docker compose --env-file "$SCRIPT_DIR/.env" build ansible-runner
 
 echo ""
 echo "Step 4: Running deployment tests in Ansible container..."
 echo ""
 
 # Run tests inside the container
-docker-compose --env-file "$SCRIPT_DIR/.env" run --rm ansible-runner bash -c "
-    set -e
+docker compose --env-file "$SCRIPT_DIR/.env" run --rm \
+	-e TEST_CONNECTION="$TEST_CONNECTION" \
+	ansible-runner bash -c "
+    
     # Copy source and test app to workspace
     cp -r /mnt-src/dockflow/testing/e2e/test-app/. /workspace/
     cp -r /mnt-src/dockflow /workspace/
-    
-    echo 'Configuring SSH key permissions inside container...'
-    # Use deploy_key created by CLI tests from /tmp/ssh-keys
-    cp -r /ssh-keys /tmp/ssh-keys-copy
-    chmod 700 /tmp/ssh-keys-copy
-    chmod 600 /tmp/ssh-keys-copy/deploy_key 2>/dev/null || true
-    
-    # Export SSH_KEY_PATH for the test script
-    export SSH_KEY_PATH=/tmp/ssh-keys-copy/deploy_key
     
     # Run the deployment test script
     cd /workspace/dockflow/testing/e2e
@@ -62,19 +59,19 @@ docker-compose --env-file "$SCRIPT_DIR/.env" run --rm ansible-runner bash -c "
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -eq 0 ]; then
-    echo ""
-    echo "=========================================="
-    echo "   ALL E2E TESTS PASSED ✓"
-    echo "=========================================="
-    echo ""
-    echo "Summary:"
-    echo "  ✓ CLI tests passed (machine setup)"
-    echo "  ✓ Deployment tests passed"
+	echo ""
+	echo "=========================================="
+	echo "   ALL E2E TESTS PASSED ✓"
+	echo "=========================================="
+	echo ""
+	echo "Summary:"
+	echo "  ✓ CLI tests passed (machine setup)"
+	echo "  ✓ Deployment tests passed"
 else
-    echo ""
-    echo "=========================================="
-    echo "   DEPLOYMENT TESTS FAILED"
-    echo "=========================================="
+	echo ""
+	echo "=========================================="
+	echo "   DEPLOYMENT TESTS FAILED"
+	echo "=========================================="
 fi
 
 exit $EXIT_CODE

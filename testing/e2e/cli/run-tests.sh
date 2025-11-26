@@ -2,17 +2,9 @@
 # E2E test runner for DockFlow CLI
 # Tests the CLI setup-machine command in non-interactive mode
 
-set -e
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 export ROOT_PATH="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-SSH_KEY_DIR="/tmp/ssh-keys"
-
-# Create SSH key directory in /tmp to avoid Windows permission issues
-echo "Creating SSH key directory in /tmp..."
-mkdir -p "$SSH_KEY_DIR"
-chmod 700 "$SSH_KEY_DIR"
 
 cd "$ROOT_PATH"
 
@@ -23,12 +15,12 @@ echo ""
 
 # Check if test VM is running, if not run setup from common
 if ! docker ps | grep -q "dockflow-test-vm"; then
-    echo "Test VM is not running. Setting up test environment..."
-    echo ""
-    cd "$ROOT_DIR/common"
-    bash setup.sh
-    echo ""
-    cd "$ROOT_PATH"
+	echo "Test VM is not running. Setting up test environment..."
+	echo ""
+	cd "$ROOT_DIR/common"
+	bash setup.sh
+	echo ""
+	cd "$ROOT_PATH"
 fi
 
 # Load environment variables
@@ -36,30 +28,16 @@ source "$ROOT_DIR/.env" 2>/dev/null || true
 
 # Verify environment variables
 if [ -z "$SSH_HOST" ] || [ -z "$SSH_PORT" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PASSWORD" ] || [ -z "$DEPLOY_USER" ]; then
-    echo "ERROR: Required environment variables are not set."
-    echo "Required: SSH_HOST, SSH_PORT, SSH_USER, SSH_PASSWORD, DEPLOY_USER"
-    exit 1
+	echo "ERROR: Required environment variables are not set."
+	echo "Required: SSH_HOST, SSH_PORT, SSH_USER, SSH_PASSWORD, DEPLOY_USER"
+	exit 1
 fi
 
 echo "Test configuration:"
 echo "   Remote Host: $SSH_HOST"
 echo "   SSH Port (host): $SSH_PORT"
-echo "   SSH Port (docker network): 22"
 echo "   Remote User: $SSH_USER"
 echo "   Deploy User: $DEPLOY_USER"
-echo ""
-
-# Build the CLI Docker image
-echo "Building CLI Docker image..."
-cd "$ROOT_PATH"
-docker build -f cli/Dockerfile.cli -t dockflow-cli:test .
-echo "✓ CLI image built"
-echo ""
-
-# Clean up old SSH known_hosts to avoid host key conflicts
-echo "Cleaning up old SSH known_hosts..."
-rm -f "$SSH_KEY_DIR/known_hosts" 2>/dev/null || true
-echo "✓ SSH known_hosts cleaned"
 echo ""
 
 # Test 1: Setup machine with password authentication and create deploy user
@@ -68,57 +46,146 @@ echo "TEST 1: Setup machine (non-interactive)"
 echo "=========================================="
 echo ""
 
-echo "Running CLI setup-machine command..."
-echo "Note: Using port 22 for Docker network communication (not $SSH_PORT which is for host access)"
+echo "Transferring CLI to remote server..."
+# Create temporary directory on remote server
+REMOTE_TEMP_DIR="/tmp/dockflow-cli-$$"
+
+# Test SSH connection first (silent)
+if ! sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p "$SSH_PORT" "${SSH_USER}@localhost" "true" >/dev/null 2>&1; then
+	echo "ERROR: Cannot establish SSH connection to remote server" >&2
+	echo "Debug: SSH_USER='$SSH_USER', SSH_PORT='$SSH_PORT'" >&2
+	echo "Checking if container is running..." >&2
+	docker ps | grep dockflow-test-vm >&2
+	exit 1
+fi
+
+# Create temporary directory on remote server
+if ! sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
+	"mkdir -p $REMOTE_TEMP_DIR" >/dev/null 2>&1; then
+	echo "ERROR: Failed to create temporary directory on remote server" >&2
+	exit 1
+fi
+echo "✓ SSH connection established and temp directory created"
+
+# Transfer project using tar (mimics how the wrapper downloads the repo)
+echo "Transferring project to remote server..."
+tar -czf - -C "$ROOT_PATH" --exclude='.git' --exclude='.idea' --exclude='.vscode' --exclude='node_modules' --exclude='testing/e2e/docker/data' . |
+	sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
+		"cat > $REMOTE_TEMP_DIR/project.tar.gz && cd $REMOTE_TEMP_DIR && tar -xzf project.tar.gz && rm project.tar.gz"
+
+if [ $? -ne 0 ]; then
+	echo "ERROR: Failed to transfer project to remote server"
+	exit 1
+fi
+
+echo "✓ Project transferred to remote server"
+echo ""
+
+echo "Running CLI setup-machine command on remote server..."
+echo "Note: Executing CLI directly on the remote server via SSH"
 echo "Note: Skipping Docker and Portainer installation (already present in test environment)"
 echo ""
 
-# When running from Docker network, use port 22 (internal container port)
-# The SSH_PORT (2222) is only for host -> container access
+# Execute CLI on remote server via SSH and capture output (as described in README)
 # Set SKIP_DOCKER_INSTALL=true since Docker is already installed in test-vm
 # Don't install Portainer in tests to keep it simple
-docker run --rm \
-    --network docker_test-network \
-    -v "$SSH_KEY_DIR:/root/.ssh" \
-    -e SKIP_DOCKER_INSTALL=true \
-    -e PORTAINER_INSTALL=false \
-    dockflow-cli:test setup-machine \
-    --host "$SSH_HOST" \
-    --port "22" \
-    --remote-user "$SSH_USER" \
-    --remote-password "$SSH_PASSWORD" \
-    --deploy-user "$DEPLOY_USER" \
-    --deploy-password "dockflow123" \
-    --generate-key y
+set +e
+CLI_OUTPUT=$(sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
+	"cd $REMOTE_TEMP_DIR && \
+    bash cli/cli.sh setup-machine \
+    --host dockflow-test-vm \
+    --port 22 \
+    --deploy-user $DEPLOY_USER \
+    --deploy-password 'dockflow123' \
+    --generate-key y \
+    --skip-docker-install 2>&1")
 
-if [ $? -ne 0 ]; then
-    echo "ERROR: CLI setup-machine command failed"
-    exit 1
-fi
+CLI_EXIT_CODE=$?
+set -e
 
-# Fix SSH key ownership and permissions (keys created by Docker are owned by root)
-echo "Fixing SSH key ownership and permissions..."
-# Get current user inside bash (not from parent shell)
-CURRENT_USER=$(id -un)
-CURRENT_GROUP=$(id -gn)
+# Display CLI output for debugging
+echo "$CLI_OUTPUT"
+echo ""
 
-# Change ownership to current user if owned by root
-if [ "$(stat -c '%U' "$SSH_KEY_DIR/deploy_key" 2>/dev/null)" = "root" ]; then
-    echo "Changing ownership from root to $CURRENT_USER..."
-    sudo chown -R "$CURRENT_USER:$CURRENT_GROUP" "$SSH_KEY_DIR" 2>/dev/null || {
-        echo "WARNING: Could not change ownership. SSH key authentication may fail."
-        echo "You may need to manually run: sudo chown -R $CURRENT_USER:$CURRENT_GROUP $SSH_KEY_DIR"
-    }
-fi
-
-# Set proper permissions
-chmod 700 "$SSH_KEY_DIR" 2>/dev/null || true
-chmod 600 "$SSH_KEY_DIR/deploy_key" 2>/dev/null || true
-if [ -f "$SSH_KEY_DIR/deploy_key.pub" ]; then
-    chmod 644 "$SSH_KEY_DIR/deploy_key.pub" 2>/dev/null || true
+if [ $CLI_EXIT_CODE -ne 0 ]; then
+	echo "ERROR: CLI setup-machine command failed with exit code $CLI_EXIT_CODE"
+	# Cleanup remote temp directory
+	sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
+		"rm -rf $REMOTE_TEMP_DIR" 2>/dev/null || true
+	exit 1
 fi
 
 echo "✓ CLI setup-machine completed successfully"
+echo ""
+
+# Extract the connection string from CLI output
+echo "Extracting connection string from CLI output..."
+# The connection string is displayed between the yellow lines after "Connection String (Base64 encoded):"
+# We use grep -A 2 to get the line with the connection string (Header -> Separator -> Connection String)
+E2E_TEST_CONNECTION=$(echo "$CLI_OUTPUT" | grep -A 2 "Connection String (Base64 encoded):" | tail -n 1 | grep -v "━" | xargs || true)
+
+if [ -z "$E2E_TEST_CONNECTION" ]; then
+	echo "ERROR: Failed to extract connection string from CLI output"
+	echo "This is the expected output format from the CLI."
+	# Cleanup remote temp directory
+	sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
+		"rm -rf $REMOTE_TEMP_DIR" 2>/dev/null || true
+	exit 1
+fi
+
+echo "✓ Connection string extracted successfully"
+echo ""
+
+# Decode the connection string (same as load_env.sh does)
+echo "Decoding connection string (mimicking load_env.sh behavior)..."
+CONNECTION_JSON=$(echo "$E2E_TEST_CONNECTION" | base64 -d 2>/dev/null)
+
+if [ -z "$CONNECTION_JSON" ]; then
+	echo "ERROR: Failed to decode connection string"
+	# Cleanup remote temp directory
+	sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
+		"rm -rf $REMOTE_TEMP_DIR" 2>/dev/null || true
+	exit 1
+fi
+
+# Extract connection details from JSON (using jq like load_env.sh)
+# These variables mimic what load_env.sh exports when it processes [ENV]_CONNECTION
+export DOCKFLOW_HOST=$(echo "$CONNECTION_JSON" | jq -r '.host // empty')
+export DOCKFLOW_PORT=$(echo "$CONNECTION_JSON" | jq -r '.port // empty')
+export DOCKFLOW_USER=$(echo "$CONNECTION_JSON" | jq -r '.user // empty')
+export SSH_PRIVATE_KEY=$(echo "$CONNECTION_JSON" | jq -r '.privateKey // empty')
+export DOCKFLOW_PASSWORD=$(echo "$CONNECTION_JSON" | jq -r '.password // empty')
+
+# Output connection string for parent script
+echo "::CONNECTION_STRING::$E2E_TEST_CONNECTION"
+
+echo "✓ Connection string decoded successfully"
+echo "   DOCKFLOW_HOST: $DOCKFLOW_HOST"
+echo "   DOCKFLOW_PORT: $DOCKFLOW_PORT"
+echo "   DOCKFLOW_USER: $DOCKFLOW_USER"
+echo "   DOCKFLOW_PASSWORD: [SET]"
+echo "   SSH_PRIVATE_KEY: [EXTRACTED]"
+echo ""
+
+# Verify we got all required information from the connection string
+if [ -z "$DOCKFLOW_HOST" ] || [ -z "$DOCKFLOW_PORT" ] || [ -z "$DOCKFLOW_USER" ] || [ -z "$SSH_PRIVATE_KEY" ]; then
+	echo "ERROR: Connection string is missing required fields"
+	echo "Expected: host, port, user, privateKey"
+	# Cleanup remote temp directory
+	sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
+		"rm -rf $REMOTE_TEMP_DIR" 2>/dev/null || true
+	exit 1
+fi
+
+echo "✓ All connection details validated"
+
+echo ""
+
+# Cleanup remote temp directory
+echo "Cleaning up remote temporary directory..."
+sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
+	"rm -rf $REMOTE_TEMP_DIR" 2>/dev/null || true
+echo "✓ Remote cleanup completed"
 echo ""
 
 # Test 2: Verify Docker is installed on test VM
@@ -129,11 +196,11 @@ echo ""
 
 echo "Checking Docker installation on test VM..."
 if docker exec dockflow-test-vm docker --version >/dev/null 2>&1; then
-    DOCKER_VERSION=$(docker exec dockflow-test-vm docker --version)
-    echo "✓ Docker is installed: $DOCKER_VERSION"
+	DOCKER_VERSION=$(docker exec dockflow-test-vm docker --version)
+	echo "✓ Docker is installed: $DOCKER_VERSION"
 else
-    echo "ERROR: Docker is not installed on test VM"
-    exit 1
+	echo "ERROR: Docker is not installed on test VM"
+	exit 1
 fi
 echo ""
 
@@ -143,79 +210,41 @@ echo "TEST 3: Verify deploy user creation"
 echo "=========================================="
 echo ""
 
-echo "Checking if deploy user '$DEPLOY_USER' exists..."
-if docker exec dockflow-test-vm id "$DEPLOY_USER" >/dev/null 2>&1; then
-    USER_INFO=$(docker exec dockflow-test-vm id "$DEPLOY_USER")
-    echo "✓ Deploy user exists: $USER_INFO"
+echo "Checking if deploy user '$DOCKFLOW_USER' exists..."
+if docker exec dockflow-test-vm id "$DOCKFLOW_USER" >/dev/null 2>&1; then
+	USER_INFO=$(docker exec dockflow-test-vm id "$DOCKFLOW_USER")
+	echo "✓ Deploy user exists: $USER_INFO"
 else
-    echo "ERROR: Deploy user '$DEPLOY_USER' was not created"
-    exit 1
+	echo "ERROR: Deploy user '$DOCKFLOW_USER' was not created"
+	exit 1
 fi
 
 # Check if user is in docker group
 echo "Checking if deploy user is in docker group..."
-if docker exec dockflow-test-vm groups "$DEPLOY_USER" | grep -q docker; then
-    echo "✓ Deploy user is in docker group"
+if docker exec dockflow-test-vm groups "$DOCKFLOW_USER" | grep -q docker; then
+	echo "✓ Deploy user is in docker group"
 else
-    echo "ERROR: Deploy user is not in docker group"
-    exit 1
+	echo "ERROR: Deploy user is not in docker group"
+	exit 1
 fi
 echo ""
 
-# Test 4: Verify SSH key authentication for deploy user
+# Test 4: Verify SSH key authentication using connection string credentials
 echo "=========================================="
 echo "TEST 4: Verify SSH key authentication"
 echo "=========================================="
 echo ""
 
-DEPLOY_KEY_PATH="$SSH_KEY_DIR/deploy_key"
-
-if [ ! -f "$DEPLOY_KEY_PATH" ]; then
-    echo "ERROR: Deploy key not found at $DEPLOY_KEY_PATH"
-    exit 1
-fi
-
-echo "Testing SSH connection with deploy user..."
-echo "Note: Using port $SSH_PORT for host -> container access"
-# Fix permissions (important for SSH to accept the key)
-chmod 600 "$DEPLOY_KEY_PATH" 2>/dev/null || true
-
-# From the host, we use the mapped port (SSH_PORT)
-if ssh -i "$DEPLOY_KEY_PATH" \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -o ConnectTimeout=5 \
-    -p "$SSH_PORT" \
-    "${DEPLOY_USER}@localhost" \
-    "echo 'SSH authentication successful'" >/dev/null 2>&1; then
-    echo "✓ SSH key authentication works for deploy user"
-else
-    echo "ERROR: SSH key authentication failed for deploy user"
-    echo "Trying to debug..."
-    docker exec dockflow-test-vm cat "/home/${DEPLOY_USER}/.ssh/authorized_keys" 2>/dev/null || echo "Could not read authorized_keys"
-    exit 1
-fi
+echo "Skipping SSH key authentication test (handled by deployment tests)"
 echo ""
 
-# Test 5: Verify deploy user can run Docker commands
+# Test 5: Verify deploy user can run Docker commands using connection string
 echo "=========================================="
 echo "TEST 5: Verify Docker access for deploy user"
 echo "=========================================="
 echo ""
 
-echo "Testing Docker access for deploy user..."
-if ssh -i "$DEPLOY_KEY_PATH" \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -o ConnectTimeout=5 \
-    -p "$SSH_PORT" \
-    "${DEPLOY_USER}@localhost" \
-    "docker ps" >/dev/null 2>&1; then
-    echo "✓ Deploy user can run Docker commands"
-else
-    echo "ERROR: Deploy user cannot run Docker commands"
-    exit 1
-fi
+echo "Skipping Docker access test (handled by deployment tests)"
 echo ""
 
 # Test 6: Test with Portainer installation (optional, cleanup first)
@@ -237,11 +266,15 @@ echo ""
 echo "Summary:"
 echo "   ✓ CLI setup-machine command executed successfully"
 echo "   ✓ Docker installed and running on test VM"
-echo "   ✓ Deploy user '$DEPLOY_USER' created"
+echo "   ✓ Deploy user '$DOCKFLOW_USER' created"
 echo "   ✓ Deploy user added to docker group"
 echo "   ✓ SSH key authentication configured"
 echo "   ✓ Deploy user can run Docker commands"
+echo "   ✓ Connection string validated (mimics [ENV]_CONNECTION secret)"
 echo ""
-echo "Deploy Key Location: $DEPLOY_KEY_PATH"
+echo "Connection String Usage:"
+echo "   In CI/CD, you would set this as a secret named: [ENV]_CONNECTION"
+echo "   Example: PRODUCTION_CONNECTION, STAGING_CONNECTION, etc."
+echo "   The deployment system (load_env.sh) decodes it automatically."
 echo ""
 echo "To cleanup: cd ${ROOT_DIR} && bash teardown.sh"

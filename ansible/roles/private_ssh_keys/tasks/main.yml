@@ -8,18 +8,18 @@
 - name: Deploy private SSH keys
   copy:
     content: "{{ lookup('env', item) }}"
-    dest: "/home/{{ lookup('env', 'USER') }}/.ssh/{{ item }}"
-    owner: "{{ lookup('env', 'USER') }}"
-    group: "{{ lookup('env', 'USER') }}"
+    dest: "/home/{{ lookup('env', 'DOCKFLOW_USER') }}/.ssh/{{ item }}"
+    owner: "{{ lookup('env', 'DOCKFLOW_USER') }}"
+    group: "{{ lookup('env', 'DOCKFLOW_USER') }}"
     mode: '0600'
   loop: "{{ ssh_keys | default([]) }}"
   when: ssh_keys is defined
   no_log: true
 
-- name: Start ssh-agent and add SSH keys
+- name: Add private SSH keys to ssh-agent
   shell: |
     eval "$(ssh-agent -s)"
-    ssh-add /home/{{ lookup('env', 'USER') }}/.ssh/{{ item }}
+    ssh-add /home/{{ lookup('env', 'DOCKFLOW_USER') }}/.ssh/{{ item }}
   loop: "{{ ssh_keys | default([]) }}"
   when: ssh_keys is defined
   no_log: true

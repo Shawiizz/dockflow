@@ -9,6 +9,14 @@ Quick guide for running end-to-end tests locally.
 - Docker Desktop running
 - `sshpass` installed: `sudo apt install sshpass`
 
+## Shell Linting
+
+Run shellcheck on all `.sh` files:
+
+```bash
+./scripts/lint-shell.sh
+```
+
 ## Running Tests
 
 ```bash
