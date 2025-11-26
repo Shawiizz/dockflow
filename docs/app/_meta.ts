@@ -1,5 +1,5 @@
 export default {
-  page: 'Introduction',
+  index: 'Introduction',
   'getting-started': 'Getting Started',
   configuration: 'Configuration',
   deployment: 'Deployment',
