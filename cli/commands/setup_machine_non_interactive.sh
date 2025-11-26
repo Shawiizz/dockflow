@@ -21,7 +21,8 @@ setup_machine_non_interactive() {
         export PUBLIC_HOST="$ARG_HOST"
     else
         # Auto-detect if not provided
-        export PUBLIC_HOST=$(detect_public_ip)
+        PUBLIC_HOST=$(detect_public_ip)
+        export PUBLIC_HOST
     fi
     
     # Determine SSH Port
@@ -29,7 +30,8 @@ setup_machine_non_interactive() {
         export SSH_PORT="$ARG_PORT"
     else
         # Auto-detect if not provided
-        export SSH_PORT=$(detect_ssh_port)
+        SSH_PORT=$(detect_ssh_port)
+        export SSH_PORT
     fi
     
     export IS_LOCAL_RUN="true"
@@ -43,7 +45,8 @@ setup_machine_non_interactive() {
         export DOCKFLOW_PASSWORD="$ARG_DEPLOY_PASSWORD"
     else
         # Use current user as deploy user
-        export DOCKFLOW_USER="$(whoami)"
+        DOCKFLOW_USER="$(whoami)"
+        export DOCKFLOW_USER
     fi
     
     # Display configuration

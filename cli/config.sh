@@ -18,16 +18,20 @@ if [ -f "/.dockerenv" ] || grep -q docker /proc/1/cgroup 2>/dev/null; then
     else
         # Running in a generic container (e.g. CI/CD, tests)
         export CLI_ROOT_DIR="$SCRIPT_DIR"
-        export CLI_PROJECT_DIR="$(pwd)"
-        export CLI_EXAMPLE_DIR="$(cd "$SCRIPT_DIR/../example" && pwd)"
+        CLI_PROJECT_DIR="$(pwd)"
+        export CLI_PROJECT_DIR
+        CLI_EXAMPLE_DIR="$(cd "$SCRIPT_DIR/../example" && pwd)"
+        export CLI_EXAMPLE_DIR
     fi
     
     export RUNNING_IN_DOCKER=true
 else
     # Running natively
     export CLI_ROOT_DIR="$SCRIPT_DIR"
-    export CLI_PROJECT_DIR="$(pwd)"
-    export CLI_EXAMPLE_DIR="$(cd "$SCRIPT_DIR/../example" && pwd)"
+    CLI_PROJECT_DIR="$(pwd)"
+    export CLI_PROJECT_DIR
+    CLI_EXAMPLE_DIR="$(cd "$SCRIPT_DIR/../example" && pwd)"
+    export CLI_EXAMPLE_DIR
     export RUNNING_IN_DOCKER=false
 fi
 

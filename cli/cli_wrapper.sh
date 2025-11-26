@@ -105,7 +105,7 @@ echo -e "${BLUE}[4/5] Downloading Dockflow CLI...${NC}"
 TEMP_DIR=$(mktemp -d -t dockflow-XXXXXXXXXX)
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
-cd "$TEMP_DIR"
+cd "$TEMP_DIR" || exit 1
 
 # Download repository archive
 ARCHIVE_URL="https://github.com/Shawiizz/dockflow/archive/refs/heads/${BRANCH}.zip"
@@ -138,7 +138,7 @@ chmod +x "${EXTRACTED_DIR}/cli/cli.sh"
 echo -e "${BLUE}[5/5] Starting Dockflow CLI...${NC}"
 echo ""
 
-cd "$EXTRACTED_DIR"
+cd "$EXTRACTED_DIR" || exit 1
 exec bash -c "./cli/cli.sh $*" < /dev/tty
 
 # Cleanup is handled by trap

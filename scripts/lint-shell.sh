@@ -27,7 +27,11 @@ if ! command -v shellcheck >/dev/null 2>&1; then
   echo "  - Windows (Chocolatey): choco install shellcheck";
   exit 1
 fi
-printf '%s\0' "${MAPFILE[@]}" | xargs -0 shellcheck -x --exclude=SC1091
+
+# Track failures
+FAILED=0
+
+printf '%s\0' "${MAPFILE[@]}" | xargs -0 shellcheck -x --exclude=SC1091 || FAILED=1
 
 # Optionally run shfmt to check formatting
 # The pipeline reports differences without writing them
@@ -35,10 +39,17 @@ echo "Checking shell formatting with shfmt..."
 # Ensure shfmt is on PATH
 if ! command -v shfmt >/dev/null 2>&1; then
   echo "shfmt not installed; skipping shfmt check"
-  exit 0
+else
+  # shfmt lists files that are not properly formatted
+  # Using -d to show diffs in CI logs is often more helpful than just filenames
+  if ! printf '%s\0' "${MAPFILE[@]}" | xargs -0 shfmt -d; then
+      FAILED=1
+  fi
 fi
 
-# shfmt lists files that are not properly formatted
-printf '%s\0' "${MAPFILE[@]}" | xargs -0 shfmt -l | tee /dev/stderr
+if [ $FAILED -ne 0 ]; then
+    echo "Shell linting or formatting failed."
+    exit 1
+fi
 
 echo "Shell checks completed."
