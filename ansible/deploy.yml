@@ -5,7 +5,7 @@
     root_path: "{{ lookup('env', 'ROOT_PATH') }}"
     compose_path: "{{ root_path }}/.deployment/docker/docker-compose.yml"
     tmp_dir: "/tmp"
-    framework_version: "1.0.55"
+    framework_version: "1.0.56"
     decomposerize_types:
       - name: "setup"
         base_options: "--create-networks --create-volumes --stop-and-remove"
@@ -20,6 +20,13 @@
       run_once: true
       delegate_to: localhost
 
+    - name: Load environment variables from YAML file
+      include_vars:
+        file: /tmp/ansible_env_vars.yml
+      delegate_to: localhost
+      run_once: true
+      no_log: true
+
     - name: Load framework configuration
       import_role:
         name: load-config
@@ -31,13 +38,6 @@
         name: prepare-deployment
       run_once: true
       delegate_to: localhost
-
-    - name: Load environment variables from YAML file
-      include_vars:
-        file: /tmp/ansible_env_vars.yml
-      delegate_to: localhost
-      run_once: true
-      no_log: true
 
     - name: Set computed variables
       set_fact:
