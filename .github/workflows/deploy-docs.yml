@@ -1,0 +1,13 @@
+name: Deploy docs
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy.yml
+    with:
+      version: ${{ github.ref_name }}-${{ github.sha }}    
+    secrets: inherit

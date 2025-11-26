@@ -43,8 +43,13 @@ jobs:
             exit 1
           fi
           
-          ENV="${TAG##*-}"
-          [[ "$TAG" == "$ENV" ]] && ENV="production"
+          # If version input is used, it's a direct push deployment -> always production
+          if [ -n "${{ inputs.version }}" ]; then
+            ENV="production"
+          else
+            ENV="${TAG##*-}"
+            [[ "$TAG" == "$ENV" ]] && ENV="production"
+          fi
           
           echo "env=$ENV" >> $GITHUB_OUTPUT
           echo "tag=$TAG" >> $GITHUB_OUTPUT

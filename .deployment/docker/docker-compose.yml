@@ -1,0 +1,11 @@
+services:
+  docs:
+    image: dockflow-docs
+    build:
+      context: docs
+      dockerfile: Dockerfile.docs
+    environment:
+      ENV: ${ENV}
+    restart: always
+    ports:
+      - "${DOCS_PORT}:3000"
