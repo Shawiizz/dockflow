@@ -4,20 +4,22 @@
   "description": "Documentation for Dockflow",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && pagefind --site .next/server/app --output-path public/_pagefind",
+    "postbuild": "pagefind --site .next/server/app --output-path public/_pagefind",
     "start": "next start"
   },
   "dependencies": {
     "next": "15.5.6",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
     "nextra": "^4.6.0",
-    "nextra-theme-docs": "^4.6.0"
+    "nextra-theme-docs": "^4.6.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "pagefind": "^1.4.0",
     "typescript": "^5.7.0"
   }
 }
