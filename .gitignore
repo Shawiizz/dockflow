@@ -1,2 +1,4 @@
 .idea
 ssh
+.env.dockflow
+secrets.json

@@ -168,6 +168,9 @@ if [ ! -d "$DOCKFLOW_HOME" ]; then
     exit 1
 fi
 
+# Save the current working directory to pass to the CLI
+export DOCKFLOW_WORKING_DIR="$(pwd)"
+
 cd "$DOCKFLOW_HOME" || exit 1
 exec bash -c "./cli/cli.sh $*" </dev/tty
 LAUNCHER_EOF

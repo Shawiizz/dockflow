@@ -38,7 +38,9 @@ $(echo -e "${CYAN}COMMANDS:${NC}")
     (no command)            Start interactive mode (default)
     -h, --help              Show this help message
     -v, --version           Show version information
-    init [github|gitlab]    Initialize project structure (default: github)
+    init                    Initialize project structure (interactive menu)
+    init [github|gitlab]    Initialize project structure with specified platform
+    deploy <env> [version]  Deploy application to specified environment
     setup-machine           Setup machine for deployment (non-interactive)
     
 $(echo -e "${CYAN}SETUP-MACHINE OPTIONS:${NC}")
@@ -139,6 +141,12 @@ EOF
       --install-portainer y \\
       --portainer-password "portainerpass" \\
       --portainer-domain portainer.example.com
+    
+    # Deploy to production
+    ./cli/cli.sh deploy production 1.0.0
+    
+    # Deploy to staging with auto-generated version
+    ./cli/cli.sh deploy staging
     
     # Show help
     ./cli/cli.sh --help
@@ -299,6 +307,7 @@ source "$CLI_COMMANDS_DIR/setup_machine.sh"
 source "$CLI_COMMANDS_DIR/setup_machine_interactive.sh"
 source "$CLI_COMMANDS_DIR/setup_machine_non_interactive.sh"
 source "$CLI_COMMANDS_DIR/setup_project.sh"
+source "$CLI_COMMANDS_DIR/deploy.sh"
 
 trap cleanup SIGINT
 trap 'safe_tput cnorm' EXIT # Always restore cursor on exit
@@ -312,14 +321,58 @@ init_project_non_interactive() {
 	echo -e "==========================================================${NC}"
 	echo ""
 	echo -e "${CYAN}CI/CD Platform:${NC} $ci_platform"
-	echo -e "${CYAN}Target Directory:${NC} .deployment/"
+	echo -e "${CYAN}Target Directory:${NC} $CLI_PROJECT_DIR/.deployment/"
 	echo ""
 
 	# Use the common function from setup_project.sh
 	create_project_structure "$ci_platform"
 
 	echo ""
-	echo -e "${GREEN}✓ Project initialized successfully in .deployment/${NC}"
+	echo -e "${GREEN}✓ Project initialized successfully in $CLI_PROJECT_DIR/.deployment/${NC}"
+	echo ""
+	echo -e "${CYAN}Next steps:${NC}"
+	echo "  1. Configure your .deployment/env/.env.production file"
+	echo "  2. Set up your docker-compose.yml and Dockerfiles"
+	echo "  3. Configure CI/CD secrets in your repository"
+	echo "  4. Push your changes and create a tag to deploy"
+	echo ""
+}
+
+# Function to initialize project structure (interactive - with menu)
+init_project_interactive() {
+	echo -e "${GREEN}=========================================================="
+	echo "   INITIALIZING PROJECT STRUCTURE"
+	echo -e "==========================================================${NC}"
+	echo ""
+	echo -e "${CYAN}Target Directory:${NC} $CLI_PROJECT_DIR/.deployment/"
+	echo ""
+
+	local options=(
+		"GitHub Actions"
+		"GitLab CI"
+	)
+
+	interactive_menu "Select CI/CD platform:" "${options[@]}"
+	local CI_OPTION=$?
+
+	echo ""
+
+	# Determine platform
+	local ci_platform
+	if [ "$CI_OPTION" = "0" ]; then
+		ci_platform="github"
+	else
+		ci_platform="gitlab"
+	fi
+
+	echo -e "${CYAN}CI/CD Platform:${NC} $ci_platform"
+	echo ""
+
+	# Use the common function from setup_project.sh
+	create_project_structure "$ci_platform"
+
+	echo ""
+	echo -e "${GREEN}✓ Project initialized successfully in $CLI_PROJECT_DIR/.deployment/${NC}"
 	echo ""
 	echo -e "${CYAN}Next steps:${NC}"
 	echo "  1. Configure your .deployment/env/.env.production file"
@@ -341,8 +394,14 @@ parse_arguments() {
 		exit 0
 		;;
 	init | --init)
-		# Initialize project structure directly (non-interactive)
-		local ci_platform="${2:-github}"
+		# Initialize project structure
+		local ci_platform="${2:-}"
+
+		# If no platform specified, show interactive menu
+		if [ -z "$ci_platform" ]; then
+			init_project_interactive
+			exit 0
+		fi
 
 		# Validate platform
 		if [[ "$ci_platform" != "github" && "$ci_platform" != "gitlab" ]]; then
@@ -351,6 +410,17 @@ parse_arguments() {
 		fi
 
 		init_project_non_interactive "$ci_platform"
+		exit 0
+		;;
+	deploy)
+		# Deploy to environment
+		shift # Remove 'deploy' from arguments
+
+		# Parse deploy arguments
+		parse_deploy_args "$@"
+
+		# Run deployment
+		run_deploy
 		exit 0
 		;;
 	setup-machine)

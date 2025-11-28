@@ -1,5 +1,46 @@
 # Deployment
 
+## Deploy with CLI (Local)
+
+You can deploy directly from your local machine using the `dockflow deploy` command:
+
+```bash
+# Deploy to production with version 1.0.0
+dockflow deploy production 1.0.0
+
+# Deploy to staging (auto-generated version)
+dockflow deploy staging
+
+# Deploy to production with specific hostname
+dockflow deploy production 2.0.0 --hostname server1
+```
+
+### Prerequisites
+
+1. **Install Dockflow CLI:**
+```bash
+curl -fsSL "https://raw.githubusercontent.com/Shawiizz/dockflow/main/cli/cli_wrapper.sh?$(date +%s)" | bash
+```
+
+2. **Create `.env.dockflow` file** in your project root:
+```bash
+# Production connection string (from setup-machine output)
+PRODUCTION_CONNECTION=eyJob3N0Ijoi...
+
+# Staging connection string (optional)
+STAGING_CONNECTION=eyJob3N0Ijoi...
+
+# Skip Docker installation on target (optional)
+SKIP_DOCKER_INSTALL=true
+```
+
+> ⚠️ **Important:** Add `.env.dockflow` to your `.gitignore` to avoid exposing secrets.
+
+3. **Initialize project structure** (if not already done):
+```bash
+dockflow init
+```
+
 ## Deploy with Git Tags
 
 ```bash

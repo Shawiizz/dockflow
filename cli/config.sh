@@ -28,7 +28,8 @@ if [ -f "/.dockerenv" ] || grep -q docker /proc/1/cgroup 2>/dev/null; then
 else
 	# Running natively
 	export CLI_ROOT_DIR="$SCRIPT_DIR"
-	CLI_PROJECT_DIR="$(pwd)"
+	# Use DOCKFLOW_WORKING_DIR if set (from launcher), otherwise use current directory
+	CLI_PROJECT_DIR="${DOCKFLOW_WORKING_DIR:-$(pwd)}"
 	export CLI_PROJECT_DIR
 	CLI_EXAMPLE_DIR="$(cd "$SCRIPT_DIR/../example" && pwd)"
 	export CLI_EXAMPLE_DIR

@@ -15,11 +15,12 @@ cd "$ROOT_PATH/dockflow" || exit 1
 ############ Setup SSH Key ############
 #######################################
 
-mkdir -p ssh
-printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' >ssh/remote_private_key
-chmod 600 ssh/*
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/dockflow_deploy_key
+chmod 600 ~/.ssh/dockflow_deploy_key
 eval "$(ssh-agent -s)"
-ssh-add ssh/remote_private_key
+ssh-add ~/.ssh/dockflow_deploy_key
 
 #######################################
 ######### Deploy with Ansible #########
