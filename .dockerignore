@@ -1,0 +1,27 @@
+# Documentation (large node_modules)
+docs/
+dockflow/docs/
+
+# Node modules
+**/node_modules/
+**/.next/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Test artifacts
+testing/
+dockflow/testing/
+
+# SSH keys (security)
+ssh/
+dockflow/ssh/
+
+# Build artifacts
+*.log
+*.tmp

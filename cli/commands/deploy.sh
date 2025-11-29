@@ -34,6 +34,7 @@ $(echo -e "${CYAN}ARGUMENTS:${NC}")
 
 $(echo -e "${CYAN}OPTIONS:${NC}")
     --hostname HOSTNAME      Hostname for multi-host deployments (optional, default: main)
+    --branch BRANCH          Git branch name for tracking (optional, default: current branch or 'main')
     -h, --help               Show this help message
 
 $(echo -e "${CYAN}REQUIREMENTS:${NC}")
@@ -55,6 +56,9 @@ $(echo -e "${CYAN}EXAMPLES:${NC}")
     
     # Deploy to production with specific hostname
     dockflow deploy production 2.0.0 --hostname server1
+    
+    # Deploy with specific branch name
+    dockflow deploy production 1.0.0 --branch feature-x
     
     # Deploy to test environment
     dockflow deploy test 1.0.0-rc1
@@ -84,6 +88,7 @@ parse_deploy_args() {
 	DEPLOY_ENV=""
 	DEPLOY_VERSION=""
 	DEPLOY_HOSTNAME="main"
+	DEPLOY_BRANCH=""
 
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
@@ -97,6 +102,14 @@ parse_deploy_args() {
 				exit 1
 			fi
 			DEPLOY_HOSTNAME="$2"
+			shift 2
+			;;
+		--branch)
+			if [[ -z "${2:-}" ]]; then
+				print_error "Missing value for --branch"
+				exit 1
+			fi
+			DEPLOY_BRANCH="$2"
 			shift 2
 			;;
 		-*)
@@ -137,10 +150,39 @@ parse_deploy_args() {
 	export DEPLOY_ENV
 	export DEPLOY_VERSION
 	export DEPLOY_HOSTNAME
+	export DEPLOY_BRANCH
 }
 
 # Run the deployment
 run_deploy() {
+	# Cleanup function for deploy
+	cleanup_deploy() {
+		local exit_code=$?
+		echo ""
+		print_step "Cleaning up..."
+		
+		# Remove dockflow symlink if it exists
+		if [[ -L "$CLI_PROJECT_DIR/dockflow" ]]; then
+			rm -f "$CLI_PROJECT_DIR/dockflow"
+		fi
+		
+		# Remove docker_images directory if it exists
+		if [[ -d "$CLI_PROJECT_DIR/.deployment/docker/docker_images" ]]; then
+			rm -rf "$CLI_PROJECT_DIR/.deployment/docker/docker_images"
+		fi
+		
+		# Cleanup secrets.json
+		if [[ -f "$CLI_PROJECT_DIR/secrets.json" ]]; then
+			rm -f "$CLI_PROJECT_DIR/secrets.json"
+		fi
+		
+		print_success "Cleanup complete"
+		return $exit_code
+	}
+	
+	# Set trap for cleanup on exit or interrupt
+	trap cleanup_deploy EXIT
+
 	echo -e "${GREEN}=========================================================="
 	echo "   DOCKFLOW DEPLOYMENT"
 	echo -e "==========================================================${NC}"
@@ -232,8 +274,14 @@ run_deploy() {
 	export ENV="$DEPLOY_ENV"
 	export HOSTNAME="$DEPLOY_HOSTNAME"
 	export VERSION="$DEPLOY_VERSION"
-	export PROJECT_ID=$(generate_project_id)
-	export BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+	export PROJECT_ID="auto"  # Will be resolved automatically by Ansible from existing tracking files
+	# Use provided branch or detect from git, fallback to 'main'
+	if [[ -n "$DEPLOY_BRANCH" ]]; then
+		export BRANCH_NAME="$DEPLOY_BRANCH"
+	else
+		BRANCH_NAME=$(timeout 2 git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+		export BRANCH_NAME
+	fi
 	export ROOT_PATH="$CLI_PROJECT_DIR"
 	export ANSIBLE_HOST_KEY_CHECKING=False
 
@@ -259,35 +307,16 @@ with open("$SECRETS_FILE", 'w') as f:
 print(f"Created secrets.json with {len(secrets)} variables")
 PYTHON_EOF
 
-	# Clone or use existing dockflow
-	local DOCKFLOW_DIR="$CLI_PROJECT_DIR/dockflow"
-	local DOCKFLOW_HOME="${DOCKFLOW_HOME:-$HOME/.dockflow}"
-
-	if [[ -d "$DOCKFLOW_DIR" ]]; then
-		print_step "Using existing dockflow directory..."
-	else
-		print_step "Cloning dockflow framework..."
-		local DOCKFLOW_VERSION
-		if [[ -f "$DOCKFLOW_HOME/.branch" ]]; then
-			DOCKFLOW_VERSION=$(cat "$DOCKFLOW_HOME/.branch")
-		else
-			DOCKFLOW_VERSION="main"
-		fi
-
-		# Try to get the version from the installed dockflow
-		local FRAMEWORK_VERSION="${DOCKFLOW_FRAMEWORK_VERSION:-$DOCKFLOW_VERSION}"
-
-		git clone --depth 1 --branch "$FRAMEWORK_VERSION" "https://github.com/Shawiizz/dockflow.git" "$DOCKFLOW_DIR" 2>/dev/null || {
-			print_warning "Could not clone specific version, using main branch..."
-			git clone --depth 1 "https://github.com/Shawiizz/dockflow.git" "$DOCKFLOW_DIR"
-		}
-	fi
+	# Use dockflow from container (/setup/dockflow)
+	local DOCKFLOW_DIR="/setup"
 
 	# Run deployment
 	print_step "Starting deployment..."
 	echo ""
 
 	cd "$CLI_PROJECT_DIR" || exit 1
+
+    ln -s /setup/ dockflow
 
 	# Source load_env and run deployment
 	source "$DOCKFLOW_DIR/.common/scripts/load_env.sh" "$ENV" "$HOSTNAME"
@@ -298,9 +327,6 @@ PYTHON_EOF
 
 	bash "$DOCKFLOW_DIR/.common/scripts/deploy_with_ansible.sh"
 	local DEPLOY_STATUS=$?
-
-	# Cleanup secrets.json
-	rm -f "$SECRETS_FILE"
 
 	if [[ $DEPLOY_STATUS -eq 0 ]]; then
 		echo ""

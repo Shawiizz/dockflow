@@ -1,5 +1,7 @@
 # Deployment
 
+import { Tabs, Steps } from 'nextra/components'
+
 ## Deploy with CLI (Local)
 
 You can deploy directly from your local machine using the `dockflow deploy` command:
@@ -15,14 +17,46 @@ dockflow deploy staging
 dockflow deploy production 2.0.0 --hostname server1
 ```
 
+### Using Docker Image
+
+If you prefer using the Docker image instead of installing the CLI:
+
+<Tabs items={['Linux / macOS', 'Windows']}>
+  <Tabs.Tab>
+```bash
+# Deploy to production with version 1.0.0
+docker run -it --rm -v /var/run/docker.sock:/var/run/docker.sock -v .:/project shawiizz/dockflow-cli:latest deploy production 1.0.0
+
+# Deploy to staging
+docker run -it --rm -v /var/run/docker.sock:/var/run/docker.sock -v .:/project shawiizz/dockflow-cli:latest deploy staging
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```powershell
+# Deploy to production with version 1.0.0
+docker run -it --rm -v //var/run/docker.sock:/var/run/docker.sock -v ${PWD}:/project shawiizz/dockflow-cli:latest deploy production 1.0.0
+
+# Deploy to staging
+docker run -it --rm -v //var/run/docker.sock:/var/run/docker.sock -v ${PWD}:/project shawiizz/dockflow-cli:latest deploy staging
+```
+  </Tabs.Tab>
+</Tabs>
+
+> **Note:** The Docker socket mount is **required** for the `deploy` command. It enables Docker-in-Docker, allowing the CLI to build Docker images locally before transferring them to your server.
+
 ### Prerequisites
 
-1. **Install Dockflow CLI:**
+<Steps>
+### Install Dockflow CLI
+
 ```bash
 curl -fsSL "https://raw.githubusercontent.com/Shawiizz/dockflow/main/cli/cli_wrapper.sh?$(date +%s)" | bash
 ```
 
-2. **Create `.env.dockflow` file** in your project root:
+### Create `.env.dockflow` file
+
+Create this file in your project root:
+
 ```bash
 # Production connection string (from setup-machine output)
 PRODUCTION_CONNECTION=eyJob3N0Ijoi...
@@ -36,10 +70,14 @@ SKIP_DOCKER_INSTALL=true
 
 > ⚠️ **Important:** Add `.env.dockflow` to your `.gitignore` to avoid exposing secrets.
 
-3. **Initialize project structure** (if not already done):
+### Initialize project structure
+
+If not already done:
+
 ```bash
 dockflow init
 ```
+</Steps>
 
 ## Deploy with Git Tags
 

@@ -41,7 +41,7 @@ Push a tag, grab a coffee, and your app is deployed.
 curl -fsSL "https://raw.githubusercontent.com/Shawiizz/dockflow/main/cli/cli_wrapper.sh?$(date +%s)" | bash
 
 # 2. Initialize project structure (CLI is optional)
-docker run -it --rm -e HOST_PWD="$(pwd)" -v .:/project shawiizz/dockflow-cli:latest
+docker run -it --rm -v .:/project shawiizz/dockflow-cli:latest
 
 # 3. Configure your .deployment files
 # 4. Add the needed CI secrets

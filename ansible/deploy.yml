@@ -50,6 +50,11 @@
         rollback_configured: "{{ (deployment_config.health_checks.on_failure | default('notify')) == 'rollback' }}"
       no_log: "{{ not (deployment_config.options.enable_debug_logs | default(false) | bool) }}"
 
+    - name: Resolve project_id if not provided
+      include_role:
+        name: image-tracking
+        tasks_from: resolve_project_id
+
     - name: Ensure rollback directory exists
       file:
         path: /var/lib/dockflow

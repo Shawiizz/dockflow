@@ -1,6 +1,9 @@
 # Getting Started
 
-## Step 1: Server Setup
+import { Steps } from 'nextra/components'
+
+<Steps>
+## Server Setup
 
 **Prerequisites:**
 - A Debian/Ubuntu server with SSH access
@@ -12,10 +15,10 @@ curl -fsSL "https://raw.githubusercontent.com/Shawiizz/dockflow/main/cli/cli_wra
 ```
 
 The CLI will guide you through:
-1. Configuring this server
-2. Creating a deployment user
-3. Configuring SSH keys
-4. Installing Docker and Portainer (optional)
+- Configuring this server
+- Creating a deployment user
+- Configuring SSH keys
+- Installing Docker and Portainer (optional)
 
 ### Alternative: Use Docker image
 
@@ -25,9 +28,9 @@ If you prefer using Docker:
 docker run -it --rm -v ${HOME}/.ssh:/root/.ssh -v .:/project shawiizz/dockflow-cli:latest
 ```
 
-## Step 2: CI/CD Configuration
+## CI/CD Configuration
 
-### 2.1 Create Project Structure
+### Create Project Structure
 
 You can use the CLI to automatically generate the project structure:
 
@@ -54,7 +57,7 @@ This creates the following structure:
     └── scripts/                     # Custom scripts (optional)
 ```
 
-### 2.2 Copy CI Config File
+### Copy CI Config File
 
 **GitHub Actions:**
 ```bash
@@ -68,7 +71,7 @@ example/ci/gitlab-ci.yml → .gitlab-ci.yml
 
 > ⚠️ **GitHub users in organizations**: Fork this repo and update the `uses` URL in your workflow file.
 
-### 2.3 Add Repository Secrets
+## Add Repository Secrets
 
 Required secrets in your CI/CD settings:
 
@@ -84,3 +87,4 @@ Required secrets in your CI/CD settings:
 **Dynamic Variable Override System:**
 
 Any CI secret starting with `[ENV]_` or `[ENV]_[HOSTNAME]_` will automatically override corresponding environment variables.
+</Steps>
