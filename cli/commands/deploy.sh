@@ -9,13 +9,13 @@ generate_uuid() {
 		uuidgen | tr -d '-' | tr '[:upper:]' '[:lower:]'
 	else
 		# Fallback using /dev/urandom
-		cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 32 | head -n 1
+		tr -dc 'a-f0-9' </dev/urandom | fold -w 32 | head -n 1
 	fi
 }
 
 # Generate a random project ID
 generate_project_id() {
-	cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 8 | head -n 1
+	tr -dc 'a-z0-9' </dev/urandom | fold -w 8 | head -n 1
 }
 
 # Show deploy command help
@@ -153,33 +153,34 @@ parse_deploy_args() {
 	export DEPLOY_BRANCH
 }
 
+# Cleanup function for deploy
+# shellcheck disable=SC2317
+cleanup_deploy() {
+	local exit_code=$?
+	echo ""
+	print_step "Cleaning up..."
+
+	# Remove dockflow symlink if it exists
+	if [[ -L "$CLI_PROJECT_DIR/dockflow" ]]; then
+		rm -f "$CLI_PROJECT_DIR/dockflow"
+	fi
+
+	# Remove docker_images directory if it exists
+	if [[ -d "$CLI_PROJECT_DIR/.deployment/docker/docker_images" ]]; then
+		rm -rf "$CLI_PROJECT_DIR/.deployment/docker/docker_images"
+	fi
+
+	# Cleanup secrets.json
+	if [[ -f "$CLI_PROJECT_DIR/secrets.json" ]]; then
+		rm -f "$CLI_PROJECT_DIR/secrets.json"
+	fi
+
+	print_success "Cleanup complete"
+	return "$exit_code"
+}
+
 # Run the deployment
 run_deploy() {
-	# Cleanup function for deploy
-	cleanup_deploy() {
-		local exit_code=$?
-		echo ""
-		print_step "Cleaning up..."
-		
-		# Remove dockflow symlink if it exists
-		if [[ -L "$CLI_PROJECT_DIR/dockflow" ]]; then
-			rm -f "$CLI_PROJECT_DIR/dockflow"
-		fi
-		
-		# Remove docker_images directory if it exists
-		if [[ -d "$CLI_PROJECT_DIR/.deployment/docker/docker_images" ]]; then
-			rm -rf "$CLI_PROJECT_DIR/.deployment/docker/docker_images"
-		fi
-		
-		# Cleanup secrets.json
-		if [[ -f "$CLI_PROJECT_DIR/secrets.json" ]]; then
-			rm -f "$CLI_PROJECT_DIR/secrets.json"
-		fi
-		
-		print_success "Cleanup complete"
-		return $exit_code
-	}
-	
 	# Set trap for cleanup on exit or interrupt
 	trap cleanup_deploy EXIT
 
@@ -274,7 +275,7 @@ run_deploy() {
 	export ENV="$DEPLOY_ENV"
 	export HOSTNAME="$DEPLOY_HOSTNAME"
 	export VERSION="$DEPLOY_VERSION"
-	export PROJECT_ID="auto"  # Will be resolved automatically by Ansible from existing tracking files
+	export PROJECT_ID="auto" # Will be resolved automatically by Ansible from existing tracking files
 	# Use provided branch or detect from git, fallback to 'main'
 	if [[ -n "$DEPLOY_BRANCH" ]]; then
 		export BRANCH_NAME="$DEPLOY_BRANCH"
@@ -316,7 +317,7 @@ PYTHON_EOF
 
 	cd "$CLI_PROJECT_DIR" || exit 1
 
-    ln -s /setup/ dockflow
+	ln -s /setup/ dockflow
 
 	# Source load_env and run deployment
 	source "$DOCKFLOW_DIR/.common/scripts/load_env.sh" "$ENV" "$HOSTNAME"
