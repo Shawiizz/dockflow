@@ -218,6 +218,7 @@ run_deploy() {
 	# Load .env.dockflow
 	print_step "Loading .env.dockflow..."
 	set -a
+	# shellcheck source=/dev/null
 	source "$ENV_FILE"
 	set +a
 

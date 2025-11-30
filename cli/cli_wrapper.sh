@@ -200,10 +200,12 @@ else
 		if [ -n "$SHELL_CONFIG" ]; then
 			# Check if already in config
 			if ! grep -q "DOCKFLOW_HOME" "$SHELL_CONFIG" 2>/dev/null; then
-				echo "" >>"$SHELL_CONFIG"
-				echo "# Dockflow CLI" >>"$SHELL_CONFIG"
-				echo "export DOCKFLOW_HOME=\"$INSTALL_DIR\"" >>"$SHELL_CONFIG"
-				echo "export PATH=\"\$DOCKFLOW_HOME:\$PATH\"" >>"$SHELL_CONFIG"
+				{
+					echo ""
+					echo "# Dockflow CLI"
+					echo "export DOCKFLOW_HOME=\"$INSTALL_DIR\""
+					echo "export PATH=\"\$DOCKFLOW_HOME:\$PATH\""
+				} >>"$SHELL_CONFIG"
 				echo -e "${GREEN}✓ Added Dockflow to PATH in $SHELL_CONFIG${NC}"
 				echo -e "${YELLOW}Please run 'source $SHELL_CONFIG' or restart your terminal${NC}"
 			else
