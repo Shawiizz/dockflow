@@ -35,16 +35,16 @@ jobs:
           pip3 install pyyaml
 
       - name: Clone dockflow repository
-        run: git clone --depth 1 --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" dockflow
+        run: git clone --depth 1 --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" /tmp/dockflow
 
       - name: Build Docker images
         run: |
-          echo '${{ toJSON(secrets) }}' > secrets.json
+          echo '${{ toJSON(secrets) }}' > /tmp/secrets.json
           
           export ENV="build"
           export VERSION="build"
           export ROOT_PATH="$(pwd)"
           
-          source dockflow/.common/scripts/load_env.sh "$ENV"
-          cd dockflow
+          source /tmp/dockflow/.common/scripts/load_env.sh "$ENV"
+          cd /tmp/dockflow
           ansible-playbook ansible/playbooks/build_images.yml --connection=local

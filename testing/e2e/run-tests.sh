@@ -49,10 +49,15 @@ docker compose --env-file "$SCRIPT_DIR/.env" run --rm \
     
     # Copy source and test app to workspace
     cp -r /mnt-src/dockflow/testing/e2e/test-app/. /workspace/
-    cp -r /mnt-src/dockflow /workspace/
+    
+    # Copy dockflow framework to /tmp (to match CI/CD behavior)
+    cp -r /mnt-src/dockflow /tmp/dockflow
+    
+    # Set ROOT_PATH to workspace (where the test app is)
+    export ROOT_PATH=/workspace
     
     # Run the deployment test script
-    cd /workspace/dockflow/testing/e2e
+    cd /tmp/dockflow/testing/e2e
     bash common/run-deployment-test.sh
 "
 

@@ -160,19 +160,19 @@ cleanup_deploy() {
 	echo ""
 	print_step "Cleaning up..."
 
-	# Remove dockflow symlink if it exists
-	if [[ -L "$CLI_PROJECT_DIR/dockflow" ]]; then
-		rm -f "$CLI_PROJECT_DIR/dockflow"
+	# Remove dockflow if it exists (in /tmp)
+	if [[ -d "/tmp/dockflow" ]]; then
+		rm -rf "/tmp/dockflow"
 	fi
 
-	# Remove docker_images directory if it exists
-	if [[ -d "$CLI_PROJECT_DIR/.deployment/docker/docker_images" ]]; then
-		rm -rf "$CLI_PROJECT_DIR/.deployment/docker/docker_images"
+	# Remove docker_images directory if it exists (in /tmp)
+	if [[ -d "/tmp/dockflow_docker_images" ]]; then
+		rm -rf "/tmp/dockflow_docker_images"
 	fi
 
-	# Cleanup secrets.json
-	if [[ -f "$CLI_PROJECT_DIR/secrets.json" ]]; then
-		rm -f "$CLI_PROJECT_DIR/secrets.json"
+	# Cleanup secrets.json (in /tmp)
+	if [[ -f "/tmp/secrets.json" ]]; then
+		rm -f "/tmp/secrets.json"
 	fi
 
 	print_success "Cleanup complete"
@@ -288,7 +288,7 @@ run_deploy() {
 
 	# Create secrets.json from .env.dockflow variables
 	print_step "Creating secrets configuration..."
-	local SECRETS_FILE="$CLI_PROJECT_DIR/secrets.json"
+	local SECRETS_FILE="/tmp/secrets.json"
 
 	# Build secrets JSON from environment
 	python3 <<PYTHON_EOF
@@ -308,16 +308,14 @@ with open("$SECRETS_FILE", 'w') as f:
 print(f"Created secrets.json with {len(secrets)} variables")
 PYTHON_EOF
 
-	# Use dockflow from container (/setup/dockflow)
-	local DOCKFLOW_DIR="/setup"
+	# Use dockflow from container (/tmp/dockflow)
+	local DOCKFLOW_DIR="/tmp/dockflow"
 
 	# Run deployment
 	print_step "Starting deployment..."
 	echo ""
 
 	cd "$CLI_PROJECT_DIR" || exit 1
-
-	ln -s /setup/ dockflow
 
 	# Source load_env and run deployment
 	source "$DOCKFLOW_DIR/.common/scripts/load_env.sh" "$ENV" "$HOSTNAME"

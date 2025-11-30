@@ -2,9 +2,6 @@
 # E2E test runner for DockFlow framework
 # Simulates a CI/CD deployment process
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export ROOT_PATH="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-
 cd "$ROOT_PATH"
 
 echo "Running DockFlow E2E Tests"
@@ -20,7 +17,7 @@ echo "Setting up CI/CD environment simulation..."
 
 # Load commit info
 set -a
-source dockflow/testing/e2e/test-app/.deployment/e2e-test/.commit_info
+source /tmp/dockflow/testing/e2e/test-app/.deployment/e2e-test/.commit_info
 set +a
 
 echo "Loading test environment variables..."
@@ -34,12 +31,12 @@ else
 	exit 1
 fi
 
-# Generate secrets.json with TEST_CONNECTION
+# Generate secrets.json with TEST_CONNECTION (in /tmp to avoid modifying project directory)
 # We use TEST_CONNECTION because ENV=test in .commit_info
-echo "{\"TEST_CONNECTION\":\"$CONNECTION_STRING\"}" >secrets.json
+echo "{\"TEST_CONNECTION\":\"$CONNECTION_STRING\"}" >/tmp/secrets.json
 
-source dockflow/.common/scripts/load_env.sh "$ENV" "$HOSTNAME"
-bash dockflow/.common/scripts/deploy_with_ansible.sh
+source /tmp/dockflow/.common/scripts/load_env.sh "$ENV" "$HOSTNAME"
+bash /tmp/dockflow/.common/scripts/deploy_with_ansible.sh
 
 echo "Verifying deployment..."
 

@@ -13,12 +13,12 @@
       
       export ENV VERSION
 
-      # Clone dockflow framework
-      git clone --depth 1 --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" dockflow
+      # Clone dockflow framework to /tmp
+      git clone --depth 1 --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" /tmp/dockflow
       
       # Discover deployment hosts
       echo "Discovering hosts for environment: $ENV"
-      export DEPLOYMENT_HOSTS=$(bash dockflow/.common/scripts/discover_hosts.sh "$ENV" | jq -r '.[]' | tr '\n' ' ')
+      export DEPLOYMENT_HOSTS=$(bash /tmp/dockflow/.common/scripts/discover_hosts.sh "$ENV" | jq -r '.[]' | tr '\n' ' ')
       echo "Deployment hosts: $DEPLOYMENT_HOSTS"
 
 .deploy-with-ansible:
@@ -45,8 +45,8 @@
         echo "========================================="
         
         export HOSTNAME="$HOST"
-        source dockflow/.common/scripts/load_env.sh "$ENV" "$HOSTNAME"
-        bash dockflow/.common/scripts/deploy_with_ansible.sh
+        source /tmp/dockflow/.common/scripts/load_env.sh "$ENV" "$HOSTNAME"
+        bash /tmp/dockflow/.common/scripts/deploy_with_ansible.sh
         
         echo "Deployment completed for host: $HOST"
       done

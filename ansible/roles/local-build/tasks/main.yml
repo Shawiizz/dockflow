@@ -4,7 +4,7 @@
 
 - name: Set docker images output directory based on hostname
   set_fact:
-    docker_images_dir: "{{ root_path }}/.deployment/docker/docker_images{{ '_' + hostname if hostname and hostname != 'main' else '' }}"
+    docker_images_dir: "/tmp/dockflow_docker_images{{ '_' + hostname if hostname and hostname != 'main' else '' }}"
   delegate_to: localhost
 
 - name: Create docker images directory

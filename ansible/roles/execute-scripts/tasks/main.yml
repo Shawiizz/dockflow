@@ -9,7 +9,7 @@
 
 - name: List script templates (*.sh.j2 only) 
   find:
-    paths: "../../.deployment/templates/scripts"
+    paths: "{{ root_path }}/.deployment/templates/scripts"
     patterns: "*.sh.j2"
     recurse: false
   register: script_templates

@@ -12,13 +12,13 @@ build:
     - export ENV=build
     - export VERSION=build
     - export ROOT_PATH=$(pwd)
-    - git clone --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" dockflow
+    - git clone --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" /tmp/dockflow
   script:
     - |
-      source dockflow/.common/scripts/load_env.sh "$ENV"
+      source /tmp/dockflow/.common/scripts/load_env.sh "$ENV"
       
       # Run Ansible playbook to build images
-      cd dockflow
+      cd /tmp/dockflow
       ansible-playbook ansible/playbooks/build_images.yml --connection=local
   rules:
     - if: '$CI_COMMIT_TAG'

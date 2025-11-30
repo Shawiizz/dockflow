@@ -11,10 +11,10 @@ if [ -f "/.dockerenv" ] || grep -q docker /proc/1/cgroup 2>/dev/null; then
 	# Running in Docker container
 
 	# Check if we are running in the official Dockflow CLI image
-	if [ -d "/setup/cli" ] && [[ "$SCRIPT_DIR" == "/setup/cli" ]]; then
-		export CLI_ROOT_DIR="/setup/cli"
+	if [ -d "/tmp/dockflow/cli" ] && [[ "$SCRIPT_DIR" == "/tmp/dockflow/cli" ]]; then
+		export CLI_ROOT_DIR="/tmp/dockflow/cli"
 		export CLI_PROJECT_DIR="/project"
-		export CLI_EXAMPLE_DIR="/setup/example"
+		export CLI_EXAMPLE_DIR="/tmp/dockflow/example"
 	else
 		# Running in a generic container (e.g. CI/CD, tests)
 		export CLI_ROOT_DIR="$SCRIPT_DIR"

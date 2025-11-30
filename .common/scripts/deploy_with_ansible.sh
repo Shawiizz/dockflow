@@ -9,7 +9,7 @@
 # - SKIP_NGINX_CHECK: Optional, set to "true" to skip nginx configuration check
 
 ######### Change working directory #########
-cd "$ROOT_PATH/dockflow" || exit 1
+cd /tmp/dockflow || exit 1
 
 #######################################
 ############ Setup SSH Key ############
@@ -27,7 +27,7 @@ ssh-add ~/.ssh/dockflow_deploy_key
 #######################################
 
 SKIP_TAGS="configure_host"
-if [ ! -d "../.deployment/templates/nginx" ] || [ -z "$(ls -A ../.deployment/templates/nginx 2>/dev/null)" ]; then
+if [ ! -d "$ROOT_PATH/.deployment/templates/nginx" ] || [ -z "$(ls -A $ROOT_PATH/.deployment/templates/nginx 2>/dev/null)" ]; then
 	echo "No nginx configuration found, skipping nginx role"
 	SKIP_TAGS="${SKIP_TAGS},nginx"
 fi

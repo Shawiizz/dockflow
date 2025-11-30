@@ -12,11 +12,11 @@ if [ -d ".deployment" ]; then
 	find .deployment -type f -exec sed -i 's/\r$//' {} \; 2>/dev/null || true
 fi
 
-# Load secrets from secrets.json
-if [ -f "secrets.json" ]; then
-	echo "Loading secrets from secrets.json"
-	for key in $(jq -r 'keys[]' secrets.json); do
-		export "$key=$(jq -r --arg key "$key" '.[$key]' secrets.json)"
+# Load secrets from secrets.json (in /tmp to avoid modifying project directory)
+if [ -f "/tmp/secrets.json" ]; then
+	echo "Loading secrets from /tmp/secrets.json"
+	for key in $(jq -r 'keys[]' /tmp/secrets.json); do
+		export "$key=$(jq -r --arg key "$key" '.[$key]' /tmp/secrets.json)"
 	done
 fi
 

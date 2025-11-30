@@ -87,11 +87,11 @@ jobs:
           pip3 install pyyaml
 
       - name: Clone dockflow repository
-        run: git clone --depth 1 --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" dockflow
+        run: git clone --depth 1 --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" /tmp/dockflow
 
       - name: Deploy to host ${{ matrix.host }}
         run: |
-          echo '${{ toJSON(secrets) }}' > secrets.json
+          echo '${{ toJSON(secrets) }}' > /tmp/secrets.json
           
           export ENV="${{ needs.discover-hosts.outputs.env }}"
           export HOSTNAME="${{ matrix.host }}"
@@ -109,5 +109,5 @@ jobs:
           fi
           export BRANCH_NAME
           
-          source dockflow/.common/scripts/load_env.sh "$ENV" "$HOSTNAME"
-          bash dockflow/.common/scripts/deploy_with_ansible.sh
+          source /tmp/dockflow/.common/scripts/load_env.sh "$ENV" "$HOSTNAME"
+          bash /tmp/dockflow/.common/scripts/deploy_with_ansible.sh
