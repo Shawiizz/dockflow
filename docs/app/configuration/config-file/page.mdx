@@ -1,0 +1,81 @@
+# Configuration File Options
+
+Create `.deployment/config.yml` to customize behavior.
+
+```yaml
+options:
+  environmentize: true          # Auto-add ENV/VERSION (default: true)
+  enable_debug_logs: false      # Verbose logging (default: false)
+  remote_build: false           # Build on server (default: false)
+
+health_checks:
+  enabled: true                 # Enable post-deployment health checks
+  startup_delay: 15             # Wait before checking (seconds)
+  on_failure: "notify"          # Action: "fail", "notify", "ignore" or "rollback"
+  
+  endpoints:
+    - name: "Main Application"
+      url: "http://localhost:{{ app_external_port }}/health"
+      expected_status: 200
+      timeout: 30
+      retries: 3
+```
+
+## Options Reference
+
+### `environmentize`
+**Default:** `true`
+
+Automatically adds `${ENV}` and `${VERSION}` to resource names for environment isolation.
+
+### `enable_debug_logs`
+**Default:** `false`
+
+Enables verbose logging for debugging deployment issues.
+
+### `remote_build`
+**Default:** `false`
+
+Build Docker images on the server instead of in the CI/CD pipeline.
+
+## Health Checks
+
+### `enabled`
+**Default:** `true`
+
+Enable or disable post-deployment health checks.
+
+### `startup_delay`
+**Default:** `15` (seconds)
+
+Time to wait after deployment before running health checks, allowing services to start.
+
+### `on_failure`
+**Options:** `"fail"`, `"notify"`, `"ignore"`, `"rollback"`
+
+Action to take when health checks fail:
+- `fail`: Mark deployment as failed
+- `notify`: Log warning but continue
+- `ignore`: Skip health check failures
+- `rollback`: Automatically rollback to previous version
+
+### `endpoints`
+
+List of endpoints to check after deployment:
+
+```yaml
+endpoints:
+  - name: "API Health"
+    url: "http://localhost:3000/health"
+    expected_status: 200
+    timeout: 30
+    retries: 3
+```
+
+#### Endpoint Properties
+
+- `name`: Descriptive name for the endpoint
+- `url`: URL to check (supports Jinja2 templating)
+- `expected_status`: Expected HTTP status code
+- `timeout`: Request timeout in seconds
+- `retries`: Number of retry attempts

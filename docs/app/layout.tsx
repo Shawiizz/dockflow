@@ -1,5 +1,5 @@
 import { Footer, Layout, Navbar } from 'nextra-theme-docs'
-import { Head } from 'nextra/components'
+import { Banner, Head } from 'nextra/components'
 import { getPageMap } from 'nextra/page-map'
 import 'nextra-theme-docs/style.css'
 
@@ -35,6 +35,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en" dir="ltr" suppressHydrationWarning>
       <Head faviconGlyph="🐳" />
       <body>
+        <Banner storageKey="dockflow-dev-warning">
+          ⚠️ Dockflow is currently under development. Bugs may occur. Please report any issues on{' '}
+          <a href="https://github.com/Shawiizz/dockflow/issues/new" target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>
+            GitHub
+          </a>
+          .
+        </Banner>
         <Layout
           navbar={navbar}
           pageMap={await getPageMap()}

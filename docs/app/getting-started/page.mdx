@@ -1,6 +1,6 @@
 # Getting Started
 
-import { Steps } from 'nextra/components'
+import { Steps, Callout, FileTree } from 'nextra/components'
 
 <Steps>
 ## Server Setup
@@ -8,7 +8,7 @@ import { Steps } from 'nextra/components'
 **Prerequisites:**
 - A Debian/Ubuntu server with SSH access
 
-### One-Line Installation (Recommended)
+### One-Line Installation
 
 ```bash
 curl -fsSL "https://raw.githubusercontent.com/Shawiizz/dockflow/main/cli/cli_wrapper.sh?$(date +%s)" | bash
@@ -20,71 +20,142 @@ The CLI will guide you through:
 - Configuring SSH keys
 - Installing Docker and Portainer (optional)
 
-### Alternative: Use Docker image
-
-If you prefer using Docker:
-
-```bash
-docker run -it --rm -v ${HOME}/.ssh:/root/.ssh -v .:/project shawiizz/dockflow-cli:latest
-```
-
-## CI/CD Configuration
-
 ### Create Project Structure
 
-You can use the CLI to automatically generate the project structure:
+Create the following structure:
 
-```bash
-# GitHub Actions project
-docker run -it --rm -v .:/project shawiizz/dockflow-cli:latest init github
+<FileTree>
+  <FileTree.Folder name=".deployment" defaultOpen>
+    <FileTree.Folder name="docker" defaultOpen>
+      <FileTree.File name="docker-compose.yml" />
+      <FileTree.File name="Dockerfile.[service]" />
+    </FileTree.Folder>
+    <FileTree.Folder name="env">
+      <FileTree.File name=".env.[environment]" />
+    </FileTree.Folder>
+    <FileTree.Folder name="templates">
+      <FileTree.Folder name="nginx" />
+      <FileTree.Folder name="services" />
+      <FileTree.Folder name="scripts" />
+    </FileTree.Folder>
+  </FileTree.Folder>
+</FileTree>
 
-# GitLab CI project
-docker run -it --rm -v .:/project shawiizz/dockflow-cli:latest init gitlab
-```
-
-This creates the following structure:
-
-```
-.deployment/
-├── docker/
-│   ├── docker-compose.yml           # Define your services
-│   └── Dockerfile.[service]         # One per service
-├── env/                             # OPTIONAL: Can use CI secrets instead
-│   └── .env.[environment]           # OPTIONAL: Environment variables
-└── templates/
-    ├── nginx/                       # Custom Nginx configs (optional)
-    ├── services/                    # Custom systemd services (optional)
-    └── scripts/                     # Custom scripts (optional)
-```
+**Notes:**
+- `env/` folder is optional - you can use CI secrets only if preferred
+- `templates/` subfolders (nginx, services, scripts) are optional
 
 ### Copy CI Config File
 
-**GitHub Actions:**
-```bash
-example/ci/github-ci.yml → .github/workflows/deploy.yml
-```
+import { Tabs } from 'nextra/components'
 
-**GitLab CI:**
-```bash
-example/ci/gitlab-ci.yml → .gitlab-ci.yml
-```
+<Callout type="warning">
+  **GitHub users in organizations**: Fork [the dockflow repo](https://github.com/Shawiizz/dockflow) and update the `uses` URL in your workflow file.
+</Callout>
 
-> ⚠️ **GitHub users in organizations**: Fork this repo and update the `uses` URL in your workflow file.
+<Tabs items={['GitHub Actions', 'GitLab CI']}>
+  <Tabs.Tab>
+    Create `.github/workflows/deploy.yml`:
+    
+    ```yaml copy
+    name: Github CI/CD
+
+    on:
+      push:
+        branches:
+          - '*'
+        tags:
+          - '*'
+
+    jobs:
+      # Basic CI job to run on every push to branches (not used for deployment)
+      build:
+        if: github.ref_type == 'branch'
+        uses: Shawiizz/dockflow/.github/workflows/build.yml@1.0.57
+        with:
+          free-disk-space: false # Set to true if you need to free disk space during build (for big docker images)
+
+      # Deploy your application on tag push
+      deploy:
+        if: github.ref_type == 'tag'
+        uses: Shawiizz/dockflow/.github/workflows/deploy.yml@1.0.57
+        with:
+          tag: ${{ github.ref_name }}
+          free-disk-space: false # Set to true if you need to free disk space during deployment (for big docker images)
+        secrets: inherit
+
+      # Deploy your application on push to branch
+      deploy:
+        uses: Shawiizz/dockflow/.github/workflows/deploy.yml@1.0.57
+        with:
+          version: ${{ github.ref_name }}-${{ github.sha }} # Note: the variable is called "version" specifically for branch deployments
+          free-disk-space: false # Set to true if you need to free disk space during deployment (for big docker images)
+        secrets: inherit
+    ```
+  </Tabs.Tab>
+  
+  <Tabs.Tab>
+    Create `.gitlab-ci.yml` at the root of your project:
+    
+    ```yaml copy
+    stages:
+      # Build stage for continuous integration
+      - build
+
+      # Deploy your application on tag or branch push
+      - deploy
+
+    include:
+      # Continuous Integration (CI) template for building Docker images (not used for deployment)
+      - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/1.0.57/.gitlab/workflows/build.yml'
+
+      # Deploy your application on tag push
+      - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/1.0.57/.gitlab/workflows/deploy.yml'
+
+      # Deploy your application on branch push (will deploy to production environment)
+      - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/1.0.57/.gitlab/workflows/deploy-branch.yml'
+    ```
+  </Tabs.Tab>
+</Tabs>
 
 ## Add Repository Secrets
 
-Required secrets in your CI/CD settings:
+Configure secrets in your CI/CD settings:
 
-| Secret Name | Description | Example |
-|-------------|-------------|---------|
-| `[ENV]_CONNECTION` | **Recommended:** All-in-one connection string (Host, User, Key, Password) generated by the CLI | `PRODUCTION_CONNECTION` |
-| `[ENV]_SSH_PRIVATE_KEY` | **Alternative:** SSH key for main host | `PRODUCTION_SSH_PRIVATE_KEY` |
-| `[ENV]_[HOSTNAME]_SSH_PRIVATE_KEY` | **Alternative:** SSH key for specific host | `PRODUCTION_SERVER_A_SSH_PRIVATE_KEY` |
-| `GIT_TOKEN` | OPTIONAL: Remote build option | GitHub/GitLab token |
+<Tabs items={['Recommended', 'Alternative']}>
+  <Tabs.Tab>
+    **Using Connection String (Easiest)**
 
-**Note:** The `[ENV]_CONNECTION` secret is automatically generated by the CLI during server setup. It contains all necessary connection details (Host, Port, User, Private Key, Password).
+    | Secret Name | Description | Example |
+    |-------------|-------------|---------|
+    | `[ENV]_CONNECTION` | All-in-one connection string (Host, User, Key, Password) automatically generated by the CLI | `PRODUCTION_CONNECTION` |
+    | `GIT_TOKEN` | OPTIONAL: For remote build option | GitHub/GitLab token |
+
+    <Callout type="info">
+      The `[ENV]_CONNECTION` secret is automatically generated by the CLI during server setup. It contains all necessary connection details (Host, Port, User, Private Key, Password).
+    </Callout>
+    
+    <Callout type="error">
+      **Do not share this connection string** - it contains sensitive credentials including SSH private keys.
+    </Callout>
+  </Tabs.Tab>
+  
+  <Tabs.Tab>
+    **Using Individual Secrets**
+
+    | Secret Name | Description | Example |
+    |-------------|-------------|---------|
+    | `[ENV]_SSH_PRIVATE_KEY` | SSH key for main host | `PRODUCTION_SSH_PRIVATE_KEY` |
+    | `[ENV]_[HOSTNAME]_SSH_PRIVATE_KEY` | SSH key for specific host | `PRODUCTION_SERVER_A_SSH_PRIVATE_KEY` |
+    | `[ENV]_DOCKFLOW_HOST` | Overrides the host defined in .env files | `PRODUCTION_DOCKFLOW_HOST` |
+    | `[ENV]_DOCKFLOW_USER` | Overrides the user defined in .env files (default: dockflow) | `PRODUCTION_DOCKFLOW_USER` |
+    | `[ENV]_DOCKFLOW_PASSWORD` | The user password (if needed for sudo) | `PRODUCTION_DOCKFLOW_PASSWORD` |
+    | `[ENV]_DOCKFLOW_PORT` | SSH port (default: 22) | `PRODUCTION_DOCKFLOW_PORT` |
+    | `GIT_TOKEN` | OPTIONAL: For remote build option | GitHub/GitLab token |
+  </Tabs.Tab>
+</Tabs>
 
 **Dynamic Variable Override System:**
 
-Any CI secret starting with `[ENV]_` or `[ENV]_[HOSTNAME]_` will automatically override corresponding environment variables.
+Any CI secret starting with `[ENV]_` or `[ENV]_[HOSTNAME]_` will automatically override corresponding environment variables defined in your `.deployment/env/[ENV].env` files.
 </Steps>

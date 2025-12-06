@@ -1,0 +1,32 @@
+# Build Strategy
+
+Choose how Docker images are built:
+
+| Strategy | Where | Best For | Setup |
+|----------|-------|----------|-------|
+| **Local** (default) | CI/CD pipeline | Small images, fast network | Nothing to do |
+| **Remote** | On server | Large images, slow network | Set `remote_build: true` |
+
+## Enable Remote Build
+
+Create `.deployment/config.yml`:
+
+```yaml
+options:
+  remote_build: true
+```
+
+## When to Use Remote Build
+
+Remote build is useful when:
+- Your Docker images are very large (multi-GB)
+- Your CI/CD network connection is slow
+- You want to avoid transferring large images over the network
+- Your server has better hardware for building
+
+## How It Works
+
+With remote build enabled:
+1. The source code is transferred to the server
+2. Docker builds the images directly on the server
+3. No image transfer is needed

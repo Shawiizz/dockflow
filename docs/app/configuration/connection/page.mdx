@@ -1,0 +1,22 @@
+# Connection Configuration
+
+The recommended way to configure the connection to your server is using the `[ENV]_CONNECTION` secret (e.g., `PRODUCTION_CONNECTION`).
+
+## Generating the Connection String
+
+The connection string is automatically generated during the server setup. You can also generate it manually using the CLI utility if needed.
+
+The connection string is a Base64 encoded JSON object containing:
+- `host`: Server IP or hostname
+- `port`: SSH port
+- `user`: SSH user
+- `privateKey`: SSH private key
+- `password`: User password (optional, for sudo access)
+
+## Alternative: Individual Secrets
+
+If you prefer not to use the connection string, you can define individual secrets in your CI/CD:
+- `[ENV]_SSH_PRIVATE_KEY`: The SSH private key
+- `[ENV]_DOCKFLOW_HOST`: Overrides the host defined in `.env` files
+- `[ENV]_DOCKFLOW_USER`: Overrides the user defined in `.env` files
+- `[ENV]_DOCKFLOW_PASSWORD`: The user password (if needed for sudo)

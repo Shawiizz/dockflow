@@ -1,0 +1,41 @@
+# Multi-Host Deployment
+
+import { FileTree } from 'nextra/components'
+
+Deploy to multiple servers in the same environment by creating separate `.env` files for each host:
+
+<FileTree>
+  <FileTree.Folder name=".deployment" defaultOpen>
+    <FileTree.Folder name="env" defaultOpen>
+      <FileTree.File name=".env.production" />
+      <FileTree.File name=".env.production.server-a" />
+      <FileTree.File name=".env.production.server-b" />
+      <FileTree.File name=".env.production.server-c" />
+    </FileTree.Folder>
+  </FileTree.Folder>
+</FileTree>
+
+## Configuration
+
+Each file should contain the host-specific configuration:
+
+```bash
+# .env.production (main host)
+DOCKFLOW_HOST=192.168.1.10
+DOCKFLOW_USER=dockflow
+
+# .env.production.server-a
+DOCKFLOW_HOST=192.168.1.11
+DOCKFLOW_USER=dockflow
+
+# .env.production.server-b
+DOCKFLOW_HOST=192.168.1.12
+DOCKFLOW_USER=dockflow
+```
+
+## How It Works
+
+When deploying to the `production` environment, Dockflow will:
+1. Detect all `.env.production*` files
+2. Deploy to each host sequentially
+3. Use the appropriate configuration for each server

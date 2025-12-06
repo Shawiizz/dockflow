@@ -1,19 +1,27 @@
 # Advanced Usage
 
+import { FileTree } from 'nextra/components'
+
 ## Custom Templates
 
 Add custom configs in `.deployment/templates/`:
 
-```
-.deployment/templates/
-├── nginx/
-│   └── my-app.conf.j2           # Custom Nginx config
-├── services/
-│   └── my-service.service.j2    # Systemd service
-|   └── my-service.mount.j2      # Mount service
-└── scripts/
-    └── pre-deploy.sh.j2         # Custom script (executed before deploying)
-```
+<FileTree>
+  <FileTree.Folder name=".deployment" defaultOpen>
+    <FileTree.Folder name="templates" defaultOpen>
+      <FileTree.Folder name="nginx">
+        <FileTree.File name="my-app.conf.j2" />
+      </FileTree.Folder>
+      <FileTree.Folder name="services">
+        <FileTree.File name="my-service.service.j2" />
+        <FileTree.File name="my-service.mount.j2" />
+      </FileTree.Folder>
+      <FileTree.Folder name="scripts">
+        <FileTree.File name="pre-deploy.sh.j2" />
+      </FileTree.Folder>
+    </FileTree.Folder>
+  </FileTree.Folder>
+</FileTree>
 
 All templates support **Jinja2 syntax** and have access to environment variables.
 

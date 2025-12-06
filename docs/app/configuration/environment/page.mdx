@@ -1,0 +1,22 @@
+# Environment Files
+
+import { Callout } from 'nextra/components'
+
+<Callout type="info">
+  Environment files are optional! You can use CI secrets exclusively or combine them with `.env` files.
+</Callout>
+
+Create `.deployment/env/.env.[environment]` with your variables:
+
+```bash
+# .env.production
+DOCKFLOW_HOST=192.168.1.10              # Can be overridden by PRODUCTION_DOCKFLOW_HOST CI secret
+DOCKFLOW_PORT=22                        # Can be overridden by PRODUCTION_DOCKFLOW_PORT CI secret
+DOCKFLOW_USER=dockflow                  # Can be overridden by PRODUCTION_DOCKFLOW_USER CI secret
+DB_PASSWORD=$DB_SECRET                  # Reference to CI secret
+API_PORT=3000                           # Can be overridden by PRODUCTION_API_PORT CI secret
+```
+
+## Variable Priority
+
+CI secrets take precedence over `.env` file values. Any CI secret starting with `[ENV]_` or `[ENV]_[HOSTNAME]_` will automatically override corresponding environment variables.
