@@ -76,15 +76,25 @@
     - role: remote-build
       when: remote_build | bool
     - role: image-transfer
-      when: not (remote_build | bool)
+      when: 
+        - not (remote_build | bool)
+        - not (deployment_config.registry.enabled | default(false) | bool)
     - role: execute-scripts
   tasks:
-    - name: Process Docker commands for each type
+    - name: Check and deploy using Docker Swarm if applicable
+      include_role:
+        name: docker-swarm
+      vars:
+        compose_path: "{{ root_path }}/.deployment/docker/docker-compose.yml"
+
+    - name: Process Docker commands for standard deployment
       include_tasks: playbooks/process_docker_commands.yml
       loop: "{{ decomposerize_types }}"
       loop_control:
         loop_var: cmd_type
-      when: not (cmd_type.skip_on_rollback | default(false) and rollback_configured | default(false))
+      when: 
+        - not (cmd_type.skip_on_rollback | default(false) and rollback_configured | default(false))
+        - not (use_swarm_mode | default(false) | bool)
 
   post_tasks:
     - name: Run health checks

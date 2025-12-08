@@ -9,3 +9,23 @@ services:
     restart: always
     ports:
       - "${APP_EXTERNAL_PORT}:3000"
+    # Uncomment the deploy section below to enable Docker Swarm mode
+    # When registry is enabled in config.yml, images will be pushed to the registry
+    # and pulled from there during swarm deployment
+    # deploy:
+    #   replicas: 2
+    #   update_config:
+    #     parallelism: 1
+    #     delay: 10s
+    #     order: stop-first
+    #   restart_policy:
+    #     condition: on-failure
+    #     delay: 5s
+    #     max_attempts: 3
+    #   resources:
+    #     limits:
+    #       cpus: '0.5'
+    #       memory: 512M
+    #     reservations:
+    #       cpus: '0.25'
+    #       memory: 256M

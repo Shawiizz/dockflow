@@ -1,0 +1,62 @@
+---
+# Task file for pushing individual images to registry
+
+- name: Parse image name and tag
+  set_fact:
+    image_base_name: "{{ (image_name.split(':')[0] | basename) if ':' in image_name else (image_name | basename) }}"
+    image_tag: "{{ image_name.split(':')[1] if ':' in image_name else 'latest' }}"
+    full_registry_path: "{{ registry_url }}/{{ registry_namespace }}"
+
+- name: Prepare registry image name
+  set_fact:
+    registry_image_base: "{{ full_registry_path }}/{{ image_base_name }}"
+    registry_image_full: "{{ full_registry_path }}/{{ image_base_name }}:{{ image_tag }}"
+
+- name: Tag image for registry (main tag)
+  shell: |
+    docker tag {{ image_name }} {{ registry_image_full }}
+  register: tag_result
+  changed_when: tag_result.rc == 0
+
+- name: Push image to registry (main tag)
+  shell: |
+    docker push {{ registry_image_full }}
+  register: push_result
+  retries: 3
+  delay: 5
+  until: push_result.rc == 0
+  changed_when: push_result.rc == 0
+
+- name: Process additional tags
+  block:
+    - name: Apply and push additional tags
+      shell: |
+        # Prepare variables for tag substitution
+        VERSION="{{ version | default(image_tag) }}"
+        ENV="{{ env }}"
+        BRANCH="{{ sanitized_branch_name | default('main') }}"
+        SHA="{{ git_sha | default('unknown') }}"
+        
+        # Process the tag template
+        TAG_TEMPLATE="{{ item }}"
+        TAG_PROCESSED=$(echo "$TAG_TEMPLATE" | \
+          sed "s/{version}/$VERSION/g" | \
+          sed "s/{env}/$ENV/g" | \
+          sed "s/{branch}/$BRANCH/g" | \
+          sed "s/{sha}/$SHA/g")
+        
+        # Tag and push
+        docker tag {{ image_name }} {{ registry_image_base }}:$TAG_PROCESSED
+        docker push {{ registry_image_base }}:$TAG_PROCESSED
+        
+        echo "Pushed {{ registry_image_base }}:$TAG_PROCESSED"
+      loop: "{{ deployment_config.registry.additional_tags | default([]) }}"
+      when: deployment_config.registry.additional_tags is defined
+      register: additional_tags_result
+      retries: 3
+      delay: 5
+      until: additional_tags_result.rc | default(0) == 0
+
+- name: Display push summary
+  debug:
+    msg: "✓ Successfully pushed {{ image_base_name }} to {{ full_registry_path }}"

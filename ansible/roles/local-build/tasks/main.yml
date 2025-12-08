@@ -93,3 +93,14 @@
     msg: "✓ Successfully validated {{ build_commands | length }} Docker image(s) build"
   delegate_to: localhost
   when: env == 'build'
+
+# Push images to registry if configured
+- name: Push images to registry
+  include_role:
+    name: docker-registry
+  vars:
+    built_images: "{{ build_commands | select('search', '-t\\s+') | map('regex_replace', '.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') | list }}"
+  when:
+    - deployment_config.registry is defined
+    - deployment_config.registry.enabled | default(false) | bool
+    - env != 'build'

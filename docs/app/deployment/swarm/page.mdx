@@ -1,0 +1,385 @@
+# Docker Swarm Deployment
+
+This guide explains how to deploy your applications using Docker Swarm mode with Dockflow.
+
+## Overview
+
+Docker Swarm mode provides orchestration capabilities including:
+- **Service replication** - Run multiple instances of your services
+- **Load balancing** - Automatic load distribution across replicas
+- **Rolling updates** - Zero-downtime deployments
+- **Health checks** - Automatic service recovery
+- **Resource management** - CPU and memory limits/reservations
+
+## Prerequisites
+
+Before deploying with Swarm mode, ensure:
+
+1. **Docker Registry is configured** - Swarm pulls images from a registry, not local builds
+2. **Deploy section in docker-compose.yml** - The framework auto-detects Swarm mode from this section
+3. **Docker Swarm is initialized** - The framework will initialize it automatically if needed
+
+## Configuration
+
+### 1. Enable Docker Registry
+
+In your `.deployment/config.yml`:
+
+```yaml
+registry:
+  enabled: true
+  url: "registry.example.com"  # or docker.io, ghcr.io, etc.
+  namespace: "myorganization"
+  auth_method: "basic"  # or "token"
+  
+  # For basic auth:
+  username: "{{ registry_username }}"
+  password: "{{ registry_password }}"
+  
+  # For token auth (e.g., GitHub):
+  # token: "{{ registry_token }}"
+```
+
+### 2. Configure Swarm Settings
+
+```yaml
+swarm:
+  # Stack name (default: project_id-env)
+  stack_name: "{{ project_id }}-{{ env }}"
+  
+  # Remove old services after update (default: true)
+  prune_services: true
+  
+  # Wait for services to be running (default: true)
+  wait_for_services: true
+  wait_timeout: 300  # seconds
+```
+
+### 3. Add Deploy Section to docker-compose.yml
+
+In your `.deployment/docker/docker-compose.yml`, add a `deploy` section to any service:
+
+```yaml
+services:
+  app:
+    image: my-app
+    build:
+      context: ../..
+      dockerfile: Dockerfile.app
+    environment:
+      ENV: ${ENV}
+    ports:
+      - "${APP_EXTERNAL_PORT}:3000"
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+```
+
+## How It Works
+
+When Dockflow detects a `deploy` section in your docker-compose.yml:
+
+1. **Build Phase**:
+   - Images are built locally or on the remote server (depending on `remote_build` setting)
+   - Built images are tagged with the registry path: `registry.example.com/namespace/image:tag`
+
+2. **Push Phase**:
+   - Images are pushed to the configured Docker registry
+   - Multiple tags can be applied (version, latest, branch, etc.)
+
+3. **Deploy Phase**:
+   - The rendered docker-compose.yml is transferred to the remote server
+   - Docker Swarm is initialized if not already active
+   - The framework logs into the registry on the remote server
+   - Stack is deployed using `docker stack deploy --with-registry-auth`
+   - Services pull images from the registry
+
+4. **Monitoring**:
+   - The framework waits for all replicas to be running
+   - Service status is displayed
+   - Deployment info is stored for potential rollback
+
+## Deploy Section Options
+
+### Replicas
+
+```yaml
+deploy:
+  replicas: 3  # Number of task instances
+```
+
+### Update Configuration
+
+```yaml
+deploy:
+  update_config:
+    parallelism: 2          # Number of containers to update at a time
+    delay: 10s              # Delay between updates
+    order: stop-first       # or "start-first"
+    failure_action: rollback # "pause", "continue", or "rollback"
+    monitor: 30s            # Time to monitor for failure
+    max_failure_ratio: 0.2  # Acceptable failure rate
+```
+
+### Restart Policy
+
+```yaml
+deploy:
+  restart_policy:
+    condition: on-failure   # "none", "on-failure", or "any"
+    delay: 5s
+    max_attempts: 3
+    window: 120s
+```
+
+### Resource Constraints
+
+```yaml
+deploy:
+  resources:
+    limits:
+      cpus: '0.5'          # Maximum CPU
+      memory: 512M         # Maximum memory
+    reservations:
+      cpus: '0.25'         # Minimum CPU guarantee
+      memory: 256M         # Minimum memory guarantee
+```
+
+### Placement Constraints
+
+```yaml
+deploy:
+  placement:
+    constraints:
+      - node.role == worker
+      - node.labels.type == production
+    preferences:
+      - spread: node.labels.zone
+```
+
+### Labels
+
+```yaml
+deploy:
+  labels:
+    com.example.description: "My application"
+    com.example.version: "1.0"
+```
+
+## Deployment Workflow
+
+### Standard Deployment
+
+```bash
+# Build and push images, then deploy to Swarm
+dockflow deploy production
+```
+
+### Remote Build
+
+If you want to build images on the remote server:
+
+```yaml
+# In config.yml
+options:
+  remote_build: true
+```
+
+Then deploy:
+
+```bash
+dockflow deploy production
+```
+
+## Monitoring Deployment
+
+After deployment, you can check the status:
+
+```bash
+# List services in the stack
+docker stack services my-stack-name
+
+# List tasks (containers) in the stack
+docker stack ps my-stack-name
+
+# View service logs
+docker service logs my-stack-name_app
+```
+
+## Scaling Services
+
+To scale a service after deployment:
+
+```bash
+docker service scale my-stack-name_app=5
+```
+
+Or update your `docker-compose.yml` and redeploy:
+
+```yaml
+deploy:
+  replicas: 5
+```
+
+## Rolling Updates
+
+Swarm automatically performs rolling updates when you:
+- Push a new image version
+- Change service configuration
+- Update environment variables
+
+To trigger a rolling update:
+
+```bash
+dockflow deploy production
+```
+
+## Rollback
+
+To rollback to the previous version:
+
+```bash
+docker service rollback my-stack-name_app
+```
+
+## Multi-Host Swarm
+
+For a multi-node Swarm cluster:
+
+1. **Initialize Swarm on the manager node** (done automatically by Dockflow)
+2. **Join worker nodes**:
+   ```bash
+   # On manager, get the join token
+   docker swarm join-token worker
+   
+   # On each worker node, run the provided command
+   docker swarm join --token SWMTKN-... manager-ip:2377
+   ```
+
+3. **Deploy your stack** - Dockflow will deploy to the entire cluster
+
+## Troubleshooting
+
+### Services not starting
+
+Check service logs:
+```bash
+docker service logs my-stack-name_app
+```
+
+Check service events:
+```bash
+docker service ps my-stack-name_app --no-trunc
+```
+
+### Image pull errors
+
+Ensure:
+- Registry credentials are correct in `config.yml`
+- Images were successfully pushed to the registry
+- Registry is accessible from the remote server
+
+Check registry login:
+```bash
+docker login registry.example.com -u username
+```
+
+### Update failures
+
+If updates fail, Swarm will automatically rollback if `failure_action: rollback` is set.
+
+Check update status:
+```bash
+docker service inspect my-stack-name_app --pretty
+```
+
+## Best Practices
+
+1. **Always use a registry** - Swarm requires images in a registry for multi-node deployments
+2. **Set resource limits** - Prevent services from consuming all resources
+3. **Use health checks** - Enable automatic recovery of failed containers
+4. **Configure update strategy** - Control rolling update behavior
+5. **Test in staging** - Verify Swarm configuration before production
+6. **Monitor resources** - Use Portainer or other tools to monitor the cluster
+
+## Differences from Standard Deployment
+
+| Aspect | Standard Docker | Docker Swarm |
+|--------|----------------|--------------|
+| Orchestration | Manual | Automatic |
+| Scaling | Manual `docker-compose up --scale` | Automatic via replicas |
+| Load Balancing | External (nginx) | Built-in |
+| Rolling Updates | Manual | Automatic |
+| Health Recovery | Via restart policy | Automatic rescheduling |
+| Registry Requirement | Optional | Required for multi-node |
+
+## Example: Complete Configuration
+
+### config.yml
+```yaml
+options:
+  environmentize: true
+  remote_build: false
+
+registry:
+  enabled: true
+  url: "ghcr.io"
+  namespace: "myorg"
+  auth_method: "token"
+  token: "{{ github_token }}"
+
+swarm:
+  stack_name: "{{ project_id }}-{{ env }}"
+  prune_services: true
+  wait_for_services: true
+  wait_timeout: 300
+```
+
+### docker-compose.yml
+```yaml
+services:
+  web:
+    image: my-web-app
+    build: .
+    ports:
+      - "80:80"
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+      placement:
+        constraints:
+          - node.role == worker
+```
+
+## See Also
+
+- [Docker Registry Configuration](/configuration/registry)
+- [Health Checks](/configuration/health-checks)
+- [Multi-Host Deployment](/configuration/multi-host)
+- [Docker Swarm Documentation](https://docs.docker.com/engine/swarm/)

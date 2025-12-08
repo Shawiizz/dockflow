@@ -3,6 +3,69 @@ options:
   enable_debug_logs: false   # Enable detailed deployment logs (default: false)
   remote_build: false        # Build Docker images on remote server instead of CI/CD (default: false)
 
+# Docker Registry configuration (optional)
+# When configured, built images will be pushed to this registry
+registry:
+  # Enable or disable registry push (default: false)
+  enabled: false
+  
+  # Registry URL (e.g., docker.io, registry.gitlab.com, ghcr.io, your-registry.com)
+  # For Docker Hub, use docker.io
+  url: ""
+  
+  # Registry namespace/organization (e.g., myorg, myusername)
+  # Full image name will be: {url}/{namespace}/{image}:{tag}
+  namespace: ""
+  
+  # Authentication method: "basic" or "token"
+  # basic: uses username/password
+  # token: uses a single token (for services like GitHub Container Registry)
+  auth_method: "basic"
+  
+  # Credentials (use environment variables for security)
+  # For basic auth:
+  username: "{{ registry_username }}"
+  password: "{{ registry_password }}"
+  
+  # For token auth (e.g., GitHub Personal Access Token):
+  token: "{{ registry_token }}"
+  
+  # Additional tags to apply (besides the version tag)
+  # Available variables: {version}, {env}, {branch}, {sha}
+  additional_tags:
+    - "latest"  # Always tag as latest
+    # - "{env}"  # Tag with environment name
+    # - "{branch}-latest"  # Tag with branch name
+
+# Docker Swarm configuration (optional)
+# When a 'deploy' section is present in docker-compose.yml, 
+# the framework will automatically use Swarm mode
+swarm:
+  # Stack name (default: project_name-env)
+  # Available variables: {project}, {env}, {version}
+  stack_name: "{{ project_id }}-{{ env }}"
+  
+  # Prune old services after deployment (default: true)
+  prune_services: true
+  
+  # Wait for services to be running (default: true)
+  wait_for_services: true
+  wait_timeout: 300  # seconds
+  
+  # Update configuration
+  update_config:
+    # Update order: "stop-first" or "start-first"
+    order: "stop-first"
+    
+    # Failure action: "pause", "continue", or "rollback"
+    failure_action: "rollback"
+    
+    # Monitor duration after each task update
+    monitor: "30s"
+    
+    # Max failure ratio (0-1)
+    max_failure_ratio: 0.2
+
 # Image management configuration (optional)
 image_management:
   # Number of healthy versions to keep (each version can have multiple images)

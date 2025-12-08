@@ -36,3 +36,57 @@
   debug:
     msg: "✓ Rendered {{ docker_files.matched | default(0) }} file(s) in .deployment/docker/"
   when: docker_dir.stat.exists
+
+- name: Update docker-compose.yml images with registry path if registry is enabled
+  block:
+    - name: Check if docker-compose.yml exists
+      stat:
+        path: "{{ compose_path }}"
+      register: compose_file
+      delegate_to: localhost
+
+    - name: Read docker-compose.yml content
+      slurp:
+        src: "{{ compose_path }}"
+      register: compose_content
+      delegate_to: localhost
+      when: compose_file.stat.exists
+
+    - name: Parse and update docker-compose.yml with registry paths
+      set_fact:
+        updated_compose: "{{ compose_content['content'] | b64decode | from_yaml | combine({'services': updated_services}, recursive=true) }}"
+      vars:
+        registry_prefix: "{{ deployment_config.registry.url }}/{{ deployment_config.registry.namespace }}"
+        updated_services: >-
+          {%- set ns = namespace(services={}) -%}
+          {%- for service_name, service_config in (compose_content['content'] | b64decode | from_yaml).services.items() -%}
+            {%- set image_name = service_config.image | default('') -%}
+            {%- if image_name and not ('/' in image_name and '.' in image_name.split('/')[0]) -%}
+              {%- set _ = ns.services.update({service_name: service_config | combine({'image': registry_prefix + '/' + image_name})}) -%}
+            {%- else -%}
+              {%- set _ = ns.services.update({service_name: service_config}) -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {{ ns.services }}
+      delegate_to: localhost
+      when: compose_file.stat.exists
+
+    - name: Write updated docker-compose.yml
+      copy:
+        content: "{{ updated_compose | to_nice_yaml(indent=2, width=999) }}"
+        dest: "{{ compose_path }}"
+        mode: '0644'
+      delegate_to: localhost
+      when: compose_file.stat.exists
+      register: update_compose_result
+
+    - name: Display registry update completion
+      debug:
+        msg: "✓ Updated docker-compose.yml with registry path: {{ deployment_config.registry.url }}/{{ deployment_config.registry.namespace }}"
+      delegate_to: localhost
+
+  when:
+    - deployment_config.registry is defined
+    - deployment_config.registry.enabled | default(false) | bool
+    - deployment_config.registry.url is defined
+    - deployment_config.registry.namespace is defined

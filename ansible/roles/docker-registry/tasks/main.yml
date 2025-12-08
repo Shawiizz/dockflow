@@ -1,0 +1,88 @@
+---
+# Docker Registry role - handles registry authentication and image pushing
+# This role runs after building images to push them to the configured registry
+
+- name: Check if registry is enabled
+  set_fact:
+    registry_enabled: "{{ deployment_config.registry.enabled | default(false) | bool }}"
+    registry_url: "{{ deployment_config.registry.url | default('') }}"
+    registry_namespace: "{{ deployment_config.registry.namespace | default('') }}"
+    registry_auth_method: "{{ deployment_config.registry.auth_method | default('basic') }}"
+  when: deployment_config.registry is defined
+
+- name: Display registry status
+  debug:
+    msg: "Registry push is {{ 'enabled' if registry_enabled else 'disabled' }}"
+  when: registry_enabled is defined
+
+- name: Process registry operations
+  block:
+    - name: Set registry credentials based on auth method
+      set_fact:
+        registry_username: "{{ deployment_config.registry.username | default('') }}"
+        registry_password: "{{ deployment_config.registry.password | default('') }}"
+        registry_token: "{{ deployment_config.registry.token | default('') }}"
+      no_log: true
+
+    - name: Login to Docker registry (basic auth)
+      shell: |
+        echo "{{ registry_password }}" | docker login {{ registry_url }} \
+          --username "{{ registry_username }}" \
+          --password-stdin
+      when:
+        - registry_auth_method == "basic"
+        - registry_username != ""
+        - registry_password != ""
+      no_log: true
+      register: registry_login_basic
+
+    - name: Login to Docker registry (token auth)
+      shell: |
+        echo "{{ registry_token }}" | docker login {{ registry_url }} \
+          --username "{{ registry_username | default('oauth2') }}" \
+          --password-stdin
+      when:
+        - registry_auth_method == "token"
+        - registry_token != ""
+      no_log: true
+      register: registry_login_token
+
+    - name: Get list of built images to push
+      set_fact:
+        images_to_push: "{{ built_images | default([]) }}"
+      when: built_images is defined
+
+    - name: Extract image names from build commands
+      set_fact:
+        images_to_push: >-
+          {{
+            build_commands
+            | select('search', '-t\\s+')
+            | map('regex_replace', '.*-t\\s+"?([^"\\s]+)"?.*', '\\1')
+            | list
+          }}
+      when:
+        - built_images is not defined
+        - build_commands is defined
+
+    - name: Process each image for registry push
+      include_tasks: push_image.yml
+      loop: "{{ images_to_push }}"
+      loop_control:
+        loop_var: image_name
+      when: images_to_push is defined and images_to_push | length > 0
+
+    - name: Logout from Docker registry
+      shell: docker logout {{ registry_url }}
+      when: registry_login_basic is changed or registry_login_token is changed
+      ignore_errors: yes
+
+  when:
+    - registry_enabled | bool
+    - registry_url != ""
+    - registry_namespace != ""
+
+- name: Skip registry push
+  debug:
+    msg: "Skipping registry push - not configured or disabled"
+  when: not (registry_enabled | default(false) | bool) or registry_url == "" or registry_namespace == ""

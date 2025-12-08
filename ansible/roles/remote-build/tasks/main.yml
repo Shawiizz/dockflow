@@ -195,6 +195,15 @@
     msg: "One or more Docker builds failed. Check the output above for details."
   when: build_results.results | selectattr('rc', 'defined') | selectattr('rc', 'ne', 0) | list | length > 0
 
+- name: Push images to registry
+  include_role:
+    name: docker-registry
+  vars:
+    built_images: "{{ build_commands | select('search', '-t\\s+') | map('regex_replace', '.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') | list }}"
+  when:
+    - deployment_config.registry is defined
+    - deployment_config.registry.enabled | default(false) | bool
+
 - name: Cleanup temporary build directory
   file:
     path: "{{ tmp_build_dir }}"
