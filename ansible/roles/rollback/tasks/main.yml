@@ -1,202 +1,211 @@
+---
+# Rollback role - rolls back to a previous release using docker stack deploy
+# This role uses stored docker-compose files from previous deployments
+
 - name: Display rollback initiation message
   debug:
     msg: |
-      ⚠️  INITIATING ROLLBACK ⚠️
-      Health checks failed - rolling back to previous deployment
+      INITIATING ROLLBACK
+      External health checks failed - rolling back to previous release
 
-- name: Check for available healthy versions for rollback
-  find:
-    paths: /var/lib/dockflow/images
-    patterns: "{{ env }}_{{ project_id }}_{{ sanitized_branch_name }}_*.json"
-  register: available_healthy_versions
-
-- name: Sort healthy versions by date
+- name: Set stacks directory
   set_fact:
-    sorted_healthy_versions: "{{ available_healthy_versions.files | sort(attribute='mtime', reverse=true) }}"
-  when: available_healthy_versions.files | length > 0
+    stacks_dir: "/var/lib/dockflow/stacks/{{ stack_name }}"
+
+- name: Find available releases for rollback
+  find:
+    paths: "{{ stacks_dir }}"
+    file_type: directory
+    patterns: "[0-9]*"
+  register: available_releases
+
+- name: Sort releases by version (newest first)
+  set_fact:
+    sorted_releases: >-
+      {%- set releases_with_version = [] -%}
+      {%- for release in available_releases.files -%}
+        {%- set ver = release.path | basename | int -%}
+        {%- set _ = releases_with_version.append({'path': release.path, 'version': ver}) -%}
+      {%- endfor -%}
+      {{ releases_with_version | sort(attribute='version', reverse=true) }}
+  when: available_releases.files | length > 0
+
+- name: Determine current and previous release
+  set_fact:
+    current_release: "{{ sorted_releases[0] if sorted_releases | length > 0 else {} }}"
+    previous_release: "{{ sorted_releases[1] if sorted_releases | length > 1 else {} }}"
+  when: sorted_releases is defined
 
 - name: Check if rollback is possible
   set_fact:
-    can_rollback: "{{ sorted_healthy_versions | length > 0 }}"
-    rollback_version_file: "{{ sorted_healthy_versions[0].path if sorted_healthy_versions | length > 0 else '' }}"
-  when: sorted_healthy_versions is defined
+    can_rollback: "{{ previous_release is defined and previous_release.path is defined }}"
 
-- name: Read rollback version file for display
-  slurp:
-    src: "{{ rollback_version_file }}"
-  register: rollback_version_content_for_debug
-  when:
-    - rollback_version_file is defined
-    - rollback_version_file != ''
-  changed_when: false
-  failed_when: false
-
-- name: Display no healthy version available
+- name: Display no rollback possible message
   debug:
     msg: |
-      ❌ ROLLBACK NOT POSSIBLE ❌
-      No previous healthy version found to rollback to.
-      This is likely the first deployment or all previous versions have been cleaned up.
+      ROLLBACK NOT POSSIBLE
+      No previous release found to rollback to.
+      This is likely the first deployment.
       
-      Actions taken:
-      - New deployment will be stopped and removed
-      - System will be left in a clean state (no running containers)
+      Current release: {{ current_release.path | default('none') | basename }}
+      Previous releases available: {{ (sorted_releases | length - 1) if sorted_releases is defined else 0 }}
       
       Manual intervention required to deploy a working version.
   when: not (can_rollback | default(false))
 
+- name: Read previous release metadata
+  slurp:
+    src: "{{ previous_release.path }}/metadata.json"
+  register: previous_metadata
+  when: can_rollback | default(false)
+  failed_when: false
+
 - name: Display rollback target information
   debug:
     msg: |
-      {% if rollback_version_content_for_debug is defined and rollback_version_content_for_debug.content is defined %}
-      Rollback target found: {{ (rollback_version_content_for_debug.content | b64decode | from_json).version }}
-      Timestamp: {{ (rollback_version_content_for_debug.content | b64decode | from_json).timestamp }}
-      {% else %}
-      Rollback version file: {{ rollback_version_file }} (could not read contents)
+      Rollback target found:
+      - Release: {{ previous_release.path | basename }}
+      {% if previous_metadata.content is defined %}
+      - Version: {{ (previous_metadata.content | b64decode | from_json).version | default('unknown') }}
+      - Timestamp: {{ (previous_metadata.content | b64decode | from_json).timestamp | default('unknown') }}
       {% endif %}
   when: can_rollback | default(false)
 
-- name: Get currently running containers by image
-  shell: |
-    docker ps --filter "ancestor={{ item }}" --format {% raw %}"{{.Names}}"{% endraw %}
-  register: current_containers
-  loop: "{{ deployed_images | default([]) }}"
-  when: deployed_images is defined and deployed_images | length > 0
-  changed_when: false
-  failed_when: false
-  loop_control:
-    label: "{{ item }}"
-
-- name: Stop new containers
-  shell: "docker stop {{ item.stdout }}"
-  loop: "{{ current_containers.results | default([]) }}"
-  when:
-    - current_containers.results is defined
-    - item.stdout is defined
-    - item.stdout != ''
-  failed_when: false
-  loop_control:
-    label: "Stopping container: {{ item.stdout | default('N/A') }}"
-
-- name: Get images used by new containers
-  shell: |
-    docker inspect {{ item.stdout }} --format {% raw %}"{{.Image}}"{% endraw %} 2>/dev/null || echo ""
-  register: new_images
-  loop: "{{ current_containers.results | default([]) }}"
-  when:
-    - current_containers.results is defined
-    - item.stdout is defined
-    - item.stdout != ''
-  changed_when: false
-  failed_when: false
-  loop_control:
-    label: "Getting image for: {{ item.stdout | default('N/A') }}"
-
-- name: Remove new containers
-  shell: "docker rm {{ item.stdout }}"
-  loop: "{{ current_containers.results | default([]) }}"
-  when:
-    - current_containers.results is defined
-    - item.stdout is defined
-    - item.stdout != ''
-  failed_when: false
-  loop_control:
-    label: "Removing container: {{ item.stdout | default('N/A') }}"
-
-- name: Remove new images
-  shell: "docker rmi {{ item.stdout }}"
-  loop: "{{ new_images.results | default([]) }}"
-  when:
-    - new_images.results is defined
-    - item.stdout is defined
-    - item.stdout != ''
-  failed_when: false
-  ignore_errors: yes
-  loop_control:
-    label: "Removing image: {{ item.stdout | default('N/A') }}"
-
-- name: Find rollback script files
-  find:
-    paths: /var/lib/dockflow
-    patterns: '*___*.run'
-  register: rollback_files
-  when: can_rollback | default(false)
-
-- name: Read selected healthy version file to get protected images
-  slurp:
-    src: "{{ rollback_version_file }}"
-  register: rollback_version_content
-  when:
-    - can_rollback | default(false)
-    - rollback_version_file is defined and rollback_version_file != ''
-
-- name: Extract image names from healthy version
-  set_fact:
-    previous_images: "{{ (rollback_version_content.content | b64decode | from_json).images | map(attribute='name') | list }}"
-  when:
-    - rollback_version_content is defined
-    - rollback_version_content.content is defined
-
-- name: Build allowed rollback script paths from previous images
-  set_fact:
-    allowed_rollback_paths: "{{ allowed_rollback_paths | default([]) + ['/var/lib/dockflow/' + item.split(':')[0] + '___' + (item.split(':')[1] | default('latest')) + '.run'] }}"
-  loop: "{{ previous_images | default([]) }}"
-  when: previous_images is defined
-
-- name: Filter rollback files to only those matching previous healthy images
-  set_fact:
-    rollback_files_filtered: "{{ rollback_files.files | selectattr('path','in', allowed_rollback_paths) | list }}"
-  when:
-    - rollback_files is defined
-    - allowed_rollback_paths is defined
-
-- name: Load and execute rollback commands
+- name: Perform rollback using docker stack deploy
   block:
-    - name: Read rollback scripts
-      slurp:
-        src: "{{ item.path }}"
-      register: rollback_data
-      loop: "{{ rollback_files_filtered | default([]) }}"
-      when: rollback_files_filtered is defined and rollback_files_filtered | length > 0
-      loop_control:
-        label: "Reading: {{ item.path | basename }}"
+    - name: Update current symlink to previous release
+      file:
+        src: "{{ previous_release.path }}"
+        dest: "{{ stacks_dir }}/current"
+        state: link
+        force: yes
 
-    - name: Parse rollback commands
-      set_fact:
-        rollback_commands: "{{ rollback_commands | default([]) + [(item.content | b64decode | trim)] }}"
-      loop: "{{ rollback_data.results | default([]) }}"
-      when:
-        - rollback_data.results is defined
-        - item.content is defined
-        - (item.content | b64decode | trim) != ''
-      loop_control:
-        label: "Parsing rollback script"
+    - name: Deploy previous release version
+      shell: |
+        cd {{ previous_release.path }}
+        
+        # Export environment variables from .env file if it exists
+        if [ -f .env ]; then
+          set -a
+          source .env
+          set +a
+        fi
+        
+        # Deploy the stack with the previous compose file
+        docker stack deploy \
+          --compose-file docker-compose.yml \
+          {% if deployment_config.swarm.prune_services | default(true) | bool %}--prune \{% endif %}
+          {% if deployment_config.registry.enabled | default(false) | bool %}--with-registry-auth \{% endif %}
+          {% if not (deployment_config.registry.enabled | default(false) | bool) %}--resolve-image=never \{% endif %}
+          {{ stack_name }}
+        
+        echo "Stack {{ stack_name }} rolled back to {{ previous_release.path | basename }}"
+      register: rollback_deploy
+      changed_when: true
 
-    - name: Execute rollback docker run commands
-      shell: "{{ item }}"
-      loop: "{{ rollback_commands | default([]) }}"
-      when: rollback_commands is defined and rollback_commands | length > 0
-      register: rollback_execution
+    - name: Wait for rollback services to converge
+      shell: |
+        TIMEOUT={{ deployment_config.swarm.wait_timeout | default(120) }}
+        ELAPSED=0
+        INTERVAL=5
+        
+        echo "Waiting for rollback services to converge..."
+        
+        while [ $ELAPSED -lt $TIMEOUT ]; do
+          SERVICES=$(docker stack services {{ stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}:{{ '{{' }}.Replicas{{ '}}' }}")
+          
+          ALL_RUNNING=true
+          for SERVICE in $SERVICES; do
+            NAME=$(echo $SERVICE | cut -d: -f1)
+            REPLICAS=$(echo $SERVICE | cut -d: -f2)
+            CURRENT=$(echo $REPLICAS | cut -d/ -f1)
+            DESIRED=$(echo $REPLICAS | cut -d/ -f2)
+            
+            if [ "$CURRENT" != "$DESIRED" ]; then
+              ALL_RUNNING=false
+            fi
+          done
+          
+          if [ "$ALL_RUNNING" = "true" ]; then
+            echo "Rollback services converged successfully"
+            exit 0
+          fi
+          
+          sleep $INTERVAL
+          ELAPSED=$((ELAPSED + INTERVAL))
+        done
+        
+        echo "Warning: Rollback timeout reached"
+        exit 1
+      register: rollback_wait
       failed_when: false
-      loop_control:
-        label: "Restarting: {{ item.split() | last }}"
+      changed_when: false
 
-    - name: Display rollback results
+    - name: Read failed release docker-compose to extract images
+      slurp:
+        src: "{{ current_release.path }}/docker-compose.yml"
+      register: failed_compose
+      when:
+        - deployment_config.stack_management.cleanup_on_failure | default(true) | bool
+        - current_release is defined
+        - current_release.path is defined
+      failed_when: false
+
+    - name: Extract and remove images from failed release
+      block:
+        - name: Extract image names from failed release
+          set_fact:
+            failed_images: >-
+              {%- set images = [] -%}
+              {%- if failed_compose.content is defined -%}
+                {%- set compose = failed_compose.content | b64decode | from_yaml -%}
+                {%- for svc_name, svc_config in compose.services.items() -%}
+                  {%- if svc_config.image is defined -%}
+                    {%- set _ = images.append(svc_config.image) -%}
+                  {%- endif -%}
+                {%- endfor -%}
+              {%- endif -%}
+              {{ images | unique }}
+
+        - name: Remove images from failed deployment
+          shell: "docker rmi {{ item }} 2>/dev/null || true"
+          loop: "{{ failed_images | default([]) }}"
+          failed_when: false
+          loop_control:
+            label: "Removing {{ item }}"
+          when: failed_images | default([]) | length > 0
+
+      when:
+        - deployment_config.stack_management.cleanup_on_failure | default(true) | bool
+        - failed_compose.content is defined
+
+    - name: Remove failed release directory
+      file:
+        path: "{{ current_release.path }}"
+        state: absent
+      when: 
+        - current_release is defined
+        - current_release.path is defined
+        - current_release.path != previous_release.path
+
+    - name: Display rollback success
       debug:
         msg: |
-          {% if rollback_execution.results | selectattr('rc', 'equalto', 0) | list | length == rollback_commands | length %}
-          ✅ Rollback completed successfully
-          Restored {{ rollback_commands | length }} container(s) to previous state
-          {% else %}
-          ⚠️  Rollback completed with errors
-          Successful: {{ rollback_execution.results | selectattr('rc', 'equalto', 0) | list | length }}/{{ rollback_commands | length }}
-          {% endif %}
-      when: rollback_execution.results is defined
+          ROLLBACK COMPLETED
+          Successfully rolled back to previous release.
+          - Previous version restored from: {{ previous_release.path | basename }}
+          - Failed release removed: {{ current_release.path | basename }}
 
-  when: 
-    - can_rollback | default(false)
-    - rollback_files_filtered is defined 
-    - rollback_files_filtered | length > 0
+  when: can_rollback | default(false)
+
+- name: Fail deployment after rollback
+  fail:
+    msg: |
+      Deployment failed and was rolled back.
+      The previous version is now running.
+      
+      Check the application logs for details on why the new deployment failed.
+  when: can_rollback | default(false)
 
 - name: Display rollback failure message
   debug:

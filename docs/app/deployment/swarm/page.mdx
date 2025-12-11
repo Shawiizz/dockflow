@@ -1,63 +1,100 @@
 # Docker Swarm Deployment
 
-This guide explains how to deploy your applications using Docker Swarm mode with Dockflow.
+This guide explains how Dockflow deploys your applications using Docker Swarm mode.
 
 ## Overview
 
-Docker Swarm mode provides orchestration capabilities including:
+Starting with Dockflow v2.0, **Docker Swarm is the only deployment mode**. Even single-node deployments use Swarm for consistency and reliability.
+
+Docker Swarm provides:
 - **Service replication** - Run multiple instances of your services
 - **Load balancing** - Automatic load distribution across replicas
-- **Rolling updates** - Zero-downtime deployments
+- **Rolling updates** - Zero-downtime deployments with automatic rollback
 - **Health checks** - Automatic service recovery
 - **Resource management** - CPU and memory limits/reservations
 
-## Prerequisites
+## How It Works
 
-Before deploying with Swarm mode, ensure:
+### Deployment Flow
 
-1. **Docker Registry is configured** - Swarm pulls images from a registry, not local builds
-2. **Deploy section in docker-compose.yml** - The framework auto-detects Swarm mode from this section
-3. **Docker Swarm is initialized** - The framework will initialize it automatically if needed
+1. **Build Phase**: Images are built locally in CI or on the remote server
+2. **Transfer Phase**: Images are transferred via local registry tunnel (no external registry needed) or pushed to a configured registry
+3. **Deploy Phase**: `docker stack deploy` deploys the stack with automatic rollback configuration
+4. **Health Check Phase**: 
+   - Swarm monitors internal container healthchecks
+   - Dockflow runs external HTTP checks as a second layer of verification
+5. **Cleanup Phase**: Old stacks are cleaned up based on retention settings
+
+### Stack Management
+
+Dockflow stores each deployment as a "release":
+
+```
+/var/lib/dockflow/stacks/my-app-production/
+  1/                         # First release
+    docker-compose.yml       # Rendered compose file
+    metadata.json            # Deployment metadata with images list
+    .env                     # Environment variables
+  2/                         # Second release
+    docker-compose.yml
+    metadata.json
+  current -> 2/              # Symlink to active release
+```
+
+This enables:
+- Quick rollback to any previous release
+- Audit trail of deployments
+- Automatic cleanup of old releases and their images
 
 ## Configuration
 
-### 1. Enable Docker Registry
+### 1. Set Project Name (Required)
 
 In your `.deployment/config.yml`:
 
 ```yaml
-registry:
-  enabled: true
-  url: "registry.example.com"  # or docker.io, ghcr.io, etc.
-  namespace: "myorganization"
-  auth_method: "basic"  # or "token"
-  
-  # For basic auth:
-  username: "{{ registry_username }}"
-  password: "{{ registry_password }}"
-  
-  # For token auth (e.g., GitHub):
-  # token: "{{ registry_token }}"
+project_name: "my-app"  # Required: lowercase, alphanumeric, hyphens only
 ```
 
-### 2. Configure Swarm Settings
+### 2. Configure Registry (Optional)
+
+For multi-node clusters or faster deployments, configure a registry:
+
+```yaml
+registry:
+  enabled: true
+  url: "registry.example.com"
+  namespace: "myorganization"
+  auth_method: "basic"
+  username: "{{ registry_username }}"
+  password: "{{ registry_password }}"
+```
+
+**Note:** If no registry is configured, Dockflow uses an SSH tunnel with a local registry for image transfer. This works for single-node deployments.
+
+### 3. Configure Swarm Settings
 
 ```yaml
 swarm:
-  # Stack name (default: project_id-env)
-  stack_name: "{{ project_id }}-{{ env }}"
-  
-  # Remove old services after update (default: true)
-  prune_services: true
-  
-  # Wait for services to be running (default: true)
-  wait_for_services: true
-  wait_timeout: 300  # seconds
+  prune_services: true      # Remove old services (default: true)
+  wait_for_services: true   # Wait for services to converge (default: true)
+  wait_timeout: 300         # Timeout in seconds (default: 300)
+  healthcheck_timeout: 120  # Timeout for internal healthchecks (default: 120)
 ```
 
-### 3. Add Deploy Section to docker-compose.yml
+### 4. Configure Stack Retention
 
-In your `.deployment/docker/docker-compose.yml`, add a `deploy` section to any service:
+```yaml
+stack_management:
+  keep_releases: 3           # Number of previous releases to keep (default: 3)
+  cleanup_on_failure: true   # Clean up failed deployment images (default: true)
+```
+
+## Docker Compose Configuration
+
+### Adding Deploy Section
+
+In your `.deployment/docker/docker-compose.yml`, add a `deploy` section to configure Swarm behavior. Dockflow will automatically inject safe defaults if not specified:
 
 ```yaml
 services:
@@ -76,7 +113,8 @@ services:
         parallelism: 1
         delay: 10s
         order: stop-first
-        failure_action: rollback
+        failure_action: rollback  # Automatic rollback on failure
+        monitor: 30s              # Monitor period after update
       restart_policy:
         condition: on-failure
         delay: 5s
@@ -90,29 +128,95 @@ services:
           memory: 256M
 ```
 
-## How It Works
+### Default Injection
 
-When Dockflow detects a `deploy` section in your docker-compose.yml:
+Dockflow automatically injects safe deployment defaults for all services:
 
-1. **Build Phase**:
-   - Images are built locally or on the remote server (depending on `remote_build` setting)
-   - Built images are tagged with the registry path: `registry.example.com/namespace/image:tag`
+```yaml
+deploy:
+  update_config:
+    parallelism: 1
+    delay: 10s
+    failure_action: rollback
+    monitor: 30s
+    max_failure_ratio: 0
+```
 
-2. **Push Phase**:
-   - Images are pushed to the configured Docker registry
-   - Multiple tags can be applied (version, latest, branch, etc.)
+This ensures automatic rollback if any container fails its healthcheck.
 
-3. **Deploy Phase**:
-   - The rendered docker-compose.yml is transferred to the remote server
-   - Docker Swarm is initialized if not already active
-   - The framework logs into the registry on the remote server
-   - Stack is deployed using `docker stack deploy --with-registry-auth`
-   - Services pull images from the registry
+## Health Checks
 
-4. **Monitoring**:
-   - The framework waits for all replicas to be running
-   - Service status is displayed
-   - Deployment info is stored for potential rollback
+Dockflow provides two layers of health checks for maximum reliability:
+
+### 1. Internal Health Checks (Swarm)
+
+Docker Swarm monitors container healthchecks defined in your Dockerfile or docker-compose.yml:
+
+```yaml
+services:
+  app:
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+```
+
+If a container fails its healthcheck during deployment, Swarm automatically rolls back to the previous version.
+
+### 2. External Health Checks (Dockflow)
+
+After Swarm healthchecks pass, Dockflow performs HTTP checks from outside the container:
+
+```yaml
+health_checks:
+  enabled: true
+  startup_delay: 15
+  on_failure: "rollback"
+  
+  endpoints:
+    - name: "API Health"
+      url: "http://localhost:3000/health"
+      expected_status: 200
+      timeout: 30
+      retries: 3
+```
+
+This double-layer approach ensures services are truly accessible, not just running.
+
+## Rollback
+
+### Automatic Rollback (Swarm)
+
+If internal healthchecks fail during deployment, Swarm automatically rolls back. This is handled by:
+
+```yaml
+deploy:
+  update_config:
+    failure_action: rollback
+```
+
+### Automatic Rollback (Dockflow)
+
+If external healthchecks fail, Dockflow triggers a rollback using the previous stack release:
+
+```yaml
+health_checks:
+  on_failure: "rollback"
+```
+
+### Manual Rollback
+
+Dockflow stores previous releases. To manually rollback:
+
+```bash
+# View available releases
+ls /var/lib/dockflow/stacks/my-app-production/
+
+# The previous release can be deployed using:
+cd /var/lib/dockflow/stacks/my-app-production/1
+docker stack deploy -c docker-compose.yml my-app-production
+```
 
 ## Deploy Section Options
 
@@ -332,6 +436,8 @@ docker service inspect my-stack-name_app --pretty
 
 ### config.yml
 ```yaml
+project_name: "my-app"
+
 options:
   environmentize: true
   remote_build: false
@@ -344,7 +450,7 @@ registry:
   token: "{{ github_token }}"
 
 swarm:
-  stack_name: "{{ project_id }}-{{ env }}"
+  stack_name: "{{ project_name }}-{{ env }}"
   prune_services: true
   wait_for_services: true
   wait_timeout: 300

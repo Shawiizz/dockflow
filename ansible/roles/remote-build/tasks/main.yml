@@ -1,7 +1,7 @@
 ---
 - name: Set temporary build directory path
   set_fact:
-    tmp_build_dir: "/tmp/docker-build-{{ project_id | default('unknown') }}-{{ env }}-{{ version }}"
+    tmp_build_dir: "/tmp/docker-build-{{ project_name }}-{{ env }}-{{ version }}"
 
 - name: Ensure Git is installed on remote server
   apt:

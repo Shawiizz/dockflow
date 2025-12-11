@@ -1,137 +1,105 @@
 ---
+# External Health Check role - performs HTTP health checks on deployed services
+# This runs after Swarm internal healthchecks have passed
+# Acts as a double-check to ensure services are truly accessible
+
 - name: Initialize health checks configuration
   set_fact:
-    health_checks_enabled: "{{ health_checks_config.enabled | default(false) | bool }}"
+    health_checks_enabled: "{{ health_checks_config.enabled | default(true) | bool }}"
     health_check_endpoints: "{{ health_checks_config.endpoints | default([]) }}"
     health_check_on_failure: "{{ health_checks_config.on_failure | default('notify') }}"
-    deployed_images: >-
-      {{ hostvars[inventory_hostname]
-         .get('docker_run_commands', [])
-         | map('split')
-         | map('last')
-         | list }}
   when: health_checks_config is defined
 
 - name: Display health checks configuration
   debug:
-    msg: "Health checks enabled: {{ health_checks_enabled | default(false) }}, On failure action: {{ health_check_on_failure | default('notify') }}"
+    msg: "External health checks enabled: {{ health_checks_enabled | default(false) }}, On failure action: {{ health_check_on_failure | default('notify') }}"
 
-- name: Wait for containers to be ready
-  pause:
-    seconds: "{{ health_checks_config.startup_delay | default(10) }}"
-  when: 
-    - health_checks_enabled | default(false)
-    - health_check_endpoints | length > 0
-
-- name: Perform health checks on endpoints
-  uri:
-    url: "{{ item.url }}"
-    method: "{{ item.method | default('GET') }}"
-    status_code: "{{ item.expected_status | default(200) }}"
-    timeout: "{{ item.timeout | default(30) }}"
-    validate_certs: "{{ item.validate_certs | default(true) }}"
-    return_content: yes
-  register: health_check_results
-  loop: "{{ health_check_endpoints }}"
-  when: 
-    - health_checks_enabled | default(false)
-    - health_check_endpoints | length > 0
-  ignore_errors: "{{ health_check_on_failure != 'fail' }}"
-  retries: "{{ item.retries | default(3) }}"
-  delay: "{{ item.retry_delay | default(5) }}"
-  loop_control:
-    label: "{{ item.name | default(item.url) }}"
-
-- name: Display health check results
+- name: Skip external health checks if no endpoints configured
   debug:
-    msg: |
-      Health Check: {{ item.item.name | default(item.item.url) }}
-      Status: {{ 'PASSED' if item.status == (item.item.expected_status | default(200)) else 'FAILED' }}
-      Code: {{ item.status }} | Time: {{ item.elapsed }}s
-  loop: "{{ health_check_results.results | default([]) }}"
-  when: 
-    - health_checks_enabled | default(false)
-    - health_check_results.results is defined
-  loop_control:
-    label: "{{ item.item.name | default(item.item.url) }}"
+    msg: "No external health check endpoints configured - skipping"
+  when: health_check_endpoints | default([]) | length == 0
 
-- name: Check for failed health checks
-  set_fact:
-    failed_health_checks: "{{ health_check_results.results | selectattr('failed', 'equalto', true) | list }}"
-  when: 
-    - health_checks_enabled | default(false)
-    - health_check_results.results is defined
-
-- name: Display summary of failed checks
-  debug:
-    msg: |
-      ⚠️  HEALTH CHECK FAILURES DETECTED ⚠️
-      Failed endpoints:
-      {% for check in failed_health_checks %}
-      - {{ check.item.name | default(check.item.url) }}: {{ check.msg | default('HTTP ' + (check.status | string)) }}
-      {% endfor %}
-  when:
-    - health_checks_enabled | default(false)
-    - failed_health_checks is defined
-    - failed_health_checks | length > 0
-
-- name: Fail deployment if health checks failed and on_failure is 'fail'
+- name: Run external health checks
   block:
-    - name: Stop and remove failed containers and images
-      shell: |
-        for image in {{ new_deployed_images | map(attribute='name') | join(' ') }}; do
-          container_id=$(docker ps -a -q --filter "ancestor=$image")
-          [ -n "$container_id" ] && docker stop $container_id && docker rm $container_id
-          docker rmi $image 2>/dev/null || true
-        done
-      when: 
-        - new_deployed_images is defined 
-        - new_deployed_images | length > 0
-        - deployment_config.image_management.cleanup_on_failure | default(true) | bool
+    - name: Wait for services to be ready
+      pause:
+        seconds: "{{ health_checks_config.startup_delay | default(10) }}"
 
-    - name: Display message when cleanup is disabled
+    - name: Perform health checks on endpoints
+      uri:
+        url: "{{ item.url }}"
+        method: "{{ item.method | default('GET') }}"
+        status_code: "{{ item.expected_status | default(200) }}"
+        timeout: "{{ item.timeout | default(30) }}"
+        validate_certs: "{{ item.validate_certs | default(true) }}"
+        return_content: yes
+      register: health_check_results
+      loop: "{{ health_check_endpoints }}"
+      ignore_errors: true
+      retries: "{{ item.retries | default(3) }}"
+      delay: "{{ item.retry_delay | default(5) }}"
+      loop_control:
+        label: "{{ item.name | default(item.url) }}"
+
+    - name: Display health check results
       debug:
         msg: |
-          ⚠️  Cleanup disabled - failed containers kept for investigation
-          Images: {{ new_deployed_images | map(attribute='name') | join(', ') }}
-      when: not (deployment_config.image_management.cleanup_on_failure | default(true) | bool)
+          Health Check: {{ item.item.name | default(item.item.url) }}
+          Status: {{ 'PASSED' if not item.failed else 'FAILED' }}
+          {% if item.status is defined %}Code: {{ item.status }}{% endif %}
+          {% if item.elapsed is defined %}Time: {{ item.elapsed }}s{% endif %}
+      loop: "{{ health_check_results.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.name | default(item.item.url) }}"
 
-    - name: Fail with message
+    - name: Check for failed health checks
+      set_fact:
+        failed_health_checks: "{{ health_check_results.results | selectattr('failed', 'equalto', true) | list }}"
+
+    - name: Display summary of failed checks
+      debug:
+        msg: |
+          HEALTH CHECK FAILURES DETECTED
+          Failed endpoints:
+          {% for check in failed_health_checks %}
+          - {{ check.item.name | default(check.item.url) }}: {{ check.msg | default('Connection failed') }}
+          {% endfor %}
+      when: failed_health_checks | length > 0
+
+    - name: Fail deployment if on_failure is 'fail'
       fail:
         msg: |
-          Deployment failed: {{ failed_health_checks | length }}/{{ health_check_endpoints | length }} health checks failed.
-          {{ 'Failed containers/images removed.' if (deployment_config.image_management.cleanup_on_failure | default(true) | bool) else 'Failed containers/images kept on system (cleanup disabled).' }}
-  when:
-    - health_checks_enabled | default(false)
-    - failed_health_checks is defined
-    - failed_health_checks | length > 0
-    - health_check_on_failure == 'fail'
+          Deployment failed: {{ failed_health_checks | length }}/{{ health_check_endpoints | length }} external health checks failed.
+          
+          Failed endpoints:
+          {% for check in failed_health_checks %}
+          - {{ check.item.name | default(check.item.url) }}
+          {% endfor %}
+      when:
+        - failed_health_checks | length > 0
+        - health_check_on_failure == 'fail'
 
-- name: Trigger rollback if health checks failed and on_failure is 'rollback'
-  include_role:
-    name: rollback
-  when:
-    - health_checks_enabled | default(false)
-    - failed_health_checks is defined
-    - failed_health_checks | length > 0
-    - health_check_on_failure == 'rollback'
+    - name: Trigger rollback if on_failure is 'rollback'
+      include_role:
+        name: rollback
+      when:
+        - failed_health_checks | length > 0
+        - health_check_on_failure == 'rollback'
 
-- name: Send notification on health check failure
-  debug:
-    msg: |
-      ⚠️  Health checks failed - deployment continues (on_failure: {{ health_check_on_failure }})
-      Failed: {% for check in failed_health_checks %}{{ check.item.name | default(check.item.url) }}{% if not loop.last %}, {% endif %}{% endfor %}
+    - name: Display notification on failure (continue deployment)
+      debug:
+        msg: |
+          Health checks failed - deployment continues (on_failure: {{ health_check_on_failure }})
+          Failed: {% for check in failed_health_checks %}{{ check.item.name | default(check.item.url) }}{% if not loop.last %}, {% endif %}{% endfor %}
+      when:
+        - failed_health_checks | length > 0
+        - health_check_on_failure == 'notify'
 
-  when:
-    - health_checks_enabled | default(false)
-    - failed_health_checks is defined
-    - failed_health_checks | length > 0
-    - health_check_on_failure == 'notify'
+    - name: Display success message
+      debug:
+        msg: "All external health checks passed ({{ health_check_endpoints | length }}/{{ health_check_endpoints | length }})"
+      when: (failed_health_checks | default([]) | length) == 0
 
-- name: Display success message
-  debug:
-    msg: "All health checks passed ({{ health_check_endpoints | length }}/{{ health_check_endpoints | length }})"
-  when:
+  when: 
     - health_checks_enabled | default(false)
-    - health_check_results.results is defined
-    - (failed_health_checks | default([]) | length) == 0
+    - health_check_endpoints | length > 0

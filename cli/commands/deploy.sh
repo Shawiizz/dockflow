@@ -13,10 +13,7 @@ generate_uuid() {
 	fi
 }
 
-# Generate a random project ID
-generate_project_id() {
-	tr -dc 'a-z0-9' </dev/urandom | fold -w 8 | head -n 1
-}
+
 
 # Show deploy command help
 show_deploy_help() {
@@ -276,7 +273,6 @@ run_deploy() {
 	export ENV="$DEPLOY_ENV"
 	export HOSTNAME="$DEPLOY_HOSTNAME"
 	export VERSION="$DEPLOY_VERSION"
-	export PROJECT_ID="auto" # Will be resolved automatically by Ansible from existing tracking files
 	# Use provided branch or detect from git, fallback to 'main'
 	if [[ -n "$DEPLOY_BRANCH" ]]; then
 		export BRANCH_NAME="$DEPLOY_BRANCH"
@@ -346,7 +342,6 @@ PYTHON_EOF
 }
 
 export -f generate_uuid
-export -f generate_project_id
 export -f show_deploy_help
 export -f parse_deploy_args
 export -f run_deploy

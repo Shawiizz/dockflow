@@ -1,30 +1,9 @@
 ---
 # Docker Swarm role - handles Docker Swarm stack deployment
-# This role deploys services using docker stack when deploy section is present in docker-compose.yml
+# This is the only deployment mode in Dockflow v2.0
+# Swarm is used even for single-node deployments for consistency and reliability
 
-- name: Check if Swarm mode should be used
-  block:
-    - name: Check if docker-compose.yml has deploy section
-      shell: |
-        if [ -f "{{ compose_path }}" ]; then
-          grep -q "^\s*deploy:" "{{ compose_path }}" && echo "true" || echo "false"
-        else
-          echo "false"
-        fi
-      delegate_to: localhost
-      register: has_deploy_section
-      changed_when: false
-
-    - name: Set Swarm mode flag
-      set_fact:
-        use_swarm_mode: "{{ has_deploy_section.stdout | trim == 'true' }}"
-        swarm_stack_name: "{{ deployment_config.swarm.stack_name | default(project_id + '-' + env) }}"
-
-- name: Display deployment mode
-  debug:
-    msg: "Using {{ 'Docker Swarm' if use_swarm_mode else 'standard Docker' }} deployment mode"
-
-- name: Deploy using Docker Swarm
+- name: Initialize Docker Swarm
   block:
     - name: Check if Docker Swarm is initialized
       shell: docker info --format '{{ '{{' }}.Swarm.LocalNodeState{{ '}}' }}'
@@ -34,146 +13,281 @@
 
     - name: Initialize Docker Swarm if not already initialized
       shell: |
-        if [ "{{ swarm_state.stdout | trim }}" != "active" ]; then
-          docker swarm init --advertise-addr {{ ansible_default_ipv4.address | default(ansible_all_ipv4_addresses[0]) }}
-          echo "Swarm initialized"
-        else
-          echo "Swarm already active"
-        fi
+        docker swarm init --advertise-addr {{ ansible_default_ipv4.address | default(ansible_all_ipv4_addresses[0]) }} 2>/dev/null || true
       register: swarm_init
-      changed_when: "'Swarm initialized' in swarm_init.stdout"
+      when: swarm_state.stdout | trim != 'active'
 
-    - name: Create temporary directory for compose file
-      file:
-        path: /tmp/swarm-deploy-{{ project_id }}-{{ env }}
-        state: directory
-        mode: '0755'
-
-    - name: Transfer rendered docker-compose.yml to remote server
-      copy:
-        src: "{{ compose_path }}"
-        dest: "/tmp/swarm-deploy-{{ project_id }}-{{ env }}/docker-compose.yml"
-        mode: '0644'
-
-    - name: Transfer .env file if exists
-      copy:
-        src: "{{ root_path }}/.deployment/docker/.env"
-        dest: "/tmp/swarm-deploy-{{ project_id }}-{{ env }}/.env"
-        mode: '0644'
-      failed_when: false
-      ignore_errors: yes
-
-    - name: Login to registry on remote server if configured
-      shell: |
-        echo "{{ deployment_config.registry.password | default(deployment_config.registry.token) }}" | \
-        docker login {{ deployment_config.registry.url }} \
-          --username "{{ deployment_config.registry.username | default('oauth2') }}" \
-          --password-stdin
-      when:
-        - deployment_config.registry is defined
-        - deployment_config.registry.enabled | default(false) | bool
-        - deployment_config.registry.url is defined
-      no_log: true
-      register: swarm_registry_login
-
-    - name: Deploy Docker stack
-      shell: |
-        cd /tmp/swarm-deploy-{{ project_id }}-{{ env }}
-        
-        # Export environment variables from .env file if it exists
-        if [ -f .env ]; then
-          set -a
-          source .env
-          set +a
-        fi
-        
-        # Deploy the stack
-        docker stack deploy \
-          --compose-file docker-compose.yml \
-          {% if deployment_config.swarm.prune_services | default(true) | bool %}--prune \{% endif %}
-          {% if deployment_config.registry is defined and deployment_config.registry.enabled | default(false) | bool %}--with-registry-auth \{% endif %}
-          {{ swarm_stack_name }}
-        
-        echo "Stack {{ swarm_stack_name }} deployed"
-      register: stack_deploy
-      changed_when: true
-
-    - name: Wait for services to be running
-      shell: |
-        TIMEOUT={{ deployment_config.swarm.wait_timeout | default(300) }}
-        ELAPSED=0
-        INTERVAL=5
-        
-        echo "Waiting for services to be running (timeout: ${TIMEOUT}s)..."
-        
-        while [ $ELAPSED -lt $TIMEOUT ]; do
-          # Get service states
-          SERVICES=$(docker stack services {{ swarm_stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}:{{ '{{' }}.Replicas{{ '}}' }}")
-          
-          ALL_RUNNING=true
-          for SERVICE in $SERVICES; do
-            NAME=$(echo $SERVICE | cut -d: -f1)
-            REPLICAS=$(echo $SERVICE | cut -d: -f2)
-            CURRENT=$(echo $REPLICAS | cut -d/ -f1)
-            DESIRED=$(echo $REPLICAS | cut -d/ -f2)
-            
-            if [ "$CURRENT" != "$DESIRED" ]; then
-              ALL_RUNNING=false
-              echo "Service $NAME: $CURRENT/$DESIRED replicas running"
-            else
-              echo "Service $NAME: ✓ $CURRENT/$DESIRED replicas running"
-            fi
-          done
-          
-          if [ "$ALL_RUNNING" = "true" ]; then
-            echo "All services are running!"
-            exit 0
-          fi
-          
-          sleep $INTERVAL
-          ELAPSED=$((ELAPSED + INTERVAL))
-        done
-        
-        echo "Warning: Timeout reached, some services may not be fully running"
-        exit 1
-      when: deployment_config.swarm.wait_for_services | default(true) | bool
-      register: wait_result
-      failed_when: false
-      changed_when: false
-
-    - name: Display stack status
-      shell: |
-        echo "=== Stack Services ==="
-        docker stack services {{ swarm_stack_name }}
-        echo ""
-        echo "=== Stack Tasks ==="
-        docker stack ps {{ swarm_stack_name }} --no-trunc
-      register: stack_status
-      changed_when: false
-
-    - name: Show stack deployment status
+    - name: Display Swarm status
       debug:
-        msg: "{{ stack_status.stdout_lines }}"
+        msg: "Docker Swarm {{ 'initialized' if swarm_init.changed | default(false) else 'already active' }}"
 
-    - name: Store deployment info for rollback
+- name: Set stack deployment variables
+  set_fact:
+    swarm_stack_name: "{{ stack_name }}"
+    stacks_dir: "/var/lib/dockflow/stacks/{{ stack_name }}"
+    use_registry_auth: "{{ deployment_config.registry.enabled | default(false) | bool }}"
+    resolve_image_flag: "{{ '--resolve-image=never' if not (deployment_config.registry.enabled | default(false) | bool) else '' }}"
+
+- name: Ensure stack directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /var/lib/dockflow/stacks
+    - "{{ stacks_dir }}"
+
+- name: Find existing releases
+  find:
+    paths: "{{ stacks_dir }}"
+    file_type: directory
+    patterns: "[0-9]*"
+  register: existing_releases
+
+- name: Determine next release version
+  set_fact:
+    release_versions: >-
+      {%- set versions = [] -%}
+      {%- for release in existing_releases.files -%}
+        {%- set ver = release.path | basename | int -%}
+        {%- set _ = versions.append(ver) -%}
+      {%- endfor -%}
+      {{ versions | sort | reverse }}
+    next_version: >-
+      {%- set versions = [] -%}
+      {%- for release in existing_releases.files -%}
+        {%- set ver = release.path | basename | int -%}
+        {%- set _ = versions.append(ver) -%}
+      {%- endfor -%}
+      {{ (versions | max | default(0)) + 1 }}
+
+- name: Set release directory
+  set_fact:
+    release_dir: "{{ stacks_dir }}/{{ next_version | int }}"
+
+- name: Create release directory
+  file:
+    path: "{{ release_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Transfer rendered docker-compose.yml to release directory
+  copy:
+    src: "{{ compose_path }}"
+    dest: "{{ release_dir }}/docker-compose.yml"
+    mode: '0644'
+  register: compose_transfer
+
+- name: Transfer .env file if exists
+  copy:
+    src: "{{ root_path }}/.deployment/docker/.env"
+    dest: "{{ release_dir }}/.env"
+    mode: '0644'
+  failed_when: false
+  ignore_errors: yes
+
+- name: Create release metadata file
+  copy:
+    content: |
+      {
+        "project_name": "{{ project_name }}",
+        "stack_name": "{{ swarm_stack_name }}",
+        "environment": "{{ env }}",
+        "version": "{{ version }}",
+        "release": {{ next_version | int }},
+        "branch": "{{ sanitized_branch_name }}",
+        "timestamp": "{{ ansible_date_time.iso8601 }}",
+        "images": []
+      }
+    dest: "{{ release_dir }}/metadata.json"
+    mode: '0644'
+
+- name: Update current symlink
+  file:
+    src: "{{ release_dir }}"
+    dest: "{{ stacks_dir }}/current"
+    state: link
+    force: yes
+
+- name: Login to registry on remote server if configured
+  shell: |
+    echo "{{ deployment_config.registry.password | default(deployment_config.registry.token) }}" | \
+    docker login {{ deployment_config.registry.url }} \
+      --username "{{ deployment_config.registry.username | default('oauth2') }}" \
+      --password-stdin
+  when:
+    - deployment_config.registry is defined
+    - deployment_config.registry.enabled | default(false) | bool
+    - deployment_config.registry.url is defined
+  no_log: true
+  register: swarm_registry_login
+
+- name: Inject Swarm deployment configuration
+  block:
+    - name: Read current docker-compose.yml
+      slurp:
+        src: "{{ release_dir }}/docker-compose.yml"
+      register: compose_content
+
+    - name: Parse docker-compose.yml
+      set_fact:
+        compose_data: "{{ compose_content.content | b64decode | from_yaml }}"
+
+    - name: Inject default deploy config for services
+      set_fact:
+        updated_compose: >-
+          {%- set ns = namespace(services={}) -%}
+          {%- for service_name, service_config in compose_data.services.items() -%}
+            {%- set deploy_config = service_config.deploy | default({}) -%}
+            {%- set update_config = deploy_config.update_config | default({}) -%}
+            {%- set new_update_config = {
+              'parallelism': update_config.parallelism | default(1),
+              'delay': update_config.delay | default('10s'),
+              'failure_action': update_config.failure_action | default('rollback'),
+              'monitor': update_config.monitor | default('30s'),
+              'max_failure_ratio': update_config.max_failure_ratio | default(0)
+            } -%}
+            {%- set new_deploy = deploy_config | combine({'update_config': new_update_config}) -%}
+            {%- set _ = ns.services.update({service_name: service_config | combine({'deploy': new_deploy})}) -%}
+          {%- endfor -%}
+          {{ compose_data | combine({'services': ns.services}) }}
+
+    - name: Write updated docker-compose.yml with deploy config
       copy:
-        content: |
-          STACK_NAME={{ swarm_stack_name }}
-          COMPOSE_FILE=/tmp/swarm-deploy-{{ project_id }}-{{ env }}/docker-compose.yml
-          DEPLOYMENT_TIME={{ ansible_date_time.iso8601 }}
-          DEPLOYMENT_MODE=swarm
-        dest: /var/lib/dockflow/swarm_{{ project_id }}_{{ env }}.info
+        content: "{{ updated_compose | to_nice_yaml(indent=2, width=999) }}"
+        dest: "{{ release_dir }}/docker-compose.yml"
         mode: '0644'
 
-    - name: Cleanup temporary files
-      file:
-        path: /tmp/swarm-deploy-{{ project_id }}-{{ env }}
-        state: absent
-      when: deployment_config.options.enable_debug_logs | default(false) | bool == false
+- name: Deploy Docker stack
+  shell: |
+    cd {{ release_dir }}
+    
+    # Export environment variables from .env file if it exists
+    if [ -f .env ]; then
+      set -a
+      source .env
+      set +a
+    fi
+    
+    # Deploy the stack
+    docker stack deploy \
+      --compose-file docker-compose.yml \
+      {% if deployment_config.swarm.prune_services | default(true) | bool %}--prune \{% endif %}
+      {% if use_registry_auth %}--with-registry-auth \{% endif %}
+      {{ resolve_image_flag }} \
+      {{ swarm_stack_name }}
+    
+    echo "Stack {{ swarm_stack_name }} deployed"
+  register: stack_deploy
+  changed_when: true
 
-  when: use_swarm_mode | bool
+- name: Wait for services to converge
+  shell: |
+    TIMEOUT={{ deployment_config.swarm.wait_timeout | default(300) }}
+    ELAPSED=0
+    INTERVAL=5
+    
+    echo "Waiting for services to converge (timeout: ${TIMEOUT}s)..."
+    
+    while [ $ELAPSED -lt $TIMEOUT ]; do
+      # Get service states
+      SERVICES=$(docker stack services {{ swarm_stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}:{{ '{{' }}.Replicas{{ '}}' }}")
+      
+      if [ -z "$SERVICES" ]; then
+        echo "No services found yet, waiting..."
+        sleep $INTERVAL
+        ELAPSED=$((ELAPSED + INTERVAL))
+        continue
+      fi
+      
+      ALL_RUNNING=true
+      for SERVICE in $SERVICES; do
+        NAME=$(echo $SERVICE | cut -d: -f1)
+        REPLICAS=$(echo $SERVICE | cut -d: -f2)
+        CURRENT=$(echo $REPLICAS | cut -d/ -f1)
+        DESIRED=$(echo $REPLICAS | cut -d/ -f2)
+        
+        if [ "$CURRENT" != "$DESIRED" ]; then
+          ALL_RUNNING=false
+          echo "Service $NAME: $CURRENT/$DESIRED replicas"
+        fi
+      done
+      
+      if [ "$ALL_RUNNING" = "true" ]; then
+        echo "All services converged successfully"
+        exit 0
+      fi
+      
+      sleep $INTERVAL
+      ELAPSED=$((ELAPSED + INTERVAL))
+    done
+    
+    echo "Warning: Timeout reached, some services may not be fully running"
+    exit 1
+  when: deployment_config.swarm.wait_for_services | default(true) | bool
+  register: wait_result
+  failed_when: false
+  changed_when: false
 
-- name: Skip Swarm deployment
+- name: Check for Swarm rollback events
+  shell: |
+    # Check if any service has rolled back
+    ROLLBACK_DETECTED=false
+    SERVICES=$(docker stack services {{ swarm_stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}")
+    
+    for SERVICE in $SERVICES; do
+      # Check service update status
+      STATUS=$(docker service inspect $SERVICE --format "{{ '{{' }}.UpdateStatus.State{{ '}}' }}" 2>/dev/null || echo "")
+      
+      if [ "$STATUS" = "rollback_completed" ]; then
+        ROLLBACK_DETECTED=true
+        echo "ROLLBACK_DETECTED: Service $SERVICE has been rolled back by Swarm"
+      fi
+    done
+    
+    if [ "$ROLLBACK_DETECTED" = "true" ]; then
+      exit 1
+    fi
+    
+    echo "No rollback detected - deployment successful"
+    exit 0
+  register: rollback_check
+  failed_when: false
+  changed_when: false
+
+- name: Set Swarm rollback detected flag
+  set_fact:
+    swarm_rollback_detected: "{{ rollback_check.rc != 0 }}"
+
+- name: Display stack status
+  shell: |
+    echo "=== Stack Services ==="
+    docker stack services {{ swarm_stack_name }}
+    echo ""
+    echo "=== Stack Tasks ==="
+    docker stack ps {{ swarm_stack_name }} --no-trunc 2>/dev/null | head -20
+  register: stack_status
+  changed_when: false
+
+- name: Show stack deployment status
   debug:
-    msg: "No 'deploy' section found in docker-compose.yml - using standard Docker deployment"
-  when: not (use_swarm_mode | bool)
+    msg: "{{ stack_status.stdout_lines }}"
+
+- name: Fail if Swarm detected deployment issues and rolled back
+  fail:
+    msg: |
+      Deployment failed: Docker Swarm has automatically rolled back the deployment.
+      This indicates that the new containers failed their internal healthchecks.
+      
+      Check the service logs for more details:
+        docker service logs {{ swarm_stack_name }}_<service_name>
+      
+      The previous version is now running.
+  when: swarm_rollback_detected | bool
+
+- name: Store current release info for external reference
+  set_fact:
+    current_release_path: "{{ release_dir }}"
+    current_release_number: "{{ next_version | int }}"
+    current_stack_name: "{{ swarm_stack_name }}"
+    current_stacks_dir: "{{ stacks_dir }}"

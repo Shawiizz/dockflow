@@ -1,0 +1,183 @@
+---
+# Local Registry role - handles ephemeral local registry for image transfer via SSH tunnel
+# This role runs a temporary registry on the CI machine and uses SSH tunnel to push images
+# Then pulls them on the remote server
+
+- name: Check if local registry is needed
+  set_fact:
+    use_local_registry: >-
+      {{
+        not (deployment_config.registry.enabled | default(false) | bool)
+        and not (remote_build | default(false) | bool)
+      }}
+
+- name: Setup local registry for image transfer
+  block:
+    - name: Generate unique registry port to avoid conflicts
+      set_fact:
+        local_registry_port: "{{ 5000 + (999 | random) }}"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Check if local registry container already exists
+      shell: docker ps -a --filter "name=dockflow-local-registry" --format "{{ '{{' }}.Names{{ '}}' }}"
+      delegate_to: localhost
+      register: existing_registry
+      changed_when: false
+      failed_when: false
+
+    - name: Stop and remove existing local registry if present
+      shell: |
+        docker stop dockflow-local-registry 2>/dev/null || true
+        docker rm dockflow-local-registry 2>/dev/null || true
+      delegate_to: localhost
+      when: existing_registry.stdout != ''
+      changed_when: false
+
+    - name: Start local Docker registry on CI runner
+      shell: |
+        docker run -d \
+          --name dockflow-local-registry \
+          -p {{ local_registry_port }}:5000 \
+          --restart=no \
+          registry:2
+      delegate_to: localhost
+      register: registry_start
+
+    - name: Wait for local registry to be ready
+      uri:
+        url: "http://localhost:{{ local_registry_port }}/v2/"
+        method: GET
+        status_code: 200
+      delegate_to: localhost
+      register: registry_ready
+      until: registry_ready.status == 200
+      retries: 10
+      delay: 1
+
+    - name: Display local registry info
+      debug:
+        msg: "Local registry started on port {{ local_registry_port }}"
+      delegate_to: localhost
+
+  when: use_local_registry | bool
+
+- name: Tag and push images to local registry
+  block:
+    - name: Get list of built images from build commands
+      set_fact:
+        built_images: "{{ build_commands | select('search', '-t\\s+') | map('regex_replace', '.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') | list }}"
+      when: build_commands is defined
+
+    - name: Tag images for local registry
+      shell: |
+        docker tag "{{ item }}" "localhost:{{ local_registry_port }}/{{ item }}"
+      loop: "{{ built_images | default([]) }}"
+      delegate_to: localhost
+      loop_control:
+        label: "Tagging {{ item }} for local registry"
+
+    - name: Push images to local registry
+      shell: |
+        docker push "localhost:{{ local_registry_port }}/{{ item }}"
+      loop: "{{ built_images | default([]) }}"
+      delegate_to: localhost
+      register: push_results
+      loop_control:
+        label: "Pushing {{ item }}"
+
+    - name: Display push completion
+      debug:
+        msg: "Pushed {{ built_images | length }} image(s) to local registry"
+      delegate_to: localhost
+
+  when: 
+    - use_local_registry | bool
+    - build_commands is defined
+    - build_commands | length > 0
+
+- name: Create SSH tunnel and pull images on remote
+  block:
+    - name: Get remote server SSH details
+      set_fact:
+        remote_host: "{{ ansible_host }}"
+        remote_user: "{{ ansible_user | default('root') }}"
+        remote_port: "{{ ansible_port | default(22) }}"
+
+    - name: Generate unique remote port for tunnel
+      set_fact:
+        tunnel_remote_port: "{{ 15000 + (999 | random) }}"
+
+    - name: Create SSH tunnel for registry access (background)
+      shell: |
+        ssh -f -N -o StrictHostKeyChecking=no \
+          -R {{ tunnel_remote_port }}:localhost:{{ local_registry_port }} \
+          -p {{ remote_port }} \
+          {{ remote_user }}@{{ remote_host }}
+        echo "Tunnel created: remote:{{ tunnel_remote_port }} -> local:{{ local_registry_port }}"
+      delegate_to: localhost
+      register: tunnel_result
+
+    - name: Wait for tunnel to be established
+      pause:
+        seconds: 2
+
+    - name: Test tunnel connectivity from remote
+      shell: |
+        curl -s -o /dev/null -w "%{http_code}" http://localhost:{{ tunnel_remote_port }}/v2/ || echo "failed"
+      register: tunnel_test
+      retries: 5
+      delay: 2
+      until: tunnel_test.stdout == "200"
+
+    - name: Pull images on remote server via tunnel
+      shell: |
+        docker pull localhost:{{ tunnel_remote_port }}/{{ item }}
+        docker tag localhost:{{ tunnel_remote_port }}/{{ item }} {{ item }}
+        docker rmi localhost:{{ tunnel_remote_port }}/{{ item }} 2>/dev/null || true
+      loop: "{{ built_images | default([]) }}"
+      register: pull_results
+      loop_control:
+        label: "Pulling {{ item }}"
+
+    - name: Display pull completion
+      debug:
+        msg: "Pulled and tagged {{ built_images | length }} image(s) on remote server"
+
+    - name: Find and kill SSH tunnel process
+      shell: |
+        pkill -f "ssh.*-R {{ tunnel_remote_port }}:localhost:{{ local_registry_port }}" || true
+      delegate_to: localhost
+      failed_when: false
+
+  when: 
+    - use_local_registry | bool
+    - built_images is defined
+    - built_images | length > 0
+
+- name: Cleanup local registry
+  block:
+    - name: Stop and remove local registry container
+      shell: |
+        docker stop dockflow-local-registry 2>/dev/null || true
+        docker rm dockflow-local-registry 2>/dev/null || true
+      delegate_to: localhost
+      failed_when: false
+
+    - name: Remove local registry image tags
+      shell: |
+        docker rmi "localhost:{{ local_registry_port }}/{{ item }}" 2>/dev/null || true
+      loop: "{{ built_images | default([]) }}"
+      delegate_to: localhost
+      failed_when: false
+      loop_control:
+        label: "Removing local tag for {{ item }}"
+
+    - name: Display cleanup completion
+      debug:
+        msg: "Local registry cleanup completed"
+      delegate_to: localhost
+
+  when: 
+    - use_local_registry | bool
+    - cleanup_local_registry | default(true) | bool

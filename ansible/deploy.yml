@@ -5,14 +5,7 @@
     root_path: "{{ lookup('env', 'ROOT_PATH') }}"
     compose_path: "{{ root_path }}/.deployment/docker/docker-compose.yml"
     tmp_dir: "/tmp"
-    framework_version: "1.0.57"
-    decomposerize_types:
-      - name: "setup"
-        base_options: "--create-networks --create-volumes --stop-and-remove"
-        ignore_errors: yes  # Networks/volumes might already exist
-      - name: "run"
-        base_options: "--docker-run --docker-run-detach"
-        ignore_errors: no
+    framework_version: "2.0.0"
   pre_tasks:
     - name: Display Dockflow version
       debug:
@@ -33,6 +26,34 @@
       run_once: true
       delegate_to: localhost
 
+    - name: Validate project_name is set
+      fail:
+        msg: |
+          ERROR: project_name is required in config.yml
+          
+          Please add a project_name to your .deployment/config.yml:
+          
+          project_name: "my-project-name"
+          
+          The project_name must contain only lowercase letters, numbers, and hyphens.
+          It is used to identify your project and name the Docker Swarm stack.
+      when: deployment_config.project_name is not defined or deployment_config.project_name == ''
+      delegate_to: localhost
+      run_once: true
+
+    - name: Validate project_name format
+      fail:
+        msg: |
+          ERROR: Invalid project_name format: {{ deployment_config.project_name }}
+          
+          The project_name must contain only lowercase letters, numbers, and hyphens.
+          Example: my-app-name, webapp-v2, api-backend
+      when: 
+        - deployment_config.project_name is defined
+        - not (deployment_config.project_name | regex_search('^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$'))
+      delegate_to: localhost
+      run_once: true
+
     - name: Prepare deployment (render Docker templates)
       import_role:
         name: prepare-deployment
@@ -46,20 +67,21 @@
         services_option: "{{ ('--services=' + lookup('env', 'DEPLOY_DOCKER_SERVICES')) if lookup('env', 'DEPLOY_DOCKER_SERVICES') else '' }}"
         environmentize_option: "{{ '--environmentize' if (deployment_config.options.environmentize | default(true) | bool) else '' }}"
         remote_build: "{{ deployment_config.options.remote_build | default(false) | bool }}"
+        project_name: "{{ deployment_config.project_name }}"
         sanitized_branch_name: "{{ branch_name | regex_replace('[^a-zA-Z0-9-]', '_') }}"
+        stack_name: "{{ deployment_config.project_name }}-{{ env }}"
         rollback_configured: "{{ (deployment_config.health_checks.on_failure | default('notify')) == 'rollback' }}"
       no_log: "{{ not (deployment_config.options.enable_debug_logs | default(false) | bool) }}"
 
-    - name: Resolve project_id if not provided
-      include_role:
-        name: image-tracking
-        tasks_from: resolve_project_id
-
-    - name: Ensure rollback directory exists
+    - name: Ensure dockflow directories exist
       file:
-        path: /var/lib/dockflow
+        path: "{{ item }}"
         state: directory
         mode: '0755'
+      loop:
+        - /var/lib/dockflow
+        - /var/lib/dockflow/stacks
+
   roles:
     - role: geerlingguy.docker
       when: not (skip_docker_install | default(false) | bool)
@@ -68,58 +90,38 @@
         - nginx
     - role: private_ssh_keys
     - role: services
-    - role: image-tracking
     - role: local-build
       when: not (remote_build | bool)
       delegate_to: localhost
       run_once: true
     - role: remote-build
       when: remote_build | bool
-    - role: image-transfer
-      when: 
-        - not (remote_build | bool)
-        - not (deployment_config.registry.enabled | default(false) | bool)
     - role: execute-scripts
+
   tasks:
-    - name: Check and deploy using Docker Swarm if applicable
+    - name: Deploy using Docker Swarm
       include_role:
         name: docker-swarm
       vars:
         compose_path: "{{ root_path }}/.deployment/docker/docker-compose.yml"
 
-    - name: Process Docker commands for standard deployment
-      include_tasks: playbooks/process_docker_commands.yml
-      loop: "{{ decomposerize_types }}"
-      loop_control:
-        loop_var: cmd_type
-      when: 
-        - not (cmd_type.skip_on_rollback | default(false) and rollback_configured | default(false))
-        - not (use_swarm_mode | default(false) | bool)
-
   post_tasks:
-    - name: Run health checks
+    - name: Wait for Swarm internal healthchecks to complete
+      include_role:
+        name: swarm-healthcheck
+      when: deployment_config.health_checks.enabled | default(true) | bool
+
+    - name: Run external health checks
       include_role:
         name: health-check
       vars:
         health_checks_config: "{{ deployment_config.health_checks | default({}) }}"
-      when: deployment_config is defined
+      when: 
+        - deployment_config.health_checks is defined
+        - deployment_config.health_checks.enabled | default(true) | bool
 
-    - name: Build list of newly deployed images for marking healthy
-      set_fact:
-        new_deployed_images: "{{ hostvars[inventory_hostname].get('all_docker_run_commands', []) | map('split') | map('last') | map('regex_replace', '^(.*)$', '{\"name\": \"\\1\", \"timestamp\": \"' + ansible_date_time.iso8601 + '\"}') | map('from_json') | list }}"
-      changed_when: false
-
-    - name: Mark deployment as healthy and cleanup
-      block:
-        - name: Mark deployment as healthy
-          include_role:
-            name: image-tracking
-            tasks_from: mark_healthy
-          vars:
-            health_check_passed: "{{ (failed_health_checks | default([]) | length) == 0 }}"
-
-        - name: Clean up old unhealthy images
-          include_role:
-            name: image-tracking
-            tasks_from: cleanup
-      when: (failed_health_checks | default([]) | length) == 0 or not (deployment_config.health_checks.enabled | default(false))
+    - name: Cleanup old stacks
+      include_role:
+        name: stack-management
+        tasks_from: cleanup
+      when: (failed_health_checks | default([]) | length) == 0

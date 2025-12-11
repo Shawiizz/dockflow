@@ -2,6 +2,14 @@
 
 import { Tabs, Steps } from 'nextra/components'
 
+## Overview
+
+Dockflow uses Docker Swarm for all deployments, providing:
+- **Automatic rollback** if health checks fail
+- **Zero-downtime updates** with rolling deployments
+- **Stack versioning** for easy rollback to previous versions
+- **Dual health checks** - internal (Swarm) and external (HTTP)
+
 ## Deploy with CLI (Local)
 
 You can deploy directly from your local machine using the `dockflow deploy` command:
@@ -53,6 +61,14 @@ docker run -it --rm -v //var/run/docker.sock:/var/run/docker.sock -v ${PWD}:/pro
 curl -fsSL "https://raw.githubusercontent.com/Shawiizz/dockflow/main/cli/cli_wrapper.sh?$(date +%s)" | bash
 ```
 
+### Configure project
+
+Ensure your `.deployment/config.yml` has a `project_name`:
+
+```yaml
+project_name: "my-app"  # Required: lowercase, alphanumeric, hyphens only
+```
+
 ### Create `.env.dockflow` file
 
 Create this file in your project root:
@@ -68,7 +84,7 @@ STAGING_CONNECTION=eyJob3N0Ijoi...
 SKIP_DOCKER_INSTALL=true
 ```
 
-> ⚠️ **Important:** Add `.env.dockflow` to your `.gitignore` to avoid exposing secrets.
+> **Important:** Add `.env.dockflow` to your `.gitignore` to avoid exposing secrets.
 
 ### Initialize project structure
 

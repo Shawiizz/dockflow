@@ -67,26 +67,30 @@ import { Tabs } from 'nextra/components'
         tags:
           - '*'
 
+    # Note: Make sure your .deployment/config.yml has project_name set:
+    # project_name: "my-app"
+
     jobs:
       # Basic CI job to run on every push to branches (not used for deployment)
       build:
         if: github.ref_type == 'branch'
-        uses: Shawiizz/dockflow/.github/workflows/build.yml@1.0.57
+        uses: Shawiizz/dockflow/.github/workflows/build.yml@2.0.0
         with:
           free-disk-space: false # Set to true if you need to free disk space during build (for big docker images)
 
       # Deploy your application on tag push
-      deploy:
+      deploy-tag:
         if: github.ref_type == 'tag'
-        uses: Shawiizz/dockflow/.github/workflows/deploy.yml@1.0.57
+        uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.0
         with:
           tag: ${{ github.ref_name }}
           free-disk-space: false # Set to true if you need to free disk space during deployment (for big docker images)
         secrets: inherit
 
       # Deploy your application on push to branch
-      deploy:
-        uses: Shawiizz/dockflow/.github/workflows/deploy.yml@1.0.57
+      deploy-branch:
+        if: github.ref_type == 'branch'
+        uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.0
         with:
           version: ${{ github.ref_name }}-${{ github.sha }} # Note: the variable is called "version" specifically for branch deployments
           free-disk-space: false # Set to true if you need to free disk space during deployment (for big docker images)
@@ -105,15 +109,18 @@ import { Tabs } from 'nextra/components'
       # Deploy your application on tag or branch push
       - deploy
 
+    # Note: Make sure your .deployment/config.yml has project_name set:
+    # project_name: "my-app"
+
     include:
       # Continuous Integration (CI) template for building Docker images (not used for deployment)
-      - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/1.0.57/.gitlab/workflows/build.yml'
+      - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/2.0.0/.gitlab/workflows/build.yml'
 
       # Deploy your application on tag push
-      - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/1.0.57/.gitlab/workflows/deploy.yml'
+      - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/2.0.0/.gitlab/workflows/deploy.yml'
 
       # Deploy your application on branch push (will deploy to production environment)
-      - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/1.0.57/.gitlab/workflows/deploy-branch.yml'
+      - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/2.0.0/.gitlab/workflows/deploy-branch.yml'
     ```
   </Tabs.Tab>
 </Tabs>

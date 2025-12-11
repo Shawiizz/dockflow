@@ -27,7 +27,6 @@
       # Set common environment variables
       export ROOT_PATH="$(pwd)"
       export ANSIBLE_HOST_KEY_CHECKING=False
-      export PROJECT_ID="$CI_PROJECT_ID"
       
       # Determine branch name once
       if [[ -n "$CI_COMMIT_TAG" ]]; then

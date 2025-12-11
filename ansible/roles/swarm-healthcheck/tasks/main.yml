@@ -1,0 +1,116 @@
+---
+# Swarm Healthcheck role - waits for Swarm internal healthchecks to complete
+# This role polls the container health status before external healthchecks run
+
+- name: Wait for internal healthchecks to complete
+  block:
+    - name: Get list of services in the stack
+      shell: |
+        docker stack services {{ stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}"
+      register: stack_services
+      changed_when: false
+
+    - name: Check container health status for each service
+      shell: |
+        SERVICE="{{ item }}"
+        TIMEOUT={{ deployment_config.swarm.healthcheck_timeout | default(120) }}
+        ELAPSED=0
+        INTERVAL=5
+        
+        echo "Checking health status for service: $SERVICE"
+        
+        while [ $ELAPSED -lt $TIMEOUT ]; do
+          # Get container IDs for this service
+          CONTAINERS=$(docker service ps $SERVICE --filter "desired-state=running" --format "{{ '{{' }}.ID{{ '}}' }}" 2>/dev/null)
+          
+          if [ -z "$CONTAINERS" ]; then
+            echo "No running containers found for $SERVICE, waiting..."
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+            continue
+          fi
+          
+          ALL_HEALTHY=true
+          HAS_HEALTHCHECK=false
+          
+          for TASK_ID in $CONTAINERS; do
+            # Get the actual container ID from the task
+            CONTAINER_ID=$(docker inspect --format "{{ '{{' }}.Status.ContainerStatus.ContainerID{{ '}}' }}" $TASK_ID 2>/dev/null | head -c 12)
+            
+            if [ -z "$CONTAINER_ID" ]; then
+              continue
+            fi
+            
+            # Check if container has a healthcheck
+            HEALTH_STATUS=$(docker inspect --format "{{ '{{' }}if .State.Health{{ '}}' }}{{ '{{' }}.State.Health.Status{{ '}}' }}{{ '{{' }}else{{ '}}' }}none{{ '{{' }}end{{ '}}' }}" $CONTAINER_ID 2>/dev/null || echo "unknown")
+            
+            if [ "$HEALTH_STATUS" = "none" ]; then
+              # No healthcheck defined, consider it healthy
+              echo "Container $CONTAINER_ID: no healthcheck defined"
+              continue
+            fi
+            
+            HAS_HEALTHCHECK=true
+            
+            if [ "$HEALTH_STATUS" = "healthy" ]; then
+              echo "Container $CONTAINER_ID: healthy"
+            elif [ "$HEALTH_STATUS" = "starting" ]; then
+              echo "Container $CONTAINER_ID: healthcheck starting..."
+              ALL_HEALTHY=false
+            elif [ "$HEALTH_STATUS" = "unhealthy" ]; then
+              echo "Container $CONTAINER_ID: UNHEALTHY"
+              ALL_HEALTHY=false
+            else
+              echo "Container $CONTAINER_ID: status=$HEALTH_STATUS"
+              ALL_HEALTHY=false
+            fi
+          done
+          
+          if [ "$HAS_HEALTHCHECK" = "false" ]; then
+            echo "No healthchecks defined for service $SERVICE - skipping"
+            exit 0
+          fi
+          
+          if [ "$ALL_HEALTHY" = "true" ]; then
+            echo "All containers for $SERVICE are healthy"
+            exit 0
+          fi
+          
+          sleep $INTERVAL
+          ELAPSED=$((ELAPSED + INTERVAL))
+        done
+        
+        echo "Timeout waiting for $SERVICE healthchecks"
+        exit 1
+      loop: "{{ stack_services.stdout_lines | default([]) }}"
+      register: health_results
+      failed_when: false
+      changed_when: false
+      loop_control:
+        label: "Checking {{ item }}"
+
+    - name: Check for unhealthy services
+      set_fact:
+        unhealthy_services: "{{ health_results.results | selectattr('rc', 'defined') | selectattr('rc', 'ne', 0) | map(attribute='item') | list }}"
+      when: health_results.results is defined
+
+    - name: Display healthcheck summary
+      debug:
+        msg: |
+          Internal Healthcheck Summary:
+          - Total services: {{ stack_services.stdout_lines | length }}
+          - Healthy: {{ (stack_services.stdout_lines | length) - (unhealthy_services | default([]) | length) }}
+          - Unhealthy: {{ unhealthy_services | default([]) | length }}
+          {% if unhealthy_services | default([]) | length > 0 %}
+          
+          Unhealthy services:
+          {% for svc in unhealthy_services %}
+          - {{ svc }}
+          {% endfor %}
+          {% endif %}
+
+    - name: Set internal healthcheck status
+      set_fact:
+        internal_healthchecks_passed: "{{ (unhealthy_services | default([]) | length) == 0 }}"
+
+  when: deployment_config.health_checks.wait_for_internal | default(true) | bool

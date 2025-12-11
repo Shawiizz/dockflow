@@ -289,6 +289,8 @@ This ensures **complete isolation** between environments (production, staging, e
 If you prefer manual control, create `.deployment/config.yml`:
 
 ```yaml
+project_name: "my-app"
+
 options:
   environmentize: false
 ```
@@ -324,6 +326,8 @@ Choose how Docker images are built:
 Create `.deployment/config.yml`:
 
 ```yaml
+project_name: "my-app"
+
 options:
   remote_build: true
 ```
@@ -393,6 +397,9 @@ health_checks:
 **Configuration example:**
 
 ```yaml
+# Required: unique project identifier
+project_name: "my-app"          # lowercase, alphanumeric with hyphens only
+
 options:
   environmentize: true          # Auto-add ENV/VERSION (default: true)
   enable_debug_logs: false      # Verbose logging (default: false)
@@ -415,6 +422,7 @@ health_checks:
 
 | Option | Description | Default |
 |--------|-------------|---------|
+| `project_name` | **Required**. Unique project identifier | - |
 | `environmentize` | Auto-add `${ENV}` and `${VERSION}` to names | `true` |
 | `enable_debug_logs` | Enable detailed Ansible logs | `false` |
 | `remote_build` | Build images on remote server | `false` |
@@ -479,18 +487,18 @@ health_checks:
       url: "http://localhost:{{ app_port }}/health"
 ```
 
-#### Image Management Options
+#### Stack Management Options
 
-Control how Docker images are managed over time:
+Control how releases and Docker images are managed over time:
 
 | Option | Description | Default |
-|--------|-------------|---------|
-| `keep_healthy_versions` | Number of successful deployment versions to keep | `1` |
+|--------|-------------|---------|{{ '|' }}
+| `keep_releases` | Number of previous releases to keep for rollback | `3` |
 | `cleanup_on_failure` | Remove images immediately on failed deployment | `true` |
 
 ```yaml
-image_management:
-  keep_healthy_versions: 2      # Keep 2 successful versions for quick rollback
+stack_management:
+  keep_releases: 3              # Keep 3 previous releases for rollback
   cleanup_on_failure: true      # Clean up failed deployments automatically
 ```
 
