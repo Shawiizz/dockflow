@@ -138,5 +138,5 @@ export async function isDockerAvailable(): Promise<boolean> {
  * Get the Docker image for Ansible operations
  */
 export function getAnsibleDockerImage(): string {
-  return 'shawiizz/dockflow-cli:latest';
+  return 'shawiizz/dockflow-ci:latest';
 }

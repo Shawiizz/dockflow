@@ -6,10 +6,60 @@
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { spawnSync } from 'child_process';
 import { getProjectRoot, loadConfig, isDockerAvailable, getAnsibleDockerImage } from '../utils/config';
 import { printError, printSuccess, printInfo, printHeader, printWarning } from '../utils/output';
+
+const DOCKFLOW_REPO = 'https://github.com/Shawiizz/dockflow.git';
+const DOCKFLOW_VERSION = '2.0.0-dev1';
+
+/**
+ * Load all variables from .env.dockflow
+ */
+function loadEnvDockflow(): Record<string, string> {
+  const envFile = join(getProjectRoot(), '.env.dockflow');
+  const vars: Record<string, string> = {};
+  
+  if (!existsSync(envFile)) {
+    return vars;
+  }
+  
+  const content = readFileSync(envFile, 'utf-8');
+  
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('#') || !trimmed) continue;
+    
+    const eqIndex = trimmed.indexOf('=');
+    if (eqIndex > 0) {
+      const key = trimmed.substring(0, eqIndex).trim();
+      const value = trimmed.substring(eqIndex + 1).trim();
+      vars[key] = value;
+    }
+  }
+  
+  return vars;
+}
+
+/**
+ * Get current git branch
+ */
+function getCurrentBranch(): string {
+  try {
+    const result = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+      encoding: 'utf-8',
+      cwd: getProjectRoot(),
+    });
+    if (result.status === 0 && result.stdout) {
+      return result.stdout.trim();
+    }
+  } catch {
+    // Ignore errors
+  }
+  return 'main';
+}
 
 /**
  * Register deploy command
@@ -21,7 +71,8 @@ export function registerDeployCommand(program: Command): void {
     .option('--services <services>', 'Comma-separated list of services to deploy')
     .option('--skip-build', 'Skip the build phase')
     .option('--force', 'Force deployment even if locked')
-    .action(async (env: string, version: string | undefined, options: { services?: string; skipBuild?: boolean; force?: boolean }) => {
+    .option('--hostname <hostname>', 'Specific host to deploy to (for multi-host)', 'main')
+    .action(async (env: string, version: string | undefined, options: { services?: string; skipBuild?: boolean; force?: boolean; hostname?: string }) => {
       printHeader(`Deploying to ${env}`);
       console.log('');
 
@@ -49,19 +100,26 @@ export function registerDeployCommand(program: Command): void {
       }
       spinner.succeed('Docker is available');
 
-      // Check for .env.dockflow
-      const envFile = join(getProjectRoot(), '.env.dockflow');
-      if (!existsSync(envFile)) {
-        printError('.env.dockflow not found');
+      // Load .env.dockflow
+      const envVars = loadEnvDockflow();
+      const connectionKey = `${env.toUpperCase()}_CONNECTION`;
+      
+      if (!envVars[connectionKey]) {
+        printError(`.env.dockflow does not contain ${connectionKey}`);
         printInfo('Create a .env.dockflow file with your connection string:');
-        console.log(`  ${env.toUpperCase()}_CONNECTION=<base64-encoded-connection-string>`);
+        console.log(`  ${connectionKey}=<base64-encoded-connection-string>`);
         process.exit(1);
       }
 
       // Generate version if not provided
       const deployVersion = version || `${env}-${Date.now()}`;
+      const hostname = options.hostname || 'main';
+      const branchName = getCurrentBranch();
+      
       printInfo(`Version: ${deployVersion}`);
       printInfo(`Environment: ${env}`);
+      printInfo(`Hostname: ${hostname}`);
+      printInfo(`Branch: ${branchName}`);
       if (options.services) {
         printInfo(`Services: ${options.services}`);
       }
@@ -71,35 +129,57 @@ export function registerDeployCommand(program: Command): void {
       const projectRoot = getProjectRoot();
       const dockerImage = getAnsibleDockerImage();
       
-      // Build environment variables
-      const envVars: string[] = [
-        `-e DEPLOY_ENV=${env}`,
-        `-e DEPLOY_VERSION=${deployVersion}`,
-        `-e ROOT_PATH=/project`,
-      ];
+      // Build environment exports from .env.dockflow
+      const envExports = Object.entries(envVars)
+        .map(([key, value]) => `export ${key}="${value.replace(/"/g, '\\"')}"`)
+        .join('\n');
+      
+      // Build the deployment script to run inside the container
+      const deployScript = `
+set -e
 
-      if (options.services) {
-        envVars.push(`-e DEPLOY_DOCKER_SERVICES=${options.services}`);
-      }
-      if (options.skipBuild) {
-        envVars.push(`-e SKIP_BUILD=true`);
-      }
-      if (options.force) {
-        envVars.push(`-e FORCE_DEPLOY=true`);
-      }
+# Clone dockflow framework
+echo "Cloning dockflow framework v${DOCKFLOW_VERSION}..."
+git clone --depth 1 --branch "${DOCKFLOW_VERSION}" "${DOCKFLOW_REPO}" /tmp/dockflow 2>/dev/null
+chmod +x /tmp/dockflow/.common/scripts/*.sh
+
+# Set environment variables from .env.dockflow
+${envExports}
+
+# Set deployment environment variables
+export ENV="${env}"
+export HOSTNAME="${hostname}"
+export VERSION="${deployVersion}"
+export BRANCH_NAME="${branchName}"
+export ROOT_PATH="/project"
+export ANSIBLE_HOST_KEY_CHECKING=False
+${options.skipBuild ? 'export SKIP_BUILD=true' : ''}
+${options.force ? 'export FORCE_DEPLOY=true' : ''}
+${options.services ? `export DEPLOY_DOCKER_SERVICES="${options.services}"` : ''}
+
+# Load environment using the standard load_env script
+cd /project
+source /tmp/dockflow/.common/scripts/load_env.sh "${env}" "${hostname}"
+
+echo ""
+echo "Deploying to \$DOCKFLOW_HOST:\$DOCKFLOW_PORT as \$DOCKFLOW_USER"
+echo ""
+
+# Run the deployment script
+cd /tmp/dockflow
+bash .common/scripts/deploy_with_ansible.sh
+`;
 
       // Build Docker command
       const dockerCmd = [
-        'docker', 'run', '--rm',
+        'docker', 'run', '--rm', '-it',
         '-v', `${projectRoot}:/project`,
-        '-v', `${process.env.HOME || process.env.USERPROFILE}/.ssh:/root/.ssh:ro`,
         '-v', '/var/run/docker.sock:/var/run/docker.sock',
-        ...envVars,
         dockerImage,
-        'deploy', env, deployVersion,
+        'bash', '-c', deployScript,
       ];
 
-      console.log(chalk.dim(`Running: ${dockerCmd.join(' ')}`));
+      console.log(chalk.dim('Starting deployment container...'));
       console.log('');
 
       // Execute deployment
