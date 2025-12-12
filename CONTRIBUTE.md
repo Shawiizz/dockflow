@@ -4,12 +4,12 @@ Welcome! Contributions are appreciated. Open an issue or pull request to suggest
 
 ## Architecture Overview
 
-Dockflow uses two Docker images:
+Dockflow uses a native CLI binary and a Docker image for CI/CD:
 
 ```mermaid
 graph TB
     subgraph "Development & Setup"
-        CLI[dockflow-cli:latest<br/>Interactive CLI Tool]
+        CLI[dockflow CLI<br/>Native Binary]
         CLI -->|Setup| Remote[Remote Server]
         CLI -->|Initialize| Local[Local Project Structure]
     end
@@ -33,10 +33,10 @@ graph TB
     style Remote fill:#EE0000
 ```
 
-| Image | Purpose | Contains |
-|-------|---------|----------|
-| **dockflow-cli** | Machine setup & project initialization | Interactive CLI tool |
-| **dockflow-ci** | GitLab CI/CD deployments | Docker, Ansible, NodeJS, deployment scripts |
+| Component | Purpose | Description |
+|-----------|---------|-------------|
+| **dockflow CLI** | Machine setup & project initialization | Native binary (Linux, macOS, Windows) |
+| **dockflow-ci** | GitLab CI/CD deployments | Docker image with Ansible, NodeJS |
 
 > **Note:** GitHub Actions uses `ubuntu-latest` which already includes required tools.
 
@@ -50,24 +50,70 @@ graph TB
 
 ---
 
-## Building Docker Images
+## Building CLI Binaries
 
-### CLI Image
+The CLI is built as a native binary using Bun. See the `cli-ts/` directory for the TypeScript source.
 
-**Windows users:** Ensure `.sh` files use `LF` (not `CRLF`)
+### Prerequisites
+
+- [Bun](https://bun.sh) v1.1+ installed
+
+### Build Commands
 
 ```bash
-# Build
-docker build -t shawiizz/dockflow-cli:X.Y.Z -f cli/Dockerfile.cli .
+cd cli-ts
 
-# Publish
-docker login
-docker tag shawiizz/dockflow-cli:X.Y.Z shawiizz/dockflow-cli:latest
-docker push shawiizz/dockflow-cli:X.Y.Z
-docker push shawiizz/dockflow-cli:latest
+# Install dependencies
+bun install
+
+# Build all platform binaries
+bun run build
+
+# Build for a specific platform
+bun run build linux-x64
 ```
 
-### CI Image
+### Output
+
+Binaries are generated in `cli-ts/dist/`:
+
+| Binary | Platform |
+|--------|----------|
+| `dockflow-linux-x64` | Linux (x64) |
+| `dockflow-linux-arm64` | Linux (ARM64) |
+| `dockflow-windows-x64.exe` | Windows (x64) |
+| `dockflow-macos-x64` | macOS (Intel) |
+| `dockflow-macos-arm64` | macOS (Apple Silicon) |
+
+### Development
+
+Run the CLI without compilation:
+
+```bash
+bun ./cli-ts/src/index.ts --help
+bun ./cli-ts/src/index.ts setup interactive
+```
+
+### Releasing CLI Binaries
+
+GitHub Actions automatically builds and publishes binaries when you push a tag matching `cli/*`:
+
+```bash
+# Create a new CLI release
+git tag cli/1.0.0
+git push origin cli/1.0.0
+```
+
+This will:
+1. Build binaries for all platforms
+2. Create a GitHub Release named "Dockflow CLI v1.0.0"
+3. Attach all binaries with installation instructions
+
+Download releases from the [Releases page](https://github.com/Shawiizz/dockflow/releases).
+
+---
+
+## Building CI Image
 
 ```bash
 # Build

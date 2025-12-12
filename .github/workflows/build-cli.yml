@@ -1,0 +1,87 @@
+name: Build CLI Binaries
+
+on:
+  push:
+    tags:
+      - 'cli/*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          # Extract version from tag (cli/1.0.0 -> 1.0.0)
+          VERSION=${GITHUB_REF_NAME#cli/}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Building CLI version: $VERSION"
+
+      - name: Install dependencies
+        run: |
+          cd cli-ts
+          bun install
+
+      - name: Build all platforms
+        run: |
+          cd cli-ts
+          bun run scripts/build.ts
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dockflow-binaries-${{ steps.version.outputs.version }}
+          path: cli-ts/dist/*
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/cli/')
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Dockflow CLI v${{ steps.version.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          files: cli-ts/dist/*
+          generate_release_notes: true
+          body: |
+            ## Dockflow CLI v${{ steps.version.outputs.version }}
+
+            ### Installation
+
+            **Linux x64:**
+            ```bash
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/dockflow-linux-x64 -o /usr/local/bin/dockflow
+            chmod +x /usr/local/bin/dockflow
+            ```
+
+            **Linux ARM64:**
+            ```bash
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/dockflow-linux-arm64 -o /usr/local/bin/dockflow
+            chmod +x /usr/local/bin/dockflow
+            ```
+
+            **macOS x64:**
+            ```bash
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/dockflow-macos-x64 -o /usr/local/bin/dockflow
+            chmod +x /usr/local/bin/dockflow
+            ```
+
+            **macOS ARM64 (Apple Silicon):**
+            ```bash
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/dockflow-macos-arm64 -o /usr/local/bin/dockflow
+            chmod +x /usr/local/bin/dockflow
+            ```
+
+            **Windows x64:**
+            Download `dockflow-windows-x64.exe` and add it to your PATH.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

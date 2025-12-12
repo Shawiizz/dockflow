@@ -1,24 +1,94 @@
 # Getting Started
 
-import { Steps, Callout, FileTree } from 'nextra/components'
+import { Steps, Callout, FileTree, Tabs } from 'nextra/components'
 
 <Steps>
 ## Server Setup
 
 **Prerequisites:**
-- A Debian/Ubuntu server with SSH access
+- A Debian/Ubuntu server with SSH access (root or sudo user)
 
-### One-Line Installation
+### Installation
+
+<Tabs items={['Remote Setup (Windows/macOS)', 'Direct Setup (Linux)']}>
+  <Tabs.Tab>
+    Install the CLI and run setup remotely:
+
+    **Windows:**
+    ```powershell
+    irm https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.ps1 | iex
+    dockflow setup remote
+    ```
+
+    **macOS:**
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | bash
+    dockflow setup remote
+    ```
+
+    The CLI will prompt you to connect to your Linux server via SSH. You can provide:
+    - SSH host, port, username, and password/key
+    - Or an existing Dockflow connection string
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Install the Dockflow CLI directly on your Linux server:
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | bash
+    dockflow --version
+    ```
+
+    <Callout type="info">
+      The script automatically detects your architecture (x64 or ARM64).
+    </Callout>
+  </Tabs.Tab>
+</Tabs>
+
+### Interactive Setup (Recommended)
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/Shawiizz/dockflow/main/cli/cli_wrapper.sh?$(date +%s)" | bash
+dockflow setup
 ```
 
-The CLI will guide you through:
-- Configuring this server
-- Creating a deployment user
-- Configuring SSH keys
-- Installing Docker and Portainer (optional)
+The interactive wizard will guide you through:
+- Checking required dependencies (Ansible, SSH)
+- Creating a deployment user with sudo privileges
+- Configuring SSH key authentication
+- Installing Docker and initializing Swarm mode
+- Optionally installing Portainer for container management
+- Generating a connection string for CI/CD
+
+### Non-Interactive Setup (Linux only)
+
+For automated provisioning, Terraform, or CI environments (must be run directly on the target host):
+
+```bash
+dockflow setup auto \
+  --host $(hostname -I | awk '{print $1}') \
+  --user dockflow \
+  --password "your-secure-password" \
+  --generate-key \
+  --portainer \
+  --portainer-password "portainer-admin-password"
+```
+
+**Available options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--host` | Public IP/hostname for connection string | Required |
+| `--port` | SSH port | 22 |
+| `--user` | Deployment username | dockflow |
+| `--password` | User password (for new user or sudo) | Required |
+| `--ssh-key` | Path to existing SSH private key | - |
+| `--generate-key` | Generate a new SSH key | false |
+| `--skip-docker-install` | Skip Docker installation | false |
+| `--portainer` | Install Portainer | false |
+| `--portainer-port` | Portainer HTTP port | 9000 |
+| `--portainer-password` | Portainer admin password | - |
+| `--portainer-domain` | Portainer domain name | - |
+
+See `dockflow setup auto --help` for the complete list.
 
 ### Create Project Structure
 

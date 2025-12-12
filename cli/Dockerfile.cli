@@ -1,9 +1,0 @@
-FROM shawiizz/dockflow-ci:latest
-
-COPY . /tmp/dockflow/
-
-RUN chmod +x /tmp/dockflow/cli/cli.sh
-RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
-
-WORKDIR /tmp/dockflow
-ENTRYPOINT ["/bin/bash", "/tmp/dockflow/cli/cli.sh"]

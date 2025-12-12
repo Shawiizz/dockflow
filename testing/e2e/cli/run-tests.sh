@@ -81,23 +81,23 @@ fi
 echo "✓ Project transferred to remote server"
 echo ""
 
-echo "Running CLI setup-machine command on remote server..."
+echo "Running CLI setup command on remote server..."
 echo "Note: Executing CLI directly on the remote server via SSH"
 echo "Note: Skipping Docker and Portainer installation (already present in test environment)"
 echo ""
 
-# Execute CLI on remote server via SSH and capture output (as described in README)
-# Set SKIP_DOCKER_INSTALL=true since Docker is already installed in test-vm
+# Execute CLI on remote server via SSH and capture output
+# Set --skip-docker-install since Docker is already installed in test-vm
 # Don't install Portainer in tests to keep it simple
 set +e
 CLI_OUTPUT=$(sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
 	"cd $REMOTE_TEMP_DIR && \
-    bash cli/cli.sh setup-machine \
+    ./dockflow setup auto \
     --host dockflow-test-vm \
     --port 22 \
-    --deploy-user $DEPLOY_USER \
-    --deploy-password 'dockflow123' \
-    --generate-key y \
+    --user $DEPLOY_USER \
+    --password 'dockflow123' \
+    --generate-key \
     --skip-docker-install 2>&1")
 
 CLI_EXIT_CODE=$?
@@ -115,14 +115,14 @@ if [ $CLI_EXIT_CODE -ne 0 ]; then
 	exit 1
 fi
 
-echo "✓ CLI setup-machine completed successfully"
+echo "✓ CLI setup completed successfully"
 echo ""
 
 # Extract the connection string from CLI output
 echo "Extracting connection string from CLI output..."
-# The connection string is displayed between the yellow lines after "Connection String (Base64 encoded):"
+# The connection string is displayed between the yellow lines after "Connection String (Base64):"
 # We use grep -A 2 to get the line with the connection string (Header -> Separator -> Connection String)
-E2E_TEST_CONNECTION=$(echo "$CLI_OUTPUT" | grep -A 2 "Connection String (Base64 encoded):" | tail -n 1 | grep -v "━" | xargs || true)
+E2E_TEST_CONNECTION=$(echo "$CLI_OUTPUT" | grep -A 2 "Connection String (Base64):" | tail -n 1 | grep -v "━" | xargs || true)
 
 if [ -z "$E2E_TEST_CONNECTION" ]; then
 	echo "ERROR: Failed to extract connection string from CLI output"
