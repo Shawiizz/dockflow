@@ -69,6 +69,63 @@ else
 	exit 1
 fi
 
+# Test hooks execution
+echo ""
+echo "Checking hooks execution..."
+
+# Check pre-build hook (runs locally in CI)
+if [ -f "/tmp/dockflow-hook-pre-build.txt" ]; then
+	echo "✓ pre-build hook executed"
+else
+	echo "ERROR: pre-build hook was not executed"
+	exit 1
+fi
+
+# Check post-build hook (runs locally in CI)
+if [ -f "/tmp/dockflow-hook-post-build.txt" ]; then
+	echo "✓ post-build hook executed"
+else
+	echo "ERROR: post-build hook was not executed"
+	exit 1
+fi
+
+# Check pre-deploy hook (runs on remote server)
+if docker exec dockflow-test-vm cat /tmp/dockflow-hook-pre-deploy.txt 2>/dev/null | grep -q "pre-deploy"; then
+	echo "✓ pre-deploy hook executed on remote server"
+else
+	echo "ERROR: pre-deploy hook was not executed on remote server"
+	exit 1
+fi
+
+# Check post-deploy hook (runs on remote server)
+if docker exec dockflow-test-vm cat /tmp/dockflow-hook-post-deploy.txt 2>/dev/null | grep -q "post-deploy"; then
+	echo "✓ post-deploy hook executed on remote server"
+else
+	echo "ERROR: post-deploy hook was not executed on remote server"
+	exit 1
+fi
+
+# Check deploy lock was released
+echo ""
+echo "Checking deploy lock..."
+if docker exec dockflow-test-vm test -f /var/lib/dockflow/locks/test-app-test.lock 2>/dev/null; then
+	echo "ERROR: Deploy lock was not released"
+	exit 1
+else
+	echo "✓ Deploy lock released correctly"
+fi
+
+# Check audit log was written
+echo ""
+echo "Checking audit log..."
+if docker exec dockflow-test-vm cat /var/lib/dockflow/audit/test-app-test.log 2>/dev/null | grep -q "DEPLOYED"; then
+	echo "✓ Audit log entry written"
+	docker exec dockflow-test-vm cat /var/lib/dockflow/audit/test-app-test.log
+else
+	echo "ERROR: Audit log entry was not written"
+	exit 1
+fi
+
 echo ""
 echo "All E2E tests passed."
 echo ""
