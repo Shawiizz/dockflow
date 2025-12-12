@@ -1,0 +1,68 @@
+---
+# Deploy Lock role - prevents concurrent deployments to the same server
+# Creates a lock file on the remote server during deployment
+
+- name: Set lock file path
+  set_fact:
+    lock_file: "/var/lib/dockflow/locks/{{ stack_name }}.lock"
+    lock_dir: "/var/lib/dockflow/locks"
+
+- name: Ensure lock directory exists
+  file:
+    path: "{{ lock_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Check for existing lock
+  stat:
+    path: "{{ lock_file }}"
+  register: lock_check
+
+- name: Read existing lock info
+  slurp:
+    src: "{{ lock_file }}"
+  register: existing_lock
+  when: lock_check.stat.exists
+
+- name: Parse lock info
+  set_fact:
+    lock_info: "{{ existing_lock.content | b64decode | from_json }}"
+  when: lock_check.stat.exists
+
+- name: Check if lock is stale (older than 30 minutes)
+  set_fact:
+    lock_is_stale: "{{ ((ansible_date_time.epoch | int) - (lock_info.timestamp | int)) > 1800 }}"
+  when: lock_check.stat.exists
+
+- name: Fail if deployment is locked
+  fail:
+    msg: |
+      Deployment is locked by another process.
+      
+      Lock holder: {{ lock_info.performer | default('unknown') }}
+      Started at: {{ lock_info.started_at | default('unknown') }}
+      Version: {{ lock_info.version | default('unknown') }}
+      
+      If this lock is stale, it will be automatically released after 30 minutes.
+      To force unlock, delete: {{ lock_file }}
+  when:
+    - lock_check.stat.exists
+    - not (lock_is_stale | default(false))
+    - not (force_unlock | default(false) | bool)
+
+- name: Acquire deploy lock
+  copy:
+    content: |
+      {
+        "performer": "{{ lookup('env', 'USER') | default('ci', true) }}@{{ lookup('env', 'HOSTNAME') | default('unknown', true) }}",
+        "started_at": "{{ ansible_date_time.iso8601 }}",
+        "timestamp": {{ ansible_date_time.epoch }},
+        "version": "{{ version }}",
+        "stack": "{{ stack_name }}"
+      }
+    dest: "{{ lock_file }}"
+    mode: '0644'
+
+- name: Display lock acquired
+  debug:
+    msg: "Deploy lock acquired for {{ stack_name }}"

@@ -81,6 +81,13 @@
       loop:
         - /var/lib/dockflow
         - /var/lib/dockflow/stacks
+        - /var/lib/dockflow/locks
+        - /var/lib/dockflow/audit
+
+    - name: Acquire deploy lock
+      include_role:
+        name: deploy-lock
+        tasks_from: acquire
 
   roles:
     - role: geerlingguy.docker
@@ -159,3 +166,17 @@
         hook_delegate: "{{ inventory_hostname }}"
         hook_working_dir: "/var/lib/dockflow/stacks/{{ stack_name }}"
       when: (failed_health_checks | default([]) | length) == 0
+
+    # Write audit log entry
+    - name: Record successful deployment in audit log
+      include_role:
+        name: audit-log
+      vars:
+        audit_result: "deployed"
+        audit_message: "{{ (failed_health_checks | default([]) | length) == 0 | ternary('success', 'with warnings') }}"
+
+    # Release deploy lock (always, even on failure)
+    - name: Release deploy lock
+      include_role:
+        name: deploy-lock
+        tasks_from: release

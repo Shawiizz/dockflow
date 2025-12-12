@@ -1,0 +1,28 @@
+---
+# Audit Log role - records deployment history
+
+- name: Set audit log path
+  set_fact:
+    audit_log_dir: "/var/lib/dockflow/audit"
+    audit_log_file: "/var/lib/dockflow/audit/{{ stack_name }}.log"
+
+- name: Ensure audit directory exists
+  file:
+    path: "{{ audit_log_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Get deployment result
+  set_fact:
+    deployment_result: "{{ audit_result | default('deployed') }}"
+
+- name: Write audit log entry
+  lineinfile:
+    path: "{{ audit_log_file }}"
+    line: "{{ ansible_date_time.iso8601 }} | {{ deployment_result | upper }} | {{ version }} | {{ lookup('env', 'USER') | default('ci', true) }}@{{ lookup('env', 'HOSTNAME') | default('unknown', true) }} | {{ audit_message | default('') }}"
+    create: yes
+    mode: '0644'
+
+- name: Display audit entry
+  debug:
+    msg: "Audit: {{ deployment_result | upper }} {{ version }} at {{ ansible_date_time.iso8601 }}"
