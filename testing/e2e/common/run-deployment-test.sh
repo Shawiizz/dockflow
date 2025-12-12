@@ -43,12 +43,14 @@ echo "Verifying deployment..."
 # Wait a bit for services to start
 sleep 5
 
-# Check if container is running using docker exec
-echo "Checking container status..."
-if docker exec dockflow-test-vm docker ps --filter name=test-web-app --format '{{.Names}}' | grep -q "test-web-app"; then
-	echo "Container is running."
+# Check if Swarm service is running
+echo "Checking Swarm service status..."
+if docker exec dockflow-test-vm docker service ls --filter name=test-app-test_web --format '{{.Name}}' | grep -q "test-app-test_web"; then
+	REPLICAS=$(docker exec dockflow-test-vm docker service ls --filter name=test-app-test_web --format '{{.Replicas}}')
+	echo "Service test-app-test_web is running with replicas: $REPLICAS"
 else
-	echo "ERROR: Container is not running."
+	echo "ERROR: Swarm service is not running."
+	docker exec dockflow-test-vm docker service ls
 	exit 1
 fi
 
