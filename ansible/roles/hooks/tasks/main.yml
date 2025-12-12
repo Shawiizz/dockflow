@@ -42,11 +42,9 @@
     - name: Run hook script
       shell: |
         cd {{ hook_working_dir | default(root_path) }}
-        {{ hook_temp_dir.path }}/{{ hook_name }}.sh
+        timeout {{ hooks_timeout }} {{ hook_temp_dir.path }}/{{ hook_name }}.sh
       args:
         executable: /bin/bash
-      async: "{{ hooks_timeout }}"
-      poll: 5
       register: hook_result
       delegate_to: "{{ hook_delegate | default('localhost') }}"
 
