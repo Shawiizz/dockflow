@@ -11,7 +11,7 @@ on:
 
 env:
   DOCKFLOW_REPOSITORY_URL: https://github.com/Shawiizz/dockflow.git
-  DOCKFLOW_FRAMEWORK_VERSION: 2.0.0-dev1
+  DOCKFLOW_FRAMEWORK_VERSION: 2.0.0-dev2
 
 jobs:
   build:

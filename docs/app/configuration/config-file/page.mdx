@@ -49,7 +49,7 @@ A unique identifier for your project. This is used to:
 project_name: "my-awesome-app"
 ```
 
-The stack releases are stored in (where stack_name = project_name + env):
+The stack name is automatically set to `{project_name}-{env}` and cannot be customized. Releases are stored in:
 ```
 /var/lib/dockflow/stacks/my-awesome-app-production/
   1/

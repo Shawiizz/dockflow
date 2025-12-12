@@ -45,10 +45,6 @@ registry:
 # When a 'deploy' section is present in docker-compose.yml, 
 # the framework will automatically use Swarm mode
 swarm:
-  # Stack name (default: project_name-env)
-  # Available variables: {project_name}, {env}, {version}
-  stack_name: "{{ project_name }}-{{ env }}"
-  
   # Prune old services after deployment (default: true)
   prune_services: true
   

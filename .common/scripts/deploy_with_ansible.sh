@@ -42,5 +42,8 @@ EXTRA_VARS=()
 if [ "${SKIP_DOCKER_INSTALL}" = "true" ]; then
 	EXTRA_VARS+=("-e" "skip_docker_install=true")
 fi
+if [ "${FORCE_DEPLOY}" = "true" ]; then
+	EXTRA_VARS+=("-e" "force_unlock=true")
+fi
 
 ansible-playbook ansible/deploy.yml -i ansible/inventory.yml --skip-tags "$SKIP_TAGS" "${EXTRA_VARS[@]}"

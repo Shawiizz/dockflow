@@ -14,14 +14,14 @@ jobs:
   # Basic CI job to run on every push to branches (not used for deployment)
   build:
     if: github.ref_type == 'branch'
-    uses: Shawiizz/dockflow/.github/workflows/build.yml@2.0.0-dev1
+    uses: Shawiizz/dockflow/.github/workflows/build.yml@2.0.0-dev2
     with:
       free-disk-space: false # Set to true if you need to free disk space during build (for big docker images)
 
   # Deploy your application on tag push
   deploy-tag:
     if: github.ref_type == 'tag'
-    uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.0-dev1
+    uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.0-dev2
     with:
       tag: ${{ github.ref_name }}
       free-disk-space: false # Set to true if you need to free disk space during deployment (for big docker images)
@@ -30,7 +30,7 @@ jobs:
   # Deploy your application on push to branch
   deploy-branch:
     if: github.ref_type == 'branch'
-    uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.0-dev1
+    uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.0-dev2
     with:
       version: ${{ github.ref_name }}-${{ github.sha }} # Note: the variable is called "version" specifically for branch deployments
       free-disk-space: false # Set to true if you need to free disk space during deployment (for big docker images)
