@@ -20,18 +20,39 @@
   find:
     paths: "{{ stacks_dir }}"
     file_type: directory
-    patterns: "[0-9]*"
+    excludes: "current"
   register: stack_releases
 
-- name: Sort releases by version and determine which to remove
+- name: Read metadata from all releases to get timestamps
+  slurp:
+    src: "{{ item.path }}/metadata.json"
+  register: all_metadata
+  loop: "{{ stack_releases.files }}"
+  failed_when: false
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Sort releases by timestamp and determine which to remove
   set_fact:
     sorted_releases: >-
-      {%- set releases_with_version = [] -%}
-      {%- for release in stack_releases.files -%}
-        {%- set ver = release.path | basename | int -%}
-        {%- set _ = releases_with_version.append({'path': release.path, 'version': ver}) -%}
+      {%- set releases_with_timestamp = [] -%}
+      {%- for result in all_metadata.results -%}
+        {%- if result.content is defined -%}
+          {%- set metadata = result.content | b64decode | from_json -%}
+          {%- set _ = releases_with_timestamp.append({
+            'path': result.item.path,
+            'version': metadata.version | default(result.item.path | basename),
+            'timestamp': metadata.timestamp | default('1970-01-01T00:00:00Z')
+          }) -%}
+        {%- else -%}
+          {%- set _ = releases_with_timestamp.append({
+            'path': result.item.path,
+            'version': result.item.path | basename,
+            'timestamp': '1970-01-01T00:00:00Z'
+          }) -%}
+        {%- endif -%}
       {%- endfor -%}
-      {{ releases_with_version | sort(attribute='version', reverse=true) }}
+      {{ releases_with_timestamp | sort(attribute='timestamp', reverse=true) }}
 
 - name: Determine releases to keep and remove
   set_fact:
@@ -121,6 +142,21 @@
     protected_images: []
   when: images_from_removed_releases is not defined or protected_images is not defined
 
+- name: Get currently running images in Swarm (for rollback safety)
+  shell: |
+    docker stack services {{ stack_name }} --format "{{ '{{' }}.Image{{ '}}' }}" 2>/dev/null || true
+    # Also get images from recent task history (last 5 tasks per service)
+    for SERVICE in $(docker stack services {{ stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}" 2>/dev/null); do
+      docker service ps $SERVICE --format "{{ '{{' }}.Image{{ '}}' }}" 2>/dev/null | head -5
+    done
+  register: running_images_raw
+  changed_when: false
+  failed_when: false
+
+- name: Add running images to protected list
+  set_fact:
+    protected_images: "{{ (protected_images | default([])) + (running_images_raw.stdout_lines | default([]) | unique) }}"
+
 - name: Determine images to delete
   set_fact:
     images_to_delete: "{{ images_from_removed_releases | default([]) | reject('in', protected_images | default([])) | reject('search', ':latest$') | list }}"
@@ -140,6 +176,20 @@
       {% endfor %}
       {% endif %}
   when: not global_no_log | default(false)
+
+- name: Remove stopped containers from images to delete
+  shell: |
+    # Find and remove containers that were using the image to delete
+    CONTAINERS=$(docker ps -a --filter "ancestor={{ item }}" --format "{{ '{{' }}.ID{{ '}}' }}" 2>/dev/null)
+    if [ -n "$CONTAINERS" ]; then
+      echo "$CONTAINERS" | xargs -r docker rm -f 2>/dev/null || true
+    fi
+  loop: "{{ images_to_delete }}"
+  when: images_to_delete | length > 0
+  failed_when: false
+  changed_when: false
+  loop_control:
+    label: "Cleaning containers for {{ item }}"
 
 - name: Delete old images
   shell: "docker rmi {{ item }} 2>/dev/null || true"

@@ -16,18 +16,39 @@
   find:
     paths: "{{ stacks_dir }}"
     file_type: directory
-    patterns: "[0-9]*"
+    excludes: "current"
   register: available_releases
 
-- name: Sort releases by version (newest first)
+- name: Read metadata from all releases to get timestamps
+  slurp:
+    src: "{{ item.path }}/metadata.json"
+  register: all_metadata
+  loop: "{{ available_releases.files }}"
+  failed_when: false
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Sort releases by timestamp (newest first)
   set_fact:
     sorted_releases: >-
-      {%- set releases_with_version = [] -%}
-      {%- for release in available_releases.files -%}
-        {%- set ver = release.path | basename | int -%}
-        {%- set _ = releases_with_version.append({'path': release.path, 'version': ver}) -%}
+      {%- set releases_with_timestamp = [] -%}
+      {%- for result in all_metadata.results -%}
+        {%- if result.content is defined -%}
+          {%- set metadata = result.content | b64decode | from_json -%}
+          {%- set _ = releases_with_timestamp.append({
+            'path': result.item.path,
+            'version': metadata.version | default(result.item.path | basename),
+            'timestamp': metadata.timestamp | default('1970-01-01T00:00:00Z')
+          }) -%}
+        {%- else -%}
+          {%- set _ = releases_with_timestamp.append({
+            'path': result.item.path,
+            'version': result.item.path | basename,
+            'timestamp': '1970-01-01T00:00:00Z'
+          }) -%}
+        {%- endif -%}
       {%- endfor -%}
-      {{ releases_with_version | sort(attribute='version', reverse=true) }}
+      {{ releases_with_timestamp | sort(attribute='timestamp', reverse=true) }}
   when: available_releases.files | length > 0
 
 - name: Determine current and previous release
@@ -84,13 +105,6 @@
       shell: |
         cd {{ previous_release.path }}
         
-        # Export environment variables from .env file if it exists
-        if [ -f .env ]; then
-          set -a
-          source .env
-          set +a
-        fi
-        
         # Deploy the stack with the previous compose file
         docker stack deploy \
           --compose-file docker-compose.yml \
@@ -99,7 +113,7 @@
           {% if not (deployment_config.registry.enabled | default(false) | bool) %}--resolve-image=never \{% endif %}
           {{ stack_name }}
         
-        echo "Stack {{ stack_name }} rolled back to {{ previous_release.path | basename }}"
+        echo "Stack {{ stack_name }} rolled back to version {{ previous_release.version }}"
       register: rollback_deploy
       changed_when: true
 

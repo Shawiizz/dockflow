@@ -1,436 +1,122 @@
-# Docker Registry Configuration
+# Docker Registry
 
-This guide explains how to configure Docker registry integration for pushing built images.
+import { Callout, Tabs } from 'nextra/components'
 
-## Overview
+A Docker registry stores your images centrally. This is optional for single-node deployments but required for multi-node Swarm clusters.
 
-The Docker registry integration allows you to:
-- Push built images to a central registry
-- Share images across multiple hosts
-- Enable Docker Swarm deployments
-- Version and tag images consistently
+## When to Use
+
+- **Single node**: Not required. Images are transferred via SSH.
+- **Multi-node Swarm**: Required. Worker nodes pull images from the registry.
 
 ## Configuration
 
-### Basic Configuration
+Add the following to `.deployment/config.yml`:
 
-In your `.deployment/config.yml`:
-
-```yaml
-registry:
-  # Enable registry push (default: false)
-  enabled: true
+<Tabs items={['GitHub (GHCR)', 'GitLab', 'Docker Hub', 'Self-Hosted']}>
+  <Tabs.Tab>
+    ```yaml
+    registry:
+      enabled: true
+      url: "ghcr.io"
+      namespace: "your-org"
+      auth_method: "token"
+      username: "{{ github_actor }}"
+      token: "{{ github_token }}"
+    ```
+    
+    **CI/CD secrets required:**
+    - `GITHUB_TOKEN` (automatic in GitHub Actions)
+    - `GITHUB_ACTOR` (automatic in GitHub Actions)
+  </Tabs.Tab>
   
-  # Registry URL
-  url: "docker.io"  # or "ghcr.io", "registry.gitlab.com", etc.
+  <Tabs.Tab>
+    ```yaml
+    registry:
+      enabled: true
+      url: "registry.gitlab.com"
+      namespace: "your-group/your-project"
+      auth_method: "token"
+      username: "gitlab-ci-token"
+      token: "{{ ci_job_token }}"
+    ```
+    
+    **CI/CD secrets required:**
+    - `CI_JOB_TOKEN` (automatic in GitLab CI)
+  </Tabs.Tab>
   
-  # Registry namespace/organization
-  namespace: "myusername"
+  <Tabs.Tab>
+    ```yaml
+    registry:
+      enabled: true
+      url: "docker.io"
+      namespace: "your-username"
+      auth_method: "basic"
+      username: "{{ docker_username }}"
+      password: "{{ docker_password }}"
+    ```
+    
+    **CI/CD secrets required:**
+    - `DOCKER_USERNAME`
+    - `DOCKER_PASSWORD`
+  </Tabs.Tab>
   
-  # Authentication method: "basic" or "token"
-  auth_method: "basic"
-  
-  # Credentials
-  username: "{{ registry_username }}"
-  password: "{{ registry_password }}"
-```
+  <Tabs.Tab>
+    ```yaml
+    registry:
+      enabled: true
+      url: "registry.example.com"
+      namespace: "your-team"
+      auth_method: "basic"
+      username: "{{ registry_username }}"
+      password: "{{ registry_password }}"
+    ```
+    
+    **CI/CD secrets required:**
+    - `REGISTRY_USERNAME`
+    - `REGISTRY_PASSWORD`
+  </Tabs.Tab>
+</Tabs>
 
-### Supported Registries
+## Configuration Reference
 
-#### Docker Hub
-
-```yaml
-registry:
-  enabled: true
-  url: "docker.io"
-  namespace: "yourusername"
-  auth_method: "basic"
-  username: "{{ docker_username }}"
-  password: "{{ docker_password }}"
-```
-
-#### GitHub Container Registry (GHCR)
-
-```yaml
-registry:
-  enabled: true
-  url: "ghcr.io"
-  namespace: "yourorg"
-  auth_method: "token"
-  username: "{{ github_actor }}"
-  token: "{{ github_token }}"
-```
-
-#### GitLab Container Registry
-
-```yaml
-registry:
-  enabled: true
-  url: "registry.gitlab.com"
-  namespace: "yourgroup/yourproject"
-  auth_method: "token"
-  username: "gitlab-ci-token"
-  token: "{{ ci_job_token }}"
-```
-
-#### Azure Container Registry
-
-```yaml
-registry:
-  enabled: true
-  url: "myregistry.azurecr.io"
-  namespace: ""  # Not needed for ACR
-  auth_method: "basic"
-  username: "{{ acr_username }}"
-  password: "{{ acr_password }}"
-```
-
-#### Amazon ECR
-
-```yaml
-registry:
-  enabled: true
-  url: "123456789012.dkr.ecr.us-east-1.amazonaws.com"
-  namespace: ""  # Not needed for ECR
-  auth_method: "token"
-  username: "AWS"
-  token: "{{ ecr_token }}"  # Use AWS CLI to get token
-```
-
-#### Self-Hosted Registry
-
-```yaml
-registry:
-  enabled: true
-  url: "registry.mycompany.com"
-  namespace: "myteam"
-  auth_method: "basic"
-  username: "{{ registry_username }}"
-  password: "{{ registry_password }}"
-```
+| Field | Description |
+|-------|-------------|
+| `enabled` | Set to `true` to push images to the registry |
+| `url` | Registry hostname |
+| `namespace` | Organization or username prefix for images |
+| `auth_method` | `token` or `basic` |
+| `username` | Registry username |
+| `password` / `token` | Credentials (use Jinja2 syntax for secrets) |
 
 ## Image Tagging
 
-### Default Tagging
-
-By default, images are tagged with the version from your environment:
-
-```
-registry.example.com/namespace/my-app:1.0.0
-```
-
-### Additional Tags
-
-You can configure additional tags using template variables:
+By default, images are tagged with the deployment version. You can add extra tags that point to the same image:
 
 ```yaml
 registry:
   enabled: true
   url: "ghcr.io"
-  namespace: "myorg"
-  
-  additional_tags:
-    - "latest"                    # Always tag as latest
-    - "{env}"                     # Tag with environment name (prod, staging, etc.)
-    - "{branch}-latest"           # Tag with branch name
-    - "{version}-{sha}"           # Combine version and git SHA
-```
-
-Available variables:
-- `{version}` - Version from your deployment
-- `{env}` - Environment name (production, staging, dev)
-- `{branch}` - Git branch name (sanitized)
-- `{sha}` - Git commit SHA
-
-### Example: Multiple Tags
-
-With this configuration:
-
-```yaml
-registry:
+  namespace: "your-org"
   additional_tags:
     - "latest"
     - "{env}"
-    - "{version}-{sha}"
 ```
 
-Building version `1.0.0` on branch `main` with SHA `abc123` in `production` will create:
-- `myorg/my-app:1.0.0` (main tag)
-- `myorg/my-app:latest`
-- `myorg/my-app:production`
-- `myorg/my-app:1.0.0-abc123`
+**Example:** Deploying version `1.2.0` to `production` produces:
 
-## Authentication Methods
-
-### Basic Authentication
-
-Use username and password:
-
-```yaml
-auth_method: "basic"
-username: "{{ registry_username }}"
-password: "{{ registry_password }}"
+```
+ghcr.io/your-org/my-app:1.2.0       # main tag (version)
+ghcr.io/your-org/my-app:latest      # additional tag
+ghcr.io/your-org/my-app:production  # additional tag ({env} replaced)
 ```
 
-### Token Authentication
-
-Use a single token (for GitHub, GitLab, etc.):
-
-```yaml
-auth_method: "token"
-username: "oauth2"  # or specific username
-token: "{{ registry_token }}"
-```
-
-## Environment Variables
-
-Set these in your CI/CD environment or locally:
-
-### Docker Hub
-```bash
-export DOCKER_USERNAME="your-username"
-export DOCKER_PASSWORD="your-password"
-```
-
-### GitHub
-```bash
-export GITHUB_TOKEN="ghp_yourtokenhere"
-export GITHUB_ACTOR="your-username"
-```
-
-### GitLab
-```bash
-export CI_JOB_TOKEN="your-token"  # Automatically set in GitLab CI
-```
-
-### Custom Registry
-```bash
-export REGISTRY_USERNAME="your-username"
-export REGISTRY_PASSWORD="your-password"
-```
-
-## How It Works
-
-### Build and Push Workflow
-
-1. **Image Build**
-   - Images are built locally or remotely based on `remote_build` setting
-   - Each image is built according to docker-compose.yml build configuration
-
-2. **Image Tagging**
-   - Built images are tagged with the full registry path
-   - Format: `{registry_url}/{namespace}/{image_name}:{tag}`
-   - Additional tags are applied if configured
-
-3. **Registry Login**
-   - Framework logs into the configured registry
-   - Uses credentials from environment variables
-
-4. **Image Push**
-   - Each image is pushed to the registry
-   - All configured tags are pushed
-   - Retries on failure (up to 3 times)
-
-5. **Registry Logout**
-   - Framework logs out from the registry after pushing
-
-### Image Name Resolution
-
-Original image names in docker-compose.yml are automatically prefixed with registry path:
-
-```yaml
-# Original
-services:
-  app:
-    image: my-app:1.0.0
-
-# After registry configuration
-# Becomes: ghcr.io/myorg/my-app:1.0.0
-```
-
-## Usage
-
-### Local Development
-
-For local development, disable registry push:
-
-```yaml
-registry:
-  enabled: false
-```
-
-### CI/CD Pipeline
-
-Enable registry push in your CI/CD:
-
-```yaml
-registry:
-  enabled: true
-  url: "ghcr.io"
-  namespace: "myorg"
-  auth_method: "token"
-  token: "{{ lookup('env', 'GITHUB_TOKEN') }}"
-```
-
-Example GitHub Actions workflow:
-
-```yaml
-name: Deploy
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Set up environment
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_ACTOR: ${{ github.actor }}
-        run: |
-          echo "GITHUB_TOKEN=$GITHUB_TOKEN" >> $GITHUB_ENV
-          echo "GITHUB_ACTOR=$GITHUB_ACTOR" >> $GITHUB_ENV
-      
-      - name: Deploy
-        run: ./cli/cli.sh deploy production
-```
-
-## Deployment Modes
-
-### Standard Docker Deployment
-
-With registry enabled:
-1. Images are built
-2. Images are pushed to registry
-3. **Images are NOT transferred to remote** (uses registry instead)
-4. Remote server pulls images from registry during deployment
-
-### Docker Swarm Deployment
-
-With registry enabled (required):
-1. Images are built
-2. Images are pushed to registry
-3. docker-compose.yml is transferred with registry image paths
-4. Swarm stack pulls images from registry
-5. Swarm can distribute images across multiple nodes
+Available variables: `{version}`, `{env}`, `{branch}`, `{sha}`
 
 ## Troubleshooting
 
-### Authentication Fails
+**Authentication failed**: Test credentials manually with `docker login`.
 
-**Error**: `unauthorized: authentication required`
+**Push denied**: Verify write access to the namespace.
 
-**Solution**: Check your credentials
-```bash
-# Test registry login manually
-docker login registry.example.com -u username -p password
-
-# Verify environment variables are set
-echo $REGISTRY_USERNAME
-echo $REGISTRY_PASSWORD
-```
-
-### Image Push Fails
-
-**Error**: `denied: requested access to the resource is denied`
-
-**Solution**: Verify permissions
-- Ensure your user has push access to the namespace
-- Check registry organization/namespace exists
-- Verify repository visibility settings
-
-### Image Not Found During Deployment
-
-**Error**: `Error response from daemon: pull access denied`
-
-**Solution**: 
-- Verify image was successfully pushed to registry
-- Check image name and tag are correct
-- Ensure remote server can access the registry
-- Verify registry authentication on remote server
-
-### Rate Limiting
-
-**Error**: `You have reached your pull rate limit`
-
-**Solution**:
-- Use authenticated pulls (enabled by default)
-- Switch to a different registry
-- Upgrade your registry plan
-
-## Best Practices
-
-1. **Use Environment Variables for Credentials**
-   ```yaml
-   username: "{{ registry_username }}"
-   password: "{{ registry_password }}"
-   ```
-
-2. **Use Private Registries for Production**
-   - Don't expose sensitive images publicly
-   - Use access controls and authentication
-
-3. **Tag Images Consistently**
-   ```yaml
-   additional_tags:
-     - "latest"
-     - "{env}"
-     - "{version}"
-   ```
-
-4. **Clean Up Old Images**
-   - Use registry retention policies
-   - Delete unused tags regularly
-
-5. **Test Registry Access**
-   ```bash
-   # Test locally before CI/CD
-   docker login registry.example.com
-   docker push registry.example.com/namespace/test:latest
-   ```
-
-6. **Use Token Authentication When Possible**
-   - More secure than passwords
-   - Can be scoped to specific permissions
-   - Easier to rotate
-
-## Advanced Configuration
-
-### Using Different Registries per Environment
-
-```yaml
-registry:
-  enabled: true
-  url: "{% if env == 'production' %}registry.prod.com{% else %}registry.staging.com{% endif %}"
-  namespace: "myorg"
-  username: "{{ registry_username }}"
-  password: "{{ registry_password }}"
-```
-
-### Conditional Registry Push
-
-```yaml
-registry:
-  enabled: "{{ env != 'dev' }}"  # Don't push in dev environment
-  url: "ghcr.io"
-  namespace: "myorg"
-```
-
-### Custom Image Naming
-
-If you need custom image naming logic, you can modify the image names directly in your docker-compose.yml:
-
-```yaml
-services:
-  app:
-    image: "{{ registry_url }}/custom-path/my-app:{{ version }}"
-```
-
-## See Also
-
-- [Docker Swarm Deployment](/deployment/swarm)
-- [Environment Configuration](/configuration/environment)
-- [CI/CD Integration](/advanced/ci-cd)
+**Workers cannot pull**: Ensure all Swarm nodes can reach the registry. For private registries, authenticate on each node.

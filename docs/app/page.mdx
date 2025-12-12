@@ -1,44 +1,44 @@
 # Dockflow
 
-**Deploy your Docker apps with a simple `git push` (with or without tags)**
+import { Callout, Cards } from 'nextra/components'
 
-Dockflow is a complete framework to **automate Docker deployments** from GitHub/GitLab CI/CD to your servers. Push a tag, grab a coffee, and your app is deployed.
+Dockflow is a deployment framework that simplifies deploying Docker applications to remote servers using Docker Swarm.
 
-> **Beta version** – Production-ready but actively improving. Your feedback is welcome!
+## What Dockflow Does
 
-## Key Features
+Dockflow manages the complete deployment lifecycle:
 
-- **Multi-environment**: Deploy to production, staging, whatever, etc.
-- **Multi-host**: Deploy to multiple servers simultaneously
-- **Multi-container**: Handle complex apps with multiple services
-- **Secure**: SSH keys and secrets management built-in
-- **Flexible builds**: Build in CI/CD or directly on your server
-- **Customizable**: Nginx configs, systemd services, custom scripts
+1. Builds Docker images from your source code
+2. Transfers images to your server via SSH
+3. Deploys your application as a Docker Swarm stack
+4. Monitors container health after deployment
+5. Automatically rolls back if something goes wrong
 
-## How It Works
+## Prerequisites
 
-### The Magic Behind the Scenes
+Before you begin, ensure you have:
 
-```mermaid
-graph LR
-    A[Push Git Tag or Direct Push] -->|Local Build| B[Build in CI/CD]
-    A -->|Remote Build| C[Clone Repo on Server]
-    B --> D[Transfer Images to Server]
-    C --> E[Build Images on Server]
-    D --> F[Ansible Deployment]
-    E --> F
-    F --> G[App Running!]
-```
+- A Debian or Ubuntu server with SSH access
+- A project with a Dockerfile
+- A GitHub or GitLab repository
 
-### Deployment Triggers
+## Next Steps
 
-| Tag Format | Environment | Example |
-|------------|-------------|---------|
-| `X.Y.Z` | production | `1.0.0` |
-| `X.Y.Z-[env]` | custom | `1.0.0-whatever` |
-| Branch push | production | Direct push to main |
-
-### Compatible With
-
-- ✅ GitHub Actions
-- ✅ GitLab CI
+<Cards>
+  <Cards.Card
+    title="Getting Started"
+    href="/getting-started"
+  />
+  <Cards.Card
+    title="Configuration"
+    href="/configuration"
+  />
+  <Cards.Card
+    title="Deployment"
+    href="/deployment"
+  />
+  <Cards.Card
+    title="Examples"
+    href="/examples"
+  />
+</Cards>

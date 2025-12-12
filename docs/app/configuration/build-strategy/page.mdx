@@ -1,81 +1,33 @@
 # Build Strategy
 
-Choose how Docker images are built and transferred:
+Dockflow supports different strategies for building and transferring Docker images.
 
-| Strategy | Build Location | Transfer Method | Best For |
-|----------|---------------|-----------------|----------|
-| **Local** (default) | CI/CD pipeline | SSH tunnel with local registry | Most deployments |
-| **Local + Registry** | CI/CD pipeline | Push to configured registry | Multi-node clusters |
-| **Remote** | On server | No transfer needed | Large images, slow network |
+## Strategies Overview
 
-## Image Transfer Methods
+| Strategy | Build Location | Transfer Method |
+|----------|---------------|-----------------|
+| Local (default) | CI/CD runner | SSH streaming |
+| Local + Registry | CI/CD runner | Docker registry |
+| Remote | Server | None |
 
-### SSH Tunnel with Local Registry (Default)
+## Local Build
 
-When no external registry is configured, Dockflow:
+By default, images are built in your CI/CD pipeline and transferred to the server via SSH. No additional configuration is required.
 
-1. Starts a temporary Docker registry on the CI runner
-2. Pushes built images to this local registry
-3. Creates an SSH tunnel to the remote server
-4. Pulls images on the remote server via the tunnel
-5. Cleans up the temporary registry
+## Registry Build
 
-This approach:
-- Requires no external registry
-- Uses layer caching for efficient transfers
-- Works only for single-node deployments
-- Is fully automatic
+For multi-node Swarm clusters, use a Docker registry so worker nodes can pull images. See [Docker Registry](/configuration/registry) for configuration.
 
-### External Registry
+## Remote Build
 
-When a registry is configured:
-
-1. Images are pushed to the configured registry
-2. Remote server pulls from the registry
-3. Supports multi-node Swarm clusters
+Build images directly on the server instead of transferring them:
 
 ```yaml
-registry:
-  enabled: true
-  url: "ghcr.io"
-  namespace: "myorg"
-  auth_method: "token"
-  token: "{{ github_token }}"
-```
-
-## Enable Remote Build
-
-For large images or slow network connections, build directly on the server:
-
-```yaml
+# .deployment/config.yml
 options:
   remote_build: true
 ```
 
-### When to Use Remote Build
+This clones your repository on the server and builds locally. Useful for large images or slow network connections.
 
-Remote build is useful when:
-- Your Docker images are very large (multi-GB)
-- Your CI/CD network connection is slow
-- You want to avoid transferring large images over the network
-- Your server has better hardware for building
-
-### How It Works
-
-With remote build enabled:
-1. The source code is transferred to the server
-2. Docker builds the images directly on the server
-3. No image transfer is needed
-
-## Multi-Node Considerations
-
-For multi-node Swarm clusters, you **must** use an external registry:
-
-```yaml
-registry:
-  enabled: true
-  url: "registry.example.com"
-  namespace: "myorg"
-```
-
-The SSH tunnel method only transfers images to the manager node. Worker nodes need access to a registry to pull images.
+For private repositories, add a `GIT_TOKEN` secret to your CI/CD environment.

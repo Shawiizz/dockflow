@@ -6,111 +6,308 @@
   block:
     - name: Get list of services in the stack
       shell: |
-        docker stack services {{ stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}"
-      register: stack_services
+        docker stack services {{ stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}:{{ '{{' }}.Image{{ '}}' }}"
+      register: stack_services_raw
       changed_when: false
+
+    - name: Parse services and their expected images
+      set_fact:
+        stack_services_with_images: >-
+          {%- set services = [] -%}
+          {%- for line in stack_services_raw.stdout_lines -%}
+            {%- set parts = line.split(':') -%}
+            {%- set svc_name = parts[0] -%}
+            {%- set svc_image = parts[1:] | join(':') -%}
+            {%- set _ = services.append({'name': svc_name, 'expected_image': svc_image}) -%}
+          {%- endfor -%}
+          {{ services }}
 
     - name: Check container health status for each service
       shell: |
-        SERVICE="{{ item }}"
+        SERVICE="{{ item.name }}"
+        EXPECTED_IMAGE="{{ item.expected_image }}"
         TIMEOUT={{ deployment_config.swarm.healthcheck_timeout | default(120) }}
         ELAPSED=0
         INTERVAL=5
         
         echo "Checking health status for service: $SERVICE"
+        echo "Expected image: $EXPECTED_IMAGE"
         
         while [ $ELAPSED -lt $TIMEOUT ]; do
-          # Get container IDs for this service
-          CONTAINERS=$(docker service ps $SERVICE --filter "desired-state=running" --format "{{ '{{' }}.ID{{ '}}' }}" 2>/dev/null)
+          # Check if there was a rollback
+          UPDATE_STATE=$(docker service inspect $SERVICE --format "{{ '{{' }}.UpdateStatus.State{{ '}}' }}" 2>/dev/null || echo "")
           
-          if [ -z "$CONTAINERS" ]; then
-            echo "No running containers found for $SERVICE, waiting..."
+          if [ "$UPDATE_STATE" = "rollback_completed" ]; then
+            echo "ROLLBACK DETECTED: Service has rolled back to previous version"
+            exit 2
+          elif [ "$UPDATE_STATE" = "rollback_started" ] || [ "$UPDATE_STATE" = "rollback_paused" ]; then
+            echo "Rollback in progress, waiting..."
             sleep $INTERVAL
             ELAPSED=$((ELAPSED + INTERVAL))
             continue
           fi
           
-          ALL_HEALTHY=true
-          HAS_HEALTHCHECK=false
+          # Get running tasks with their image
+          TASK_INFO=$(docker service ps $SERVICE --filter "desired-state=running" --format "{{ '{{' }}.ID{{ '}}' }}:{{ '{{' }}.Image{{ '}}' }}" 2>/dev/null)
           
-          for TASK_ID in $CONTAINERS; do
-            # Get the actual container ID from the task
-            CONTAINER_ID=$(docker inspect --format "{{ '{{' }}.Status.ContainerStatus.ContainerID{{ '}}' }}" $TASK_ID 2>/dev/null | head -c 12)
-            
-            if [ -z "$CONTAINER_ID" ]; then
-              continue
-            fi
-            
-            # Check if container has a healthcheck
-            HEALTH_STATUS=$(docker inspect --format "{{ '{{' }}if .State.Health{{ '}}' }}{{ '{{' }}.State.Health.Status{{ '}}' }}{{ '{{' }}else{{ '}}' }}none{{ '{{' }}end{{ '}}' }}" $CONTAINER_ID 2>/dev/null || echo "unknown")
-            
-            if [ "$HEALTH_STATUS" = "none" ]; then
-              # No healthcheck defined, consider it healthy
-              echo "Container $CONTAINER_ID: no healthcheck defined"
-              continue
-            fi
-            
-            HAS_HEALTHCHECK=true
-            
-            if [ "$HEALTH_STATUS" = "healthy" ]; then
-              echo "Container $CONTAINER_ID: healthy"
-            elif [ "$HEALTH_STATUS" = "starting" ]; then
-              echo "Container $CONTAINER_ID: healthcheck starting..."
-              ALL_HEALTHY=false
-            elif [ "$HEALTH_STATUS" = "unhealthy" ]; then
-              echo "Container $CONTAINER_ID: UNHEALTHY"
-              ALL_HEALTHY=false
-            else
-              echo "Container $CONTAINER_ID: status=$HEALTH_STATUS"
-              ALL_HEALTHY=false
-            fi
-          done
+          if [ -z "$TASK_INFO" ]; then
+            echo "No running tasks found for $SERVICE, waiting..."
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+            continue
+          fi
           
-          if [ "$HAS_HEALTHCHECK" = "false" ]; then
-            echo "No healthchecks defined for service $SERVICE - skipping"
+          # Check if the running task has the expected image
+          RUNNING_IMAGE=$(echo "$TASK_INFO" | head -1 | cut -d: -f2-)
+          TASK_ID=$(echo "$TASK_INFO" | head -1 | cut -d: -f1)
+          
+          if [ "$RUNNING_IMAGE" != "$EXPECTED_IMAGE" ]; then
+            echo "Current running image: $RUNNING_IMAGE (expected: $EXPECTED_IMAGE)"
+            echo "Deployment may have rolled back or is still in progress..."
+            
+            # Check again for rollback
+            UPDATE_STATE=$(docker service inspect $SERVICE --format "{{ '{{' }}.UpdateStatus.State{{ '}}' }}" 2>/dev/null || echo "")
+            if [ "$UPDATE_STATE" = "rollback_completed" ]; then
+              echo "ROLLBACK DETECTED after image mismatch"
+              exit 2
+            fi
+            
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+            continue
+          fi
+          
+          # Get the actual container ID from the task
+          CONTAINER_ID=$(docker inspect --format "{{ '{{' }}.Status.ContainerStatus.ContainerID{{ '}}' }}" $TASK_ID 2>/dev/null | head -c 12)
+          
+          if [ -z "$CONTAINER_ID" ]; then
+            echo "Container not yet created for task $TASK_ID, waiting..."
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+            continue
+          fi
+          
+          # Check if container has a healthcheck
+          HEALTH_STATUS=$(docker inspect --format "{{ '{{' }}if .State.Health{{ '}}' }}{{ '{{' }}.State.Health.Status{{ '}}' }}{{ '{{' }}else{{ '}}' }}none{{ '{{' }}end{{ '}}' }}" $CONTAINER_ID 2>/dev/null || echo "unknown")
+          
+          if [ "$HEALTH_STATUS" = "none" ]; then
+            echo "Container $CONTAINER_ID: no healthcheck defined - considering healthy"
             exit 0
           fi
           
-          if [ "$ALL_HEALTHY" = "true" ]; then
-            echo "All containers for $SERVICE are healthy"
+          if [ "$HEALTH_STATUS" = "healthy" ]; then
+            echo "Container $CONTAINER_ID with image $EXPECTED_IMAGE: healthy"
             exit 0
+          elif [ "$HEALTH_STATUS" = "starting" ]; then
+            echo "Container $CONTAINER_ID: healthcheck starting..."
+          elif [ "$HEALTH_STATUS" = "unhealthy" ]; then
+            echo "Container $CONTAINER_ID: UNHEALTHY - waiting for potential rollback..."
+          else
+            echo "Container $CONTAINER_ID: status=$HEALTH_STATUS"
           fi
           
           sleep $INTERVAL
           ELAPSED=$((ELAPSED + INTERVAL))
         done
         
+        # Final rollback check after timeout
+        UPDATE_STATE=$(docker service inspect $SERVICE --format "{{ '{{' }}.UpdateStatus.State{{ '}}' }}" 2>/dev/null || echo "")
+        if [ "$UPDATE_STATE" = "rollback_completed" ]; then
+          echo "ROLLBACK DETECTED after timeout"
+          exit 2
+        fi
+        
+        # Check if the currently running image differs from expected (indicates rollback happened)
+        FINAL_TASK_INFO=$(docker service ps $SERVICE --filter "desired-state=running" --format "{{ '{{' }}.Image{{ '}}' }}" 2>/dev/null | head -1)
+        if [ -n "$FINAL_TASK_INFO" ] && [ "$FINAL_TASK_INFO" != "$EXPECTED_IMAGE" ]; then
+          echo "ROLLBACK DETECTED: Running image ($FINAL_TASK_INFO) differs from expected ($EXPECTED_IMAGE)"
+          exit 2
+        fi
+        
         echo "Timeout waiting for $SERVICE healthchecks"
         exit 1
-      loop: "{{ stack_services.stdout_lines | default([]) }}"
+      loop: "{{ stack_services_with_images }}"
       register: health_results
       failed_when: false
       changed_when: false
       loop_control:
-        label: "Checking {{ item }}"
+        label: "Checking {{ item.name }} ({{ item.expected_image }})"
 
-    - name: Check for unhealthy services
+    - name: Check for rollback or unhealthy services
       set_fact:
-        unhealthy_services: "{{ health_results.results | selectattr('rc', 'defined') | selectattr('rc', 'ne', 0) | map(attribute='item') | list }}"
+        rollback_detected_services: "{{ health_results.results | selectattr('rc', 'defined') | selectattr('rc', 'eq', 2) | map(attribute='item') | map(attribute='name') | list }}"
+        unhealthy_services: "{{ health_results.results | selectattr('rc', 'defined') | selectattr('rc', 'eq', 1) | map(attribute='item') | map(attribute='name') | list }}"
       when: health_results.results is defined
+
+    - name: Wait for rolled back services to become healthy
+      shell: |
+        SERVICE="{{ item }}"
+        TIMEOUT=60
+        ELAPSED=0
+        INTERVAL=5
+        
+        echo "Waiting for rolled back service $SERVICE to become healthy..."
+        
+        while [ $ELAPSED -lt $TIMEOUT ]; do
+          # Get the running container
+          TASK_ID=$(docker service ps $SERVICE --filter "desired-state=running" --format "{{ '{{' }}.ID{{ '}}' }}" 2>/dev/null | head -1)
+          
+          if [ -z "$TASK_ID" ]; then
+            echo "No running task found, waiting..."
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+            continue
+          fi
+          
+          CONTAINER_ID=$(docker inspect --format "{{ '{{' }}.Status.ContainerStatus.ContainerID{{ '}}' }}" $TASK_ID 2>/dev/null | head -c 12)
+          
+          if [ -z "$CONTAINER_ID" ]; then
+            echo "Container not ready, waiting..."
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+            continue
+          fi
+          
+          HEALTH_STATUS=$(docker inspect --format "{{ '{{' }}if .State.Health{{ '}}' }}{{ '{{' }}.State.Health.Status{{ '}}' }}{{ '{{' }}else{{ '}}' }}none{{ '{{' }}end{{ '}}' }}" $CONTAINER_ID 2>/dev/null || echo "unknown")
+          
+          if [ "$HEALTH_STATUS" = "healthy" ] || [ "$HEALTH_STATUS" = "none" ]; then
+            echo "Rolled back service $SERVICE is now healthy"
+            exit 0
+          fi
+          
+          echo "Service $SERVICE health status: $HEALTH_STATUS, waiting..."
+          sleep $INTERVAL
+          ELAPSED=$((ELAPSED + INTERVAL))
+        done
+        
+        echo "WARNING: Rolled back service $SERVICE did not become healthy within timeout"
+        exit 1
+      loop: "{{ rollback_detected_services | default([]) }}"
+      register: rollback_health_check
+      failed_when: false
+      changed_when: false
+      when: rollback_detected_services | default([]) | length > 0
+      loop_control:
+        label: "Checking rollback health for {{ item }}"
+
+    - name: Check if rollback resulted in healthy state
+      set_fact:
+        rollback_unhealthy: "{{ rollback_health_check.results | default([]) | selectattr('rc', 'defined') | selectattr('rc', 'ne', 0) | list | length > 0 }}"
+      when: rollback_detected_services | default([]) | length > 0
 
     - name: Display healthcheck summary
       debug:
         msg: |
           Internal Healthcheck Summary:
-          - Total services: {{ stack_services.stdout_lines | length }}
-          - Healthy: {{ (stack_services.stdout_lines | length) - (unhealthy_services | default([]) | length) }}
-          - Unhealthy: {{ unhealthy_services | default([]) | length }}
+          - Total services: {{ stack_services_with_images | length }}
+          - Rollback detected: {{ rollback_detected_services | default([]) | length }}
+          - Timeout/Unhealthy: {{ unhealthy_services | default([]) | length }}
+          - Healthy: {{ (stack_services_with_images | length) - (rollback_detected_services | default([]) | length) - (unhealthy_services | default([]) | length) }}
+          {% if rollback_detected_services | default([]) | length > 0 %}
+          
+          Services that rolled back:
+          {% for svc in rollback_detected_services %}
+          - {{ svc }}
+          {% endfor %}
+          {% endif %}
           {% if unhealthy_services | default([]) | length > 0 %}
           
-          Unhealthy services:
+          Unhealthy/timeout services:
           {% for svc in unhealthy_services %}
           - {{ svc }}
           {% endfor %}
           {% endif %}
 
+    - name: Cleanup failed release directory on rollback
+      file:
+        path: "{{ current_release_path }}"
+        state: absent
+      when:
+        - rollback_detected_services | default([]) | length > 0
+        - current_release_path is defined
+
+    - name: Update current symlink to previous working version on rollback
+      shell: |
+        # Find the most recent successful release (exclude the failed one)
+        STACKS_DIR="{{ current_stacks_dir }}"
+        FAILED_VERSION="{{ current_version }}"
+        
+        # Get all version directories sorted by timestamp from metadata
+        LATEST_GOOD=""
+        LATEST_TIMESTAMP=""
+        
+        for DIR in "$STACKS_DIR"/*/; do
+          if [ -d "$DIR" ] && [ "$(basename $DIR)" != "current" ]; then
+            VERSION=$(basename "$DIR")
+            if [ "$VERSION" != "$FAILED_VERSION" ]; then
+              if [ -f "$DIR/metadata.json" ]; then
+                TIMESTAMP=$(cat "$DIR/metadata.json" | grep -o '"timestamp"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+                if [ -z "$LATEST_TIMESTAMP" ] || [ "$TIMESTAMP" \> "$LATEST_TIMESTAMP" ]; then
+                  LATEST_TIMESTAMP="$TIMESTAMP"
+                  LATEST_GOOD="$DIR"
+                fi
+              fi
+            fi
+          fi
+        done
+        
+        if [ -n "$LATEST_GOOD" ]; then
+          ln -sfn "$LATEST_GOOD" "$STACKS_DIR/current"
+          echo "Updated current symlink to $(basename $LATEST_GOOD)"
+        fi
+      when:
+        - rollback_detected_services | default([]) | length > 0
+        - current_stacks_dir is defined
+      changed_when: true
+      failed_when: false
+
+    - name: Fail if rollback was detected
+      fail:
+        msg: |
+          DEPLOYMENT FAILED: Some services failed healthchecks and Swarm has rolled back to the previous version.
+          
+          Services that rolled back:
+          {% for svc in rollback_detected_services %}
+          - {{ svc }}
+          {% endfor %}
+          
+          {% if rollback_unhealthy | default(false) %}
+          WARNING: The rolled back version is also unhealthy! Manual intervention may be required.
+          {% else %}
+          The previous working version is now running and healthy.
+          {% endif %}
+          
+          Check the logs to debug the issue:
+            docker service logs <service_name>
+      when:
+        - rollback_detected_services | default([]) | length > 0
+
+    - name: Cleanup failed release directory on unhealthy timeout
+      file:
+        path: "{{ current_release_path }}"
+        state: absent
+      when:
+        - unhealthy_services | default([]) | length > 0
+        - rollback_detected_services | default([]) | length == 0
+        - current_release_path is defined
+
+    - name: Fail if services are unhealthy or timed out
+      fail:
+        msg: |
+          DEPLOYMENT FAILED: Some services failed to become healthy within the timeout period.
+          
+          Unhealthy services:
+          {% for svc in unhealthy_services %}
+          - {{ svc }}
+          {% endfor %}
+          
+          Check the service logs for details:
+            docker service logs <service_name>
+      when:
+        - unhealthy_services | default([]) | length > 0
+
     - name: Set internal healthcheck status
       set_fact:
-        internal_healthchecks_passed: "{{ (unhealthy_services | default([]) | length) == 0 }}"
+        internal_healthchecks_passed: "{{ (rollback_detected_services | default([]) | length) == 0 and (unhealthy_services | default([]) | length) == 0 }}"
 
   when: deployment_config.health_checks.wait_for_internal | default(true) | bool

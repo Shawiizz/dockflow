@@ -37,33 +37,14 @@
     - /var/lib/dockflow/stacks
     - "{{ stacks_dir }}"
 
-- name: Find existing releases
-  find:
-    paths: "{{ stacks_dir }}"
-    file_type: directory
-    patterns: "[0-9]*"
-  register: existing_releases
-
-- name: Determine next release version
+- name: Set release directory based on version
   set_fact:
-    release_versions: >-
-      {%- set versions = [] -%}
-      {%- for release in existing_releases.files -%}
-        {%- set ver = release.path | basename | int -%}
-        {%- set _ = versions.append(ver) -%}
-      {%- endfor -%}
-      {{ versions | sort | reverse }}
-    next_version: >-
-      {%- set versions = [] -%}
-      {%- for release in existing_releases.files -%}
-        {%- set ver = release.path | basename | int -%}
-        {%- set _ = versions.append(ver) -%}
-      {%- endfor -%}
-      {{ (versions | max | default(0)) + 1 }}
+    release_dir: "{{ stacks_dir }}/{{ version }}"
 
-- name: Set release directory
-  set_fact:
-    release_dir: "{{ stacks_dir }}/{{ next_version | int }}"
+- name: Check if this version already exists
+  stat:
+    path: "{{ release_dir }}"
+  register: version_dir_exists
 
 - name: Create release directory
   file:
@@ -71,20 +52,26 @@
     state: directory
     mode: '0755'
 
+- name: Generate rendered docker-compose using decomposerize
+  shell: |
+    cd {{ root_path }}/.deployment/docker
+    decomposerize docker-compose.yml --composerize {{ environmentize_option }} --ansible-env-vars-format > /tmp/decomposerize_compose.j2
+  delegate_to: localhost
+  changed_when: false
+
+- name: Render docker-compose template with variables
+  template:
+    src: /tmp/decomposerize_compose.j2
+    dest: /tmp/decomposerize_compose_rendered.yml
+  delegate_to: localhost
+  changed_when: false
+
 - name: Transfer rendered docker-compose.yml to release directory
   copy:
-    src: "{{ compose_path }}"
+    src: /tmp/decomposerize_compose_rendered.yml
     dest: "{{ release_dir }}/docker-compose.yml"
     mode: '0644'
   register: compose_transfer
-
-- name: Transfer .env file if exists
-  copy:
-    src: "{{ root_path }}/.deployment/docker/.env"
-    dest: "{{ release_dir }}/.env"
-    mode: '0644'
-  failed_when: false
-  ignore_errors: yes
 
 - name: Create release metadata file
   copy:
@@ -94,10 +81,8 @@
         "stack_name": "{{ swarm_stack_name }}",
         "environment": "{{ env }}",
         "version": "{{ version }}",
-        "release": {{ next_version | int }},
         "branch": "{{ sanitized_branch_name }}",
-        "timestamp": "{{ ansible_date_time.iso8601 }}",
-        "images": []
+        "timestamp": "{{ ansible_date_time.iso8601 }}"
       }
     dest: "{{ release_dir }}/metadata.json"
     mode: '0644'
@@ -145,7 +130,8 @@
               'delay': update_config.delay | default('10s'),
               'failure_action': update_config.failure_action | default('rollback'),
               'monitor': update_config.monitor | default('30s'),
-              'max_failure_ratio': update_config.max_failure_ratio | default(0)
+              'max_failure_ratio': update_config.max_failure_ratio | default(0),
+              'order': update_config.order | default('start-first')
             } -%}
             {%- set new_deploy = deploy_config | combine({'update_config': new_update_config}) -%}
             {%- set _ = ns.services.update({service_name: service_config | combine({'deploy': new_deploy})}) -%}
@@ -158,24 +144,86 @@
         dest: "{{ release_dir }}/docker-compose.yml"
         mode: '0644'
 
+- name: Check for stuck rollback state before deployment
+  block:
+    - name: Get current service states
+      shell: |
+        docker stack services {{ swarm_stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}" 2>/dev/null || echo ""
+      register: existing_services
+      changed_when: false
+      failed_when: false
+
+    - name: Check for rollback_paused or stuck states
+      shell: |
+        STUCK_SERVICES=""
+        for SERVICE in {{ existing_services.stdout_lines | default([]) | join(' ') }}; do
+          UPDATE_STATE=$(docker service inspect $SERVICE --format "{{ '{{' }}.UpdateStatus.State{{ '}}' }}" 2>/dev/null || echo "")
+          if [ "$UPDATE_STATE" = "rollback_paused" ] || [ "$UPDATE_STATE" = "paused" ]; then
+            STUCK_SERVICES="$STUCK_SERVICES $SERVICE"
+            echo "Service $SERVICE is stuck in state: $UPDATE_STATE"
+          fi
+        done
+        
+        if [ -n "$STUCK_SERVICES" ]; then
+          echo "STUCK_SERVICES_FOUND"
+          exit 1
+        fi
+        exit 0
+      register: stuck_check
+      when: existing_services.stdout | trim | length > 0
+      changed_when: false
+      failed_when: false
+
+    - name: Remove stuck stack to allow clean redeployment
+      shell: |
+        echo "Stack has services stuck in rollback_paused state. Removing stack for clean redeployment..."
+        docker stack rm {{ swarm_stack_name }}
+        
+        # Wait for stack to be fully removed
+        TIMEOUT=60
+        ELAPSED=0
+        while [ $ELAPSED -lt $TIMEOUT ]; do
+          REMAINING=$(docker stack services {{ swarm_stack_name }} 2>&1 | grep -v "Nothing found" | wc -l)
+          if [ "$REMAINING" -eq 0 ]; then
+            echo "Stack removed successfully"
+            break
+          fi
+          echo "Waiting for stack removal... ($REMAINING services remaining)"
+          sleep 2
+          ELAPSED=$((ELAPSED + 2))
+        done
+        
+        # Also cleanup any orphaned containers
+        docker container prune -f 2>/dev/null || true
+        
+        sleep 3
+        echo "Ready for clean deployment"
+      when: 
+        - stuck_check is defined
+        - stuck_check.rc is defined
+        - stuck_check.rc != 0
+      changed_when: true
+
 - name: Deploy Docker stack
   shell: |
     cd {{ release_dir }}
     
-    # Export environment variables from .env file if it exists
-    if [ -f .env ]; then
-      set -a
-      source .env
-      set +a
-    fi
+    # Build the deploy command
+    DEPLOY_CMD="docker stack deploy --compose-file docker-compose.yml"
+    {% if deployment_config.swarm.prune_services | default(true) | bool %}
+    DEPLOY_CMD="$DEPLOY_CMD --prune"
+    {% endif %}
+    {% if use_registry_auth %}
+    DEPLOY_CMD="$DEPLOY_CMD --with-registry-auth"
+    {% endif %}
+    {% if resolve_image_flag %}
+    DEPLOY_CMD="$DEPLOY_CMD {{ resolve_image_flag }}"
+    {% endif %}
+    DEPLOY_CMD="$DEPLOY_CMD {{ swarm_stack_name }}"
     
-    # Deploy the stack
-    docker stack deploy \
-      --compose-file docker-compose.yml \
-      {% if deployment_config.swarm.prune_services | default(true) | bool %}--prune \{% endif %}
-      {% if use_registry_auth %}--with-registry-auth \{% endif %}
-      {{ resolve_image_flag }} \
-      {{ swarm_stack_name }}
+    # Execute the deploy command
+    echo "Running: $DEPLOY_CMD"
+    $DEPLOY_CMD
     
     echo "Stack {{ swarm_stack_name }} deployed"
   register: stack_deploy
@@ -229,36 +277,6 @@
   failed_when: false
   changed_when: false
 
-- name: Check for Swarm rollback events
-  shell: |
-    # Check if any service has rolled back
-    ROLLBACK_DETECTED=false
-    SERVICES=$(docker stack services {{ swarm_stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}")
-    
-    for SERVICE in $SERVICES; do
-      # Check service update status
-      STATUS=$(docker service inspect $SERVICE --format "{{ '{{' }}.UpdateStatus.State{{ '}}' }}" 2>/dev/null || echo "")
-      
-      if [ "$STATUS" = "rollback_completed" ]; then
-        ROLLBACK_DETECTED=true
-        echo "ROLLBACK_DETECTED: Service $SERVICE has been rolled back by Swarm"
-      fi
-    done
-    
-    if [ "$ROLLBACK_DETECTED" = "true" ]; then
-      exit 1
-    fi
-    
-    echo "No rollback detected - deployment successful"
-    exit 0
-  register: rollback_check
-  failed_when: false
-  changed_when: false
-
-- name: Set Swarm rollback detected flag
-  set_fact:
-    swarm_rollback_detected: "{{ rollback_check.rc != 0 }}"
-
 - name: Display stack status
   shell: |
     echo "=== Stack Services ==="
@@ -273,21 +291,9 @@
   debug:
     msg: "{{ stack_status.stdout_lines }}"
 
-- name: Fail if Swarm detected deployment issues and rolled back
-  fail:
-    msg: |
-      Deployment failed: Docker Swarm has automatically rolled back the deployment.
-      This indicates that the new containers failed their internal healthchecks.
-      
-      Check the service logs for more details:
-        docker service logs {{ swarm_stack_name }}_<service_name>
-      
-      The previous version is now running.
-  when: swarm_rollback_detected | bool
-
 - name: Store current release info for external reference
   set_fact:
     current_release_path: "{{ release_dir }}"
-    current_release_number: "{{ next_version | int }}"
+    current_version: "{{ version }}"
     current_stack_name: "{{ swarm_stack_name }}"
     current_stacks_dir: "{{ stacks_dir }}"

@@ -1,491 +1,198 @@
-# Docker Swarm Deployment
+# Docker Swarm
 
-This guide explains how Dockflow deploys your applications using Docker Swarm mode.
+import { Callout, Steps } from 'nextra/components'
 
-## Overview
+Dockflow uses Docker Swarm to orchestrate your containers. This page explains how Swarm deployments work and how to manage them.
 
-Starting with Dockflow v2.0, **Docker Swarm is the only deployment mode**. Even single-node deployments use Swarm for consistency and reliability.
+## Understanding Swarm Deployments
 
-Docker Swarm provides:
-- **Service replication** - Run multiple instances of your services
-- **Load balancing** - Automatic load distribution across replicas
-- **Rolling updates** - Zero-downtime deployments with automatic rollback
-- **Health checks** - Automatic service recovery
-- **Resource management** - CPU and memory limits/reservations
+Docker Swarm provides built-in features that Dockflow leverages:
 
-## How It Works
+- **Rolling updates** - Containers are replaced one at a time
+- **Health monitoring** - Swarm tracks container health status
+- **Automatic rollback** - Failed updates are reverted automatically
+- **Service discovery** - Containers can find each other by service name
 
-### Deployment Flow
+## Deployment Process
 
-1. **Build Phase**: Images are built locally in CI or on the remote server
-2. **Transfer Phase**: Images are transferred via local registry tunnel (no external registry needed) or pushed to a configured registry
-3. **Deploy Phase**: `docker stack deploy` deploys the stack with automatic rollback configuration
-4. **Health Check Phase**: 
-   - Swarm monitors internal container healthchecks
-   - Dockflow runs external HTTP checks as a second layer of verification
-5. **Cleanup Phase**: Old stacks are cleaned up based on retention settings
+<Steps>
+### Image Transfer
 
-### Stack Management
+Dockflow transfers your Docker images to the server using SSH:
 
-Dockflow stores each deployment as a "release":
+```
+docker save image:tag | ssh user@host docker load
+```
+
+No external registry is required for single-node deployments.
+
+### Stack Deployment
+
+Your application is deployed as a Swarm stack:
+
+```
+docker stack deploy -c docker-compose.yml my-app
+```
+
+Each deployment creates a new release directory on the server.
+
+### Health Verification
+
+After deployment, Dockflow verifies that:
+
+1. Swarm reports all services as healthy
+2. The correct image version is running
+3. External health check endpoints respond (if configured)
+
+### Rollback on Failure
+
+If health checks fail, Dockflow:
+
+1. Detects the rollback via Swarm status
+2. Waits for the previous version to stabilize
+3. Cleans up the failed release
+4. Reports the deployment as failed
+</Steps>
+
+## Release Management
+
+Dockflow organizes releases on your server:
 
 ```
 /var/lib/dockflow/stacks/my-app-production/
-  1/                         # First release
-    docker-compose.yml       # Rendered compose file
-    metadata.json            # Deployment metadata with images list
-    .env                     # Environment variables
-  2/                         # Second release
-    docker-compose.yml
-    metadata.json
-  current -> 2/              # Symlink to active release
+├── 1.0.0/
+│   └── docker-compose.yml
+├── 1.0.1/
+│   └── docker-compose.yml
+├── 1.0.2/
+│   └── docker-compose.yml
+└── current -> 1.0.2/
 ```
 
-This enables:
-- Quick rollback to any previous release
-- Audit trail of deployments
-- Automatic cleanup of old releases and their images
+The `current` symlink points to the active release. By default, Dockflow keeps the last 3 releases for rollback purposes.
 
-## Configuration
+## Health Checks
 
-### 1. Set Project Name (Required)
+### Swarm Health Checks
 
-In your `.deployment/config.yml`:
-
-```yaml
-project_name: "my-app"  # Required: lowercase, alphanumeric, hyphens only
-```
-
-### 2. Configure Registry (Optional)
-
-For multi-node clusters or faster deployments, configure a registry:
-
-```yaml
-registry:
-  enabled: true
-  url: "registry.example.com"
-  namespace: "myorganization"
-  auth_method: "basic"
-  username: "{{ registry_username }}"
-  password: "{{ registry_password }}"
-```
-
-**Note:** If no registry is configured, Dockflow uses an SSH tunnel with a local registry for image transfer. This works for single-node deployments.
-
-### 3. Configure Swarm Settings
-
-```yaml
-swarm:
-  prune_services: true      # Remove old services (default: true)
-  wait_for_services: true   # Wait for services to converge (default: true)
-  wait_timeout: 300         # Timeout in seconds (default: 300)
-  healthcheck_timeout: 120  # Timeout for internal healthchecks (default: 120)
-```
-
-### 4. Configure Stack Retention
-
-```yaml
-stack_management:
-  keep_releases: 3           # Number of previous releases to keep (default: 3)
-  cleanup_on_failure: true   # Clean up failed deployment images (default: true)
-```
-
-## Docker Compose Configuration
-
-### Adding Deploy Section
-
-In your `.deployment/docker/docker-compose.yml`, add a `deploy` section to configure Swarm behavior. Dockflow will automatically inject safe defaults if not specified:
+Define health checks in your `docker-compose.yml`:
 
 ```yaml
 services:
   app:
     image: my-app
-    build:
-      context: ../..
-      dockerfile: Dockerfile.app
-    environment:
-      ENV: ${ENV}
-    ports:
-      - "${APP_EXTERNAL_PORT}:3000"
-    deploy:
-      replicas: 2
-      update_config:
-        parallelism: 1
-        delay: 10s
-        order: stop-first
-        failure_action: rollback  # Automatic rollback on failure
-        monitor: 30s              # Monitor period after update
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 3
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
-```
-
-### Default Injection
-
-Dockflow automatically injects safe deployment defaults for all services:
-
-```yaml
-deploy:
-  update_config:
-    parallelism: 1
-    delay: 10s
-    failure_action: rollback
-    monitor: 30s
-    max_failure_ratio: 0
-```
-
-This ensures automatic rollback if any container fails its healthcheck.
-
-## Health Checks
-
-Dockflow provides two layers of health checks for maximum reliability:
-
-### 1. Internal Health Checks (Swarm)
-
-Docker Swarm monitors container healthchecks defined in your Dockerfile or docker-compose.yml:
-
-```yaml
-services:
-  app:
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 30s
 ```
 
-If a container fails its healthcheck during deployment, Swarm automatically rolls back to the previous version.
+Swarm monitors these checks and triggers automatic rollback if containers become unhealthy.
 
-### 2. External Health Checks (Dockflow)
+### External Health Checks
 
-After Swarm healthchecks pass, Dockflow performs HTTP checks from outside the container:
+Configure additional HTTP checks in `.deployment/config.yml`:
 
 ```yaml
 health_checks:
   enabled: true
   startup_delay: 15
-  on_failure: "rollback"
-  
   endpoints:
-    - name: "API Health"
+    - name: "API"
       url: "http://localhost:3000/health"
       expected_status: 200
       timeout: 30
       retries: 3
 ```
 
-This double-layer approach ensures services are truly accessible, not just running.
+## Update Behavior
 
-## Rollback
+Dockflow configures Swarm updates with these defaults:
 
-### Automatic Rollback (Swarm)
+| Setting | Value | Description |
+|---------|-------|-------------|
+| `parallelism` | 1 | Update one container at a time |
+| `delay` | 10s | Wait between container updates |
+| `failure_action` | rollback | Revert on failure |
+| `monitor` | 30s | Monitor period after update |
+| `order` | start-first | Start new container before stopping old |
 
-If internal healthchecks fail during deployment, Swarm automatically rolls back. This is handled by:
+These settings ensure zero-downtime deployments for services with at least 2 replicas.
 
-```yaml
-deploy:
-  update_config:
-    failure_action: rollback
+## Manual Operations
+
+### View Stack Status
+
+```bash
+docker stack services my-app-production
 ```
 
-### Automatic Rollback (Dockflow)
+### View Service Logs
 
-If external healthchecks fail, Dockflow triggers a rollback using the previous stack release:
+```bash
+docker service logs my-app-production_app
+```
 
-```yaml
-health_checks:
-  on_failure: "rollback"
+### Force Redeployment
+
+```bash
+docker service update --force my-app-production_app
 ```
 
 ### Manual Rollback
 
-Dockflow stores previous releases. To manually rollback:
-
 ```bash
-# View available releases
-ls /var/lib/dockflow/stacks/my-app-production/
-
-# The previous release can be deployed using:
-cd /var/lib/dockflow/stacks/my-app-production/1
-docker stack deploy -c docker-compose.yml my-app-production
+docker service rollback my-app-production_app
 ```
 
-## Deploy Section Options
+### Remove Stack
 
-### Replicas
+```bash
+docker stack rm my-app-production
+```
+
+## Multi-Node Deployments
+
+For clusters with multiple nodes, configure an external registry so worker nodes can pull images:
 
 ```yaml
-deploy:
-  replicas: 3  # Number of task instances
-```
-
-### Update Configuration
-
-```yaml
-deploy:
-  update_config:
-    parallelism: 2          # Number of containers to update at a time
-    delay: 10s              # Delay between updates
-    order: stop-first       # or "start-first"
-    failure_action: rollback # "pause", "continue", or "rollback"
-    monitor: 30s            # Time to monitor for failure
-    max_failure_ratio: 0.2  # Acceptable failure rate
-```
-
-### Restart Policy
-
-```yaml
-deploy:
-  restart_policy:
-    condition: on-failure   # "none", "on-failure", or "any"
-    delay: 5s
-    max_attempts: 3
-    window: 120s
-```
-
-### Resource Constraints
-
-```yaml
-deploy:
-  resources:
-    limits:
-      cpus: '0.5'          # Maximum CPU
-      memory: 512M         # Maximum memory
-    reservations:
-      cpus: '0.25'         # Minimum CPU guarantee
-      memory: 256M         # Minimum memory guarantee
-```
-
-### Placement Constraints
-
-```yaml
-deploy:
-  placement:
-    constraints:
-      - node.role == worker
-      - node.labels.type == production
-    preferences:
-      - spread: node.labels.zone
-```
-
-### Labels
-
-```yaml
-deploy:
-  labels:
-    com.example.description: "My application"
-    com.example.version: "1.0"
-```
-
-## Deployment Workflow
-
-### Standard Deployment
-
-```bash
-# Build and push images, then deploy to Swarm
-dockflow deploy production
-```
-
-### Remote Build
-
-If you want to build images on the remote server:
-
-```yaml
-# In config.yml
-options:
-  remote_build: true
-```
-
-Then deploy:
-
-```bash
-dockflow deploy production
-```
-
-## Monitoring Deployment
-
-After deployment, you can check the status:
-
-```bash
-# List services in the stack
-docker stack services my-stack-name
-
-# List tasks (containers) in the stack
-docker stack ps my-stack-name
-
-# View service logs
-docker service logs my-stack-name_app
-```
-
-## Scaling Services
-
-To scale a service after deployment:
-
-```bash
-docker service scale my-stack-name_app=5
-```
-
-Or update your `docker-compose.yml` and redeploy:
-
-```yaml
-deploy:
-  replicas: 5
-```
-
-## Rolling Updates
-
-Swarm automatically performs rolling updates when you:
-- Push a new image version
-- Change service configuration
-- Update environment variables
-
-To trigger a rolling update:
-
-```bash
-dockflow deploy production
-```
-
-## Rollback
-
-To rollback to the previous version:
-
-```bash
-docker service rollback my-stack-name_app
-```
-
-## Multi-Host Swarm
-
-For a multi-node Swarm cluster:
-
-1. **Initialize Swarm on the manager node** (done automatically by Dockflow)
-2. **Join worker nodes**:
-   ```bash
-   # On manager, get the join token
-   docker swarm join-token worker
-   
-   # On each worker node, run the provided command
-   docker swarm join --token SWMTKN-... manager-ip:2377
-   ```
-
-3. **Deploy your stack** - Dockflow will deploy to the entire cluster
-
-## Troubleshooting
-
-### Services not starting
-
-Check service logs:
-```bash
-docker service logs my-stack-name_app
-```
-
-Check service events:
-```bash
-docker service ps my-stack-name_app --no-trunc
-```
-
-### Image pull errors
-
-Ensure:
-- Registry credentials are correct in `config.yml`
-- Images were successfully pushed to the registry
-- Registry is accessible from the remote server
-
-Check registry login:
-```bash
-docker login registry.example.com -u username
-```
-
-### Update failures
-
-If updates fail, Swarm will automatically rollback if `failure_action: rollback` is set.
-
-Check update status:
-```bash
-docker service inspect my-stack-name_app --pretty
-```
-
-## Best Practices
-
-1. **Always use a registry** - Swarm requires images in a registry for multi-node deployments
-2. **Set resource limits** - Prevent services from consuming all resources
-3. **Use health checks** - Enable automatic recovery of failed containers
-4. **Configure update strategy** - Control rolling update behavior
-5. **Test in staging** - Verify Swarm configuration before production
-6. **Monitor resources** - Use Portainer or other tools to monitor the cluster
-
-## Differences from Standard Deployment
-
-| Aspect | Standard Docker | Docker Swarm |
-|--------|----------------|--------------|
-| Orchestration | Manual | Automatic |
-| Scaling | Manual `docker-compose up --scale` | Automatic via replicas |
-| Load Balancing | External (nginx) | Built-in |
-| Rolling Updates | Manual | Automatic |
-| Health Recovery | Via restart policy | Automatic rescheduling |
-| Registry Requirement | Optional | Required for multi-node |
-
-## Example: Complete Configuration
-
-### config.yml
-```yaml
-project_name: "my-app"
-
-options:
-  environmentize: true
-  remote_build: false
-
 registry:
   enabled: true
   url: "ghcr.io"
-  namespace: "myorg"
+  namespace: "your-org"
   auth_method: "token"
   token: "{{ github_token }}"
-
-swarm:
-  stack_name: "{{ project_name }}-{{ env }}"
-  prune_services: true
-  wait_for_services: true
-  wait_timeout: 300
 ```
 
-### docker-compose.yml
-```yaml
-services:
-  web:
-    image: my-web-app
-    build: .
-    ports:
-      - "80:80"
-    deploy:
-      replicas: 3
-      update_config:
-        parallelism: 1
-        delay: 10s
-        order: stop-first
-        failure_action: rollback
-      restart_policy:
-        condition: on-failure
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 256M
-      placement:
-        constraints:
-          - node.role == worker
+See [Registry Configuration](/configuration/registry) for setup instructions.
+
+## Troubleshooting
+
+### Deployment Stuck
+
+If a deployment hangs, check the service status:
+
+```bash
+docker service ps my-app-production_app --no-trunc
 ```
 
-## See Also
+Look for error messages in the task output.
 
-- [Docker Registry Configuration](/configuration/registry)
-- [Health Checks](/configuration/health-checks)
-- [Multi-Host Deployment](/configuration/multi-host)
-- [Docker Swarm Documentation](https://docs.docker.com/engine/swarm/)
+### Rollback Loop
+
+If services keep rolling back, the issue is usually in your container health check. Verify the health check command works:
+
+```bash
+docker exec <container_id> curl -f http://localhost:3000/health
+```
+
+### Images Not Found
+
+If Swarm cannot find images after a rollback, the cleanup may have removed them. Redeploy to rebuild the images:
+
+```bash
+git tag 1.0.3
+git push origin 1.0.3
+```

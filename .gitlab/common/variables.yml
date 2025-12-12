@@ -1,5 +1,5 @@
 .common-variables:
-  image: shawiizz/dockflow-ci:1.0.5
+  image: shawiizz/dockflow-ci:1.0.6
   services:
     - docker:dind
   variables:
