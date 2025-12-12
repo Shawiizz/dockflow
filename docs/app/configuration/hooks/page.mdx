@@ -1,0 +1,92 @@
+# Hooks
+
+import { Callout, FileTree } from 'nextra/components'
+
+Hooks allow you to run custom scripts at specific points during deployment.
+
+## Available Hooks
+
+| Hook | Location | Timing |
+|------|----------|--------|
+| `pre-build` | CI runner | Before Docker images are built |
+| `post-build` | CI runner | After Docker images are built |
+| `pre-deploy` | Server | Before Swarm stack deployment |
+| `post-deploy` | Server | After successful deployment |
+
+## Setup
+
+Create shell scripts in `.deployment/hooks/`:
+
+<FileTree>
+  <FileTree.Folder name=".deployment" defaultOpen>
+    <FileTree.Folder name="hooks" defaultOpen>
+      <FileTree.File name="pre-build.sh" />
+      <FileTree.File name="post-build.sh" />
+      <FileTree.File name="pre-deploy.sh" />
+      <FileTree.File name="post-deploy.sh" />
+    </FileTree.Folder>
+  </FileTree.Folder>
+</FileTree>
+
+All hooks are optional. If a hook file doesn't exist, it is skipped.
+
+## Jinja2 Templating
+
+Hooks are rendered with Jinja2 before execution. You can use any Ansible variable:
+
+```bash
+#!/bin/bash
+echo "Deploying {{ project_name }} version {{ version }} to {{ env }}"
+
+# Access environment variables
+DATABASE_URL="{{ lookup('env', 'DATABASE_URL') }}"
+```
+
+## Examples
+
+### Pre-build: Generate assets
+
+```bash
+#!/bin/bash
+echo "Generating static assets..."
+npm run build:assets
+```
+
+### Post-build: Security scan
+
+```bash
+#!/bin/bash
+echo "Running security scan..."
+docker scan {{ project_name }}:{{ version }} || true
+```
+
+### Pre-deploy: Database backup
+
+```bash
+#!/bin/bash
+echo "Creating database backup before deployment..."
+pg_dump $DATABASE_URL > /backups/pre-deploy-{{ version }}.sql
+```
+
+### Post-deploy: Notify team
+
+```bash
+#!/bin/bash
+curl -X POST "https://hooks.slack.com/services/xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Deployed {{ project_name }} {{ version }} to {{ env }}"}'
+```
+
+## Configuration
+
+Hooks are enabled by default. Configure in `.deployment/config.yml`:
+
+```yaml
+hooks:
+  enabled: true    # Enable/disable all hooks (default: true)
+  timeout: 300     # Timeout per hook in seconds (default: 300)
+```
+
+<Callout type="info">
+  If a hook fails, the deployment continues with a warning. Hooks do not block deployments.
+</Callout>

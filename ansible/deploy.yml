@@ -90,15 +90,39 @@
         - nginx
     - role: private_ssh_keys
     - role: services
+    # Pre-build hook (runs locally in CI)
+    - role: hooks
+      vars:
+        hook_name: "pre-build"
+        hook_delegate: "localhost"
+        hook_working_dir: "{{ root_path }}"
+      delegate_to: localhost
+      run_once: true
     - role: local-build
       when: not (remote_build | bool)
       delegate_to: localhost
       run_once: true
     - role: remote-build
       when: remote_build | bool
-    - role: execute-scripts
+    # Post-build hook (runs locally in CI)
+    - role: hooks
+      vars:
+        hook_name: "post-build"
+        hook_delegate: "localhost"
+        hook_working_dir: "{{ root_path }}"
+      delegate_to: localhost
+      run_once: true
 
   tasks:
+    # Pre-deploy hook (runs on remote server)
+    - name: Run pre-deploy hook
+      include_role:
+        name: hooks
+      vars:
+        hook_name: "pre-deploy"
+        hook_delegate: "{{ inventory_hostname }}"
+        hook_working_dir: "/var/lib/dockflow/stacks/{{ stack_name }}"
+
     - name: Deploy using Docker Swarm
       include_role:
         name: docker-swarm
@@ -124,4 +148,14 @@
       include_role:
         name: stack-management
         tasks_from: cleanup
+      when: (failed_health_checks | default([]) | length) == 0
+
+    # Post-deploy hook (runs on remote server after successful deployment)
+    - name: Run post-deploy hook
+      include_role:
+        name: hooks
+      vars:
+        hook_name: "post-deploy"
+        hook_delegate: "{{ inventory_hostname }}"
+        hook_working_dir: "/var/lib/dockflow/stacks/{{ stack_name }}"
       when: (failed_health_checks | default([]) | length) == 0

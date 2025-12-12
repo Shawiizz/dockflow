@@ -16,9 +16,6 @@ Add custom configs in `.deployment/templates/`:
         <FileTree.File name="my-service.service.j2" />
         <FileTree.File name="my-service.mount.j2" />
       </FileTree.Folder>
-      <FileTree.Folder name="scripts">
-        <FileTree.File name="pre-deploy.sh.j2" />
-      </FileTree.Folder>
     </FileTree.Folder>
   </FileTree.Folder>
 </FileTree>
@@ -60,16 +57,4 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
-### Post-Deployment Scripts
-
-**Example:** Create `.deployment/templates/scripts/cleanup.sh.j2`
-
-```bash
-#!/bin/bash
-echo "Starting cleanup for {{ env }}..."
-
-# Clean old Docker images
-docker image prune -af --filter "until=24h"
-
-echo "Cleanup complete!"
-```
+For custom scripts that run during deployment, see [Hooks](/configuration/hooks).

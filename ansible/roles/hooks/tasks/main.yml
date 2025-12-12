@@ -1,0 +1,87 @@
+---
+# Hooks role - executes user-defined scripts at key deployment stages
+# Hooks are optional shell scripts in .deployment/hooks/
+# They are rendered with Jinja2 before execution
+
+- name: Set hooks configuration
+  set_fact:
+    hooks_enabled: "{{ deployment_config.hooks.enabled | default(true) | bool }}"
+    hooks_timeout: "{{ deployment_config.hooks.timeout | default(300) }}"
+    hooks_dir: "{{ root_path }}/.deployment/hooks"
+
+- name: Check if hook file exists
+  stat:
+    path: "{{ hooks_dir }}/{{ hook_name }}.sh"
+  register: hook_file
+  delegate_to: localhost
+  when: hooks_enabled
+
+- name: Execute hook
+  block:
+    - name: Create temp directory for rendered hook
+      tempfile:
+        state: directory
+        prefix: "dockflow_hook_"
+      register: hook_temp_dir
+      delegate_to: "{{ hook_delegate | default('localhost') }}"
+
+    - name: Render hook script with Jinja2
+      template:
+        src: "{{ hooks_dir }}/{{ hook_name }}.sh"
+        dest: "{{ hook_temp_dir.path }}/{{ hook_name }}.sh"
+        mode: '0755'
+      delegate_to: localhost
+
+    - name: Copy rendered hook to remote if needed
+      copy:
+        src: "{{ hook_temp_dir.path }}/{{ hook_name }}.sh"
+        dest: "{{ hook_temp_dir.path }}/{{ hook_name }}.sh"
+        mode: '0755'
+      when: hook_delegate | default('localhost') != 'localhost'
+
+    - name: Run hook script
+      shell: |
+        cd {{ hook_working_dir | default(root_path) }}
+        {{ hook_temp_dir.path }}/{{ hook_name }}.sh
+      args:
+        executable: /bin/bash
+      async: "{{ hooks_timeout }}"
+      poll: 5
+      register: hook_result
+      delegate_to: "{{ hook_delegate | default('localhost') }}"
+
+    - name: Display hook output
+      debug:
+        msg: |
+          Hook '{{ hook_name }}' completed successfully
+          {{ hook_result.stdout_lines | default([]) | join('\n') }}
+      when: hook_result.rc == 0
+
+    - name: Cleanup temp directory
+      file:
+        path: "{{ hook_temp_dir.path }}"
+        state: absent
+      delegate_to: "{{ hook_delegate | default('localhost') }}"
+
+  rescue:
+    - name: Display hook warning on failure
+      debug:
+        msg: |
+          WARNING: Hook '{{ hook_name }}' failed (continuing deployment)
+          Error: {{ hook_result.stderr | default('Unknown error') }}
+
+    - name: Cleanup temp directory on failure
+      file:
+        path: "{{ hook_temp_dir.path }}"
+        state: absent
+      delegate_to: "{{ hook_delegate | default('localhost') }}"
+      ignore_errors: true
+
+  when:
+    - hooks_enabled
+    - hook_file.stat.exists | default(false)
+
+- name: Skip hook if not found
+  debug:
+    msg: "Hook '{{ hook_name }}' not found, skipping"
+  when: hooks_enabled and not (hook_file.stat.exists | default(false))
