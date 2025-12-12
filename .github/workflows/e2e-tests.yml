@@ -19,6 +19,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Build CLI binary
+        working-directory: cli-ts
+        run: |
+          bun install
+          bun run build linux-x64
+
       - name: Start test environment
         working-directory: testing/e2e/docker
         run: |

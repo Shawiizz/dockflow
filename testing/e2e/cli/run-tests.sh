@@ -13,6 +13,23 @@ echo "   DockFlow CLI E2E Tests"
 echo "=========================================="
 echo ""
 
+# Build CLI binary if not present
+CLI_BINARY="$ROOT_PATH/cli-ts/dist/dockflow-linux-x64"
+if [ ! -f "$CLI_BINARY" ]; then
+	echo "Building CLI binary..."
+	cd "$ROOT_PATH/cli-ts"
+	if command -v bun &> /dev/null; then
+		bun install
+		bun run build linux-x64
+	else
+		echo "ERROR: bun is required to build the CLI. Install it with: curl -fsSL https://bun.sh/install | bash"
+		exit 1
+	fi
+	cd "$ROOT_PATH"
+	echo "✓ CLI binary built"
+	echo ""
+fi
+
 # Check if test VM is running, if not run setup from common
 if ! docker ps | grep -q "dockflow-test-vm"; then
 	echo "Test VM is not running. Setting up test environment..."
@@ -78,7 +95,21 @@ if [ $? -ne 0 ]; then
 	exit 1
 fi
 
-echo "✓ Project transferred to remote server"
+# Copy CLI binary to remote temp directory and rename to 'dockflow'
+echo "Transferring CLI binary to remote server..."
+sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P "$SSH_PORT" \
+	"$CLI_BINARY" "${SSH_USER}@localhost:$REMOTE_TEMP_DIR/dockflow"
+
+if [ $? -ne 0 ]; then
+	echo "ERROR: Failed to transfer CLI binary to remote server"
+	exit 1
+fi
+
+# Make binary executable
+sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
+	"chmod +x $REMOTE_TEMP_DIR/dockflow"
+
+echo "✓ Project and CLI binary transferred to remote server"
 echo ""
 
 echo "Running CLI setup command on remote server..."
