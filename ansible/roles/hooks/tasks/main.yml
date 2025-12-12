@@ -18,12 +18,12 @@
 
 - name: Execute hook
   block:
-    - name: Create temp directory for rendered hook
+    - name: Create temp directory for rendered hook (local)
       tempfile:
         state: directory
         prefix: "dockflow_hook_"
       register: hook_temp_dir
-      delegate_to: "{{ hook_delegate | default('localhost') }}"
+      delegate_to: localhost
 
     - name: Render hook script with Jinja2
       template:
@@ -32,21 +32,43 @@
         mode: '0755'
       delegate_to: localhost
 
-    - name: Copy rendered hook to remote if needed
-      copy:
-        src: "{{ hook_temp_dir.path }}/{{ hook_name }}.sh"
-        dest: "{{ hook_temp_dir.path }}/{{ hook_name }}.sh"
-        mode: '0755'
-      when: hook_delegate | default('localhost') != 'localhost'
-
-    - name: Run hook script
+    - name: Run hook script locally
       shell: |
         cd {{ hook_working_dir | default(root_path) }}
         timeout {{ hooks_timeout }} {{ hook_temp_dir.path }}/{{ hook_name }}.sh
       args:
         executable: /bin/bash
       register: hook_result
-      delegate_to: "{{ hook_delegate | default('localhost') }}"
+      delegate_to: localhost
+      when: hook_delegate | default('localhost') == 'localhost'
+
+    - name: Copy and run hook script on remote
+      block:
+        - name: Create remote temp directory
+          tempfile:
+            state: directory
+            prefix: "dockflow_hook_"
+          register: remote_temp_dir
+
+        - name: Copy rendered hook to remote
+          copy:
+            src: "{{ hook_temp_dir.path }}/{{ hook_name }}.sh"
+            dest: "{{ remote_temp_dir.path }}/{{ hook_name }}.sh"
+            mode: '0755'
+
+        - name: Run hook script on remote
+          shell: |
+            cd {{ hook_working_dir | default('/tmp') }}
+            timeout {{ hooks_timeout }} {{ remote_temp_dir.path }}/{{ hook_name }}.sh
+          args:
+            executable: /bin/bash
+          register: hook_result
+
+        - name: Cleanup remote temp directory
+          file:
+            path: "{{ remote_temp_dir.path }}"
+            state: absent
+      when: hook_delegate | default('localhost') != 'localhost'
 
     - name: Display hook output
       debug:
@@ -55,11 +77,11 @@
           {{ hook_result.stdout_lines | default([]) | join('\n') }}
       when: hook_result.rc == 0
 
-    - name: Cleanup temp directory
+    - name: Cleanup local temp directory
       file:
         path: "{{ hook_temp_dir.path }}"
         state: absent
-      delegate_to: "{{ hook_delegate | default('localhost') }}"
+      delegate_to: localhost
 
   rescue:
     - name: Display hook warning on failure
@@ -68,11 +90,18 @@
           WARNING: Hook '{{ hook_name }}' failed (continuing deployment)
           Error: {{ hook_result.stderr | default('Unknown error') }}
 
-    - name: Cleanup temp directory on failure
+    - name: Cleanup local temp directory on failure
       file:
         path: "{{ hook_temp_dir.path }}"
         state: absent
-      delegate_to: "{{ hook_delegate | default('localhost') }}"
+      delegate_to: localhost
+      ignore_errors: true
+
+    - name: Cleanup remote temp directory on failure
+      file:
+        path: "{{ remote_temp_dir.path }}"
+        state: absent
+      when: remote_temp_dir is defined
       ignore_errors: true
 
   when:
