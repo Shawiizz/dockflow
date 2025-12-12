@@ -13,7 +13,7 @@ import { getCurrentBranch } from '../utils/git';
 import { getLatestVersion, incrementVersion } from '../utils/version';
 
 const DOCKFLOW_REPO = 'https://github.com/Shawiizz/dockflow.git';
-const DOCKFLOW_VERSION = '2.0.0-dev2';
+const DOCKFLOW_VERSION = '2.0.0-dev3';
 
 interface DeployOptions {
   services?: string;
@@ -21,6 +21,7 @@ interface DeployOptions {
   force?: boolean;
   hostname?: string;
   debug?: boolean;
+  dev?: boolean;
 }
 
 /**
@@ -34,13 +35,26 @@ function buildDeployScript(
   envExports: string,
   options: DeployOptions
 ): string {
-  return `
-set -e
-
+  // In dev mode, use the mounted local dockflow folder
+  const dockflowSetup = options.dev
+    ? `
+# Dev mode: using local dockflow framework mounted at /dockflow
+echo "Using local dockflow framework (dev mode)..."
+chmod +x /dockflow/.common/scripts/*.sh 2>/dev/null || true
+export DOCKFLOW_PATH="/dockflow"
+`
+    : `
 # Clone dockflow framework
 echo "Cloning dockflow framework v${DOCKFLOW_VERSION}..."
 git clone --depth 1 --branch "${DOCKFLOW_VERSION}" "${DOCKFLOW_REPO}" /tmp/dockflow 2>/dev/null
 chmod +x /tmp/dockflow/.common/scripts/*.sh
+export DOCKFLOW_PATH="/tmp/dockflow"
+`;
+
+  return `
+set -e
+
+${dockflowSetup}
 
 # Set environment variables from .env.dockflow
 ${envExports}
@@ -58,14 +72,14 @@ ${options.services ? `export DEPLOY_DOCKER_SERVICES="${options.services}"` : ''}
 
 # Load environment using the standard load_env script
 cd /project
-source /tmp/dockflow/.common/scripts/load_env.sh "${env}" "${hostname}"
+source \$DOCKFLOW_PATH/.common/scripts/load_env.sh "${env}" "${hostname}"
 
 echo ""
 echo "Deploying to \$DOCKFLOW_HOST:\$DOCKFLOW_PORT as \$DOCKFLOW_USER"
 echo ""
 
 # Run the deployment script
-cd /tmp/dockflow
+cd \$DOCKFLOW_PATH
 bash .common/scripts/deploy_with_ansible.sh
 `;
 }
@@ -77,15 +91,24 @@ async function executeDeployment(
   projectRoot: string,
   dockerImage: string,
   deployScript: string,
-  env: string
+  env: string,
+  devMode: boolean = false
 ): Promise<void> {
   const dockerCmd = [
     'docker', 'run', '--rm', '-it',
     '-v', `${projectRoot}:/project`,
     '-v', '/var/run/docker.sock:/var/run/docker.sock',
-    dockerImage,
-    'bash', '-c', deployScript,
   ];
+
+  // In dev mode, mount the local dockflow repository
+  if (devMode) {
+    // Get the dockflow repo root (parent of cli-ts, or current working directory if running from repo)
+    const dockflowRoot = process.cwd();
+    dockerCmd.push('-v', `${dockflowRoot}:/dockflow`);
+    console.log(chalk.yellow(`Dev mode: mounting ${dockflowRoot} as /dockflow`));
+  }
+
+  dockerCmd.push(dockerImage, 'bash', '-c', deployScript);
 
   console.log(chalk.dim('Starting deployment container...'));
   console.log('');
@@ -129,6 +152,7 @@ export function registerDeployCommand(program: Command): void {
     .option('--force', 'Force deployment even if locked')
     .option('--hostname <hostname>', 'Specific host to deploy to (for multi-host)', 'main')
     .option('--debug', 'Enable debug output')
+    .option('--dev', 'Use local dockflow folder instead of cloning (for development)')
     .action(async (env: string, version: string | undefined, options: DeployOptions) => {
       printHeader(`Deploying to ${env}`);
       console.log('');
@@ -199,6 +223,9 @@ export function registerDeployCommand(program: Command): void {
       if (options.services) {
         printInfo(`Services: ${options.services}`);
       }
+      if (options.dev) {
+        printInfo(`Mode: Development (using local dockflow)`);
+      }
       console.log('');
 
       // Build and execute deployment
@@ -215,6 +242,6 @@ export function registerDeployCommand(program: Command): void {
         options
       );
 
-      await executeDeployment(projectRoot, dockerImage, deployScript, env);
+      await executeDeployment(projectRoot, dockerImage, deployScript, env, options.dev || false);
     });
 }

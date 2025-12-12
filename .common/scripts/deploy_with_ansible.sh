@@ -6,10 +6,13 @@
 # - ENV: The environment (production, staging, etc.)
 # - HOSTNAME: The hostname to deploy to
 # - ROOT_PATH: The root path of the project
+# - DOCKFLOW_PATH: Optional, path to dockflow (defaults to /tmp/dockflow)
 # - SKIP_NGINX_CHECK: Optional, set to "true" to skip nginx configuration check
 
 ######### Change working directory #########
-cd /tmp/dockflow || exit 1
+# Use DOCKFLOW_PATH if set, otherwise default to /tmp/dockflow
+DOCKFLOW_PATH="${DOCKFLOW_PATH:-/tmp/dockflow}"
+cd "$DOCKFLOW_PATH" || exit 1
 
 #######################################
 ############ Setup SSH Key ############
