@@ -13,8 +13,6 @@ generate_uuid() {
 	fi
 }
 
-
-
 # Show deploy command help
 show_deploy_help() {
 	cat <<EOF
