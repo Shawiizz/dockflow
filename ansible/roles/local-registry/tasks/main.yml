@@ -26,9 +26,9 @@
 
     - name: Get remote server SSH details
       set_fact:
-        remote_host: "{{ ansible_host }}"
-        remote_user: "{{ ansible_user | default('root') }}"
-        remote_port: "{{ ansible_port | default(22) }}"
+        ssh_remote_host: "{{ ansible_host }}"
+        ssh_remote_user: "{{ ansible_user | default('root') }}"
+        ssh_remote_port: "{{ ansible_port | default(22) }}"
         ssh_key_file: "{{ ansible_ssh_private_key_file | default('') }}"
       delegate_to: localhost
 
@@ -39,13 +39,13 @@
           -o ConnectTimeout=30
           -o ServerAliveInterval=60
           {% if ssh_key_file != '' %}-i {{ ssh_key_file }}{% endif %}
-          -p {{ remote_port }}
+          -p {{ ssh_remote_port }}
       delegate_to: localhost
 
     - name: Transfer images via SSH streaming
       shell: |
         echo "Transferring {{ item }}..."
-        docker save "{{ item }}" | ssh {{ ssh_opts }} {{ remote_user }}@{{ remote_host }} "docker load"
+        docker save "{{ item }}" | ssh {{ ssh_opts }} {{ ssh_remote_user }}@{{ ssh_remote_host }} "docker load"
       delegate_to: localhost
       loop: "{{ built_images | default([]) }}"
       register: transfer_results

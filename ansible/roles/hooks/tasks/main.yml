@@ -75,7 +75,10 @@
         msg: |
           Hook '{{ hook_name }}' completed successfully
           {{ hook_result.stdout_lines | default([]) | join('\n') }}
-      when: hook_result.rc == 0
+      when: 
+        - hook_result is defined
+        - hook_result.rc is defined
+        - hook_result.rc == 0
 
     - name: Cleanup local temp directory
       file:
@@ -101,7 +104,9 @@
       file:
         path: "{{ remote_temp_dir.path }}"
         state: absent
-      when: remote_temp_dir is defined
+      when: 
+        - remote_temp_dir is defined
+        - remote_temp_dir.path is defined
       ignore_errors: true
 
   when:
