@@ -6,7 +6,8 @@
 import chalk from 'chalk';
 import { join } from 'path';
 import { spawnSync } from 'child_process';
-import { parseConnectionString } from './connection';
+import { parseConnectionStringLegacy } from './connection-parser';
+import { normalizePrivateKey } from './ssh-keys';
 
 /**
  * Increment version string
@@ -56,7 +57,7 @@ export async function getLatestVersion(
   env: string,
   debug: boolean = false
 ): Promise<string | null> {
-  const conn = parseConnectionString(connectionString);
+  const conn = parseConnectionStringLegacy(connectionString);
   if (!conn) {
     if (debug) console.log(chalk.gray('[DEBUG] Failed to parse connection string'));
     return null;
@@ -68,20 +69,10 @@ export async function getLatestVersion(
   if (debug) console.log(chalk.gray(`[DEBUG] SSH connection: ${conn.user}@${conn.host}:${conn.port}`));
 
   // Write private key to temp file
-  // Ensure proper line endings (Unix LF) and handle escaped newlines
   const tempKeyPath = join(process.env.TEMP || '/tmp', `dockflow_deploy_key_${Date.now()}`);
   const fs = await import('fs');
 
-  // Convert escaped \n to actual newlines and normalize line endings
-  let privateKey = conn.privateKey
-    .replace(/\\n/g, '\n') // Handle escaped newlines
-    .replace(/\r\n/g, '\n') // Normalize Windows line endings
-    .replace(/\r/g, '\n'); // Handle old Mac line endings
-
-  // Ensure the key ends with a newline
-  if (!privateKey.endsWith('\n')) {
-    privateKey += '\n';
-  }
+  const privateKey = normalizePrivateKey(conn.privateKey);
 
   if (debug) console.log(chalk.gray(`[DEBUG] Private key first 50 chars: ${privateKey.substring(0, 50).replace(/\n/g, '\\n')}`));
 

@@ -4,9 +4,12 @@
 
 import type { Dependency } from './types';
 
-export const DOCKFLOW_REPO = 'https://github.com/Shawiizz/dockflow.git';
-export const DOCKFLOW_DIR = '/opt/dockflow';
-export const DOCKFLOW_RELEASE_URL = 'https://github.com/Shawiizz/dockflow/releases/latest/download';
+// Re-export from centralized constants
+export { 
+  DOCKFLOW_REPO, 
+  DOCKFLOW_DIR, 
+  DOCKFLOW_RELEASE_URL 
+} from '../../constants';
 
 export const REQUIRED_DEPENDENCIES: Dependency[] = [
   { 

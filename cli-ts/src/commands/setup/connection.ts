@@ -4,8 +4,15 @@
 
 import chalk from 'chalk';
 import { printHeader } from '../../utils/output';
+import { 
+  generateConnectionString as generateConnString,
+  parseConnectionString as parseConnString
+} from '../../utils/connection-parser';
 import type { HostConfig } from './types';
-import type { ConnectionInfo } from '../../utils/config';
+import type { SSHKeyConnection } from '../../types';
+
+// Re-export for backwards compatibility
+export type { SSHKeyConnection as ConnectionInfo } from '../../types';
 
 /**
  * Generate connection string (base64 encoded JSON)
@@ -17,39 +24,15 @@ export function generateConnectionString(config: {
   privateKey: string;
   password?: string;
 }): string {
-  const json = JSON.stringify({
-    host: config.host,
-    port: config.port,
-    user: config.user,
-    privateKey: config.privateKey,
-    ...(config.password && { password: config.password })
-  });
-
-  return Buffer.from(json).toString('base64');
+  return generateConnString(config as SSHKeyConnection);
 }
 
 /**
  * Parse connection string to ConnectionInfo
  */
-export function parseConnectionString(connectionString: string): ConnectionInfo | null {
-  try {
-    const json = Buffer.from(connectionString, 'base64').toString('utf-8');
-    const data = JSON.parse(json);
-    
-    if (!data.host || !data.user || !data.privateKey) {
-      return null;
-    }
-    
-    return {
-      host: data.host,
-      port: data.port || 22,
-      user: data.user,
-      privateKey: data.privateKey,
-      password: data.password
-    };
-  } catch {
-    return null;
-  }
+export function parseConnectionString(connectionString: string): SSHKeyConnection | null {
+  const result = parseConnString(connectionString);
+  return result.success ? result.data : null;
 }
 
 /**

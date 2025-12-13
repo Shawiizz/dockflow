@@ -1,72 +1,23 @@
 /**
- * SSH utilities using native ssh command
- * Supports all key types including ed25519
+ * SSH utilities using native ssh command.
+ * Supports all key types including ed25519.
  */
 
 import { spawn, spawnSync } from "child_process";
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
-import type { ConnectionInfo } from "./config";
+import type { SSHKeyConnection } from "../types";
+import { 
+  createTempKeyFile, 
+  cleanupKeyFile, 
+  buildSSHArgs, 
+  getSSHCommand 
+} from "./ssh-keys";
+import { unwrap } from "../types";
 
-/**
- * Creates a temporary SSH key file from the connection info
- */
-function createTempKeyFile(privateKey: string): string {
-  const tempDir = os.tmpdir();
-  const keyFile = path.join(tempDir, `dockflow_key_${Date.now()}`);
-  
-  // Normalize line endings to Unix format (required for SSH keys)
-  const normalizedKey = privateKey.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  
-  // Ensure key ends with newline
-  const finalKey = normalizedKey.endsWith('\n') ? normalizedKey : normalizedKey + '\n';
-  
-  // Write key with proper permissions
-  fs.writeFileSync(keyFile, finalKey, { mode: 0o600 });
-  
-  return keyFile;
-}
+// Re-export ConnectionInfo for backwards compatibility
+export type { SSHKeyConnection as ConnectionInfo } from "../types";
 
-/**
- * Clean up temporary key file
- */
-function cleanupKeyFile(keyFile: string): void {
-  try {
-    if (fs.existsSync(keyFile)) {
-      fs.unlinkSync(keyFile);
-    }
-  } catch {
-    // Ignore cleanup errors
-  }
-}
-
-/**
- * Build SSH command arguments
- */
-function buildSSHArgs(conn: ConnectionInfo, keyFile: string): string[] {
-  const args = [
-    "-i", keyFile,
-    "-o", "StrictHostKeyChecking=no",
-    "-o", "UserKnownHostsFile=/dev/null",
-    "-o", "LogLevel=ERROR",
-    "-o", "BatchMode=yes",
-    "-o", "ConnectTimeout=10",
-    "-p", conn.port?.toString() || "22",
-    `${conn.user}@${conn.host}`
-  ];
-  
-  return args;
-}
-
-/**
- * Get the SSH command name based on platform
- */
-function getSSHCommand(): string {
-  // On Windows, we can use OpenSSH that comes with Windows 10+
-  // or Git Bash's ssh
-  return "ssh";
-}
+// Internal type alias for cleaner code
+type ConnectionInfo = SSHKeyConnection;
 
 /**
  * Execute a command via SSH (streaming output to console)
@@ -79,7 +30,8 @@ export async function sshExecStream(
     onStderr?: (data: string) => void;
   } = {}
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const keyFile = createTempKeyFile(conn.privateKey);
+  const keyFileResult = createTempKeyFile(conn.privateKey);
+  const keyFile = unwrap(keyFileResult);
   
   try {
     const sshArgs = [...buildSSHArgs(conn, keyFile), command];
@@ -143,7 +95,8 @@ export function sshExec(
   conn: ConnectionInfo,
   command: string
 ): { stdout: string; stderr: string; exitCode: number } {
-  const keyFile = createTempKeyFile(conn.privateKey);
+  const keyFileResult = createTempKeyFile(conn.privateKey);
+  const keyFile = unwrap(keyFileResult);
   
   try {
     const sshArgs = [...buildSSHArgs(conn, keyFile), command];
@@ -172,7 +125,8 @@ export function sshExec(
  * Open an interactive SSH session
  */
 export function sshShell(conn: ConnectionInfo): Promise<number> {
-  const keyFile = createTempKeyFile(conn.privateKey);
+  const keyFileResult = createTempKeyFile(conn.privateKey);
+  const keyFile = unwrap(keyFileResult);
   
   return new Promise((resolve, reject) => {
     const sshArgs = buildSSHArgs(conn, keyFile);
@@ -202,10 +156,11 @@ export function executeInteractiveSSH(
   conn: ConnectionInfo,
   command: string
 ): Promise<number> {
-  const keyFile = createTempKeyFile(conn.privateKey);
+  const keyFileResult = createTempKeyFile(conn.privateKey);
+  const keyFile = unwrap(keyFileResult);
   
   return new Promise((resolve, reject) => {
-    const sshArgs = [...buildSSHArgs(conn, keyFile), "-t", command];
+    const sshArgs = [...buildSSHArgs(conn, keyFile, { allocateTTY: true }), command];
     const ssh = getSSHCommand();
     
     const proc = spawn(ssh, sshArgs, {
@@ -230,7 +185,10 @@ export function executeInteractiveSSH(
  */
 export async function testConnection(conn: ConnectionInfo): Promise<boolean> {
   try {
-    const result = await sshExecStream(conn, "echo ok");
+    const result = await sshExecStream(conn, "echo ok", {
+      onStdout: () => {}, // Suppress output during testing
+      onStderr: () => {},
+    });
     return result.exitCode === 0 && result.stdout.trim() === "ok";
   } catch {
     return false;

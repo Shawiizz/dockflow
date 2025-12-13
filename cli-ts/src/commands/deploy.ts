@@ -11,9 +11,7 @@ import { printError, printSuccess, printInfo, printHeader } from '../utils/outpu
 import { loadEnvDockflow, buildEnvExports } from '../utils/env';
 import { getCurrentBranch } from '../utils/git';
 import { getLatestVersion, incrementVersion } from '../utils/version';
-
-const DOCKFLOW_REPO = 'https://github.com/Shawiizz/dockflow.git';
-const DOCKFLOW_VERSION = '2.0.0-dev3';
+import { DOCKFLOW_REPO, DOCKFLOW_VERSION } from '../constants';
 
 interface DeployOptions {
   services?: string;
