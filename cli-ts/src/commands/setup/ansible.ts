@@ -177,14 +177,27 @@ export async function runAnsiblePlaybook(config: HostConfig, ansibleDir: string)
       '--extra-vars', extraVars.join(' ')
     ];
 
+    // Use stdio: 'pipe' instead of 'inherit' to avoid non-blocking I/O issues
+    // Ansible requires blocking I/O on stdin/stdout/stderr
     const proc = spawn('ansible-playbook', args, {
-      stdio: 'inherit',
+      stdio: ['ignore', 'pipe', 'pipe'],
       cwd: path.dirname(ansibleDir!),
       env: {
         ...process.env,
         ANSIBLE_HOST_KEY_CHECKING: 'False',
-        ANSIBLE_CONFIG: path.join(path.dirname(ansibleDir!), 'ansible.cfg')
+        ANSIBLE_CONFIG: path.join(path.dirname(ansibleDir!), 'ansible.cfg'),
+        // Force unbuffered output for Python/Ansible
+        PYTHONUNBUFFERED: '1'
       }
+    });
+
+    // Stream stdout and stderr to console
+    proc.stdout?.on('data', (data) => {
+      process.stdout.write(data);
+    });
+
+    proc.stderr?.on('data', (data) => {
+      process.stderr.write(data);
     });
 
     proc.on('close', (code) => {

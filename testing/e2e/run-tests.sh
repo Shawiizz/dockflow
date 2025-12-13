@@ -10,11 +10,13 @@ echo ""
 # Run CLI tests first (which will setup test VM and configure it)
 echo "Step 1: Running CLI E2E tests (setup + configuration)..."
 
-# Capture connection string while streaming output
-# Using file descriptor to capture output while still displaying it
-exec 5>&1
+# Use a temp file to capture output while streaming to stdout
+# This avoids non-blocking I/O issues with pipes that break Ansible
+TEMP_OUTPUT=$(mktemp)
+trap "rm -f $TEMP_OUTPUT" EXIT
+
 set +e
-TEST_CONNECTION_OUTPUT=$(bash "$SCRIPT_DIR/cli/run-tests.sh" | tee /dev/fd/5 | grep "^::CONNECTION_STRING::" | tail -n 1)
+bash "$SCRIPT_DIR/cli/run-tests.sh" 2>&1 | tee "$TEMP_OUTPUT"
 CLI_EXIT_CODE=${PIPESTATUS[0]}
 set -e
 
@@ -23,7 +25,7 @@ if [ "$CLI_EXIT_CODE" -ne 0 ]; then
 	exit 1
 fi
 
-TEST_CONNECTION="${TEST_CONNECTION_OUTPUT#*::CONNECTION_STRING::}"
+TEST_CONNECTION=$(grep "^::CONNECTION_STRING::" "$TEMP_OUTPUT" | tail -n 1 | sed 's/^::CONNECTION_STRING:://')
 
 if [ -z "$TEST_CONNECTION" ]; then
 	echo "ERROR: Could not capture connection string from CLI tests."

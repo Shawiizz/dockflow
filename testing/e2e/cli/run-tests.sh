@@ -127,15 +127,14 @@ CLI_OUTPUT=$(sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserK
     --password 'dockflow123' \
     --generate-key \
     --skip-docker-install 2>&1")
-
 CLI_EXIT_CODE=$?
 set -e
 
-# Display CLI output for debugging
+# Display CLI output
 echo "$CLI_OUTPUT"
 echo ""
 
-if [ $CLI_EXIT_CODE -ne 0 ]; then
+if [ "$CLI_EXIT_CODE" -ne 0 ]; then
 	echo "ERROR: CLI setup-machine command failed with exit code $CLI_EXIT_CODE"
 	# Cleanup remote temp directory
 	sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \

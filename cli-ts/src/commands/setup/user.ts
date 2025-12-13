@@ -46,6 +46,12 @@ export function createDeployUser(username: string, password: string, publicKey: 
     });
   }
 
+  // Add user to docker group (if docker is installed)
+  spawnSync('sudo', ['usermod', '-aG', 'docker', username], {
+    encoding: 'utf-8',
+    stdio: ['pipe', 'pipe', 'pipe']
+  });
+
   const userHome = `/home/${username}`;
   const userSSHDir = `${userHome}/.ssh`;
 
