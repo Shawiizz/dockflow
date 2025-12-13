@@ -18,28 +18,28 @@ echo ""
 # Build CLI binary if not present
 CLI_BINARY="$ROOT_PATH/cli-ts/dist/dockflow-linux-x64"
 if [ ! -f "$CLI_BINARY" ]; then
-    echo "Building CLI binary..."
-    cd "$ROOT_PATH/cli-ts"
-    if command -v bun &>/dev/null; then
-        bun install
-        bun run build linux-x64
-    else
-        echo "ERROR: bun is required to build the CLI. Install it with: curl -fsSL https://bun.sh/install | bash"
-        exit 1
-    fi
-    cd "$ROOT_PATH"
-    echo "✓ CLI binary built"
-    echo ""
+	echo "Building CLI binary..."
+	cd "$ROOT_PATH/cli-ts"
+	if command -v bun &>/dev/null; then
+		bun install
+		bun run build linux-x64
+	else
+		echo "ERROR: bun is required to build the CLI. Install it with: curl -fsSL https://bun.sh/install | bash"
+		exit 1
+	fi
+	cd "$ROOT_PATH"
+	echo "✓ CLI binary built"
+	echo ""
 fi
 
 # Check if test VM is running, if not run setup from common
 if ! docker ps | grep -q "dockflow-test-vm"; then
-    echo "Test VM is not running. Setting up test environment..."
-    echo ""
-    cd "$ROOT_DIR/common"
-    bash setup.sh
-    echo ""
-    cd "$ROOT_PATH"
+	echo "Test VM is not running. Setting up test environment..."
+	echo ""
+	cd "$ROOT_DIR/common"
+	bash setup.sh
+	echo ""
+	cd "$ROOT_PATH"
 fi
 
 # Load environment variables
@@ -48,9 +48,9 @@ source "$ROOT_DIR/.env" 2>/dev/null || true
 
 # Verify environment variables
 if [ -z "${SSH_HOST:-}" ] || [ -z "${SSH_PORT:-}" ] || [ -z "${SSH_USER:-}" ] || [ -z "${SSH_PASSWORD:-}" ] || [ -z "${DEPLOY_USER:-}" ]; then
-    echo "ERROR: Required environment variables are not set."
-    echo "Required: SSH_HOST, SSH_PORT, SSH_USER, SSH_PASSWORD, DEPLOY_USER"
-    exit 1
+	echo "ERROR: Required environment variables are not set."
+	echo "Required: SSH_HOST, SSH_PORT, SSH_USER, SSH_PASSWORD, DEPLOY_USER"
+	exit 1
 fi
 
 echo "Test configuration:"
@@ -72,41 +72,41 @@ REMOTE_TEMP_DIR="/tmp/dockflow-cli-$$"
 
 # Test SSH connection first (silent)
 if ! sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p "$SSH_PORT" "${SSH_USER}@localhost" "true" >/dev/null 2>&1; then
-    echo "ERROR: Cannot establish SSH connection to remote server" >&2
-    echo "Debug: SSH_USER='$SSH_USER', SSH_PORT='$SSH_PORT'" >&2
-    echo "Checking if container is running..." >&2
-    docker ps | grep dockflow-test-vm >&2
-    exit 1
+	echo "ERROR: Cannot establish SSH connection to remote server" >&2
+	echo "Debug: SSH_USER='$SSH_USER', SSH_PORT='$SSH_PORT'" >&2
+	echo "Checking if container is running..." >&2
+	docker ps | grep dockflow-test-vm >&2
+	exit 1
 fi
 
 # Create temporary directory on remote server
 if ! sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
-    "mkdir -p $REMOTE_TEMP_DIR" >/dev/null 2>&1; then
-    echo "ERROR: Failed to create temporary directory on remote server" >&2
-    exit 1
+	"mkdir -p $REMOTE_TEMP_DIR" >/dev/null 2>&1; then
+	echo "ERROR: Failed to create temporary directory on remote server" >&2
+	exit 1
 fi
 echo "✓ SSH connection established and temp directory created"
 
 # Transfer project using tar (mimics how the wrapper downloads the repo)
 echo "Transferring project to remote server..."
 if ! tar -czf - -C "$ROOT_PATH" --exclude='.git' --exclude='.idea' --exclude='.vscode' --exclude='node_modules' --exclude='testing/e2e/docker/data' . |
-    sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
-        "cat > $REMOTE_TEMP_DIR/project.tar.gz && cd $REMOTE_TEMP_DIR && tar -xzf project.tar.gz && rm project.tar.gz"; then
-    echo "ERROR: Failed to transfer project to remote server"
-    exit 1
+	sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
+		"cat > $REMOTE_TEMP_DIR/project.tar.gz && cd $REMOTE_TEMP_DIR && tar -xzf project.tar.gz && rm project.tar.gz"; then
+	echo "ERROR: Failed to transfer project to remote server"
+	exit 1
 fi
 
 # Copy CLI binary to remote temp directory and rename to 'dockflow'
 echo "Transferring CLI binary to remote server..."
 if ! sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P "$SSH_PORT" \
-    "$CLI_BINARY" "${SSH_USER}@localhost:$REMOTE_TEMP_DIR/dockflow"; then
-    echo "ERROR: Failed to transfer CLI binary to remote server"
-    exit 1
+	"$CLI_BINARY" "${SSH_USER}@localhost:$REMOTE_TEMP_DIR/dockflow"; then
+	echo "ERROR: Failed to transfer CLI binary to remote server"
+	exit 1
 fi
 
 # Make binary executable
 sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
-    "chmod +x $REMOTE_TEMP_DIR/dockflow"
+	"chmod +x $REMOTE_TEMP_DIR/dockflow"
 
 echo "✓ Project and CLI binary transferred to remote server"
 echo ""
@@ -119,7 +119,7 @@ echo ""
 # Execute CLI on remote server via SSH and capture output
 set +e
 CLI_OUTPUT=$(sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
-    "cd $REMOTE_TEMP_DIR && \
+	"cd $REMOTE_TEMP_DIR && \
     ./dockflow setup auto \
     --host dockflow-test-vm \
     --port 22 \

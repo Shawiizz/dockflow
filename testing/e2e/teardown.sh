@@ -16,8 +16,8 @@ docker compose --env-file "$SCRIPT_DIR/.env" down -v --remove-orphans
 read -p "Remove .env file? (y/N): " -n 1 -r REPLY
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    rm -f "${SCRIPT_DIR}/.env"
-    echo ".env file removed."
+	rm -f "${SCRIPT_DIR}/.env"
+	echo ".env file removed."
 fi
 
 echo "Teardown complete."
