@@ -48,7 +48,7 @@ echo ""
 
 # Run tests inside the container
 set +e
-docker compose --env-file "$SCRIPT_DIR/.env" run --rm \
+docker compose --env-file "$SCRIPT_DIR/.env" run --rm -T \
 	-e TEST_CONNECTION="$TEST_CONNECTION" \
 	ansible-runner bash -c '
     # Copy source and test app to workspace
@@ -70,12 +70,12 @@ set -e
 if [ "$EXIT_CODE" -eq 0 ]; then
 	echo ""
 	echo "=========================================="
-	echo "   ALL E2E TESTS PASSED ✓"
+	echo "   ALL E2E TESTS PASSED"
 	echo "=========================================="
 	echo ""
 	echo "Summary:"
-	echo "  ✓ CLI tests passed (machine setup)"
-	echo "  ✓ Deployment tests passed"
+	echo "  - CLI tests passed (machine setup)"
+	echo "  - Deployment tests passed"
 else
 	echo ""
 	echo "=========================================="
