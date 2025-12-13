@@ -215,6 +215,42 @@ List running containers for the stack.
 dockflow ps <env>
 ```
 
+### Prune
+
+Remove unused Docker resources (images, containers, volumes, networks) from the remote server.
+
+```bash
+dockflow prune <env> [options]
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `-a, --all` | Remove all unused images, not just dangling ones |
+| `--images` | Prune images only |
+| `--containers` | Prune containers only |
+| `--volumes` | Prune volumes only (⚠️ deletes data!) |
+| `--networks` | Prune networks only |
+| `-y, --yes` | Skip confirmation prompt |
+
+**Examples:**
+```bash
+dockflow prune production              # Prune all resources (with confirmation)
+dockflow prune production -y           # Prune all without confirmation
+dockflow prune production --images     # Only prune images
+dockflow prune production --images -a  # Prune ALL unused images (not just dangling)
+dockflow prune production --volumes    # Only prune volumes (careful!)
+```
+
+<Callout type="warning">
+  The `--volumes` option will permanently delete data stored in Docker volumes that are not currently attached to any container. Use with caution!
+</Callout>
+
+**Output:**
+- Shows space reclaimed for each resource type
+- Displays current disk usage after cleanup (`docker system df`)
+
 ## Requirements
 
 - `.env.dockflow` with connection strings
