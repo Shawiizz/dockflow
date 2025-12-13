@@ -80,12 +80,6 @@
         - hook_result.rc is defined
         - hook_result.rc == 0
 
-    - name: Cleanup local temp directory
-      file:
-        path: "{{ hook_temp_dir.path }}"
-        state: absent
-      delegate_to: localhost
-
   rescue:
     - name: Display hook warning on failure
       debug:
@@ -93,20 +87,20 @@
           WARNING: Hook '{{ hook_name }}' failed (continuing deployment)
           Error: {{ hook_result.stderr | default('Unknown error') }}
 
-    - name: Cleanup local temp directory on failure
+  always:
+    - name: Cleanup local temp directory
       file:
         path: "{{ hook_temp_dir.path }}"
         state: absent
       delegate_to: localhost
+      when: hook_temp_dir.path is defined
       ignore_errors: true
 
-    - name: Cleanup remote temp directory on failure
+    - name: Cleanup remote temp directory
       file:
         path: "{{ remote_temp_dir.path }}"
         state: absent
-      when: 
-        - remote_temp_dir is defined
-        - remote_temp_dir.path is defined
+      when: remote_temp_dir.path is defined
       ignore_errors: true
 
   when:

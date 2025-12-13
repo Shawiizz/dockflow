@@ -84,13 +84,8 @@
     - Restart Nginx
   when: nginx_config_test.rc == 0
 
-- name: Enable Nginx
-  service:
+- name: Ensure Nginx is enabled and running
+  ansible.builtin.service:
     name: nginx
     enabled: yes
-    state: started
-
-- name: Nginx is running
-  service:
-    name: nginx
     state: started

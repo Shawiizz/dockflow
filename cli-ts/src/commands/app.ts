@@ -4,39 +4,10 @@
  */
 
 import type { Command } from 'commander';
-import chalk from 'chalk';
 import ora from 'ora';
-import { getConnectionInfo, getStackName, loadConfig } from '../utils/config';
 import { sshExec, sshExecStream, sshShell } from '../utils/ssh';
-import { printError, printSuccess, printInfo, printSection, printHeader } from '../utils/output';
-
-/**
- * Validate environment and get connection info
- */
-async function validateEnv(env: string) {
-  const config = loadConfig();
-  if (!config) {
-    printError('.deployment/config.yml not found');
-    printInfo('Run "dockflow init" to create project structure');
-    process.exit(1);
-  }
-
-  const stackName = getStackName(env);
-  if (!stackName) {
-    printError('project_name not found in config.yml');
-    process.exit(1);
-  }
-
-  const connection = getConnectionInfo(env);
-  if (!connection) {
-    printError(`.env.dockflow not found or ${env.toUpperCase()}_CONNECTION missing`);
-    printInfo('Add connection string to .env.dockflow:');
-    console.log(`  ${env.toUpperCase()}_CONNECTION=<base64-encoded-string>`);
-    process.exit(1);
-  }
-
-  return { config, stackName, connection };
-}
+import { printError, printSuccess, printInfo, printSection, printHeader, printWarning } from '../utils/output';
+import { validateEnvOrExit } from '../utils/validation';
 
 /**
  * Register all app commands
@@ -49,7 +20,7 @@ export function registerAppCommands(program: Command): void {
     .option('-f, --follow', 'Follow log output')
     .option('-n, --tail <lines>', 'Number of lines to show', '100')
     .action(async (env: string, service: string | undefined, options: { follow?: boolean; tail?: string }) => {
-      const { stackName, connection } = await validateEnv(env);
+      const { stackName, connection } = await validateEnvOrExit(env);
       
       printInfo(`Fetching logs for stack: ${stackName}`);
       console.log('');
@@ -97,7 +68,7 @@ export function registerAppCommands(program: Command): void {
     .command('exec <env> <service> [command...]')
     .description('Execute a command in a container (default: bash)')
     .action(async (env: string, service: string, command: string[]) => {
-      const { stackName, connection } = await validateEnv(env);
+      const { stackName, connection } = await validateEnvOrExit(env);
       
       const cmd = command.length > 0 ? command.join(' ') : 'bash';
       printInfo(`Connecting to ${stackName}_${service}...`);
@@ -136,7 +107,7 @@ export function registerAppCommands(program: Command): void {
     .command('restart <env> [service]')
     .description('Restart service(s)')
     .action(async (env: string, service?: string) => {
-      const { stackName, connection } = await validateEnv(env);
+      const { stackName, connection } = await validateEnvOrExit(env);
       
       const spinner = ora();
 
@@ -169,10 +140,10 @@ export function registerAppCommands(program: Command): void {
     .description('Stop and remove the stack')
     .option('-y, --yes', 'Skip confirmation')
     .action(async (env: string, options: { yes?: boolean }) => {
-      const { stackName, connection } = await validateEnv(env);
+      const { stackName, connection } = await validateEnvOrExit(env);
       
       if (!options.yes) {
-        console.log(chalk.yellow(`This will remove all services in stack: ${stackName}`));
+        printWarning(`This will remove all services in stack: ${stackName}`);
         const readline = await import('readline');
         const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
         
@@ -203,7 +174,7 @@ export function registerAppCommands(program: Command): void {
     .command('details <env>')
     .description('Show stack details and resource usage')
     .action(async (env: string) => {
-      const { stackName, connection } = await validateEnv(env);
+      const { stackName, connection } = await validateEnvOrExit(env);
       
       printHeader(`Stack: ${stackName}`);
 
@@ -239,7 +210,7 @@ export function registerAppCommands(program: Command): void {
     .command('ssh <env>')
     .description('Open SSH session to server')
     .action(async (env: string) => {
-      const { connection } = await validateEnv(env);
+      const { connection } = await validateEnvOrExit(env);
       
       printInfo(`Connecting to ${env} server...`);
       console.log('');
@@ -257,7 +228,7 @@ export function registerAppCommands(program: Command): void {
     .command('scale <env> <service> <replicas>')
     .description('Scale service to specified replicas')
     .action(async (env: string, service: string, replicas: string) => {
-      const { stackName, connection } = await validateEnv(env);
+      const { stackName, connection } = await validateEnvOrExit(env);
       
       const spinner = ora(`Scaling ${stackName}_${service} to ${replicas} replicas...`).start();
 
@@ -275,7 +246,7 @@ export function registerAppCommands(program: Command): void {
     .command('rollback <env> [service]')
     .description('Rollback to previous version')
     .action(async (env: string, service?: string) => {
-      const { stackName, connection } = await validateEnv(env);
+      const { stackName, connection } = await validateEnvOrExit(env);
       
       const spinner = ora();
 
@@ -315,7 +286,7 @@ export function registerAppCommands(program: Command): void {
     .command('ps <env>')
     .description('List running containers')
     .action(async (env: string) => {
-      const { stackName, connection } = await validateEnv(env);
+      const { stackName, connection } = await validateEnvOrExit(env);
       
       printInfo(`Containers for stack: ${stackName}`);
       console.log('');
@@ -332,3 +303,4 @@ export function registerAppCommands(program: Command): void {
       }
     });
 }
+

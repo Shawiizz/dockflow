@@ -1,7 +1,6 @@
 #!/bin/bash
 # Dockflow CLI Installer
 # Usage: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | bash
-
 set -e
 
 # Detect OS and architecture
