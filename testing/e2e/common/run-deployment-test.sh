@@ -42,13 +42,20 @@ bash /tmp/dockflow/.common/scripts/deploy_with_ansible.sh
 
 echo "Verifying deployment..."
 
-# Wait a bit for services to start
-sleep 5
+# Poll for service readiness instead of fixed sleep
+echo "Waiting for Swarm service to be ready..."
+for i in {1..30}; do
+	SERVICE_INFO=$(docker exec dockflow-test-vm docker service ls --filter name=test-app-test_web --format '{{.Name}}:{{.Replicas}}' 2>/dev/null || true)
+	if echo "$SERVICE_INFO" | grep -q "test-app-test_web.*1/1"; then
+		break
+	fi
+	sleep 1
+done
 
 # Check if Swarm service is running
 echo "Checking Swarm service status..."
-if docker exec dockflow-test-vm docker service ls --filter name=test-app-test_web --format '{{.Name}}' | grep -q "test-app-test_web"; then
-	REPLICAS=$(docker exec dockflow-test-vm docker service ls --filter name=test-app-test_web --format '{{.Replicas}}')
+if echo "$SERVICE_INFO" | grep -q "test-app-test_web"; then
+	REPLICAS=$(echo "$SERVICE_INFO" | cut -d: -f2)
 	echo "Service test-app-test_web is running with replicas: $REPLICAS"
 else
 	echo "ERROR: Swarm service is not running."
@@ -93,8 +100,19 @@ else
 	exit 1
 fi
 
+# Batch all remote file checks into a single docker exec call
+echo "Checking remote hooks, locks, and audit log..."
+REMOTE_CHECKS=$(docker exec dockflow-test-vm bash -c '
+	echo "PRE_DEPLOY=$(cat /tmp/dockflow-hook-pre-deploy.txt 2>/dev/null | grep -c pre-deploy)"
+	echo "POST_DEPLOY=$(cat /tmp/dockflow-hook-post-deploy.txt 2>/dev/null | grep -c post-deploy)"
+	echo "LOCK_EXISTS=$(test -f /var/lib/dockflow/locks/test-app-test.lock && echo 1 || echo 0)"
+	echo "AUDIT_DEPLOYED=$(cat /var/lib/dockflow/audit/test-app-test.log 2>/dev/null | grep -c DEPLOYED)"
+	echo "AUDIT_LOG=$(cat /var/lib/dockflow/audit/test-app-test.log 2>/dev/null || echo "")"
+')
+eval "$REMOTE_CHECKS"
+
 # Check pre-deploy hook (runs on remote server)
-if docker exec dockflow-test-vm cat /tmp/dockflow-hook-pre-deploy.txt 2>/dev/null | grep -q "pre-deploy"; then
+if [ "$PRE_DEPLOY" -ge 1 ]; then
 	echo "✓ pre-deploy hook executed on remote server"
 else
 	echo "ERROR: pre-deploy hook was not executed on remote server"
@@ -102,7 +120,7 @@ else
 fi
 
 # Check post-deploy hook (runs on remote server)
-if docker exec dockflow-test-vm cat /tmp/dockflow-hook-post-deploy.txt 2>/dev/null | grep -q "post-deploy"; then
+if [ "$POST_DEPLOY" -ge 1 ]; then
 	echo "✓ post-deploy hook executed on remote server"
 else
 	echo "ERROR: post-deploy hook was not executed on remote server"
@@ -112,7 +130,7 @@ fi
 # Check deploy lock was released
 echo ""
 echo "Checking deploy lock..."
-if docker exec dockflow-test-vm test -f /var/lib/dockflow/locks/test-app-test.lock 2>/dev/null; then
+if [ "$LOCK_EXISTS" -eq 1 ]; then
 	echo "ERROR: Deploy lock was not released"
 	exit 1
 else
@@ -122,9 +140,9 @@ fi
 # Check audit log was written
 echo ""
 echo "Checking audit log..."
-if docker exec dockflow-test-vm cat /var/lib/dockflow/audit/test-app-test.log 2>/dev/null | grep -q "DEPLOYED"; then
+if [ "$AUDIT_DEPLOYED" -ge 1 ]; then
 	echo "✓ Audit log entry written"
-	docker exec dockflow-test-vm cat /var/lib/dockflow/audit/test-app-test.log
+	echo "$AUDIT_LOG"
 else
 	echo "ERROR: Audit log entry was not written"
 	exit 1
@@ -157,10 +175,17 @@ if [ -f "$ROOT_PATH/.deployment/docker/accessories.yml" ]; then
 		if echo "$ACCESSORIES_SERVICES" | grep -q "redis"; then
 			echo "✓ Redis accessory is running"
 			
-			# Test Redis connectivity
+			# Test Redis connectivity (batched into single docker exec)
 			echo "Testing Redis connectivity..."
 			set +e
-			REDIS_PING=$(docker exec dockflow-test-vm docker exec $(docker exec dockflow-test-vm docker ps -q -f name=test-app-test-accessories_redis) redis-cli ping 2>&1)
+			REDIS_PING=$(docker exec dockflow-test-vm bash -c '
+				CONTAINER_ID=$(docker ps -q -f name=test-app-test-accessories_redis | head -1)
+				if [ -n "$CONTAINER_ID" ]; then
+					docker exec "$CONTAINER_ID" redis-cli ping
+				else
+					echo "NO_CONTAINER"
+				fi
+			' 2>&1)
 			set -e
 			if echo "$REDIS_PING" | grep -q "PONG"; then
 				echo "✓ Redis is responding to PING"

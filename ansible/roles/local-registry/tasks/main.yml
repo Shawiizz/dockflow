@@ -42,10 +42,10 @@
           -p {{ ssh_remote_port }}
       delegate_to: localhost
 
-    - name: Transfer images via SSH streaming
+    - name: Transfer images via SSH streaming (with compression)
       shell: |
         echo "Transferring {{ item }}..."
-        docker save "{{ item }}" | ssh {{ ssh_opts }} {{ ssh_remote_user }}@{{ ssh_remote_host }} "docker load"
+        docker save "{{ item }}" | gzip -1 | ssh {{ ssh_opts }} {{ ssh_remote_user }}@{{ ssh_remote_host }} "gunzip | docker load"
       delegate_to: localhost
       loop: "{{ built_images | default([]) }}"
       register: transfer_results

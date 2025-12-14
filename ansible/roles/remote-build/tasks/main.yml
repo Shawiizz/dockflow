@@ -28,38 +28,24 @@
   register: cleanup_result
   changed_when: cleanup_result.stdout is search('deleted') or cleanup_result.stdout is search('freed')
 
-- name: Get repository URL from Git (from parent project directory)
-  shell: git config --get remote.origin.url
+- name: Get all Git information in a single command
+  shell: |
+    echo "repo_url=$(git config --get remote.origin.url)"
+    echo "branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+    echo "commit=$(git rev-parse HEAD 2>/dev/null || echo '')"
   args:
     chdir: "{{ root_path or '..' }}"
   delegate_to: localhost
-  register: repo_url_raw
-  changed_when: false
-
-- name: Get current branch name from Git (from parent project directory)
-  shell: git rev-parse --abbrev-ref HEAD
-  args:
-    chdir: "{{ root_path or '..' }}"
-  delegate_to: localhost
-  register: branch_name_raw
+  register: git_info_raw
   changed_when: false
   failed_when: false
 
-- name: Get current commit SHA from Git (from parent project directory)
-  shell: git rev-parse HEAD
-  args:
-    chdir: "{{ root_path or '..' }}"
-  delegate_to: localhost
-  register: commit_sha_raw
-  changed_when: false
-  failed_when: false
-
-- name: Set repository URL and prepare for cloning
+- name: Parse Git information
   set_fact:
-    repo_url: "{{ repo_url_raw.stdout | trim }}"
+    repo_url: "{{ git_info_raw.stdout_lines | select('match', '^repo_url=') | first | regex_replace('^repo_url=', '') | trim }}"
+    git_ref: "{{ git_info_raw.stdout_lines | select('match', '^branch=') | first | regex_replace('^branch=', '') | trim }}"
+    git_sha: "{{ git_info_raw.stdout_lines | select('match', '^commit=') | first | regex_replace('^commit=', '') | trim }}"
     git_token: "{{ lookup('env', 'GIT_TOKEN') | default('', true) }}"
-    git_ref: "{{ (branch_name_raw.stdout | default('main', true) | trim) }}"
-    git_sha: "{{ (commit_sha_raw.stdout | default('', true) | trim) }}"
     ci_job_token: "{{ lookup('env', 'CI_JOB_TOKEN') | default('', true) }}"
   no_log: true
 
