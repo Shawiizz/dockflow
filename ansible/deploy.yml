@@ -140,6 +140,20 @@
 
   tasks:
     # ============================================
+    # ACCESSORIES DEPLOYMENT (Stateful services)
+    # ============================================
+    # Hash-based change detection:
+    # - Always checks if accessories.yml changed (unless --skip-accessories)
+    # - Only deploys if hash changed or first deployment
+    # - --accessories flag forces redeploy (bypasses hash check)
+    # IMPORTANT: Deployed BEFORE the app so databases/caches are ready
+    
+    - name: Check and deploy accessories if needed
+      include_role:
+        name: accessories
+      when: not (skip_accessories | bool)
+
+    # ============================================
     # APPLICATION DEPLOYMENT
     # ============================================
     
@@ -159,19 +173,6 @@
       vars:
         compose_path: "{{ root_path }}/.deployment/docker/docker-compose.yml"
       when: deploy_app | bool
-
-    # ============================================
-    # ACCESSORIES DEPLOYMENT (Stateful services)
-    # ============================================
-    # Hash-based change detection:
-    # - Always checks if accessories.yml changed (unless --skip-accessories)
-    # - Only deploys if hash changed or first deployment
-    # - --accessories flag forces redeploy (bypasses hash check)
-    
-    - name: Check and deploy accessories if needed
-      include_role:
-        name: accessories
-      when: not (skip_accessories | bool)
 
   post_tasks:
     # ============================================
