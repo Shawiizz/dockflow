@@ -9,70 +9,86 @@ import { join } from 'path';
 import inquirer from 'inquirer';
 import { getProjectRoot } from '../utils/config';
 import { printError, printSuccess, printInfo, printHeader, printWarning } from '../utils/output';
+import { DOCKFLOW_VERSION } from '../constants';
 
-const GITHUB_WORKFLOW = `name: Deploy
+// GitHub Actions workflow using Dockflow reusable workflows
+const getGithubWorkflow = (version: string) => `name: CI/CD
 
 on:
   push:
+    branches:
+      - '*'
     tags:
-      - 'v*'
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'production'
-        type: choice
-        options:
-          - production
-          - staging
+      - '*'
+
+# Note: Make sure your .deployment/config.yml has project_name set
+# and add your connection secrets (e.g., PRODUCTION_CONNECTION) to GitHub Secrets
 
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Extract version from tag
-        id: version
-        run: |
-          if [ "\${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=manual-\$(date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
-            echo "env=\${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
-          else
-            echo "version=\${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-            echo "env=production" >> $GITHUB_OUTPUT
-          fi
+  # Build job - runs on every push to branches
+  build:
+    if: github.ref_type == 'branch'
+    uses: Shawiizz/dockflow/.github/workflows/build.yml@${version}
+    with:
+      free-disk-space: false
 
-      - name: Deploy
-        run: |
-          docker run --rm \\
-            -v \${{ github.workspace }}:/project \\
-            -e \${{ steps.version.outputs.env }}_CONNECTION=\${{ secrets[format('{0}_CONNECTION', steps.version.outputs.env)] }} \\
-            shawiizz/dockflow-cli:latest \\
-            deploy \${{ steps.version.outputs.env }} \${{ steps.version.outputs.version }}
+  # Deploy on tag push (e.g., v1.0.0 or v1.0.0-staging)
+  deploy-tag:
+    if: github.ref_type == 'tag'
+    uses: Shawiizz/dockflow/.github/workflows/deploy.yml@${version}
+    with:
+      tag: \${{ github.ref_name }}
+      free-disk-space: false
+    secrets: inherit
+
+  # Optional: Deploy on branch push (uncomment if needed)
+  # deploy-branch:
+  #   if: github.ref_type == 'branch'
+  #   uses: Shawiizz/dockflow/.github/workflows/deploy.yml@${version}
+  #   with:
+  #     version: \${{ github.ref_name }}-\${{ github.sha }}
+  #     free-disk-space: false
+  #   secrets: inherit
 `;
 
+// GitLab CI using Dockflow CI image
 const GITLAB_CI = `stages:
+  - build
   - deploy
 
+variables:
+  DOCKFLOW_VERSION: "${DOCKFLOW_VERSION}"
+
+# Build job - runs on every push
+build:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - echo "Build step (customize as needed)"
+  rules:
+    - if: $CI_COMMIT_BRANCH
+
+# Deploy on tag push
 deploy:
   stage: deploy
-  image: shawiizz/dockflow-cli:latest
+  image: shawiizz/dockflow-ci:$DOCKFLOW_VERSION
   script:
     - |
-      if [ -n "$CI_COMMIT_TAG" ]; then
-        VERSION="\${CI_COMMIT_TAG#v}"
-        ENV="production"
-      else
-        VERSION="manual-$(date +%Y%m%d%H%M%S)"
-        ENV="\${DEPLOY_ENV:-production}"
-      fi
-      deploy $ENV $VERSION
+      VERSION="\${CI_COMMIT_TAG#v}"
+      # Determine environment from tag suffix (e.g., v1.0.0-staging -> staging)
+      ENV="\${CI_COMMIT_TAG##*-}"
+      [[ "$CI_COMMIT_TAG" == "$ENV" ]] && ENV="production"
+      
+      export ROOT_PATH="$(pwd)"
+      export BRANCH_NAME="$CI_COMMIT_REF_NAME"
+      
+      # Load environment and deploy
+      source /opt/dockflow/.common/scripts/load_env.sh "$ENV" "main"
+      bash /opt/dockflow/.common/scripts/deploy_with_ansible.sh
   rules:
     - if: $CI_COMMIT_TAG
-    - if: $CI_PIPELINE_SOURCE == "web"
-      when: manual
 `;
 
 const CONFIG_YML = `# Dockflow Configuration
@@ -83,8 +99,8 @@ project_name: "my-app"
 # Registry configuration (optional)
 # registry:
 #   type: dockerhub  # dockerhub, ghcr, gitlab, custom
-#   username: "{{ env.REGISTRY_USERNAME }}"
-#   password: "{{ env.REGISTRY_PASSWORD }}"
+#   username: "{{ registry_username }}"
+#   password: "{{ registry_password }}"
 
 # Build options
 options:
@@ -105,6 +121,71 @@ health_checks:
 #   post-build: "./scripts/post-build.sh"
 #   pre-deploy: "./scripts/pre-deploy.sh"
 #   post-deploy: "./scripts/post-deploy.sh"
+`;
+
+// Accessories template - standard docker-compose format with Swarm config
+const ACCESSORIES_YML = `# Accessories - Stateful services (databases, caches, etc.)
+# These have a separate lifecycle from the main application
+# 
+# Deploy with: dockflow deploy <env> --accessories
+# Manage with: dockflow accessories list|logs|exec|restart|stop|remove <env>
+#
+# This file uses standard Docker Compose format with Jinja2 templating support.
+# Environment variables can be accessed with {{ variable_name }}
+
+version: "3.8"
+
+services:
+  # Example: PostgreSQL database
+  # postgres:
+  #   image: postgres:16-alpine
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   environment:
+  #     POSTGRES_USER: app
+  #     POSTGRES_PASSWORD: "{{ db_password }}"
+  #     POSTGRES_DB: myapp
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U app"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #     start_period: 30s
+  #   deploy:
+  #     replicas: 1
+  #     placement:
+  #       constraints:
+  #         - node.role == manager
+  #     restart_policy:
+  #       condition: on-failure
+  #       delay: 5s
+  #       max_attempts: 3
+  #     # No update_config: we want controlled updates for DBs
+
+  # Example: Redis cache
+  # redis:
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis_data:/data
+  #   command: redis-server --appendonly yes
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   deploy:
+  #     replicas: 1
+  #     restart_policy:
+  #       condition: on-failure
+  #       delay: 5s
+
+# volumes:
+#   postgres_data:
+#   redis_data:
 `;
 
 const ENV_FILE = `# Environment configuration
@@ -254,6 +335,10 @@ export function registerInitCommand(program: Command): void {
       writeFileSync(join(deploymentDir, 'docker', 'docker-compose.yml'), DOCKER_COMPOSE);
       printSuccess('Created .deployment/docker/docker-compose.yml');
 
+      // Create accessories.yml
+      writeFileSync(join(deploymentDir, 'docker', 'accessories.yml'), ACCESSORIES_YML);
+      printSuccess('Created .deployment/docker/accessories.yml');
+
       // Create Dockerfile
       writeFileSync(join(deploymentDir, 'docker', 'Dockerfile'), DOCKERFILE);
       printSuccess('Created .deployment/docker/Dockerfile');
@@ -268,8 +353,8 @@ export function registerInitCommand(program: Command): void {
         if (!existsSync(workflowDir)) {
           mkdirSync(workflowDir, { recursive: true });
         }
-        writeFileSync(join(workflowDir, 'deploy.yml'), GITHUB_WORKFLOW);
-        printSuccess('Created .github/workflows/deploy.yml');
+        writeFileSync(join(workflowDir, 'ci.yml'), getGithubWorkflow(DOCKFLOW_VERSION));
+        printSuccess('Created .github/workflows/ci.yml');
       } else if (ciPlatform === 'gitlab') {
         writeFileSync(join(projectRoot, '.gitlab-ci.yml'), GITLAB_CI);
         printSuccess('Created .gitlab-ci.yml');

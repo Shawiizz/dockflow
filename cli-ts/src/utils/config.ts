@@ -12,9 +12,13 @@ import {
   ANSIBLE_DOCKER_IMAGE 
 } from '../constants';
 import { parseConnectionStringLegacy } from './connection-parser';
+import type { SSHKeyConnection } from '../types';
 
 // Re-export connection type for backwards compatibility
 export type { SSHKeyConnection as ConnectionInfo } from '../types';
+
+// Internal type alias
+type ConnectionInfo = SSHKeyConnection;
 
 /**
  * Dockflow configuration schema
@@ -161,4 +165,13 @@ export async function isDockerAvailable(): Promise<boolean> {
  */
 export function getAnsibleDockerImage(): string {
   return ANSIBLE_DOCKER_IMAGE;
+}
+
+/**
+ * Get accessories stack name (separate from main app stack)
+ */
+export function getAccessoriesStackName(env: string): string | null {
+  const projectName = getProjectName();
+  if (!projectName) return null;
+  return `${projectName}-${env}-accessories`;
 }

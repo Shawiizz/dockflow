@@ -20,6 +20,37 @@ interface DeployOptions {
   hostname?: string;
   debug?: boolean;
   dev?: boolean;
+  accessories?: boolean;
+  all?: boolean;
+  skipAccessories?: boolean;
+}
+
+/**
+ * Determine what to deploy based on options
+ * 
+ * New behavior with hash-based detection:
+ * - Accessories are ALWAYS checked (hash comparison)
+ * - --accessories: force redeploy accessories only (skip app)
+ * - --all: force redeploy both app and accessories
+ * - --skip-accessories: completely skip accessories check
+ * - default: deploy app + auto-check accessories (deploy if changed)
+ */
+function getDeploymentTargets(options: DeployOptions): { 
+  deployApp: boolean; 
+  forceAccessories: boolean;
+  skipAccessories: boolean;
+} {
+  if (options.skipAccessories) {
+    return { deployApp: true, forceAccessories: false, skipAccessories: true };
+  }
+  if (options.all) {
+    return { deployApp: true, forceAccessories: true, skipAccessories: false };
+  }
+  if (options.accessories) {
+    return { deployApp: false, forceAccessories: true, skipAccessories: false };
+  }
+  // Default: deploy app + auto-check accessories (hash-based)
+  return { deployApp: true, forceAccessories: false, skipAccessories: false };
 }
 
 /**
@@ -33,6 +64,8 @@ function buildDeployScript(
   envExports: string,
   options: DeployOptions
 ): string {
+  const { deployApp, forceAccessories, skipAccessories } = getDeploymentTargets(options);
+  
   // In dev mode, use the mounted local dockflow folder
   const dockflowSetup = options.dev
     ? `
@@ -68,12 +101,18 @@ ${options.skipBuild ? 'export SKIP_BUILD=true' : ''}
 ${options.force ? 'export FORCE_DEPLOY=true' : ''}
 ${options.services ? `export DEPLOY_DOCKER_SERVICES="${options.services}"` : ''}
 
+# Deployment targets
+export DEPLOY_APP="${deployApp}"
+export DEPLOY_ACCESSORIES="${forceAccessories}"
+${skipAccessories ? 'export SKIP_ACCESSORIES=true' : ''}
+
 # Load environment using the standard load_env script
 cd /project
 source \$DOCKFLOW_PATH/.common/scripts/load_env.sh "${env}" "${hostname}"
 
 echo ""
 echo "Deploying to \$DOCKFLOW_HOST:\$DOCKFLOW_PORT as \$DOCKFLOW_USER"
+echo "  App: ${deployApp} | Accessories: ${skipAccessories ? 'skipped' : (forceAccessories ? 'forced' : 'auto (hash-check)')}"
 echo ""
 
 # Run the deployment script
@@ -149,10 +188,17 @@ export function registerDeployCommand(program: Command): void {
     .option('--skip-build', 'Skip the build phase')
     .option('--force', 'Force deployment even if locked')
     .option('--hostname <hostname>', 'Specific host to deploy to (for multi-host)', 'main')
+    .option('--accessories', 'Deploy only accessories (databases, caches, etc.)')
+    .option('--all', 'Deploy both application and accessories')
+    .option('--skip-accessories', 'Skip accessories check entirely')
     .option('--debug', 'Enable debug output')
     .option('--dev', 'Use local dockflow folder instead of cloning (for development)')
     .action(async (env: string, version: string | undefined, options: DeployOptions) => {
-      printHeader(`Deploying to ${env}`);
+      const { deployApp, forceAccessories, skipAccessories } = getDeploymentTargets(options);
+      const accessoriesDesc = skipAccessories ? '' : (forceAccessories ? ' + Accessories (forced)' : ' + Accessories (auto)');
+      const targetDesc = options.accessories ? 'Accessories only' : `App${accessoriesDesc}`;
+      
+      printHeader(`Deploying ${targetDesc} to ${env}`);
       console.log('');
 
       const debug = options.debug || false;
@@ -218,6 +264,7 @@ export function registerDeployCommand(program: Command): void {
       printInfo(`Environment: ${env}`);
       printInfo(`Hostname: ${hostname}`);
       printInfo(`Branch: ${branchName}`);
+      printInfo(`Targets: ${targetDesc}`);
       if (options.services) {
         printInfo(`Services: ${options.services}`);
       }

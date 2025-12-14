@@ -15,6 +15,7 @@ export const DOCKFLOW_RELEASE_URL = 'https://github.com/Shawiizz/dockflow/releas
  */
 export const DOCKFLOW_DIR = '/opt/dockflow';
 export const DOCKFLOW_STACKS_DIR = '/var/lib/dockflow/stacks';
+export const DOCKFLOW_ACCESSORIES_DIR = '/var/lib/dockflow/accessories';
 export const DOCKFLOW_LOCKS_DIR = '/var/lib/dockflow/locks';
 export const DOCKFLOW_AUDIT_DIR = '/var/lib/dockflow/audit';
 
@@ -22,7 +23,6 @@ export const DOCKFLOW_AUDIT_DIR = '/var/lib/dockflow/audit';
  * Docker configuration
  */
 export const ANSIBLE_DOCKER_IMAGE = 'shawiizz/dockflow-ci:latest';
-export const DOCKFLOW_CLI_IMAGE = 'shawiizz/dockflow-cli:latest';
 
 /**
  * Default values

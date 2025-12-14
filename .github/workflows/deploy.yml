@@ -16,6 +16,16 @@ on:
         type: boolean
         default: false
         description: "Free disk space by removing unnecessary tools"
+      force-accessories:
+        required: false
+        type: boolean
+        default: false
+        description: "Force redeploy accessories (bypass hash check)"
+      skip-accessories:
+        required: false
+        type: boolean
+        default: false
+        description: "Skip accessories deployment entirely"
 
 env:
   DOCKFLOW_REPOSITORY_URL: https://github.com/Shawiizz/dockflow.git
@@ -98,6 +108,10 @@ jobs:
           export VERSION="${{ needs.discover-hosts.outputs.tag }}"
           export ANSIBLE_HOST_KEY_CHECKING=False
           export ROOT_PATH="$(pwd)"
+          
+          # Accessories deployment options
+          export DEPLOY_ACCESSORIES="${{ inputs.force-accessories }}"
+          export SKIP_ACCESSORIES="${{ inputs.skip-accessories }}"
           
           # Determine branch name
           if [[ "${{ github.ref_type }}" == "tag" ]]; then

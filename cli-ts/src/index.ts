@@ -14,6 +14,7 @@ import { registerAppCommands } from './commands/app';
 import { registerDeployCommand } from './commands/deploy';
 import { registerSetupCommand } from './commands/setup';
 import { registerInitCommand } from './commands/init';
+import { registerAccessoriesCommands } from './commands/accessories';
 
 const program = new Command();
 
@@ -25,6 +26,7 @@ program
 
 // Register all commands
 registerAppCommands(program);
+registerAccessoriesCommands(program);
 registerDeployCommand(program);
 registerSetupCommand(program);
 registerInitCommand(program);
@@ -38,10 +40,15 @@ program.action(async () => {
   console.log(chalk.cyan('Run with --help to see available commands'));
   console.log('');
   console.log(chalk.yellow('Quick start:'));
-  console.log('  dockflow init              Initialize project structure');
-  console.log('  dockflow deploy <env>      Deploy to environment');
-  console.log('  dockflow logs <env>        View service logs');
-  console.log('  dockflow details <env>     Show stack details');
+  console.log('  dockflow init                   Initialize project structure');
+  console.log('  dockflow deploy <env>           Deploy to environment');
+  console.log('  dockflow logs <env>             View service logs');
+  console.log('  dockflow details <env>          Show stack details');
+  console.log('');
+  console.log(chalk.yellow('Accessories (stateful services):'));
+  console.log('  dockflow accessories deploy <env>   Deploy databases, caches, etc.');
+  console.log('  dockflow accessories list <env>     List running accessories');
+  console.log('  dockflow accessories logs <env>     View accessory logs');
 });
 
 // Error handling

@@ -1,0 +1,7 @@
+---
+# Default variables for accessories role
+
+# Whether to deploy accessories (controlled by CLI flag)
+deploy_accessories: false
+
+

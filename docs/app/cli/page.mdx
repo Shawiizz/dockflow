@@ -80,15 +80,34 @@ Creates the `.deployment/` folder structure with CI/CD configuration.
 ### Deploy
 
 ```bash
-dockflow deploy <env> [version]
+dockflow deploy <env> [version] [options]
 ```
 
 Deploy the application to the specified environment.
 
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--accessories` | Deploy only accessories (force redeploy) |
+| `--all` | Deploy app + force redeploy accessories |
+| `--skip-accessories` | Skip accessories check entirely |
+| `--services <list>` | Comma-separated list of services to deploy |
+| `--skip-build` | Skip the build phase |
+| `--force` | Force deployment even if locked |
+| `--hostname <host>` | Specific host for multi-host deployment |
+
+<Callout type="info">
+  **Automatic accessories detection**: By default, Dockflow checks if `accessories.yml` has changed and automatically deploys accessories when needed. Use `--skip-accessories` to disable this behavior.
+</Callout>
+
 **Examples:**
 ```bash
-dockflow deploy production 1.0.0
-dockflow deploy staging          # Auto-generated version
+dockflow deploy production 1.0.0          # Deploy app (auto-check accessories)
+dockflow deploy staging                   # Auto-generated version
+dockflow deploy production --accessories  # Force redeploy accessories only
+dockflow deploy production --all          # Deploy app + force redeploy accessories
+dockflow deploy production --skip-accessories  # Deploy app, ignore accessories
 ```
 
 ### Setup Machine
@@ -251,6 +270,76 @@ dockflow prune production --volumes    # Only prune volumes (careful!)
 - Shows space reclaimed for each resource type
 - Displays current disk usage after cleanup (`docker system df`)
 
+## Accessories Commands
+
+Accessories are stateful services (databases, caches, etc.) with a separate lifecycle from your main app. See [Accessories Configuration](/configuration/accessories) for setup details.
+
+### List Accessories
+
+```bash
+dockflow accessories list <env>
+dockflow acc ls <env>  # Alias
+```
+
+Shows all accessories services with status and replicas.
+
+### Accessories Logs
+
+```bash
+dockflow accessories logs <env> [service] [-f]
+```
+
+**Examples:**
+```bash
+dockflow acc logs production              # All accessories
+dockflow acc logs production postgres     # Specific service
+dockflow acc logs production postgres -f  # Follow logs
+```
+
+### Accessories Exec
+
+```bash
+dockflow accessories exec <env> <service> [command]
+```
+
+**Examples:**
+```bash
+dockflow acc exec production postgres          # Open shell
+dockflow acc exec production postgres psql     # Run psql
+dockflow acc exec production redis redis-cli   # Run redis-cli
+```
+
+### Restart Accessories
+
+```bash
+dockflow accessories restart <env> [service]
+```
+
+Force restart of accessories services.
+
+### Stop Accessories
+
+```bash
+dockflow accessories stop <env> [service]
+```
+
+Scale accessories to 0 replicas (keeps containers and volumes).
+
+### Remove Accessories
+
+```bash
+dockflow accessories remove <env> [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `-v, --volumes` | Also remove volumes (⚠️ DESTRUCTIVE) |
+| `-y, --yes` | Skip confirmation prompt |
+
+<Callout type="error">
+  The `--volumes` flag permanently deletes all data. You will be prompted to type the environment name to confirm.
+</Callout>
+
 ## Requirements
 
 - `.env.dockflow` with connection strings
@@ -357,20 +446,27 @@ echo "PRODUCTION_CONNECTION=..." > .env.dockflow
 # 3. Initialize project structure
 dockflow init github
 
-# 4. Deploy (via CI/CD or manually)
+# 4. Deploy accessories (databases, caches) - do this once
+dockflow deploy production --accessories
+
+# 5. Deploy your app (via CI/CD or manually)
 dockflow deploy production 1.0.0
 
-# 5. Monitor your deployment
+# 6. Monitor your deployment
 dockflow logs production -f
 dockflow details production
 
-# 6. Troubleshoot if needed
+# 7. Troubleshoot if needed
 dockflow exec production app bash
 dockflow ssh production
 
-# 7. Scale as needed
+# 8. Scale as needed
 dockflow scale production app 3
 
-# 8. Rollback if something goes wrong
+# 9. Rollback if something goes wrong
 dockflow rollback production app
+
+# 10. Manage accessories
+dockflow acc logs production postgres -f   # Database logs
+dockflow acc exec production postgres psql # Connect to DB
 ```
