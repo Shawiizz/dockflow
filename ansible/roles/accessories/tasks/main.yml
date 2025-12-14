@@ -8,6 +8,20 @@
 # - Only deploys if hash changed or first deployment
 # - Use force_accessories=true to bypass hash check
 
+- name: Ensure Docker Swarm is initialized for accessories
+  block:
+    - name: Check if Docker Swarm is initialized
+      shell: docker info --format '{{ '{{' }}.Swarm.LocalNodeState{{ '}}' }}'
+      register: swarm_state
+      changed_when: false
+      failed_when: false
+
+    - name: Initialize Docker Swarm if not already initialized
+      shell: |
+        docker swarm init --advertise-addr {{ ansible_default_ipv4.address | default(ansible_all_ipv4_addresses[0]) }} 2>/dev/null || true
+      register: swarm_init
+      when: swarm_state.stdout | trim != 'active'
+
 - name: Set accessories variables
   set_fact:
     accessories_compose_path: "{{ root_path }}/.deployment/docker/accessories.yml"
