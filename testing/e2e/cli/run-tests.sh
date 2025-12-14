@@ -15,22 +15,20 @@ echo "   DockFlow CLI E2E Tests"
 echo "=========================================="
 echo ""
 
-# Build CLI binary if not present
+# Always rebuild CLI binary for tests to ensure latest code is tested
 CLI_BINARY="$ROOT_PATH/cli-ts/dist/dockflow-linux-x64"
-if [ ! -f "$CLI_BINARY" ]; then
-	echo "Building CLI binary..."
-	cd "$ROOT_PATH/cli-ts"
-	if command -v bun &>/dev/null; then
-		bun install
-		bun run build linux-x64
-	else
-		echo "ERROR: bun is required to build the CLI. Install it with: curl -fsSL https://bun.sh/install | bash"
-		exit 1
-	fi
-	cd "$ROOT_PATH"
-	echo "✓ CLI binary built"
-	echo ""
+echo "Building CLI binary..."
+cd "$ROOT_PATH/cli-ts"
+if command -v bun &>/dev/null; then
+	bun install --frozen-lockfile
+	bun run build linux-x64
+else
+	echo "ERROR: bun is required to build the CLI. Install it with: curl -fsSL https://bun.sh/install | bash"
+	exit 1
 fi
+cd "$ROOT_PATH"
+echo "✓ CLI binary built"
+echo ""
 
 # Check if test VM is running, if not run setup from common
 if ! docker ps | grep -q "dockflow-test-vm"; then

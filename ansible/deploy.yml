@@ -171,8 +171,6 @@
     - name: Check and deploy accessories if needed
       include_role:
         name: accessories
-      vars:
-        force_accessories: "{{ force_accessories | bool }}"
       when: not (skip_accessories | bool)
 
   post_tasks:

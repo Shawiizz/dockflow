@@ -159,7 +159,7 @@
               Services: {{ accessories_deploy.stdout_lines | default([]) }}
 
         - name: Wait for accessories services to be ready
-          command: docker stack services {{ accessories_stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}: {{ '{{' }}.Replicas{{ '}}' }}"
+          command: "docker stack services {{ accessories_stack_name }} --format \"{{ '{{' }}.Name{{ '}}' }}: {{ '{{' }}.Replicas{{ '}}' }}\""
           register: accessories_status
           until: "'0/' not in accessories_status.stdout"
           retries: 30

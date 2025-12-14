@@ -130,6 +130,68 @@ else
 	exit 1
 fi
 
+# ===========================================
+# ACCESSORIES TESTS
+# ===========================================
+echo ""
+echo "=========================================="
+echo "Testing Accessories Deployment"
+echo "=========================================="
+
+# Check if accessories.yml exists
+if [ -f "$ROOT_PATH/.deployment/docker/accessories.yml" ]; then
+	echo "✓ accessories.yml found"
+	
+	# Check if accessories stack is deployed (should be auto-deployed on first run)
+	echo "Checking accessories stack..."
+	if docker exec dockflow-test-vm docker stack ls --format '{{.Name}}' | grep -q "test-app-test-accessories"; then
+		echo "✓ Accessories stack is deployed"
+		
+		# Check accessories services
+		echo "Checking accessories services..."
+		ACCESSORIES_SERVICES=$(docker exec dockflow-test-vm docker stack services test-app-test-accessories --format '{{.Name}}: {{.Replicas}}')
+		echo "Accessories services:"
+		echo "$ACCESSORIES_SERVICES"
+		
+		# Check Redis is running
+		if echo "$ACCESSORIES_SERVICES" | grep -q "redis"; then
+			echo "✓ Redis accessory is running"
+			
+			# Test Redis connectivity
+			echo "Testing Redis connectivity..."
+			set +e
+			REDIS_PING=$(docker exec dockflow-test-vm docker exec $(docker exec dockflow-test-vm docker ps -q -f name=test-app-test-accessories_redis) redis-cli ping 2>&1)
+			set -e
+			if echo "$REDIS_PING" | grep -q "PONG"; then
+				echo "✓ Redis is responding to PING"
+			else
+				echo "WARNING: Could not ping Redis (may still be starting): $REDIS_PING"
+			fi
+		else
+			echo "ERROR: Redis accessory not found in stack"
+			exit 1
+		fi
+		
+		# Check accessories hash file was created
+		echo "Checking accessories hash file..."
+		if docker exec dockflow-test-vm test -f /var/lib/dockflow/accessories/test-app-test/.hash 2>/dev/null; then
+			echo "✓ Accessories hash file created"
+			HASH=$(docker exec dockflow-test-vm cat /var/lib/dockflow/accessories/test-app-test/.hash)
+			echo "  Hash: $HASH"
+		else
+			echo "ERROR: Accessories hash file was not created"
+			exit 1
+		fi
+	else
+		echo "ERROR: Accessories stack is not deployed"
+		echo "Available stacks:"
+		docker exec dockflow-test-vm docker stack ls
+		exit 1
+	fi
+else
+	echo "SKIP: No accessories.yml found (accessories tests skipped)"
+fi
+
 echo ""
 echo "All E2E tests passed."
 echo ""
