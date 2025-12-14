@@ -127,59 +127,58 @@
         | list
       }}
 
-- name: Build Docker images on remote server
+- name: Build Docker images on remote server (parallel)
   shell: |
     cd {{ tmp_build_dir }}/.deployment/docker
-    {{ item }} 2>&1
-  loop: "{{ build_commands }}"
-  loop_control:
-    label: >-
-      {%- set image_match = item | regex_search('-t\\s+"?([^"\\s]+)"?') -%}
-      {%- if image_match -%}
-        Building {{ item | regex_replace('.*-t\\s+"?([^"\\s]+)"?.*', '\\1') }}
-      {%- else -%}
-        Building image
-      {%- endif -%}
+    set -e
+    PIDS=""
+    {% for cmd in build_commands %}
+    echo "Starting build: {{ cmd | regex_replace('.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') }}"
+    ( {{ cmd }} 2>&1 ) &
+    PIDS="$PIDS $!"
+    {% endfor %}
+    # Wait for all builds and capture exit codes
+    FAILED=0
+    for PID in $PIDS; do
+      if ! wait $PID; then
+        FAILED=1
+      fi
+    done
+    exit $FAILED
   when: build_commands is defined and build_commands | length > 0
-  async: 3600  # Allow up to 1 hour for build
-  poll: 5      # Check status every 5 seconds for more frequent updates
+  async: 3600  # Allow up to 1 hour for all builds
+  poll: 10
   register: build_results
-  ignore_errors: yes  # Don't fail immediately, collect all results first
-  environment:
-    DOCKER_BUILDKIT: "1"
-    BUILDKIT_PROGRESS: "plain"  # Force plain output for better log streaming
+  ignore_errors: yes
 
 - name: Display build output
   debug:
-    msg: "{{ item.stdout_lines | default([]) }}"
-  loop: "{{ build_results.results | default([]) }}"
+    msg: "{{ build_results.stdout_lines | default([]) }}"
   when:
-    - item.stdout_lines is defined
-    - item.stdout_lines | length > 0
-  loop_control:
-    label: "Build output"
+    - build_results.stdout_lines is defined
+    - build_results.stdout_lines | length > 0
 
-- name: Show build failures with full output
+- name: Show build failure
   debug:
     msg: |
-      Failed to build image: {{ item.item }}
-      Return code: {{ item.rc }}
-      Duration: {{ item.delta | default('N/A') }}
+      Docker builds failed!
+      Return code: {{ build_results.rc }}
       
       STDOUT:
-      {{ item.stdout | default('No stdout') }}
+      {{ build_results.stdout | default('No stdout') }}
       
       STDERR:
-      {{ item.stderr | default('No stderr') }}
-  loop: "{{ build_results.results | default([]) }}"
+      {{ build_results.stderr | default('No stderr') }}
   when:
-    - item.rc is defined
-    - item.rc != 0
+    - build_results.rc is defined
+    - build_results.rc != 0
 
-- name: Fail if any build failed
+- name: Fail if build failed
   fail:
     msg: "One or more Docker builds failed. Check the output above for details."
-  when: build_results.results | selectattr('rc', 'defined') | selectattr('rc', 'ne', 0) | list | length > 0
+  when:
+    - build_results.rc is defined
+    - build_results.rc != 0
 
 - name: Push images to registry
   include_role:

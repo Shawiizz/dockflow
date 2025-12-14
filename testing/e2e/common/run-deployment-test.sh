@@ -107,9 +107,11 @@ REMOTE_CHECKS=$(docker exec dockflow-test-vm bash -c '
 	echo "POST_DEPLOY=$(cat /tmp/dockflow-hook-post-deploy.txt 2>/dev/null | grep -c post-deploy)"
 	echo "LOCK_EXISTS=$(test -f /var/lib/dockflow/locks/test-app-test.lock && echo 1 || echo 0)"
 	echo "AUDIT_DEPLOYED=$(cat /var/lib/dockflow/audit/test-app-test.log 2>/dev/null | grep -c DEPLOYED)"
-	echo "AUDIT_LOG=$(cat /var/lib/dockflow/audit/test-app-test.log 2>/dev/null || echo "")"
 ')
 eval "$REMOTE_CHECKS"
+
+# Get audit log separately (multiline content breaks eval)
+AUDIT_LOG=$(docker exec dockflow-test-vm cat /var/lib/dockflow/audit/test-app-test.log 2>/dev/null || true)
 
 # Check pre-deploy hook (runs on remote server)
 if [ "$PRE_DEPLOY" -ge 1 ]; then

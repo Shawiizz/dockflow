@@ -40,20 +40,31 @@
     msg: "Building {{ build_commands | length }} Docker image(s) locally for host {{ hostname | default('main') }}"
   delegate_to: localhost
 
-- name: Build Docker images locally
+- name: Build Docker images locally (parallel)
   shell: |
     cd {{ root_path }}/.deployment/docker
-    {{ item }}
-  loop: "{{ build_commands }}"
+    set -e
+    PIDS=""
+    {% for cmd in build_commands %}
+    echo "Starting build: {{ cmd | regex_replace('.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') }}"
+    ( {{ cmd }} ) &
+    PIDS="$PIDS $!"
+    {% endfor %}
+    # Wait for all builds and capture exit codes
+    FAILED=0
+    for PID in $PIDS; do
+      if ! wait $PID; then
+        FAILED=1
+      fi
+    done
+    exit $FAILED
   delegate_to: localhost
   register: build_results
-  loop_control:
-    label: "Building {{ item | regex_replace('.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') }}"
   when: build_commands is defined and build_commands | length > 0
 
 - name: Display build completion
   debug:
-    msg: "Successfully built {{ build_commands | length }} image(s)"
+    msg: "Successfully built {{ build_commands | length }} image(s) in parallel"
   delegate_to: localhost
 
 - name: Display build validation completion
