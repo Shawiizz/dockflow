@@ -86,10 +86,19 @@ fi
 echo "✓ SSH connection established and temp directory created"
 
 # Transfer project using tar (mimics how the wrapper downloads the repo)
+# Optimized: no compression (local network), extensive exclusions
 echo "Transferring project to remote server..."
-if ! tar -czf - -C "$ROOT_PATH" --exclude='.git' --exclude='.idea' --exclude='.vscode' --exclude='node_modules' --exclude='testing/e2e/docker/data' . |
-	sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
-		"cat > $REMOTE_TEMP_DIR/project.tar.gz && cd $REMOTE_TEMP_DIR && tar -xzf project.tar.gz && rm project.tar.gz"; then
+if ! tar -cf - -C "$ROOT_PATH" \
+	--exclude='.git' \
+	--exclude='.idea' \
+	--exclude='.vscode' \
+	--exclude='node_modules' \
+	--exclude='docs' \
+	--exclude='cli-ts/dist' \
+	--exclude='cli-ts/node_modules' \
+	--exclude='testing/e2e/docker/data' \
+	. | sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "${SSH_USER}@localhost" \
+		"cd $REMOTE_TEMP_DIR && tar -xf -"; then
 	echo "ERROR: Failed to transfer project to remote server"
 	exit 1
 fi

@@ -7,10 +7,11 @@ import type { Command } from 'commander';
 import chalk from 'chalk';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { getAccessoriesStackName, getProjectRoot } from '../../utils/config';
+import { getProjectRoot } from '../../utils/config';
 import { sshExec } from '../../utils/ssh';
 import { printError, printInfo, printHeader, printSection } from '../../utils/output';
 import { validateEnvOrExit } from '../../utils/validation';
+import { validateAccessoriesStack } from './utils';
 
 interface ServiceInfo {
   name: string;
@@ -83,14 +84,10 @@ export function registerAccessoriesListCommand(program: Command): void {
 
       // Validate environment
       const { connection } = await validateEnvOrExit(env);
-      const stackName = getAccessoriesStackName(env)!;
+      const validation = await validateAccessoriesStack(connection, env);
 
       try {
-        // Check if accessories stack exists
-        const stacksResult = await sshExec(connection, `docker stack ls --format "{{.Name}}"`);
-        const stacks = stacksResult.stdout.trim().split('\n').filter(Boolean);
-        
-        if (!stacks.includes(stackName)) {
+        if (!validation.exists) {
           if (!hasAccessoriesFile()) {
             printInfo('No accessories.yml found in .deployment/docker/');
             printInfo('Create one to define your accessories (databases, caches, etc.)');
@@ -101,6 +98,8 @@ export function registerAccessoriesListCommand(program: Command): void {
           }
           return;
         }
+
+        const { stackName } = validation;
 
         // Get services info using docker stack services
         const format = '{{.Name}}\t{{.Mode}}\t{{.Replicas}}\t{{.Image}}\t{{.Ports}}';

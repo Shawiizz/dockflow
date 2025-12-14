@@ -7,10 +7,10 @@ import type { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import inquirer from 'inquirer';
-import { getAccessoriesStackName } from '../../utils/config';
-import { sshExec, sshExecStream } from '../../utils/ssh';
+import { sshExec } from '../../utils/ssh';
 import { printError, printInfo, printSuccess, printHeader, printWarning } from '../../utils/output';
 import { validateEnvOrExit } from '../../utils/validation';
+import { validateAccessoriesStack, getShortServiceNames } from './utils';
 
 /**
  * Register the accessories remove command
@@ -29,27 +29,28 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
       printHeader(`Removing Accessories - ${env}`);
       console.log('');
 
-      // Validate environment
+      // Validate environment and check stack exists
       const { connection } = await validateEnvOrExit(env);
-      const stackName = getAccessoriesStackName(env)!;
+      const validation = await validateAccessoriesStack(connection, env);
 
-      // Check if accessories stack exists
-      const stacksResult = await sshExec(connection, `docker stack ls --format "{{.Name}}"`);
-      const stacks = stacksResult.stdout.trim().split('\n').filter(Boolean);
-      
-      if (!stacks.includes(stackName)) {
+      if (!validation.exists) {
         printError('Accessories stack not found');
         printInfo('Nothing to remove.');
         process.exit(1);
       }
 
+      const { stackName, services } = validation;
+      const shortNames = getShortServiceNames(services, stackName);
+
       // Show what will be removed
-      const servicesResult = await sshExec(connection, 
-        `docker stack services ${stackName} --format "{{.Name}}\t{{.Replicas}}"`
-      );
-      
-      if (servicesResult.stdout.trim()) {
+      if (services.length > 0) {
         console.log(chalk.yellow('The following services will be removed:'));
+        
+        // Get replicas info
+        const servicesResult = await sshExec(connection, 
+          `docker stack services ${stackName} --format "{{.Name}}\t{{.Replicas}}"`
+        );
+        
         for (const line of servicesResult.stdout.trim().split('\n')) {
           const [name, replicas] = line.split('\t');
           const shortName = name.replace(`${stackName}_`, '');

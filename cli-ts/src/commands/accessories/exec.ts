@@ -4,11 +4,10 @@
  */
 
 import type { Command } from 'commander';
-import { getAccessoriesStackName } from '../../utils/config';
-import { sshExec } from '../../utils/ssh';
-import { executeInteractiveSSH } from '../../utils/ssh';
+import { sshExec, executeInteractiveSSH } from '../../utils/ssh';
 import { printError, printInfo } from '../../utils/output';
 import { validateEnvOrExit } from '../../utils/validation';
+import { requireAccessoriesStack } from './utils';
 
 /**
  * Register the accessories exec command
@@ -25,19 +24,9 @@ export function registerAccessoriesExecCommand(program: Command): void {
       command: string[],
       options: { user?: string; workdir?: string }
     ) => {
-      // Validate environment
+      // Validate environment and stack
       const { connection } = await validateEnvOrExit(env);
-      const stackName = getAccessoriesStackName(env)!;
-
-      // Check if accessories stack exists
-      const stacksResult = await sshExec(connection, `docker stack ls --format "{{.Name}}"`);
-      const stacks = stacksResult.stdout.trim().split('\n').filter(Boolean);
-      
-      if (!stacks.includes(stackName)) {
-        printError('Accessories not deployed yet');
-        printInfo(`Deploy with: dockflow deploy ${env} --accessories`);
-        process.exit(1);
-      }
+      const { stackName } = await requireAccessoriesStack(connection, env);
 
       // Get the full service name
       const fullServiceName = `${stackName}_${service}`;

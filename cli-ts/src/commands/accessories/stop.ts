@@ -6,10 +6,10 @@
 import type { Command } from 'commander';
 import ora from 'ora';
 import inquirer from 'inquirer';
-import { getAccessoriesStackName } from '../../utils/config';
 import { sshExec } from '../../utils/ssh';
 import { printError, printInfo, printSuccess, printHeader, printWarning } from '../../utils/output';
 import { validateEnvOrExit } from '../../utils/validation';
+import { requireAccessoriesStack, requireAccessoryService } from './utils';
 
 /**
  * Register the accessories stop command
@@ -27,17 +27,12 @@ export function registerAccessoriesStopCommand(program: Command): void {
       printHeader(`Stopping Accessories - ${env}`);
       console.log('');
 
-      // Validate environment
+      // Validate environment and stack
       const { connection } = await validateEnvOrExit(env);
-      const stackName = getAccessoriesStackName(env)!;
+      const { stackName, services } = await requireAccessoriesStack(connection, env);
 
-      // Check if accessories stack exists
-      const stacksResult = await sshExec(connection, `docker stack ls --format "{{.Name}}"`);
-      const stacks = stacksResult.stdout.trim().split('\n').filter(Boolean);
-      
-      if (!stacks.includes(stackName)) {
-        printError('Accessories not deployed');
-        printInfo('Nothing to stop.');
+      if (services.length === 0) {
+        printError('No accessories services found');
         process.exit(1);
       }
 
@@ -66,24 +61,8 @@ export function registerAccessoriesStopCommand(program: Command): void {
 
       try {
         if (service) {
-          // Stop specific service
-          const fullServiceName = `${stackName}_${service}`;
-          
-          // Check if service exists
-          const checkResult = await sshExec(connection, 
-            `docker service ls --filter "name=${fullServiceName}" --format "{{.Name}}"`
-          );
-          
-          if (!checkResult.stdout.trim()) {
-            printError(`Accessory '${service}' not found`);
-            const servicesResult = await sshExec(connection, 
-              `docker stack services ${stackName} --format "{{.Name}}" | sed 's/${stackName}_//'`
-            );
-            if (servicesResult.stdout.trim()) {
-              printInfo(`Available accessories: ${servicesResult.stdout.trim().split('\n').join(', ')}`);
-            }
-            process.exit(1);
-          }
+          // Stop specific service - validate it exists
+          const fullServiceName = await requireAccessoryService(connection, stackName, service);
 
           const spinner = ora(`Stopping ${service}...`).start();
           
@@ -100,17 +79,6 @@ export function registerAccessoriesStopCommand(program: Command): void {
 
         } else {
           // Stop all services in the stack
-          const servicesResult = await sshExec(connection, 
-            `docker stack services ${stackName} --format "{{.Name}}"`
-          );
-          
-          const services = servicesResult.stdout.trim().split('\n').filter(Boolean);
-
-          if (services.length === 0) {
-            printError('No accessories services found');
-            process.exit(1);
-          }
-
           printInfo(`Stopping ${services.length} accessories...`);
           console.log('');
 

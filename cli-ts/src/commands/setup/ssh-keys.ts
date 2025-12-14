@@ -26,13 +26,13 @@ export function generateSSHKey(keyPath: string, comment: string = 'dockflow'): S
       fs.unlinkSync(`${keyPath}.pub`);
     }
 
-    // Use -q for quiet mode and -N "" for empty passphrase
-    // Note: We pass the empty passphrase as a separate argument to avoid shell escaping issues
+    // Use -q for quiet mode and -N '' for empty passphrase
+    // With shell: true, we need to properly escape the empty string
     const result = spawnSync('ssh-keygen', [
       '-q',
       '-t', 'ed25519',
       '-f', keyPath,
-      '-N', '""',
+      '-N', "''",
       '-C', comment
     ], {
       encoding: 'utf-8',

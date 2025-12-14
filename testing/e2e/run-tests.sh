@@ -56,8 +56,12 @@ docker compose --env-file "$SCRIPT_DIR/.env" run --rm -T \
     # Copy source and test app to workspace
     cp -r /mnt-src/dockflow/testing/e2e/test-app/. /workspace/
     
-    # Copy dockflow framework to /tmp (to match CI/CD behavior)
-    cp -r /mnt-src/dockflow /tmp/dockflow
+    # Copy dockflow framework to /tmp (excluding heavy directories)
+    mkdir -p /tmp/dockflow
+    rsync -a --exclude="node_modules" --exclude=".git" --exclude="docs" \
+          --exclude="cli-ts/node_modules" --exclude="cli-ts/dist" \
+          --exclude="testing/e2e/docker/data" \
+          /mnt-src/dockflow/ /tmp/dockflow/
     
     # Set ROOT_PATH to workspace (where the test app is)
     export ROOT_PATH=/workspace
