@@ -11,8 +11,9 @@ export function registerDetailsCommand(program: Command): void {
   program
     .command('details <env>')
     .description('Show stack details and resource usage')
-    .action(async (env: string) => {
-      const { stackName, connection } = await validateEnvOrExit(env);
+    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .action(async (env: string, options: { server?: string }) => {
+      const { stackName, connection } = await validateEnvOrExit(env, options.server);
       
       printHeader(`Stack: ${stackName}`);
 

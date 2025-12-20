@@ -1,14 +1,8 @@
-# Required: unique project identifier
 project_name: "test-app"
 
 options:
   enable_debug_logs: true
 
-# Stack management configuration
 stack_management:
-  # Number of previous releases to keep for rollback
   keep_releases: 3
-  
-  # Clean up failed deployment images immediately
   cleanup_on_failure: true
-

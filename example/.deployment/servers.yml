@@ -1,0 +1,15 @@
+# Server configuration for production environment
+# Connection details come from CI secrets: PRODUCTION_MAIN_SERVER_CONNECTION
+
+defaults:
+  user: dockflow
+  port: 22
+
+servers:
+  main_server:
+    # Host can be defined here or via CI secret
+    # host: 192.168.0.1
+    role: manager
+    tags: [production]
+    env:
+      APP_EXTERNAL_PORT: "24000"

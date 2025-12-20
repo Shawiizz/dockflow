@@ -12,6 +12,12 @@ cd "$SCRIPT_DIR/docker"
 echo "Stopping and removing containers..."
 docker compose --env-file "$SCRIPT_DIR/.env" down -v --remove-orphans
 
+# Clean up test app .env.dockflow if it exists
+if [[ -f "$SCRIPT_DIR/test-app/.env.dockflow" ]]; then
+    rm -f "$SCRIPT_DIR/test-app/.env.dockflow"
+    echo "Cleaned up test-app/.env.dockflow"
+fi
+
 # Optional: Remove .env file
 read -p "Remove .env file? (y/N): " -n 1 -r REPLY
 echo

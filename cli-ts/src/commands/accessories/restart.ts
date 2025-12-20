@@ -18,16 +18,17 @@ export function registerAccessoriesRestartCommand(program: Command): void {
     .command('restart <env> [service]')
     .description('Restart accessory services')
     .option('--force', 'Force restart even if service is updating')
+    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(async (
       env: string, 
       service: string | undefined,
-      options: { force?: boolean }
+      options: { force?: boolean; server?: string }
     ) => {
       printHeader(`Restarting Accessories - ${env}`);
       console.log('');
 
       // Validate environment and stack
-      const { connection } = await validateEnvOrExit(env);
+      const { connection } = await validateEnvOrExit(env, options.server);
       const { stackName, services } = await requireAccessoriesStack(connection, env);
 
       if (services.length === 0) {

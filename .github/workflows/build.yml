@@ -39,12 +39,6 @@ jobs:
 
       - name: Build Docker images
         run: |
-          echo '${{ toJSON(secrets) }}' > /tmp/secrets.json
-          
-          export ENV="build"
-          export VERSION="build"
           export ROOT_PATH="$(pwd)"
-          
-          source /tmp/dockflow/.common/scripts/load_env.sh "$ENV"
           cd /tmp/dockflow
           ansible-playbook ansible/playbooks/build_images.yml --connection=local

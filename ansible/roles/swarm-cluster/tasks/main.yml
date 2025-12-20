@@ -1,0 +1,81 @@
+---
+# Swarm Cluster Role - Manages Docker Swarm cluster topology
+#
+# This role handles:
+# - Initializing Swarm on the manager node
+# - Opening firewall ports for Swarm communication
+# - Distributing images to all nodes (when no registry is used)
+#
+# Note: Worker join is handled by the separate 'setup swarm' command
+# which should be run once before first deployment
+
+- name: Ensure Docker Swarm is initialized on manager
+  block:
+    - name: Check if Docker Swarm is initialized
+      shell: docker info --format '{{ '{{' }}.Swarm.LocalNodeState{{ '}}' }}'
+      register: swarm_state
+      changed_when: false
+      failed_when: false
+
+    - name: Get node's primary IP for Swarm
+      set_fact:
+        swarm_advertise_addr: "{{ ansible_default_ipv4.address | default(ansible_all_ipv4_addresses[0]) }}"
+
+    - name: Initialize Docker Swarm if not already initialized
+      shell: |
+        docker swarm init --advertise-addr {{ swarm_advertise_addr }} 2>/dev/null || true
+      register: swarm_init
+      when: swarm_state.stdout | trim != 'active'
+
+    - name: Display Swarm status
+      debug:
+        msg: "Docker Swarm {{ 'initialized' if swarm_init.changed | default(false) else 'already active' }} on {{ swarm_advertise_addr }}"
+
+- name: Get Swarm cluster info
+  block:
+    - name: Get number of nodes in Swarm
+      shell: docker node ls --format '{{ '{{' }}.Hostname{{ '}}' }}' | wc -l
+      register: swarm_node_count
+      changed_when: false
+
+    - name: Get Swarm manager token (for future worker joins)
+      shell: docker swarm join-token worker -q
+      register: swarm_worker_token
+      changed_when: false
+      no_log: true
+
+    - name: Get Swarm manager token
+      shell: docker swarm join-token manager -q
+      register: swarm_manager_token
+      changed_when: false
+      no_log: true
+
+    - name: Display cluster info
+      debug:
+        msg: "Swarm cluster has {{ swarm_node_count.stdout | trim }} node(s)"
+
+- name: Distribute images to workers (if no registry)
+  block:
+    - name: Check if registry is enabled
+      set_fact:
+        use_registry: "{{ deployment_config.registry.enabled | default(false) | bool }}"
+
+    - name: Parse workers JSON
+      set_fact:
+        workers_list: "{{ lookup('env', 'WORKERS_JSON') | from_json }}"
+      when: 
+        - not use_registry
+        - lookup('env', 'WORKERS_COUNT') | int > 0
+
+    - name: Display image distribution plan
+      debug:
+        msg: "No registry configured. Will distribute images to {{ workers_list | length }} worker(s)"
+      when: 
+        - not use_registry
+        - workers_list is defined
+        - workers_list | length > 0
+
+    # Image distribution is handled by the local-build or remote-build roles
+    # They will use the workers_list to push images to all nodes
+
+  when: lookup('env', 'WORKERS_COUNT') | default('0') | int > 0

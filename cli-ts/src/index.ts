@@ -46,9 +46,13 @@ program.action(async () => {
   console.log('  dockflow details <env>          Show stack details');
   console.log('');
   console.log(chalk.yellow('Accessories (stateful services):'));
-  console.log('  dockflow accessories deploy <env>   Deploy databases, caches, etc.');
-  console.log('  dockflow accessories list <env>     List running accessories');
-  console.log('  dockflow accessories logs <env>     View accessory logs');
+  console.log('  dockflow accessories deploy <env>    Deploy databases, caches, etc.');
+  console.log('  dockflow accessories list <env>      List running accessories');
+  console.log('  dockflow accessories logs <env>      View accessory logs');
+  console.log('  dockflow accessories exec <env>      Execute command in accessory');
+  console.log('  dockflow accessories restart <env>   Restart accessory services');
+  console.log('  dockflow accessories stop <env>      Stop accessory services');
+  console.log('  dockflow accessories remove <env>    Remove accessories stack');
 });
 
 // Error handling

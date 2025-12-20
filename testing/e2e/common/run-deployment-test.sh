@@ -33,12 +33,34 @@ else
 	exit 1
 fi
 
-# Generate secrets.json with TEST_CONNECTION (in /tmp to avoid modifying project directory)
-echo "{\"TEST_CONNECTION\":\"$CONNECTION_STRING\"}" >/tmp/secrets.json
+# Decode connection string and export variables
+# Connection string format: base64(user@host:port|privateKey|password)
+DECODED=$(echo "$CONNECTION_STRING" | base64 -d)
+USER_HOST_PORT=$(echo "$DECODED" | cut -d'|' -f1)
+PRIVATE_KEY=$(echo "$DECODED" | cut -d'|' -f2)
+PASSWORD=$(echo "$DECODED" | cut -d'|' -f3)
 
-# shellcheck source=/dev/null
-source /tmp/dockflow/.common/scripts/load_env.sh "$ENV" "$HOSTNAME"
-bash /tmp/dockflow/.common/scripts/deploy_with_ansible.sh
+# Parse user@host:port
+export DOCKFLOW_USER=$(echo "$USER_HOST_PORT" | cut -d'@' -f1)
+HOST_PORT=$(echo "$USER_HOST_PORT" | cut -d'@' -f2)
+export DOCKFLOW_HOST=$(echo "$HOST_PORT" | cut -d':' -f1)
+export DOCKFLOW_PORT=$(echo "$HOST_PORT" | cut -d':' -f2)
+export SSH_PRIVATE_KEY="$PRIVATE_KEY"
+if [ -n "$PASSWORD" ]; then
+	export DOCKFLOW_PASSWORD="$PASSWORD"
+fi
+
+# Set deployment variables
+export ENV="${ENV:-test}"
+export SERVER_NAME="${SERVER_NAME:-main_server}"
+export VERSION="${VERSION:-1.0.0-test}"
+export ROOT_PATH="${ROOT_PATH:-$(pwd)}"
+export DOCKFLOW_PATH="${DOCKFLOW_PATH:-/tmp/dockflow}"
+
+echo "Decoded connection: $DOCKFLOW_USER@$DOCKFLOW_HOST:$DOCKFLOW_PORT"
+
+# Run Ansible deployment
+bash /tmp/dockflow/.common/scripts/run_ansible.sh
 
 echo "Verifying deployment..."
 

@@ -35,6 +35,7 @@ export const DEFAULT_VERSION = '1.0.0';
  * File paths (relative to project root)
  */
 export const CONFIG_PATH = '.deployment/config.yml';
+export const SERVERS_PATH = '.deployment/servers.yml';
 export const ENV_FILE_PATH = '.env.dockflow';
 export const DOCKER_DIR = '.deployment/docker';
 export const HOOKS_DIR = '.deployment/hooks';

@@ -13,8 +13,10 @@ export function registerLogsCommand(program: Command): void {
     .description('Show logs for services')
     .option('-f, --follow', 'Follow log output')
     .option('-n, --tail <lines>', 'Number of lines to show', '100')
-    .action(async (env: string, service: string | undefined, options: { follow?: boolean; tail?: string }) => {
-      const { stackName, connection } = await validateEnvOrExit(env);
+    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .action(async (env: string, service: string | undefined, options: { follow?: boolean; tail?: string; server?: string }) => {
+      const { stackName, connection, serverName } = await validateEnvOrExit(env, options.server);
+      printInfo(`Server: ${serverName}`);
       
       printInfo(`Fetching logs for stack: ${stackName}`);
       console.log('');

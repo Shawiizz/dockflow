@@ -7,6 +7,7 @@
  */
 
 import type { Command } from 'commander';
+import { registerAccessoriesDeployCommand } from './deploy';
 import { registerAccessoriesLogsCommand } from './logs';
 import { registerAccessoriesExecCommand } from './exec';
 import { registerAccessoriesRestartCommand } from './restart';
@@ -21,8 +22,9 @@ export function registerAccessoriesCommands(program: Command): void {
   const accessories = program
     .command('accessories')
     .alias('acc')
-    .description('Manage stateful services (databases, caches, etc.)\n\nDeploy with: dockflow deploy <env> --accessories');
+    .description('Manage stateful services (databases, caches, etc.)');
 
+  registerAccessoriesDeployCommand(accessories);
   registerAccessoriesListCommand(accessories);
   registerAccessoriesLogsCommand(accessories);
   registerAccessoriesExecCommand(accessories);

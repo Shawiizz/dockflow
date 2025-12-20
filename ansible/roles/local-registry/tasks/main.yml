@@ -1,6 +1,6 @@
 ---
-# Local Registry role - transfers Docker images to remote server via SSH streaming
-# Uses docker save | ssh | docker load - simple and reliable, no registry or tunnel needed
+# Local Registry role - transfers Docker images to all Swarm nodes via SSH streaming
+# Uses docker save | ssh | docker load - simple and reliable, no registry needed
 
 - name: Check if image transfer is needed
   set_fact:
@@ -10,7 +10,7 @@
         and not (remote_build | default(false) | bool)
       }}
 
-- name: Transfer images to remote server
+- name: Transfer images to all nodes
   block:
     - name: Get list of built images from build commands
       set_fact:
@@ -24,37 +24,43 @@
       delegate_to: localhost
       when: built_images | length > 0
 
-    - name: Get remote server SSH details
+    # Build list of all nodes (manager + workers)
+    - name: Build manager node info
       set_fact:
-        ssh_remote_host: "{{ ansible_host }}"
-        ssh_remote_user: "{{ ansible_user | default('root') }}"
-        ssh_remote_port: "{{ ansible_port | default(22) }}"
-        ssh_key_file: "{{ ansible_ssh_private_key_file | default('') }}"
+        manager_node:
+          host: "{{ ansible_host }}"
+          user: "{{ ansible_user | default('root') }}"
+          port: "{{ ansible_port | default(22) }}"
+          key_file: "{{ ansible_ssh_private_key_file | default('') }}"
+          name: "manager"
       delegate_to: localhost
 
-    - name: Build SSH options
+    - name: Parse workers from WORKERS_JSON
       set_fact:
-        ssh_opts: >-
-          -o StrictHostKeyChecking=no
-          -o ConnectTimeout=30
-          -o ServerAliveInterval=60
-          {% if ssh_key_file != '' %}-i {{ ssh_key_file }}{% endif %}
-          -p {{ ssh_remote_port }}
+        workers_list: "{{ lookup('env', 'WORKERS_JSON') | default('[]', true) | from_json }}"
       delegate_to: localhost
 
-    - name: Transfer images via SSH streaming (with compression)
-      shell: |
-        echo "Transferring {{ item }}..."
-        docker save "{{ item }}" | gzip -1 | ssh {{ ssh_opts }} {{ ssh_remote_user }}@{{ ssh_remote_host }} "gunzip | docker load"
+    - name: Build all nodes list
+      set_fact:
+        all_nodes: "{{ [manager_node] + (workers_list | default([])) }}"
       delegate_to: localhost
-      loop: "{{ built_images | default([]) }}"
-      register: transfer_results
+
+    - name: Display transfer plan
+      debug:
+        msg: "Will transfer {{ built_images | length }} image(s) to {{ all_nodes | length }} node(s)"
+      delegate_to: localhost
+
+    # Transfer images to each node
+    - name: Transfer images to all nodes
+      include_tasks: transfer_to_node.yml
+      loop: "{{ all_nodes }}"
       loop_control:
-        label: "Transferring {{ item }}"
+        loop_var: node
+        label: "{{ node.name | default(node.host) }}"
 
     - name: Display transfer completion
       debug:
-        msg: "Successfully transferred {{ built_images | length }} image(s) to remote server"
+        msg: "Successfully transferred {{ built_images | length }} image(s) to {{ all_nodes | length }} node(s)"
       delegate_to: localhost
 
   when:

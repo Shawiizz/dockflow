@@ -1,22 +1,94 @@
 # Connection Configuration
 
-The recommended way to configure the connection to your server is using the `[ENV]_CONNECTION` secret (e.g., `PRODUCTION_CONNECTION`).
+import { Callout } from 'nextra/components'
 
-## Generating the Connection String
+Connection to your servers is configured through CI secrets and optionally in `servers.yml`.
 
-The connection string is automatically generated during the server setup. You can also generate it manually using the CLI utility if needed.
+## Connection String (Recommended)
 
-The connection string is a Base64 encoded JSON object containing:
-- `host`: Server IP or hostname
-- `port`: SSH port
-- `user`: SSH user
-- `privateKey`: SSH private key
-- `password`: User password (optional, for sudo access)
+The recommended way to configure server connections is using connection strings as CI secrets:
 
-## Alternative: Individual Secrets
+```bash
+# Format: ENV_SERVERNAME_CONNECTION
+PRODUCTION_MAIN_SERVER_CONNECTION=<base64-encoded JSON>
+STAGING_STAGING_SERVER_CONNECTION=<base64-encoded JSON>
+```
 
-If you prefer not to use the connection string, you can define individual secrets in your CI/CD:
-- `[ENV]_SSH_PRIVATE_KEY`: The SSH private key
-- `[ENV]_DOCKFLOW_HOST`: Overrides the host defined in `.env` files
-- `[ENV]_DOCKFLOW_USER`: Overrides the user defined in `.env` files
-- `[ENV]_DOCKFLOW_PASSWORD`: The user password (if needed for sudo)
+The connection string is a Base64-encoded JSON object containing:
+
+```json
+{
+  "host": "192.168.1.10",
+  "port": 22,
+  "user": "dockflow",
+  "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\n...",
+  "password": "optional-sudo-password"
+}
+```
+
+<Callout type="info">
+  The connection string is automatically generated during server setup with `dockflow setup`.
+</Callout>
+
+## Individual Secrets
+
+Alternatively, provide connection details as separate secrets:
+
+```bash
+# Required
+PRODUCTION_MAIN_SERVER_SSH_PRIVATE_KEY=<SSH private key content>
+
+# Optional (can be defined in servers.yml instead)
+PRODUCTION_MAIN_SERVER_HOST=192.168.1.10
+PRODUCTION_MAIN_SERVER_USER=dockflow
+PRODUCTION_MAIN_SERVER_PORT=22
+PRODUCTION_MAIN_SERVER_PASSWORD=<sudo password>
+```
+
+## Combining with servers.yml
+
+You can define partial connection info in `servers.yml` and override via CI secrets:
+
+```yaml
+# servers.yml - host visible in config
+servers:
+  main_server:
+    host: "192.168.1.10"  # Can be omitted if set via CI secret
+    tags: [production]
+    user: dockflow
+    port: 22
+```
+
+Then only provide the SSH key via CI:
+
+```bash
+PRODUCTION_MAIN_SERVER_SSH_PRIVATE_KEY=<key>
+```
+
+Or hide the host entirely via CI:
+
+```bash
+PRODUCTION_MAIN_SERVER_HOST=10.0.0.50
+PRODUCTION_MAIN_SERVER_SSH_PRIVATE_KEY=<key>
+```
+
+## Secret Naming Convention
+
+<Callout type="warning">
+  Server names in CI secrets use underscores. A server named `main_server` uses `MAIN_SERVER` in the secret name.
+</Callout>
+
+| Server Name | CI Secret Pattern |
+|-------------|-------------------|
+| `main_server` | `PRODUCTION_MAIN_SERVER_*` |
+| `replica_a` | `PRODUCTION_REPLICA_A_*` |
+| `staging_server` | `STAGING_STAGING_SERVER_*` |
+
+## Priority
+
+Connection settings are resolved in this order (highest priority wins):
+
+1. `ENV_SERVERNAME_CONNECTION` (full connection string)
+2. `ENV_SERVERNAME_HOST`, `ENV_SERVERNAME_USER`, etc. (individual secrets)
+3. `servers.[name].host`, `servers.[name].user`, etc. (servers.yml)
+4. `defaults.user`, `defaults.port` (servers.yml defaults)

@@ -1,24 +1,13 @@
 /**
  * Configuration utilities
- * Handles reading config.yml and .env.dockflow
+ * Handles reading config.yml and servers.yml
  */
 
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { parse as parseYaml } from 'yaml';
-import { 
-  CONFIG_PATH, 
-  ENV_FILE_PATH, 
-  ANSIBLE_DOCKER_IMAGE 
-} from '../constants';
-import { parseConnectionStringLegacy } from './connection-parser';
-import type { SSHKeyConnection } from '../types';
-
-// Re-export connection type for backwards compatibility
-export type { SSHKeyConnection as ConnectionInfo } from '../types';
-
-// Internal type alias
-type ConnectionInfo = SSHKeyConnection;
+import { ANSIBLE_DOCKER_IMAGE } from '../constants';
+import type { ServersConfig } from '../types';
 
 /**
  * Dockflow configuration schema
@@ -101,6 +90,33 @@ export function loadConfig(): DockflowConfig | null {
 }
 
 /**
+ * Load the servers config from .deployment/servers.yml
+ */
+export function loadServersConfig(): ServersConfig | null {
+  const serversPath = join(getProjectRoot(), '.deployment', 'servers.yml');
+  
+  if (!existsSync(serversPath)) {
+    return null;
+  }
+  
+  try {
+    const content = readFileSync(serversPath, 'utf-8');
+    return parseYaml(content) as ServersConfig;
+  } catch (error) {
+    console.error(`Error reading servers.yml: ${error}`);
+    return null;
+  }
+}
+
+/**
+ * Check if servers.yml exists
+ */
+export function hasServersConfig(): boolean {
+  const serversPath = join(getProjectRoot(), '.deployment', 'servers.yml');
+  return existsSync(serversPath);
+}
+
+/**
  * Get project name from config
  */
 export function getProjectName(): string | null {
@@ -115,33 +131,6 @@ export function getStackName(env: string): string | null {
   const projectName = getProjectName();
   if (!projectName) return null;
   return `${projectName}-${env}`;
-}
-
-/**
- * Parse connection string from .env.dockflow
- */
-export function getConnectionInfo(env: string): ConnectionInfo | null {
-  const envFile = join(getProjectRoot(), '.env.dockflow');
-  
-  if (!existsSync(envFile)) {
-    return null;
-  }
-  
-  try {
-    const content = readFileSync(envFile, 'utf-8');
-    const varName = `${env.toUpperCase()}_CONNECTION`;
-    
-    // Find the connection string
-    const match = content.match(new RegExp(`^${varName}=(.+)$`, 'm'));
-    if (!match) {
-      return null;
-    }
-    
-    return parseConnectionStringLegacy(match[1]);
-  } catch (error) {
-    console.error(`Error reading .env.dockflow: ${error}`);
-    return null;
-  }
 }
 
 /**

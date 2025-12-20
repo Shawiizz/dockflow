@@ -18,14 +18,15 @@ export function registerAccessoriesExecCommand(program: Command): void {
     .description('Execute a command in an accessory container (default: sh)')
     .option('-u, --user <user>', 'Run command as specific user')
     .option('--workdir <dir>', 'Working directory inside the container')
+    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(async (
       env: string, 
       service: string, 
       command: string[],
-      options: { user?: string; workdir?: string }
+      options: { user?: string; workdir?: string; server?: string }
     ) => {
       // Validate environment and stack
-      const { connection } = await validateEnvOrExit(env);
+      const { connection } = await validateEnvOrExit(env, options.server);
       const { stackName } = await requireAccessoriesStack(connection, env);
 
       // Get the full service name

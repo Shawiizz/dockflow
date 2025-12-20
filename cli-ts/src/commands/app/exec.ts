@@ -11,8 +11,9 @@ export function registerExecCommand(program: Command): void {
   program
     .command('exec <env> <service> [command...]')
     .description('Execute a command in a container (default: bash)')
-    .action(async (env: string, service: string, command: string[]) => {
-      const { stackName, connection } = await validateEnvOrExit(env);
+    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .action(async (env: string, service: string, command: string[], options: { server?: string }) => {
+      const { stackName, connection } = await validateEnvOrExit(env, options.server);
       
       const cmd = command.length > 0 ? command.join(' ') : 'bash';
       printInfo(`Connecting to ${stackName}_${service}...`);

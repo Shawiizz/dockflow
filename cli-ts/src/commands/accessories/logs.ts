@@ -21,13 +21,14 @@ export function registerAccessoriesLogsCommand(program: Command): void {
     .option('--since <time>', 'Show logs since timestamp (e.g., 2021-01-02T13:23:37) or relative (e.g., 42m for 42 minutes)')
     .option('--timestamps', 'Show timestamps')
     .option('--raw', 'Show raw output without pretty printing')
+    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(async (
       env: string, 
       service: string | undefined, 
-      options: { follow?: boolean; tail?: string; since?: string; timestamps?: boolean; raw?: boolean }
+      options: { follow?: boolean; tail?: string; since?: string; timestamps?: boolean; raw?: boolean; server?: string }
     ) => {
       // Validate environment and stack
-      const { connection } = await validateEnvOrExit(env);
+      const { connection } = await validateEnvOrExit(env, options.server);
       const { stackName, services } = await requireAccessoriesStack(connection, env);
 
       if (services.length === 0) {

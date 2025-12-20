@@ -22,15 +22,16 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
     .description('Remove the accessories stack entirely')
     .option('-v, --volumes', 'Also remove associated volumes (DESTRUCTIVE)')
     .option('-y, --yes', 'Skip confirmation prompt')
+    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(async (
       env: string,
-      options: { volumes?: boolean; yes?: boolean }
+      options: { volumes?: boolean; yes?: boolean; server?: string }
     ) => {
       printHeader(`Removing Accessories - ${env}`);
       console.log('');
 
       // Validate environment and check stack exists
-      const { connection } = await validateEnvOrExit(env);
+      const { connection } = await validateEnvOrExit(env, options.server);
       const validation = await validateAccessoriesStack(connection, env);
 
       if (!validation.exists) {

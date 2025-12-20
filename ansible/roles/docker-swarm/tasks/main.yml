@@ -1,25 +1,16 @@
 ---
 # Docker Swarm role - handles Docker Swarm stack deployment
-# This is the only deployment mode in Dockflow v2.0
-# Swarm is used even for single-node deployments for consistency and reliability
+# 
+# Architecture:
+# - This role runs ONLY on the manager node
+# - Workers have already joined via 'dockflow setup swarm'
+# - Images are pre-distributed to all nodes before this role runs
+# - docker stack deploy is executed here, Swarm distributes workloads
 
-- name: Initialize Docker Swarm
-  block:
-    - name: Check if Docker Swarm is initialized
-      shell: docker info --format '{{ '{{' }}.Swarm.LocalNodeState{{ '}}' }}'
-      register: swarm_state
-      changed_when: false
-      failed_when: false
-
-    - name: Initialize Docker Swarm if not already initialized
-      shell: |
-        docker swarm init --advertise-addr {{ ansible_default_ipv4.address | default(ansible_all_ipv4_addresses[0]) }} 2>/dev/null || true
-      register: swarm_init
-      when: swarm_state.stdout | trim != 'active'
-
-    - name: Display Swarm status
-      debug:
-        msg: "Docker Swarm {{ 'initialized' if swarm_init.changed | default(false) else 'already active' }}"
+# Ensure Swarm is active (init if needed for single-node)
+- name: Import swarm-cluster role
+  import_role:
+    name: swarm-cluster
 
 - name: Set stack deployment variables
   set_fact:

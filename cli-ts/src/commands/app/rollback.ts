@@ -12,8 +12,9 @@ export function registerRollbackCommand(program: Command): void {
   program
     .command('rollback <env> [service]')
     .description('Rollback to previous version')
-    .action(async (env: string, service?: string) => {
-      const { stackName, connection } = await validateEnvOrExit(env);
+    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .action(async (env: string, service: string | undefined, options: { server?: string }) => {
+      const { stackName, connection } = await validateEnvOrExit(env, options.server);
       
       const spinner = ora();
 

@@ -18,6 +18,7 @@ export function registerPruneCommand(program: Command): void {
     .option('--volumes', 'Prune volumes only')
     .option('--networks', 'Prune networks only')
     .option('-y, --yes', 'Skip confirmation')
+    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(async (env: string, options: { 
       all?: boolean; 
       images?: boolean; 
@@ -25,8 +26,9 @@ export function registerPruneCommand(program: Command): void {
       volumes?: boolean; 
       networks?: boolean;
       yes?: boolean;
+      server?: string;
     }) => {
-      const { connection } = await validateEnvOrExit(env);
+      const { connection } = await validateEnvOrExit(env, options.server);
 
       // Determine what to prune
       const pruneAll = !options.images && !options.containers && !options.volumes && !options.networks;

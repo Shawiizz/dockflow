@@ -5,8 +5,15 @@
  * returning typed errors instead of exiting the process.
  */
 
-import { loadConfig, getConnectionInfo, getStackName, type DockflowConfig } from './config';
+import { loadConfig, getStackName, hasServersConfig, type DockflowConfig } from './config';
+import { 
+  resolveServersForEnvironment, 
+  getFullConnectionInfo,
+  getServerNamesForEnvironment,
+  getAvailableEnvironments
+} from './servers';
 import { printError, printInfo } from './output';
+import { loadSecrets } from './secrets';
 import type { SSHKeyConnection } from '../types';
 
 /**
@@ -17,6 +24,7 @@ export interface EnvironmentContext {
   stackName: string;
   connection: SSHKeyConnection;
   env: string;
+  serverName: string;
 }
 
 /**
@@ -25,6 +33,8 @@ export interface EnvironmentContext {
 export enum ValidationErrorType {
   CONFIG_NOT_FOUND = 'CONFIG_NOT_FOUND',
   PROJECT_NAME_MISSING = 'PROJECT_NAME_MISSING',
+  SERVERS_NOT_FOUND = 'SERVERS_NOT_FOUND',
+  NO_SERVERS_FOR_ENV = 'NO_SERVERS_FOR_ENV',
   CONNECTION_NOT_FOUND = 'CONNECTION_NOT_FOUND',
 }
 
@@ -40,8 +50,12 @@ export interface ValidationError {
 /**
  * Validate environment and return context or null
  * Does NOT exit process - caller decides what to do on failure
+ * Uses the first server for the environment by default
  */
-export function validateEnvironment(env: string): EnvironmentContext | ValidationError {
+export function validateEnvironment(env: string, serverName?: string): EnvironmentContext | ValidationError {
+  // Load secrets from .env.dockflow or CI environment
+  loadSecrets();
+
   // Check config exists
   const config = loadConfig();
   if (!config) {
@@ -62,17 +76,42 @@ export function validateEnvironment(env: string): EnvironmentContext | Validatio
     };
   }
 
-  // Check connection
-  const connection = getConnectionInfo(env);
-  if (!connection) {
+  // Check servers.yml exists
+  if (!hasServersConfig()) {
     return {
-      type: ValidationErrorType.CONNECTION_NOT_FOUND,
-      message: `.env.dockflow not found or ${env.toUpperCase()}_CONNECTION missing`,
-      suggestion: `Add connection string to .env.dockflow:\n  ${env.toUpperCase()}_CONNECTION=<base64-encoded-string>`,
+      type: ValidationErrorType.SERVERS_NOT_FOUND,
+      message: '.deployment/servers.yml not found',
+      suggestion: 'Create servers.yml to define your deployment servers',
     };
   }
 
-  return { config, stackName, connection, env };
+  // Get servers for this environment
+  const servers = resolveServersForEnvironment(env);
+  if (servers.length === 0) {
+    const availableEnvs = getAvailableEnvironments();
+    return {
+      type: ValidationErrorType.NO_SERVERS_FOR_ENV,
+      message: `No servers found with tag "${env}"`,
+      suggestion: availableEnvs.length > 0 
+        ? `Available environments: ${availableEnvs.join(', ')}`
+        : 'Add servers with the appropriate tags to servers.yml',
+    };
+  }
+
+  // Use specified server or first server
+  const targetServerName = serverName || servers[0].name;
+  
+  // Get full connection info (with private key)
+  const connection = getFullConnectionInfo(env, targetServerName);
+  if (!connection) {
+    return {
+      type: ValidationErrorType.CONNECTION_NOT_FOUND,
+      message: `No SSH credentials found for server "${targetServerName}"`,
+      suggestion: `Add CI secret: ${env.toUpperCase()}_${targetServerName.toUpperCase()}_CONNECTION\n  or: ${env.toUpperCase()}_${targetServerName.toUpperCase()}_SSH_PRIVATE_KEY`,
+    };
+  }
+
+  return { config, stackName, connection, env, serverName: targetServerName };
 }
 
 /**
@@ -86,8 +125,8 @@ export function isValidationError(result: EnvironmentContext | ValidationError):
  * Validate environment with process exit on failure
  * For backwards compatibility with existing command handlers
  */
-export async function validateEnvOrExit(env: string): Promise<EnvironmentContext> {
-  const result = validateEnvironment(env);
+export async function validateEnvOrExit(env: string, serverName?: string): Promise<EnvironmentContext> {
+  const result = validateEnvironment(env, serverName);
   
   if (isValidationError(result)) {
     printError(result.message);

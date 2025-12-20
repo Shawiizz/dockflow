@@ -11,10 +11,11 @@ export function registerSshCommand(program: Command): void {
   program
     .command('ssh <env>')
     .description('Open SSH session to server')
-    .action(async (env: string) => {
-      const { connection } = await validateEnvOrExit(env);
+    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .action(async (env: string, options: { server?: string }) => {
+      const { connection, serverName } = await validateEnvOrExit(env, options.server);
       
-      printInfo(`Connecting to ${env} server...`);
+      printInfo(`Connecting to ${env} server (${serverName})...`);
       console.log('');
 
       try {

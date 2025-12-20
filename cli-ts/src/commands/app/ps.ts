@@ -11,8 +11,9 @@ export function registerPsCommand(program: Command): void {
   program
     .command('ps <env>')
     .description('List running containers')
-    .action(async (env: string) => {
-      const { stackName, connection } = await validateEnvOrExit(env);
+    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .action(async (env: string, options: { server?: string }) => {
+      const { stackName, connection } = await validateEnvOrExit(env, options.server);
       
       printInfo(`Containers for stack: ${stackName}`);
       console.log('');

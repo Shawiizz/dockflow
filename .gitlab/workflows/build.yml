@@ -6,18 +6,22 @@ stages:
 
 build:
   stage: build
-  extends:
-    - .common-variables
+  image: ubuntu:22.04
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    DOCKFLOW_REPOSITORY_URL: https://github.com/Shawiizz/dockflow.git
+    DOCKFLOW_FRAMEWORK_VERSION: 2.0.0-dev2
   before_script:
-    - export ENV=build
-    - export VERSION=build
-    - export ROOT_PATH=$(pwd)
+    - apt-get update && apt-get install -y git python3-pip ansible npm
+    - npm i -g shawiizz-decomposerize
+    - pip3 install pyyaml
     - git clone --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" /tmp/dockflow
   script:
     - |
-      source /tmp/dockflow/.common/scripts/load_env.sh "$ENV"
-      
-      # Run Ansible playbook to build images
+      export ROOT_PATH=$(pwd)
       cd /tmp/dockflow
       ansible-playbook ansible/playbooks/build_images.yml --connection=local
   rules:

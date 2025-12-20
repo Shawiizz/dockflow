@@ -1,6 +1,7 @@
 export default {
   connection: 'Connection',
-  environment: 'Environment Files',
+  servers: 'Servers Configuration',
+  environment: 'Environment Variables',
   'docker-compose': 'Docker Compose',
   accessories: 'Accessories (Databases, Caches)',
   'build-strategy': 'Build Strategy',

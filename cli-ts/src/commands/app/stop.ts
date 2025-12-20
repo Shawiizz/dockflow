@@ -13,8 +13,9 @@ export function registerStopCommand(program: Command): void {
     .command('stop <env>')
     .description('Stop and remove the stack')
     .option('-y, --yes', 'Skip confirmation')
-    .action(async (env: string, options: { yes?: boolean }) => {
-      const { stackName, connection } = await validateEnvOrExit(env);
+    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .action(async (env: string, options: { yes?: boolean; server?: string }) => {
+      const { stackName, connection } = await validateEnvOrExit(env, options.server);
       
       if (!options.yes) {
         printWarning(`This will remove all services in stack: ${stackName}`);

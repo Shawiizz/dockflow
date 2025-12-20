@@ -73,20 +73,25 @@ build:
 # Deploy on tag push
 deploy:
   stage: deploy
-  image: shawiizz/dockflow-ci:$DOCKFLOW_VERSION
+  image: ubuntu:22.04
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
     - |
+      # Install Dockflow CLI
+      apt-get update && apt-get install -y curl docker.io
+      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | bash
+      
+      # Determine environment from tag suffix (e.g., 1.0.0-staging -> staging)
       VERSION="\${CI_COMMIT_TAG#v}"
-      # Determine environment from tag suffix (e.g., v1.0.0-staging -> staging)
       ENV="\${CI_COMMIT_TAG##*-}"
       [[ "$CI_COMMIT_TAG" == "$ENV" ]] && ENV="production"
       
-      export ROOT_PATH="$(pwd)"
-      export BRANCH_NAME="$CI_COMMIT_REF_NAME"
-      
-      # Load environment and deploy
-      source /opt/dockflow/.common/scripts/load_env.sh "$ENV" "main"
-      bash /opt/dockflow/.common/scripts/deploy_with_ansible.sh
+      # Deploy using CLI
+      dockflow deploy "$ENV" "$VERSION"
   rules:
     - if: $CI_COMMIT_TAG
 `;
@@ -121,6 +126,97 @@ health_checks:
 #   post-build: "./scripts/post-build.sh"
 #   pre-deploy: "./scripts/pre-deploy.sh"
 #   post-deploy: "./scripts/post-deploy.sh"
+`;
+
+// Servers configuration - new unified format for Docker Swarm clusters
+const SERVERS_YML = `# Servers Configuration
+# Define your Docker Swarm cluster: one manager + optional workers
+# See https://dockflow.shawiizz.dev/configuration/servers for full documentation
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SERVERS
+# Each environment needs exactly ONE manager (receives deployments).
+# Workers are optional - they join the Swarm and receive workloads automatically.
+# ═══════════════════════════════════════════════════════════════════════════════
+servers:
+  # Production manager (required - this is where deployments happen)
+  main_server:
+    role: manager                    # manager or worker (default: manager)
+    # host: "192.168.1.10"           # Can be set via CI secret for security
+    tags: [production]               # Environment tag
+    env:                             # Server-specific variables
+      NODE_ID: "manager"
+
+  # Optional: Add workers for horizontal scaling
+  # worker_1:
+  #   role: worker
+  #   host: "192.168.1.11"
+  #   tags: [production]
+  #   env:
+  #     NODE_ID: "worker-1"
+  
+  # worker_2:
+  #   role: worker
+  #   host: "192.168.1.12"
+  #   tags: [production]
+  #   env:
+  #     NODE_ID: "worker-2"
+
+  # Staging environment (single-node example)
+  # staging_server:
+  #   role: manager
+  #   tags: [staging]
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DEFAULTS
+# Default SSH settings applied to all servers (can be overridden per server)
+# ═══════════════════════════════════════════════════════════════════════════════
+defaults:
+  user: dockflow
+  port: 22
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ENVIRONMENT VARIABLES
+# Variables are inherited: all -> [tag] -> server.env -> CI secrets
+# ═══════════════════════════════════════════════════════════════════════════════
+env:
+  # Variables applied to ALL environments
+  all:
+    APP_NAME: "{{ project_name }}"
+    LOG_LEVEL: "info"
+    TZ: "UTC"
+
+  # Production-specific variables (override "all")
+  production:
+    LOG_LEVEL: "warn"
+    # DATABASE_URL: "postgres://prod-db:5432/myapp"
+    # DOMAIN: "app.example.com"
+
+  # Staging-specific variables
+  # staging:
+  #   LOG_LEVEL: "debug"
+  #   DATABASE_URL: "postgres://staging-db:5432/myapp"
+  #   DOMAIN: "staging.example.com"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CLUSTER SETUP
+# Before first deployment, initialize the Swarm cluster:
+#   dockflow setup swarm production
+# This opens firewall ports and joins workers to the manager.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CI SECRETS REFERENCE
+# Add these secrets to your CI/CD platform (GitHub Secrets, GitLab CI Variables)
+# 
+# For each server, one of:
+#   PRODUCTION_MAIN_SERVER_CONNECTION  - Full connection string (recommended)
+#   PRODUCTION_MAIN_SERVER_SSH_PRIVATE_KEY + PRODUCTION_MAIN_SERVER_HOST
+#
+# Optional overrides:
+#   PRODUCTION_DATABASE_URL           - Override for all production servers
+#   PRODUCTION_MAIN_SERVER_DATABASE_URL - Override for specific server
+# ═══════════════════════════════════════════════════════════════════════════════
 `;
 
 // Accessories template - standard docker-compose format with Swarm config
@@ -186,19 +282,6 @@ services:
 # volumes:
 #   postgres_data:
 #   redis_data:
-`;
-
-const ENV_FILE = `# Environment configuration
-# These values can be overridden by CI secrets prefixed with [ENV]_
-
-# Server connection (can be set via [ENV]_CONNECTION secret)
-# DOCKFLOW_HOST=192.168.1.10
-# DOCKFLOW_PORT=22
-# DOCKFLOW_USER=dockflow
-
-# Application environment variables
-# DB_HOST=localhost
-# DB_PORT=5432
 `;
 
 const DOCKER_COMPOSE = `version: "3.8"
@@ -316,7 +399,6 @@ export function registerInitCommand(program: Command): void {
       const dirs = [
         '.deployment',
         '.deployment/docker',
-        '.deployment/env',
         '.deployment/hooks',
       ];
 
@@ -331,6 +413,10 @@ export function registerInitCommand(program: Command): void {
       writeFileSync(join(deploymentDir, 'config.yml'), CONFIG_YML);
       printSuccess('Created .deployment/config.yml');
 
+      // Create servers.yml
+      writeFileSync(join(deploymentDir, 'servers.yml'), SERVERS_YML);
+      printSuccess('Created .deployment/servers.yml');
+
       // Create docker-compose.yml
       writeFileSync(join(deploymentDir, 'docker', 'docker-compose.yml'), DOCKER_COMPOSE);
       printSuccess('Created .deployment/docker/docker-compose.yml');
@@ -342,10 +428,6 @@ export function registerInitCommand(program: Command): void {
       // Create Dockerfile
       writeFileSync(join(deploymentDir, 'docker', 'Dockerfile'), DOCKERFILE);
       printSuccess('Created .deployment/docker/Dockerfile');
-
-      // Create env files
-      writeFileSync(join(deploymentDir, 'env', '.env.production'), ENV_FILE);
-      printSuccess('Created .deployment/env/.env.production');
 
       // Create CI/CD config
       if (ciPlatform === 'github') {
@@ -378,10 +460,11 @@ export function registerInitCommand(program: Command): void {
       console.log('');
       printInfo('Next steps:');
       console.log('  1. Edit .deployment/config.yml with your project name');
-      console.log('  2. Configure .deployment/docker/docker-compose.yml');
-      console.log('  3. Update .deployment/docker/Dockerfile for your app');
-      console.log('  4. Run "dockflow setup" to configure your server');
-      console.log('  5. Add the connection string to .env.dockflow');
-      console.log('  6. Push a tag to trigger deployment');
+      console.log('  2. Edit .deployment/servers.yml to define your servers');
+      console.log('  3. Configure .deployment/docker/docker-compose.yml');
+      console.log('  4. Update .deployment/docker/Dockerfile for your app');
+      console.log('  5. Run "dockflow setup" to configure your server');
+      console.log('  6. Add connection secrets to your CI/CD (e.g., PRODUCTION_MAIN_SERVER_CONNECTION)');
+      console.log('  7. Push a tag to trigger deployment');
     });
 }

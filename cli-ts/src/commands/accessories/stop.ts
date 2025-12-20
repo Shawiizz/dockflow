@@ -19,16 +19,17 @@ export function registerAccessoriesStopCommand(program: Command): void {
     .command('stop <env> [service]')
     .description('Stop accessory services (scale to 0, can be restarted)')
     .option('-y, --yes', 'Skip confirmation prompt')
+    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(async (
       env: string, 
       service: string | undefined,
-      options: { yes?: boolean }
+      options: { yes?: boolean; server?: string }
     ) => {
       printHeader(`Stopping Accessories - ${env}`);
       console.log('');
 
       // Validate environment and stack
-      const { connection } = await validateEnvOrExit(env);
+      const { connection } = await validateEnvOrExit(env, options.server);
       const { stackName, services } = await requireAccessoriesStack(connection, env);
 
       if (services.length === 0) {

@@ -76,14 +76,15 @@ export function registerAccessoriesListCommand(program: Command): void {
     .alias('ls')
     .description('List running accessories and their status')
     .option('--json', 'Output in JSON format')
-    .action(async (env: string, options: { json?: boolean }) => {
+    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .action(async (env: string, options: { json?: boolean; server?: string }) => {
       if (!options.json) {
         printHeader(`Accessories - ${env}`);
         console.log('');
       }
 
       // Validate environment
-      const { connection } = await validateEnvOrExit(env);
+      const { connection } = await validateEnvOrExit(env, options.server);
       const validation = await validateAccessoriesStack(connection, env);
 
       try {

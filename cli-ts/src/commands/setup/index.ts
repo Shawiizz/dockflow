@@ -4,6 +4,7 @@
  * This module provides commands to:
  * - Setup a local Linux host for deployment
  * - Setup a remote Linux host via SSH
+ * - Setup Docker Swarm cluster (manager + workers)
  * - Check dependencies
  * - Generate connection strings
  */
@@ -20,6 +21,7 @@ import { displayConnectionInfo, parseConnectionString } from './connection';
 import { runInteractiveSetup } from './interactive';
 import { runNonInteractiveSetup } from './non-interactive';
 import { runRemoteSetup, promptRemoteConnection } from './remote';
+import { runSetupSwarm } from './swarm';
 import type { SetupOptions, RemoteOptions, ConnectionOptions, RemoteSetupOptions } from './types';
 
 /**
@@ -97,6 +99,14 @@ export function registerSetupCommand(program: Command): void {
       
       await runRemoteSetup(remoteOpts);
       process.exit(0);
+    });
+
+  // Swarm cluster setup
+  setup
+    .command('swarm <env>')
+    .description('Initialize Docker Swarm cluster for an environment')
+    .action(async (env: string) => {
+      await runSetupSwarm(env);
     });
 
   // Non-interactive mode - local setup with CLI options

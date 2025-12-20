@@ -12,8 +12,9 @@ export function registerRestartCommand(program: Command): void {
   program
     .command('restart <env> [service]')
     .description('Restart service(s)')
-    .action(async (env: string, service?: string) => {
-      const { stackName, connection } = await validateEnvOrExit(env);
+    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .action(async (env: string, service: string | undefined, options: { server?: string }) => {
+      const { stackName, connection } = await validateEnvOrExit(env, options.server);
       
       const spinner = ora();
 
