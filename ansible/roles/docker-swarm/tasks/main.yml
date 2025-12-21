@@ -98,7 +98,7 @@
   no_log: true
   register: swarm_registry_login
 
-- name: Inject Swarm deployment configuration
+- name: Inject Swarm deployment configuration (defaults only if not set by user)
   block:
     - name: Read current docker-compose.yml
       slurp:
@@ -109,23 +109,38 @@
       set_fact:
         compose_data: "{{ compose_content.content | b64decode | from_yaml }}"
 
-    - name: Inject default deploy config for services
+    # Recommended defaults for zero-downtime deployments
+    # These are only applied if the user hasn't defined them
+    - name: Define recommended Swarm defaults
+      set_fact:
+        default_update_config:
+          parallelism: 1
+          delay: "10s"
+          failure_action: "rollback"
+          monitor: "30s"
+          max_failure_ratio: 0
+          order: "start-first"
+        default_rollback_config:
+          parallelism: 1
+          delay: "5s"
+          monitor: "15s"
+          order: "start-first"
+
+    - name: Merge user config with defaults (user values take precedence)
       set_fact:
         updated_compose: >-
           {%- set ns = namespace(services={}) -%}
           {%- for service_name, service_config in compose_data.services.items() -%}
-            {%- set deploy_config = service_config.deploy | default({}) -%}
-            {%- set update_config = deploy_config.update_config | default({}) -%}
-            {%- set new_update_config = {
-              'parallelism': update_config.parallelism | default(1),
-              'delay': update_config.delay | default('10s'),
-              'failure_action': update_config.failure_action | default('rollback'),
-              'monitor': update_config.monitor | default('30s'),
-              'max_failure_ratio': update_config.max_failure_ratio | default(0),
-              'order': update_config.order | default('start-first')
-            } -%}
-            {%- set new_deploy = deploy_config | combine({'update_config': new_update_config}) -%}
-            {%- set _ = ns.services.update({service_name: service_config | combine({'deploy': new_deploy})}) -%}
+            {%- set user_deploy = service_config.deploy | default({}) -%}
+            {%- set user_update = user_deploy.update_config | default({}) -%}
+            {%- set user_rollback = user_deploy.rollback_config | default({}) -%}
+            {%- set merged_update = default_update_config | combine(user_update) -%}
+            {%- set merged_rollback = default_rollback_config | combine(user_rollback) -%}
+            {%- set merged_deploy = user_deploy | combine({
+              'update_config': merged_update,
+              'rollback_config': merged_rollback
+            }) -%}
+            {%- set _ = ns.services.update({service_name: service_config | combine({'deploy': merged_deploy})}) -%}
           {%- endfor -%}
           {{ compose_data | combine({'services': ns.services}) }}
 

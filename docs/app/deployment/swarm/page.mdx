@@ -107,19 +107,61 @@ health_checks:
       retries: 3
 ```
 
-## Update Behavior
+## Rolling Updates Configuration
 
-Dockflow configures Swarm updates with these defaults:
+Dockflow automatically applies safe defaults for zero-downtime deployments. These defaults are **only applied if you haven't defined them** in your `docker-compose.yml`.
 
-| Setting | Value | Description |
-|---------|-------|-------------|
+### Default Update Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
 | `parallelism` | 1 | Update one container at a time |
 | `delay` | 10s | Wait between container updates |
-| `failure_action` | rollback | Revert on failure |
-| `monitor` | 30s | Monitor period after update |
+| `failure_action` | rollback | Automatically revert on failure |
+| `monitor` | 30s | Monitor period after each container update |
 | `order` | start-first | Start new container before stopping old |
+| `max_failure_ratio` | 0 | No failures tolerated |
 
-These settings ensure zero-downtime deployments for services with at least 2 replicas.
+### Default Rollback Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `parallelism` | 1 | Rollback one container at a time |
+| `delay` | 5s | Wait between rollback operations |
+| `monitor` | 15s | Monitor period during rollback |
+| `order` | start-first | Start old container before stopping new |
+
+### Customizing Update Behavior
+
+Override any setting in your `docker-compose.yml`:
+
+```yaml
+services:
+  app:
+    image: my-app
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 2          # Update 2 containers at a time
+        delay: 5s               # Faster updates
+        failure_action: pause   # Pause instead of rollback
+        monitor: 60s            # Longer monitoring
+        order: stop-first       # Stop old before starting new
+      rollback_config:
+        parallelism: 2
+        delay: 3s
+```
+
+<Callout type="info">
+**Your values take precedence.** Dockflow will only fill in missing fields with its recommended defaults.
+</Callout>
+
+### Understanding `order`
+
+- **`start-first`** (default): Starts the new container before stopping the old one. Ensures zero downtime but requires extra resources temporarily.
+- **`stop-first`**: Stops the old container before starting the new one. Uses less resources but causes brief downtime.
+
+For zero-downtime deployments, always use `start-first` with at least 2 replicas.
 
 ## Manual Operations
 
