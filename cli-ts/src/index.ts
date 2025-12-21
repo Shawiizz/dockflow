@@ -15,6 +15,7 @@ import { registerDeployCommand } from './commands/deploy';
 import { registerSetupCommand } from './commands/setup';
 import { registerInitCommand } from './commands/init';
 import { registerAccessoriesCommands } from './commands/accessories';
+import { registerLockCommands } from './commands/lock';
 
 const program = new Command();
 
@@ -27,6 +28,7 @@ program
 // Register all commands
 registerAppCommands(program);
 registerAccessoriesCommands(program);
+registerLockCommands(program);
 registerDeployCommand(program);
 registerSetupCommand(program);
 registerInitCommand(program);
@@ -44,6 +46,11 @@ program.action(async () => {
   console.log('  dockflow deploy <env>           Deploy to environment');
   console.log('  dockflow logs <env>             View service logs');
   console.log('  dockflow details <env>          Show stack details');
+  console.log('');
+  console.log(chalk.yellow('Deployment locks:'));
+  console.log('  dockflow lock status <env>      Check lock status');
+  console.log('  dockflow lock acquire <env>     Block deployments');
+  console.log('  dockflow lock release <env>     Allow deployments');
   console.log('');
   console.log(chalk.yellow('Accessories (stateful services):'));
   console.log('  dockflow accessories deploy <env>    Deploy databases, caches, etc.');
