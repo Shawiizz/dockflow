@@ -1,8 +1,10 @@
 /**
- * Details command - Show stack details and resource usage
+ * Details command - Show stack overview and resource usage
+ * For specific info, use: containers, images, version
  */
 
 import type { Command } from 'commander';
+import chalk from 'chalk';
 import { sshExec } from '../../utils/ssh';
 import { printError, printSection, printHeader } from '../../utils/output';
 import { validateEnvOrExit } from '../../utils/validation';
@@ -10,7 +12,7 @@ import { validateEnvOrExit } from '../../utils/validation';
 export function registerDetailsCommand(program: Command): void {
   program
     .command('details <env>')
-    .description('Show stack details and resource usage')
+    .description('Show stack overview and resource usage')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(async (env: string, options: { server?: string }) => {
       const { stackName, connection } = await validateEnvOrExit(env, options.server);
@@ -18,14 +20,15 @@ export function registerDetailsCommand(program: Command): void {
       printHeader(`Stack: ${stackName}`);
 
       try {
+        // Services summary (compact)
         printSection('Services');
-        const servicesResult = await sshExec(connection, `docker stack services ${stackName}`);
+        const servicesResult = await sshExec(
+          connection, 
+          `docker stack services ${stackName} --format "table {{.Name}}\t{{.Replicas}}\t{{.Image}}"`
+        );
         console.log(servicesResult.stdout);
 
-        printSection('Tasks');
-        const tasksResult = await sshExec(connection, `docker stack ps ${stackName} --no-trunc`);
-        console.log(tasksResult.stdout);
-
+        // Resource usage
         printSection('Resource Usage');
         const containerIds = await sshExec(
           connection,
@@ -33,11 +36,22 @@ export function registerDetailsCommand(program: Command): void {
         );
         
         if (containerIds.stdout.trim()) {
-          const statsResult = await sshExec(connection, `docker stats --no-stream ${containerIds.stdout.trim()}`);
+          const statsResult = await sshExec(
+            connection, 
+            `docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}" ${containerIds.stdout.trim()}`
+          );
           console.log(statsResult.stdout);
         } else {
-          console.log('No running containers');
+          console.log(chalk.yellow('No running containers'));
         }
+
+        // Quick tips
+        console.log('');
+        console.log(chalk.gray('More commands:'));
+        console.log(chalk.gray('  dockflow version <env>      Deployed version info'));
+        console.log(chalk.gray('  dockflow containers <env>   Container details'));
+        console.log(chalk.gray('  dockflow images <env>       Available images'));
+        console.log(chalk.gray('  dockflow logs <env>         View logs'));
       } catch (error) {
         printError(`Failed to get details: ${error}`);
         process.exit(1);

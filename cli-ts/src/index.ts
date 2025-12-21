@@ -44,22 +44,27 @@ program.action(async () => {
   console.log(chalk.yellow('Quick start:'));
   console.log('  dockflow init                   Initialize project structure');
   console.log('  dockflow deploy <env>           Deploy to environment');
+  console.log('');
+  console.log(chalk.yellow('Monitoring:'));
+  console.log('  dockflow version <env>          Show deployed version');
+  console.log('  dockflow details <env>          Show stack overview & resources');
+  console.log('  dockflow containers <env>       List running containers');
+  console.log('  dockflow images <env>           List available images');
   console.log('  dockflow logs <env>             View service logs');
-  console.log('  dockflow details <env>          Show stack details');
+  console.log('');
+  console.log(chalk.yellow('Operations:'));
+  console.log('  dockflow exec <env> <svc> <cmd> Execute command in container');
+  console.log('  dockflow scale <env> <svc> <n>  Scale service replicas');
+  console.log('  dockflow rollback <env>         Rollback to previous version');
+  console.log('  dockflow restart <env>          Restart services');
   console.log('');
   console.log(chalk.yellow('Deployment locks:'));
   console.log('  dockflow lock status <env>      Check lock status');
   console.log('  dockflow lock acquire <env>     Block deployments');
   console.log('  dockflow lock release <env>     Allow deployments');
   console.log('');
-  console.log(chalk.yellow('Accessories (stateful services):'));
-  console.log('  dockflow accessories deploy <env>    Deploy databases, caches, etc.');
-  console.log('  dockflow accessories list <env>      List running accessories');
-  console.log('  dockflow accessories logs <env>      View accessory logs');
-  console.log('  dockflow accessories exec <env>      Execute command in accessory');
-  console.log('  dockflow accessories restart <env>   Restart accessory services');
-  console.log('  dockflow accessories stop <env>      Stop accessory services');
-  console.log('  dockflow accessories remove <env>    Remove accessories stack');
+  console.log(chalk.yellow('Accessories (databases, caches...):'));
+  console.log('  dockflow accessories <cmd>      Manage stateful services');
 });
 
 // Error handling
