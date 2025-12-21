@@ -220,8 +220,12 @@ async function executeDeployment(
   env: string,
   devMode: boolean = false
 ): Promise<void> {
+  // Check if we have a TTY available (not in CI)
+  const isTTY = process.stdin.isTTY && process.stdout.isTTY;
+  
   const dockerCmd = [
-    'docker', 'run', '--rm', '-it',
+    'docker', 'run', '--rm',
+    ...(isTTY ? ['-it'] : []),
     '-v', `${projectRoot}:/project`,
     '-v', '/var/run/docker.sock:/var/run/docker.sock',
   ];
