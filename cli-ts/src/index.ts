@@ -16,6 +16,7 @@ import { registerSetupCommand } from './commands/setup';
 import { registerInitCommand } from './commands/init';
 import { registerAccessoriesCommands } from './commands/accessories';
 import { registerLockCommands } from './commands/lock';
+import { registerListCommands } from './commands/list';
 
 const program = new Command();
 
@@ -29,6 +30,7 @@ program
 registerAppCommands(program);
 registerAccessoriesCommands(program);
 registerLockCommands(program);
+registerListCommands(program);
 registerDeployCommand(program);
 registerSetupCommand(program);
 registerInitCommand(program);
