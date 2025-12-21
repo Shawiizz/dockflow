@@ -1,7 +1,14 @@
 import { Footer, Layout, Navbar } from 'nextra-theme-docs'
 import { Banner, Head } from 'nextra/components'
 import { getPageMap } from 'nextra/page-map'
+import { Inter } from 'next/font/google'
 import 'nextra-theme-docs/style.css'
+
+const inter = Inter({ 
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter'
+})
 
 export const metadata = {
   title: {
@@ -45,7 +52,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const pageMap = await getPageMap()
 
   return (
-    <html lang="en" dir="ltr" suppressHydrationWarning>
+    <html lang="en" dir="ltr" suppressHydrationWarning className={inter.className}>
       <Head faviconGlyph="🐳" />
       <body>
         <Layout
