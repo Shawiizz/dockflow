@@ -106,9 +106,18 @@ async function initializeSwarm(
       internalIp = managerHost;
     } else {
       // Dev/E2E mode with localhost: detect internal IP
-      // In Docker-in-Docker, the last IP is usually the container network
-      const ipResult = await sshExec(connection, "hostname -I | awk '{print $NF}'");
+      // In Docker-in-Docker, we need to find the IP on the shared network
+      // Exclude 172.17.x.x (default Docker bridge) and take the last remaining IP
+      const ipResult = await sshExec(connection, 
+        "hostname -I | tr ' ' '\\n' | grep -v '^172\\.17\\.' | grep -v '^$' | tail -1"
+      );
       internalIp = ipResult.stdout.trim();
+      
+      // Fallback: if no IP found after filtering, try the simple approach
+      if (!internalIp) {
+        const fallbackResult = await sshExec(connection, "hostname -I | awk '{print $NF}'");
+        internalIp = fallbackResult.stdout.trim();
+      }
       
       if (!internalIp) {
         spinner.fail('Could not determine internal IP address');
