@@ -51,6 +51,7 @@ program.action(async () => {
   console.log('  dockflow containers <env>       List running containers');
   console.log('  dockflow images <env>           List available images');
   console.log('  dockflow logs <env>             View service logs');
+  console.log('  dockflow audit <env>            Show deployment history');
   console.log('');
   console.log(chalk.yellow('Operations:'));
   console.log('  dockflow exec <env> <svc> <cmd> Execute command in container');

@@ -17,6 +17,7 @@ import { registerPruneCommand } from './prune';
 import { registerVersionCommand } from './version';
 import { registerImagesCommand } from './images';
 import { registerContainersCommand } from './containers';
+import { registerAuditCommand } from './audit';
 
 /**
  * Register all app commands
@@ -29,6 +30,7 @@ export function registerAppCommands(program: Command): void {
   registerImagesCommand(program);
   registerPsCommand(program);
   registerLogsCommand(program);
+  registerAuditCommand(program);
   
   // Action commands
   registerExecCommand(program);
