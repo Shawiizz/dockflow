@@ -6,9 +6,9 @@ import 'nextra-theme-docs/style.css'
 export const metadata = {
   title: {
     template: '%s - Dockflow',
-    default: 'Dockflow Documentation'
+    default: 'Dockflow - Deploy with confidence'
   },
-  description: 'Documentation for Dockflow',
+  description: 'A powerful deployment framework that simplifies Docker deployments to remote servers using Docker Swarm.',
   applicationName: 'Dockflow',
   generator: 'Next.js',
   appleWebApp: {
@@ -22,29 +22,36 @@ export const metadata = {
   }
 }
 
+const banner = (
+  <Banner storageKey="dockflow-dev-warning">
+    ⚠️ Dockflow is currently under development. Bugs may occur. Please report any issues on{' '}
+    <a href="https://github.com/Shawiizz/dockflow/issues/new" target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>
+      GitHub
+    </a>
+    .
+  </Banner>
+)
+
+const navbar = (
+  <Navbar
+    logo={<b>Dockflow</b>}
+    projectLink="https://github.com/Shawiizz/dockflow"
+  />
+)
+
+const footer = <Footer>Dockflow Documentation</Footer>
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const navbar = (
-    <Navbar
-      logo={<b>Dockflow</b>}
-      projectLink="https://github.com/Shawiizz/dockflow"
-    />
-  )
-  const footer = <Footer>Dockflow Documentation</Footer>
+  const pageMap = await getPageMap()
 
   return (
     <html lang="en" dir="ltr" suppressHydrationWarning>
       <Head faviconGlyph="🐳" />
       <body>
-        <Banner storageKey="dockflow-dev-warning">
-          ⚠️ Dockflow is currently under development. Bugs may occur. Please report any issues on{' '}
-          <a href="https://github.com/Shawiizz/dockflow/issues/new" target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>
-            GitHub
-          </a>
-          .
-        </Banner>
         <Layout
+          banner={banner}
           navbar={navbar}
-          pageMap={await getPageMap()}
+          pageMap={pageMap}
           docsRepositoryBase="https://github.com/Shawiizz/dockflow/tree/main/docs"
           footer={footer}
           sidebar={{ defaultMenuCollapseLevel: 1 }}
