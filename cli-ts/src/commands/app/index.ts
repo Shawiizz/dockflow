@@ -15,9 +15,8 @@ import { registerRollbackCommand } from './rollback';
 import { registerPsCommand } from './ps';
 import { registerPruneCommand } from './prune';
 import { registerVersionCommand } from './version';
-import { registerImagesCommand } from './images';
-import { registerContainersCommand } from './containers';
 import { registerAuditCommand } from './audit';
+import { registerBashCommand } from './bash';
 
 /**
  * Register all app commands
@@ -26,13 +25,12 @@ export function registerAppCommands(program: Command): void {
   // Info commands
   registerVersionCommand(program);
   registerDetailsCommand(program);
-  registerContainersCommand(program);
-  registerImagesCommand(program);
   registerPsCommand(program);
   registerLogsCommand(program);
   registerAuditCommand(program);
   
   // Action commands
+  registerBashCommand(program);
   registerExecCommand(program);
   registerRestartCommand(program);
   registerStopCommand(program);

@@ -1,5 +1,5 @@
 /**
- * Images command - Show app images on server
+ * List images command - Show app images on server
  */
 
 import type { Command } from 'commander';
@@ -9,8 +9,8 @@ import { printError, printSection } from '../../utils/output';
 import { validateEnvOrExit } from '../../utils/validation';
 import { loadConfig } from '../../utils/config';
 
-export function registerImagesCommand(program: Command): void {
-  program
+export function registerListImagesCommand(parent: Command): void {
+  parent
     .command('images <env>')
     .description('Show app images on server')
     .option('-s, --server <name>', 'Target server (defaults to manager)')
