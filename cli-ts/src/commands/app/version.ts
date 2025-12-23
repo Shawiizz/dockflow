@@ -6,9 +6,9 @@
 
 import type { Command } from 'commander';
 import chalk from 'chalk';
-import { printError } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
+import { DockerError, withErrorHandler } from '../../utils/errors';
 
 export function registerVersionCommand(program: Command): void {
   program
@@ -16,8 +16,8 @@ export function registerVersionCommand(program: Command): void {
     .description('Show app version currently deployed')
     .option('-s, --server <name>', 'Target server (defaults to manager)')
     .option('--json', 'Output as JSON')
-    .action(async (env: string, options: { server?: string; json?: boolean }) => {
-      const { stackName, connection } = await validateEnvOrExit(env, options.server);
+    .action(withErrorHandler(async (env: string, options: { server?: string; json?: boolean }) => {
+      const { stackName, connection } = validateEnv(env, options.server);
 
       const stackService = createStackService(connection, stackName);
 
@@ -26,8 +26,7 @@ export function registerVersionCommand(program: Command): void {
         const metadataResult = await stackService.getMetadata();
         
         if (!metadataResult.success) {
-          printError(`No deployment found for ${stackName}`);
-          process.exit(1);
+          throw new DockerError(`No deployment found for ${stackName}`);
         }
 
         const metadata = metadataResult.data;
@@ -57,8 +56,8 @@ export function registerVersionCommand(program: Command): void {
           console.log('');
         }
       } catch (error) {
-        printError(`Failed to get version: ${error}`);
-        process.exit(1);
+        if (error instanceof DockerError) throw error;
+        throw new DockerError(`Failed to get version: ${error}`);
       }
-    });
+    }));
 }

@@ -7,9 +7,10 @@ import type { Command } from 'commander';
 import ora from 'ora';
 import inquirer from 'inquirer';
 import { sshExec } from '../../utils/ssh';
-import { printError, printInfo, printSuccess, printHeader, printWarning } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { printInfo, printSuccess, printHeader, printWarning } from '../../utils/output';
+import { validateEnv } from '../../utils/validation';
 import { requireAccessoriesStack, requireAccessoryService } from './utils';
+import { DockerError, withErrorHandler } from '../../utils/errors';
 
 /**
  * Register the accessories stop command
@@ -20,7 +21,7 @@ export function registerAccessoriesStopCommand(program: Command): void {
     .description('Stop accessory services (scale to 0, can be restarted)')
     .option('-y, --yes', 'Skip confirmation prompt')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(async (
+    .action(withErrorHandler(async (
       env: string, 
       service: string | undefined,
       options: { yes?: boolean; server?: string }
@@ -29,12 +30,11 @@ export function registerAccessoriesStopCommand(program: Command): void {
       console.log('');
 
       // Validate environment and stack
-      const { connection } = await validateEnvOrExit(env, options.server);
+      const { connection } = validateEnv(env, options.server);
       const { stackName, services } = await requireAccessoriesStack(connection, env);
 
       if (services.length === 0) {
-        printError('No accessories services found');
-        process.exit(1);
+        throw new DockerError('No accessories services found');
       }
 
       const targetDesc = service ? `accessory '${service}'` : 'all accessories';
@@ -72,8 +72,7 @@ export function registerAccessoriesStopCommand(program: Command): void {
 
           if (result.exitCode !== 0) {
             spinner.fail('Stop failed');
-            console.error(result.stderr);
-            process.exit(1);
+            throw new DockerError(result.stderr || 'Failed to stop service');
           }
 
           spinner.succeed(`Accessory '${service}' stopped`);
@@ -92,8 +91,7 @@ export function registerAccessoriesStopCommand(program: Command): void {
 
           if (result.exitCode !== 0) {
             spinner.fail('Stop failed');
-            console.error(result.stderr);
-            process.exit(1);
+            throw new DockerError(result.stderr || 'Failed to stop services');
           }
 
           spinner.succeed('All accessories stopped');
@@ -107,8 +105,8 @@ export function registerAccessoriesStopCommand(program: Command): void {
         printInfo(`To remove:  dockflow accessories remove ${env}` + (service ? ` ${service}` : ''));
 
       } catch (error) {
-        printError(`Failed to stop: ${error}`);
-        process.exit(1);
+        if (error instanceof DockerError) throw error;
+        throw new DockerError(`Failed to stop: ${error}`);
       }
-    });
+    }));
 }

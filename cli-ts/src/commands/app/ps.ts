@@ -6,9 +6,10 @@
 
 import type { Command } from 'commander';
 import chalk from 'chalk';
-import { printError, printInfo, printSection } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { printInfo, printSection } from '../../utils/output';
+import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
+import { DockerError, withErrorHandler } from '../../utils/errors';
 
 export function registerPsCommand(program: Command): void {
   program
@@ -16,8 +17,8 @@ export function registerPsCommand(program: Command): void {
     .description('List running containers')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .option('--tasks', 'Show tasks instead of containers')
-    .action(async (env: string, options: { server?: string; tasks?: boolean }) => {
-      const { stackName, connection } = await validateEnvOrExit(env, options.server);
+    .action(withErrorHandler(async (env: string, options: { server?: string; tasks?: boolean }) => {
+      const { stackName, connection } = validateEnv(env, options.server);
       
       const stackService = createStackService(connection, stackName);
       
@@ -30,8 +31,7 @@ export function registerPsCommand(program: Command): void {
           const tasksResult = await stackService.getTasks();
           
           if (!tasksResult.success) {
-            printError(tasksResult.error.message);
-            process.exit(1);
+            throw new DockerError(tasksResult.error.message);
           }
 
           printSection('Tasks');
@@ -58,8 +58,7 @@ export function registerPsCommand(program: Command): void {
           const containersResult = await stackService.getContainers();
           
           if (!containersResult.success) {
-            printError(containersResult.error.message);
-            process.exit(1);
+            throw new DockerError(containersResult.error.message);
           }
 
           if (containersResult.data.length === 0) {
@@ -84,8 +83,8 @@ export function registerPsCommand(program: Command): void {
           console.log('');
         }
       } catch (error) {
-        printError(`Failed to list containers: ${error}`);
-        process.exit(1);
+        if (error instanceof DockerError) throw error;
+        throw new DockerError(`Failed to list containers: ${error}`);
       }
-    });
+    }));
 }

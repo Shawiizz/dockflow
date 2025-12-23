@@ -4,7 +4,8 @@
 
 import { spawnSync } from 'child_process';
 import ora from 'ora';
-import { printError, printWarning, printSuccess, printInfo } from '../../utils/output';
+import { printWarning, printSuccess, printInfo } from '../../utils/output';
+import { CLIError, ErrorCode } from '../../utils/errors';
 import { promptPassword } from './prompts';
 
 /**
@@ -118,11 +119,13 @@ export async function promptAndValidateUserPassword(username: string): Promise<s
     } else {
       attempts++;
       if (attempts < maxAttempts) {
-        printError(`Invalid password. ${maxAttempts - attempts} attempts remaining.`);
+        printWarning(`Invalid password. ${maxAttempts - attempts} attempts remaining.`);
       }
     }
   }
 
-  printError('Too many failed attempts');
-  process.exit(1);
+  throw new CLIError(
+    'Too many failed password attempts',
+    ErrorCode.VALIDATION_FAILED
+  );
 }

@@ -8,6 +8,7 @@ import * as os from 'os';
 import * as path from 'path';
 import chalk from 'chalk';
 import { printHeader, printSection, printSuccess, printError, printInfo, printWarning } from '../../utils/output';
+import { CLIError, ErrorCode } from '../../utils/errors';
 import { checkDependencies, displayDependencyStatus, installDependencies, detectPackageManager } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
 import { prompt, promptPassword, confirm, selectMenu } from './prompts';
@@ -40,26 +41,32 @@ export async function runInteractiveSetup(): Promise<void> {
         console.log('');
         const success = installDependencies(deps.missingDeps);
         if (!success) {
-          printError('Failed to install dependencies. Please install them manually and try again.');
-          process.exit(1);
+          throw new CLIError(
+            'Failed to install dependencies. Please install them manually and try again.',
+            ErrorCode.COMMAND_FAILED
+          );
         }
         console.log('');
         
         // Re-check dependencies
         const recheck = checkDependencies();
         if (!recheck.ok) {
-          printError('Some dependencies are still missing:');
-          recheck.missing.forEach(m => console.log(chalk.red(`  - ${m}`)));
-          process.exit(1);
+          throw new CLIError(
+            `Some dependencies are still missing: ${recheck.missing.join(', ')}`,
+            ErrorCode.VALIDATION_FAILED
+          );
         }
       } else {
-        printInfo('Please install the missing dependencies and try again.');
-        process.exit(1);
+        throw new CLIError(
+          'Please install the missing dependencies and try again.',
+          ErrorCode.VALIDATION_FAILED
+        );
       }
     } else {
-      printError('Could not detect package manager. Please install dependencies manually:');
-      deps.missing.forEach(m => console.log(chalk.red(`  - ${m}`)));
-      process.exit(1);
+      throw new CLIError(
+        `Could not detect package manager. Please install dependencies manually: ${deps.missing.join(', ')}`,
+        ErrorCode.COMMAND_FAILED
+      );
     }
   }
 
@@ -114,8 +121,10 @@ export async function runInteractiveSetup(): Promise<void> {
       printSuccess('SSH key generated');
       privateKeyPath = keyPath;
     } else {
-      printError(`Failed to generate SSH key: ${keyResult.error}`);
-      process.exit(1);
+      throw new CLIError(
+        `Failed to generate SSH key: ${keyResult.error}`,
+        ErrorCode.COMMAND_FAILED
+      );
     }
   } else if (userChoice === 1) {
     deployUser = await prompt('Existing username', currentUser);
@@ -148,8 +157,10 @@ export async function runInteractiveSetup(): Promise<void> {
           addToAuthorizedKeys(`${privateKeyPath}.pub`);
           printSuccess('Key added to authorized_keys');
         } else {
-          printError(`Failed to generate SSH key: ${keyResult.error}`);
-          process.exit(1);
+          throw new CLIError(
+            `Failed to generate SSH key: ${keyResult.error}`,
+            ErrorCode.COMMAND_FAILED
+          );
         }
       }
     } else {
@@ -162,8 +173,10 @@ export async function runInteractiveSetup(): Promise<void> {
         addToAuthorizedKeys(`${privateKeyPath}.pub`);
         printSuccess('Key added to authorized_keys');
       } else {
-        printError(`Failed to generate SSH key: ${keyResult.error}`);
-        process.exit(1);
+        throw new CLIError(
+          `Failed to generate SSH key: ${keyResult.error}`,
+          ErrorCode.COMMAND_FAILED
+        );
       }
     }
 
@@ -177,8 +190,10 @@ export async function runInteractiveSetup(): Promise<void> {
     const existingKeys = listSSHKeys(deployUser);
     const userHome = deployUser === 'root' ? '/root' : `/home/${deployUser}`;
     if (existingKeys.length === 0) {
-      printError(`No SSH keys found in ${userHome}/.ssh/`);
-      process.exit(1);
+      throw new CLIError(
+        `No SSH keys found in ${userHome}/.ssh/`,
+        ErrorCode.CONFIG_NOT_FOUND
+      );
     }
     
     console.log('');
@@ -201,7 +216,7 @@ export async function runInteractiveSetup(): Promise<void> {
       portainer: { install: false, port: 9000 }
     }, privateKey);
     
-    process.exit(0);
+    return;  // Early return for display-only option
   }
 
   console.log('');
@@ -244,7 +259,7 @@ export async function runInteractiveSetup(): Promise<void> {
 
   if (!await confirm('Proceed with this configuration?', true)) {
     printWarning('Setup cancelled');
-    process.exit(0);
+    return;  // User cancelled
   }
 
   console.log('');
@@ -252,16 +267,20 @@ export async function runInteractiveSetup(): Promise<void> {
   try {
     ansibleDir = await ensureDockflowRepo();
   } catch (error) {
-    printError('Cannot proceed without the Dockflow framework');
-    process.exit(1);
+    throw new CLIError(
+      'Cannot proceed without the Dockflow framework',
+      ErrorCode.CONFIG_NOT_FOUND
+    );
   }
 
   if (needsUserSetup && deployPassword) {
     console.log('');
     const pubKey = fs.readFileSync(`${privateKeyPath}.pub`, 'utf-8').trim();
     if (!createDeployUser(deployUser, deployPassword, pubKey)) {
-      printError('Failed to create deployment user');
-      process.exit(1);
+      throw new CLIError(
+        'Failed to create deployment user',
+        ErrorCode.COMMAND_FAILED
+      );
     }
   }
 
@@ -289,10 +308,10 @@ export async function runInteractiveSetup(): Promise<void> {
 
     const privateKey = fs.readFileSync(privateKeyPath, 'utf-8');
     displayConnectionInfo(config, privateKey);
-    
-    process.exit(0);
   } else {
-    printError('Setup failed. Please check the errors above.');
-    process.exit(1);
+    throw new CLIError(
+      'Setup failed. Please check the errors above.',
+      ErrorCode.COMMAND_FAILED
+    );
   }
 }

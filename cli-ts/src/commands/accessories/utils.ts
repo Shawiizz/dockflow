@@ -6,7 +6,7 @@
 import type { SSHKeyConnection } from '../../types/connection';
 import { getAccessoriesStackName } from '../../utils/config';
 import { sshExec } from '../../utils/ssh';
-import { printError, printInfo } from '../../utils/output';
+import { DockerError, ErrorCode } from '../../utils/errors';
 
 /**
  * Result of stack validation
@@ -42,7 +42,7 @@ export async function validateAccessoriesStack(
 }
 
 /**
- * Exit with error if accessories stack doesn't exist
+ * Throw error if accessories stack doesn't exist
  */
 export async function requireAccessoriesStack(
   connection: SSHKeyConnection,
@@ -52,9 +52,10 @@ export async function requireAccessoriesStack(
   const validation = await validateAccessoriesStack(connection, env);
   
   if (!validation.exists) {
-    printError('Accessories not deployed yet');
-    printInfo(`Deploy with: dockflow deploy ${env} --accessories`);
-    process.exit(1);
+    throw new DockerError(
+      'Accessories not deployed yet',
+      { code: ErrorCode.STACK_NOT_FOUND, suggestion: `Deploy with: dockflow deploy ${env} --accessories` }
+    );
   }
 
   return { stackName: validation.stackName, services: validation.services };
@@ -78,7 +79,7 @@ export async function validateAccessoryService(
 }
 
 /**
- * Exit with error if accessory service doesn't exist, showing available services
+ * Throw error if accessory service doesn't exist, showing available services
  */
 export async function requireAccessoryService(
   connection: SSHKeyConnection,
@@ -88,17 +89,18 @@ export async function requireAccessoryService(
   const exists = await validateAccessoryService(connection, stackName, service);
   
   if (!exists) {
-    printError(`Accessory '${service}' not found`);
-    
     const servicesResult = await sshExec(connection, 
       `docker stack services ${stackName} --format "{{.Name}}" | sed 's/${stackName}_//'`
     );
     
-    if (servicesResult.stdout.trim()) {
-      printInfo(`Available accessories: ${servicesResult.stdout.trim().split('\n').join(', ')}`);
-    }
+    const available = servicesResult.stdout.trim()
+      ? `Available accessories: ${servicesResult.stdout.trim().split('\n').join(', ')}`
+      : undefined;
     
-    process.exit(1);
+    throw new DockerError(
+      `Accessory '${service}' not found`,
+      { code: ErrorCode.SERVICE_NOT_FOUND, suggestion: available }
+    );
   }
 
   return `${stackName}_${service}`;

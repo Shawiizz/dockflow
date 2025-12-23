@@ -28,6 +28,16 @@ import { loadSecrets } from '../utils/secrets';
 import { getCurrentBranch } from '../utils/git';
 import { getLatestVersion, incrementVersion } from '../utils/version';
 import { DOCKFLOW_REPO, DOCKFLOW_VERSION } from '../constants';
+import { 
+  CLIError, 
+  ConfigError, 
+  ConnectionError, 
+  DeployError, 
+  DockerError,
+  ErrorCode, 
+  withErrorHandler,
+  exitSuccess
+} from '../utils/errors';
 import type { ResolvedServer, ResolvedDeployment } from '../types';
 
 /**
@@ -243,8 +253,10 @@ async function executeDeployment(
       dockerCmd.push('-v', `${dockflowRoot}:/tmp/dockflow`);
       console.log(chalk.yellow(`Dev mode: mounting ${dockflowRoot} as /tmp/dockflow`));
     } else {
-      console.log(chalk.red('Dev mode: Could not find dockflow root. Set DOCKFLOW_DEV_PATH env var.'));
-      process.exit(1);
+      throw new ConfigError(
+        'Dev mode: Could not find dockflow root',
+        'Set DOCKFLOW_DEV_PATH environment variable'
+      );
     }
   }
 
@@ -270,13 +282,17 @@ async function executeDeployment(
       printSuccess(`Deployment to ${env} completed successfully!`);
     } else {
       console.log('');
-      printError(`Deployment failed with exit code ${exitCode}`);
-      process.exit(exitCode);
+      throw new DeployError(
+        `Deployment failed with exit code ${exitCode}`,
+        exitCode
+      );
     }
   } catch (error) {
     deploySpinner.fail('Deployment failed');
-    printError(`${error}`);
-    process.exit(1);
+    if (error instanceof CLIError) {
+      throw error; // Re-throw CLIError as-is
+    }
+    throw new DeployError(`${error}`);
   }
 }
 
@@ -299,28 +315,30 @@ export async function runDeploy(env: string, version: string | undefined, option
   // Check config exists
   const config = loadConfig();
   if (!config) {
-    printError('.deployment/config.yml not found');
-    printInfo('Run "dockflow init" to create project structure');
-    process.exit(1);
+    throw new ConfigError(
+      '.deployment/config.yml not found',
+      'Run "dockflow init" to create project structure'
+    );
   }
 
   // Check servers.yml exists
   if (!hasServersConfig()) {
-    printError('.deployment/servers.yml not found');
-    printInfo('Create a servers.yml file to define your deployment servers');
-    process.exit(1);
+    throw new ConfigError(
+      '.deployment/servers.yml not found',
+      'Create a servers.yml file to define your deployment servers'
+    );
   }
 
   // Resolve deployment (manager + workers)
   const deployment = resolveDeploymentForEnvironment(env);
   if (!deployment) {
-    printError(`No manager server found for environment "${env}"`);
     const availableEnvs = getAvailableEnvironments();
-    if (availableEnvs.length > 0) {
-      printInfo(`Available environments: ${availableEnvs.join(', ')}`);
-    }
-    printInfo('Each environment needs a server with role: manager');
-    process.exit(1);
+    throw new ConfigError(
+      `No manager server found for environment "${env}"`,
+      availableEnvs.length > 0 
+        ? `Available environments: ${availableEnvs.join(', ')}. Each environment needs a server with role: manager`
+        : 'Each environment needs a server with role: manager'
+    );
   }
 
   let { manager, managers, workers } = deployment;
@@ -333,12 +351,10 @@ export async function runDeploy(env: string, version: string | undefined, option
     
     if (!activeResult) {
       managerSpinner.fail('No reachable managers found');
-      printError('All managers are unreachable. Cannot deploy.');
-      printInfo('Managers tried:');
-      for (const m of managers) {
-        printInfo(`  - ${m.name} (${m.host})`);
-      }
-      process.exit(1);
+      throw new ConnectionError(
+        'All managers are unreachable. Cannot deploy.',
+        `Managers tried: ${managers.map(m => `${m.name} (${m.host})`).join(', ')}`
+      );
     }
     
     manager = activeResult.manager;
@@ -353,20 +369,20 @@ export async function runDeploy(env: string, version: string | undefined, option
   // Validate manager has private key
   const managerPrivateKey = getServerPrivateKey(env, manager.name);
   if (!managerPrivateKey) {
-    printError(`No SSH private key found for manager "${manager.name}"`);
-    printInfo(`Expected CI secret: ${env.toUpperCase()}_${manager.name.toUpperCase()}_CONNECTION`);
-    printInfo(`  or: ${env.toUpperCase()}_${manager.name.toUpperCase()}_SSH_PRIVATE_KEY`);
-    process.exit(1);
+    throw new ConnectionError(
+      `No SSH private key found for manager "${manager.name}"`,
+      `Expected CI secret: ${env.toUpperCase()}_${manager.name.toUpperCase()}_CONNECTION\n  or: ${env.toUpperCase()}_${manager.name.toUpperCase()}_SSH_PRIVATE_KEY`
+    );
   }
 
   // Validate workers have private keys (for image distribution)
   for (const worker of workers) {
     const privateKey = getServerPrivateKey(env, worker.name);
     if (!privateKey) {
-      printError(`No SSH private key found for worker "${worker.name}"`);
-      printInfo(`Expected CI secret: ${env.toUpperCase()}_${worker.name.toUpperCase()}_CONNECTION`);
-      printInfo(`  or: ${env.toUpperCase()}_${worker.name.toUpperCase()}_SSH_PRIVATE_KEY`);
-      process.exit(1);
+      throw new ConnectionError(
+        `No SSH private key found for worker "${worker.name}"`,
+        `Expected CI secret: ${env.toUpperCase()}_${worker.name.toUpperCase()}_CONNECTION\n  or: ${env.toUpperCase()}_${worker.name.toUpperCase()}_SSH_PRIVATE_KEY`
+      );
     }
   }
 
@@ -377,12 +393,10 @@ export async function runDeploy(env: string, version: string | undefined, option
   if (!dockerAvailable) {
     spinner.fail('Docker is not available');
     console.log('');
-    printError('Docker is required for deployment');
-    printInfo('Install Docker Desktop: https://www.docker.com/products/docker-desktop');
-    console.log('');
-    printInfo('On Windows, make sure Docker Desktop is running.');
-    printInfo('On Linux, install Docker with: curl -fsSL https://get.docker.com | sh');
-    process.exit(1);
+    throw new DockerError(
+      'Docker is required for deployment',
+      { suggestion: 'Install Docker Desktop: https://www.docker.com/products/docker-desktop\nOn Windows, make sure Docker Desktop is running.\nOn Linux, install Docker with: curl -fsSL https://get.docker.com | sh' }
+    );
   }
   spinner.succeed('Docker is available');
 
@@ -495,7 +509,7 @@ export function registerDeployCommand(program: Command): void {
     .option('--no-failover', 'Disable multi-manager failover (use first manager only)')
     .option('--debug', 'Enable debug output')
     .option('--dev', 'Use local dockflow folder instead of cloning (for development)')
-    .action(async (env: string, version: string | undefined, options: DeployOptions) => {
+    .action(withErrorHandler(async (env: string, version: string | undefined, options: DeployOptions) => {
       await runDeploy(env, version, options);
-    });
+    }));
 }

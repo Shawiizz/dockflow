@@ -5,9 +5,10 @@
  */
 
 import type { Command } from 'commander';
-import { printError, printInfo } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { printInfo } from '../../utils/output';
+import { validateEnv } from '../../utils/validation';
 import { createExecService } from '../../services';
+import { DockerError, withErrorHandler, exitSuccess } from '../../utils/errors';
 
 export function registerExecCommand(program: Command): void {
   program
@@ -16,12 +17,12 @@ export function registerExecCommand(program: Command): void {
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .option('-u, --user <user>', 'Run as specified user')
     .option('-w, --workdir <dir>', 'Working directory inside container')
-    .action(async (env: string, service: string, command: string[], options: { 
+    .action(withErrorHandler(async (env: string, service: string, command: string[], options: { 
       server?: string;
       user?: string;
       workdir?: string;
     }) => {
-      const { stackName, connection } = await validateEnvOrExit(env, options.server);
+      const { stackName, connection } = validateEnv(env, options.server);
       
       const execService = createExecService(connection, stackName);
       const cmd = command.length > 0 ? command.join(' ') : 'bash';
@@ -33,8 +34,7 @@ export function registerExecCommand(program: Command): void {
         if (cmd === 'bash' || cmd === 'sh') {
           const result = await execService.shell(service, cmd === 'bash' ? '/bin/bash' : '/bin/sh');
           if (!result.success) {
-            printError(result.error.message);
-            process.exit(1);
+            throw new DockerError(result.error.message);
           }
         } else {
           // Execute non-interactive command
@@ -44,17 +44,19 @@ export function registerExecCommand(program: Command): void {
           });
 
           if (!result.success) {
-            printError(result.error.message);
-            process.exit(1);
+            throw new DockerError(result.error.message);
           }
 
           process.stdout.write(result.data.stdout);
           if (result.data.stderr) process.stderr.write(result.data.stderr);
-          process.exit(result.data.exitCode);
+          // Exit with the command's exit code
+          if (result.data.exitCode !== 0) {
+            process.exit(result.data.exitCode);
+          }
         }
       } catch (error) {
-        printError(`Failed to exec: ${error}`);
-        process.exit(1);
+        if (error instanceof DockerError) throw error;
+        throw new DockerError(`Failed to exec: ${error}`);
       }
-    });
+    }));
 }

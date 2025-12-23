@@ -5,8 +5,9 @@
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import { sshExec } from '../../utils/ssh';
-import { printError, printSection } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { printSection } from '../../utils/output';
+import { validateEnv } from '../../utils/validation';
+import { DockerError, withErrorHandler } from '../../utils/errors';
 
 interface AuditEntry {
   timestamp: string;
@@ -52,8 +53,8 @@ export function registerAuditCommand(program: Command): void {
     .option('-n, --lines <number>', 'Number of lines to show', '20')
     .option('--all', 'Show all entries')
     .option('--json', 'Output as JSON')
-    .action(async (env: string, options: { server?: string; lines?: string; all?: boolean; json?: boolean }) => {
-      const { stackName, connection } = await validateEnvOrExit(env, options.server);
+    .action(withErrorHandler(async (env: string, options: { server?: string; lines?: string; all?: boolean; json?: boolean }) => {
+      const { stackName, connection } = validateEnv(env, options.server);
       
       const auditFile = `/var/lib/dockflow/audit/${stackName}.log`;
       const lines = options.all ? 1000 : parseInt(options.lines || '20', 10);
@@ -114,8 +115,7 @@ export function registerAuditCommand(program: Command): void {
           console.log(chalk.gray(`Use --all to show complete history`));
         }
       } catch (error) {
-        printError(`Failed to fetch audit log: ${error}`);
-        process.exit(1);
+        throw new DockerError(`Failed to fetch audit log: ${error}`);
       }
-    });
+    }));
 }

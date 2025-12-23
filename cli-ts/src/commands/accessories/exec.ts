@@ -5,9 +5,10 @@
 
 import type { Command } from 'commander';
 import { sshExec, executeInteractiveSSH } from '../../utils/ssh';
-import { printError, printInfo } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { printInfo } from '../../utils/output';
+import { validateEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
+import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
 /**
  * Register the accessories exec command
@@ -19,14 +20,14 @@ export function registerAccessoriesExecCommand(program: Command): void {
     .option('-u, --user <user>', 'Run command as specific user')
     .option('--workdir <dir>', 'Working directory inside the container')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(async (
+    .action(withErrorHandler(async (
       env: string, 
       service: string, 
       command: string[],
       options: { user?: string; workdir?: string; server?: string }
     ) => {
       // Validate environment and stack
-      const { connection } = await validateEnvOrExit(env, options.server);
+      const { connection } = validateEnv(env, options.server);
       const { stackName } = await requireAccessoriesStack(connection, env);
 
       // Get the full service name
@@ -40,26 +41,27 @@ export function registerAccessoriesExecCommand(program: Command): void {
       const containerId = containerResult.stdout.trim();
       
       if (!containerId) {
-        printError(`No running container found for accessory '${service}'`);
-        
         // Check if service exists but has no running containers
         const serviceCheck = await sshExec(connection, 
           `docker service ls --filter "name=${fullServiceName}" --format "{{.Replicas}}"`
         );
         
+        let suggestion: string | undefined;
         if (serviceCheck.stdout.trim()) {
-          printInfo(`Service exists but has no running replicas: ${serviceCheck.stdout.trim()}`);
-          printInfo(`Check service status with: dockflow accessories list ${env}`);
+          suggestion = `Service exists but has no running replicas: ${serviceCheck.stdout.trim()}\nCheck service status with: dockflow accessories list ${env}`;
         } else {
           // List available services
           const servicesResult = await sshExec(connection, 
             `docker stack services ${stackName} --format "{{.Name}}" | sed 's/${stackName}_//'`
           );
           if (servicesResult.stdout.trim()) {
-            printInfo(`Available accessories: ${servicesResult.stdout.trim().split('\n').join(', ')}`);
+            suggestion = `Available accessories: ${servicesResult.stdout.trim().split('\n').join(', ')}`;
           }
         }
-        process.exit(1);
+        throw new DockerError(
+          `No running container found for accessory '${service}'`,
+          { code: ErrorCode.CONTAINER_NOT_FOUND, suggestion }
+        );
       }
 
       // Build exec command
@@ -87,8 +89,8 @@ export function registerAccessoriesExecCommand(program: Command): void {
           process.exit(result.exitCode);
         }
       } catch (error) {
-        printError(`Failed to exec: ${error}`);
-        process.exit(1);
+        if (error instanceof DockerError) throw error;
+        throw new DockerError(`Failed to exec: ${error}`);
       }
-    });
+    }));
 }

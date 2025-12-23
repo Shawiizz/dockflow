@@ -8,9 +8,10 @@ import chalk from 'chalk';
 import ora from 'ora';
 import inquirer from 'inquirer';
 import { sshExec } from '../../utils/ssh';
-import { printError, printInfo, printSuccess, printHeader, printWarning } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { printInfo, printSuccess, printHeader, printWarning } from '../../utils/output';
+import { validateEnv } from '../../utils/validation';
 import { validateAccessoriesStack, getShortServiceNames } from './utils';
+import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
 /**
  * Register the accessories remove command
@@ -23,7 +24,7 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
     .option('-v, --volumes', 'Also remove associated volumes (DESTRUCTIVE)')
     .option('-y, --yes', 'Skip confirmation prompt')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(async (
+    .action(withErrorHandler(async (
       env: string,
       options: { volumes?: boolean; yes?: boolean; server?: string }
     ) => {
@@ -31,13 +32,14 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
       console.log('');
 
       // Validate environment and check stack exists
-      const { connection } = await validateEnvOrExit(env, options.server);
+      const { connection } = validateEnv(env, options.server);
       const validation = await validateAccessoriesStack(connection, env);
 
       if (!validation.exists) {
-        printError('Accessories stack not found');
-        printInfo('Nothing to remove.');
-        process.exit(1);
+        throw new DockerError(
+          'Accessories stack not found',
+          { code: ErrorCode.STACK_NOT_FOUND, suggestion: 'Nothing to remove.' }
+        );
       }
 
       const { stackName, services } = validation;
@@ -126,8 +128,7 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
 
         if (result.exitCode !== 0) {
           spinner.fail('Remove failed');
-          console.error(result.stderr);
-          process.exit(1);
+          throw new DockerError(result.stderr || 'Failed to remove stack');
         }
 
         // Wait for stack to be fully removed
@@ -179,8 +180,8 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
         }
 
       } catch (error) {
-        printError(`Failed to remove: ${error}`);
-        process.exit(1);
+        if (error instanceof DockerError) throw error;
+        throw new DockerError(`Failed to remove: ${error}`);
       }
-    });
+    }));
 }

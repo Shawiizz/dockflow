@@ -5,8 +5,9 @@
 import type { Command } from 'commander';
 import ora from 'ora';
 import { sshExec } from '../../utils/ssh';
-import { printError, printSuccess, printInfo, printSection, printHeader, printWarning } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { printSuccess, printInfo, printSection, printHeader, printWarning } from '../../utils/output';
+import { validateEnv } from '../../utils/validation';
+import { DockerError, withErrorHandler } from '../../utils/errors';
 
 export function registerPruneCommand(program: Command): void {
   program
@@ -19,7 +20,7 @@ export function registerPruneCommand(program: Command): void {
     .option('--networks', 'Prune networks only')
     .option('-y, --yes', 'Skip confirmation')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(async (env: string, options: { 
+    .action(withErrorHandler(async (env: string, options: { 
       all?: boolean; 
       images?: boolean; 
       containers?: boolean; 
@@ -28,7 +29,7 @@ export function registerPruneCommand(program: Command): void {
       yes?: boolean;
       server?: string;
     }) => {
-      const { connection } = await validateEnvOrExit(env, options.server);
+      const { connection } = validateEnv(env, options.server);
 
       // Determine what to prune
       const pruneAll = !options.images && !options.containers && !options.volumes && !options.networks;
@@ -109,7 +110,7 @@ export function registerPruneCommand(program: Command): void {
 
       } catch (error) {
         spinner.fail(`Prune failed: ${error}`);
-        process.exit(1);
+        throw new DockerError(`${error}`);
       }
-    });
+    }));
 }

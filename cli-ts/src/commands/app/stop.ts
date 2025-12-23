@@ -6,7 +6,8 @@ import type { Command } from 'commander';
 import ora from 'ora';
 import { sshExec } from '../../utils/ssh';
 import { printWarning, printInfo } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { validateEnv } from '../../utils/validation';
+import { DockerError, withErrorHandler } from '../../utils/errors';
 
 export function registerStopCommand(program: Command): void {
   program
@@ -14,8 +15,8 @@ export function registerStopCommand(program: Command): void {
     .description('Stop and remove the stack')
     .option('-y, --yes', 'Skip confirmation')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(async (env: string, options: { yes?: boolean; server?: string }) => {
-      const { stackName, connection } = await validateEnvOrExit(env, options.server);
+    .action(withErrorHandler(async (env: string, options: { yes?: boolean; server?: string }) => {
+      const { stackName, connection } = validateEnv(env, options.server);
       
       if (!options.yes) {
         printWarning(`This will remove all services in stack: ${stackName}`);
@@ -40,7 +41,7 @@ export function registerStopCommand(program: Command): void {
         spinner.succeed(`Stack ${stackName} stopped`);
       } catch (error) {
         spinner.fail(`Failed to stop: ${error}`);
-        process.exit(1);
+        throw new DockerError(`${error}`);
       }
-    });
+    }));
 }

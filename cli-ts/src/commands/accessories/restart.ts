@@ -6,9 +6,10 @@
 import type { Command } from 'commander';
 import ora from 'ora';
 import { sshExec } from '../../utils/ssh';
-import { printError, printInfo, printSuccess, printHeader } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { printInfo, printSuccess, printHeader } from '../../utils/output';
+import { validateEnv } from '../../utils/validation';
 import { requireAccessoriesStack, requireAccessoryService, getShortServiceNames } from './utils';
+import { DockerError, withErrorHandler } from '../../utils/errors';
 
 /**
  * Register the accessories restart command
@@ -19,7 +20,7 @@ export function registerAccessoriesRestartCommand(program: Command): void {
     .description('Restart accessory services')
     .option('--force', 'Force restart even if service is updating')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(async (
+    .action(withErrorHandler(async (
       env: string, 
       service: string | undefined,
       options: { force?: boolean; server?: string }
@@ -28,12 +29,11 @@ export function registerAccessoriesRestartCommand(program: Command): void {
       console.log('');
 
       // Validate environment and stack
-      const { connection } = await validateEnvOrExit(env, options.server);
+      const { connection } = validateEnv(env, options.server);
       const { stackName, services } = await requireAccessoriesStack(connection, env);
 
       if (services.length === 0) {
-        printError('No accessories services found');
-        process.exit(1);
+        throw new DockerError('No accessories services found');
       }
 
       try {
@@ -50,8 +50,7 @@ export function registerAccessoriesRestartCommand(program: Command): void {
 
           if (result.exitCode !== 0) {
             spinner.fail('Restart failed');
-            console.error(result.stderr);
-            process.exit(1);
+            throw new DockerError(result.stderr || 'Failed to restart service');
           }
 
           spinner.succeed(`Accessory '${service}' restarted`);
@@ -90,8 +89,8 @@ export function registerAccessoriesRestartCommand(program: Command): void {
         console.log(statusResult.stdout);
 
       } catch (error) {
-        printError(`Failed to restart: ${error}`);
-        process.exit(1);
+        if (error instanceof DockerError) throw error;
+        throw new DockerError(`Failed to restart: ${error}`);
       }
-    });
+    }));
 }

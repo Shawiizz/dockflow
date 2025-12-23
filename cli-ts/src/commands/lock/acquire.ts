@@ -6,8 +6,9 @@ import type { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import { sshExec } from '../../utils/ssh';
-import { printError, printSuccess, printWarning } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { printSuccess, printWarning } from '../../utils/output';
+import { validateEnv } from '../../utils/validation';
+import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
 export function registerLockAcquireCommand(parent: Command): void {
   parent
@@ -16,8 +17,8 @@ export function registerLockAcquireCommand(parent: Command): void {
     .option('-s, --server <name>', 'Target server (defaults to manager)')
     .option('-m, --message <message>', 'Lock message/reason')
     .option('--force', 'Force acquire even if already locked')
-    .action(async (env: string, options: { server?: string; message?: string; force?: boolean }) => {
-      const { stackName, connection } = await validateEnvOrExit(env, options.server);
+    .action(withErrorHandler(async (env: string, options: { server?: string; message?: string; force?: boolean }) => {
+      const { stackName, connection } = validateEnv(env, options.server);
       
       const lockFile = `/var/lib/dockflow/locks/${stackName}.lock`;
       const lockDir = '/var/lib/dockflow/locks';
@@ -38,11 +39,11 @@ export function registerLockAcquireCommand(parent: Command): void {
             console.log(chalk.gray(`  Started: ${lockInfo.started_at}`));
             console.log(chalk.gray(`  Version: ${lockInfo.version}`));
             console.log('');
-            console.log(chalk.yellow('Use --force to override the existing lock.'));
-          } catch {
-            printWarning('Lock file exists but could not be parsed. Use --force to override.');
+            throw new CLIError('Use --force to override the existing lock.', ErrorCode.DEPLOY_LOCKED);
+          } catch (e) {
+            if (e instanceof CLIError) throw e;
+            throw new CLIError('Lock file exists but could not be parsed. Use --force to override.', ErrorCode.DEPLOY_LOCKED);
           }
-          process.exit(1);
         }
 
         // Create lock
@@ -68,9 +69,9 @@ export function registerLockAcquireCommand(parent: Command): void {
           console.log(chalk.gray(`  Reason: ${options.message}`));
         }
       } catch (error) {
+        if (error instanceof CLIError) throw error;
         spinner.fail('Failed to acquire lock');
-        printError(`${error}`);
-        process.exit(1);
+        throw new CLIError(`${error}`, ErrorCode.COMMAND_FAILED);
       }
-    });
+    }));
 }

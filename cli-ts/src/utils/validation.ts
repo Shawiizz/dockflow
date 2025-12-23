@@ -14,6 +14,14 @@ import {
 } from './servers';
 import { printError, printInfo } from './output';
 import { loadSecrets } from './secrets';
+import { 
+  CLIError, 
+  ErrorCode, 
+  ConfigError, 
+  ConnectionError,
+  type CommandAction,
+  withErrorHandler
+} from './errors';
 import type { SSHKeyConnection } from '../types';
 
 /**
@@ -29,6 +37,7 @@ export interface EnvironmentContext {
 
 /**
  * Validation error types
+ * @deprecated Use ErrorCode from './errors' instead
  */
 export enum ValidationErrorType {
   CONFIG_NOT_FOUND = 'CONFIG_NOT_FOUND',
@@ -40,6 +49,7 @@ export enum ValidationErrorType {
 
 /**
  * Validation error with actionable message
+ * @deprecated Use CLIError from './errors' instead
  */
 export interface ValidationError {
   type: ValidationErrorType;
@@ -48,7 +58,7 @@ export interface ValidationError {
 }
 
 /**
- * Validate environment and return context or null
+ * Validate environment and return context or error
  * Does NOT exit process - caller decides what to do on failure
  * Uses the first server for the environment by default
  */
@@ -122,8 +132,37 @@ export function isValidationError(result: EnvironmentContext | ValidationError):
 }
 
 /**
+ * Convert old ValidationError to new CLIError
+ */
+function toCliError(error: ValidationError): CLIError {
+  const codeMap: Record<ValidationErrorType, ErrorCode> = {
+    [ValidationErrorType.CONFIG_NOT_FOUND]: ErrorCode.CONFIG_NOT_FOUND,
+    [ValidationErrorType.PROJECT_NAME_MISSING]: ErrorCode.CONFIG_INVALID,
+    [ValidationErrorType.SERVERS_NOT_FOUND]: ErrorCode.SERVERS_NOT_FOUND,
+    [ValidationErrorType.NO_SERVERS_FOR_ENV]: ErrorCode.NO_SERVERS_FOR_ENV,
+    [ValidationErrorType.CONNECTION_NOT_FOUND]: ErrorCode.SSH_KEY_NOT_FOUND,
+  };
+  
+  return new CLIError(error.message, codeMap[error.type], error.suggestion);
+}
+
+/**
+ * Validate environment and throw CLIError on failure
+ * Preferred for use with withErrorHandler
+ */
+export function validateEnv(env: string, serverName?: string): EnvironmentContext {
+  const result = validateEnvironment(env, serverName);
+  
+  if (isValidationError(result)) {
+    throw toCliError(result);
+  }
+  
+  return result;
+}
+
+/**
  * Validate environment with process exit on failure
- * For backwards compatibility with existing command handlers
+ * @deprecated Use validateEnv() with withErrorHandler() instead
  */
 export async function validateEnvOrExit(env: string, serverName?: string): Promise<EnvironmentContext> {
   const result = validateEnvironment(env, serverName);

@@ -9,9 +9,10 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { getProjectRoot } from '../../utils/config';
 import { sshExec } from '../../utils/ssh';
-import { printError, printInfo, printHeader, printSection } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { printInfo, printHeader, printSection } from '../../utils/output';
+import { validateEnv } from '../../utils/validation';
 import { validateAccessoriesStack } from './utils';
+import { DockerError, withErrorHandler } from '../../utils/errors';
 
 interface ServiceInfo {
   name: string;
@@ -77,14 +78,14 @@ export function registerAccessoriesListCommand(program: Command): void {
     .description('List running accessories and their status')
     .option('--json', 'Output in JSON format')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(async (env: string, options: { json?: boolean; server?: string }) => {
+    .action(withErrorHandler(async (env: string, options: { json?: boolean; server?: string }) => {
       if (!options.json) {
         printHeader(`Accessories - ${env}`);
         console.log('');
       }
 
       // Validate environment
-      const { connection } = await validateEnvOrExit(env, options.server);
+      const { connection } = validateEnv(env, options.server);
       const validation = await validateAccessoriesStack(connection, env);
 
       try {
@@ -109,9 +110,7 @@ export function registerAccessoriesListCommand(program: Command): void {
         const result = await sshExec(connection, listCmd);
 
         if (result.exitCode !== 0) {
-          printError('Failed to list accessories');
-          if (result.stderr) console.error(result.stderr);
-          process.exit(1);
+          throw new DockerError('Failed to list accessories' + (result.stderr ? ': ' + result.stderr : ''));
         }
 
         const services = parseServicesOutput(result.stdout);
@@ -162,8 +161,8 @@ export function registerAccessoriesListCommand(program: Command): void {
         printInfo(`Stack: ${stackName}`);
 
       } catch (error) {
-        printError(`Failed to list accessories: ${error}`);
-        process.exit(1);
+        if (error instanceof DockerError) throw error;
+        throw new DockerError(`Failed to list accessories: ${error}`);
       }
-    });
+    }));
 }

@@ -5,8 +5,9 @@
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import { sshExec } from '../../utils/ssh';
-import { printSection, printError } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { printSection } from '../../utils/output';
+import { validateEnv } from '../../utils/validation';
+import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
 interface ServiceInfo {
   name: string;
@@ -33,8 +34,8 @@ export function registerListServicesCommand(parent: Command): void {
     .option('-s, --server <name>', 'Target server (defaults to manager)')
     .option('-t, --tasks', 'Show individual containers/tasks for each service')
     .option('--json', 'Output as JSON')
-    .action(async (env: string, options: { server?: string; tasks?: boolean; json?: boolean }) => {
-      const { stackName, connection } = await validateEnvOrExit(env, options.server);
+    .action(withErrorHandler(async (env: string, options: { server?: string; tasks?: boolean; json?: boolean }) => {
+      const { stackName, connection } = validateEnv(env, options.server);
 
       try {
         // Get services for the stack
@@ -44,9 +45,10 @@ export function registerListServicesCommand(parent: Command): void {
         const lines = result.stdout.trim().split('\n').filter(Boolean);
         
         if (lines.length === 0 || (lines.length === 1 && !lines[0])) {
-          printError(`No services found for stack "${stackName}"`);
-          console.log(chalk.gray('Make sure the stack is deployed with: dockflow deploy ' + env));
-          process.exit(1);
+          throw new DockerError(
+            `No services found for stack "${stackName}"`,
+            { code: ErrorCode.STACK_NOT_FOUND, suggestion: `Make sure the stack is deployed with: dockflow deploy ${env}` }
+          );
         }
 
         const services: ServiceInfo[] = lines.map(line => {
@@ -143,8 +145,8 @@ export function registerListServicesCommand(parent: Command): void {
           console.log(chalk.gray(`  dockflow bash ${env} ${services[0].shortName}`));
         }
       } catch (error) {
-        printError(`Failed to list services: ${error}`);
-        process.exit(1);
+        if (error instanceof DockerError) throw error;
+        throw new DockerError(`Failed to list services: ${error}`);
       }
-    });
+    }));
 }

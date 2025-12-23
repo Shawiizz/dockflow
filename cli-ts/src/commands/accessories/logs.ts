@@ -5,9 +5,10 @@
 
 import type { Command } from 'commander';
 import { sshExecStream } from '../../utils/ssh';
-import { printError, printInfo } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { printInfo } from '../../utils/output';
+import { validateEnv } from '../../utils/validation';
 import { requireAccessoriesStack, requireAccessoryService, getShortServiceNames } from './utils';
+import { DockerError, withErrorHandler } from '../../utils/errors';
 
 /**
  * Register the accessories logs command
@@ -22,18 +23,17 @@ export function registerAccessoriesLogsCommand(program: Command): void {
     .option('--timestamps', 'Show timestamps')
     .option('--raw', 'Show raw output without pretty printing')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(async (
+    .action(withErrorHandler(async (
       env: string, 
       service: string | undefined, 
       options: { follow?: boolean; tail?: string; since?: string; timestamps?: boolean; raw?: boolean; server?: string }
     ) => {
       // Validate environment and stack
-      const { connection } = await validateEnvOrExit(env, options.server);
+      const { connection } = validateEnv(env, options.server);
       const { stackName, services } = await requireAccessoriesStack(connection, env);
 
       if (services.length === 0) {
-        printError('No accessories services found');
-        process.exit(1);
+        throw new DockerError('No accessories services found');
       }
 
       // Build log command options
@@ -89,8 +89,8 @@ export function registerAccessoriesLogsCommand(program: Command): void {
           }
         }
       } catch (error) {
-        printError(`Failed to fetch logs: ${error}`);
-        process.exit(1);
+        if (error instanceof DockerError) throw error;
+        throw new DockerError(`Failed to fetch logs: ${error}`);
       }
-    });
+    }));
 }

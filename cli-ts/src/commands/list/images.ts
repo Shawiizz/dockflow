@@ -5,9 +5,10 @@
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import { sshExec } from '../../utils/ssh';
-import { printError, printSection } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { printSection } from '../../utils/output';
+import { validateEnv } from '../../utils/validation';
 import { loadConfig } from '../../utils/config';
+import { withErrorHandler, DockerError } from '../../utils/errors';
 
 export function registerListImagesCommand(parent: Command): void {
   parent
@@ -15,8 +16,8 @@ export function registerListImagesCommand(parent: Command): void {
     .description('Show app images on server')
     .option('-s, --server <name>', 'Target server (defaults to manager)')
     .option('-a, --all', 'Show all images, not just app images')
-    .action(async (env: string, options: { server?: string; all?: boolean }) => {
-      const { stackName, connection } = await validateEnvOrExit(env, options.server);
+    .action(withErrorHandler(async (env: string, options: { server?: string; all?: boolean }) => {
+      const { stackName, connection } = validateEnv(env, options.server);
       const config = loadConfig();
       const projectName = config?.project_name || stackName.split('-')[0];
 
@@ -55,8 +56,7 @@ export function registerListImagesCommand(parent: Command): void {
           console.log(chalk.gray('Tip: Run `dockflow prune <env>` to clean up unused images'));
         }
       } catch (error) {
-        printError(`Failed to list images: ${error}`);
-        process.exit(1);
+        throw new DockerError(`Failed to list images: ${error}`);
       }
-    });
+    }));
 }

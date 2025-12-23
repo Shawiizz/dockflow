@@ -14,6 +14,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { printHeader, printError, printSuccess, printInfo, printWarning } from '../../utils/output';
 import { hasServersConfig } from '../../utils/config';
+import { CLIError, ConnectionError, ErrorCode } from '../../utils/errors';
 import { 
   resolveDeploymentForEnvironment, 
   getServerPrivateKey,
@@ -230,20 +231,24 @@ export async function runSetupSwarm(env: string): Promise<void> {
 
   // Check servers.yml exists
   if (!hasServersConfig()) {
-    printError('.deployment/servers.yml not found');
-    printInfo('Create a servers.yml file to define your cluster');
-    process.exit(1);
+    throw new CLIError(
+      '.deployment/servers.yml not found. Create a servers.yml file to define your cluster.',
+      ErrorCode.CONFIG_NOT_FOUND
+    );
   }
 
   // Resolve deployment
   const deployment = resolveDeploymentForEnvironment(env);
   if (!deployment) {
-    printError(`No manager server found for environment "${env}"`);
     const availableEnvs = getAvailableEnvironments();
-    if (availableEnvs.length > 0) {
-      printInfo(`Available environments: ${availableEnvs.join(', ')}`);
-    }
-    process.exit(1);
+    const suggestion = availableEnvs.length > 0 
+      ? `Available environments: ${availableEnvs.join(', ')}`
+      : undefined;
+    throw new CLIError(
+      `No manager server found for environment "${env}"`,
+      ErrorCode.VALIDATION_FAILED,
+      suggestion
+    );
   }
 
   const { manager, workers } = deployment;
@@ -259,8 +264,10 @@ export async function runSetupSwarm(env: string): Promise<void> {
   // Build manager connection
   const managerConnection = buildConnection(env, manager);
   if (!managerConnection) {
-    printError(`No SSH key found for manager "${manager.name}"`);
-    process.exit(1);
+    throw new ConnectionError(
+      `No SSH key found for manager "${manager.name}"`,
+      'Set the SSH private key via environment variables or servers.yml'
+    );
   }
 
   // Step 1: Open ports on all nodes
@@ -279,8 +286,10 @@ export async function runSetupSwarm(env: string): Promise<void> {
   printInfo('Step 2/3: Initializing Swarm on manager...');
   const swarmInit = await initializeSwarm(managerConnection, manager.name, manager.host);
   if (!swarmInit) {
-    printError('Failed to initialize Swarm cluster');
-    process.exit(1);
+    throw new CLIError(
+      'Failed to initialize Swarm cluster',
+      ErrorCode.COMMAND_FAILED
+    );
   }
   const { token: joinToken, internalIp: managerInternalIp } = swarmInit;
   console.log('');

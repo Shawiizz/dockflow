@@ -8,6 +8,9 @@ export * from './output';
 export * from './git';
 export * from './version';
 
+// Error handling
+export * from './errors';
+
 // Server resolution utilities
 export * from './servers';
 
@@ -19,5 +22,13 @@ export { sshExec, sshExecStream, sshShell, executeInteractiveSSH, testConnection
 // Secrets loading (for CI environments)
 export * from './secrets';
 
-// Deprecated - use new modules instead
-// Note: connection.ts exports are included via connection-parser
+// Validation helpers - exclude ValidationError to avoid conflict with errors.ts
+export { 
+  validateEnvironment, 
+  validateEnv, 
+  validateEnvOrExit, 
+  isValidationError,
+  ValidationErrorType,
+  type EnvironmentContext,
+  type ValidationError as LegacyValidationError 
+} from './validation';

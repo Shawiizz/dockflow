@@ -6,8 +6,9 @@ import type { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import { sshExec } from '../../utils/ssh';
-import { printError, printSuccess, printInfo } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { printSuccess, printInfo } from '../../utils/output';
+import { validateEnv } from '../../utils/validation';
+import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
 export function registerLockReleaseCommand(parent: Command): void {
   parent
@@ -15,8 +16,8 @@ export function registerLockReleaseCommand(parent: Command): void {
     .description('Release a deployment lock')
     .option('-s, --server <name>', 'Target server (defaults to manager)')
     .option('--force', 'Force release without confirmation')
-    .action(async (env: string, options: { server?: string; force?: boolean }) => {
-      const { stackName, connection } = await validateEnvOrExit(env, options.server);
+    .action(withErrorHandler(async (env: string, options: { server?: string; force?: boolean }) => {
+      const { stackName, connection } = validateEnv(env, options.server);
       
       const lockFile = `/var/lib/dockflow/locks/${stackName}.lock`;
       const spinner = ora();
@@ -56,8 +57,7 @@ export function registerLockReleaseCommand(parent: Command): void {
         console.log(chalk.gray('  Deployments to this environment are now allowed.'));
       } catch (error) {
         spinner.fail('Failed to release lock');
-        printError(`${error}`);
-        process.exit(1);
+        throw new CLIError(`${error}`, ErrorCode.COMMAND_FAILED);
       }
-    });
+    }));
 }

@@ -5,9 +5,10 @@
  */
 
 import type { Command } from 'commander';
-import { printError, printInfo, printSection } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { printInfo, printSection } from '../../utils/output';
+import { validateEnv } from '../../utils/validation';
 import { createLogsService } from '../../services';
+import { DockerError, withErrorHandler } from '../../utils/errors';
 
 export function registerLogsCommand(program: Command): void {
   program
@@ -18,14 +19,14 @@ export function registerLogsCommand(program: Command): void {
     .option('-t, --timestamps', 'Show timestamps')
     .option('--since <time>', 'Show logs since timestamp (e.g., "1h", "2024-01-01")')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(async (env: string, service: string | undefined, options: { 
+    .action(withErrorHandler(async (env: string, service: string | undefined, options: { 
       follow?: boolean; 
       tail?: string; 
       timestamps?: boolean;
       since?: string;
       server?: string 
     }) => {
-      const { stackName, connection, serverName } = await validateEnvOrExit(env, options.server);
+      const { stackName, connection, serverName } = validateEnv(env, options.server);
       printInfo(`Server: ${serverName}`);
       printInfo(`Fetching logs for stack: ${stackName}`);
       console.log('');
@@ -53,8 +54,7 @@ export function registerLogsCommand(program: Command): void {
           });
         }
       } catch (error) {
-        printError(`Failed to fetch logs: ${error}`);
-        process.exit(1);
+        throw new DockerError(`Failed to fetch logs: ${error}`);
       }
-    });
+    }));
 }

@@ -5,16 +5,17 @@
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import { sshExec } from '../../utils/ssh';
-import { printError, printInfo, printSuccess, printWarning } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { printInfo, printSuccess, printWarning } from '../../utils/output';
+import { validateEnv } from '../../utils/validation';
+import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
 export function registerLockStatusCommand(parent: Command): void {
   parent
     .command('status <env>')
     .description('Show deployment lock status')
     .option('-s, --server <name>', 'Target server (defaults to manager)')
-    .action(async (env: string, options: { server?: string }) => {
-      const { stackName, connection } = await validateEnvOrExit(env, options.server);
+    .action(withErrorHandler(async (env: string, options: { server?: string }) => {
+      const { stackName, connection } = validateEnv(env, options.server);
       
       const lockFile = `/var/lib/dockflow/locks/${stackName}.lock`;
 
@@ -67,8 +68,7 @@ export function registerLockStatusCommand(parent: Command): void {
           console.log(chalk.gray(`  File: ${lockFile}`));
         }
       } catch (error) {
-        printError(`Failed to check lock status: ${error}`);
-        process.exit(1);
+        throw new CLIError(`Failed to check lock status: ${error}`, ErrorCode.COMMAND_FAILED);
       }
-    });
+    }));
 }

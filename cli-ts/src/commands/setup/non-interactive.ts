@@ -7,6 +7,7 @@ import * as os from 'os';
 import * as path from 'path';
 import chalk from 'chalk';
 import { printHeader, printSection, printSuccess, printError, printInfo } from '../../utils/output';
+import { CLIError, ErrorCode } from '../../utils/errors';
 import { checkDependencies, installDependencies, detectPackageManager } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
 import { generateSSHKey, addToAuthorizedKeys } from './ssh-keys';
@@ -33,22 +34,26 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
     if (pm) {
       const success = installDependencies(deps.missingDeps);
       if (!success) {
-        printError('Failed to install dependencies automatically.');
-        process.exit(1);
+        throw new CLIError(
+          'Failed to install dependencies automatically',
+          ErrorCode.COMMAND_FAILED
+        );
       }
       console.log('');
       
       // Re-check dependencies
       const recheck = checkDependencies();
       if (!recheck.ok) {
-        printError('Some dependencies are still missing:');
-        recheck.missing.forEach(m => console.log(chalk.red(`  - ${m}`)));
-        process.exit(1);
+        throw new CLIError(
+          `Some dependencies are still missing: ${recheck.missing.join(', ')}`,
+          ErrorCode.VALIDATION_FAILED
+        );
       }
     } else {
-      printError('Could not detect package manager. Please install dependencies manually:');
-      deps.missing.forEach(m => console.log(chalk.red(`  - ${m}`)));
-      process.exit(1);
+      throw new CLIError(
+        `Could not detect package manager. Please install dependencies manually: ${deps.missing.join(', ')}`,
+        ErrorCode.COMMAND_FAILED
+      );
     }
   }
 
@@ -70,8 +75,10 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
       privateKeyPath = path.join(os.homedir(), '.ssh', `${deployUser}_key`);
       const keyResult = generateSSHKey(privateKeyPath, `dockflow-${deployUser}`);
       if (!keyResult.success) {
-        printError(`Failed to generate SSH key: ${keyResult.error}`);
-        process.exit(1);
+        throw new CLIError(
+          `Failed to generate SSH key: ${keyResult.error}`,
+          ErrorCode.COMMAND_FAILED
+        );
       }
       printSuccess(`SSH key generated at ${privateKeyPath}`);
     } else {
@@ -88,8 +95,10 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
       if (!fs.existsSync(privateKeyPath) || options.generateKey) {
         const keyResult = generateSSHKey(privateKeyPath, `dockflow-${currentUser}`);
         if (!keyResult.success) {
-          printError(`Failed to generate SSH key: ${keyResult.error}`);
-          process.exit(1);
+          throw new CLIError(
+            `Failed to generate SSH key: ${keyResult.error}`,
+            ErrorCode.COMMAND_FAILED
+          );
         }
         addToAuthorizedKeys(`${privateKeyPath}.pub`);
         printSuccess('SSH key generated and added to authorized_keys');
@@ -110,15 +119,19 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
   try {
     ansibleDir = await ensureDockflowRepo();
   } catch (error) {
-    printError('Cannot proceed without the Dockflow framework');
-    process.exit(1);
+    throw new CLIError(
+      'Cannot proceed without the Dockflow framework',
+      ErrorCode.CONFIG_NOT_FOUND
+    );
   }
 
   if (needsUserSetup && deployPassword) {
     const pubKey = fs.readFileSync(`${privateKeyPath}.pub`, 'utf-8').trim();
     if (!createDeployUser(deployUser, deployPassword, pubKey)) {
-      printError('Failed to create deployment user');
-      process.exit(1);
+      throw new CLIError(
+        'Failed to create deployment user',
+        ErrorCode.COMMAND_FAILED
+      );
     }
   }
 
@@ -149,10 +162,10 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
 
     const privateKey = fs.readFileSync(privateKeyPath, 'utf-8');
     displayConnectionInfo(config, privateKey);
-    
-    process.exit(0);
   } else {
-    printError('Setup failed');
-    process.exit(1);
+    throw new CLIError(
+      'Setup failed',
+      ErrorCode.COMMAND_FAILED
+    );
   }
 }

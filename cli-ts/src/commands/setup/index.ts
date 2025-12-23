@@ -12,7 +12,7 @@
 import type { Command } from 'commander';
 import * as fs from 'fs';
 import chalk from 'chalk';
-import { printHeader, printError, printSuccess, printWarning, printInfo } from '../../utils/output';
+import { printHeader, printSuccess, printWarning, printInfo } from '../../utils/output';
 import { isLinux, checkDependencies, displayDependencyStatus } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
 import { prompt } from './prompts';
@@ -22,6 +22,7 @@ import { runInteractiveSetup } from './interactive';
 import { runNonInteractiveSetup } from './non-interactive';
 import { runRemoteSetup, promptRemoteConnection } from './remote';
 import { runSetupSwarm } from './swarm';
+import { CLIError, ConfigError, ErrorCode, withErrorHandler } from '../../utils/errors';
 import type { SetupOptions, RemoteOptions, ConnectionOptions, RemoteSetupOptions } from './types';
 
 /**
@@ -36,15 +37,17 @@ export function registerSetupCommand(program: Command): void {
   setup
     .command('interactive', { isDefault: true })
     .description('Run interactive setup wizard on the local machine')
-    .action(async () => {
+    .action(withErrorHandler(async () => {
       if (!isLinux()) {
-        printError('This command must be run directly on a Linux host.');
-        printInfo('Use "dockflow setup remote" to setup a remote Linux server via SSH.');
-        process.exit(1);
+        throw new CLIError(
+          'This command must be run directly on a Linux host.',
+          ErrorCode.INVALID_ARGUMENT,
+          'Use "dockflow setup remote" to setup a remote Linux server via SSH.'
+        );
       }
 
       await runInteractiveSetup();
-    });
+    }));
 
   // Remote mode - setup a remote Linux server via SSH
   setup
@@ -56,14 +59,13 @@ export function registerSetupCommand(program: Command): void {
     .option('--password <password>', 'SSH password')
     .option('--key <path>', 'Path to SSH private key')
     .option('--connection <string>', 'Dockflow connection string')
-    .action(async (options: RemoteOptions) => {
+    .action(withErrorHandler(async (options: RemoteOptions) => {
       let remoteOpts: RemoteSetupOptions | null = null;
       
       if (options.connection) {
         const conn = parseConnectionString(options.connection);
         if (!conn) {
-          printError('Invalid connection string');
-          process.exit(1);
+          throw new ConfigError('Invalid connection string');
         }
         remoteOpts = {
           host: conn.host,
@@ -76,8 +78,7 @@ export function registerSetupCommand(program: Command): void {
         let privateKey: string | undefined;
         if (options.key) {
           if (!fs.existsSync(options.key)) {
-            printError(`SSH key file not found: ${options.key}`);
-            process.exit(1);
+            throw new ConfigError(`SSH key file not found: ${options.key}`);
           }
           privateKey = fs.readFileSync(options.key, 'utf-8');
         }
@@ -99,7 +100,7 @@ export function registerSetupCommand(program: Command): void {
       
       await runRemoteSetup(remoteOpts);
       process.exit(0);
-    });
+    }));
 
   // Swarm cluster setup
   setup
@@ -125,21 +126,23 @@ export function registerSetupCommand(program: Command): void {
     .option('--portainer-password <password>', 'Portainer admin password')
     .option('--portainer-domain <domain>', 'Portainer domain name')
     .option('-y, --yes', 'Skip confirmations')
-    .action(async (options: SetupOptions) => {
+    .action(withErrorHandler(async (options: SetupOptions) => {
       if (!isLinux()) {
-        printError('The "auto" command must be run directly on the target Linux host.');
-        printInfo('Use "dockflow setup remote" to run setup on a remote server via SSH.');
-        process.exit(1);
+        throw new CLIError(
+          'The "auto" command must be run directly on the target Linux host.',
+          ErrorCode.INVALID_ARGUMENT,
+          'Use "dockflow setup remote" to run setup on a remote server via SSH.'
+        );
       }
 
       await runNonInteractiveSetup(options);
-    });
+    }));
 
   // Check dependencies
   setup
     .command('check')
     .description('Check if all dependencies are installed')
-    .action(() => {
+    .action(withErrorHandler(async () => {
       printHeader('Dependency Check');
       console.log('');
 
@@ -154,11 +157,12 @@ export function registerSetupCommand(program: Command): void {
       if (deps.ok) {
         printSuccess('All required dependencies are installed');
       } else {
-        printError('Missing dependencies:');
-        deps.missing.forEach(m => console.log(chalk.red(`  - ${m}`)));
-        process.exit(1);
+        throw new CLIError(
+          'Missing dependencies: ' + deps.missing.join(', '),
+          ErrorCode.VALIDATION_FAILED
+        );
       }
-    });
+    }));
 
   // Show connection string for existing setup
   setup
@@ -199,8 +203,7 @@ export function registerSetupCommand(program: Command): void {
       }
 
       if (!fs.existsSync(keyPath)) {
-        printError(`SSH key not found: ${keyPath}`);
-        process.exit(1);
+        throw new ConfigError(`SSH key not found: ${keyPath}`);
       }
 
       const privateKey = fs.readFileSync(keyPath, 'utf-8');

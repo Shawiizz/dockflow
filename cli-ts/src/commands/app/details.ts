@@ -6,16 +6,17 @@
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import { sshExec } from '../../utils/ssh';
-import { printError, printSection, printHeader } from '../../utils/output';
-import { validateEnvOrExit } from '../../utils/validation';
+import { printSection, printHeader } from '../../utils/output';
+import { validateEnv } from '../../utils/validation';
+import { DockerError, withErrorHandler } from '../../utils/errors';
 
 export function registerDetailsCommand(program: Command): void {
   program
     .command('details <env>')
     .description('Show stack overview and resource usage')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(async (env: string, options: { server?: string }) => {
-      const { stackName, connection } = await validateEnvOrExit(env, options.server);
+    .action(withErrorHandler(async (env: string, options: { server?: string }) => {
+      const { stackName, connection } = validateEnv(env, options.server);
       
       printHeader(`Stack: ${stackName}`);
 
@@ -53,8 +54,7 @@ export function registerDetailsCommand(program: Command): void {
         console.log(chalk.gray('  dockflow images <env>       Available images'));
         console.log(chalk.gray('  dockflow logs <env>         View logs'));
       } catch (error) {
-        printError(`Failed to get details: ${error}`);
-        process.exit(1);
+        throw new DockerError(`Failed to get details: ${error}`);
       }
-    });
+    }));
 }
