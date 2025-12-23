@@ -1,11 +1,13 @@
 /**
  * Logs command - View service logs
+ * 
+ * Uses LogsService to handle log retrieval and streaming.
  */
 
 import type { Command } from 'commander';
-import { sshExec, sshExecStream } from '../../utils/ssh';
 import { printError, printInfo, printSection } from '../../utils/output';
 import { validateEnvOrExit } from '../../utils/validation';
+import { createLogsService } from '../../services';
 
 export function registerLogsCommand(program: Command): void {
   program
@@ -13,45 +15,42 @@ export function registerLogsCommand(program: Command): void {
     .description('Show logs for services')
     .option('-f, --follow', 'Follow log output')
     .option('-n, --tail <lines>', 'Number of lines to show', '100')
+    .option('-t, --timestamps', 'Show timestamps')
+    .option('--since <time>', 'Show logs since timestamp (e.g., "1h", "2024-01-01")')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(async (env: string, service: string | undefined, options: { follow?: boolean; tail?: string; server?: string }) => {
+    .action(async (env: string, service: string | undefined, options: { 
+      follow?: boolean; 
+      tail?: string; 
+      timestamps?: boolean;
+      since?: string;
+      server?: string 
+    }) => {
       const { stackName, connection, serverName } = await validateEnvOrExit(env, options.server);
       printInfo(`Server: ${serverName}`);
-      
       printInfo(`Fetching logs for stack: ${stackName}`);
       console.log('');
 
-      try {
-        const tailFlag = `--tail ${options.tail || 100}`;
-        const followFlag = options.follow ? '-f' : '';
+      const logsService = createLogsService(connection, stackName);
+      const logOptions = {
+        tail: parseInt(options.tail || '100', 10),
+        follow: options.follow,
+        timestamps: options.timestamps,
+        since: options.since,
+      };
 
+      try {
         if (service) {
           // Logs for specific service
-          const cmd = `docker service logs ${followFlag} ${tailFlag} ${stackName}_${service} 2>&1`;
-          await sshExecStream(connection, cmd);
+          await logsService.streamServiceLogs(service, logOptions);
         } else {
-          // Get all services
-          const servicesResult = await sshExec(connection, `docker stack services ${stackName} --format '{{.Name}}'`);
-          const services = servicesResult.stdout.trim().split('\n').filter(Boolean);
-
-          if (services.length === 0) {
-            printError(`No services found for stack ${stackName}`);
-            process.exit(1);
-          }
-
-          if (options.follow) {
-            // Follow mode - only first service
-            printInfo(`Following logs for ${services[0]} (use service name to follow specific service)`);
-            const cmd = `docker service logs -f ${tailFlag} ${services[0]} 2>&1`;
-            await sshExecStream(connection, cmd);
-          } else {
-            // Show recent logs from all services
-            for (const svc of services) {
-              printSection(svc);
-              const cmd = `docker service logs ${tailFlag} ${svc} 2>&1`;
-              await sshExecStream(connection, cmd);
+          // Logs for all services
+          await logsService.streamAllLogs(logOptions, (serviceName) => {
+            if (!options.follow) {
+              printSection(serviceName);
+            } else {
+              printInfo(`Following logs for ${serviceName} (use service name to follow specific service)`);
             }
-          }
+          });
         }
       } catch (error) {
         printError(`Failed to fetch logs: ${error}`);

@@ -1,11 +1,13 @@
 /**
  * Bash command - Open interactive shell in a container
+ * 
+ * Uses ExecService to handle shell connections.
  */
 
 import type { Command } from 'commander';
-import { sshExec, executeInteractiveSSH } from '../../utils/ssh';
 import { printError, printInfo } from '../../utils/output';
 import { validateEnvOrExit } from '../../utils/validation';
+import { createExecService, createStackService } from '../../services';
 
 export function registerBashCommand(program: Command): void {
   program
@@ -17,22 +19,25 @@ export function registerBashCommand(program: Command): void {
     .action(async (env: string, service: string, options: { server?: string; sh?: boolean }) => {
       const { stackName, connection } = await validateEnvOrExit(env, options.server);
       
-      const shell = options.sh ? 'sh' : 'bash';
+      const execService = createExecService(connection, stackName);
+      const stackService = createStackService(connection, stackName);
 
       try {
-        // Find container for the service
-        const findCmd = `docker ps --filter "label=com.docker.swarm.service.name=${stackName}_${service}" --format '{{.ID}}' | head -n1`;
-        const containerResult = await sshExec(connection, findCmd);
-        const containerId = containerResult.stdout.trim();
+        printInfo(`Connecting to ${stackName}_${service}...`);
+        console.log('');
 
-        if (!containerId) {
-          printError(`No running container found for service "${service}"`);
+        let result;
+        if (options.sh) {
+          result = await execService.shell(service, '/bin/sh');
+        } else {
+          result = await execService.bash(service);
+        }
+
+        if (!result.success) {
+          printError(result.error.message);
           
           // Try to list available services
-          const listCmd = `docker service ls --filter "label=com.docker.stack.namespace=${stackName}" --format '{{.Name}}' | sed 's/${stackName}_//'`;
-          const servicesResult = await sshExec(connection, listCmd);
-          const services = servicesResult.stdout.trim().split('\n').filter(Boolean);
-          
+          const services = await stackService.getServiceNames();
           if (services.length > 0) {
             console.log('');
             console.log('Available services:');
@@ -41,25 +46,6 @@ export function registerBashCommand(program: Command): void {
           
           process.exit(1);
         }
-
-        printInfo(`Connecting to ${stackName}_${service} (${shell})...`);
-        console.log('');
-
-        // Open interactive shell with TTY
-        // Try the requested shell, fallback to sh if bash not available
-        let shellCmd = `docker exec -it ${containerId} ${shell}`;
-        
-        if (shell === 'bash') {
-          // Check if bash exists, otherwise use sh
-          const checkBash = await sshExec(connection, `docker exec ${containerId} which bash 2>/dev/null || echo ""`);
-          if (!checkBash.stdout.trim()) {
-            printInfo(`bash not found, using sh...`);
-            shellCmd = `docker exec -it ${containerId} sh`;
-          }
-        }
-        
-        await executeInteractiveSSH(connection, shellCmd);
-        
       } catch (error) {
         printError(`Failed to connect: ${error}`);
         process.exit(1);

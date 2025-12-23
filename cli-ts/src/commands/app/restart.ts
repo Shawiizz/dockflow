@@ -1,12 +1,14 @@
 /**
  * Restart command - Restart services
+ * 
+ * Uses StackService to handle service restarts.
  */
 
 import type { Command } from 'commander';
 import ora from 'ora';
-import { sshExec } from '../../utils/ssh';
-import { printSuccess } from '../../utils/output';
+import { printSuccess, printError } from '../../utils/output';
 import { validateEnvOrExit } from '../../utils/validation';
+import { createStackService } from '../../services';
 
 export function registerRestartCommand(program: Command): void {
   program
@@ -16,24 +18,33 @@ export function registerRestartCommand(program: Command): void {
     .action(async (env: string, service: string | undefined, options: { server?: string }) => {
       const { stackName, connection } = await validateEnvOrExit(env, options.server);
       
+      const stackService = createStackService(connection, stackName);
       const spinner = ora();
 
       try {
         if (service) {
           spinner.start(`Restarting ${stackName}_${service}...`);
-          await sshExec(connection, `docker service update --force ${stackName}_${service}`);
-          spinner.succeed(`Restarted ${stackName}_${service}`);
-        } else {
-          // Get all services
-          const servicesResult = await sshExec(connection, `docker stack services ${stackName} --format '{{.Name}}'`);
-          const services = servicesResult.stdout.trim().split('\n').filter(Boolean);
-
-          for (const svc of services) {
-            spinner.start(`Restarting ${svc}...`);
-            await sshExec(connection, `docker service update --force ${svc}`);
-            spinner.succeed(`Restarted ${svc}`);
+          const result = await stackService.restart(service);
+          
+          if (result.success) {
+            spinner.succeed(result.message);
+          } else {
+            spinner.fail(result.message);
+            process.exit(1);
           }
-          printSuccess('All services restarted');
+        } else {
+          spinner.start('Restarting all services...');
+          const result = await stackService.restart();
+          
+          if (result.success) {
+            spinner.succeed(result.message);
+            printSuccess('All services restarted');
+          } else {
+            spinner.warn(result.message);
+            if (result.output) {
+              console.log(result.output);
+            }
+          }
         }
       } catch (error) {
         spinner.fail(`Failed to restart: ${error}`);

@@ -1,11 +1,13 @@
 /**
  * Scale command - Scale service replicas
+ * 
+ * Uses StackService to handle service scaling.
  */
 
 import type { Command } from 'commander';
 import ora from 'ora';
-import { sshExec } from '../../utils/ssh';
 import { validateEnvOrExit } from '../../utils/validation';
+import { createStackService } from '../../services';
 
 export function registerScaleCommand(program: Command): void {
   program
@@ -15,11 +17,24 @@ export function registerScaleCommand(program: Command): void {
     .action(async (env: string, service: string, replicas: string, options: { server?: string }) => {
       const { stackName, connection } = await validateEnvOrExit(env, options.server);
       
-      const spinner = ora(`Scaling ${stackName}_${service} to ${replicas} replicas...`).start();
+      const replicaCount = parseInt(replicas, 10);
+      if (isNaN(replicaCount) || replicaCount < 0) {
+        console.error('Replicas must be a non-negative number');
+        process.exit(1);
+      }
+
+      const stackService = createStackService(connection, stackName);
+      const spinner = ora(`Scaling ${stackName}_${service} to ${replicaCount} replicas...`).start();
 
       try {
-        await sshExec(connection, `docker service scale ${stackName}_${service}=${replicas}`);
-        spinner.succeed(`Scaled ${stackName}_${service} to ${replicas} replicas`);
+        const result = await stackService.scale(service, replicaCount);
+        
+        if (result.success) {
+          spinner.succeed(result.message);
+        } else {
+          spinner.fail(result.message);
+          process.exit(1);
+        }
       } catch (error) {
         spinner.fail(`Failed to scale: ${error}`);
         process.exit(1);
