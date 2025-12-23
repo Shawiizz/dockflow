@@ -4,21 +4,43 @@
 
 import type { Command } from 'commander';
 import chalk from 'chalk';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { loadConfig, loadServersConfig, getProjectRoot } from '../utils/config';
+import { parse as parseYaml } from 'yaml';
+import { 
+  loadConfig, 
+  loadServersConfig, 
+  getProjectRoot, 
+  loadConfigWithErrors, 
+  loadServersConfigWithErrors 
+} from '../utils/config';
 import { getAvailableEnvironments, getServerNamesForEnvironment } from '../utils/servers';
-import { printSection, printError, printSuccess, printWarning } from '../utils/output';
+import { printSection, printError, printSuccess, printWarning, printInfo } from '../utils/output';
+import { 
+  validateConfig as validateConfigSchema, 
+  validateServersConfig as validateServersSchema,
+  printValidationReport,
+  getSuggestion,
+  type ValidationIssue
+} from '../schemas';
 
 interface ValidationResult {
   valid: boolean;
   errors: string[];
   warnings: string[];
+  schemaErrors?: {
+    config?: ValidationIssue[];
+    servers?: ValidationIssue[];
+  };
 }
 
-function validateConfig(): ValidationResult {
+/**
+ * Validate configuration files using Zod schemas
+ */
+function validateConfigFiles(): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
+  const schemaErrors: { config?: ValidationIssue[]; servers?: ValidationIssue[] } = {};
   const root = getProjectRoot();
   const deploymentDir = join(root, '.deployment');
 
@@ -28,48 +50,47 @@ function validateConfig(): ValidationResult {
     return { valid: false, errors, warnings };
   }
 
-  // Check config.yml
+  // Check and validate config.yml with schema
   const configPath = join(deploymentDir, 'config.yml');
   if (!existsSync(configPath)) {
     errors.push('config.yml not found');
   } else {
-    const config = loadConfig();
-    if (!config) {
-      errors.push('config.yml is invalid or empty');
-    } else {
-      if (!config.project_name) {
-        errors.push('project_name is required in config.yml');
+    try {
+      const content = readFileSync(configPath, 'utf-8');
+      const parsed = parseYaml(content);
+      const result = validateConfigSchema(parsed);
+      
+      if (!result.success) {
+        schemaErrors.config = result.error;
+        errors.push(`config.yml has ${result.error.length} validation error(s)`);
+      } else {
+        const config = result.data;
+        // Additional semantic warnings
+        if (config.health_checks?.enabled && (!config.health_checks.endpoints || config.health_checks.endpoints.length === 0)) {
+          warnings.push('Health checks enabled but no endpoints defined');
+        }
       }
-      if (config.registry?.type && !['local', 'dockerhub', 'ghcr', 'gitlab', 'custom'].includes(config.registry.type)) {
-        warnings.push(`Unknown registry type: ${config.registry.type}`);
-      }
-      if (config.health_checks?.enabled && (!config.health_checks.endpoints || config.health_checks.endpoints.length === 0)) {
-        warnings.push('Health checks enabled but no endpoints defined');
-      }
+    } catch (e) {
+      errors.push(`config.yml parse error: ${e}`);
     }
   }
 
-  // Check servers.yml
+  // Check and validate servers.yml with schema
   const serversPath = join(deploymentDir, 'servers.yml');
   if (!existsSync(serversPath)) {
     errors.push('servers.yml not found');
   } else {
-    const servers = loadServersConfig();
-    if (!servers) {
-      errors.push('servers.yml is invalid or empty');
-    } else {
-      if (!servers.servers || Object.keys(servers.servers).length === 0) {
-        errors.push('No servers defined in servers.yml');
-      }
+    try {
+      const content = readFileSync(serversPath, 'utf-8');
+      const parsed = parseYaml(content);
+      const result = validateServersSchema(parsed);
       
-      // Check each environment has at least one manager
-      const envs = getAvailableEnvironments();
-      for (const env of envs) {
-        const serverNames = getServerNamesForEnvironment(env);
-        if (serverNames.length === 0) {
-          warnings.push(`Environment "${env}" has no servers`);
-        }
+      if (!result.success) {
+        schemaErrors.servers = result.error;
+        errors.push(`servers.yml has ${result.error.length} validation error(s)`);
       }
+    } catch (e) {
+      errors.push(`servers.yml parse error: ${e}`);
     }
   }
 
@@ -83,7 +104,8 @@ function validateConfig(): ValidationResult {
   return {
     valid: errors.length === 0,
     errors,
-    warnings
+    warnings,
+    schemaErrors
   };
 }
 
@@ -199,41 +221,95 @@ export function registerConfigCommand(program: Command): void {
   configCmd
     .command('validate')
     .alias('check')
-    .description('Validate configuration files')
-    .action(async () => {
+    .description('Validate configuration files against schemas')
+    .option('--verbose', 'Show detailed validation output')
+    .option('--json', 'Output validation results as JSON')
+    .action(async (options: { verbose?: boolean; json?: boolean }) => {
+      const result = validateConfigFiles();
+
+      if (options.json) {
+        console.log(JSON.stringify({
+          valid: result.valid,
+          errors: result.errors,
+          warnings: result.warnings,
+          schemaErrors: result.schemaErrors
+        }, null, 2));
+        process.exit(result.valid ? 0 : 1);
+        return;
+      }
+
       console.log('');
-      printSection('Validating Configuration');
+      printSection('Configuration Validation');
       console.log('');
 
-      const result = validateConfig();
+      // Show schema errors in detail
+      if (result.schemaErrors?.config && result.schemaErrors.config.length > 0) {
+        console.log(chalk.red.bold('  config.yml schema errors:'));
+        console.log('');
+        for (const error of result.schemaErrors.config) {
+          console.log(`    ${chalk.red('✗')} ${chalk.yellow(error.path)}`);
+          console.log(`      ${error.message}`);
+          const suggestion = getSuggestion(error);
+          if (suggestion && options.verbose) {
+            console.log(chalk.gray(`      💡 ${suggestion}`));
+          }
+        }
+        console.log('');
+      }
 
-      if (result.errors.length > 0) {
-        console.log(chalk.red('Errors:'));
-        for (const error of result.errors) {
-          console.log(`  ${chalk.red('✗')} ${error}`);
+      if (result.schemaErrors?.servers && result.schemaErrors.servers.length > 0) {
+        console.log(chalk.red.bold('  servers.yml schema errors:'));
+        console.log('');
+        for (const error of result.schemaErrors.servers) {
+          console.log(`    ${chalk.red('✗')} ${chalk.yellow(error.path)}`);
+          console.log(`      ${error.message}`);
+          const suggestion = getSuggestion(error);
+          if (suggestion && options.verbose) {
+            console.log(chalk.gray(`      💡 ${suggestion}`));
+          }
+        }
+        console.log('');
+      }
+
+      // Show general errors (file not found, etc.)
+      const generalErrors = result.errors.filter(e => 
+        !e.includes('validation error(s)')
+      );
+      if (generalErrors.length > 0) {
+        console.log(chalk.red('  General errors:'));
+        for (const error of generalErrors) {
+          console.log(`    ${chalk.red('✗')} ${error}`);
         }
         console.log('');
       }
 
       if (result.warnings.length > 0) {
-        console.log(chalk.yellow('Warnings:'));
+        console.log(chalk.yellow('  Warnings:'));
         for (const warning of result.warnings) {
-          console.log(`  ${chalk.yellow('⚠')} ${warning}`);
+          console.log(`    ${chalk.yellow('⚠')} ${warning}`);
         }
         console.log('');
       }
 
+      // Summary
+      console.log(chalk.gray('  ─'.repeat(25)));
+      console.log('');
+
       if (result.valid) {
         if (result.warnings.length === 0) {
-          printSuccess('Configuration is valid');
+          console.log(chalk.green.bold('  ✓ All configuration files are valid!'));
         } else {
-          printWarning('Configuration is valid with warnings');
+          console.log(chalk.yellow.bold('  ⚠ Configuration valid with warnings'));
         }
       } else {
-        printError('Configuration has errors');
-        process.exit(1);
+        console.log(chalk.red.bold('  ✗ Configuration has validation errors'));
+        console.log('');
+        console.log(chalk.gray('  Fix the errors above and run again.'));
+        console.log(chalk.gray('  Documentation: https://dockflow.shawiizz.dev/configuration'));
       }
       console.log('');
+
+      process.exit(result.valid ? 0 : 1);
     });
 
   // config path

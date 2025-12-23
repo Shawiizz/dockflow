@@ -20,4 +20,4 @@ export { sshExec, sshExecStream, sshShell, executeInteractiveSSH, testConnection
 export * from './secrets';
 
 // Deprecated - use new modules instead
-export * from './connection';
+// Note: connection.ts exports are included via connection-parser

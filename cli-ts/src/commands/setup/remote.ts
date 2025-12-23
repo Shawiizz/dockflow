@@ -8,7 +8,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { printHeader, printSection, printError, printSuccess, printInfo } from '../../utils/output';
 import { sshExec, sshExecStream, testConnection } from '../../utils/ssh';
-import type { ConnectionInfo } from '../../utils/config';
+import type { SSHKeyConnection as ConnectionInfo } from '../../types';
 import { DOCKFLOW_RELEASE_URL } from './constants';
 import { prompt, promptPassword, selectMenu, promptMultiline } from './prompts';
 import { parseConnectionString } from './connection';
