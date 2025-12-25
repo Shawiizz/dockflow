@@ -6,7 +6,7 @@
 import chalk from 'chalk';
 import { join } from 'path';
 import { spawnSync } from 'child_process';
-import { parseConnectionStringLegacy } from './connection-parser';
+import { parseConnectionString } from './connection-parser';
 import { normalizePrivateKey } from './ssh-keys';
 
 /**
@@ -57,11 +57,12 @@ export async function getLatestVersion(
   env: string,
   debug: boolean = false
 ): Promise<string | null> {
-  const conn = parseConnectionStringLegacy(connectionString);
-  if (!conn) {
-    if (debug) console.log(chalk.gray('[DEBUG] Failed to parse connection string'));
+  const result = parseConnectionString(connectionString);
+  if (!result.success) {
+    if (debug) console.log(chalk.gray(`[DEBUG] Failed to parse connection string: ${result.error}`));
     return null;
   }
+  const conn = result.data;
 
   // Stack name is project_name-env
   const stackName = `${projectName}-${env}`;

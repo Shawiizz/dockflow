@@ -22,13 +22,10 @@ export { sshExec, sshExecStream, sshShell, executeInteractiveSSH, testConnection
 // Secrets loading (for CI environments)
 export * from './secrets';
 
-// Validation helpers - exclude ValidationError to avoid conflict with errors.ts
+// Validation helpers
 export { 
   validateEnvironment, 
   validateEnv, 
-  validateEnvOrExit, 
   isValidationError,
-  ValidationErrorType,
-  type EnvironmentContext,
-  type ValidationError as LegacyValidationError 
+  type EnvironmentContext
 } from './validation';

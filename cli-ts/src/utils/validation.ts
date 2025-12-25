@@ -9,18 +9,12 @@ import { loadConfig, getStackName, hasServersConfig, type DockflowConfig } from 
 import { 
   resolveServersForEnvironment, 
   getFullConnectionInfo,
-  getServerNamesForEnvironment,
   getAvailableEnvironments
 } from './servers';
-import { printError, printInfo } from './output';
 import { loadSecrets } from './secrets';
 import { 
   CLIError, 
-  ErrorCode, 
-  ConfigError, 
-  ConnectionError,
-  type CommandAction,
-  withErrorHandler
+  ErrorCode
 } from './errors';
 import type { SSHKeyConnection } from '../types';
 
@@ -36,10 +30,9 @@ export interface EnvironmentContext {
 }
 
 /**
- * Validation error types
- * @deprecated Use ErrorCode from './errors' instead
+ * Internal validation error types (used by validateEnvironment)
  */
-export enum ValidationErrorType {
+enum ValidationErrorType {
   CONFIG_NOT_FOUND = 'CONFIG_NOT_FOUND',
   PROJECT_NAME_MISSING = 'PROJECT_NAME_MISSING',
   SERVERS_NOT_FOUND = 'SERVERS_NOT_FOUND',
@@ -48,10 +41,9 @@ export enum ValidationErrorType {
 }
 
 /**
- * Validation error with actionable message
- * @deprecated Use CLIError from './errors' instead
+ * Internal validation error structure
  */
-export interface ValidationError {
+interface ValidationError {
   type: ValidationErrorType;
   message: string;
   suggestion?: string;
@@ -155,24 +147,6 @@ export function validateEnv(env: string, serverName?: string): EnvironmentContex
   
   if (isValidationError(result)) {
     throw toCliError(result);
-  }
-  
-  return result;
-}
-
-/**
- * Validate environment with process exit on failure
- * @deprecated Use validateEnv() with withErrorHandler() instead
- */
-export async function validateEnvOrExit(env: string, serverName?: string): Promise<EnvironmentContext> {
-  const result = validateEnvironment(env, serverName);
-  
-  if (isValidationError(result)) {
-    printError(result.message);
-    if (result.suggestion) {
-      printInfo(result.suggestion);
-    }
-    process.exit(1);
   }
   
   return result;

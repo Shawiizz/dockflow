@@ -140,12 +140,3 @@ export function generateConnectionString(conn: SSHKeyConnection): string {
 
   return Buffer.from(JSON.stringify(data)).toString('base64');
 }
-
-/**
- * Parse connection string with legacy null return for backwards compatibility
- * @deprecated Use parseConnectionString instead for proper error handling
- */
-export function parseConnectionStringLegacy(connectionString: string): SSHKeyConnection | null {
-  const result = parseConnectionString(connectionString);
-  return result.success ? result.data : null;
-}
