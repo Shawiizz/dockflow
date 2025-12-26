@@ -6,7 +6,7 @@
 
 import type { Command } from 'commander';
 import ora from 'ora';
-import { printSuccess } from '../../utils/output';
+import { printSuccess, printDebug } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -18,6 +18,7 @@ export function registerRollbackCommand(program: Command): void {
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(async (env: string, service: string | undefined, options: { server?: string }) => {
       const { stackName, connection } = validateEnv(env, options.server);
+      printDebug('Connection validated', { stackName });
       
       const stackService = createStackService(connection, stackName);
       const spinner = ora();

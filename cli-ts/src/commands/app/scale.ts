@@ -6,6 +6,7 @@
 
 import type { Command } from 'commander';
 import ora from 'ora';
+import { printDebug } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { CLIError, DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
@@ -17,6 +18,7 @@ export function registerScaleCommand(program: Command): void {
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(async (env: string, service: string, replicas: string, options: { server?: string }) => {
       const { stackName, connection } = validateEnv(env, options.server);
+      printDebug('Connection validated', { stackName });
       
       const replicaCount = parseInt(replicas, 10);
       if (isNaN(replicaCount) || replicaCount < 0) {

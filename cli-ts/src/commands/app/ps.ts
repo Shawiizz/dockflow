@@ -6,7 +6,7 @@
 
 import type { Command } from 'commander';
 import chalk from 'chalk';
-import { printInfo, printSection } from '../../utils/output';
+import { printInfo, printSection, printDebug } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -19,6 +19,7 @@ export function registerPsCommand(program: Command): void {
     .option('--tasks', 'Show tasks instead of containers')
     .action(withErrorHandler(async (env: string, options: { server?: string; tasks?: boolean }) => {
       const { stackName, connection } = validateEnv(env, options.server);
+      printDebug('Connection validated', { stackName, tasks: options.tasks });
       
       const stackService = createStackService(connection, stackName);
       

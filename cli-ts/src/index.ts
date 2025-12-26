@@ -8,6 +8,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { version, name } from '../package.json';
+import { setVerbose } from './utils/output';
 
 // Commands
 import { registerAppCommands } from './commands/app';
@@ -25,7 +26,14 @@ program
   .name('dockflow')
   .description('A deployment framework for Docker applications, leveraging Swarm for orchestration')
   .version(version, '-v, --version', 'Show version information')
-  .option('--no-color', 'Disable colored output');
+  .option('--no-color', 'Disable colored output')
+  .option('--verbose', 'Enable verbose/debug output')
+  .hook('preAction', (thisCommand) => {
+    const opts = thisCommand.optsWithGlobals();
+    if (opts.verbose) {
+      setVerbose(true);
+    }
+  });
 
 // Register all commands
 registerAppCommands(program);

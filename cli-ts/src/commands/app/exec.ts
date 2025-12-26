@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import { printInfo } from '../../utils/output';
+import { printInfo, printDebug } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createExecService } from '../../services';
 import { DockerError, withErrorHandler, exitSuccess } from '../../utils/errors';
@@ -23,6 +23,7 @@ export function registerExecCommand(program: Command): void {
       workdir?: string;
     }) => {
       const { stackName, connection } = validateEnv(env, options.server);
+      printDebug('Connection validated', { stackName });
       
       const execService = createExecService(connection, stackName);
       const cmd = command.length > 0 ? command.join(' ') : 'bash';

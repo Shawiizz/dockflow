@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import { sshExec } from '../../utils/ssh';
-import { printSection } from '../../utils/output';
+import { printSection, printDebug } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 
@@ -55,6 +55,7 @@ export function registerAuditCommand(program: Command): void {
     .option('--json', 'Output as JSON')
     .action(withErrorHandler(async (env: string, options: { server?: string; lines?: string; all?: boolean; json?: boolean }) => {
       const { stackName, connection } = validateEnv(env, options.server);
+      printDebug('Connection validated', { stackName, lines: options.lines, json: options.json });
       
       const auditFile = `/var/lib/dockflow/audit/${stackName}.log`;
       const lines = options.all ? 1000 : parseInt(options.lines || '20', 10);

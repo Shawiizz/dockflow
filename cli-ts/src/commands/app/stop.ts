@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import ora from 'ora';
 import { sshExec } from '../../utils/ssh';
-import { printWarning, printInfo } from '../../utils/output';
+import { printWarning, printInfo, printDebug } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 
@@ -17,6 +17,7 @@ export function registerStopCommand(program: Command): void {
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(async (env: string, options: { yes?: boolean; server?: string }) => {
       const { stackName, connection } = validateEnv(env, options.server);
+      printDebug('Connection validated', { stackName });
       
       if (!options.yes) {
         printWarning(`This will remove all services in stack: ${stackName}`);

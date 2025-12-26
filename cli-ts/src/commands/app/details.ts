@@ -6,7 +6,7 @@
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import { sshExec } from '../../utils/ssh';
-import { printSection, printHeader } from '../../utils/output';
+import { printSection, printHeader, printDebug } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 
@@ -17,6 +17,7 @@ export function registerDetailsCommand(program: Command): void {
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(async (env: string, options: { server?: string }) => {
       const { stackName, connection } = validateEnv(env, options.server);
+      printDebug('Connection validated', { stackName });
       
       printHeader(`Stack: ${stackName}`);
 

@@ -14,7 +14,7 @@ import ora from 'ora';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { getProjectRoot, loadConfig, isDockerAvailable, getAnsibleDockerImage, hasServersConfig } from '../utils/config';
-import { printError, printSuccess, printInfo, printHeader, printWarning } from '../utils/output';
+import { printError, printSuccess, printInfo, printHeader, printWarning, printDebug, setVerbose } from '../utils/output';
 import { 
   resolveDeploymentForEnvironment,
   getServerPrivateKey, 
@@ -302,12 +302,20 @@ async function executeDeployment(
  * Run deployment - can be called directly or via CLI command
  */
 export async function runDeploy(env: string, version: string | undefined, options: Partial<DeployOptions>): Promise<void> {
+  // Enable verbose mode if debug flag is set
+  if (options.debug) {
+    setVerbose(true);
+  }
+
   // Load secrets from file or environment (for CI)
   loadSecrets();
+  printDebug('Secrets loaded from environment');
 
   const { deployApp, forceAccessories, skipAccessories } = getDeploymentTargets(options as DeployOptions);
   const accessoriesDesc = skipAccessories ? '' : (forceAccessories ? ' + Accessories (forced)' : ' + Accessories (auto)');
   const targetDesc = options.accessories ? 'Accessories only' : `App${accessoriesDesc}`;
+
+  printDebug('Deployment targets resolved', { deployApp, forceAccessories, skipAccessories });
 
   printHeader(`Deploying ${targetDesc} to ${env}`);
   console.log('');
@@ -464,9 +472,13 @@ export async function runDeploy(env: string, version: string | undefined, option
   }));
   const workersJson = JSON.stringify(workersInfo).replace(/'/g, "'\"'\"'");
 
+  printDebug('Workers configuration built', { workerCount: workers.length });
+
   // Deploy via manager only (Swarm distributes workloads)
   const projectRoot = getProjectRoot();
   const dockerImage = getAnsibleDockerImage();
+
+  printDebug('Docker configuration', { projectRoot, dockerImage });
 
   const managerPassword = getServerPassword(env, manager.name);
   const managerExports = buildEnvExportsFromServer(env, manager, managerPrivateKey, managerPassword);

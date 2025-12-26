@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import ora from 'ora';
 import { sshExec } from '../../utils/ssh';
-import { printSuccess, printInfo, printSection, printHeader, printWarning } from '../../utils/output';
+import { printSuccess, printInfo, printSection, printHeader, printWarning, printDebug } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 
@@ -30,6 +30,7 @@ export function registerPruneCommand(program: Command): void {
       server?: string;
     }) => {
       const { connection } = validateEnv(env, options.server);
+      printDebug('Connection validated', { targets: [options.images, options.containers, options.volumes, options.networks] });
 
       // Determine what to prune
       const pruneAll = !options.images && !options.containers && !options.volumes && !options.networks;

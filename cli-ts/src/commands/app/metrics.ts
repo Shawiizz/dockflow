@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import chalk from 'chalk';
-import { printSection, printSuccess, printWarning } from '../../utils/output';
+import { printSection, printSuccess, printWarning, printDebug } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { withErrorHandler, DockerError } from '../../utils/errors';
 import { 
@@ -173,6 +173,7 @@ export function registerMetricsCommand(program: Command): void {
       prune?: boolean;
     }) => {
       const { stackName, connection } = validateEnv(env, options.server);
+      printDebug('Connection validated', { stackName, prune: options.prune, history: options.history });
       
       // Prune mode
       if (options.prune) {

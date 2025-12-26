@@ -1,9 +1,25 @@
 /**
  * Output formatting utilities
+ * Unified output module for CLI feedback and debug logging
  */
 
 import chalk from 'chalk';
 
+// === Verbose mode ===
+let verboseMode = false;
+
+export function setVerbose(enabled: boolean): void {
+  verboseMode = enabled;
+  if (enabled) {
+    process.env.VERBOSE = 'true';
+  }
+}
+
+export function isVerbose(): boolean {
+  return verboseMode || process.env.VERBOSE === 'true' || process.env.DEBUG === 'true';
+}
+
+// === Colors ===
 export const colors = {
   success: chalk.green,
   error: chalk.red,
@@ -13,6 +29,7 @@ export const colors = {
   bold: chalk.bold,
 };
 
+// === User feedback ===
 export function printSuccess(message: string): void {
   console.log(colors.success(`✓ ${message}`));
 }
@@ -33,6 +50,21 @@ export function printStep(message: string): void {
   console.log(colors.info(`➜ ${message}`));
 }
 
+// === Debug output (verbose mode only) ===
+export function printDebug(message: string, context?: Record<string, unknown>): void {
+  if (!isVerbose()) return;
+  
+  let output = colors.dim(`[debug] ${message}`);
+  if (context && Object.keys(context).length > 0) {
+    const contextStr = Object.entries(context)
+      .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
+      .join(' ');
+    output += colors.dim(` (${contextStr})`);
+  }
+  console.log(output);
+}
+
+// === Sections & headers ===
 export function printHeader(title: string): void {
   const line = '='.repeat(56);
   console.log(colors.success(line));
@@ -48,6 +80,8 @@ export function printSection(title: string): void {
 export function printKeyValue(key: string, value: string): void {
   console.log(`${colors.dim(key + ':')} ${value}`);
 }
+
+// === Formatters ===
 
 /**
  * Format bytes to human readable
@@ -68,4 +102,12 @@ export function formatDuration(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
   return `${hours}h ${mins}m`;
+}
+
+/**
+ * Format duration in milliseconds to human readable
+ */
+export function formatDurationMs(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return formatDuration(Math.round(ms / 1000));
 }
