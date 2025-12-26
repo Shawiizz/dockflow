@@ -38,6 +38,7 @@ import {
   withErrorHandler,
   exitSuccess
 } from '../utils/errors';
+import { displayDeployDryRun } from './dry';
 import type { ResolvedServer, ResolvedDeployment } from '../types';
 
 /**
@@ -63,6 +64,7 @@ interface DeployOptions {
   skipAccessories?: boolean;
   skipDockerInstall?: boolean;
   noFailover?: boolean;
+  dryRun?: boolean;
 }
 
 /**
@@ -479,6 +481,28 @@ export async function runDeploy(env: string, version: string | undefined, option
     options as DeployOptions
   );
 
+  // Dry-run mode: display what would happen without executing
+  if (options.dryRun) {
+    displayDeployDryRun({
+      env,
+      deployVersion,
+      branchName,
+      projectRoot,
+      dockerImage,
+      manager,
+      workers,
+      deployApp,
+      forceAccessories,
+      skipAccessories,
+      skipBuild: options.skipBuild,
+      force: options.force,
+      services: options.services,
+      debug,
+      deployScript,
+    });
+    return;
+  }
+
   await executeDeployment(projectRoot, dockerImage, deployScript, env, options.dev || false);
 
   const totalNodes = managers.length + workers.length;
@@ -507,6 +531,7 @@ export function registerDeployCommand(program: Command): void {
     .option('--all', 'Deploy both application and accessories')
     .option('--skip-accessories', 'Skip accessories check entirely')
     .option('--no-failover', 'Disable multi-manager failover (use first manager only)')
+    .option('--dry-run', 'Show what would be deployed without executing')
     .option('--debug', 'Enable debug output')
     .option('--dev', 'Use local dockflow folder instead of cloning (for development)')
     .action(withErrorHandler(async (env: string, version: string | undefined, options: DeployOptions) => {
