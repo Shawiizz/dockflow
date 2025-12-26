@@ -8,10 +8,14 @@ on:
         type: boolean
         default: false
         description: "Free disk space by removing unnecessary tools"
+      services:
+        required: false
+        type: string
+        default: ""
+        description: "Comma-separated list of services to build (empty = all)"
 
 env:
-  DOCKFLOW_REPOSITORY_URL: https://github.com/Shawiizz/dockflow.git
-  DOCKFLOW_FRAMEWORK_VERSION: 2.0.0-dev2
+  DOCKFLOW_VERSION: 2.0.0-dev2
 
 jobs:
   build:
@@ -28,17 +32,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          npm i -g shawiizz-decomposerize
-          sudo apt-get update && sudo apt-get install -y python3-pip ansible
-          pip3 install pyyaml
-
-      - name: Clone dockflow repository
-        run: git clone --depth 1 --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" /tmp/dockflow
+      - name: Install Dockflow CLI
+        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | VERSION=${{ env.DOCKFLOW_VERSION }} bash
 
       - name: Build Docker images
         run: |
-          export ROOT_PATH="$(pwd)"
-          cd /tmp/dockflow
-          ansible-playbook ansible/playbooks/build_images.yml --connection=local
+          if [ -n "${{ inputs.services }}" ]; then
+            dockflow build --services "${{ inputs.services }}"
+          else
+            dockflow build
+          fi

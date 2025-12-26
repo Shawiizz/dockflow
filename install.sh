@@ -1,7 +1,11 @@
 #!/bin/bash
 # Dockflow CLI Installer
 # Usage: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | bash
+# Usage with version: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | VERSION=2.0.0 bash
 set -e
+
+# Version to install (default: latest)
+VERSION="${VERSION:-latest}"
 
 # Detect OS and architecture
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
@@ -42,7 +46,11 @@ if [ "$OS" = "windows" ]; then
 	BINARY_NAME="${BINARY_NAME}.exe"
 fi
 
-DOWNLOAD_URL="https://github.com/Shawiizz/dockflow/releases/latest/download/${BINARY_NAME}"
+if [ "$VERSION" = "latest" ]; then
+	DOWNLOAD_URL="https://github.com/Shawiizz/dockflow/releases/latest/download/${BINARY_NAME}"
+else
+	DOWNLOAD_URL="https://github.com/Shawiizz/dockflow/releases/download/${VERSION}/${BINARY_NAME}"
+fi
 
 # Determine install location
 if [ "$OS" = "windows" ]; then
@@ -61,6 +69,7 @@ fi
 mkdir -p "$INSTALL_DIR"
 
 echo "Downloading Dockflow CLI..."
+echo "  Version: $VERSION"
 echo "  Platform: $OS-$ARCH"
 echo "  URL: $DOWNLOAD_URL"
 echo ""
