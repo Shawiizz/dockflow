@@ -9,49 +9,32 @@
  */
 
 import type { Command } from 'commander';
-import chalk from 'chalk';
 import ora from 'ora';
-import { existsSync } from 'fs';
-import { join } from 'path';
-import { getProjectRoot, loadConfig, isDockerAvailable, getAnsibleDockerImage, hasServersConfig } from '../utils/config';
-import { printError, printSuccess, printInfo, printHeader, printWarning, printDebug, setVerbose } from '../utils/output';
+import { hasServersConfig, getProjectRoot, getAnsibleDockerImage } from '../utils/config';
+import { printSuccess, printInfo, printHeader, printDebug, setVerbose } from '../utils/output';
+import {
+  getDockflowSetupScript,
+  runInAnsibleContainer,
+  checkDockerAvailable,
+  validateProjectConfig,
+} from '../utils/docker-runner';
 import { 
   resolveDeploymentForEnvironment,
   getServerPrivateKey, 
   getServerPassword,
   getAvailableEnvironments,
-  getAllServersForEnvironment,
   findActiveManager,
-  getManagerCount
 } from '../utils/servers';
 import { loadSecrets } from '../utils/secrets';
 import { getCurrentBranch } from '../utils/git';
 import { getLatestVersion, incrementVersion } from '../utils/version';
-import { DOCKFLOW_REPO, DOCKFLOW_VERSION } from '../constants';
 import { 
-  CLIError, 
   ConfigError, 
   ConnectionError, 
-  DeployError, 
-  DockerError,
-  ErrorCode, 
   withErrorHandler,
-  exitSuccess
 } from '../utils/errors';
 import { displayDeployDryRun } from './dry';
 import type { ResolvedServer, ResolvedDeployment } from '../types';
-
-/**
- * Find the dockflow repository root for dev mode
- * Requires DOCKFLOW_DEV_PATH environment variable to be set
- */
-function findDockflowRoot(): string | null {
-  const devPath = process.env.DOCKFLOW_DEV_PATH;
-  if (devPath && existsSync(join(devPath, '.common', 'scripts', 'run_ansible.sh'))) {
-    return devPath;
-  }
-  return null;
-}
 
 interface DeployOptions {
   services?: string;
@@ -144,40 +127,10 @@ function buildDeployScript(
   const { deployApp, forceAccessories, skipAccessories } = getDeploymentTargets(options);
   const manager = deployment.manager;
 
-  // In dev mode, use the mounted local dockflow folder
-  const dockflowSetup = options.dev
-    ? `
-# Dev mode: using local dockflow mounted at /tmp/dockflow
-echo "Using local dockflow framework (dev mode)..."
-chmod +x /tmp/dockflow/.common/scripts/*.sh 2>/dev/null || true
-export DOCKFLOW_PATH="/tmp/dockflow"
-`
-    : `
-# Clone dockflow framework
-echo "Cloning dockflow framework v${DOCKFLOW_VERSION}..."
-if ! git clone --depth 1 --branch "${DOCKFLOW_VERSION}" "${DOCKFLOW_REPO}" /tmp/dockflow 2>/dev/null; then
-  echo ""
-  echo "ERROR: Failed to clone dockflow framework."
-  echo "  - Tag '${DOCKFLOW_VERSION}' may not exist on the remote repository"
-  echo "  - Check your internet connection"
-  echo "  - Repository: ${DOCKFLOW_REPO}"
-  echo ""
-  echo "For local development, use: --dev flag with DOCKFLOW_DEV_PATH environment variable"
-  exit 1
-fi
-
-if [ ! -f /tmp/dockflow/.common/scripts/run_ansible.sh ]; then
-  echo ""
-  echo "ERROR: Dockflow framework is missing required files."
-  echo "  - File not found: .common/scripts/run_ansible.sh"
-  echo "  - The cloned version may be incompatible or corrupted"
-  echo ""
-  exit 1
-fi
-
-chmod +x /tmp/dockflow/.common/scripts/*.sh
-export DOCKFLOW_PATH="/tmp/dockflow"
-`;
+  const dockflowSetup = getDockflowSetupScript({
+    devMode: options.dev || false,
+    checkFile: '.common/scripts/run_ansible.sh',
+  });
 
   return `
 set -e
@@ -223,82 +176,6 @@ bash .common/scripts/run_ansible.sh
 }
 
 /**
- * Execute deployment in Docker container
- */
-async function executeDeployment(
-  projectRoot: string,
-  dockerImage: string,
-  deployScript: string,
-  env: string,
-  devMode: boolean = false
-): Promise<void> {
-  // Check if we have a TTY available (not in CI)
-  const isTTY = process.stdin.isTTY && process.stdout.isTTY;
-  
-  const dockerCmd = [
-    'docker', 'run', '--rm',
-    ...(isTTY ? ['-it'] : []),
-    '-v', `${projectRoot}:/project`,
-    '-v', '/var/run/docker.sock:/var/run/docker.sock',
-  ];
-
-  // Allow connecting to a specific Docker network (useful for e2e tests)
-  const dockerNetwork = process.env.DOCKFLOW_DOCKER_NETWORK;
-  if (dockerNetwork) {
-    dockerCmd.push('--network', dockerNetwork);
-  }
-
-  // In dev mode, mount the local dockflow repository
-  if (devMode) {
-    const dockflowRoot = process.env.DOCKFLOW_DEV_PATH || findDockflowRoot();
-    if (dockflowRoot) {
-      dockerCmd.push('-v', `${dockflowRoot}:/tmp/dockflow`);
-      console.log(chalk.yellow(`Dev mode: mounting ${dockflowRoot} as /tmp/dockflow`));
-    } else {
-      throw new ConfigError(
-        'Dev mode: Could not find dockflow root',
-        'Set DOCKFLOW_DEV_PATH environment variable'
-      );
-    }
-  }
-
-  dockerCmd.push(dockerImage, 'bash', '-c', deployScript);
-
-  console.log(chalk.dim('Starting deployment container...'));
-  console.log('');
-
-  const deploySpinner = ora('Starting deployment...').start();
-
-  try {
-    const proc = Bun.spawn(dockerCmd, {
-      stdout: 'inherit',
-      stderr: 'inherit',
-      stdin: 'inherit',
-    });
-
-    deploySpinner.stop();
-    const exitCode = await proc.exited;
-
-    if (exitCode === 0) {
-      console.log('');
-      printSuccess(`Deployment to ${env} completed successfully!`);
-    } else {
-      console.log('');
-      throw new DeployError(
-        `Deployment failed with exit code ${exitCode}`,
-        exitCode
-      );
-    }
-  } catch (error) {
-    deploySpinner.fail('Deployment failed');
-    if (error instanceof CLIError) {
-      throw error; // Re-throw CLIError as-is
-    }
-    throw new DeployError(`${error}`);
-  }
-}
-
-/**
  * Run deployment - can be called directly or via CLI command
  */
 export async function runDeploy(env: string, version: string | undefined, options: Partial<DeployOptions>): Promise<void> {
@@ -323,13 +200,7 @@ export async function runDeploy(env: string, version: string | undefined, option
   const debug = options.debug || false;
 
   // Check config exists
-  const config = loadConfig();
-  if (!config) {
-    throw new ConfigError(
-      '.deployment/config.yml not found',
-      'Run "dockflow init" to create project structure'
-    );
-  }
+  const config = validateProjectConfig();
 
   // Check servers.yml exists
   if (!hasServersConfig()) {
@@ -397,18 +268,7 @@ export async function runDeploy(env: string, version: string | undefined, option
   }
 
   // Check Docker is available
-  const spinner = ora('Checking Docker availability...').start();
-  const dockerAvailable = await isDockerAvailable();
-
-  if (!dockerAvailable) {
-    spinner.fail('Docker is not available');
-    console.log('');
-    throw new DockerError(
-      'Docker is required for deployment',
-      { suggestion: 'Install Docker Desktop: https://www.docker.com/products/docker-desktop\nOn Windows, make sure Docker Desktop is running.\nOn Linux, install Docker with: curl -fsSL https://get.docker.com | sh' }
-    );
-  }
-  spinner.succeed('Docker is available');
+  await checkDockerAvailable();
 
   // Determine version
   let deployVersion: string;
@@ -515,7 +375,12 @@ export async function runDeploy(env: string, version: string | undefined, option
     return;
   }
 
-  await executeDeployment(projectRoot, dockerImage, deployScript, env, options.dev || false);
+  await runInAnsibleContainer({
+    script: deployScript,
+    devMode: options.dev,
+    actionName: 'deployment',
+    successMessage: `Deployment to ${env} completed successfully!`,
+  });
 
   const totalNodes = managers.length + workers.length;
   if (totalNodes > 1) {

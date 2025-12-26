@@ -13,6 +13,7 @@ import { setVerbose } from './utils/output';
 // Commands
 import { registerAppCommands } from './commands/app';
 import { registerDeployCommand } from './commands/deploy';
+import { registerBuildCommand } from './commands/build';
 import { registerSetupCommand } from './commands/setup';
 import { registerInitCommand } from './commands/init';
 import { registerAccessoriesCommands } from './commands/accessories';
@@ -42,6 +43,7 @@ registerLockCommands(program);
 registerListCommands(program);
 registerConfigCommand(program);
 registerDeployCommand(program);
+registerBuildCommand(program);
 registerSetupCommand(program);
 registerInitCommand(program);
 
@@ -55,6 +57,7 @@ program.action(async () => {
   console.log('');
   console.log(chalk.yellow('Quick start:'));
   console.log('  dockflow init                   Initialize project structure');
+  console.log('  dockflow build                  Build Docker images locally');
   console.log('  dockflow deploy <env>           Deploy to environment');
   console.log('');
   console.log(chalk.yellow('Info & Listing:'));
