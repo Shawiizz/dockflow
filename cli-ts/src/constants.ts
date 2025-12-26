@@ -2,7 +2,10 @@
  * Application-wide constants
  */
 
-export const DOCKFLOW_VERSION = '2.0.0-dev2';
+// Read version from root package.json (single source of truth)
+import rootPackageJson from '../../package.json';
+
+export const DOCKFLOW_VERSION = rootPackageJson.version;
 
 /**
  * GitHub repository URLs

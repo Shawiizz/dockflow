@@ -89,6 +89,7 @@ class VersionManager {
 
     updatePackageJson(newVersion) {
         try {
+            // Update root package.json
             const packageJson = JSON.parse(fs.readFileSync(this.packageJsonPath, 'utf8'));
             if (this.ciImageMode) {
                 packageJson.ciImageVersion = newVersion;
@@ -98,6 +99,17 @@ class VersionManager {
                 console.log(`✓ Updated package.json version: ${newVersion}`);
             }
             fs.writeFileSync(this.packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
+            
+            // Also update cli-ts/package.json version to keep in sync
+            if (!this.ciImageMode) {
+                const cliPackageJsonPath = path.join(process.cwd(), 'cli-ts', 'package.json');
+                if (fs.existsSync(cliPackageJsonPath)) {
+                    const cliPackageJson = JSON.parse(fs.readFileSync(cliPackageJsonPath, 'utf8'));
+                    cliPackageJson.version = newVersion;
+                    fs.writeFileSync(cliPackageJsonPath, JSON.stringify(cliPackageJson, null, 2) + '\n');
+                    console.log(`✓ Updated cli-ts/package.json version: ${newVersion}`);
+                }
+            }
         } catch (error) {
             console.error('Error updating package.json:', error.message);
             throw error;
