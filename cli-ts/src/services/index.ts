@@ -15,5 +15,8 @@ export * from './logs-service';
 // Command execution in containers
 export * from './exec-service';
 
+// Deployment metrics
+export * from './metrics-service';
+
 // Legacy docker operations (for backward compatibility)
 export * from './docker-service';

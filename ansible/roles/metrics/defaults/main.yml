@@ -1,0 +1,11 @@
+---
+# Default variables for metrics role
+
+# Status of the deployment (success, failed, rolled_back)
+metric_status: success
+
+# Error message if deployment failed
+metric_error: ""
+
+# Version we rolled back from (if rollback)
+rollback_from_version: ""
