@@ -19,6 +19,7 @@ import {
   runInAnsibleContainer,
   checkDockerAvailable,
   validateProjectConfig,
+  validateServersYaml,
 } from '../utils/docker-runner';
 
 interface BuildOptions {
@@ -113,6 +114,9 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
 
   // Check config exists
   const config = validateProjectConfig();
+
+  // Validate servers.yml schema
+  validateServersYaml();
 
   // Check Docker is available
   await checkDockerAvailable();

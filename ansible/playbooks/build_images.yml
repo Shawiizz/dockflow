@@ -6,7 +6,7 @@
   gather_facts: false
   vars:
     tmp_dir: "/tmp"
-    framework_version: "2.0.1"
+    framework_version: "2.0.2"
     root_path: "{{ lookup('env', 'ROOT_PATH') }}"
   
   pre_tasks:

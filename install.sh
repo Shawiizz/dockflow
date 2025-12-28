@@ -4,7 +4,7 @@
 set -e
 
 # Version to install
-VERSION="2.0.1"
+VERSION="2.0.2"
 
 # Detect OS and architecture
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"

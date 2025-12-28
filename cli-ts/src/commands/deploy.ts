@@ -10,13 +10,14 @@
 
 import type { Command } from 'commander';
 import ora from 'ora';
-import { hasServersConfig, getProjectRoot, getAnsibleDockerImage } from '../utils/config';
+import { getProjectRoot, getAnsibleDockerImage } from '../utils/config';
 import { printSuccess, printInfo, printHeader, printDebug, setVerbose } from '../utils/output';
 import {
   getDockflowSetupScript,
   runInAnsibleContainer,
   checkDockerAvailable,
   validateProjectConfig,
+  validateServersYaml,
 } from '../utils/docker-runner';
 import { 
   resolveDeploymentForEnvironment,
@@ -202,13 +203,8 @@ export async function runDeploy(env: string, version: string | undefined, option
   // Check config exists
   const config = validateProjectConfig();
 
-  // Check servers.yml exists
-  if (!hasServersConfig()) {
-    throw new ConfigError(
-      '.deployment/servers.yml not found',
-      'Create a servers.yml file to define your deployment servers'
-    );
-  }
+  // Validate servers.yml exists and schema is valid
+  validateServersYaml();
 
   // Resolve deployment (manager + workers)
   const deployment = resolveDeploymentForEnvironment(env);

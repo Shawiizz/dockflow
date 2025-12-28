@@ -7,7 +7,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { getProjectRoot, loadConfig, isDockerAvailable, getAnsibleDockerImage } from './config';
+import { getProjectRoot, loadConfig, loadServersConfig, isDockerAvailable, getAnsibleDockerImage } from './config';
 import { printSuccess } from './output';
 import { DOCKFLOW_REPO, DOCKFLOW_VERSION } from '../constants';
 import { CLIError, ConfigError, DockerError } from './errors';
@@ -202,6 +202,22 @@ export function validateProjectConfig(): NonNullable<ReturnType<typeof loadConfi
     throw new ConfigError(
       '.deployment/config.yml not found',
       'Run "dockflow init" to create project structure'
+    );
+  }
+  return config;
+}
+
+/**
+ * Validate servers.yml exists and is valid
+ * @throws ConfigError if servers.yml is not found or validation fails
+ * @returns The loaded servers config (never null)
+ */
+export function validateServersYaml(): NonNullable<ReturnType<typeof loadServersConfig>> {
+  const config = loadServersConfig();
+  if (!config) {
+    throw new ConfigError(
+      '.deployment/servers.yml not found or invalid',
+      'Run "dockflow config validate" for detailed validation'
     );
   }
   return config;
