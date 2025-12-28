@@ -7,7 +7,7 @@ class VersionManager {
     constructor(ciImageMode = false) {
         this.packageJsonPath = path.join(process.cwd(), 'package.json');
         this.excludeDirs = ['node_modules', '.git', 'dist', 'build', 'coverage', 'scripts'];
-        this.includeExtensions = ['.yml', '.yaml', '.json', '.md', '.js', '.ts', '.sh'];
+        this.includeExtensions = ['.yml', '.yaml', '.json', '.md', '.js', '.ts', '.sh', '.ps1'];
         this.ciImageMode = ciImageMode;
     }
 
