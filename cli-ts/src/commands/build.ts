@@ -7,6 +7,7 @@
  */
 
 import type { Command } from 'commander';
+import chalk from 'chalk';
 import { printInfo, printHeader, printDebug, setVerbose } from '../utils/output';
 import { loadSecrets } from '../utils/secrets';
 import { getCurrentBranch } from '../utils/git';
@@ -66,6 +67,7 @@ ${dockflowSetup}
 # Set build environment variables
 export ENV="${env}"
 export VERSION="build"
+export BUILD_MODE="true"
 export BRANCH_NAME="${branchName}"
 export ROOT_PATH="/project"
 export ANSIBLE_HOST_KEY_CHECKING=False
@@ -127,6 +129,9 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
   printInfo(`Branch: ${branchName}`);
   if (Object.keys(envVars).length > 0) {
     printInfo(`Env vars: ${Object.keys(envVars).length} variables loaded`);
+  } else {
+    console.log(chalk.yellow(`⚠ No environment variables found for "${env}"`));
+    console.log(chalk.dim(`  Check that servers.yml has a server with tag "${env}" and env vars defined`));
   }
   if (options.services) {
     printInfo(`Services: ${options.services}`);
