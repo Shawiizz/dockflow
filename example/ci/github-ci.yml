@@ -28,14 +28,14 @@ jobs:
   # Basic CI job to run on every push to branches (not used for deployment)
   build:
     if: github.ref_type == 'branch'
-    uses: Shawiizz/dockflow/.github/workflows/build.yml@2.0.0-dev6
+    uses: Shawiizz/dockflow/.github/workflows/build.yml@2.0.0-dev7
     with:
       free-disk-space: false
 
   # Deploy your application on tag push
   deploy-tag:
     if: github.ref_type == 'tag'
-    uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.0-dev6
+    uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.0-dev7
     with:
       tag: ${{ github.ref_name }}
       free-disk-space: false
@@ -44,7 +44,7 @@ jobs:
   # Deploy your application on push to branch
   deploy-branch:
     if: github.ref_type == 'branch'
-    uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.0-dev6
+    uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.0-dev7
     with:
       version: ${{ github.ref_name }}-${{ github.sha }}
       free-disk-space: false

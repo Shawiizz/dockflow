@@ -94,6 +94,20 @@ bun ./cli-ts/src/index.ts --help
 bun ./cli-ts/src/index.ts setup interactive
 ```
 
+Test deploy/build using local dockflow instead of cloning from GitHub:
+
+```bash
+# Bash/Linux/macOS
+export DOCKFLOW_DEV_PATH="/path/to/dockflow"
+bun ./cli-ts/src/index.ts build production --dev
+```
+
+```powershell
+# PowerShell/Windows
+$env:DOCKFLOW_DEV_PATH = "C:\path\to\dockflow"
+bun ./cli-ts/src/index.ts build production --dev
+```
+
 ### Releasing CLI Binaries
 
 GitHub Actions automatically builds and publishes binaries when you push a tag matching `cli/*`:
