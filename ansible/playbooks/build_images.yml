@@ -26,6 +26,7 @@
   tasks:
     - name: Set computed variables
       set_fact:
+        global_no_log: "{{ not (deployment_config.options.enable_debug_logs | default(false) | bool) }}"
         deploy_services: "{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true) }}"
         services_option: "{{ ('--services=' + lookup('env', 'DEPLOY_DOCKER_SERVICES')) if lookup('env', 'DEPLOY_DOCKER_SERVICES') else '' }}"
         environmentize_option: "{{ '--environmentize' if (deployment_config.options.environmentize | default(true) | bool) else '' }}"

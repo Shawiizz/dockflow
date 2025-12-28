@@ -21,25 +21,8 @@ TEST_APP_DIR="$SCRIPT_DIR/test-app"
 TEST_ENV="test"
 TEST_VERSION="1.0.0-e2e"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-log_step() { echo -e "\n${YELLOW}▶ $1${NC}\n"; }
-log_success() { echo -e "${GREEN}✓ $1${NC}"; }
-log_error() { echo -e "${RED}✗ $1${NC}"; }
-
-get_cli_binary() {
-    case "$(uname -s)-$(uname -m)" in
-        Linux-x86_64)  echo "dockflow-linux-x64" ;;
-        Linux-aarch64) echo "dockflow-linux-arm64" ;;
-        Darwin-x86_64) echo "dockflow-macos-x64" ;;
-        Darwin-arm64)  echo "dockflow-macos-arm64" ;;
-        *)             echo "dockflow-linux-x64" ;;
-    esac
-}
+# Load common functions
+source "$SCRIPT_DIR/common.sh"
 
 CLI_BINARY=$(get_cli_binary)
 CLI_BIN="$CLI_DIR/dist/$CLI_BINARY"
@@ -253,6 +236,21 @@ else
 fi
 
 # =============================================================================
+# Step 7: Remote Build Test (runs by default, skip with --skip-remote-build)
+# =============================================================================
+REMOTE_BUILD_PASSED=""
+if [[ "${1:-}" != "--skip-remote-build" ]]; then
+    log_step "Step 7: Running remote build test..."
+    
+    if bash "$SCRIPT_DIR/run-remote-build-test.sh"; then
+        REMOTE_BUILD_PASSED="yes"
+    else
+        log_error "Remote build test failed"
+        exit 1
+    fi
+fi
+
+# =============================================================================
 # Success
 # =============================================================================
 echo ""
@@ -267,5 +265,11 @@ echo "  ✓ Machines configured"
 echo "  ✓ Swarm cluster initialized (2 nodes)"
 echo "  ✓ Application deployed (2 replicas)"
 echo "  ✓ Replicas distributed across nodes"
+if [[ -n "$REMOTE_BUILD_PASSED" ]]; then
+echo "  ✓ Remote build test passed"
+fi
+echo ""
+echo "Options:"
+echo "  --skip-remote-build  Skip remote build test"
 echo ""
 echo "To cleanup: $SCRIPT_DIR/teardown.sh"

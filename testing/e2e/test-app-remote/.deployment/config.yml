@@ -1,0 +1,9 @@
+project_name: "test-app-remote"
+
+options:
+  remote_build: true
+  enable_debug_logs: true
+
+stack_management:
+  keep_releases: 3
+  cleanup_on_failure: true
