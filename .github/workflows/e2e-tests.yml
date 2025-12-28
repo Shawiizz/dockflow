@@ -19,57 +19,37 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Start test environment
-        working-directory: testing/e2e/docker
-        run: |
-          docker compose --env-file ../.env up -d --build
-          echo "Waiting for services to be ready..."
-          sleep 10
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
-      - name: Wait for test VM to be healthy
-        run: |
-          timeout=60
-          elapsed=0
-          while [ $elapsed -lt $timeout ]; do
-            if docker ps | grep -q "healthy.*dockflow-test-vm"; then
-              echo "✓ Test VM is healthy"
-              exit 0
-            fi
-            sleep 2
-            elapsed=$((elapsed + 2))
-          done
-          echo "ERROR: Test VM did not become healthy in time"
-          docker compose -f testing/e2e/docker/docker-compose.yml logs test-vm
-          exit 1
-
-      - name: Run E2E Test Suite
+      - name: Run E2E Tests
         run: |
           bash testing/e2e/run-tests.sh
 
-      - name: Verify application is deployed
-        run: |
-          echo "Verifying deployed application..."
-          RESPONSE=$(docker exec dockflow-test-vm curl -sf http://localhost:8080/ 2>&1)
-          if echo "$RESPONSE" | grep -q "DOCKFLOW_E2E_TEST_APP_DEPLOYED"; then
-            echo "✓ Application is correctly deployed and accessible"
-          else
-            echo "ERROR: Application verification failed"
-            echo "Response received:"
-            echo "$RESPONSE"
-            exit 1
-          fi
-
-      - name: Show test VM logs on failure
+      - name: Show cluster logs on failure
         if: failure()
         run: |
-          echo "=== Test VM Logs ==="
-          docker compose -f testing/e2e/docker/docker-compose.yml logs test-vm
+          echo "=== Docker Compose Status ==="
+          docker ps -a
           echo ""
-          echo "=== Container logs inside test VM ==="
-          docker exec dockflow-test-vm docker logs test-web-app-test 2>&1 || echo "Could not fetch app logs"
+          echo "=== Manager Node Logs ==="
+          docker compose -f testing/e2e/docker/docker-compose.yml --env-file testing/e2e/.env logs test-vm-manager 2>/dev/null || true
+          echo ""
+          echo "=== Worker Node Logs ==="
+          docker compose -f testing/e2e/docker/docker-compose.yml --env-file testing/e2e/.env logs test-vm-worker-1 2>/dev/null || true
+          echo ""
+          echo "=== Swarm Node Status ==="
+          docker exec dockflow-test-manager docker node ls 2>/dev/null || echo "Could not fetch node status"
+          echo ""
+          echo "=== Swarm Services ==="
+          docker exec dockflow-test-manager docker service ls 2>/dev/null || echo "Could not fetch services"
+          echo ""
+          echo "=== Application Logs ==="
+          docker exec dockflow-test-manager docker service logs test-app-test_web 2>&1 || echo "Could not fetch app logs"
 
       - name: Cleanup
         if: always()
-        working-directory: testing/e2e/docker
         run: |
-          docker compose --env-file ../.env down -v
+          bash testing/e2e/teardown.sh 2>/dev/null || true

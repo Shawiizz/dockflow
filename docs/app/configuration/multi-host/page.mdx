@@ -1,0 +1,159 @@
+# Multi-Host Deployment
+
+import { Callout } from 'nextra/components'
+
+Deploy your application across multiple servers using Docker Swarm with managers and workers.
+
+## Swarm Architecture
+
+Dockflow uses Docker Swarm for orchestration:
+
+- **Managers**: Receive deployments and orchestrate the cluster
+- **Workers**: Run containers distributed by managers
+- **Multi-manager**: For high availability (tolerates manager failures)
+
+## Basic Configuration
+
+```yaml
+# .deployment/servers.yml
+
+servers:
+  manager:
+    host: "192.168.1.10"
+    role: manager
+    tags: [production]
+
+  worker1:
+    host: "192.168.1.11"
+    role: worker
+    tags: [production]
+
+  worker2:
+    host: "192.168.1.12"
+    role: worker
+    tags: [production]
+
+defaults:
+  user: dockflow
+  port: 22
+```
+
+<Callout type="info">
+  Workers automatically join the Swarm cluster. You only deploy to the manager - Swarm distributes workloads automatically.
+</Callout>
+
+## Multi-Manager for High Availability
+
+For production environments, configure multiple managers for failover:
+
+```yaml
+# .deployment/servers.yml
+
+servers:
+  manager1:
+    host: "192.168.1.10"
+    role: manager
+    tags: [production]
+
+  manager2:
+    host: "192.168.1.11"
+    role: manager
+    tags: [production]
+
+  manager3:
+    host: "192.168.1.12"
+    role: manager
+    tags: [production]
+
+  worker1:
+    host: "192.168.1.20"
+    role: worker
+    tags: [production]
+
+  worker2:
+    host: "192.168.1.21"
+    role: worker
+    tags: [production]
+```
+
+<Callout type="warning">
+  For Raft consensus, use an **odd number** of managers:
+  - 3 managers = tolerates 1 failure
+  - 5 managers = tolerates 2 failures
+</Callout>
+
+## Automatic Failover
+
+When deploying with multiple managers, Dockflow automatically:
+
+1. Checks each manager's status via SSH
+2. Finds the Swarm leader (or any reachable manager)
+3. Falls back to the next available manager if one is down
+
+```bash
+# Dockflow finds the active leader automatically
+dockflow deploy production
+
+# Disable failover (use first manager only)
+dockflow deploy production --no-failover
+```
+
+Example output with failover:
+```
+⠋ Checking 3 managers for active leader...
+  Checking manager1 (192.168.1.10)... ✗ unreachable
+  Checking manager2 (192.168.1.11)... ✓ LEADER
+⚠ Using manager2 (leader). Unreachable: manager1 (unreachable)
+```
+
+## How Deployment Works
+
+1. **Deploy targets the manager** - Dockflow connects only to the active manager
+2. **Swarm distributes workloads** - Containers are scheduled across all nodes
+3. **Images are pushed to workers** - Via registry or direct transfer
+
+```bash
+dockflow deploy production
+# ✓ Deployment completed! Swarm cluster: 3 managers + 2 worker(s)
+```
+
+## CI Secrets for Multi-Host
+
+Each server needs its own connection credentials:
+
+```bash
+# Connection strings for each server (managers + workers)
+PRODUCTION_MANAGER1_CONNECTION=<base64 JSON>
+PRODUCTION_MANAGER2_CONNECTION=<base64 JSON>
+PRODUCTION_MANAGER3_CONNECTION=<base64 JSON>
+PRODUCTION_WORKER1_CONNECTION=<base64 JSON>
+PRODUCTION_WORKER2_CONNECTION=<base64 JSON>
+
+# Or if host is defined in servers.yml, just the SSH key:
+PRODUCTION_MANAGER1_SSH_PRIVATE_KEY=<key>
+```
+
+<Callout type="info">
+  Server names use underscores in CI secrets. A server named `worker1` uses `PRODUCTION_WORKER1_CONNECTION`.
+</Callout>
+
+## Server-Specific Environment Variables
+
+Override variables for specific servers:
+
+```yaml
+servers:
+  manager1:
+    role: manager
+    tags: [production]
+    env:
+      NODE_ID: "manager-1"
+      PROMETHEUS_ENABLED: "true"
+
+  worker1:
+    role: worker
+    tags: [production]
+    env:
+      NODE_ID: "worker-1"
+      GPU_ENABLED: "true"
+```

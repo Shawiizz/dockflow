@@ -1,6 +1,0 @@
----
-- name: Ensure tracking directory exists
-  file:
-    path: /var/lib/dockflow/images
-    state: directory
-    mode: '0755'

@@ -3,15 +3,23 @@ name: Build
 on:
   workflow_call:
     inputs:
+      environment:
+        required: true
+        type: string
+        description: "The environment to use for build variables (e.g., production, staging)"
       free-disk-space:
         required: false
         type: boolean
         default: false
         description: "Free disk space by removing unnecessary tools"
+      services:
+        required: false
+        type: string
+        default: ""
+        description: "Comma-separated list of services to build (empty = all)"
 
 env:
-  DOCKFLOW_REPOSITORY_URL: https://github.com/Shawiizz/dockflow.git
-  DOCKFLOW_FRAMEWORK_VERSION: 1.0.57
+  DOCKFLOW_VERSION: 2.0.0-dev8
 
 jobs:
   build:
@@ -28,23 +36,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Prepare secrets
         run: |
-          npm i -g shawiizz-decomposerize
-          sudo apt-get update && sudo apt-get install -y python3-pip ansible
-          pip3 install pyyaml
+          # Write secrets to a file that the CLI can read
+          echo '${{ toJSON(secrets) }}' > /tmp/secrets.json
 
-      - name: Clone dockflow repository
-        run: git clone --depth 1 --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" dockflow
+      - name: Install Dockflow CLI
+        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/${{ env.DOCKFLOW_VERSION }}/install.sh | bash
 
       - name: Build Docker images
         run: |
-          echo '${{ toJSON(secrets) }}' > secrets.json
-          
-          export ENV="build"
-          export VERSION="build"
-          export ROOT_PATH="$(pwd)"
-          
-          source dockflow/.common/scripts/load_env.sh "$ENV"
-          cd dockflow
-          ansible-playbook ansible/playbooks/build_images.yml --connection=local
+          if [ -n "${{ inputs.services }}" ]; then
+            dockflow build "${{ inputs.environment }}" --services "${{ inputs.services }}"
+          else
+            dockflow build "${{ inputs.environment }}"
+          fi
+        env:
+          DOCKFLOW_SECRETS_FILE: /tmp/secrets.json

@@ -1,116 +1,46 @@
 # Deployment
 
-import { Tabs, Steps } from 'nextra/components'
+import { Cards } from 'nextra/components'
 
-## Deploy with CLI (Local)
+Dockflow deploys your application using Docker Swarm. This section covers the deployment process, health checks, and rollback behavior.
 
-You can deploy directly from your local machine using the `dockflow deploy` command:
+## How Deployment Works
 
-```bash
-# Deploy to production with version 1.0.0
-dockflow deploy production 1.0.0
+When you trigger a deployment, Dockflow performs the following steps:
 
-# Deploy to staging (auto-generated version)
-dockflow deploy staging
+1. **Build** - Docker images are built from your Dockerfiles
+2. **Transfer** - Images are sent to your server via SSH
+3. **Deploy** - The application is deployed as a Swarm stack
+4. **Verify** - Health checks confirm the deployment succeeded
 
-# Deploy to production with specific hostname
-dockflow deploy production 2.0.0 --hostname server1
-```
+If health checks fail, Dockflow automatically rolls back to the previous working version.
 
-### Using Docker Image
+## Deployment Topics
 
-If you prefer using the Docker image instead of installing the CLI:
+<Cards>
+  <Cards.Card
+    title="Docker Swarm"
+    href="/deployment/swarm"
+  />
+</Cards>
 
-<Tabs items={['Linux / macOS', 'Windows']}>
-  <Tabs.Tab>
-```bash
-# Deploy to production with version 1.0.0
-docker run -it --rm -v /var/run/docker.sock:/var/run/docker.sock -v .:/project shawiizz/dockflow-cli:latest deploy production 1.0.0
+## Triggering a Deployment
 
-# Deploy to staging
-docker run -it --rm -v /var/run/docker.sock:/var/run/docker.sock -v .:/project shawiizz/dockflow-cli:latest deploy staging
-```
-  </Tabs.Tab>
-  <Tabs.Tab>
-```powershell
-# Deploy to production with version 1.0.0
-docker run -it --rm -v //var/run/docker.sock:/var/run/docker.sock -v ${PWD}:/project shawiizz/dockflow-cli:latest deploy production 1.0.0
+Deployments are triggered through your CI/CD pipeline:
 
-# Deploy to staging
-docker run -it --rm -v //var/run/docker.sock:/var/run/docker.sock -v ${PWD}:/project shawiizz/dockflow-cli:latest deploy staging
-```
-  </Tabs.Tab>
-</Tabs>
-
-> **Note:** The Docker socket mount is **required** for the `deploy` command. It enables Docker-in-Docker, allowing the CLI to build Docker images locally before transferring them to your server.
-
-### Prerequisites
-
-<Steps>
-### Install Dockflow CLI
+**Tag-based deployment:**
+Push a git tag to deploy that version.
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/Shawiizz/dockflow/main/cli/cli_wrapper.sh?$(date +%s)" | bash
-```
-
-### Create `.env.dockflow` file
-
-Create this file in your project root:
-
-```bash
-# Production connection string (from setup-machine output)
-PRODUCTION_CONNECTION=eyJob3N0Ijoi...
-
-# Staging connection string (optional)
-STAGING_CONNECTION=eyJob3N0Ijoi...
-
-# Skip Docker installation on target (optional)
-SKIP_DOCKER_INSTALL=true
-```
-
-> ⚠️ **Important:** Add `.env.dockflow` to your `.gitignore` to avoid exposing secrets.
-
-### Initialize project structure
-
-If not already done:
-
-```bash
-dockflow init
-```
-</Steps>
-
-## Deploy with Git Tags
-
-```bash
-# Production deployment
 git tag 1.0.0
-git push origin --tags
-
-# Staging deployment
-git tag 1.0.0-staging
-git push origin --tags
-
-# Custom environment
-git tag 1.0.0-whatever
-git push origin --tags
+git push origin 1.0.0
 ```
 
-## Deploy on Branch Push
-
-Before using, you need to configure your Github/GitLab workflow.
-You can also trigger deployments on direct branch pushes (deploys to `production`):
+**Branch-based deployment:**
+Push to a branch to deploy the latest commit from that branch.
 
 ```bash
 git push origin main
 ```
 
-## What Happens During Deployment
-
-1. **Build** - Docker images are built (locally or remotely)
-2. **Transfer** - Images/code sent to target servers
-3. **Deploy** - Ansible orchestrates the deployment
-4. **Done** - Your app is live!
-
-**CI/CD Jobs Available:**
-- `build` - Validates Docker builds on every push
-- `deploy` - Deploys when you push a tag
+The deployment environment is determined by your configuration in `.deployment/config.yml`.

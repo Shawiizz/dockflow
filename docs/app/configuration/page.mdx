@@ -1,125 +1,48 @@
+---
+asIndexPage: true
+description:
+  Configure your Dockflow deployment with flexible options for connections,
+  environment variables, Docker Compose, build strategies, multi-host setups,
+  and advanced configuration files.
+---
+
+import { Cards } from 'nextra/components'
+
 # Configuration
 
-## Connection Configuration
+Dockflow provides flexible configuration options to adapt to your deployment needs. You can configure connections, environment variables, build strategies, and more.
 
-The recommended way to configure the connection to your server is using the `[ENV]_CONNECTION` secret (e.g., `PRODUCTION_CONNECTION`).
-
-### Generating the Connection String
-
-The connection string is automatically generated during the server setup. You can also generate it manually using the CLI utility if needed.
-
-The connection string is a Base64 encoded JSON object containing:
-- `host`: Server IP or hostname
-- `port`: SSH port
-- `user`: SSH user
-- `privateKey`: SSH private key
-- `password`: User password (optional, for sudo access)
-
-### Alternative: Individual Secrets
-
-If you prefer not to use the connection string, you can define individual secrets in your CI/CD:
-- `[ENV]_SSH_PRIVATE_KEY`: The SSH private key
-- `[ENV]_DOCKFLOW_HOST`: Overrides the host defined in `.env` files
-- `[ENV]_DOCKFLOW_USER`: Overrides the user defined in `.env` files
-- `[ENV]_DOCKFLOW_PASSWORD`: The user password (if needed for sudo)
-
-## Environment Files
-
-**Environment files are optional!** You can use CI secrets exclusively or combine them with `.env` files.
-
-Create `.deployment/env/.env.[environment]` with your variables (optional):
-
-```bash
-# .env.production
-DOCKFLOW_HOST=192.168.1.10              # Can be overridden by PRODUCTION_DOCKFLOW_HOST CI secret
-DOCKFLOW_PORT=22                        # Can be overridden by PRODUCTION_DOCKFLOW_PORT CI secret
-DOCKFLOW_USER=dockflow                  # Can be overridden by PRODUCTION_DOCKFLOW_USER CI secret
-DB_PASSWORD=$DB_SECRET                  # Reference to CI secret
-API_PORT=3000                           # Can be overridden by PRODUCTION_API_PORT CI secret
-```
-
-## Docker Compose File
-
-Standard compose file with environment variables:
-
-```yaml
-services:
-  app:
-    image: my-app
-    build:
-      context: ../..
-      dockerfile: Dockerfile.app
-    ports:
-      - "${APP_PORT}:3000"
-    environment:
-      DB_PASSWORD: ${DB_PASSWORD}
-      ENV: ${ENV}
-    networks:
-      - app-network
-
-networks:
-  app-network:
-```
-
-**Note:** All files in `.deployment/docker/` are automatically processed with Jinja2 templating.
-
-### Environment Isolation (Automatic)
-
-By default, `${ENV}` and `${VERSION}` are automatically added to:
-- Image names
-- Container names
-- Volume names
-- Network names
-
-## Build Strategy
-
-Choose how Docker images are built:
-
-| Strategy | Where | Best For | Setup |
-|----------|-------|----------|-------|
-| **Local** (default) | CI/CD pipeline | Small images, fast network | Nothing to do |
-| **Remote** | On server | Large images, slow network | Set `remote_build: true` |
-
-#### Enable Remote Build
-
-Create `.deployment/config.yml`:
-
-```yaml
-options:
-  remote_build: true
-```
-
-## Multi-Host Deployment
-
-Deploy to multiple servers in the same environment:
-
-```
-.deployment/env/
-├── .env.production              # Main host
-├── .env.production.server-a     # Server A
-├── .env.production.server-b     # Server B
-└── .env.production.server-c     # Server C
-```
-
-## Configuration File Options
-
-Create `.deployment/config.yml` to customize behavior.
-
-```yaml
-options:
-  environmentize: true          # Auto-add ENV/VERSION (default: true)
-  enable_debug_logs: false      # Verbose logging (default: false)
-  remote_build: false           # Build on server (default: false)
-
-health_checks:
-  enabled: true                 # Enable post-deployment health checks
-  startup_delay: 15             # Wait before checking (seconds)
-  on_failure: "notify"          # Action: "fail", "notify", "ignore" or "rollback"
-  
-  endpoints:
-    - name: "Main Application"
-      url: "http://localhost:{{ app_external_port }}/health"
-      expected_status: 200
-      timeout: 30
-      retries: 3
-```
+<Cards>
+  <Cards.Card
+    title="Connection"
+    href="/configuration/connection"
+  />
+  <Cards.Card
+    title="Environment Files"
+    href="/configuration/environment"
+  />
+  <Cards.Card
+    title="Docker Compose"
+    href="/configuration/docker-compose"
+  />
+  <Cards.Card
+    title="Build Strategy"
+    href="/configuration/build-strategy"
+  />
+  <Cards.Card
+    title="Docker Registry"
+    href="/configuration/registry"
+  />
+  <Cards.Card
+    title="Hooks"
+    href="/configuration/hooks"
+  />
+  <Cards.Card
+    title="Multi-Host Deployment"
+    href="/configuration/multi-host"
+  />
+  <Cards.Card
+    title="Configuration File"
+    href="/configuration/config-file"
+  />
+</Cards>

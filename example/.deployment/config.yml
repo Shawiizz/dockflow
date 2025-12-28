@@ -1,14 +1,79 @@
+# Project configuration (required in v2.0+)
+# This is the unique identifier for your project
+project_name: "my-app"
+
 options:
   environmentize: true        # Auto-add ENV/VERSION to names (default: true)
   enable_debug_logs: false   # Enable detailed deployment logs (default: false)
   remote_build: false        # Build Docker images on remote server instead of CI/CD (default: false)
 
-# Image management configuration (optional)
-image_management:
-  # Number of healthy versions to keep (each version can have multiple images)
-  # Older healthy versions will be automatically cleaned up
-  # Default: 1 version kept
-  keep_healthy_versions: 1
+# Docker Registry configuration (optional)
+# When configured, built images will be pushed to this registry
+registry:
+  # Enable or disable registry push (default: false)
+  enabled: false
+  
+  # Registry URL (e.g., docker.io, registry.gitlab.com, ghcr.io, your-registry.com)
+  # For Docker Hub, use docker.io
+  url: ""
+  
+  # Registry namespace/organization (e.g., myorg, myusername)
+  # Full image name will be: {url}/{namespace}/{image}:{tag}
+  namespace: ""
+  
+  # Authentication method: "basic" or "token"
+  # basic: uses username/password
+  # token: uses a single token (for services like GitHub Container Registry)
+  auth_method: "basic"
+  
+  # Credentials (use environment variables for security)
+  # For basic auth:
+  username: "{{ registry_username }}"
+  password: "{{ registry_password }}"
+  
+  # For token auth (e.g., GitHub Personal Access Token):
+  token: "{{ registry_token }}"
+  
+  # Additional tags to apply (besides the version tag)
+  # Available variables: {version}, {env}, {branch}, {sha}
+  additional_tags:
+    - "latest"  # Always tag as latest
+    # - "{env}"  # Tag with environment name
+    # - "{branch}-latest"  # Tag with branch name
+
+# Docker Swarm configuration (optional)
+# When a 'deploy' section is present in docker-compose.yml, 
+# the framework will automatically use Swarm mode
+swarm:
+  # Prune old services after deployment (default: true)
+  prune_services: true
+  
+  # Wait for services to be running (default: true)
+  wait_for_services: true
+  wait_timeout: 300  # seconds
+  
+  # Update configuration
+  update_config:
+    # Update order: "stop-first" or "start-first"
+    order: "stop-first"
+    
+    # Failure action: "pause", "continue", or "rollback"
+    failure_action: "rollback"
+    
+    # Monitor duration after each task update
+    monitor: "30s"
+    
+    # Max failure ratio (0-1)
+    max_failure_ratio: 0.2
+
+# Stack management configuration (optional)
+# Manages releases and cleanup of old deployments
+stack_management:
+  # Number of previous releases to keep for rollback
+  # Each release contains a docker-compose.yml, metadata.json with images list
+  # Older releases and their images are automatically cleaned up
+  # Default: 3 releases kept
+  keep_releases: 3
   
   # Clean up failed deployment images immediately
   # When true: if health check fails with on_failure='fail', stops containers and deletes images

@@ -1,0 +1,171 @@
+# Configuration File Options
+
+Create `.deployment/config.yml` to customize behavior.
+
+```yaml
+# Required: Unique project identifier
+project_name: "my-app"          # Must be lowercase, alphanumeric with hyphens only
+
+options:
+  environmentize: true          # Auto-add ENV/VERSION (default: true)
+  enable_debug_logs: false      # Verbose logging (default: false)
+  remote_build: false           # Build on server (default: false)
+
+# Stack management
+stack_management:
+  keep_releases: 3            # Number of previous releases to retain (default: 3)
+  cleanup_on_failure: true    # Clean up failed deployment images (default: true)
+
+health_checks:
+  enabled: true                 # Enable post-deployment health checks
+  startup_delay: 15             # Wait before checking (seconds)
+  on_failure: "rollback"        # Action: "fail", "notify", "ignore" or "rollback"
+  wait_for_internal: true       # Wait for Swarm internal healthchecks first
+  
+  endpoints:
+    - name: "Main Application"
+      url: "http://localhost:{{ app_external_port }}/health"
+      expected_status: 200
+      timeout: 30
+      retries: 3
+```
+
+## Required Fields
+
+### `project_name`
+**Required:** Yes
+
+A unique identifier for your project. This is used to:
+- Name the Docker Swarm stack
+- Organize releases on the server
+- Identify your project across deployments
+
+**Format requirements:**
+- Lowercase letters, numbers, and hyphens only
+- Must start and end with a letter or number
+- Example: `my-app`, `webapp-v2`, `api-backend`
+
+```yaml
+project_name: "my-awesome-app"
+```
+
+The stack name is automatically set to `{project_name}-{env}` and cannot be customized. Releases are stored in:
+```
+/var/lib/dockflow/stacks/my-awesome-app-production/
+  1/
+  2/
+  3/
+  current -> 3/
+```
+
+## Options Reference
+
+### `environmentize`
+**Default:** `true`
+
+Automatically adds `${ENV}` and `${VERSION}` to resource names for environment isolation.
+
+### `enable_debug_logs`
+**Default:** `false`
+
+Enables verbose logging for debugging deployment issues.
+
+### `remote_build`
+**Default:** `false`
+
+Build Docker images on the server instead of in the CI/CD pipeline.
+
+## Stack Management
+
+### `keep_releases`
+**Default:** `3`
+
+Number of previous releases to retain on the server. This enables:
+- Quick rollback to previous versions
+- Audit trail of deployments
+- Automatic cleanup of old releases and unused images
+
+### `cleanup_on_failure`
+**Default:** `true`
+
+Clean up failed deployment images immediately when health checks fail.
+
+```yaml
+stack_management:
+  keep_releases: 5           # Keep 5 previous deployments
+  cleanup_on_failure: true   # Remove images from failed deployments
+```
+
+## Health Checks
+
+Dockflow provides two layers of health checks:
+
+1. **Internal (Swarm)**: Docker Swarm monitors container healthchecks and automatically rolls back if they fail
+2. **External (Dockflow)**: HTTP endpoint checks from the host to verify services are accessible
+
+### `enabled`
+**Default:** `true`
+
+Enable or disable post-deployment health checks.
+
+### `startup_delay`
+**Default:** `15` (seconds)
+
+Time to wait after deployment before running external health checks.
+
+### `wait_for_internal`
+**Default:** `true`
+
+Wait for Swarm internal healthchecks to complete before running external checks.
+
+### `on_failure`
+**Options:** `"fail"`, `"notify"`, `"ignore"`, `"rollback"`
+
+Action to take when external health checks fail:
+- `fail`: Mark deployment as failed
+- `notify`: Log warning but continue
+- `ignore`: Skip health check failures
+- `rollback`: Automatically rollback to previous stack
+
+### `endpoints`
+
+List of external endpoints to check after deployment:
+
+```yaml
+endpoints:
+  - name: "API Health"
+    url: "http://localhost:3000/health"
+    expected_status: 200
+    timeout: 30
+    retries: 3
+```
+
+#### Endpoint Properties
+
+- `name`: Descriptive name for the endpoint
+- `url`: URL to check (supports Jinja2 templating)
+- `expected_status`: Expected HTTP status code
+- `timeout`: Request timeout in seconds
+- `retries`: Number of retry attempts
+
+## Deploy Lock
+
+Dockflow automatically prevents concurrent deployments to the same stack. If a deployment is already in progress, subsequent deployments will fail with an error message showing who holds the lock.
+
+Lock files are stored in `/var/lib/dockflow/locks/` and automatically expire after 30 minutes.
+
+## Audit Log
+
+Every deployment is recorded in an audit log at `/var/lib/dockflow/audit/[stack-name].log`:
+
+```
+2024-01-15T10:30:00Z | DEPLOYED | 1.0.0 | user@ci-runner | success
+2024-01-16T14:20:00Z | DEPLOYED | 1.0.1 | user@ci-runner | success
+2024-01-17T09:15:00Z | DEPLOYED | 1.0.2 | user@ci-runner | with warnings
+```
+
+View the audit log on your server:
+
+```bash
+cat /var/lib/dockflow/audit/my-app-production.log
+```

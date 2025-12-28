@@ -1,0 +1,7 @@
+[install]
+# Use exact versions for reproducible builds
+exact = true
+
+[run]
+# Enable hot reloading in development
+watch = true

@@ -1,0 +1,94 @@
+# Connection Configuration
+
+import { Callout } from 'nextra/components'
+
+Connection to your servers is configured through CI secrets and optionally in `servers.yml`.
+
+## Connection String (Recommended)
+
+The recommended way to configure server connections is using connection strings as CI secrets:
+
+```bash
+# Format: ENV_SERVERNAME_CONNECTION
+PRODUCTION_MAIN_SERVER_CONNECTION=<base64-encoded JSON>
+STAGING_STAGING_SERVER_CONNECTION=<base64-encoded JSON>
+```
+
+The connection string is a Base64-encoded JSON object containing:
+
+```json
+{
+  "host": "192.168.1.10",
+  "port": 22,
+  "user": "dockflow",
+  "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\n...",
+  "password": "optional-sudo-password"
+}
+```
+
+<Callout type="info">
+  The connection string is automatically generated during server setup with `dockflow setup`.
+</Callout>
+
+## Individual Secrets
+
+Alternatively, provide connection details as separate secrets:
+
+```bash
+# Required
+PRODUCTION_MAIN_SERVER_SSH_PRIVATE_KEY=<SSH private key content>
+
+# Optional (can be defined in servers.yml instead)
+PRODUCTION_MAIN_SERVER_HOST=192.168.1.10
+PRODUCTION_MAIN_SERVER_USER=dockflow
+PRODUCTION_MAIN_SERVER_PORT=22
+PRODUCTION_MAIN_SERVER_PASSWORD=<sudo password>
+```
+
+## Combining with servers.yml
+
+You can define partial connection info in `servers.yml` and override via CI secrets:
+
+```yaml
+# servers.yml - host visible in config
+servers:
+  main_server:
+    host: "192.168.1.10"  # Can be omitted if set via CI secret
+    tags: [production]
+    user: dockflow
+    port: 22
+```
+
+Then only provide the SSH key via CI:
+
+```bash
+PRODUCTION_MAIN_SERVER_SSH_PRIVATE_KEY=<key>
+```
+
+Or hide the host entirely via CI:
+
+```bash
+PRODUCTION_MAIN_SERVER_HOST=10.0.0.50
+PRODUCTION_MAIN_SERVER_SSH_PRIVATE_KEY=<key>
+```
+
+## Secret Naming Convention
+
+<Callout type="warning">
+  Server names in CI secrets use underscores. A server named `main_server` uses `MAIN_SERVER` in the secret name.
+</Callout>
+
+| Server Name | CI Secret Pattern |
+|-------------|-------------------|
+| `main_server` | `PRODUCTION_MAIN_SERVER_*` |
+| `replica_a` | `PRODUCTION_REPLICA_A_*` |
+| `staging_server` | `STAGING_STAGING_SERVER_*` |
+
+## Priority
+
+Connection settings are resolved in this order (highest priority wins):
+
+1. `ENV_SERVERNAME_CONNECTION` (full connection string)
+2. `ENV_SERVERNAME_HOST`, `ENV_SERVERNAME_USER`, etc. (individual secrets)
+3. `servers.[name].host`, `servers.[name].user`, etc. (servers.yml)
+4. `defaults.user`, `defaults.port` (servers.yml defaults)

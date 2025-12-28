@@ -1,0 +1,38 @@
+# Docker Compose
+
+import { Callout } from 'nextra/components'
+
+Standard compose file with environment variables:
+
+```yaml
+services:
+  app:
+    image: my-app
+    build:
+      context: ../..
+      dockerfile: Dockerfile.app
+    ports:
+      - "${APP_PORT}:3000"
+    environment:
+      DB_PASSWORD: ${DB_PASSWORD}
+      ENV: ${ENV}
+    networks:
+      - app-network
+
+networks:
+  app-network:
+```
+
+<Callout type="info">
+  All files in `.deployment/docker/` are automatically processed with Jinja2 templating.
+</Callout>
+
+## Environment Isolation (Automatic)
+
+By default, `${ENV}` and `${VERSION}` are automatically added to:
+- Image names
+- Container names
+- Volume names
+- Network names
+
+This ensures complete isolation between different environments (production, staging, etc.).

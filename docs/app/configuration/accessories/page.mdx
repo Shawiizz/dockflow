@@ -1,0 +1,242 @@
+# Accessories
+
+import { Callout } from 'nextra/components'
+
+Accessories are **stateful services** (databases, caches, message queues, etc.) that have a separate lifecycle from your main application. They are deployed once and remain untouched during regular app deployments.
+
+## Why Accessories?
+
+<Callout type="warning">
+  **Problem**: If you put your database in the main `docker-compose.yml`, it gets restarted on every deployment. This can cause data corruption or downtime.
+</Callout>
+
+**Solution**: Accessories are deployed as a separate Docker Swarm stack. Your app can be deployed 100 times without touching the database.
+
+```
+myapp-production              ← Main app (redeployed often)
+myapp-production-accessories  ← Databases, Redis, etc. (deployed once)
+```
+
+## Configuration
+
+Create a file at `.deployment/docker/accessories.yml` using standard Docker Compose format:
+
+```yaml filename=".deployment/docker/accessories.yml"
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: "{{ db_password }}"
+      POSTGRES_DB: myapp
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
+```
+
+<Callout type="info">
+  Environment variables can be accessed using Jinja2 syntax: `{{ variable_name }}`
+</Callout>
+
+## Automatic Swarm Configuration
+
+Dockflow automatically injects a minimal Swarm configuration for each accessory service:
+
+```yaml
+deploy:
+  replicas: 1
+  restart_policy:
+    condition: on-failure
+    delay: 5s
+    max_attempts: 3
+```
+
+This ensures:
+- **Single replica** by default (appropriate for stateful services)
+- **Automatic restart** on failure with backoff
+- **No rolling updates** (you control when to update databases)
+
+You can override any of these in your `accessories.yml`.
+
+## Deployment
+
+Dockflow uses **hash-based change detection** for accessories. This means:
+
+- First deployment → accessories are automatically deployed
+- `accessories.yml` changed → accessories are automatically redeployed
+- No changes → accessories are skipped (fast)
+
+### Automatic Deployment (Default)
+
+```bash
+dockflow deploy production
+# Deploys app
+# Auto-checks accessories.yml hash
+# Deploys accessories only if changed or first time
+```
+
+### Force Redeploy Accessories
+
+```bash
+dockflow deploy production --accessories  # Accessories only (forced)
+dockflow deploy production --all          # App + accessories (forced)
+```
+
+### Skip Accessories Check
+
+```bash
+dockflow deploy production --skip-accessories
+# Deploys app only, completely ignores accessories
+```
+
+<Callout type="info">
+  The hash is stored on the server at `/var/lib/dockflow/accessories/{stack}/.hash`. Delete this file to force a redeploy on next deployment.
+</Callout>
+
+## Management Commands
+
+All accessories commands use SSH to interact with the running services.
+
+### List Accessories
+
+```bash
+dockflow accessories list production
+# or
+dockflow acc ls production
+```
+
+Shows all accessories services with their status and replicas.
+
+### View Logs
+
+```bash
+dockflow accessories logs production           # All accessories
+dockflow accessories logs production postgres  # Specific service
+dockflow accessories logs production postgres -f  # Follow
+```
+
+### Execute Commands
+
+```bash
+dockflow accessories exec production postgres       # Open shell
+dockflow accessories exec production postgres psql  # Run psql
+```
+
+### Restart Services
+
+```bash
+dockflow accessories restart production           # All
+dockflow accessories restart production postgres  # Specific
+```
+
+### Stop Services
+
+```bash
+dockflow accessories stop production           # Scale all to 0
+dockflow accessories stop production postgres  # Scale specific to 0
+```
+
+<Callout type="info">
+  Stop scales services to 0 replicas but keeps the containers and volumes. Use `restart` to bring them back.
+</Callout>
+
+### Remove Accessories
+
+```bash
+dockflow accessories remove production           # Remove stack (keep volumes)
+dockflow accessories remove production --volumes # Remove stack AND volumes
+```
+
+<Callout type="error">
+  The `--volumes` flag permanently deletes all data. You will be prompted to type the environment name to confirm.
+</Callout>
+
+## Best Practices
+
+### 1. Always Use Named Volumes
+
+```yaml
+volumes:
+  - postgres_data:/var/lib/postgresql/data  # ✅ Named volume
+  - ./data:/var/lib/postgresql/data         # ❌ Bind mount (lost on redeploy)
+```
+
+### 2. Pin Image Versions
+
+```yaml
+image: postgres:16-alpine  # ✅ Specific version
+image: postgres:latest     # ❌ Unpredictable updates
+```
+
+### 3. Configure Health Checks
+
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "pg_isready -U app"]
+  interval: 10s
+  timeout: 5s
+  retries: 5
+  start_period: 30s  # Give time for initial startup
+```
+
+### 4. Constrain to Manager Node (Optional)
+
+For single-node deployments, this ensures data stays on the same node:
+
+```yaml
+deploy:
+  placement:
+    constraints:
+      - node.role == manager
+```
+
+## Connecting Your App
+
+Your main application can connect to accessories using Docker's internal DNS:
+
+```yaml filename=".deployment/docker/docker-compose.yml"
+services:
+  app:
+    image: myapp:latest
+    environment:
+      DATABASE_URL: postgres://app:password@postgres:5432/myapp
+      REDIS_URL: redis://redis:6379
+    networks:
+      - default
+      - accessories
+
+networks:
+  accessories:
+    external: true
+    name: myapp-production-accessories_default
+```
+
+<Callout type="warning">
+  Make sure to reference the correct network name: `{project}-{env}-accessories_default`
+</Callout>
+

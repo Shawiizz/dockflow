@@ -1,0 +1,240 @@
+# Docker Swarm
+
+import { Callout, Steps } from 'nextra/components'
+
+Dockflow uses Docker Swarm to orchestrate your containers. This page explains how Swarm deployments work and how to manage them.
+
+## Understanding Swarm Deployments
+
+Docker Swarm provides built-in features that Dockflow leverages:
+
+- **Rolling updates** - Containers are replaced one at a time
+- **Health monitoring** - Swarm tracks container health status
+- **Automatic rollback** - Failed updates are reverted automatically
+- **Service discovery** - Containers can find each other by service name
+
+## Deployment Process
+
+<Steps>
+### Image Transfer
+
+Dockflow transfers your Docker images to the server using SSH:
+
+```
+docker save image:tag | ssh user@host docker load
+```
+
+No external registry is required for single-node deployments.
+
+### Stack Deployment
+
+Your application is deployed as a Swarm stack:
+
+```
+docker stack deploy -c docker-compose.yml my-app
+```
+
+Each deployment creates a new release directory on the server.
+
+### Health Verification
+
+After deployment, Dockflow verifies that:
+
+1. Swarm reports all services as healthy
+2. The correct image version is running
+3. External health check endpoints respond (if configured)
+
+### Rollback on Failure
+
+If health checks fail, Dockflow:
+
+1. Detects the rollback via Swarm status
+2. Waits for the previous version to stabilize
+3. Cleans up the failed release
+4. Reports the deployment as failed
+</Steps>
+
+## Release Management
+
+Dockflow organizes releases on your server:
+
+```
+/var/lib/dockflow/stacks/my-app-production/
+├── 1.0.0/
+│   └── docker-compose.yml
+├── 1.0.1/
+│   └── docker-compose.yml
+├── 1.0.2/
+│   └── docker-compose.yml
+└── current -> 1.0.2/
+```
+
+The `current` symlink points to the active release. By default, Dockflow keeps the last 3 releases for rollback purposes.
+
+## Health Checks
+
+### Swarm Health Checks
+
+Define health checks in your `docker-compose.yml`:
+
+```yaml
+services:
+  app:
+    image: my-app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+```
+
+Swarm monitors these checks and triggers automatic rollback if containers become unhealthy.
+
+### External Health Checks
+
+Configure additional HTTP checks in `.deployment/config.yml`:
+
+```yaml
+health_checks:
+  enabled: true
+  startup_delay: 15
+  endpoints:
+    - name: "API"
+      url: "http://localhost:3000/health"
+      expected_status: 200
+      timeout: 30
+      retries: 3
+```
+
+## Rolling Updates Configuration
+
+Dockflow automatically applies safe defaults for zero-downtime deployments. These defaults are **only applied if you haven't defined them** in your `docker-compose.yml`.
+
+### Default Update Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `parallelism` | 1 | Update one container at a time |
+| `delay` | 10s | Wait between container updates |
+| `failure_action` | rollback | Automatically revert on failure |
+| `monitor` | 30s | Monitor period after each container update |
+| `order` | start-first | Start new container before stopping old |
+| `max_failure_ratio` | 0 | No failures tolerated |
+
+### Default Rollback Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `parallelism` | 1 | Rollback one container at a time |
+| `delay` | 5s | Wait between rollback operations |
+| `monitor` | 15s | Monitor period during rollback |
+| `order` | start-first | Start old container before stopping new |
+
+### Customizing Update Behavior
+
+Override any setting in your `docker-compose.yml`:
+
+```yaml
+services:
+  app:
+    image: my-app
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 2          # Update 2 containers at a time
+        delay: 5s               # Faster updates
+        failure_action: pause   # Pause instead of rollback
+        monitor: 60s            # Longer monitoring
+        order: stop-first       # Stop old before starting new
+      rollback_config:
+        parallelism: 2
+        delay: 3s
+```
+
+<Callout type="info">
+**Your values take precedence.** Dockflow will only fill in missing fields with its recommended defaults.
+</Callout>
+
+### Understanding `order`
+
+- **`start-first`** (default): Starts the new container before stopping the old one. Ensures zero downtime but requires extra resources temporarily.
+- **`stop-first`**: Stops the old container before starting the new one. Uses less resources but causes brief downtime.
+
+For zero-downtime deployments, always use `start-first` with at least 2 replicas.
+
+## Manual Operations
+
+### View Stack Status
+
+```bash
+docker stack services my-app-production
+```
+
+### View Service Logs
+
+```bash
+docker service logs my-app-production_app
+```
+
+### Force Redeployment
+
+```bash
+docker service update --force my-app-production_app
+```
+
+### Manual Rollback
+
+```bash
+docker service rollback my-app-production_app
+```
+
+### Remove Stack
+
+```bash
+docker stack rm my-app-production
+```
+
+## Multi-Node Deployments
+
+For clusters with multiple nodes, configure an external registry so worker nodes can pull images:
+
+```yaml
+registry:
+  enabled: true
+  url: "ghcr.io"
+  namespace: "your-org"
+  auth_method: "token"
+  token: "{{ github_token }}"
+```
+
+See [Registry Configuration](/configuration/registry) for setup instructions.
+
+## Troubleshooting
+
+### Deployment Stuck
+
+If a deployment hangs, check the service status:
+
+```bash
+docker service ps my-app-production_app --no-trunc
+```
+
+Look for error messages in the task output.
+
+### Rollback Loop
+
+If services keep rolling back, the issue is usually in your container health check. Verify the health check command works:
+
+```bash
+docker exec <container_id> curl -f http://localhost:3000/health
+```
+
+### Images Not Found
+
+If Swarm cannot find images after a rollback, the cleanup may have removed them. Redeploy to rebuild the images:
+
+```bash
+git tag 1.0.3
+git push origin 1.0.3
+```

@@ -1,7 +1,7 @@
 ---
 - name: List enabled systemd unit templates (*.service.j2 and *.mount.j2)
   find:
-    paths: "../../.deployment/templates/services"
+    paths: "{{ root_path }}/.deployment/templates/services"
     patterns:
       - "*.service.j2"
       - "*.mount.j2"

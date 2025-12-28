@@ -1,0 +1,122 @@
+# Docker Registry
+
+import { Callout, Tabs } from 'nextra/components'
+
+A Docker registry stores your images centrally. This is optional for single-node deployments but required for multi-node Swarm clusters.
+
+## When to Use
+
+- **Single node**: Not required. Images are transferred via SSH.
+- **Multi-node Swarm**: Required. Worker nodes pull images from the registry.
+
+## Configuration
+
+Add the following to `.deployment/config.yml`:
+
+<Tabs items={['GitHub (GHCR)', 'GitLab', 'Docker Hub', 'Self-Hosted']}>
+  <Tabs.Tab>
+    ```yaml
+    registry:
+      enabled: true
+      url: "ghcr.io"
+      namespace: "your-org"
+      auth_method: "token"
+      username: "{{ github_actor }}"
+      token: "{{ github_token }}"
+    ```
+    
+    **CI/CD secrets required:**
+    - `GITHUB_TOKEN` (automatic in GitHub Actions)
+    - `GITHUB_ACTOR` (automatic in GitHub Actions)
+  </Tabs.Tab>
+  
+  <Tabs.Tab>
+    ```yaml
+    registry:
+      enabled: true
+      url: "registry.gitlab.com"
+      namespace: "your-group/your-project"
+      auth_method: "token"
+      username: "gitlab-ci-token"
+      token: "{{ ci_job_token }}"
+    ```
+    
+    **CI/CD secrets required:**
+    - `CI_JOB_TOKEN` (automatic in GitLab CI)
+  </Tabs.Tab>
+  
+  <Tabs.Tab>
+    ```yaml
+    registry:
+      enabled: true
+      url: "docker.io"
+      namespace: "your-username"
+      auth_method: "basic"
+      username: "{{ docker_username }}"
+      password: "{{ docker_password }}"
+    ```
+    
+    **CI/CD secrets required:**
+    - `DOCKER_USERNAME`
+    - `DOCKER_PASSWORD`
+  </Tabs.Tab>
+  
+  <Tabs.Tab>
+    ```yaml
+    registry:
+      enabled: true
+      url: "registry.example.com"
+      namespace: "your-team"
+      auth_method: "basic"
+      username: "{{ registry_username }}"
+      password: "{{ registry_password }}"
+    ```
+    
+    **CI/CD secrets required:**
+    - `REGISTRY_USERNAME`
+    - `REGISTRY_PASSWORD`
+  </Tabs.Tab>
+</Tabs>
+
+## Configuration Reference
+
+| Field | Description |
+|-------|-------------|
+| `enabled` | Set to `true` to push images to the registry |
+| `url` | Registry hostname |
+| `namespace` | Organization or username prefix for images |
+| `auth_method` | `token` or `basic` |
+| `username` | Registry username |
+| `password` / `token` | Credentials (use Jinja2 syntax for secrets) |
+
+## Image Tagging
+
+By default, images are tagged with the deployment version. You can add extra tags that point to the same image:
+
+```yaml
+registry:
+  enabled: true
+  url: "ghcr.io"
+  namespace: "your-org"
+  additional_tags:
+    - "latest"
+    - "{env}"
+```
+
+**Example:** Deploying version `1.2.0` to `production` produces:
+
+```
+ghcr.io/your-org/my-app:1.2.0       # main tag (version)
+ghcr.io/your-org/my-app:latest      # additional tag
+ghcr.io/your-org/my-app:production  # additional tag ({env} replaced)
+```
+
+Available variables: `{version}`, `{env}`, `{branch}`, `{sha}`
+
+## Troubleshooting
+
+**Authentication failed**: Test credentials manually with `docker login`.
+
+**Push denied**: Verify write access to the namespace.
+
+**Workers cannot pull**: Ensure all Swarm nodes can reach the registry. For private registries, authenticate on each node.

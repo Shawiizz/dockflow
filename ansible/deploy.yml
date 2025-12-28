@@ -5,14 +5,7 @@
     root_path: "{{ lookup('env', 'ROOT_PATH') }}"
     compose_path: "{{ root_path }}/.deployment/docker/docker-compose.yml"
     tmp_dir: "/tmp"
-    framework_version: "1.0.57"
-    decomposerize_types:
-      - name: "setup"
-        base_options: "--create-networks --create-volumes --stop-and-remove"
-        ignore_errors: yes  # Networks/volumes might already exist
-      - name: "run"
-        base_options: "--docker-run --docker-run-detach"
-        ignore_errors: no
+    framework_version: "2.0.0-dev8"
   pre_tasks:
     - name: Display Dockflow version
       debug:
@@ -33,6 +26,34 @@
       run_once: true
       delegate_to: localhost
 
+    - name: Validate project_name is set
+      fail:
+        msg: |
+          ERROR: project_name is required in config.yml
+          
+          Please add a project_name to your .deployment/config.yml:
+          
+          project_name: "my-project-name"
+          
+          The project_name must contain only lowercase letters, numbers, and hyphens.
+          It is used to identify your project and name the Docker Swarm stack.
+      when: deployment_config.project_name is not defined or deployment_config.project_name == ''
+      delegate_to: localhost
+      run_once: true
+
+    - name: Validate project_name format
+      fail:
+        msg: |
+          ERROR: Invalid project_name format: {{ deployment_config.project_name }}
+          
+          The project_name must contain only lowercase letters, numbers, and hyphens.
+          Example: my-app-name, webapp-v2, api-backend
+      when: 
+        - deployment_config.project_name is defined
+        - not (deployment_config.project_name | regex_search('^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$'))
+      delegate_to: localhost
+      run_once: true
+
     - name: Prepare deployment (render Docker templates)
       import_role:
         name: prepare-deployment
@@ -46,20 +67,45 @@
         services_option: "{{ ('--services=' + lookup('env', 'DEPLOY_DOCKER_SERVICES')) if lookup('env', 'DEPLOY_DOCKER_SERVICES') else '' }}"
         environmentize_option: "{{ '--environmentize' if (deployment_config.options.environmentize | default(true) | bool) else '' }}"
         remote_build: "{{ deployment_config.options.remote_build | default(false) | bool }}"
+        project_name: "{{ deployment_config.project_name }}"
         sanitized_branch_name: "{{ branch_name | regex_replace('[^a-zA-Z0-9-]', '_') }}"
+        stack_name: "{{ deployment_config.project_name }}-{{ env }}"
         rollback_configured: "{{ (deployment_config.health_checks.on_failure | default('notify')) == 'rollback' }}"
+        # Deployment targets (controlled by CLI flags)
+        deploy_app: "{{ lookup('env', 'DEPLOY_APP') | default('true', true) | bool }}"
+        force_accessories: "{{ lookup('env', 'DEPLOY_ACCESSORIES') | default('false', true) | bool }}"
+        skip_accessories: "{{ lookup('env', 'SKIP_ACCESSORIES') | default('false', true) | bool }}"
       no_log: "{{ not (deployment_config.options.enable_debug_logs | default(false) | bool) }}"
 
-    - name: Resolve project_id if not provided
-      include_role:
-        name: image-tracking
-        tasks_from: resolve_project_id
+    - name: Display deployment targets
+      debug:
+        msg: |
+          Deployment targets:
+            - App: {{ deploy_app }}
+            - Accessories: {{ 'skipped' if skip_accessories else ('forced' if force_accessories else 'auto (hash-check)') }}
 
-    - name: Ensure rollback directory exists
+    - name: Ensure dockflow directories exist
       file:
-        path: /var/lib/dockflow
+        path: "{{ item }}"
         state: directory
         mode: '0755'
+      loop:
+        - /var/lib/dockflow
+        - /var/lib/dockflow/stacks
+        - /var/lib/dockflow/accessories
+        - /var/lib/dockflow/locks
+        - /var/lib/dockflow/audit
+        - /var/lib/dockflow/metrics
+
+    - name: Record deployment start time
+      set_fact:
+        deploy_start_time: "{{ ansible_date_time.epoch }}"
+
+    - name: Acquire deploy lock
+      include_role:
+        name: deploy-lock
+        tasks_from: acquire
+
   roles:
     - role: geerlingguy.docker
       when: not (skip_docker_install | default(false) | bool)
@@ -68,48 +114,137 @@
         - nginx
     - role: private_ssh_keys
     - role: services
-    - role: image-tracking
+    # Pre-build hook (runs locally in CI) - only when deploying app
+    - role: hooks
+      vars:
+        hook_name: "pre-build"
+        hook_delegate: "localhost"
+        hook_working_dir: "{{ root_path }}"
+      delegate_to: localhost
+      run_once: true
+      when: deploy_app | bool
     - role: local-build
-      when: not (remote_build | bool)
+      when: 
+        - deploy_app | bool
+        - not (remote_build | bool)
       delegate_to: localhost
       run_once: true
     - role: remote-build
-      when: remote_build | bool
-    - role: image-transfer
-      when: not (remote_build | bool)
-    - role: execute-scripts
+      when: 
+        - deploy_app | bool
+        - remote_build | bool
+    # Post-build hook (runs locally in CI) - only when deploying app
+    - role: hooks
+      vars:
+        hook_name: "post-build"
+        hook_delegate: "localhost"
+        hook_working_dir: "{{ root_path }}"
+      delegate_to: localhost
+      run_once: true
+      when: deploy_app | bool
+
   tasks:
-    - name: Process Docker commands for each type
-      include_tasks: playbooks/process_docker_commands.yml
-      loop: "{{ decomposerize_types }}"
-      loop_control:
-        loop_var: cmd_type
-      when: not (cmd_type.skip_on_rollback | default(false) and rollback_configured | default(false))
+    # ============================================
+    # ACCESSORIES DEPLOYMENT (Stateful services)
+    # ============================================
+    # Hash-based change detection:
+    # - Always checks if accessories.yml changed (unless --skip-accessories)
+    # - Only deploys if hash changed or first deployment
+    # - --accessories flag forces redeploy (bypasses hash check)
+    # IMPORTANT: Deployed BEFORE the app so databases/caches are ready
+    
+    - name: Check and deploy accessories if needed
+      include_role:
+        name: accessories
+      when: not (skip_accessories | bool)
+
+    # ============================================
+    # APPLICATION DEPLOYMENT
+    # ============================================
+    
+    # Pre-deploy hook (runs on remote server) - only when deploying app
+    - name: Run pre-deploy hook
+      include_role:
+        name: hooks
+      vars:
+        hook_name: "pre-deploy"
+        hook_delegate: "{{ inventory_hostname }}"
+        hook_working_dir: "/var/lib/dockflow/stacks/{{ stack_name }}"
+      when: deploy_app | bool
+
+    - name: Deploy application using Docker Swarm
+      include_role:
+        name: docker-swarm
+      vars:
+        compose_path: "{{ root_path }}/.deployment/docker/docker-compose.yml"
+      when: deploy_app | bool
 
   post_tasks:
-    - name: Run health checks
+    # ============================================
+    # APP POST-DEPLOYMENT TASKS
+    # ============================================
+    
+    - name: Wait for Swarm internal healthchecks to complete
+      include_role:
+        name: swarm-healthcheck
+      when: 
+        - deploy_app | bool
+        - deployment_config.health_checks.enabled | default(true) | bool
+
+    - name: Run external health checks
       include_role:
         name: health-check
       vars:
         health_checks_config: "{{ deployment_config.health_checks | default({}) }}"
-      when: deployment_config is defined
+      when: 
+        - deploy_app | bool
+        - deployment_config.health_checks is defined
+        - deployment_config.health_checks.enabled | default(true) | bool
 
-    - name: Build list of newly deployed images for marking healthy
-      set_fact:
-        new_deployed_images: "{{ hostvars[inventory_hostname].get('all_docker_run_commands', []) | map('split') | map('last') | map('regex_replace', '^(.*)$', '{\"name\": \"\\1\", \"timestamp\": \"' + ansible_date_time.iso8601 + '\"}') | map('from_json') | list }}"
-      changed_when: false
+    - name: Cleanup old stacks
+      include_role:
+        name: stack-management
+        tasks_from: cleanup
+      when: 
+        - deploy_app | bool
+        - (failed_health_checks | default([]) | length) == 0
 
-    - name: Mark deployment as healthy and cleanup
-      block:
-        - name: Mark deployment as healthy
-          include_role:
-            name: image-tracking
-            tasks_from: mark_healthy
-          vars:
-            health_check_passed: "{{ (failed_health_checks | default([]) | length) == 0 }}"
+    # Post-deploy hook (runs on remote server after successful deployment)
+    - name: Run post-deploy hook
+      include_role:
+        name: hooks
+      vars:
+        hook_name: "post-deploy"
+        hook_delegate: "{{ inventory_hostname }}"
+        hook_working_dir: "/var/lib/dockflow/stacks/{{ stack_name }}"
+      when: 
+        - deploy_app | bool
+        - (failed_health_checks | default([]) | length) == 0
 
-        - name: Clean up old unhealthy images
-          include_role:
-            name: image-tracking
-            tasks_from: cleanup
-      when: (failed_health_checks | default([]) | length) == 0 or not (deployment_config.health_checks.enabled | default(false))
+    # ============================================
+    # COMMON POST-DEPLOYMENT TASKS
+    # ============================================
+
+    # Write audit log entry
+    - name: Record successful deployment in audit log
+      include_role:
+        name: audit-log
+      vars:
+        audit_result: "deployed"
+        audit_message: >-
+          {{ 'app' if deploy_app else '' }}{{ ' + ' if (deploy_app and deploy_accessories) else '' }}{{ 'accessories' if deploy_accessories else '' }}
+          - {{ (failed_health_checks | default([]) | length) == 0 | ternary('success', 'with warnings') }}
+
+    # Record deployment metrics
+    - name: Record deployment metrics
+      include_role:
+        name: metrics
+      vars:
+        metric_status: "{{ 'success' if (failed_health_checks | default([]) | length) == 0 else 'failed' }}"
+        metric_error: "{{ failed_health_checks | default([]) | join(', ') }}"
+
+    # Release deploy lock (always, even on failure)
+    - name: Release deploy lock
+      include_role:
+        name: deploy-lock
+        tasks_from: release

@@ -1,9 +1,10 @@
+# GitLab CI common variables for Dockflow
+# The CLI is installed at runtime, no need for custom images
+
 .common-variables:
-  image: shawiizz/dockflow-ci:1.0.5
+  image: ubuntu:22.04
   services:
     - docker:dind
   variables:
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
-    DOCKFLOW_REPOSITORY_URL: https://github.com/Shawiizz/dockflow.git
-    DOCKFLOW_FRAMEWORK_VERSION: 1.0.57

@@ -1,0 +1,257 @@
+# Servers Configuration
+
+import { Callout, FileTree } from 'nextra/components'
+
+The `servers.yml` file is the central configuration for your Docker Swarm cluster. It defines your manager and worker nodes, environment variables, and connection settings.
+
+## Architecture
+
+Dockflow uses **Docker Swarm** for deployments:
+
+- **Manager**: One per environment. Receives deployments and orchestrates the cluster.
+- **Workers**: Optional. Join the Swarm and run containers distributed by the manager.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    dockflow deploy                       │
+└──────────────────────────┬──────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│                      MANAGER                             │
+│  • Receives docker-compose.yml                          │
+│  • Runs: docker stack deploy                            │
+│  • Distributes workloads to workers                     │
+└──────────────────────────┬──────────────────────────────┘
+                           │ Swarm orchestration
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+         ┌─────────┐ ┌─────────┐ ┌─────────┐
+         │ Worker 1│ │ Worker 2│ │ Worker N│
+         └─────────┘ └─────────┘ └─────────┘
+```
+
+## File Location
+
+<FileTree>
+  <FileTree.Folder name=".deployment" defaultOpen>
+    <FileTree.File name="config.yml" />
+    <FileTree.File name="servers.yml" active />
+    <FileTree.Folder name="docker">
+      <FileTree.File name="docker-compose.yml" />
+    </FileTree.Folder>
+  </FileTree.Folder>
+</FileTree>
+
+## Basic Structure
+
+```yaml
+# .deployment/servers.yml
+
+servers:
+  main_server:
+    role: manager              # This node receives deployments
+    host: "192.168.1.10"
+    tags: [production]
+  
+  worker_1:
+    role: worker               # This node runs distributed workloads
+    host: "192.168.1.11"
+    tags: [production]
+
+defaults:
+  user: dockflow
+  port: 22
+
+env:
+  all:
+    LOG_LEVEL: "info"
+  production:
+    LOG_LEVEL: "warn"
+```
+
+## Servers Section
+
+Define your cluster nodes by name:
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `role` | No | `manager` | Node role: `manager` or `worker` |
+| `host` | No* | - | Server IP or hostname |
+| `tags` | Yes | - | Environment tags (e.g., `[production]`) |
+| `user` | No | `defaults.user` | SSH user |
+| `port` | No | `defaults.port` | SSH port |
+| `env` | No | - | Server-specific environment variables |
+
+<Callout type="info">
+  *The `host` field is optional if you set it via CI secret: `ENV_SERVERNAME_HOST`
+</Callout>
+
+### Single-Node Cluster
+
+For simple deployments, a single manager is sufficient:
+
+```yaml
+servers:
+  production_server:
+    role: manager
+    tags: [production]
+```
+
+### Multi-Node Cluster
+
+For horizontal scaling, add workers:
+
+```yaml
+servers:
+  # The manager handles deployments
+  manager:
+    role: manager
+    host: "10.0.0.10"
+    tags: [production]
+    env:
+      NODE_ID: "manager"
+
+  # Workers receive distributed workloads
+  worker_1:
+    role: worker
+    host: "10.0.0.11"
+    tags: [production]
+    env:
+      NODE_ID: "worker-1"
+
+  worker_2:
+    role: worker
+    host: "10.0.0.12"
+    tags: [production]
+    env:
+      NODE_ID: "worker-2"
+```
+
+## CI Secrets
+
+### Connection Secrets
+
+The recommended way to provide SSH credentials is via a connection string:
+
+```bash
+# Full connection (recommended)
+PRODUCTION_MANAGER_CONNECTION=<base64 JSON>
+PRODUCTION_WORKER_1_CONNECTION=<base64 JSON>
+
+# Or individual components
+PRODUCTION_MANAGER_HOST=10.0.0.10
+PRODUCTION_MANAGER_SSH_PRIVATE_KEY=<SSH key content>
+PRODUCTION_MANAGER_USER=deploy
+```
+
+<Callout type="warning">
+  Server names use underscores in CI secrets. For a server named `worker_1`, use `PRODUCTION_WORKER_1_CONNECTION`.
+</Callout>
+
+### Variable Secrets
+
+Override any environment variable via CI:
+
+```bash
+# Global override (all servers in production)
+PRODUCTION_DATABASE_URL=postgres://secret:5432/db
+
+# Server-specific override
+PRODUCTION_MANAGER_DATABASE_URL=postgres://primary:5432/db
+```
+
+## Cluster Setup
+
+Before your first deployment, initialize the Swarm cluster:
+
+```bash
+# Set up CI secrets first, then:
+dockflow setup swarm production
+```
+
+This command will:
+1. Open firewall ports (2377, 7946, 4789) on all nodes
+2. Initialize Swarm on the manager
+3. Join workers to the cluster
+
+<Callout type="info">
+  You only need to run `setup swarm` once per environment. After that, just use `dockflow deploy`.
+</Callout>
+
+## Deployment
+
+```bash
+# Deploy to production (targets the manager)
+dockflow deploy production
+
+# Swarm automatically distributes containers to workers
+# based on resource availability and placement constraints
+```
+
+## Environment Variables
+
+Define variables that are inherited based on tags:
+
+```yaml
+env:
+  # Applied to ALL environments
+  all:
+    APP_NAME: "{{ project_name }}"
+    LOG_LEVEL: "info"
+    TZ: "UTC"
+
+  # Override for production
+  production:
+    LOG_LEVEL: "warn"
+    DATABASE_URL: "postgres://prod-db:5432/app"
+
+  # Override for staging
+  staging:
+    LOG_LEVEL: "debug"
+```
+
+### Variable Priority
+
+Variables are resolved in this order (lowest to highest):
+
+```
+1. defaults (user, port)
+2. env.all
+3. env.[tag]
+4. servers.[name].env
+5. CI secret: ENV_VARNAME
+6. CI secret: ENV_SERVERNAME_VARNAME
+```
+
+## Jinja2 Templating
+
+Values in `servers.yml` support Jinja2 templating:
+
+```yaml
+env:
+  all:
+    APP_NAME: "{{ project_name }}"
+    STACK_NAME: "{{ project_name }}-{{ env }}"
+```
+
+Available variables:
+- `{{ project_name }}` - From config.yml
+- `{{ env }}` - Current environment being deployed
+- `{{ version }}` - Deployment version
+- `{{ server_name }}` - Current server name
+
+## Migration from Old System
+
+If you're migrating from the old multi-host system:
+
+| Old System | New System |
+|------------|------------|
+| Multiple independent servers | Single Swarm cluster |
+| Deploy to each server | Deploy once to manager |
+| Manual load balancing | Swarm orchestration |
+| N × build time | 1 × build time |
+
+<Callout type="info">
+  The new Swarm-based system is faster (build once, deploy once) and handles load balancing automatically.
+</Callout>

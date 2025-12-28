@@ -1,9 +1,0 @@
-FROM shawiizz/dockflow-ci:latest
-
-COPY . /setup/
-
-RUN chmod +x /setup/cli/cli.sh
-RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
-
-WORKDIR /setup
-ENTRYPOINT ["/bin/bash", "/setup/cli/cli.sh"]

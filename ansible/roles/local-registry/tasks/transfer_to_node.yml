@@ -1,0 +1,52 @@
+---
+# Transfer images to a single node
+# Called with 'node' variable containing: host, user, port, key_file, name
+
+- name: "Build SSH options for {{ node.name | default(node.host) }}"
+  set_fact:
+    node_ssh_opts: >-
+      -o StrictHostKeyChecking=no
+      -o ConnectTimeout=30
+      -o ServerAliveInterval=60
+      {% if node.key_file | default('') != '' %}-i {{ node.key_file }}{% endif %}
+      {% if node.privateKey is defined %}-i ~/.ssh/worker_{{ node.name | default('key') }}{% endif %}
+      -p {{ node.port | default(22) }}
+  delegate_to: localhost
+
+# For workers, we need to write the private key to a temp file
+- name: "Setup SSH key for worker {{ node.name | default(node.host) }}"
+  block:
+    - name: Write worker private key
+      copy:
+        content: "{{ node.privateKey }}"
+        dest: "~/.ssh/worker_{{ node.name }}"
+        mode: '0600'
+      delegate_to: localhost
+
+    - name: Update SSH options with worker key
+      set_fact:
+        node_ssh_opts: >-
+          -o StrictHostKeyChecking=no
+          -o ConnectTimeout=30
+          -o ServerAliveInterval=60
+          -i ~/.ssh/worker_{{ node.name }}
+          -p {{ node.port | default(22) }}
+      delegate_to: localhost
+  when: node.privateKey is defined
+
+- name: "Transfer images to {{ node.name | default(node.host) }}"
+  shell: |
+    echo "Transferring {{ item }} to {{ node.name | default(node.host) }}..."
+    docker save "{{ item }}" | gzip -1 | ssh {{ node_ssh_opts }} {{ node.user | default('root') }}@{{ node.host }} "gunzip | docker load"
+  delegate_to: localhost
+  loop: "{{ built_images | default([]) }}"
+  register: node_transfer_results
+  loop_control:
+    label: "{{ item }} → {{ node.name | default(node.host) }}"
+
+- name: "Cleanup worker SSH key {{ node.name | default(node.host) }}"
+  file:
+    path: "~/.ssh/worker_{{ node.name }}"
+    state: absent
+  delegate_to: localhost
+  when: node.privateKey is defined

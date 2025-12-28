@@ -1,0 +1,69 @@
+---
+# Local Registry role - transfers Docker images to all Swarm nodes via SSH streaming
+# Uses docker save | ssh | docker load - simple and reliable, no registry needed
+
+- name: Check if image transfer is needed
+  set_fact:
+    needs_image_transfer: >-
+      {{
+        not (deployment_config.registry.enabled | default(false) | bool)
+        and not (remote_build | default(false) | bool)
+      }}
+
+- name: Transfer images to all nodes
+  block:
+    - name: Get list of built images from build commands
+      set_fact:
+        built_images: "{{ build_commands | select('search', '-t\\s+') | map('regex_replace', '.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') | list }}"
+      delegate_to: localhost
+      when: build_commands is defined
+
+    - name: Display images to transfer
+      debug:
+        msg: "Images to transfer: {{ built_images | join(', ') }}"
+      delegate_to: localhost
+      when: built_images | length > 0
+
+    # Build list of all nodes (manager + workers)
+    - name: Build manager node info
+      set_fact:
+        manager_node:
+          host: "{{ ansible_host }}"
+          user: "{{ ansible_user | default('root') }}"
+          port: "{{ ansible_port | default(22) }}"
+          key_file: "{{ ansible_ssh_private_key_file | default('') }}"
+          name: "manager"
+      delegate_to: localhost
+
+    - name: Parse workers from WORKERS_JSON
+      set_fact:
+        workers_list: "{{ lookup('env', 'WORKERS_JSON') | default('[]', true) | from_json }}"
+      delegate_to: localhost
+
+    - name: Build all nodes list
+      set_fact:
+        all_nodes: "{{ [manager_node] + (workers_list | default([])) }}"
+      delegate_to: localhost
+
+    - name: Display transfer plan
+      debug:
+        msg: "Will transfer {{ built_images | length }} image(s) to {{ all_nodes | length }} node(s)"
+      delegate_to: localhost
+
+    # Transfer images to each node
+    - name: Transfer images to all nodes
+      include_tasks: transfer_to_node.yml
+      loop: "{{ all_nodes }}"
+      loop_control:
+        loop_var: node
+        label: "{{ node.name | default(node.host) }}"
+
+    - name: Display transfer completion
+      debug:
+        msg: "Successfully transferred {{ built_images | length }} image(s) to {{ all_nodes | length }} node(s)"
+      delegate_to: localhost
+
+  when:
+    - needs_image_transfer | bool
+    - build_commands is defined
+    - build_commands | length > 0

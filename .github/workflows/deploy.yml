@@ -16,27 +16,37 @@ on:
         type: boolean
         default: false
         description: "Free disk space by removing unnecessary tools"
+      force-accessories:
+        required: false
+        type: boolean
+        default: false
+        description: "Force redeploy accessories (bypass hash check)"
+      skip-accessories:
+        required: false
+        type: boolean
+        default: false
+        description: "Skip accessories deployment entirely"
 
 env:
-  DOCKFLOW_REPOSITORY_URL: https://github.com/Shawiizz/dockflow.git
-  DOCKFLOW_FRAMEWORK_VERSION: 1.0.57
+  DOCKFLOW_VERSION: 2.0.0-dev8
 
 jobs:
-  discover-hosts:
+  deploy:
     runs-on: ubuntu-latest
-    name: Discover deployment hosts
-    outputs:
-      hosts: ${{ steps.discover.outputs.hosts }}
-      env: ${{ steps.discover.outputs.env }}
-      tag: ${{ steps.discover.outputs.tag }}
+    name: Deploy
     steps:
+      - name: Free Disk Space (Ubuntu)
+        if: ${{ inputs.free-disk-space }}
+        uses: jlumbroso/free-disk-space@main
+        with:
+          docker-images: false
+
       - name: Checkout code
         uses: actions/checkout@v4
-        
-      - name: Discover hosts and environment
-        id: discover
+
+      - name: Determine environment and version
+        id: env
         run: |
-          # Determine tag and environment
           TAG="${{ inputs.tag || inputs.version }}"
           if [ -z "$TAG" ]; then
             echo "::error::Either tag or version input must be provided"
@@ -51,63 +61,41 @@ jobs:
             [[ "$TAG" == "$ENV" ]] && ENV="production"
           fi
           
-          echo "env=$ENV" >> $GITHUB_OUTPUT
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-          
-          # Clone dockflow framework
-          git clone --depth 1 --branch "${{ env.DOCKFLOW_FRAMEWORK_VERSION }}" "${{ env.DOCKFLOW_REPOSITORY_URL }}" /tmp/dockflow
-          chmod +x /tmp/dockflow/.common/scripts/*.sh
-          
-          # Discover hosts
-          HOSTS_JSON=$(/tmp/dockflow/.common/scripts/discover_hosts.sh "$ENV")
-          echo "hosts=$HOSTS_JSON" >> $GITHUB_OUTPUT
-          echo "Discovered hosts: $HOSTS_JSON"
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "version=$TAG" >> $GITHUB_OUTPUT
+          echo "Deploying to $ENV with version $TAG"
 
-  deploy:
-    runs-on: ubuntu-latest
-    name: Deploy to ${{ needs.discover-hosts.outputs.env }} (${{ matrix.host }} host)
-    needs: discover-hosts
-    strategy:
-      matrix:
-        host: ${{ fromJson(needs.discover-hosts.outputs.hosts) }}
-    steps:
-      - name: Free Disk Space (Ubuntu)
-        if: ${{ inputs.free-disk-space }}
-        uses: jlumbroso/free-disk-space@main
-        with:
-          docker-images: false
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install dependencies
+      - name: Prepare secrets
         run: |
-          npm i -g shawiizz-decomposerize
-          sudo apt-get update && sudo apt-get install -y python3-pip
-          pip3 install pyyaml
+          # Write secrets to a file that the CLI can read
+          echo '${{ toJSON(secrets) }}' > /tmp/secrets.json
 
-      - name: Clone dockflow repository
-        run: git clone --depth 1 --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" dockflow
+      - name: Install Dockflow CLI
+        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/${{ env.DOCKFLOW_VERSION }}/install.sh | bash
 
-      - name: Deploy to host ${{ matrix.host }}
+      - name: Deploy with Dockflow
         run: |
-          echo '${{ toJSON(secrets) }}' > secrets.json
-          
-          export ENV="${{ needs.discover-hosts.outputs.env }}"
-          export HOSTNAME="${{ matrix.host }}"
-          export VERSION="${{ needs.discover-hosts.outputs.tag }}"
-          export ANSIBLE_HOST_KEY_CHECKING=False
-          export PROJECT_ID="${{ github.repository_id }}"
-          export ROOT_PATH="$(pwd)"
-          
-          # Determine branch name
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            BRANCH_NAME=$(git branch -r --contains "${{ github.ref_name }}" | grep -v "HEAD" | head -n1 | sed 's/.*origin\///')
-            BRANCH_NAME="${BRANCH_NAME:-$(git remote show origin | grep "HEAD branch" | cut -d ":" -f 2 | xargs)}"
-          else
-            BRANCH_NAME="${{ github.ref_name }}"
+          # Build deploy command with options
+          DEPLOY_OPTS=""
+          if [ "${{ inputs.force-accessories }}" = "true" ]; then
+            DEPLOY_OPTS="$DEPLOY_OPTS --all"
           fi
-          export BRANCH_NAME
+          if [ "${{ inputs.skip-accessories }}" = "true" ]; then
+            DEPLOY_OPTS="$DEPLOY_OPTS --skip-accessories"
+          fi
           
-          source dockflow/.common/scripts/load_env.sh "$ENV" "$HOSTNAME"
-          bash dockflow/.common/scripts/deploy_with_ansible.sh
+          dockflow deploy "${{ steps.env.outputs.environment }}" "${{ steps.env.outputs.version }}" $DEPLOY_OPTS
+        env:
+          # Secrets are loaded from /tmp/secrets.json by the CLI
+          # The CLI reads secrets in format: ENV_SERVERNAME_CONNECTION
+          # 
+          # Example secrets to define in GitHub:
+          #   PRODUCTION_MAIN_SERVER_CONNECTION: base64-encoded connection string
+          #   STAGING_WEB_CONNECTION: base64-encoded connection string
+          # 
+          # Connection string format: user@host:port|privateKey|password(optional)
+          # Encode with: echo -n "user@host:port|$(cat key.pem)" | base64
+          #
+          # Use 'secrets: inherit' in the caller workflow to pass secrets
+          DOCKFLOW_SECRETS_FILE: /tmp/secrets.json
+

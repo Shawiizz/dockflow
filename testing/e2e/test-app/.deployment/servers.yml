@@ -1,0 +1,14 @@
+defaults:
+  user: deploytest
+  port: 22
+
+servers:
+  main_server:
+    role: manager
+    tags: [test]
+    env:
+      WEB_PORT: "8080"
+
+  worker_1:
+    role: worker
+    tags: [test]

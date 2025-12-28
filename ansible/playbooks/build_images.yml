@@ -6,7 +6,7 @@
   gather_facts: false
   vars:
     tmp_dir: "/tmp"
-    framework_version: "1.0.57"
+    framework_version: "2.0.0-dev8"
     root_path: "{{ lookup('env', 'ROOT_PATH') }}"
   
   pre_tasks:
@@ -14,16 +14,16 @@
       debug:
         msg: "Dockflow v{{ framework_version }} - Build Mode"
 
-  roles:
-    - role: ../roles/load-config
-    - role: ../roles/prepare-deployment
-  
-  tasks:
     - name: Load environment variables from YAML file
       include_vars:
         file: /tmp/ansible_env_vars.yml
       no_log: true
 
+  roles:
+    - role: ../roles/load-config
+    - role: ../roles/prepare-deployment
+  
+  tasks:
     - name: Set computed variables
       set_fact:
         deploy_services: "{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true) }}"

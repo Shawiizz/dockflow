@@ -1,3 +1,6 @@
+# GitLab CI common steps for Dockflow
+# These templates are included by projects using Dockflow
+
 .prepare-env:
   before_script:
     - |
@@ -12,41 +15,21 @@
       fi
       
       export ENV VERSION
+      echo "Deploying to $ENV with version $VERSION"
 
-      # Clone dockflow framework
-      git clone --depth 1 --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" dockflow
-      
-      # Discover deployment hosts
-      echo "Discovering hosts for environment: $ENV"
-      export DEPLOYMENT_HOSTS=$(bash dockflow/.common/scripts/discover_hosts.sh "$ENV" | jq -r '.[]' | tr '\n' ' ')
-      echo "Deployment hosts: $DEPLOYMENT_HOSTS"
-
-.deploy-with-ansible:
-  after_script:
+.deploy-with-dockflow:
+  script:
     - |
-      # Set common environment variables
-      export ROOT_PATH="$(pwd)"
-      export ANSIBLE_HOST_KEY_CHECKING=False
-      export PROJECT_ID="$CI_PROJECT_ID"
+      # Install Dockflow CLI
+      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/2.0.0-dev8/install.sh | bash
       
-      # Determine branch name once
-      if [[ -n "$CI_COMMIT_TAG" ]]; then
-        BRANCH_NAME=$(git branch -r --contains "$CI_COMMIT_TAG" | grep -v "HEAD" | head -n1 | sed 's/.*origin\///')
-        BRANCH_NAME="${BRANCH_NAME:-$CI_DEFAULT_BRANCH}"
-      else
-        BRANCH_NAME="$CI_COMMIT_REF_NAME"
+      # Build deploy command with options
+      DEPLOY_OPTS=""
+      if [ "$FORCE_ACCESSORIES" = "true" ]; then
+        DEPLOY_OPTS="$DEPLOY_OPTS --all"
       fi
-      export BRANCH_NAME
+      if [ "$SKIP_ACCESSORIES" = "true" ]; then
+        DEPLOY_OPTS="$DEPLOY_OPTS --skip-accessories"
+      fi
       
-      # Deploy to each host
-      for HOST in $DEPLOYMENT_HOSTS; do
-        echo "========================================="
-        echo "Deploying to host: $HOST"
-        echo "========================================="
-        
-        export HOSTNAME="$HOST"
-        source dockflow/.common/scripts/load_env.sh "$ENV" "$HOSTNAME"
-        bash dockflow/.common/scripts/deploy_with_ansible.sh
-        
-        echo "Deployment completed for host: $HOST"
-      done
+      dockflow deploy "$ENV" "$VERSION" $DEPLOY_OPTS

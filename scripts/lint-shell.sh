@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-
 # Run shellcheck and shfmt on repository shell scripts
 # Excludes testing directory and vendor-like directories
+set -e
 
 echo "Searching for shell scripts..."
 MAPFILE=()
 while IFS= read -r -d $'\0' file; do
 	MAPFILE+=("$file")
-done < <(find . -type f -name "*.sh" -not -path "./testing/*" -not -path "./.git/*" -print0)
+done < <(find . -type f -name "*.sh" -not -path "./testing/*" -not -path "./.git/*" -not -path "*/node_modules/*" -print0)
 
 if [ ${#MAPFILE[@]} -eq 0 ]; then
 	echo "No shell scripts found"
@@ -15,8 +15,6 @@ if [ ${#MAPFILE[@]} -eq 0 ]; then
 fi
 
 echo "Running ShellCheck on ${#MAPFILE[@]} file(s)..."
-# Use shellcheck -x to allow external sourced files when running shellcheck manually
-# Exclude SC1091 (not following sourced files) as this is expected in CI
 if ! command -v shellcheck >/dev/null 2>&1; then
 	echo "Error: shellcheck not found on PATH. Please install it to run linting."
 	echo "Installation options (choose one):"
@@ -30,17 +28,16 @@ fi
 # Track failures
 FAILED=0
 
+# Use shellcheck -x to allow external sourced files
+# Exclude SC1091 (not following sourced files) as this is expected in CI
 printf '%s\0' "${MAPFILE[@]}" | xargs -0 shellcheck -x --exclude=SC1091 || FAILED=1
 
 # Optionally run shfmt to check formatting
-# The pipeline reports differences without writing them
 echo "Checking shell formatting with shfmt..."
-# Ensure shfmt is on PATH
 if ! command -v shfmt >/dev/null 2>&1; then
 	echo "shfmt not installed; skipping shfmt check"
 else
 	# shfmt lists files that are not properly formatted
-	# Using -l to list filenames instead of -d (diff) to avoid cluttering logs
 	FORMAT_ISSUES=$(printf '%s\0' "${MAPFILE[@]}" | xargs -0 shfmt -l)
 
 	if [ -n "$FORMAT_ISSUES" ]; then
@@ -51,7 +48,7 @@ else
 	fi
 fi
 
-if [ $FAILED -ne 0 ]; then
+if [ "$FAILED" -ne 0 ]; then
 	echo "Shell linting or formatting failed."
 	exit 1
 fi

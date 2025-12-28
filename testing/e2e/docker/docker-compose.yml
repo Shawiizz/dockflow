@@ -1,22 +1,22 @@
 services:
-  # Test deployment VM - simulates a production server
-  test-vm:
+  # Manager node - Swarm manager for E2E tests
+  test-vm-manager:
     build:
       context: .
       dockerfile: Dockerfile.test-vm
       args:
         SSH_USER: ${SSH_USER}
         SSH_PASSWORD: ${SSH_PASSWORD}
-    container_name: dockflow-test-vm
-    hostname: ${SSH_HOST}
+    container_name: dockflow-test-manager
+    hostname: dockflow-test-mgr
     privileged: true
     environment:
       - SSH_USER=${SSH_USER}
       - SSH_PASSWORD=${SSH_PASSWORD}
     ports:
-      - "${SSH_PORT:-2222}:22"
+      - "${SSH_PORT_MANAGER:-2222}:22"
       - "${DOCKER_PORT:-2375}:2375"
-      - "8080:8080" # For web app healthcheck
+      - "8080:8080"
     volumes:
       - /tmp
     networks:
@@ -28,29 +28,32 @@ services:
       retries: 10
       start_period: 10s
 
-  # Ansible runner - executes deployment scripts
-  ansible-runner:
+  # Worker node - Swarm worker for E2E tests
+  test-vm-worker-1:
     build:
       context: .
-      dockerfile: Dockerfile.ansible
-    container_name: dockflow-ansible-runner
-    working_dir: /workspace
-    volumes:
-      # --- Lecture seule du code source hôte ---
-      - ../../../:/mnt-src/dockflow:ro
-
-      # --- Volume anonyme : copie isolée (non persistante) ---
-      - /workspace
-
-      # --- SSH keys & docker socket (facultatifs) ---
-      - /var/run/docker.sock:/var/run/docker.sock
-
+      dockerfile: Dockerfile.test-vm
+      args:
+        SSH_USER: ${SSH_USER}
+        SSH_PASSWORD: ${SSH_PASSWORD}
+    container_name: dockflow-test-worker-1
+    hostname: dockflow-test-w1
+    privileged: true
     environment:
-      - ANSIBLE_HOST_KEY_CHECKING=False
+      - SSH_USER=${SSH_USER}
+      - SSH_PASSWORD=${SSH_PASSWORD}
+    ports:
+      - "${SSH_PORT_WORKER_1:-2223}:22"
+    volumes:
+      - /tmp
     networks:
       - test-network
-    profiles:
-      - tools
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "22"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
 networks:
   test-network:

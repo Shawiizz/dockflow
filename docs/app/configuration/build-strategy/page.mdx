@@ -1,0 +1,33 @@
+# Build Strategy
+
+Dockflow supports different strategies for building and transferring Docker images.
+
+## Strategies Overview
+
+| Strategy | Build Location | Transfer Method |
+|----------|---------------|-----------------|
+| Local (default) | CI/CD runner | SSH streaming |
+| Local + Registry | CI/CD runner | Docker registry |
+| Remote | Server | None |
+
+## Local Build
+
+By default, images are built in your CI/CD pipeline and transferred to the server via SSH. No additional configuration is required.
+
+## Registry Build
+
+For multi-node Swarm clusters, use a Docker registry so worker nodes can pull images. See [Docker Registry](/configuration/registry) for configuration.
+
+## Remote Build
+
+Build images directly on the server instead of transferring them:
+
+```yaml
+# .deployment/config.yml
+options:
+  remote_build: true
+```
+
+This clones your repository on the server and builds locally. Useful for large images or slow network connections.
+
+For private repositories, add a `GIT_TOKEN` secret to your CI/CD environment.

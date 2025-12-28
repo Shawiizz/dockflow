@@ -1,0 +1,198 @@
+---
+# Accessories role - Deploy stateful services with separate lifecycle
+# These services (databases, caches, etc.) are not redeployed with the main app
+#
+# Hash-based change detection:
+# - Calculates SHA256 of rendered accessories.yml
+# - Compares with stored hash on server
+# - Only deploys if hash changed or first deployment
+# - Use force_accessories=true to bypass hash check
+
+- name: Ensure Docker Swarm is initialized for accessories
+  block:
+    - name: Check if Docker Swarm is initialized
+      shell: docker info --format '{{ '{{' }}.Swarm.LocalNodeState{{ '}}' }}'
+      register: swarm_state
+      changed_when: false
+      failed_when: false
+
+    - name: Initialize Docker Swarm if not already initialized
+      shell: |
+        docker swarm init --advertise-addr {{ ansible_default_ipv4.address | default(ansible_all_ipv4_addresses[0]) }} 2>/dev/null || true
+      register: swarm_init
+      when: swarm_state.stdout | trim != 'active'
+
+- name: Set accessories variables
+  set_fact:
+    accessories_compose_path: "{{ root_path }}/.deployment/docker/accessories.yml"
+    accessories_stack_name: "{{ stack_name }}-accessories"
+    accessories_dir: "/var/lib/dockflow/accessories/{{ stack_name }}"
+    accessories_hash_file: "/var/lib/dockflow/accessories/{{ stack_name }}/.hash"
+    force_accessories: "{{ force_accessories | default(false) | bool }}"
+
+- name: Check if accessories.yml exists
+  stat:
+    path: "{{ accessories_compose_path }}"
+  delegate_to: localhost
+  register: accessories_file
+
+- name: Skip if no accessories configured
+  debug:
+    msg: "No accessories.yml found, skipping accessories deployment"
+  when: not accessories_file.stat.exists
+
+- name: Check and deploy accessories if changed
+  when: accessories_file.stat.exists
+  block:
+    - name: Ensure accessories directory exists on remote
+      file:
+        path: "{{ accessories_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Ensure local temp directory exists
+      file:
+        path: "/tmp/dockflow-accessories"
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+
+    - name: Render accessories compose file with environment variables
+      template:
+        src: "{{ accessories_compose_path }}"
+        dest: "/tmp/dockflow-accessories/docker-compose.yml.rendered"
+        mode: '0644'
+      delegate_to: localhost
+
+    - name: Calculate hash of rendered accessories compose
+      shell: sha256sum "/tmp/dockflow-accessories/docker-compose.yml.rendered" | cut -d' ' -f1
+      delegate_to: localhost
+      register: new_accessories_hash
+      changed_when: false
+
+    - name: Get stored hash from server
+      slurp:
+        src: "{{ accessories_hash_file }}"
+      register: stored_hash_content
+      failed_when: false
+
+    - name: Set stored hash value
+      set_fact:
+        stored_accessories_hash: "{{ (stored_hash_content.content | default('') | b64decode | trim) if stored_hash_content.content is defined else '' }}"
+
+    - name: Determine if accessories need deployment
+      set_fact:
+        accessories_need_deploy: "{{ force_accessories or (new_accessories_hash.stdout != stored_accessories_hash) }}"
+        accessories_reason: >-
+          {%- if force_accessories -%}
+            forced deployment
+          {%- elif stored_accessories_hash == '' -%}
+            first deployment
+          {%- elif new_accessories_hash.stdout != stored_accessories_hash -%}
+            accessories.yml changed
+          {%- else -%}
+            no changes
+          {%- endif -%}
+
+    - name: Display accessories deployment decision
+      debug:
+        msg: "Accessories: {{ 'DEPLOYING' if accessories_need_deploy else 'SKIPPING' }} ({{ accessories_reason | trim }})"
+
+    # ============================================
+    # DEPLOY ACCESSORIES (only if needed)
+    # ============================================
+    - name: Deploy accessories stack
+      when: accessories_need_deploy
+      block:
+        # Inject minimal Swarm config
+        - name: Read rendered accessories compose
+          slurp:
+            src: "/tmp/dockflow-accessories/docker-compose.yml.rendered"
+          delegate_to: localhost
+          register: acc_compose_content
+
+        - name: Parse accessories compose
+          set_fact:
+            acc_compose_data: "{{ acc_compose_content.content | b64decode | from_yaml }}"
+          delegate_to: localhost
+
+        - name: Inject deploy config for accessories services
+          set_fact:
+            acc_updated_compose: >-
+              {%- set ns = namespace(services={}) -%}
+              {%- for service_name, service_config in acc_compose_data.services.items() -%}
+                {%- set deploy_config = service_config.deploy | default({}) -%}
+                {%- set restart_policy = deploy_config.restart_policy | default({}) -%}
+                {%- set new_restart_policy = {
+                  'condition': restart_policy.condition | default('on-failure'),
+                  'delay': restart_policy.delay | default('5s'),
+                  'max_attempts': restart_policy.max_attempts | default(3)
+                } -%}
+                {%- set new_deploy = deploy_config | combine({
+                  'replicas': deploy_config.replicas | default(1),
+                  'restart_policy': new_restart_policy
+                }) -%}
+                {%- set _ = ns.services.update({service_name: service_config | combine({'deploy': new_deploy})}) -%}
+              {%- endfor -%}
+              {{ acc_compose_data | combine({'services': ns.services}) }}
+          delegate_to: localhost
+
+        - name: Write final accessories compose locally
+          copy:
+            content: "{{ acc_updated_compose | to_nice_yaml(indent=2, width=999) }}"
+            dest: "/tmp/dockflow-accessories/docker-compose.yml"
+            mode: '0644'
+          delegate_to: localhost
+
+        - name: Copy accessories compose to remote
+          copy:
+            src: "/tmp/dockflow-accessories/docker-compose.yml"
+            dest: "{{ accessories_dir }}/docker-compose.yml"
+            mode: '0644'
+
+        - name: Pull latest images for accessories
+          command: docker compose -f {{ accessories_dir }}/docker-compose.yml pull
+          register: accessories_pull
+          changed_when: "'Pull complete' in accessories_pull.stdout or 'Downloaded' in accessories_pull.stdout"
+          failed_when: false
+
+        - name: Deploy accessories stack to Swarm
+          command: >
+            docker stack deploy
+            --compose-file {{ accessories_dir }}/docker-compose.yml
+            --with-registry-auth
+            --prune
+            {{ accessories_stack_name }}
+          register: accessories_deploy
+          changed_when: "'Creating' in accessories_deploy.stdout or 'Updating' in accessories_deploy.stdout"
+
+        - name: Display accessories deployment result
+          debug:
+            msg: |
+              Accessories stack deployed: {{ accessories_stack_name }}
+              Services: {{ accessories_deploy.stdout_lines | default([]) }}
+
+        - name: Wait for accessories services to be ready
+          command: "docker stack services {{ accessories_stack_name }} --format \"{{ '{{' }}.Name{{ '}}' }}: {{ '{{' }}.Replicas{{ '}}' }}\""
+          register: accessories_status
+          until: "'0/' not in accessories_status.stdout"
+          retries: 30
+          delay: 5
+          changed_when: false
+          failed_when: false
+
+        - name: Display accessories status
+          debug:
+            msg: "{{ accessories_status.stdout_lines }}"
+          when: accessories_status.stdout_lines | length > 0
+
+        # Save hash after successful deployment
+        - name: Save new hash to server
+          copy:
+            content: "{{ new_accessories_hash.stdout }}"
+            dest: "{{ accessories_hash_file }}"
+            mode: '0644'
+
+        - name: Accessories deployment complete
+          debug:
+            msg: "Accessories deployed successfully. Hash saved for future change detection."

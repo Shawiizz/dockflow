@@ -1,0 +1,92 @@
+# Environment Variables
+
+import { Callout } from 'nextra/components'
+
+<Callout type="info">
+  Environment variables are now defined in `servers.yml` instead of separate `.env` files.
+</Callout>
+
+Define your environment variables in `.deployment/servers.yml`:
+
+```yaml
+# .deployment/servers.yml
+
+env:
+  # Variables for ALL environments
+  all:
+    APP_NAME: "{{ project_name }}"
+    LOG_LEVEL: "info"
+    TZ: "UTC"
+
+  # Production-specific (overrides "all")
+  production:
+    LOG_LEVEL: "warn"
+    DATABASE_URL: "postgres://prod-db:5432/app"
+    DOMAIN: "app.example.com"
+
+  # Staging-specific
+  staging:
+    LOG_LEVEL: "debug"
+    DATABASE_URL: "postgres://staging-db:5432/app"
+    DOMAIN: "staging.example.com"
+```
+
+## Variable Priority
+
+Variables are resolved in this order (lowest to highest):
+
+```
+1. env.all                           # Base variables
+2. env.[tag]                         # Environment-specific
+3. servers.[name].env                # Server-specific
+4. CI secret: ENV_VARNAME            # CI override for environment
+5. CI secret: ENV_SERVERNAME_VARNAME # CI override for specific server
+```
+
+## CI Secret Overrides
+
+Any CI secret prefixed with `[ENV]_` or `[ENV]_[SERVERNAME]_` will override variables:
+
+```bash
+# Override DATABASE_URL for all production servers
+PRODUCTION_DATABASE_URL=postgres://secret-host:5432/db
+
+# Override DATABASE_URL for specific server only
+PRODUCTION_MAIN_SERVER_DATABASE_URL=postgres://primary:5432/db
+```
+
+<Callout type="warning">
+  Server names use underscores in CI secrets. A server named `main_server` uses `PRODUCTION_MAIN_SERVER_*`.
+</Callout>
+
+## Server-Specific Variables
+
+Define variables that apply only to a specific server:
+
+```yaml
+servers:
+  main_server:
+    tags: [production]
+    env:
+      NODE_ID: "node-1"
+      REPLICA_PRIORITY: "primary"
+
+  replica_a:
+    tags: [production]
+    env:
+      NODE_ID: "node-2"
+      REPLICA_PRIORITY: "secondary"
+```
+
+## Jinja2 Templating
+
+Values support Jinja2 syntax:
+
+```yaml
+env:
+  all:
+    APP_NAME: "{{ project_name }}"
+    STACK_NAME: "{{ project_name }}-{{ env }}"
+```
+
+See [Servers Configuration](/configuration/servers) for complete documentation.

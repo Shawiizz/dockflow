@@ -2,3 +2,5 @@
 ssh
 .env.dockflow
 secrets.json
+*/node_modules
+*/dist

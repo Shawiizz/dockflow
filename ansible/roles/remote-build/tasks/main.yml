@@ -1,7 +1,7 @@
 ---
 - name: Set temporary build directory path
   set_fact:
-    tmp_build_dir: "/tmp/docker-build-{{ project_id | default('unknown') }}-{{ env }}-{{ version }}"
+    tmp_build_dir: "/tmp/docker-build-{{ project_name }}-{{ env }}-{{ version }}"
 
 - name: Ensure Git is installed on remote server
   apt:
@@ -28,38 +28,24 @@
   register: cleanup_result
   changed_when: cleanup_result.stdout is search('deleted') or cleanup_result.stdout is search('freed')
 
-- name: Get repository URL from Git (from parent project directory)
-  shell: git config --get remote.origin.url
+- name: Get all Git information in a single command
+  shell: |
+    echo "repo_url=$(git config --get remote.origin.url)"
+    echo "branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+    echo "commit=$(git rev-parse HEAD 2>/dev/null || echo '')"
   args:
     chdir: "{{ root_path or '..' }}"
   delegate_to: localhost
-  register: repo_url_raw
-  changed_when: false
-
-- name: Get current branch name from Git (from parent project directory)
-  shell: git rev-parse --abbrev-ref HEAD
-  args:
-    chdir: "{{ root_path or '..' }}"
-  delegate_to: localhost
-  register: branch_name_raw
+  register: git_info_raw
   changed_when: false
   failed_when: false
 
-- name: Get current commit SHA from Git (from parent project directory)
-  shell: git rev-parse HEAD
-  args:
-    chdir: "{{ root_path or '..' }}"
-  delegate_to: localhost
-  register: commit_sha_raw
-  changed_when: false
-  failed_when: false
-
-- name: Set repository URL and prepare for cloning
+- name: Parse Git information
   set_fact:
-    repo_url: "{{ repo_url_raw.stdout | trim }}"
+    repo_url: "{{ git_info_raw.stdout_lines | select('match', '^repo_url=') | first | regex_replace('^repo_url=', '') | trim }}"
+    git_ref: "{{ git_info_raw.stdout_lines | select('match', '^branch=') | first | regex_replace('^branch=', '') | trim }}"
+    git_sha: "{{ git_info_raw.stdout_lines | select('match', '^commit=') | first | regex_replace('^commit=', '') | trim }}"
     git_token: "{{ lookup('env', 'GIT_TOKEN') | default('', true) }}"
-    git_ref: "{{ (branch_name_raw.stdout | default('main', true) | trim) }}"
-    git_sha: "{{ (commit_sha_raw.stdout | default('', true) | trim) }}"
     ci_job_token: "{{ lookup('env', 'CI_JOB_TOKEN') | default('', true) }}"
   no_log: true
 
@@ -141,59 +127,67 @@
         | list
       }}
 
-- name: Build Docker images on remote server
+- name: Build Docker images on remote server (parallel)
   shell: |
     cd {{ tmp_build_dir }}/.deployment/docker
-    {{ item }} 2>&1
-  loop: "{{ build_commands }}"
-  loop_control:
-    label: >-
-      {%- set image_match = item | regex_search('-t\\s+"?([^"\\s]+)"?') -%}
-      {%- if image_match -%}
-        Building {{ item | regex_replace('.*-t\\s+"?([^"\\s]+)"?.*', '\\1') }}
-      {%- else -%}
-        Building image
-      {%- endif -%}
+    set -e
+    PIDS=""
+    {% for cmd in build_commands %}
+    echo "Starting build: {{ cmd | regex_replace('.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') }}"
+    ( {{ cmd }} 2>&1 ) &
+    PIDS="$PIDS $!"
+    {% endfor %}
+    # Wait for all builds and capture exit codes
+    FAILED=0
+    for PID in $PIDS; do
+      if ! wait $PID; then
+        FAILED=1
+      fi
+    done
+    exit $FAILED
   when: build_commands is defined and build_commands | length > 0
-  async: 3600  # Allow up to 1 hour for build
-  poll: 5      # Check status every 5 seconds for more frequent updates
+  async: 3600  # Allow up to 1 hour for all builds
+  poll: 10
   register: build_results
-  ignore_errors: yes  # Don't fail immediately, collect all results first
-  environment:
-    DOCKER_BUILDKIT: "1"
-    BUILDKIT_PROGRESS: "plain"  # Force plain output for better log streaming
+  ignore_errors: yes
 
 - name: Display build output
   debug:
-    msg: "{{ item.stdout_lines | default([]) }}"
-  loop: "{{ build_results.results | default([]) }}"
+    msg: "{{ build_results.stdout_lines | default([]) }}"
   when:
-    - item.stdout_lines is defined
-    - item.stdout_lines | length > 0
-  loop_control:
-    label: "Build output"
+    - build_results.stdout_lines is defined
+    - build_results.stdout_lines | length > 0
 
-- name: Show build failures with full output
+- name: Show build failure
   debug:
     msg: |
-      Failed to build image: {{ item.item }}
-      Return code: {{ item.rc }}
-      Duration: {{ item.delta | default('N/A') }}
+      Docker builds failed!
+      Return code: {{ build_results.rc }}
       
       STDOUT:
-      {{ item.stdout | default('No stdout') }}
+      {{ build_results.stdout | default('No stdout') }}
       
       STDERR:
-      {{ item.stderr | default('No stderr') }}
-  loop: "{{ build_results.results | default([]) }}"
+      {{ build_results.stderr | default('No stderr') }}
   when:
-    - item.rc is defined
-    - item.rc != 0
+    - build_results.rc is defined
+    - build_results.rc != 0
 
-- name: Fail if any build failed
+- name: Fail if build failed
   fail:
     msg: "One or more Docker builds failed. Check the output above for details."
-  when: build_results.results | selectattr('rc', 'defined') | selectattr('rc', 'ne', 0) | list | length > 0
+  when:
+    - build_results.rc is defined
+    - build_results.rc != 0
+
+- name: Push images to registry
+  include_role:
+    name: docker-registry
+  vars:
+    built_images: "{{ build_commands | select('search', '-t\\s+') | map('regex_replace', '.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') | list }}"
+  when:
+    - deployment_config.registry is defined
+    - deployment_config.registry.enabled | default(false) | bool
 
 - name: Cleanup temporary build directory
   file:

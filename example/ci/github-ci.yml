@@ -7,27 +7,45 @@ on:
     tags:
       - '*'
 
+# Configuration:
+# 1. Make sure your .deployment/config.yml has project_name set:
+#    project_name: "my-app"
+#
+# 2. Define your .deployment/servers.yml with servers:
+#    servers:
+#      production:
+#        main_server:
+#          role: manager
+#          host: your-server-ip  # Or omit and use CI secret
+#
+# 3. Add GitHub secrets for each server:
+#    - PRODUCTION_MAIN_SERVER_CONNECTION: base64-encoded connection string
+#    
+#    Create connection string:
+#    echo -n "user@host:22|$(cat ~/.ssh/id_rsa)" | base64
+
 jobs:
   # Basic CI job to run on every push to branches (not used for deployment)
   build:
     if: github.ref_type == 'branch'
-    uses: Shawiizz/dockflow/.github/workflows/build.yml@1.0.57
+    uses: Shawiizz/dockflow/.github/workflows/build.yml@2.0.0-dev8
     with:
-      free-disk-space: false # Set to true if you need to free disk space during build (for big docker images)
+      free-disk-space: false
 
   # Deploy your application on tag push
-  deploy:
+  deploy-tag:
     if: github.ref_type == 'tag'
-    uses: Shawiizz/dockflow/.github/workflows/deploy.yml@1.0.57
+    uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.0-dev8
     with:
       tag: ${{ github.ref_name }}
-      free-disk-space: false # Set to true if you need to free disk space during deployment (for big docker images)
+      free-disk-space: false
     secrets: inherit
 
   # Deploy your application on push to branch
-  deploy:
-    uses: Shawiizz/dockflow/.github/workflows/deploy.yml@1.0.57
+  deploy-branch:
+    if: github.ref_type == 'branch'
+    uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.0-dev8
     with:
-      version: ${{ github.ref_name }}-${{ github.sha }} # Note: the variable is called "version" specifically for branch deployments
-      free-disk-space: false # Set to true if you need to free disk space during deployment (for big docker images)
+      version: ${{ github.ref_name }}-${{ github.sha }}
+      free-disk-space: false
     secrets: inherit
