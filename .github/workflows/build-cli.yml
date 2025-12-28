@@ -3,7 +3,7 @@ name: Build CLI Binaries
 on:
   push:
     tags:
-      - 'cli/*'
+      - '[0-9]+.[0-9]+.[0-9]+*'
   workflow_dispatch:
 
 permissions:
@@ -23,8 +23,8 @@ jobs:
       - name: Extract version from tag
         id: version
         run: |
-          # Extract version from tag (cli/1.0.0 -> 1.0.0)
-          VERSION=${GITHUB_REF_NAME#cli/}
+          # Tag is already the version (2.0.0)
+          VERSION=$GITHUB_REF_NAME
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "📦 Building CLI version: $VERSION"
 
@@ -45,15 +45,15 @@ jobs:
           path: cli-ts/dist/*
 
       - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/cli/')
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          name: Dockflow CLI v${{ steps.version.outputs.version }}
+          name: Dockflow ${{ steps.version.outputs.version }}
           tag_name: ${{ github.ref_name }}
           files: cli-ts/dist/*
           generate_release_notes: true
           body: |
-            ## Dockflow CLI v${{ steps.version.outputs.version }}
+            ## Dockflow ${{ steps.version.outputs.version }}
 
             ### Installation
 
