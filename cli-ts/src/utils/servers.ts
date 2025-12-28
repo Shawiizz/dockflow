@@ -526,3 +526,35 @@ export async function findActiveManager(
 export function getManagerCount(environment: string): number {
   return getManagersForEnvironment(environment).length;
 }
+
+/**
+ * Get environment variables for a given environment (for build mode)
+ * This doesn't require SSH connection, just merges env vars from servers.yml + CI secrets
+ * Uses the first server with the matching tag to get the env vars
+ */
+export function getEnvVarsForEnvironment(environment: string): EnvVars {
+  const config = loadServersConfig();
+  if (!config) {
+    return {};
+  }
+  
+  // Find the first server with this environment tag
+  for (const [serverName, serverConfig] of Object.entries(config.servers)) {
+    if (serverConfig.tags.includes(environment)) {
+      return mergeEnvVars(config, environment, serverName, serverConfig.env);
+    }
+  }
+  
+  // No server found with this tag, just return global env vars
+  const result: EnvVars = {};
+  
+  if (config.env?.all) {
+    Object.assign(result, config.env.all);
+  }
+  
+  if (config.env?.[environment]) {
+    Object.assign(result, config.env[environment]);
+  }
+  
+  return result;
+}

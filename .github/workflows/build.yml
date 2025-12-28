@@ -3,6 +3,10 @@ name: Build
 on:
   workflow_call:
     inputs:
+      environment:
+        required: true
+        type: string
+        description: "The environment to use for build variables (e.g., production, staging)"
       free-disk-space:
         required: false
         type: boolean
@@ -15,7 +19,7 @@ on:
         description: "Comma-separated list of services to build (empty = all)"
 
 env:
-  DOCKFLOW_VERSION: 2.0.0-dev5
+  DOCKFLOW_VERSION: 2.0.0-dev6
 
 jobs:
   build:
@@ -32,13 +36,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Prepare secrets
+        run: |
+          # Write secrets to a file that the CLI can read
+          echo '${{ toJSON(secrets) }}' > /tmp/secrets.json
+
       - name: Install Dockflow CLI
         run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/${{ env.DOCKFLOW_VERSION }}/install.sh | VERSION=${{ env.DOCKFLOW_VERSION }} bash
 
       - name: Build Docker images
         run: |
           if [ -n "${{ inputs.services }}" ]; then
-            dockflow build --services "${{ inputs.services }}"
+            dockflow build "${{ inputs.environment }}" --services "${{ inputs.services }}"
           else
-            dockflow build
+            dockflow build "${{ inputs.environment }}"
           fi
+        env:
+          DOCKFLOW_SECRETS_FILE: /tmp/secrets.json
