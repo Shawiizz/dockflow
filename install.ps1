@@ -3,12 +3,15 @@
 
 $ErrorActionPreference = "Stop"
 
+# Version to install
+$Version = "2.0.0-dev7"
+
 # Detect architecture
 $arch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
 
 # Build download URL
 $binaryName = "dockflow-windows-$arch.exe"
-$downloadUrl = "https://github.com/Shawiizz/dockflow/releases/latest/download/$binaryName"
+$downloadUrl = "https://github.com/Shawiizz/dockflow/releases/download/$Version/$binaryName"
 
 # Determine install location
 $installDir = "$env:LOCALAPPDATA\dockflow"

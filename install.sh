@@ -1,11 +1,10 @@
 #!/bin/bash
 # Dockflow CLI Installer
 # Usage: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | bash
-# Usage with version: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | VERSION=2.0.0 bash
 set -e
 
-# Version to install (default: latest)
-VERSION="${VERSION:-latest}"
+# Version to install
+VERSION="2.0.0-dev7"
 
 # Detect OS and architecture
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"

@@ -37,7 +37,7 @@
 
 - name: Display build information
   debug:
-    msg: "Building {{ build_commands | length }} Docker image(s) locally for host {{ hostname | default('main') }}"
+    msg: "Building {{ build_commands | length }} Docker image(s) locally for {{ env }} {{ inventory_hostname }}"
   delegate_to: localhost
 
 - name: Build Docker images locally (parallel)

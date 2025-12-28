@@ -42,7 +42,7 @@ jobs:
           echo '${{ toJSON(secrets) }}' > /tmp/secrets.json
 
       - name: Install Dockflow CLI
-        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/${{ env.DOCKFLOW_VERSION }}/install.sh | VERSION=${{ env.DOCKFLOW_VERSION }} bash
+        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/${{ env.DOCKFLOW_VERSION }}/install.sh | bash
 
       - name: Build Docker images
         run: |
