@@ -18,12 +18,12 @@ build:
     - apt-get update && apt-get install -y git python3-pip ansible npm
     - npm i -g shawiizz-decomposerize
     - pip3 install pyyaml
-    - git clone --branch "$DOCKFLOW_FRAMEWORK_VERSION" "$DOCKFLOW_REPOSITORY_URL" /tmp/dockflow
   script:
     - |
-      export ROOT_PATH=$(pwd)
-      cd /tmp/dockflow
-      ansible-playbook ansible/playbooks/build_images.yml --connection=local
+      # Install Dockflow CLI (versionnée)
+      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/2.0.0-dev7/install.sh | bash
+      # Build images avec Dockflow CLI
+      dockflow build "$CI_COMMIT_REF_NAME"
   rules:
     - if: '$CI_COMMIT_TAG'
       when: never

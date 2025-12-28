@@ -1,6 +1,6 @@
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/2.0.0-dev7/.gitlab/common/steps.yml'
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/2.0.0-dev7/.gitlab/common/variables.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/2.0.0-dev7/.gitlab/common/steps.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/2.0.0-dev7/.gitlab/common/variables.yml'
 
 stages:
   - deploy

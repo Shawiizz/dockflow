@@ -21,7 +21,7 @@
   script:
     - |
       # Install Dockflow CLI
-      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | bash
+      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/2.0.0-dev7/install.sh | bash
       
       # Build deploy command with options
       DEPLOY_OPTS=""
@@ -32,6 +32,4 @@
         DEPLOY_OPTS="$DEPLOY_OPTS --skip-accessories"
       fi
       
-      # Run deployment
-      # GitLab CI variables are already in the environment
       dockflow deploy "$ENV" "$VERSION" $DEPLOY_OPTS
