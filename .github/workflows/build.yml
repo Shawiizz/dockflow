@@ -33,7 +33,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Dockflow CLI
-        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | VERSION=${{ env.DOCKFLOW_VERSION }} bash
+        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/${{ env.DOCKFLOW_VERSION }}/install.sh | VERSION=${{ env.DOCKFLOW_VERSION }} bash
 
       - name: Build Docker images
         run: |
