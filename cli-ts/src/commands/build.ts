@@ -27,6 +27,7 @@ interface BuildOptions {
   debug?: boolean;
   dev?: boolean;
   push?: boolean;
+  skipHooks?: boolean;
 }
 
 /**
@@ -72,6 +73,7 @@ export BUILD_MODE="true"
 export BRANCH_NAME="${branchName}"
 export ROOT_PATH="/project"
 export ANSIBLE_HOST_KEY_CHECKING=False
+${options.skipHooks ? `export SKIP_HOOKS="true"` : ''}
 ${options.services ? `export DEPLOY_DOCKER_SERVICES="${options.services}"` : ''}
 
 # Environment variables from servers.yml
@@ -140,6 +142,9 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
   if (options.services) {
     printInfo(`Services: ${options.services}`);
   }
+  if (options.skipHooks) {
+    printInfo(`Hooks: Skipped`);
+  }
   if (options.dev) {
     printInfo(`Mode: Development (using local dockflow)`);
   }
@@ -164,6 +169,7 @@ export function registerBuildCommand(program: Command): void {
     .description('Build Docker images locally without deploying')
     .option('--services <services>', 'Comma-separated list of services to build')
     .option('--push', 'Push images to registry after build')
+    .option('--skip-hooks', 'Skip pre-build and post-build hooks')
     .option('--debug', 'Enable debug output')
     .option('--dev', 'Use local dockflow folder instead of cloning (for development)')
     .action(withErrorHandler(async (env: string, options: BuildOptions) => {

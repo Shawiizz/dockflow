@@ -152,6 +152,8 @@ class VersionManager {
         for (const filePath of allFiles) {
             if (filePath === this.packageJsonPath) continue;
             if (filePath.endsWith('version-manager.js')) continue;
+            if (filePath.endsWith('package-lock.json')) continue;
+            if (filePath.endsWith('.md')) continue;
             
             try {
                 const content = fs.readFileSync(filePath, 'utf8');

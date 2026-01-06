@@ -6,8 +6,9 @@
   gather_facts: false
   vars:
     tmp_dir: "/tmp"
-    framework_version: "2.0.3"
+    framework_version: "2.0.4"
     root_path: "{{ lookup('env', 'ROOT_PATH') }}"
+    skip_hooks: "{{ lookup('env', 'SKIP_HOOKS') | default(false) | bool }}"
   
   pre_tasks:
     - name: Display Dockflow version
@@ -22,6 +23,13 @@
   roles:
     - role: ../roles/load-config
     - role: ../roles/prepare-deployment
+    # Pre-build hook (runs locally)
+    - role: ../roles/hooks
+      vars:
+        hook_name: "pre-build"
+        hook_delegate: "localhost"
+        hook_working_dir: "{{ root_path }}"
+      when: not (skip_hooks | default(false) | bool)
   
   tasks:
     - name: Set computed variables
@@ -35,3 +43,13 @@
     - name: Build Docker images
       include_role:
         name: ../roles/local-build
+
+    # Post-build hook (runs locally)
+    - name: Run post-build hook
+      include_role:
+        name: ../roles/hooks
+      vars:
+        hook_name: "post-build"
+        hook_delegate: "localhost"
+        hook_working_dir: "{{ root_path }}"
+      when: not (skip_hooks | default(false) | bool)
