@@ -37,6 +37,23 @@
     msg: "✓ Rendered {{ docker_files.matched | default(0) }} file(s) in .deployment/docker/"
   when: docker_dir.stat.exists
 
+# Render custom template files defined in config.yml
+- name: Render custom template files
+  template:
+    src: "{{ root_path }}/{{ (item.src | default(item)) }}"
+    dest: "{{ root_path }}/{{ (item.dest | default(item)) }}"
+    mode: '0644'
+  loop: "{{ deployment_config.templates | default([]) }}"
+  delegate_to: localhost
+  when: deployment_config.templates is defined and deployment_config.templates | length > 0
+  loop_control:
+    label: "{{ item.src | default(item) }}"
+
+- name: Display custom templates rendering completion
+  debug:
+    msg: "✓ Rendered {{ deployment_config.templates | length }} custom template file(s)"
+  when: deployment_config.templates is defined and deployment_config.templates | length > 0
+
 - name: Update docker-compose.yml images with registry path if registry is enabled
   block:
     - name: Check if docker-compose.yml exists

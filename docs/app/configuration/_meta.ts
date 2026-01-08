@@ -6,6 +6,7 @@ export default {
   accessories: 'Accessories (Databases, Caches)',
   'build-strategy': 'Build Strategy',
   registry: 'Docker Registry',
+  templates: 'Templates',
   hooks: 'Hooks',
   'multi-host': 'Multi-Host Deployment',
   'config-file': 'Configuration File'

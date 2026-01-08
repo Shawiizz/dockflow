@@ -1,0 +1,148 @@
+# Templates
+
+import { Callout } from 'nextra/components'
+
+Dockflow can render any file in your project with Jinja2 templating before deployment. This is useful for injecting environment-specific configuration values into files.
+
+## Configuration
+
+Define the files to render in `.deployment/config.yml`:
+
+```yaml
+templates:
+  - "config/application.yml"
+  - "nginx/nginx.conf"
+  - "scripts/init.sh"
+```
+
+### Extended Format
+
+If you want to keep the source file unchanged and output to a different location:
+
+```yaml
+templates:
+  - src: "config/application.yml.j2"
+    dest: "config/application.yml"
+  - src: "nginx/nginx.conf.j2"
+    dest: "nginx/nginx.conf"
+```
+
+You can mix both formats:
+
+```yaml
+templates:
+  - "scripts/init.sh"                    # Rendered in-place
+  - src: "config/app.yml.j2"             # Source → different destination
+    dest: "config/app.yml"
+```
+
+## Available Variables
+
+All Ansible variables are available in your templates (always lowercase):
+
+| Variable | Description | Example |
+|----------|-------------|--------|
+| `{{ env }}` | Target environment | `production` |
+| `{{ version }}` | Deployment version | `1.2.3` |
+| `{{ project_name }}` | Project name from config | `my-app` |
+| `{{ stack_name }}` | Swarm stack name | `my-app-production` |
+| `{{ branch_name }}` | Git branch name | `main` |
+| `{{ my_var }}` | Environment variables from servers.yml + CI secrets (lowercase) | - |
+
+<Callout type="warning">
+**All variable names must be lowercase.** Even if you define `DB_HOST` in `servers.yml` or CI secrets, you must reference it as `{{ db_host }}` in your templates.
+</Callout>
+
+## Examples
+
+### Application Configuration
+
+```yaml
+# config/application.yml
+database:
+  host: "{{ db_host }}"
+  port: {{ db_port | default(5432) }}
+  name: "{{ db_name }}"
+  username: "{{ db_user }}"
+  password: "{{ db_password }}"
+
+server:
+  environment: "{{ env }}"
+  version: "{{ version }}"
+  debug: {{ 'true' if env == 'development' else 'false' }}
+```
+
+### Nginx Configuration
+
+```nginx
+# nginx/nginx.conf
+server {
+    listen 80;
+    server_name {{ domain }};
+
+    location / {
+        proxy_pass http://{{ project_name }}_app:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+### Init Script
+
+```bash
+#!/bin/bash
+# scripts/init.sh
+
+echo "Initializing {{ project_name }} v{{ version }}"
+echo "Environment: {{ env }}"
+
+{% if env == 'production' %}
+echo "Running production optimizations..."
+{% else %}
+echo "Running in development mode"
+{% endif %}
+```
+
+## Execution Order
+
+Templates are rendered early in the deployment process:
+
+1. Load configuration (`config.yml`)
+2. Render Docker templates (`.deployment/docker/*`)
+3. **Render custom templates** ← your files
+4. Build Docker images
+5. Deploy to server
+
+<Callout type="info">
+Templates are rendered **before** the Docker build, so the rendered files will be included in your Docker images if they are in the build context.
+</Callout>
+
+## Conditional Rendering
+
+Use Jinja2 conditionals for environment-specific content:
+
+```yaml
+# config/settings.yml
+logging:
+{% if env == 'production' %}
+  level: "warn"
+  format: "json"
+{% else %}
+  level: "debug"
+  format: "pretty"
+{% endif %}
+
+features:
+  debug_toolbar: {{ 'true' if env != 'production' else 'false' }}
+```
+
+## Default Values
+
+Use Jinja2 filters to provide fallback values:
+
+```yaml
+database:
+  pool_size: {{ db_pool_size | default(10) }}
+  timeout: {{ db_timeout | default(30) }}
+```

@@ -32,7 +32,9 @@ networks:
 By default, `${ENV}` and `${VERSION}` are automatically added to:
 - Image names
 - Container names
-- Volume names
-- Network names
 
 This ensures complete isolation between different environments (production, staging, etc.).
+
+<Callout type="info">
+  Volumes and networks are automatically prefixed with the stack name by Docker Swarm (e.g., `myapp-production_volname`), so they don't need additional environment suffixes.
+</Callout>

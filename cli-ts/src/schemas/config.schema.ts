@@ -90,6 +90,18 @@ export const HealthCheckConfigSchema = z.object({
 });
 
 /**
+ * Template file configuration schema
+ * Supports either a simple string (src = dest) or an object with src/dest
+ */
+export const TemplateFileSchema = z.union([
+  z.string().describe('File path to render in-place (src = dest)'),
+  z.object({
+    src: z.string().describe('Source file path (relative to project root)'),
+    dest: z.string().describe('Destination file path (relative to project root)'),
+  }),
+]);
+
+/**
  * Hooks configuration schema
  */
 export const HooksConfigSchema = z.object({
@@ -146,6 +158,10 @@ export const DockflowConfigSchema = z.object({
   
   hooks: HooksConfigSchema.optional().describe(
     'Lifecycle hooks for custom scripts'
+  ),
+  
+  templates: z.array(TemplateFileSchema).optional().describe(
+    'List of files to render with Jinja2 templating before deployment'
   ),
 });
 
