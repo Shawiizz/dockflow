@@ -227,13 +227,58 @@
     {% endif %}
     DEPLOY_CMD="$DEPLOY_CMD {{ swarm_stack_name }}"
     
-    # Execute the deploy command
+    # Execute the deploy command and capture output
     echo "Running: $DEPLOY_CMD"
-    $DEPLOY_CMD
+    DEPLOY_OUTPUT=$($DEPLOY_CMD 2>&1)
+    DEPLOY_EXIT_CODE=$?
+    echo "$DEPLOY_OUTPUT"
+    
+    # Check for known error patterns in output even if exit code is 0
+    if echo "$DEPLOY_OUTPUT" | grep -q "could not be found"; then
+      echo "ERROR: Stack deployment failed - resource not found"
+      exit 1
+    fi
+    
+    if [ $DEPLOY_EXIT_CODE -ne 0 ]; then
+      echo "ERROR: docker stack deploy failed with exit code $DEPLOY_EXIT_CODE"
+      exit $DEPLOY_EXIT_CODE
+    fi
     
     echo "Stack {{ swarm_stack_name }} deployed"
   register: stack_deploy
   changed_when: true
+
+- name: Verify stack was created successfully
+  shell: |
+    # Wait a moment for stack to register
+    sleep 2
+    
+    # Check if stack exists
+    if ! docker stack ls --format "{{ '{{' }}.Name{{ '}}' }}" | grep -q "^{{ swarm_stack_name }}$"; then
+      echo "ERROR: Stack {{ swarm_stack_name }} was not created!"
+      echo "The docker stack deploy command may have failed silently."
+      echo ""
+      echo "Common causes:"
+      echo "  - External network not found (check 'docker network ls')"
+      echo "  - Invalid compose file syntax"
+      echo "  - Image not found"
+      echo ""
+      echo "To debug, run on the server:"
+      echo "  cd {{ release_dir }}"
+      echo "  docker stack deploy --compose-file docker-compose.yml {{ swarm_stack_name }}"
+      exit 1
+    fi
+    
+    # Check if services were created
+    SERVICE_COUNT=$(docker stack services {{ swarm_stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}" | wc -l)
+    if [ "$SERVICE_COUNT" -eq 0 ]; then
+      echo "ERROR: Stack {{ swarm_stack_name }} exists but has no services!"
+      exit 1
+    fi
+    
+    echo "Stack {{ swarm_stack_name }} verified with $SERVICE_COUNT service(s)"
+  register: stack_verify
+  changed_when: false
 
 - name: Wait for services to converge
   shell: |

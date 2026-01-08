@@ -8,7 +8,7 @@
     "dockflow": "./src/index.ts"
   },
   "scripts": {
-    "dev": "bun run src/index.ts",
+    "dev": "bun run scripts/dev.ts",
     "build": "bun run scripts/build.ts",
     "build:linux": "bun build src/index.ts --compile --target=bun-linux-x64 --outfile=dist/dockflow-linux",
     "build:windows": "bun build src/index.ts --compile --target=bun-windows-x64 --outfile=dist/dockflow.exe",

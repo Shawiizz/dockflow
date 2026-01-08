@@ -94,18 +94,39 @@ bun ./cli-ts/src/index.ts --help
 bun ./cli-ts/src/index.ts setup interactive
 ```
 
-Test deploy/build using local dockflow instead of cloning from GitHub:
+#### Testing deploy/build with local Dockflow
+
+Use the dev script to test deployment with your local Dockflow changes. The script automatically:
+- Sets `DOCKFLOW_DEV_PATH` to the project root
+- Adds `--dev` flag for deploy/build commands
 
 ```bash
-# Bash/Linux/macOS
-export DOCKFLOW_DEV_PATH="/path/to/dockflow"
-bun ./cli-ts/src/index.ts build production --dev
+# From your project directory (e.g., my-app/)
+cd /path/to/my-app
+
+# Run dockflow commands using the dev script
+bun /path/to/dockflow/cli-ts/scripts/dev.ts deploy production --force
+bun /path/to/dockflow/cli-ts/scripts/dev.ts build production
+```
+
+**Recommended: Create an alias for convenience**
+
+```bash
+# Bash/Linux/macOS - Add to ~/.bashrc or ~/.zshrc
+alias dockflow-dev='bun /path/to/dockflow/cli-ts/scripts/dev.ts'
 ```
 
 ```powershell
-# PowerShell/Windows
-$env:DOCKFLOW_DEV_PATH = "C:\path\to\dockflow"
-bun ./cli-ts/src/index.ts build production --dev
+# PowerShell/Windows - Add to $PROFILE
+function dockflow-dev { bun C:\path\to\dockflow\cli-ts\scripts\dev.ts @args }
+```
+
+Then use it like the regular CLI:
+
+```bash
+dockflow-dev deploy production --force
+dockflow-dev build production
+dockflow-dev ssh production "docker ps"
 ```
 
 ### Releasing CLI Binaries
