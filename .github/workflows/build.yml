@@ -19,7 +19,7 @@ on:
         description: "Comma-separated list of services to build (empty = all)"
 
 env:
-  DOCKFLOW_VERSION: 2.0.4
+  DOCKFLOW_VERSION: 2.0.5
 
 jobs:
   build:
