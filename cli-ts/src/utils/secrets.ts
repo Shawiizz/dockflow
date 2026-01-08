@@ -38,26 +38,57 @@ function parseDotenv(content: string): Record<string, string> {
 }
 
 /**
+ * Check if we're running in CI environment
+ */
+export function isCI(): boolean {
+  return !!(
+    process.env.CI ||
+    process.env.GITHUB_ACTIONS ||
+    process.env.GITLAB_CI ||
+    process.env.JENKINS_URL ||
+    process.env.BUILDKITE
+  );
+}
+
+/**
  * Load secrets into process.env from various sources
- * Priority: .env.dockflow > JSON file > DOCKFLOW_SECRETS env var
+ * 
+ * In local development:
+ *   Uses .env.dockflow file only
+ * 
+ * In CI environment:
+ *   Uses JSON file / env vars only (.env.dockflow is IGNORED with a warning)
  */
 export function loadSecrets(): void {
-  // 1. Check for .env.dockflow (local development)
+  const inCI = isCI();
+  
+  // 1. Check for .env.dockflow
   if (existsSync(ENV_FILE_PATH)) {
-    try {
-      const content = readFileSync(ENV_FILE_PATH, 'utf-8');
-      const secrets = parseDotenv(content);
-      
-      for (const [key, value] of Object.entries(secrets)) {
-        if (value.trim() !== '') {
-          process.env[key] = value;
+    if (inCI) {
+      // In CI: warn and IGNORE the file completely
+      console.warn('');
+      console.warn('\x1b[33m⚠️  WARNING: .env.dockflow file detected in CI environment!\x1b[0m');
+      console.warn('\x1b[33m   This file should NOT be committed to your repository.\x1b[0m');
+      console.warn('\x1b[33m   Add it to .gitignore: echo ".env.dockflow" >> .gitignore\x1b[0m');
+      console.warn('\x1b[33m   This file will be IGNORED. Using CI secrets instead.\x1b[0m');
+      console.warn('');
+    } else {
+      // In local dev: load the file and return
+      try {
+        const content = readFileSync(ENV_FILE_PATH, 'utf-8');
+        const secrets = parseDotenv(content);
+        
+        for (const [key, value] of Object.entries(secrets)) {
+          if (value.trim() !== '') {
+            process.env[key] = value;
+          }
         }
+        
+        console.log(`Loaded secrets from ${ENV_FILE_PATH}`);
+        return;
+      } catch (error) {
+        console.error(`Failed to load ${ENV_FILE_PATH}: ${error}`);
       }
-      
-      console.log(`Loaded secrets from ${ENV_FILE_PATH}`);
-      return;
-    } catch (error) {
-      console.error(`Failed to load ${ENV_FILE_PATH}: ${error}`);
     }
   }
   
@@ -94,7 +125,7 @@ export function loadSecrets(): void {
         }
       }
       
-      console.log('Loaded secrets from DOCKFLOW_SECRETS environment variable');
+      console.log('Loaded secrets from DOCKFLOW_SECRETS');
       return;
     } catch (error) {
       console.error(`Failed to parse DOCKFLOW_SECRETS: ${error}`);
@@ -113,22 +144,9 @@ export function loadSecrets(): void {
         }
       }
       
-      console.log('Loaded secrets from GITHUB_SECRETS environment variable');
+      console.log('Loaded secrets from GITHUB_SECRETS');
     } catch (error) {
       console.error(`Failed to parse GITHUB_SECRETS: ${error}`);
     }
   }
-}
-
-/**
- * Check if we're running in CI environment
- */
-export function isCI(): boolean {
-  return !!(
-    process.env.CI ||
-    process.env.GITHUB_ACTIONS ||
-    process.env.GITLAB_CI ||
-    process.env.JENKINS_URL ||
-    process.env.BUILDKITE
-  );
 }
