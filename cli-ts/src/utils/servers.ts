@@ -210,7 +210,9 @@ export function resolveServersForEnvironment(environment: string): ResolvedServe
     const connection = resolveConnection(environment, serverName, serverConfig, defaults);
     if (!connection) {
       console.warn(`Warning: Server "${serverName}" has no host configured and no CI secret found.`);
-      console.warn(`  Expected CI secret: ${environment.toUpperCase()}_${serverNameToEnvKey(serverName)}_HOST`);
+      console.warn(`  Expected CI secret: ${environment.toUpperCase()}_${serverNameToEnvKey(serverName)}_CONNECTION`);
+      console.warn(`  If this repo is in a GitHub organization, fork the dockflow repository to your organization.`);
+      console.warn(`  See: https://dockflow.shawiMusic.fr/getting-started#copy-ci-config-file`);
       continue;
     }
     
