@@ -18,6 +18,7 @@ import { registerVersionCommand } from './version';
 import { registerAuditCommand } from './audit';
 import { registerBashCommand } from './bash';
 import { registerMetricsCommand } from './metrics';
+import { registerDiagnoseCommand } from './diagnose';
 
 /**
  * Register all app commands
@@ -30,6 +31,7 @@ export function registerAppCommands(program: Command): void {
   registerLogsCommand(program);
   registerAuditCommand(program);
   registerMetricsCommand(program);
+  registerDiagnoseCommand(program);
   
   // Action commands
   registerBashCommand(program);
