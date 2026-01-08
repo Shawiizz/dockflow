@@ -93,9 +93,14 @@
         - /var/lib/dockflow
         - /var/lib/dockflow/stacks
         - /var/lib/dockflow/accessories
-        - /var/lib/dockflow/locks
         - /var/lib/dockflow/audit
         - /var/lib/dockflow/metrics
+
+    - name: Ensure locks directory exists with open permissions
+      file:
+        path: /var/lib/dockflow/locks
+        state: directory
+        mode: '1777'
 
     - name: Record deployment start time
       set_fact:

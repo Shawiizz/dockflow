@@ -51,11 +51,27 @@ export function registerLockReleaseCommand(parent: Command): void {
 
         // Release lock
         spinner.start('Releasing lock...');
-        await sshExec(connection, `rm -f "${lockFile}"`);
+        const removeResult = sshExec(connection, `rm -f "${lockFile}"`);
+        
+        if (removeResult.exitCode !== 0) {
+          spinner.fail('Failed to remove lock file');
+          throw new CLIError(`Failed to remove lock: ${removeResult.stderr}`, ErrorCode.COMMAND_FAILED);
+        }
+
+        // Verify the lock was actually removed
+        const verifyResult = sshExec(connection, `test -f "${lockFile}" && echo "EXISTS" || echo "REMOVED"`);
+        if (verifyResult.stdout.trim() === 'EXISTS') {
+          spinner.fail('Lock file still exists after removal attempt');
+          throw new CLIError(
+            'Could not remove lock file. Check permissions on the server.',
+            ErrorCode.COMMAND_FAILED
+          );
+        }
         
         spinner.succeed(`Lock released for ${stackName}`);
         console.log(chalk.gray('  Deployments to this environment are now allowed.'));
       } catch (error) {
+        if (error instanceof CLIError) throw error;
         spinner.fail('Failed to release lock');
         throw new CLIError(`${error}`, ErrorCode.COMMAND_FAILED);
       }

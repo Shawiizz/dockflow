@@ -11,7 +11,7 @@
   file:
     path: "{{ lock_dir }}"
     state: directory
-    mode: '0755'
+    mode: '1777'
 
 - name: Check for existing lock
   stat:
