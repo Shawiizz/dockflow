@@ -12,7 +12,7 @@
   set_fact:
     deployment_config:
       options:
-        environmentize: true
+        image_auto_tag: true
         enable_debug_logs: false
         remote_build: false
   when: not config_file.stat.exists
@@ -45,6 +45,6 @@
     msg:
       - "Framework Configuration:"
       - "  - Project Name: {{ deployment_config.project_name | default('NOT SET - REQUIRED') }}"
-      - "  - Environmentize: {{ deployment_config.options.environmentize | default(true) }}"
+      - "  - Image Auto Tag: {{ deployment_config.options.image_auto_tag | default(true) }}"
       - "  - Debug Logs: {{ deployment_config.options.enable_debug_logs | default(false) }}"
       - "  - Remote Build: {{ deployment_config.options.remote_build | default(false) }}"

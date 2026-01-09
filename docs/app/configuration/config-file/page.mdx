@@ -7,7 +7,7 @@ Create `.deployment/config.yml` to customize behavior.
 project_name: "my-app"          # Must be lowercase, alphanumeric with hyphens only
 
 options:
-  environmentize: true          # Auto-add ENV/VERSION (default: true)
+  image_auto_tag: true          # Auto-append -<env>:<version> to images (default: true)
   enable_debug_logs: false      # Verbose logging (default: false)
   remote_build: false           # Build on server (default: false)
 
@@ -60,10 +60,22 @@ The stack name is automatically set to `{project_name}-{env}` and cannot be cust
 
 ## Options Reference
 
-### `environmentize`
+### `image_auto_tag`
 **Default:** `true`
 
-Automatically adds `${ENV}` and `${VERSION}` to image names and container names for environment isolation.
+Automatically appends `-<env>:<version>` to image names for environment isolation.
+
+When enabled, image names are transformed:
+- `my-app` → `my-app-production:1.0.0`
+- `backend:latest` → `backend-staging:2.1.0` (existing tag replaced)
+
+This ensures each environment has isolated images and enables easy version tracking.
+
+```yaml
+options:
+  image_auto_tag: true   # Images become my-app-production:1.0.0
+  image_auto_tag: false  # Images keep original names as-is
+```
 
 ### `enable_debug_logs`
 **Default:** `false`

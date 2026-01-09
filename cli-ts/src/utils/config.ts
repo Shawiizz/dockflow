@@ -30,7 +30,7 @@ export interface RegistryConfig {
 
 export interface BuildOptions {
   remote_build?: boolean;
-  environmentize?: boolean;
+  image_auto_tag?: boolean;
   enable_debug_logs?: boolean;
 }
 

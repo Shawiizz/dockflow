@@ -59,7 +59,6 @@
         global_no_log: "{{ not (deployment_config.options.enable_debug_logs | default(false) | bool) }}"
         deploy_services: "{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true) }}"
         services_option: "{{ ('--services=' + lookup('env', 'DEPLOY_DOCKER_SERVICES')) if lookup('env', 'DEPLOY_DOCKER_SERVICES') else '' }}"
-        environmentize_option: "{{ '--environmentize' if (deployment_config.options.environmentize | default(true) | bool) else '' }}"
         remote_build: "{{ deployment_config.options.remote_build | default(false) | bool }}"
         project_name: "{{ deployment_config.project_name }}"
         sanitized_branch_name: "{{ branch_name | regex_replace('[^a-zA-Z0-9-]', '_') }}"

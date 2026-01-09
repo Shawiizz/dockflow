@@ -103,6 +103,7 @@ export function buildDockerCommand(devMode: boolean = false): string[] {
   
   const dockerCmd = [
     'docker', 'run', '--rm',
+    '--pull', 'always',
     ...(isTTY ? ['-it'] : []),
     '-v', `${projectRoot}:/project`,
     '-v', '/var/run/docker.sock:/var/run/docker.sock',

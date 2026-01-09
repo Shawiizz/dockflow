@@ -5,35 +5,14 @@
 - name: Generate build commands using decomposerize
   shell: |
     cd {{ root_path }}/.deployment/docker
-    decomposerize docker-compose.yml --docker-build {{ services_option }} {{ environmentize_option }} --ansible-env-vars-format > /tmp/decomposerize_build.j2
+    decomposerize docker-compose.yml --docker-build {{ services_option }}
   delegate_to: localhost
+  register: build_commands_output
   changed_when: false
 
-- name: Render build template with evaluated variables
-  template:
-    src: /tmp/decomposerize_build.j2
-    dest: /tmp/decomposerize_build_rendered.sh
-  delegate_to: localhost
-  changed_when: false
-
-- name: Get rendered build commands
-  slurp:
-    src: /tmp/decomposerize_build_rendered.sh
-  delegate_to: localhost
-  register: rendered_build_script
-  changed_when: false
-
-- name: Set evaluated build commands
+- name: Set build commands
   set_fact:
-    build_commands: >-
-      {{
-        rendered_build_script.content
-        | b64decode
-        | split('\n')
-        | map('trim')
-        | select('truthy')
-        | list
-      }}
+    build_commands: "{{ build_commands_output.stdout_lines | select('truthy') | list }}"
 
 - name: Display build information
   debug:

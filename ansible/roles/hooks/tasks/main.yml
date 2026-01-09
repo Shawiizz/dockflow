@@ -1,41 +1,28 @@
 ---
 # Hooks role - executes user-defined scripts at key deployment stages
 # Hooks are optional shell scripts in .deployment/hooks/
-# They are rendered with Jinja2 before execution
+# Note: Hooks are pre-rendered by prepare-deployment role
 
 - name: Set hooks configuration
   set_fact:
     hooks_enabled: "{{ deployment_config.hooks.enabled | default(true) | bool }}"
     hooks_timeout: "{{ deployment_config.hooks.timeout | default(300) }}"
     hooks_dir: "{{ root_path }}/.deployment/hooks"
+    hook_script_path: "{{ root_path }}/.deployment/hooks/{{ hook_name }}.sh"
 
 - name: Check if hook file exists
   stat:
-    path: "{{ hooks_dir }}/{{ hook_name }}.sh"
+    path: "{{ hook_script_path }}"
   register: hook_file
   delegate_to: localhost
   when: hooks_enabled
 
 - name: Execute hook
   block:
-    - name: Create temp directory for rendered hook (local)
-      tempfile:
-        state: directory
-        prefix: "dockflow_hook_"
-      register: hook_temp_dir
-      delegate_to: localhost
-
-    - name: Render hook script with Jinja2
-      template:
-        src: "{{ hooks_dir }}/{{ hook_name }}.sh"
-        dest: "{{ hook_temp_dir.path }}/{{ hook_name }}.sh"
-        mode: '0755'
-      delegate_to: localhost
-
     - name: Run hook script locally
       shell: |
         cd {{ hook_working_dir | default(root_path) }}
-        timeout {{ hooks_timeout }} {{ hook_temp_dir.path }}/{{ hook_name }}.sh
+        timeout {{ hooks_timeout }} {{ hook_script_path }}
       args:
         executable: /bin/bash
       register: local_hook_result
@@ -50,9 +37,9 @@
             prefix: "dockflow_hook_"
           register: remote_temp_dir
 
-        - name: Copy rendered hook to remote
+        - name: Copy hook script to remote
           copy:
-            src: "{{ hook_temp_dir.path }}/{{ hook_name }}.sh"
+            src: "{{ hook_script_path }}"
             dest: "{{ remote_temp_dir.path }}/{{ hook_name }}.sh"
             mode: '0755'
 
@@ -90,14 +77,6 @@
           Error: {{ hook_result.stderr | default('Unknown error') }}
 
   always:
-    - name: Cleanup local temp directory
-      file:
-        path: "{{ hook_temp_dir.path }}"
-        state: absent
-      delegate_to: localhost
-      when: hook_temp_dir.path is defined
-      ignore_errors: true
-
     - name: Cleanup remote temp directory
       file:
         path: "{{ remote_temp_dir.path }}"

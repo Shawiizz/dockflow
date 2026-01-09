@@ -43,30 +43,16 @@
     state: directory
     mode: '0755'
 
-- name: Generate rendered docker-compose using decomposerize
-  shell: |
-    cd {{ root_path }}/.deployment/docker
-    decomposerize docker-compose.yml --composerize {{ environmentize_option }} --ansible-env-vars-format > /tmp/decomposerize_compose.j2
-  delegate_to: localhost
-  changed_when: false
-
-- name: Render docker-compose template with variables
-  template:
-    src: /tmp/decomposerize_compose.j2
-    dest: /tmp/decomposerize_compose_rendered.yml
-  delegate_to: localhost
-  changed_when: false
-
 # Create external networks and volumes before deployment
 - name: Create external resources for app
   include_tasks: ../../playbooks/create_external_resources.yml
   vars:
-    compose_file_path: /tmp/decomposerize_compose_rendered.yml
+    compose_file_path: "{{ root_path }}/.deployment/docker/docker-compose.yml"
     resource_label: "app"
 
-- name: Transfer rendered docker-compose.yml to release directory
+- name: Transfer docker-compose.yml to release directory
   copy:
-    src: /tmp/decomposerize_compose_rendered.yml
+    src: "{{ root_path }}/.deployment/docker/docker-compose.yml"
     dest: "{{ release_dir }}/docker-compose.yml"
     mode: '0644'
   register: compose_transfer

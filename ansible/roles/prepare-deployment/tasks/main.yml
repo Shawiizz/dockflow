@@ -1,43 +1,43 @@
 ---
-# Prepare deployment role - renders Docker templates
+# Prepare deployment role - renders all templates in .deployment/
 # This role runs on localhost before the actual deployment
-# Note: Environment variables export is now done in the CI/CD workflow
+# Renders: docker/, hooks/, and custom templates from config.yml
 
-- name: Check if docker directory exists
+- name: Check if .deployment directory exists
   stat:
-    path: "{{ root_path }}/.deployment/docker"
+    path: "{{ root_path }}/.deployment"
   delegate_to: localhost
-  register: docker_dir
+  register: deployment_dir
   changed_when: false
 
-- name: Find all files in docker directory to render
+- name: Find all files in .deployment directory to render
   find:
-    paths: "{{ root_path }}/.deployment/docker"
+    paths: "{{ root_path }}/.deployment"
     file_type: file
     recurse: yes
   delegate_to: localhost
-  register: docker_files
-  when: docker_dir.stat.exists
+  register: deployment_files
+  when: deployment_dir.stat.exists
 
-- name: Render Docker templates with Jinja2
+- name: Render all templates in .deployment with Jinja2
   template:
     src: "{{ item.path }}"
     dest: "{{ item.path }}"
-    mode: '0644'
-  loop: "{{ docker_files.files | default([]) }}"
+    mode: preserve
+  loop: "{{ deployment_files.files | default([]) }}"
   delegate_to: localhost
   when: 
-    - docker_dir.stat.exists
-    - docker_files.files is defined
+    - deployment_dir.stat.exists
+    - deployment_files.files is defined
   loop_control:
-    label: "{{ item.path | basename }}"
+    label: "{{ item.path | regex_replace('^.*\\.deployment/', '.deployment/') }}"
 
 - name: Display rendering completion
   debug:
-    msg: "✓ Rendered {{ docker_files.matched | default(0) }} file(s) in .deployment/docker/"
-  when: docker_dir.stat.exists
+    msg: "✓ Rendered {{ deployment_files.matched | default(0) }} file(s) in .deployment/"
+  when: deployment_dir.stat.exists
 
-# Render custom template files defined in config.yml
+# Render custom template files defined in config.yml (outside .deployment/)
 - name: Render custom template files
   template:
     src: "{{ root_path }}/{{ (item.src | default(item)) }}"
@@ -54,7 +54,8 @@
     msg: "✓ Rendered {{ deployment_config.templates | length }} custom template file(s)"
   when: deployment_config.templates is defined and deployment_config.templates | length > 0
 
-- name: Update docker-compose.yml images with registry path if registry is enabled
+# Update docker-compose.yml images with environment tag and optional registry prefix
+- name: Update docker-compose.yml images
   block:
     - name: Check if docker-compose.yml exists
       stat:
@@ -69,17 +70,29 @@
       delegate_to: localhost
       when: compose_file.stat.exists
 
-    - name: Parse and update docker-compose.yml with registry paths
+    - name: Parse and update docker-compose.yml images
       set_fact:
         updated_compose: "{{ compose_content['content'] | b64decode | from_yaml | combine({'services': updated_services}, recursive=true) }}"
       vars:
-        registry_prefix: "{{ deployment_config.registry.url }}/{{ deployment_config.registry.namespace }}"
+        use_auto_tag: "{{ deployment_config.options.image_auto_tag | default(true) | bool }}"
+        use_registry: "{{ deployment_config.registry.enabled | default(false) | bool }}"
+        registry_prefix: "{{ deployment_config.registry.url | default('') }}/{{ deployment_config.registry.namespace | default('') }}"
+        env_tag: "-{{ env }}:{{ version }}"
         updated_services: >-
           {%- set ns = namespace(services={}) -%}
           {%- for service_name, service_config in (compose_content['content'] | b64decode | from_yaml).services.items() -%}
-            {%- set image_name = service_config.image | default('') -%}
-            {%- if image_name and not ('/' in image_name and '.' in image_name.split('/')[0]) -%}
-              {%- set _ = ns.services.update({service_name: service_config | combine({'image': registry_prefix + '/' + image_name})}) -%}
+            {%- set original_image = service_config.image | default('') -%}
+            {%- if original_image -%}
+              {%- set image_without_tag = original_image.split(':')[0] -%}
+              {%- if use_auto_tag -%}
+                {%- set new_image = image_without_tag + env_tag -%}
+              {%- else -%}
+                {%- set new_image = original_image -%}
+              {%- endif -%}
+              {%- if use_registry and not ('/' in image_without_tag and '.' in image_without_tag.split('/')[0]) -%}
+                {%- set new_image = registry_prefix + '/' + new_image -%}
+              {%- endif -%}
+              {%- set _ = ns.services.update({service_name: service_config | combine({'image': new_image})}) -%}
             {%- else -%}
               {%- set _ = ns.services.update({service_name: service_config}) -%}
             {%- endif -%}
@@ -95,15 +108,10 @@
         mode: '0644'
       delegate_to: localhost
       when: compose_file.stat.exists
-      register: update_compose_result
 
-    - name: Display registry update completion
+    - name: Display image update completion
       debug:
-        msg: "✓ Updated docker-compose.yml with registry path: {{ deployment_config.registry.url }}/{{ deployment_config.registry.namespace }}"
+        msg: "✓ Updated docker-compose.yml images{{ ' with -' + env + ':' + version if (deployment_config.options.image_auto_tag | default(true)) else '' }}{{ ' and registry prefix' if (deployment_config.registry.enabled | default(false)) else '' }}"
       delegate_to: localhost
 
-  when:
-    - deployment_config.registry is defined
-    - deployment_config.registry.enabled | default(false) | bool
-    - deployment_config.registry.url is defined
-    - deployment_config.registry.namespace is defined
+  when: compose_file is not defined or compose_file.stat.exists | default(true)

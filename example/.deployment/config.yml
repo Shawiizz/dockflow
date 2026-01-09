@@ -3,7 +3,7 @@
 project_name: "my-app"
 
 options:
-  environmentize: true        # Auto-add ENV/VERSION to names (default: true)
+  image_auto_tag: true       # Auto-append -<env>:<version> to image names (default: true)
   enable_debug_logs: false   # Enable detailed deployment logs (default: false)
   remote_build: false        # Build Docker images on remote server instead of CI/CD (default: false)
 

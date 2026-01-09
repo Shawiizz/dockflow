@@ -152,7 +152,7 @@ export function registerConfigCommand(program: Command): void {
         if (config.options) {
           const opts = [];
           if (config.options.remote_build) opts.push('remote-build');
-          if (config.options.environmentize) opts.push('environmentize');
+          if (config.options.image_auto_tag !== false) opts.push('image-auto-tag');
           if (opts.length > 0) {
             console.log(`  ${chalk.gray('Options:')}      ${opts.join(', ')}`);
           }

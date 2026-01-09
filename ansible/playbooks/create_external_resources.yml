@@ -9,30 +9,38 @@
 #   - skip_networks: Skip network creation (default: false)
 #   - skip_volumes: Skip volume creation (default: false)
 
-- name: "{{ resource_label | default('resources') }} - Create external {{ resource_type.name }}"
+- name: "{{ resource_label | default('resources') }} - Create external networks"
   block:
-    - name: "{{ resource_label }} - Get external {{ resource_type.name }} creation commands"
+    - name: "{{ resource_label }} - Get external networks creation commands"
       shell: |
         cd {{ compose_file_path | dirname }}
-        decomposerize {{ compose_file_path | basename }} {{ resource_type.options }} 2>/dev/null || true
+        decomposerize {{ compose_file_path | basename }} --create-external-networks --swarm 2>/dev/null || true
       delegate_to: localhost
-      register: external_commands
+      register: network_commands
       changed_when: false
 
-    - name: "{{ resource_label }} - Execute external {{ resource_type.name }} creation"
+    - name: "{{ resource_label }} - Execute external networks creation"
       shell: "{{ item }}"
-      loop: "{{ external_commands.stdout_lines | select('truthy') | list }}"
-      when: external_commands.stdout_lines | length > 0
+      loop: "{{ network_commands.stdout_lines | select('truthy') | list }}"
+      when: network_commands.stdout_lines | length > 0
       changed_when: true
       failed_when: false
-  loop:
-    - name: networks
-      options: "--create-external-networks --swarm"
-      skip: "{{ skip_networks | default(false) | bool }}"
-    - name: volumes
-      options: "--create-external-volumes"
-      skip: "{{ skip_volumes | default(false) | bool }}"
-  loop_control:
-    loop_var: resource_type
-    label: "{{ resource_type.name }}"
-  when: not resource_type.skip
+  when: not (skip_networks | default(false) | bool)
+
+- name: "{{ resource_label | default('resources') }} - Create external volumes"
+  block:
+    - name: "{{ resource_label }} - Get external volumes creation commands"
+      shell: |
+        cd {{ compose_file_path | dirname }}
+        decomposerize {{ compose_file_path | basename }} --create-external-volumes 2>/dev/null || true
+      delegate_to: localhost
+      register: volume_commands
+      changed_when: false
+
+    - name: "{{ resource_label }} - Execute external volumes creation"
+      shell: "{{ item }}"
+      loop: "{{ volume_commands.stdout_lines | select('truthy') | list }}"
+      when: volume_commands.stdout_lines | length > 0
+      changed_when: true
+      failed_when: false
+  when: not (skip_volumes | default(false) | bool)

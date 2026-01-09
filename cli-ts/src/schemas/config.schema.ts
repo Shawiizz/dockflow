@@ -37,8 +37,8 @@ export const BuildOptionsSchema = z.object({
   remote_build: z.boolean().optional().default(false).describe(
     'Build images on the remote server instead of locally'
   ),
-  environmentize: z.boolean().optional().default(true).describe(
-    'Replace environment variables in docker-compose.yml'
+  image_auto_tag: z.boolean().optional().default(true).describe(
+    'Automatically append -<env>:<version> to image names (e.g., myapp-production:1.0.0)'
   ),
   enable_debug_logs: z.boolean().optional().default(false).describe(
     'Enable verbose debug logging during deployment'

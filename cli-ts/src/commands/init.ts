@@ -109,8 +109,8 @@ project_name: "my-app"
 
 # Build options
 options:
-  remote_build: false      # Build on remote server instead of locally
-  environmentize: true     # Create environment-specific image tags
+  remote_build: false       # Build on remote server instead of locally
+  image_auto_tag: true      # Auto-append -<env>:<version> to image names
 
 # Health checks
 health_checks:
