@@ -54,12 +54,6 @@
       delegate_to: localhost
       run_once: true
 
-    - name: Prepare deployment (render Docker templates)
-      import_role:
-        name: prepare-deployment
-      run_once: true
-      delegate_to: localhost
-
     - name: Set computed variables
       set_fact:
         global_no_log: "{{ not (deployment_config.options.enable_debug_logs | default(false) | bool) }}"
@@ -76,6 +70,12 @@
         force_accessories: "{{ lookup('env', 'DEPLOY_ACCESSORIES') | default('false', true) | bool }}"
         skip_accessories: "{{ lookup('env', 'SKIP_ACCESSORIES') | default('false', true) | bool }}"
       no_log: "{{ not (deployment_config.options.enable_debug_logs | default(false) | bool) }}"
+
+    - name: Prepare deployment (render Docker templates)
+      import_role:
+        name: prepare-deployment
+      run_once: true
+      delegate_to: localhost
 
     - name: Display deployment targets
       debug:

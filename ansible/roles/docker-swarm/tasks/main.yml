@@ -57,6 +57,13 @@
   delegate_to: localhost
   changed_when: false
 
+# Create external networks and volumes before deployment
+- name: Create external resources for app
+  include_tasks: ../../playbooks/create_external_resources.yml
+  vars:
+    compose_file_path: /tmp/decomposerize_compose_rendered.yml
+    resource_label: "app"
+
 - name: Transfer rendered docker-compose.yml to release directory
   copy:
     src: /tmp/decomposerize_compose_rendered.yml

@@ -1,0 +1,38 @@
+---
+# Reusable tasks to create external networks and volumes from a compose file
+# 
+# Required variables:
+#   - compose_file_path: Path to the compose file (e.g., docker-compose.yml, accessories.yml)
+#   - resource_label: Label for logging (e.g., "app", "accessories")
+#
+# Optional variables:
+#   - skip_networks: Skip network creation (default: false)
+#   - skip_volumes: Skip volume creation (default: false)
+
+- name: "{{ resource_label | default('resources') }} - Create external {{ resource_type.name }}"
+  block:
+    - name: "{{ resource_label }} - Get external {{ resource_type.name }} creation commands"
+      shell: |
+        cd {{ compose_file_path | dirname }}
+        decomposerize {{ compose_file_path | basename }} {{ resource_type.options }} 2>/dev/null || true
+      delegate_to: localhost
+      register: external_commands
+      changed_when: false
+
+    - name: "{{ resource_label }} - Execute external {{ resource_type.name }} creation"
+      shell: "{{ item }}"
+      loop: "{{ external_commands.stdout_lines | select('truthy') | list }}"
+      when: external_commands.stdout_lines | length > 0
+      changed_when: true
+      failed_when: false
+  loop:
+    - name: networks
+      options: "--create-external-networks --swarm"
+      skip: "{{ skip_networks | default(false) | bool }}"
+    - name: volumes
+      options: "--create-external-volumes"
+      skip: "{{ skip_volumes | default(false) | bool }}"
+  loop_control:
+    loop_var: resource_type
+    label: "{{ resource_type.name }}"
+  when: not resource_type.skip

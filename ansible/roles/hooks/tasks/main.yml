@@ -38,7 +38,7 @@
         timeout {{ hooks_timeout }} {{ hook_temp_dir.path }}/{{ hook_name }}.sh
       args:
         executable: /bin/bash
-      register: hook_result
+      register: local_hook_result
       delegate_to: localhost
       when: hook_delegate | default('localhost') == 'localhost'
 
@@ -62,7 +62,7 @@
             timeout {{ hooks_timeout }} {{ remote_temp_dir.path }}/{{ hook_name }}.sh
           args:
             executable: /bin/bash
-          register: hook_result
+          register: remote_hook_result
 
         - name: Cleanup remote temp directory
           file:
@@ -70,11 +70,13 @@
             state: absent
       when: hook_delegate | default('localhost') != 'localhost'
 
+    - name: Set unified hook result
+      set_fact:
+        hook_result: "{{ local_hook_result if (local_hook_result is defined and local_hook_result.rc is defined) else remote_hook_result | default({}) }}"
+
     - name: Display hook output
       debug:
-        msg: |
-          Hook '{{ hook_name }}' completed successfully
-          {{ hook_result.stdout_lines | default([]) | join('\n') }}
+        msg: "{{ ['Hook ''' + hook_name + ''' completed successfully', 'Output:'] + (hook_result.stdout_lines | default([])) }}"
       when: 
         - hook_result is defined
         - hook_result.rc is defined

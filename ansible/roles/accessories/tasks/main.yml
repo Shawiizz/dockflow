@@ -50,22 +50,8 @@
         state: directory
         mode: '0755'
 
-    - name: Ensure local temp directory exists
-      file:
-        path: "/tmp/dockflow-accessories"
-        state: directory
-        mode: '0755'
-      delegate_to: localhost
-
-    - name: Render accessories compose file with environment variables
-      template:
-        src: "{{ accessories_compose_path }}"
-        dest: "/tmp/dockflow-accessories/docker-compose.yml.rendered"
-        mode: '0644'
-      delegate_to: localhost
-
     - name: Calculate hash of rendered accessories compose
-      shell: sha256sum "/tmp/dockflow-accessories/docker-compose.yml.rendered" | cut -d' ' -f1
+      shell: sha256sum "{{ accessories_compose_path }}" | cut -d' ' -f1
       delegate_to: localhost
       register: new_accessories_hash
       changed_when: false
@@ -104,10 +90,17 @@
     - name: Deploy accessories stack
       when: accessories_need_deploy
       block:
+        # Create external networks and volumes before deployment
+        - name: Create external resources for accessories
+          include_tasks: ../../playbooks/create_external_resources.yml
+          vars:
+            compose_file_path: "{{ accessories_compose_path }}"
+            resource_label: "accessories"
+
         # Inject minimal Swarm config
         - name: Read rendered accessories compose
           slurp:
-            src: "/tmp/dockflow-accessories/docker-compose.yml.rendered"
+            src: "{{ accessories_compose_path }}"
           delegate_to: localhost
           register: acc_compose_content
 
@@ -137,20 +130,13 @@
               {{ acc_compose_data | combine({'services': ns.services}) }}
           delegate_to: localhost
 
-        - name: Write final accessories compose locally
-          copy:
-            content: "{{ acc_updated_compose | to_nice_yaml(indent=2, width=999) }}"
-            dest: "/tmp/dockflow-accessories/docker-compose.yml"
-            mode: '0644'
-          delegate_to: localhost
-
         - name: Copy accessories compose to remote
           copy:
-            src: "/tmp/dockflow-accessories/docker-compose.yml"
+            content: "{{ acc_updated_compose | to_nice_yaml(indent=2, width=999) }}"
             dest: "{{ accessories_dir }}/docker-compose.yml"
             mode: '0644'
 
-        - name: Pull latest images for accessories
+        - name: Pull images for accessories
           command: docker compose -f {{ accessories_dir }}/docker-compose.yml pull
           register: accessories_pull
           changed_when: "'Pull complete' in accessories_pull.stdout or 'Downloaded' in accessories_pull.stdout"
