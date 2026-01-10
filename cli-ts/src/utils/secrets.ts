@@ -52,43 +52,34 @@ export function isCI(): boolean {
 
 /**
  * Load secrets into process.env from various sources
- * 
- * In local development:
- *   Uses .env.dockflow file only
- * 
- * In CI environment:
- *   Uses JSON file / env vars only (.env.dockflow is IGNORED with a warning)
+ * Priority: .env.dockflow > JSON file > DOCKFLOW_SECRETS env var
  */
 export function loadSecrets(): void {
-  const inCI = isCI();
-  
-  // 1. Check for .env.dockflow
+  // 1. Check for .env.dockflow (local development or E2E tests)
   if (existsSync(ENV_FILE_PATH)) {
-    if (inCI) {
-      // In CI: warn and IGNORE the file completely
-      console.warn('');
-      console.warn('\x1b[33m⚠️  WARNING: .env.dockflow file detected in CI environment!\x1b[0m');
-      console.warn('\x1b[33m   This file should NOT be committed to your repository.\x1b[0m');
-      console.warn('\x1b[33m   Add it to .gitignore: echo ".env.dockflow" >> .gitignore\x1b[0m');
-      console.warn('\x1b[33m   This file will be IGNORED. Using CI secrets instead.\x1b[0m');
-      console.warn('');
-    } else {
-      // In local dev: load the file and return
-      try {
-        const content = readFileSync(ENV_FILE_PATH, 'utf-8');
-        const secrets = parseDotenv(content);
-        
-        for (const [key, value] of Object.entries(secrets)) {
-          if (value.trim() !== '') {
-            process.env[key] = value;
-          }
+    try {
+      const content = readFileSync(ENV_FILE_PATH, 'utf-8');
+      const secrets = parseDotenv(content);
+      
+      for (const [key, value] of Object.entries(secrets)) {
+        if (value.trim() !== '') {
+          process.env[key] = value;
         }
-        
-        console.log(`Loaded secrets from ${ENV_FILE_PATH}`);
-        return;
-      } catch (error) {
-        console.error(`Failed to load ${ENV_FILE_PATH}: ${error}`);
       }
+      
+      // Warn in CI that this file should not be committed
+      if (isCI()) {
+        console.warn('');
+        console.warn('\x1b[33m⚠️  WARNING: .env.dockflow file detected in CI environment!\x1b[0m');
+        console.warn('\x1b[33m   This file should NOT be committed to your repository.\x1b[0m');
+        console.warn('\x1b[33m   Add it to .gitignore: echo ".env.dockflow" >> .gitignore\x1b[0m');
+        console.warn('');
+      }
+      
+      console.log(`Loaded secrets from ${ENV_FILE_PATH}`);
+      return;
+    } catch (error) {
+      console.error(`Failed to load ${ENV_FILE_PATH}: ${error}`);
     }
   }
   
