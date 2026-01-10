@@ -105,7 +105,9 @@ export function buildDockerCommand(devMode: boolean = false): string[] {
     'docker', 'run', '--rm',
     '--pull', 'always',
     ...(isTTY ? ['-it'] : []),
-    '-v', `${projectRoot}:/project`,
+    // Mount project as read-only to protect source files
+    // The setup_workspace.sh script creates a writable /workspace with symlinks
+    '-v', `${projectRoot}:/project:ro`,
     '-v', '/var/run/docker.sock:/var/run/docker.sock',
   ];
 

@@ -2,30 +2,70 @@
 # Local build role - builds Docker images locally in CI/CD
 # This role runs on localhost (CI/CD runner) before transferring images via local registry
 
+# Note: We use tar with --dereference (-h) to follow symlinks when building
+# This allows Docker to receive real files even when /workspace contains symlinks to /project
+- name: Set build paths
+  set_fact:
+    docker_compose_path: "{{ root_path }}/.deployment/docker"
+    workspace_path: "{{ root_path }}"
+  delegate_to: localhost
+
 - name: Generate build commands using decomposerize
   shell: |
-    cd {{ root_path }}/.deployment/docker
+    cd {{ docker_compose_path }}
     decomposerize docker-compose.yml --docker-build {{ services_option }}
   delegate_to: localhost
   register: build_commands_output
   changed_when: false
 
-- name: Set build commands
+# Parse build commands to extract dockerfile and tag, then create tar-based commands
+# decomposerize outputs: docker build -f <dockerfile> -t "<tag>" <context>
+# We transform to: tar -ch -C <resolved_context> . | docker build -f <resolved_dockerfile> -t <tag> -
+- name: Parse and transform build commands for tar streaming
   set_fact:
-    build_commands: "{{ build_commands_output.stdout_lines | select('truthy') | list }}"
+    build_commands: []
+  delegate_to: localhost
+
+- name: Build tar streaming commands
+  set_fact:
+    build_commands: "{{ build_commands + [tar_cmd] }}"
+  vars:
+    # Extract the context (last word of the command)
+    context_relative: "{{ item.split()[-1] }}"
+    # Resolve the context path relative to .deployment/docker/
+    # e.g., "../.." -> "/workspace", "../../docs" -> "/workspace/docs"
+    context_resolved: "{{ (docker_compose_path + '/' + context_relative) | realpath }}"
+    # Extract dockerfile path (after -f)
+    dockerfile_original: "{{ item | regex_search('-f\\s+([^\\s]+)', '\\1') | first }}"
+    # Resolve dockerfile path relative to docker-compose location, then make it relative to context
+    dockerfile_absolute: "{{ (docker_compose_path + '/' + dockerfile_original) | realpath }}"
+    dockerfile_relative_to_context: "{{ dockerfile_absolute | replace(context_resolved + '/', '') }}"
+    # Replace -f path and context with resolved paths
+    docker_cmd_fixed: "{{ item | regex_replace('-f\\s+[^\\s]+', '-f ' + dockerfile_relative_to_context) | regex_replace('\\s+[^\\s]+$', '') }}"
+    # Build the tar streaming command
+    tar_cmd: "tar -ch -C {{ context_resolved }} --exclude=.git . | {{ docker_cmd_fixed }} -"
+  loop: "{{ build_commands_output.stdout_lines | select('truthy') | list }}"
+  delegate_to: localhost
+
+- name: Display build commands
+  debug:
+    msg: "{{ item }}"
+  loop: "{{ build_commands }}"
+  delegate_to: localhost
+  loop_control:
+    label: "build command"
 
 - name: Display build information
   debug:
     msg: "Building {{ build_commands | length }} Docker image(s) locally for {{ env }} {{ inventory_hostname }}"
   delegate_to: localhost
 
-- name: Build Docker images locally (parallel)
+- name: Build Docker images locally (parallel with tar streaming)
   shell: |
-    cd {{ root_path }}/.deployment/docker
     set -e
     PIDS=""
     {% for cmd in build_commands %}
-    echo "Starting build: {{ cmd | regex_replace('.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') }}"
+    echo "Starting build: {{ cmd | regex_replace('.*-t ([^ ]+).*', '\\1') }}"
     ( {{ cmd }} ) &
     PIDS="$PIDS $!"
     {% endfor %}

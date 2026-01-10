@@ -4,9 +4,25 @@
 # This script is shared between deploy and build commands
 #
 # Expected environment variables:
-# - ROOT_PATH: The root path of the project
+# - ROOT_PATH: The root path of the project (initially /project, becomes /workspace)
 
 set -e
+
+#######################################
+######## Setup Workspace ##############
+#######################################
+
+# Setup workspace with symlinks to protect source files from modification
+# This creates /workspace where .deployment/ is copied and everything else is symlinked
+# SKIP in CI/CD: files are cloned, not mounted from host, so no protection needed
+DOCKFLOW_PATH="${DOCKFLOW_PATH:-/tmp/dockflow}"
+if [ "$CI" != "true" ] && [ -f "$DOCKFLOW_PATH/.common/scripts/setup_workspace.sh" ]; then
+    source "$DOCKFLOW_PATH/.common/scripts/setup_workspace.sh"
+    # ROOT_PATH is now /workspace (set by setup_workspace.sh)
+else
+    # In CI/CD, keep ROOT_PATH as-is (files can be modified directly)
+    [ "$CI" = "true" ] && echo "CI detected, skipping workspace setup (files are not mounted)"
+fi
 
 #######################################
 ######## Prepare Environment ##########
