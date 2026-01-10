@@ -17,11 +17,11 @@ set -e
 # SKIP in CI/CD: files are cloned, not mounted from host, so no protection needed
 DOCKFLOW_PATH="${DOCKFLOW_PATH:-/tmp/dockflow}"
 if [ "$CI" != "true" ] && [ -f "$DOCKFLOW_PATH/.common/scripts/setup_workspace.sh" ]; then
-    source "$DOCKFLOW_PATH/.common/scripts/setup_workspace.sh"
-    # ROOT_PATH is now /workspace (set by setup_workspace.sh)
+	source "$DOCKFLOW_PATH/.common/scripts/setup_workspace.sh"
+	# ROOT_PATH is now /workspace (set by setup_workspace.sh)
 else
-    # In CI/CD, keep ROOT_PATH as-is (files can be modified directly)
-    [ "$CI" = "true" ] && echo "CI detected, skipping workspace setup (files are not mounted)"
+	# In CI/CD, keep ROOT_PATH as-is (files can be modified directly)
+	[ "$CI" = "true" ] && echo "CI detected, skipping workspace setup (files are not mounted)"
 fi
 
 #######################################
