@@ -16,8 +16,8 @@
   set_fact:
     swarm_stack_name: "{{ stack_name }}"
     stacks_dir: "/var/lib/dockflow/stacks/{{ stack_name }}"
-    use_registry_auth: "{{ deployment_config.registry.enabled | default(false) | bool }}"
-    resolve_image_flag: "{{ '--resolve-image=never' if not (deployment_config.registry.enabled | default(false) | bool) else '' }}"
+    use_registry_auth: "{{ config.registry.enabled | default(false) | bool }}"
+    resolve_image_flag: "{{ '--resolve-image=never' if not (config.registry.enabled | default(false) | bool) else '' }}"
 
 - name: Ensure stack directories exist
   file:
@@ -80,14 +80,14 @@
 
 - name: Login to registry on remote server if configured
   shell: |
-    echo "{{ deployment_config.registry.password | default(deployment_config.registry.token) }}" | \
-    docker login {{ deployment_config.registry.url }} \
-      --username "{{ deployment_config.registry.username | default('oauth2') }}" \
+    echo "{{ config.registry.password | default(config.registry.token) }}" | \
+    docker login {{ config.registry.url }} \
+      --username "{{ config.registry.username | default('oauth2') }}" \
       --password-stdin
   when:
-    - deployment_config.registry is defined
-    - deployment_config.registry.enabled | default(false) | bool
-    - deployment_config.registry.url is defined
+    - config.registry is defined
+    - config.registry.enabled | default(false) | bool
+    - config.registry.url is defined
   no_log: true
   register: swarm_registry_login
 
@@ -209,7 +209,7 @@
     
     # Build the deploy command
     DEPLOY_CMD="docker stack deploy --compose-file docker-compose.yml"
-    {% if deployment_config.swarm.prune_services | default(true) | bool %}
+    {% if config.swarm.prune_services | default(true) | bool %}
     DEPLOY_CMD="$DEPLOY_CMD --prune"
     {% endif %}
     {% if use_registry_auth %}
@@ -275,7 +275,7 @@
 
 - name: Wait for services to converge
   shell: |
-    TIMEOUT={{ deployment_config.swarm.wait_timeout | default(300) }}
+    TIMEOUT={{ config.swarm.wait_timeout | default(300) }}
     ELAPSED=0
     INTERVAL=5
     
@@ -316,7 +316,7 @@
     
     echo "Warning: Timeout reached, some services may not be fully running"
     exit 1
-  when: deployment_config.swarm.wait_for_services | default(true) | bool
+  when: config.swarm.wait_for_services | default(true) | bool
   register: wait_result
   failed_when: false
   changed_when: false

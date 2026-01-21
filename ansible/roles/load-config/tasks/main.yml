@@ -8,9 +8,9 @@
   register: config_file
   changed_when: false
 
-- name: Set default deployment_config if no config file
+- name: Set default config if no config file
   set_fact:
-    deployment_config:
+    config:
       options:
         image_auto_tag: true
         enable_debug_logs: false
@@ -35,7 +35,7 @@
     - name: Load deployment configuration from rendered template
       include_vars:
         file: /tmp/config_rendered.yml
-        name: deployment_config
+        name: config
       ignore_errors: yes
 
   when: config_file.stat.exists
@@ -44,7 +44,7 @@
   debug:
     msg:
       - "Framework Configuration:"
-      - "  - Project Name: {{ deployment_config.project_name | default('NOT SET - REQUIRED') }}"
-      - "  - Image Auto Tag: {{ deployment_config.options.image_auto_tag | default(true) }}"
-      - "  - Debug Logs: {{ deployment_config.options.enable_debug_logs | default(false) }}"
-      - "  - Remote Build: {{ deployment_config.options.remote_build | default(false) }}"
+      - "  - Project Name: {{ config.project_name | default('NOT SET - REQUIRED') }}"
+      - "  - Image Auto Tag: {{ config.options.image_auto_tag | default(true) }}"
+      - "  - Debug Logs: {{ config.options.enable_debug_logs | default(false) }}"
+      - "  - Remote Build: {{ config.options.remote_build | default(false) }}"

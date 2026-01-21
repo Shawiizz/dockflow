@@ -4,11 +4,11 @@
 
 - name: Check if registry is enabled
   set_fact:
-    registry_enabled: "{{ deployment_config.registry.enabled | default(false) | bool }}"
-    registry_url: "{{ deployment_config.registry.url | default('') }}"
-    registry_namespace: "{{ deployment_config.registry.namespace | default('') }}"
-    registry_auth_method: "{{ deployment_config.registry.auth_method | default('basic') }}"
-  when: deployment_config.registry is defined
+    registry_enabled: "{{ config.registry.enabled | default(false) | bool }}"
+    registry_url: "{{ config.registry.url | default('') }}"
+    registry_namespace: "{{ config.registry.namespace | default('') }}"
+    registry_auth_method: "{{ config.registry.auth_method | default('basic') }}"
+  when: config.registry is defined
 
 - name: Display registry status
   debug:
@@ -19,9 +19,9 @@
   block:
     - name: Set registry credentials based on auth method
       set_fact:
-        registry_username: "{{ deployment_config.registry.username | default('') }}"
-        registry_password: "{{ deployment_config.registry.password | default('') }}"
-        registry_token: "{{ deployment_config.registry.token | default('') }}"
+        registry_username: "{{ config.registry.username | default('') }}"
+        registry_password: "{{ config.registry.password | default('') }}"
+        registry_token: "{{ config.registry.token | default('') }}"
       no_log: true
 
     - name: Login to Docker registry (basic auth)

@@ -25,6 +25,7 @@ import {
   getServerPassword,
   getAvailableEnvironments,
   findActiveManager,
+  buildTemplateContext,
 } from '../utils/servers';
 import { loadSecrets } from '../utils/secrets';
 import { getCurrentBranch } from '../utils/git';
@@ -35,7 +36,8 @@ import {
   withErrorHandler,
 } from '../utils/errors';
 import { displayDeployDryRun } from './dry';
-import type { ResolvedServer, ResolvedDeployment } from '../types';
+import { buildDeployContext, writeContextFile, writeSSHKeyFile, getHostContextPath, getHostSSHKeyPath } from '../utils/context-generator';
+import type { ResolvedDeployment, TemplateContext } from '../types';
 
 interface DeployOptions {
   services?: string;
@@ -80,54 +82,15 @@ function getDeploymentTargets(options: DeployOptions): {
 }
 
 /**
- * Build environment exports string from resolved server environment
- */
-function buildEnvExportsFromServer(env: string, server: ResolvedServer, privateKey: string, password?: string): string {
-  const lines: string[] = [];
-  
-  // Connection info
-  lines.push(`export DOCKFLOW_HOST="${server.host}"`);
-  lines.push(`export DOCKFLOW_PORT="${server.port}"`);
-  lines.push(`export DOCKFLOW_USER="${server.user}"`);
-  
-  // Private key (escape for shell)
-  const escapedKey = privateKey.replace(/'/g, "'\"'\"'");
-  lines.push(`export SSH_PRIVATE_KEY='${escapedKey}'`);
-  
-  if (password) {
-    lines.push(`export DOCKFLOW_PASSWORD="${password}"`);
-  }
-  
-  // Environment variables from servers.yml + CI overrides
-  for (const [key, value] of Object.entries(server.env)) {
-    // Escape double quotes and dollar signs for shell
-    const escapedValue = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$');
-    lines.push(`export ${key}="${escapedValue}"`);
-  }
-  
-  return lines.join('\n');
-}
-
-/**
  * Build the deployment script to run inside the container
  * 
- * New architecture:
- * - Deployment always targets the manager
- * - WORKERS_JSON contains worker connection info for image distribution
- * - Ansible pushes images to workers if no registry is configured
+ * New architecture (JSON context):
+ * - Context is provided via /tmp/dockflow_context.json (mounted by CLI)
+ * - No more shell variable pollution
+ * - Ansible consumes context via --extra-vars "@file"
+ * - Only minimal shell setup remains (dockflow clone, ROOT_PATH)
  */
-function buildDeployScript(
-  env: string,
-  deployment: ResolvedDeployment,
-  deployVersion: string,
-  branchName: string,
-  managerExports: string,
-  workersJson: string,
-  options: DeployOptions
-): string {
-  const { deployApp, forceAccessories, skipAccessories } = getDeploymentTargets(options);
-  const manager = deployment.manager;
-
+function buildDeployScript(options: DeployOptions): string {
   const dockflowSetup = getDockflowSetupScript({
     devMode: options.dev || false,
     checkFile: '.common/scripts/run_ansible.sh',
@@ -138,37 +101,9 @@ set -e
 
 ${dockflowSetup}
 
-# Set manager connection and environment variables
-${managerExports}
-
-# Workers info for image distribution (JSON format)
-export WORKERS_JSON='${workersJson}'
-export WORKERS_COUNT="${deployment.workers.length}"
-
-# Set deployment environment variables
-export ENV="${env}"
-export SERVER_NAME="${manager.name}"
-export SERVER_ROLE="manager"
-export VERSION="${deployVersion}"
-export BRANCH_NAME="${branchName}"
+# Minimal setup - context is provided via /tmp/dockflow_context.json
 export ROOT_PATH="/project"
 export ANSIBLE_HOST_KEY_CHECKING=False
-${options.skipBuild ? 'export SKIP_BUILD=true' : ''}
-${options.skipDockerInstall ? 'export SKIP_DOCKER_INSTALL=true' : ''}
-${options.force ? 'export FORCE_DEPLOY=true' : ''}
-${options.services ? `export DEPLOY_DOCKER_SERVICES="${options.services}"` : ''}
-
-# Deployment targets
-export DEPLOY_APP="${deployApp}"
-export DEPLOY_ACCESSORIES="${forceAccessories}"
-${skipAccessories ? 'export SKIP_ACCESSORIES=true' : ''}
-
-echo ""
-echo "Deploying to ${env} cluster"
-echo "  Manager: ${manager.name} (\$DOCKFLOW_HOST)"
-echo "  Workers: ${deployment.workers.length > 0 ? deployment.workers.map(w => w.name).join(', ') : 'none'}"
-echo "  App: ${deployApp} | Accessories: ${skipAccessories ? 'skipped' : (forceAccessories ? 'forced' : 'auto')}"
-echo ""
 
 # Run Ansible deployment
 cd \$DOCKFLOW_PATH
@@ -319,16 +254,27 @@ export async function runDeploy(env: string, version: string | undefined, option
   console.log('');
 
   // Build workers JSON for Ansible (for image distribution)
-  const workersInfo = workers.map(w => ({
-    name: w.name,
-    host: w.host,
-    port: w.port,
-    user: w.user,
-    privateKey: getServerPrivateKey(env, w.name),
+  const workersWithKeys = workers.map(w => ({
+    server: w,
+    privateKey: getServerPrivateKey(env, w.name) || '',
   }));
-  const workersJson = JSON.stringify(workersInfo).replace(/'/g, "'\"'\"'");
 
   printDebug('Workers configuration built', { workerCount: workers.length });
+
+  // Build template context for Jinja2 (current, servers, cluster)
+  const templateContext = buildTemplateContext(env, manager.name);
+  if (!templateContext) {
+    throw new ConfigError(
+      `Failed to build template context for ${manager.name}`,
+      'This should not happen if deployment resolved successfully'
+    );
+  }
+
+  printDebug('Template context built', { 
+    currentServer: templateContext.current.name,
+    serversCount: Object.keys(templateContext.servers).length,
+    clusterSize: templateContext.cluster.size,
+  });
 
   // Deploy via manager only (Swarm distributes workloads)
   const projectRoot = getProjectRoot();
@@ -337,17 +283,39 @@ export async function runDeploy(env: string, version: string | undefined, option
   printDebug('Docker configuration', { projectRoot, dockerImage });
 
   const managerPassword = getServerPassword(env, manager.name);
-  const managerExports = buildEnvExportsFromServer(env, manager, managerPrivateKey, managerPassword);
-
-  const deployScript = buildDeployScript(
+  
+  // Build complete Ansible context (JSON)
+  const ansibleContext = buildDeployContext({
     env,
-    deployment,
-    deployVersion,
+    version: deployVersion,
     branchName,
-    managerExports,
-    workersJson,
-    options as DeployOptions
-  );
+    deployment,
+    templateContext,
+    managerPrivateKey,
+    managerPassword,
+    workers: workersWithKeys,
+    options: {
+      skipBuild: options.skipBuild,
+      skipDockerInstall: options.skipDockerInstall,
+      force: options.force,
+      deployApp,
+      forceAccessories,
+      skipAccessories,
+      services: options.services,
+    },
+  });
+
+  // Write context to host file (will be mounted into container)
+  const contextFilePath = getHostContextPath();
+  writeContextFile(ansibleContext, contextFilePath);
+  printDebug('Context file written', { path: contextFilePath });
+
+  // Write SSH key to file (mounted into container, avoids shell variable issues)
+  const sshKeyFilePath = getHostSSHKeyPath();
+  writeSSHKeyFile(managerPrivateKey, sshKeyFilePath);
+  printDebug('SSH key file written', { path: sshKeyFilePath });
+
+  const deployScript = buildDeployScript(options as DeployOptions);
 
   // Dry-run mode: display what would happen without executing
   if (options.dryRun) {
@@ -376,6 +344,8 @@ export async function runDeploy(env: string, version: string | undefined, option
     devMode: options.dev,
     actionName: 'deployment',
     successMessage: `Deployment to ${env} completed successfully!`,
+    contextFilePath,
+    sshKeyFilePath,
   });
 
   const totalNodes = managers.length + workers.length;

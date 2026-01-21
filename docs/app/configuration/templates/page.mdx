@@ -40,6 +40,8 @@ templates:
 
 All Ansible variables are available in your templates (always lowercase):
 
+### Basic Variables
+
 | Variable | Description | Example |
 |----------|-------------|--------|
 | `{{ env }}` | Target environment | `production` |
@@ -48,6 +50,59 @@ All Ansible variables are available in your templates (always lowercase):
 | `{{ stack_name }}` | Swarm stack name | `my-app-production` |
 | `{{ branch_name }}` | Git branch name | `main` |
 | `{{ my_var }}` | Environment variables from servers.yml + CI secrets (lowercase) | - |
+
+### Config (`{{ config }}`)
+
+The `config` object contains all values from your `config.yml`:
+
+```yaml
+# In your template
+database: {{ config.project_name }}-db
+replicas: {{ config.options.replicas | default(2) }}
+```
+
+### Current Server (`{{ current }}`)
+
+The `current` object contains information about the server being deployed to:
+
+| Variable | Description | Example |
+|----------|-------------|--------|
+| `{{ current.name }}` | Server name from servers.yml | `manager_1` |
+| `{{ current.host }}` | Server IP or hostname | `192.168.1.10` |
+| `{{ current.port }}` | SSH port | `22` |
+| `{{ current.user }}` | SSH user | `dockflow` |
+| `{{ current.role }}` | Server role | `manager` or `worker` |
+| `{{ current.tags }}` | Server tags | `['production']` |
+| `{{ current.env }}` | Server's merged environment variables | `{...}` |
+
+### All Servers (`{{ servers }}`)
+
+The `servers` object contains all servers in the current environment, keyed by name. This enables cross-server configuration:
+
+```nginx
+# Generate upstream from all app servers
+upstream backend {
+  {% for name, srv in servers.items() %}
+    {% if 'app' in srv.tags %}
+    server {{ srv.host }}:3000;
+    {% endif %}
+  {% endfor %}
+}
+```
+
+Each server has the same properties as `current`: `name`, `host`, `port`, `user`, `role`, `tags`, `env`.
+
+### Cluster Metadata (`{{ cluster }}`)
+
+The `cluster` object provides aggregate information about your deployment:
+
+| Variable | Description | Example |
+|----------|-------------|--------|
+| `{{ cluster.size }}` | Total number of nodes | `5` |
+| `{{ cluster.manager_count }}` | Number of managers | `1` |
+| `{{ cluster.worker_count }}` | Number of workers | `4` |
+| `{{ cluster.managers }}` | List of manager IPs | `['192.168.1.10']` |
+| `{{ cluster.workers }}` | List of worker IPs | `['192.168.1.11', '192.168.1.12']` |
 
 <Callout type="warning">
 **All variable names must be lowercase.** Even if you define `DB_HOST` in `servers.yml` or CI secrets, you must reference it as `{{ db_host }}` in your templates.
@@ -145,4 +200,67 @@ Use Jinja2 filters to provide fallback values:
 database:
   pool_size: {{ db_pool_size | default(10) }}
   timeout: {{ db_timeout | default(30) }}
+```
+
+## Advanced Examples
+
+### Dynamic Load Balancer Configuration
+
+Generate Nginx upstream configuration from all servers tagged as `app`:
+
+```nginx
+# nginx/loadbalancer.conf.j2
+upstream app_cluster {
+  {% for name, srv in servers.items() %}
+    {% if 'app' in srv.tags %}
+    server {{ srv.host }}:{{ srv.env.APP_PORT | default(3000) }} weight=1;
+    {% endif %}
+  {% endfor %}
+}
+
+server {
+    listen 80;
+    server_name {{ domain }};
+    
+    location / {
+        proxy_pass http://app_cluster;
+    }
+}
+```
+
+### Database Access Control
+
+Generate PostgreSQL `pg_hba.conf` to allow connections from all app servers:
+
+```conf
+# config/pg_hba.conf.j2
+# Allow connections from all app servers
+{% for name, srv in servers.items() %}
+  {% if srv.role == 'worker' or 'app' in srv.tags %}
+host    all    all    {{ srv.host }}/32    md5
+  {% endif %}
+{% endfor %}
+```
+
+### Cluster-Aware Configuration
+
+Adapt settings based on cluster size:
+
+```yaml
+# config/app.yml.j2
+cluster:
+  node_name: "{{ current.name }}"
+  node_role: "{{ current.role }}"
+  total_nodes: {{ cluster.size }}
+  
+  {% if cluster.manager_count > 1 %}
+  high_availability: true
+  {% else %}
+  high_availability: false
+  {% endif %}
+  
+  peers:
+    {% for host in cluster.managers %}
+    - "{{ host }}:2377"
+    {% endfor %}
 ```

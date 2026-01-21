@@ -43,16 +43,16 @@
     src: "{{ root_path }}/{{ (item.src | default(item)) }}"
     dest: "{{ root_path }}/{{ (item.dest | default(item)) }}"
     mode: '0644'
-  loop: "{{ deployment_config.templates | default([]) }}"
+  loop: "{{ config.templates | default([]) }}"
   delegate_to: localhost
-  when: deployment_config.templates is defined and deployment_config.templates | length > 0
+  when: config.templates is defined and config.templates | length > 0
   loop_control:
     label: "{{ item.src | default(item) }}"
 
 - name: Display custom templates rendering completion
   debug:
-    msg: "✓ Rendered {{ deployment_config.templates | length }} custom template file(s)"
-  when: deployment_config.templates is defined and deployment_config.templates | length > 0
+    msg: "✓ Rendered {{ config.templates | length }} custom template file(s)"
+  when: config.templates is defined and config.templates | length > 0
 
 # Update docker-compose.yml images with environment tag and optional registry prefix
 - name: Update docker-compose.yml images
@@ -74,9 +74,9 @@
       set_fact:
         updated_compose: "{{ compose_content['content'] | b64decode | from_yaml | combine({'services': updated_services}, recursive=true) }}"
       vars:
-        use_auto_tag: "{{ deployment_config.options.image_auto_tag | default(true) | bool }}"
-        use_registry: "{{ deployment_config.registry.enabled | default(false) | bool }}"
-        registry_prefix: "{{ deployment_config.registry.url | default('') }}/{{ deployment_config.registry.namespace | default('') }}"
+        use_auto_tag: "{{ config.options.image_auto_tag | default(true) | bool }}"
+        use_registry: "{{ config.registry.enabled | default(false) | bool }}"
+        registry_prefix: "{{ config.registry.url | default('') }}/{{ config.registry.namespace | default('') }}"
         env_tag: "-{{ env }}:{{ version }}"
         updated_services: >-
           {%- set ns = namespace(services={}) -%}
@@ -111,7 +111,7 @@
 
     - name: Display image update completion
       debug:
-        msg: "✓ Updated docker-compose.yml images{{ ' with -' + env + ':' + version if (deployment_config.options.image_auto_tag | default(true)) else '' }}{{ ' and registry prefix' if (deployment_config.registry.enabled | default(false)) else '' }}"
+        msg: "✓ Updated docker-compose.yml images{{ ' with -' + env + ':' + version if (config.options.image_auto_tag | default(true)) else '' }}{{ ' and registry prefix' if (config.registry.enabled | default(false)) else '' }}"
       delegate_to: localhost
 
   when: compose_file is not defined or compose_file.stat.exists | default(true)

@@ -29,7 +29,7 @@
         mode: '0755'
 
     - name: Check container health status for each service
-      command: /tmp/check-health.sh "{{ item.name }}" "{{ item.expected_image }}" "{{ deployment_config.swarm.healthcheck_timeout | default(120) }}"
+      command: /tmp/check-health.sh "{{ item.name }}" "{{ item.expected_image }}" "{{ config.swarm.healthcheck_timeout | default(120) }}"
       loop: "{{ stack_services_with_images }}"
       register: health_results
       failed_when: false
@@ -188,4 +188,4 @@
       set_fact:
         internal_healthchecks_passed: "{{ (rollback_detected_services | default([]) | length) == 0 and (unhealthy_services | default([]) | length) == 0 }}"
 
-  when: deployment_config.health_checks.wait_for_internal | default(true) | bool
+  when: config.health_checks.wait_for_internal | default(true) | bool

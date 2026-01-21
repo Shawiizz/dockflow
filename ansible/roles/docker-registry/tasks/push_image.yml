@@ -50,8 +50,8 @@
         docker push {{ registry_image_base }}:$TAG_PROCESSED
         
         echo "Pushed {{ registry_image_base }}:$TAG_PROCESSED"
-      loop: "{{ deployment_config.registry.additional_tags | default([]) }}"
-      when: deployment_config.registry.additional_tags is defined
+      loop: "{{ config.registry.additional_tags | default([]) }}"
+      when: config.registry.additional_tags is defined
       register: additional_tags_result
       retries: 3
       delay: 5

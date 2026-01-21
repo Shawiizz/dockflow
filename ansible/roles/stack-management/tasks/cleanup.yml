@@ -8,8 +8,8 @@
 
 - name: Get configuration for number of releases to keep
   set_fact:
-    keep_releases: "{{ deployment_config.stack_management.keep_releases | default(3) | int }}"
-  when: deployment_config.stack_management is defined
+    keep_releases: "{{ config.stack_management.keep_releases | default(3) | int }}"
+  when: config.stack_management is defined
 
 - name: Set default if not configured
   set_fact:

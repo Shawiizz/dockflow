@@ -6,7 +6,7 @@
   set_fact:
     needs_image_transfer: >-
       {{
-        not (deployment_config.registry.enabled | default(false) | bool)
+        not (config.registry.enabled | default(false) | bool)
         and not (remote_build | default(false) | bool)
       }}
 
@@ -35,9 +35,9 @@
           name: "manager"
       delegate_to: localhost
 
-    - name: Parse workers from WORKERS_JSON
+    - name: Set workers list from context
       set_fact:
-        workers_list: "{{ lookup('env', 'WORKERS_JSON') | default('[]', true) | from_json }}"
+        workers_list: "{{ workers | default([]) }}"
       delegate_to: localhost
 
     - name: Build all nodes list

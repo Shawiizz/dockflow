@@ -5,8 +5,8 @@
 
 - name: Set hooks configuration
   set_fact:
-    hooks_enabled: "{{ deployment_config.hooks.enabled | default(true) | bool }}"
-    hooks_timeout: "{{ deployment_config.hooks.timeout | default(300) }}"
+    hooks_enabled: "{{ config.hooks.enabled | default(true) | bool }}"
+    hooks_timeout: "{{ config.hooks.timeout | default(300) }}"
     hooks_dir: "{{ root_path }}/.deployment/hooks"
     hook_script_path: "{{ root_path }}/.deployment/hooks/{{ hook_name }}.sh"
 

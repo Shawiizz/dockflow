@@ -8,17 +8,13 @@
     tmp_dir: "/tmp"
     framework_version: "2.0.6"
     root_path: "{{ lookup('env', 'ROOT_PATH') }}"
+    compose_path: "{{ root_path }}/.deployment/docker/docker-compose.yml"
     skip_hooks: "{{ lookup('env', 'SKIP_HOOKS') | default(false) | bool }}"
   
   pre_tasks:
     - name: Display Dockflow version
       debug:
         msg: "Dockflow v{{ framework_version }} - Build Mode"
-
-    - name: Load environment variables from YAML file
-      include_vars:
-        file: /tmp/ansible_env_vars.yml
-      no_log: true
 
   roles:
     - role: ../roles/load-config
@@ -34,7 +30,7 @@
   tasks:
     - name: Set computed variables
       set_fact:
-        global_no_log: "{{ not (deployment_config.options.enable_debug_logs | default(false) | bool) }}"
+        global_no_log: "{{ not (config.options.enable_debug_logs | default(false) | bool) }}"
         deploy_services: "{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true) }}"
         services_option: "{{ ('--services=' + lookup('env', 'DEPLOY_DOCKER_SERVICES')) if lookup('env', 'DEPLOY_DOCKER_SERVICES') else '' }}"
         hostname: "main"

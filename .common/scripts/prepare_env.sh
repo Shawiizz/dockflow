@@ -3,8 +3,8 @@
 # Prepare environment for Ansible playbooks
 # This script is shared between deploy and build commands
 #
-# Expected environment variables:
-# - ROOT_PATH: The root path of the project (initially /project, becomes /workspace)
+# Context is now provided via /tmp/dockflow_context.json (mounted by CLI)
+# This script handles workspace setup and line ending conversion only.
 
 set -e
 
@@ -33,11 +33,11 @@ if [ -d "$ROOT_PATH/.deployment" ]; then
 	find "$ROOT_PATH/.deployment" -type f -exec sed -i 's/\r$//' {} \; 2>/dev/null || true
 fi
 
-# Export environment variables to YAML for Ansible
-echo "Exporting environment variables to /tmp/ansible_env_vars.yml..."
-python3 <<'PYTHON_EOF'
-import os, yaml
-env_vars = {k.lower(): v for k, v in os.environ.items() if k}
-with open('/tmp/ansible_env_vars.yml', 'w') as f:
-    yaml.dump(env_vars, f, default_flow_style=False, allow_unicode=True)
-PYTHON_EOF
+# Check if context file exists (new approach)
+CONTEXT_FILE="/tmp/dockflow_context.json"
+if [ -f "$CONTEXT_FILE" ]; then
+	echo "Using context from $CONTEXT_FILE"
+else
+	echo "Warning: No context file found at $CONTEXT_FILE"
+	echo "Context should be provided by the CLI via Docker mount"
+fi

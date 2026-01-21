@@ -13,13 +13,6 @@
       run_once: true
       delegate_to: localhost
 
-    - name: Load environment variables from YAML file
-      include_vars:
-        file: /tmp/ansible_env_vars.yml
-      delegate_to: localhost
-      run_once: true
-      no_log: true
-
     - name: Load framework configuration
       import_role:
         name: load-config
@@ -37,38 +30,50 @@
           
           The project_name must contain only lowercase letters, numbers, and hyphens.
           It is used to identify your project and name the Docker Swarm stack.
-      when: deployment_config.project_name is not defined or deployment_config.project_name == ''
+      when: config.project_name is not defined or config.project_name == ''
       delegate_to: localhost
       run_once: true
 
     - name: Validate project_name format
       fail:
         msg: |
-          ERROR: Invalid project_name format: {{ deployment_config.project_name }}
+          ERROR: Invalid project_name format: {{ config.project_name }}
           
           The project_name must contain only lowercase letters, numbers, and hyphens.
           Example: my-app-name, webapp-v2, api-backend
       when: 
-        - deployment_config.project_name is defined
-        - not (deployment_config.project_name | regex_search('^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$'))
+        - config.project_name is defined
+        - not (config.project_name | regex_search('^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$'))
       delegate_to: localhost
       run_once: true
 
     - name: Set computed variables
       set_fact:
-        global_no_log: "{{ not (deployment_config.options.enable_debug_logs | default(false) | bool) }}"
-        deploy_services: "{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true) }}"
-        services_option: "{{ ('--services=' + lookup('env', 'DEPLOY_DOCKER_SERVICES')) if lookup('env', 'DEPLOY_DOCKER_SERVICES') else '' }}"
-        remote_build: "{{ deployment_config.options.remote_build | default(false) | bool }}"
-        project_name: "{{ deployment_config.project_name }}"
-        sanitized_branch_name: "{{ branch_name | regex_replace('[^a-zA-Z0-9-]', '_') }}"
-        stack_name: "{{ deployment_config.project_name }}-{{ env }}"
-        rollback_configured: "{{ (deployment_config.health_checks.on_failure | default('notify')) == 'rollback' }}"
-        # Deployment targets (controlled by CLI flags)
-        deploy_app: "{{ lookup('env', 'DEPLOY_APP') | default('true', true) | bool }}"
-        force_accessories: "{{ lookup('env', 'DEPLOY_ACCESSORIES') | default('false', true) | bool }}"
-        skip_accessories: "{{ lookup('env', 'SKIP_ACCESSORIES') | default('false', true) | bool }}"
-      no_log: "{{ not (deployment_config.options.enable_debug_logs | default(false) | bool) }}"
+        global_no_log: "{{ not (config.options.enable_debug_logs | default(false) | bool) }}"
+        # Use options from JSON context, fallback to env lookup for backward compatibility
+        deploy_services: "{{ options.services | default(lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true)) }}"
+        services_option: "{{ ('--services=' + (options.services | default(lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('')))) if (options.services | default(lookup('env', 'DEPLOY_DOCKER_SERVICES') | default(''))) else '' }}"
+        remote_build: "{{ config.options.remote_build | default(false) | bool }}"
+        project_name: "{{ config.project_name }}"
+        sanitized_branch_name: "{{ branch_name | default(lookup('env', 'BRANCH_NAME')) | regex_replace('[^a-zA-Z0-9-]', '_') }}"
+        stack_name: "{{ config.project_name }}-{{ env | default(lookup('env', 'ENV')) }}"
+        rollback_configured: "{{ (config.health_checks.on_failure | default('notify')) == 'rollback' }}"
+        # Deployment targets from JSON context (with env fallback for backward compatibility)
+        deploy_app: "{{ options.deploy_app | default(lookup('env', 'DEPLOY_APP') | default('true', true)) | bool }}"
+        force_accessories: "{{ options.deploy_accessories | default(lookup('env', 'DEPLOY_ACCESSORIES') | default('false', true)) | bool }}"
+        skip_accessories: "{{ options.skip_accessories | default(lookup('env', 'SKIP_ACCESSORIES') | default('false', true)) | bool }}"
+      no_log: "{{ not (config.options.enable_debug_logs | default(false) | bool) }}"
+
+    - name: Display template context info (debug mode only)
+      debug:
+        msg: |
+          Template context loaded:
+            - Current server: {{ current.name | default('N/A') }} ({{ current.host | default('N/A') }})
+            - Servers in environment: {{ servers.keys() | list | join(', ') if servers is defined else 'N/A' }}
+            - Cluster size: {{ cluster.size | default('N/A') }} ({{ cluster.manager_count | default(0) }} managers, {{ cluster.worker_count | default(0) }} workers)
+      when: config.options.enable_debug_logs | default(false) | bool
+      run_once: true
+      delegate_to: localhost
 
     - name: Prepare deployment (render Docker templates)
       import_role:
@@ -193,17 +198,17 @@
         name: swarm-healthcheck
       when: 
         - deploy_app | bool
-        - deployment_config.health_checks.enabled | default(true) | bool
+        - config.health_checks.enabled | default(true) | bool
 
     - name: Run external health checks
       include_role:
         name: health-check
       vars:
-        health_checks_config: "{{ deployment_config.health_checks | default({}) }}"
+        health_checks_config: "{{ config.health_checks | default({}) }}"
       when: 
         - deploy_app | bool
-        - deployment_config.health_checks is defined
-        - deployment_config.health_checks.enabled | default(true) | bool
+        - config.health_checks is defined
+        - config.health_checks.enabled | default(true) | bool
 
     - name: Cleanup old stacks
       include_role:

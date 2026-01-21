@@ -14,6 +14,9 @@ export * from './errors';
 // Server resolution utilities
 export * from './servers';
 
+// Context generation for Ansible
+export * from './context-generator';
+
 // SSH and connection utilities
 export * from './ssh-keys';
 export * from './connection-parser';

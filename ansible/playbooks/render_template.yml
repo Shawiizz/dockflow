@@ -1,6 +1,7 @@
 ---
 # Generic Ansible playbook to render any file with Jinja2 templating
 # Usage: ansible-playbook render_template.yml -e input_file=/path/to/file.yml -e output_file=/path/to/file.yml
+# Variables can be provided via -e "@/tmp/dockflow_context.json" or individual -e options
 
 - name: Render template file with variables
   hosts: localhost
@@ -11,11 +12,6 @@
     output_file: "{{ output_file }}"
   
   tasks:
-    - name: Load environment variables from YAML file
-      include_vars:
-        file: /tmp/ansible_env_vars.yml
-      no_log: true
-
     - name: Check if input file exists
       stat:
         path: "{{ input_file }}"

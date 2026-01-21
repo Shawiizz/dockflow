@@ -108,9 +108,9 @@
         # Deploy the stack with the previous compose file
         docker stack deploy \
           --compose-file docker-compose.yml \
-          {% if deployment_config.swarm.prune_services | default(true) | bool %}--prune \{% endif %}
-          {% if deployment_config.registry.enabled | default(false) | bool %}--with-registry-auth \{% endif %}
-          {% if not (deployment_config.registry.enabled | default(false) | bool) %}--resolve-image=never \{% endif %}
+          {% if config.swarm.prune_services | default(true) | bool %}--prune \{% endif %}
+          {% if config.registry.enabled | default(false) | bool %}--with-registry-auth \{% endif %}
+          {% if not (config.registry.enabled | default(false) | bool) %}--resolve-image=never \{% endif %}
           {{ stack_name }}
         
         echo "Stack {{ stack_name }} rolled back to version {{ previous_release.version }}"
@@ -119,7 +119,7 @@
 
     - name: Wait for rollback services to converge
       shell: |
-        TIMEOUT={{ deployment_config.swarm.wait_timeout | default(120) }}
+        TIMEOUT={{ config.swarm.wait_timeout | default(120) }}
         ELAPSED=0
         INTERVAL=5
         
@@ -160,7 +160,7 @@
         src: "{{ current_release.path }}/docker-compose.yml"
       register: failed_compose
       when:
-        - deployment_config.stack_management.cleanup_on_failure | default(true) | bool
+        - config.stack_management.cleanup_on_failure | default(true) | bool
         - current_release is defined
         - current_release.path is defined
       failed_when: false
@@ -190,7 +190,7 @@
           when: failed_images | default([]) | length > 0
 
       when:
-        - deployment_config.stack_management.cleanup_on_failure | default(true) | bool
+        - config.stack_management.cleanup_on_failure | default(true) | bool
         - failed_compose.content is defined
 
     - name: Remove failed release directory

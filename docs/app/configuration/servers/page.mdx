@@ -239,7 +239,9 @@ Available variables:
 - `{{ project_name }}` - From config.yml
 - `{{ env }}` - Current environment being deployed
 - `{{ version }}` - Deployment version
-- `{{ server_name }}` - Current server name
+- `{{ current.name }}` - Current server name
+- `{{ current.host }}` - Current server host
+- `{{ current.role }}` - Current server role (manager/worker)
 
 ## Migration from Old System
 

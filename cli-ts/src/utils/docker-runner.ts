@@ -89,12 +89,19 @@ export interface RunInContainerOptions {
   actionName: string;
   /** Success message to display */
   successMessage: string;
+  /** Path to context JSON file to mount (optional) */
+  contextFilePath?: string;
+  /** Path to SSH key file to mount (optional, for deploy) */
+  sshKeyFilePath?: string;
 }
 
 /**
  * Build Docker command arguments for running the Ansible container
+ * @param devMode Whether to use dev mode (mount local dockflow)
+ * @param contextFilePath Optional path to context JSON file to mount into container
+ * @param sshKeyFilePath Optional path to SSH key file to mount into container
  */
-export function buildDockerCommand(devMode: boolean = false): string[] {
+export function buildDockerCommand(devMode: boolean = false, contextFilePath?: string, sshKeyFilePath?: string): string[] {
   const projectRoot = getProjectRoot();
   const dockerImage = getAnsibleDockerImage();
   
@@ -110,6 +117,16 @@ export function buildDockerCommand(devMode: boolean = false): string[] {
     '-v', `${projectRoot}:/project:ro`,
     '-v', '/var/run/docker.sock:/var/run/docker.sock',
   ];
+
+  // Mount context JSON file if provided (for Ansible --extra-vars)
+  if (contextFilePath) {
+    dockerCmd.push('-v', `${contextFilePath}:/tmp/dockflow_context.json:ro`);
+  }
+
+  // Mount SSH key file if provided (for deploy command)
+  if (sshKeyFilePath) {
+    dockerCmd.push('-v', `${sshKeyFilePath}:/tmp/dockflow_key:ro`);
+  }
 
   // Allow connecting to a specific Docker network (useful for e2e tests)
   const dockerNetwork = process.env.DOCKFLOW_DOCKER_NETWORK;
@@ -140,9 +157,9 @@ export function buildDockerCommand(devMode: boolean = false): string[] {
  * Execute a script in the Ansible Docker container
  */
 export async function runInAnsibleContainer(options: RunInContainerOptions): Promise<void> {
-  const { script, devMode = false, actionName, successMessage } = options;
+  const { script, devMode = false, actionName, successMessage, contextFilePath, sshKeyFilePath } = options;
   
-  const dockerCmd = buildDockerCommand(devMode);
+  const dockerCmd = buildDockerCommand(devMode, contextFilePath, sshKeyFilePath);
   dockerCmd.push('bash', '-c', script);
 
   console.log(chalk.dim(`Starting ${actionName} container...`));

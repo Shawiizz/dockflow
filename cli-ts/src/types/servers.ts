@@ -111,3 +111,57 @@ export const SERVER_DEFAULTS: ServerDefaults = {
   user: 'dockflow',
   port: 22,
 };
+
+/**
+ * Safe server info for Jinja2 templates (no sensitive data)
+ * This is what's available in {{ servers.servername }}
+ */
+export interface SafeServer {
+  /** Server name (key in servers.yml) */
+  name: string;
+  /** Role in Swarm cluster */
+  role: ServerRole;
+  /** Server hostname or IP (hydrated from CI secrets) */
+  host: string;
+  /** SSH port */
+  port: number;
+  /** SSH user */
+  user: string;
+  /** Tags this server belongs to */
+  tags: string[];
+  /** Merged environment variables (no secrets like passwords) */
+  env: EnvVars;
+}
+
+/**
+ * Current server context for Jinja2 templates
+ * This is what's available in {{ current }}
+ */
+export interface CurrentServer extends SafeServer {
+  /** Indicates this is the current deployment target */
+  is_current: true;
+}
+
+/**
+ * Complete template context for Jinja2 rendering
+ * Combines current server, all servers, and cluster metadata
+ */
+export interface TemplateContext {
+  /** Current server being deployed to */
+  current: CurrentServer;
+  /** All servers in this environment (keyed by name) - hydrated with CI secrets */
+  servers: Record<string, SafeServer>;
+  /** Cluster metadata */
+  cluster: {
+    /** Total number of nodes in the environment */
+    size: number;
+    /** Number of manager nodes */
+    manager_count: number;
+    /** Number of worker nodes */
+    worker_count: number;
+    /** List of manager hostnames/IPs */
+    managers: string[];
+    /** List of worker hostnames/IPs */
+    workers: string[];
+  };
+}
