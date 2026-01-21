@@ -79,7 +79,7 @@ dockflow init github          # GitHub Actions
 dockflow init gitlab          # GitLab CI
 ```
 
-Creates the `.deployment/` folder structure with CI/CD configuration.
+Creates the `.dockflow/` folder structure with CI/CD configuration.
 
 ### Deploy
 
@@ -348,7 +348,7 @@ dockflow accessories remove <env> [options]
 ## Requirements
 
 - `.env.dockflow` with connection strings
-- `.deployment/config.yml` with `project_name`
+- `.dockflow/config.yml` with `project_name`
 
 **For setup commands (on target Linux host):**
 - Ansible (`ansible`, `ansible-playbook`)

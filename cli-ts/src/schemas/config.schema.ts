@@ -1,5 +1,5 @@
 /**
- * Schema validation for .deployment/config.yml
+ * Schema validation for .dockflow/config.yml
  * Uses Zod for runtime type checking and validation
  */
 

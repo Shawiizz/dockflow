@@ -6,7 +6,7 @@ Dockflow can render any file in your project with Jinja2 templating before deplo
 
 ## Configuration
 
-Define the files to render in `.deployment/config.yml`:
+Define the files to render in `.dockflow/config.yml`:
 
 ```yaml
 templates:
@@ -164,7 +164,7 @@ echo "Running in development mode"
 Templates are rendered early in the deployment process:
 
 1. Load configuration (`config.yml`)
-2. Render Docker templates (`.deployment/docker/*`)
+2. Render Docker templates (`.dockflow/docker/*`)
 3. **Render custom templates** ← your files
 4. Build Docker images
 5. Deploy to server

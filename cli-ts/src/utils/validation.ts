@@ -63,7 +63,7 @@ export function validateEnvironment(env: string, serverName?: string): Environme
   if (!config) {
     return {
       type: ValidationErrorType.CONFIG_NOT_FOUND,
-      message: '.deployment/config.yml not found',
+      message: '.dockflow/config.yml not found',
       suggestion: 'Run "dockflow init" to create project structure',
     };
   }
@@ -74,7 +74,7 @@ export function validateEnvironment(env: string, serverName?: string): Environme
     return {
       type: ValidationErrorType.PROJECT_NAME_MISSING,
       message: 'project_name not found in config.yml',
-      suggestion: 'Add project_name to your .deployment/config.yml',
+      suggestion: 'Add project_name to your .dockflow/config.yml',
     };
   }
 
@@ -82,7 +82,7 @@ export function validateEnvironment(env: string, serverName?: string): Environme
   if (!hasServersConfig()) {
     return {
       type: ValidationErrorType.SERVERS_NOT_FOUND,
-      message: '.deployment/servers.yml not found',
+      message: '.dockflow/servers.yml not found',
       suggestion: 'Create servers.yml to define your deployment servers',
     };
   }

@@ -1,14 +1,14 @@
 ---
 # Hooks role - executes user-defined scripts at key deployment stages
-# Hooks are optional shell scripts in .deployment/hooks/
+# Hooks are optional shell scripts in .dockflow/hooks/
 # Note: Hooks are pre-rendered by prepare-deployment role
 
 - name: Set hooks configuration
   set_fact:
     hooks_enabled: "{{ config.hooks.enabled | default(true) | bool }}"
     hooks_timeout: "{{ config.hooks.timeout | default(300) }}"
-    hooks_dir: "{{ root_path }}/.deployment/hooks"
-    hook_script_path: "{{ root_path }}/.deployment/hooks/{{ hook_name }}.sh"
+    hooks_dir: "{{ root_path }}/.dockflow/hooks"
+    hook_script_path: "{{ root_path }}/.dockflow/hooks/{{ hook_name }}.sh"
 
 - name: Check if hook file exists
   stat:

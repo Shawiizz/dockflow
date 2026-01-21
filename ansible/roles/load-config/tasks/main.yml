@@ -1,9 +1,9 @@
 ---
-# Load framework configuration from .deployment/config.yml
+# Load framework configuration from .dockflow/config.yml
 
 - name: Check if config.yml exists
   stat:
-    path: "{{ root_path }}/.deployment/config.yml"
+    path: "{{ root_path }}/.dockflow/config.yml"
   delegate_to: localhost
   register: config_file
   changed_when: false
@@ -21,7 +21,7 @@
   block:
     - name: Remove comments and render config template
       shell: |
-        grep -v '^\s*#' "{{ root_path }}/.deployment/config.yml" > /tmp/config_clean.yml || true
+        grep -v '^\s*#' "{{ root_path }}/.dockflow/config.yml" > /tmp/config_clean.yml || true
       delegate_to: localhost
       changed_when: false
 

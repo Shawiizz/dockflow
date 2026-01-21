@@ -47,12 +47,12 @@
 - name: Create external resources for app
   include_tasks: ../../playbooks/create_external_resources.yml
   vars:
-    compose_file_path: "{{ root_path }}/.deployment/docker/docker-compose.yml"
+    compose_file_path: "{{ root_path }}/.dockflow/docker/docker-compose.yml"
     resource_label: "app"
 
 - name: Transfer docker-compose.yml to release directory
   copy:
-    src: "{{ root_path }}/.deployment/docker/docker-compose.yml"
+    src: "{{ root_path }}/.dockflow/docker/docker-compose.yml"
     dest: "{{ release_dir }}/docker-compose.yml"
     mode: '0644'
   register: compose_transfer

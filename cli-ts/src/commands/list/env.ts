@@ -90,7 +90,7 @@ export function registerListEnvCommand(parent: Command): void {
 
       if (environments.length === 0) {
         printError('No environments found');
-        console.log(chalk.gray('Create .deployment/servers.yml to define your environments'));
+        console.log(chalk.gray('Create .dockflow/servers.yml to define your environments'));
         console.log('');
         console.log(chalk.gray('Example:'));
         console.log(chalk.gray('  defaults:'));

@@ -3,7 +3,7 @@
   hosts: all:!localhost
   vars:    
     root_path: "{{ lookup('env', 'ROOT_PATH') }}"
-    compose_path: "{{ root_path }}/.deployment/docker/docker-compose.yml"
+    compose_path: "{{ root_path }}/.dockflow/docker/docker-compose.yml"
     tmp_dir: "/tmp"
     framework_version: "2.0.6"
   pre_tasks:
@@ -24,7 +24,7 @@
         msg: |
           ERROR: project_name is required in config.yml
           
-          Please add a project_name to your .deployment/config.yml:
+          Please add a project_name to your .dockflow/config.yml:
           
           project_name: "my-project-name"
           
@@ -185,7 +185,7 @@
       include_role:
         name: docker-swarm
       vars:
-        compose_path: "{{ root_path }}/.deployment/docker/docker-compose.yml"
+        compose_path: "{{ root_path }}/.dockflow/docker/docker-compose.yml"
       when: deploy_app | bool
 
   post_tasks:

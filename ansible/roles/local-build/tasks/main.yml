@@ -6,7 +6,7 @@
 # This allows Docker to receive real files even when /workspace contains symlinks to /project
 - name: Set build paths
   set_fact:
-    docker_compose_path: "{{ root_path }}/.deployment/docker"
+    docker_compose_path: "{{ root_path }}/.dockflow/docker"
     workspace_path: "{{ root_path }}"
   delegate_to: localhost
 
@@ -32,7 +32,7 @@
   vars:
     # Extract the context (last word of the command)
     context_relative: "{{ item.split()[-1] }}"
-    # Resolve the context path relative to .deployment/docker/
+    # Resolve the context path relative to .dockflow/docker/
     # e.g., "../.." -> "/workspace", "../../docs" -> "/workspace/docs"
     context_resolved: "{{ (docker_compose_path + '/' + context_relative) | realpath }}"
     # Extract dockerfile path (after -f)

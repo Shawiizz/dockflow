@@ -8,7 +8,7 @@
 #
 # Architecture:
 #   /project   (read-only)  → Original source files from host
-#   /workspace (writable)   → Symlinks + copied .deployment/
+#   /workspace (writable)   → Symlinks + copied .dockflow/
 #
 # After execution: ROOT_PATH=/workspace
 # =============================================================================
@@ -17,7 +17,7 @@ set -e
 
 readonly SOURCE_DIR="/project"
 readonly WORKSPACE_DIR="/workspace"
-readonly CONFIG_FILE="$WORKSPACE_DIR/.deployment/config.yml"
+readonly CONFIG_FILE="$WORKSPACE_DIR/.dockflow/config.yml"
 
 # =============================================================================
 # Utility Functions
@@ -153,14 +153,14 @@ setup_workspace() {
 
 	mkdir -p "$WORKSPACE_DIR"
 
-	# Copy .deployment/ (modified by Jinja2)
-	if dir_exists "$SOURCE_DIR/.deployment"; then
-		copy_to_workspace ".deployment"
-		log_info "Copied .deployment/"
+	# Copy .dockflow/ (modified by Jinja2)
+	if dir_exists "$SOURCE_DIR/.dockflow"; then
+		copy_to_workspace ".dockflow"
+		log_info "Copied .dockflow/"
 	fi
 
 	# Symlink everything else
-	create_root_symlinks ".deployment"
+	create_root_symlinks ".dockflow"
 	log_info "Created symlinks for project files"
 
 	# Prepare custom template destinations
@@ -169,7 +169,7 @@ setup_workspace() {
 	echo ""
 	echo "Workspace ready at $WORKSPACE_DIR"
 	echo "  - Source (read-only): $SOURCE_DIR"
-	echo "  - Writable: $WORKSPACE_DIR/.deployment/"
+	echo "  - Writable: $WORKSPACE_DIR/.dockflow/"
 	echo ""
 }
 

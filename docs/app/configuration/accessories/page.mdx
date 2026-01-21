@@ -19,9 +19,9 @@ myapp-production-accessories  ← Databases, Redis, etc. (deployed once)
 
 ## Configuration
 
-Create a file at `.deployment/docker/accessories.yml` using standard Docker Compose format:
+Create a file at `.dockflow/docker/accessories.yml` using standard Docker Compose format:
 
-```yaml filename=".deployment/docker/accessories.yml"
+```yaml filename=".dockflow/docker/accessories.yml"
 version: "3.8"
 
 services:
@@ -219,7 +219,7 @@ deploy:
 
 Your main application can connect to accessories using Docker's internal DNS:
 
-```yaml filename=".deployment/docker/docker-compose.yml"
+```yaml filename=".dockflow/docker/docker-compose.yml"
 services:
   app:
     image: myapp:latest

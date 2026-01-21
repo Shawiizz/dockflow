@@ -1,25 +1,25 @@
 ---
-# Prepare deployment role - renders all templates in .deployment/
+# Prepare deployment role - renders all templates in .dockflow/
 # This role runs on localhost before the actual deployment
 # Renders: docker/, hooks/, and custom templates from config.yml
 
-- name: Check if .deployment directory exists
+- name: Check if .dockflow directory exists
   stat:
-    path: "{{ root_path }}/.deployment"
+    path: "{{ root_path }}/.dockflow"
   delegate_to: localhost
   register: deployment_dir
   changed_when: false
 
-- name: Find all files in .deployment directory to render
+- name: Find all files in .dockflow directory to render
   find:
-    paths: "{{ root_path }}/.deployment"
+    paths: "{{ root_path }}/.dockflow"
     file_type: file
     recurse: yes
   delegate_to: localhost
   register: deployment_files
   when: deployment_dir.stat.exists
 
-- name: Render all templates in .deployment with Jinja2
+- name: Render all templates in .dockflow with Jinja2
   template:
     src: "{{ item.path }}"
     dest: "{{ item.path }}"
@@ -30,14 +30,14 @@
     - deployment_dir.stat.exists
     - deployment_files.files is defined
   loop_control:
-    label: "{{ item.path | regex_replace('^.*\\.deployment/', '.deployment/') }}"
+    label: "{{ item.path | regex_replace('^.*\\.dockflow/', '.dockflow/') }}"
 
 - name: Display rendering completion
   debug:
-    msg: "✓ Rendered {{ deployment_files.matched | default(0) }} file(s) in .deployment/"
+    msg: "✓ Rendered {{ deployment_files.matched | default(0) }} file(s) in .dockflow/"
   when: deployment_dir.stat.exists
 
-# Render custom template files defined in config.yml (outside .deployment/)
+# Render custom template files defined in config.yml (outside .dockflow/)
 - name: Render custom template files
   template:
     src: "{{ root_path }}/{{ (item.src | default(item)) }}"

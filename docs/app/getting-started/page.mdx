@@ -95,7 +95,7 @@ See `dockflow setup auto --help` for the complete list.
 Create the following structure:
 
 <FileTree>
-  <FileTree.Folder name=".deployment" defaultOpen>
+  <FileTree.Folder name=".dockflow" defaultOpen>
     <FileTree.File name="config.yml" />
     <FileTree.File name="servers.yml" />
     <FileTree.Folder name="docker" defaultOpen>
@@ -136,7 +136,7 @@ Create the following structure:
         tags:
           - '*'
 
-    # Note: Make sure your .deployment/config.yml has project_name set:
+    # Note: Make sure your .dockflow/config.yml has project_name set:
     # project_name: "my-app"
 
     jobs:
@@ -178,7 +178,7 @@ Create the following structure:
       # Deploy your application on tag or branch push
       - deploy
 
-    # Note: Make sure your .deployment/config.yml has project_name set:
+    # Note: Make sure your .dockflow/config.yml has project_name set:
     # project_name: "my-app"
 
     include:

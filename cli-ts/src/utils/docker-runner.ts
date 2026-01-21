@@ -220,7 +220,7 @@ export function validateProjectConfig(): NonNullable<ReturnType<typeof loadConfi
   const config = loadConfig();
   if (!config) {
     throw new ConfigError(
-      '.deployment/config.yml not found',
+      '.dockflow/config.yml not found',
       'Run "dockflow init" to create project structure'
     );
   }
@@ -236,7 +236,7 @@ export function validateServersYaml(): NonNullable<ReturnType<typeof loadServers
   const config = loadServersConfig();
   if (!config) {
     throw new ConfigError(
-      '.deployment/servers.yml not found or invalid',
+      '.dockflow/servers.yml not found or invalid',
       'Run "dockflow config validate" for detailed validation'
     );
   }

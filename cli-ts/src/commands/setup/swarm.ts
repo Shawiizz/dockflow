@@ -232,7 +232,7 @@ export async function runSetupSwarm(env: string): Promise<void> {
   // Check servers.yml exists
   if (!hasServersConfig()) {
     throw new CLIError(
-      '.deployment/servers.yml not found. Create a servers.yml file to define your cluster.',
+      '.dockflow/servers.yml not found. Create a servers.yml file to define your cluster.',
       ErrorCode.CONFIG_NOT_FOUND
     );
   }

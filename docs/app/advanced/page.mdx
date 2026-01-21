@@ -4,10 +4,10 @@ import { FileTree } from 'nextra/components'
 
 ## Custom Templates
 
-Add custom configs in `.deployment/templates/`:
+Add custom configs in `.dockflow/templates/`:
 
 <FileTree>
-  <FileTree.Folder name=".deployment" defaultOpen>
+  <FileTree.Folder name=".dockflow" defaultOpen>
     <FileTree.Folder name="templates" defaultOpen>
       <FileTree.Folder name="nginx">
         <FileTree.File name="my-app.conf.j2" />
@@ -24,7 +24,7 @@ All templates support **Jinja2 syntax** and have access to environment variables
 
 ### Custom Nginx Configuration
 
-**Example:** Create `.deployment/templates/nginx/my-app.conf.j2`
+**Example:** Create `.dockflow/templates/nginx/my-app.conf.j2`
 
 ```nginx
 server {
@@ -40,7 +40,7 @@ server {
 
 ### Custom Systemd Service
 
-**Example:** Create `.deployment/templates/services/my-worker.service.j2`
+**Example:** Create `.dockflow/templates/services/my-worker.service.j2`
 
 ```ini
 [Unit]

@@ -13,7 +13,7 @@ set -e
 #######################################
 
 # Setup workspace with symlinks to protect source files from modification
-# This creates /workspace where .deployment/ is copied and everything else is symlinked
+# This creates /workspace where .dockflow/ is copied and everything else is symlinked
 # SKIP in CI/CD: files are cloned, not mounted from host, so no protection needed
 DOCKFLOW_PATH="${DOCKFLOW_PATH:-/tmp/dockflow}"
 if [ "$CI" != "true" ] && [ -f "$DOCKFLOW_PATH/.common/scripts/setup_workspace.sh" ]; then
@@ -28,9 +28,9 @@ fi
 ######## Prepare Environment ##########
 #######################################
 
-# Convert Windows line endings in .deployment files
-if [ -d "$ROOT_PATH/.deployment" ]; then
-	find "$ROOT_PATH/.deployment" -type f -exec sed -i 's/\r$//' {} \; 2>/dev/null || true
+# Convert Windows line endings in .dockflow files
+if [ -d "$ROOT_PATH/.dockflow" ]; then
+	find "$ROOT_PATH/.dockflow" -type f -exec sed -i 's/\r$//' {} \; 2>/dev/null || true
 fi
 
 # Check if context file exists (new approach)

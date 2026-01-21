@@ -12,7 +12,7 @@
 
 - name: List enabled Nginx config templates (*.conf.j2 only)
   find:
-    paths: "{{ root_path }}/.deployment/templates/nginx"
+    paths: "{{ root_path }}/.dockflow/templates/nginx"
     patterns: "*.conf.j2"
     recurse: false
   register: nginx_config_files

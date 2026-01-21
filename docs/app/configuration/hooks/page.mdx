@@ -15,10 +15,10 @@ Hooks allow you to run custom scripts at specific points during deployment.
 
 ## Setup
 
-Create shell scripts in `.deployment/hooks/`:
+Create shell scripts in `.dockflow/hooks/`:
 
 <FileTree>
-  <FileTree.Folder name=".deployment" defaultOpen>
+  <FileTree.Folder name=".dockflow" defaultOpen>
     <FileTree.Folder name="hooks" defaultOpen>
       <FileTree.File name="pre-build.sh" />
       <FileTree.File name="post-build.sh" />
@@ -79,7 +79,7 @@ curl -X POST "https://hooks.slack.com/services/xxx" \
 
 ## Configuration
 
-Hooks are enabled by default. Configure in `.deployment/config.yml`:
+Hooks are enabled by default. Configure in `.dockflow/config.yml`:
 
 ```yaml
 hooks:

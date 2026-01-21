@@ -8,10 +8,10 @@ on:
       - '*'
 
 # Configuration:
-# 1. Make sure your .deployment/config.yml has project_name set:
+# 1. Make sure your .dockflow/config.yml has project_name set:
 #    project_name: "my-app"
 #
-# 2. Define your .deployment/servers.yml with servers:
+# 2. Define your .dockflow/servers.yml with servers:
 #    servers:
 #      production:
 #        main_server:

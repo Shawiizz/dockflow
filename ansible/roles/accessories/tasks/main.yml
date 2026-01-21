@@ -24,7 +24,7 @@
 
 - name: Set accessories variables
   set_fact:
-    accessories_compose_path: "{{ root_path }}/.deployment/docker/accessories.yml"
+    accessories_compose_path: "{{ root_path }}/.dockflow/docker/accessories.yml"
     accessories_stack_name: "{{ stack_name }}-accessories"
     accessories_dir: "/var/lib/dockflow/accessories/{{ stack_name }}"
     accessories_hash_file: "/var/lib/dockflow/accessories/{{ stack_name }}/.hash"

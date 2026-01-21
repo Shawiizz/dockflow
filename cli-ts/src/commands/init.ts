@@ -21,7 +21,7 @@ on:
     tags:
       - '*'
 
-# Note: Make sure your .deployment/config.yml has project_name set
+# Note: Make sure your .dockflow/config.yml has project_name set
 # and add your connection secrets (e.g., PRODUCTION_CONNECTION) to GitHub Secrets
 
 jobs:
@@ -291,7 +291,7 @@ services:
     image: \${IMAGE_NAME:-myapp}:\${IMAGE_TAG:-latest}
     build:
       context: ../..
-      dockerfile: .deployment/docker/Dockerfile
+      dockerfile: .dockflow/docker/Dockerfile
     ports:
       - "3000:3000"
     environment:
@@ -357,11 +357,11 @@ export function registerInitCommand(program: Command): void {
       console.log('');
 
       const projectRoot = getProjectRoot();
-      const deploymentDir = join(projectRoot, '.deployment');
+      const deploymentDir = join(projectRoot, '.dockflow');
 
       // Check if already initialized
       if (existsSync(deploymentDir)) {
-        printWarning('.deployment folder already exists');
+        printWarning('.dockflow folder already exists');
         const { overwrite } = await inquirer.prompt([
           {
             type: 'confirm',
@@ -397,9 +397,9 @@ export function registerInitCommand(program: Command): void {
       printInfo('Creating directory structure...');
       
       const dirs = [
-        '.deployment',
-        '.deployment/docker',
-        '.deployment/hooks',
+        '.dockflow',
+        '.dockflow/docker',
+        '.dockflow/hooks',
       ];
 
       for (const dir of dirs) {
@@ -411,23 +411,23 @@ export function registerInitCommand(program: Command): void {
 
       // Create config.yml
       writeFileSync(join(deploymentDir, 'config.yml'), CONFIG_YML);
-      printSuccess('Created .deployment/config.yml');
+      printSuccess('Created .dockflow/config.yml');
 
       // Create servers.yml
       writeFileSync(join(deploymentDir, 'servers.yml'), SERVERS_YML);
-      printSuccess('Created .deployment/servers.yml');
+      printSuccess('Created .dockflow/servers.yml');
 
       // Create docker-compose.yml
       writeFileSync(join(deploymentDir, 'docker', 'docker-compose.yml'), DOCKER_COMPOSE);
-      printSuccess('Created .deployment/docker/docker-compose.yml');
+      printSuccess('Created .dockflow/docker/docker-compose.yml');
 
       // Create accessories.yml
       writeFileSync(join(deploymentDir, 'docker', 'accessories.yml'), ACCESSORIES_YML);
-      printSuccess('Created .deployment/docker/accessories.yml');
+      printSuccess('Created .dockflow/docker/accessories.yml');
 
       // Create Dockerfile
       writeFileSync(join(deploymentDir, 'docker', 'Dockerfile'), DOCKERFILE);
-      printSuccess('Created .deployment/docker/Dockerfile');
+      printSuccess('Created .dockflow/docker/Dockerfile');
 
       // Create CI/CD config
       if (ciPlatform === 'github') {
@@ -459,10 +459,10 @@ export function registerInitCommand(program: Command): void {
       printSuccess('Project initialized successfully!');
       console.log('');
       printInfo('Next steps:');
-      console.log('  1. Edit .deployment/config.yml with your project name');
-      console.log('  2. Edit .deployment/servers.yml to define your servers');
-      console.log('  3. Configure .deployment/docker/docker-compose.yml');
-      console.log('  4. Update .deployment/docker/Dockerfile for your app');
+      console.log('  1. Edit .dockflow/config.yml with your project name');
+      console.log('  2. Edit .dockflow/servers.yml to define your servers');
+      console.log('  3. Configure .dockflow/docker/docker-compose.yml');
+      console.log('  4. Update .dockflow/docker/Dockerfile for your app');
       console.log('  5. Run "dockflow setup" to configure your server');
       console.log('  6. Add connection secrets to your CI/CD (e.g., PRODUCTION_MAIN_SERVER_CONNECTION)');
       console.log('  7. Push a tag to trigger deployment');

@@ -42,11 +42,11 @@ function validateConfigFiles(): ValidationResult {
   const warnings: string[] = [];
   const schemaErrors: { config?: ValidationIssue[]; servers?: ValidationIssue[] } = {};
   const root = getProjectRoot();
-  const deploymentDir = join(root, '.deployment');
+  const deploymentDir = join(root, '.dockflow');
 
-  // Check .deployment directory
+  // Check .dockflow directory
   if (!existsSync(deploymentDir)) {
-    errors.push('.deployment directory not found');
+    errors.push('.dockflow directory not found');
     return { valid: false, errors, warnings };
   }
 
@@ -98,7 +98,7 @@ function validateConfigFiles(): ValidationResult {
   const composePath = join(deploymentDir, 'docker', 'docker-compose.yml');
   const composeYmlPath = join(deploymentDir, 'docker', 'docker-compose.yaml');
   if (!existsSync(composePath) && !existsSync(composeYmlPath)) {
-    warnings.push('docker-compose.yml not found in .deployment/docker/ (required for deployment)');
+    warnings.push('docker-compose.yml not found in .dockflow/docker/ (required for deployment)');
   }
 
   return {
@@ -201,10 +201,10 @@ export function registerConfigCommand(program: Command): void {
       
       const root = getProjectRoot();
       const files = [
-        { name: 'config.yml', path: join(root, '.deployment', 'config.yml') },
-        { name: 'servers.yml', path: join(root, '.deployment', 'servers.yml') },
-        { name: 'docker-compose.yml', path: join(root, '.deployment', 'docker', 'docker-compose.yml') },
-        { name: 'accessories.yml', path: join(root, '.deployment', 'accessories.yml') },
+        { name: 'config.yml', path: join(root, '.dockflow', 'config.yml') },
+        { name: 'servers.yml', path: join(root, '.dockflow', 'servers.yml') },
+        { name: 'docker-compose.yml', path: join(root, '.dockflow', 'docker', 'docker-compose.yml') },
+        { name: 'accessories.yml', path: join(root, '.dockflow', 'accessories.yml') },
       ];
 
       for (const file of files) {
@@ -318,6 +318,6 @@ export function registerConfigCommand(program: Command): void {
     .description('Show configuration directory path')
     .action(() => {
       const root = getProjectRoot();
-      console.log(join(root, '.deployment'));
+      console.log(join(root, '.dockflow'));
     });
 }

@@ -60,7 +60,7 @@ ssh-add ~/.ssh/dockflow_deploy_key
 
 # Determine skip tags
 SKIP_TAGS="configure_host"
-if [ ! -d "$ROOT_PATH/.deployment/templates/nginx" ] || [ -z "$(ls -A "$ROOT_PATH"/.deployment/templates/nginx 2>/dev/null)" ]; then
+if [ ! -d "$ROOT_PATH/.dockflow/templates/nginx" ] || [ -z "$(ls -A "$ROOT_PATH"/.dockflow/templates/nginx 2>/dev/null)" ]; then
     echo "No nginx configuration found, skipping nginx role"
     SKIP_TAGS="${SKIP_TAGS},nginx"
 fi

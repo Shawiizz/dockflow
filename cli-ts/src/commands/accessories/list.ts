@@ -64,7 +64,7 @@ function formatReplicas(replicas: string): string {
  * Check if accessories.yml exists locally
  */
 function hasAccessoriesFile(): boolean {
-  const accessoriesPath = join(getProjectRoot(), '.deployment', 'docker', 'accessories.yml');
+  const accessoriesPath = join(getProjectRoot(), '.dockflow', 'docker', 'accessories.yml');
   return existsSync(accessoriesPath);
 }
 
@@ -91,7 +91,7 @@ export function registerAccessoriesListCommand(program: Command): void {
       try {
         if (!validation.exists) {
           if (!hasAccessoriesFile()) {
-            printInfo('No accessories.yml found in .deployment/docker/');
+            printInfo('No accessories.yml found in .dockflow/docker/');
             printInfo('Create one to define your accessories (databases, caches, etc.)');
           } else {
             printInfo('Accessories not deployed yet');

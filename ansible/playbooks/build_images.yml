@@ -8,7 +8,7 @@
     tmp_dir: "/tmp"
     framework_version: "2.0.6"
     root_path: "{{ lookup('env', 'ROOT_PATH') }}"
-    compose_path: "{{ root_path }}/.deployment/docker/docker-compose.yml"
+    compose_path: "{{ root_path }}/.dockflow/docker/docker-compose.yml"
     skip_hooks: "{{ lookup('env', 'SKIP_HOOKS') | default(false) | bool }}"
   
   pre_tasks:

@@ -140,13 +140,13 @@
 
 - name: Copy rendered docker directory to remote server
   copy:
-    src: "{{ root_path | default('..') }}/.deployment/docker/"
-    dest: "{{ tmp_build_dir }}/.deployment/docker/"
+    src: "{{ root_path | default('..') }}/.dockflow/docker/"
+    dest: "{{ tmp_build_dir }}/.dockflow/docker/"
     mode: '0755'
 
 - name: Generate build commands using decomposerize
   shell: |
-    cd {{ root_path or '..' }}/.deployment/docker
+    cd {{ root_path or '..' }}/.dockflow/docker
     decomposerize docker-compose.yml --docker-build {{ services_option }}
   delegate_to: localhost
   register: build_commands_output
@@ -158,7 +158,7 @@
 
 - name: Build Docker images on remote server (parallel)
   shell: |
-    cd {{ tmp_build_dir }}/.deployment/docker
+    cd {{ tmp_build_dir }}/.dockflow/docker
     set -e
     PIDS=""
     {% for cmd in build_commands %}

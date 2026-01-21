@@ -70,7 +70,7 @@ export interface DockflowConfig {
 }
 
 /**
- * Get the project root directory (where .deployment folder is)
+ * Get the project root directory (where .dockflow folder is)
  */
 export function getProjectRoot(): string {
   return process.cwd();
@@ -95,13 +95,13 @@ export interface LoadResult<T> {
 }
 
 /**
- * Load the deployment config from .deployment/config.yml
+ * Load the deployment config from .dockflow/config.yml
  * @param options - Loading options (validate, silent)
  * @returns Loaded config or null if not found/invalid
  */
 export function loadConfig(options: LoadConfigOptions = {}): DockflowConfig | null {
   const { validate = true, silent = false } = options;
-  const configPath = join(getProjectRoot(), '.deployment', 'config.yml');
+  const configPath = join(getProjectRoot(), '.dockflow', 'config.yml');
   
   if (!existsSync(configPath)) {
     return null;
@@ -136,7 +136,7 @@ export function loadConfig(options: LoadConfigOptions = {}): DockflowConfig | nu
  */
 export function loadConfigWithErrors(options: LoadConfigOptions = {}): LoadResult<DockflowConfig> {
   const { validate = true } = options;
-  const configPath = join(getProjectRoot(), '.deployment', 'config.yml');
+  const configPath = join(getProjectRoot(), '.dockflow', 'config.yml');
   
   if (!existsSync(configPath)) {
     return { data: null };
@@ -164,13 +164,13 @@ export function loadConfigWithErrors(options: LoadConfigOptions = {}): LoadResul
 }
 
 /**
- * Load the servers config from .deployment/servers.yml
+ * Load the servers config from .dockflow/servers.yml
  * @param options - Loading options (validate, silent)
  * @returns Loaded config or null if not found/invalid
  */
 export function loadServersConfig(options: LoadConfigOptions = {}): ServersConfig | null {
   const { validate = true, silent = false } = options;
-  const serversPath = join(getProjectRoot(), '.deployment', 'servers.yml');
+  const serversPath = join(getProjectRoot(), '.dockflow', 'servers.yml');
   
   if (!existsSync(serversPath)) {
     return null;
@@ -205,7 +205,7 @@ export function loadServersConfig(options: LoadConfigOptions = {}): ServersConfi
  */
 export function loadServersConfigWithErrors(options: LoadConfigOptions = {}): LoadResult<ServersConfig> {
   const { validate = true } = options;
-  const serversPath = join(getProjectRoot(), '.deployment', 'servers.yml');
+  const serversPath = join(getProjectRoot(), '.dockflow', 'servers.yml');
   
   if (!existsSync(serversPath)) {
     return { data: null };
@@ -236,7 +236,7 @@ export function loadServersConfigWithErrors(options: LoadConfigOptions = {}): Lo
  * Check if servers.yml exists
  */
 export function hasServersConfig(): boolean {
-  const serversPath = join(getProjectRoot(), '.deployment', 'servers.yml');
+  const serversPath = join(getProjectRoot(), '.dockflow', 'servers.yml');
   return existsSync(serversPath);
 }
 
