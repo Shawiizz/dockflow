@@ -5,10 +5,10 @@
  */
 
 import type { Command } from 'commander';
-import chalk from 'chalk';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
+import { colors } from '../../utils/output';
 
 export function registerVersionCommand(program: Command): void {
   program
@@ -40,18 +40,18 @@ export function registerVersionCommand(program: Command): void {
         const servicesResult = await stackService.getServices();
         
         console.log('');
-        console.log(chalk.white(`Stack: ${chalk.cyan(stackName)}`));
+        console.log(`Stack: ${colors.info(stackName)}`);
         console.log('');
-        console.log(chalk.gray('  Version:     ') + chalk.green(metadata.version));
-        console.log(chalk.gray('  Environment: ') + chalk.white(metadata.environment));
-        console.log(chalk.gray('  Branch:      ') + chalk.white(metadata.branch || 'N/A'));
-        console.log(chalk.gray('  Deployed:    ') + chalk.white(metadata.timestamp));
+        console.log(colors.dim('  Version:     ') + colors.success(metadata.version));
+        console.log(colors.dim('  Environment: ') + metadata.environment);
+        console.log(colors.dim('  Branch:      ') + (metadata.branch || 'N/A'));
+        console.log(colors.dim('  Deployed:    ') + metadata.timestamp);
         console.log('');
 
         if (servicesResult.success && servicesResult.data.length > 0) {
-          console.log(chalk.gray('Running images:'));
+          console.log(colors.dim('Running images:'));
           for (const service of servicesResult.data) {
-            console.log(chalk.gray('  ') + `${service.name}: ${service.image}`);
+            console.log(colors.dim('  ') + `${service.name}: ${service.image}`);
           }
           console.log('');
         }

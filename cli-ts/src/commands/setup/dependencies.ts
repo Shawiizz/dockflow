@@ -5,8 +5,7 @@
 import { spawnSync } from 'child_process';
 import * as os from 'os';
 import * as fs from 'fs';
-import chalk from 'chalk';
-import { printSection, printInfo, printSuccess, printError, printWarning } from '../../utils/output';
+import { printSection, printInfo, printSuccess, printError, printWarning, colors } from '../../utils/output';
 import { REQUIRED_DEPENDENCIES, OPTIONAL_DEPENDENCIES } from './constants';
 import type { Dependency, DependencyCheckResult } from './types';
 
@@ -173,7 +172,7 @@ export function displayDependencyStatus(): void {
 
   for (const dep of REQUIRED_DEPENDENCIES) {
     const exists = commandExists(dep.name);
-    const status = exists ? chalk.green('✓') : chalk.red('✗');
+    const status = exists ? colors.success('✓') : colors.error('✗');
     console.log(`  ${status} ${dep.name} - ${dep.description}`);
   }
 
@@ -181,7 +180,7 @@ export function displayDependencyStatus(): void {
   printInfo('Optional:');
   for (const dep of OPTIONAL_DEPENDENCIES) {
     const exists = commandExists(dep.name);
-    const status = exists ? chalk.green('✓') : chalk.yellow('○');
+    const status = exists ? colors.success('✓') : colors.warning('○');
     console.log(`  ${status} ${dep.name} - ${dep.description}`);
   }
   console.log('');

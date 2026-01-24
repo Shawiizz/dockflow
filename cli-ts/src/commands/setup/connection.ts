@@ -2,8 +2,7 @@
  * Connection string management
  */
 
-import chalk from 'chalk';
-import { printHeader } from '../../utils/output';
+import { printHeader, colors } from '../../utils/output';
 import { 
   generateConnectionString as generateConnString,
   parseConnectionString as parseConnString
@@ -43,11 +42,11 @@ export function displayConnectionInfo(config: HostConfig, privateKey: string): v
   printHeader('Connection Information');
   console.log('');
 
-  console.log(chalk.yellow('━'.repeat(70)));
-  console.log(chalk.yellow('SSH Private Key (KEEP SECURE):'));
-  console.log(chalk.yellow('━'.repeat(70)));
+  console.log(colors.warning('━'.repeat(70)));
+  console.log(colors.warning('SSH Private Key (KEEP SECURE):'));
+  console.log(colors.warning('━'.repeat(70)));
   console.log(privateKey);
-  console.log(chalk.yellow('━'.repeat(70)));
+  console.log(colors.warning('━'.repeat(70)));
   console.log('');
 
   const connectionString = generateConnectionString({
@@ -58,24 +57,24 @@ export function displayConnectionInfo(config: HostConfig, privateKey: string): v
     password: config.deployPassword
   });
 
-  console.log(chalk.red('╔' + '═'.repeat(70) + '╗'));
-  console.log(chalk.red('║') + '                         ⚠️  DO NOT SHARE  ⚠️                          ' + chalk.red('║'));
-  console.log(chalk.red('║') + '                                                                      ' + chalk.red('║'));
-  console.log(chalk.red('║') + `  This connection string contains the SSH private key!                ` + chalk.red('║'));
-  console.log(chalk.red('║') + `  Anyone with this string can access your server as: ${config.deployUser.padEnd(15)}   ` + chalk.red('║'));
-  console.log(chalk.red('╚' + '═'.repeat(70) + '╝'));
+  console.log(colors.error('╔' + '═'.repeat(70) + '╗'));
+  console.log(colors.error('║') + '                         ⚠️  DO NOT SHARE  ⚠️                          ' + colors.error('║'));
+  console.log(colors.error('║') + '                                                                      ' + colors.error('║'));
+  console.log(colors.error('║') + `  This connection string contains the SSH private key!                ` + colors.error('║'));
+  console.log(colors.error('║') + `  Anyone with this string can access your server as: ${config.deployUser.padEnd(15)}   ` + colors.error('║'));
+  console.log(colors.error('╚' + '═'.repeat(70) + '╝'));
   console.log('');
 
-  console.log(chalk.cyan('Connection String (Base64):'));
-  console.log(chalk.yellow('━'.repeat(70)));
+  console.log(colors.info('Connection String (Base64):'));
+  console.log(colors.warning('━'.repeat(70)));
   console.log(connectionString);
-  console.log(chalk.yellow('━'.repeat(70)));
+  console.log(colors.warning('━'.repeat(70)));
   console.log('');
 
-  console.log(chalk.cyan('Deployment User:'), chalk.blue(config.deployUser));
+  console.log(colors.info('Deployment User:'), colors.bold(config.deployUser));
   console.log('');
-  console.log(chalk.yellow('Add this connection string to your CI/CD secrets:'));
-  console.log(chalk.gray('   Secret name: [YOURENV]_CONNECTION'));
-  console.log(chalk.gray('   (Replace [YOURENV] with your environment, e.g., PRODUCTION_CONNECTION)'));
+  console.log(colors.warning('Add this connection string to your CI/CD secrets:'));
+  console.log(colors.dim('   Secret name: [YOURENV]_CONNECTION'));
+  console.log(colors.dim('   (Replace [YOURENV] with your environment, e.g., PRODUCTION_CONNECTION)'));
   console.log('');
 }

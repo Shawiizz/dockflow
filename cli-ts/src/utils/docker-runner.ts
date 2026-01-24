@@ -3,12 +3,11 @@
  * Shared logic for running Ansible playbooks in Docker containers
  */
 
-import chalk from 'chalk';
 import ora from 'ora';
 import { existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { getProjectRoot, loadConfig, loadServersConfig, isDockerAvailable, getAnsibleDockerImage } from './config';
-import { printSuccess } from './output';
+import { printSuccess, printWarning, printDim } from './output';
 import { DOCKFLOW_REPO, DOCKFLOW_VERSION, CONTAINER_PATHS } from '../constants';
 import { CLIError, ConfigError, DockerError } from './errors';
 
@@ -66,7 +65,7 @@ export function buildDockerCommand(devMode: boolean = false, contextFilePath?: s
     const dockflowRoot = process.env.DOCKFLOW_DEV_PATH;
     if (dockflowRoot) {
       dockerCmd.push('-v', `${dockflowRoot}:${CONTAINER_PATHS.DOCKFLOW}`);
-      console.log(chalk.yellow(`Dev mode: mounting ${dockflowRoot} as ${CONTAINER_PATHS.DOCKFLOW}`));
+      printWarning(`Dev mode: mounting ${dockflowRoot} as ${CONTAINER_PATHS.DOCKFLOW}`);
     } else {
       throw new ConfigError(
         'Dev mode: Could not find dockflow root',
@@ -115,7 +114,7 @@ ${command.map(c => `"${c}"`).join(' ')}
 
   dockerCmd.push('bash', '-c', fullScript);
 
-  console.log(chalk.dim(`Starting ${actionName} container...`));
+  printDim(`Starting ${actionName} container...`);
   console.log('');
 
   const spinner = ora(`Starting ${actionName}...`).start();

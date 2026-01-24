@@ -6,8 +6,7 @@ import { spawnSync, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import ora from 'ora';
-import chalk from 'chalk';
-import { printInfo, printSuccess, printError } from '../../utils/output';
+import { printInfo, printSuccess, printError, colors } from '../../utils/output';
 import { DOCKFLOW_REPO, DOCKFLOW_DIR } from './constants';
 import type { HostConfig } from './types';
 
@@ -125,15 +124,15 @@ export async function runAnsiblePlaybook(config: HostConfig, ansibleDir: string)
     printInfo('The Ansible playbooks are required for setup.');
     printInfo('Please ensure the dockflow ansible directory is available.');
     console.log('');
-    console.log(chalk.cyan('Options:'));
+    console.log(colors.info('Options:'));
     console.log('  1. Clone the dockflow repository and run from there');
     console.log('  2. Copy the ansible/ directory next to the binary');
     console.log('  3. Install to /opt/dockflow/ansible');
     console.log('');
-    console.log(chalk.gray('Example:'));
-    console.log(chalk.gray('  git clone https://github.com/Shawiizz/dockflow.git'));
-    console.log(chalk.gray('  cd dockflow'));
-    console.log(chalk.gray('  ./dockflow-linux-x64 setup'));
+    console.log(colors.dim('Example:'));
+    console.log(colors.dim('  git clone https://github.com/Shawiizz/dockflow.git'));
+    console.log(colors.dim('  cd dockflow'));
+    console.log(colors.dim('  ./dockflow-linux-x64 setup'));
     return false;
   }
 

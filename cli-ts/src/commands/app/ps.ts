@@ -5,8 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import chalk from 'chalk';
-import { printInfo, printSection, printDebug } from '../../utils/output';
+import { printInfo, printSection, printDebug, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -40,17 +39,17 @@ export function registerPsCommand(program: Command): void {
           
           for (const task of tasksResult.data) {
             const stateColor = task.currentState.includes('Running') 
-              ? chalk.green 
+              ? colors.success 
               : task.currentState.includes('Failed') 
-                ? chalk.red 
-                : chalk.yellow;
+                ? colors.error 
+                : colors.warning;
             
-            console.log(`  ${chalk.cyan(task.name)}`);
+            console.log(`  ${colors.info(task.name)}`);
             console.log(`    ID: ${task.id.substring(0, 12)}`);
             console.log(`    Node: ${task.node}`);
             console.log(`    State: ${stateColor(task.currentState)}`);
             if (task.error) {
-              console.log(`    Error: ${chalk.red(task.error)}`);
+              console.log(`    Error: ${colors.error(task.error)}`);
             }
             console.log('');
           }
@@ -69,11 +68,11 @@ export function registerPsCommand(program: Command): void {
 
           printSection('Containers');
           console.log('');
-          console.log(chalk.gray('  ID            NAME                                STATUS              PORTS'));
-          console.log(chalk.gray('  ' + '─'.repeat(80)));
+          console.log(colors.dim('  ID            NAME                                STATUS              PORTS'));
+          console.log(colors.dim('  ' + '─'.repeat(80)));
           
           for (const container of containersResult.data) {
-            const statusColor = container.status.includes('Up') ? chalk.green : chalk.yellow;
+            const statusColor = container.status.includes('Up') ? colors.success : colors.warning;
             console.log(
               `  ${container.id.substring(0, 12).padEnd(14)}` +
               `${container.name.substring(0, 35).padEnd(36)}` +

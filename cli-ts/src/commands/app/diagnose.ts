@@ -6,9 +6,8 @@
  */
 
 import type { Command } from 'commander';
-import chalk from 'chalk';
 import { sshExec } from '../../utils/ssh';
-import { printSection, printHeader, printInfo, printError, printSuccess, printWarning, printDebug } from '../../utils/output';
+import { printSection, printHeader, printInfo, printError, printSuccess, printWarning, printDebug, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -61,7 +60,7 @@ export function registerDiagnoseCommand(program: Command): void {
         for (const service of servicesResult.data) {
           const [current, desired] = service.replicas.split('/').map(s => parseInt(s.trim()));
           if (current === 0 && desired > 0) {
-            console.log(`  ${chalk.red('✗')} ${service.name}: ${chalk.red(service.replicas)} replicas`);
+            console.log(`  ${colors.error('✗')} ${service.name}: ${colors.error(service.replicas)} replicas`);
             issues.push({
               severity: 'error',
               category: 'Replicas',
@@ -69,14 +68,14 @@ export function registerDiagnoseCommand(program: Command): void {
               suggestion: 'Check task errors below for details'
             });
           } else if (current < desired) {
-            console.log(`  ${chalk.yellow('!')} ${service.name}: ${chalk.yellow(service.replicas)} replicas`);
+            console.log(`  ${colors.warning('!')} ${service.name}: ${colors.warning(service.replicas)} replicas`);
             issues.push({
               severity: 'warning',
               category: 'Replicas',
               message: `Service '${service.name}' has only ${current}/${desired} replicas`,
             });
           } else {
-            console.log(`  ${chalk.green('✓')} ${service.name}: ${chalk.green(service.replicas)} replicas`);
+            console.log(`  ${colors.success('✓')} ${service.name}: ${colors.success(service.replicas)} replicas`);
           }
         }
       }
@@ -100,10 +99,10 @@ export function registerDiagnoseCommand(program: Command): void {
           printSuccess('No task errors found');
         } else {
           for (const task of recentFailures) {
-            console.log(`  ${chalk.red('✗')} ${task.name}`);
-            console.log(`    State: ${chalk.yellow(task.currentState)}`);
+            console.log(`  ${colors.error('✗')} ${task.name}`);
+            console.log(`    State: ${colors.warning(task.currentState)}`);
             if (task.error) {
-              console.log(`    Error: ${chalk.red(task.error)}`);
+              console.log(`    Error: ${colors.error(task.error)}`);
               
               // Parse common errors
               const errorAnalysis = analyzeTaskError(task.error);
@@ -132,7 +131,7 @@ export function registerDiagnoseCommand(program: Command): void {
           printInfo('No pending tasks');
         } else {
           for (const task of pendingTasks) {
-            console.log(`  ${chalk.yellow('○')} ${task.name}: ${task.currentState}`);
+            console.log(`  ${colors.warning('○')} ${task.name}: ${task.currentState}`);
           }
           if (pendingTasks.some(t => t.currentState.includes('Pending'))) {
             issues.push({
@@ -169,7 +168,7 @@ export function registerDiagnoseCommand(program: Command): void {
         const dfResult = sshExec(connection, `df -h / | tail -1 | awk '{print $5}'`);
         const diskUsage = parseInt(dfResult.stdout.trim().replace('%', ''));
         if (diskUsage >= 90) {
-          console.log(`  Disk usage: ${chalk.red(dfResult.stdout.trim())}`);
+          console.log(`  Disk usage: ${colors.error(dfResult.stdout.trim())}`);
           issues.push({
             severity: 'error',
             category: 'System',
@@ -177,7 +176,7 @@ export function registerDiagnoseCommand(program: Command): void {
             suggestion: `Run 'dockflow prune ${env}' to clean up unused Docker resources`
           });
         } else if (diskUsage >= 80) {
-          console.log(`  Disk usage: ${chalk.yellow(dfResult.stdout.trim())}`);
+          console.log(`  Disk usage: ${colors.warning(dfResult.stdout.trim())}`);
           issues.push({
             severity: 'warning',
             category: 'System',
@@ -185,7 +184,7 @@ export function registerDiagnoseCommand(program: Command): void {
             suggestion: 'Consider cleaning up unused Docker resources'
           });
         } else {
-          console.log(`  Disk usage: ${chalk.green(dfResult.stdout.trim())}`);
+          console.log(`  Disk usage: ${colors.success(dfResult.stdout.trim())}`);
         }
       } catch {
         printInfo('Could not check disk space');
@@ -196,7 +195,7 @@ export function registerDiagnoseCommand(program: Command): void {
         const memResult = sshExec(connection, `free -m | awk 'NR==2{printf "%.0f", $3*100/$2}'`);
         const memUsage = parseInt(memResult.stdout.trim());
         if (memUsage >= 90) {
-          console.log(`  Memory usage: ${chalk.red(memUsage + '%')}`);
+          console.log(`  Memory usage: ${colors.error(memUsage + '%')}`);
           issues.push({
             severity: 'warning',
             category: 'System',
@@ -204,9 +203,9 @@ export function registerDiagnoseCommand(program: Command): void {
             suggestion: 'High memory usage may prevent containers from starting'
           });
         } else if (memUsage >= 80) {
-          console.log(`  Memory usage: ${chalk.yellow(memUsage + '%')}`);
+          console.log(`  Memory usage: ${colors.warning(memUsage + '%')}`);
         } else {
-          console.log(`  Memory usage: ${chalk.green(memUsage + '%')}`);
+          console.log(`  Memory usage: ${colors.success(memUsage + '%')}`);
         }
       } catch {
         printInfo('Could not check memory usage');
@@ -303,21 +302,21 @@ function printDiagnosticSummary(issues: DiagnosticIssue[]): void {
   }
 
   if (errors.length > 0) {
-    console.log(`  ${chalk.red('Errors:')} ${errors.length}`);
+    console.log(`  ${colors.error('Errors:')} ${errors.length}`);
     for (const issue of errors) {
-      console.log(`    ${chalk.red('•')} ${issue.message}`);
+      console.log(`    ${colors.error('•')} ${issue.message}`);
       if (issue.suggestion) {
-        console.log(`      ${chalk.gray('→')} ${chalk.cyan(issue.suggestion)}`);
+        console.log(`      ${colors.dim('→')} ${colors.info(issue.suggestion)}`);
       }
     }
   }
 
   if (warnings.length > 0) {
-    console.log(`  ${chalk.yellow('Warnings:')} ${warnings.length}`);
+    console.log(`  ${colors.warning('Warnings:')} ${warnings.length}`);
     for (const issue of warnings) {
-      console.log(`    ${chalk.yellow('•')} ${issue.message}`);
+      console.log(`    ${colors.warning('•')} ${issue.message}`);
       if (issue.suggestion) {
-        console.log(`      ${chalk.gray('→')} ${chalk.cyan(issue.suggestion)}`);
+        console.log(`      ${colors.dim('→')} ${colors.info(issue.suggestion)}`);
       }
     }
   }

@@ -7,8 +7,7 @@
  */
 
 import type { Command } from 'commander';
-import chalk from 'chalk';
-import { printInfo, printHeader, printDebug, setVerbose } from '../utils/output';
+import { printInfo, printHeader, printDebug, printWarning, printDim, setVerbose } from '../utils/output';
 import { loadSecrets } from '../utils/secrets';
 import { getCurrentBranch } from '../utils/git';
 import { withErrorHandler } from '../utils/errors';
@@ -82,8 +81,8 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
   if (Object.keys(envVars).length > 0) {
     printInfo(`Env vars: ${Object.keys(envVars).length} variables loaded`);
   } else {
-    console.log(chalk.yellow(`⚠ No environment variables found for "${env}"`));
-    console.log(chalk.dim(`  Check that servers.yml has a server with tag "${env}" and env vars defined`));
+    printWarning(`No environment variables found for "${env}"`);
+    printDim(`  Check that servers.yml has a server with tag "${env}" and env vars defined`);
   }
   if (options.services) {
     printInfo(`Services: ${options.services}`);

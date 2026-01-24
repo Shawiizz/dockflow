@@ -3,9 +3,8 @@
  */
 
 import type { Command } from 'commander';
-import chalk from 'chalk';
 import { loadConfig, loadServersConfig } from '../../utils/config';
-import { printSection, printError } from '../../utils/output';
+import { printSection, printError, colors } from '../../utils/output';
 import type { ServerConfig } from '../../types';
 
 interface EnvironmentInfo {
@@ -90,25 +89,25 @@ export function registerListEnvCommand(parent: Command): void {
 
       if (environments.length === 0) {
         printError('No environments found');
-        console.log(chalk.gray('Create .dockflow/servers.yml to define your environments'));
+        console.log(colors.dim('Create .dockflow/servers.yml to define your environments'));
         console.log('');
-        console.log(chalk.gray('Example:'));
-        console.log(chalk.gray('  defaults:'));
-        console.log(chalk.gray('    user: deploy'));
-        console.log(chalk.gray('    port: 22'));
-        console.log(chalk.gray('  servers:'));
-        console.log(chalk.gray('    prod-server:'));
-        console.log(chalk.gray('      host: 192.168.1.100'));
-        console.log(chalk.gray('      tags: [production]'));
+        console.log(colors.dim('Example:'));
+        console.log(colors.dim('  defaults:'));
+        console.log(colors.dim('    user: deploy'));
+        console.log(colors.dim('    port: 22'));
+        console.log(colors.dim('  servers:'));
+        console.log(colors.dim('    prod-server:'));
+        console.log(colors.dim('      host: 192.168.1.100'));
+        console.log(colors.dim('      tags: [production]'));
         return;
       }
 
       for (const env of environments) {
         const envColor = env.name === 'production' 
-          ? chalk.red 
+          ? colors.error 
           : env.name === 'staging' 
-            ? chalk.yellow 
-            : chalk.blue;
+            ? colors.warning 
+            : colors.info;
         
         const managerCount = env.servers.filter(s => s.role === 'manager').length;
         const workerCount = env.servers.filter(s => s.role === 'worker').length;
@@ -118,7 +117,7 @@ export function registerListEnvCommand(parent: Command): void {
           const parts = [];
           if (managerCount > 0) parts.push(`${managerCount} manager${managerCount > 1 ? 's' : ''}`);
           if (workerCount > 0) parts.push(`${workerCount} worker${workerCount > 1 ? 's' : ''}`);
-          clusterInfo = chalk.gray(` (${parts.join(', ')})`);
+          clusterInfo = colors.dim(` (${parts.join(', ')})`);
         }
 
         console.log(envColor(`● ${env.name}`) + clusterInfo);
@@ -126,20 +125,20 @@ export function registerListEnvCommand(parent: Command): void {
         for (const server of env.servers) {
           const roleIcon = server.role === 'manager' ? '👑' : '⚙️';
           const hostInfo = server.host.startsWith('<') 
-            ? chalk.gray(server.host) 
-            : chalk.white(server.host);
+            ? colors.dim(server.host) 
+            : server.host;
           
-          console.log(`  ${roleIcon} ${chalk.cyan(server.name.padEnd(20))} ${hostInfo}:${server.port} ${chalk.gray(`(${server.user})`)}`);
+          console.log(`  ${roleIcon} ${colors.info(server.name.padEnd(20))} ${hostInfo}:${server.port} ${colors.dim(`(${server.user})`)}`);
         }
         console.log('');
       }
 
       // Show deployment commands hint
-      console.log(chalk.gray('─'.repeat(50)));
+      console.log(colors.dim('─'.repeat(50)));
       console.log('');
-      console.log(chalk.gray('Deploy to an environment:'));
+      console.log(colors.dim('Deploy to an environment:'));
       for (const env of environments.slice(0, 2)) {
-        console.log(chalk.gray(`  dockflow deploy ${env.name}`));
+        console.log(colors.dim(`  dockflow deploy ${env.name}`));
       }
       console.log('');
     });

@@ -3,10 +3,9 @@
  */
 
 import type { Command } from 'commander';
-import chalk from 'chalk';
 import ora from 'ora';
 import { sshExec } from '../../utils/ssh';
-import { printSuccess, printInfo } from '../../utils/output';
+import { printSuccess, printInfo, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
@@ -38,11 +37,11 @@ export function registerLockReleaseCommand(parent: Command): void {
         try {
           const lockInfo = JSON.parse(output);
           printInfo('Current lock:');
-          console.log(chalk.gray(`  Holder:  ${lockInfo.performer}`));
-          console.log(chalk.gray(`  Started: ${lockInfo.started_at}`));
-          console.log(chalk.gray(`  Version: ${lockInfo.version}`));
+          console.log(colors.dim(`  Holder:  ${lockInfo.performer}`));
+          console.log(colors.dim(`  Started: ${lockInfo.started_at}`));
+          console.log(colors.dim(`  Version: ${lockInfo.version}`));
           if (lockInfo.message) {
-            console.log(chalk.gray(`  Message: ${lockInfo.message}`));
+            console.log(colors.dim(`  Message: ${lockInfo.message}`));
           }
           console.log('');
         } catch {
@@ -69,7 +68,7 @@ export function registerLockReleaseCommand(parent: Command): void {
         }
         
         spinner.succeed(`Lock released for ${stackName}`);
-        console.log(chalk.gray('  Deployments to this environment are now allowed.'));
+        console.log(colors.dim('  Deployments to this environment are now allowed.'));
       } catch (error) {
         if (error instanceof CLIError) throw error;
         spinner.fail('Failed to release lock');

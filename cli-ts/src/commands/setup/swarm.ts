@@ -10,7 +10,6 @@
  * to set up the cluster topology.
  */
 
-import chalk from 'chalk';
 import ora from 'ora';
 import { printHeader, printError, printSuccess, printInfo, printWarning } from '../../utils/output';
 import { hasServersConfig } from '../../utils/config';

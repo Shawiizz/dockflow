@@ -4,9 +4,8 @@
 
 import { spawnSync, spawn } from 'child_process';
 import * as fs from 'fs';
-import chalk from 'chalk';
 import ora from 'ora';
-import { printHeader, printSection, printError, printSuccess, printInfo } from '../../utils/output';
+import { printHeader, printSection, printError, printSuccess, printInfo, colors } from '../../utils/output';
 import { sshExec, sshExecStream, testConnection } from '../../utils/ssh';
 import type { SSHKeyConnection as ConnectionInfo } from '../../types';
 import { DOCKFLOW_RELEASE_URL } from './constants';
@@ -234,7 +233,7 @@ export async function promptRemoteConnection(): Promise<RemoteSetupOptions | nul
     }
     privateKey = fs.readFileSync(privateKeyPath, 'utf-8');
   } else {
-    console.log(chalk.gray('Paste your private key, then press Enter twice:'));
+    console.log(colors.dim('Paste your private key, then press Enter twice:'));
     privateKey = await promptMultiline();
     if (!privateKey || !privateKey.includes('PRIVATE KEY')) {
       printError('Invalid SSH private key');
@@ -251,7 +250,7 @@ export async function promptRemoteConnection(): Promise<RemoteSetupOptions | nul
 export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   printHeader('Remote Setup');
   console.log('');
-  console.log(chalk.cyan('Target:'), `${opts.user}@${opts.host}:${opts.port}`);
+  console.log(colors.info('Target:'), `${opts.user}@${opts.host}:${opts.port}`);
   console.log('');
   
   const testSpinner = ora('Testing SSH connection...').start();
@@ -328,7 +327,7 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   
   console.log('');
   printSection('Running setup on remote server');
-  console.log(chalk.gray('─'.repeat(60)));
+  console.log(colors.dim('─'.repeat(60)));
   console.log('');
   
   const setupCmd = `${remotePath} setup`;
@@ -340,7 +339,7 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   }
   
   console.log('');
-  console.log(chalk.gray('─'.repeat(60)));
+  console.log(colors.dim('─'.repeat(60)));
   
   const cleanupSpinner = ora('Cleaning up...').start();
   if (conn) {

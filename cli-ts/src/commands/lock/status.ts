@@ -3,9 +3,8 @@
  */
 
 import type { Command } from 'commander';
-import chalk from 'chalk';
 import { sshExec } from '../../utils/ssh';
-import { printInfo, printSuccess, printWarning } from '../../utils/output';
+import { printInfo, printSuccess, printWarning, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
@@ -26,7 +25,7 @@ export function registerLockStatusCommand(parent: Command): void {
 
         if (output === 'NO_LOCK') {
           printSuccess(`No active lock for ${stackName}`);
-          console.log(chalk.gray('  Deployments are allowed.'));
+          console.log(colors.dim('  Deployments are allowed.'));
           return;
         }
 
@@ -48,24 +47,24 @@ export function registerLockStatusCommand(parent: Command): void {
           }
           
           console.log('');
-          console.log(chalk.white('  Lock Details:'));
-          console.log(chalk.gray(`    Stack:     ${lockInfo.stack}`));
-          console.log(chalk.gray(`    Holder:    ${lockInfo.performer}`));
-          console.log(chalk.gray(`    Started:   ${lockInfo.started_at}`));
-          console.log(chalk.gray(`    Version:   ${lockInfo.version}`));
-          console.log(chalk.gray(`    Duration:  ${diffMinutes} minutes`));
+          console.log(colors.bold('  Lock Details:'));
+          console.log(colors.dim(`    Stack:     ${lockInfo.stack}`));
+          console.log(colors.dim(`    Holder:    ${lockInfo.performer}`));
+          console.log(colors.dim(`    Started:   ${lockInfo.started_at}`));
+          console.log(colors.dim(`    Version:   ${lockInfo.version}`));
+          console.log(colors.dim(`    Duration:  ${diffMinutes} minutes`));
           console.log('');
 
           if (isStale) {
-            console.log(chalk.yellow('  This lock appears stale and will be auto-released on next deploy.'));
-            console.log(chalk.yellow('  Or run: dockflow lock release ' + env));
+            console.log(colors.warning('  This lock appears stale and will be auto-released on next deploy.'));
+            console.log(colors.warning('  Or run: dockflow lock release ' + env));
           } else {
-            console.log(chalk.gray('  A deployment is in progress. Wait for it to complete.'));
-            console.log(chalk.gray('  To force release: dockflow lock release ' + env + ' --force'));
+            console.log(colors.dim('  A deployment is in progress. Wait for it to complete.'));
+            console.log(colors.dim('  To force release: dockflow lock release ' + env + ' --force'));
           }
         } catch {
           printWarning('Lock file exists but could not be parsed');
-          console.log(chalk.gray(`  File: ${lockFile}`));
+          console.log(colors.dim(`  File: ${lockFile}`));
         }
       } catch (error) {
         throw new CLIError(`Failed to check lock status: ${error}`, ErrorCode.COMMAND_FAILED);
