@@ -7,6 +7,7 @@
  */
 
 import { sshExec } from '../ssh';
+import { colors } from '../output';
 import type { SSHKeyConnection, ResolvedServer } from '../../types';
 import { getFullConnectionInfo } from './resolver';
 
@@ -90,7 +91,7 @@ export async function findActiveManager(
     const connection = getFullConnectionInfo(env, manager.name);
     if (!connection) {
       if (verbose) {
-        console.log(`  ⚠ ${manager.name}: No SSH key configured`);
+        console.log(`  ${colors.warning('⚠')} ${manager.name}: No SSH key configured`);
       }
       failedManagers.push(`${manager.name} (no SSH key)`);
       continue;
@@ -104,14 +105,14 @@ export async function findActiveManager(
     
     if (status === 'unreachable') {
       if (verbose) {
-        console.log(' ✗ unreachable');
+        console.log(colors.error(' ✗ unreachable'));
       }
       failedManagers.push(`${manager.name} (unreachable)`);
       continue;
     }
     
     if (verbose) {
-      console.log(status === 'leader' ? ' ✓ LEADER' : ' ✓ reachable');
+      console.log(status === 'leader' ? colors.success(' ✓ LEADER') : colors.success(' ✓ reachable'));
     }
     
     // If this is the leader and we prefer leader, return immediately

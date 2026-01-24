@@ -7,6 +7,7 @@
 
 import { loadServersConfig } from '../config';
 import { parseConnectionString } from '../connection-parser';
+import { printWarning } from '../output';
 import type { 
   ServersConfig, 
   ServerConfig, 
@@ -89,10 +90,10 @@ export function resolveServersForEnvironment(environment: string): ResolvedServe
     // Resolve connection info
     const connection = resolveConnection(environment, serverName, serverConfig, defaults);
     if (!connection) {
-      console.warn(`Warning: Server "${serverName}" has no host configured and no CI secret found.`);
-      console.warn(`  Expected CI secret: ${environment.toUpperCase()}_${serverNameToEnvKey(serverName)}_CONNECTION`);
-      console.warn(`  If this repo is in a GitHub organization, fork the dockflow repository to your organization.`);
-      console.warn(`  See: https://dockflow.shawiizz.dev/getting-started#copy-ci-config-file`);
+      printWarning(`Server "${serverName}" has no host configured and no CI secret found.`);
+      printWarning(`  Expected CI secret: ${environment.toUpperCase()}_${serverNameToEnvKey(serverName)}_CONNECTION`);
+      printWarning(`  If this repo is in a GitHub organization, fork the dockflow repository to your organization.`);
+      printWarning(`  See: https://dockflow.shawiizz.dev/getting-started#copy-ci-config-file`);
       continue;
     }
     

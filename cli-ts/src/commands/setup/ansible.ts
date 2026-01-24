@@ -74,8 +74,8 @@ export async function ensureDockflowRepo(): Promise<string> {
     }
 
     return ansibleDir;
-  } catch (error: any) {
-    spinner.fail(`Failed to setup Dockflow: ${error.message}`);
+  } catch (error) {
+    spinner.fail(`Failed to setup Dockflow: ${error instanceof Error ? error.message : String(error)}`);
     throw error;
   }
 }
