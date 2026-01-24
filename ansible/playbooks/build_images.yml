@@ -10,6 +10,7 @@
     root_path: "{{ lookup('env', 'ROOT_PATH') }}"
     compose_path: "{{ root_path }}/.dockflow/docker/docker-compose.yml"
     skip_hooks: "{{ lookup('env', 'SKIP_HOOKS') | default(false) | bool }}"
+    build_mode: true  # Skip image transfer in build-only mode
   
   pre_tasks:
     - name: Display Dockflow version
