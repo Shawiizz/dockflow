@@ -5,24 +5,12 @@
 
 import chalk from 'chalk';
 import ora from 'ora';
-import { existsSync } from 'fs';
+import { existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { getProjectRoot, loadConfig, loadServersConfig, isDockerAvailable, getAnsibleDockerImage } from './config';
 import { printSuccess } from './output';
-import { DOCKFLOW_REPO, DOCKFLOW_VERSION } from '../constants';
+import { DOCKFLOW_REPO, DOCKFLOW_VERSION, CONTAINER_PATHS } from '../constants';
 import { CLIError, ConfigError, DockerError } from './errors';
-
-/**
- * Find the dockflow repository root for dev mode
- * Requires DOCKFLOW_DEV_PATH environment variable to be set
- */
-export function findDockflowRoot(): string | null {
-  const devPath = process.env.DOCKFLOW_DEV_PATH;
-  if (devPath && existsSync(join(devPath, '.common', 'scripts', 'setup_workspace.sh'))) {
-    return devPath;
-  }
-  return null;
-}
 
 /**
  * Options for running a command in the Ansible Docker container
@@ -61,18 +49,18 @@ export function buildDockerCommand(devMode: boolean = false, contextFilePath?: s
     ...(isTTY ? ['-it'] : []),
     // Mount project as read-only to protect source files
     // The setup_workspace.sh script creates a writable /workspace with symlinks
-    '-v', `${projectRoot}:/project:ro`,
+    '-v', `${projectRoot}:${CONTAINER_PATHS.PROJECT}:ro`,
     '-v', '/var/run/docker.sock:/var/run/docker.sock',
   ];
 
   // Mount context JSON file if provided (for Ansible --extra-vars)
   if (contextFilePath) {
-    dockerCmd.push('-v', `${contextFilePath}:/tmp/dockflow_context.json:ro`);
+    dockerCmd.push('-v', `${contextFilePath}:${CONTAINER_PATHS.CONTEXT}:ro`);
   }
 
   // Mount SSH key file if provided (for deploy command)
   if (sshKeyFilePath) {
-    dockerCmd.push('-v', `${sshKeyFilePath}:/tmp/dockflow_key:ro`);
+    dockerCmd.push('-v', `${sshKeyFilePath}:${CONTAINER_PATHS.SSH_KEY}:ro`);
   }
 
   // Allow connecting to a specific Docker network (useful for e2e tests)
@@ -83,10 +71,10 @@ export function buildDockerCommand(devMode: boolean = false, contextFilePath?: s
 
   // In dev mode, mount the local dockflow repository
   if (devMode) {
-    const dockflowRoot = process.env.DOCKFLOW_DEV_PATH || findDockflowRoot();
+    const dockflowRoot = process.env.DOCKFLOW_DEV_PATH;
     if (dockflowRoot) {
-      dockerCmd.push('-v', `${dockflowRoot}:/tmp/dockflow`);
-      console.log(chalk.yellow(`Dev mode: mounting ${dockflowRoot} as /tmp/dockflow`));
+      dockerCmd.push('-v', `${dockflowRoot}:${CONTAINER_PATHS.DOCKFLOW}`);
+      console.log(chalk.yellow(`Dev mode: mounting ${dockflowRoot} as ${CONTAINER_PATHS.DOCKFLOW}`));
     } else {
       throw new ConfigError(
         'Dev mode: Could not find dockflow root',
@@ -96,7 +84,7 @@ export function buildDockerCommand(devMode: boolean = false, contextFilePath?: s
   }
 
   // Set DOCKFLOW_PATH environment variable
-  dockerCmd.push('-e', 'DOCKFLOW_PATH=/tmp/dockflow');
+  dockerCmd.push('-e', `DOCKFLOW_PATH=${CONTAINER_PATHS.DOCKFLOW}`);
   dockerCmd.push('-e', 'ANSIBLE_HOST_KEY_CHECKING=False');
 
   dockerCmd.push(dockerImage);
@@ -120,16 +108,16 @@ export async function runAnsibleCommand(options: RunCommandOptions): Promise<voi
     ? `echo "Using local dockflow framework (dev mode)..."`
     : `
 echo "Cloning dockflow framework v${DOCKFLOW_VERSION}..."
-if ! git clone --depth 1 --branch "${DOCKFLOW_VERSION}" "${DOCKFLOW_REPO}" /tmp/dockflow 2>/dev/null; then
+if ! git clone --depth 1 --branch "${DOCKFLOW_VERSION}" "${DOCKFLOW_REPO}" ${CONTAINER_PATHS.DOCKFLOW} 2>/dev/null; then
   echo "ERROR: Failed to clone dockflow framework (tag '${DOCKFLOW_VERSION}')"
   exit 1
 fi
-chmod +x /tmp/dockflow/.common/scripts/*.sh 2>/dev/null || true`;
+chmod +x ${CONTAINER_PATHS.DOCKFLOW}/.common/scripts/*.sh 2>/dev/null || true`;
 
   const fullScript = `
 set -e
 ${cloneStep}
-cd /tmp/dockflow
+cd ${CONTAINER_PATHS.DOCKFLOW}
 ${command.map(c => `"${c}"`).join(' ')}
 `;
 
@@ -231,7 +219,7 @@ export function buildDeployAnsibleCommand(options: DeployCommandOptions = {}): s
   const cmd = [
     'ansible-playbook', 'ansible/deploy.yml',
     '-i', 'ansible/inventory.py',
-    '-e', '@/tmp/dockflow_context.json',
+    '-e', `@${CONTAINER_PATHS.CONTEXT}`,
   ];
 
   // Add skip tags
@@ -256,7 +244,7 @@ export interface BuildCommandOptions {
 export function buildBuildAnsibleCommand(_options: BuildCommandOptions = {}): string[] {
   const cmd = [
     'ansible-playbook', 'ansible/playbooks/build_images.yml',
-    '-e', '@/tmp/dockflow_context.json',
+    '-e', `@${CONTAINER_PATHS.CONTEXT}`,
   ];
 
   return cmd;
@@ -275,7 +263,6 @@ export function hasNginxConfig(): boolean {
   
   // Check if directory has files
   try {
-    const { readdirSync } = require('fs');
     const files = readdirSync(nginxPath);
     return files.length > 0;
   } catch {

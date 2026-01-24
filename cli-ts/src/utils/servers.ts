@@ -279,15 +279,6 @@ export function resolveServerByName(serverName: string, environment: string): Re
 }
 
 /**
- * Get the manager server for an environment
- * Returns the first manager (use getManagersForEnvironment for multi-manager)
- */
-export function getManagerForEnvironment(environment: string): ResolvedServer | null {
-  const managers = getManagersForEnvironment(environment);
-  return managers.length > 0 ? managers[0] : null;
-}
-
-/**
  * Get ALL manager servers for an environment (for multi-manager HA)
  */
 export function getManagersForEnvironment(environment: string): ResolvedServer[] {
@@ -328,18 +319,6 @@ export function resolveDeploymentForEnvironment(environment: string): ResolvedDe
 }
 
 /**
- * Get all servers (manager + workers) for an environment
- */
-export function getAllServersForEnvironment(environment: string): ResolvedServer[] {
-  const deployment = resolveDeploymentForEnvironment(environment);
-  if (!deployment) {
-    return [];
-  }
-  
-  return [deployment.manager, ...deployment.workers];
-}
-
-/**
  * Get list of all available environments (tags) from servers.yml
  */
 export function getAvailableEnvironments(): string[] {
@@ -356,18 +335,6 @@ export function getAvailableEnvironments(): string[] {
   }
   
   return Array.from(tags).sort();
-}
-
-/**
- * Get list of all server names from servers.yml
- */
-export function getServerNames(): string[] {
-  const config = loadServersConfig();
-  if (!config) {
-    return [];
-  }
-  
-  return Object.keys(config.servers);
 }
 
 /**
@@ -523,13 +490,6 @@ export async function findActiveManager(
   }
   
   return null;
-}
-
-/**
- * Get the number of managers for an environment
- */
-export function getManagerCount(environment: string): number {
-  return getManagersForEnvironment(environment).length;
 }
 
 /**
