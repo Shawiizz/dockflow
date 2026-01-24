@@ -32,3 +32,16 @@ RUN npm install -g shawiizz-decomposerize
 
 RUN wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq \
     && chmod +x /usr/local/bin/yq
+
+# Pre-install Ansible Galaxy roles (avoid network calls at runtime)
+RUN ansible-galaxy role install geerlingguy.docker
+
+# Copy entrypoint script
+COPY .common/scripts/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Set working directory
+WORKDIR /tmp/dockflow
+
+# Use entrypoint that sets up workspace then runs the command
+ENTRYPOINT ["/entrypoint.sh"]

@@ -18,71 +18,18 @@ import { CLIError, ConfigError, DockerError } from './errors';
  */
 export function findDockflowRoot(): string | null {
   const devPath = process.env.DOCKFLOW_DEV_PATH;
-  if (devPath && existsSync(join(devPath, '.common', 'scripts', 'run_ansible.sh'))) {
+  if (devPath && existsSync(join(devPath, '.common', 'scripts', 'setup_workspace.sh'))) {
     return devPath;
   }
   return null;
 }
 
 /**
- * Options for generating the dockflow setup script
+ * Options for running a command in the Ansible Docker container
  */
-export interface DockflowSetupOptions {
-  /** Whether to use dev mode (local dockflow) */
-  devMode: boolean;
-  /** File to check exists after clone (for validation) */
-  checkFile?: string;
-}
-
-/**
- * Generate the shell script portion that clones/sets up dockflow framework
- */
-export function getDockflowSetupScript(options: DockflowSetupOptions): string {
-  const { devMode, checkFile = '.common/scripts/run_ansible.sh' } = options;
-
-  if (devMode) {
-    return `
-# Dev mode: using local dockflow mounted at /tmp/dockflow
-echo "Using local dockflow framework (dev mode)..."
-chmod +x /tmp/dockflow/.common/scripts/*.sh 2>/dev/null || true
-export DOCKFLOW_PATH="/tmp/dockflow"
-`;
-  }
-
-  return `
-# Clone dockflow framework
-echo "Cloning dockflow framework v${DOCKFLOW_VERSION}..."
-if ! git clone --depth 1 --branch "${DOCKFLOW_VERSION}" "${DOCKFLOW_REPO}" /tmp/dockflow 2>/dev/null; then
-  echo ""
-  echo "ERROR: Failed to clone dockflow framework."
-  echo "  - Tag '${DOCKFLOW_VERSION}' may not exist on the remote repository"
-  echo "  - Check your internet connection"
-  echo "  - Repository: ${DOCKFLOW_REPO}"
-  echo ""
-  echo "For local development, use: --dev flag with DOCKFLOW_DEV_PATH environment variable"
-  exit 1
-fi
-
-if [ ! -f /tmp/dockflow/${checkFile} ]; then
-  echo ""
-  echo "ERROR: Dockflow framework is missing required files."
-  echo "  - File not found: ${checkFile}"
-  echo "  - The cloned version may be incompatible or corrupted"
-  echo ""
-  exit 1
-fi
-
-chmod +x /tmp/dockflow/.common/scripts/*.sh 2>/dev/null || true
-export DOCKFLOW_PATH="/tmp/dockflow"
-`;
-}
-
-/**
- * Options for running a script in the Ansible Docker container
- */
-export interface RunInContainerOptions {
-  /** The shell script to execute */
-  script: string;
+export interface RunCommandOptions {
+  /** The command and arguments to execute (e.g., ['ansible-playbook', 'deploy.yml', ...]) */
+  command: string[];
   /** Whether to use dev mode (mount local dockflow) */
   devMode?: boolean;
   /** Action name for logs (e.g., "build", "deployment") */
@@ -148,19 +95,45 @@ export function buildDockerCommand(devMode: boolean = false, contextFilePath?: s
     }
   }
 
+  // Set DOCKFLOW_PATH environment variable
+  dockerCmd.push('-e', 'DOCKFLOW_PATH=/tmp/dockflow');
+  dockerCmd.push('-e', 'ANSIBLE_HOST_KEY_CHECKING=False');
+
   dockerCmd.push(dockerImage);
   
   return dockerCmd;
 }
 
 /**
- * Execute a script in the Ansible Docker container
+ * Execute a command directly in the Ansible Docker container
+ * The entrypoint.sh handles workspace setup, we just need to clone dockflow if not in dev mode
  */
-export async function runInAnsibleContainer(options: RunInContainerOptions): Promise<void> {
-  const { script, devMode = false, actionName, successMessage, contextFilePath, sshKeyFilePath } = options;
+export async function runAnsibleCommand(options: RunCommandOptions): Promise<void> {
+  const { command, devMode = false, actionName, successMessage, contextFilePath, sshKeyFilePath } = options;
   
   const dockerCmd = buildDockerCommand(devMode, contextFilePath, sshKeyFilePath);
-  dockerCmd.push('bash', '-c', script);
+  
+  // In dev mode, dockflow is already mounted at /tmp/dockflow by buildDockerCommand
+  // In non-dev mode, we need to clone it before running the command
+  // The entrypoint.sh handles workspace setup automatically
+  const cloneStep = devMode 
+    ? `echo "Using local dockflow framework (dev mode)..."`
+    : `
+echo "Cloning dockflow framework v${DOCKFLOW_VERSION}..."
+if ! git clone --depth 1 --branch "${DOCKFLOW_VERSION}" "${DOCKFLOW_REPO}" /tmp/dockflow 2>/dev/null; then
+  echo "ERROR: Failed to clone dockflow framework (tag '${DOCKFLOW_VERSION}')"
+  exit 1
+fi
+chmod +x /tmp/dockflow/.common/scripts/*.sh 2>/dev/null || true`;
+
+  const fullScript = `
+set -e
+${cloneStep}
+cd /tmp/dockflow
+${command.map(c => `"${c}"`).join(' ')}
+`;
+
+  dockerCmd.push('bash', '-c', fullScript);
 
   console.log(chalk.dim(`Starting ${actionName} container...`));
   console.log('');
@@ -241,4 +214,71 @@ export function validateServersYaml(): NonNullable<ReturnType<typeof loadServers
     );
   }
   return config;
+}
+
+/**
+ * Options for building Ansible deploy command
+ */
+export interface DeployCommandOptions {
+  /** Skip tags (e.g., ['configure_host', 'nginx']) */
+  skipTags?: string[];
+}
+
+/**
+ * Build the ansible-playbook command for deployment
+ */
+export function buildDeployAnsibleCommand(options: DeployCommandOptions = {}): string[] {
+  const cmd = [
+    'ansible-playbook', 'ansible/deploy.yml',
+    '-i', 'ansible/inventory.py',
+    '-e', '@/tmp/dockflow_context.json',
+  ];
+
+  // Add skip tags
+  const skipTags = options.skipTags || ['configure_host'];
+  if (skipTags.length > 0) {
+    cmd.push('--skip-tags', skipTags.join(','));
+  }
+
+  return cmd;
+}
+
+/**
+ * Options for building Ansible build command
+ */
+export interface BuildCommandOptions {
+  // Future options can be added here
+}
+
+/**
+ * Build the ansible-playbook command for building images
+ */
+export function buildBuildAnsibleCommand(_options: BuildCommandOptions = {}): string[] {
+  const cmd = [
+    'ansible-playbook', 'ansible/playbooks/build_images.yml',
+    '-e', '@/tmp/dockflow_context.json',
+  ];
+
+  return cmd;
+}
+
+/**
+ * Check if nginx configuration exists in the project
+ */
+export function hasNginxConfig(): boolean {
+  const projectRoot = getProjectRoot();
+  const nginxPath = join(projectRoot, '.dockflow', 'templates', 'nginx');
+  
+  if (!existsSync(nginxPath)) {
+    return false;
+  }
+  
+  // Check if directory has files
+  try {
+    const { readdirSync } = require('fs');
+    const files = readdirSync(nginxPath);
+    return files.length > 0;
+  } catch {
+    return false;
+  }
 }
