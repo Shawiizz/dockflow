@@ -37,7 +37,7 @@ import {
   withErrorHandler,
 } from '../utils/errors';
 import { displayDeployDryRun } from './dry';
-import { buildDeployContext, writeContextFile, writeSSHKeyFile, getHostContextPath, getHostSSHKeyPath } from '../utils/context-generator';
+import { buildDeployContext, writeContextFile, getHostContextPath } from '../utils/context-generator';
 import type { ResolvedDeployment, TemplateContext } from '../types';
 
 interface DeployOptions {
@@ -281,11 +281,6 @@ export async function runDeploy(env: string, version: string | undefined, option
   writeContextFile(ansibleContext, contextFilePath);
   printDebug('Context file written', { path: contextFilePath });
 
-  // Write SSH key to file (mounted into container, avoids shell variable issues)
-  const sshKeyFilePath = getHostSSHKeyPath();
-  writeSSHKeyFile(managerPrivateKey, sshKeyFilePath);
-  printDebug('SSH key file written', { path: sshKeyFilePath });
-
   // Build the Ansible command with skip tags
   const skipTags = ['configure_host'];
   if (!hasNginxConfig()) {
@@ -323,7 +318,6 @@ export async function runDeploy(env: string, version: string | undefined, option
     actionName: 'deployment',
     successMessage: `Deployment to ${env} completed successfully!`,
     contextFilePath,
-    sshKeyFilePath,
   });
 
   const totalNodes = managers.length + workers.length;

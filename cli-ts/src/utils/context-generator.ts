@@ -234,37 +234,13 @@ export function buildBuildContext(params: BuildBuildContextParams): BuildContext
 }
 
 /**
- * Default path for the context file inside the container
- */
-export const CONTEXT_FILE_PATH = '/tmp/dockflow_context.json';
-
-/**
- * Default path for the SSH key file inside the container
- */
-export const SSH_KEY_FILE_PATH = '/tmp/dockflow_key';
-
-/**
  * Write context to a JSON file
  * Returns the path to the file
  */
-export function writeContextFile(context: AnsibleContext | BuildContext, filePath: string = CONTEXT_FILE_PATH): string {
+export function writeContextFile(context: AnsibleContext | BuildContext, filePath: string): string {
   mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, JSON.stringify(context, null, 2), 'utf-8');
   return filePath;
-}
-
-/**
- * Write SSH private key to a file
- * Returns the path to the file
- */
-export function writeSSHKeyFile(privateKey: string, filePath?: string): string {
-  const tmpDir = process.env.TEMP || process.env.TMP || '/tmp';
-  const keyPath = filePath || `${tmpDir}/dockflow_key_${Date.now()}`;
-  mkdirSync(dirname(keyPath), { recursive: true });
-  // Ensure proper line endings and trailing newline for SSH keys
-  const normalizedKey = privateKey.replace(/\r\n/g, '\n').trim() + '\n';
-  writeFileSync(keyPath, normalizedKey, { encoding: 'utf-8', mode: 0o600 });
-  return keyPath;
 }
 
 /**
@@ -274,12 +250,4 @@ export function writeSSHKeyFile(privateKey: string, filePath?: string): string {
 export function getHostContextPath(): string {
   const tmpDir = process.env.TEMP || process.env.TMP || '/tmp';
   return `${tmpDir}/dockflow_context_${Date.now()}.json`;
-}
-
-/**
- * Generate a temporary file path for the SSH key on the host
- */
-export function getHostSSHKeyPath(): string {
-  const tmpDir = process.env.TEMP || process.env.TMP || '/tmp';
-  return `${tmpDir}/dockflow_key_${Date.now()}`;
 }

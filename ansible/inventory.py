@@ -11,8 +11,27 @@ Usage: ansible-playbook deploy.yml -i inventory.py
 import json
 import sys
 import os
+import stat
 
 CONTEXT_FILE = '/tmp/dockflow_context.json'
+SSH_KEY_FILE = '/tmp/dockflow_key'
+
+
+def write_ssh_key(private_key: str) -> str:
+    """
+    Write SSH private key from context to a file.
+    Returns the path to the key file.
+    """
+    # Normalize line endings and ensure trailing newline
+    normalized_key = private_key.replace('\\n', '\n').replace('\r\n', '\n').strip() + '\n'
+    
+    # Write with restricted permissions (600)
+    with open(SSH_KEY_FILE, 'w') as f:
+        f.write(normalized_key)
+    os.chmod(SSH_KEY_FILE, stat.S_IRUSR | stat.S_IWUSR)
+    
+    return SSH_KEY_FILE
+
 
 def get_inventory():
     """Generate Ansible inventory from context file."""
@@ -33,6 +52,11 @@ def get_inventory():
     connection = ctx.get('connection', {})
     env = ctx.get('env', 'unknown')
     server_name = ctx.get('server_name', 'server')
+    
+    # Write SSH key from context to file (Ansible needs a file path)
+    private_key = connection.get('private_key', '')
+    if private_key:
+        write_ssh_key(private_key)
     
     # Build host name (e.g., "production-main")
     host_name = f"{env}-{server_name}"

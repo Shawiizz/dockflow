@@ -26,17 +26,14 @@ export interface RunCommandOptions {
   successMessage: string;
   /** Path to context JSON file to mount (optional) */
   contextFilePath?: string;
-  /** Path to SSH key file to mount (optional, for deploy) */
-  sshKeyFilePath?: string;
 }
 
 /**
  * Build Docker command arguments for running the Ansible container
  * @param devMode Whether to use dev mode (mount local dockflow)
  * @param contextFilePath Optional path to context JSON file to mount into container
- * @param sshKeyFilePath Optional path to SSH key file to mount into container
  */
-export function buildDockerCommand(devMode: boolean = false, contextFilePath?: string, sshKeyFilePath?: string): string[] {
+export function buildDockerCommand(devMode: boolean = false, contextFilePath?: string): string[] {
   const projectRoot = getProjectRoot();
   const dockerImage = getAnsibleDockerImage();
   
@@ -56,11 +53,6 @@ export function buildDockerCommand(devMode: boolean = false, contextFilePath?: s
   // Mount context JSON file if provided (for Ansible --extra-vars)
   if (contextFilePath) {
     dockerCmd.push('-v', `${contextFilePath}:${CONTAINER_PATHS.CONTEXT}:ro`);
-  }
-
-  // Mount SSH key file if provided (for deploy command)
-  if (sshKeyFilePath) {
-    dockerCmd.push('-v', `${sshKeyFilePath}:${CONTAINER_PATHS.SSH_KEY}:ro`);
   }
 
   // Allow connecting to a specific Docker network (useful for e2e tests)
@@ -97,9 +89,9 @@ export function buildDockerCommand(devMode: boolean = false, contextFilePath?: s
  * The entrypoint.sh handles workspace setup, we just need to clone dockflow if not in dev mode
  */
 export async function runAnsibleCommand(options: RunCommandOptions): Promise<void> {
-  const { command, devMode = false, actionName, successMessage, contextFilePath, sshKeyFilePath } = options;
+  const { command, devMode = false, actionName, successMessage, contextFilePath } = options;
   
-  const dockerCmd = buildDockerCommand(devMode, contextFilePath, sshKeyFilePath);
+  const dockerCmd = buildDockerCommand(devMode, contextFilePath);
   
   // In dev mode, dockflow is already mounted at /tmp/dockflow by buildDockerCommand
   // In non-dev mode, we need to clone it before running the command

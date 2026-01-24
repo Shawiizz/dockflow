@@ -40,8 +40,6 @@ export const CONTAINER_PATHS = {
   WORKSPACE: '/workspace',
   /** Context JSON file for Ansible */
   CONTEXT: '/tmp/dockflow_context.json',
-  /** SSH key file for deployment */
-  SSH_KEY: '/tmp/dockflow_key',
 } as const;
 
 /**
