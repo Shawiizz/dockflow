@@ -22,15 +22,15 @@ export ROOT_PATH="${ROOT_PATH:-/project}"
 
 # Setup workspace with symlinks (skip in CI where files are cloned, not mounted)
 if [ "$CI" != "true" ] && [ -f "$DOCKFLOW_PATH/.common/scripts/setup_workspace.sh" ]; then
-    source "$DOCKFLOW_PATH/.common/scripts/setup_workspace.sh"
-    # ROOT_PATH is now /workspace (set by setup_workspace.sh)
+	source "$DOCKFLOW_PATH/.common/scripts/setup_workspace.sh"
+	# ROOT_PATH is now /workspace (set by setup_workspace.sh)
 else
-    [ "$CI" = "true" ] && echo "CI detected, skipping workspace setup (files are not mounted)"
+	[ "$CI" = "true" ] && echo "CI detected, skipping workspace setup (files are not mounted)"
 fi
 
 # Fix CRLF line endings in .dockflow files (Windows compatibility)
 if [ -d "$ROOT_PATH/.dockflow" ]; then
-    find "$ROOT_PATH/.dockflow" -type f -exec sed -i 's/\r$//' {} \; 2>/dev/null || true
+	find "$ROOT_PATH/.dockflow" -type f -exec sed -i 's/\r$//' {} \; 2>/dev/null || true
 fi
 
 # Change to dockflow directory (where ansible playbooks are)
