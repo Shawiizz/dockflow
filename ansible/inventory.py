@@ -61,6 +61,20 @@ def get_inventory():
     # Build host name (e.g., "production-main")
     host_name = f"{env}-{server_name}"
     
+    # Build hostvars
+    hostvars = {
+        "ansible_host": connection.get('host', ''),
+        "ansible_port": connection.get('port', 22),
+        "ansible_user": connection.get('user', 'root'),
+        "ansible_ssh_private_key_file": "/tmp/dockflow_key",
+        "ansible_ssh_common_args": "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    }
+    
+    # Add become password if provided (for servers without NOPASSWD in sudoers)
+    password = connection.get('password', '')
+    if password:
+        hostvars["ansible_become_password"] = password
+    
     # Build inventory structure
     inventory = {
         "all": {
@@ -69,13 +83,7 @@ def get_inventory():
         },
         "_meta": {
             "hostvars": {
-                host_name: {
-                    "ansible_host": connection.get('host', ''),
-                    "ansible_port": connection.get('port', 22),
-                    "ansible_user": connection.get('user', 'root'),
-                    "ansible_ssh_private_key_file": "/tmp/dockflow_key",
-                    "ansible_ssh_common_args": "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-                }
+                host_name: hostvars
             }
         }
     }

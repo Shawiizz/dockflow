@@ -1,3 +1,5 @@
+# Sudo configuration
+# ansible_become_password is set dynamically by inventory.py when a password is provided
+# For NOPASSWD servers, no password is needed
 ansible_become: yes
 ansible_become_method: sudo
-ansible_become_password: "{{ lookup('env', 'DOCKFLOW_PASSWORD') }}"
