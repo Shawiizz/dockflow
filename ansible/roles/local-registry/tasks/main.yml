@@ -13,9 +13,7 @@
 - name: Transfer images to all nodes
   block:
     - name: Get list of built images from build commands
-      set_fact:
-        built_images: "{{ build_commands | select('search', '-t\\s+') | map('regex_replace', '.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') | list }}"
-      delegate_to: localhost
+      include_tasks: extract_image_names.yml
       when: build_commands is defined
 
     - name: Display images to transfer

@@ -209,11 +209,15 @@
     - build_results.rc is defined
     - build_results.rc != 0
 
+- name: Extract images for registry push
+  include_tasks: ../local-registry/tasks/extract_image_names.yml
+  when:
+    - config.registry is defined
+    - config.registry.enabled | default(false) | bool
+
 - name: Push images to registry
   include_role:
     name: docker-registry
-  vars:
-    built_images: "{{ build_commands | select('search', '-t\\s+') | map('regex_replace', '.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') | list }}"
   when:
     - config.registry is defined
     - config.registry.enabled | default(false) | bool
@@ -223,8 +227,7 @@
 - name: Transfer images to workers (no registry)
   block:
     - name: Get built image names for distribution
-      set_fact:
-        built_images: "{{ build_commands | select('search', '-t\\s+') | map('regex_replace', '.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') | list }}"
+      include_tasks: ../local-registry/tasks/extract_image_names.yml
 
     - name: Set workers list from context
       set_fact:

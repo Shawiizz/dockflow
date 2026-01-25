@@ -1,0 +1,9 @@
+---
+# Extract image names from build commands
+# Sets: built_images (list of image names)
+# Requires: build_commands (list of docker build commands with -t flags)
+
+- name: Extract image names from build commands
+  set_fact:
+    built_images: "{{ build_commands | default([]) | select('search', '-t\\s+') | map('regex_replace', '.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') | list }}"
+  delegate_to: localhost

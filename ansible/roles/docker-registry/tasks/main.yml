@@ -53,17 +53,17 @@
       when: built_images is defined
 
     - name: Extract image names from build commands
-      set_fact:
-        images_to_push: >-
-          {{
-            build_commands
-            | select('search', '-t\\s+')
-            | map('regex_replace', '.*-t\\s+"?([^"\\s]+)"?.*', '\\1')
-            | list
-          }}
+      include_tasks: ../local-registry/tasks/extract_image_names.yml
       when:
         - built_images is not defined
         - build_commands is defined
+
+    - name: Set images to push from extracted names
+      set_fact:
+        images_to_push: "{{ built_images }}"
+      when:
+        - built_images is defined
+        - images_to_push is not defined
 
     - name: Process each image for registry push
       include_tasks: push_image.yml
