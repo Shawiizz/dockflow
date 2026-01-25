@@ -62,6 +62,7 @@
         deploy_app: "{{ options.deploy_app | default(lookup('env', 'DEPLOY_APP') | default('true', true)) | bool }}"
         force_accessories: "{{ options.deploy_accessories | default(lookup('env', 'DEPLOY_ACCESSORIES') | default('false', true)) | bool }}"
         skip_accessories: "{{ options.skip_accessories | default(lookup('env', 'SKIP_ACCESSORIES') | default('false', true)) | bool }}"
+        skip_docker_install: "{{ options.skip_docker_install | default(lookup('env', 'SKIP_DOCKER_INSTALL') | default('false', true)) | bool }}"
       no_log: "{{ not (config.options.enable_debug_logs | default(false) | bool) }}"
 
     - name: Display template context info (debug mode only)

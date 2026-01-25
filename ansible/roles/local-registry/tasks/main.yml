@@ -25,13 +25,14 @@
       when: built_images | length > 0
 
     # Build list of all nodes (manager + workers)
+    # Use hostvars to access the target host's variables since we delegate to localhost
     - name: Build manager node info
       set_fact:
         manager_node:
-          host: "{{ ansible_host }}"
-          user: "{{ ansible_user | default('root') }}"
-          port: "{{ ansible_port | default(22) }}"
-          key_file: "{{ ansible_ssh_private_key_file | default('') }}"
+          host: "{{ hostvars[inventory_hostname].ansible_host }}"
+          user: "{{ hostvars[inventory_hostname].ansible_user | default('root') }}"
+          port: "{{ hostvars[inventory_hostname].ansible_port | default(22) }}"
+          key_file: "{{ hostvars[inventory_hostname].ansible_ssh_private_key_file | default('') }}"
           name: "manager"
       delegate_to: localhost
 
@@ -50,9 +51,11 @@
         msg: "Will transfer {{ built_images | length }} image(s) to {{ all_nodes | length }} node(s)"
       delegate_to: localhost
 
-    # Transfer images to each node
+    # Transfer images to each node (from localhost where images were built)
     - name: Transfer images to all nodes
       include_tasks: transfer_to_node.yml
+      vars:
+        transfer_from_manager: false
       loop: "{{ all_nodes }}"
       loop_control:
         loop_var: node
@@ -62,6 +65,22 @@
       debug:
         msg: "Successfully transferred {{ built_images | length }} image(s) to {{ all_nodes | length }} node(s)"
       delegate_to: localhost
+
+  rescue:
+    - name: Image transfer failed
+      fail:
+        msg: |
+          CRITICAL: Failed to transfer Docker images to Swarm nodes.
+          
+          This means some nodes won't have the required images and services will fail to start.
+          
+          Possible causes:
+          - SSH connectivity issues between build host and target nodes
+          - Disk space exhausted on target nodes
+          - Docker daemon not running on target nodes
+          - Network timeout during large image transfer
+          
+          Check the error above for details.
 
   when:
     - needs_image_transfer | bool

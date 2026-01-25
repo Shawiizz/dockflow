@@ -218,6 +218,64 @@
     - config.registry is defined
     - config.registry.enabled | default(false) | bool
 
+# Transfer images from manager to workers when no registry is configured
+# Reuses the same transfer_to_node.yml logic but runs from manager
+- name: Transfer images to workers (no registry)
+  block:
+    - name: Get built image names for distribution
+      set_fact:
+        built_images: "{{ build_commands | select('search', '-t\\s+') | map('regex_replace', '.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') | list }}"
+
+    - name: Set workers list from context
+      set_fact:
+        workers_list: "{{ workers | default([]) }}"
+
+    - name: Display transfer plan (manager to workers)
+      debug:
+        msg: "Will transfer {{ built_images | length }} image(s) from manager to {{ workers_list | length }} worker(s)"
+      when: workers_list | length > 0
+
+    - name: Skip transfer if no workers
+      debug:
+        msg: "No workers configured, skipping image distribution (single-node deployment)"
+      when: workers_list | length == 0
+
+    # Transfer images from manager to each worker
+    - name: Transfer images to workers from manager
+      include_tasks: ../local-registry/tasks/transfer_to_node.yml
+      vars:
+        transfer_from_manager: true
+      loop: "{{ workers_list }}"
+      loop_control:
+        loop_var: node
+        label: "{{ node.name | default(node.host) }}"
+      when: workers_list | length > 0
+
+    - name: Display transfer completion
+      debug:
+        msg: "Successfully transferred {{ built_images | length }} image(s) to {{ workers_list | length }} worker(s)"
+      when: workers_list | length > 0
+
+  rescue:
+    - name: Image transfer to workers failed
+      fail:
+        msg: |
+          CRITICAL: Failed to transfer Docker images from manager to worker nodes.
+          
+          Workers won't have the required images and services will fail to schedule on them.
+          
+          Possible causes:
+          - SSH connectivity issues between manager and worker nodes
+          - Disk space exhausted on worker nodes
+          - Docker daemon not running on worker nodes
+          
+          Check the error above for details.
+
+  when:
+    - not (config.registry.enabled | default(false) | bool)
+    - build_commands is defined
+    - build_commands | length > 0
+
 - name: Cleanup temporary build directory
   file:
     path: "{{ tmp_build_dir }}"

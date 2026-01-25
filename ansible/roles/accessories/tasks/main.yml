@@ -165,12 +165,20 @@
           retries: 30
           delay: 5
           changed_when: false
-          failed_when: false
 
         - name: Display accessories status
           debug:
             msg: "{{ accessories_status.stdout_lines }}"
           when: accessories_status.stdout_lines | length > 0
+
+        - name: Fail if accessories services are not ready
+          fail:
+            msg: |
+              Accessories services failed to start properly.
+              Status: {{ accessories_status.stdout_lines | join(', ') }}
+              
+              Check the service logs with: docker service logs <service_name>
+          when: "'0/' in accessories_status.stdout"
 
         # Save hash after successful deployment
         - name: Save new hash to server
