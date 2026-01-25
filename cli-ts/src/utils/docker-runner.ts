@@ -95,15 +95,20 @@ export async function runAnsibleCommand(options: RunCommandOptions): Promise<voi
   // In dev mode, dockflow is already mounted at /tmp/dockflow by buildDockerCommand
   // In non-dev mode, we need to clone it before running the command
   // The entrypoint.sh handles workspace setup automatically
+  // Always ensure inventory.py is executable (required for Ansible dynamic inventory)
+  const chmodInventory = `chmod +x ${CONTAINER_PATHS.DOCKFLOW}/ansible/inventory.py 2>/dev/null || true`;
+  
   const cloneStep = devMode 
-    ? `echo "Using local dockflow framework (dev mode)..."`
+    ? `echo "Using local dockflow framework (dev mode)..."
+${chmodInventory}`
     : `
 echo "Cloning dockflow framework v${DOCKFLOW_VERSION}..."
 if ! git clone --depth 1 --branch "${DOCKFLOW_VERSION}" "${DOCKFLOW_REPO}" ${CONTAINER_PATHS.DOCKFLOW} 2>/dev/null; then
   echo "ERROR: Failed to clone dockflow framework (tag '${DOCKFLOW_VERSION}')"
   exit 1
 fi
-chmod +x ${CONTAINER_PATHS.DOCKFLOW}/.common/scripts/*.sh 2>/dev/null || true`;
+chmod +x ${CONTAINER_PATHS.DOCKFLOW}/.common/scripts/*.sh 2>/dev/null || true
+${chmodInventory}`;
 
   const fullScript = `
 set -e
