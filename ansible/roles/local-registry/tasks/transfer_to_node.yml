@@ -28,17 +28,20 @@
   when: node.private_key is defined
 
 # Build SSH options once, with the correct key path
-- name: "Build SSH options for {{ _node_name }}"
+- name: "Build SSH key option for {{ _node_name }}"
   set_fact:
     _ssh_key_opt: >-
       {% if node.private_key is defined %}-i {{ _key_path }}/worker_{{ _node_name }}
       {% elif node.key_file | default('') != '' %}-i {{ node.key_file }}{% endif %}
+
+- name: "Build SSH options for {{ _node_name }}"
+  set_fact:
     node_ssh_opts: >-
       -o StrictHostKeyChecking=no
       -o UserKnownHostsFile=/dev/null
       -o ConnectTimeout=30
       -o ServerAliveInterval=60
-      {{ _ssh_key_opt | trim }}
+      {{ _ssh_key_opt | default('') | trim }}
       -p {{ node.port | default(22) }}
 
 - name: "Transfer images to {{ _node_name }}"
