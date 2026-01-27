@@ -1,286 +1,62 @@
 ---
+# Remote Build - Build Docker images on the target server instead of locally
+#
+# Flow:
+# 1. Clone git repo to remote server
+# 2. Build Docker images
+# 3. Push to registry OR distribute to workers
+# 4. Cleanup (always)
+
 - name: Set temporary build directory path
   set_fact:
     tmp_build_dir: "/tmp/docker-build-{{ project_name }}-{{ env }}-{{ version }}"
 
-- name: Ensure Git is installed on remote server
+- name: Ensure Git is installed
   apt:
     name: git
     state: present
     update_cache: yes
   become: yes
 
-- name: Create temporary directory for git clone
+- name: Create temporary build directory
   file:
     path: "{{ tmp_build_dir }}"
     state: directory
     mode: '0755'
 
-- name: Clean up old temporary build directories
-  shell: |
-    find /tmp -maxdepth 1 -name 'docker-build-*' -type d -mtime +1 -exec rm -rf {} + || true
-  register: cleanup_old_dirs
+- name: Clean up old build directories (older than 1 day)
+  shell: find /tmp -maxdepth 1 -name 'docker-build-*' -type d -mtime +1 -exec rm -rf {} + || true
   changed_when: false
   ignore_errors: yes
 
 - name: Clean up Docker to free space
   shell: docker system prune -af || true
-  register: cleanup_result
-  changed_when: cleanup_result.stdout is search('deleted') or cleanup_result.stdout is search('freed')
-
-- name: Check if git repository exists
-  stat:
-    path: "{{ root_path | default('/project') }}/.git"
-  delegate_to: localhost
-  register: git_dir_check
-
-- name: Fail if not a git repository
-  fail:
-    msg: |
-      No .git directory found in {{ root_path | default('/project') }}
-      Remote build requires the project to be a git repository with a remote origin configured.
-      
-      Make sure:
-      1. Your project is a git repository (run 'git init' if not)
-      2. A remote origin is configured (run 'git remote add origin <url>')
-      3. The .git directory is not excluded from the Docker volume mount
-  when: not git_dir_check.stat.exists
-
-- name: Configure git safe.directory for mounted volumes
-  shell: git config --global --add safe.directory "{{ root_path | default('/project') }}"
-  delegate_to: localhost
   changed_when: false
 
-- name: Get Git repository information
-  shell: |
-    cd "{{ root_path | default('/project') }}"
-    echo "repo_url=$(git config --get remote.origin.url || echo '')"
-    echo "branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
-    echo "commit=$(git rev-parse HEAD 2>/dev/null || echo '')"
-  delegate_to: localhost
-  register: git_info_raw
-  changed_when: false
-
-- name: Parse Git information
-  set_fact:
-    repo_url: "{{ git_info_raw.stdout_lines | select('match', '^repo_url=') | first | regex_replace('^repo_url=', '') | trim }}"
-    git_ref: "{{ git_info_raw.stdout_lines | select('match', '^branch=') | first | regex_replace('^branch=', '') | trim }}"
-    git_sha: "{{ git_info_raw.stdout_lines | select('match', '^commit=') | first | regex_replace('^commit=', '') | trim }}"
-    git_token: "{{ lookup('env', 'GIT_TOKEN') | default('', true) }}"
-    ci_job_token: "{{ lookup('env', 'CI_JOB_TOKEN') | default('', true) }}"
-  no_log: "{{ global_no_log | default(true) }}"
-
-- name: Fail if no git remote origin configured
-  fail:
-    msg: |
-      No git remote 'origin' found in {{ root_path | default('/project') }}
-      Remote build requires a git remote to clone from.
-      
-      Configure a remote with: git remote add origin <repository-url>
-  when: repo_url | length == 0
-
-- name: Use CI_JOB_TOKEN if no explicit git_token provided (GitLab)
-  set_fact:
-    effective_git_token: "{{ git_token if git_token else ci_job_token }}"
-  no_log: "{{ global_no_log | default(true) }}"
-
-- name: Build authenticated Git URL for private repos
-  set_fact:
-    clone_url: >-
-      {%- if effective_git_token -%}
-        {%- if 'github.com' in repo_url -%}
-          {{ repo_url | regex_replace('^https://github.com/', 'https://x-access-token:' + effective_git_token + '@github.com/') | regex_replace('^git@github.com:', 'https://x-access-token:' + effective_git_token + '@github.com/') }}
-        {%- elif 'gitlab.com' in repo_url or 'gitlab' in repo_url -%}
-          {{ repo_url | regex_replace('^https://([^/]+)/', 'https://oauth2:' + effective_git_token + '@\\1/') | regex_replace('^git@([^:]+):', 'https://oauth2:' + effective_git_token + '@\\1/') }}
-        {%- else -%}
-          {{ repo_url }}
-        {%- endif -%}
-      {%- else -%}
-        {{ repo_url }}
-      {%- endif -%}
-  no_log: "{{ global_no_log | default(true) }}"
-
-- name: Clone repository to remote server
-  shell: |
-    rm -rf {{ tmp_build_dir }}
-    GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -o BatchMode=yes" \
-    git clone --branch {{ git_ref }} --single-branch {{ clone_url }} {{ tmp_build_dir }}
-    {% if git_sha %}
-    cd {{ tmp_build_dir }}
-    git checkout {{ git_sha }}
-    {% endif %}
-  environment:
-    GIT_TERMINAL_PROMPT: "0"
-  register: git_clone_result
-  no_log: "{{ global_no_log | default(true) }}"
-  ignore_errors: true
-  timeout: 180
-
-- name: Display git clone error details
-  debug:
-    msg: |
-      Git clone failed!
-      Repository URL: {{ repo_url }}
-      Branch: {{ git_ref }}
-      Error: {{ git_clone_result.stderr | default('No error output') }}
-      Stdout: {{ git_clone_result.stdout | default('No stdout') }}
-  when: git_clone_result.rc is defined and git_clone_result.rc != 0
-
-- name: Fail if git clone failed
-  fail:
-    msg: |
-      Failed to clone repository '{{ repo_url }}' (branch: {{ git_ref }}).
-      {{ git_clone_result.stderr | default('') }}
-      
-      Possible causes:
-      - For private repos: Set GIT_TOKEN environment variable
-      - For SSH URLs: Ensure the server has SSH access to the repository
-      - Check if the branch '{{ git_ref }}' exists
-  when: git_clone_result.rc is defined and git_clone_result.rc != 0
-
-- name: Copy rendered docker directory to remote server
-  copy:
-    src: "{{ root_path | default('..') }}/.dockflow/docker/"
-    dest: "{{ tmp_build_dir }}/.dockflow/docker/"
-    mode: '0755'
-
-- name: Generate build commands using decomposerize
-  shell: |
-    cd {{ root_path or '..' }}/.dockflow/docker
-    decomposerize docker-compose.yml --docker-build {{ services_option }}
-  delegate_to: localhost
-  register: build_commands_output
-  changed_when: false
-
-- name: Set build commands
-  set_fact:
-    build_commands: "{{ build_commands_output.stdout_lines | select('truthy') | list }}"
-
-- name: Build Docker images on remote server (parallel)
-  shell: |
-    cd {{ tmp_build_dir }}/.dockflow/docker
-    set -e
-    PIDS=""
-    {% for cmd in build_commands %}
-    echo "Starting build: {{ cmd | regex_replace('.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') }}"
-    ( {{ cmd }} 2>&1 ) &
-    PIDS="$PIDS $!"
-    {% endfor %}
-    # Wait for all builds and capture exit codes
-    FAILED=0
-    for PID in $PIDS; do
-      if ! wait $PID; then
-        FAILED=1
-      fi
-    done
-    exit $FAILED
-  when: build_commands is defined and build_commands | length > 0
-  async: 3600  # Allow up to 1 hour for all builds
-  poll: 10
-  register: build_results
-  ignore_errors: yes
-
-- name: Display build output
-  debug:
-    msg: "{{ build_results.stdout_lines | default([]) }}"
-  when:
-    - build_results.stdout_lines is defined
-    - build_results.stdout_lines | length > 0
-
-- name: Show build failure
-  debug:
-    msg: |
-      Docker builds failed!
-      Return code: {{ build_results.rc }}
-      
-      STDOUT:
-      {{ build_results.stdout | default('No stdout') }}
-      
-      STDERR:
-      {{ build_results.stderr | default('No stderr') }}
-  when:
-    - build_results.rc is defined
-    - build_results.rc != 0
-
-- name: Fail if build failed
-  fail:
-    msg: "One or more Docker builds failed. Check the output above for details."
-  when:
-    - build_results.rc is defined
-    - build_results.rc != 0
-
-- name: Extract images for registry push
-  include_tasks: ../local-registry/tasks/extract_image_names.yml
-  when:
-    - config.registry is defined
-    - config.registry.enabled | default(false) | bool
-
-- name: Push images to registry
-  include_role:
-    name: docker-registry
-  when:
-    - config.registry is defined
-    - config.registry.enabled | default(false) | bool
-
-# Transfer images from manager to workers when no registry is configured
-# Reuses the same transfer_to_node.yml logic but runs from manager
-- name: Transfer images to workers (no registry)
+- name: Build and distribute images
   block:
-    - name: Get built image names for distribution
-      include_tasks: ../local-registry/tasks/extract_image_names.yml
+    - name: Clone repository
+      include_tasks: git-clone.yml
 
-    - name: Set workers list from context
-      set_fact:
-        workers_list: "{{ workers | default([]) }}"
+    - name: Build Docker images
+      include_tasks: docker-build.yml
 
-    - name: Display transfer plan (manager to workers)
-      debug:
-        msg: "Will transfer {{ built_images | length }} image(s) from manager to {{ workers_list | length }} worker(s)"
-      when: workers_list | length > 0
+    - name: Push images to registry
+      include_role:
+        name: docker-registry
+      when:
+        - config.registry is defined
+        - config.registry.enabled | default(false) | bool
 
-    - name: Skip transfer if no workers
-      debug:
-        msg: "No workers configured, skipping image distribution (single-node deployment)"
-      when: workers_list | length == 0
+    - name: Distribute images to workers (no registry)
+      include_tasks: distribute-images.yml
+      when:
+        - not (config.registry.enabled | default(false) | bool)
+        - built_images | default([]) | length > 0
 
-    # Transfer images from manager to each worker
-    - name: Transfer images to workers from manager
-      include_tasks: ../local-registry/tasks/transfer_to_node.yml
-      vars:
-        transfer_from_manager: true
-      loop: "{{ workers_list }}"
-      loop_control:
-        loop_var: node
-        label: "{{ node.name | default(node.host) }}"
-      when: workers_list | length > 0
-
-    - name: Display transfer completion
-      debug:
-        msg: "Successfully transferred {{ built_images | length }} image(s) to {{ workers_list | length }} worker(s)"
-      when: workers_list | length > 0
-
-  rescue:
-    - name: Image transfer to workers failed
-      fail:
-        msg: |
-          CRITICAL: Failed to transfer Docker images from manager to worker nodes.
-          
-          Workers won't have the required images and services will fail to schedule on them.
-          
-          Possible causes:
-          - SSH connectivity issues between manager and worker nodes
-          - Disk space exhausted on worker nodes
-          - Docker daemon not running on worker nodes
-          
-          Check the error above for details.
-
-  when:
-    - not (config.registry.enabled | default(false) | bool)
-    - build_commands is defined
-    - build_commands | length > 0
-
-- name: Cleanup temporary build directory
-  file:
-    path: "{{ tmp_build_dir }}"
-    state: absent
-  ignore_errors: yes
+  always:
+    - name: Cleanup temporary build directory
+      file:
+        path: "{{ tmp_build_dir }}"
+        state: absent
+      ignore_errors: yes

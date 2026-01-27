@@ -1,29 +1,17 @@
 ---
-# Local Registry role - transfers Docker images to all Swarm nodes via SSH streaming
-# Uses docker save | ssh | docker load - simple and reliable, no registry needed
+# Transfer Docker images to all Swarm nodes via SSH (docker save | ssh | docker load)
 
 - name: Check if image transfer is needed
   set_fact:
     needs_image_transfer: >-
-      {{
-        not (config.registry.enabled | default(false) | bool)
-        and not (remote_build | default(false) | bool)
-      }}
+      {{ not (config.registry.enabled | default(false) | bool) and not (remote_build | default(false) | bool) }}
 
 - name: Transfer images to all nodes
   block:
-    - name: Get list of built images from build commands
+    - name: Extract image names from build commands
       include_tasks: extract_image_names.yml
       when: build_commands is defined
 
-    - name: Display images to transfer
-      debug:
-        msg: "Images to transfer: {{ built_images | join(', ') }}"
-      delegate_to: localhost
-      when: built_images | length > 0
-
-    # Build list of all nodes (manager + workers)
-    # Use hostvars to access the target host's variables since we delegate to localhost
     - name: Build manager node info
       set_fact:
         manager_node:
@@ -34,22 +22,11 @@
           name: "manager"
       delegate_to: localhost
 
-    - name: Set workers list from context
+    - name: Build all nodes list (manager + workers)
       set_fact:
-        workers_list: "{{ workers | default([]) }}"
+        all_nodes: "{{ [manager_node] + (workers | default([])) }}"
       delegate_to: localhost
 
-    - name: Build all nodes list
-      set_fact:
-        all_nodes: "{{ [manager_node] + (workers_list | default([])) }}"
-      delegate_to: localhost
-
-    - name: Display transfer plan
-      debug:
-        msg: "Will transfer {{ built_images | length }} image(s) to {{ all_nodes | length }} node(s)"
-      delegate_to: localhost
-
-    # Transfer images to each node (from localhost where images were built)
     - name: Transfer images to all nodes
       include_tasks: transfer_to_node.yml
       vars:
@@ -59,26 +36,12 @@
         loop_var: node
         label: "{{ node.name | default(node.host) }}"
 
-    - name: Display transfer completion
-      debug:
-        msg: "Successfully transferred {{ built_images | length }} image(s) to {{ all_nodes | length }} node(s)"
-      delegate_to: localhost
-
   rescue:
     - name: Image transfer failed
       fail:
         msg: |
-          CRITICAL: Failed to transfer Docker images to Swarm nodes.
-          
-          This means some nodes won't have the required images and services will fail to start.
-          
-          Possible causes:
-          - SSH connectivity issues between build host and target nodes
-          - Disk space exhausted on target nodes
-          - Docker daemon not running on target nodes
-          - Network timeout during large image transfer
-          
-          Check the error above for details.
+          Failed to transfer Docker images to Swarm nodes.
+          Check SSH connectivity and disk space on target nodes.
 
   when:
     - needs_image_transfer | bool

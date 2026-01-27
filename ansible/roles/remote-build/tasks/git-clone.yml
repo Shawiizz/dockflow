@@ -1,0 +1,88 @@
+---
+# Clone Git repository to remote server for building
+
+- name: Check if git repository exists
+  stat:
+    path: "{{ root_path | default('/project') }}/.git"
+  delegate_to: localhost
+  register: git_dir_check
+
+- name: Fail if not a git repository
+  fail:
+    msg: |
+      No .git directory found in {{ root_path | default('/project') }}
+      Remote build requires the project to be a git repository with a remote origin configured.
+  when: not git_dir_check.stat.exists
+
+- name: Configure git safe.directory for mounted volumes
+  shell: git config --global --add safe.directory "{{ root_path | default('/project') }}"
+  delegate_to: localhost
+  changed_when: false
+
+- name: Get Git repository information
+  shell: |
+    cd "{{ root_path | default('/project') }}"
+    echo "repo_url=$(git config --get remote.origin.url || echo '')"
+    echo "branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+    echo "commit=$(git rev-parse HEAD 2>/dev/null || echo '')"
+  delegate_to: localhost
+  register: git_info_raw
+  changed_when: false
+
+- name: Parse Git information
+  set_fact:
+    repo_url: "{{ git_info_raw.stdout_lines | select('match', '^repo_url=') | first | regex_replace('^repo_url=', '') | trim }}"
+    git_ref: "{{ git_info_raw.stdout_lines | select('match', '^branch=') | first | regex_replace('^branch=', '') | trim }}"
+    git_sha: "{{ git_info_raw.stdout_lines | select('match', '^commit=') | first | regex_replace('^commit=', '') | trim }}"
+    git_token: "{{ lookup('env', 'GIT_TOKEN') | default('', true) }}"
+    ci_job_token: "{{ lookup('env', 'CI_JOB_TOKEN') | default('', true) }}"
+  no_log: "{{ global_no_log | default(true) }}"
+
+- name: Fail if no git remote origin configured
+  fail:
+    msg: "No git remote 'origin' found. Configure with: git remote add origin <url>"
+  when: repo_url | length == 0
+
+- name: Set effective git token
+  set_fact:
+    effective_git_token: "{{ git_token if git_token else ci_job_token }}"
+  no_log: "{{ global_no_log | default(true) }}"
+
+- name: Build authenticated Git URL for private repos
+  set_fact:
+    clone_url: >-
+      {%- if effective_git_token -%}
+        {%- if 'github.com' in repo_url -%}
+          {{ repo_url | regex_replace('^https://github.com/', 'https://x-access-token:' + effective_git_token + '@github.com/') | regex_replace('^git@github.com:', 'https://x-access-token:' + effective_git_token + '@github.com/') }}
+        {%- elif 'gitlab.com' in repo_url or 'gitlab' in repo_url -%}
+          {{ repo_url | regex_replace('^https://([^/]+)/', 'https://oauth2:' + effective_git_token + '@\\1/') | regex_replace('^git@([^:]+):', 'https://oauth2:' + effective_git_token + '@\\1/') }}
+        {%- else -%}
+          {{ repo_url }}
+        {%- endif -%}
+      {%- else -%}
+        {{ repo_url }}
+      {%- endif -%}
+  no_log: "{{ global_no_log | default(true) }}"
+
+- name: Clone repository to remote server
+  shell: |
+    rm -rf {{ tmp_build_dir }}
+    GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -o BatchMode=yes" \
+    git clone --branch {{ git_ref }} --single-branch {{ clone_url }} {{ tmp_build_dir }}
+    {% if git_sha %}
+    cd {{ tmp_build_dir }}
+    git checkout {{ git_sha }}
+    {% endif %}
+  environment:
+    GIT_TERMINAL_PROMPT: "0"
+  register: git_clone_result
+  no_log: "{{ global_no_log | default(true) }}"
+  ignore_errors: true
+  timeout: 180
+
+- name: Fail if git clone failed
+  fail:
+    msg: |
+      Failed to clone '{{ repo_url }}' (branch: {{ git_ref }}).
+      {{ git_clone_result.stderr | default('') }}
+  when: git_clone_result.rc | default(0) != 0

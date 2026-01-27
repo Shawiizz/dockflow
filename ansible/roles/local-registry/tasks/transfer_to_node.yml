@@ -1,9 +1,6 @@
 ---
 # Transfer images to a single node via SSH streaming
-# Called with:
-#   - node: dict with host, user, port, key_file (optional), private_key (optional), name
-#   - built_images: list of image names to transfer
-#   - transfer_from_manager: if true, runs on manager (for remote-build); otherwise delegates to localhost
+# Params: node (dict), built_images (list), transfer_from_manager (bool)
 
 - name: "Set transfer context for {{ node.name | default(node.host) }}"
   set_fact:
@@ -18,7 +15,6 @@
     mode: '0700'
   delegate_to: "{{ 'localhost' if _from_localhost else omit }}"
 
-# Write private key to temp file if provided (for workers)
 - name: "Write SSH key for {{ _node_name }}"
   copy:
     content: "{{ node.private_key }}"
@@ -27,7 +23,6 @@
   delegate_to: "{{ 'localhost' if _from_localhost else omit }}"
   when: node.private_key is defined
 
-# Build SSH options once, with the correct key path
 - name: "Build SSH key option for {{ _node_name }}"
   set_fact:
     _ssh_key_opt: >-
