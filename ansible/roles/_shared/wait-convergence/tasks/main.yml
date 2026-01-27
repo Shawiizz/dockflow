@@ -1,15 +1,17 @@
 ---
-# Shared task: Wait for Docker Swarm services to converge
+# Shared role: Wait for Docker Swarm services to converge
+#
 # Parameters:
 #   - convergence_stack_name: Name of the stack to check (required)
 #   - convergence_timeout: Timeout in seconds (default from dockflow_defaults)
+#   - convergence_interval: Interval between checks (default from dockflow_defaults)
 #   - convergence_context: Context for logging (e.g., "deployment", "rollback")
 
 - name: Set convergence defaults
   set_fact:
     _stack: "{{ convergence_stack_name }}"
     _timeout: "{{ convergence_timeout | default(dockflow_defaults.convergence_timeout) }}"
-    _interval: "{{ convergence_interval | default(dockflow_defaults.convergence_interval) | default(5) }}"
+    _interval: "{{ convergence_interval | default(dockflow_defaults.convergence_interval) }}"
 
 - name: Wait for services to converge
   shell: |

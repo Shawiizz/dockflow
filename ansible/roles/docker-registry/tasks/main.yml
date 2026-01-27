@@ -17,7 +17,8 @@
 - name: Process registry operations
   block:
     - name: Login to Docker registry
-      include_tasks: ../../playbooks/docker_registry_login.yml
+      include_role:
+        name: _shared/registry-login
       vars:
         registry_config: "{{ config.registry }}"
 

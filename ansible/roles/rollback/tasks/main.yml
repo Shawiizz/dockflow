@@ -132,7 +132,8 @@
       changed_when: true
 
     - name: Wait for rollback services to converge
-      include_tasks: ../../playbooks/wait_for_convergence.yml
+      include_role:
+        name: _shared/wait-convergence
       vars:
         convergence_stack_name: "{{ stack_name }}"
         convergence_timeout: "{{ config.swarm.wait_timeout | default(dockflow_defaults.convergence_timeout) }}"

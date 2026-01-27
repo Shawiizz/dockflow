@@ -1,8 +1,10 @@
 ---
-# Shared task: Inject Swarm deploy configuration with sensible defaults
+# Shared role: Inject Swarm deploy configuration with sensible defaults
+#
 # Parameters:
 #   - compose_content_b64: Base64-encoded docker-compose.yml content
 #   - inject_mode: 'app' (full update/rollback config) or 'accessories' (minimal restart policy)
+#
 # Output:
 #   - injected_compose: The updated compose data as YAML string
 
@@ -14,18 +16,18 @@
   set_fact:
     injected_compose: >-
       {%- set default_update = {
-        'parallelism': 1,
-        'delay': '10s',
-        'failure_action': 'rollback',
-        'monitor': '30s',
-        'max_failure_ratio': 0,
-        'order': 'start-first'
+        'parallelism': inject_deploy_update_parallelism,
+        'delay': inject_deploy_update_delay,
+        'failure_action': inject_deploy_update_failure_action,
+        'monitor': inject_deploy_update_monitor,
+        'max_failure_ratio': inject_deploy_update_max_failure_ratio,
+        'order': inject_deploy_update_order
       } -%}
       {%- set default_rollback = {
-        'parallelism': 1,
-        'delay': '5s',
-        'monitor': '15s',
-        'order': 'start-first'
+        'parallelism': inject_deploy_rollback_parallelism,
+        'delay': inject_deploy_rollback_delay,
+        'monitor': inject_deploy_rollback_monitor,
+        'order': inject_deploy_rollback_order
       } -%}
       {%- set ns = namespace(services={}) -%}
       {%- for svc_name, svc_config in (_compose_data.services | default({})).items() -%}
@@ -46,9 +48,9 @@
         {%- set deploy = svc_config.deploy | default({}) -%}
         {%- set restart = deploy.restart_policy | default({}) -%}
         {%- set new_restart = {
-          'condition': restart.condition | default('on-failure'),
-          'delay': restart.delay | default('5s'),
-          'max_attempts': restart.max_attempts | default(3)
+          'condition': restart.condition | default(inject_deploy_restart_condition),
+          'delay': restart.delay | default(inject_deploy_restart_delay),
+          'max_attempts': restart.max_attempts | default(inject_deploy_restart_max_attempts)
         } -%}
         {%- set new_deploy = deploy | combine({
           'replicas': deploy.replicas | default(1),

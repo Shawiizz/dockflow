@@ -71,7 +71,8 @@
       when: accessories_need_deploy
       block:
         - name: Create external resources for accessories
-          include_tasks: ../../playbooks/create_external_resources.yml
+          include_role:
+            name: _shared/create-resources
           vars:
             compose_file_path: "{{ accessories_compose_path }}"
             resource_label: "accessories"
@@ -83,7 +84,8 @@
           register: acc_compose_content
 
         - name: Inject deploy config for accessories services
-          include_tasks: ../../playbooks/inject_deploy_config.yml
+          include_role:
+            name: _shared/inject-deploy
           vars:
             compose_content_b64: "{{ acc_compose_content.content }}"
             inject_mode: "accessories"

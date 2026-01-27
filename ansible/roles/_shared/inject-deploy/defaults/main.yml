@@ -1,0 +1,24 @@
+---
+# Default variables for inject-deploy role
+
+# Default injection mode
+inject_mode: "app"
+
+# App update_config defaults
+inject_deploy_update_parallelism: 1
+inject_deploy_update_delay: "10s"
+inject_deploy_update_failure_action: "rollback"
+inject_deploy_update_monitor: "30s"
+inject_deploy_update_max_failure_ratio: 0
+inject_deploy_update_order: "start-first"
+
+# App rollback_config defaults
+inject_deploy_rollback_parallelism: 1
+inject_deploy_rollback_delay: "5s"
+inject_deploy_rollback_monitor: "15s"
+inject_deploy_rollback_order: "start-first"
+
+# Accessories restart_policy defaults
+inject_deploy_restart_condition: "on-failure"
+inject_deploy_restart_delay: "5s"
+inject_deploy_restart_max_attempts: 3

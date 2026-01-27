@@ -1,14 +1,16 @@
 ---
-# Shared task: Docker registry login
+# Shared role: Docker registry login
+#
 # Parameters:
 #   - registry_config: Registry configuration dict (from config.registry)
+#
 # Output:
 #   - registry_login_success: Boolean indicating if login succeeded
 
 - name: Set registry login variables
   set_fact:
     _registry_url: "{{ registry_config.url | default('') }}"
-    _registry_username: "{{ registry_config.username | default('oauth2') }}"
+    _registry_username: "{{ registry_config.username | default(registry_default_username) }}"
     _registry_password: "{{ registry_config.password | default(registry_config.token | default('')) }}"
     _registry_enabled: "{{ registry_config.enabled | default(false) | bool }}"
   no_log: true

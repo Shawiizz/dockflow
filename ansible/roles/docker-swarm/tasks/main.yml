@@ -41,7 +41,8 @@
 
 # Create external networks and volumes before deployment
 - name: Create external resources for app
-  include_tasks: ../../playbooks/create_external_resources.yml
+  include_role:
+    name: _shared/create-resources
   vars:
     compose_file_path: "{{ compose_path }}"
     resource_label: "app"
@@ -75,7 +76,8 @@
     force: yes
 
 - name: Login to registry on remote server if configured
-  include_tasks: ../../playbooks/docker_registry_login.yml
+  include_role:
+    name: _shared/registry-login
   vars:
     registry_config: "{{ config.registry | default({}) }}"
   when:
@@ -90,7 +92,8 @@
       register: compose_content
 
     - name: Inject deploy config with defaults
-      include_tasks: ../../playbooks/inject_deploy_config.yml
+      include_role:
+        name: _shared/inject-deploy
       vars:
         compose_content_b64: "{{ compose_content.content }}"
         inject_mode: "app"
@@ -232,7 +235,8 @@
   changed_when: false
 
 - name: Wait for services to converge
-  include_tasks: ../../playbooks/wait_for_convergence.yml
+  include_role:
+    name: _shared/wait-convergence
   vars:
     convergence_stack_name: "{{ swarm_stack_name }}"
     convergence_timeout: "{{ config.swarm.wait_timeout | default(dockflow_defaults.convergence_timeout) }}"

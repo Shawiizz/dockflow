@@ -1,0 +1,4 @@
+---
+# Default variables for wait-convergence role
+# These are overridden by dockflow_defaults from group_vars/all.yml
+convergence_context: "deployment"
