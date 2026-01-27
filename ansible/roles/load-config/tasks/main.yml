@@ -36,7 +36,6 @@
       include_vars:
         file: /tmp/config_rendered.yml
         name: config
-      ignore_errors: yes
 
   when: config_file.stat.exists
 

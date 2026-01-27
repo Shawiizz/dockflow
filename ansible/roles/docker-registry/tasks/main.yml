@@ -7,7 +7,6 @@
     registry_enabled: "{{ config.registry.enabled | default(false) | bool }}"
     registry_url: "{{ config.registry.url | default('') }}"
     registry_namespace: "{{ config.registry.namespace | default('') }}"
-    registry_auth_method: "{{ config.registry.auth_method | default('basic') }}"
   when: config.registry is defined
 
 - name: Display registry status
@@ -43,7 +42,8 @@
     - name: Logout from Docker registry
       shell: docker logout {{ registry_url }}
       when: registry_login_success | default(false)
-      failed_when: false  # Non-critical: logout can fail if not logged in
+      changed_when: false
+      failed_when: false
 
   when:
     - registry_enabled | bool

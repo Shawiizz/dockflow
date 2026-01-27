@@ -1,15 +1,13 @@
 ---
 # Metrics role - records deployment metrics in JSONL format
-# Stored at /var/lib/dockflow/metrics/<stack>/deployments.json
 
 - name: Set metrics paths
   set_fact:
-    metrics_dir: "/var/lib/dockflow/metrics/{{ stack_name }}"
-    metrics_file: "/var/lib/dockflow/metrics/{{ stack_name }}/deployments.json"
+    metrics_file: "{{ dockflow_paths.metrics }}/{{ stack_name }}/deployments.json"
 
 - name: Ensure metrics directory exists
   file:
-    path: "{{ metrics_dir }}"
+    path: "{{ dockflow_paths.metrics }}/{{ stack_name }}"
     state: directory
     mode: '0755'
 

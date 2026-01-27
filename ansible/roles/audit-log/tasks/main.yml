@@ -3,12 +3,11 @@
 
 - name: Set audit log path
   set_fact:
-    audit_log_dir: "/var/lib/dockflow/audit"
-    audit_log_file: "/var/lib/dockflow/audit/{{ stack_name }}.log"
+    audit_log_file: "{{ dockflow_paths.audit }}/{{ stack_name }}.log"
 
 - name: Ensure audit directory exists
   file:
-    path: "{{ audit_log_dir }}"
+    path: "{{ dockflow_paths.audit }}"
     state: directory
     mode: '0755'
 
