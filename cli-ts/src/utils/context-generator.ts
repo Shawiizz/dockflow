@@ -46,7 +46,7 @@ export interface DeploymentOptions {
   skip_docker_install: boolean;
   force_deploy: boolean;
   deploy_app: boolean;
-  deploy_accessories: boolean;
+  force_accessories: boolean;
   skip_accessories: boolean;
   services?: string;
 }
@@ -160,7 +160,7 @@ export function buildDeployContext(params: BuildDeployContextParams): AnsibleCon
       skip_docker_install: options.skipDockerInstall || false,
       force_deploy: options.force || false,
       deploy_app: options.deployApp,
-      deploy_accessories: options.forceAccessories,
+      force_accessories: options.forceAccessories,
       skip_accessories: options.skipAccessories,
       services: options.services,
     },

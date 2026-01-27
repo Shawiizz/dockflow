@@ -31,7 +31,7 @@
       services: "{{ deploy_services.split(',') | select() | list if deploy_services else [] }}"
       error: "{{ metric_error | default('') }}"
       rollback_from: "{{ rollback_from_version | default('') }}"
-      build_skipped: "{{ options.skip_build | default(false) | bool }}"
+      build_skipped: "{{ skip_build | default(false) | bool }}"
       accessories_deployed: "{{ force_accessories | default(false) | bool }}"
       node_count: "{{ (groups['all'] | default([inventory_hostname])) | length }}"
 

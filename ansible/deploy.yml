@@ -50,20 +50,25 @@
     - name: Set computed variables
       set_fact:
         global_no_log: "{{ not (config.options.enable_debug_logs | default(false) | bool) }}"
-        # Use options from JSON context, fallback to env lookup for backward compatibility
+        # Options from JSON context (with env fallback for backward compatibility)
         deploy_services: "{{ options.services | default(lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true)) }}"
-        services_option: "{{ ('--services=' + (options.services | default(lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('')))) if (options.services | default(lookup('env', 'DEPLOY_DOCKER_SERVICES') | default(''))) else '' }}"
+        skip_build: "{{ options.skip_build | default(lookup('env', 'SKIP_BUILD') | default('false', true)) | bool }}"
+        force_deploy: "{{ options.force_deploy | default(lookup('env', 'FORCE_DEPLOY') | default('false', true)) | bool }}"
         remote_build: "{{ config.options.remote_build | default(false) | bool }}"
         project_name: "{{ config.project_name }}"
         sanitized_branch_name: "{{ branch_name | default(lookup('env', 'BRANCH_NAME')) | regex_replace('[^a-zA-Z0-9-]', '_') }}"
         stack_name: "{{ config.project_name }}-{{ env | default(lookup('env', 'ENV')) }}"
         rollback_configured: "{{ (config.health_checks.on_failure | default('notify')) == 'rollback' }}"
-        # Deployment targets from JSON context (with env fallback for backward compatibility)
+        # Deployment targets
         deploy_app: "{{ options.deploy_app | default(lookup('env', 'DEPLOY_APP') | default('true', true)) | bool }}"
-        force_accessories: "{{ options.deploy_accessories | default(lookup('env', 'DEPLOY_ACCESSORIES') | default('false', true)) | bool }}"
+        force_accessories: "{{ options.force_accessories | default(lookup('env', 'DEPLOY_ACCESSORIES') | default('false', true)) | bool }}"
         skip_accessories: "{{ options.skip_accessories | default(lookup('env', 'SKIP_ACCESSORIES') | default('false', true)) | bool }}"
         skip_docker_install: "{{ options.skip_docker_install | default(lookup('env', 'SKIP_DOCKER_INSTALL') | default('false', true)) | bool }}"
       no_log: "{{ not (config.options.enable_debug_logs | default(false) | bool) }}"
+
+    - name: Set derived variables
+      set_fact:
+        services_option: "{{ ('--services=' + deploy_services) if deploy_services else '' }}"
 
     - name: Display template context info (debug mode only)
       debug:

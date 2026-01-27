@@ -40,7 +40,7 @@
   when:
     - lock_check.stat.exists
     - not (lock_is_stale | default(false))
-    - not (force_unlock | default(false) | bool)
+    - not (force_deploy | default(false) | bool)
 
 - name: Acquire deploy lock
   copy:
