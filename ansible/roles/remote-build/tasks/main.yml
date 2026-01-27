@@ -27,11 +27,12 @@
 - name: Clean up old build directories (older than 1 day)
   shell: find /tmp -maxdepth 1 -name 'docker-build-*' -type d -mtime +1 -exec rm -rf {} + || true
   changed_when: false
-  ignore_errors: yes
+  failed_when: false  # Non-critical: cleanup can fail if no old dirs exist
 
 - name: Clean up Docker to free space
   shell: docker system prune -af || true
   changed_when: false
+  failed_when: false  # Non-critical: prune can fail on empty system
 
 - name: Build and distribute images
   block:

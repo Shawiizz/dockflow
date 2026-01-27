@@ -4,7 +4,7 @@
 
 - name: Set stacks directory path
   set_fact:
-    stacks_dir: "/var/lib/dockflow/stacks/{{ stack_name }}"
+    stacks_dir: "{{ dockflow_paths.stacks | default('/var/lib/dockflow/stacks') }}/{{ stack_name }}"
 
 - name: Ensure stack directories exist
   file:

@@ -10,7 +10,7 @@
 
 - name: Set stacks directory
   set_fact:
-    stacks_dir: "/var/lib/dockflow/stacks/{{ stack_name }}"
+    stacks_dir: "{{ dockflow_paths.stacks | default('/var/lib/dockflow/stacks') }}/{{ stack_name }}"
 
 - name: Find available releases for rollback
   find:

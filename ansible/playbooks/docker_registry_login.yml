@@ -1,0 +1,42 @@
+---
+# Shared task: Docker registry login
+# Parameters:
+#   - registry_config: Registry configuration dict (from config.registry)
+# Output:
+#   - registry_login_success: Boolean indicating if login succeeded
+
+- name: Set registry login variables
+  set_fact:
+    _registry_url: "{{ registry_config.url | default('') }}"
+    _registry_username: "{{ registry_config.username | default('oauth2') }}"
+    _registry_password: "{{ registry_config.password | default(registry_config.token | default('')) }}"
+    _registry_enabled: "{{ registry_config.enabled | default(false) | bool }}"
+  no_log: true
+
+- name: Skip login if registry not configured
+  set_fact:
+    registry_login_success: false
+  when: not _registry_enabled or _registry_url == '' or _registry_password == ''
+
+- name: Login to Docker registry
+  shell: |
+    echo "{{ _registry_password }}" | docker login {{ _registry_url }} \
+      --username "{{ _registry_username }}" \
+      --password-stdin
+  register: _registry_login_result
+  no_log: true
+  failed_when: false
+  when:
+    - _registry_enabled
+    - _registry_url != ''
+    - _registry_password != ''
+
+- name: Set login result
+  set_fact:
+    registry_login_success: "{{ _registry_login_result.rc | default(1) == 0 }}"
+  when: _registry_login_result is defined
+
+- name: Display login status
+  debug:
+    msg: "Docker registry login: {{ 'SUCCESS' if registry_login_success | default(false) else 'SKIPPED or FAILED' }}"
+  when: registry_config.enabled | default(false) | bool

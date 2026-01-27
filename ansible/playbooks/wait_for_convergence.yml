@@ -9,12 +9,13 @@
   set_fact:
     _stack: "{{ convergence_stack_name }}"
     _timeout: "{{ convergence_timeout | default(dockflow_defaults.convergence_timeout) }}"
+    _interval: "{{ convergence_interval | default(dockflow_defaults.convergence_interval) | default(5) }}"
 
 - name: Wait for services to converge
   shell: |
     TIMEOUT={{ _timeout }}
     ELAPSED=0
-    INTERVAL=5
+    INTERVAL={{ _interval }}
     
     echo "Waiting for {{ convergence_context | default('services') }} to converge (timeout: ${TIMEOUT}s)..."
     

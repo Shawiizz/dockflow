@@ -17,35 +17,10 @@
 
 - name: Process registry operations
   block:
-    - name: Set registry credentials based on auth method
-      set_fact:
-        registry_username: "{{ config.registry.username | default('') }}"
-        registry_password: "{{ config.registry.password | default('') }}"
-        registry_token: "{{ config.registry.token | default('') }}"
-      no_log: true
-
-    - name: Login to Docker registry (basic auth)
-      shell: |
-        echo "{{ registry_password }}" | docker login {{ registry_url }} \
-          --username "{{ registry_username }}" \
-          --password-stdin
-      when:
-        - registry_auth_method == "basic"
-        - registry_username != ""
-        - registry_password != ""
-      no_log: true
-      register: registry_login_basic
-
-    - name: Login to Docker registry (token auth)
-      shell: |
-        echo "{{ registry_token }}" | docker login {{ registry_url }} \
-          --username "{{ registry_username | default('oauth2') }}" \
-          --password-stdin
-      when:
-        - registry_auth_method == "token"
-        - registry_token != ""
-      no_log: true
-      register: registry_login_token
+    - name: Login to Docker registry
+      include_tasks: ../../playbooks/docker_registry_login.yml
+      vars:
+        registry_config: "{{ config.registry }}"
 
     # Get images either from built_images variable or extract from build_commands
     - name: Extract image names from build commands (if not already provided)
@@ -67,8 +42,8 @@
 
     - name: Logout from Docker registry
       shell: docker logout {{ registry_url }}
-      when: registry_login_basic is changed or registry_login_token is changed
-      ignore_errors: yes
+      when: registry_login_success | default(false)
+      failed_when: false  # Non-critical: logout can fail if not logged in
 
   when:
     - registry_enabled | bool

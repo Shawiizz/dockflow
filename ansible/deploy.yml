@@ -95,15 +95,15 @@
         state: directory
         mode: '0755'
       loop:
-        - /var/lib/dockflow
-        - /var/lib/dockflow/stacks
-        - /var/lib/dockflow/accessories
-        - /var/lib/dockflow/audit
-        - /var/lib/dockflow/metrics
+        - "{{ dockflow_paths.base }}"
+        - "{{ dockflow_paths.stacks }}"
+        - "{{ dockflow_paths.accessories }}"
+        - "{{ dockflow_paths.audit }}"
+        - "{{ dockflow_paths.metrics }}"
 
     - name: Ensure locks directory exists with open permissions
       file:
-        path: /var/lib/dockflow/locks
+        path: "{{ dockflow_paths.locks }}"
         state: directory
         mode: '1777'
 

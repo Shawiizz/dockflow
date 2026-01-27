@@ -1,9 +1,16 @@
 ---
 # Extract image names from build commands
 # Sets: built_images (list of image names)
-# Requires: build_commands (list of docker build commands with -t flags)
+# Requires: build_commands - either:
+#   - list of dicts with 'tag' attribute (from local-build role)
+#   - list of command strings with -t flags (from remote-build role)
 
 - name: Extract image names from build commands
   set_fact:
-    built_images: "{{ build_commands | default([]) | select('search', '-t\\s+') | map('regex_replace', '.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') | list }}"
-  delegate_to: localhost
+    built_images: >-
+      {%- set cmds = build_commands | default([]) -%}
+      {%- if cmds | length > 0 and cmds[0] is mapping -%}
+        {{ cmds | map(attribute='tag') | list }}
+      {%- else -%}
+        {{ cmds | select('search', '-t\\s+') | map('regex_replace', '.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') | list }}
+      {%- endif -%}

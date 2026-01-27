@@ -15,7 +15,7 @@
 - name: Set stack deployment variables
   set_fact:
     swarm_stack_name: "{{ stack_name }}"
-    stacks_dir: "/var/lib/dockflow/stacks/{{ stack_name }}"
+    stacks_dir: "{{ dockflow_paths.stacks | default('/var/lib/dockflow/stacks') }}/{{ stack_name }}"
     use_registry_auth: "{{ config.registry.enabled | default(false) | bool }}"
     resolve_image_flag: "{{ '--resolve-image=never' if not (config.registry.enabled | default(false) | bool) else '' }}"
 
@@ -79,17 +79,12 @@
     force: yes
 
 - name: Login to registry on remote server if configured
-  shell: |
-    echo "{{ config.registry.password | default(config.registry.token) }}" | \
-    docker login {{ config.registry.url }} \
-      --username "{{ config.registry.username | default('oauth2') }}" \
-      --password-stdin
+  include_tasks: ../../playbooks/docker_registry_login.yml
+  vars:
+    registry_config: "{{ config.registry | default({}) }}"
   when:
     - config.registry is defined
     - config.registry.enabled | default(false) | bool
-    - config.registry.url is defined
-  no_log: true
-  register: swarm_registry_login
 
 - name: Inject Swarm deployment configuration
   block:

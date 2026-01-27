@@ -8,6 +8,7 @@ ansible_become_method: sudo
 dockflow_defaults:
   # Timeouts (in seconds)
   convergence_timeout: 300      # Max time to wait for services to converge
+  convergence_interval: 5       # Interval between convergence checks
   healthcheck_timeout: 120      # Max time to wait for container healthchecks
   lock_stale_timeout: 1800      # Lock expires after 30 minutes
   hooks_timeout: 300            # Max hook execution time
@@ -16,6 +17,12 @@ dockflow_defaults:
   # Retries
   accessories_retries: 30       # Retry count for accessories readiness
   accessories_retry_delay: 5    # Delay between retries
-  
-  # Lock paths
-  lock_dir: "/var/lib/dockflow/locks"
+
+# Centralized paths
+dockflow_paths:
+  base: "/var/lib/dockflow"
+  stacks: "/var/lib/dockflow/stacks"
+  accessories: "/var/lib/dockflow/accessories"
+  locks: "/var/lib/dockflow/locks"
+  audit: "/var/lib/dockflow/audit"
+  metrics: "/var/lib/dockflow/metrics"

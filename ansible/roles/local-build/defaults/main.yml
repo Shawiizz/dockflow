@@ -1,0 +1,5 @@
+---
+# Local build role defaults
+
+# Build mode (validation only, no transfer)
+build_mode: false
