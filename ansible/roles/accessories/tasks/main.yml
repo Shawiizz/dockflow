@@ -1,26 +1,7 @@
 ---
-# Accessories role - Deploy stateful services with separate lifecycle
-# These services (databases, caches, etc.) are not redeployed with the main app
-#
-# Hash-based change detection:
-# - Calculates SHA256 of rendered accessories.yml
-# - Compares with stored hash on server
-# - Only deploys if hash changed or first deployment
-# - Use force_accessories=true to bypass hash check
-
 - name: Ensure Docker Swarm is initialized for accessories
-  block:
-    - name: Check if Docker Swarm is initialized
-      shell: docker info --format '{{ '{{' }}.Swarm.LocalNodeState{{ '}}' }}'
-      register: swarm_state
-      changed_when: false
-      failed_when: false
-
-    - name: Initialize Docker Swarm if not already initialized
-      shell: |
-        docker swarm init --advertise-addr {{ ansible_default_ipv4.address | default(ansible_all_ipv4_addresses[0]) }} 2>/dev/null || true
-      register: swarm_init
-      when: swarm_state.stdout | trim != 'active'
+  import_role:
+    name: swarm-cluster
 
 - name: Set accessories variables
   set_fact:
@@ -86,53 +67,30 @@
 
     # ============================================
     # DEPLOY ACCESSORIES (only if needed)
-    # ============================================
     - name: Deploy accessories stack
       when: accessories_need_deploy
       block:
-        # Create external networks and volumes before deployment
         - name: Create external resources for accessories
           include_tasks: ../../playbooks/create_external_resources.yml
           vars:
             compose_file_path: "{{ accessories_compose_path }}"
             resource_label: "accessories"
 
-        # Inject minimal Swarm config
         - name: Read rendered accessories compose
           slurp:
             src: "{{ accessories_compose_path }}"
           delegate_to: localhost
           register: acc_compose_content
 
-        - name: Parse accessories compose
-          set_fact:
-            acc_compose_data: "{{ acc_compose_content.content | b64decode | from_yaml }}"
-          delegate_to: localhost
-
         - name: Inject deploy config for accessories services
-          set_fact:
-            acc_updated_compose: >-
-              {%- set ns = namespace(services={}) -%}
-              {%- for service_name, service_config in acc_compose_data.services.items() -%}
-                {%- set deploy_config = service_config.deploy | default({}) -%}
-                {%- set restart_policy = deploy_config.restart_policy | default({}) -%}
-                {%- set new_restart_policy = {
-                  'condition': restart_policy.condition | default('on-failure'),
-                  'delay': restart_policy.delay | default('5s'),
-                  'max_attempts': restart_policy.max_attempts | default(3)
-                } -%}
-                {%- set new_deploy = deploy_config | combine({
-                  'replicas': deploy_config.replicas | default(1),
-                  'restart_policy': new_restart_policy
-                }) -%}
-                {%- set _ = ns.services.update({service_name: service_config | combine({'deploy': new_deploy})}) -%}
-              {%- endfor -%}
-              {{ acc_compose_data | combine({'services': ns.services}) }}
-          delegate_to: localhost
+          include_tasks: ../../playbooks/inject_deploy_config.yml
+          vars:
+            compose_content_b64: "{{ acc_compose_content.content }}"
+            inject_mode: "accessories"
 
         - name: Copy accessories compose to remote
           copy:
-            content: "{{ acc_updated_compose | to_nice_yaml(indent=2, width=999) }}"
+            content: "{{ injected_compose }}"
             dest: "{{ accessories_dir }}/docker-compose.yml"
             mode: '0644'
 
@@ -152,41 +110,23 @@
           register: accessories_deploy
           changed_when: "'Creating' in accessories_deploy.stdout or 'Updating' in accessories_deploy.stdout"
 
-        - name: Display accessories deployment result
-          debug:
-            msg: |
-              Accessories stack deployed: {{ accessories_stack_name }}
-              Services: {{ accessories_deploy.stdout_lines | default([]) }}
-
         - name: Wait for accessories services to be ready
           command: "docker stack services {{ accessories_stack_name }} --format \"{{ '{{' }}.Name{{ '}}' }}: {{ '{{' }}.Replicas{{ '}}' }}\""
           register: accessories_status
           until: "'0/' not in accessories_status.stdout"
-          retries: 30
-          delay: 5
+          retries: "{{ dockflow_defaults.accessories_retries }}"
+          delay: "{{ dockflow_defaults.accessories_retry_delay }}"
           changed_when: false
-
-        - name: Display accessories status
-          debug:
-            msg: "{{ accessories_status.stdout_lines }}"
-          when: accessories_status.stdout_lines | length > 0
 
         - name: Fail if accessories services are not ready
           fail:
             msg: |
               Accessories services failed to start properly.
               Status: {{ accessories_status.stdout_lines | join(', ') }}
-              
-              Check the service logs with: docker service logs <service_name>
           when: "'0/' in accessories_status.stdout"
 
-        # Save hash after successful deployment
         - name: Save new hash to server
           copy:
             content: "{{ new_accessories_hash.stdout }}"
             dest: "{{ accessories_hash_file }}"
             mode: '0644'
-
-        - name: Accessories deployment complete
-          debug:
-            msg: "Accessories deployed successfully. Hash saved for future change detection."

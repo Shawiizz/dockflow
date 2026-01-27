@@ -1,0 +1,60 @@
+---
+# Shared task: Inject Swarm deploy configuration with sensible defaults
+# Parameters:
+#   - compose_content_b64: Base64-encoded docker-compose.yml content
+#   - inject_mode: 'app' (full update/rollback config) or 'accessories' (minimal restart policy)
+# Output:
+#   - injected_compose: The updated compose data as YAML string
+
+- name: Parse compose content
+  set_fact:
+    _compose_data: "{{ compose_content_b64 | b64decode | from_yaml }}"
+
+- name: Inject app deploy configuration
+  set_fact:
+    injected_compose: >-
+      {%- set default_update = {
+        'parallelism': 1,
+        'delay': '10s',
+        'failure_action': 'rollback',
+        'monitor': '30s',
+        'max_failure_ratio': 0,
+        'order': 'start-first'
+      } -%}
+      {%- set default_rollback = {
+        'parallelism': 1,
+        'delay': '5s',
+        'monitor': '15s',
+        'order': 'start-first'
+      } -%}
+      {%- set ns = namespace(services={}) -%}
+      {%- for svc_name, svc_config in (_compose_data.services | default({})).items() -%}
+        {%- set user_deploy = svc_config.deploy | default({}) -%}
+        {%- set merged_update = default_update | combine(user_deploy.update_config | default({})) -%}
+        {%- set merged_rollback = default_rollback | combine(user_deploy.rollback_config | default({})) -%}
+        {%- set merged_deploy = user_deploy | combine({'update_config': merged_update, 'rollback_config': merged_rollback}) -%}
+        {%- set _ = ns.services.update({svc_name: svc_config | combine({'deploy': merged_deploy})}) -%}
+      {%- endfor -%}
+      {{ _compose_data | combine({'services': ns.services}) | to_nice_yaml(indent=2, width=999) }}
+  when: inject_mode | default('app') == 'app'
+
+- name: Inject accessories deploy configuration
+  set_fact:
+    injected_compose: >-
+      {%- set ns = namespace(services={}) -%}
+      {%- for svc_name, svc_config in (_compose_data.services | default({})).items() -%}
+        {%- set deploy = svc_config.deploy | default({}) -%}
+        {%- set restart = deploy.restart_policy | default({}) -%}
+        {%- set new_restart = {
+          'condition': restart.condition | default('on-failure'),
+          'delay': restart.delay | default('5s'),
+          'max_attempts': restart.max_attempts | default(3)
+        } -%}
+        {%- set new_deploy = deploy | combine({
+          'replicas': deploy.replicas | default(1),
+          'restart_policy': new_restart
+        }) -%}
+        {%- set _ = ns.services.update({svc_name: svc_config | combine({'deploy': new_deploy})}) -%}
+      {%- endfor -%}
+      {{ _compose_data | combine({'services': ns.services}) | to_nice_yaml(indent=2, width=999) }}
+  when: inject_mode | default('app') == 'accessories'

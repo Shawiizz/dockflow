@@ -1,9 +1,7 @@
 ---
-# Release deploy lock
-
 - name: Set lock file path
   set_fact:
-    lock_file: "/var/lib/dockflow/locks/{{ stack_name }}.lock"
+    lock_file: "{{ lock_dir }}/{{ stack_name }}.lock"
 
 - name: Release deploy lock
   file:

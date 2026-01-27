@@ -91,55 +91,22 @@
   no_log: true
   register: swarm_registry_login
 
-- name: Inject Swarm deployment configuration (defaults only if not set by user)
+- name: Inject Swarm deployment configuration
   block:
     - name: Read current docker-compose.yml
       slurp:
         src: "{{ release_dir }}/docker-compose.yml"
       register: compose_content
 
-    - name: Parse docker-compose.yml
-      set_fact:
-        compose_data: "{{ compose_content.content | b64decode | from_yaml }}"
-
-    # Recommended defaults for zero-downtime deployments
-    # These are only applied if the user hasn't defined them
-    - name: Define recommended Swarm defaults
-      set_fact:
-        default_update_config:
-          parallelism: 1
-          delay: "10s"
-          failure_action: "rollback"
-          monitor: "30s"
-          max_failure_ratio: 0
-          order: "start-first"
-        default_rollback_config:
-          parallelism: 1
-          delay: "5s"
-          monitor: "15s"
-          order: "start-first"
-
-    - name: Merge user config with defaults (user values take precedence)
-      set_fact:
-        updated_compose: >-
-          {%- set ns = namespace(services={}) -%}
-          {%- for service_name, service_config in compose_data.services.items() -%}
-            {%- set user_deploy = service_config.deploy | default({}) -%}
-            {%- set user_update = user_deploy.update_config | default({}) -%}
-            {%- set user_rollback = user_deploy.rollback_config | default({}) -%}
-            {%- set merged_update = default_update_config | combine(user_update) -%}
-            {%- set merged_rollback = default_rollback_config | combine(user_rollback) -%}
-            {%- set merged_deploy = user_deploy | combine({
-              'update_config': merged_update,
-              'rollback_config': merged_rollback
-            }) -%}
-            {%- set _ = ns.services.update({service_name: service_config | combine({'deploy': merged_deploy})}) -%}
-          {%- endfor -%}
-          {{ compose_data | combine({'services': ns.services}) }}
+    - name: Inject deploy config with defaults
+      include_tasks: ../../playbooks/inject_deploy_config.yml
+      vars:
+        compose_content_b64: "{{ compose_content.content }}"
+        inject_mode: "app"
 
     - name: Write updated docker-compose.yml with deploy config
       copy:
-        content: "{{ updated_compose | to_nice_yaml(indent=2, width=999) }}"
+        content: "{{ injected_compose }}"
         dest: "{{ release_dir }}/docker-compose.yml"
         mode: '0644'
 
@@ -274,52 +241,12 @@
   changed_when: false
 
 - name: Wait for services to converge
-  shell: |
-    TIMEOUT={{ config.swarm.wait_timeout | default(300) }}
-    ELAPSED=0
-    INTERVAL=5
-    
-    echo "Waiting for services to converge (timeout: ${TIMEOUT}s)..."
-    
-    while [ $ELAPSED -lt $TIMEOUT ]; do
-      # Get service states
-      SERVICES=$(docker stack services {{ swarm_stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}:{{ '{{' }}.Replicas{{ '}}' }}")
-      
-      if [ -z "$SERVICES" ]; then
-        echo "No services found yet, waiting..."
-        sleep $INTERVAL
-        ELAPSED=$((ELAPSED + INTERVAL))
-        continue
-      fi
-      
-      ALL_RUNNING=true
-      for SERVICE in $SERVICES; do
-        NAME=$(echo $SERVICE | cut -d: -f1)
-        REPLICAS=$(echo $SERVICE | cut -d: -f2)
-        CURRENT=$(echo $REPLICAS | cut -d/ -f1)
-        DESIRED=$(echo $REPLICAS | cut -d/ -f2)
-        
-        if [ "$CURRENT" != "$DESIRED" ]; then
-          ALL_RUNNING=false
-          echo "Service $NAME: $CURRENT/$DESIRED replicas"
-        fi
-      done
-      
-      if [ "$ALL_RUNNING" = "true" ]; then
-        echo "All services converged successfully"
-        exit 0
-      fi
-      
-      sleep $INTERVAL
-      ELAPSED=$((ELAPSED + INTERVAL))
-    done
-    
-    echo "Warning: Timeout reached, some services may not be fully running"
-    exit 1
+  include_tasks: ../../playbooks/wait_for_convergence.yml
+  vars:
+    convergence_stack_name: "{{ swarm_stack_name }}"
+    convergence_timeout: "{{ config.swarm.wait_timeout | default(dockflow_defaults.convergence_timeout) }}"
+    convergence_context: "deployment"
   when: config.swarm.wait_for_services | default(true) | bool
-  register: wait_result
-  failed_when: false
-  changed_when: false
 
 - name: Display stack status
   shell: |
