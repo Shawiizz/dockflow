@@ -7,8 +7,8 @@
   set_fact:
     accessories_compose_path: "{{ root_path }}/.dockflow/docker/accessories.yml"
     accessories_stack_name: "{{ stack_name }}-accessories"
-    accessories_dir: "{{ dockflow_paths.accessories | default('/var/lib/dockflow/accessories') }}/{{ stack_name }}"
-    accessories_hash_file: "{{ dockflow_paths.accessories | default('/var/lib/dockflow/accessories') }}/{{ stack_name }}/.hash"
+    accessories_dir: "{{ accessories_base_dir }}"
+    accessories_hash_file: "{{ accessories_base_dir }}/.hash"
     force_accessories: "{{ force_accessories | default(false) | bool }}"
 
 - name: Check if accessories.yml exists

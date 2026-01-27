@@ -4,4 +4,5 @@
 # Whether to deploy accessories (controlled by CLI flag)
 deploy_accessories: false
 
-
+# Force accessory deployment even if hash hasn't changed
+force_accessories: false

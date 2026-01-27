@@ -26,3 +26,7 @@ dockflow_paths:
   locks: "/var/lib/dockflow/locks"
   audit: "/var/lib/dockflow/audit"
   metrics: "/var/lib/dockflow/metrics"
+
+# Computed paths (require stack_name to be set by caller)
+stack_dir: "{{ dockflow_paths.stacks }}/{{ stack_name | default('') }}"
+accessories_base_dir: "{{ dockflow_paths.accessories }}/{{ stack_name | default('') }}"

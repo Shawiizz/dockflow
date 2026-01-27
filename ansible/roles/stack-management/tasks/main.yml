@@ -4,16 +4,13 @@
 
 - name: Set stacks directory path
   set_fact:
-    stacks_dir: "{{ dockflow_paths.stacks | default('/var/lib/dockflow/stacks') }}/{{ stack_name }}"
+    stacks_dir: "{{ stack_dir }}"
 
-- name: Ensure stack directories exist
+- name: Ensure stack directory exists
   file:
-    path: "{{ item }}"
+    path: "{{ stacks_dir }}"
     state: directory
     mode: '0755'
-  loop:
-    - /var/lib/dockflow/stacks
-    - "{{ stacks_dir }}"
 
 - name: List current releases
   find:

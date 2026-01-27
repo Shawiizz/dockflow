@@ -15,18 +15,15 @@
 - name: Set stack deployment variables
   set_fact:
     swarm_stack_name: "{{ stack_name }}"
-    stacks_dir: "{{ dockflow_paths.stacks | default('/var/lib/dockflow/stacks') }}/{{ stack_name }}"
+    stacks_dir: "{{ stack_dir }}"
     use_registry_auth: "{{ config.registry.enabled | default(false) | bool }}"
     resolve_image_flag: "{{ '--resolve-image=never' if not (config.registry.enabled | default(false) | bool) else '' }}"
 
-- name: Ensure stack directories exist
+- name: Ensure stack directory exists
   file:
-    path: "{{ item }}"
+    path: "{{ stacks_dir }}"
     state: directory
     mode: '0755'
-  loop:
-    - /var/lib/dockflow/stacks
-    - "{{ stacks_dir }}"
 
 - name: Set release directory based on version
   set_fact:
@@ -141,7 +138,7 @@
         docker stack rm {{ swarm_stack_name }}
         
         # Wait for stack to be fully removed
-        TIMEOUT=60
+        TIMEOUT={{ swarm_stack_removal_timeout }}
         ELAPSED=0
         while [ $ELAPSED -lt $TIMEOUT ]; do
           REMAINING=$(docker stack services {{ swarm_stack_name }} 2>&1 | grep -v "Nothing found" | wc -l)

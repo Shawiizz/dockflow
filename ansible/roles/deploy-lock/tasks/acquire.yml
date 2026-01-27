@@ -1,8 +1,4 @@
 ---
-- name: Set lock file path
-  set_fact:
-    lock_file: "{{ lock_dir }}/{{ stack_name }}.lock"
-
 - name: Ensure lock directory exists
   file:
     path: "{{ lock_dir }}"
