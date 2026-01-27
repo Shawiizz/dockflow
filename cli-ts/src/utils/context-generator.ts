@@ -17,8 +17,9 @@ import type { ResolvedServer, ResolvedDeployment, TemplateContext } from '../typ
 
 /**
  * SSH connection info for Ansible
+ * Note: Named 'ssh_connection' to avoid conflict with Ansible's reserved 'connection' variable
  */
-export interface ConnectionContext {
+export interface SSHConnectionContext {
   host: string;
   port: number;
   user: string;
@@ -61,8 +62,8 @@ export interface AnsibleContext {
   server_name: string;
   server_role: string;
   
-  // SSH connection to manager
-  connection: ConnectionContext;
+  // SSH connection to manager (named ssh_connection to avoid Ansible reserved name)
+  ssh_connection: SSHConnectionContext;
   
   // Workers for image distribution (when no registry)
   workers: WorkerContext[];
@@ -137,7 +138,7 @@ export function buildDeployContext(params: BuildDeployContextParams): AnsibleCon
     server_name: manager.name,
     server_role: 'manager',
     
-    connection: {
+    ssh_connection: {
       host: manager.host,
       port: manager.port,
       user: manager.user,

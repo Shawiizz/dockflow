@@ -48,8 +48,8 @@ def get_inventory():
         print(f"Error reading context file: {e}", file=sys.stderr)
         return {"_meta": {"hostvars": {}}}
     
-    # Extract connection info
-    connection = ctx.get('connection', {})
+    # Extract SSH connection info (named ssh_connection to avoid Ansible reserved name)
+    connection = ctx.get('ssh_connection', ctx.get('connection', {}))
     env = ctx.get('env', 'unknown')
     server_name = ctx.get('server_name', 'server')
     
