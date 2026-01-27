@@ -60,4 +60,4 @@
       file:
         path: "{{ tmp_build_dir }}"
         state: absent
-      ignore_errors: yes
+      failed_when: false

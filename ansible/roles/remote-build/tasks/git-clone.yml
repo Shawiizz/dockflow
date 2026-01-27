@@ -77,7 +77,7 @@
     GIT_TERMINAL_PROMPT: "0"
   register: git_clone_result
   no_log: "{{ global_no_log | default(true) }}"
-  ignore_errors: true
+  failed_when: false
   timeout: 180
 
 - name: Fail if git clone failed

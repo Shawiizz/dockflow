@@ -242,7 +242,7 @@
       vars:
         audit_result: "deployed"
         audit_message: >-
-          {{ 'app' if deploy_app else '' }}{{ ' + ' if (deploy_app and deploy_accessories) else '' }}{{ 'accessories' if deploy_accessories else '' }}
+          {{ 'app' if deploy_app else '' }}{{ ' + ' if (deploy_app and force_accessories) else '' }}{{ 'accessories' if force_accessories else '' }}
           - {{ (failed_health_checks | default([]) | length) == 0 | ternary('success', 'with warnings') }}
 
     # Record deployment metrics

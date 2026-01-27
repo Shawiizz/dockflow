@@ -4,17 +4,11 @@
 
 - name: Set stacks directory path
   set_fact:
-    stacks_dir: "/var/lib/dockflow/stacks/{{ stack_name }}"
+    stacks_dir: "{{ stack_dir }}"
 
 - name: Get configuration for number of releases to keep
   set_fact:
     keep_releases: "{{ config.stack_management.keep_releases | default(3) | int }}"
-  when: config.stack_management is defined
-
-- name: Set default if not configured
-  set_fact:
-    keep_releases: 3
-  when: keep_releases is not defined
 
 - name: Find all release directories
   find:
