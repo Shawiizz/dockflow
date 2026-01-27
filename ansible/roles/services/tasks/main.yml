@@ -17,6 +17,8 @@
     group: root
     mode: '0644'
   loop: "{{ service_templates.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
   when: service_templates.matched > 0
   register: templates_deployed
 
@@ -31,4 +33,6 @@
     enabled: yes
     state: started
   loop: "{{ linux_services | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
   when: linux_services is defined

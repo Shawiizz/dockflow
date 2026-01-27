@@ -18,13 +18,9 @@
       INITIATING ROLLBACK
       External health checks failed - rolling back to previous release
 
-- name: Set stacks directory
-  set_fact:
-    stacks_dir: "{{ stack_dir }}"
-
 - name: Find available releases for rollback
   find:
-    paths: "{{ stacks_dir }}"
+    paths: "{{ stack_dir }}"
     file_type: directory
     excludes: "current"
   register: available_releases
@@ -115,7 +111,7 @@
     - name: Update current symlink to previous release
       file:
         src: "{{ previous_release.path }}"
-        dest: "{{ stacks_dir }}/current"
+        dest: "{{ stack_dir }}/current"
         state: link
         force: yes
 

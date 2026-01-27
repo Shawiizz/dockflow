@@ -2,17 +2,13 @@
 # Stack management role - handles stack retention and cleanup
 # This task cleans up old releases while keeping the configured number
 
-- name: Set stacks directory path
-  set_fact:
-    stacks_dir: "{{ stack_dir }}"
-
 - name: Get configuration for number of releases to keep
   set_fact:
     keep_releases: "{{ config.stack_management.keep_releases | default(3) | int }}"
 
 - name: Find all release directories
   find:
-    paths: "{{ stacks_dir }}"
+    paths: "{{ stack_dir }}"
     file_type: directory
     excludes: "current"
   register: stack_releases

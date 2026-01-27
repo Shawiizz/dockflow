@@ -15,19 +15,18 @@
 - name: Set stack deployment variables
   set_fact:
     swarm_stack_name: "{{ stack_name }}"
-    stacks_dir: "{{ stack_dir }}"
     use_registry_auth: "{{ config.registry.enabled | default(false) | bool }}"
     resolve_image_flag: "{{ '--resolve-image=never' if not (config.registry.enabled | default(false) | bool) else '' }}"
 
 - name: Ensure stack directory exists
   file:
-    path: "{{ stacks_dir }}"
+    path: "{{ stack_dir }}"
     state: directory
     mode: '0755'
 
 - name: Set release directory based on version
   set_fact:
-    release_dir: "{{ stacks_dir }}/{{ version }}"
+    release_dir: "{{ stack_dir }}/{{ version }}"
 
 - name: Check if this version already exists
   stat:
@@ -44,12 +43,12 @@
 - name: Create external resources for app
   include_tasks: ../../playbooks/create_external_resources.yml
   vars:
-    compose_file_path: "{{ root_path }}/.dockflow/docker/docker-compose.yml"
+    compose_file_path: "{{ compose_path }}"
     resource_label: "app"
 
 - name: Transfer docker-compose.yml to release directory
   copy:
-    src: "{{ root_path }}/.dockflow/docker/docker-compose.yml"
+    src: "{{ compose_path }}"
     dest: "{{ release_dir }}/docker-compose.yml"
     mode: '0644'
   register: compose_transfer
@@ -58,7 +57,7 @@
   copy:
     content: |
       {
-        "project_name": "{{ project_name }}",
+        "project_name": "{{ config.project_name }}",
         "stack_name": "{{ swarm_stack_name }}",
         "environment": "{{ env }}",
         "version": "{{ version }}",
@@ -71,7 +70,7 @@
 - name: Update current symlink
   file:
     src: "{{ release_dir }}"
-    dest: "{{ stacks_dir }}/current"
+    dest: "{{ stack_dir }}/current"
     state: link
     force: yes
 
@@ -259,4 +258,4 @@
     current_release_path: "{{ release_dir }}"
     current_version: "{{ version }}"
     current_stack_name: "{{ swarm_stack_name }}"
-    current_stacks_dir: "{{ stacks_dir }}"
+    current_stacks_dir: "{{ stack_dir }}"
