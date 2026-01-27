@@ -9,8 +9,16 @@
   set_fact:
     built_images: >-
       {%- set cmds = build_commands | default([]) -%}
+      {%- set images = [] -%}
       {%- if cmds | length > 0 and cmds[0] is mapping -%}
         {{ cmds | map(attribute='tag') | list }}
       {%- else -%}
-        {{ cmds | select('search', '-t\\s+') | map('regex_replace', '.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') | list }}
+        {%- for cmd in cmds -%}
+          {%- if '-t ' in cmd -%}
+            {%- set parts = cmd.split('-t ')[1].split(' ')[0] -%}
+            {%- set img = parts | replace('"', '') -%}
+            {%- set _ = images.append(img) -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {{ images }}
       {%- endif -%}

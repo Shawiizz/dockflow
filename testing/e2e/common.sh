@@ -3,6 +3,12 @@
 # Common functions for E2E tests
 # =============================================================================
 
+# Guard against multiple sourcing
+if [[ -n "${_COMMON_SH_LOADED:-}" ]]; then
+    return 0 2>/dev/null || exit 0
+fi
+_COMMON_SH_LOADED=1
+
 # Colors
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
