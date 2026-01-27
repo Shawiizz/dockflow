@@ -179,7 +179,7 @@
       vars:
         hook_name: "pre-deploy"
         hook_delegate: "{{ inventory_hostname }}"
-        hook_working_dir: "/var/lib/dockflow/stacks/{{ stack_name }}"
+        hook_working_dir: "{{ stack_dir }}"
       when: deploy_app | bool
 
     - name: Deploy application using Docker Swarm
@@ -226,7 +226,7 @@
       vars:
         hook_name: "post-deploy"
         hook_delegate: "{{ inventory_hostname }}"
-        hook_working_dir: "/var/lib/dockflow/stacks/{{ stack_name }}"
+        hook_working_dir: "{{ stack_dir }}"
       when: 
         - deploy_app | bool
         - (failed_health_checks | default([]) | length) == 0
