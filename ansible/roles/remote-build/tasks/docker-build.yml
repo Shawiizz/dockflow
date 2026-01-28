@@ -1,0 +1,53 @@
+---
+# Build Docker images on remote server
+
+- name: Copy rendered docker directory to remote server
+  copy:
+    src: "{{ root_path | default('..') }}/.dockflow/docker/"
+    dest: "{{ tmp_build_dir }}/.dockflow/docker/"
+    mode: '0755'
+
+- name: Generate build commands using decomposerize
+  shell: |
+    cd {{ root_path or '..' }}/.dockflow/docker
+    decomposerize docker-compose.yml --docker-build {{ services_option }}
+  delegate_to: localhost
+  register: build_commands_output
+  changed_when: false
+
+- name: Set build commands
+  set_fact:
+    build_commands: "{{ build_commands_output.stdout_lines | select('truthy') | list }}"
+
+- name: Build Docker images on remote server (parallel)
+  shell: |
+    cd {{ tmp_build_dir }}/.dockflow/docker
+    set -e
+    PIDS=""
+    {% for cmd in build_commands %}
+    echo "Building: {{ cmd | regex_replace('.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') }}"
+    ( {{ cmd }} 2>&1 ) &
+    PIDS="$PIDS $!"
+    {% endfor %}
+    FAILED=0
+    for PID in $PIDS; do
+      if ! wait $PID; then
+        FAILED=1
+      fi
+    done
+    exit $FAILED
+  when: build_commands | length > 0
+  async: 3600
+  poll: 10
+  register: build_results
+  failed_when: false
+
+- name: Fail if build failed
+  fail:
+    msg: |
+      Docker build failed!
+      {{ build_results.stderr | default(build_results.stdout | default('No output')) }}
+  when: build_results.rc | default(0) != 0
+
+- name: Extract built image names
+  include_tasks: ../local-registry/tasks/extract_image_names.yml

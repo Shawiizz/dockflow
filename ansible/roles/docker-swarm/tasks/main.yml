@@ -15,22 +15,18 @@
 - name: Set stack deployment variables
   set_fact:
     swarm_stack_name: "{{ stack_name }}"
-    stacks_dir: "/var/lib/dockflow/stacks/{{ stack_name }}"
     use_registry_auth: "{{ config.registry.enabled | default(false) | bool }}"
     resolve_image_flag: "{{ '--resolve-image=never' if not (config.registry.enabled | default(false) | bool) else '' }}"
 
-- name: Ensure stack directories exist
+- name: Ensure stack directory exists
   file:
-    path: "{{ item }}"
+    path: "{{ stack_dir }}"
     state: directory
     mode: '0755'
-  loop:
-    - /var/lib/dockflow/stacks
-    - "{{ stacks_dir }}"
 
 - name: Set release directory based on version
   set_fact:
-    release_dir: "{{ stacks_dir }}/{{ version }}"
+    release_dir: "{{ stack_dir }}/{{ version }}"
 
 - name: Check if this version already exists
   stat:
@@ -45,14 +41,15 @@
 
 # Create external networks and volumes before deployment
 - name: Create external resources for app
-  include_tasks: ../../playbooks/create_external_resources.yml
+  include_role:
+    name: _shared/create-resources
   vars:
-    compose_file_path: "{{ root_path }}/.dockflow/docker/docker-compose.yml"
+    compose_file_path: "{{ compose_path }}"
     resource_label: "app"
 
 - name: Transfer docker-compose.yml to release directory
   copy:
-    src: "{{ root_path }}/.dockflow/docker/docker-compose.yml"
+    src: "{{ compose_path }}"
     dest: "{{ release_dir }}/docker-compose.yml"
     mode: '0644'
   register: compose_transfer
@@ -61,12 +58,12 @@
   copy:
     content: |
       {
-        "project_name": "{{ project_name }}",
+        "project_name": "{{ config.project_name }}",
         "stack_name": "{{ swarm_stack_name }}",
         "environment": "{{ env }}",
         "version": "{{ version }}",
         "branch": "{{ sanitized_branch_name }}",
-        "timestamp": "{{ ansible_date_time.iso8601 }}"
+        "timestamp": "{{ ansible_facts['date_time']['iso8601'] }}"
       }
     dest: "{{ release_dir }}/metadata.json"
     mode: '0644'
@@ -74,72 +71,36 @@
 - name: Update current symlink
   file:
     src: "{{ release_dir }}"
-    dest: "{{ stacks_dir }}/current"
+    dest: "{{ stack_dir }}/current"
     state: link
     force: yes
 
 - name: Login to registry on remote server if configured
-  shell: |
-    echo "{{ config.registry.password | default(config.registry.token) }}" | \
-    docker login {{ config.registry.url }} \
-      --username "{{ config.registry.username | default('oauth2') }}" \
-      --password-stdin
+  include_role:
+    name: _shared/registry-login
+  vars:
+    registry_config: "{{ config.registry | default({}) }}"
   when:
     - config.registry is defined
     - config.registry.enabled | default(false) | bool
-    - config.registry.url is defined
-  no_log: true
-  register: swarm_registry_login
 
-- name: Inject Swarm deployment configuration (defaults only if not set by user)
+- name: Inject Swarm deployment configuration
   block:
     - name: Read current docker-compose.yml
       slurp:
         src: "{{ release_dir }}/docker-compose.yml"
       register: compose_content
 
-    - name: Parse docker-compose.yml
-      set_fact:
-        compose_data: "{{ compose_content.content | b64decode | from_yaml }}"
-
-    # Recommended defaults for zero-downtime deployments
-    # These are only applied if the user hasn't defined them
-    - name: Define recommended Swarm defaults
-      set_fact:
-        default_update_config:
-          parallelism: 1
-          delay: "10s"
-          failure_action: "rollback"
-          monitor: "30s"
-          max_failure_ratio: 0
-          order: "start-first"
-        default_rollback_config:
-          parallelism: 1
-          delay: "5s"
-          monitor: "15s"
-          order: "start-first"
-
-    - name: Merge user config with defaults (user values take precedence)
-      set_fact:
-        updated_compose: >-
-          {%- set ns = namespace(services={}) -%}
-          {%- for service_name, service_config in compose_data.services.items() -%}
-            {%- set user_deploy = service_config.deploy | default({}) -%}
-            {%- set user_update = user_deploy.update_config | default({}) -%}
-            {%- set user_rollback = user_deploy.rollback_config | default({}) -%}
-            {%- set merged_update = default_update_config | combine(user_update) -%}
-            {%- set merged_rollback = default_rollback_config | combine(user_rollback) -%}
-            {%- set merged_deploy = user_deploy | combine({
-              'update_config': merged_update,
-              'rollback_config': merged_rollback
-            }) -%}
-            {%- set _ = ns.services.update({service_name: service_config | combine({'deploy': merged_deploy})}) -%}
-          {%- endfor -%}
-          {{ compose_data | combine({'services': ns.services}) }}
+    - name: Inject deploy config with defaults
+      include_role:
+        name: _shared/inject-deploy
+      vars:
+        compose_content_b64: "{{ compose_content.content }}"
+        inject_mode: "app"
 
     - name: Write updated docker-compose.yml with deploy config
       copy:
-        content: "{{ updated_compose | to_nice_yaml(indent=2, width=999) }}"
+        content: "{{ injected_compose }}"
         dest: "{{ release_dir }}/docker-compose.yml"
         mode: '0644'
 
@@ -174,152 +135,72 @@
       failed_when: false
 
     - name: Remove stuck stack to allow clean redeployment
-      shell: |
-        echo "Stack has services stuck in rollback_paused state. Removing stack for clean redeployment..."
-        docker stack rm {{ swarm_stack_name }}
-        
-        # Wait for stack to be fully removed
-        TIMEOUT=60
-        ELAPSED=0
-        while [ $ELAPSED -lt $TIMEOUT ]; do
-          REMAINING=$(docker stack services {{ swarm_stack_name }} 2>&1 | grep -v "Nothing found" | wc -l)
-          if [ "$REMAINING" -eq 0 ]; then
-            echo "Stack removed successfully"
-            break
-          fi
-          echo "Waiting for stack removal... ($REMAINING services remaining)"
-          sleep 2
-          ELAPSED=$((ELAPSED + 2))
-        done
-        
-        # Also cleanup any orphaned containers
-        docker container prune -f 2>/dev/null || true
-        
-        sleep 3
-        echo "Ready for clean deployment"
+      community.docker.docker_stack:
+        name: "{{ swarm_stack_name }}"
+        state: absent
+        absent_retries: 10
+        absent_retries_interval: 2
       when: 
         - stuck_check is defined
         - stuck_check.rc is defined
         - stuck_check.rc != 0
-      changed_when: true
+
+    - name: Cleanup orphaned containers after stuck stack removal
+      community.docker.docker_prune:
+        containers: true
+      when: 
+        - stuck_check is defined
+        - stuck_check.rc is defined
+        - stuck_check.rc != 0
+      failed_when: false
+
+    - name: Wait after stack removal
+      pause:
+        seconds: 3
+      when: 
+        - stuck_check is defined
+        - stuck_check.rc is defined
+        - stuck_check.rc != 0
 
 - name: Deploy Docker stack
-  shell: |
-    cd {{ release_dir }}
-    
-    # Build the deploy command
-    DEPLOY_CMD="docker stack deploy --compose-file docker-compose.yml"
-    {% if config.swarm.prune_services | default(true) | bool %}
-    DEPLOY_CMD="$DEPLOY_CMD --prune"
-    {% endif %}
-    {% if use_registry_auth %}
-    DEPLOY_CMD="$DEPLOY_CMD --with-registry-auth"
-    {% endif %}
-    {% if resolve_image_flag %}
-    DEPLOY_CMD="$DEPLOY_CMD {{ resolve_image_flag }}"
-    {% endif %}
-    DEPLOY_CMD="$DEPLOY_CMD {{ swarm_stack_name }}"
-    
-    # Execute the deploy command and capture output
-    echo "Running: $DEPLOY_CMD"
-    DEPLOY_OUTPUT=$($DEPLOY_CMD 2>&1)
-    DEPLOY_EXIT_CODE=$?
-    echo "$DEPLOY_OUTPUT"
-    
-    # Check for known error patterns in output even if exit code is 0
-    if echo "$DEPLOY_OUTPUT" | grep -q "could not be found"; then
-      echo "ERROR: Stack deployment failed - resource not found"
-      exit 1
-    fi
-    
-    if [ $DEPLOY_EXIT_CODE -ne 0 ]; then
-      echo "ERROR: docker stack deploy failed with exit code $DEPLOY_EXIT_CODE"
-      exit $DEPLOY_EXIT_CODE
-    fi
-    
-    echo "Stack {{ swarm_stack_name }} deployed"
+  community.docker.docker_stack:
+    name: "{{ swarm_stack_name }}"
+    state: present
+    compose:
+      - "{{ release_dir }}/docker-compose.yml"
+    prune: "{{ config.swarm.prune_services | default(true) | bool }}"
+    with_registry_auth: "{{ use_registry_auth }}"
+    resolve_image: "{{ 'never' if not (config.registry.enabled | default(false) | bool) else 'always' }}"
   register: stack_deploy
-  changed_when: true
 
-- name: Verify stack was created successfully
-  shell: |
-    # Wait a moment for stack to register
-    sleep 2
-    
-    # Check if stack exists
-    if ! docker stack ls --format "{{ '{{' }}.Name{{ '}}' }}" | grep -q "^{{ swarm_stack_name }}$"; then
-      echo "ERROR: Stack {{ swarm_stack_name }} was not created!"
-      echo "The docker stack deploy command may have failed silently."
-      echo ""
-      echo "Common causes:"
-      echo "  - External network not found (check 'docker network ls')"
-      echo "  - Invalid compose file syntax"
-      echo "  - Image not found"
-      echo ""
-      echo "To debug, run on the server:"
-      echo "  cd {{ release_dir }}"
-      echo "  docker stack deploy --compose-file docker-compose.yml {{ swarm_stack_name }}"
-      exit 1
-    fi
-    
-    # Check if services were created
-    SERVICE_COUNT=$(docker stack services {{ swarm_stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}" | wc -l)
-    if [ "$SERVICE_COUNT" -eq 0 ]; then
-      echo "ERROR: Stack {{ swarm_stack_name }} exists but has no services!"
-      exit 1
-    fi
-    
-    echo "Stack {{ swarm_stack_name }} verified with $SERVICE_COUNT service(s)"
-  register: stack_verify
+- name: Display stack deployment result
+  debug:
+    msg: "Stack {{ swarm_stack_name }} deployed successfully"
+  when: stack_deploy is changed
+
+- name: Verify stack services exist
+  ansible.builtin.command:
+    cmd: docker stack services {{ swarm_stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}"
+  register: stack_services
   changed_when: false
+
+- name: Fail if no services in stack
+  fail:
+    msg: "Stack {{ swarm_stack_name }} was deployed but has no services!"
+  when: stack_services.stdout_lines | length == 0
+
+- name: Display stack service count
+  debug:
+    msg: "Stack {{ swarm_stack_name }} verified with {{ stack_services.stdout_lines | length }} service(s)"
 
 - name: Wait for services to converge
-  shell: |
-    TIMEOUT={{ config.swarm.wait_timeout | default(300) }}
-    ELAPSED=0
-    INTERVAL=5
-    
-    echo "Waiting for services to converge (timeout: ${TIMEOUT}s)..."
-    
-    while [ $ELAPSED -lt $TIMEOUT ]; do
-      # Get service states
-      SERVICES=$(docker stack services {{ swarm_stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}:{{ '{{' }}.Replicas{{ '}}' }}")
-      
-      if [ -z "$SERVICES" ]; then
-        echo "No services found yet, waiting..."
-        sleep $INTERVAL
-        ELAPSED=$((ELAPSED + INTERVAL))
-        continue
-      fi
-      
-      ALL_RUNNING=true
-      for SERVICE in $SERVICES; do
-        NAME=$(echo $SERVICE | cut -d: -f1)
-        REPLICAS=$(echo $SERVICE | cut -d: -f2)
-        CURRENT=$(echo $REPLICAS | cut -d/ -f1)
-        DESIRED=$(echo $REPLICAS | cut -d/ -f2)
-        
-        if [ "$CURRENT" != "$DESIRED" ]; then
-          ALL_RUNNING=false
-          echo "Service $NAME: $CURRENT/$DESIRED replicas"
-        fi
-      done
-      
-      if [ "$ALL_RUNNING" = "true" ]; then
-        echo "All services converged successfully"
-        exit 0
-      fi
-      
-      sleep $INTERVAL
-      ELAPSED=$((ELAPSED + INTERVAL))
-    done
-    
-    echo "Warning: Timeout reached, some services may not be fully running"
-    exit 1
+  include_role:
+    name: _shared/wait-convergence
+  vars:
+    convergence_stack_name: "{{ swarm_stack_name }}"
+    convergence_timeout: "{{ config.swarm.wait_timeout | default(dockflow_defaults.convergence_timeout) }}"
+    convergence_context: "deployment"
   when: config.swarm.wait_for_services | default(true) | bool
-  register: wait_result
-  failed_when: false
-  changed_when: false
 
 - name: Display stack status
   shell: |
@@ -340,4 +221,4 @@
     current_release_path: "{{ release_dir }}"
     current_version: "{{ version }}"
     current_stack_name: "{{ swarm_stack_name }}"
-    current_stacks_dir: "{{ stacks_dir }}"
+    current_stacks_dir: "{{ stack_dir }}"

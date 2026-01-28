@@ -17,8 +17,9 @@ import type { ResolvedServer, ResolvedDeployment, TemplateContext } from '../typ
 
 /**
  * SSH connection info for Ansible
+ * Note: Named 'ssh_connection' to avoid conflict with Ansible's reserved 'connection' variable
  */
-export interface ConnectionContext {
+export interface SSHConnectionContext {
   host: string;
   port: number;
   user: string;
@@ -45,7 +46,7 @@ export interface DeploymentOptions {
   skip_docker_install: boolean;
   force_deploy: boolean;
   deploy_app: boolean;
-  deploy_accessories: boolean;
+  force_accessories: boolean;
   skip_accessories: boolean;
   services?: string;
 }
@@ -61,8 +62,12 @@ export interface AnsibleContext {
   server_name: string;
   server_role: string;
   
-  // SSH connection to manager
-  connection: ConnectionContext;
+  // Project configuration (from .dockflow/config.yml)
+  // This replaces the load-config role - CLI is the single source of truth
+  config: Record<string, unknown>;
+  
+  // SSH connection to manager (named ssh_connection to avoid Ansible reserved name)
+  ssh_connection: SSHConnectionContext;
   
   // Workers for image distribution (when no registry)
   workers: WorkerContext[];
@@ -96,6 +101,7 @@ export interface BuildDeployContextParams {
     server: ResolvedServer;
     privateKey: string;
   }>;
+  config: Record<string, unknown>;
   options: {
     skipBuild?: boolean;
     skipDockerInstall?: boolean;
@@ -111,7 +117,7 @@ export interface BuildDeployContextParams {
  * Build the complete Ansible context for deployment
  */
 export function buildDeployContext(params: BuildDeployContextParams): AnsibleContext {
-  const { env, version, branchName, deployment, templateContext, managerPrivateKey, managerPassword, workers, options } = params;
+  const { env, version, branchName, deployment, templateContext, managerPrivateKey, managerPassword, workers, config, options } = params;
   const manager = deployment.manager;
 
   // Build worker contexts
@@ -137,7 +143,10 @@ export function buildDeployContext(params: BuildDeployContextParams): AnsibleCon
     server_name: manager.name,
     server_role: 'manager',
     
-    connection: {
+    // Project configuration - single source of truth from CLI
+    config,
+    
+    ssh_connection: {
       host: manager.host,
       port: manager.port,
       user: manager.user,
@@ -159,7 +168,7 @@ export function buildDeployContext(params: BuildDeployContextParams): AnsibleCon
       skip_docker_install: options.skipDockerInstall || false,
       force_deploy: options.force || false,
       deploy_app: options.deployApp,
-      deploy_accessories: options.forceAccessories,
+      force_accessories: options.forceAccessories,
       skip_accessories: options.skipAccessories,
       services: options.services,
     },
@@ -173,6 +182,9 @@ export interface BuildContext {
   env: string;
   version: string;
   branch_name: string;
+  
+  // Project configuration (from .dockflow/config.yml)
+  config: Record<string, unknown>;
   
   // Template context
   current: TemplateContext['current'];
@@ -197,6 +209,7 @@ export interface BuildBuildContextParams {
   branchName: string;
   templateContext: TemplateContext;
   userEnv: Record<string, string>;
+  config: Record<string, unknown>;
   options: {
     skipHooks?: boolean;
     services?: string;
@@ -207,7 +220,7 @@ export interface BuildBuildContextParams {
  * Build the Ansible context for build command
  */
 export function buildBuildContext(params: BuildBuildContextParams): BuildContext {
-  const { env, branchName, templateContext, userEnv, options } = params;
+  const { env, branchName, templateContext, userEnv, config, options } = params;
 
   // Flatten user env vars to lowercase
   const flattenedEnv: Record<string, string> = {};
@@ -219,6 +232,8 @@ export function buildBuildContext(params: BuildBuildContextParams): BuildContext
     env,
     version: 'build',
     branch_name: branchName,
+    
+    config,
     
     current: templateContext.current,
     servers: templateContext.servers,
@@ -234,37 +249,13 @@ export function buildBuildContext(params: BuildBuildContextParams): BuildContext
 }
 
 /**
- * Default path for the context file inside the container
- */
-export const CONTEXT_FILE_PATH = '/tmp/dockflow_context.json';
-
-/**
- * Default path for the SSH key file inside the container
- */
-export const SSH_KEY_FILE_PATH = '/tmp/dockflow_key';
-
-/**
  * Write context to a JSON file
  * Returns the path to the file
  */
-export function writeContextFile(context: AnsibleContext | BuildContext, filePath: string = CONTEXT_FILE_PATH): string {
+export function writeContextFile(context: AnsibleContext | BuildContext, filePath: string): string {
   mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, JSON.stringify(context, null, 2), 'utf-8');
   return filePath;
-}
-
-/**
- * Write SSH private key to a file
- * Returns the path to the file
- */
-export function writeSSHKeyFile(privateKey: string, filePath?: string): string {
-  const tmpDir = process.env.TEMP || process.env.TMP || '/tmp';
-  const keyPath = filePath || `${tmpDir}/dockflow_key_${Date.now()}`;
-  mkdirSync(dirname(keyPath), { recursive: true });
-  // Ensure proper line endings and trailing newline for SSH keys
-  const normalizedKey = privateKey.replace(/\r\n/g, '\n').trim() + '\n';
-  writeFileSync(keyPath, normalizedKey, { encoding: 'utf-8', mode: 0o600 });
-  return keyPath;
 }
 
 /**
@@ -274,12 +265,4 @@ export function writeSSHKeyFile(privateKey: string, filePath?: string): string {
 export function getHostContextPath(): string {
   const tmpDir = process.env.TEMP || process.env.TMP || '/tmp';
   return `${tmpDir}/dockflow_context_${Date.now()}.json`;
-}
-
-/**
- * Generate a temporary file path for the SSH key on the host
- */
-export function getHostSSHKeyPath(): string {
-  const tmpDir = process.env.TEMP || process.env.TMP || '/tmp';
-  return `${tmpDir}/dockflow_key_${Date.now()}`;
 }

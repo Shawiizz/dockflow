@@ -6,8 +6,7 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import chalk from 'chalk';
-import { printHeader, printSection, printSuccess, printError, printInfo, printWarning } from '../../utils/output';
+import { printHeader, printSection, printSuccess, printError, printInfo, printWarning, colors } from '../../utils/output';
 import { CLIError, ErrorCode } from '../../utils/errors';
 import { checkDependencies, displayDependencyStatus, installDependencies, detectPackageManager } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
@@ -31,7 +30,7 @@ export async function runInteractiveSetup(): Promise<void> {
   const deps = checkDependencies();
   if (!deps.ok) {
     printWarning('Missing required dependencies:');
-    deps.missing.forEach(m => console.log(chalk.yellow(`  - ${m}`)));
+    deps.missing.forEach(m => console.log(colors.warning(`  - ${m}`)));
     console.log('');
 
     const pm = detectPackageManager();
@@ -142,7 +141,7 @@ export async function runInteractiveSetup(): Promise<void> {
 
       if (keyChoice === 1) {
         console.log('');
-        console.log(chalk.cyan('Available keys:'));
+        console.log(colors.info('Available keys:'));
         existingKeys.forEach((k, i) => console.log(`  ${i + 1}) ${k}`));
         const keyIdxStr = await prompt('Select key number', '1');
         const keyIdx = parseInt(keyIdxStr, 10) - 1;
@@ -197,7 +196,7 @@ export async function runInteractiveSetup(): Promise<void> {
     }
     
     console.log('');
-    console.log(chalk.cyan('Available keys:'));
+    console.log(colors.info('Available keys:'));
     existingKeys.forEach((k, i) => console.log(`  ${i + 1}) ${k}`));
     const keyIdxStr = await prompt('Select key number', '1');
     const keyIdx = parseInt(keyIdxStr, 10) - 1;
@@ -243,16 +242,16 @@ export async function runInteractiveSetup(): Promise<void> {
   console.log('');
   printHeader('Configuration Summary');
   console.log('');
-  console.log(`${chalk.cyan('Target:')} Local Machine`);
-  console.log(`${chalk.cyan('Public Host:')} ${publicHost}`);
-  console.log(`${chalk.cyan('SSH Port:')} ${sshPort}`);
-  console.log(`${chalk.cyan('Deployment User:')} ${deployUser}`);
-  console.log(`${chalk.cyan('Create New User:')} ${needsUserSetup ? 'Yes' : 'No'}`);
-  console.log(`${chalk.cyan('Install Portainer:')} ${portainerConfig.install ? 'Yes' : 'No'}`);
+  console.log(`${colors.info('Target:')} Local Machine`);
+  console.log(`${colors.info('Public Host:')} ${publicHost}`);
+  console.log(`${colors.info('SSH Port:')} ${sshPort}`);
+  console.log(`${colors.info('Deployment User:')} ${deployUser}`);
+  console.log(`${colors.info('Create New User:')} ${needsUserSetup ? 'Yes' : 'No'}`);
+  console.log(`${colors.info('Install Portainer:')} ${portainerConfig.install ? 'Yes' : 'No'}`);
   if (portainerConfig.install) {
-    console.log(`${chalk.cyan('Portainer Port:')} ${portainerConfig.port}`);
+    console.log(`${colors.info('Portainer Port:')} ${portainerConfig.port}`);
     if (portainerConfig.domain) {
-      console.log(`${chalk.cyan('Portainer Domain:')} ${portainerConfig.domain}`);
+      console.log(`${colors.info('Portainer Domain:')} ${portainerConfig.domain}`);
     }
   }
   console.log('');

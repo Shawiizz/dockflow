@@ -29,6 +29,20 @@ export const DOCKFLOW_METRICS_DIR = '/var/lib/dockflow/metrics';
 export const ANSIBLE_DOCKER_IMAGE = 'shawiizz/dockflow-ci:latest';
 
 /**
+ * Container paths (inside the Docker container)
+ */
+export const CONTAINER_PATHS = {
+  /** Dockflow framework root */
+  DOCKFLOW: '/tmp/dockflow',
+  /** User project mounted read-only */
+  PROJECT: '/project',
+  /** Workspace with symlinks (writable .dockflow/) */
+  WORKSPACE: '/workspace',
+  /** Context JSON file for Ansible */
+  CONTEXT: '/tmp/dockflow_context.json',
+} as const;
+
+/**
  * Default values
  */
 export const DEFAULT_SSH_PORT = 22;

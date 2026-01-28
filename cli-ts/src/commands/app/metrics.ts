@@ -3,8 +3,17 @@
  */
 
 import type { Command } from 'commander';
-import chalk from 'chalk';
-import { printSection, printSuccess, printWarning, printDebug } from '../../utils/output';
+import { 
+  printSection, 
+  printSuccess, 
+  printWarning, 
+  printDebug,
+  printSectionTitle,
+  printSeparator,
+  printTableRow,
+  printDim,
+  colors 
+} from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { withErrorHandler, DockerError } from '../../utils/errors';
 import { 
@@ -51,33 +60,33 @@ function displaySummary(summary: MetricsSummary, stackName: string): void {
   console.log('');
   
   // Overview stats
-  console.log(chalk.cyan.bold('Overview:'));
-  console.log(chalk.gray('─'.repeat(50)));
-  console.log(`  ${chalk.bold('Total Deployments:')}    ${summary.total_deployments}`);
-  console.log(`  ${chalk.bold('Success Rate:')}         ${chalk.green(summary.success_rate.toFixed(1) + '%')}`);
-  console.log(`  ${chalk.bold('Avg Duration:')}         ${formatDuration(summary.avg_duration_ms)}`);
+  printSectionTitle('Overview:');
+  printSeparator();
+  printTableRow('Total Deployments:', String(summary.total_deployments));
+  printTableRow('Success Rate:', colors.success(summary.success_rate.toFixed(1) + '%'));
+  printTableRow('Avg Duration:', formatDuration(summary.avg_duration_ms));
   console.log('');
   
   // Status breakdown
-  console.log(chalk.cyan.bold('Status Breakdown:'));
-  console.log(chalk.gray('─'.repeat(50)));
-  console.log(`  ${chalk.green('✓ Successful:')}         ${summary.successful}`);
-  console.log(`  ${chalk.red('✗ Failed:')}             ${summary.failed}`);
-  console.log(`  ${chalk.yellow('↩ Rolled Back:')}        ${summary.rolled_back}`);
+  printSectionTitle('Status Breakdown:');
+  printSeparator();
+  console.log(`  ${colors.success('✓ Successful:')}         ${summary.successful}`);
+  console.log(`  ${colors.error('✗ Failed:')}             ${summary.failed}`);
+  console.log(`  ${colors.warning('↩ Rolled Back:')}        ${summary.rolled_back}`);
   console.log('');
   
   // Activity
-  console.log(chalk.cyan.bold('Deployment Activity:'));
-  console.log(chalk.gray('─'.repeat(50)));
-  console.log(`  ${chalk.bold('Last 24 hours:')}        ${summary.deployments_last_24h}`);
-  console.log(`  ${chalk.bold('Last 7 days:')}          ${summary.deployments_last_7d}`);
-  console.log(`  ${chalk.bold('Last 30 days:')}         ${summary.deployments_last_30d}`);
+  printSectionTitle('Deployment Activity:');
+  printSeparator();
+  printTableRow('Last 24 hours:', String(summary.deployments_last_24h));
+  printTableRow('Last 7 days:', String(summary.deployments_last_7d));
+  printTableRow('Last 30 days:', String(summary.deployments_last_30d));
   console.log('');
   
   // Most deployed versions
   if (summary.most_deployed_versions.length > 0) {
-    console.log(chalk.cyan.bold('Top Versions:'));
-    console.log(chalk.gray('─'.repeat(50)));
+    printSectionTitle('Top Versions:');
+    printSeparator();
     summary.most_deployed_versions.forEach(({ version, count }, idx) => {
       console.log(`  ${idx + 1}. ${version} (${count} deployments)`);
     });
@@ -87,13 +96,13 @@ function displaySummary(summary: MetricsSummary, stackName: string): void {
   // Last deployment
   if (summary.last_deployment) {
     const last = summary.last_deployment;
-    console.log(chalk.cyan.bold('Last Deployment:'));
-    console.log(chalk.gray('─'.repeat(50)));
-    console.log(`  ${chalk.bold('Version:')}              ${last.version}`);
-    console.log(`  ${chalk.bold('Status:')}               ${getStatusBadge(last.status)}`);
-    console.log(`  ${chalk.bold('Duration:')}             ${formatDuration(last.duration_ms)}`);
-    console.log(`  ${chalk.bold('When:')}                 ${formatRelativeTime(last.timestamp)}`);
-    console.log(`  ${chalk.bold('Performer:')}            ${last.performer}`);
+    printSectionTitle('Last Deployment:');
+    printSeparator();
+    printTableRow('Version:', last.version);
+    printTableRow('Status:', getStatusBadge(last.status));
+    printTableRow('Duration:', formatDuration(last.duration_ms));
+    printTableRow('When:', formatRelativeTime(last.timestamp));
+    printTableRow('Performer:', last.performer);
   }
 }
 
@@ -103,11 +112,11 @@ function displaySummary(summary: MetricsSummary, stackName: string): void {
 function getStatusBadge(status: string): string {
   switch (status) {
     case 'success':
-      return chalk.green('✓ Success');
+      return colors.success('✓ Success');
     case 'failed':
-      return chalk.red('✗ Failed');
+      return colors.error('✗ Failed');
     case 'rolled_back':
-      return chalk.yellow('↩ Rolled Back');
+      return colors.warning('↩ Rolled Back');
     default:
       return status;
   }
@@ -118,19 +127,19 @@ function getStatusBadge(status: string): string {
  */
 function displayHistory(metrics: DeploymentMetric[]): void {
   if (metrics.length === 0) {
-    console.log(chalk.gray('No deployment history found'));
+    printDim('No deployment history found');
     return;
   }
   
   console.log('');
   console.log(
-    chalk.gray('TIMESTAMP'.padEnd(22)) +
-    chalk.gray('VERSION'.padEnd(18)) +
-    chalk.gray('STATUS'.padEnd(14)) +
-    chalk.gray('DURATION'.padEnd(12)) +
-    chalk.gray('PERFORMER')
+    colors.dim('TIMESTAMP'.padEnd(22)) +
+    colors.dim('VERSION'.padEnd(18)) +
+    colors.dim('STATUS'.padEnd(14)) +
+    colors.dim('DURATION'.padEnd(12)) +
+    colors.dim('PERFORMER')
   );
-  console.log(chalk.gray('─'.repeat(80)));
+  printSeparator(80);
   
   // Sort by timestamp descending (most recent first)
   const sorted = [...metrics].sort((a, b) => 
@@ -147,11 +156,11 @@ function displayHistory(metrics: DeploymentMetric[]): void {
     });
     
     console.log(
-      chalk.gray(time.padEnd(22)) +
-      chalk.cyan(m.version.padEnd(18)) +
+      colors.dim(time.padEnd(22)) +
+      colors.info(m.version.padEnd(18)) +
       getStatusBadge(m.status).padEnd(24) +
-      chalk.white(formatDuration(m.duration_ms).padEnd(12)) +
-      chalk.white(m.performer)
+      formatDuration(m.duration_ms).padEnd(12) +
+      m.performer
     );
   }
 }
@@ -181,7 +190,7 @@ export function registerMetricsCommand(program: Command): void {
         if (removed > 0) {
           printSuccess(`Removed ${removed} old metric entries`);
         } else {
-          console.log(chalk.gray('No metrics to prune'));
+          printDim('No metrics to prune');
         }
         return;
       }
@@ -192,7 +201,7 @@ export function registerMetricsCommand(program: Command): void {
       if (metricsData.length === 0) {
         console.log('');
         printWarning(`No metrics found for ${stackName}`);
-        console.log(chalk.gray('Metrics are recorded after each deployment.'));
+        printDim('Metrics are recorded after each deployment.');
         return;
       }
       
@@ -213,7 +222,7 @@ export function registerMetricsCommand(program: Command): void {
         printSection(`Deployment History: ${stackName}`);
         displayHistory(metricsData);
         console.log('');
-        console.log(chalk.gray(`Showing last ${metricsData.length} deployments`));
+        printDim(`Showing last ${metricsData.length} deployments`);
         return;
       }
       

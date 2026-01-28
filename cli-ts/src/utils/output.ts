@@ -27,6 +27,7 @@ export const colors = {
   info: chalk.cyan,
   dim: chalk.gray,
   bold: chalk.bold,
+  primary: chalk.blue,
 };
 
 // === User feedback ===
@@ -111,3 +112,43 @@ export function formatDurationMs(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   return formatDuration(Math.round(ms / 1000));
 }
+
+// === Table & formatting helpers ===
+
+/**
+ * Print a horizontal separator line
+ */
+export function printSeparator(length: number = 50): void {
+  console.log(colors.dim('─'.repeat(length)));
+}
+
+/**
+ * Print a section title (bold cyan)
+ */
+export function printSectionTitle(title: string): void {
+  console.log(colors.info(colors.bold(title)));
+}
+
+/**
+ * Print a dim/muted message
+ */
+export function printDim(message: string): void {
+  console.log(colors.dim(message));
+}
+
+/**
+ * Print a key-value pair for table-like output
+ */
+export function printTableRow(label: string, value: string, labelWidth: number = 20): void {
+  console.log(`  ${colors.bold(label.padEnd(labelWidth))} ${value}`);
+}
+
+/**
+ * Print a status badge with icon
+ */
+export function printStatusBadge(status: 'success' | 'error' | 'warning' | 'info', text: string): string {
+  const icons = { success: '✓', error: '✗', warning: '↩', info: '→' };
+  const colorFn = colors[status];
+  return colorFn(`${icons[status]} ${text}`);
+}
+

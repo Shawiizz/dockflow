@@ -1,0 +1,5 @@
+---
+# Deploy lock role defaults
+lock_dir: "{{ dockflow_paths.locks | default('/var/lib/dockflow/locks') }}"
+lock_stale_timeout: "{{ dockflow_defaults.lock_stale_timeout | default(1800) }}"
+lock_file: "{{ lock_dir }}/{{ stack_name }}.lock"

@@ -1,3 +1,32 @@
+# Sudo configuration
+# ansible_become_password is set dynamically by inventory.py when a password is provided
+# For NOPASSWD servers, no password is needed
 ansible_become: yes
 ansible_become_method: sudo
-ansible_become_password: "{{ lookup('env', 'DOCKFLOW_PASSWORD') }}"
+
+# Dockflow defaults - centralized configuration values
+dockflow_defaults:
+  # Timeouts (in seconds)
+  convergence_timeout: 300      # Max time to wait for services to converge
+  convergence_interval: 5       # Interval between convergence checks
+  healthcheck_timeout: 120      # Max time to wait for container healthchecks
+  lock_stale_timeout: 1800      # Lock expires after 30 minutes
+  hooks_timeout: 300            # Max hook execution time
+  stack_removal_timeout: 60     # Max time to wait for stuck stack removal
+  
+  # Retries
+  accessories_retries: 30       # Retry count for accessories readiness
+  accessories_retry_delay: 5    # Delay between retries
+
+# Centralized paths
+dockflow_paths:
+  base: "/var/lib/dockflow"
+  stacks: "/var/lib/dockflow/stacks"
+  accessories: "/var/lib/dockflow/accessories"
+  locks: "/var/lib/dockflow/locks"
+  audit: "/var/lib/dockflow/audit"
+  metrics: "/var/lib/dockflow/metrics"
+
+# Computed paths (require stack_name to be set by caller)
+stack_dir: "{{ dockflow_paths.stacks }}/{{ stack_name | default('') }}"
+accessories_base_dir: "{{ dockflow_paths.accessories }}/{{ stack_name | default('') }}"

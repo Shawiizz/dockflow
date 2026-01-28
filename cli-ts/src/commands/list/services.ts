@@ -3,9 +3,8 @@
  */
 
 import type { Command } from 'commander';
-import chalk from 'chalk';
 import { sshExec } from '../../utils/ssh';
-import { printSection } from '../../utils/output';
+import { printSection, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
@@ -74,21 +73,21 @@ export function registerListServicesCommand(parent: Command): void {
 
         // Header
         console.log(
-          chalk.gray('SERVICE'.padEnd(25)) +
-          chalk.gray('REPLICAS'.padEnd(12)) +
-          chalk.gray('IMAGE'.padEnd(40)) +
-          chalk.gray('PORTS')
+          colors.dim('SERVICE'.padEnd(25)) +
+          colors.dim('REPLICAS'.padEnd(12)) +
+          colors.dim('IMAGE'.padEnd(40)) +
+          colors.dim('PORTS')
         );
-        console.log(chalk.gray('─'.repeat(90)));
+        console.log(colors.dim('─'.repeat(90)));
 
         for (const svc of services) {
           // Parse replicas for coloring
           const [current, desired] = svc.replicas.split('/').map(n => parseInt(n, 10));
           const replicasColor = current === desired && current > 0 
-            ? chalk.green 
+            ? colors.success 
             : current === 0 
-              ? chalk.red 
-              : chalk.yellow;
+              ? colors.error 
+              : colors.warning;
 
           // Shorten image name
           const shortImage = svc.image.length > 38 
@@ -96,10 +95,10 @@ export function registerListServicesCommand(parent: Command): void {
             : svc.image;
 
           console.log(
-            chalk.cyan(svc.shortName.padEnd(25)) +
+            colors.info(svc.shortName.padEnd(25)) +
             replicasColor(svc.replicas.padEnd(12)) +
-            chalk.white(shortImage.padEnd(40)) +
-            chalk.gray(svc.ports || '-')
+            shortImage.padEnd(40) +
+            colors.dim(svc.ports || '-')
           );
 
           // Show tasks/containers if requested
@@ -114,19 +113,19 @@ export function registerListServicesCommand(parent: Command): void {
               const taskName = (name || '').replace(`${stackName}_`, '');
               
               // Color based on state
-              let stateColor = chalk.gray;
-              if (state?.toLowerCase().includes('running')) stateColor = chalk.green;
-              else if (state?.toLowerCase().includes('failed') || error) stateColor = chalk.red;
-              else if (state?.toLowerCase().includes('starting') || state?.toLowerCase().includes('preparing')) stateColor = chalk.yellow;
+              let stateColor = colors.dim;
+              if (state?.toLowerCase().includes('running')) stateColor = colors.success;
+              else if (state?.toLowerCase().includes('failed') || error) stateColor = colors.error;
+              else if (state?.toLowerCase().includes('starting') || state?.toLowerCase().includes('preparing')) stateColor = colors.warning;
               
               const stateStr = state || 'unknown';
-              const errorStr = error ? chalk.red(` (${error.substring(0, 30)})`) : '';
+              const errorStr = error ? colors.error(` (${error.substring(0, 30)})`) : '';
               
               console.log(
-                chalk.gray('  └─ ') +
-                chalk.gray(shortId.padEnd(14)) +
-                chalk.white(taskName.padEnd(20)) +
-                chalk.blue((node || '').padEnd(15)) +
+                colors.dim('  └─ ') +
+                colors.dim(shortId.padEnd(14)) +
+                taskName.padEnd(20) +
+                colors.info((node || '').padEnd(15)) +
                 stateColor(stateStr) +
                 errorStr
               );
@@ -135,14 +134,14 @@ export function registerListServicesCommand(parent: Command): void {
         }
 
         console.log('');
-        console.log(chalk.gray(`${services.length} service(s)`));
+        console.log(colors.dim(`${services.length} service(s)`));
         if (!options.tasks) {
-          console.log(chalk.gray('Use -t/--tasks to show individual tasks'));
+          console.log(colors.dim('Use -t/--tasks to show individual tasks'));
         }
         console.log('');
-        console.log(chalk.gray('Connect to a service:'));
+        console.log(colors.dim('Connect to a service:'));
         if (services.length > 0) {
-          console.log(chalk.gray(`  dockflow bash ${env} ${services[0].shortName}`));
+          console.log(colors.dim(`  dockflow bash ${env} ${services[0].shortName}`));
         }
       } catch (error) {
         if (error instanceof DockerError) throw error;

@@ -5,11 +5,11 @@
   connection: local
   gather_facts: false
   vars:
-    tmp_dir: "/tmp"
     framework_version: "2.0.6"
     root_path: "{{ lookup('env', 'ROOT_PATH') }}"
     compose_path: "{{ root_path }}/.dockflow/docker/docker-compose.yml"
     skip_hooks: "{{ lookup('env', 'SKIP_HOOKS') | default(false) | bool }}"
+    build_mode: true  # Skip image transfer in build-only mode
   
   pre_tasks:
     - name: Display Dockflow version
@@ -17,7 +17,6 @@
         msg: "Dockflow v{{ framework_version }} - Build Mode"
 
   roles:
-    - role: ../roles/load-config
     - role: ../roles/prepare-deployment
     # Pre-build hook (runs locally)
     - role: ../roles/hooks
@@ -32,8 +31,10 @@
       set_fact:
         global_no_log: "{{ not (config.options.enable_debug_logs | default(false) | bool) }}"
         deploy_services: "{{ lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true) }}"
-        services_option: "{{ ('--services=' + lookup('env', 'DEPLOY_DOCKER_SERVICES')) if lookup('env', 'DEPLOY_DOCKER_SERVICES') else '' }}"
-        hostname: "main"
+
+    - name: Set derived variables
+      set_fact:
+        services_option: "{{ ('--services=' + deploy_services) if deploy_services else '' }}"
 
     - name: Build Docker images
       include_role:

@@ -3,7 +3,7 @@
  */
 
 import * as readline from 'readline';
-import chalk from 'chalk';
+import { colors } from '../../utils/output';
 
 /**
  * Create readline interface
@@ -23,7 +23,7 @@ export async function prompt(question: string, defaultValue?: string): Promise<s
   const defaultStr = defaultValue ? ` [${defaultValue}]` : '';
 
   return new Promise((resolve) => {
-    rl.question(`${chalk.cyan(question)}${defaultStr}: `, (answer) => {
+    rl.question(`${colors.info(question)}${defaultStr}: `, (answer) => {
       rl.close();
       resolve(answer.trim() || defaultValue || '');
     });
@@ -37,7 +37,7 @@ export async function promptPassword(question: string): Promise<string> {
   const rl = createRL();
 
   return new Promise((resolve) => {
-    process.stdout.write(`${chalk.cyan(question)}: `);
+    process.stdout.write(`${colors.info(question)}: `);
 
     const stdin = process.stdin;
     const oldRawMode = stdin.isRaw;
@@ -94,10 +94,10 @@ export async function confirm(question: string, defaultYes = true): Promise<bool
  */
 export async function selectMenu(title: string, options: string[]): Promise<number> {
   console.log('');
-  console.log(chalk.cyan(title));
+  console.log(colors.info(title));
 
   options.forEach((opt, idx) => {
-    console.log(`  ${chalk.yellow(`${idx + 1})`)} ${opt}`);
+    console.log(`  ${colors.warning(`${idx + 1})`)} ${opt}`);
   });
 
   const answer = await prompt('Select option', '1');

@@ -6,8 +6,7 @@
  * across all commands.
  */
 
-import chalk from 'chalk';
-import { printError, printWarning, printInfo } from './output';
+import { printError, printWarning, printInfo, colors } from './output';
 
 /**
  * CLI Error codes for different failure scenarios
@@ -127,16 +126,16 @@ export class ValidationError extends CLIError {
 export function formatError(error: CLIError): string {
   const lines: string[] = [];
   
-  lines.push(chalk.red(`Error: ${error.message}`));
+  lines.push(colors.error(`Error: ${error.message}`));
   
   if (error.suggestion) {
-    lines.push(chalk.gray(`  → ${error.suggestion}`));
+    lines.push(colors.dim(`  → ${error.suggestion}`));
   }
   
   if (process.env.DEBUG && error.cause) {
-    lines.push(chalk.gray(`  Caused by: ${error.cause.message}`));
+    lines.push(colors.dim(`  Caused by: ${error.cause.message}`));
     if (error.cause.stack) {
-      lines.push(chalk.gray(error.cause.stack));
+      lines.push(colors.dim(error.cause.stack));
     }
   }
   
@@ -196,7 +195,7 @@ export function withErrorHandler<T extends unknown[]>(
  */
 export function exitSuccess(message?: string): never {
   if (message) {
-    console.log(chalk.green(message));
+    console.log(colors.success(message));
   }
   process.exit(0);
 }

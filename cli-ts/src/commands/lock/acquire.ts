@@ -3,10 +3,9 @@
  */
 
 import type { Command } from 'commander';
-import chalk from 'chalk';
 import ora from 'ora';
 import { sshExec } from '../../utils/ssh';
-import { printSuccess, printWarning } from '../../utils/output';
+import { printSuccess, printWarning, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
@@ -35,9 +34,9 @@ export function registerLockAcquireCommand(parent: Command): void {
           try {
             const lockInfo = JSON.parse(output);
             printWarning('Deployment is already locked');
-            console.log(chalk.gray(`  Holder:  ${lockInfo.performer}`));
-            console.log(chalk.gray(`  Started: ${lockInfo.started_at}`));
-            console.log(chalk.gray(`  Version: ${lockInfo.version}`));
+            console.log(colors.dim(`  Holder:  ${lockInfo.performer}`));
+            console.log(colors.dim(`  Started: ${lockInfo.started_at}`));
+            console.log(colors.dim(`  Version: ${lockInfo.version}`));
             console.log('');
             throw new CLIError('Use --force to override the existing lock.', ErrorCode.DEPLOY_LOCKED);
           } catch (e) {
@@ -62,11 +61,11 @@ export function registerLockAcquireCommand(parent: Command): void {
         
         spinner.succeed(`Lock acquired for ${stackName}`);
         console.log('');
-        console.log(chalk.gray('  Deployments to this environment are now blocked.'));
-        console.log(chalk.gray('  Release with: dockflow lock release ' + env));
+        console.log(colors.dim('  Deployments to this environment are now blocked.'));
+        console.log(colors.dim('  Release with: dockflow lock release ' + env));
         
         if (options.message) {
-          console.log(chalk.gray(`  Reason: ${options.message}`));
+          console.log(colors.dim(`  Reason: ${options.message}`));
         }
       } catch (error) {
         if (error instanceof CLIError) throw error;

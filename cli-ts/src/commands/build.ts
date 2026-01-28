@@ -7,8 +7,7 @@
  */
 
 import type { Command } from 'commander';
-import chalk from 'chalk';
-import { printInfo, printHeader, printDebug, setVerbose } from '../utils/output';
+import { printInfo, printHeader, printDebug, printWarning, printDim, setVerbose } from '../utils/output';
 import { loadSecrets } from '../utils/secrets';
 import { getCurrentBranch } from '../utils/git';
 import { withErrorHandler } from '../utils/errors';
@@ -16,11 +15,11 @@ import { getEnvVarsForEnvironment, buildTemplateContext, getManagersForEnvironme
 import { buildBuildContext, writeContextFile, getHostContextPath } from '../utils/context-generator';
 import type { TemplateContext } from '../types';
 import {
-  getDockflowSetupScript,
-  runInAnsibleContainer,
+  runAnsibleCommand,
   checkDockerAvailable,
   validateProjectConfig,
   validateServersYaml,
+  buildBuildAnsibleCommand,
 } from '../utils/docker-runner';
 
 interface BuildOptions {
@@ -29,54 +28,6 @@ interface BuildOptions {
   dev?: boolean;
   push?: boolean;
   skipHooks?: boolean;
-}
-
-/**
- * Build the build script to run inside the container
- * 
- * New architecture (JSON context):
- * - Context is provided via /tmp/dockflow_context.json (mounted by CLI)
- * - No more shell variable exports
- * - Ansible consumes context via --extra-vars "@file"
- */
-function buildBuildScript(options: BuildOptions): string {
-  const dockflowSetup = getDockflowSetupScript({
-    devMode: options.dev || false,
-    checkFile: 'ansible/playbooks/build_images.yml',
-  });
-
-  return `
-set -e
-
-${dockflowSetup}
-
-# Minimal setup - context is provided via /tmp/dockflow_context.json
-export ROOT_PATH="/project"
-export BUILD_MODE="true"
-export ANSIBLE_HOST_KEY_CHECKING=False
-
-echo ""
-echo "═══════════════════════════════════════════════════"
-echo "  Dockflow Build Mode"
-echo "═══════════════════════════════════════════════════"
-echo ""
-
-# Prepare environment (CRLF fix, workspace setup)
-source $DOCKFLOW_PATH/.common/scripts/prepare_env.sh
-
-# Build extra vars for Ansible
-EXTRA_VARS=()
-
-# Use JSON context file (new approach - all variables in one file)
-CONTEXT_FILE="/tmp/dockflow_context.json"
-if [ -f "$CONTEXT_FILE" ]; then
-    EXTRA_VARS+=("-e" "@\${CONTEXT_FILE}")
-fi
-
-# Run Ansible build playbook
-cd $DOCKFLOW_PATH
-ansible-playbook ansible/playbooks/build_images.yml "\${EXTRA_VARS[@]}"
-`;
 }
 
 /**
@@ -130,8 +81,8 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
   if (Object.keys(envVars).length > 0) {
     printInfo(`Env vars: ${Object.keys(envVars).length} variables loaded`);
   } else {
-    console.log(chalk.yellow(`⚠ No environment variables found for "${env}"`));
-    console.log(chalk.dim(`  Check that servers.yml has a server with tag "${env}" and env vars defined`));
+    printWarning(`No environment variables found for "${env}"`);
+    printDim(`  Check that servers.yml has a server with tag "${env}" and env vars defined`);
   }
   if (options.services) {
     printInfo(`Services: ${options.services}`);
@@ -152,6 +103,7 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
       branchName,
       templateContext,
       userEnv: envVars,
+      config: config as unknown as Record<string, unknown>,
       options: {
         skipHooks: options.skipHooks,
         services: options.services,
@@ -163,10 +115,12 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
     printDebug('Context file written', { path: contextFilePath });
   }
 
-  const buildScript = buildBuildScript(options as BuildOptions);
+  // Build the Ansible command
+  const ansibleCommand = buildBuildAnsibleCommand({});
+  printDebug('Ansible command', { command: ansibleCommand.join(' ') });
 
-  await runInAnsibleContainer({
-    script: buildScript,
+  await runAnsibleCommand({
+    command: ansibleCommand,
     devMode: options.dev,
     actionName: 'build',
     successMessage: 'Build completed successfully!',

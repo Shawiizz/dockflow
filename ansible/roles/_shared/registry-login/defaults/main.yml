@@ -1,0 +1,3 @@
+---
+# Default variables for registry-login role
+registry_default_username: "oauth2"

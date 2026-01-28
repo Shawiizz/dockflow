@@ -1,6 +1,16 @@
 ---
 # Rollback role - rolls back to a previous release using docker stack deploy
 # This role uses stored docker-compose files from previous deployments
+#
+# Phases:
+# 1. Discovery - Find available releases and sort by timestamp
+# 2. Validation - Check if rollback is possible
+# 3. Execution - Deploy previous release
+# 4. Cleanup - Remove failed release and its images
+
+# ============================================
+# PHASE 1: DISCOVERY
+# ============================================
 
 - name: Display rollback initiation message
   debug:
@@ -8,13 +18,9 @@
       INITIATING ROLLBACK
       External health checks failed - rolling back to previous release
 
-- name: Set stacks directory
-  set_fact:
-    stacks_dir: "/var/lib/dockflow/stacks/{{ stack_name }}"
-
 - name: Find available releases for rollback
   find:
-    paths: "{{ stacks_dir }}"
+    paths: "{{ stack_dir }}"
     file_type: directory
     excludes: "current"
   register: available_releases
@@ -50,6 +56,10 @@
       {%- endfor -%}
       {{ releases_with_timestamp | sort(attribute='timestamp', reverse=true) }}
   when: available_releases.files | length > 0
+
+# ============================================
+# PHASE 2: VALIDATION
+# ============================================
 
 - name: Determine current and previous release
   set_fact:
@@ -92,68 +102,46 @@
       {% endif %}
   when: can_rollback | default(false)
 
+# ============================================
+# PHASE 3: EXECUTION
+# ============================================
+
 - name: Perform rollback using docker stack deploy
   block:
     - name: Update current symlink to previous release
       file:
         src: "{{ previous_release.path }}"
-        dest: "{{ stacks_dir }}/current"
+        dest: "{{ stack_dir }}/current"
         state: link
         force: yes
 
     - name: Deploy previous release version
-      shell: |
-        cd {{ previous_release.path }}
-        
-        # Deploy the stack with the previous compose file
-        docker stack deploy \
-          --compose-file docker-compose.yml \
-          {% if config.swarm.prune_services | default(true) | bool %}--prune \{% endif %}
-          {% if config.registry.enabled | default(false) | bool %}--with-registry-auth \{% endif %}
-          {% if not (config.registry.enabled | default(false) | bool) %}--resolve-image=never \{% endif %}
-          {{ stack_name }}
-        
-        echo "Stack {{ stack_name }} rolled back to version {{ previous_release.version }}"
+      community.docker.docker_stack:
+        name: "{{ stack_name }}"
+        state: present
+        compose:
+          - "{{ previous_release.path }}/docker-compose.yml"
+        prune: "{{ config.swarm.prune_services | default(true) | bool }}"
+        with_registry_auth: "{{ config.registry.enabled | default(false) | bool }}"
+        resolve_image: "{{ 'never' if not (config.registry.enabled | default(false) | bool) else 'always' }}"
       register: rollback_deploy
-      changed_when: true
+
+    - name: Display rollback result
+      debug:
+        msg: "Stack {{ stack_name }} rolled back to version {{ previous_release.version }}"
+      when: rollback_deploy is changed
 
     - name: Wait for rollback services to converge
-      shell: |
-        TIMEOUT={{ config.swarm.wait_timeout | default(120) }}
-        ELAPSED=0
-        INTERVAL=5
-        
-        echo "Waiting for rollback services to converge..."
-        
-        while [ $ELAPSED -lt $TIMEOUT ]; do
-          SERVICES=$(docker stack services {{ stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}:{{ '{{' }}.Replicas{{ '}}' }}")
-          
-          ALL_RUNNING=true
-          for SERVICE in $SERVICES; do
-            NAME=$(echo $SERVICE | cut -d: -f1)
-            REPLICAS=$(echo $SERVICE | cut -d: -f2)
-            CURRENT=$(echo $REPLICAS | cut -d/ -f1)
-            DESIRED=$(echo $REPLICAS | cut -d/ -f2)
-            
-            if [ "$CURRENT" != "$DESIRED" ]; then
-              ALL_RUNNING=false
-            fi
-          done
-          
-          if [ "$ALL_RUNNING" = "true" ]; then
-            echo "Rollback services converged successfully"
-            exit 0
-          fi
-          
-          sleep $INTERVAL
-          ELAPSED=$((ELAPSED + INTERVAL))
-        done
-        
-        echo "Warning: Rollback timeout reached"
-        exit 1
-      register: rollback_wait
-      failed_when: false
-      changed_when: false
+      include_role:
+        name: _shared/wait-convergence
+      vars:
+        convergence_stack_name: "{{ stack_name }}"
+        convergence_timeout: "{{ config.swarm.wait_timeout | default(dockflow_defaults.convergence_timeout) }}"
+        convergence_context: "rollback"
+
+    # ============================================
+    # PHASE 4: CLEANUP
+    # ============================================
 
     - name: Read failed release docker-compose to extract images
       slurp:
@@ -182,7 +170,10 @@
               {{ images | unique }}
 
         - name: Remove images from failed deployment
-          shell: "docker rmi {{ item }} 2>/dev/null || true"
+          community.docker.docker_image:
+            name: "{{ item }}"
+            state: absent
+            force_absent: true
           loop: "{{ failed_images | default([]) }}"
           failed_when: false
           loop_control:
@@ -221,31 +212,7 @@
       Check the application logs for details on why the new deployment failed.
   when: can_rollback | default(false)
 
-- name: Display rollback failure message
-  debug:
-    msg: |
-      ⚠️  No rollback scripts found
-      Previous deployment state cannot be restored automatically
-      This may happen if:
-      - This is the first deployment
-      - Rollback scripts were manually deleted
-      - Previous deployment did not complete successfully
-  when: 
-    - can_rollback | default(false)
-    - (rollback_files_filtered is not defined or rollback_files_filtered | length == 0)
-
-- name: Fail deployment after rollback (with previous version restored)
-  fail:
-    msg: |
-      Deployment failed and has been rolled back
-      Health checks did not pass
-      Previous deployment state has been restored
-  when: 
-    - can_rollback | default(false)
-    - rollback_files_filtered is defined
-    - rollback_files_filtered | length > 0
-
-- name: Fail deployment after cleanup (no rollback available)
+- name: Fail deployment (no rollback available)
   fail:
     msg: |
       Deployment failed - NO ROLLBACK AVAILABLE

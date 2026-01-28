@@ -20,7 +20,7 @@
 
 # Parse build commands to extract dockerfile and tag, then create tar-based commands
 # decomposerize outputs: docker build -f <dockerfile> -t "<tag>" <context>
-# We transform to: tar -ch -C <resolved_context> . | docker build -f <resolved_dockerfile> -t <tag> -
+# We transform to: (tar context + tar Dockerfile) | docker build -f Dockerfile -
 - name: Parse and transform build commands for tar streaming
   set_fact:
     build_commands: []
@@ -28,28 +28,30 @@
 
 - name: Build tar streaming commands
   set_fact:
-    build_commands: "{{ build_commands + [tar_cmd] }}"
+    build_commands: "{{ build_commands + [build_info] }}"
   vars:
     # Extract the context (last word of the command)
     context_relative: "{{ item.split()[-1] }}"
-    # Resolve the context path relative to .dockflow/docker/
-    # e.g., "../.." -> "/workspace", "../../docs" -> "/workspace/docs"
+    # Resolve the context path - use realpath to follow symlinks
     context_resolved: "{{ (docker_compose_path + '/' + context_relative) | realpath }}"
     # Extract dockerfile path (after -f)
     dockerfile_original: "{{ item | regex_search('-f\\s+([^\\s]+)', '\\1') | first }}"
-    # Resolve dockerfile path relative to docker-compose location, then make it relative to context
+    # Resolve dockerfile path
     dockerfile_absolute: "{{ (docker_compose_path + '/' + dockerfile_original) | realpath }}"
-    dockerfile_relative_to_context: "{{ dockerfile_absolute | replace(context_resolved + '/', '') }}"
-    # Replace -f path and context with resolved paths
-    docker_cmd_fixed: "{{ item | regex_replace('-f\\s+[^\\s]+', '-f ' + dockerfile_relative_to_context) | regex_replace('\\s+[^\\s]+$', '') }}"
-    # Build the tar streaming command
-    tar_cmd: "tar -ch -C {{ context_resolved }} --exclude=.git . | {{ docker_cmd_fixed }} -"
+    # Extract image tag
+    image_tag: "{{ item | regex_search('-t\\s+\"?([^\"\\s]+)\"?', '\\1') | first }}"
+    # Build info dict
+    build_info:
+      context: "{{ context_resolved }}"
+      dockerfile: "{{ dockerfile_absolute }}"
+      dockerfile_relative: "{{ dockerfile_absolute | relpath(context_resolved) }}"
+      tag: "{{ image_tag }}"
   loop: "{{ build_commands_output.stdout_lines | select('truthy') | list }}"
   delegate_to: localhost
 
 - name: Display build commands
   debug:
-    msg: "{{ item }}"
+    msg: "Build {{ item.tag }} from {{ item.context }} using {{ item.dockerfile }}"
   loop: "{{ build_commands }}"
   delegate_to: localhost
   loop_control:
@@ -64,9 +66,18 @@
   shell: |
     set -e
     PIDS=""
-    {% for cmd in build_commands %}
-    echo "Starting build: {{ cmd | regex_replace('.*-t ([^ ]+).*', '\\1') }}"
-    ( {{ cmd }} ) &
+    TIMING_FILE=$(mktemp)
+    {% for item in build_commands %}
+    echo "Starting build: {{ item.tag }}"
+    (
+      START_TIME=$(date +%s)
+      # Stream context via tar (follow symlinks with -h), build with relative dockerfile path
+      tar -chf - -C "{{ item.context }}" --exclude=.git . | docker build -f "{{ item.dockerfile_relative }}" -t "{{ item.tag }}" -
+      END_TIME=$(date +%s)
+      DURATION=$((END_TIME - START_TIME))
+      echo "{{ item.tag }}|$DURATION" >> "$TIMING_FILE"
+      echo "✓ Built {{ item.tag }} in ${DURATION}s"
+    ) &
     PIDS="$PIDS $!"
     {% endfor %}
     # Wait for all builds and capture exit codes
@@ -76,15 +87,23 @@
         FAILED=1
       fi
     done
+    # Display timing summary
+    echo ""
+    echo "Build times:"
+    sort -t'|' -k2 -n "$TIMING_FILE" | while IFS='|' read -r TAG TIME; do
+      printf "  %-50s %6.1fs\n" "$TAG" "$TIME"
+    done
+    rm -f "$TIMING_FILE"
     exit $FAILED
   delegate_to: localhost
   register: build_results
   when: build_commands is defined and build_commands | length > 0
 
-- name: Display build completion
+- name: Display build times
   debug:
-    msg: "Successfully built {{ build_commands | length }} image(s) in parallel"
+    msg: "{{ build_results.stdout_lines }}"
   delegate_to: localhost
+  when: build_results.stdout_lines is defined and build_results.stdout_lines | length > 0
 
 - name: Display build validation completion
   debug:
@@ -95,9 +114,9 @@
 # Push images to registry if configured (external registry)
 - name: Push images to registry
   include_role:
-    name: docker-registry
+    name: ../roles/docker-registry
   vars:
-    built_images: "{{ build_commands | select('search', '-t\\s+') | map('regex_replace', '.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') | list }}"
+    built_images: "{{ build_commands | map(attribute='tag') | list }}"
   when:
     - config.registry is defined
     - config.registry.enabled | default(false) | bool
@@ -106,9 +125,9 @@
 # Use local registry for image transfer when no external registry is configured
 - name: Transfer images via local registry
   include_role:
-    name: local-registry
+    name: ../roles/local-registry
   vars:
-    built_images: "{{ build_commands | select('search', '-t\\s+') | map('regex_replace', '.*-t\\s+\"?([^\"\\s]+)\"?.*', '\\1') | list }}"
+    built_images: "{{ build_commands | map(attribute='tag') | list }}"
   when:
     - not (config.registry.enabled | default(false) | bool)
     - not (build_mode | default(false) | bool)

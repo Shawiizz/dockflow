@@ -23,21 +23,21 @@
   block:
     - name: Wait for services to be ready
       pause:
-        seconds: "{{ health_checks_config.startup_delay | default(10) }}"
+        seconds: "{{ health_checks_config.startup_delay | default(health_check_startup_delay) }}"
 
     - name: Perform health checks on endpoints
       uri:
         url: "{{ item.url }}"
         method: "{{ item.method | default('GET') }}"
         status_code: "{{ item.expected_status | default(200) }}"
-        timeout: "{{ item.timeout | default(30) }}"
+        timeout: "{{ item.timeout | default(health_check_default_timeout) }}"
         validate_certs: "{{ item.validate_certs | default(true) }}"
         return_content: yes
       register: health_check_results
       loop: "{{ health_check_endpoints }}"
       ignore_errors: true
-      retries: "{{ item.retries | default(3) }}"
-      delay: "{{ item.retry_delay | default(5) }}"
+      retries: "{{ item.retries | default(health_check_default_retries) }}"
+      delay: "{{ item.retry_delay | default(health_check_default_retry_delay) }}"
       loop_control:
         label: "{{ item.name | default(item.url) }}"
 

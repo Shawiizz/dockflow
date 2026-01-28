@@ -4,7 +4,7 @@
  */
 
 import { z } from 'zod';
-import chalk from 'chalk';
+import { colors, printSeparator } from '../utils/output';
 import { DockflowConfigSchema } from './config.schema';
 import { ServersConfigSchema } from './servers.schema';
 import type { Result } from '../types';
@@ -62,17 +62,17 @@ function transformZodErrors(error: z.ZodError): ValidationIssue[] {
 export function formatValidationErrors(errors: ValidationIssue[], fileName: string): string {
   const lines: string[] = [
     '',
-    chalk.red.bold(`✗ Validation failed for ${fileName}`),
+    colors.error(`✗ Validation failed for ${fileName}`),
     '',
   ];
 
   for (const error of errors) {
-    lines.push(chalk.yellow(`  → ${error.path}`));
-    lines.push(chalk.white(`    ${error.message}`));
+    lines.push(colors.warning(`  → ${error.path}`));
+    lines.push(`    ${error.message}`);
     lines.push('');
   }
 
-  lines.push(chalk.gray('  Run `dockflow config validate` for detailed validation'));
+  lines.push(colors.dim('  Run `dockflow config validate` for detailed validation'));
   
   return lines.join('\n');
 }
@@ -158,52 +158,52 @@ export function printValidationReport(
   serversResult: ValidationResult<unknown>
 ): void {
   console.log('');
-  console.log(chalk.bold('Configuration Validation Report'));
-  console.log(chalk.gray('─'.repeat(40)));
+  console.log(colors.bold('Configuration Validation Report'));
+  printSeparator(40);
   console.log('');
 
   // Config.yml status
   if (configResult.success) {
-    console.log(chalk.green('✓ config.yml: Valid'));
+    console.log(colors.success('✓ config.yml: Valid'));
   } else if (configResult.errors) {
-    console.log(chalk.red('✗ config.yml: Invalid'));
+    console.log(colors.error('✗ config.yml: Invalid'));
     for (const error of configResult.errors) {
-      console.log(chalk.yellow(`    ${error.path}: ${error.message}`));
+      console.log(colors.warning(`    ${error.path}: ${error.message}`));
       const suggestion = getSuggestion(error);
       if (suggestion) {
-        console.log(chalk.gray(`      💡 ${suggestion}`));
+        console.log(colors.dim(`      💡 ${suggestion}`));
       }
     }
   } else {
-    console.log(chalk.gray('○ config.yml: Not found'));
+    console.log(colors.dim('○ config.yml: Not found'));
   }
 
   console.log('');
 
   // Servers.yml status
   if (serversResult.success) {
-    console.log(chalk.green('✓ servers.yml: Valid'));
+    console.log(colors.success('✓ servers.yml: Valid'));
   } else if (serversResult.errors) {
-    console.log(chalk.red('✗ servers.yml: Invalid'));
+    console.log(colors.error('✗ servers.yml: Invalid'));
     for (const error of serversResult.errors) {
-      console.log(chalk.yellow(`    ${error.path}: ${error.message}`));
+      console.log(colors.warning(`    ${error.path}: ${error.message}`));
       const suggestion = getSuggestion(error);
       if (suggestion) {
-        console.log(chalk.gray(`      💡 ${suggestion}`));
+        console.log(colors.dim(`      💡 ${suggestion}`));
       }
     }
   } else {
-    console.log(chalk.gray('○ servers.yml: Not found'));
+    console.log(colors.dim('○ servers.yml: Not found'));
   }
 
   console.log('');
-  console.log(chalk.gray('─'.repeat(40)));
+  printSeparator(40);
 
   const allValid = configResult.success && serversResult.success;
   if (allValid) {
-    console.log(chalk.green.bold('All configuration files are valid! ✓'));
+    console.log(colors.success('All configuration files are valid! ✓'));
   } else {
-    console.log(chalk.red.bold('Please fix the validation errors above.'));
+    console.log(colors.error('Please fix the validation errors above.'));
   }
   console.log('');
 }

@@ -11,8 +11,7 @@
 
 import type { Command } from 'commander';
 import * as fs from 'fs';
-import chalk from 'chalk';
-import { printHeader, printSuccess, printWarning, printInfo } from '../../utils/output';
+import { printHeader, printSuccess, printWarning, printInfo, colors } from '../../utils/output';
 import { isLinux, checkDependencies, displayDependencyStatus } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
 import { prompt } from './prompts';
@@ -192,7 +191,7 @@ export function registerSetupCommand(program: Command): void {
         const keys = listSSHKeys();
         if (keys.length > 0) {
           console.log('');
-          console.log(chalk.cyan('Available keys:'));
+        console.log(colors.info('Available keys:'));
           keys.forEach((k, i) => console.log(`  ${i + 1}) ${k}`));
           const keyIdxStr = await prompt('Select key number', '1');
           const keyIdx = parseInt(keyIdxStr, 10) - 1;

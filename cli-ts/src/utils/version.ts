@@ -3,7 +3,7 @@
  * Functions for version management and auto-increment
  */
 
-import chalk from 'chalk';
+import { printDebug } from './output';
 import { join } from 'path';
 import { spawnSync } from 'child_process';
 import { parseConnectionString } from './connection-parser';
@@ -59,15 +59,15 @@ export async function getLatestVersion(
 ): Promise<string | null> {
   const result = parseConnectionString(connectionString);
   if (!result.success) {
-    if (debug) console.log(chalk.gray(`[DEBUG] Failed to parse connection string: ${result.error}`));
+    if (debug) printDebug(`Failed to parse connection string: ${result.error}`);
     return null;
   }
   const conn = result.data;
 
   // Stack name is project_name-env
   const stackName = `${projectName}-${env}`;
-  if (debug) console.log(chalk.gray(`[DEBUG] Looking for versions in stack: ${stackName}`));
-  if (debug) console.log(chalk.gray(`[DEBUG] SSH connection: ${conn.user}@${conn.host}:${conn.port}`));
+  if (debug) printDebug(`Looking for versions in stack: ${stackName}`);
+  if (debug) printDebug(`SSH connection: ${conn.user}@${conn.host}:${conn.port}`);
 
   // Write private key to temp file
   const tempKeyPath = join(process.env.TEMP || '/tmp', `dockflow_deploy_key_${Date.now()}`);
@@ -75,7 +75,7 @@ export async function getLatestVersion(
 
   const privateKey = normalizePrivateKey(conn.privateKey);
 
-  if (debug) console.log(chalk.gray(`[DEBUG] Private key first 50 chars: ${privateKey.substring(0, 50).replace(/\n/g, '\\n')}`));
+  if (debug) printDebug(`Private key first 50 chars: ${privateKey.substring(0, 50).replace(/\n/g, '\\n')}`);
 
   fs.writeFileSync(tempKeyPath, privateKey, { mode: 0o600 });
 
@@ -126,9 +126,9 @@ export async function getLatestVersion(
     fs.unlinkSync(tempKeyPath);
 
     if (debug) {
-      console.log(chalk.gray(`[DEBUG] SSH exit code: ${result.status}`));
-      console.log(chalk.gray(`[DEBUG] SSH stdout: "${result.stdout}"`));
-      console.log(chalk.gray(`[DEBUG] SSH stderr: ${result.stderr}`));
+      printDebug(`SSH exit code: ${result.status}`);
+      printDebug(`SSH stdout: "${result.stdout}"`);
+      printDebug(`SSH stderr: ${result.stderr}`);
     }
 
     if (result.status === 0 && result.stdout) {

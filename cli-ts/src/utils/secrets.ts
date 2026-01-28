@@ -8,6 +8,7 @@
 
 import { existsSync, readFileSync } from 'fs';
 import { ENV_FILE_PATH } from '../constants';
+import { printWarning, printSuccess, printError } from './output';
 
 /**
  * Parse a dotenv file content into key-value pairs
@@ -69,17 +70,17 @@ export function loadSecrets(): void {
       
       // Warn in CI that this file should not be committed
       if (isCI()) {
-        console.warn('');
-        console.warn('\x1b[33m⚠️  WARNING: .env.dockflow file detected in CI environment!\x1b[0m');
-        console.warn('\x1b[33m   This file should NOT be committed to your repository.\x1b[0m');
-        console.warn('\x1b[33m   Add it to .gitignore: echo ".env.dockflow" >> .gitignore\x1b[0m');
-        console.warn('');
+        console.log('');
+        printWarning('WARNING: .env.dockflow file detected in CI environment!');
+        printWarning('This file should NOT be committed to your repository.');
+        printWarning('Add it to .gitignore: echo ".env.dockflow" >> .gitignore');
+        console.log('');
       }
       
-      console.log(`Loaded secrets from ${ENV_FILE_PATH}`);
+      printSuccess(`Loaded secrets from ${ENV_FILE_PATH}`);
       return;
     } catch (error) {
-      console.error(`Failed to load ${ENV_FILE_PATH}: ${error}`);
+      printError(`Failed to load ${ENV_FILE_PATH}: ${error}`);
     }
   }
   
@@ -97,10 +98,10 @@ export function loadSecrets(): void {
         }
       }
       
-      console.log(`Loaded secrets from ${secretsPath}`);
+      printSuccess(`Loaded secrets from ${secretsPath}`);
       return;
     } catch (error) {
-      console.error(`Failed to load secrets from ${secretsPath}: ${error}`);
+      printError(`Failed to load secrets from ${secretsPath}: ${error}`);
     }
   }
   
@@ -116,10 +117,10 @@ export function loadSecrets(): void {
         }
       }
       
-      console.log('Loaded secrets from DOCKFLOW_SECRETS');
+      printSuccess('Loaded secrets from DOCKFLOW_SECRETS');
       return;
     } catch (error) {
-      console.error(`Failed to parse DOCKFLOW_SECRETS: ${error}`);
+      printError(`Failed to parse DOCKFLOW_SECRETS: ${error}`);
     }
   }
   
@@ -135,9 +136,9 @@ export function loadSecrets(): void {
         }
       }
       
-      console.log('Loaded secrets from GITHUB_SECRETS');
+      printSuccess('Loaded secrets from GITHUB_SECRETS');
     } catch (error) {
-      console.error(`Failed to parse GITHUB_SECRETS: ${error}`);
+      printError(`Failed to parse GITHUB_SECRETS: ${error}`);
     }
   }
 }

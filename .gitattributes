@@ -17,6 +17,7 @@
 *.jspf          eol=lf
 *.jspx          eol=lf
 *.properties    eol=lf
+*.py            eol=lf
 *.sh            eol=lf
 *.tld           eol=lf
 *.txt           eol=lf

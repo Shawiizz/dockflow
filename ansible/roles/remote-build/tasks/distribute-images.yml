@@ -1,0 +1,16 @@
+---
+# Distribute images to worker nodes (when no registry is configured)
+
+- name: Set workers list
+  set_fact:
+    workers_list: "{{ workers | default([]) }}"
+
+- name: Transfer images to workers
+  include_tasks: ../local-registry/tasks/transfer_to_node.yml
+  vars:
+    transfer_from_manager: true
+  loop: "{{ workers_list }}"
+  loop_control:
+    loop_var: node
+    label: "{{ node.name | default(node.host) }}"
+  when: workers_list | length > 0

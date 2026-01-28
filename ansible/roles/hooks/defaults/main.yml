@@ -1,0 +1,8 @@
+---
+# Hooks role defaults
+
+# Enable/disable hooks globally
+hooks_enabled: true
+
+# Hook execution timeout (seconds)
+hooks_timeout: "{{ dockflow_defaults.hooks_timeout | default(300) }}"

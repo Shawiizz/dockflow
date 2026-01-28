@@ -2,22 +2,15 @@
 # Stack management role - main entry point
 # This role handles stack lifecycle including listing and general management
 
-- name: Set stacks directory path
-  set_fact:
-    stacks_dir: "/var/lib/dockflow/stacks/{{ stack_name }}"
-
-- name: Ensure stack directories exist
+- name: Ensure stack directory exists
   file:
-    path: "{{ item }}"
+    path: "{{ stack_dir }}"
     state: directory
     mode: '0755'
-  loop:
-    - /var/lib/dockflow/stacks
-    - "{{ stacks_dir }}"
 
 - name: List current releases
   find:
-    paths: "{{ stacks_dir }}"
+    paths: "{{ stack_dir }}"
     file_type: directory
     patterns: "[0-9]*"
   register: stack_releases
@@ -27,4 +20,4 @@
     msg: |
       Stack Management for: {{ stack_name }}
       - Total releases: {{ stack_releases.files | length }}
-      - Current symlink: {{ stacks_dir }}/current
+      - Current symlink: {{ stack_dir }}/current

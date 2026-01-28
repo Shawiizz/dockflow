@@ -2,23 +2,13 @@
 # Stack management role - handles stack retention and cleanup
 # This task cleans up old releases while keeping the configured number
 
-- name: Set stacks directory path
-  set_fact:
-    stacks_dir: "/var/lib/dockflow/stacks/{{ stack_name }}"
-
 - name: Get configuration for number of releases to keep
   set_fact:
     keep_releases: "{{ config.stack_management.keep_releases | default(3) | int }}"
-  when: config.stack_management is defined
-
-- name: Set default if not configured
-  set_fact:
-    keep_releases: 3
-  when: keep_releases is not defined
 
 - name: Find all release directories
   find:
-    paths: "{{ stacks_dir }}"
+    paths: "{{ stack_dir }}"
     file_type: directory
     excludes: "current"
   register: stack_releases
@@ -192,7 +182,10 @@
     label: "Cleaning containers for {{ item }}"
 
 - name: Delete old images
-  shell: "docker rmi {{ item }} 2>/dev/null || true"
+  community.docker.docker_image:
+    name: "{{ item }}"
+    state: absent
+    force_absent: true
   loop: "{{ images_to_delete }}"
   when: images_to_delete | length > 0
   failed_when: false

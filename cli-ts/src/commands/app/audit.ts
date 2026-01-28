@@ -3,9 +3,8 @@
  */
 
 import type { Command } from 'commander';
-import chalk from 'chalk';
 import { sshExec } from '../../utils/ssh';
-import { printSection, printDebug } from '../../utils/output';
+import { printSection, printDebug, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 
@@ -32,17 +31,17 @@ function parseAuditLine(line: string): AuditEntry | null {
 
 function formatAuditEntry(entry: AuditEntry): string {
   const actionColors: Record<string, (s: string) => string> = {
-    'DEPLOYED': chalk.green,
-    'ROLLBACK': chalk.yellow,
-    'FAILED': chalk.red,
-    'LOCKED': chalk.blue,
-    'UNLOCKED': chalk.blue,
+    'DEPLOYED': colors.success,
+    'ROLLBACK': colors.warning,
+    'FAILED': colors.error,
+    'LOCKED': colors.info,
+    'UNLOCKED': colors.info,
   };
   
-  const colorFn = actionColors[entry.action] || chalk.white;
+  const colorFn = actionColors[entry.action] || colors.bold;
   const actionPadded = entry.action.padEnd(10);
   
-  return `${chalk.gray(entry.timestamp)} ${colorFn(actionPadded)} ${chalk.cyan(entry.version.padEnd(20))} ${chalk.white(entry.performer)}${entry.message ? chalk.gray(' - ' + entry.message) : ''}`;
+  return `${colors.dim(entry.timestamp)} ${colorFn(actionPadded)} ${colors.info(entry.version.padEnd(20))} ${entry.performer}${entry.message ? colors.dim(' - ' + entry.message) : ''}`;
 }
 
 export function registerAuditCommand(program: Command): void {
@@ -71,8 +70,8 @@ export function registerAuditCommand(program: Command): void {
 
         if (output === 'NO_AUDIT_FILE' || !output) {
           console.log('');
-          console.log(chalk.yellow(`No audit log found for ${stackName}`));
-          console.log(chalk.gray('Audit logs are created after the first deployment.'));
+          console.log(colors.warning(`No audit log found for ${stackName}`));
+          console.log(colors.dim('Audit logs are created after the first deployment.'));
           return;
         }
 
@@ -92,18 +91,18 @@ export function registerAuditCommand(program: Command): void {
         console.log('');
         
         if (entries.length === 0) {
-          console.log(chalk.gray('No audit entries found'));
+          console.log(colors.dim('No audit entries found'));
           return;
         }
 
         // Header
         console.log(
-          chalk.gray('TIMESTAMP'.padEnd(26)) +
-          chalk.gray('ACTION'.padEnd(12)) +
-          chalk.gray('VERSION'.padEnd(22)) +
-          chalk.gray('PERFORMER')
+          colors.dim('TIMESTAMP'.padEnd(26)) +
+          colors.dim('ACTION'.padEnd(12)) +
+          colors.dim('VERSION'.padEnd(22)) +
+          colors.dim('PERFORMER')
         );
-        console.log(chalk.gray('─'.repeat(80)));
+        console.log(colors.dim('─'.repeat(80)));
 
         // Entries
         entries.forEach(entry => {
@@ -111,9 +110,9 @@ export function registerAuditCommand(program: Command): void {
         });
 
         console.log('');
-        console.log(chalk.gray(`Showing ${entries.length} most recent entries`));
+        console.log(colors.dim(`Showing ${entries.length} most recent entries`));
         if (!options.all) {
-          console.log(chalk.gray(`Use --all to show complete history`));
+          console.log(colors.dim(`Use --all to show complete history`));
         }
       } catch (error) {
         throw new DockerError(`Failed to fetch audit log: ${error}`);

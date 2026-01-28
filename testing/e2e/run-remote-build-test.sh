@@ -5,7 +5,7 @@
 # This test verifies that remote_build: true works correctly.
 # It creates a Git repository on the manager, pushes code, and deploys.
 #
-# Prerequisites: Run run-tests.sh first to have VMs and Swarm ready
+# Can run standalone (will setup VMs if needed) or after run-tests.sh
 # =============================================================================
 
 set -e
@@ -14,39 +14,59 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKFLOW_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CLI_DIR="$DOCKFLOW_ROOT/cli-ts"
 TEST_APP_DIR="$SCRIPT_DIR/test-app-remote"
+PRIMARY_TEST_APP_DIR="$SCRIPT_DIR/test-app"
 
 TEST_ENV="test"
 TEST_VERSION="1.0.0-remote"
 
 # Load common functions
 source "$SCRIPT_DIR/common.sh"
+source "$SCRIPT_DIR/common/assertions.sh"
+source "$SCRIPT_DIR/common/verify-deployment.sh"
+source "$SCRIPT_DIR/common/setup-vms.sh"
 
 # Load environment
 source "$SCRIPT_DIR/.env" 2>/dev/null || true
 
-CLI_BINARY=$(get_cli_binary)
-CLI_BIN="$CLI_DIR/dist/$CLI_BINARY"
-
-# =============================================================================
-# Pre-checks
-# =============================================================================
 echo ""
 echo -e "${BLUE}=========================================="
 echo "   Dockflow E2E - Remote Build Test"
 echo "==========================================${NC}"
 echo ""
 
-# Check CLI exists
-if [[ ! -f "$CLI_BIN" ]]; then
-    log_error "CLI binary not found at $CLI_BIN"
-    log_info "Run run-tests.sh first to build CLI and setup VMs"
-    exit 1
+# =============================================================================
+# Pre-checks / Setup (auto-setup if needed, skip with --skip-setup)
+# =============================================================================
+log_step "Checking environment..."
+
+SKIP_SETUP=false
+if [[ "${1:-}" == "--skip-setup" ]]; then
+    SKIP_SETUP=true
+    log_info "Skipping setup (--skip-setup flag)"
 fi
 
-# Check VMs and Swarm
-check_vms_running || exit 1
+# Try to setup or verify existing environment
+if check_vms_running 2>/dev/null && check_swarm_ready 2>/dev/null; then
+    log_success "VMs already running and Swarm ready"
+    CLI_BINARY=$(get_cli_binary)
+    CLI_BIN="$CLI_DIR/dist/$CLI_BINARY"
+    
+    # Build CLI if not present
+    if [[ ! -f "$CLI_BIN" ]]; then
+        build_cli || exit 1
+        CLI_BIN="$CLI_BIN_PATH"
+    fi
+elif [[ "$SKIP_SETUP" == "true" ]]; then
+    log_error "VMs not running but --skip-setup was specified"
+    exit 1
+else
+    log_info "Setting up E2E environment (VMs + Swarm)..."
+    setup_e2e_environment "$PRIMARY_TEST_APP_DIR" "$TEST_ENV" || exit 1
+    CLI_BIN="$CLI_BIN_PATH"
+fi
+
 NODE_COUNT=$(check_swarm_ready) || exit 1
-log_success "Pre-checks passed (VMs running, Swarm ready with $NODE_COUNT nodes)"
+log_success "Environment ready (Swarm with $NODE_COUNT nodes)"
 
 # =============================================================================
 # Step 1: Setup Git repository on manager
@@ -214,13 +234,16 @@ fi
 log_success "Remote build deployment completed"
 
 # =============================================================================
-# Step 5: Verify deployment
+# Step 5: Comprehensive Deployment Verification
 # =============================================================================
-log_step "Step 5: Verifying remote build deployment..."
+log_step "Step 5: Running comprehensive deployment verification..."
 
-SERVICE_NAME="test-app-remote-${TEST_ENV}_web"
+STACK_NAME="test-app-remote-${TEST_ENV}"
+SERVICE_NAME="${STACK_NAME}_web"
+MANAGER_NODE="dockflow-test-manager"
+WORKER_NODE="dockflow-test-worker-1"
 
-# Wait for service to be ready
+# Wait for service to reach desired state first
 wait_for_service "$SERVICE_NAME" "1/1" 60 || exit 1
 
 # Verify the image was built on the remote server (not locally)
@@ -232,11 +255,14 @@ else
     exit 1
 fi
 
-# Show service details
-echo ""
-log_info "Service details:"
-docker exec dockflow-test-manager docker service ps "$SERVICE_NAME" \
-    --format 'table {{.Name}}\t{{.Node}}\t{{.CurrentState}}'
+# Run comprehensive verification (single replica, check manager + worker for images)
+# For remote build with no registry, images should be distributed to workers
+if ! verify_deployment "$STACK_NAME" "$SERVICE_NAME" "1/1" "$MANAGER_NODE" "$WORKER_NODE"; then
+    log_error "Deployment verification failed!"
+    exit 1
+fi
+
+log_success "All deployment verifications passed"
 
 # =============================================================================
 # Cleanup

@@ -1,52 +1,74 @@
 ---
-# Transfer images to a single node
-# Called with 'node' variable containing: host, user, port, key_file, name
+# Transfer images to a single node via SSH streaming
+# Params: node (dict), built_images (list), transfer_from_manager (bool)
 
-- name: "Build SSH options for {{ node.name | default(node.host) }}"
+- name: "Set transfer context for {{ node.name | default(node.host) }}"
+  set_fact:
+    _from_localhost: "{{ not (transfer_from_manager | default(false) | bool) }}"
+    _key_path: "{{ '~/.ssh' if not (transfer_from_manager | default(false) | bool) else '/tmp/.ssh_transfer' }}"
+    _node_name: "{{ node.name | default(node.host) }}"
+
+- name: "Ensure SSH directory exists for {{ _node_name }}"
+  file:
+    path: "{{ _key_path }}"
+    state: directory
+    mode: '0700'
+  delegate_to: "{{ 'localhost' if _from_localhost else omit }}"
+
+- name: "Write SSH key for {{ _node_name }}"
+  copy:
+    content: "{{ node.private_key }}"
+    dest: "{{ _key_path }}/worker_{{ _node_name }}"
+    mode: '0600'
+  delegate_to: "{{ 'localhost' if _from_localhost else omit }}"
+  when: node.private_key is defined
+
+- name: "Build SSH key option for {{ _node_name }}"
+  set_fact:
+    _ssh_key_opt: >-
+      {% if node.private_key is defined %}-i {{ _key_path }}/worker_{{ _node_name }}
+      {% elif node.key_file | default('') != '' %}-i {{ node.key_file }}{% endif %}
+
+- name: "Build SSH options for {{ _node_name }}"
   set_fact:
     node_ssh_opts: >-
       -o StrictHostKeyChecking=no
+      -o UserKnownHostsFile=/dev/null
       -o ConnectTimeout=30
       -o ServerAliveInterval=60
-      {% if node.key_file | default('') != '' %}-i {{ node.key_file }}{% endif %}
-      {% if node.privateKey is defined %}-i ~/.ssh/worker_{{ node.name | default('key') }}{% endif %}
+      {{ _ssh_key_opt | default('') | trim }}
       -p {{ node.port | default(22) }}
-  delegate_to: localhost
 
-# For workers, we need to write the private key to a temp file
-- name: "Setup SSH key for worker {{ node.name | default(node.host) }}"
-  block:
-    - name: Write worker private key
-      copy:
-        content: "{{ node.privateKey }}"
-        dest: "~/.ssh/worker_{{ node.name }}"
-        mode: '0600'
-      delegate_to: localhost
-
-    - name: Update SSH options with worker key
-      set_fact:
-        node_ssh_opts: >-
-          -o StrictHostKeyChecking=no
-          -o ConnectTimeout=30
-          -o ServerAliveInterval=60
-          -i ~/.ssh/worker_{{ node.name }}
-          -p {{ node.port | default(22) }}
-      delegate_to: localhost
-  when: node.privateKey is defined
-
-- name: "Transfer images to {{ node.name | default(node.host) }}"
+- name: "Transfer images to {{ _node_name }}"
   shell: |
-    echo "Transferring {{ item }} to {{ node.name | default(node.host) }}..."
+    set -e
+    echo "Transferring {{ item }} to {{ _node_name }}..."
     docker save "{{ item }}" | gzip -1 | ssh {{ node_ssh_opts }} {{ node.user | default('root') }}@{{ node.host }} "gunzip | docker load"
-  delegate_to: localhost
+    echo "✓ Transferred {{ item }}"
+  delegate_to: "{{ 'localhost' if _from_localhost else omit }}"
   loop: "{{ built_images | default([]) }}"
   register: node_transfer_results
   loop_control:
-    label: "{{ item }} → {{ node.name | default(node.host) }}"
+    label: "{{ item }} → {{ _node_name }}"
 
-- name: "Cleanup worker SSH key {{ node.name | default(node.host) }}"
+- name: "Verify transfer succeeded for {{ _node_name }}"
+  fail:
+    msg: |
+      Failed to transfer image(s) to {{ _node_name }}
+      
+      {% for result in node_transfer_results.results %}
+      {% if result.rc != 0 %}
+      Image: {{ result.item }}
+      Error: {{ result.stderr | default('No error output') }}
+      {% endif %}
+      {% endfor %}
+      
+      Check SSH connectivity and disk space on the target node.
+  when: node_transfer_results.results | selectattr('rc', 'defined') | selectattr('rc', 'ne', 0) | list | length > 0
+
+- name: "Cleanup SSH key for {{ _node_name }}"
   file:
-    path: "~/.ssh/worker_{{ node.name }}"
+    path: "{{ _key_path }}/worker_{{ _node_name }}"
     state: absent
-  delegate_to: localhost
-  when: node.privateKey is defined
+  delegate_to: "{{ 'localhost' if _from_localhost else omit }}"
+  when: node.private_key is defined

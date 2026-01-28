@@ -1,6 +1,6 @@
 ---
-# Reusable tasks to create external networks and volumes from a compose file
-# 
+# Shared role: Create external networks and volumes from a compose file
+#
 # Required variables:
 #   - compose_file_path: Path to the compose file (e.g., docker-compose.yml, accessories.yml)
 #   - resource_label: Label for logging (e.g., "app", "accessories")
@@ -25,6 +25,8 @@
       when: network_commands.stdout_lines | length > 0
       changed_when: true
       failed_when: false
+      loop_control:
+        label: "Creating network"
   when: not (skip_networks | default(false) | bool)
 
 - name: "{{ resource_label | default('resources') }} - Create external volumes"
@@ -43,4 +45,6 @@
       when: volume_commands.stdout_lines | length > 0
       changed_when: true
       failed_when: false
+      loop_control:
+        label: "Creating volume"
   when: not (skip_volumes | default(false) | bool)

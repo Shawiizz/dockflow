@@ -49,8 +49,8 @@ export function generateSSHKey(keyPath: string, comment: string = 'dockflow'): S
       success: false, 
       error: result.stderr || result.stdout || `Exit code: ${result.status}` 
     };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 

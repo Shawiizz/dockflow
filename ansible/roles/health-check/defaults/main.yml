@@ -1,0 +1,6 @@
+---
+# Health check role defaults (overridden by config.health_checks.*)
+health_check_default_timeout: 30
+health_check_default_retries: 3
+health_check_default_retry_delay: 5
+health_check_startup_delay: 10

@@ -5,8 +5,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import chalk from 'chalk';
-import { printHeader, printSection, printSuccess, printError, printInfo } from '../../utils/output';
+import { printHeader, printSection, printSuccess, printError, printInfo, colors } from '../../utils/output';
 import { CLIError, ErrorCode } from '../../utils/errors';
 import { checkDependencies, installDependencies, detectPackageManager } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
@@ -27,7 +26,7 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
   const deps = checkDependencies();
   if (!deps.ok) {
     printInfo('Missing required dependencies, attempting automatic installation...');
-    deps.missing.forEach(m => console.log(chalk.yellow(`  - ${m}`)));
+    deps.missing.forEach(m => console.log(colors.warning(`  - ${m}`)));
     console.log('');
     
     const pm = detectPackageManager();
@@ -107,12 +106,12 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
   }
 
   printSection('Configuration');
-  console.log(`${chalk.cyan('Public Host:')} ${publicHost}`);
-  console.log(`${chalk.cyan('SSH Port:')} ${sshPort}`);
-  console.log(`${chalk.cyan('Deployment User:')} ${deployUser}`);
-  console.log(`${chalk.cyan('Create New User:')} ${needsUserSetup ? 'Yes' : 'No'}`);
-  console.log(`${chalk.cyan('Skip Docker Install:')} ${options.skipDockerInstall ? 'Yes' : 'No'}`);
-  console.log(`${chalk.cyan('Install Portainer:')} ${options.portainer ? 'Yes' : 'No'}`);
+  console.log(`${colors.info('Public Host:')} ${publicHost}`);
+  console.log(`${colors.info('SSH Port:')} ${sshPort}`);
+  console.log(`${colors.info('Deployment User:')} ${deployUser}`);
+  console.log(`${colors.info('Create New User:')} ${needsUserSetup ? 'Yes' : 'No'}`);
+  console.log(`${colors.info('Skip Docker Install:')} ${options.skipDockerInstall ? 'Yes' : 'No'}`);
+  console.log(`${colors.info('Install Portainer:')} ${options.portainer ? 'Yes' : 'No'}`);
   console.log('');
 
   let ansibleDir: string;

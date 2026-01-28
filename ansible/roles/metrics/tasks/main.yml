@@ -1,38 +1,36 @@
 ---
 # Metrics role - records deployment metrics in JSONL format
-# Stored at /var/lib/dockflow/metrics/<stack>/deployments.json
 
 - name: Set metrics paths
   set_fact:
-    metrics_dir: "/var/lib/dockflow/metrics/{{ stack_name }}"
-    metrics_file: "/var/lib/dockflow/metrics/{{ stack_name }}/deployments.json"
+    metrics_file: "{{ dockflow_paths.metrics }}/{{ stack_name }}/deployments.json"
 
 - name: Ensure metrics directory exists
   file:
-    path: "{{ metrics_dir }}"
+    path: "{{ dockflow_paths.metrics }}/{{ stack_name }}"
     state: directory
     mode: '0755'
 
 - name: Calculate deployment duration
   set_fact:
-    deploy_duration_ms: "{{ ((ansible_date_time.epoch | int) - (deploy_start_time | default(ansible_date_time.epoch) | int)) * 1000 }}"
+    deploy_duration_ms: "{{ ((ansible_facts['date_time']['epoch'] | int) - (deploy_start_time | default(ansible_facts['date_time']['epoch']) | int)) * 1000 }}"
 
 - name: Build metric entry
   set_fact:
     metric_entry:
-      id: "{{ ansible_date_time.epoch }}-{{ 999999999 | random | string | truncate(6, True, '') }}"
-      timestamp: "{{ ansible_date_time.iso8601 }}"
+      id: "{{ ansible_facts['date_time']['epoch'] }}-{{ 999999999 | random | string | truncate(6, True, '') }}"
+      timestamp: "{{ ansible_facts['date_time']['iso8601'] }}"
       version: "{{ version | default(lookup('env', 'VERSION') | default('unknown', true)) }}"
       environment: "{{ env | default(lookup('env', 'ENV') | default('unknown', true)) }}"
       branch: "{{ branch_name | default(lookup('env', 'BRANCH_NAME') | default('unknown', true)) }}"
       status: "{{ metric_status | default('success') }}"
       duration_ms: "{{ deploy_duration_ms | int }}"
       performer: "{{ lookup('env', 'USER') | default('ci', true) }}@{{ lookup('env', 'HOSTNAME') | default('unknown', true) }}"
-      services: "{{ (options.services | default(lookup('env', 'DEPLOY_DOCKER_SERVICES') | default('', true))).split(',') | select() | list }}"
+      services: "{{ deploy_services.split(',') | select() | list if deploy_services else [] }}"
       error: "{{ metric_error | default('') }}"
       rollback_from: "{{ rollback_from_version | default('') }}"
-      build_skipped: "{{ options.skip_build | default(lookup('env', 'SKIP_BUILD') | default('false', true)) | bool }}"
-      accessories_deployed: "{{ options.deploy_accessories | default(lookup('env', 'DEPLOY_ACCESSORIES') | default('false', true)) | bool }}"
+      build_skipped: "{{ skip_build | default(false) | bool }}"
+      accessories_deployed: "{{ force_accessories | default(false) | bool }}"
       node_count: "{{ (groups['all'] | default([inventory_hostname])) | length }}"
 
 - name: Write metric entry to JSONL file

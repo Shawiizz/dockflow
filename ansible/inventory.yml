@@ -1,7 +1,0 @@
-all:
-  hosts:
-    REMOTE_HOST:
-      ansible_host: "{{ lookup('env', 'DOCKFLOW_HOST') }}"
-      ansible_user: "{{ lookup('env', 'DOCKFLOW_USER') }}"
-      ansible_port: "{{ lookup('env', 'DOCKFLOW_PORT') | default(22) }}"
-      ansible_ssh_private_key_file: ~/.ssh/dockflow_deploy_key

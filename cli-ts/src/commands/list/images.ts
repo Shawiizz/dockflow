@@ -3,9 +3,8 @@
  */
 
 import type { Command } from 'commander';
-import chalk from 'chalk';
 import { sshExec } from '../../utils/ssh';
-import { printSection } from '../../utils/output';
+import { printSection, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { loadConfig } from '../../utils/config';
 import { withErrorHandler, DockerError } from '../../utils/errors';
@@ -53,7 +52,7 @@ export function registerListImagesCommand(parent: Command): void {
           console.log(diskResult.stdout);
           
           console.log('');
-          console.log(chalk.gray('Tip: Run `dockflow prune <env>` to clean up unused images'));
+          console.log(colors.dim('Tip: Run `dockflow prune <env>` to clean up unused images'));
         }
       } catch (error) {
         throw new DockerError(`Failed to list images: ${error}`);

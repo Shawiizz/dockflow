@@ -4,11 +4,10 @@
  */
 
 import type { Command } from 'commander';
-import chalk from 'chalk';
 import ora from 'ora';
 import inquirer from 'inquirer';
 import { sshExec } from '../../utils/ssh';
-import { printInfo, printSuccess, printHeader, printWarning } from '../../utils/output';
+import { printInfo, printSuccess, printHeader, printWarning, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { validateAccessoriesStack, getShortServiceNames } from './utils';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
@@ -47,7 +46,7 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
 
       // Show what will be removed
       if (services.length > 0) {
-        console.log(chalk.yellow('The following services will be removed:'));
+        console.log(colors.warning('The following services will be removed:'));
         
         // Get replicas info
         const servicesResult = await sshExec(connection, 
@@ -57,7 +56,7 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
         for (const line of servicesResult.stdout.trim().split('\n')) {
           const [name, replicas] = line.split('\t');
           const shortName = name.replace(`${stackName}_`, '');
-          console.log(`  ${chalk.cyan(shortName)} ${chalk.dim(`(${replicas})`)}`);
+          console.log(`  ${colors.info(shortName)} ${colors.dim(`(${replicas})`)}`);
         }
       }
 
@@ -69,9 +68,9 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
         
         if (volumesResult.stdout.trim()) {
           console.log('');
-          console.log(chalk.red('⚠ The following volumes will be PERMANENTLY DELETED:'));
+          console.log(colors.error('⚠ The following volumes will be PERMANENTLY DELETED:'));
           for (const vol of volumesResult.stdout.trim().split('\n').filter(Boolean)) {
-            console.log(`  ${chalk.red(vol)}`);
+            console.log(`  ${colors.error(vol)}`);
           }
         }
       }

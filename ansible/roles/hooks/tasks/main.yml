@@ -5,8 +5,8 @@
 
 - name: Set hooks configuration
   set_fact:
-    hooks_enabled: "{{ config.hooks.enabled | default(true) | bool }}"
-    hooks_timeout: "{{ config.hooks.timeout | default(300) }}"
+    hooks_enabled: "{{ config.hooks.enabled | default(hooks_enabled) | bool }}"
+    hooks_timeout: "{{ config.hooks.timeout | default(hooks_timeout) }}"
     hooks_dir: "{{ root_path }}/.dockflow/hooks"
     hook_script_path: "{{ root_path }}/.dockflow/hooks/{{ hook_name }}.sh"
 
@@ -82,7 +82,7 @@
         path: "{{ remote_temp_dir.path }}"
         state: absent
       when: remote_temp_dir.path is defined
-      ignore_errors: true
+      failed_when: false
 
   when:
     - hooks_enabled

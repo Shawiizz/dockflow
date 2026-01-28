@@ -13,11 +13,12 @@ import ora from 'ora';
 import { getProjectRoot, getAnsibleDockerImage } from '../utils/config';
 import { printSuccess, printInfo, printHeader, printDebug, setVerbose } from '../utils/output';
 import {
-  getDockflowSetupScript,
-  runInAnsibleContainer,
+  runAnsibleCommand,
   checkDockerAvailable,
   validateProjectConfig,
   validateServersYaml,
+  buildDeployAnsibleCommand,
+  hasNginxConfig,
 } from '../utils/docker-runner';
 import { 
   resolveDeploymentForEnvironment,
@@ -36,7 +37,7 @@ import {
   withErrorHandler,
 } from '../utils/errors';
 import { displayDeployDryRun } from './dry';
-import { buildDeployContext, writeContextFile, writeSSHKeyFile, getHostContextPath, getHostSSHKeyPath } from '../utils/context-generator';
+import { buildDeployContext, writeContextFile, getHostContextPath } from '../utils/context-generator';
 import type { ResolvedDeployment, TemplateContext } from '../types';
 
 interface DeployOptions {
@@ -79,36 +80,6 @@ function getDeploymentTargets(options: DeployOptions): {
   }
   // Default: deploy app + auto-check accessories (hash-based)
   return { deployApp: true, forceAccessories: false, skipAccessories: false };
-}
-
-/**
- * Build the deployment script to run inside the container
- * 
- * New architecture (JSON context):
- * - Context is provided via /tmp/dockflow_context.json (mounted by CLI)
- * - No more shell variable pollution
- * - Ansible consumes context via --extra-vars "@file"
- * - Only minimal shell setup remains (dockflow clone, ROOT_PATH)
- */
-function buildDeployScript(options: DeployOptions): string {
-  const dockflowSetup = getDockflowSetupScript({
-    devMode: options.dev || false,
-    checkFile: '.common/scripts/run_ansible.sh',
-  });
-
-  return `
-set -e
-
-${dockflowSetup}
-
-# Minimal setup - context is provided via /tmp/dockflow_context.json
-export ROOT_PATH="/project"
-export ANSIBLE_HOST_KEY_CHECKING=False
-
-# Run Ansible deployment
-cd \$DOCKFLOW_PATH
-bash .common/scripts/run_ansible.sh
-`;
 }
 
 /**
@@ -294,6 +265,7 @@ export async function runDeploy(env: string, version: string | undefined, option
     managerPrivateKey,
     managerPassword,
     workers: workersWithKeys,
+    config: config as unknown as Record<string, unknown>,
     options: {
       skipBuild: options.skipBuild,
       skipDockerInstall: options.skipDockerInstall,
@@ -310,12 +282,14 @@ export async function runDeploy(env: string, version: string | undefined, option
   writeContextFile(ansibleContext, contextFilePath);
   printDebug('Context file written', { path: contextFilePath });
 
-  // Write SSH key to file (mounted into container, avoids shell variable issues)
-  const sshKeyFilePath = getHostSSHKeyPath();
-  writeSSHKeyFile(managerPrivateKey, sshKeyFilePath);
-  printDebug('SSH key file written', { path: sshKeyFilePath });
-
-  const deployScript = buildDeployScript(options as DeployOptions);
+  // Build the Ansible command with skip tags
+  const skipTags = ['configure_host'];
+  if (!hasNginxConfig()) {
+    printDebug('No nginx configuration found, will skip nginx role');
+    skipTags.push('nginx');
+  }
+  const ansibleCommand = buildDeployAnsibleCommand({ skipTags });
+  printDebug('Ansible command', { command: ansibleCommand.join(' ') });
 
   // Dry-run mode: display what would happen without executing
   if (options.dryRun) {
@@ -334,18 +308,17 @@ export async function runDeploy(env: string, version: string | undefined, option
       force: options.force,
       services: options.services,
       debug,
-      deployScript,
+      deployScript: ansibleCommand.join(' '),
     });
     return;
   }
 
-  await runInAnsibleContainer({
-    script: deployScript,
+  await runAnsibleCommand({
+    command: ansibleCommand,
     devMode: options.dev,
     actionName: 'deployment',
     successMessage: `Deployment to ${env} completed successfully!`,
     contextFilePath,
-    sshKeyFilePath,
   });
 
   const totalNodes = managers.length + workers.length;

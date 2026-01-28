@@ -1,0 +1,24 @@
+---
+# Extract image names from build commands
+# Sets: built_images (list of image names)
+# Requires: build_commands - either:
+#   - list of dicts with 'tag' attribute (from local-build role)
+#   - list of command strings with -t flags (from remote-build role)
+
+- name: Extract image names from build commands
+  set_fact:
+    built_images: >-
+      {%- set cmds = build_commands | default([]) -%}
+      {%- set images = [] -%}
+      {%- if cmds | length > 0 and cmds[0] is mapping -%}
+        {{ cmds | map(attribute='tag') | list }}
+      {%- else -%}
+        {%- for cmd in cmds -%}
+          {%- if '-t ' in cmd -%}
+            {%- set parts = cmd.split('-t ')[1].split(' ')[0] -%}
+            {%- set img = parts | replace('"', '') -%}
+            {%- set _ = images.append(img) -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {{ images }}
+      {%- endif -%}

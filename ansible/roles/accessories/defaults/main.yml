@@ -1,7 +1,5 @@
 ---
 # Default variables for accessories role
 
-# Whether to deploy accessories (controlled by CLI flag)
-deploy_accessories: false
-
-
+# Force accessories deployment even if hash unchanged (--accessories flag)
+force_accessories: false

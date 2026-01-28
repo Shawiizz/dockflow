@@ -4,12 +4,11 @@
  */
 
 import type { Command } from 'commander';
-import chalk from 'chalk';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { getProjectRoot } from '../../utils/config';
 import { sshExec } from '../../utils/ssh';
-import { printInfo, printHeader, printSection } from '../../utils/output';
+import { printInfo, printHeader, printSection, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { validateAccessoriesStack } from './utils';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -43,21 +42,21 @@ function parseServicesOutput(output: string): ServiceInfo[] {
  * Format replicas with color
  */
 function formatReplicas(replicas: string): string {
-  if (!replicas) return chalk.gray('-');
+  if (!replicas) return colors.dim('-');
   
   const [current, desired] = replicas.split('/').map(s => parseInt(s.trim(), 10));
   
   if (isNaN(current) || isNaN(desired)) {
-    return chalk.gray(replicas);
+    return colors.dim(replicas);
   }
   
   if (current === desired && current > 0) {
-    return chalk.green(`● ${replicas}`);
+    return colors.success(`● ${replicas}`);
   }
   if (current === 0) {
-    return chalk.red(`○ ${replicas}`);
+    return colors.error(`○ ${replicas}`);
   }
-  return chalk.yellow(`◐ ${replicas}`);
+  return colors.warning(`◐ ${replicas}`);
 }
 
 /**
@@ -126,8 +125,8 @@ export function registerAccessoriesListCommand(program: Command): void {
         }
 
         // Display table header
-        console.log(chalk.bold('  SERVICE'.padEnd(30) + 'REPLICAS'.padEnd(15) + 'IMAGE'.padEnd(35) + 'PORTS'));
-        console.log(chalk.dim('  ' + '-'.repeat(90)));
+        console.log(colors.bold('  SERVICE'.padEnd(30) + 'REPLICAS'.padEnd(15) + 'IMAGE'.padEnd(35) + 'PORTS'));
+        console.log(colors.dim('  ' + '-'.repeat(90)));
 
         for (const service of services) {
           const serviceName = service.name.replace(`${stackName}_`, '');
@@ -136,10 +135,10 @@ export function registerAccessoriesListCommand(program: Command): void {
             : service.image;
           
           console.log(
-            `  ${chalk.cyan(serviceName.padEnd(28))} ` +
+            `  ${colors.info(serviceName.padEnd(28))} ` +
             `${formatReplicas(service.replicas).padEnd(25)} ` +
-            `${chalk.dim(imageShort.padEnd(35))} ` +
-            `${chalk.dim(service.ports || '-')}`
+            `${colors.dim(imageShort.padEnd(35))} ` +
+            `${colors.dim(service.ports || '-')}`
           );
         }
 
@@ -153,7 +152,7 @@ export function registerAccessoriesListCommand(program: Command): void {
         if (volumesResult.stdout.trim()) {
           printSection('Volumes');
           for (const vol of volumesResult.stdout.trim().split('\n').filter(Boolean)) {
-            console.log(`  ${chalk.cyan(vol)}`);
+            console.log(`  ${colors.info(vol)}`);
           }
         }
 

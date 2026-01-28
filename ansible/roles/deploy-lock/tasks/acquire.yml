@@ -1,12 +1,4 @@
 ---
-# Deploy Lock role - prevents concurrent deployments to the same server
-# Creates a lock file on the remote server during deployment
-
-- name: Set lock file path
-  set_fact:
-    lock_file: "/var/lib/dockflow/locks/{{ stack_name }}.lock"
-    lock_dir: "/var/lib/dockflow/locks"
-
 - name: Ensure lock directory exists
   file:
     path: "{{ lock_dir }}"
@@ -29,9 +21,9 @@
     lock_info: "{{ existing_lock.content | b64decode | from_json }}"
   when: lock_check.stat.exists
 
-- name: Check if lock is stale (older than 30 minutes)
+- name: Check if lock is stale
   set_fact:
-    lock_is_stale: "{{ ((ansible_date_time.epoch | int) - (lock_info.timestamp | int)) > 1800 }}"
+    lock_is_stale: "{{ ((ansible_facts['date_time']['epoch'] | int) - (lock_info.timestamp | int)) > (lock_stale_timeout | int) }}"
   when: lock_check.stat.exists
 
 - name: Fail if deployment is locked
@@ -43,20 +35,20 @@
       Started at: {{ lock_info.started_at | default('unknown') }}
       Version: {{ lock_info.version | default('unknown') }}
       
-      If this lock is stale, it will be automatically released after 30 minutes.
+      If this lock is stale, it will be automatically released after {{ (lock_stale_timeout | int / 60) | int }} minutes.
       To force unlock, delete: {{ lock_file }}
   when:
     - lock_check.stat.exists
     - not (lock_is_stale | default(false))
-    - not (force_unlock | default(false) | bool)
+    - not (force_deploy | default(false) | bool)
 
 - name: Acquire deploy lock
   copy:
     content: |
       {
         "performer": "{{ lookup('env', 'USER') | default('ci', true) }}@{{ lookup('env', 'HOSTNAME') | default('unknown', true) }}",
-        "started_at": "{{ ansible_date_time.iso8601 }}",
-        "timestamp": {{ ansible_date_time.epoch }},
+        "started_at": "{{ ansible_facts['date_time']['iso8601'] }}",
+        "timestamp": {{ ansible_facts['date_time']['epoch'] }},
         "version": "{{ version }}",
         "stack": "{{ stack_name }}"
       }

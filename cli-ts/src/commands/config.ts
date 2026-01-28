@@ -3,7 +3,6 @@
  */
 
 import type { Command } from 'commander';
-import chalk from 'chalk';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { parse as parseYaml } from 'yaml';
@@ -15,7 +14,7 @@ import {
   loadServersConfigWithErrors 
 } from '../utils/config';
 import { getAvailableEnvironments, getServerNamesForEnvironment } from '../utils/servers';
-import { printSection, printError, printSuccess, printWarning, printInfo } from '../utils/output';
+import { printSection, printError, printSuccess, printWarning, printDim, printSeparator, colors } from '../utils/output';
 import { 
   validateConfig as validateConfigSchema, 
   validateServersConfig as validateServersSchema,
@@ -139,14 +138,14 @@ export function registerConfigCommand(program: Command): void {
       if (config) {
         printSection('Project Configuration');
         console.log('');
-        console.log(`  ${chalk.gray('Project:')}      ${chalk.cyan(config.project_name)}`);
+        console.log(`  ${colors.dim('Project:')}      ${colors.info(config.project_name)}`);
         
         if (config.registry) {
           const regType = config.registry.type || 'local';
           const regUrl = config.registry.url || '(local registry)';
-          console.log(`  ${chalk.gray('Registry:')}     ${regType} ${chalk.gray(`(${regUrl})`)}`);
+          console.log(`  ${colors.dim('Registry:')}     ${regType} ${colors.dim(`(${regUrl})`)}`);
         } else {
-          console.log(`  ${chalk.gray('Registry:')}     ${chalk.yellow('not configured')}`);
+          console.log(`  ${colors.dim('Registry:')}     ${colors.warning('not configured')}`);
         }
 
         if (config.options) {
@@ -154,13 +153,13 @@ export function registerConfigCommand(program: Command): void {
           if (config.options.remote_build) opts.push('remote-build');
           if (config.options.image_auto_tag !== false) opts.push('image-auto-tag');
           if (opts.length > 0) {
-            console.log(`  ${chalk.gray('Options:')}      ${opts.join(', ')}`);
+            console.log(`  ${colors.dim('Options:')}      ${opts.join(', ')}`);
           }
         }
 
         if (config.health_checks?.enabled) {
           const count = config.health_checks.endpoints?.length || 0;
-          console.log(`  ${chalk.gray('Health:')}       ${chalk.green('enabled')} ${chalk.gray(`(${count} endpoint${count !== 1 ? 's' : ''})`)}`);
+          console.log(`  ${colors.dim('Health:')}       ${colors.success('enabled')} ${colors.dim(`(${count} endpoint${count !== 1 ? 's' : ''})`)}`);
         }
 
         if (config.hooks?.enabled !== false) {
@@ -170,12 +169,12 @@ export function registerConfigCommand(program: Command): void {
           if (config.hooks?.['pre-deploy']) hooks.push('pre-deploy');
           if (config.hooks?.['post-deploy']) hooks.push('post-deploy');
           if (hooks.length > 0) {
-            console.log(`  ${chalk.gray('Hooks:')}        ${hooks.join(', ')}`);
+            console.log(`  ${colors.dim('Hooks:')}        ${hooks.join(', ')}`);
           }
         }
       } else {
         printError('No config.yml found');
-        console.log(chalk.gray('Run `dockflow init` to create project structure'));
+        printDim('Run `dockflow init` to create project structure');
         return;
       }
 
@@ -185,12 +184,12 @@ export function registerConfigCommand(program: Command): void {
       console.log('');
       
       if (envs.length === 0) {
-        console.log(chalk.yellow('  No environments configured'));
+        console.log(colors.warning('  No environments configured'));
       } else {
         for (const env of envs) {
           const serverNames = getServerNamesForEnvironment(env);
-          const envColor = env === 'production' ? chalk.red : env === 'staging' ? chalk.yellow : chalk.blue;
-          console.log(`  ${envColor('●')} ${env.padEnd(15)} ${chalk.gray(`${serverNames.length} server(s)`)}`);
+          const envColor = env === 'production' ? colors.error : env === 'staging' ? colors.warning : colors.primary;
+          console.log(`  ${envColor('●')} ${env.padEnd(15)} ${colors.dim(`${serverNames.length} server(s)`)}`);
         }
       }
 
@@ -209,8 +208,8 @@ export function registerConfigCommand(program: Command): void {
 
       for (const file of files) {
         const exists = existsSync(file.path);
-        const icon = exists ? chalk.green('✓') : chalk.gray('○');
-        const name = exists ? chalk.white(file.name) : chalk.gray(file.name);
+        const icon = exists ? colors.success('✓') : colors.dim('○');
+        const name = exists ? file.name : colors.dim(file.name);
         console.log(`  ${icon} ${name}`);
       }
 
@@ -244,28 +243,28 @@ export function registerConfigCommand(program: Command): void {
 
       // Show schema errors in detail
       if (result.schemaErrors?.config && result.schemaErrors.config.length > 0) {
-        console.log(chalk.red.bold('  config.yml schema errors:'));
+        console.log(colors.error('  config.yml schema errors:'));
         console.log('');
         for (const error of result.schemaErrors.config) {
-          console.log(`    ${chalk.red('✗')} ${chalk.yellow(error.path)}`);
+          console.log(`    ${colors.error('✗')} ${colors.warning(error.path)}`);
           console.log(`      ${error.message}`);
           const suggestion = getSuggestion(error);
           if (suggestion && options.verbose) {
-            console.log(chalk.gray(`      💡 ${suggestion}`));
+            console.log(colors.dim(`      💡 ${suggestion}`));
           }
         }
         console.log('');
       }
 
       if (result.schemaErrors?.servers && result.schemaErrors.servers.length > 0) {
-        console.log(chalk.red.bold('  servers.yml schema errors:'));
+        console.log(colors.error('  servers.yml schema errors:'));
         console.log('');
         for (const error of result.schemaErrors.servers) {
-          console.log(`    ${chalk.red('✗')} ${chalk.yellow(error.path)}`);
+          console.log(`    ${colors.error('✗')} ${colors.warning(error.path)}`);
           console.log(`      ${error.message}`);
           const suggestion = getSuggestion(error);
           if (suggestion && options.verbose) {
-            console.log(chalk.gray(`      💡 ${suggestion}`));
+            console.log(colors.dim(`      💡 ${suggestion}`));
           }
         }
         console.log('');
@@ -276,36 +275,36 @@ export function registerConfigCommand(program: Command): void {
         !e.includes('validation error(s)')
       );
       if (generalErrors.length > 0) {
-        console.log(chalk.red('  General errors:'));
+        console.log(colors.error('  General errors:'));
         for (const error of generalErrors) {
-          console.log(`    ${chalk.red('✗')} ${error}`);
+          console.log(`    ${colors.error('✗')} ${error}`);
         }
         console.log('');
       }
 
       if (result.warnings.length > 0) {
-        console.log(chalk.yellow('  Warnings:'));
+        console.log(colors.warning('  Warnings:'));
         for (const warning of result.warnings) {
-          console.log(`    ${chalk.yellow('⚠')} ${warning}`);
+          console.log(`    ${colors.warning('⚠')} ${warning}`);
         }
         console.log('');
       }
 
       // Summary
-      console.log(chalk.gray('  ─'.repeat(25)));
+      printSeparator(50);
       console.log('');
 
       if (result.valid) {
         if (result.warnings.length === 0) {
-          console.log(chalk.green.bold('  ✓ All configuration files are valid!'));
+          console.log(colors.success('  ✓ All configuration files are valid!'));
         } else {
-          console.log(chalk.yellow.bold('  ⚠ Configuration valid with warnings'));
+          console.log(colors.warning('  ⚠ Configuration valid with warnings'));
         }
       } else {
-        console.log(chalk.red.bold('  ✗ Configuration has validation errors'));
+        console.log(colors.error('  ✗ Configuration has validation errors'));
         console.log('');
-        console.log(chalk.gray('  Fix the errors above and run again.'));
-        console.log(chalk.gray('  Documentation: https://dockflow.shawiizz.dev/configuration'));
+        printDim('  Fix the errors above and run again.');
+        printDim('  Documentation: https://dockflow.shawiizz.dev/configuration');
       }
       console.log('');
 

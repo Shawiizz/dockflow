@@ -1,0 +1,67 @@
+---
+# Shared role: Wait for Docker Swarm services to converge
+#
+# Parameters:
+#   - convergence_stack_name: Name of the stack to check (required)
+#   - convergence_timeout: Timeout in seconds (default from dockflow_defaults)
+#   - convergence_interval: Interval between checks (default from dockflow_defaults)
+#   - convergence_context: Context for logging (e.g., "deployment", "rollback")
+
+- name: Set convergence defaults
+  set_fact:
+    _stack: "{{ convergence_stack_name }}"
+    _timeout: "{{ convergence_timeout | default(dockflow_defaults.convergence_timeout) }}"
+    _interval: "{{ convergence_interval | default(dockflow_defaults.convergence_interval) }}"
+
+- name: Wait for services to converge
+  shell: |
+    TIMEOUT={{ _timeout }}
+    ELAPSED=0
+    INTERVAL={{ _interval }}
+    
+    echo "Waiting for {{ convergence_context | default('services') }} to converge (timeout: ${TIMEOUT}s)..."
+    
+    while [ $ELAPSED -lt $TIMEOUT ]; do
+      SERVICES=$(docker stack services {{ _stack }} --format "{{ '{{' }}.Name{{ '}}' }}:{{ '{{' }}.Replicas{{ '}}' }}" 2>/dev/null)
+      
+      if [ -z "$SERVICES" ]; then
+        echo "No services found yet, waiting..."
+        sleep $INTERVAL
+        ELAPSED=$((ELAPSED + INTERVAL))
+        continue
+      fi
+      
+      ALL_RUNNING=true
+      for SERVICE in $SERVICES; do
+        NAME=$(echo $SERVICE | cut -d: -f1)
+        REPLICAS=$(echo $SERVICE | cut -d: -f2)
+        CURRENT=$(echo $REPLICAS | cut -d/ -f1)
+        DESIRED=$(echo $REPLICAS | cut -d/ -f2)
+        
+        if [ "$CURRENT" != "$DESIRED" ]; then
+          ALL_RUNNING=false
+          echo "Service $NAME: $CURRENT/$DESIRED replicas"
+        fi
+      done
+      
+      if [ "$ALL_RUNNING" = "true" ]; then
+        echo "All services converged successfully"
+        exit 0
+      fi
+      
+      sleep $INTERVAL
+      ELAPSED=$((ELAPSED + INTERVAL))
+    done
+    
+    echo "Timeout waiting for convergence after ${TIMEOUT}s"
+    exit 1
+  register: convergence_result
+  failed_when: false
+  changed_when: false
+
+- name: Fail if convergence timeout exceeded
+  fail:
+    msg: |
+      {{ convergence_context | default('Deployment') | capitalize }} failed: services did not converge within {{ _timeout }}s.
+      {{ convergence_result.stdout_lines | default([]) | join('\n') }}
+  when: convergence_result.rc != 0
