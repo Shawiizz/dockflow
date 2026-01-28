@@ -29,7 +29,7 @@ RUN apt-get update && \
         docker.io \
         sshpass \
         unzip \
-    && pip3 install --no-cache-dir pyyaml ansible \
+    && pip3 install --no-cache-dir pyyaml ansible docker \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure SSH

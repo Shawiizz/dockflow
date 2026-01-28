@@ -179,18 +179,19 @@
   when: stack_deploy is changed
 
 - name: Verify stack services exist
-  community.docker.docker_stack_info:
-    name: "{{ swarm_stack_name }}"
-  register: stack_info
+  ansible.builtin.command:
+    cmd: docker stack services {{ swarm_stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}"
+  register: stack_services
+  changed_when: false
 
 - name: Fail if no services in stack
   fail:
     msg: "Stack {{ swarm_stack_name }} was deployed but has no services!"
-  when: stack_info.results | length == 0
+  when: stack_services.stdout_lines | length == 0
 
 - name: Display stack service count
   debug:
-    msg: "Stack {{ swarm_stack_name }} verified with {{ stack_info.results | length }} service(s)"
+    msg: "Stack {{ swarm_stack_name }} verified with {{ stack_services.stdout_lines | length }} service(s)"
 
 - name: Wait for services to converge
   include_role:
