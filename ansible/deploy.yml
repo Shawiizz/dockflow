@@ -4,7 +4,7 @@
   vars:    
     root_path: "{{ lookup('env', 'ROOT_PATH') }}"
     compose_path: "{{ root_path }}/.dockflow/docker/docker-compose.yml"
-    framework_version: "2.0.7"
+    framework_version: "2.0.8"
   pre_tasks:
     - name: Ensure pip is installed
       ansible.builtin.apt:
