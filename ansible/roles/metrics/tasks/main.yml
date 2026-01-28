@@ -13,13 +13,13 @@
 
 - name: Calculate deployment duration
   set_fact:
-    deploy_duration_ms: "{{ ((ansible_date_time.epoch | int) - (deploy_start_time | default(ansible_date_time.epoch) | int)) * 1000 }}"
+    deploy_duration_ms: "{{ ((ansible_facts['date_time']['epoch'] | int) - (deploy_start_time | default(ansible_facts['date_time']['epoch']) | int)) * 1000 }}"
 
 - name: Build metric entry
   set_fact:
     metric_entry:
-      id: "{{ ansible_date_time.epoch }}-{{ 999999999 | random | string | truncate(6, True, '') }}"
-      timestamp: "{{ ansible_date_time.iso8601 }}"
+      id: "{{ ansible_facts['date_time']['epoch'] }}-{{ 999999999 | random | string | truncate(6, True, '') }}"
+      timestamp: "{{ ansible_facts['date_time']['iso8601'] }}"
       version: "{{ version | default(lookup('env', 'VERSION') | default('unknown', true)) }}"
       environment: "{{ env | default(lookup('env', 'ENV') | default('unknown', true)) }}"
       branch: "{{ branch_name | default(lookup('env', 'BRANCH_NAME') | default('unknown', true)) }}"

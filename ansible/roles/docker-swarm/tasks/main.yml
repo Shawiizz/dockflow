@@ -63,7 +63,7 @@
         "environment": "{{ env }}",
         "version": "{{ version }}",
         "branch": "{{ sanitized_branch_name }}",
-        "timestamp": "{{ ansible_date_time.iso8601 }}"
+        "timestamp": "{{ ansible_facts['date_time']['iso8601'] }}"
       }
     dest: "{{ release_dir }}/metadata.json"
     mode: '0644'

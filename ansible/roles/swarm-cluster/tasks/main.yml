@@ -13,7 +13,7 @@
   block:
     - name: Get node's primary IP for Swarm
       set_fact:
-        swarm_advertise_addr: "{{ ansible_default_ipv4.address | default(ansible_all_ipv4_addresses[0]) }}"
+        swarm_advertise_addr: "{{ ansible_facts['default_ipv4']['address'] | default(ansible_facts['all_ipv4_addresses'][0]) }}"
 
     - name: Initialize Docker Swarm (idempotent)
       community.docker.docker_swarm:

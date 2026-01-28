@@ -114,7 +114,7 @@
 
     - name: Record deployment start time
       set_fact:
-        deploy_start_time: "{{ ansible_date_time.epoch }}"
+        deploy_start_time: "{{ ansible_facts['date_time']['epoch'] }}"
 
     - name: Acquire deploy lock
       include_role:

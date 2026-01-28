@@ -44,6 +44,7 @@
     build_info:
       context: "{{ context_resolved }}"
       dockerfile: "{{ dockerfile_absolute }}"
+      dockerfile_relative: "{{ dockerfile_absolute | relpath(context_resolved) }}"
       tag: "{{ image_tag }}"
   loop: "{{ build_commands_output.stdout_lines | select('truthy') | list }}"
   delegate_to: localhost
@@ -70,16 +71,8 @@
     echo "Starting build: {{ item.tag }}"
     (
       START_TIME=$(date +%s)
-      # Create staging dir for combined tar archive
-      STAGE=$(mktemp -d)
-      trap "rm -rf $STAGE" EXIT
-      # Copy Dockerfile to staging
-      cp "{{ item.dockerfile }}" "$STAGE/Dockerfile"
-      # Create combined tar: context files + Dockerfile (using append)
-      tar -chf "$STAGE/context.tar" -C "{{ item.context }}" --exclude=.git .
-      tar -rf "$STAGE/context.tar" -C "$STAGE" Dockerfile
-      # Stream to docker build
-      cat "$STAGE/context.tar" | docker build -f Dockerfile -t "{{ item.tag }}" -
+      # Stream context via tar (follow symlinks with -h), build with relative dockerfile path
+      tar -chf - -C "{{ item.context }}" --exclude=.git . | docker build -f "{{ item.dockerfile_relative }}" -t "{{ item.tag }}" -
       END_TIME=$(date +%s)
       DURATION=$((END_TIME - START_TIME))
       echo "{{ item.tag }}|$DURATION" >> "$TIMING_FILE"
