@@ -103,14 +103,14 @@
           failed_when: false
 
         - name: Deploy accessories stack to Swarm
-          command: >
-            docker stack deploy
-            --compose-file {{ accessories_dir }}/docker-compose.yml
-            --with-registry-auth
-            --prune
-            {{ accessories_stack_name }}
+          community.docker.docker_stack:
+            name: "{{ accessories_stack_name }}"
+            state: present
+            compose:
+              - "{{ accessories_dir }}/docker-compose.yml"
+            with_registry_auth: true
+            prune: true
           register: accessories_deploy
-          changed_when: "'Creating' in accessories_deploy.stdout or 'Updating' in accessories_deploy.stdout"
 
         - name: Wait for accessories services to be ready
           command: "docker stack services {{ accessories_stack_name }} --format \"{{ '{{' }}.Name{{ '}}' }}: {{ '{{' }}.Replicas{{ '}}' }}\""

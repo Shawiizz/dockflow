@@ -135,104 +135,62 @@
       failed_when: false
 
     - name: Remove stuck stack to allow clean redeployment
-      shell: |
-        echo "Stack has services stuck in rollback_paused state. Removing stack for clean redeployment..."
-        docker stack rm {{ swarm_stack_name }}
-        
-        # Wait for stack to be fully removed
-        TIMEOUT={{ swarm_stack_removal_timeout }}
-        ELAPSED=0
-        while [ $ELAPSED -lt $TIMEOUT ]; do
-          REMAINING=$(docker stack services {{ swarm_stack_name }} 2>&1 | grep -v "Nothing found" | wc -l)
-          if [ "$REMAINING" -eq 0 ]; then
-            echo "Stack removed successfully"
-            break
-          fi
-          echo "Waiting for stack removal... ($REMAINING services remaining)"
-          sleep 2
-          ELAPSED=$((ELAPSED + 2))
-        done
-        
-        # Also cleanup any orphaned containers
-        docker container prune -f 2>/dev/null || true
-        
-        sleep 3
-        echo "Ready for clean deployment"
+      community.docker.docker_stack:
+        name: "{{ swarm_stack_name }}"
+        state: absent
+        absent_retries: 10
+        absent_retries_interval: 2
       when: 
         - stuck_check is defined
         - stuck_check.rc is defined
         - stuck_check.rc != 0
-      changed_when: true
+
+    - name: Cleanup orphaned containers after stuck stack removal
+      command: docker container prune -f
+      when: 
+        - stuck_check is defined
+        - stuck_check.rc is defined
+        - stuck_check.rc != 0
+      changed_when: false
+      failed_when: false
+
+    - name: Wait after stack removal
+      pause:
+        seconds: 3
+      when: 
+        - stuck_check is defined
+        - stuck_check.rc is defined
+        - stuck_check.rc != 0
 
 - name: Deploy Docker stack
-  shell: |
-    cd {{ release_dir }}
-    
-    # Build the deploy command
-    DEPLOY_CMD="docker stack deploy --compose-file docker-compose.yml"
-    {% if config.swarm.prune_services | default(true) | bool %}
-    DEPLOY_CMD="$DEPLOY_CMD --prune"
-    {% endif %}
-    {% if use_registry_auth %}
-    DEPLOY_CMD="$DEPLOY_CMD --with-registry-auth"
-    {% endif %}
-    {% if resolve_image_flag %}
-    DEPLOY_CMD="$DEPLOY_CMD {{ resolve_image_flag }}"
-    {% endif %}
-    DEPLOY_CMD="$DEPLOY_CMD {{ swarm_stack_name }}"
-    
-    # Execute the deploy command and capture output
-    echo "Running: $DEPLOY_CMD"
-    DEPLOY_OUTPUT=$($DEPLOY_CMD 2>&1)
-    DEPLOY_EXIT_CODE=$?
-    echo "$DEPLOY_OUTPUT"
-    
-    # Check for known error patterns in output even if exit code is 0
-    if echo "$DEPLOY_OUTPUT" | grep -q "could not be found"; then
-      echo "ERROR: Stack deployment failed - resource not found"
-      exit 1
-    fi
-    
-    if [ $DEPLOY_EXIT_CODE -ne 0 ]; then
-      echo "ERROR: docker stack deploy failed with exit code $DEPLOY_EXIT_CODE"
-      exit $DEPLOY_EXIT_CODE
-    fi
-    
-    echo "Stack {{ swarm_stack_name }} deployed"
+  community.docker.docker_stack:
+    name: "{{ swarm_stack_name }}"
+    state: present
+    compose:
+      - "{{ release_dir }}/docker-compose.yml"
+    prune: "{{ config.swarm.prune_services | default(true) | bool }}"
+    with_registry_auth: "{{ use_registry_auth }}"
+    resolve_image: "{{ 'never' if not (config.registry.enabled | default(false) | bool) else 'always' }}"
   register: stack_deploy
-  changed_when: true
 
-- name: Verify stack was created successfully
-  shell: |
-    # Wait a moment for stack to register
-    sleep 2
-    
-    # Check if stack exists
-    if ! docker stack ls --format "{{ '{{' }}.Name{{ '}}' }}" | grep -q "^{{ swarm_stack_name }}$"; then
-      echo "ERROR: Stack {{ swarm_stack_name }} was not created!"
-      echo "The docker stack deploy command may have failed silently."
-      echo ""
-      echo "Common causes:"
-      echo "  - External network not found (check 'docker network ls')"
-      echo "  - Invalid compose file syntax"
-      echo "  - Image not found"
-      echo ""
-      echo "To debug, run on the server:"
-      echo "  cd {{ release_dir }}"
-      echo "  docker stack deploy --compose-file docker-compose.yml {{ swarm_stack_name }}"
-      exit 1
-    fi
-    
-    # Check if services were created
-    SERVICE_COUNT=$(docker stack services {{ swarm_stack_name }} --format "{{ '{{' }}.Name{{ '}}' }}" | wc -l)
-    if [ "$SERVICE_COUNT" -eq 0 ]; then
-      echo "ERROR: Stack {{ swarm_stack_name }} exists but has no services!"
-      exit 1
-    fi
-    
-    echo "Stack {{ swarm_stack_name }} verified with $SERVICE_COUNT service(s)"
-  register: stack_verify
-  changed_when: false
+- name: Display stack deployment result
+  debug:
+    msg: "Stack {{ swarm_stack_name }} deployed successfully"
+  when: stack_deploy is changed
+
+- name: Verify stack services exist
+  community.docker.docker_stack_info:
+    name: "{{ swarm_stack_name }}"
+  register: stack_info
+
+- name: Fail if no services in stack
+  fail:
+    msg: "Stack {{ swarm_stack_name }} was deployed but has no services!"
+  when: stack_info.results | length == 0
+
+- name: Display stack service count
+  debug:
+    msg: "Stack {{ swarm_stack_name }} verified with {{ stack_info.results | length }} service(s)"
 
 - name: Wait for services to converge
   include_role:
