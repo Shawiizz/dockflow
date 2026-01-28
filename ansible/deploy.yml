@@ -12,12 +12,6 @@
       run_once: true
       delegate_to: localhost
 
-    - name: Load framework configuration
-      import_role:
-        name: load-config
-      run_once: true
-      delegate_to: localhost
-
     - name: Validate project_name is set
       fail:
         msg: |

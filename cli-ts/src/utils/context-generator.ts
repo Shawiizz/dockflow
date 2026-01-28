@@ -62,6 +62,10 @@ export interface AnsibleContext {
   server_name: string;
   server_role: string;
   
+  // Project configuration (from .dockflow/config.yml)
+  // This replaces the load-config role - CLI is the single source of truth
+  config: Record<string, unknown>;
+  
   // SSH connection to manager (named ssh_connection to avoid Ansible reserved name)
   ssh_connection: SSHConnectionContext;
   
@@ -97,6 +101,7 @@ export interface BuildDeployContextParams {
     server: ResolvedServer;
     privateKey: string;
   }>;
+  config: Record<string, unknown>;
   options: {
     skipBuild?: boolean;
     skipDockerInstall?: boolean;
@@ -112,7 +117,7 @@ export interface BuildDeployContextParams {
  * Build the complete Ansible context for deployment
  */
 export function buildDeployContext(params: BuildDeployContextParams): AnsibleContext {
-  const { env, version, branchName, deployment, templateContext, managerPrivateKey, managerPassword, workers, options } = params;
+  const { env, version, branchName, deployment, templateContext, managerPrivateKey, managerPassword, workers, config, options } = params;
   const manager = deployment.manager;
 
   // Build worker contexts
@@ -137,6 +142,9 @@ export function buildDeployContext(params: BuildDeployContextParams): AnsibleCon
     branch_name: branchName,
     server_name: manager.name,
     server_role: 'manager',
+    
+    // Project configuration - single source of truth from CLI
+    config,
     
     ssh_connection: {
       host: manager.host,
@@ -175,6 +183,9 @@ export interface BuildContext {
   version: string;
   branch_name: string;
   
+  // Project configuration (from .dockflow/config.yml)
+  config: Record<string, unknown>;
+  
   // Template context
   current: TemplateContext['current'];
   servers: TemplateContext['servers'];
@@ -198,6 +209,7 @@ export interface BuildBuildContextParams {
   branchName: string;
   templateContext: TemplateContext;
   userEnv: Record<string, string>;
+  config: Record<string, unknown>;
   options: {
     skipHooks?: boolean;
     services?: string;
@@ -208,7 +220,7 @@ export interface BuildBuildContextParams {
  * Build the Ansible context for build command
  */
 export function buildBuildContext(params: BuildBuildContextParams): BuildContext {
-  const { env, branchName, templateContext, userEnv, options } = params;
+  const { env, branchName, templateContext, userEnv, config, options } = params;
 
   // Flatten user env vars to lowercase
   const flattenedEnv: Record<string, string> = {};
@@ -220,6 +232,8 @@ export function buildBuildContext(params: BuildBuildContextParams): BuildContext
     env,
     version: 'build',
     branch_name: branchName,
+    
+    config,
     
     current: templateContext.current,
     servers: templateContext.servers,

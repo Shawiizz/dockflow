@@ -265,6 +265,7 @@ export async function runDeploy(env: string, version: string | undefined, option
     managerPrivateKey,
     managerPassword,
     workers: workersWithKeys,
+    config: config as unknown as Record<string, unknown>,
     options: {
       skipBuild: options.skipBuild,
       skipDockerInstall: options.skipDockerInstall,

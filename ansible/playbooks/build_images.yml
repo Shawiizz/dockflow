@@ -17,7 +17,6 @@
         msg: "Dockflow v{{ framework_version }} - Build Mode"
 
   roles:
-    - role: ../roles/load-config
     - role: ../roles/prepare-deployment
     # Pre-build hook (runs locally)
     - role: ../roles/hooks
