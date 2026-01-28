@@ -12,6 +12,7 @@ RUN apk add --no-cache \
     openssh-client \
     jq \
     parallel \
+    tar \
     # Node.js for decomposerize
     nodejs \
     npm \

@@ -20,12 +20,13 @@ DOCKFLOW_PATH="${DOCKFLOW_PATH:-/tmp/dockflow}"
 # Default ROOT_PATH to /project (will be updated by setup_workspace.sh if needed)
 export ROOT_PATH="${ROOT_PATH:-/project}"
 
-# Setup workspace with symlinks (skip in CI where files are cloned, not mounted)
-if [ "$CI" != "true" ] && [ -f "$DOCKFLOW_PATH/.common/scripts/setup_workspace.sh" ]; then
+# Setup workspace with symlinks when /project is mounted (read-only protection)
+# Always setup workspace when running in container with mounted /project
+if [ -f "$DOCKFLOW_PATH/.common/scripts/setup_workspace.sh" ] &&
+	[ -d "/project/.dockflow" ]; then
+	echo "Setting up writable workspace..."
 	source "$DOCKFLOW_PATH/.common/scripts/setup_workspace.sh"
 	# ROOT_PATH is now /workspace (set by setup_workspace.sh)
-else
-	[ "$CI" = "true" ] && echo "CI detected, skipping workspace setup (files are not mounted)"
 fi
 
 # Fix CRLF line endings in .dockflow files (Windows compatibility)

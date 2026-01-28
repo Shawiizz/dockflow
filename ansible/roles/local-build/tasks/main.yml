@@ -30,21 +30,14 @@
   set_fact:
     build_commands: "{{ build_commands + [build_info] }}"
   vars:
-    # Extract the context (last word of the command)
     context_relative: "{{ item.split()[-1] }}"
-    # Resolve the context path - use realpath to follow symlinks
     context_resolved: "{{ (docker_compose_path + '/' + context_relative) | realpath }}"
-    # Extract dockerfile path (after -f)
     dockerfile_original: "{{ item | regex_search('-f\\s+([^\\s]+)', '\\1') | first }}"
-    # Resolve dockerfile path
     dockerfile_absolute: "{{ (docker_compose_path + '/' + dockerfile_original) | realpath }}"
-    # Extract image tag
     image_tag: "{{ item | regex_search('-t\\s+\"?([^\"\\s]+)\"?', '\\1') | first }}"
-    # Build info dict
     build_info:
       context: "{{ context_resolved }}"
       dockerfile: "{{ dockerfile_absolute }}"
-      dockerfile_relative: "{{ dockerfile_absolute | relpath(context_resolved) }}"
       tag: "{{ image_tag }}"
   loop: "{{ build_commands_output.stdout_lines | select('truthy') | list }}"
   delegate_to: localhost
@@ -71,8 +64,12 @@
     echo "Starting build: {{ item.tag }}"
     (
       START_TIME=$(date +%s)
-      # Stream context via tar (follow symlinks with -h), build with relative dockerfile path
-      tar -chf - -C "{{ item.context }}" --exclude=.git . | docker build -f "{{ item.dockerfile_relative }}" -t "{{ item.tag }}" -
+      STAGE=$(mktemp -d)
+      trap "rm -rf $STAGE" EXIT
+      cp "{{ item.dockerfile }}" "$STAGE/Dockerfile"
+      tar -chf "$STAGE/context.tar" -C "{{ item.context }}" --exclude=.git .
+      tar -rf "$STAGE/context.tar" -C "$STAGE" Dockerfile
+      cat "$STAGE/context.tar" | docker build -f Dockerfile -t "{{ item.tag }}" -
       END_TIME=$(date +%s)
       DURATION=$((END_TIME - START_TIME))
       echo "{{ item.tag }}|$DURATION" >> "$TIMING_FILE"
