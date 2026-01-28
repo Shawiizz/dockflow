@@ -9,6 +9,7 @@ import { join } from 'path';
 import { getProjectRoot, loadConfig, loadServersConfig, isDockerAvailable, getAnsibleDockerImage } from './config';
 import { printSuccess, printWarning, printDim } from './output';
 import { DOCKFLOW_REPO, DOCKFLOW_VERSION, CONTAINER_PATHS } from '../constants';
+import { isCI } from './secrets';
 import { CLIError, ConfigError, DockerError } from './errors';
 
 /**
@@ -39,13 +40,15 @@ export function buildDockerCommand(devMode: boolean = false, contextFilePath?: s
   // Check if we have a TTY available (not in CI)
   const isTTY = process.stdin.isTTY && process.stdout.isTTY;
   
+  // In CI, files are disposable so mount read-write (simpler, no workspace setup needed)
+  // Locally, mount read-only to protect source files (setup_workspace.sh creates writable /workspace)
+  const mountMode = isCI() ? '' : ':ro';
+  
   const dockerCmd = [
     'docker', 'run', '--rm',
     '--pull', 'always',
     ...(isTTY ? ['-it'] : []),
-    // Mount project as read-only to protect source files
-    // The setup_workspace.sh script creates a writable /workspace with symlinks
-    '-v', `${projectRoot}:${CONTAINER_PATHS.PROJECT}:ro`,
+    '-v', `${projectRoot}:${CONTAINER_PATHS.PROJECT}${mountMode}`,
     '-v', '/var/run/docker.sock:/var/run/docker.sock',
   ];
 
@@ -94,13 +97,21 @@ export async function runAnsibleCommand(options: RunCommandOptions): Promise<voi
   
   // In dev mode, dockflow is already mounted at /tmp/dockflow by buildDockerCommand
   // In non-dev mode, we need to clone it before running the command
-  // The entrypoint.sh handles workspace setup automatically
   // Always ensure inventory.py is executable (required for Ansible dynamic inventory)
   const chmodInventory = `chmod +x ${CONTAINER_PATHS.DOCKFLOW}/ansible/inventory.py 2>/dev/null || true`;
   
+  // Setup workspace script - only needed locally where /project is mounted read-only
+  // In CI, /project is mounted read-write so no setup needed
+  const setupWorkspace = isCI() ? '' : `
+if [ -f "${CONTAINER_PATHS.DOCKFLOW}/.common/scripts/setup_workspace.sh" ] && [ -d "/project/.dockflow" ]; then
+  echo "Setting up writable workspace..."
+  source "${CONTAINER_PATHS.DOCKFLOW}/.common/scripts/setup_workspace.sh"
+fi`;
+
   const cloneStep = devMode 
     ? `echo "Using local dockflow framework (dev mode)..."
-${chmodInventory}`
+${chmodInventory}
+${setupWorkspace}`
     : `
 echo "Cloning dockflow framework v${DOCKFLOW_VERSION}..."
 if ! git clone --depth 1 --branch "${DOCKFLOW_VERSION}" "${DOCKFLOW_REPO}" ${CONTAINER_PATHS.DOCKFLOW} 2>/dev/null; then
@@ -108,7 +119,8 @@ if ! git clone --depth 1 --branch "${DOCKFLOW_VERSION}" "${DOCKFLOW_REPO}" ${CON
   exit 1
 fi
 chmod +x ${CONTAINER_PATHS.DOCKFLOW}/.common/scripts/*.sh 2>/dev/null || true
-${chmodInventory}`;
+${chmodInventory}
+${setupWorkspace}`;
 
   const fullScript = `
 set -e
