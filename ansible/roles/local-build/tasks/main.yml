@@ -82,13 +82,10 @@
     echo "Starting build: {{ item.tag }}"
     (
       START_TIME=$(date +%s)
-      # Stream context via tar (follow symlinks with -h), build with relative dockerfile path
-      # When dockerfile is outside the original context, we use root_path and include both paths
       {% if item.dockerfile_in_context %}
       tar -chf - -C "{{ item.context }}" --exclude=.git . | docker build -f "{{ item.dockerfile_relative }}" -t "{{ item.tag }}" -
       {% else %}
-      # Dockerfile is outside context - tar from root and include both .dockflow/docker and the context subpath
-      tar -chf - -C "{{ item.context }}" --exclude=.git .dockflow/docker "{{ item.context_subpath }}" | docker build -f "{{ item.dockerfile_relative }}" -t "{{ item.tag }}" -
+      tar -chf - -C "{{ item.context }}" --exclude=.git --transform 's|^{{ item.context_subpath }}/||' --transform 's|^{{ item.context_subpath }}$||' .dockflow/docker "{{ item.context_subpath }}" | docker build -f "{{ item.dockerfile_relative }}" -t "{{ item.tag }}" -
       {% endif %}
       END_TIME=$(date +%s)
       DURATION=$((END_TIME - START_TIME))
