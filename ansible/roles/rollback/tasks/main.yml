@@ -170,7 +170,10 @@
               {{ images | unique }}
 
         - name: Remove images from failed deployment
-          shell: "docker rmi {{ item }} 2>/dev/null || true"
+          community.docker.docker_image:
+            name: "{{ item }}"
+            state: absent
+            force_absent: true
           loop: "{{ failed_images | default([]) }}"
           failed_when: false
           loop_control:

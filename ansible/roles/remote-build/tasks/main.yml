@@ -30,9 +30,15 @@
   failed_when: false  # Non-critical: cleanup can fail if no old dirs exist
 
 - name: Clean up Docker to free space
-  shell: docker system prune -af || true
-  changed_when: false
+  community.docker.docker_prune:
+    containers: true
+    images: true
+    images_filters:
+      dangling: false
+    networks: true
+    builder_cache: true
   failed_when: false  # Non-critical: prune can fail on empty system
+  # Note: volumes: false (default) - never prune volumes as they may contain persistent data
 
 - name: Build and distribute images
   block:

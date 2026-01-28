@@ -182,7 +182,10 @@
     label: "Cleaning containers for {{ item }}"
 
 - name: Delete old images
-  shell: "docker rmi {{ item }} 2>/dev/null || true"
+  community.docker.docker_image:
+    name: "{{ item }}"
+    state: absent
+    force_absent: true
   loop: "{{ images_to_delete }}"
   when: images_to_delete | length > 0
   failed_when: false

@@ -41,9 +41,10 @@
       when: images_to_push is defined and images_to_push | length > 0
 
     - name: Logout from Docker registry
-      shell: docker logout {{ registry_url }}
+      community.docker.docker_login:
+        registry_url: "{{ registry_url }}"
+        state: absent
       when: registry_login_success | default(false)
-      changed_when: false
       failed_when: false
 
   when:

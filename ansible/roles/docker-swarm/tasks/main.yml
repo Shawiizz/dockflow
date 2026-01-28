@@ -146,12 +146,12 @@
         - stuck_check.rc != 0
 
     - name: Cleanup orphaned containers after stuck stack removal
-      command: docker container prune -f
+      community.docker.docker_prune:
+        containers: true
       when: 
         - stuck_check is defined
         - stuck_check.rc is defined
         - stuck_check.rc != 0
-      changed_when: false
       failed_when: false
 
     - name: Wait after stack removal
