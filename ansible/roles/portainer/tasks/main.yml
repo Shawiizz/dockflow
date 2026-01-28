@@ -1,23 +1,35 @@
 ---
-- name: Remove existing Portainer container
-  command: docker rm -f portainer
-  failed_when: false
-  changed_when: false
-
 - name: Create Docker volume for Portainer data
-  command: docker volume create portainer_data
-  failed_when: false
-  changed_when: false
+  community.docker.docker_volume:
+    name: portainer_data
+    state: present
 
 - name: Generate admin password hash
-  shell: "docker run --rm httpd:2.4-alpine htpasswd -nbB admin {{ lookup('env', 'PORTAINER_PASSWORD') | quote }}"
+  community.docker.docker_container:
+    name: portainer_htpasswd_temp
+    image: httpd:2.4-alpine
+    command: "htpasswd -nbB admin {{ lookup('env', 'PORTAINER_PASSWORD') | quote }}"
+    detach: false
+    cleanup: true
+    state: started
   register: password_hash_output
-  changed_when: false
 
 - name: Extract password hash
   set_fact:
-    admin_password_hash: "{{ password_hash_output.stdout.split(':')[1] }}"
+    admin_password_hash: "{{ password_hash_output.container.Output.split(':')[1] | trim }}"
 
-- name: Run Portainer container
-  command: "docker run -d -p 8000:8000 -p 9443:9443 -p {{ lookup('env', 'PORTAINER_HTTP_PORT') }}:9000 --name portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:lts --admin-password='{{ admin_password_hash }}'"
-  changed_when: true
+- name: Deploy Portainer container
+  community.docker.docker_container:
+    name: portainer
+    image: portainer/portainer-ce:lts
+    state: started
+    recreate: true
+    restart_policy: always
+    ports:
+      - "8000:8000"
+      - "9443:9443"
+      - "{{ lookup('env', 'PORTAINER_HTTP_PORT') }}:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    command: "--admin-password='{{ admin_password_hash }}'"
