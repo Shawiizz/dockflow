@@ -5,21 +5,28 @@
     root_path: "{{ lookup('env', 'ROOT_PATH') }}"
     compose_path: "{{ root_path }}/.dockflow/docker/docker-compose.yml"
     framework_version: "2.0.8"
+    dockflow_venv: /opt/dockflow-venv
   pre_tasks:
-    - name: Ensure pip is installed
+    - name: Ensure python3-venv is installed
       ansible.builtin.apt:
-        name: python3-pip
+        name: python3-venv
         state: present
         update_cache: true
       become: true
 
-    - name: Ensure Docker SDK and dependencies are installed
+    - name: Create Dockflow virtualenv with Docker SDK
       ansible.builtin.pip:
         name:
           - docker
           - jsondiff
         state: present
+        virtualenv: "{{ dockflow_venv }}"
+        virtualenv_command: python3 -m venv
       become: true
+
+    - name: Set ansible_python_interpreter to use Dockflow venv
+      ansible.builtin.set_fact:
+        ansible_python_interpreter: "{{ dockflow_venv }}/bin/python"
 
     - name: Display Dockflow version
       debug:
