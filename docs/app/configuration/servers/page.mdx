@@ -243,17 +243,4 @@ Available variables:
 - `{{ current.host }}` - Current server host
 - `{{ current.role }}` - Current server role (manager/worker)
 
-## Migration from Old System
 
-If you're migrating from the old multi-host system:
-
-| Old System | New System |
-|------------|------------|
-| Multiple independent servers | Single Swarm cluster |
-| Deploy to each server | Deploy once to manager |
-| Manual load balancing | Swarm orchestration |
-| N × build time | 1 × build time |
-
-<Callout type="info">
-  The new Swarm-based system is faster (build once, deploy once) and handles load balancing automatically.
-</Callout>

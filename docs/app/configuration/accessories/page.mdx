@@ -22,8 +22,6 @@ myapp-production-accessories  ← Databases, Redis, etc. (deployed once)
 Create a file at `.dockflow/docker/accessories.yml` using standard Docker Compose format:
 
 ```yaml filename=".dockflow/docker/accessories.yml"
-version: "3.8"
-
 services:
   postgres:
     image: postgres:16-alpine
