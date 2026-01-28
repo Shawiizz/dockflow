@@ -22,9 +22,9 @@ export ROOT_PATH="${ROOT_PATH:-/project}"
 
 # Setup workspace with symlinks when /project is mounted read-only
 # Check if /project/.dockflow exists and is not writable
-if [ -f "$DOCKFLOW_PATH/.common/scripts/setup_workspace.sh" ] && \
-   [ -d "/project/.dockflow" ] && \
-   ! [ -w "/project/.dockflow" ]; then
+if [ -f "$DOCKFLOW_PATH/.common/scripts/setup_workspace.sh" ] &&
+	[ -d "/project/.dockflow" ] &&
+	! [ -w "/project/.dockflow" ]; then
 	echo "Project mounted read-only, setting up writable workspace..."
 	source "$DOCKFLOW_PATH/.common/scripts/setup_workspace.sh"
 	# ROOT_PATH is now /workspace (set by setup_workspace.sh)
