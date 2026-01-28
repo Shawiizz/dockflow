@@ -11,25 +11,19 @@
 
 - name: Ensure Docker Swarm is initialized on manager
   block:
-    - name: Check if Docker Swarm is initialized
-      shell: docker info --format '{{ '{{' }}.Swarm.LocalNodeState{{ '}}' }}'
-      register: swarm_state
-      changed_when: false
-      failed_when: false
-
     - name: Get node's primary IP for Swarm
       set_fact:
         swarm_advertise_addr: "{{ ansible_default_ipv4.address | default(ansible_all_ipv4_addresses[0]) }}"
 
-    - name: Initialize Docker Swarm if not already initialized
-      shell: |
-        docker swarm init --advertise-addr {{ swarm_advertise_addr }} 2>/dev/null || true
+    - name: Initialize Docker Swarm (idempotent)
+      community.docker.docker_swarm:
+        state: present
+        advertise_addr: "{{ swarm_advertise_addr }}"
       register: swarm_init
-      when: swarm_state.stdout | trim != 'active'
 
     - name: Display Swarm status
       debug:
-        msg: "Docker Swarm {{ 'initialized' if swarm_init.changed | default(false) else 'already active' }} on {{ swarm_advertise_addr }}"
+        msg: "Docker Swarm {{ 'initialized' if swarm_init.changed else 'already active' }} on {{ swarm_advertise_addr }}"
 
 - name: Get Swarm cluster info
   block:

@@ -1,40 +1,42 @@
-FROM ubuntu:22.04
+# Dockflow CI Image - Optimized Alpine-based image
+# Contains: Ansible, Docker CLI, Node.js, yq, decomposerize
 
-ENV DEBIAN_FRONTEND=noninteractive
+FROM python:3.12-alpine
 
-# Install base dependencies
-RUN apt-get update && apt-get install -y \
+# Install system dependencies in a single layer
+RUN apk add --no-cache \
+    # Core tools
+    bash \
     curl \
-    gnupg \
-    ca-certificates \
-    lsb-release \
-    software-properties-common \
-    apt-transport-https \
-    unzip \
-    python3-pip \
-    python3-venv \
     git \
-    wget \
-    parallel \
+    openssh-client \
     jq \
-    && rm -rf /var/lib/apt/lists/*
+    parallel \
+    # Node.js for decomposerize
+    nodejs \
+    npm \
+    # Docker CLI only (no daemon - we use host's Docker socket)
+    docker-cli \
+    docker-cli-buildx \
+    # Build dependencies for Python packages (removed after pip install)
+    gcc \
+    musl-dev \
+    libffi-dev \
+    && pip install --no-cache-dir ansible \
+    && apk del gcc musl-dev libffi-dev \
+    && rm -rf /root/.cache
 
-# Add all repositories first, then install all packages in one apt-get call
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && curl -fsSL https://get.docker.com | bash - \
-    && apt-add-repository ppa:ansible/ansible -y \
-    && apt-get update \
-    && apt-get install -y nodejs docker-ce docker-ce-cli containerd.io ansible \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN npm install -g shawiizz-decomposerize
-
-RUN wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq \
+# Install yq (YAML processor)
+RUN curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq \
     && chmod +x /usr/local/bin/yq
 
-# Pre-install Ansible Galaxy roles (avoid network calls at runtime)
-RUN ansible-galaxy role install geerlingguy.docker
+# Install decomposerize globally
+RUN npm install -g shawiizz-decomposerize \
+    && npm cache clean --force
+
+# Pre-install Ansible Galaxy roles and collections (avoid network calls at runtime)
+RUN ansible-galaxy collection install community.docker \
+    && ansible-galaxy role install geerlingguy.docker
 
 # Copy entrypoint script
 COPY .common/scripts/entrypoint.sh /entrypoint.sh
