@@ -7,14 +7,14 @@ import { z } from 'zod';
 
 /**
  * Environment variables dictionary schema
- * Keys must be valid environment variable names
+ * Keys must be valid environment variable names (case-insensitive, converted to lowercase internally)
  */
-const ENV_VAR_NAME_REGEX = /^[A-Z][A-Z0-9_]*$/;
+const ENV_VAR_NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]*$/;
 
 export const EnvVarsSchema = z.record(
   z.string().regex(
     ENV_VAR_NAME_REGEX,
-    'Environment variable names must be uppercase, start with a letter, and contain only letters, numbers, and underscores'
+    'Environment variable names must start with a letter and contain only letters, numbers, and underscores'
   ),
   z.string()
 ).describe('Environment variables key-value pairs');

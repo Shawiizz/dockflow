@@ -4,7 +4,7 @@
   vars:    
     root_path: "{{ lookup('env', 'ROOT_PATH') }}"
     compose_path: "{{ root_path }}/.dockflow/docker/docker-compose.yml"
-    framework_version: "2.0.17"
+    framework_version: "2.0.18"
     dockflow_venv: /opt/dockflow-venv
   pre_tasks:
     - name: Ensure python3-venv is installed
