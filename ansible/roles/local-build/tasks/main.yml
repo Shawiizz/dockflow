@@ -30,32 +30,14 @@
   set_fact:
     build_commands: "{{ build_commands + [build_info] }}"
   vars:
-    # Extract the context (last word of the command)
     context_relative: "{{ item.split()[-1] }}"
-    # Resolve the context path - use realpath to follow symlinks
     context_resolved: "{{ (docker_compose_path + '/' + context_relative) | realpath }}"
-    # Extract dockerfile path (after -f)
     dockerfile_original: "{{ item | regex_search('-f\\s+([^\\s]+)', '\\1') | first }}"
-    # Resolve dockerfile path
     dockerfile_absolute: "{{ (docker_compose_path + '/' + dockerfile_original) | realpath }}"
-    # Check if dockerfile is inside context
-    dockerfile_in_context: "{{ dockerfile_absolute.startswith(context_resolved + '/') }}"
-    # If dockerfile is outside context, we need to use root_path as context base
-    # and include both the original context and the dockerfile
-    effective_context: "{{ context_resolved if dockerfile_in_context else root_path }}"
-    # Relative path from effective context to dockerfile
-    dockerfile_relative: "{{ dockerfile_absolute | relpath(effective_context) }}"
-    # Relative path from root_path to context (for tar include when using root as context)
-    context_subpath: "{{ context_resolved | relpath(root_path) }}"
-    # Extract image tag
     image_tag: "{{ item | regex_search('-t\\s+\"?([^\"\\s]+)\"?', '\\1') | first }}"
-    # Build info dict
     build_info:
-      context: "{{ effective_context }}"
-      context_subpath: "{{ context_subpath if not dockerfile_in_context else '.' }}"
+      context: "{{ context_resolved }}"
       dockerfile: "{{ dockerfile_absolute }}"
-      dockerfile_relative: "{{ dockerfile_relative }}"
-      dockerfile_in_context: "{{ dockerfile_in_context }}"
       tag: "{{ image_tag }}"
   loop: "{{ build_commands_output.stdout_lines | select('truthy') | list }}"
   delegate_to: localhost
@@ -82,11 +64,12 @@
     echo "Starting build: {{ item.tag }}"
     (
       START_TIME=$(date +%s)
-      {% if item.dockerfile_in_context %}
-      tar -chf - -C "{{ item.context }}" --exclude=.git . | docker build -f "{{ item.dockerfile_relative }}" -t "{{ item.tag }}" -
-      {% else %}
-      tar -chf - -C "{{ item.context }}" --exclude=.git --transform 's|^{{ item.context_subpath }}/||' --transform 's|^{{ item.context_subpath }}$||' .dockflow/docker "{{ item.context_subpath }}" | docker build -f "{{ item.dockerfile_relative }}" -t "{{ item.tag }}" -
-      {% endif %}
+      STAGE=$(mktemp -d)
+      trap "rm -rf $STAGE" EXIT
+      cp "{{ item.dockerfile }}" "$STAGE/Dockerfile"
+      tar -chf "$STAGE/context.tar" -C "{{ item.context }}" --exclude=.git .
+      tar -rf "$STAGE/context.tar" -C "$STAGE" Dockerfile
+      cat "$STAGE/context.tar" | docker build -f Dockerfile -t "{{ item.tag }}" -
       END_TIME=$(date +%s)
       DURATION=$((END_TIME - START_TIME))
       echo "{{ item.tag }}|$DURATION" >> "$TIMING_FILE"
