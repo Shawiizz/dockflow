@@ -1,5 +1,5 @@
 include:
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/2.0.15/.gitlab/common/variables.yml'
+  - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/2.0.16/.gitlab/common/variables.yml'
 
 stages:
   - build
@@ -13,7 +13,7 @@ build:
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
     DOCKFLOW_REPOSITORY_URL: https://github.com/Shawiizz/dockflow.git
-    DOCKFLOW_FRAMEWORK_VERSION: 2.0.15
+    DOCKFLOW_FRAMEWORK_VERSION: 2.0.16
   before_script:
     - apt-get update && apt-get install -y git python3-pip ansible npm
     - npm i -g shawiizz-decomposerize
@@ -21,7 +21,7 @@ build:
   script:
     - |
       # Install Dockflow CLI (versionnée)
-      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/2.0.15/install.sh | bash
+      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/2.0.16/install.sh | bash
       # Build images avec Dockflow CLI
       dockflow build "$CI_COMMIT_REF_NAME"
   rules:

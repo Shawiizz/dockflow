@@ -28,7 +28,7 @@ on:
         description: "Skip accessories deployment entirely"
 
 env:
-  DOCKFLOW_VERSION: 2.0.15
+  DOCKFLOW_VERSION: 2.0.16
 
 jobs:
   deploy:

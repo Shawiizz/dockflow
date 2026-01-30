@@ -5,7 +5,7 @@
   connection: local
   gather_facts: false
   vars:
-    framework_version: "2.0.15"
+    framework_version: "2.0.16"
     root_path: "{{ lookup('env', 'ROOT_PATH') }}"
     compose_path: "{{ root_path }}/.dockflow/docker/docker-compose.yml"
     skip_hooks: "{{ lookup('env', 'SKIP_HOOKS') | default(false) | bool }}"
