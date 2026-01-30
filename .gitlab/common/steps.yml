@@ -21,7 +21,7 @@
   script:
     - |
       # Install Dockflow CLI
-      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/2.0.14/install.sh | bash
+      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/2.0.15/install.sh | bash
       
       # Build deploy command with options
       DEPLOY_OPTS=""
