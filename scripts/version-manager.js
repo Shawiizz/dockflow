@@ -236,7 +236,7 @@ class VersionManager {
         return updatedFiles;
     }
 
-    run(type) {
+    run(type, push = false) {
         try {
             const currentVersion = this.getCurrentVersion();
             const versionType = this.ciImageMode ? 'CI Docker image' : 'Framework';
@@ -252,9 +252,39 @@ class VersionManager {
             console.log(`\n🎉 ${versionType} version updated successfully!`);
             console.log(`📦 ${currentVersion} → ${newVersion}`);
             console.log(`📁 ${updatedFiles + 1} file(s) modified`);
+
+            if (push) {
+                this.gitPushRelease(newVersion);
+            }
             
         } catch (error) {
             console.error('❌ Error:', error.message);
+            process.exit(1);
+        }
+    }
+
+    gitPushRelease(version) {
+        const { execSync } = require('child_process');
+        
+        try {
+            console.log('\n📤 Pushing release...');
+            
+            // Stage all changes
+            execSync('git add -A', { stdio: 'inherit' });
+            
+            // Commit with release message
+            execSync(`git commit -m "release: ${version}"`, { stdio: 'inherit' });
+            
+            // Push to remote
+            execSync('git push', { stdio: 'inherit' });
+            
+            // Create and push tag
+            execSync(`git tag ${version}`, { stdio: 'inherit' });
+            execSync(`git push origin ${version}`, { stdio: 'inherit' });
+            
+            console.log(`\n✅ Released and tagged: ${version}`);
+        } catch (error) {
+            console.error('❌ Git operation failed:', error.message);
             process.exit(1);
         }
     }
@@ -264,9 +294,10 @@ class VersionManager {
 const args = process.argv.slice(2);
 const type = args[0];
 const ciImageMode = args.includes('--ci-image');
+const push = args.includes('--push');
 
 if (!type || !['dev', 'release', 'downgrade'].includes(type)) {
-    console.log('Usage: node version-manager.js <type> [--ci-image]');
+    console.log('Usage: node version-manager.js <type> [--ci-image] [--push]');
     console.log('Available types:');
     console.log('  dev       - Add or increment dev version (1.0.33 → 1.0.33-dev1 or 1.0.33-dev1 → 1.0.33-dev2)');
     console.log('  release   - Create release version (1.0.33-dev1 → 1.0.34) or increment (1.0.33 → 1.0.34)');
@@ -274,8 +305,9 @@ if (!type || !['dev', 'release', 'downgrade'].includes(type)) {
     console.log('');
     console.log('Flags:');
     console.log('  --ci-image - Update CI Docker image version instead of framework version');
+    console.log('  --push     - Git add, commit, push, and create tag automatically');
     process.exit(1);
 }
 
 const versionManager = new VersionManager(ciImageMode);
-versionManager.run(type);
+versionManager.run(type, push);
