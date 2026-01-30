@@ -46,10 +46,9 @@ All Ansible variables are available in your templates (always lowercase):
 |----------|-------------|--------|
 | `{{ env }}` | Target environment | `production` |
 | `{{ version }}` | Deployment version | `1.2.3` |
-| `{{ project_name }}` | Project name from config | `my-app` |
+| `{{ config.project_name }}` | Project name from config | `my-app` |
 | `{{ stack_name }}` | Swarm stack name | `my-app-production` |
 | `{{ branch_name }}` | Git branch name | `main` |
-| `{{ my_var }}` | Environment variables from servers.yml + CI secrets (lowercase) | - |
 
 ### Config (`{{ config }}`)
 
@@ -73,7 +72,7 @@ The `current` object contains information about the server being deployed to:
 | `{{ current.user }}` | SSH user | `dockflow` |
 | `{{ current.role }}` | Server role | `manager` or `worker` |
 | `{{ current.tags }}` | Server tags | `['production']` |
-| `{{ current.env }}` | Server's merged environment variables | `{...}` |
+| `{{ current.env.my_var }}` | Environment variable (lowercase key) | `my-value` |
 
 ### All Servers (`{{ servers }}`)
 

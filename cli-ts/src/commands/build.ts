@@ -102,7 +102,6 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
       env,
       branchName,
       templateContext,
-      userEnv: envVars,
       config: config as unknown as Record<string, unknown>,
       options: {
         skipHooks: options.skipHooks,

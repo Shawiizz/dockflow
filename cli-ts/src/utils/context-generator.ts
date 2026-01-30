@@ -78,10 +78,6 @@ export interface AnsibleContext {
   servers: TemplateContext['servers'];
   cluster: TemplateContext['cluster'];
   
-  // User environment variables (from servers.yml + CI secrets)
-  // These are flattened for backward compatibility with {{ var_name }}
-  user_env: Record<string, string>;
-  
   // Deployment options
   options: DeploymentOptions;
 }
@@ -129,13 +125,6 @@ export function buildDeployContext(params: BuildDeployContextParams): AnsibleCon
     private_key: w.privateKey,
   }));
 
-  // Flatten user env vars for backward compatibility
-  // Templates can use {{ db_host }} instead of {{ current.env.DB_HOST }}
-  const userEnv: Record<string, string> = {};
-  for (const [key, value] of Object.entries(manager.env)) {
-    userEnv[key.toLowerCase()] = value;
-  }
-
   return {
     env,
     version,
@@ -160,8 +149,6 @@ export function buildDeployContext(params: BuildDeployContextParams): AnsibleCon
     current: templateContext.current,
     servers: templateContext.servers,
     cluster: templateContext.cluster,
-    
-    user_env: userEnv,
     
     options: {
       skip_build: options.skipBuild || false,
@@ -191,9 +178,6 @@ export interface BuildContext {
   servers: TemplateContext['servers'];
   cluster: TemplateContext['cluster'];
   
-  // User environment variables
-  user_env: Record<string, string>;
-  
   // Build options
   options: {
     skip_hooks: boolean;
@@ -208,7 +192,6 @@ export interface BuildBuildContextParams {
   env: string;
   branchName: string;
   templateContext: TemplateContext;
-  userEnv: Record<string, string>;
   config: Record<string, unknown>;
   options: {
     skipHooks?: boolean;
@@ -220,13 +203,7 @@ export interface BuildBuildContextParams {
  * Build the Ansible context for build command
  */
 export function buildBuildContext(params: BuildBuildContextParams): BuildContext {
-  const { env, branchName, templateContext, userEnv, config, options } = params;
-
-  // Flatten user env vars to lowercase
-  const flattenedEnv: Record<string, string> = {};
-  for (const [key, value] of Object.entries(userEnv)) {
-    flattenedEnv[key.toLowerCase()] = value;
-  }
+  const { env, branchName, templateContext, config, options } = params;
 
   return {
     env,
@@ -238,8 +215,6 @@ export function buildBuildContext(params: BuildBuildContextParams): BuildContext
     current: templateContext.current,
     servers: templateContext.servers,
     cluster: templateContext.cluster,
-    
-    user_env: flattenedEnv,
     
     options: {
       skip_hooks: options.skipHooks || false,
