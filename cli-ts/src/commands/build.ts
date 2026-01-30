@@ -113,11 +113,35 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
     writeContextFile(buildContext, contextFilePath);
   } else {
     // Minimal context when no server is configured
+    // Provide empty current/servers/cluster to avoid template errors
+    // Convert env vars to lowercase keys for Jinja2 compatibility
+    const lowerEnvVars: Record<string, string> = {};
+    for (const [key, value] of Object.entries(envVars)) {
+      lowerEnvVars[key.toLowerCase()] = value;
+    }
+    
     const minimalContext = {
       env,
       version: 'build',
       branch_name: branchName,
       config: config as unknown as Record<string, unknown>,
+      current: {
+        name: 'localhost',
+        role: 'manager',
+        host: 'localhost',
+        port: 22,
+        user: 'root',
+        tags: [env],
+        env: lowerEnvVars,
+      },
+      servers: {},
+      cluster: {
+        size: 0,
+        manager_count: 0,
+        worker_count: 0,
+        managers: [],
+        workers: [],
+      },
       options: {
         skip_hooks: options.skipHooks || false,
         services: options.services,
