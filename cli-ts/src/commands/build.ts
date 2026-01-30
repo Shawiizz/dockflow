@@ -95,8 +95,10 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
   }
   console.log('');
 
-  // Build context JSON (needed even without SSH for template context)
-  let contextFilePath: string | undefined;
+  // Build context JSON (needed for Ansible extra-vars)
+  // If no server is configured, create a minimal context
+  const contextFilePath = getHostContextPath();
+  
   if (templateContext) {
     const buildContext = buildBuildContext({
       env,
@@ -108,11 +110,22 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
         services: options.services,
       },
     });
-
-    contextFilePath = getHostContextPath();
     writeContextFile(buildContext, contextFilePath);
-    printDebug('Context file written', { path: contextFilePath });
+  } else {
+    // Minimal context when no server is configured
+    const minimalContext = {
+      env,
+      version: 'build',
+      branch_name: branchName,
+      config: config as unknown as Record<string, unknown>,
+      options: {
+        skip_hooks: options.skipHooks || false,
+        services: options.services,
+      },
+    };
+    writeContextFile(minimalContext as any, contextFilePath);
   }
+  printDebug('Context file written', { path: contextFilePath });
 
   // Build the Ansible command
   const ansibleCommand = buildBuildAnsibleCommand({});
