@@ -67,7 +67,22 @@
       STAGE=$(mktemp -d)
       trap "rm -rf $STAGE" EXIT
       cp "{{ item.dockerfile }}" "$STAGE/Dockerfile"
-      tar -chf "$STAGE/context.tar" -C "{{ item.context }}" --exclude=.git .
+      
+      # Build tar exclude arguments from .dockerignore
+      EXCLUDES="--exclude=.git"
+      DOCKERIGNORE="{{ item.context }}/.dockerignore"
+      if [ -f "$DOCKERIGNORE" ]; then
+        while IFS= read -r pattern || [ -n "$pattern" ]; do
+          # Skip empty lines and comments
+          [[ -z "$pattern" || "$pattern" =~ ^# ]] && continue
+          # Skip negation patterns (not supported by tar)
+          [[ "$pattern" =~ ^! ]] && continue
+          # Add exclude
+          EXCLUDES="$EXCLUDES --exclude=$pattern"
+        done < "$DOCKERIGNORE"
+      fi
+      
+      tar -chf "$STAGE/context.tar" -C "{{ item.context }}" $EXCLUDES .
       tar -rf "$STAGE/context.tar" -C "$STAGE" Dockerfile
       cat "$STAGE/context.tar" | docker build -f Dockerfile -t "{{ item.tag }}" -
       END_TIME=$(date +%s)
