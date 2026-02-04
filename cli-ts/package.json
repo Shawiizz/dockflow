@@ -15,7 +15,11 @@
     "build:macos": "bun build src/index.ts --compile --target=bun-darwin-arm64 --outfile=dist/dockflow-macos",
     "build:macos-intel": "bun build src/index.ts --compile --target=bun-darwin-x64 --outfile=dist/dockflow-macos-intel",
     "build:all": "bun run build:linux && bun run build:windows && bun run build:macos && bun run build:macos-intel",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "ui:install": "cd ui && pnpm install",
+    "ui:dev": "cd ui && pnpm start",
+    "ui:build": "cd ui && pnpm build",
+    "ui": "bun run src/index.ts ui"
   },
   "dependencies": {
     "chalk": "^5.3.0",

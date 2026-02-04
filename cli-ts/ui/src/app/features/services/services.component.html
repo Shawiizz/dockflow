@@ -1,0 +1,159 @@
+<div class="services-page animate-fade-in">
+  <!-- Page Header -->
+  <div class="page-header">
+    <div class="page-header__left">
+      <h1 class="page-header__title">Services</h1>
+      <p class="page-header__subtitle">
+        @if (stackName()) {
+          Docker services for stack <code>{{ stackName() }}</code>
+        } @else {
+          Docker Swarm stack services
+        }
+      </p>
+    </div>
+    <div class="page-header__actions">
+      <p-select
+        [options]="envOptions()"
+        [(ngModel)]="selectedEnv"
+        optionLabel="label"
+        optionValue="value"
+        placeholder="Environment"
+        size="small"
+        (onChange)="onEnvChange()"
+        class="env-filter"
+      />
+      <button class="btn btn--secondary" (click)="loadServices()" [disabled]="loading()">
+        <i class="pi pi-refresh" [class.pi-spin]="loading()"></i>
+        <span>Refresh</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Message / Warning -->
+  @if (message()) {
+    <div class="info-banner">
+      <i class="pi pi-info-circle"></i>
+      <span>{{ message() }}</span>
+    </div>
+  }
+
+  <!-- Loading -->
+  @if (loading() && services().length === 0) {
+    <!-- Stats skeleton -->
+    <div class="services-page__stats">
+      @for (i of [1, 2]; track i) {
+        <div class="stat-pill">
+          <p-skeleton width="1.25rem" height="1rem" />
+          <p-skeleton width="2.5rem" height="0.75rem" />
+        </div>
+      }
+    </div>
+    <div class="services-grid">
+      @for (i of [1, 2, 3]; track i) {
+        <div class="card" style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem;">
+          <div class="flex items-center justify-between">
+            <p-skeleton width="55%" height="0.9375rem" />
+            <p-skeleton width="3.5rem" height="1.375rem" borderRadius="9999px" />
+          </div>
+          <p-skeleton width="40%" height="0.625rem" />
+          <div style="display: flex; flex-direction: column; gap: 0.375rem;">
+            <div class="flex justify-between">
+              <p-skeleton width="3.5rem" height="0.625rem" />
+              <p-skeleton width="2rem" height="0.625rem" />
+            </div>
+            <p-skeleton width="100%" height="4px" borderRadius="2px" />
+          </div>
+          <div class="flex gap-2">
+            <p-skeleton width="4rem" height="1.25rem" />
+            <p-skeleton width="3rem" height="1.25rem" />
+          </div>
+        </div>
+      }
+    </div>
+  } @else if (services().length === 0 && !message()) {
+    <div class="empty-state">
+      <i class="pi pi-box"></i>
+      <h3>No services running</h3>
+      <p>Deploy your application to see running services.</p>
+    </div>
+  } @else {
+    <!-- Stats -->
+    <div class="services-page__stats">
+      <div class="stat-pill">
+        <span class="stat-pill__value">{{ services().length }}</span>
+        <span class="stat-pill__label">Total</span>
+      </div>
+      <div class="stat-pill stat-pill--success">
+        <span class="stat-pill__value">{{ runningCount() }}</span>
+        <span class="stat-pill__label">Running</span>
+      </div>
+      @if (stoppedCount() > 0) {
+        <div class="stat-pill stat-pill--error">
+          <span class="stat-pill__value">{{ stoppedCount() }}</span>
+          <span class="stat-pill__label">Stopped</span>
+        </div>
+      }
+    </div>
+
+    <!-- Services Grid -->
+    <div class="services-grid">
+      @for (service of services(); track service.id) {
+        <div class="service-card card card--hover">
+          <div class="service-card__header">
+            <div class="service-card__name-row">
+              <h3 class="service-card__name">{{ service.name }}</h3>
+              <p-tag
+                [value]="service.state"
+                [severity]="stateSeverity(service.state)"
+                [rounded]="true"
+              />
+            </div>
+            <span class="service-card__image" [pTooltip]="service.image">
+              {{ imageShort(service.image) }}
+            </span>
+          </div>
+
+          <!-- Replicas -->
+          <div class="service-card__replicas">
+            <div class="service-card__replicas-header">
+              <span class="service-card__replicas-label">Replicas</span>
+              <span class="service-card__replicas-count">
+                {{ service.replicasRunning }}/{{ service.replicas }}
+              </span>
+            </div>
+            <div class="service-card__replicas-bar">
+              <div
+                class="service-card__replicas-fill"
+                [class.service-card__replicas-fill--full]="replicaPercent(service) === 100"
+                [class.service-card__replicas-fill--partial]="replicaPercent(service) > 0 && replicaPercent(service) < 100"
+                [class.service-card__replicas-fill--zero]="replicaPercent(service) === 0"
+                [style.width.%]="replicaPercent(service)"
+              ></div>
+            </div>
+          </div>
+
+          <!-- Ports -->
+          @if (service.ports.length > 0) {
+            <div class="service-card__ports">
+              @for (port of service.ports; track port) {
+                <code class="service-card__port">{{ port }}</code>
+              }
+            </div>
+          }
+
+          <!-- Actions -->
+          <div class="service-card__actions">
+            <a
+              class="btn btn--ghost btn--icon"
+              [routerLink]="'/logs'"
+              [queryParams]="{ service: service.name }"
+              pTooltip="View Logs"
+            >
+              <i class="pi pi-list"></i>
+            </a>
+          </div>
+        </div>
+      }
+    </div>
+  }
+</div>

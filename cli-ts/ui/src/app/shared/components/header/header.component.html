@@ -1,0 +1,63 @@
+<header class="header">
+  <!-- Left side -->
+  <div class="header__left">
+    <!-- Menu toggle -->
+    <button
+      class="header__menu-btn"
+      (click)="toggleSidebar.emit()"
+      pTooltip="Toggle sidebar"
+      pRipple
+    >
+      <i class="pi pi-bars"></i>
+    </button>
+    
+    <!-- Project name -->
+    <div class="header__project">
+      @if (loadingProject()) {
+        <p-skeleton width="6rem" height="1rem" />
+      } @else {
+        <span class="header__project-name">{{ projectName() }}</span>
+        @if (environments().length > 0) {
+          <span class="header__separator">·</span>
+          <p-select
+            [options]="environmentOptions()"
+            [(ngModel)]="selectedEnv"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Environment"
+            size="small"
+            class="header__env-select"
+          />
+        }
+      }
+    </div>
+  </div>
+  
+  <!-- Right side -->
+  <div class="header__right">
+    <!-- Connection status -->
+    @if (loadingConnection()) {
+      <div class="header__status header__status--loading">
+        <span class="loading-spinner loading-spinner--sm"></span>
+        <span class="header__status-text">Connecting…</span>
+      </div>
+    } @else {
+      <div class="header__status" [class.header__status--connected]="connectionReady()">
+        <span class="header__status-dot"></span>
+        <span class="header__status-text">
+          {{ connectionReady() ? 'Connected' : 'No credentials' }}
+        </span>
+      </div>
+    }
+    
+    <!-- Refresh -->
+    <button
+      class="header__action-btn"
+      (click)="refresh()"
+      pTooltip="Refresh"
+      pRipple
+    >
+      <i class="pi pi-refresh" [class.pi-spin]="refreshing()"></i>
+    </button>
+  </div>
+</header>

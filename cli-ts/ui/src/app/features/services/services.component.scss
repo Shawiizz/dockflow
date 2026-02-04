@@ -1,0 +1,211 @@
+.services-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+
+  &__title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+  }
+
+  &__subtitle {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    margin: 0.25rem 0 0;
+  }
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+}
+
+.services-page__stats {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.875rem;
+  border-radius: 9999px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  font-size: 0.8125rem;
+  line-height: 1.2;
+
+  &__value {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  &__label {
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+
+  &--success {
+    border-color: var(--success-muted);
+    .stat-pill__value { color: var(--success); }
+  }
+
+  &--error {
+    border-color: var(--error-muted);
+    .stat-pill__value { color: var(--error); }
+  }
+}
+
+.info-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background-color: var(--accent-blue-muted);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  color: var(--accent-blue);
+  font-size: 0.875rem;
+
+  i { font-size: 1rem; }
+}
+
+.services-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1rem;
+}
+
+.service-card {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+
+  &__header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  &__name-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  &__name {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__image {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-family: var(--font-family-mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__replicas {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  &__replicas-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  &__replicas-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  &__replicas-count {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-family: var(--font-family-mono);
+  }
+
+  &__replicas-bar {
+    height: 4px;
+    border-radius: 2px;
+    background-color: var(--bg-tertiary);
+    overflow: hidden;
+  }
+
+  &__replicas-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+
+    &--full { background-color: var(--success); }
+    &--partial { background-color: var(--warning); }
+    &--zero { background-color: var(--error); }
+  }
+
+  &__ports {
+    display: flex;
+    gap: 0.375rem;
+    flex-wrap: wrap;
+  }
+
+  &__port {
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+    background-color: var(--bg-tertiary);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+  }
+
+  &__actions {
+    display: flex;
+    gap: 0.25rem;
+    justify-content: flex-end;
+    margin-top: auto;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border-primary);
+  }
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+  color: var(--text-muted);
+
+  i { font-size: 3rem; margin-bottom: 1rem; opacity: 0.3; }
+  h3 { font-size: 1.125rem; font-weight: 500; color: var(--text-secondary); margin: 0 0 0.5rem; }
+  p { font-size: 0.875rem; margin: 0; }
+}
+
+.env-filter { min-width: 180px; }

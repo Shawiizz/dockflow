@@ -1,0 +1,46 @@
+<aside class="sidebar" [class.sidebar--collapsed]="collapsed()">
+  <!-- Logo -->
+  <div class="sidebar__logo">
+    <div class="sidebar__logo-icon">
+      <i class="pi pi-box"></i>
+    </div>
+    @if (!collapsed()) {
+      <span class="sidebar__logo-text">Dockflow</span>
+    }
+  </div>
+  
+  <!-- Navigation -->
+  <nav class="sidebar__nav">
+    <ul class="sidebar__nav-list">
+      @for (item of navItems; track item.route) {
+        <li>
+          <a
+            [routerLink]="item.route"
+            routerLinkActive="sidebar__nav-link--active"
+            [routerLinkActiveOptions]="{ exact: item.route === '/' }"
+            class="sidebar__nav-link"
+            [pTooltip]="collapsed() ? item.label : ''"
+            tooltipPosition="right"
+            pRipple
+          >
+            <i [class]="item.icon"></i>
+            @if (!collapsed()) {
+              <span>{{ item.label }}</span>
+            }
+          </a>
+        </li>
+      }
+    </ul>
+  </nav>
+  
+  <!-- Collapse Button -->
+  <div class="sidebar__footer">
+    <button
+      class="sidebar__collapse-btn"
+      (click)="collapsedChange.emit(!collapsed())"
+      pRipple
+    >
+      <i [class]="collapsed() ? 'pi pi-angle-right' : 'pi pi-angle-left'"></i>
+    </button>
+  </div>
+</aside>

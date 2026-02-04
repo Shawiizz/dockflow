@@ -1,0 +1,24 @@
+<div class="app-layout">
+  <!-- Sidebar -->
+  <app-sidebar 
+    [collapsed]="sidebarCollapsed()" 
+    (collapsedChange)="sidebarCollapsed.set($event)" 
+  />
+  
+  <!-- Main Content -->
+  <div class="main-content">
+    <!-- Header -->
+    <app-header 
+      [sidebarCollapsed]="sidebarCollapsed()"
+      (toggleSidebar)="sidebarCollapsed.set(!sidebarCollapsed())"
+    />
+    
+    <!-- Page Content -->
+    <main class="page-content">
+      <router-outlet />
+    </main>
+  </div>
+  
+  <!-- Toast Notifications -->
+  <p-toast position="top-right" />
+</div>

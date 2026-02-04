@@ -4,7 +4,7 @@
  */
 
 import { readFileSync, existsSync } from 'fs';
-import { join } from 'path';
+import { join, dirname, parse as parsePath } from 'path';
 import { parse as parseYaml } from 'yaml';
 import { ANSIBLE_DOCKER_IMAGE } from '../constants';
 import type { ServersConfig } from '../types';
@@ -70,9 +70,24 @@ export interface DockflowConfig {
 }
 
 /**
- * Get the project root directory (where .dockflow folder is)
+ * Get the project root directory (where .dockflow folder is).
+ * Traverses up from cwd until a .dockflow/ directory is found.
+ * Falls back to cwd if none is found (e.g. before `dockflow init`).
  */
 export function getProjectRoot(): string {
+  let dir = process.cwd();
+  const { root } = parsePath(dir);
+  while (dir !== root) {
+    if (existsSync(join(dir, '.dockflow'))) {
+      return dir;
+    }
+    dir = dirname(dir);
+  }
+  // Check root itself
+  if (existsSync(join(root, '.dockflow'))) {
+    return root;
+  }
+  // Fallback to cwd (before init, or no .dockflow/ exists yet)
   return process.cwd();
 }
 

@@ -1,0 +1,72 @@
+<div class="server-card" [class]="'server-card--' + statusClass()">
+  <!-- Header -->
+  <div class="server-card__header">
+    <div class="server-card__info">
+      <div class="server-card__status-icon" [class]="'server-card__status-icon--' + statusClass()">
+        @if (checkingStatus()) {
+          <i class="pi pi-spin pi-spinner"></i>
+        } @else {
+          <i [class]="statusIcon()"></i>
+        }
+      </div>
+      <div class="server-card__details">
+        <h3 class="server-card__name">{{ server().name }}</h3>
+        <span class="server-card__host">{{ server().host }}:{{ server().port }}</span>
+      </div>
+    </div>
+    <span class="server-card__role" [class]="'server-card__role--' + server().role">
+      {{ server().role }}
+    </span>
+  </div>
+
+  <!-- Tags -->
+  @if (server().tags.length > 0) {
+    <div class="server-card__tags">
+      @for (tag of server().tags; track tag) {
+        <span class="server-card__tag">{{ tag }}</span>
+      }
+    </div>
+  }
+
+  <!-- Status -->
+  <div class="server-card__status-row">
+    <div class="server-card__status">
+      @if (checkingStatus()) {
+        <i class="pi pi-spin pi-spinner server-card__status-spinner"></i>
+        <span class="server-card__status-text server-card__status-text--checking">Checking…</span>
+      } @else {
+        <span class="server-card__status-dot" [class]="'server-card__status-dot--' + statusClass()"></span>
+        <span class="server-card__status-text">{{ statusLabel() }}</span>
+      }
+    </div>
+    @if (server().swarmStatus) {
+      <span class="server-card__swarm">Swarm: {{ server().swarmStatus }}</span>
+    }
+  </div>
+
+  <!-- Error -->
+  @if (server().error) {
+    <p class="server-card__error" [pTooltip]="server().error">
+      {{ server().error }}
+    </p>
+  }
+
+  <!-- Actions -->
+  <div class="server-card__actions">
+    <button
+      class="btn btn--ghost btn--icon"
+      [disabled]="checkingStatus()"
+      (click)="checkStatus.emit()"
+      pTooltip="Check status"
+    >
+      <i class="pi pi-refresh" [class.pi-spin]="checkingStatus()"></i>
+    </button>
+    <button
+      class="btn btn--ghost btn--icon"
+      [disabled]="server().status !== 'online'"
+      pTooltip="SSH"
+    >
+      <i class="pi pi-terminal"></i>
+    </button>
+  </div>
+</div>

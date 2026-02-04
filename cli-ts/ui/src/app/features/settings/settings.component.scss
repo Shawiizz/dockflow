@@ -1,0 +1,85 @@
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.page-header {
+  &__title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+  }
+
+  &__subtitle {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    margin: 0.25rem 0 0;
+  }
+}
+
+.config-editor {
+  padding: 0;
+  overflow: hidden;
+}
+
+.tab-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.tab-header__dirty {
+  color: var(--accent-blue);
+  font-size: 0.75rem;
+}
+
+.editor-loading {
+  padding: 1.5rem;
+}
+
+.editor-error {
+  padding: 2rem;
+  display: flex;
+  justify-content: center;
+}
+
+.editor-error-inline {
+  padding: 0 1.5rem;
+}
+
+.editor-wrapper {
+  padding: 0;
+}
+
+.editor-textarea {
+  width: 100%;
+  min-height: 500px;
+  max-height: calc(100vh - 340px);
+  padding: 1.25rem 1.5rem;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  border: none;
+  border-top: 1px solid var(--border-primary);
+  border-bottom: 1px solid var(--border-primary);
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  resize: vertical;
+  outline: none;
+  tab-size: 2;
+
+  &:focus {
+    box-shadow: inset 0 0 0 1px var(--accent-blue-muted);
+  }
+}
+
+.editor-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border-primary);
+  background-color: var(--bg-secondary);
+}

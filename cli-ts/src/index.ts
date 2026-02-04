@@ -20,6 +20,7 @@ import { registerAccessoriesCommands } from './commands/accessories';
 import { registerLockCommands } from './commands/lock';
 import { registerListCommands } from './commands/list';
 import { registerConfigCommand } from './commands/config';
+import { registerUICommand } from './commands/ui';
 
 const program = new Command();
 
@@ -46,6 +47,7 @@ registerDeployCommand(program);
 registerBuildCommand(program);
 registerSetupCommand(program);
 registerInitCommand(program);
+registerUICommand(program);
 
 // Default action (no command) - show help or interactive mode
 program.action(async () => {

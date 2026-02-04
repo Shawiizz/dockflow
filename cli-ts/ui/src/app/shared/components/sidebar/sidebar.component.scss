@@ -1,0 +1,122 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 220px;
+  background-color: var(--bg-secondary);
+  border-right: 1px solid var(--border-primary);
+  transition: width 0.2s ease;
+
+  &--collapsed {
+    width: 60px;
+  }
+}
+
+.sidebar__logo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  height: 56px;
+  padding: 0 1rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.sidebar__logo-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 0.5rem;
+  background-color: var(--accent-blue);
+  color: white;
+  flex-shrink: 0;
+
+  i {
+    font-size: 1rem;
+  }
+}
+
+.sidebar__logo-text {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.sidebar__nav {
+  flex: 1;
+  padding: 0.75rem 0.5rem;
+  overflow-y: auto;
+}
+
+.sidebar__nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sidebar__nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+
+  i {
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+
+  &:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  &--active {
+    background-color: var(--accent-blue-muted);
+    color: var(--accent-blue);
+
+    &:hover {
+      background-color: var(--accent-blue-muted);
+      color: var(--accent-blue);
+    }
+  }
+}
+
+.sidebar__footer {
+  padding: 0.5rem;
+  border-top: 1px solid var(--border-primary);
+}
+
+.sidebar__collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 36px;
+  border: none;
+  border-radius: 0.5rem;
+  background-color: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  i {
+    font-size: 0.875rem;
+  }
+}

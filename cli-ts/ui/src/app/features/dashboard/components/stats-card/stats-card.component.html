@@ -1,0 +1,18 @@
+<div class="stats-card" [class]="'stats-card--' + variant()" [class.stats-card--loading]="loading()">
+  <div class="stats-card__icon">
+    @if (loading()) {
+      <p-skeleton shape="circle" size="2.25rem" />
+    } @else {
+      <i [class]="icon()"></i>
+    }
+  </div>
+  <div class="stats-card__content">
+    @if (loading()) {
+      <p-skeleton width="2.5rem" height="1.5rem" />
+      <p-skeleton width="4rem" height="0.625rem" styleClass="mt-1" />
+    } @else {
+      <span class="stats-card__value">{{ value() }}</span>
+      <span class="stats-card__label">{{ label() }}</span>
+    }
+  </div>
+</div>

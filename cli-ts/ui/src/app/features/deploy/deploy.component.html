@@ -1,0 +1,119 @@
+<div class="deploy-page animate-fade-in">
+  <!-- Page Header -->
+  <div class="page-header">
+    <div class="page-header__left">
+      <h1 class="page-header__title">Deployments</h1>
+      <p class="page-header__subtitle">View deployment history and status</p>
+    </div>
+    <div class="page-header__actions">
+      <p-select
+        [options]="envOptions()"
+        [(ngModel)]="selectedEnv"
+        optionLabel="label"
+        optionValue="value"
+        placeholder="Environment"
+        size="small"
+        (onChange)="onEnvChange()"
+        class="env-filter"
+      />
+      <button class="btn btn--secondary" (click)="loadHistory()" [disabled]="loading()">
+        <i class="pi pi-refresh" [class.pi-spin]="loading()"></i>
+        <span>Refresh</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Deploy Info -->
+  <div class="deploy-info card">
+    <div class="deploy-info__icon">
+      <i class="pi pi-info-circle"></i>
+    </div>
+    <div class="deploy-info__content">
+      <p>To deploy, use the CLI command:</p>
+      <code>dockflow deploy &lt;environment&gt;</code>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  @if (loading()) {
+    <div class="deploy-list">
+      @for (i of [1, 2, 3]; track i) {
+        <div class="card" style="padding: 1rem 1.25rem; display: flex; gap: 1rem; align-items: flex-start;">
+          <p-skeleton shape="circle" size="2rem" />
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 0.5rem;">
+            <div class="flex items-center justify-between">
+              <p-skeleton width="40%" height="0.9375rem" />
+              <p-skeleton width="3.5rem" height="1.375rem" borderRadius="9999px" />
+            </div>
+            <div class="flex gap-4">
+              <p-skeleton width="4rem" height="0.625rem" />
+              <p-skeleton width="3rem" height="0.625rem" />
+              <p-skeleton width="3.5rem" height="0.625rem" />
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  } @else if (deployments().length === 0) {
+    <div class="empty-state">
+      <i class="pi pi-upload"></i>
+      <h3>No deployments yet</h3>
+      <p>Deploy your project to start recording history.</p>
+      <code class="empty-state__cmd">dockflow deploy &lt;environment&gt;</code>
+    </div>
+  } @else {
+    <!-- Deployment History -->
+    <div class="deploy-list">
+      @for (deploy of deployments(); track deploy.id) {
+        <div class="deploy-entry card card--hover">
+          <div class="deploy-entry__status-col">
+            <div class="deploy-entry__status-icon" [class]="'deploy-entry__status-icon--' + deploy.status">
+              <i [class]="statusIcon(deploy.status)"></i>
+            </div>
+          </div>
+          <div class="deploy-entry__content">
+            <div class="deploy-entry__header">
+              <div class="deploy-entry__title-row">
+                <h3 class="deploy-entry__title">
+                  {{ deploy.environment }}
+                  <span class="deploy-entry__target">({{ deploy.target }})</span>
+                </h3>
+                <p-tag
+                  [value]="deploy.status"
+                  [severity]="statusSeverity(deploy.status)"
+                  [rounded]="true"
+                />
+              </div>
+              <div class="deploy-entry__meta">
+                @if (deploy.version) {
+                  <span class="deploy-entry__version">
+                    <i class="pi pi-tag"></i> {{ deploy.version }}
+                  </span>
+                }
+                <span class="deploy-entry__time" [pTooltip]="formatDate(deploy.startedAt)">
+                  <i class="pi pi-clock"></i> {{ relativeTime(deploy.startedAt) }}
+                </span>
+                @if (deploy.duration) {
+                  <span class="deploy-entry__duration">
+                    <i class="pi pi-stopwatch"></i> {{ formatDuration(deploy.duration) }}
+                  </span>
+                }
+                @if (deploy.user) {
+                  <span class="deploy-entry__user">
+                    <i class="pi pi-user"></i> {{ deploy.user }}
+                  </span>
+                }
+              </div>
+            </div>
+            @if (deploy.error) {
+              <div class="deploy-entry__error">
+                <i class="pi pi-exclamation-triangle"></i>
+                <span>{{ deploy.error }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </div>
+  }
+</div>

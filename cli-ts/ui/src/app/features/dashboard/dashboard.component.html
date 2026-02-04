@@ -1,0 +1,98 @@
+<div class="dashboard">
+  <!-- Welcome / No Project Card -->
+  @if (!project()?.hasDockflow) {
+    <app-welcome-card />
+  } @else {
+    <!-- Stats Row -->
+    <div class="dashboard__stats">
+      <app-stats-card
+        icon="pi pi-server"
+        label="Servers"
+        [value]="servers().length"
+        [loading]="loading()"
+      />
+      <app-stats-card
+        icon="pi pi-check-circle"
+        label="Online"
+        [value]="onlineCount()"
+        variant="success"
+        [loading]="loading()"
+      />
+      <app-stats-card
+        icon="pi pi-times-circle"
+        label="Offline"
+        [value]="offlineCount()"
+        variant="error"
+        [loading]="loading()"
+      />
+      <app-stats-card
+        icon="pi pi-globe"
+        label="Environments"
+        [value]="environments().length"
+        [loading]="loading()"
+      />
+    </div>
+    
+    <!-- Connection Warning -->
+    @if (!connection()?.ready) {
+      <div class="dashboard__warning">
+        <i class="pi pi-exclamation-triangle"></i>
+        <span>
+          No connection credentials found. Create <code>.env.dockflow</code> file or set CI secrets to connect to servers.
+        </span>
+      </div>
+    }
+    
+    <!-- Servers Section -->
+    <section class="dashboard__section">
+      <div class="dashboard__section-header">
+        <h2 class="dashboard__section-title">Servers</h2>
+        <button
+          class="btn btn--secondary"
+          [class.btn--loading]="loading()"
+          (click)="checkAllServersStatus()"
+        >
+          <i class="pi pi-refresh" [class.pi-spin]="loading()"></i>
+          <span>Check Status</span>
+        </button>
+      </div>
+      
+      @if (loading() && servers().length === 0) {
+        <div class="dashboard__grid">
+          @for (i of [1, 2, 3]; track i) {
+            <div class="card" style="padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
+              <div class="flex items-center gap-3">
+                <p-skeleton shape="circle" size="2.25rem" />
+                <div class="flex-1">
+                  <p-skeleton width="60%" height="0.875rem" styleClass="mb-2" />
+                  <p-skeleton width="40%" height="0.625rem" />
+                </div>
+              </div>
+              <p-skeleton width="100%" height="0.625rem" />
+              <div class="flex gap-2" style="padding-top: 0.75rem; border-top: 1px solid var(--border-primary);">
+                <p-skeleton size="1.75rem" />
+                <p-skeleton size="1.75rem" />
+              </div>
+            </div>
+          }
+        </div>
+      } @else if (servers().length === 0) {
+        <div class="dashboard__empty">
+          <i class="pi pi-server"></i>
+          <p>No servers configured.</p>
+          <span>Edit your <code>servers.yml</code> to add servers.</span>
+        </div>
+      } @else {
+        <div class="dashboard__grid">
+          @for (server of servers(); track server.name) {
+            <app-server-card
+              [server]="server"
+              [checkingStatus]="checkingServers().includes(server.name)"
+              (checkStatus)="checkServerStatus(server.name)"
+            />
+          }
+        </div>
+      }
+    </section>
+  }
+</div>

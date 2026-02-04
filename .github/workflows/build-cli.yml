@@ -20,6 +20,16 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Extract version from tag
         id: version
         run: |
@@ -28,10 +38,20 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "📦 Building CLI version: $VERSION"
 
-      - name: Install dependencies
+      - name: Install CLI dependencies
         run: |
           cd cli-ts
           bun install
+
+      - name: Install UI dependencies
+        run: |
+          cd cli-ts/ui
+          pnpm install --frozen-lockfile
+
+      - name: Build UI
+        run: |
+          cd cli-ts/ui
+          pnpm build
 
       - name: Build all platforms
         run: |

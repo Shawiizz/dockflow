@@ -1,0 +1,113 @@
+<div class="logs-page animate-fade-in">
+  <!-- Page Header -->
+  <div class="page-header">
+    <div class="page-header__left">
+      <h1 class="page-header__title">Logs</h1>
+      <p class="page-header__subtitle">View Docker service logs in real-time</p>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="logs-controls card">
+    <div class="logs-controls__row">
+      <div class="logs-controls__field">
+        <label class="logs-controls__label">Environment</label>
+        <p-select
+          [options]="envOptions()"
+          [(ngModel)]="selectedEnv"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Environment"
+          size="small"
+          (onChange)="onEnvChange()"
+        />
+      </div>
+
+      <div class="logs-controls__field">
+        <label class="logs-controls__label">Service</label>
+        <p-select
+          [options]="serviceOptions()"
+          [(ngModel)]="selectedService"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Select a service"
+          size="small"
+          [loading]="loadingServices()"
+          (onChange)="onServiceChange()"
+        />
+      </div>
+
+      <div class="logs-controls__field">
+        <label class="logs-controls__label">Lines</label>
+        <p-select
+          [options]="lineCountOptions"
+          [(ngModel)]="tailLines"
+          optionLabel="label"
+          optionValue="value"
+          size="small"
+        />
+      </div>
+
+      <div class="logs-controls__field logs-controls__field--toggle">
+        <label class="logs-controls__label">Auto-scroll</label>
+        <p-toggleSwitch [(ngModel)]="autoScroll" />
+      </div>
+
+      <div class="logs-controls__actions">
+        <button
+          class="btn btn--secondary"
+          (click)="refresh()"
+          [disabled]="loading() || !selectedService()"
+        >
+          <i class="pi pi-refresh" [class.pi-spin]="loading()"></i>
+          <span>Refresh</span>
+        </button>
+        <button
+          class="btn btn--ghost"
+          (click)="clearLogs()"
+          [disabled]="logs().length === 0"
+        >
+          <i class="pi pi-trash"></i>
+          <span>Clear</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Log Viewer -->
+  @if (!selectedService()) {
+    <div class="empty-state">
+      <i class="pi pi-list"></i>
+      <h3>Select a service</h3>
+      <p>Choose a service from the dropdown above to view its logs.</p>
+    </div>
+  } @else if (loading() && logs().length === 0) {
+    <div class="card log-viewer" style="padding: 1rem;">
+      @for (i of [1, 2, 3, 4, 5, 6, 7, 8]; track i) {
+        <div class="flex gap-4" style="padding: 0.25rem 0;">
+          <p-skeleton width="5rem" height="0.75rem" />
+          <p-skeleton [width]="(40 + (i * 7)) + '%'" height="0.75rem" />
+        </div>
+      }
+    </div>
+  } @else {
+    <div class="log-viewer card" #logContainer>
+      @if (logs().length === 0) {
+        <div class="log-viewer__empty">
+          <i class="pi pi-info-circle"></i>
+          <span>No logs available for this service.</span>
+        </div>
+      } @else {
+        @for (log of logs(); track $index) {
+          <div class="log-line">
+            <span class="log-line__timestamp">{{ formatTimestamp(log.timestamp) }}</span>
+            <span class="log-line__message">{{ log.message }}</span>
+          </div>
+        }
+      }
+    </div>
+    <div class="log-viewer__footer">
+      <span class="text-surface-400">{{ logs().length }} log entries</span>
+    </div>
+  }
+</div>

@@ -1,6 +1,50 @@
+# IDE
 .idea
+.vscode
+*.swp
+*.swo
+
+# Secrets
 ssh
 .env.dockflow
 secrets.json
-*/node_modules
-*/dist
+*.pem
+*.key
+
+# Dependencies
+node_modules/
+*/node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+*/dist/
+**/dist/
+*.exe
+*.log
+
+# CLI builds
+cli-ts/dist/
+dockflow-*
+
+# Generated files
+cli-ts/src/ui-manifest.generated.ts
+
+# UI builds
+cli-ts/ui/dist/
+cli-ts/ui/.angular/
+
+# Caches
+.cache/
+.npm/
+.pnpm-store/
+*.tsbuildinfo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.temp
+coverage/

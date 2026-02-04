@@ -29,9 +29,9 @@ process.env.DOCKFLOW_DEV_PATH = dockflowRoot;
 // Get args
 let args = process.argv.slice(2);
 
-// Auto-add --dev flag for deploy/build commands if not already present
+// Auto-add --dev flag for deploy/build/ui commands if not already present
 const command = args[0];
-if ((command === 'deploy' || command === 'build') && !args.includes('--dev')) {
+if ((command === 'deploy' || command === 'build' || command === 'ui') && !args.includes('--dev')) {
   args.push('--dev');
 }
 

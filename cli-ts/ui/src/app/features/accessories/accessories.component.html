@@ -1,0 +1,110 @@
+<div class="accessories-page animate-fade-in">
+  <!-- Page Header -->
+  <div class="page-header">
+    <div class="page-header__left">
+      <h1 class="page-header__title">Accessories</h1>
+      <p class="page-header__subtitle">Database and auxiliary services managed alongside your app</p>
+    </div>
+    <div class="page-header__actions">
+      <button class="btn btn--secondary" (click)="loadAccessories()" [disabled]="loading()">
+        <i class="pi pi-refresh" [class.pi-spin]="loading()"></i>
+        <span>Refresh</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  @if (loading()) {
+    <div class="accessories-grid">
+      @for (i of [1, 2]; track i) {
+        <div class="card" style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem;">
+          <!-- Header: icon + name -->
+          <div class="flex items-center gap-3">
+            <p-skeleton size="2.5rem" borderRadius="0.5rem" />
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 0.25rem;">
+              <p-skeleton width="45%" height="1rem" />
+              <p-skeleton width="60%" height="0.625rem" />
+            </div>
+          </div>
+          <!-- Ports section -->
+          <div style="display: flex; flex-direction: column; gap: 0.375rem;">
+            <p-skeleton width="2rem" height="0.5rem" />
+            <div class="flex gap-2">
+              <p-skeleton width="4.5rem" height="1.25rem" />
+              <p-skeleton width="3.5rem" height="1.25rem" />
+            </div>
+          </div>
+          <!-- Env section -->
+          <div style="display: flex; flex-direction: column; gap: 0.375rem;">
+            <p-skeleton width="4.5rem" height="0.5rem" />
+            <p-skeleton width="100%" height="1.5rem" />
+            <p-skeleton width="90%" height="1.5rem" />
+          </div>
+        </div>
+      }
+    </div>
+  } @else if (accessories().length === 0) {
+    <div class="empty-state">
+      <i class="pi pi-database"></i>
+      <h3>No accessories configured</h3>
+      <p>Add accessories to your <code>config.yml</code> to manage databases and other services.</p>
+    </div>
+  } @else {
+    <div class="accessories-grid">
+      @for (acc of accessories(); track acc.name) {
+        <div class="accessory-card card card--hover">
+          <div class="accessory-card__header">
+            <div class="accessory-card__icon">
+              <i class="pi pi-database"></i>
+            </div>
+            <div class="accessory-card__title-col">
+              <h3 class="accessory-card__name">{{ acc.name }}</h3>
+              @if (acc.image) {
+                <span class="accessory-card__image">{{ acc.image }}</span>
+              }
+            </div>
+          </div>
+
+          <!-- Ports -->
+          @if (acc.ports && acc.ports.length > 0) {
+            <div class="accessory-card__section">
+              <span class="accessory-card__section-label">Ports</span>
+              <div class="accessory-card__tags">
+                @for (port of acc.ports; track port) {
+                  <code class="accessory-card__tag">{{ port }}</code>
+                }
+              </div>
+            </div>
+          }
+
+          <!-- Volumes -->
+          @if (acc.volumes && acc.volumes.length > 0) {
+            <div class="accessory-card__section">
+              <span class="accessory-card__section-label">Volumes</span>
+              <div class="accessory-card__tags">
+                @for (vol of acc.volumes; track vol) {
+                  <code class="accessory-card__tag">{{ vol }}</code>
+                }
+              </div>
+            </div>
+          }
+
+          <!-- Environment Variables -->
+          @if (envEntries(acc.env).length > 0) {
+            <div class="accessory-card__section">
+              <span class="accessory-card__section-label">Environment</span>
+              <div class="accessory-card__env-list">
+                @for (entry of envEntries(acc.env); track entry.key) {
+                  <div class="accessory-card__env-row">
+                    <code class="accessory-card__env-key">{{ entry.key }}</code>
+                    <code class="accessory-card__env-value">{{ entry.value }}</code>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+</div>
