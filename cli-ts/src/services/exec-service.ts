@@ -102,7 +102,7 @@ export class ExecService {
     const cmd = this.buildExecCommand(containerId, command, options);
     
     try {
-      const result = sshExec(this.connection, cmd);
+      const result = await sshExec(this.connection, cmd);
       return ok({
         exitCode: result.exitCode,
         stdout: result.stdout,
@@ -176,7 +176,7 @@ export class ExecService {
     }
 
     // Check if bash is available
-    const checkResult = sshExec(
+    const checkResult = await sshExec(
       this.connection,
       `docker exec ${containerId} which bash 2>/dev/null || echo "not_found"`
     );
@@ -199,7 +199,7 @@ export class ExecService {
       return err(new Error(`No running container found for service ${serviceName}`));
     }
 
-    const result = sshExec(this.connection, `docker cp ${localPath} ${containerId}:${containerPath}`);
+    const result = await sshExec(this.connection, `docker cp ${localPath} ${containerId}:${containerPath}`);
     
     if (result.exitCode !== 0) {
       return err(new Error(`Failed to copy file: ${result.stderr}`));
@@ -222,7 +222,7 @@ export class ExecService {
       return err(new Error(`No running container found for service ${serviceName}`));
     }
 
-    const result = sshExec(this.connection, `docker cp ${containerId}:${containerPath} ${localPath}`);
+    const result = await sshExec(this.connection, `docker cp ${containerId}:${containerPath} ${localPath}`);
     
     if (result.exitCode !== 0) {
       return err(new Error(`Failed to copy file: ${result.stderr}`));

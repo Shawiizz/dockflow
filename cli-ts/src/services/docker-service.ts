@@ -15,7 +15,7 @@ export async function getStackServices(
   conn: SSHKeyConnection,
   stackName: string
 ): Promise<string[]> {
-  const result = sshExec(conn, `docker stack services ${stackName} --format '{{.Name}}'`);
+  const result = await sshExec(conn, `docker stack services ${stackName} --format '{{.Name}}'`);
   return result.stdout.trim().split('\n').filter(Boolean);
 }
 
@@ -26,7 +26,7 @@ export async function getStackContainers(
   conn: SSHKeyConnection,
   stackName: string
 ): Promise<string[]> {
-  const result = sshExec(
+  const result = await sshExec(
     conn,
     `docker ps --filter "label=com.docker.stack.namespace=${stackName}" --format '{{.ID}}'`
   );
@@ -42,7 +42,7 @@ export async function findServiceContainer(
   serviceName: string
 ): Promise<string | null> {
   const fullServiceName = `${stackName}_${serviceName}`;
-  const result = sshExec(
+  const result = await sshExec(
     conn,
     `docker ps --filter "label=com.docker.swarm.service.name=${fullServiceName}" --format '{{.ID}}' | head -n1`
   );
@@ -80,13 +80,13 @@ async function executeServiceOperation(
 
   switch (operation.type) {
     case 'restart':
-      result = sshExec(conn, `docker service update --force ${serviceName}`);
+      result = await sshExec(conn, `docker service update --force ${serviceName}`);
       break;
     case 'rollback':
-      result = sshExec(conn, `docker service rollback ${serviceName}`);
+      result = await sshExec(conn, `docker service rollback ${serviceName}`);
       break;
     case 'scale':
-      result = sshExec(conn, `docker service scale ${serviceName}=${operation.replicas}`);
+      result = await sshExec(conn, `docker service scale ${serviceName}=${operation.replicas}`);
       break;
     case 'logs':
       // Logs are streamed, not returned
@@ -166,7 +166,7 @@ export async function getStackDetails(
 
   let stats = 'No running containers';
   if (containerIds.stdout.trim()) {
-    const statsResult = sshExec(conn, `docker stats --no-stream ${containerIds.stdout.trim()}`);
+    const statsResult = await sshExec(conn, `docker stats --no-stream ${containerIds.stdout.trim()}`);
     stats = statsResult.stdout;
   }
 

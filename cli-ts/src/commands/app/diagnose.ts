@@ -148,7 +148,7 @@ export function registerDiagnoseCommand(program: Command): void {
       if (options.verbose) {
         printSection('Recent Docker Events');
         try {
-          const eventsResult = sshExec(
+          const eventsResult = await sshExec(
             connection,
             `docker events --since 5m --until 0s --filter "type=container" --filter "event=die" --filter "event=oom" --format '{{.Time}} {{.Actor.Attributes.name}} {{.Action}}' 2>/dev/null | tail -10`
           );
@@ -165,7 +165,7 @@ export function registerDiagnoseCommand(program: Command): void {
       // 6. Check disk space
       printSection('System Resources');
       try {
-        const dfResult = sshExec(connection, `df -h / | tail -1 | awk '{print $5}'`);
+        const dfResult = await sshExec(connection, `df -h / | tail -1 | awk '{print $5}'`);
         const diskUsage = parseInt(dfResult.stdout.trim().replace('%', ''));
         if (diskUsage >= 90) {
           console.log(`  Disk usage: ${colors.error(dfResult.stdout.trim())}`);
@@ -192,7 +192,7 @@ export function registerDiagnoseCommand(program: Command): void {
 
       // 7. Check memory
       try {
-        const memResult = sshExec(connection, `free -m | awk 'NR==2{printf "%.0f", $3*100/$2}'`);
+        const memResult = await sshExec(connection, `free -m | awk 'NR==2{printf "%.0f", $3*100/$2}'`);
         const memUsage = parseInt(memResult.stdout.trim());
         if (memUsage >= 90) {
           console.log(`  Memory usage: ${colors.error(memUsage + '%')}`);

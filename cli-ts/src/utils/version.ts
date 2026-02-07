@@ -4,10 +4,8 @@
  */
 
 import { printDebug } from './output';
-import { join } from 'path';
-import { spawnSync } from 'child_process';
 import { parseConnectionString } from './connection-parser';
-import { normalizePrivateKey } from './ssh-keys';
+import { sshExec } from './ssh';
 
 /**
  * Increment version string
@@ -69,16 +67,6 @@ export async function getLatestVersion(
   if (debug) printDebug(`Looking for versions in stack: ${stackName}`);
   if (debug) printDebug(`SSH connection: ${conn.user}@${conn.host}:${conn.port}`);
 
-  // Write private key to temp file
-  const tempKeyPath = join(process.env.TEMP || '/tmp', `dockflow_deploy_key_${Date.now()}`);
-  const fs = await import('fs');
-
-  const privateKey = normalizePrivateKey(conn.privateKey);
-
-  if (debug) printDebug(`Private key first 50 chars: ${privateKey.substring(0, 50).replace(/\n/g, '\\n')}`);
-
-  fs.writeFileSync(tempKeyPath, privateKey, { mode: 0o600 });
-
   try {
     // SSH command to get latest version from metadata files
     // Releases are stored directly in /var/lib/dockflow/stacks/{stack_name}/{version}/
@@ -110,38 +98,22 @@ export async function getLatestVersion(
       fi
     `;
 
-    const result = spawnSync('ssh', [
-      '-i', tempKeyPath,
-      '-o', 'StrictHostKeyChecking=no',
-      '-o', 'UserKnownHostsFile=/dev/null',
-      '-o', 'LogLevel=ERROR',
-      '-p', conn.port.toString(),
-      `${conn.user}@${conn.host}`,
+    const result = await sshExec(
+      { host: conn.host, port: conn.port, user: conn.user, privateKey: conn.privateKey },
       sshCmd,
-    ], {
-      encoding: 'utf-8',
-      timeout: 10000,
-    });
-
-    fs.unlinkSync(tempKeyPath);
+    );
 
     if (debug) {
-      printDebug(`SSH exit code: ${result.status}`);
+      printDebug(`SSH exit code: ${result.exitCode}`);
       printDebug(`SSH stdout: "${result.stdout}"`);
       printDebug(`SSH stderr: ${result.stderr}`);
     }
 
-    if (result.status === 0 && result.stdout) {
+    if (result.exitCode === 0 && result.stdout) {
       return result.stdout.trim() || null;
     }
     return null;
   } catch {
-    try {
-      const fs = await import('fs');
-      fs.unlinkSync(tempKeyPath);
-    } catch {
-      /* ignore */
-    }
     return null;
   }
 }

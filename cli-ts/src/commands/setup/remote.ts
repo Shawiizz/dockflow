@@ -2,12 +2,11 @@
  * Remote setup functionality (Windows/macOS -> Linux)
  */
 
-import { spawnSync, spawn } from 'child_process';
 import * as fs from 'fs';
 import ora from 'ora';
 import { printHeader, printSection, printError, printSuccess, printInfo, colors } from '../../utils/output';
 import { sshExec, sshExecStream, testConnection } from '../../utils/ssh';
-import type { SSHKeyConnection as ConnectionInfo } from '../../types';
+import type { ConnectionInfo } from '../../types';
 import { DOCKFLOW_RELEASE_URL } from './constants';
 import { prompt, promptPassword, selectMenu, promptMultiline } from './prompts';
 import { parseConnectionString } from './connection';
@@ -17,139 +16,13 @@ import type { RemoteSetupOptions } from './types';
  * Detect remote server architecture
  */
 async function detectRemoteArch(conn: ConnectionInfo): Promise<'x64' | 'arm64'> {
-  const result = sshExec(conn, 'uname -m');
+  const result = await sshExec(conn, 'uname -m');
   const arch = result.stdout.trim();
   
   if (arch === 'aarch64' || arch === 'arm64') {
     return 'arm64';
   }
   return 'x64';
-}
-
-/**
- * Execute SSH command with password (requires sshpass on local machine)
- */
-function sshExecWithPassword(host: string, port: number, user: string, password: string, command: string): { stdout: string; stderr: string; exitCode: number } {
-  const hasSshpass = spawnSync('which', ['sshpass'], { encoding: 'utf-8' }).status === 0 ||
-                     spawnSync('where', ['sshpass'], { encoding: 'utf-8', shell: true }).status === 0;
-  
-  if (!hasSshpass) {
-    const result = spawnSync('ssh', [
-      '-o', 'StrictHostKeyChecking=no',
-      '-o', 'UserKnownHostsFile=/dev/null',
-      '-o', 'PreferredAuthentications=password',
-      '-o', 'PubkeyAuthentication=no',
-      '-p', port.toString(),
-      `${user}@${host}`,
-      command
-    ], {
-      encoding: 'utf-8',
-      input: password + '\n',
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-    
-    return {
-      stdout: result.stdout || '',
-      stderr: result.stderr || '',
-      exitCode: result.status ?? 1
-    };
-  }
-  
-  const result = spawnSync('sshpass', [
-    '-p', password,
-    'ssh',
-    '-o', 'StrictHostKeyChecking=no',
-    '-o', 'UserKnownHostsFile=/dev/null',
-    '-p', port.toString(),
-    `${user}@${host}`,
-    command
-  ], {
-    encoding: 'utf-8',
-    stdio: ['pipe', 'pipe', 'pipe']
-  });
-  
-  return {
-    stdout: result.stdout || '',
-    stderr: result.stderr || '',
-    exitCode: result.status ?? 1
-  };
-}
-
-/**
- * Execute SSH command with password and stream output
- */
-async function sshExecWithPasswordStream(
-  host: string, 
-  port: number, 
-  user: string, 
-  password: string, 
-  command: string
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const hasSshpass = spawnSync('which', ['sshpass'], { encoding: 'utf-8' }).status === 0 ||
-                     spawnSync('where', ['sshpass'], { encoding: 'utf-8', shell: true }).status === 0;
-  
-  return new Promise((resolve, reject) => {
-    let proc;
-    
-    if (hasSshpass) {
-      proc = spawn('sshpass', [
-        '-p', password,
-        'ssh',
-        '-o', 'StrictHostKeyChecking=no',
-        '-o', 'UserKnownHostsFile=/dev/null',
-        '-tt',
-        '-p', port.toString(),
-        `${user}@${host}`,
-        command
-      ], {
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-    } else {
-      proc = spawn('ssh', [
-        '-o', 'StrictHostKeyChecking=no',
-        '-o', 'UserKnownHostsFile=/dev/null',
-        '-o', 'PreferredAuthentications=keyboard-interactive,password',
-        '-o', 'PubkeyAuthentication=no',
-        '-tt',
-        '-p', port.toString(),
-        `${user}@${host}`,
-        command
-      ], {
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-      
-      proc.stdin.write(password + '\n');
-    }
-    
-    let stdout = '';
-    let stderr = '';
-    
-    proc.stdout.on('data', (data) => {
-      const str = data.toString();
-      stdout += str;
-      process.stdout.write(str);
-    });
-    
-    proc.stderr.on('data', (data) => {
-      const str = data.toString();
-      stderr += str;
-      if (!str.toLowerCase().includes('password')) {
-        process.stderr.write(str);
-      }
-    });
-    
-    proc.on('error', (err) => {
-      reject(err);
-    });
-    
-    proc.on('close', (code) => {
-      resolve({
-        stdout,
-        stderr,
-        exitCode: code ?? 1
-      });
-    });
-  });
 }
 
 /**
@@ -275,11 +148,10 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
     }
   } else if (opts.password) {
     usePasswordAuth = true;
-    const result = sshExecWithPassword(opts.host, opts.port, opts.user, opts.password, 'echo ok');
+    const result = await sshExec({ host: opts.host, port: opts.port, user: opts.user, password: opts.password }, 'echo ok');
     if (result.exitCode !== 0 || !result.stdout.includes('ok')) {
       testSpinner.fail('SSH connection failed');
       printError('Could not connect to the remote server. Check your credentials.');
-      printInfo('Note: Password authentication requires "sshpass" to be installed on your local machine.');
       return;
     }
   } else {
@@ -295,7 +167,7 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   if (conn) {
     arch = await detectRemoteArch(conn);
   } else if (opts.password) {
-    const archResult = sshExecWithPassword(opts.host, opts.port, opts.user, opts.password, 'uname -m');
+    const archResult = await sshExec({ host: opts.host, port: opts.port, user: opts.user, password: opts.password! }, 'uname -m');
     const archStr = archResult.stdout.trim();
     arch = (archStr === 'aarch64' || archStr === 'arm64') ? 'arm64' : 'x64';
   }
@@ -312,9 +184,9 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   
   let downloadResult;
   if (conn) {
-    downloadResult = sshExec(conn, downloadCmd);
+    downloadResult = await sshExec(conn, downloadCmd);
   } else {
-    downloadResult = sshExecWithPassword(opts.host, opts.port, opts.user, opts.password!, downloadCmd);
+    downloadResult = await sshExec({ host: opts.host, port: opts.port, user: opts.user, password: opts.password! }, downloadCmd);
   }
   
   if (downloadResult.exitCode !== 0) {
@@ -335,7 +207,7 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   if (conn) {
     await sshExecStream(conn, setupCmd);
   } else {
-    await sshExecWithPasswordStream(opts.host, opts.port, opts.user, opts.password!, setupCmd);
+    await sshExecStream({ host: opts.host, port: opts.port, user: opts.user, password: opts.password! }, setupCmd);
   }
   
   console.log('');
@@ -343,9 +215,9 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   
   const cleanupSpinner = ora('Cleaning up...').start();
   if (conn) {
-    sshExec(conn, `rm -f ${remotePath}`);
+    await sshExec(conn, `rm -f ${remotePath}`);
   } else {
-    sshExecWithPassword(opts.host, opts.port, opts.user, opts.password!, `rm -f ${remotePath}`);
+    await sshExec({ host: opts.host, port: opts.port, user: opts.user, password: opts.password! }, `rm -f ${remotePath}`);
   }
   cleanupSpinner.succeed('Cleanup complete');
   

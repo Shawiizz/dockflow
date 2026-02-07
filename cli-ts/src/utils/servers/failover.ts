@@ -15,12 +15,12 @@ import { getFullConnectionInfo } from './resolver';
  * Check if a manager is reachable and get its Swarm status
  * Returns: 'leader' | 'reachable' | 'unreachable'
  */
-export function checkManagerStatus(
+export async function checkManagerStatus(
   connection: SSHKeyConnection
-): 'leader' | 'reachable' | 'unreachable' {
+): Promise<'leader' | 'reachable' | 'unreachable'> {
   try {
     // Quick connectivity check + Swarm leader status
-    const result = sshExec(connection, 
+    const result = await sshExec(connection,
       'docker info --format "{{.Swarm.ControlAvailable}}" 2>/dev/null || echo "error"'
     );
     
@@ -34,7 +34,7 @@ export function checkManagerStatus(
     
     if (controlAvailable) {
       // Check if this is specifically the leader
-      const leaderCheck = sshExec(connection,
+      const leaderCheck = await sshExec(connection,
         'docker node inspect self --format "{{.ManagerStatus.Leader}}" 2>/dev/null || echo "false"'
       );
       
@@ -101,7 +101,7 @@ export async function findActiveManager(
       process.stdout.write(`  Checking ${manager.name} (${manager.host})...`);
     }
     
-    const status = checkManagerStatus(connection);
+    const status = await checkManagerStatus(connection);
     
     if (status === 'unreachable') {
       if (verbose) {

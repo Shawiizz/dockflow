@@ -105,8 +105,8 @@ export class LogsService {
       
     // Force non-follow for getting logs
     const cmd = this.buildLogsCommand(fullName, { ...options, follow: false });
-    const result = sshExec(this.connection, cmd);
-    
+    const result = await sshExec(this.connection, cmd);
+
     return result.stdout;
   }
 
@@ -165,8 +165,8 @@ export class LogsService {
 
     for (const service of services) {
       const cmd = `docker service logs --tail ${options.tail ?? 500} ${service} 2>&1 | grep ${grepFlag} "${pattern}" || true`;
-      const result = sshExec(this.connection, cmd);
-      
+      const result = await sshExec(this.connection, cmd);
+
       if (result.stdout.trim()) {
         entries.push({ service, output: result.stdout });
       }

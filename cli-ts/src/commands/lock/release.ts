@@ -50,7 +50,7 @@ export function registerLockReleaseCommand(parent: Command): void {
 
         // Release lock
         spinner.start('Releasing lock...');
-        const removeResult = sshExec(connection, `rm -f "${lockFile}"`);
+        const removeResult = await sshExec(connection, `rm -f "${lockFile}"`);
         
         if (removeResult.exitCode !== 0) {
           spinner.fail('Failed to remove lock file');
@@ -58,7 +58,7 @@ export function registerLockReleaseCommand(parent: Command): void {
         }
 
         // Verify the lock was actually removed
-        const verifyResult = sshExec(connection, `test -f "${lockFile}" && echo "EXISTS" || echo "REMOVED"`);
+        const verifyResult = await sshExec(connection, `test -f "${lockFile}" && echo "EXISTS" || echo "REMOVED"`);
         if (verifyResult.stdout.trim() === 'EXISTS') {
           spinner.fail('Lock file still exists after removal attempt');
           throw new CLIError(

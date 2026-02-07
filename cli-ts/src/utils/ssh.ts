@@ -1,150 +1,197 @@
 /**
- * SSH utilities using native ssh command.
- * Supports all key types including ed25519.
+ * SSH utilities using the ssh2 library.
+ * Supports key-based and password-based authentication.
+ * No temporary key files needed — keys are passed directly in memory.
  */
 
-import { spawn, spawnSync } from "child_process";
-import type { SSHKeyConnection } from "../types";
-import { 
-  createTempKeyFile, 
-  cleanupKeyFile, 
-  buildSSHArgs, 
-  getSSHCommand 
-} from "./ssh-keys";
-import { unwrap } from "../types";
+import { Client as SSHClient } from 'ssh2';
+import type { ConnectionInfo, SSHKeyConnection, SSHExecResult } from '../types';
+import { isKeyConnection } from '../types';
+import { normalizePrivateKey } from './ssh-keys';
+import { DEFAULT_SSH_PORT } from '../constants';
 
 // Re-export ConnectionInfo for backwards compatibility
-export type { SSHKeyConnection as ConnectionInfo } from "../types";
+export type { SSHKeyConnection as ConnectionInfo } from '../types';
 
-// Internal type alias for cleaner code
-type ConnectionInfo = SSHKeyConnection;
+/**
+ * Create and connect an ssh2 client
+ */
+function connectClient(conn: ConnectionInfo | SSHKeyConnection): Promise<SSHClient> {
+  return new Promise((resolve, reject) => {
+    const client = new SSHClient();
+
+    client.on('ready', () => resolve(client));
+    client.on('error', (err) => reject(err));
+
+    const config: Record<string, unknown> = {
+      host: conn.host,
+      port: conn.port || DEFAULT_SSH_PORT,
+      username: conn.user,
+      hostVerifier: () => true,
+      readyTimeout: 10000,
+    };
+
+    if (isKeyConnection(conn as ConnectionInfo)) {
+      config.privateKey = normalizePrivateKey((conn as SSHKeyConnection).privateKey);
+    }
+
+    if ('password' in conn && conn.password) {
+      config.password = conn.password;
+    }
+
+    client.connect(config as any);
+  });
+}
+
+/**
+ * Execute a command via SSH (returns collected output)
+ */
+export async function sshExec(
+  conn: ConnectionInfo | SSHKeyConnection,
+  command: string
+): Promise<SSHExecResult> {
+  const client = await connectClient(conn);
+
+  try {
+    return await new Promise<SSHExecResult>((resolve, reject) => {
+      client.exec(command, (err, stream) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        let stdout = '';
+        let stderr = '';
+
+        stream.on('data', (data: Buffer) => {
+          stdout += data.toString();
+        });
+
+        stream.stderr.on('data', (data: Buffer) => {
+          stderr += data.toString();
+        });
+
+        stream.on('close', (code: number) => {
+          resolve({
+            stdout,
+            stderr,
+            exitCode: code ?? 0,
+          });
+        });
+      });
+    });
+  } finally {
+    client.end();
+  }
+}
 
 /**
  * Execute a command via SSH (streaming output to console)
  */
 export async function sshExecStream(
-  conn: ConnectionInfo,
+  conn: ConnectionInfo | SSHKeyConnection,
   command: string,
   options: {
     onStdout?: (data: string) => void;
     onStderr?: (data: string) => void;
   } = {}
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const keyFileResult = createTempKeyFile(conn.privateKey);
-  const keyFile = unwrap(keyFileResult);
-  
+): Promise<SSHExecResult> {
+  const client = await connectClient(conn);
+
   try {
-    const sshArgs = [...buildSSHArgs(conn, keyFile), command];
-    const ssh = getSSHCommand();
-    
-    return new Promise((resolve, reject) => {
-      const proc = spawn(ssh, sshArgs, {
-        shell: false,
-        stdio: ["ignore", "pipe", "pipe"]
-      });
-      
-      let stdout = "";
-      let stderr = "";
-      
-      proc.stdout.on("data", (data) => {
-        const str = data.toString();
-        stdout += str;
-        if (options.onStdout) {
-          options.onStdout(str);
-        } else {
-          // Default: stream to console
-          process.stdout.write(str);
+    return await new Promise<SSHExecResult>((resolve, reject) => {
+      client.exec(command, (err, stream) => {
+        if (err) {
+          reject(err);
+          return;
         }
-      });
-      
-      proc.stderr.on("data", (data) => {
-        const str = data.toString();
-        stderr += str;
-        if (options.onStderr) {
-          options.onStderr(str);
-        } else {
-          // Default: stream to console
-          process.stderr.write(str);
-        }
-      });
-      
-      proc.on("error", (err) => {
-        cleanupKeyFile(keyFile);
-        reject(new Error(`SSH command failed: ${err.message}`));
-      });
-      
-      proc.on("close", (code) => {
-        cleanupKeyFile(keyFile);
-        resolve({
-          stdout,
-          stderr,
-          exitCode: code ?? 1
+
+        let stdout = '';
+        let stderr = '';
+
+        stream.on('data', (data: Buffer) => {
+          const str = data.toString();
+          stdout += str;
+          if (options.onStdout) {
+            options.onStdout(str);
+          } else {
+            process.stdout.write(str);
+          }
+        });
+
+        stream.stderr.on('data', (data: Buffer) => {
+          const str = data.toString();
+          stderr += str;
+          if (options.onStderr) {
+            options.onStderr(str);
+          } else {
+            process.stderr.write(str);
+          }
+        });
+
+        stream.on('close', (code: number) => {
+          resolve({
+            stdout,
+            stderr,
+            exitCode: code ?? 0,
+          });
         });
       });
     });
-  } catch (error) {
-    cleanupKeyFile(keyFile);
-    throw error;
-  }
-}
-
-/**
- * Execute a command via SSH (synchronous, for simple commands)
- */
-export function sshExec(
-  conn: ConnectionInfo,
-  command: string
-): { stdout: string; stderr: string; exitCode: number } {
-  const keyFileResult = createTempKeyFile(conn.privateKey);
-  const keyFile = unwrap(keyFileResult);
-  
-  try {
-    const sshArgs = [...buildSSHArgs(conn, keyFile), command];
-    const ssh = getSSHCommand();
-    
-    const result = spawnSync(ssh, sshArgs, {
-      encoding: "utf-8",
-      shell: false,
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-    
-    cleanupKeyFile(keyFile);
-    
-    return {
-      stdout: result.stdout || "",
-      stderr: result.stderr || "",
-      exitCode: result.status ?? 1
-    };
-  } catch (error) {
-    cleanupKeyFile(keyFile);
-    throw error;
+  } finally {
+    client.end();
   }
 }
 
 /**
  * Open an interactive SSH session
  */
-export function sshShell(conn: ConnectionInfo): Promise<number> {
-  const keyFileResult = createTempKeyFile(conn.privateKey);
-  const keyFile = unwrap(keyFileResult);
-  
+export async function sshShell(conn: ConnectionInfo | SSHKeyConnection): Promise<number> {
+  const client = await connectClient(conn);
+
   return new Promise((resolve, reject) => {
-    const sshArgs = buildSSHArgs(conn, keyFile);
-    const ssh = getSSHCommand();
-    
-    const proc = spawn(ssh, sshArgs, {
-      stdio: "inherit",
-      shell: false
-    });
-    
-    proc.on("error", (err) => {
-      cleanupKeyFile(keyFile);
-      reject(new Error(`SSH failed: ${err.message}`));
-    });
-    
-    proc.on("close", (code) => {
-      cleanupKeyFile(keyFile);
-      resolve(code ?? 0);
+    const ptyOptions = {
+      term: process.env.TERM || 'xterm-256color',
+      rows: process.stdout.rows || 24,
+      cols: process.stdout.columns || 80,
+    };
+
+    client.shell(ptyOptions, (err, stream) => {
+      if (err) {
+        client.end();
+        reject(err);
+        return;
+      }
+
+      // Enable raw mode so keystrokes are sent immediately
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(true);
+      }
+      process.stdin.resume();
+      process.stdin.pipe(stream);
+      stream.pipe(process.stdout);
+      stream.stderr.pipe(process.stderr);
+
+      // Handle terminal resize
+      const onResize = () => {
+        stream.setWindow(
+          process.stdout.rows || 24,
+          process.stdout.columns || 80,
+          0, 0,
+        );
+      };
+      process.stdout.on('resize', onResize);
+
+      stream.on('close', () => {
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(false);
+        }
+        process.stdin.unpipe(stream);
+        process.stdin.pause();
+        process.stdout.removeListener('resize', onResize);
+        client.end();
+        resolve(0);
+      });
     });
   });
 }
@@ -152,30 +199,55 @@ export function sshShell(conn: ConnectionInfo): Promise<number> {
 /**
  * Execute an interactive command via SSH (e.g., docker exec -it)
  */
-export function executeInteractiveSSH(
-  conn: ConnectionInfo,
+export async function executeInteractiveSSH(
+  conn: ConnectionInfo | SSHKeyConnection,
   command: string
 ): Promise<number> {
-  const keyFileResult = createTempKeyFile(conn.privateKey);
-  const keyFile = unwrap(keyFileResult);
-  
+  const client = await connectClient(conn);
+
   return new Promise((resolve, reject) => {
-    const sshArgs = [...buildSSHArgs(conn, keyFile, { allocateTTY: true }), command];
-    const ssh = getSSHCommand();
-    
-    const proc = spawn(ssh, sshArgs, {
-      stdio: "inherit",
-      shell: false
-    });
-    
-    proc.on("error", (err) => {
-      cleanupKeyFile(keyFile);
-      reject(new Error(`SSH failed: ${err.message}`));
-    });
-    
-    proc.on("close", (code) => {
-      cleanupKeyFile(keyFile);
-      resolve(code ?? 0);
+    const ptyOptions = {
+      term: 'xterm-256color',
+      rows: process.stdout.rows || 24,
+      cols: process.stdout.columns || 80,
+    };
+
+    client.exec(command, { pty: ptyOptions }, (err, stream) => {
+      if (err) {
+        client.end();
+        reject(err);
+        return;
+      }
+
+      // Enable raw mode so keystrokes are sent immediately
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(true);
+      }
+      process.stdin.resume();
+      process.stdin.pipe(stream);
+      stream.pipe(process.stdout);
+      stream.stderr.pipe(process.stderr);
+
+      // Handle terminal resize
+      const onResize = () => {
+        stream.setWindow(
+          process.stdout.rows || 24,
+          process.stdout.columns || 80,
+          0, 0,
+        );
+      };
+      process.stdout.on('resize', onResize);
+
+      stream.on('close', (code: number) => {
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(false);
+        }
+        process.stdin.unpipe(stream);
+        process.stdin.pause();
+        process.stdout.removeListener('resize', onResize);
+        client.end();
+        resolve(code ?? 0);
+      });
     });
   });
 }
@@ -183,13 +255,13 @@ export function executeInteractiveSSH(
 /**
  * Test SSH connection
  */
-export async function testConnection(conn: ConnectionInfo): Promise<boolean> {
+export async function testConnection(conn: ConnectionInfo | SSHKeyConnection): Promise<boolean> {
   try {
-    const result = await sshExecStream(conn, "echo ok", {
-      onStdout: () => {}, // Suppress output during testing
+    const result = await sshExecStream(conn, 'echo ok', {
+      onStdout: () => {},
       onStderr: () => {},
     });
-    return result.exitCode === 0 && result.stdout.trim() === "ok";
+    return result.exitCode === 0 && result.stdout.trim() === 'ok';
   } catch {
     return false;
   }

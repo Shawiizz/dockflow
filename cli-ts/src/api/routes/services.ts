@@ -5,7 +5,6 @@
  * GET /api/services/:name/logs    - Get service logs
  */
 
-import { Client as SSHClient } from 'ssh2';
 import { jsonResponse, errorResponse } from '../server';
 import { loadConfig } from '../../utils/config';
 import {
@@ -13,7 +12,7 @@ import {
   getAvailableEnvironments,
   getServerPrivateKey,
 } from '../../utils/servers';
-import { normalizePrivateKey } from '../../utils/ssh-keys';
+import { sshExec } from '../../utils/ssh';
 import { DEFAULT_SSH_PORT } from '../../constants';
 import type { ServiceInfo, ServicesListResponse, LogEntry, LogsResponse } from '../types';
 
@@ -97,58 +96,6 @@ function getManagerConnection(env: string) {
 }
 
 /**
- * Execute a command over SSH using the ssh2 library
- * Returns stdout output or throws on error
- */
-function sshExecCommand(
-  conn: { host: string; port: number; user: string; privateKey: string },
-  command: string,
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return new Promise((resolve, reject) => {
-    const client = new SSHClient();
-
-    client.on('ready', () => {
-      client.exec(command, (execErr, stream) => {
-        if (execErr) {
-          client.end();
-          reject(execErr);
-          return;
-        }
-
-        let stdout = '';
-        let stderr = '';
-
-        stream.on('data', (data: Buffer) => {
-          stdout += data.toString();
-        });
-
-        stream.stderr.on('data', (data: Buffer) => {
-          stderr += data.toString();
-        });
-
-        stream.on('close', (code: number) => {
-          client.end();
-          resolve({ stdout, stderr, exitCode: code ?? 0 });
-        });
-      });
-    });
-
-    client.on('error', (err) => {
-      reject(err);
-    });
-
-    client.connect({
-      host: conn.host,
-      port: conn.port,
-      username: conn.user,
-      privateKey: normalizePrivateKey(conn.privateKey),
-      hostVerifier: () => true,
-      readyTimeout: 10000,
-    });
-  });
-}
-
-/**
  * List Docker services running on the swarm
  */
 async function listServices(url: URL): Promise<Response> {
@@ -189,7 +136,7 @@ async function listServices(url: URL): Promise<Response> {
 
   try {
     const command = `docker service ls --filter name=${stackName} --format "table {{.ID}}  {{.Name}}  {{.Mode}}  {{.Replicas}}  {{.Image}}  {{.Ports}}"`;
-    const result = await sshExecCommand(conn, command);
+    const result = await sshExec(conn, command);
 
     if (result.exitCode !== 0) {
       return jsonResponse({
@@ -243,7 +190,7 @@ async function getServiceLogs(serviceName: string, url: URL): Promise<Response> 
 
   try {
     const command = `docker service logs --tail ${lines} --timestamps --no-trunc ${serviceName} 2>&1`;
-    const result = await sshExecCommand(conn, command);
+    const result = await sshExec(conn, command);
 
     const logEntries: LogEntry[] = result.stdout
       .trim()

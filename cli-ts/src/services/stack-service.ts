@@ -84,7 +84,7 @@ export class StackService {
    * Check if the stack exists
    */
   async exists(): Promise<boolean> {
-    const result = sshExec(this.connection, `docker stack ls --format '{{.Name}}' | grep -q "^${this.stackName}$" && echo "exists" || echo "not_found"`);
+    const result = await sshExec(this.connection, `docker stack ls --format '{{.Name}}' | grep -q "^${this.stackName}$" && echo "exists" || echo "not_found"`);
     return result.stdout.trim() === 'exists';
   }
 
@@ -93,7 +93,7 @@ export class StackService {
    */
   async getServices(): Promise<Result<ServiceInfo[], Error>> {
     try {
-      const result = sshExec(
+      const result = await sshExec(
         this.connection,
         `docker stack services ${this.stackName} --format '{{.Name}}|{{.Image}}|{{.Replicas}}|{{.Ports}}' 2>/dev/null`
       );
@@ -141,7 +141,7 @@ export class StackService {
    */
   async getContainers(): Promise<Result<ContainerInfo[], Error>> {
     try {
-      const result = sshExec(
+      const result = await sshExec(
         this.connection,
         `docker ps --filter "label=com.docker.stack.namespace=${this.stackName}" --format '{{.ID}}|{{.Names}}|{{.Status}}|{{.Ports}}'`
       );
@@ -170,7 +170,7 @@ export class StackService {
    */
   async getTasks(): Promise<Result<TaskInfo[], Error>> {
     try {
-      const result = sshExec(
+      const result = await sshExec(
         this.connection,
         `docker stack ps ${this.stackName} --format '{{.ID}}|{{.Name}}|{{.Image}}|{{.Node}}|{{.DesiredState}}|{{.CurrentState}}|{{.Error}}' --no-trunc 2>/dev/null`
       );
@@ -199,7 +199,7 @@ export class StackService {
    */
   async getMetadata(): Promise<Result<StackMetadata, Error>> {
     try {
-      const result = sshExec(
+      const result = await sshExec(
         this.connection,
         `cat /var/lib/dockflow/stacks/${this.stackName}/current/metadata.json 2>/dev/null`
       );
@@ -223,7 +223,7 @@ export class StackService {
       ? serviceName 
       : `${this.stackName}_${serviceName}`;
       
-    const result = sshExec(
+    const result = await sshExec(
       this.connection,
       `docker ps --filter "label=com.docker.swarm.service.name=${fullServiceName}" --format '{{.ID}}' | head -n1`
     );
@@ -237,7 +237,7 @@ export class StackService {
   async restart(serviceName?: string): Promise<OperationResult> {
     if (serviceName) {
       const fullName = `${this.stackName}_${serviceName}`;
-      const result = sshExec(this.connection, `docker service update --force ${fullName}`);
+      const result = await sshExec(this.connection, `docker service update --force ${fullName}`);
       return {
         success: result.exitCode === 0,
         message: result.exitCode === 0 ? `Restarted ${fullName}` : result.stderr,
@@ -255,7 +255,7 @@ export class StackService {
     let allSuccess = true;
 
     for (const svc of services) {
-      const result = sshExec(this.connection, `docker service update --force ${svc}`);
+      const result = await sshExec(this.connection, `docker service update --force ${svc}`);
       if (result.exitCode !== 0) {
         allSuccess = false;
         results.push(`${svc}: failed - ${result.stderr}`);
@@ -276,7 +276,7 @@ export class StackService {
    */
   async scale(serviceName: string, replicas: number): Promise<OperationResult> {
     const fullName = `${this.stackName}_${serviceName}`;
-    const result = sshExec(this.connection, `docker service scale ${fullName}=${replicas}`);
+    const result = await sshExec(this.connection, `docker service scale ${fullName}=${replicas}`);
     
     return {
       success: result.exitCode === 0,
@@ -293,7 +293,7 @@ export class StackService {
   async rollback(serviceName?: string): Promise<OperationResult> {
     if (serviceName) {
       const fullName = `${this.stackName}_${serviceName}`;
-      const result = sshExec(this.connection, `docker service rollback ${fullName}`);
+      const result = await sshExec(this.connection, `docker service rollback ${fullName}`);
       return {
         success: result.exitCode === 0,
         message: result.exitCode === 0 ? `Rolled back ${fullName}` : result.stderr,
@@ -308,7 +308,7 @@ export class StackService {
     }
 
     const rollbackCmd = services.map(svc => `docker service rollback ${svc} 2>&1`).join(' & ');
-    const result = sshExec(this.connection, `${rollbackCmd}; wait`);
+    const result = await sshExec(this.connection, `${rollbackCmd}; wait`);
 
     return {
       success: result.exitCode === 0,
@@ -323,7 +323,7 @@ export class StackService {
    * Remove the stack
    */
   async remove(): Promise<OperationResult> {
-    const result = sshExec(this.connection, `docker stack rm ${this.stackName}`);
+    const result = await sshExec(this.connection, `docker stack rm ${this.stackName}`);
     return {
       success: result.exitCode === 0,
       message: result.exitCode === 0 ? `Removed stack ${this.stackName}` : result.stderr,
@@ -341,7 +341,7 @@ export class StackService {
     }
 
     const containerIds = containersResult.data.map(c => c.id).join(' ');
-    const result = sshExec(this.connection, `docker stats --no-stream ${containerIds}`);
+    const result = await sshExec(this.connection, `docker stats --no-stream ${containerIds}`);
     
     return result.stdout;
   }
