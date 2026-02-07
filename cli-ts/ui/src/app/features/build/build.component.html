@@ -32,7 +32,7 @@
 
   @if (buildLogs().length > 0) {
     <div class="card" style="padding: 0; margin-top: 1rem;">
-      <div style="padding: 0.75rem 1rem; border-bottom: 1px solid var(--p-surface-200); display: flex; align-items: center; justify-content: space-between;">
+      <div style="padding: 0.75rem 1rem; border-bottom: 1px solid var(--border-primary); display: flex; align-items: center; justify-content: space-between;">
         <span class="text-sm font-medium">Output</span>
         @if (buildSuccess() === true) {
           <p-tag value="Success" severity="success" [rounded]="true" />
@@ -42,7 +42,7 @@
           <p-tag value="Running" severity="info" [rounded]="true" />
         }
       </div>
-      <div style="background: #0a0a0a; color: #fafafa; font-family: 'JetBrains Mono', monospace; font-size: 0.8125rem; padding: 1rem; max-height: 30rem; overflow-y: auto; white-space: pre-wrap; word-break: break-all;">
+      <div #outputContainer style="background: #0a0a0a; color: #fafafa; font-family: 'JetBrains Mono', monospace; font-size: 0.8125rem; padding: 1rem; max-height: 30rem; overflow-y: auto; white-space: pre-wrap; word-break: break-all;">
         @for (line of buildLogs(); track $index) {
           <div>{{ line }}</div>
         }

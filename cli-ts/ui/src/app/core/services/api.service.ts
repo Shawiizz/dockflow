@@ -197,9 +197,7 @@ export class ApiService {
     if (env) {
       params = params.set('env', env);
     }
-    return this.http.get<DeployHistoryResponse>(`${this.baseUrl}/deploy/history`, { params }).pipe(
-      catchError(() => of({ deployments: [], total: 0 }))
-    );
+    return this.http.get<DeployHistoryResponse>(`${this.baseUrl}/deploy/history`, { params });
   }
 
   // ── Operations (Deploy/Build streaming) ────────────────────────────────

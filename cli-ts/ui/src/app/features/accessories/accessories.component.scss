@@ -154,7 +154,7 @@
   text-align: center;
   color: var(--text-muted);
 
-  i { font-size: 3rem; margin-bottom: 1rem; opacity: 0.3; }
+  > i { font-size: 3rem; margin-bottom: 1rem; opacity: 0.3; }
   h3 { font-size: 1.125rem; font-weight: 500; color: var(--text-secondary); margin: 0 0 0.5rem; }
   p { font-size: 0.875rem; margin: 0; }
 }

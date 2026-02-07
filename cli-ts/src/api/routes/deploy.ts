@@ -1,14 +1,13 @@
 /**
  * Deploy API Routes
  *
- * GET /api/deploy/history - Get deployment history from audit log
+ * GET /api/deploy/history - Get deployment history from remote manager
  */
 
 import { jsonResponse, errorResponse } from '../server';
-import { loadConfig, getProjectRoot } from '../../utils/config';
-import { getAvailableEnvironments } from '../../utils/servers';
-import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { sshExec } from '../../utils/ssh';
+import { getManagerConnection, resolveEnvironment } from './_helpers';
+import { DOCKFLOW_METRICS_DIR } from '../../constants';
 import type { DeployHistoryEntry, DeployHistoryResponse } from '../types';
 
 /**
@@ -28,86 +27,103 @@ export async function handleDeployRoutes(req: Request): Promise<Response> {
 }
 
 /**
- * Read deploy history from the audit log file
+ * Read deploy history from the remote manager's metrics database.
  *
- * Dockflow writes audit logs to .dockflow/audit.log as JSON-per-line.
- * If the file doesn't exist we return an empty list.
+ * Dockflow records deployment metrics in JSONL format at:
+ *   /var/lib/dockflow/metrics/<stackName>/deployments.json
+ *
+ * Each line is a JSON object with fields like:
+ *   id, timestamp, version, environment, status, duration_ms, performer, etc.
  */
 async function getDeployHistory(url: URL): Promise<Response> {
   const envFilter = url.searchParams.get('env');
   const limit = parseInt(url.searchParams.get('limit') || '50', 10);
-  const projectRoot = getProjectRoot();
 
-  // Try multiple common audit log locations
-  const auditPaths = [
-    join(projectRoot, '.dockflow', 'audit.log'),
-    join(projectRoot, '.dockflow', 'deploy.log'),
-    join(projectRoot, '.dockflow', 'history.json'),
-  ];
+  const env = resolveEnvironment(envFilter);
+  if (!env) {
+    return jsonResponse({ deployments: [], total: 0 } satisfies DeployHistoryResponse);
+  }
 
-  let entries: DeployHistoryEntry[] = [];
+  const conn = getManagerConnection(env);
+  if (!conn) {
+    return errorResponse(`No manager connection available for environment "${env}"`, 503);
+  }
 
-  for (const auditPath of auditPaths) {
-    if (existsSync(auditPath)) {
+  if (!conn.stackName) {
+    return errorResponse('Project name not found in config — cannot resolve metrics path', 500);
+  }
+
+  // Stack name on remote is "<project_name>-<environment>" (see ansible/deploy.yml)
+  const fullStackName = `${conn.stackName}-${env}`;
+  const metricsPath = `${DOCKFLOW_METRICS_DIR}/${fullStackName}/deployments.json`;
+
+  try {
+    // Read the last N*2 lines to account for potential filtering
+    const cmd = `tail -n ${limit * 2} "${metricsPath}" 2>/dev/null || echo ""`;
+    const result = await sshExec(conn, cmd);
+
+    if (!result.stdout.trim()) {
+      return jsonResponse({ deployments: [], total: 0 } satisfies DeployHistoryResponse);
+    }
+
+    const entries: DeployHistoryEntry[] = [];
+    const lines = result.stdout.trim().split('\n');
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
       try {
-        const content = readFileSync(auditPath, 'utf-8');
-
-        if (auditPath.endsWith('.json')) {
-          // JSON array format
-          const parsed = JSON.parse(content);
-          entries = Array.isArray(parsed) ? parsed : [];
-        } else {
-          // JSON-per-line format
-          entries = content
-            .trim()
-            .split('\n')
-            .filter((line) => line.trim())
-            .map((line) => {
-              try {
-                return JSON.parse(line);
-              } catch {
-                return null;
-              }
-            })
-            .filter(Boolean) as DeployHistoryEntry[];
-        }
-        break;
+        const metric = JSON.parse(line);
+        entries.push({
+          id: metric.id || `${Date.now()}`,
+          environment: metric.environment || env,
+          target: metric.accessories_deployed ? 'all' : 'app',
+          version: metric.version || 'unknown',
+          status: mapMetricStatus(metric.status),
+          startedAt: metric.timestamp || new Date().toISOString(),
+          duration: metric.duration_ms ? Math.round(metric.duration_ms / 1000) : undefined,
+          error: metric.error || undefined,
+          user: metric.performer || undefined,
+        });
       } catch {
-        // Continue to next path
+        // Skip malformed lines
       }
     }
-  }
 
-  // If we couldn't find any audit log, return empty with message
-  if (entries.length === 0) {
-    // Generate a synthetic history from what we can determine
-    const config = loadConfig({ silent: true });
-    const environments = getAvailableEnvironments();
+    // Sort by most recent first
+    entries.sort((a, b) => {
+      const dateA = new Date(a.startedAt || 0).getTime();
+      const dateB = new Date(b.startedAt || 0).getTime();
+      return dateB - dateA;
+    });
+
+    // Limit results
+    const limited = entries.slice(0, limit);
 
     return jsonResponse({
-      deployments: [],
-      total: 0,
-      message: 'No deployment history found. Deploy your project to start recording history.',
-    } satisfies DeployHistoryResponse & { message?: string });
+      deployments: limited,
+      total: limited.length,
+    } satisfies DeployHistoryResponse);
+  } catch (error) {
+    console.error('[deploy/history] Failed to fetch deploy history:', error instanceof Error ? error.message : error);
+    return errorResponse(
+      error instanceof Error ? error.message : 'Failed to fetch deploy history',
+      500,
+    );
   }
+}
 
-  // Filter by environment if specified
-  if (envFilter) {
-    entries = entries.filter((e) => e.environment === envFilter);
+/**
+ * Map metric status to deploy UI status
+ */
+function mapMetricStatus(status: string): 'success' | 'failed' | 'pending' | 'running' {
+  switch (status) {
+    case 'success':
+      return 'success';
+    case 'failed':
+      return 'failed';
+    case 'rolled_back':
+      return 'failed';
+    default:
+      return 'pending';
   }
-
-  // Sort by most recent first
-  entries.sort((a, b) => {
-    const dateA = new Date(a.startedAt || 0).getTime();
-    const dateB = new Date(b.startedAt || 0).getTime();
-    return dateB - dateA;
-  });
-
-  // Limit results
-  entries = entries.slice(0, limit);
-
-  return jsonResponse({
-    deployments: entries,
-    total: entries.length,
-  } satisfies DeployHistoryResponse);
 }

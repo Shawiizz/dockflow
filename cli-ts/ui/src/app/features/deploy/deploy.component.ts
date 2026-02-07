@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit, DestroyRef, effect } from '@angular/core';
+import { Component, inject, signal, OnInit, DestroyRef, effect, viewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -9,6 +9,7 @@ import { SkeletonModule } from 'primeng/skeleton';
 import { ApiService } from '@core/services/api.service';
 import { EnvironmentService } from '@core/services/environment.service';
 import { DataCacheService } from '@core/services/data-cache.service';
+import { OperationStateService } from '@core/services/operation-state.service';
 import type { DeployHistoryEntry } from '@api-types';
 
 @Component({
@@ -22,6 +23,7 @@ export class DeployComponent implements OnInit {
   private apiService = inject(ApiService);
   private destroyRef = inject(DestroyRef);
   private cache = inject(DataCacheService);
+  private opState = inject(OperationStateService);
 
   envService = inject(EnvironmentService);
 
@@ -29,11 +31,13 @@ export class DeployComponent implements OnInit {
   deployments = signal<DeployHistoryEntry[]>([]);
   error = signal<string | null>(null);
 
-  // Deploy form
+  // Deploy form — delegate to OperationStateService
   showForm = signal(false);
-  deploying = signal(false);
-  deployLogs = signal<string[]>([]);
-  deploySuccess = signal<boolean | null>(null);
+  deploying = this.opState.deploying;
+  deployLogs = this.opState.deployLogs;
+  deploySuccess = this.opState.deploySuccess;
+
+  private outputEl = viewChild<ElementRef>('outputContainer');
 
   version = '';
   skipBuild = false;
@@ -48,6 +52,13 @@ export class DeployComponent implements OnInit {
     effect(() => {
       const env = this.envService.selected();
       this.loadHistory(env || undefined);
+    });
+    effect(() => {
+      this.deployLogs();
+      const el = this.outputEl()?.nativeElement;
+      if (el) {
+        requestAnimationFrame(() => el.scrollTop = el.scrollHeight);
+      }
     });
   }
 
@@ -89,10 +100,6 @@ export class DeployComponent implements OnInit {
     const env = this.envService.selectedOrUndefined();
     if (!env) return;
 
-    this.deploying.set(true);
-    this.deployLogs.set([]);
-    this.deploySuccess.set(null);
-
     const body: Record<string, unknown> = { environment: env };
     if (this.version.trim()) body['version'] = this.version.trim();
     if (this.skipBuild) body['skipBuild'] = true;
@@ -103,61 +110,11 @@ export class DeployComponent implements OnInit {
     if (this.servicesFilter.trim()) body['services'] = this.servicesFilter.trim();
     if (this.dryRun) body['dryRun'] = true;
 
-    fetch('/api/operations/deploy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-      .then((response) => {
-        if (!response.ok || !response.body) {
-          this.deployLogs.update(l => [...l, `Error: ${response.statusText}`]);
-          this.deploying.set(false);
-          this.deploySuccess.set(false);
-          return;
-        }
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        const readChunk = (): void => {
-          reader.read().then(({ done, value }) => {
-            if (done) {
-              this.deploying.set(false);
-              if (this.deploySuccess() === null) this.deploySuccess.set(true);
-              return;
-            }
-            buffer += decoder.decode(value, { stream: true });
-            const parts = buffer.split('\n\n');
-            buffer = parts.pop() || '';
-            for (const part of parts) {
-              const eventMatch = part.match(/^event:\s*(.+)$/m);
-              const dataMatch = part.match(/^data:\s*(.+)$/m);
-              if (!dataMatch) continue;
-              try {
-                const data = JSON.parse(dataMatch[1]);
-                const eventType = eventMatch ? eventMatch[1] : 'log';
-                if (eventType === 'log') {
-                  this.deployLogs.update(l => [...l, data.line]);
-                } else if (eventType === 'done') {
-                  this.deploySuccess.set(data.success);
-                  this.deploying.set(false);
-                }
-              } catch { /* ignore */ }
-            }
-            readChunk();
-          });
-        };
-        readChunk();
-      })
-      .catch((err) => {
-        this.deployLogs.update(l => [...l, `Error: ${err.message}`]);
-        this.deploying.set(false);
-        this.deploySuccess.set(false);
-      });
+    this.opState.startDeploy(body);
   }
 
   cancelDeploy() {
-    this.apiService.cancelOperation().subscribe();
+    this.opState.cancelDeploy();
   }
 
   statusSeverity(status: string): 'success' | 'danger' | 'warn' | 'info' | 'secondary' | 'contrast' | undefined {

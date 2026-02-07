@@ -108,7 +108,7 @@
     } @else if (diskLoading()) {
       <p-skeleton width="100%" height="5rem" />
     } @else if (diskRaw()) {
-      <pre style="background: var(--p-surface-50); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.8125rem; margin: 0;">{{ diskRaw() }}</pre>
+      <pre style="margin: 0;">{{ diskRaw() }}</pre>
     } @else {
       <p class="text-muted text-sm">No data available</p>
     }

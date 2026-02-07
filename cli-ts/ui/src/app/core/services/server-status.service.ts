@@ -70,6 +70,7 @@ export class ServerStatusService {
       this.environments.set(cached.environments);
       this.loading.set(false);
       this.error.set(null);
+      this.checkAll();
       return;
     }
 

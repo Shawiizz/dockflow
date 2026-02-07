@@ -7,7 +7,7 @@
 .stats-table-wrap {
   overflow-x: auto;
   border-radius: 0.5rem;
-  border: 1px solid var(--p-surface-200);
+  border: 1px solid var(--border-primary);
 }
 
 .stats-table {
@@ -22,20 +22,20 @@
   }
 
   th {
-    background: var(--p-surface-50);
+    background: var(--bg-tertiary);
     font-weight: 600;
-    color: var(--p-surface-600);
+    color: var(--text-secondary);
     font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
 
   tbody tr {
-    border-top: 1px solid var(--p-surface-100);
+    border-top: 1px solid var(--border-primary);
     transition: background 0.15s;
 
     &:hover {
-      background: var(--p-surface-50);
+      background: var(--bg-hover);
     }
   }
 }

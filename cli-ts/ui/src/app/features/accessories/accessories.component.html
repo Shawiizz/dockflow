@@ -51,7 +51,7 @@
       <i class="pi pi-database"></i>
       <h3>No accessories configured</h3>
       <p>Add accessories to your <code>config.yml</code> to manage databases and other services.</p>
-      <a routerLink="/settings" class="btn btn--primary" style="margin-top: 1rem">
+      <a routerLink="/settings" class="btn btn--primary" style="margin-top: 1rem;">
         <i class="pi pi-cog"></i>
         <span>Go to Settings</span>
       </a>
@@ -120,7 +120,7 @@
             </div>
           }
 
-          <div class="accessory-card__actions" style="display: flex; gap: 0.25rem; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--p-surface-100);">
+          <div class="accessory-card__actions" style="display: flex; gap: 0.25rem; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-primary);">
             <button class="btn btn--ghost btn--icon" pTooltip="Restart" (click)="onRestart(acc)" [disabled]="actionLoading()">
               <i class="pi pi-refresh" [class.pi-spin]="actionLoading() === acc.name"></i>
             </button>
