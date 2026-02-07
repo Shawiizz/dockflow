@@ -7,7 +7,7 @@ import ora from 'ora';
 import { existsSync, readdirSync } from 'fs';
 import { join, dirname, parse as parsePath } from 'path';
 import { getProjectRoot, loadConfig, loadServersConfig, isDockerAvailable, getAnsibleDockerImage } from './config';
-import { printSuccess, printWarning, printDim } from './output';
+import { printSuccess, printDim } from './output';
 import { DOCKFLOW_REPO, DOCKFLOW_VERSION, CONTAINER_PATHS } from '../constants';
 import { isCI } from './secrets';
 import { CLIError, ConfigError, DockerError } from './errors';
@@ -16,15 +16,9 @@ import { CLIError, ConfigError, DockerError } from './errors';
  * Options for running a command in the Ansible Docker container
  */
 export interface RunCommandOptions {
-  /** The command and arguments to execute (e.g., ['ansible-playbook', 'deploy.yml', ...]) */
   command: string[];
-  /** Whether to use dev mode (mount local dockflow) */
-  devMode?: boolean;
-  /** Action name for logs (e.g., "build", "deployment") */
   actionName: string;
-  /** Success message to display */
   successMessage: string;
-  /** Path to context JSON file to mount (optional) */
   contextFilePath?: string;
 }
 
@@ -45,21 +39,18 @@ function findDockflowRoot(startDir: string): string | null {
 }
 
 /**
- * Build Docker command arguments for running the Ansible container
- * @param devMode Whether to use dev mode (mount local dockflow)
- * @param contextFilePath Optional path to context JSON file to mount into container
+ * Detect if dockflow framework is available locally (auto dev mode).
  */
-export function buildDockerCommand(devMode: boolean = false, contextFilePath?: string): string[] {
+function detectLocalDockflow(projectRoot: string): string | null {
+  return findDockflowRoot(projectRoot) || process.env.DOCKFLOW_DEV_PATH || null;
+}
+
+export function buildDockerCommand(contextFilePath?: string): string[] {
   const projectRoot = getProjectRoot();
   const dockerImage = getAnsibleDockerImage();
-  
-  // Check if we have a TTY available (not in CI)
   const isTTY = process.stdin.isTTY && process.stdout.isTTY;
-  
-  // In CI, files are disposable so mount read-write (simpler, no workspace setup needed)
-  // Locally, mount read-only to protect source files (setup_workspace.sh creates writable workspace)
   const mountMode = isCI() ? '' : ':ro';
-  
+
   const dockerCmd = [
     'docker', 'run', '--rm',
     '--pull', 'always',
@@ -68,37 +59,25 @@ export function buildDockerCommand(devMode: boolean = false, contextFilePath?: s
     '-v', '/var/run/docker.sock:/var/run/docker.sock',
   ];
 
-  // Mount context JSON file if provided (for Ansible --extra-vars)
   if (contextFilePath) {
     dockerCmd.push('-v', `${contextFilePath}:${CONTAINER_PATHS.CONTEXT}:ro`);
   }
 
-  // Allow connecting to a specific Docker network (useful for e2e tests)
   const dockerNetwork = process.env.DOCKFLOW_DOCKER_NETWORK;
   if (dockerNetwork) {
     dockerCmd.push('--network', dockerNetwork);
   }
 
-  // In dev mode, mount the local dockflow repository
-  if (devMode) {
-    const dockflowRoot = findDockflowRoot(projectRoot) || process.env.DOCKFLOW_DEV_PATH;
-    if (dockflowRoot) {
-      dockerCmd.push('-v', `${dockflowRoot}:${CONTAINER_PATHS.DOCKFLOW}`);
-      printWarning(`Dev mode: mounting ${dockflowRoot} as ${CONTAINER_PATHS.DOCKFLOW}`);
-    } else {
-      throw new ConfigError(
-        'Dev mode: Could not find dockflow root',
-        'Set DOCKFLOW_DEV_PATH environment variable or run from within the dockflow repository'
-      );
-    }
+  const dockflowRoot = detectLocalDockflow(projectRoot);
+  if (dockflowRoot) {
+    dockerCmd.push('-v', `${dockflowRoot}:${CONTAINER_PATHS.DOCKFLOW}`);
+    printDim(`Using local dockflow: ${dockflowRoot}`);
   }
 
-  // Set DOCKFLOW_PATH environment variable
   dockerCmd.push('-e', `DOCKFLOW_PATH=${CONTAINER_PATHS.DOCKFLOW}`);
   dockerCmd.push('-e', 'ANSIBLE_HOST_KEY_CHECKING=False');
-
   dockerCmd.push(dockerImage);
-  
+
   return dockerCmd;
 }
 
@@ -107,15 +86,14 @@ export function buildDockerCommand(devMode: boolean = false, contextFilePath?: s
  * The entrypoint.sh handles workspace setup, we just need to clone dockflow if not in dev mode
  */
 export async function runAnsibleCommand(options: RunCommandOptions): Promise<void> {
-  const { command, devMode = false, actionName, successMessage, contextFilePath } = options;
-  
-  const dockerCmd = buildDockerCommand(devMode, contextFilePath);
-  
-  // In dev mode, dockflow is already mounted at /tmp/dockflow by buildDockerCommand
-  // In non-dev mode, we need to clone it before running the command
-  // Always ensure inventory.py is executable (required for Ansible dynamic inventory)
+  const { command, actionName, successMessage, contextFilePath } = options;
+
+  const projectRoot = getProjectRoot();
+  const isLocal = !!detectLocalDockflow(projectRoot);
+  const dockerCmd = buildDockerCommand(contextFilePath);
+
   const chmodInventory = `chmod +x ${CONTAINER_PATHS.DOCKFLOW}/ansible/inventory.py 2>/dev/null || true`;
-  
+
   // Setup writable workspace (copy .dockflow + symlinks) - only needed locally
   // where /project is mounted read-only. In CI, /project is read-write so no setup needed.
   const setupWorkspace = isCI() ? '' : `
@@ -123,9 +101,8 @@ if [ -f "${CONTAINER_PATHS.DOCKFLOW}/.common/scripts/setup_workspace.sh" ] && [ 
   source "${CONTAINER_PATHS.DOCKFLOW}/.common/scripts/setup_workspace.sh"
 fi`;
 
-  const cloneStep = devMode 
-    ? `echo "Using local dockflow framework (dev mode)..."
-${chmodInventory}
+  const cloneStep = isLocal
+    ? `${chmodInventory}
 ${setupWorkspace}`
     : `
 echo "Cloning dockflow framework v${DOCKFLOW_VERSION}..."

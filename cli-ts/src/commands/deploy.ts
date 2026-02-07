@@ -45,7 +45,6 @@ interface DeployOptions {
   skipBuild?: boolean;
   force?: boolean;
   debug?: boolean;
-  dev?: boolean;
   accessories?: boolean;
   all?: boolean;
   skipAccessories?: boolean;
@@ -219,9 +218,6 @@ export async function runDeploy(env: string, version: string | undefined, option
   if (options.services) {
     printInfo(`Services: ${options.services}`);
   }
-  if (options.dev) {
-    printInfo(`Mode: Development (using local dockflow)`);
-  }
   console.log('');
 
   // Build workers JSON for Ansible (for image distribution)
@@ -315,7 +311,6 @@ export async function runDeploy(env: string, version: string | undefined, option
 
   await runAnsibleCommand({
     command: ansibleCommand,
-    devMode: options.dev,
     actionName: 'deployment',
     successMessage: `Deployment to ${env} completed successfully!`,
     contextFilePath,
@@ -349,7 +344,6 @@ export function registerDeployCommand(program: Command): void {
     .option('--no-failover', 'Disable multi-manager failover (use first manager only)')
     .option('--dry-run', 'Show what would be deployed without executing')
     .option('--debug', 'Enable debug output')
-    .option('--dev', 'Use local dockflow folder instead of cloning (for development)')
     .action(withErrorHandler(async (env: string, version: string | undefined, options: DeployOptions) => {
       await runDeploy(env, version, options);
     }));

@@ -17,25 +17,22 @@ export function registerAccessoriesDeployCommand(program: Command): void {
     .description('Deploy accessories (databases, caches, etc.)')
     .option('--skip-docker-install', 'Skip Docker installation')
     .option('--debug', 'Enable debug output')
-    .option('--dev', 'Use local dockflow folder instead of cloning')
     .action(async (
       env: string,
       version: string | undefined,
-      options: { skipDockerInstall?: boolean; debug?: boolean; dev?: boolean }
+      options: { skipDockerInstall?: boolean; debug?: boolean }
     ) => {
       printHeader(`Deploying Accessories to ${env}`);
       console.log('');
       printInfo('Redirecting to: dockflow deploy --accessories');
       console.log('');
 
-      // Dynamically import and call the deploy command logic
       const { runDeploy } = await import('../deploy');
-      
+
       await runDeploy(env, version, {
         accessories: true,
         skipDockerInstall: options.skipDockerInstall,
         debug: options.debug,
-        dev: options.dev,
       });
     });
 }

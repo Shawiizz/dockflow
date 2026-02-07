@@ -25,7 +25,6 @@ import {
 interface BuildOptions {
   services?: string;
   debug?: boolean;
-  dev?: boolean;
   push?: boolean;
   skipHooks?: boolean;
 }
@@ -89,9 +88,6 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
   }
   if (options.skipHooks) {
     printInfo(`Hooks: Skipped`);
-  }
-  if (options.dev) {
-    printInfo(`Mode: Development (using local dockflow)`);
   }
   console.log('');
 
@@ -157,7 +153,6 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
 
   await runAnsibleCommand({
     command: ansibleCommand,
-    devMode: options.dev,
     actionName: 'build',
     successMessage: 'Build completed successfully!',
     contextFilePath,
@@ -175,7 +170,6 @@ export function registerBuildCommand(program: Command): void {
     .option('--push', 'Push images to registry after build')
     .option('--skip-hooks', 'Skip pre-build and post-build hooks')
     .option('--debug', 'Enable debug output')
-    .option('--dev', 'Use local dockflow folder instead of cloning (for development)')
     .action(withErrorHandler(async (env: string, options: BuildOptions) => {
       await runBuild(env, options);
     }));
