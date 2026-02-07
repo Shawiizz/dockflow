@@ -23,8 +23,20 @@ export const routes: Routes = [
     loadComponent: () => import('./features/deploy/deploy.component').then(m => m.DeployComponent),
   },
   {
+    path: 'build',
+    loadComponent: () => import('./features/build/build.component').then(m => m.BuildComponent),
+  },
+  {
     path: 'accessories',
     loadComponent: () => import('./features/accessories/accessories.component').then(m => m.AccessoriesComponent),
+  },
+  {
+    path: 'monitoring',
+    loadComponent: () => import('./features/monitoring/monitoring.component').then(m => m.MonitoringComponent),
+  },
+  {
+    path: 'resources',
+    loadComponent: () => import('./features/resources/resources.component').then(m => m.ResourcesComponent),
   },
   {
     path: 'settings',

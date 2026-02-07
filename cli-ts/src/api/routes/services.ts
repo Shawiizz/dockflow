@@ -1,20 +1,26 @@
 /**
  * Services API Routes
  *
- * GET /api/services               - List Docker stack services
- * GET /api/services/:name/logs    - Get service logs
+ * GET  /api/services               - List Docker stack services
+ * GET  /api/services/:name/logs    - Get service logs
+ * POST /api/services/:name/restart - Restart a service
+ * POST /api/services/:name/stop    - Stop a service (scale to 0)
+ * POST /api/services/:name/scale   - Scale a service (body: { replicas })
+ * POST /api/services/:name/rollback - Rollback a service
  */
 
 import { jsonResponse, errorResponse } from '../server';
 import { loadConfig } from '../../utils/config';
-import {
-  resolveServersForEnvironment,
-  getAvailableEnvironments,
-  getServerPrivateKey,
-} from '../../utils/servers';
+import { getAvailableEnvironments } from '../../utils/servers';
 import { sshExec } from '../../utils/ssh';
-import { DEFAULT_SSH_PORT } from '../../constants';
-import type { ServiceInfo, ServicesListResponse, LogEntry, LogsResponse } from '../types';
+import { getManagerConnection, resolveEnvironment } from './_helpers';
+import type {
+  ServiceInfo,
+  ServicesListResponse,
+  ServiceActionResponse,
+  LogEntry,
+  LogsResponse,
+} from '../types';
 
 /**
  * Handle /api/services/* routes
@@ -27,6 +33,30 @@ export async function handleServicesRoutes(req: Request): Promise<Response> {
   // GET /api/services
   if (pathname === '/api/services' && method === 'GET') {
     return listServices(url);
+  }
+
+  // POST /api/services/:name/restart
+  const restartMatch = pathname.match(/^\/api\/services\/([^/]+)\/restart$/);
+  if (restartMatch && method === 'POST') {
+    return restartService(restartMatch[1], url);
+  }
+
+  // POST /api/services/:name/stop
+  const stopMatch = pathname.match(/^\/api\/services\/([^/]+)\/stop$/);
+  if (stopMatch && method === 'POST') {
+    return stopService(stopMatch[1], url);
+  }
+
+  // POST /api/services/:name/scale
+  const scaleMatch = pathname.match(/^\/api\/services\/([^/]+)\/scale$/);
+  if (scaleMatch && method === 'POST') {
+    return scaleService(scaleMatch[1], url, req);
+  }
+
+  // POST /api/services/:name/rollback
+  const rollbackMatch = pathname.match(/^\/api\/services\/([^/]+)\/rollback$/);
+  if (rollbackMatch && method === 'POST') {
+    return rollbackService(rollbackMatch[1], url);
   }
 
   // GET /api/services/:name/logs
@@ -73,26 +103,6 @@ function parseServiceLs(output: string, stackName: string): ServiceInfo[] {
       ports: portsStr ? portsStr.split(',').map((p: string) => p.trim()) : [],
     };
   });
-}
-
-/**
- * Get SSH connection to manager server for a given environment
- */
-function getManagerConnection(env: string) {
-  const servers = resolveServersForEnvironment(env);
-  const manager = servers.find((s) => s.role === 'manager');
-  if (!manager) return null;
-
-  const privateKey = getServerPrivateKey(env, manager.name);
-  if (!privateKey) return null;
-
-  return {
-    host: manager.host,
-    port: manager.port || DEFAULT_SSH_PORT,
-    user: manager.user,
-    privateKey,
-    stackName: loadConfig({ silent: true })?.project_name || '',
-  };
 }
 
 /**
@@ -165,6 +175,109 @@ async function listServices(url: URL): Promise<Response> {
 }
 
 /**
+ * Restart a Docker service
+ */
+async function restartService(serviceName: string, url: URL): Promise<Response> {
+  const env = resolveEnvironment(url.searchParams.get('env'));
+  if (!env) return errorResponse('No environments configured', 404);
+
+  const conn = getManagerConnection(env);
+  if (!conn) return errorResponse('No manager server with credentials found', 404);
+
+  try {
+    const result = await sshExec(conn, `docker service update --force ${serviceName}`);
+    const success = result.exitCode === 0;
+    return jsonResponse({
+      success,
+      message: success ? `Service ${serviceName} restarted` : (result.stderr.trim() || 'Failed to restart service'),
+      output: result.stdout.trim() || undefined,
+    } satisfies ServiceActionResponse);
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : 'Failed to restart service', 500);
+  }
+}
+
+/**
+ * Stop a Docker service (scale to 0)
+ */
+async function stopService(serviceName: string, url: URL): Promise<Response> {
+  const env = resolveEnvironment(url.searchParams.get('env'));
+  if (!env) return errorResponse('No environments configured', 404);
+
+  const conn = getManagerConnection(env);
+  if (!conn) return errorResponse('No manager server with credentials found', 404);
+
+  try {
+    const result = await sshExec(conn, `docker service scale ${serviceName}=0`);
+    const success = result.exitCode === 0;
+    return jsonResponse({
+      success,
+      message: success ? `Service ${serviceName} stopped` : (result.stderr.trim() || 'Failed to stop service'),
+      output: result.stdout.trim() || undefined,
+    } satisfies ServiceActionResponse);
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : 'Failed to stop service', 500);
+  }
+}
+
+/**
+ * Scale a Docker service
+ */
+async function scaleService(serviceName: string, url: URL, req: Request): Promise<Response> {
+  const env = resolveEnvironment(url.searchParams.get('env'));
+  if (!env) return errorResponse('No environments configured', 404);
+
+  const conn = getManagerConnection(env);
+  if (!conn) return errorResponse('No manager server with credentials found', 404);
+
+  let replicas: number;
+  try {
+    const body = await req.json();
+    replicas = parseInt(body.replicas, 10);
+    if (isNaN(replicas) || replicas < 0) {
+      return errorResponse('Invalid replicas value: must be a non-negative number', 400);
+    }
+  } catch {
+    return errorResponse('Invalid request body: expected { replicas: number }', 400);
+  }
+
+  try {
+    const result = await sshExec(conn, `docker service scale ${serviceName}=${replicas}`);
+    const success = result.exitCode === 0;
+    return jsonResponse({
+      success,
+      message: success ? `Service ${serviceName} scaled to ${replicas}` : (result.stderr.trim() || 'Failed to scale service'),
+      output: result.stdout.trim() || undefined,
+    } satisfies ServiceActionResponse);
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : 'Failed to scale service', 500);
+  }
+}
+
+/**
+ * Rollback a Docker service
+ */
+async function rollbackService(serviceName: string, url: URL): Promise<Response> {
+  const env = resolveEnvironment(url.searchParams.get('env'));
+  if (!env) return errorResponse('No environments configured', 404);
+
+  const conn = getManagerConnection(env);
+  if (!conn) return errorResponse('No manager server with credentials found', 404);
+
+  try {
+    const result = await sshExec(conn, `docker service rollback ${serviceName}`);
+    const success = result.exitCode === 0;
+    return jsonResponse({
+      success,
+      message: success ? `Service ${serviceName} rolled back` : (result.stderr.trim() || 'Failed to rollback service'),
+      output: result.stdout.trim() || undefined,
+    } satisfies ServiceActionResponse);
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : 'Failed to rollback service', 500);
+  }
+}
+
+/**
  * Get logs for a specific service
  */
 async function getServiceLogs(serviceName: string, url: URL): Promise<Response> {
@@ -176,9 +289,7 @@ async function getServiceLogs(serviceName: string, url: URL): Promise<Response> 
     return errorResponse('No config.yml found', 404);
   }
 
-  const environments = getAvailableEnvironments();
-  const env = envFilter || environments[0];
-
+  const env = resolveEnvironment(envFilter);
   if (!env) {
     return errorResponse('No environments configured', 404);
   }

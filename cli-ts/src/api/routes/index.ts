@@ -9,6 +9,9 @@ import { handleProjectRoutes } from './project';
 import { handleServicesRoutes } from './services';
 import { handleDeployRoutes } from './deploy';
 import { handleAccessoriesRoutes } from './accessories';
+import { handleOperationsRoutes } from './operations';
+import { handleResourcesRoutes, handleLocksRoutes } from './resources';
+import { handleMetricsRoutes } from './metrics';
 import pkg from '../../../package.json';
 
 /**
@@ -39,16 +42,36 @@ export async function handleApiRoutes(req: Request): Promise<Response> {
       return handleProjectRoutes(req);
     }
     
+    // /api/operations/* - Deploy/Build streaming
+    if (pathname.startsWith('/api/operations')) {
+      return handleOperationsRoutes(req);
+    }
+
     // /api/deploy/* - Deploy history
     if (pathname.startsWith('/api/deploy')) {
       return handleDeployRoutes(req);
     }
-    
+
     // /api/accessories/* - Accessories
     if (pathname.startsWith('/api/accessories')) {
       return handleAccessoriesRoutes(req);
     }
-    
+
+    // /api/resources/* - Prune & disk usage
+    if (pathname.startsWith('/api/resources')) {
+      return handleResourcesRoutes(req);
+    }
+
+    // /api/locks/* - Deploy locks
+    if (pathname.startsWith('/api/locks')) {
+      return handleLocksRoutes(req);
+    }
+
+    // /api/metrics/* - Container stats & audit
+    if (pathname.startsWith('/api/metrics')) {
+      return handleMetricsRoutes(req);
+    }
+
     // /api/health - Health check
     if (pathname === '/api/health') {
       return jsonResponse({ 

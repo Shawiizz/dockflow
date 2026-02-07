@@ -13,7 +13,7 @@
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { handleApiRoutes } from './routes/index';
-import { sshWebSocketHandlers, parseSSHServerName } from './routes/ssh';
+import { sshWebSocketHandlers, parseSSHServerName, parseExecServiceName } from './routes/ssh';
 
 /**
  * Server configuration options
@@ -117,6 +117,20 @@ export async function startWebServer(port: number, options: ServerOptions = {}):
         }
         const success = server.upgrade(req, {
           data: { serverName },
+        });
+        if (success) return undefined as unknown as Response;
+        return new Response('WebSocket upgrade failed', { status: 400 });
+      }
+
+      // WebSocket upgrade for exec into container
+      if (pathname.startsWith('/ws/exec/')) {
+        const parsed = parseExecServiceName(pathname);
+        if (!parsed) {
+          return new Response('Invalid WebSocket path', { status: 400 });
+        }
+        const env = url.searchParams.get('env') || '';
+        const success = server.upgrade(req, {
+          data: { serviceName: parsed.serviceName, env, mode: 'exec' },
         });
         if (success) return undefined as unknown as Response;
         return new Response('WebSocket upgrade failed', { status: 400 });

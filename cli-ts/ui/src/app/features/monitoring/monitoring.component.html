@@ -1,0 +1,136 @@
+<div class="monitoring-page animate-fade-in">
+  <div class="page-header">
+    <div class="page-header__left">
+      <h1 class="page-header__title">Monitoring</h1>
+      <p class="page-header__subtitle">Container stats and audit log</p>
+    </div>
+  </div>
+
+  <p-tabs [(value)]="activeTab">
+    <p-tablist>
+      <p-tab [value]="0">Container Stats</p-tab>
+      <p-tab [value]="1">Audit Log</p-tab>
+    </p-tablist>
+
+    <p-tabpanels>
+      <p-tabpanel [value]="0">
+        <div class="flex items-center gap-2 mb-4" style="margin-top: 1rem;">
+          <button class="btn btn--secondary" (click)="refreshStats()" [disabled]="statsLoading()">
+            <i class="pi pi-refresh" [class.pi-spin]="statsLoading()"></i>
+            <span>Refresh</span>
+          </button>
+          <button class="btn" [class]="autoRefresh() ? 'btn--primary' : 'btn--secondary'" (click)="toggleAutoRefresh()">
+            <i class="pi pi-sync"></i>
+            <span>{{ autoRefresh() ? 'Auto (10s)' : 'Auto-refresh' }}</span>
+          </button>
+          @if (statsTimestamp()) {
+            <span class="text-sm text-muted">Updated: {{ formatTime(statsTimestamp()) }}</span>
+          }
+        </div>
+
+        @if (statsError()) {
+          <div class="error-banner">
+            <i class="pi pi-exclamation-triangle"></i>
+            <span class="error-banner__text">{{ statsError() }}</span>
+          </div>
+        }
+
+        @if (statsLoading() && containers().length === 0) {
+          <div class="flex flex-col gap-2">
+            @for (i of [1,2,3]; track i) {
+              <p-skeleton width="100%" height="2.5rem" />
+            }
+          </div>
+        } @else if (containers().length === 0) {
+          <div class="empty-state">
+            <i class="pi pi-chart-bar"></i>
+            <h3>No container stats</h3>
+            <p>No running containers found.</p>
+          </div>
+        } @else {
+          <div class="stats-table-wrap">
+            <table class="stats-table">
+              <thead>
+                <tr>
+                  <th>Container</th>
+                  <th>CPU %</th>
+                  <th>Memory Usage</th>
+                  <th>Mem %</th>
+                  <th>Net I/O</th>
+                  <th>Block I/O</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (c of containers(); track c.name) {
+                  <tr>
+                    <td class="font-medium">{{ c.name }}</td>
+                    <td>{{ c.cpuPercent }}</td>
+                    <td>{{ c.memUsage }}</td>
+                    <td>{{ c.memPercent }}</td>
+                    <td>{{ c.netIO }}</td>
+                    <td>{{ c.blockIO }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </p-tabpanel>
+
+      <p-tabpanel [value]="1">
+        <div class="flex items-center gap-2 mb-4" style="margin-top: 1rem;">
+          <button class="btn btn--secondary" (click)="refreshAudit()" [disabled]="auditLoading()">
+            <i class="pi pi-refresh" [class.pi-spin]="auditLoading()"></i>
+            <span>Refresh</span>
+          </button>
+        </div>
+
+        @if (auditError()) {
+          <div class="error-banner">
+            <i class="pi pi-exclamation-triangle"></i>
+            <span class="error-banner__text">{{ auditError() }}</span>
+          </div>
+        }
+
+        @if (auditLoading() && auditEntries().length === 0) {
+          <div class="flex flex-col gap-2">
+            @for (i of [1,2,3]; track i) {
+              <p-skeleton width="100%" height="2.5rem" />
+            }
+          </div>
+        } @else if (auditEntries().length === 0) {
+          <div class="empty-state">
+            <i class="pi pi-list"></i>
+            <h3>No audit entries</h3>
+            <p>No deployment audit log found.</p>
+          </div>
+        } @else {
+          <div class="stats-table-wrap">
+            <table class="stats-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Action</th>
+                  <th>Version</th>
+                  <th>Performer</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (entry of auditEntries(); track $index) {
+                  <tr>
+                    <td class="text-muted text-sm" [pTooltip]="entry.timestamp">{{ formatTime(entry.timestamp) }}</td>
+                    <td><p-tag [value]="entry.action" [severity]="actionSeverity(entry.action)" [rounded]="true" /></td>
+                    <td><code>{{ entry.version }}</code></td>
+                    <td>{{ entry.performer }}</td>
+                    <td class="text-muted">{{ entry.message || '\u2014' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </p-tabpanel>
+    </p-tabpanels>
+  </p-tabs>
+</div>

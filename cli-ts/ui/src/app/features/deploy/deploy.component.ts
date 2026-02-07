@@ -29,6 +29,21 @@ export class DeployComponent implements OnInit {
   deployments = signal<DeployHistoryEntry[]>([]);
   error = signal<string | null>(null);
 
+  // Deploy form
+  showForm = signal(false);
+  deploying = signal(false);
+  deployLogs = signal<string[]>([]);
+  deploySuccess = signal<boolean | null>(null);
+
+  version = '';
+  skipBuild = false;
+  force = false;
+  deployAccessories = false;
+  all = false;
+  skipAccessories = false;
+  servicesFilter = '';
+  dryRun = false;
+
   constructor() {
     effect(() => {
       const env = this.envService.selected();
@@ -68,6 +83,81 @@ export class DeployComponent implements OnInit {
   refresh() {
     this.cache.invalidatePrefix('deploy:');
     this.loadHistory(this.envService.selectedOrUndefined());
+  }
+
+  startDeploy() {
+    const env = this.envService.selectedOrUndefined();
+    if (!env) return;
+
+    this.deploying.set(true);
+    this.deployLogs.set([]);
+    this.deploySuccess.set(null);
+
+    const body: Record<string, unknown> = { environment: env };
+    if (this.version.trim()) body['version'] = this.version.trim();
+    if (this.skipBuild) body['skipBuild'] = true;
+    if (this.force) body['force'] = true;
+    if (this.deployAccessories) body['accessories'] = true;
+    if (this.all) body['all'] = true;
+    if (this.skipAccessories) body['skipAccessories'] = true;
+    if (this.servicesFilter.trim()) body['services'] = this.servicesFilter.trim();
+    if (this.dryRun) body['dryRun'] = true;
+
+    fetch('/api/operations/deploy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+      .then((response) => {
+        if (!response.ok || !response.body) {
+          this.deployLogs.update(l => [...l, `Error: ${response.statusText}`]);
+          this.deploying.set(false);
+          this.deploySuccess.set(false);
+          return;
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        const readChunk = (): void => {
+          reader.read().then(({ done, value }) => {
+            if (done) {
+              this.deploying.set(false);
+              if (this.deploySuccess() === null) this.deploySuccess.set(true);
+              return;
+            }
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split('\n\n');
+            buffer = parts.pop() || '';
+            for (const part of parts) {
+              const eventMatch = part.match(/^event:\s*(.+)$/m);
+              const dataMatch = part.match(/^data:\s*(.+)$/m);
+              if (!dataMatch) continue;
+              try {
+                const data = JSON.parse(dataMatch[1]);
+                const eventType = eventMatch ? eventMatch[1] : 'log';
+                if (eventType === 'log') {
+                  this.deployLogs.update(l => [...l, data.line]);
+                } else if (eventType === 'done') {
+                  this.deploySuccess.set(data.success);
+                  this.deploying.set(false);
+                }
+              } catch { /* ignore */ }
+            }
+            readChunk();
+          });
+        };
+        readChunk();
+      })
+      .catch((err) => {
+        this.deployLogs.update(l => [...l, `Error: ${err.message}`]);
+        this.deploying.set(false);
+        this.deploySuccess.set(false);
+      });
+  }
+
+  cancelDeploy() {
+    this.apiService.cancelOperation().subscribe();
   }
 
   statusSeverity(status: string): 'success' | 'danger' | 'warn' | 'info' | 'secondary' | 'contrast' | undefined {

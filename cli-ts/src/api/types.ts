@@ -201,6 +201,131 @@ export interface AccessoriesResponse {
   message?: string;
 }
 
+// ─── Service Actions ────────────────────────────────────────────────────────
+
+export interface ServiceActionResponse {
+  success: boolean;
+  message: string;
+  output?: string;
+}
+
+// ─── Accessories Status ─────────────────────────────────────────────────────
+
+export interface AccessoryStatusInfo extends AccessoryInfo {
+  status?: 'running' | 'stopped' | 'unknown';
+  replicas?: string;
+  replicasRunning?: number;
+  replicasDesired?: number;
+}
+
+export interface AccessoriesStatusResponse {
+  accessories: AccessoryStatusInfo[];
+  total: number;
+  message?: string;
+}
+
+export interface AccessoryActionResponse {
+  success: boolean;
+  message: string;
+  output?: string;
+}
+
+// ─── Operations (Deploy/Build) ──────────────────────────────────────────────
+
+export interface DeployOperationRequest {
+  environment: string;
+  version?: string;
+  skipBuild?: boolean;
+  force?: boolean;
+  accessories?: boolean;
+  all?: boolean;
+  skipAccessories?: boolean;
+  services?: string;
+  dryRun?: boolean;
+}
+
+export interface BuildOperationRequest {
+  environment: string;
+  services?: string;
+  push?: boolean;
+}
+
+export interface OperationStatusResponse {
+  running: boolean;
+  type?: 'deploy' | 'build';
+  environment?: string;
+  startedAt?: string;
+}
+
+// ─── Prune ──────────────────────────────────────────────────────────────────
+
+export interface PruneRequest {
+  targets: ('containers' | 'images' | 'volumes' | 'networks')[];
+  all?: boolean;
+}
+
+export interface PruneResult {
+  target: string;
+  success: boolean;
+  reclaimed?: string;
+  error?: string;
+}
+
+export interface PruneResponse {
+  results: PruneResult[];
+}
+
+export interface DiskUsageResponse {
+  raw: string;
+}
+
+// ─── Locks ──────────────────────────────────────────────────────────────────
+
+export interface LockInfo {
+  locked: boolean;
+  performer?: string;
+  startedAt?: string;
+  version?: string;
+  message?: string;
+  stack?: string;
+  isStale?: boolean;
+  durationMinutes?: number;
+}
+
+export interface LockActionResponse {
+  success: boolean;
+  message: string;
+}
+
+// ─── Monitoring ─────────────────────────────────────────────────────────────
+
+export interface ContainerStatsEntry {
+  name: string;
+  cpuPercent: string;
+  memUsage: string;
+  memPercent: string;
+  netIO: string;
+  blockIO: string;
+}
+
+export interface ContainerStatsResponse {
+  containers: ContainerStatsEntry[];
+  timestamp: string;
+}
+
+export interface AuditEntry {
+  timestamp: string;
+  action: string;
+  version: string;
+  performer: string;
+  message?: string;
+}
+
+export interface AuditResponse {
+  entries: AuditEntry[];
+  total: number;
+}
+
 // ─── Validation ──────────────────────────────────────────────────────────────
 
 export interface ValidationError {

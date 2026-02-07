@@ -1,0 +1,116 @@
+<div class="resources-page animate-fade-in">
+  <div class="page-header">
+    <div class="page-header__left">
+      <h1 class="page-header__title">Resources</h1>
+      <p class="page-header__subtitle">Docker resource management, locks, and disk usage</p>
+    </div>
+  </div>
+
+  <!-- Prune Section -->
+  <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+    <h3 style="margin: 0; font-size: 1rem;">Prune Resources</h3>
+    <p class="text-sm text-muted">Remove unused Docker resources from the remote server.</p>
+    <div class="flex flex-wrap gap-4">
+      <label class="flex items-center gap-2"><input type="checkbox" [(ngModel)]="pruneContainers"> Containers</label>
+      <label class="flex items-center gap-2"><input type="checkbox" [(ngModel)]="pruneImages"> Images</label>
+      <label class="flex items-center gap-2"><input type="checkbox" [(ngModel)]="pruneVolumes"> Volumes</label>
+      <label class="flex items-center gap-2"><input type="checkbox" [(ngModel)]="pruneNetworks"> Networks</label>
+    </div>
+    @if (pruneImages) {
+      <label class="flex items-center gap-2">
+        <input type="checkbox" [(ngModel)]="pruneAll">
+        Remove ALL images (not just dangling)
+      </label>
+    }
+    @if (pruneVolumes) {
+      <div class="error-banner" style="margin: 0;">
+        <i class="pi pi-exclamation-triangle"></i>
+        <span class="error-banner__text">Warning: pruning volumes will permanently delete data!</span>
+      </div>
+    }
+    <button class="btn btn--primary" (click)="runPrune()" [disabled]="pruning() || pruneTargets.length === 0">
+      <i class="pi pi-trash"></i>
+      <span>{{ pruning() ? 'Pruning...' : 'Prune' }}</span>
+    </button>
+
+    @if (pruneResults().length > 0) {
+      <div class="flex flex-col gap-2">
+        @for (r of pruneResults(); track r.target) {
+          <div class="flex items-center gap-2">
+            @if (r.success) {
+              <p-tag value="OK" severity="success" />
+            } @else {
+              <p-tag value="Error" severity="danger" />
+            }
+            <span class="font-medium">{{ r.target }}</span>
+            @if (r.reclaimed) {
+              <span class="text-muted text-sm">{{ r.reclaimed }} reclaimed</span>
+            }
+            @if (r.error) {
+              <span class="text-sm" style="color: var(--p-red-500);">{{ r.error }}</span>
+            }
+          </div>
+        }
+      </div>
+    }
+  </div>
+
+  <!-- Lock Section -->
+  <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+    <div class="flex items-center justify-between">
+      <h3 style="margin: 0; font-size: 1rem;">Deploy Lock</h3>
+      <button class="btn btn--ghost btn--icon" (click)="refreshLock()" [disabled]="lockLoading()">
+        <i class="pi pi-refresh" [class.pi-spin]="lockLoading()"></i>
+      </button>
+    </div>
+
+    @if (lockError()) {
+      <div class="error-banner" style="margin: 0;"><i class="pi pi-exclamation-triangle"></i><span class="error-banner__text">{{ lockError() }}</span></div>
+    } @else if (lockLoading()) {
+      <p-skeleton width="60%" height="1rem" />
+    } @else {
+      @if (lockInfo().locked) {
+        <div class="flex items-center gap-2">
+          <p-tag [value]="lockInfo().isStale ? 'Stale Lock' : 'Locked'" [severity]="lockInfo().isStale ? 'warn' : 'danger'" />
+          <span class="text-sm text-muted">by {{ lockInfo().performer }} ({{ lockInfo().durationMinutes }}min ago)</span>
+        </div>
+        @if (lockInfo().message) {
+          <p class="text-sm text-muted">{{ lockInfo().message }}</p>
+        }
+        <button class="btn btn--danger" (click)="releaseLock()" [disabled]="lockActioning()">
+          <i class="pi pi-lock-open"></i>
+          <span>Release Lock</span>
+        </button>
+      } @else {
+        <div class="flex items-center gap-2">
+          <p-tag value="Unlocked" severity="success" />
+          <span class="text-sm text-muted">No active deploy lock</span>
+        </div>
+        <button class="btn btn--secondary" (click)="acquireLock()" [disabled]="lockActioning()">
+          <i class="pi pi-lock"></i>
+          <span>Acquire Lock</span>
+        </button>
+      }
+    }
+  </div>
+
+  <!-- Disk Usage Section -->
+  <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+    <div class="flex items-center justify-between">
+      <h3 style="margin: 0; font-size: 1rem;">Disk Usage</h3>
+      <button class="btn btn--ghost btn--icon" (click)="refreshDisk()" [disabled]="diskLoading()">
+        <i class="pi pi-refresh" [class.pi-spin]="diskLoading()"></i>
+      </button>
+    </div>
+
+    @if (diskError()) {
+      <div class="error-banner" style="margin: 0;"><i class="pi pi-exclamation-triangle"></i><span class="error-banner__text">{{ diskError() }}</span></div>
+    } @else if (diskLoading()) {
+      <p-skeleton width="100%" height="5rem" />
+    } @else if (diskRaw()) {
+      <pre style="background: var(--p-surface-50); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.8125rem; margin: 0;">{{ diskRaw() }}</pre>
+    } @else {
+      <p class="text-muted text-sm">No data available</p>
+    }
+  </div>
+</div>

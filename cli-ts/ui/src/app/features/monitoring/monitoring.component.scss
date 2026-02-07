@@ -1,0 +1,41 @@
+.monitoring-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.stats-table-wrap {
+  overflow-x: auto;
+  border-radius: 0.5rem;
+  border: 1px solid var(--p-surface-200);
+}
+
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+
+  th, td {
+    padding: 0.625rem 0.75rem;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  th {
+    background: var(--p-surface-50);
+    font-weight: 600;
+    color: var(--p-surface-600);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  tbody tr {
+    border-top: 1px solid var(--p-surface-100);
+    transition: background 0.15s;
+
+    &:hover {
+      background: var(--p-surface-50);
+    }
+  }
+}

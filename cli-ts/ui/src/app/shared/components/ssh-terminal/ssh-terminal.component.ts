@@ -26,6 +26,8 @@ export class SshTerminalComponent implements AfterViewInit, OnDestroy {
   serverHost = input<string>('');
   visible = input(false);
   visibleChange = output<boolean>();
+  mode = input<'ssh' | 'exec'>('ssh');
+  env = input<string>('');
 
   terminalContainer = viewChild<ElementRef<HTMLDivElement>>('terminalEl');
 
@@ -104,13 +106,22 @@ export class SshTerminalComponent implements AfterViewInit, OnDestroy {
 
     // Connect WebSocket
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${location.host}/ws/ssh/${encodeURIComponent(this.serverName())}`;
+    let wsUrl: string;
+    if (this.mode() === 'exec') {
+      const envParam = this.env() ? `?env=${encodeURIComponent(this.env())}` : '';
+      wsUrl = `${protocol}//${location.host}/ws/exec/${encodeURIComponent(this.serverName())}${envParam}`;
+    } else {
+      wsUrl = `${protocol}//${location.host}/ws/ssh/${encodeURIComponent(this.serverName())}`;
+    }
 
     this.ws = new WebSocket(wsUrl);
     this.ws.binaryType = 'arraybuffer';
 
     this.ws.onopen = () => {
-      this.terminal?.writeln(`Connecting to ${this.serverName()} (${this.serverHost()})...\r\n`);
+      const label = this.mode() === 'exec'
+        ? `Connecting to container for ${this.serverName()}...`
+        : `Connecting to ${this.serverName()} (${this.serverHost()})...`;
+      this.terminal?.writeln(`${label}\r\n`);
     };
 
     this.ws.onmessage = (event) => {

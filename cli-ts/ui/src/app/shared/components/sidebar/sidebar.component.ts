@@ -27,7 +27,10 @@ export class SidebarComponent {
     { icon: 'pi pi-box', label: 'Services', route: '/services' },
     { icon: 'pi pi-list', label: 'Logs', route: '/logs' },
     { icon: 'pi pi-upload', label: 'Deploy', route: '/deploy' },
+    { icon: 'pi pi-hammer', label: 'Build', route: '/build' },
     { icon: 'pi pi-database', label: 'Accessories', route: '/accessories' },
+    { icon: 'pi pi-chart-bar', label: 'Monitoring', route: '/monitoring' },
+    { icon: 'pi pi-wrench', label: 'Resources', route: '/resources' },
     { icon: 'pi pi-cog', label: 'Settings', route: '/settings' },
   ];
 }

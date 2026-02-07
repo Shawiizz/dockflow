@@ -91,6 +91,21 @@
           }
 
           <div class="service-card__actions">
+            <button class="btn btn--ghost btn--icon" pTooltip="Restart" (click)="onRestart(service)" [disabled]="actionLoading()">
+              <i class="pi pi-refresh" [class.pi-spin]="actionLoading() === service.name"></i>
+            </button>
+            <button class="btn btn--ghost btn--icon" pTooltip="Stop" (click)="onStop(service)" [disabled]="actionLoading()">
+              <i class="pi pi-stop-circle"></i>
+            </button>
+            <button class="btn btn--ghost btn--icon" pTooltip="Scale" (click)="onScale(service)" [disabled]="actionLoading()">
+              <i class="pi pi-arrows-alt"></i>
+            </button>
+            <button class="btn btn--ghost btn--icon" pTooltip="Rollback" (click)="onRollback(service)" [disabled]="actionLoading()">
+              <i class="pi pi-undo"></i>
+            </button>
+            <button class="btn btn--ghost btn--icon" pTooltip="Terminal" (click)="onExec(service)" [disabled]="actionLoading()">
+              <i class="pi pi-terminal"></i>
+            </button>
             <a [routerLink]="['/logs']" [queryParams]="{ service: service.name }" class="btn btn--ghost btn--icon" pTooltip="View logs">
               <i class="pi pi-file-edit"></i>
             </a>
@@ -98,5 +113,30 @@
         </div>
       }
     </div>
+  }
+
+  <!-- Scale Dialog -->
+  <p-dialog header="Scale Service" [(visible)]="scaleDialogVisible" [modal]="true" [style]="{ width: '24rem' }">
+    @if (scaleTarget()) {
+      <div class="flex flex-col gap-4">
+        <p>Scale <strong>{{ scaleTarget()!.name }}</strong> to how many replicas?</p>
+        <p-inputnumber [(ngModel)]="scaleValueNum" [min]="0" [max]="20" [showButtons]="true" />
+        <div class="flex justify-end gap-2">
+          <button class="btn btn--secondary" (click)="scaleDialogVisible.set(false)">Cancel</button>
+          <button class="btn btn--primary" (click)="confirmScale()" [disabled]="actionLoading()">Scale</button>
+        </div>
+      </div>
+    }
+  </p-dialog>
+
+  <!-- Exec Terminal -->
+  @if (terminalService()) {
+    <app-ssh-terminal
+      [serverName]="terminalService()!.name"
+      [visible]="terminalVisible()"
+      (visibleChange)="terminalVisible.set($event)"
+      mode="exec"
+      [env]="envService.selectedOrUndefined() || ''"
+    />
   }
 </div>

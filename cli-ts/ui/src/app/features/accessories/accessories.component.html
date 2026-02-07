@@ -6,7 +6,7 @@
       <p class="page-header__subtitle">Database and auxiliary services managed alongside your app</p>
     </div>
     <div class="page-header__actions">
-      <button class="btn btn--secondary" (click)="loadAccessories()" [disabled]="loading()">
+      <button class="btn btn--secondary" (click)="refresh()" [disabled]="loading()">
         <i class="pi pi-refresh" [class.pi-spin]="loading()"></i>
         <span>Refresh</span>
       </button>
@@ -18,7 +18,7 @@
     <div class="error-banner">
       <i class="pi pi-exclamation-triangle"></i>
       <span class="error-banner__text">{{ error() }}</span>
-      <button class="btn btn--ghost btn--icon" (click)="loadAccessories()">
+      <button class="btn btn--ghost btn--icon" (click)="refresh()">
         <i class="pi pi-refresh"></i>
       </button>
     </div>
@@ -65,12 +65,24 @@
               <i class="pi pi-database"></i>
             </div>
             <div class="accessory-card__title-col">
-              <h3 class="accessory-card__name">{{ acc.name }}</h3>
+              <div class="flex items-center gap-2">
+                <h3 class="accessory-card__name">{{ acc.name }}</h3>
+                @if (acc.status) {
+                  <p-tag [value]="acc.status" [severity]="statusSeverity(acc.status)" [rounded]="true" />
+                }
+              </div>
               @if (acc.image) {
                 <span class="accessory-card__image">{{ acc.image }}</span>
               }
             </div>
           </div>
+
+          @if (acc.replicas) {
+            <div class="accessory-card__section">
+              <span class="accessory-card__section-label">Replicas</span>
+              <span class="text-sm">{{ acc.replicasRunning || 0 }}/{{ acc.replicasDesired || 0 }}</span>
+            </div>
+          }
 
           @if (acc.ports && acc.ports.length > 0) {
             <div class="accessory-card__section">
@@ -107,8 +119,36 @@
               </div>
             </div>
           }
+
+          <div class="accessory-card__actions" style="display: flex; gap: 0.25rem; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--p-surface-100);">
+            <button class="btn btn--ghost btn--icon" pTooltip="Restart" (click)="onRestart(acc)" [disabled]="actionLoading()">
+              <i class="pi pi-refresh" [class.pi-spin]="actionLoading() === acc.name"></i>
+            </button>
+            <button class="btn btn--ghost btn--icon" pTooltip="Stop" (click)="onStop(acc)" [disabled]="actionLoading()">
+              <i class="pi pi-stop-circle"></i>
+            </button>
+            <button class="btn btn--ghost btn--icon" pTooltip="View Logs" (click)="onViewLogs(acc)">
+              <i class="pi pi-file-edit"></i>
+            </button>
+          </div>
         </div>
       }
     </div>
   }
+
+  <!-- Logs Dialog -->
+  <p-dialog [header]="'Logs: ' + logsTarget()" [(visible)]="logsDialogVisible" [modal]="true" [style]="{ width: '50rem', height: '30rem' }">
+    @if (logsLoading()) {
+      <p-skeleton width="100%" height="20rem" />
+    } @else {
+      <div style="background: #0a0a0a; color: #fafafa; font-family: monospace; font-size: 0.8125rem; padding: 1rem; border-radius: 0.5rem; max-height: 24rem; overflow-y: auto; white-space: pre-wrap; word-break: break-all;">
+        @for (log of logsContent(); track $index) {
+          <div>{{ log.message }}</div>
+        }
+        @if (logsContent().length === 0) {
+          <span style="color: #71717a">No logs available</span>
+        }
+      </div>
+    }
+  </p-dialog>
 </div>
