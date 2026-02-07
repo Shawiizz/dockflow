@@ -39,6 +39,11 @@
           } @else {
             <!-- Editor -->
             <div class="editor-wrapper">
+              <div class="editor-line-numbers">
+                @for (line of tab.content.split('\n'); track $index; let ln = $index) {
+                  <span>{{ ln + 1 }}</span>
+                }
+              </div>
               <textarea
                 class="editor-textarea"
                 [value]="tab.content"
@@ -91,4 +96,5 @@
   </div>
 
   <p-toast position="top-right" />
+  <p-confirmDialog />
 </div>

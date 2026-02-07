@@ -1,7 +1,7 @@
 import { Component, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TooltipModule } from 'primeng/tooltip';
-import { ServerStatus } from '@core/services/api.service';
+import type { ServerStatus } from '@api-types';
 
 @Component({
   selector: 'app-server-card',
@@ -14,12 +14,13 @@ export class ServerCardComponent {
   server = input.required<ServerStatus>();
   checkingStatus = input(false);
   checkStatus = output<void>();
-  
+  sshOpen = output<void>();
+
   statusClass = () => {
     if (this.checkingStatus()) return 'checking';
     return this.server().status;
   };
-  
+
   statusIcon = () => {
     const status = this.server().status;
     switch (status) {
@@ -29,7 +30,7 @@ export class ServerCardComponent {
       default: return 'pi pi-question';
     }
   };
-  
+
   statusLabel = () => {
     if (this.checkingStatus()) return 'Checking...';
     const status = this.server().status;

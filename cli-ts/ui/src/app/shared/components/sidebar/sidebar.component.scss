@@ -19,6 +19,7 @@
   height: 56px;
   padding: 0 1rem;
   border-bottom: 1px solid var(--border-primary);
+  overflow: hidden;
 }
 
 .sidebar__logo-icon {
@@ -42,6 +43,15 @@
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
+  opacity: 1;
+  max-width: 200px;
+  transition: opacity 0.15s ease, max-width 0.2s ease;
+  overflow: hidden;
+
+  .sidebar--collapsed & {
+    opacity: 0;
+    max-width: 0;
+  }
 }
 
 .sidebar__nav {
@@ -71,10 +81,23 @@
   font-weight: 500;
   transition: all 0.15s ease;
   white-space: nowrap;
+  overflow: hidden;
 
   i {
     font-size: 1rem;
     flex-shrink: 0;
+  }
+
+  span {
+    opacity: 1;
+    max-width: 200px;
+    transition: opacity 0.15s ease, max-width 0.2s ease;
+    overflow: hidden;
+
+    .sidebar--collapsed & {
+      opacity: 0;
+      max-width: 0;
+    }
   }
 
   &:hover {

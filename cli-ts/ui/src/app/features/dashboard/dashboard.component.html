@@ -1,98 +1,123 @@
-<div class="dashboard">
-  <!-- Welcome / No Project Card -->
-  @if (!project()?.hasDockflow) {
+<div class="dashboard animate-fade-in">
+  <!-- Error banner -->
+  @if (errorMessage()) {
+    <div class="error-banner">
+      <i class="pi pi-exclamation-triangle"></i>
+      <span class="error-banner__text">{{ errorMessage() }}</span>
+      <button class="btn btn--ghost btn--icon" (click)="errorMessage.set(null)">
+        <i class="pi pi-times"></i>
+      </button>
+    </div>
+  }
+
+  <!-- Welcome card if no project -->
+  @if (!loadingProject() && projectInfo() && !projectInfo()!.hasDockflow) {
     <app-welcome-card />
   } @else {
     <!-- Stats Row -->
     <div class="dashboard__stats">
       <app-stats-card
         icon="pi pi-server"
-        label="Servers"
-        [value]="servers().length"
-        [loading]="loading()"
+        label="Total Servers"
+        [value]="totalServers()"
+        variant="info"
+        [loading]="serverStatus.loading()"
       />
       <app-stats-card
         icon="pi pi-check-circle"
         label="Online"
-        [value]="onlineCount()"
+        [value]="serverStatus.onlineCount()"
         variant="success"
-        [loading]="loading()"
+        [loading]="serverStatus.loading()"
       />
       <app-stats-card
         icon="pi pi-times-circle"
         label="Offline"
-        [value]="offlineCount()"
+        [value]="serverStatus.offlineCount()"
         variant="error"
-        [loading]="loading()"
+        [loading]="serverStatus.loading()"
       />
       <app-stats-card
         icon="pi pi-globe"
         label="Environments"
-        [value]="environments().length"
-        [loading]="loading()"
+        [value]="envCount()"
+        variant="default"
+        [loading]="serverStatus.loading()"
       />
     </div>
-    
+
     <!-- Connection Warning -->
-    @if (!connection()?.ready) {
-      <div class="dashboard__warning">
+    @if (connectionInfo() && !connectionInfo()!.ready) {
+      <div class="dashboard__warning card">
         <i class="pi pi-exclamation-triangle"></i>
-        <span>
-          No connection credentials found. Create <code>.env.dockflow</code> file or set CI secrets to connect to servers.
-        </span>
+        <div>
+          <p><strong>No connection credentials</strong></p>
+          <p>{{ connectionInfo()!.message }}</p>
+          <a routerLink="/settings" class="btn btn--ghost" style="margin-top: 0.5rem; padding: 0.25rem 0.5rem; font-size: 0.8125rem">
+            <i class="pi pi-cog"></i>
+            <span>Go to Settings</span>
+          </a>
+        </div>
       </div>
     }
-    
-    <!-- Servers Section -->
-    <section class="dashboard__section">
+
+    <!-- Servers Grid -->
+    <div class="dashboard__section">
       <div class="dashboard__section-header">
         <h2 class="dashboard__section-title">Servers</h2>
-        <button
-          class="btn btn--secondary"
-          [class.btn--loading]="loading()"
-          (click)="checkAllServersStatus()"
-        >
-          <i class="pi pi-refresh" [class.pi-spin]="loading()"></i>
-          <span>Check Status</span>
-        </button>
+        @if (!serverStatus.loading()) {
+          <button class="btn btn--ghost" (click)="serverStatus.checkAll()">
+            <i class="pi pi-refresh"></i>
+            <span>Check All</span>
+          </button>
+        }
       </div>
-      
-      @if (loading() && servers().length === 0) {
-        <div class="dashboard__grid">
-          @for (i of [1, 2, 3]; track i) {
+
+      @if (serverStatus.loading()) {
+        <div class="dashboard__servers-grid">
+          @for (i of [1, 2, 3, 4]; track i) {
             <div class="card" style="padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
               <div class="flex items-center gap-3">
                 <p-skeleton shape="circle" size="2.25rem" />
-                <div class="flex-1">
-                  <p-skeleton width="60%" height="0.875rem" styleClass="mb-2" />
+                <div style="flex: 1;">
+                  <p-skeleton width="60%" height="0.875rem" styleClass="mb-1" />
                   <p-skeleton width="40%" height="0.625rem" />
                 </div>
               </div>
-              <p-skeleton width="100%" height="0.625rem" />
-              <div class="flex gap-2" style="padding-top: 0.75rem; border-top: 1px solid var(--border-primary);">
-                <p-skeleton size="1.75rem" />
-                <p-skeleton size="1.75rem" />
-              </div>
+              <p-skeleton width="100%" height="2rem" />
             </div>
           }
         </div>
-      } @else if (servers().length === 0) {
-        <div class="dashboard__empty">
+      } @else if (serverStatus.servers().length === 0) {
+        <div class="empty-state">
           <i class="pi pi-server"></i>
-          <p>No servers configured.</p>
-          <span>Edit your <code>servers.yml</code> to add servers.</span>
+          <h3>No servers configured</h3>
+          <p>Add servers to your servers.yml configuration file.</p>
+          <a routerLink="/settings" class="btn btn--primary" style="margin-top: 1rem">
+            <i class="pi pi-cog"></i>
+            <span>Go to Settings</span>
+          </a>
         </div>
       } @else {
-        <div class="dashboard__grid">
-          @for (server of servers(); track server.name) {
+        <div class="dashboard__servers-grid">
+          @for (server of serverStatus.servers(); track server.name) {
             <app-server-card
               [server]="server"
-              [checkingStatus]="checkingServers().includes(server.name)"
-              (checkStatus)="checkServerStatus(server.name)"
+              [checkingStatus]="serverStatus.isChecking(server.name)"
+              (checkStatus)="onCheckServer(server.name)"
+              (sshOpen)="openSsh({ name: server.name, host: server.host })"
             />
           }
         </div>
       }
-    </section>
+    </div>
   }
+
+  <!-- SSH Terminal Dialog -->
+  <app-ssh-terminal
+    [serverName]="sshServerName()"
+    [serverHost]="sshServerHost()"
+    [visible]="sshVisible()"
+    (visibleChange)="sshVisible.set($event)"
+  />
 </div>

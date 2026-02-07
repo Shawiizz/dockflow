@@ -1,69 +1,73 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, DestroyRef, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SelectModule } from 'primeng/select';
 import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
 import { SkeletonModule } from 'primeng/skeleton';
-import { TimelineModule } from 'primeng/timeline';
 import { ApiService } from '@core/services/api.service';
+import { EnvironmentService } from '@core/services/environment.service';
+import { DataCacheService } from '@core/services/data-cache.service';
 import type { DeployHistoryEntry } from '@api-types';
 
 @Component({
   selector: 'app-deploy',
   standalone: true,
-  imports: [
-    CommonModule,
-    FormsModule,
-    SelectModule,
-    TagModule,
-    TooltipModule,
-    SkeletonModule,
-    TimelineModule,
-  ],
+  imports: [CommonModule, FormsModule, SelectModule, TagModule, TooltipModule, SkeletonModule],
   templateUrl: './deploy.component.html',
   styleUrl: './deploy.component.scss',
 })
 export class DeployComponent implements OnInit {
   private apiService = inject(ApiService);
+  private destroyRef = inject(DestroyRef);
+  private cache = inject(DataCacheService);
+
+  envService = inject(EnvironmentService);
 
   loading = signal(true);
   deployments = signal<DeployHistoryEntry[]>([]);
-  environments = signal<string[]>([]);
-  selectedEnv = signal<string>('');
+  error = signal<string | null>(null);
 
-  envOptions = computed(() => [
-    { label: 'All environments', value: '' },
-    ...this.environments().map((e) => ({ label: e, value: e })),
-  ]);
-
-  ngOnInit() {
-    this.loadEnvironments();
-    this.loadHistory();
-  }
-
-  loadEnvironments() {
-    this.apiService.getEnvironments().subscribe({
-      next: (envs) => this.environments.set(envs),
+  constructor() {
+    effect(() => {
+      const env = this.envService.selected();
+      this.loadHistory(env || undefined);
     });
   }
 
-  loadHistory() {
+  ngOnInit() {}
+
+  loadHistory(env?: string) {
+    const cacheKey = `deploy:${env || 'all'}`;
+    const cached = this.cache.get<DeployHistoryEntry[]>(cacheKey);
+    if (cached) {
+      this.deployments.set(cached);
+      this.loading.set(false);
+      this.error.set(null);
+      return;
+    }
+
     this.loading.set(true);
-    const env = this.selectedEnv() || undefined;
-    this.apiService.getDeployHistory(env).subscribe({
-      next: (response) => {
-        this.deployments.set(response.deployments);
-        this.loading.set(false);
-      },
-      error: () => {
-        this.loading.set(false);
-      },
-    });
+    this.error.set(null);
+    this.apiService.getDeployHistory(env)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (response) => {
+          this.deployments.set(response.deployments);
+          this.loading.set(false);
+          this.cache.set(cacheKey, response.deployments, 60_000);
+        },
+        error: (err) => {
+          this.loading.set(false);
+          this.error.set(err?.error?.error || 'Failed to load deploy history');
+        },
+      });
   }
 
-  onEnvChange() {
-    this.loadHistory();
+  refresh() {
+    this.cache.invalidatePrefix('deploy:');
+    this.loadHistory(this.envService.selectedOrUndefined());
   }
 
   statusSeverity(status: string): 'success' | 'danger' | 'warn' | 'info' | 'secondary' | 'contrast' | undefined {
@@ -95,7 +99,7 @@ export class DeployComponent implements OnInit {
   }
 
   formatDuration(seconds?: number): string {
-    if (!seconds) return '—';
+    if (!seconds) return '\u2014';
     if (seconds < 60) return `${seconds}s`;
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;

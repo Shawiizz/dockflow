@@ -64,6 +64,7 @@
     <button
       class="btn btn--ghost btn--icon"
       [disabled]="server().status !== 'online'"
+      (click)="sshOpen.emit()"
       pTooltip="SSH"
     >
       <i class="pi pi-terminal"></i>

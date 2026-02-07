@@ -4,9 +4,7 @@
     <div class="sidebar__logo-icon">
       <i class="pi pi-box"></i>
     </div>
-    @if (!collapsed()) {
-      <span class="sidebar__logo-text">Dockflow</span>
-    }
+    <span class="sidebar__logo-text">Dockflow</span>
   </div>
   
   <!-- Navigation -->
@@ -24,9 +22,7 @@
             pRipple
           >
             <i [class]="item.icon"></i>
-            @if (!collapsed()) {
-              <span>{{ item.label }}</span>
-            }
+            <span>{{ item.label }}</span>
           </a>
         </li>
       }

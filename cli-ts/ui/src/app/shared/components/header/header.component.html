@@ -10,36 +10,40 @@
     >
       <i class="pi pi-bars"></i>
     </button>
-    
-    <!-- Project name -->
+
+    <!-- Project name & page title -->
     <div class="header__project">
       @if (loadingProject()) {
         <p-skeleton width="6rem" height="1rem" />
       } @else {
         <span class="header__project-name">{{ projectName() }}</span>
-        @if (environments().length > 0) {
-          <span class="header__separator">·</span>
-          <p-select
-            [options]="environmentOptions()"
-            [(ngModel)]="selectedEnv"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="Environment"
-            size="small"
-            class="header__env-select"
-          />
-        }
+        <span class="header__separator">/</span>
+        <span class="header__page-title">{{ pageTitle() }}</span>
       }
     </div>
   </div>
-  
+
   <!-- Right side -->
   <div class="header__right">
+    <!-- Environment selector -->
+    @if (envService.environments().length > 0) {
+      <p-select
+        [options]="envService.allOptions()"
+        [ngModel]="envService.selected()"
+        (ngModelChange)="envService.selected.set($event)"
+        optionLabel="label"
+        optionValue="value"
+        placeholder="Environment"
+        size="small"
+        class="header__env-select"
+      />
+    }
+
     <!-- Connection status -->
     @if (loadingConnection()) {
       <div class="header__status header__status--loading">
         <span class="loading-spinner loading-spinner--sm"></span>
-        <span class="header__status-text">Connecting…</span>
+        <span class="header__status-text">Connecting...</span>
       </div>
     } @else {
       <div class="header__status" [class.header__status--connected]="connectionReady()">
@@ -49,7 +53,17 @@
         </span>
       </div>
     }
-    
+
+    <!-- Theme toggle -->
+    <button
+      class="header__action-btn"
+      (click)="themeService.toggle()"
+      [pTooltip]="themeService.isDark() ? 'Light mode' : 'Dark mode'"
+      pRipple
+    >
+      <i [class]="themeService.isDark() ? 'pi pi-sun' : 'pi pi-moon'"></i>
+    </button>
+
     <!-- Refresh -->
     <button
       class="header__action-btn"

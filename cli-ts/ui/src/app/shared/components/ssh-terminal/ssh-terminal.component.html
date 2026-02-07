@@ -1,0 +1,41 @@
+<p-dialog
+  [header]="'SSH: ' + serverName()"
+  [visible]="visible()"
+  (visibleChange)="visibleChange.emit($event)"
+  [modal]="true"
+  [draggable]="false"
+  [resizable]="false"
+  [style]="{ width: '80vw', height: '75vh' }"
+  [contentStyle]="{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }"
+  (onShow)="onDialogShow()"
+  (onHide)="onDialogHide()"
+  styleClass="ssh-dialog"
+>
+  <!-- Status Bar -->
+  <div class="ssh-status-bar">
+    @if (connecting()) {
+      <span class="ssh-status ssh-status--connecting">
+        <i class="pi pi-spin pi-spinner"></i>
+        <span>Connecting...</span>
+      </span>
+    } @else if (connected()) {
+      <span class="ssh-status ssh-status--connected">
+        <span class="status-dot status-dot--online"></span>
+        <span>Connected to {{ serverHost() || serverName() }}</span>
+      </span>
+    } @else if (error()) {
+      <span class="ssh-status ssh-status--error">
+        <i class="pi pi-exclamation-triangle"></i>
+        <span>{{ error() }}</span>
+      </span>
+    } @else {
+      <span class="ssh-status ssh-status--disconnected">
+        <span class="status-dot status-dot--offline"></span>
+        <span>Disconnected</span>
+      </span>
+    }
+  </div>
+
+  <!-- Terminal Container -->
+  <div class="ssh-terminal-container" #terminalEl></div>
+</p-dialog>

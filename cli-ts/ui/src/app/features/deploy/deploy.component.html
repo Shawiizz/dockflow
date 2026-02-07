@@ -6,17 +6,7 @@
       <p class="page-header__subtitle">View deployment history and status</p>
     </div>
     <div class="page-header__actions">
-      <p-select
-        [options]="envOptions()"
-        [(ngModel)]="selectedEnv"
-        optionLabel="label"
-        optionValue="value"
-        placeholder="Environment"
-        size="small"
-        (onChange)="onEnvChange()"
-        class="env-filter"
-      />
-      <button class="btn btn--secondary" (click)="loadHistory()" [disabled]="loading()">
+      <button class="btn btn--secondary" (click)="refresh()" [disabled]="loading()">
         <i class="pi pi-refresh" [class.pi-spin]="loading()"></i>
         <span>Refresh</span>
       </button>
@@ -33,6 +23,17 @@
       <code>dockflow deploy &lt;environment&gt;</code>
     </div>
   </div>
+
+  <!-- Error -->
+  @if (error()) {
+    <div class="error-banner">
+      <i class="pi pi-exclamation-triangle"></i>
+      <span class="error-banner__text">{{ error() }}</span>
+      <button class="btn btn--ghost btn--icon" (click)="refresh()">
+        <i class="pi pi-refresh"></i>
+      </button>
+    </div>
+  }
 
   <!-- Loading -->
   @if (loading()) {

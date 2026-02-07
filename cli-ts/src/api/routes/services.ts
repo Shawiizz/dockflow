@@ -5,6 +5,7 @@
  * GET /api/services/:name/logs    - Get service logs
  */
 
+import { Client as SSHClient } from 'ssh2';
 import { jsonResponse, errorResponse } from '../server';
 import { loadConfig } from '../../utils/config';
 import {
@@ -12,6 +13,8 @@ import {
   getAvailableEnvironments,
   getServerPrivateKey,
 } from '../../utils/servers';
+import { normalizePrivateKey } from '../../utils/ssh-keys';
+import { DEFAULT_SSH_PORT } from '../../constants';
 import type { ServiceInfo, ServicesListResponse, LogEntry, LogsResponse } from '../types';
 
 /**
@@ -86,11 +89,63 @@ function getManagerConnection(env: string) {
 
   return {
     host: manager.host,
-    port: manager.port,
+    port: manager.port || DEFAULT_SSH_PORT,
     user: manager.user,
     privateKey,
     stackName: loadConfig({ silent: true })?.project_name || '',
   };
+}
+
+/**
+ * Execute a command over SSH using the ssh2 library
+ * Returns stdout output or throws on error
+ */
+function sshExecCommand(
+  conn: { host: string; port: number; user: string; privateKey: string },
+  command: string,
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return new Promise((resolve, reject) => {
+    const client = new SSHClient();
+
+    client.on('ready', () => {
+      client.exec(command, (execErr, stream) => {
+        if (execErr) {
+          client.end();
+          reject(execErr);
+          return;
+        }
+
+        let stdout = '';
+        let stderr = '';
+
+        stream.on('data', (data: Buffer) => {
+          stdout += data.toString();
+        });
+
+        stream.stderr.on('data', (data: Buffer) => {
+          stderr += data.toString();
+        });
+
+        stream.on('close', (code: number) => {
+          client.end();
+          resolve({ stdout, stderr, exitCode: code ?? 0 });
+        });
+      });
+    });
+
+    client.on('error', (err) => {
+      reject(err);
+    });
+
+    client.connect({
+      host: conn.host,
+      port: conn.port,
+      username: conn.user,
+      privateKey: normalizePrivateKey(conn.privateKey),
+      hostVerifier: () => true,
+      readyTimeout: 10000,
+    });
+  });
 }
 
 /**
@@ -133,34 +188,19 @@ async function listServices(url: URL): Promise<Response> {
   }
 
   try {
-    const sshCmd = [
-      'ssh',
-      '-o', 'StrictHostKeyChecking=no',
-      '-o', 'ConnectTimeout=10',
-      '-i', conn.privateKey,
-      '-p', String(conn.port),
-      `${conn.user}@${conn.host}`,
-      `docker service ls --filter name=${stackName} --format "table {{.ID}}  {{.Name}}  {{.Mode}}  {{.Replicas}}  {{.Image}}  {{.Ports}}"`,
-    ];
+    const command = `docker service ls --filter name=${stackName} --format "table {{.ID}}  {{.Name}}  {{.Mode}}  {{.Replicas}}  {{.Image}}  {{.Ports}}"`;
+    const result = await sshExecCommand(conn, command);
 
-    const proc = Bun.spawn(sshCmd, {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    const output = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
-    await proc.exited;
-
-    if (proc.exitCode !== 0) {
+    if (result.exitCode !== 0) {
       return jsonResponse({
         services: [],
         stackName,
         total: 0,
-        message: stderr.trim() || 'Failed to list services.',
+        message: result.stderr.trim() || 'Failed to list services.',
       } satisfies ServicesListResponse);
     }
 
-    const services = parseServiceLs(output, stackName);
+    const services = parseServiceLs(result.stdout, stackName);
 
     return jsonResponse({
       services,
@@ -202,24 +242,10 @@ async function getServiceLogs(serviceName: string, url: URL): Promise<Response> 
   }
 
   try {
-    const sshCmd = [
-      'ssh',
-      '-o', 'StrictHostKeyChecking=no',
-      '-o', 'ConnectTimeout=10',
-      '-i', conn.privateKey,
-      '-p', String(conn.port),
-      `${conn.user}@${conn.host}`,
-      `docker service logs --tail ${lines} --timestamps --no-trunc ${serviceName} 2>&1`,
-    ];
+    const command = `docker service logs --tail ${lines} --timestamps --no-trunc ${serviceName} 2>&1`;
+    const result = await sshExecCommand(conn, command);
 
-    const proc = Bun.spawn(sshCmd, {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    const output = await new Response(proc.stdout).text();
-    await proc.exited;
-
-    const logEntries: LogEntry[] = output
+    const logEntries: LogEntry[] = result.stdout
       .trim()
       .split('\n')
       .filter((l) => l.trim())

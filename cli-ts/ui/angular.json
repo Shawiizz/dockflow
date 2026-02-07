@@ -31,7 +31,12 @@
               }
             ],
             "styles": ["src/styles.scss"],
-            "scripts": []
+            "scripts": [],
+            "allowedCommonJsDependencies": [
+              "@xterm/xterm",
+              "@xterm/addon-fit",
+              "@xterm/addon-web-links"
+            ]
           },
           "configurations": {
             "production": {

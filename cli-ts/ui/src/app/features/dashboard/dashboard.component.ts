@@ -1,93 +1,97 @@
-import { Component, inject, signal, OnInit, computed } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, DestroyRef, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterModule } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SkeletonModule } from 'primeng/skeleton';
-import { ApiService, ServerStatus, ProjectInfo, ConnectionInfo } from '@core/services/api.service';
-import { ServerCardComponent } from './components/server-card/server-card.component';
+import { ApiService } from '@core/services/api.service';
+import { EnvironmentService } from '@core/services/environment.service';
+import { ServerStatusService } from '@core/services/server-status.service';
 import { StatsCardComponent } from './components/stats-card/stats-card.component';
+import { ServerCardComponent } from './components/server-card/server-card.component';
 import { WelcomeCardComponent } from './components/welcome-card/welcome-card.component';
+import { SshTerminalComponent } from '@shared/components/ssh-terminal/ssh-terminal.component';
+import type { ProjectInfo, ConnectionInfo } from '@api-types';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
   imports: [
     CommonModule,
+    RouterModule,
     SkeletonModule,
-    ServerCardComponent,
     StatsCardComponent,
+    ServerCardComponent,
     WelcomeCardComponent,
+    SshTerminalComponent,
   ],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })
 export class DashboardComponent implements OnInit {
   private apiService = inject(ApiService);
-  
-  loading = signal(true);
-  servers = signal<ServerStatus[]>([]);
-  environments = signal<string[]>([]);
-  project = signal<ProjectInfo | null>(null);
-  connection = signal<ConnectionInfo | null>(null);
-  checkingServers = signal<string[]>([]);
-  
-  onlineCount = computed(() => this.servers().filter(s => s.status === 'online').length);
-  offlineCount = computed(() => this.servers().filter(s => s.status === 'offline' || s.status === 'error').length);
-  
+  private destroyRef = inject(DestroyRef);
+
+  envService = inject(EnvironmentService);
+  serverStatus = inject(ServerStatusService);
+
+  projectInfo = signal<ProjectInfo | null>(null);
+  connectionInfo = signal<ConnectionInfo | null>(null);
+  loadingProject = signal(true);
+  errorMessage = signal<string | null>(null);
+
+  // SSH terminal state
+  sshVisible = signal(false);
+  sshServerName = signal('');
+  sshServerHost = signal('');
+
+  totalServers = computed(() => this.serverStatus.servers().length);
+  envCount = computed(() => this.serverStatus.environments().length);
+
+  constructor() {
+    // Reload servers when environment changes
+    effect(() => {
+      const env = this.envService.selected();
+      this.serverStatus.loadServers(env || undefined);
+    });
+  }
+
   ngOnInit() {
-    this.loadData();
+    this.loadProjectInfo();
+    this.loadConnectionInfo();
   }
-  
-  private loadData() {
-    this.loading.set(true);
-    
-    this.apiService.getProjectInfo().subscribe({
-      next: (info) => {
-        this.project.set(info);
-        this.environments.set(info.environments);
-      },
-    });
-    
-    this.apiService.getConnectionInfo().subscribe({
-      next: (info) => {
-        this.connection.set(info);
-      },
-    });
-    
-    this.apiService.getServers().subscribe({
-      next: (response) => {
-        this.servers.set(response.servers);
-        this.environments.set(response.environments);
-        this.loading.set(false);
-        // Auto-check connectivity for all servers
-        this.checkAllServersStatus();
-      },
-      error: () => {
-        this.loading.set(false);
-      },
-    });
+
+  private loadProjectInfo() {
+    this.loadingProject.set(true);
+    this.apiService.getProjectInfo()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (info) => {
+          this.projectInfo.set(info);
+          this.loadingProject.set(false);
+        },
+        error: (err) => {
+          this.loadingProject.set(false);
+          this.errorMessage.set(err?.error?.error || 'Failed to load project info');
+        },
+      });
   }
-  
-  checkServerStatus(serverName: string) {
-    this.checkingServers.update(current => [...current, serverName]);
-    
-    this.apiService.getServerStatus(serverName).subscribe({
-      next: (status) => {
-        this.servers.update(servers => 
-          servers.map(s => s.name === serverName ? status : s)
-        );
-        this.checkingServers.update(current => current.filter(n => n !== serverName));
-      },
-      error: () => {
-        this.servers.update(servers =>
-          servers.map(s => s.name === serverName ? { ...s, status: 'error' as const, error: 'Connection failed' } : s)
-        );
-        this.checkingServers.update(current => current.filter(n => n !== serverName));
-      },
-    });
+
+  private loadConnectionInfo() {
+    this.apiService.getConnectionInfo()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (info) => this.connectionInfo.set(info),
+        error: () => {},
+      });
   }
-  
-  checkAllServersStatus() {
-    for (const server of this.servers()) {
-      this.checkServerStatus(server.name);
-    }
+
+  onCheckServer(serverName: string) {
+    this.serverStatus.checkStatus(serverName);
+  }
+
+  openSsh(server: { name: string; host: string }) {
+    this.sshServerName.set(server.name);
+    this.sshServerHost.set(server.host);
+    this.sshVisible.set(true);
   }
 }

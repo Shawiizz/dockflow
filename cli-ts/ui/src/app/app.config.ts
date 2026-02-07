@@ -1,5 +1,5 @@
 import { ApplicationConfig, provideZoneChangeDetection } from '@angular/core';
-import { provideRouter, RouteReuseStrategy } from '@angular/router';
+import { provideRouter } from '@angular/router';
 import { provideHttpClient, withFetch } from '@angular/common/http';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { providePrimeNG } from 'primeng/config';
@@ -7,9 +7,8 @@ import { definePreset } from '@primeuix/themes';
 import Aura from '@primeuix/themes/aura';
 
 import { routes } from './app.routes';
-import { KeepAliveRouteStrategy } from './core/keep-alive-route-strategy';
 
-// ─── Dockflow dark theme preset ──────────────────────────────────
+// ─── Dockflow theme preset ──────────────────────────────────
 const DockflowTheme = definePreset(Aura, {
   semantic: {
     transitionDuration: '0.15s',
@@ -43,6 +42,22 @@ const DockflowTheme = definePreset(Aura, {
           950: '{zinc.950}',
         },
       },
+      light: {
+        surface: {
+          0: '#ffffff',
+          50: '{slate.50}',
+          100: '{slate.100}',
+          200: '{slate.200}',
+          300: '{slate.300}',
+          400: '{slate.400}',
+          500: '{slate.500}',
+          600: '{slate.600}',
+          700: '{slate.700}',
+          800: '{slate.800}',
+          900: '{slate.900}',
+          950: '{slate.950}',
+        },
+      },
     },
   },
 });
@@ -53,7 +68,6 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes),
     provideHttpClient(withFetch()),
     provideAnimationsAsync(),
-    { provide: RouteReuseStrategy, useClass: KeepAliveRouteStrategy },
     providePrimeNG({
       theme: {
         preset: DockflowTheme,

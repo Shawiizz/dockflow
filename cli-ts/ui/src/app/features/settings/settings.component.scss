@@ -51,10 +51,32 @@
 }
 
 .editor-wrapper {
+  display: flex;
   padding: 0;
+  border-top: 1px solid var(--border-primary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.editor-line-numbers {
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem 0.75rem 1.25rem 1rem;
+  background-color: var(--bg-secondary);
+  border-right: 1px solid var(--border-primary);
+  user-select: none;
+
+  span {
+    font-family: var(--font-family-mono);
+    font-size: 0.8125rem;
+    line-height: 1.7;
+    color: var(--text-muted);
+    text-align: right;
+    min-width: 2ch;
+  }
 }
 
 .editor-textarea {
+  flex: 1;
   width: 100%;
   min-height: 500px;
   max-height: calc(100vh - 340px);
@@ -62,8 +84,6 @@
   background-color: var(--bg-primary);
   color: var(--text-primary);
   border: none;
-  border-top: 1px solid var(--border-primary);
-  border-bottom: 1px solid var(--border-primary);
   font-family: var(--font-family-mono);
   font-size: 0.8125rem;
   line-height: 1.7;

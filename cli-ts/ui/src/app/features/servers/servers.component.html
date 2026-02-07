@@ -3,179 +3,172 @@
   <div class="page-header">
     <div class="page-header__left">
       <h1 class="page-header__title">Servers</h1>
-      <p class="page-header__subtitle">Manage and monitor your Docker Swarm servers</p>
+      <p class="page-header__subtitle">Manage and monitor your infrastructure</p>
     </div>
     <div class="page-header__actions">
-      <p-select
-        [options]="envOptions()"
-        [(ngModel)]="selectedEnv"
-        optionLabel="label"
-        optionValue="value"
-        placeholder="Environment"
-        size="small"
-        class="env-filter"
-      />
-      <button class="btn btn--primary" (click)="checkAll()" [disabled]="loading()">
-        <i class="pi pi-refresh" [class.pi-spin]="loading()"></i>
+      <button class="btn btn--secondary" (click)="serverStatus.checkAll()" [disabled]="serverStatus.loading()">
+        <i class="pi pi-refresh" [class.pi-spin]="serverStatus.checkingServers().size > 0"></i>
         <span>Check All</span>
       </button>
     </div>
   </div>
 
   <!-- Stats -->
-  <div class="servers-page__stats">
-    @if (loading()) {
-      @for (i of [1, 2, 3, 4]; track i) {
-        <div class="stat-pill">
-          <p-skeleton width="1.25rem" height="1rem" />
-          <p-skeleton width="2.5rem" height="0.75rem" />
-        </div>
-      }
-    } @else {
+  @if (!serverStatus.loading()) {
+    <div class="servers-page__stats">
       <div class="stat-pill">
-        <span class="stat-pill__value">{{ filteredServers().length }}</span>
+        <span class="stat-pill__value">{{ serverStatus.servers().length }}</span>
         <span class="stat-pill__label">Total</span>
       </div>
       <div class="stat-pill stat-pill--success">
-        <span class="stat-pill__value">{{ onlineCount() }}</span>
+        <span class="stat-pill__value">{{ serverStatus.onlineCount() }}</span>
         <span class="stat-pill__label">Online</span>
       </div>
-      <div class="stat-pill stat-pill--error">
-        <span class="stat-pill__value">{{ offlineCount() }}</span>
-        <span class="stat-pill__label">Offline</span>
-      </div>
-      <div class="stat-pill stat-pill--muted">
-        <span class="stat-pill__value">{{ unknownCount() }}</span>
-        <span class="stat-pill__label">Unknown</span>
-      </div>
-    }
-  </div>
-
-  <!-- Servers Table -->
-  @if (loading() && servers().length === 0) {
-    <div class="card">
-      <p-table [value]="[1,2,3,4,5]" [tableStyle]="{'min-width': '50rem'}" styleClass="p-datatable-sm">
-        <ng-template #header>
-          <tr>
-            <th>Status</th>
-            <th>Name</th>
-            <th>Host</th>
-            <th>Role</th>
-            <th>Environment</th>
-            <th>Swarm</th>
-            <th style="width: 120px">Actions</th>
-          </tr>
-        </ng-template>
-        <ng-template #body>
-          <tr>
-            <td><p-skeleton width="3.5rem" height="1.375rem" borderRadius="9999px" /></td>
-            <td><p-skeleton width="70%" /></td>
-            <td><p-skeleton width="60%" /></td>
-            <td><p-skeleton width="3.5rem" height="1.375rem" borderRadius="9999px" /></td>
-            <td><p-skeleton width="3rem" /></td>
-            <td><p-skeleton width="3.5rem" /></td>
-            <td><p-skeleton width="1.75rem" height="1.75rem" /></td>
-          </tr>
-        </ng-template>
-      </p-table>
-    </div>
-  } @else if (filteredServers().length === 0) {
-    <div class="empty-state">
-      <i class="pi pi-server"></i>
-      <h3>No servers found</h3>
-      <p>Configure your servers in <code>servers.yml</code> to get started.</p>
-    </div>
-  } @else {
-    <div class="card">
-      <p-table
-        [value]="filteredServers()"
-        [rowHover]="true"
-        [rows]="20"
-        [paginator]="filteredServers().length > 20"
-        styleClass="p-datatable-sm"
-      >
-        <ng-template #header>
-          <tr>
-            <th>Status</th>
-            <th>Name</th>
-            <th>Host</th>
-            <th>Role</th>
-            <th>Environment</th>
-            <th>Swarm</th>
-            <th style="width: 120px">Actions</th>
-          </tr>
-        </ng-template>
-        <ng-template #body let-server>
-          <tr>
-            <td>
-              @if (isChecking(server.name)) {
-                <i class="pi pi-spin pi-spinner" style="color: var(--accent-blue)"></i>
-              } @else {
-                <p-tag
-                  [value]="server.status"
-                  [severity]="statusSeverity(server.status)"
-                  [rounded]="true"
-                />
-              }
-            </td>
-            <td>
-              <span class="server-name">{{ server.name }}</span>
-            </td>
-            <td>
-              <code>{{ server.host }}:{{ server.port }}</code>
-            </td>
-            <td>
-              <p-tag
-                [value]="server.role"
-                [severity]="server.role === 'manager' ? 'info' : 'secondary'"
-                [rounded]="true"
-              />
-            </td>
-            <td>
-              <div class="tag-list">
-                @for (tag of server.tags; track tag) {
-                  <span class="env-tag">{{ tag }}</span>
-                }
-              </div>
-            </td>
-            <td>
-              @if (server.swarmStatus) {
-                <span class="swarm-status" [class]="'swarm-status--' + server.swarmStatus">
-                  {{ server.swarmStatus }}
-                </span>
-              } @else {
-                <span class="text-surface-400">—</span>
-              }
-            </td>
-            <td>
-              <div class="action-buttons">
-                <button
-                  class="btn btn--ghost btn--icon"
-                  [disabled]="isChecking(server.name)"
-                  (click)="checkStatus(server)"
-                  pTooltip="Check connectivity"
-                >
-                  <i class="pi pi-refresh" [class.pi-spin]="isChecking(server.name)"></i>
-                </button>
-                <button
-                  class="btn btn--ghost btn--icon"
-                  [disabled]="server.status !== 'online'"
-                  pTooltip="SSH Terminal"
-                >
-                  <i class="pi pi-terminal"></i>
-                </button>
-              </div>
-            </td>
-          </tr>
-        </ng-template>
-        <ng-template #emptymessage>
-          <tr>
-            <td colspan="7" class="text-center text-surface-400" style="padding: 2rem;">
-              No servers found.
-            </td>
-          </tr>
-        </ng-template>
-      </p-table>
+      @if (serverStatus.offlineCount() > 0) {
+        <div class="stat-pill stat-pill--error">
+          <span class="stat-pill__value">{{ serverStatus.offlineCount() }}</span>
+          <span class="stat-pill__label">Offline</span>
+        </div>
+      }
     </div>
   }
+
+  <!-- Error -->
+  @if (serverStatus.error()) {
+    <div class="error-banner">
+      <i class="pi pi-exclamation-triangle"></i>
+      <span class="error-banner__text">{{ serverStatus.error() }}</span>
+      <button class="btn btn--ghost btn--icon" (click)="serverStatus.reload(envService.selectedOrUndefined())">
+        <i class="pi pi-refresh"></i>
+      </button>
+    </div>
+  }
+
+  <!-- Loading -->
+  @if (serverStatus.loading()) {
+    <div class="card" style="padding: 0; overflow: hidden;">
+      @for (i of [1, 2, 3, 4]; track i) {
+        <div style="display: flex; gap: 1rem; align-items: center; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-primary);">
+          <p-skeleton width="4rem" height="1.375rem" borderRadius="9999px" />
+          <p-skeleton width="8rem" height="0.875rem" />
+          <p-skeleton width="10rem" height="0.875rem" />
+          <p-skeleton width="4rem" height="1.375rem" borderRadius="9999px" />
+          <div style="margin-left: auto; display: flex; gap: 0.5rem;">
+            <p-skeleton width="2rem" height="2rem" borderRadius="0.5rem" />
+            <p-skeleton width="2rem" height="2rem" borderRadius="0.5rem" />
+          </div>
+        </div>
+      }
+    </div>
+  } @else if (serverStatus.servers().length === 0) {
+    <div class="empty-state">
+      <i class="pi pi-server"></i>
+      <h3>No servers configured</h3>
+      <p>Add servers to your <code>servers.yml</code> configuration file.</p>
+    </div>
+  } @else {
+    <!-- Server Table -->
+    <p-table
+      [value]="serverStatus.servers()"
+      [paginator]="serverStatus.servers().length > 10"
+      [rows]="10"
+      [rowsPerPageOptions]="[10, 25, 50]"
+      [rowHover]="true"
+      [stripedRows]="true"
+      size="small"
+    >
+      <ng-template #header>
+        <tr>
+          <th>Name</th>
+          <th>Host</th>
+          <th>Status</th>
+          <th>Role</th>
+          <th>Environment</th>
+          <th>Swarm</th>
+          <th style="width: 7rem; text-align: right">Actions</th>
+        </tr>
+      </ng-template>
+      <ng-template #body let-server>
+        <tr>
+          <!-- Name -->
+          <td>
+            <span class="server-name">{{ server.name }}</span>
+          </td>
+          <!-- Host -->
+          <td>
+            <span class="server-host">{{ server.host }}:{{ server.port }}</span>
+          </td>
+          <!-- Status -->
+          <td>
+            @if (checkingSet().has(server.name)) {
+              <p-tag severity="info" [rounded]="true">
+                <i class="pi pi-spin pi-spinner" style="font-size: 0.7rem; margin-right: 0.25rem;"></i>
+                Checking
+              </p-tag>
+            } @else {
+              <p-tag
+                [value]="statusLabel(server.status)"
+                [severity]="statusSeverity(server.status)"
+                [rounded]="true"
+                [icon]="statusIcon(server.status)"
+              />
+            }
+          </td>
+          <!-- Role -->
+          <td>
+            <p-tag [value]="server.role" [severity]="roleSeverity(server.role)" [rounded]="true" />
+          </td>
+          <!-- Environment -->
+          <td>
+            <div class="tag-list">
+              @for (tag of server.tags; track tag) {
+                <span class="env-tag">{{ tag }}</span>
+              }
+            </div>
+          </td>
+          <!-- Swarm -->
+          <td>
+            @if (server.swarmStatus) {
+              <p-tag
+                [value]="server.swarmStatus"
+                [severity]="swarmSeverity(server.swarmStatus)"
+                [rounded]="true"
+              />
+            } @else {
+              <span class="text-muted">—</span>
+            }
+          </td>
+          <!-- Actions -->
+          <td>
+            <div class="action-buttons" style="justify-content: flex-end;">
+              <button
+                class="btn btn--ghost btn--icon"
+                [disabled]="checkingSet().has(server.name)"
+                (click)="serverStatus.checkStatus(server.name)"
+                pTooltip="Check status"
+              >
+                <i class="pi pi-refresh" [class.pi-spin]="checkingSet().has(server.name)"></i>
+              </button>
+              <button
+                class="btn btn--ghost btn--icon"
+                [disabled]="server.status !== 'online'"
+                (click)="openSsh(server)"
+                pTooltip="SSH Terminal"
+              >
+                <i class="pi pi-terminal"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+      </ng-template>
+    </p-table>
+  }
+
+  <!-- SSH Terminal Dialog -->
+  <app-ssh-terminal
+    [serverName]="sshServerName()"
+    [serverHost]="sshServerHost()"
+    [visible]="sshVisible()"
+    (visibleChange)="sshVisible.set($event)"
+  />
 </div>

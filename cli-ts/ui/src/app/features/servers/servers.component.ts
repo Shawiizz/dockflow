@@ -1,13 +1,14 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, DestroyRef, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { SelectModule } from 'primeng/select';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
-import { SelectModule } from 'primeng/select';
 import { TooltipModule } from 'primeng/tooltip';
 import { SkeletonModule } from 'primeng/skeleton';
-import { MessageModule } from 'primeng/message';
-import { ApiService, ServerStatus } from '@core/services/api.service';
+import { EnvironmentService } from '@core/services/environment.service';
+import { ServerStatusService } from '@core/services/server-status.service';
+import { SshTerminalComponent } from '@shared/components/ssh-terminal/ssh-terminal.component';
 
 @Component({
   selector: 'app-servers',
@@ -15,91 +16,56 @@ import { ApiService, ServerStatus } from '@core/services/api.service';
   imports: [
     CommonModule,
     FormsModule,
+    SelectModule,
     TableModule,
     TagModule,
-    SelectModule,
     TooltipModule,
     SkeletonModule,
-    MessageModule,
+    SshTerminalComponent,
   ],
   templateUrl: './servers.component.html',
   styleUrl: './servers.component.scss',
 })
 export class ServersComponent implements OnInit {
-  private apiService = inject(ApiService);
+  private destroyRef = inject(DestroyRef);
 
-  loading = signal(true);
-  servers = signal<ServerStatus[]>([]);
-  environments = signal<string[]>([]);
-  selectedEnv = signal<string>('');
-  checkingServers = signal<Set<string>>(new Set());
+  envService = inject(EnvironmentService);
+  serverStatus = inject(ServerStatusService);
 
-  envOptions = computed(() => [
-    { label: 'All environments', value: '' },
-    ...this.environments().map((e) => ({ label: e, value: e })),
-  ]);
+  // SSH terminal state
+  sshVisible = signal(false);
+  sshServerName = signal('');
+  sshServerHost = signal('');
 
-  filteredServers = computed(() => {
-    const env = this.selectedEnv();
-    if (!env) return this.servers();
-    return this.servers().filter((s) => s.tags.includes(env));
-  });
+  // Pre-computed set for O(1) lookup in template
+  checkingSet = computed(() => this.serverStatus.checkingServers());
 
-  onlineCount = computed(() => this.filteredServers().filter((s) => s.status === 'online').length);
-  offlineCount = computed(() => this.filteredServers().filter((s) => s.status === 'offline' || s.status === 'error').length);
-  unknownCount = computed(() => this.filteredServers().filter((s) => s.status === 'unknown').length);
+  constructor() {
+    effect(() => {
+      const env = this.envService.selected();
+      this.serverStatus.loadServers(env || undefined);
+    });
+  }
 
   ngOnInit() {
-    this.loadServers();
+    // Servers are loaded reactively via the effect
   }
 
-  loadServers() {
-    this.loading.set(true);
-    this.apiService.getServers().subscribe({
-      next: (response) => {
-        this.servers.set(response.servers);
-        this.environments.set(response.environments);
-        this.loading.set(false);
-        // Auto-check connectivity for all servers
-        this.checkAll();
-      },
-      error: () => {
-        this.loading.set(false);
-      },
-    });
+  onEnvChange() {
+    // Handled by the effect watching envService.selected()
   }
 
-  checkStatus(server: ServerStatus) {
-    this.checkingServers.update((set) => new Set(set).add(server.name));
-
-    this.apiService.getServerStatus(server.name).subscribe({
-      next: (status) => {
-        this.servers.update((servers) =>
-          servers.map((s) => (s.name === server.name ? status : s)),
-        );
-        this.removeChecking(server.name);
-      },
-      error: () => {
-        this.servers.update((servers) =>
-          servers.map((s) =>
-            s.name === server.name
-              ? { ...s, status: 'error' as const, error: 'Connection failed' }
-              : s,
-          ),
-        );
-        this.removeChecking(server.name);
-      },
-    });
+  roleSeverity(role: string): 'info' | 'secondary' | 'warn' | 'success' | 'danger' | 'contrast' | undefined {
+    return role === 'manager' ? 'info' : 'secondary';
   }
 
-  checkAll() {
-    for (const server of this.filteredServers()) {
-      this.checkStatus(server);
+  statusLabel(status: string): string {
+    switch (status) {
+      case 'online': return 'Online';
+      case 'offline': return 'Offline';
+      case 'error': return 'Error';
+      default: return 'Unknown';
     }
-  }
-
-  isChecking(name: string): boolean {
-    return this.checkingServers().has(name);
   }
 
   statusSeverity(status: string): 'success' | 'danger' | 'warn' | 'info' | 'secondary' | 'contrast' | undefined {
@@ -107,16 +73,31 @@ export class ServersComponent implements OnInit {
       case 'online': return 'success';
       case 'offline': return 'danger';
       case 'error': return 'danger';
-      case 'checking': return 'info';
       default: return 'secondary';
     }
   }
 
-  private removeChecking(name: string) {
-    this.checkingServers.update((set) => {
-      const next = new Set(set);
-      next.delete(name);
-      return next;
-    });
+  statusIcon(status: string): string {
+    switch (status) {
+      case 'online': return 'pi pi-check-circle';
+      case 'offline': return 'pi pi-times-circle';
+      case 'error': return 'pi pi-exclamation-triangle';
+      default: return 'pi pi-question-circle';
+    }
+  }
+
+  swarmSeverity(status: string): 'success' | 'danger' | 'warn' | 'info' | 'secondary' | 'contrast' | undefined {
+    switch (status) {
+      case 'leader': return 'success';
+      case 'reachable': return 'info';
+      case 'unreachable': return 'danger';
+      default: return 'secondary';
+    }
+  }
+
+  openSsh(server: { name: string; host: string }) {
+    this.sshServerName.set(server.name);
+    this.sshServerHost.set(server.host);
+    this.sshVisible.set(true);
   }
 }

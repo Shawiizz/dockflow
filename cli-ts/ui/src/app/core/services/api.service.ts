@@ -127,14 +127,12 @@ export class ApiService {
     if (env) {
       params = params.set('env', env);
     }
-    return this.http.get<ServicesListResponse>(`${this.baseUrl}/services`, { params }).pipe(
-      catchError(() => of({ services: [], stackName: '', total: 0 }))
-    );
+    return this.http.get<ServicesListResponse>(`${this.baseUrl}/services`, { params });
   }
 
   // ── Logs ─────────────────────────────────────────────────────────────────
 
-  getServiceLogs(serviceName: string, env?: string, lines = 100): Observable<LogsResponse> {
+  getServiceLogs(serviceName: string, lines = 100, env?: string): Observable<LogsResponse> {
     let params = new HttpParams().set('lines', lines.toString());
     if (env) {
       params = params.set('env', env);

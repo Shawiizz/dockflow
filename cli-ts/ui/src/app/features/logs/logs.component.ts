@@ -1,76 +1,76 @@
-import {
-  Component,
-  inject,
-  signal,
-  computed,
-  OnInit,
-  ElementRef,
-  viewChild,
-  AfterViewChecked,
-} from '@angular/core';
+import { Component, inject, signal, computed, OnInit, OnDestroy, DestroyRef, effect, viewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
+import { FormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SelectModule } from 'primeng/select';
-import { TooltipModule } from 'primeng/tooltip';
-import { SkeletonModule } from 'primeng/skeleton';
 import { ToggleSwitchModule } from 'primeng/toggleswitch';
+import { SkeletonModule } from 'primeng/skeleton';
+import { TooltipModule } from 'primeng/tooltip';
 import { ApiService } from '@core/services/api.service';
-import type { LogEntry, ServiceInfo } from '@api-types';
+import { EnvironmentService } from '@core/services/environment.service';
+import type { ServiceInfo, LogEntry } from '@api-types';
 
 @Component({
   selector: 'app-logs',
   standalone: true,
-  imports: [
-    CommonModule,
-    FormsModule,
-    SelectModule,
-    TooltipModule,
-    SkeletonModule,
-    ToggleSwitchModule,
-  ],
+  imports: [CommonModule, FormsModule, SelectModule, ToggleSwitchModule, SkeletonModule, TooltipModule],
   templateUrl: './logs.component.html',
   styleUrl: './logs.component.scss',
 })
-export class LogsComponent implements OnInit, AfterViewChecked {
+export class LogsComponent implements OnInit, OnDestroy {
   private apiService = inject(ApiService);
   private route = inject(ActivatedRoute);
+  private destroyRef = inject(DestroyRef);
 
-  logContainer = viewChild<ElementRef<HTMLDivElement>>('logContainer');
+  envService = inject(EnvironmentService);
 
   loading = signal(false);
   loadingServices = signal(true);
   services = signal<ServiceInfo[]>([]);
+  selectedService = signal('');
   logs = signal<LogEntry[]>([]);
-  environments = signal<string[]>([]);
-  selectedEnv = signal<string>('');
-  selectedService = signal<string>('');
-  autoScroll = true;
-  tailLines = 100;
-  private shouldScrollToBottom = false;
+  error = signal<string | null>(null);
+  servicesError = signal<string | null>(null);
 
-  envOptions = computed(() => [
-    { label: 'Default', value: '' },
-    ...this.environments().map((e) => ({ label: e, value: e })),
-  ]);
+  tailLines = signal(100);
+  autoScroll = signal(true);
+  autoRefresh = signal(false);
 
-  serviceOptions = computed(() =>
-    this.services().map((s) => ({ label: s.name, value: s.name })),
-  );
+  private autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
-  lineCountOptions = [
+  logViewer = viewChild<ElementRef<HTMLDivElement>>('logViewer');
+
+  tailOptions = [
     { label: '50 lines', value: 50 },
     { label: '100 lines', value: 100 },
     { label: '200 lines', value: 200 },
     { label: '500 lines', value: 500 },
   ];
 
-  ngOnInit() {
-    this.loadEnvironments();
-    this.loadServices();
+  serviceOptions = computed(() =>
+    this.services().map(s => ({ label: s.name, value: s.name })),
+  );
 
+  constructor() {
+    effect(() => {
+      const env = this.envService.selected();
+      this.loadServiceList(env || undefined);
+    });
+
+    // Auto-refresh effect
+    effect(() => {
+      const enabled = this.autoRefresh();
+      this.clearAutoRefresh();
+      if (enabled && this.selectedService()) {
+        this.autoRefreshTimer = setInterval(() => this.loadLogs(), 5000);
+      }
+    });
+  }
+
+  ngOnInit() {
     // Check for service query param
-    this.route.queryParams.subscribe((params) => {
+    this.route.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(params => {
       if (params['service']) {
         this.selectedService.set(params['service']);
         this.loadLogs();
@@ -78,31 +78,47 @@ export class LogsComponent implements OnInit, AfterViewChecked {
     });
   }
 
-  ngAfterViewChecked() {
-    if (this.shouldScrollToBottom && this.autoScroll) {
-      this.scrollToBottom();
-      this.shouldScrollToBottom = false;
+  ngOnDestroy() {
+    this.clearAutoRefresh();
+  }
+
+  private clearAutoRefresh() {
+    if (this.autoRefreshTimer) {
+      clearInterval(this.autoRefreshTimer);
+      this.autoRefreshTimer = null;
     }
   }
 
-  loadEnvironments() {
-    this.apiService.getEnvironments().subscribe({
-      next: (envs) => this.environments.set(envs),
-    });
+  loadServiceList(env?: string) {
+    this.loadingServices.set(true);
+    this.servicesError.set(null);
+    this.apiService.getServices(env)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (response) => {
+          this.services.set(response.services);
+          this.loadingServices.set(false);
+          if (response.services.length === 0 && response.message) {
+            this.servicesError.set(response.message);
+          }
+          if (response.services.length > 0 && !this.selectedService()) {
+            this.selectedService.set(response.services[0].name);
+            this.loadLogs();
+          }
+        },
+        error: (err) => {
+          this.loadingServices.set(false);
+          this.servicesError.set(err?.error?.error || 'Failed to load services');
+        },
+      });
   }
 
-  loadServices() {
-    this.loadingServices.set(true);
-    const env = this.selectedEnv() || undefined;
-    this.apiService.getServices(env).subscribe({
-      next: (response) => {
-        this.services.set(response.services);
-        this.loadingServices.set(false);
-      },
-      error: () => {
-        this.loadingServices.set(false);
-      },
-    });
+  onServiceChange() {
+    this.loadLogs();
+  }
+
+  onTailChange() {
+    this.loadLogs();
   }
 
   loadLogs() {
@@ -110,53 +126,39 @@ export class LogsComponent implements OnInit, AfterViewChecked {
     if (!service) return;
 
     this.loading.set(true);
-    const env = this.selectedEnv() || undefined;
-    this.apiService.getServiceLogs(service, env, this.tailLines).subscribe({
-      next: (response) => {
-        this.logs.set(response.logs);
-        this.loading.set(false);
-        this.shouldScrollToBottom = true;
-      },
-      error: () => {
-        this.loading.set(false);
-      },
-    });
+    this.error.set(null);
+    const env = this.envService.selectedOrUndefined();
+
+    this.apiService.getServiceLogs(service, this.tailLines(), env)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (response) => {
+          this.logs.set(response.logs);
+          this.loading.set(false);
+          if (this.autoScroll()) {
+            setTimeout(() => this.scrollToBottom(), 50);
+          }
+        },
+        error: (err) => {
+          this.loading.set(false);
+          this.error.set(err?.error?.error || 'Failed to load logs');
+        },
+      });
   }
 
-  onServiceChange() {
-    this.logs.set([]);
-    this.loadLogs();
-  }
-
-  onEnvChange() {
-    this.loadServices();
-    if (this.selectedService()) {
-      this.loadLogs();
+  private scrollToBottom() {
+    const viewer = this.logViewer()?.nativeElement;
+    if (viewer) {
+      viewer.scrollTop = viewer.scrollHeight;
     }
-  }
-
-  refresh() {
-    this.loadLogs();
-  }
-
-  clearLogs() {
-    this.logs.set([]);
   }
 
   formatTimestamp(ts: string): string {
     try {
       const date = new Date(ts);
-      return date.toLocaleTimeString('en-US', { hour12: false });
+      return date.toLocaleTimeString();
     } catch {
       return ts;
-    }
-  }
-
-  private scrollToBottom() {
-    const container = this.logContainer();
-    if (container) {
-      const el = container.nativeElement;
-      el.scrollTop = el.scrollHeight;
     }
   }
 }

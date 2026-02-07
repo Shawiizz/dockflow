@@ -4,6 +4,9 @@
 /* PrimeNG Icons */
 @use "primeicons/primeicons.css";
 
+/* xterm.js styles */
+@use "@xterm/xterm/css/xterm.css";
+
 /* PrimeNG + Tailwind integration */
 @plugin "tailwindcss-primeui";
 
@@ -23,26 +26,58 @@
   --bg-tertiary: #171717;
   --bg-hover: #1f1f1f;
   --bg-active: #262626;
-  
+
   --border-primary: #262626;
   --border-secondary: #333333;
-  
+
   --text-primary: #fafafa;
   --text-secondary: #a1a1aa;
   --text-muted: #71717a;
-  
+
   --accent-blue: #3b82f6;
   --accent-blue-hover: #2563eb;
   --accent-blue-muted: rgba(59, 130, 246, 0.1);
-  
+
   --success: #22c55e;
   --success-muted: rgba(34, 197, 94, 0.1);
-  
+
   --warning: #f59e0b;
   --warning-muted: rgba(245, 158, 11, 0.1);
-  
+
   --error: #ef4444;
   --error-muted: rgba(239, 68, 68, 0.1);
+}
+
+/* ============================================
+   LIGHT THEME
+   ============================================ */
+
+html.app-light {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9fafb;
+  --bg-tertiary: #f3f4f6;
+  --bg-hover: #e5e7eb;
+  --bg-active: #d1d5db;
+
+  --border-primary: #e5e7eb;
+  --border-secondary: #d1d5db;
+
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
+
+  --accent-blue: #2563eb;
+  --accent-blue-hover: #1d4ed8;
+  --accent-blue-muted: rgba(37, 99, 235, 0.08);
+
+  --success: #16a34a;
+  --success-muted: rgba(22, 163, 74, 0.08);
+
+  --warning: #d97706;
+  --warning-muted: rgba(217, 119, 6, 0.08);
+
+  --error: #dc2626;
+  --error-muted: rgba(220, 38, 38, 0.08);
 }
 
 html, body {
@@ -56,6 +91,11 @@ html, body {
 body {
   background-color: var(--p-surface-950);
   color: var(--p-text-color);
+}
+
+html.app-light body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 /* ============================================
@@ -74,13 +114,11 @@ body {
 ::-webkit-scrollbar-thumb {
   background: var(--border-secondary);
   border-radius: 3px;
-  
+
   &:hover {
     background: var(--text-muted);
   }
 }
-
-/* Typography utility classes removed — use Tailwind + tailwindcss-primeui instead */
 
 /* ============================================
    CODE/MONO STYLING
@@ -114,10 +152,10 @@ pre {
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-primary);
   border-radius: 0.75rem;
-  
+
   &--hover {
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
-    
+
     &:hover {
       border-color: var(--border-secondary);
     }
@@ -140,45 +178,45 @@ pre {
   cursor: pointer;
   transition: all 0.15s ease;
   border: 1px solid transparent;
-  
+
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
-  
+
   &--primary {
     background-color: var(--accent-blue);
     color: white;
-    
+
     &:hover:not(:disabled) {
       background-color: var(--accent-blue-hover);
     }
   }
-  
+
   &--secondary {
     background-color: var(--bg-tertiary);
     border-color: var(--border-primary);
     color: var(--text-primary);
-    
+
     &:hover:not(:disabled) {
       background-color: var(--bg-hover);
       border-color: var(--border-secondary);
     }
   }
-  
+
   &--ghost {
     background-color: transparent;
     color: var(--text-secondary);
-    
+
     &:hover:not(:disabled) {
       background-color: var(--bg-hover);
       color: var(--text-primary);
     }
   }
-  
+
   &--icon {
     padding: 0.5rem;
-    
+
     i {
       font-size: 1rem;
     }
@@ -193,28 +231,26 @@ pre {
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 50%;
-  
+
   &--online {
     background-color: var(--success);
     box-shadow: 0 0 0 2px var(--success-muted);
   }
-  
+
   &--offline {
     background-color: var(--error);
     box-shadow: 0 0 0 2px var(--error-muted);
   }
-  
+
   &--warning {
     background-color: var(--warning);
     box-shadow: 0 0 0 2px var(--warning-muted);
   }
-  
+
   &--unknown {
     background-color: var(--text-muted);
   }
 }
-
-/* Utility classes removed — use Tailwind + tailwindcss-primeui instead */
 
 /* Fade in animation */
 @keyframes fadeIn {
@@ -250,7 +286,6 @@ pre {
    LOADING UTILITIES
    ============================================ */
 
-/* Loading spinner (CSS-only) */
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
@@ -277,4 +312,33 @@ pre {
   width: 2rem;
   height: 2rem;
   border-width: 3px;
+}
+
+/* ============================================
+   ERROR BANNER (shared)
+   ============================================ */
+
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background-color: var(--error-muted);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: var(--error);
+  font-size: 0.875rem;
+
+  i {
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+
+  &__text {
+    flex: 1;
+  }
+
+  &__action {
+    flex-shrink: 0;
+  }
 }

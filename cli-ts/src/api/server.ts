@@ -13,6 +13,7 @@
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { handleApiRoutes } from './routes/index';
+import { sshWebSocketHandlers, parseSSHServerName } from './routes/ssh';
 
 /**
  * Server configuration options
@@ -94,7 +95,7 @@ export async function startWebServer(port: number, options: ServerOptions = {}):
   Bun.serve({
     port,
     
-    async fetch(req) {
+    async fetch(req, server) {
       const url = new URL(req.url);
       const pathname = url.pathname;
       
@@ -108,10 +109,17 @@ export async function startWebServer(port: number, options: ServerOptions = {}):
         return handleApiRoutes(req);
       }
       
-      // WebSocket upgrade for logs streaming (future)
-      if (pathname.startsWith('/ws/')) {
-        // TODO: Handle WebSocket connections
-        return new Response('WebSocket not implemented yet', { status: 501 });
+      // WebSocket upgrade for SSH terminal
+      if (pathname.startsWith('/ws/ssh/')) {
+        const serverName = parseSSHServerName(pathname);
+        if (!serverName) {
+          return new Response('Invalid WebSocket path', { status: 400 });
+        }
+        const success = server.upgrade(req, {
+          data: { serverName },
+        });
+        if (success) return undefined as unknown as Response;
+        return new Response('WebSocket upgrade failed', { status: 400 });
       }
       
       // In dev mode, proxy to Angular dev server
@@ -180,6 +188,9 @@ export async function startWebServer(port: number, options: ServerOptions = {}):
         headers: { 'Content-Type': 'text/html' },
       });
     },
+
+    // WebSocket handlers for SSH terminal sessions
+    websocket: sshWebSocketHandlers,
   });
 }
 

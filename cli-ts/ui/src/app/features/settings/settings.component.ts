@@ -1,13 +1,16 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, OnInit, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TabsModule } from 'primeng/tabs';
 import { TooltipModule } from 'primeng/tooltip';
 import { SkeletonModule } from 'primeng/skeleton';
 import { MessageModule } from 'primeng/message';
-import { MessageService } from 'primeng/api';
+import { MessageService, ConfirmationService } from 'primeng/api';
 import { ToastModule } from 'primeng/toast';
+import { ConfirmDialogModule } from 'primeng/confirmdialog';
 import { ApiService } from '@core/services/api.service';
+import type { HasUnsavedChanges } from '@core/guards/unsaved-changes.guard';
 
 interface ConfigTab {
   fileName: string;
@@ -31,14 +34,17 @@ interface ConfigTab {
     SkeletonModule,
     MessageModule,
     ToastModule,
+    ConfirmDialogModule,
   ],
-  providers: [MessageService],
+  providers: [MessageService, ConfirmationService],
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.scss',
 })
-export class SettingsComponent implements OnInit {
+export class SettingsComponent implements OnInit, HasUnsavedChanges {
   private apiService = inject(ApiService);
   private messageService = inject(MessageService);
+  private confirmService = inject(ConfirmationService);
+  private destroyRef = inject(DestroyRef);
 
   tabs = signal<ConfigTab[]>([
     {
@@ -66,6 +72,10 @@ export class SettingsComponent implements OnInit {
   activeIndex = signal(0);
   saving = signal(false);
 
+  hasUnsavedChanges(): boolean {
+    return this.tabs().some(t => t.dirty);
+  }
+
   ngOnInit() {
     this.loadAllConfigs();
   }
@@ -81,22 +91,24 @@ export class SettingsComponent implements OnInit {
     const tab = this.tabs()[index];
     this.updateTab(index, { loading: true, error: null });
 
-    this.apiService.getRawConfig(tab.fileName).subscribe({
-      next: (response) => {
-        this.updateTab(index, {
-          content: response.content,
-          originalContent: response.content,
-          loading: false,
-          dirty: false,
-        });
-      },
-      error: (err) => {
-        this.updateTab(index, {
-          loading: false,
-          error: err.error?.error || `Failed to load ${tab.fileName}`,
-        });
-      },
-    });
+    this.apiService.getRawConfig(tab.fileName)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (response) => {
+          this.updateTab(index, {
+            content: response.content,
+            originalContent: response.content,
+            loading: false,
+            dirty: false,
+          });
+        },
+        error: (err) => {
+          this.updateTab(index, {
+            loading: false,
+            error: err.error?.error || `Failed to load ${tab.fileName}`,
+          });
+        },
+      });
   }
 
   onContentChange(index: number, content: string) {
@@ -111,33 +123,47 @@ export class SettingsComponent implements OnInit {
     const tab = this.tabs()[index];
     if (!tab.dirty) return;
 
+    this.confirmService.confirm({
+      message: `Are you sure you want to save changes to ${tab.fileName}? This will overwrite the current configuration.`,
+      header: 'Confirm Save',
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Save',
+      rejectLabel: 'Cancel',
+      accept: () => this.doSave(index),
+    });
+  }
+
+  private doSave(index: number) {
+    const tab = this.tabs()[index];
     this.saving.set(true);
     this.updateTab(index, { error: null });
 
-    this.apiService.saveRawConfig(tab.fileName, tab.content).subscribe({
-      next: () => {
-        this.updateTab(index, {
-          originalContent: tab.content,
-          dirty: false,
-        });
-        this.saving.set(false);
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Saved',
-          detail: `${tab.fileName} updated successfully.`,
-        });
-      },
-      error: (err) => {
-        this.saving.set(false);
-        const errorMsg = err.error?.error || `Failed to save ${tab.fileName}`;
-        this.updateTab(index, { error: errorMsg });
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: errorMsg,
-        });
-      },
-    });
+    this.apiService.saveRawConfig(tab.fileName, tab.content)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.updateTab(index, {
+            originalContent: tab.content,
+            dirty: false,
+          });
+          this.saving.set(false);
+          this.messageService.add({
+            severity: 'success',
+            summary: 'Saved',
+            detail: `${tab.fileName} updated successfully.`,
+          });
+        },
+        error: (err) => {
+          this.saving.set(false);
+          const errorMsg = err.error?.error || `Failed to save ${tab.fileName}`;
+          this.updateTab(index, { error: errorMsg });
+          this.messageService.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: errorMsg,
+          });
+        },
+      });
   }
 
   revert(index: number) {

@@ -1,0 +1,53 @@
+::ng-deep .ssh-dialog {
+  .p-dialog-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 0 !important;
+    overflow: hidden;
+  }
+}
+
+.ssh-status-bar {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background-color: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-primary);
+  font-size: 0.75rem;
+}
+
+.ssh-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+
+  &--connecting {
+    color: var(--accent-blue);
+  }
+
+  &--connected {
+    color: var(--success);
+  }
+
+  &--error {
+    color: var(--error);
+  }
+
+  &--disconnected {
+    color: var(--text-muted);
+  }
+}
+
+.ssh-terminal-container {
+  flex: 1;
+  background-color: #0a0a0a;
+  padding: 0.5rem;
+  overflow: hidden;
+
+  // xterm.js fills this container
+  .xterm {
+    height: 100%;
+  }
+}

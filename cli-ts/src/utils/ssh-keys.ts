@@ -8,6 +8,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { spawnSync } from 'child_process';
 import { DEFAULT_SSH_PORT } from '../constants';
 import type { SSHKeyConnection, Result } from '../types';
 import { ok, err } from '../types';
@@ -46,12 +47,22 @@ export function createTempKeyFile(privateKey: string): Result<string, Error> {
   try {
     const tempDir = os.tmpdir();
     const keyFile = path.join(tempDir, `dockflow_key_${Date.now()}_${Math.random().toString(36).slice(2)}`);
-    
+
     const normalizedKey = normalizePrivateKey(privateKey);
-    
+
     // Write key with proper permissions (read/write for owner only)
     fs.writeFileSync(keyFile, normalizedKey, { mode: 0o600 });
-    
+
+    // On Windows, mode 0o600 doesn't set NTFS ACLs.
+    // OpenSSH on Windows refuses keys with overly permissive ACLs.
+    // Use icacls to restrict access to the current user only.
+    if (process.platform === 'win32') {
+      spawnSync('icacls', [keyFile, '/inheritance:r', '/grant:r', `${os.userInfo().username}:F`], {
+        stdio: 'ignore',
+        shell: false,
+      });
+    }
+
     return ok(keyFile);
   } catch (error) {
     return err(error instanceof Error ? error : new Error(String(error)));
@@ -93,6 +104,7 @@ export function buildSSHArgs(
 
   const args = [
     '-i', keyFile,
+    '-o', 'IdentitiesOnly=yes',
     '-o', `StrictHostKeyChecking=${strictHostKeyChecking ? 'yes' : 'no'}`,
     '-o', 'UserKnownHostsFile=/dev/null',
     '-o', 'LogLevel=ERROR',
