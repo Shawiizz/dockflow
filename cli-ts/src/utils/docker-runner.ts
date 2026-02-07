@@ -5,7 +5,7 @@
 
 import ora from 'ora';
 import { existsSync, readdirSync } from 'fs';
-import { join } from 'path';
+import { join, dirname, parse as parsePath } from 'path';
 import { getProjectRoot, loadConfig, loadServersConfig, isDockerAvailable, getAnsibleDockerImage } from './config';
 import { printSuccess, printWarning, printDim } from './output';
 import { DOCKFLOW_REPO, DOCKFLOW_VERSION, CONTAINER_PATHS } from '../constants';
@@ -29,6 +29,22 @@ export interface RunCommandOptions {
 }
 
 /**
+ * Find the dockflow framework root by walking up from a starting directory.
+ * The framework root is identified by the presence of ansible/deploy.yml.
+ */
+function findDockflowRoot(startDir: string): string | null {
+  let dir = startDir;
+  const { root } = parsePath(dir);
+  while (dir !== root) {
+    if (existsSync(join(dir, 'ansible', 'deploy.yml'))) {
+      return dir;
+    }
+    dir = dirname(dir);
+  }
+  return null;
+}
+
+/**
  * Build Docker command arguments for running the Ansible container
  * @param devMode Whether to use dev mode (mount local dockflow)
  * @param contextFilePath Optional path to context JSON file to mount into container
@@ -41,7 +57,7 @@ export function buildDockerCommand(devMode: boolean = false, contextFilePath?: s
   const isTTY = process.stdin.isTTY && process.stdout.isTTY;
   
   // In CI, files are disposable so mount read-write (simpler, no workspace setup needed)
-  // Locally, mount read-only to protect source files (setup_workspace.sh creates writable /workspace)
+  // Locally, mount read-only to protect source files (setup_workspace.sh creates writable workspace)
   const mountMode = isCI() ? '' : ':ro';
   
   const dockerCmd = [
@@ -65,14 +81,14 @@ export function buildDockerCommand(devMode: boolean = false, contextFilePath?: s
 
   // In dev mode, mount the local dockflow repository
   if (devMode) {
-    const dockflowRoot = process.env.DOCKFLOW_DEV_PATH;
+    const dockflowRoot = findDockflowRoot(projectRoot) || process.env.DOCKFLOW_DEV_PATH;
     if (dockflowRoot) {
       dockerCmd.push('-v', `${dockflowRoot}:${CONTAINER_PATHS.DOCKFLOW}`);
       printWarning(`Dev mode: mounting ${dockflowRoot} as ${CONTAINER_PATHS.DOCKFLOW}`);
     } else {
       throw new ConfigError(
         'Dev mode: Could not find dockflow root',
-        'Set DOCKFLOW_DEV_PATH environment variable'
+        'Set DOCKFLOW_DEV_PATH environment variable or run from within the dockflow repository'
       );
     }
   }
@@ -100,11 +116,10 @@ export async function runAnsibleCommand(options: RunCommandOptions): Promise<voi
   // Always ensure inventory.py is executable (required for Ansible dynamic inventory)
   const chmodInventory = `chmod +x ${CONTAINER_PATHS.DOCKFLOW}/ansible/inventory.py 2>/dev/null || true`;
   
-  // Setup workspace script - only needed locally where /project is mounted read-only
-  // In CI, /project is mounted read-write so no setup needed
+  // Setup writable workspace (copy .dockflow + symlinks) - only needed locally
+  // where /project is mounted read-only. In CI, /project is read-write so no setup needed.
   const setupWorkspace = isCI() ? '' : `
 if [ -f "${CONTAINER_PATHS.DOCKFLOW}/.common/scripts/setup_workspace.sh" ] && [ -d "/project/.dockflow" ]; then
-  echo "Setting up writable workspace..."
   source "${CONTAINER_PATHS.DOCKFLOW}/.common/scripts/setup_workspace.sh"
 fi`;
 

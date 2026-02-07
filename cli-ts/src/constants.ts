@@ -36,8 +36,8 @@ export const CONTAINER_PATHS = {
   DOCKFLOW: '/tmp/dockflow',
   /** User project mounted read-only */
   PROJECT: '/project',
-  /** Workspace with symlinks (writable .dockflow/) */
-  WORKSPACE: '/workspace',
+  /** Workspace with overlayfs (writable view of /project) */
+  WORKSPACE: '/workspace/merged',
   /** Context JSON file for Ansible */
   CONTEXT: '/tmp/dockflow_context.json',
 } as const;

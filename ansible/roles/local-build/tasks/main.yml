@@ -1,9 +1,7 @@
 ---
-# Local build role - builds Docker images locally in CI/CD
-# This role runs on localhost (CI/CD runner) before transferring images via local registry
+# Local build role - builds Docker images locally
+# Contexts are accessed directly (via symlinks or overlayfs), Docker CLI handles .dockerignore
 
-# Note: We use tar with --dereference (-h) to follow symlinks when building
-# This allows Docker to receive real files even when /workspace contains symlinks to /project
 - name: Set build paths
   set_fact:
     docker_compose_path: "{{ root_path }}/.dockflow/docker"
@@ -18,15 +16,14 @@
   register: build_commands_output
   changed_when: false
 
-# Parse build commands to extract dockerfile and tag, then create tar-based commands
+# Parse build commands to extract dockerfile and tag
 # decomposerize outputs: docker build -f <dockerfile> -t "<tag>" <context>
-# We transform to: (tar context + tar Dockerfile) | docker build -f Dockerfile -
-- name: Parse and transform build commands for tar streaming
+- name: Parse build commands
   set_fact:
     build_commands: []
   delegate_to: localhost
 
-- name: Build tar streaming commands
+- name: Build command list
   set_fact:
     build_commands: "{{ build_commands + [build_info] }}"
   vars:
@@ -55,7 +52,26 @@
     msg: "Building {{ build_commands | length }} Docker image(s) locally for {{ env }} {{ inventory_hostname }}"
   delegate_to: localhost
 
-- name: Build Docker images locally (parallel with tar streaming)
+# Single image: run without backgrounding for real-time log streaming
+- name: Build Docker image (streaming)
+  shell: |
+    set -e
+    echo "Building: {{ build_commands[0].tag }}"
+
+    START_TIME=$(date +%s)
+    docker build \
+      -f "{{ build_commands[0].dockerfile }}" \
+      -t "{{ build_commands[0].tag }}" \
+      "{{ build_commands[0].context }}"
+    END_TIME=$(date +%s)
+    echo ""
+    echo "✓ Built {{ build_commands[0].tag }} in $((END_TIME - START_TIME))s"
+  delegate_to: localhost
+  register: build_results
+  when: build_commands is defined and build_commands | length == 1
+
+# Multiple images: parallel builds (output after completion)
+- name: Build Docker images locally (parallel)
   shell: |
     set -e
     PIDS=""
@@ -64,27 +80,10 @@
     echo "Starting build: {{ item.tag }}"
     (
       START_TIME=$(date +%s)
-      STAGE=$(mktemp -d)
-      trap "rm -rf $STAGE" EXIT
-      cp "{{ item.dockerfile }}" "$STAGE/Dockerfile"
-      
-      # Build tar exclude arguments from .dockerignore
-      EXCLUDES="--exclude=.git"
-      DOCKERIGNORE="{{ item.context }}/.dockerignore"
-      if [ -f "$DOCKERIGNORE" ]; then
-        while IFS= read -r pattern || [ -n "$pattern" ]; do
-          # Skip empty lines and comments
-          [[ -z "$pattern" || "$pattern" =~ ^# ]] && continue
-          # Skip negation patterns (not supported by tar)
-          [[ "$pattern" =~ ^! ]] && continue
-          # Add exclude
-          EXCLUDES="$EXCLUDES --exclude=$pattern"
-        done < "$DOCKERIGNORE"
-      fi
-      
-      tar -chf "$STAGE/context.tar" -C "{{ item.context }}" $EXCLUDES .
-      tar -rf "$STAGE/context.tar" -C "$STAGE" Dockerfile
-      cat "$STAGE/context.tar" | docker build -f Dockerfile -t "{{ item.tag }}" -
+      docker build \
+        -f "{{ item.dockerfile }}" \
+        -t "{{ item.tag }}" \
+        "{{ item.context }}"
       END_TIME=$(date +%s)
       DURATION=$((END_TIME - START_TIME))
       echo "{{ item.tag }}|$DURATION" >> "$TIMING_FILE"
@@ -109,7 +108,7 @@
     exit $FAILED
   delegate_to: localhost
   register: build_results
-  when: build_commands is defined and build_commands | length > 0
+  when: build_commands is defined and build_commands | length > 1
 
 - name: Display build times
   debug:

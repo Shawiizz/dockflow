@@ -1,7 +1,3 @@
-# Documentation (large node_modules)
-docs/
-dockflow/docs/
-
 # Node modules
 **/node_modules/
 **/.next/
