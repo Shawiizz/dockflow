@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TagModule } from 'primeng/tag';
 import { SkeletonModule } from 'primeng/skeleton';
+import { CheckboxModule } from 'primeng/checkbox';
 import { ApiService } from '@core/services/api.service';
 import { EnvironmentService } from '@core/services/environment.service';
 import type { PruneResult, LockInfo } from '@api-types';
@@ -10,7 +11,7 @@ import type { PruneResult, LockInfo } from '@api-types';
 @Component({
   selector: 'app-resources',
   standalone: true,
-  imports: [CommonModule, FormsModule, TagModule, SkeletonModule],
+  imports: [CommonModule, FormsModule, TagModule, SkeletonModule, CheckboxModule],
   templateUrl: './resources.component.html',
   styleUrl: './resources.component.scss',
 })

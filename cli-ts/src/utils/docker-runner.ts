@@ -76,6 +76,7 @@ export function buildDockerCommand(contextFilePath?: string): string[] {
 
   dockerCmd.push('-e', `DOCKFLOW_PATH=${CONTAINER_PATHS.DOCKFLOW}`);
   dockerCmd.push('-e', 'ANSIBLE_HOST_KEY_CHECKING=False');
+  dockerCmd.push('-e', 'PYTHONUNBUFFERED=1');
   dockerCmd.push(dockerImage);
 
   return dockerCmd;

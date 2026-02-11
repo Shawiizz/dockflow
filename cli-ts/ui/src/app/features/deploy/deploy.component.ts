@@ -6,6 +6,8 @@ import { SelectModule } from 'primeng/select';
 import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
 import { SkeletonModule } from 'primeng/skeleton';
+import { InputTextModule } from 'primeng/inputtext';
+import { CheckboxModule } from 'primeng/checkbox';
 import { ApiService } from '@core/services/api.service';
 import { EnvironmentService } from '@core/services/environment.service';
 import { DataCacheService } from '@core/services/data-cache.service';
@@ -15,7 +17,7 @@ import type { DeployHistoryEntry } from '@api-types';
 @Component({
   selector: 'app-deploy',
   standalone: true,
-  imports: [CommonModule, FormsModule, SelectModule, TagModule, TooltipModule, SkeletonModule],
+  imports: [CommonModule, FormsModule, SelectModule, TagModule, TooltipModule, SkeletonModule, InputTextModule, CheckboxModule],
   templateUrl: './deploy.component.html',
   styleUrl: './deploy.component.scss',
 })

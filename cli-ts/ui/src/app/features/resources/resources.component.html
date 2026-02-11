@@ -11,16 +11,28 @@
     <h3 style="margin: 0; font-size: 1rem;">Prune Resources</h3>
     <p class="text-sm text-muted">Remove unused Docker resources from the remote server.</p>
     <div class="flex flex-wrap gap-4">
-      <label class="flex items-center gap-2"><input type="checkbox" [(ngModel)]="pruneContainers"> Containers</label>
-      <label class="flex items-center gap-2"><input type="checkbox" [(ngModel)]="pruneImages"> Images</label>
-      <label class="flex items-center gap-2"><input type="checkbox" [(ngModel)]="pruneVolumes"> Volumes</label>
-      <label class="flex items-center gap-2"><input type="checkbox" [(ngModel)]="pruneNetworks"> Networks</label>
+      <div class="flex items-center gap-2">
+        <p-checkbox [(ngModel)]="pruneContainers" [binary]="true" inputId="pruneContainers" />
+        <label for="pruneContainers">Containers</label>
+      </div>
+      <div class="flex items-center gap-2">
+        <p-checkbox [(ngModel)]="pruneImages" [binary]="true" inputId="pruneImages" />
+        <label for="pruneImages">Images</label>
+      </div>
+      <div class="flex items-center gap-2">
+        <p-checkbox [(ngModel)]="pruneVolumes" [binary]="true" inputId="pruneVolumes" />
+        <label for="pruneVolumes">Volumes</label>
+      </div>
+      <div class="flex items-center gap-2">
+        <p-checkbox [(ngModel)]="pruneNetworks" [binary]="true" inputId="pruneNetworks" />
+        <label for="pruneNetworks">Networks</label>
+      </div>
     </div>
     @if (pruneImages) {
-      <label class="flex items-center gap-2">
-        <input type="checkbox" [(ngModel)]="pruneAll">
-        Remove ALL images (not just dangling)
-      </label>
+      <div class="flex items-center gap-2">
+        <p-checkbox [(ngModel)]="pruneAll" [binary]="true" inputId="pruneAll" />
+        <label for="pruneAll">Remove ALL images (not just dangling)</label>
+      </div>
     }
     @if (pruneVolumes) {
       <div class="error-banner" style="margin: 0;">

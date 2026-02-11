@@ -233,7 +233,7 @@ async function startDeployOperation(req: Request): Promise<Response> {
   const proc = Bun.spawn(args, {
     stdout: 'pipe',
     stderr: 'pipe',
-    env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' },
+    env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', PYTHONUNBUFFERED: '1' },
   });
 
   currentOperation = {
@@ -278,7 +278,7 @@ async function startBuildOperation(req: Request): Promise<Response> {
   const proc = Bun.spawn(args, {
     stdout: 'pipe',
     stderr: 'pipe',
-    env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' },
+    env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', PYTHONUNBUFFERED: '1' },
   });
 
   currentOperation = {
