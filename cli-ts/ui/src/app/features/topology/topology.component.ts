@@ -1,7 +1,6 @@
 import { Component, inject, signal, computed, OnInit, OnDestroy, DestroyRef, ElementRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { forkJoin } from 'rxjs';
 import { TooltipModule } from 'primeng/tooltip';
 import { SkeletonModule } from 'primeng/skeleton';
 import { MessageModule } from 'primeng/message';
@@ -9,36 +8,20 @@ import { MessageService, ConfirmationService } from 'primeng/api';
 import { ToastModule } from 'primeng/toast';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
 import { ApiService } from '@core/services/api.service';
-import type { ComposeFile } from '@core/services/api.service';
+import type { TopologyConnection, TopologyService, TopologyServer } from '@core/services/api.service';
 
 const CARD_WIDTH = 220;
 const CARD_HEIGHT = 120;
 const STORAGE_KEY = 'dockflow-topology-positions';
 
-interface ServiceCard {
-  name: string;
-  image?: string;
-  replicas?: number;
-  ports?: string[];
+interface ServiceCard extends TopologyService {
   x: number;
   y: number;
 }
 
-interface ServerCard {
-  name: string;
-  role: string;
-  host?: string;
-  tags: string[];
+interface ServerCard extends TopologyServer {
   x: number;
   y: number;
-}
-
-interface Connection {
-  serviceName: string;
-  serverName: string;
-  constraintType: 'hostname' | 'role';
-  constraintValue: string;
-  implicit?: boolean;
 }
 
 interface DragState {
@@ -81,9 +64,8 @@ export class TopologyComponent implements OnInit, OnDestroy {
 
   services = signal<ServiceCard[]>([]);
   servers = signal<ServerCard[]>([]);
-  connections = signal<Connection[]>([]);
+  connections = signal<TopologyConnection[]>([]);
 
-  private compose: ComposeFile | null = null;
   private dragState: DragState | null = null;
 
   pendingLine = signal<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
@@ -126,7 +108,7 @@ export class TopologyComponent implements OnInit, OnDestroy {
         midX: (x1 + x2) / 2,
         midY: (y1 + y2) / 2,
       };
-    }).filter(Boolean) as { path: string; conn: Connection; midX: number; midY: number }[];
+    }).filter(Boolean) as { path: string; conn: TopologyConnection; midX: number; midY: number }[];
   });
 
   pendingPath = computed(() => {
@@ -150,108 +132,29 @@ export class TopologyComponent implements OnInit, OnDestroy {
     this.loading.set(true);
     this.error.set(null);
 
-    forkJoin({
-      compose: this.apiService.getCompose(),
-      servers: this.apiService.getServersConfig(),
-    })
+    this.apiService.getTopology()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: ({ compose, servers }) => {
-          this.compose = compose.compose;
-
+        next: (topology) => {
           const savedPositions = this.loadPositions();
 
-          // Parse services from compose
-          const serviceCards: ServiceCard[] = [];
-          if (compose.compose?.services) {
-            let idx = 0;
-            for (const [name, svc] of Object.entries(compose.compose.services)) {
-              const saved = savedPositions[`service:${name}`];
-              serviceCards.push({
-                name,
-                image: svc.image,
-                replicas: svc.deploy?.replicas,
-                ports: svc.ports,
-                x: saved?.x ?? 50,
-                y: saved?.y ?? 30 + idx * 140,
-              });
-              idx++;
-            }
-          }
-          this.services.set(serviceCards);
+          this.services.set(
+            topology.services.map((svc, i) => ({
+              ...svc,
+              x: savedPositions[`service:${svc.name}`]?.x ?? 50,
+              y: savedPositions[`service:${svc.name}`]?.y ?? 30 + i * 140,
+            })),
+          );
 
-          // Parse servers from config
-          const serverCards: ServerCard[] = [];
-          const serversData = (servers.servers ?? {}) as Record<string, Record<string, unknown>>;
-          let idx = 0;
-          for (const [name, config] of Object.entries(serversData)) {
-            const saved = savedPositions[`server:${name}`];
-            serverCards.push({
-              name,
-              role: (config['role'] as string) ?? 'worker',
-              host: config['host'] as string | undefined,
-              tags: ((config['tags'] ?? []) as string[]),
-              x: saved?.x ?? 550,
-              y: saved?.y ?? 30 + idx * 140,
-            });
-            idx++;
-          }
-          this.servers.set(serverCards);
+          this.servers.set(
+            topology.servers.map((srv, i) => ({
+              ...srv,
+              x: savedPositions[`server:${srv.name}`]?.x ?? 550,
+              y: savedPositions[`server:${srv.name}`]?.y ?? 30 + i * 140,
+            })),
+          );
 
-          // Parse connections from placement constraints
-          const conns: Connection[] = [];
-          const servicesWithConstraints = new Set<string>();
-          if (compose.compose?.services) {
-            for (const [name, svc] of Object.entries(compose.compose.services)) {
-              const constraints = svc.deploy?.placement?.constraints ?? [];
-              for (const c of constraints) {
-                const match = c.match(/node\.(hostname|role)\s*==\s*(.+)/);
-                if (match) {
-                  servicesWithConstraints.add(name);
-                  const type = match[1] as 'hostname' | 'role';
-                  const value = match[2].trim();
-                  // For hostname constraints, the value maps to a server name
-                  if (type === 'hostname') {
-                    conns.push({
-                      serviceName: name,
-                      serverName: value,
-                      constraintType: 'hostname',
-                      constraintValue: value,
-                    });
-                  } else {
-                    // For role constraints, find servers matching the role
-                    for (const srv of serverCards) {
-                      if (srv.role === value) {
-                        conns.push({
-                          serviceName: name,
-                          serverName: srv.name,
-                          constraintType: 'role',
-                          constraintValue: value,
-                        });
-                      }
-                    }
-                  }
-                }
-              }
-            }
-
-            // Services without constraints can run on any node
-            for (const [name] of Object.entries(compose.compose.services)) {
-              if (!servicesWithConstraints.has(name)) {
-                for (const srv of serverCards) {
-                  conns.push({
-                    serviceName: name,
-                    serverName: srv.name,
-                    constraintType: 'role',
-                    constraintValue: 'any',
-                    implicit: true,
-                  });
-                }
-              }
-            }
-          }
-          this.connections.set(conns);
-
+          this.connections.set(topology.connections);
           this.loading.set(false);
           this.dirty.set(false);
         },
@@ -372,6 +275,7 @@ export class TopologyComponent implements OnInit, OnDestroy {
                 serverName,
                 constraintType: 'hostname' as const,
                 constraintValue: serverName,
+                implicit: false,
               },
             ]);
             this.dirty.set(true);
@@ -389,7 +293,7 @@ export class TopologyComponent implements OnInit, OnDestroy {
 
   // ── Connection management ──────────────────────────────────────────────
 
-  removeConnection(conn: Connection) {
+  removeConnection(conn: TopologyConnection) {
     if (conn.implicit) return;
     this.connections.update(c => c.filter(
       x => !(x.serviceName === conn.serviceName && x.serverName === conn.serverName)
@@ -416,7 +320,7 @@ export class TopologyComponent implements OnInit, OnDestroy {
   // ── Save ───────────────────────────────────────────────────────────────
 
   save() {
-    if (!this.compose || !this.dirty()) return;
+    if (!this.dirty()) return;
 
     this.confirmService.confirm({
       message: 'Save topology changes to docker-compose.yml? This will update placement constraints.',
@@ -431,76 +335,33 @@ export class TopologyComponent implements OnInit, OnDestroy {
   private doSave() {
     this.saving.set(true);
 
-    // Re-fetch compose to get latest version, then apply our connections
-    this.apiService.getCompose()
+    const connections = this.connections()
+      .filter(c => !c.implicit)
+      .map(c => ({
+        serviceName: c.serviceName,
+        serverName: c.serverName,
+        constraintType: c.constraintType,
+        constraintValue: c.constraintValue,
+      }));
+
+    this.apiService.updateTopology({ connections })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (response) => {
-          if (!response.compose) {
-            this.saving.set(false);
-            this.messageService.add({
-              severity: 'error',
-              summary: 'Error',
-              detail: 'No docker-compose.yml found',
-            });
-            return;
-          }
-
-          const compose = response.compose;
-          const conns = this.connections().filter(c => !c.implicit);
-
-          // Update placement constraints for each service
-          for (const [name, svc] of Object.entries(compose.services)) {
-            const serviceConns = conns.filter(c => c.serviceName === name);
-            if (serviceConns.length > 0) {
-              if (!svc.deploy) svc.deploy = {};
-              if (!svc.deploy.placement) svc.deploy.placement = {};
-              svc.deploy.placement.constraints = serviceConns.map(c =>
-                `node.${c.constraintType}==${c.constraintValue}`
-              );
-            } else {
-              // Remove constraints if no connections
-              if (svc.deploy?.placement?.constraints) {
-                delete svc.deploy.placement.constraints;
-                if (Object.keys(svc.deploy.placement).length === 0) {
-                  delete svc.deploy.placement;
-                }
-                if (Object.keys(svc.deploy).length === 0) {
-                  delete svc.deploy;
-                }
-              }
-            }
-          }
-
-          this.apiService.updateCompose(compose)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-              next: () => {
-                this.saving.set(false);
-                this.dirty.set(false);
-                this.compose = compose;
-                this.messageService.add({
-                  severity: 'success',
-                  summary: 'Saved',
-                  detail: 'Topology saved to docker-compose.yml',
-                });
-              },
-              error: (err) => {
-                this.saving.set(false);
-                this.messageService.add({
-                  severity: 'error',
-                  summary: 'Error',
-                  detail: err.error?.error || 'Failed to update docker-compose.yml',
-                });
-              },
-            });
+        next: () => {
+          this.saving.set(false);
+          this.dirty.set(false);
+          this.messageService.add({
+            severity: 'success',
+            summary: 'Saved',
+            detail: 'Topology saved to docker-compose.yml',
+          });
         },
         error: (err) => {
           this.saving.set(false);
           this.messageService.add({
             severity: 'error',
             summary: 'Error',
-            detail: err.error?.error || 'Failed to read docker-compose.yml',
+            detail: err.error?.error || 'Failed to update topology',
           });
         },
       });

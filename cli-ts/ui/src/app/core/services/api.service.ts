@@ -30,6 +30,9 @@ import type {
   ComposeFile,
   ComposeResponse,
   ComposeUpdateResponse,
+  TopologyResponse,
+  TopologyUpdateRequest,
+  TopologyUpdateResponse,
 } from '@api-types';
 
 // Re-export types for consumers
@@ -72,6 +75,11 @@ export type {
   ComposeFile,
   ComposeResponse,
   ComposeUpdateResponse,
+  TopologyResponse,
+  TopologyConnection,
+  TopologyService,
+  TopologyServer,
+  TopologyUpdateResponse,
 } from '@api-types';
 
 @Injectable({
@@ -302,5 +310,15 @@ export class ApiService {
 
   updateCompose(compose: ComposeFile): Observable<ComposeUpdateResponse> {
     return this.http.put<ComposeUpdateResponse>(`${this.baseUrl}/compose`, compose);
+  }
+
+  // ── Topology ──────────────────────────────────────────────────────────
+
+  getTopology(): Observable<TopologyResponse> {
+    return this.http.get<TopologyResponse>(`${this.baseUrl}/topology`);
+  }
+
+  updateTopology(request: TopologyUpdateRequest): Observable<TopologyUpdateResponse> {
+    return this.http.put<TopologyUpdateResponse>(`${this.baseUrl}/topology`, request);
   }
 }

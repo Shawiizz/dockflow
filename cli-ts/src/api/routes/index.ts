@@ -13,6 +13,7 @@ import { handleOperationsRoutes } from './operations';
 import { handleResourcesRoutes, handleLocksRoutes } from './resources';
 import { handleMetricsRoutes } from './metrics';
 import { handleComposeRoutes } from './compose';
+import { handleTopologyRoutes } from './topology';
 import pkg from '../../../package.json';
 
 /**
@@ -76,6 +77,11 @@ export async function handleApiRoutes(req: Request): Promise<Response> {
     // /api/compose/* - Docker Compose
     if (pathname.startsWith('/api/compose')) {
       return handleComposeRoutes(req);
+    }
+
+    // /api/topology - Service-to-server topology
+    if (pathname.startsWith('/api/topology')) {
+      return handleTopologyRoutes(req);
     }
 
     // /api/health - Health check

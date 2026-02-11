@@ -397,6 +397,51 @@ export interface ComposeUpdateResponse {
   error?: string;
 }
 
+// ─── Topology ────────────────────────────────────────────────────────────────
+
+export interface TopologyService {
+  name: string;
+  image?: string;
+  replicas?: number;
+  ports?: string[];
+}
+
+export interface TopologyServer {
+  name: string;
+  role: string;
+  host?: string;
+  tags: string[];
+}
+
+export interface TopologyConnection {
+  serviceName: string;
+  serverName: string;
+  constraintType: 'hostname' | 'role';
+  constraintValue: string;
+  implicit: boolean;
+}
+
+export interface TopologyResponse {
+  services: TopologyService[];
+  servers: TopologyServer[];
+  connections: TopologyConnection[];
+}
+
+export interface TopologyUpdateRequest {
+  connections: Array<{
+    serviceName: string;
+    serverName: string;
+    constraintType: 'hostname' | 'role';
+    constraintValue: string;
+  }>;
+}
+
+export interface TopologyUpdateResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
 // ─── Validation ──────────────────────────────────────────────────────────────
 
 export interface ValidationError {
