@@ -54,7 +54,8 @@
 
             <!-- Existing connections -->
             @for (cp of connectionPaths(); track cp.conn.serviceName + ':' + cp.conn.serverName) {
-              <g class="topology-connection" (click)="removeConnection(cp.conn)">
+              <g [class]="cp.conn.implicit ? 'topology-connection topology-connection--implicit' : 'topology-connection'"
+                 (click)="removeConnection(cp.conn)">
                 <path
                   class="topology-connection__hit"
                   [attr.d]="cp.path"
@@ -66,18 +67,20 @@
                   class="topology-connection__line"
                   [attr.d]="cp.path"
                   fill="none"
-                  stroke="var(--accent-blue)"
-                  stroke-width="2"
-                  stroke-dasharray="6 3"
+                  [attr.stroke]="cp.conn.implicit ? 'var(--text-muted)' : 'var(--accent-blue)'"
+                  [attr.stroke-width]="cp.conn.implicit ? 1 : 2"
+                  [attr.stroke-dasharray]="cp.conn.implicit ? '3 4' : '6 3'"
+                  [attr.opacity]="cp.conn.implicit ? 0.5 : 1"
                 />
-                <!-- Arrow head -->
-                <circle
-                  class="topology-connection__dot"
-                  [attr.cx]="cp.midX"
-                  [attr.cy]="cp.midY"
-                  r="4"
-                  fill="var(--accent-blue)"
-                />
+                @if (!cp.conn.implicit) {
+                  <circle
+                    class="topology-connection__dot"
+                    [attr.cx]="cp.midX"
+                    [attr.cy]="cp.midY"
+                    r="4"
+                    fill="var(--accent-blue)"
+                  />
+                }
               </g>
             }
 

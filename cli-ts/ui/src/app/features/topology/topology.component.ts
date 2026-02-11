@@ -38,6 +38,7 @@ interface Connection {
   serverName: string;
   constraintType: 'hostname' | 'role';
   constraintValue: string;
+  implicit?: boolean;
 }
 
 interface DragState {
@@ -199,12 +200,14 @@ export class TopologyComponent implements OnInit, OnDestroy {
 
           // Parse connections from placement constraints
           const conns: Connection[] = [];
+          const servicesWithConstraints = new Set<string>();
           if (compose.compose?.services) {
             for (const [name, svc] of Object.entries(compose.compose.services)) {
               const constraints = svc.deploy?.placement?.constraints ?? [];
               for (const c of constraints) {
                 const match = c.match(/node\.(hostname|role)\s*==\s*(.+)/);
                 if (match) {
+                  servicesWithConstraints.add(name);
                   const type = match[1] as 'hostname' | 'role';
                   const value = match[2].trim();
                   // For hostname constraints, the value maps to a server name
@@ -228,6 +231,21 @@ export class TopologyComponent implements OnInit, OnDestroy {
                       }
                     }
                   }
+                }
+              }
+            }
+
+            // Services without constraints can run on any node
+            for (const [name] of Object.entries(compose.compose.services)) {
+              if (!servicesWithConstraints.has(name)) {
+                for (const srv of serverCards) {
+                  conns.push({
+                    serviceName: name,
+                    serverName: srv.name,
+                    constraintType: 'role',
+                    constraintValue: 'any',
+                    implicit: true,
+                  });
                 }
               }
             }
@@ -341,17 +359,21 @@ export class TopologyComponent implements OnInit, OnDestroy {
         const serverName = serverCard.getAttribute('data-server-name');
         const serviceName = this.dragState.target;
         if (serverName && serviceName) {
-          // Check if connection already exists
+          // Check if explicit connection already exists
           const exists = this.connections().some(
-            c => c.serviceName === serviceName && c.serverName === serverName
+            c => c.serviceName === serviceName && c.serverName === serverName && !c.implicit
           );
           if (!exists) {
-            this.connections.update(c => [...c, {
-              serviceName,
-              serverName,
-              constraintType: 'hostname' as const,
-              constraintValue: serverName,
-            }]);
+            // Remove implicit connections for this service (it now has explicit ones)
+            this.connections.update(c => [
+              ...c.filter(x => !(x.serviceName === serviceName && x.implicit)),
+              {
+                serviceName,
+                serverName,
+                constraintType: 'hostname' as const,
+                constraintValue: serverName,
+              },
+            ]);
             this.dirty.set(true);
           }
         }
@@ -368,6 +390,7 @@ export class TopologyComponent implements OnInit, OnDestroy {
   // ── Connection management ──────────────────────────────────────────────
 
   removeConnection(conn: Connection) {
+    if (conn.implicit) return;
     this.connections.update(c => c.filter(
       x => !(x.serviceName === conn.serviceName && x.serverName === conn.serverName)
     ));
@@ -424,7 +447,7 @@ export class TopologyComponent implements OnInit, OnDestroy {
           }
 
           const compose = response.compose;
-          const conns = this.connections();
+          const conns = this.connections().filter(c => !c.implicit);
 
           // Update placement constraints for each service
           for (const [name, svc] of Object.entries(compose.services)) {

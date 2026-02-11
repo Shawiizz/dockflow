@@ -101,7 +101,7 @@
     transition: fill 0.15s, r 0.15s;
   }
 
-  &:hover {
+  &:hover:not(&--implicit) {
     .topology-connection__line {
       stroke: var(--danger);
       stroke-width: 3;
@@ -112,6 +112,11 @@
       fill: var(--danger);
       r: 6;
     }
+  }
+
+  &--implicit {
+    cursor: default;
+    pointer-events: none;
   }
 }
 
