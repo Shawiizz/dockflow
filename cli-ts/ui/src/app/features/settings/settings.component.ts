@@ -2,26 +2,16 @@ import { Component, inject, signal, OnInit, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Subject, switchMap, debounceTime, catchError, of } from 'rxjs';
 import { TabsModule } from 'primeng/tabs';
 import { TooltipModule } from 'primeng/tooltip';
 import { SkeletonModule } from 'primeng/skeleton';
 import { MessageModule } from 'primeng/message';
-import { MessageService, ConfirmationService } from 'primeng/api';
+import { MessageService } from 'primeng/api';
 import { ToastModule } from 'primeng/toast';
-import { ConfirmDialogModule } from 'primeng/confirmdialog';
 import { ApiService } from '@core/services/api.service';
-import type { HasUnsavedChanges } from '@core/guards/unsaved-changes.guard';
-
-interface ConfigTab {
-  fileName: string;
-  label: string;
-  icon: string;
-  content: string;
-  originalContent: string;
-  loading: boolean;
-  dirty: boolean;
-  error: string | null;
-}
+import { ConfigFormComponent } from './config-form/config-form.component';
+import { ServersFormComponent } from './servers-form/servers-form.component';
 
 @Component({
   selector: 'app-settings',
@@ -34,149 +24,156 @@ interface ConfigTab {
     SkeletonModule,
     MessageModule,
     ToastModule,
-    ConfirmDialogModule,
+    ConfigFormComponent,
+    ServersFormComponent,
   ],
-  providers: [MessageService, ConfirmationService],
+  providers: [MessageService],
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.scss',
 })
-export class SettingsComponent implements OnInit, HasUnsavedChanges {
+export class SettingsComponent implements OnInit {
   private apiService = inject(ApiService);
   private messageService = inject(MessageService);
-  private confirmService = inject(ConfirmationService);
   private destroyRef = inject(DestroyRef);
 
-  tabs = signal<ConfigTab[]>([
-    {
-      fileName: 'config.yml',
-      label: 'Config',
-      icon: 'pi pi-cog',
-      content: '',
-      originalContent: '',
-      loading: true,
-      dirty: false,
-      error: null,
-    },
-    {
-      fileName: 'servers.yml',
-      label: 'Servers',
-      icon: 'pi pi-server',
-      content: '',
-      originalContent: '',
-      loading: true,
-      dirty: false,
-      error: null,
-    },
-  ]);
+  // Form state
+  configData = signal<Record<string, unknown> | null>(null);
+  configFormLoading = signal(true);
+  configFormError = signal<string | null>(null);
+
+  serversData = signal<Record<string, unknown> | null>(null);
+  serversFormLoading = signal(true);
+  serversFormError = signal<string | null>(null);
+
+  // YAML preview state (read-only)
+  configYaml = signal('');
+  configYamlLoading = signal(true);
+  serversYaml = signal('');
+  serversYamlLoading = signal(true);
 
   activeIndex = signal(0);
-  saving = signal(false);
 
-  hasUnsavedChanges(): boolean {
-    return this.tabs().some(t => t.dirty);
+  // Auto-save subjects
+  private configSave$ = new Subject<Record<string, unknown>>();
+  private serversSave$ = new Subject<Record<string, unknown>>();
+
+  constructor() {
+    this.configSave$.pipe(
+      debounceTime(800),
+      switchMap(data => {
+        this.configFormError.set(null);
+        return this.apiService.updateConfig(data).pipe(
+          catchError(err => {
+            const errorMsg = err.error?.error || 'Failed to save config';
+            this.configFormError.set(errorMsg);
+            this.messageService.add({ severity: 'error', summary: 'Error', detail: errorMsg });
+            return of(null);
+          }),
+        );
+      }),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe(result => {
+      if (result) this.loadYaml(0);
+    });
+
+    this.serversSave$.pipe(
+      debounceTime(800),
+      switchMap(data => {
+        this.serversFormError.set(null);
+        return this.apiService.updateServersConfig(data).pipe(
+          catchError(err => {
+            const errorMsg = err.error?.error || 'Failed to save servers config';
+            this.serversFormError.set(errorMsg);
+            this.messageService.add({ severity: 'error', summary: 'Error', detail: errorMsg });
+            return of(null);
+          }),
+        );
+      }),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe(result => {
+      if (result) this.loadYaml(1);
+    });
   }
 
   ngOnInit() {
-    this.loadAllConfigs();
+    this.loadFormData();
+    this.loadYaml(0);
+    this.loadYaml(1);
   }
 
-  loadAllConfigs() {
-    const currentTabs = this.tabs();
-    for (let i = 0; i < currentTabs.length; i++) {
-      this.loadConfig(i);
-    }
-  }
+  // ── Form data loading ───────────────────────────────────────────────────
 
-  loadConfig(index: number) {
-    const tab = this.tabs()[index];
-    this.updateTab(index, { loading: true, error: null });
+  loadFormData() {
+    this.configFormLoading.set(true);
+    this.configFormError.set(null);
+    this.serversFormLoading.set(true);
+    this.serversFormError.set(null);
 
-    this.apiService.getRawConfig(tab.fileName)
+    this.apiService.getConfig()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (response) => {
-          this.updateTab(index, {
-            content: response.content,
-            originalContent: response.content,
-            loading: false,
-            dirty: false,
-          });
+          this.configData.set(response.config);
+          this.configFormLoading.set(false);
         },
         error: (err) => {
-          this.updateTab(index, {
-            loading: false,
-            error: err.error?.error || `Failed to load ${tab.fileName}`,
-          });
+          this.configFormLoading.set(false);
+          this.configFormError.set(err.error?.error || 'Failed to load config');
         },
       });
-  }
 
-  onContentChange(index: number, content: string) {
-    const tab = this.tabs()[index];
-    this.updateTab(index, {
-      content,
-      dirty: content !== tab.originalContent,
-    });
-  }
-
-  save(index: number) {
-    const tab = this.tabs()[index];
-    if (!tab.dirty) return;
-
-    this.confirmService.confirm({
-      message: `Are you sure you want to save changes to ${tab.fileName}? This will overwrite the current configuration.`,
-      header: 'Confirm Save',
-      icon: 'pi pi-exclamation-triangle',
-      acceptLabel: 'Save',
-      rejectLabel: 'Cancel',
-      accept: () => this.doSave(index),
-    });
-  }
-
-  private doSave(index: number) {
-    const tab = this.tabs()[index];
-    this.saving.set(true);
-    this.updateTab(index, { error: null });
-
-    this.apiService.saveRawConfig(tab.fileName, tab.content)
+    this.apiService.getServersConfig()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: () => {
-          this.updateTab(index, {
-            originalContent: tab.content,
-            dirty: false,
-          });
-          this.saving.set(false);
-          this.messageService.add({
-            severity: 'success',
-            summary: 'Saved',
-            detail: `${tab.fileName} updated successfully.`,
-          });
+        next: (response) => {
+          this.serversData.set(response.servers);
+          this.serversFormLoading.set(false);
         },
         error: (err) => {
-          this.saving.set(false);
-          const errorMsg = err.error?.error || `Failed to save ${tab.fileName}`;
-          this.updateTab(index, { error: errorMsg });
-          this.messageService.add({
-            severity: 'error',
-            summary: 'Error',
-            detail: errorMsg,
-          });
+          this.serversFormLoading.set(false);
+          this.serversFormError.set(err.error?.error || 'Failed to load servers config');
         },
       });
   }
 
-  revert(index: number) {
-    const tab = this.tabs()[index];
-    this.updateTab(index, {
-      content: tab.originalContent,
-      dirty: false,
-    });
+  // ── YAML preview loading ──────────────────────────────────────────────
+
+  loadYaml(index: number) {
+    const fileName = index === 0 ? 'config.yml' : 'servers.yml';
+    if (index === 0) this.configYamlLoading.set(true);
+    else this.serversYamlLoading.set(true);
+
+    this.apiService.getRawConfig(fileName)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (response) => {
+          if (index === 0) {
+            this.configYaml.set(response.content);
+            this.configYamlLoading.set(false);
+          } else {
+            this.serversYaml.set(response.content);
+            this.serversYamlLoading.set(false);
+          }
+        },
+        error: () => {
+          if (index === 0) {
+            this.configYaml.set('# Failed to load config.yml');
+            this.configYamlLoading.set(false);
+          } else {
+            this.serversYaml.set('# Failed to load servers.yml');
+            this.serversYamlLoading.set(false);
+          }
+        },
+      });
   }
 
-  private updateTab(index: number, updates: Partial<ConfigTab>) {
-    this.tabs.update((tabs) =>
-      tabs.map((tab, i) => (i === index ? { ...tab, ...updates } : tab)),
-    );
+  // ── Auto-save handlers ────────────────────────────────────────────────
+
+  onConfigFormChange(data: Record<string, unknown>) {
+    this.configSave$.next(data);
+  }
+
+  onServersFormChange(data: Record<string, unknown>) {
+    this.serversSave$.next(data);
   }
 }

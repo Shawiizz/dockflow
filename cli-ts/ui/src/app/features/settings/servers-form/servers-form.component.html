@@ -1,0 +1,187 @@
+<div class="servers-form">
+  <!-- Defaults -->
+  <div class="form-section" [class.form-section--expanded]="isExpanded('defaults')">
+    <div class="form-section__header" (click)="toggleSection('defaults')">
+      <i class="pi" [class.pi-chevron-right]="!isExpanded('defaults')" [class.pi-chevron-down]="isExpanded('defaults')"></i>
+      <span>Defaults</span>
+    </div>
+    @if (isExpanded('defaults')) {
+      <div class="form-section__body">
+        <div class="form-grid">
+          <div class="form-row">
+            <label for="defaultUser">SSH User</label>
+            <input type="text" pInputText id="defaultUser"
+                   [ngModel]="defaultUser()"
+                   (ngModelChange)="defaultUser.set($event); onFieldChange()"
+                   placeholder="dockflow" style="width: 100%;">
+          </div>
+          <div class="form-row">
+            <label for="defaultPort">SSH Port</label>
+            <p-inputnumber id="defaultPort"
+                           [ngModel]="defaultPort()"
+                           (ngModelChange)="defaultPort.set($event ?? 22); onFieldChange()"
+                           [min]="1" [max]="65535"
+                           [style]="{ width: '100%' }" />
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Servers -->
+  <div class="form-section" [class.form-section--expanded]="isExpanded('servers')">
+    <div class="form-section__header" (click)="toggleSection('servers')">
+      <i class="pi" [class.pi-chevron-right]="!isExpanded('servers')" [class.pi-chevron-down]="isExpanded('servers')"></i>
+      <span>Servers ({{ servers().length }})</span>
+    </div>
+    @if (isExpanded('servers')) {
+      <div class="form-section__body">
+        @for (srv of servers(); track $index; let i = $index) {
+          <div class="server-card">
+            <div class="server-card__header">
+              <span class="server-card__title">{{ srv.name || 'New Server' }}</span>
+              <button class="btn btn--ghost btn--icon" (click)="removeServer(i)" pTooltip="Remove server">
+                <i class="pi pi-trash"></i>
+              </button>
+            </div>
+            <div class="server-card__body">
+              <div class="form-grid">
+                <div class="form-row">
+                  <label>Name *</label>
+                  <input type="text" pInputText [ngModel]="srv.name"
+                         (ngModelChange)="updateServer(i, 'name', $event)"
+                         placeholder="main-server" style="width: 100%;">
+                </div>
+                <div class="form-row">
+                  <label>Role</label>
+                  <p-select [options]="roleOptions" optionLabel="label" optionValue="value"
+                            [ngModel]="srv.role"
+                            (ngModelChange)="updateServer(i, 'role', $event)"
+                            [style]="{ width: '100%' }" />
+                </div>
+                <div class="form-row">
+                  <label>Host</label>
+                  <input type="text" pInputText [ngModel]="srv.host"
+                         (ngModelChange)="updateServer(i, 'host', $event)"
+                         placeholder="192.168.0.1" style="width: 100%;">
+                </div>
+                <div class="form-row">
+                  <label>SSH User (override)</label>
+                  <input type="text" pInputText [ngModel]="srv.user"
+                         (ngModelChange)="updateServer(i, 'user', $event)"
+                         placeholder="(use default)" style="width: 100%;">
+                </div>
+                <div class="form-row">
+                  <label>SSH Port (override)</label>
+                  <p-inputnumber [ngModel]="srv.port"
+                                 (ngModelChange)="updateServer(i, 'port', $event)"
+                                 [min]="1" [max]="65535"
+                                 placeholder="(use default)"
+                                 [style]="{ width: '100%' }" />
+                </div>
+              </div>
+
+              <!-- Tags -->
+              <div class="form-row">
+                <label>Tags *</label>
+                <div class="tags-input">
+                  <div class="tags-input__list">
+                    @for (tag of srv.tags; track $index; let ti = $index) {
+                      <span class="tag-chip">
+                        {{ tag }}
+                        <i class="pi pi-times tag-chip__remove" (click)="removeTag(i, ti)"></i>
+                      </span>
+                    }
+                  </div>
+                  <input type="text" pInputText #tagInput
+                         placeholder="Add tag..."
+                         style="width: 100%;"
+                         (keydown.enter)="addTag(i, tagInput)">
+                </div>
+              </div>
+
+              <!-- Server Env Vars -->
+              <div class="form-subsection">
+                <div class="form-subsection__header">
+                  <span>Environment Variables</span>
+                  <button class="btn btn--ghost btn--sm" (click)="addServerEnv(i)">
+                    <i class="pi pi-plus"></i> Add
+                  </button>
+                </div>
+                @for (envVar of srv.env; track $index; let ei = $index) {
+                  <div class="kv-pair">
+                    <input type="text" pInputText [ngModel]="envVar.key"
+                           (ngModelChange)="updateServerEnv(i, ei, 'key', $event)"
+                           placeholder="KEY" style="width: 40%;">
+                    <span class="kv-pair__sep">=</span>
+                    <input type="text" pInputText [ngModel]="envVar.value"
+                           (ngModelChange)="updateServerEnv(i, ei, 'value', $event)"
+                           placeholder="value" style="flex: 1;">
+                    <button class="btn btn--ghost btn--icon" (click)="removeServerEnv(i, ei)">
+                      <i class="pi pi-trash"></i>
+                    </button>
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
+        }
+        <button class="btn btn--ghost" style="width: 100%;" (click)="addServer()">
+          <i class="pi pi-plus"></i> Add Server
+        </button>
+      </div>
+    }
+  </div>
+
+  <!-- Env by Tag -->
+  <div class="form-section" [class.form-section--expanded]="isExpanded('env')">
+    <div class="form-section__header" (click)="toggleSection('env')">
+      <i class="pi" [class.pi-chevron-right]="!isExpanded('env')" [class.pi-chevron-down]="isExpanded('env')"></i>
+      <span>Environment Variables by Tag</span>
+    </div>
+    @if (isExpanded('env')) {
+      <div class="form-section__body">
+        @for (et of envTags(); track $index; let ti = $index) {
+          <div class="env-tag-card">
+            <div class="env-tag-card__header">
+              <span class="env-tag-card__title">{{ et.tag }}</span>
+              <button class="btn btn--ghost btn--icon" (click)="removeEnvTag(ti)" pTooltip="Remove tag group">
+                <i class="pi pi-trash"></i>
+              </button>
+            </div>
+            <div class="env-tag-card__body">
+              @for (v of et.vars; track $index; let vi = $index) {
+                <div class="kv-pair">
+                  <input type="text" pInputText [ngModel]="v.key"
+                         (ngModelChange)="updateEnvTagVar(ti, vi, 'key', $event)"
+                         placeholder="KEY" style="width: 40%;">
+                  <span class="kv-pair__sep">=</span>
+                  <input type="text" pInputText [ngModel]="v.value"
+                         (ngModelChange)="updateEnvTagVar(ti, vi, 'value', $event)"
+                         placeholder="value" style="flex: 1;">
+                  <button class="btn btn--ghost btn--icon" (click)="removeEnvTagVar(ti, vi)">
+                    <i class="pi pi-trash"></i>
+                  </button>
+                </div>
+              }
+              <button class="btn btn--ghost btn--sm" (click)="addEnvTagVar(ti)">
+                <i class="pi pi-plus"></i> Add Variable
+              </button>
+            </div>
+          </div>
+        }
+        <div class="add-tag-row">
+          <input type="text" pInputText
+                 [ngModel]="newTagName()"
+                 (ngModelChange)="newTagName.set($event)"
+                 placeholder="Tag name (e.g. production)"
+                 style="flex: 1;"
+                 (keydown.enter)="addEnvTag()">
+          <button class="btn btn--ghost" (click)="addEnvTag()" [disabled]="!newTagName()">
+            <i class="pi pi-plus"></i> Add Tag Group
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+</div>

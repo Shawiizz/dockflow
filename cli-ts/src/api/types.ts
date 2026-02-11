@@ -326,6 +326,77 @@ export interface AuditResponse {
   total: number;
 }
 
+// ─── Compose ─────────────────────────────────────────────────────────────────
+
+export interface ComposeDeployPlacement {
+  constraints?: string[];
+}
+
+export interface ComposeDeployUpdateConfig {
+  parallelism?: number;
+  delay?: string;
+  order?: string;
+  failure_action?: string;
+  monitor?: string;
+  max_failure_ratio?: number;
+}
+
+export interface ComposeDeployRollbackConfig {
+  parallelism?: number;
+  delay?: string;
+  order?: string;
+  monitor?: string;
+}
+
+export interface ComposeDeployRestartPolicy {
+  condition?: string;
+  delay?: string;
+  max_attempts?: number;
+}
+
+export interface ComposeDeployResources {
+  limits?: { cpus?: string; memory?: string };
+  reservations?: { cpus?: string; memory?: string };
+}
+
+export interface ComposeDeploy {
+  replicas?: number;
+  placement?: ComposeDeployPlacement;
+  update_config?: ComposeDeployUpdateConfig;
+  rollback_config?: ComposeDeployRollbackConfig;
+  restart_policy?: ComposeDeployRestartPolicy;
+  resources?: ComposeDeployResources;
+}
+
+export interface ComposeService {
+  image?: string;
+  build?: { context?: string; dockerfile?: string } | string;
+  ports?: string[];
+  environment?: Record<string, string> | string[];
+  deploy?: ComposeDeploy;
+  volumes?: string[];
+  networks?: string[];
+  [key: string]: unknown;
+}
+
+export interface ComposeFile {
+  services: Record<string, ComposeService>;
+  networks?: Record<string, unknown>;
+  volumes?: Record<string, unknown>;
+}
+
+export interface ComposeResponse {
+  exists: boolean;
+  compose: ComposeFile | null;
+  message?: string;
+}
+
+export interface ComposeUpdateResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
 // ─── Validation ──────────────────────────────────────────────────────────────
 
 export interface ValidationError {

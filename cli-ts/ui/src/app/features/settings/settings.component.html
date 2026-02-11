@@ -1,100 +1,149 @@
 <div class="settings-page animate-fade-in">
   <!-- Page Header -->
   <div class="page-header">
-    <div class="page-header__left">
-      <h1 class="page-header__title">Settings</h1>
-      <p class="page-header__subtitle">Edit your Dockflow configuration files</p>
-    </div>
+    <h1 class="page-header__title">Settings</h1>
+    <p class="page-header__subtitle">Edit your Dockflow configuration files</p>
   </div>
 
   <!-- Tabs -->
   <div class="config-editor card">
     <p-tabs [value]="activeIndex()" (valueChange)="activeIndex.set(+$event!)">
       <p-tablist>
-        @for (tab of tabs(); track tab.fileName; let i = $index) {
-          <p-tab [value]="i">
-            <i [class]="tab.icon"></i>
-            <span>{{ tab.label }}</span>
-            @if (tab.dirty) {
-              <span class="tab-header__dirty">●</span>
-            }
-          </p-tab>
-        }
+        <p-tab [value]="0">
+          <span class="tab-label">
+            <i class="pi pi-cog"></i>
+            <span>Config</span>
+          </span>
+        </p-tab>
+        <p-tab [value]="1">
+          <span class="tab-label">
+            <i class="pi pi-server"></i>
+            <span>Servers</span>
+          </span>
+        </p-tab>
       </p-tablist>
 
-      @for (tab of tabs(); track tab.fileName; let i = $index) {
-        <p-tabpanel [value]="i">
-          <!-- Loading -->
-          @if (tab.loading) {
-            <div class="editor-loading">
-              @for (j of [1, 2, 3, 4, 5, 6, 7, 8]; track j) {
-                <p-skeleton [height]="'20px'" styleClass="mb-1" />
+      <!-- Tab 0: Config split-view -->
+      <p-tabpanel [value]="0">
+        @if (configFormLoading()) {
+          <div class="editor-loading">
+            @for (j of [1, 2, 3, 4, 5, 6]; track j) {
+              <p-skeleton [height]="'20px'" styleClass="mb-1" />
+            }
+          </div>
+        } @else if (configFormError() && !configData()) {
+          <div class="editor-error">
+            <p-message severity="error" [text]="configFormError()!" />
+          </div>
+        } @else {
+          <div class="split-view">
+            <!-- Form side -->
+            <div class="split-view__form">
+              <app-config-form
+                [data]="configData()"
+                (dataChange)="onConfigFormChange($event)" />
+            </div>
+            <!-- YAML preview side -->
+            <div class="split-view__yaml">
+              @if (configYamlLoading()) {
+                <div class="editor-loading" style="padding: 1rem;">
+                  @for (j of [1, 2, 3, 4]; track j) {
+                    <p-skeleton [height]="'16px'" styleClass="mb-1" />
+                  }
+                </div>
+              } @else {
+                <div class="yaml-preview">
+                  <div class="yaml-preview__header">
+                    <span>config.yml</span>
+                  </div>
+                  <div class="yaml-preview__content">
+                    <div class="editor-line-numbers">
+                      @for (line of configYaml().split('\n'); track $index; let ln = $index) {
+                        <span>{{ ln + 1 }}</span>
+                      }
+                    </div>
+                    <textarea
+                      class="editor-textarea editor-textarea--readonly"
+                      [value]="configYaml()"
+                      readonly
+                      spellcheck="false"
+                      tabindex="-1"
+                    ></textarea>
+                  </div>
+                </div>
               }
             </div>
-          } @else if (tab.error && !tab.content) {
-            <!-- Error -->
-            <div class="editor-error">
-              <p-message severity="error" [text]="tab.error" />
-            </div>
-          } @else {
-            <!-- Editor -->
-            <div class="editor-wrapper">
-              <div class="editor-line-numbers">
-                @for (line of tab.content.split('\n'); track $index; let ln = $index) {
-                  <span>{{ ln + 1 }}</span>
-                }
-              </div>
-              <textarea
-                class="editor-textarea"
-                [value]="tab.content"
-                (input)="onContentChange(i, $any($event.target).value)"
-                spellcheck="false"
-                autocomplete="off"
-                autocorrect="off"
-                autocapitalize="off"
-              ></textarea>
-            </div>
+          </div>
 
-            <!-- Error message -->
-            @if (tab.error) {
-              <div class="editor-error-inline">
-                <p-message severity="error" [text]="tab.error" />
-              </div>
-            }
-
-            <!-- Actions -->
-            <div class="editor-actions">
-              <button
-                class="btn btn--primary"
-                (click)="save(i)"
-                [disabled]="!tab.dirty || saving()"
-              >
-                <i class="pi pi-save" [class.pi-spin]="saving()"></i>
-                <span>Save</span>
-              </button>
-              <button
-                class="btn btn--ghost"
-                (click)="revert(i)"
-                [disabled]="!tab.dirty"
-              >
-                <i class="pi pi-undo"></i>
-                <span>Revert</span>
-              </button>
-              <button
-                class="btn btn--ghost"
-                (click)="loadConfig(i)"
-                pTooltip="Reload from disk"
-              >
-                <i class="pi pi-refresh"></i>
-                <span>Reload</span>
-              </button>
+          @if (configFormError()) {
+            <div class="editor-error-inline">
+              <p-message severity="error" [text]="configFormError()!" />
             </div>
           }
-        </p-tabpanel>
-      }
+        }
+      </p-tabpanel>
+
+      <!-- Tab 1: Servers split-view -->
+      <p-tabpanel [value]="1">
+        @if (serversFormLoading()) {
+          <div class="editor-loading">
+            @for (j of [1, 2, 3, 4, 5, 6]; track j) {
+              <p-skeleton [height]="'20px'" styleClass="mb-1" />
+            }
+          </div>
+        } @else if (serversFormError() && !serversData()) {
+          <div class="editor-error">
+            <p-message severity="error" [text]="serversFormError()!" />
+          </div>
+        } @else {
+          <div class="split-view">
+            <!-- Form side -->
+            <div class="split-view__form">
+              <app-servers-form
+                [data]="serversData()"
+                (dataChange)="onServersFormChange($event)" />
+            </div>
+            <!-- YAML preview side -->
+            <div class="split-view__yaml">
+              @if (serversYamlLoading()) {
+                <div class="editor-loading" style="padding: 1rem;">
+                  @for (j of [1, 2, 3, 4]; track j) {
+                    <p-skeleton [height]="'16px'" styleClass="mb-1" />
+                  }
+                </div>
+              } @else {
+                <div class="yaml-preview">
+                  <div class="yaml-preview__header">
+                    <span>servers.yml</span>
+                  </div>
+                  <div class="yaml-preview__content">
+                    <div class="editor-line-numbers">
+                      @for (line of serversYaml().split('\n'); track $index; let ln = $index) {
+                        <span>{{ ln + 1 }}</span>
+                      }
+                    </div>
+                    <textarea
+                      class="editor-textarea editor-textarea--readonly"
+                      [value]="serversYaml()"
+                      readonly
+                      spellcheck="false"
+                      tabindex="-1"
+                    ></textarea>
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+
+          @if (serversFormError()) {
+            <div class="editor-error-inline">
+              <p-message severity="error" [text]="serversFormError()!" />
+            </div>
+          }
+        }
+      </p-tabpanel>
     </p-tabs>
   </div>
 
   <p-toast position="top-right" />
-  <p-confirmDialog />
 </div>

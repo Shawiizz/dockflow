@@ -78,11 +78,14 @@ export const HealthCheckConfigSchema = z.object({
   enabled: z.boolean().optional().default(true).describe(
     'Enable/disable health checks'
   ),
-  on_failure: z.enum(['notify', 'rollback', 'fail']).optional().default('notify').describe(
-    'Action on health check failure: notify (log only), rollback (revert), fail (stop)'
+  on_failure: z.enum(['notify', 'rollback', 'fail', 'ignore']).optional().default('notify').describe(
+    'Action on health check failure: notify (log only), rollback (revert), fail (stop), ignore'
   ),
   startup_delay: z.number().int().min(0).max(300).optional().default(10).describe(
     'Seconds to wait before running health checks'
+  ),
+  wait_for_internal: z.boolean().optional().default(true).describe(
+    'Wait for Docker Swarm internal healthchecks before running endpoint checks'
   ),
   endpoints: z.array(HealthCheckEndpointSchema).optional().default([]).describe(
     'List of endpoints to check'
@@ -126,6 +129,18 @@ export const HooksConfigSchema = z.object({
 });
 
 /**
+ * Stack management schema
+ */
+export const StackManagementSchema = z.object({
+  keep_releases: z.number().int().min(1).max(50).optional().default(3).describe(
+    'Number of previous releases to retain'
+  ),
+  cleanup_on_failure: z.boolean().optional().default(true).describe(
+    'Clean up failed deployment images'
+  ),
+});
+
+/**
  * Project name validation pattern
  * Must be lowercase alphanumeric with hyphens, no leading/trailing hyphens
  */
@@ -151,7 +166,11 @@ export const DockflowConfigSchema = z.object({
   options: BuildOptionsSchema.optional().describe(
     'Build and deployment options'
   ),
-  
+
+  stack_management: StackManagementSchema.optional().describe(
+    'Stack release management settings'
+  ),
+
   health_checks: HealthCheckConfigSchema.optional().describe(
     'Health check configuration for deployment verification'
   ),

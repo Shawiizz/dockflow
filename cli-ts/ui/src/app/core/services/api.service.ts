@@ -27,6 +27,9 @@ import type {
   LockActionResponse,
   ContainerStatsResponse,
   AuditResponse,
+  ComposeFile,
+  ComposeResponse,
+  ComposeUpdateResponse,
 } from '@api-types';
 
 // Re-export types for consumers
@@ -65,6 +68,10 @@ export type {
   ContainerStatsResponse,
   AuditEntry,
   AuditResponse,
+  ComposeService,
+  ComposeFile,
+  ComposeResponse,
+  ComposeUpdateResponse,
 } from '@api-types';
 
 @Injectable({
@@ -285,5 +292,15 @@ export class ApiService {
     let params = new HttpParams().set('lines', lines.toString());
     if (env) params = params.set('env', env);
     return this.http.get<AuditResponse>(`${this.baseUrl}/metrics/audit`, { params });
+  }
+
+  // ── Compose ─────────────────────────────────────────────────────────────
+
+  getCompose(): Observable<ComposeResponse> {
+    return this.http.get<ComposeResponse>(`${this.baseUrl}/compose`);
+  }
+
+  updateCompose(compose: ComposeFile): Observable<ComposeUpdateResponse> {
+    return this.http.put<ComposeUpdateResponse>(`${this.baseUrl}/compose`, compose);
   }
 }

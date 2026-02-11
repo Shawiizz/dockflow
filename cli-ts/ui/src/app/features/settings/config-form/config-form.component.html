@@ -1,0 +1,363 @@
+<div class="config-form">
+  <!-- Project -->
+  <div class="form-section" [class.form-section--expanded]="isExpanded('project')">
+    <div class="form-section__header" (click)="toggleSection('project')">
+      <i class="pi" [class.pi-chevron-right]="!isExpanded('project')" [class.pi-chevron-down]="isExpanded('project')"></i>
+      <span>Project</span>
+    </div>
+    @if (isExpanded('project')) {
+      <div class="form-section__body">
+        <div class="form-row">
+          <label for="projectName">Project Name *</label>
+          <input type="text" pInputText id="projectName"
+                 [ngModel]="projectName()"
+                 (ngModelChange)="projectName.set($event); onFieldChange()"
+                 placeholder="my-project" style="width: 100%;">
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Registry -->
+  <div class="form-section" [class.form-section--expanded]="isExpanded('registry')">
+    <div class="form-section__header" (click)="toggleSection('registry')">
+      <i class="pi" [class.pi-chevron-right]="!isExpanded('registry')" [class.pi-chevron-down]="isExpanded('registry')"></i>
+      <span>Registry</span>
+    </div>
+    @if (isExpanded('registry')) {
+      <div class="form-section__body">
+        <div class="form-grid">
+          <div class="form-row">
+            <label for="regType">Type</label>
+            <p-select id="regType" [options]="registryTypes" optionLabel="label" optionValue="value"
+                      [ngModel]="registryType()"
+                      (ngModelChange)="registryType.set($event); onFieldChange()"
+                      [style]="{ width: '100%' }" />
+          </div>
+          @if (registryType() === 'custom') {
+            <div class="form-row">
+              <label for="regUrl">URL</label>
+              <input type="text" pInputText id="regUrl"
+                     [ngModel]="registryUrl()"
+                     (ngModelChange)="registryUrl.set($event); onFieldChange()"
+                     placeholder="registry.example.com" style="width: 100%;">
+            </div>
+          }
+          <div class="form-row">
+            <label for="regUsername">Username</label>
+            <input type="text" pInputText id="regUsername"
+                   [ngModel]="registryUsername()"
+                   (ngModelChange)="registryUsername.set($event); onFieldChange()"
+                   style="width: 100%;">
+          </div>
+          <div class="form-row">
+            <label for="regPassword">Password</label>
+            <input type="password" pInputText id="regPassword"
+                   [ngModel]="registryPassword()"
+                   (ngModelChange)="registryPassword.set($event); onFieldChange()"
+                   style="width: 100%;">
+          </div>
+          <div class="form-row">
+            <label for="regNamespace">Namespace</label>
+            <input type="text" pInputText id="regNamespace"
+                   [ngModel]="registryNamespace()"
+                   (ngModelChange)="registryNamespace.set($event); onFieldChange()"
+                   placeholder="myorg" style="width: 100%;">
+          </div>
+          <div class="form-row">
+            <label for="regToken">Token</label>
+            <input type="password" pInputText id="regToken"
+                   [ngModel]="registryToken()"
+                   (ngModelChange)="registryToken.set($event); onFieldChange()"
+                   style="width: 100%;">
+          </div>
+        </div>
+        <div class="form-row form-row--toggle">
+          <p-toggleswitch [ngModel]="registryEnabled()"
+                          (ngModelChange)="registryEnabled.set($event); onFieldChange()"
+                          inputId="regEnabled" />
+          <label for="regEnabled">Enabled</label>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Options -->
+  <div class="form-section" [class.form-section--expanded]="isExpanded('options')">
+    <div class="form-section__header" (click)="toggleSection('options')">
+      <i class="pi" [class.pi-chevron-right]="!isExpanded('options')" [class.pi-chevron-down]="isExpanded('options')"></i>
+      <span>Options</span>
+    </div>
+    @if (isExpanded('options')) {
+      <div class="form-section__body">
+        <div class="form-row form-row--toggle">
+          <p-toggleswitch [ngModel]="remoteBuild()"
+                          (ngModelChange)="remoteBuild.set($event); onFieldChange()"
+                          inputId="remoteBuild" />
+          <label for="remoteBuild">Remote Build</label>
+        </div>
+        <div class="form-row form-row--toggle">
+          <p-toggleswitch [ngModel]="imageAutoTag()"
+                          (ngModelChange)="imageAutoTag.set($event); onFieldChange()"
+                          inputId="imageAutoTag" />
+          <label for="imageAutoTag">Image Auto Tag</label>
+        </div>
+        <div class="form-row form-row--toggle">
+          <p-toggleswitch [ngModel]="enableDebugLogs()"
+                          (ngModelChange)="enableDebugLogs.set($event); onFieldChange()"
+                          inputId="debugLogs" />
+          <label for="debugLogs">Enable Debug Logs</label>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Stack Management -->
+  <div class="form-section" [class.form-section--expanded]="isExpanded('stack')">
+    <div class="form-section__header" (click)="toggleSection('stack')">
+      <i class="pi" [class.pi-chevron-right]="!isExpanded('stack')" [class.pi-chevron-down]="isExpanded('stack')"></i>
+      <span>Stack Management</span>
+    </div>
+    @if (isExpanded('stack')) {
+      <div class="form-section__body">
+        <div class="form-grid">
+          <div class="form-row">
+            <label for="keepReleases">Keep Releases</label>
+            <p-inputnumber id="keepReleases"
+                           [ngModel]="keepReleases()"
+                           (ngModelChange)="keepReleases.set($event ?? 3); onFieldChange()"
+                           [min]="1" [max]="50"
+                           [style]="{ width: '100%' }" />
+          </div>
+        </div>
+        <div class="form-row form-row--toggle">
+          <p-toggleswitch [ngModel]="cleanupOnFailure()"
+                          (ngModelChange)="cleanupOnFailure.set($event); onFieldChange()"
+                          inputId="cleanupOnFailure" />
+          <label for="cleanupOnFailure">Cleanup on Failure</label>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Health Checks -->
+  <div class="form-section" [class.form-section--expanded]="isExpanded('health')">
+    <div class="form-section__header" (click)="toggleSection('health')">
+      <i class="pi" [class.pi-chevron-right]="!isExpanded('health')" [class.pi-chevron-down]="isExpanded('health')"></i>
+      <span>Health Checks</span>
+    </div>
+    @if (isExpanded('health')) {
+      <div class="form-section__body">
+        <div class="form-row form-row--toggle">
+          <p-toggleswitch [ngModel]="healthEnabled()"
+                          (ngModelChange)="healthEnabled.set($event); onFieldChange()"
+                          inputId="healthEnabled" />
+          <label for="healthEnabled">Enabled</label>
+        </div>
+        <div class="form-grid">
+          <div class="form-row">
+            <label for="onFailure">On Failure</label>
+            <p-select id="onFailure" [options]="onFailureOptions" optionLabel="label" optionValue="value"
+                      [ngModel]="onFailure()"
+                      (ngModelChange)="onFailure.set($event); onFieldChange()"
+                      [style]="{ width: '100%' }" />
+          </div>
+          <div class="form-row">
+            <label for="startupDelay">Startup Delay (s)</label>
+            <p-inputnumber id="startupDelay"
+                           [ngModel]="startupDelay()"
+                           (ngModelChange)="startupDelay.set($event ?? 10); onFieldChange()"
+                           [min]="0" [max]="300"
+                           [style]="{ width: '100%' }" />
+          </div>
+        </div>
+        <div class="form-row form-row--toggle">
+          <p-toggleswitch [ngModel]="waitForInternal()"
+                          (ngModelChange)="waitForInternal.set($event); onFieldChange()"
+                          inputId="waitForInternal" />
+          <label for="waitForInternal">Wait for Internal Health Checks</label>
+        </div>
+
+        <div class="form-subsection">
+          <div class="form-subsection__header">
+            <span>Endpoints</span>
+            <button class="btn btn--ghost btn--sm" (click)="addEndpoint()">
+              <i class="pi pi-plus"></i> Add
+            </button>
+          </div>
+          @for (ep of endpoints(); track $index; let i = $index) {
+            <div class="dynamic-list-item">
+              <div class="dynamic-list-item__content">
+                <div class="form-grid">
+                  <div class="form-row">
+                    <label>Name</label>
+                    <input type="text" pInputText [ngModel]="ep.name ?? ''"
+                           (ngModelChange)="updateEndpoint(i, 'name', $event)" style="width: 100%;">
+                  </div>
+                  <div class="form-row" style="grid-column: span 2;">
+                    <label>URL *</label>
+                    <input type="text" pInputText [ngModel]="ep.url"
+                           (ngModelChange)="updateEndpoint(i, 'url', $event)" style="width: 100%;">
+                  </div>
+                  <div class="form-row">
+                    <label>Method</label>
+                    <p-select [options]="httpMethods" optionLabel="label" optionValue="value"
+                              [ngModel]="ep.method ?? 'GET'"
+                              (ngModelChange)="updateEndpoint(i, 'method', $event)"
+                              [style]="{ width: '100%' }" />
+                  </div>
+                  <div class="form-row">
+                    <label>Expected Status</label>
+                    <p-inputnumber [ngModel]="ep.expected_status ?? 200"
+                                   (ngModelChange)="updateEndpoint(i, 'expected_status', $event)"
+                                   [min]="100" [max]="599"
+                                   [style]="{ width: '100%' }" />
+                  </div>
+                  <div class="form-row">
+                    <label>Timeout (s)</label>
+                    <p-inputnumber [ngModel]="ep.timeout ?? 30"
+                                   (ngModelChange)="updateEndpoint(i, 'timeout', $event)"
+                                   [min]="1" [max]="300"
+                                   [style]="{ width: '100%' }" />
+                  </div>
+                  <div class="form-row">
+                    <label>Retries</label>
+                    <p-inputnumber [ngModel]="ep.retries ?? 3"
+                                   (ngModelChange)="updateEndpoint(i, 'retries', $event)"
+                                   [min]="1" [max]="20"
+                                   [style]="{ width: '100%' }" />
+                  </div>
+                  <div class="form-row">
+                    <label>Retry Delay (s)</label>
+                    <p-inputnumber [ngModel]="ep.retry_delay ?? 5"
+                                   (ngModelChange)="updateEndpoint(i, 'retry_delay', $event)"
+                                   [min]="1" [max]="60"
+                                   [style]="{ width: '100%' }" />
+                  </div>
+                </div>
+              </div>
+              <button class="btn btn--ghost btn--icon" (click)="removeEndpoint(i)" pTooltip="Remove">
+                <i class="pi pi-trash"></i>
+              </button>
+            </div>
+          }
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Hooks -->
+  <div class="form-section" [class.form-section--expanded]="isExpanded('hooks')">
+    <div class="form-section__header" (click)="toggleSection('hooks')">
+      <i class="pi" [class.pi-chevron-right]="!isExpanded('hooks')" [class.pi-chevron-down]="isExpanded('hooks')"></i>
+      <span>Hooks</span>
+    </div>
+    @if (isExpanded('hooks')) {
+      <div class="form-section__body">
+        <div class="form-row form-row--toggle">
+          <p-toggleswitch [ngModel]="hooksEnabled()"
+                          (ngModelChange)="hooksEnabled.set($event); onFieldChange()"
+                          inputId="hooksEnabled" />
+          <label for="hooksEnabled">Enabled</label>
+        </div>
+        <div class="form-row">
+          <label for="hooksTimeout">Timeout (s)</label>
+          <p-inputnumber id="hooksTimeout"
+                         [ngModel]="hooksTimeout()"
+                         (ngModelChange)="hooksTimeout.set($event ?? 300); onFieldChange()"
+                         [min]="1" [max]="3600"
+                         [style]="{ width: '100%' }" />
+        </div>
+        <div class="form-row">
+          <label for="preBuild">Pre-Build</label>
+          <textarea pTextarea id="preBuild" rows="3"
+                    [ngModel]="preBuild()"
+                    (ngModelChange)="preBuild.set($event); onFieldChange()"
+                    placeholder="Script to run before building..."
+                    style="width: 100%;"></textarea>
+        </div>
+        <div class="form-row">
+          <label for="postBuild">Post-Build</label>
+          <textarea pTextarea id="postBuild" rows="3"
+                    [ngModel]="postBuild()"
+                    (ngModelChange)="postBuild.set($event); onFieldChange()"
+                    placeholder="Script to run after building..."
+                    style="width: 100%;"></textarea>
+        </div>
+        <div class="form-row">
+          <label for="preDeploy">Pre-Deploy</label>
+          <textarea pTextarea id="preDeploy" rows="3"
+                    [ngModel]="preDeploy()"
+                    (ngModelChange)="preDeploy.set($event); onFieldChange()"
+                    placeholder="Script to run before deploying..."
+                    style="width: 100%;"></textarea>
+        </div>
+        <div class="form-row">
+          <label for="postDeploy">Post-Deploy</label>
+          <textarea pTextarea id="postDeploy" rows="3"
+                    [ngModel]="postDeploy()"
+                    (ngModelChange)="postDeploy.set($event); onFieldChange()"
+                    placeholder="Script to run after deploying..."
+                    style="width: 100%;"></textarea>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Templates -->
+  <div class="form-section" [class.form-section--expanded]="isExpanded('templates')">
+    <div class="form-section__header" (click)="toggleSection('templates')">
+      <i class="pi" [class.pi-chevron-right]="!isExpanded('templates')" [class.pi-chevron-down]="isExpanded('templates')"></i>
+      <span>Templates</span>
+    </div>
+    @if (isExpanded('templates')) {
+      <div class="form-section__body">
+        <div class="form-subsection">
+          <div class="form-subsection__header">
+            <span>Jinja2 Template Files</span>
+            <button class="btn btn--ghost btn--sm" (click)="addTemplate()">
+              <i class="pi pi-plus"></i> Add
+            </button>
+          </div>
+          @for (tmpl of templates(); track $index; let i = $index) {
+            <div class="dynamic-list-item">
+              <div class="dynamic-list-item__content">
+                <div class="form-row form-row--toggle">
+                  <p-toggleswitch [ngModel]="tmpl.mode === 'object'"
+                                  (ngModelChange)="updateTemplate(i, { mode: $event ? 'object' : 'string' })" />
+                  <label>Separate src/dest</label>
+                </div>
+                @if (tmpl.mode === 'string') {
+                  <div class="form-row">
+                    <label>Path</label>
+                    <input type="text" pInputText [ngModel]="tmpl.value"
+                           (ngModelChange)="updateTemplate(i, { value: $event })"
+                           placeholder="path/to/template" style="width: 100%;">
+                  </div>
+                } @else {
+                  <div class="form-grid">
+                    <div class="form-row">
+                      <label>Source</label>
+                      <input type="text" pInputText [ngModel]="tmpl.src"
+                             (ngModelChange)="updateTemplate(i, { src: $event })"
+                             placeholder="src/template.j2" style="width: 100%;">
+                    </div>
+                    <div class="form-row">
+                      <label>Destination</label>
+                      <input type="text" pInputText [ngModel]="tmpl.dest"
+                             (ngModelChange)="updateTemplate(i, { dest: $event })"
+                             placeholder="dest/file" style="width: 100%;">
+                    </div>
+                  </div>
+                }
+              </div>
+              <button class="btn btn--ghost btn--icon" (click)="removeTemplate(i)" pTooltip="Remove">
+                <i class="pi pi-trash"></i>
+              </button>
+            </div>
+          }
+        </div>
+      </div>
+    }
+  </div>
+</div>

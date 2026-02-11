@@ -1,0 +1,180 @@
+<div class="topology-page animate-fade-in">
+  <!-- Page Header -->
+  <div class="page-header">
+    <div class="page-header__left">
+      <h1 class="page-header__title">Topology</h1>
+      <p class="page-header__subtitle">Visual service-to-server mapping</p>
+    </div>
+    <div class="page-header__actions">
+      <button class="btn btn--ghost" (click)="autoLayout()" pTooltip="Reset layout">
+        <i class="pi pi-th-large"></i>
+        <span>Auto Layout</span>
+      </button>
+      <button class="btn btn--ghost" (click)="loadData()" pTooltip="Reload data">
+        <i class="pi pi-refresh"></i>
+        <span>Reload</span>
+      </button>
+      <button
+        class="btn btn--primary"
+        (click)="save()"
+        [disabled]="!dirty() || saving()"
+      >
+        <i class="pi pi-save" [class.pi-spin]="saving()"></i>
+        <span>Save</span>
+      </button>
+    </div>
+  </div>
+
+  @if (loading()) {
+    <div class="card topology-loading">
+      @for (j of [1, 2, 3, 4]; track j) {
+        <p-skeleton [width]="'220px'" [height]="'120px'" />
+      }
+    </div>
+  } @else if (error()) {
+    <div class="card topology-error">
+      <p-message severity="error" [text]="error()!" />
+    </div>
+  } @else {
+    <div class="card topology-wrapper">
+      @if (services().length === 0 && servers().length === 0) {
+        <div class="topology-empty">
+          <i class="pi pi-sitemap"></i>
+          <p>No services or servers found. Add services in docker-compose.yml and servers in servers.yml.</p>
+        </div>
+      } @else {
+        <div class="topology-canvas" #canvas
+             [style.width.px]="canvasWidth()"
+             [style.height.px]="canvasHeight()">
+
+          <!-- SVG overlay for arrows -->
+          <svg class="topology-svg"
+               [attr.width]="canvasWidth()"
+               [attr.height]="canvasHeight()">
+
+            <!-- Existing connections -->
+            @for (cp of connectionPaths(); track cp.conn.serviceName + ':' + cp.conn.serverName) {
+              <g class="topology-connection" (click)="removeConnection(cp.conn)">
+                <path
+                  class="topology-connection__hit"
+                  [attr.d]="cp.path"
+                  fill="none"
+                  stroke="transparent"
+                  stroke-width="16"
+                />
+                <path
+                  class="topology-connection__line"
+                  [attr.d]="cp.path"
+                  fill="none"
+                  stroke="var(--accent-blue)"
+                  stroke-width="2"
+                  stroke-dasharray="6 3"
+                />
+                <!-- Arrow head -->
+                <circle
+                  class="topology-connection__dot"
+                  [attr.cx]="cp.midX"
+                  [attr.cy]="cp.midY"
+                  r="4"
+                  fill="var(--accent-blue)"
+                />
+              </g>
+            }
+
+            <!-- Pending connection line -->
+            @if (pendingPath()) {
+              <path
+                class="topology-pending"
+                [attr.d]="pendingPath()"
+                fill="none"
+                stroke="var(--accent-blue)"
+                stroke-width="2"
+                stroke-dasharray="4 4"
+                opacity="0.6"
+              />
+            }
+          </svg>
+
+          <!-- Service cards -->
+          @for (svc of services(); track svc.name) {
+            <div
+              class="topology-card topology-card--service"
+              [style.left.px]="svc.x"
+              [style.top.px]="svc.y"
+              (mousedown)="onCardMouseDown($event, svc.name, 'service')"
+            >
+              <div class="topology-card__header">
+                <i class="pi pi-box"></i>
+                <span class="topology-card__name">{{ svc.name }}</span>
+              </div>
+              <div class="topology-card__body">
+                @if (svc.image) {
+                  <div class="topology-card__detail">
+                    <span class="topology-card__label">Image</span>
+                    <span class="topology-card__value">{{ svc.image }}</span>
+                  </div>
+                }
+                @if (svc.replicas) {
+                  <div class="topology-card__detail">
+                    <span class="topology-card__label">Replicas</span>
+                    <span class="topology-card__value">{{ svc.replicas }}</span>
+                  </div>
+                }
+                @if (svc.ports && svc.ports.length > 0) {
+                  <div class="topology-card__detail">
+                    <span class="topology-card__label">Ports</span>
+                    <span class="topology-card__value">{{ svc.ports.join(', ') }}</span>
+                  </div>
+                }
+              </div>
+              <!-- Output port -->
+              <div
+                class="topology-card__port topology-card__port--output"
+                (mousedown)="onPortMouseDown($event, svc.name)"
+                pTooltip="Drag to connect to a server"
+              ></div>
+            </div>
+          }
+
+          <!-- Server cards -->
+          @for (srv of servers(); track srv.name) {
+            <div
+              class="topology-card topology-card--server"
+              [attr.data-server-name]="srv.name"
+              [style.left.px]="srv.x"
+              [style.top.px]="srv.y"
+              (mousedown)="onCardMouseDown($event, srv.name, 'server')"
+            >
+              <!-- Input port -->
+              <div class="topology-card__port topology-card__port--input"></div>
+              <div class="topology-card__header">
+                <i class="pi pi-server"></i>
+                <span class="topology-card__name">{{ srv.name }}</span>
+                <span class="topology-card__role" [class.topology-card__role--manager]="srv.role === 'manager'">
+                  {{ srv.role }}
+                </span>
+              </div>
+              <div class="topology-card__body">
+                @if (srv.host) {
+                  <div class="topology-card__detail">
+                    <span class="topology-card__label">Host</span>
+                    <span class="topology-card__value">{{ srv.host }}</span>
+                  </div>
+                }
+                @if (srv.tags.length > 0) {
+                  <div class="topology-card__detail">
+                    <span class="topology-card__label">Tags</span>
+                    <span class="topology-card__value">{{ srv.tags.join(', ') }}</span>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  <p-toast position="top-right" />
+  <p-confirmDialog />
+</div>
