@@ -39,6 +39,8 @@ export class ServicesComponent implements OnInit {
   scaleValueNum = 1;
   terminalVisible = signal(false);
   terminalService = signal<ServiceInfo | null>(null);
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private loadVersion = 0;
 
   runningCount = computed(() => this.services().filter(s => s.state === 'running').length);
   stoppedCount = computed(() => this.services().filter(s => s.state !== 'running').length);
@@ -48,29 +50,31 @@ export class ServicesComponent implements OnInit {
       const env = this.envService.selected();
       this.loadServices(env || undefined);
     });
+    this.destroyRef.onDestroy(() => this.stopPolling());
   }
 
   ngOnInit() {}
 
   loadServices(env?: string, opts?: { silent?: boolean }) {
     const cacheKey = `services:${env || 'all'}`;
-    const cached = this.cache.get<{ services: ServiceInfo[]; stackName: string }>(cacheKey);
-    if (cached) {
-      this.services.set(cached.services);
-      this.stackName.set(cached.stackName);
-      this.loading.set(false);
-      this.error.set(null);
-      return;
-    }
-
     if (!opts?.silent) {
+      const cached = this.cache.get<{ services: ServiceInfo[]; stackName: string }>(cacheKey);
+      if (cached) {
+        this.services.set(cached.services);
+        this.stackName.set(cached.stackName);
+        this.loading.set(false);
+        this.error.set(null);
+        return;
+      }
       this.loading.set(true);
     }
     this.error.set(null);
+    const version = ++this.loadVersion;
     this.apiService.getServices(env)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (response) => {
+          if (version !== this.loadVersion) return;
           this.services.set(response.services);
           this.stackName.set(response.stackName);
           this.loading.set(false);
@@ -80,6 +84,7 @@ export class ServicesComponent implements OnInit {
           this.cache.set(cacheKey, { services: response.services, stackName: response.stackName }, 60_000);
         },
         error: (err) => {
+          if (version !== this.loadVersion) return;
           this.loading.set(false);
           this.error.set(err?.error?.error || 'Failed to load services');
         },
@@ -87,8 +92,40 @@ export class ServicesComponent implements OnInit {
   }
 
   refresh() {
+    this.actionLoading.set(null);
+    this.stopPolling();
     this.cache.invalidatePrefix('services:');
     this.loadServices(this.envService.selectedOrUndefined());
+  }
+
+  private refreshAfterAction(serviceName: string, env?: string) {
+    this.stopPolling();
+    const initialState = this.services().find(s => s.name === serviceName)?.state;
+    // Docker applies changes async, poll every 3s until state changes (up to 45s)
+    let elapsed = 0;
+    this.pollTimer = setInterval(() => {
+      elapsed += 3000;
+      const currentState = this.services().find(s => s.name === serviceName)?.state;
+      if (currentState !== initialState) {
+        this.actionLoading.set(null);
+        this.stopPolling();
+        return;
+      }
+      if (elapsed >= 45_000) {
+        this.actionLoading.set(null);
+        this.stopPolling();
+        return;
+      }
+      this.cache.invalidatePrefix('services:');
+      this.loadServices(env, { silent: true });
+    }, 3000);
+  }
+
+  private stopPolling() {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
   }
 
   replicaPercent(service: ServiceInfo): number {
@@ -115,17 +152,22 @@ export class ServicesComponent implements OnInit {
 
   // ── Service Actions ─────────────────────────────────────────────────────
 
+  private handleActionResult(res: { success: boolean; message: string }, serviceName: string, env?: string) {
+    if (!res.success) {
+      this.actionLoading.set(null);
+      this.error.set(res.message);
+      return;
+    }
+    this.refreshAfterAction(serviceName, env);
+  }
+
   onRestart(service: ServiceInfo) {
     const env = this.envService.selectedOrUndefined();
     this.actionLoading.set(service.name);
     this.apiService.restartService(service.name, env)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: () => {
-          this.actionLoading.set(null);
-          this.cache.invalidatePrefix('services:');
-          this.loadServices(env, { silent: true });
-        },
+        next: (res) => this.handleActionResult(res, service.name, env),
         error: (err) => {
           this.actionLoading.set(null);
           this.error.set(err?.error?.error || `Failed to restart ${service.name}`);
@@ -139,11 +181,7 @@ export class ServicesComponent implements OnInit {
     this.apiService.stopService(service.name, env)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: () => {
-          this.actionLoading.set(null);
-          this.cache.invalidatePrefix('services:');
-          this.loadServices(env, { silent: true });
-        },
+        next: (res) => this.handleActionResult(res, service.name, env),
         error: (err) => {
           this.actionLoading.set(null);
           this.error.set(err?.error?.error || `Failed to stop ${service.name}`);
@@ -157,11 +195,7 @@ export class ServicesComponent implements OnInit {
     this.apiService.scaleService(service.name, 1, env)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: () => {
-          this.actionLoading.set(null);
-          this.cache.invalidatePrefix('services:');
-          this.loadServices(env, { silent: true });
-        },
+        next: (res) => this.handleActionResult(res, service.name, env),
         error: (err) => {
           this.actionLoading.set(null);
           this.error.set(err?.error?.error || `Failed to start ${service.name}`);
@@ -184,11 +218,9 @@ export class ServicesComponent implements OnInit {
     this.apiService.scaleService(target.name, this.scaleValueNum, env)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: () => {
-          this.actionLoading.set(null);
+        next: (res) => {
           this.scaleTarget.set(null);
-          this.cache.invalidatePrefix('services:');
-          this.loadServices(env, { silent: true });
+          this.handleActionResult(res, target.name, env);
         },
         error: (err) => {
           this.actionLoading.set(null);
@@ -204,11 +236,7 @@ export class ServicesComponent implements OnInit {
     this.apiService.rollbackService(service.name, env)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: () => {
-          this.actionLoading.set(null);
-          this.cache.invalidatePrefix('services:');
-          this.loadServices(env, { silent: true });
-        },
+        next: (res) => this.handleActionResult(res, service.name, env),
         error: (err) => {
           this.actionLoading.set(null);
           this.error.set(err?.error?.error || `Failed to rollback ${service.name}`);

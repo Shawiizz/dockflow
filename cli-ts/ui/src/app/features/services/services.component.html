@@ -93,7 +93,11 @@
           <div class="service-card__actions">
             @if (service.state === 'stopped') {
               <button class="btn btn--ghost btn--icon" pTooltip="Start" (click)="onStart(service)" [disabled]="actionLoading()">
-                <i class="pi pi-play" [class.pi-spin]="actionLoading() === service.name"></i>
+                @if (actionLoading() === service.name) {
+                  <i class="pi pi-spinner pi-spin"></i>
+                } @else {
+                  <i class="pi pi-play"></i>
+                }
               </button>
             } @else {
               <button class="btn btn--ghost btn--icon" pTooltip="Restart" (click)="onRestart(service)" [disabled]="actionLoading()">

@@ -88,7 +88,8 @@ function parseServiceLs(output: string, stackName: string): ServiceInfo[] {
 
     let state: ServiceInfo['state'] = 'unknown';
     if (!isNaN(running) && !isNaN(total)) {
-      if (running === total && total > 0) state = 'running';
+      if (total === 0) state = 'stopped';
+      else if (running === total) state = 'running';
       else if (running === 0) state = 'stopped';
       else state = 'error'; // partial
     }
@@ -185,7 +186,7 @@ async function restartService(serviceName: string, url: URL): Promise<Response> 
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
   try {
-    const result = await sshExec(conn, `docker service update --force ${serviceName}`);
+    const result = await sshExec(conn, `docker service update --force --detach ${serviceName}`);
     const success = result.exitCode === 0;
     return jsonResponse({
       success,
@@ -208,7 +209,7 @@ async function stopService(serviceName: string, url: URL): Promise<Response> {
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
   try {
-    const result = await sshExec(conn, `docker service scale ${serviceName}=0`);
+    const result = await sshExec(conn, `docker service scale --detach ${serviceName}=0`);
     const success = result.exitCode === 0;
     return jsonResponse({
       success,
@@ -242,7 +243,7 @@ async function scaleService(serviceName: string, url: URL, req: Request): Promis
   }
 
   try {
-    const result = await sshExec(conn, `docker service scale ${serviceName}=${replicas}`);
+    const result = await sshExec(conn, `docker service scale --detach ${serviceName}=${replicas}`);
     const success = result.exitCode === 0;
     return jsonResponse({
       success,
@@ -265,7 +266,7 @@ async function rollbackService(serviceName: string, url: URL): Promise<Response>
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
   try {
-    const result = await sshExec(conn, `docker service rollback ${serviceName}`);
+    const result = await sshExec(conn, `docker service rollback --detach ${serviceName}`);
     const success = result.exitCode === 0;
     return jsonResponse({
       success,
