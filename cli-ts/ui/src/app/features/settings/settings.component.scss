@@ -54,6 +54,7 @@
   &__form {
     flex: 1;
     overflow-y: auto;
+    scrollbar-gutter: stable;
     max-height: calc(100vh - 280px);
     border-right: 1px solid var(--border-primary);
   }

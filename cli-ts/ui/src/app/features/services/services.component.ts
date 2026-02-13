@@ -52,7 +52,7 @@ export class ServicesComponent implements OnInit {
 
   ngOnInit() {}
 
-  loadServices(env?: string) {
+  loadServices(env?: string, opts?: { silent?: boolean }) {
     const cacheKey = `services:${env || 'all'}`;
     const cached = this.cache.get<{ services: ServiceInfo[]; stackName: string }>(cacheKey);
     if (cached) {
@@ -63,7 +63,9 @@ export class ServicesComponent implements OnInit {
       return;
     }
 
-    this.loading.set(true);
+    if (!opts?.silent) {
+      this.loading.set(true);
+    }
     this.error.set(null);
     this.apiService.getServices(env)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -120,14 +122,13 @@ export class ServicesComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
+          this.actionLoading.set(null);
           this.cache.invalidatePrefix('services:');
-          this.loadServices(env);
+          this.loadServices(env, { silent: true });
         },
         error: (err) => {
-          this.error.set(err?.error?.error || `Failed to restart ${service.name}`);
-        },
-        complete: () => {
           this.actionLoading.set(null);
+          this.error.set(err?.error?.error || `Failed to restart ${service.name}`);
         },
       });
   }
@@ -139,14 +140,31 @@ export class ServicesComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
+          this.actionLoading.set(null);
           this.cache.invalidatePrefix('services:');
-          this.loadServices(env);
+          this.loadServices(env, { silent: true });
         },
         error: (err) => {
+          this.actionLoading.set(null);
           this.error.set(err?.error?.error || `Failed to stop ${service.name}`);
         },
-        complete: () => {
+      });
+  }
+
+  onStart(service: ServiceInfo) {
+    const env = this.envService.selectedOrUndefined();
+    this.actionLoading.set(service.name);
+    this.apiService.scaleService(service.name, 1, env)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
           this.actionLoading.set(null);
+          this.cache.invalidatePrefix('services:');
+          this.loadServices(env, { silent: true });
+        },
+        error: (err) => {
+          this.actionLoading.set(null);
+          this.error.set(err?.error?.error || `Failed to start ${service.name}`);
         },
       });
   }
@@ -167,15 +185,15 @@ export class ServicesComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
-          this.cache.invalidatePrefix('services:');
-          this.loadServices(env);
-        },
-        error: (err) => {
-          this.error.set(err?.error?.error || `Failed to scale ${target.name}`);
-        },
-        complete: () => {
           this.actionLoading.set(null);
           this.scaleTarget.set(null);
+          this.cache.invalidatePrefix('services:');
+          this.loadServices(env, { silent: true });
+        },
+        error: (err) => {
+          this.actionLoading.set(null);
+          this.scaleTarget.set(null);
+          this.error.set(err?.error?.error || `Failed to scale ${target.name}`);
         },
       });
   }
@@ -187,14 +205,13 @@ export class ServicesComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
+          this.actionLoading.set(null);
           this.cache.invalidatePrefix('services:');
-          this.loadServices(env);
+          this.loadServices(env, { silent: true });
         },
         error: (err) => {
-          this.error.set(err?.error?.error || `Failed to rollback ${service.name}`);
-        },
-        complete: () => {
           this.actionLoading.set(null);
+          this.error.set(err?.error?.error || `Failed to rollback ${service.name}`);
         },
       });
   }

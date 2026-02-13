@@ -2,10 +2,10 @@
   <!-- Defaults -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('defaults')">
     <div class="form-section__header" (click)="toggleSection('defaults')">
-      <i class="pi" [class.pi-chevron-right]="!isExpanded('defaults')" [class.pi-chevron-down]="isExpanded('defaults')"></i>
+      <i class="pi pi-chevron-right"></i>
       <span>Defaults</span>
     </div>
-    @if (isExpanded('defaults')) {
+    <div class="form-section__collapse">
       <div class="form-section__body">
         <div class="form-grid">
           <div class="form-row">
@@ -25,16 +25,16 @@
           </div>
         </div>
       </div>
-    }
+    </div>
   </div>
 
   <!-- Servers -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('servers')">
     <div class="form-section__header" (click)="toggleSection('servers')">
-      <i class="pi" [class.pi-chevron-right]="!isExpanded('servers')" [class.pi-chevron-down]="isExpanded('servers')"></i>
+      <i class="pi pi-chevron-right"></i>
       <span>Servers ({{ servers().length }})</span>
     </div>
-    @if (isExpanded('servers')) {
+    <div class="form-section__collapse">
       <div class="form-section__body">
         @for (srv of servers(); track $index; let i = $index) {
           <div class="server-card">
@@ -138,16 +138,16 @@
           <i class="pi pi-plus"></i> Add Server
         </button>
       </div>
-    }
+    </div>
   </div>
 
   <!-- Env by Tag -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('env')">
     <div class="form-section__header" (click)="toggleSection('env')">
-      <i class="pi" [class.pi-chevron-right]="!isExpanded('env')" [class.pi-chevron-down]="isExpanded('env')"></i>
+      <i class="pi pi-chevron-right"></i>
       <span>Environment Variables by Tag</span>
     </div>
-    @if (isExpanded('env')) {
+    <div class="form-section__collapse">
       <div class="form-section__body">
         @for (et of envTags(); track $index; let ti = $index) {
           <div class="env-tag-card">
@@ -190,6 +190,6 @@
           </button>
         </div>
       </div>
-    }
+    </div>
   </div>
 </div>

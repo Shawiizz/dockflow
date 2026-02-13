@@ -28,7 +28,23 @@
     .pi {
       font-size: 0.75rem;
       color: var(--text-muted);
+      transition: transform 0.2s ease;
     }
+  }
+
+  &__collapse {
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.3s cubic-bezier(0, 0.9, 0.4, 1);
+  }
+
+  &--expanded &__collapse {
+    max-height: 60rem;
+    transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  &--expanded &__header .pi {
+    transform: rotate(90deg);
   }
 
   &__body {

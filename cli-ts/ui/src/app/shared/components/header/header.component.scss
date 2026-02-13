@@ -6,6 +6,7 @@
   padding: 0 1rem;
   background-color: var(--bg-secondary);
   border-bottom: 1px solid var(--border-primary);
+  will-change: transform;
 }
 
 .header__left {

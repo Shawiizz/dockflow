@@ -2,10 +2,10 @@
   <!-- Project -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('project')">
     <div class="form-section__header" (click)="toggleSection('project')">
-      <i class="pi" [class.pi-chevron-right]="!isExpanded('project')" [class.pi-chevron-down]="isExpanded('project')"></i>
+      <i class="pi pi-chevron-right"></i>
       <span>Project</span>
     </div>
-    @if (isExpanded('project')) {
+    <div class="form-section__collapse">
       <div class="form-section__body">
         <div class="form-row">
           <label for="projectName">Project Name *</label>
@@ -15,16 +15,16 @@
                  placeholder="my-project" style="width: 100%;">
         </div>
       </div>
-    }
+    </div>
   </div>
 
   <!-- Registry -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('registry')">
     <div class="form-section__header" (click)="toggleSection('registry')">
-      <i class="pi" [class.pi-chevron-right]="!isExpanded('registry')" [class.pi-chevron-down]="isExpanded('registry')"></i>
+      <i class="pi pi-chevron-right"></i>
       <span>Registry</span>
     </div>
-    @if (isExpanded('registry')) {
+    <div class="form-section__collapse">
       <div class="form-section__body">
         <div class="form-grid">
           <div class="form-row">
@@ -79,16 +79,16 @@
           <label for="regEnabled">Enabled</label>
         </div>
       </div>
-    }
+    </div>
   </div>
 
   <!-- Options -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('options')">
     <div class="form-section__header" (click)="toggleSection('options')">
-      <i class="pi" [class.pi-chevron-right]="!isExpanded('options')" [class.pi-chevron-down]="isExpanded('options')"></i>
+      <i class="pi pi-chevron-right"></i>
       <span>Options</span>
     </div>
-    @if (isExpanded('options')) {
+    <div class="form-section__collapse">
       <div class="form-section__body">
         <div class="form-row form-row--toggle">
           <p-toggleswitch [ngModel]="remoteBuild()"
@@ -109,16 +109,16 @@
           <label for="debugLogs">Enable Debug Logs</label>
         </div>
       </div>
-    }
+    </div>
   </div>
 
   <!-- Stack Management -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('stack')">
     <div class="form-section__header" (click)="toggleSection('stack')">
-      <i class="pi" [class.pi-chevron-right]="!isExpanded('stack')" [class.pi-chevron-down]="isExpanded('stack')"></i>
+      <i class="pi pi-chevron-right"></i>
       <span>Stack Management</span>
     </div>
-    @if (isExpanded('stack')) {
+    <div class="form-section__collapse">
       <div class="form-section__body">
         <div class="form-grid">
           <div class="form-row">
@@ -137,16 +137,16 @@
           <label for="cleanupOnFailure">Cleanup on Failure</label>
         </div>
       </div>
-    }
+    </div>
   </div>
 
   <!-- Health Checks -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('health')">
     <div class="form-section__header" (click)="toggleSection('health')">
-      <i class="pi" [class.pi-chevron-right]="!isExpanded('health')" [class.pi-chevron-down]="isExpanded('health')"></i>
+      <i class="pi pi-chevron-right"></i>
       <span>Health Checks</span>
     </div>
-    @if (isExpanded('health')) {
+    <div class="form-section__collapse">
       <div class="form-section__body">
         <div class="form-row form-row--toggle">
           <p-toggleswitch [ngModel]="healthEnabled()"
@@ -243,16 +243,16 @@
           }
         </div>
       </div>
-    }
+    </div>
   </div>
 
   <!-- Hooks -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('hooks')">
     <div class="form-section__header" (click)="toggleSection('hooks')">
-      <i class="pi" [class.pi-chevron-right]="!isExpanded('hooks')" [class.pi-chevron-down]="isExpanded('hooks')"></i>
+      <i class="pi pi-chevron-right"></i>
       <span>Hooks</span>
     </div>
-    @if (isExpanded('hooks')) {
+    <div class="form-section__collapse">
       <div class="form-section__body">
         <div class="form-row form-row--toggle">
           <p-toggleswitch [ngModel]="hooksEnabled()"
@@ -301,16 +301,16 @@
                     style="width: 100%;"></textarea>
         </div>
       </div>
-    }
+    </div>
   </div>
 
   <!-- Templates -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('templates')">
     <div class="form-section__header" (click)="toggleSection('templates')">
-      <i class="pi" [class.pi-chevron-right]="!isExpanded('templates')" [class.pi-chevron-down]="isExpanded('templates')"></i>
+      <i class="pi pi-chevron-right"></i>
       <span>Templates</span>
     </div>
-    @if (isExpanded('templates')) {
+    <div class="form-section__collapse">
       <div class="form-section__body">
         <div class="form-subsection">
           <div class="form-subsection__header">
@@ -358,6 +358,6 @@
           }
         </div>
       </div>
-    }
+    </div>
   </div>
 </div>
