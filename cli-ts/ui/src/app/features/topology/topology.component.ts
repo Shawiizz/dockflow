@@ -267,18 +267,29 @@ export class TopologyComponent implements OnInit, OnDestroy {
             c => c.serviceName === serviceName && c.serverName === serverName && !c.implicit
           );
           if (!exists) {
-            // Remove implicit connections for this service (it now has explicit ones)
-            this.connections.update(c => [
-              ...c.filter(x => !(x.serviceName === serviceName && x.implicit)),
-              {
-                serviceName,
-                serverName,
-                constraintType: 'hostname' as const,
-                constraintValue: serverName,
-                implicit: false,
-              },
-            ]);
-            this.dirty.set(true);
+            // Block if service is already implicitly connected to all servers (only 1 server)
+            const serviceConns = this.connections().filter(c => c.serviceName === serviceName);
+            const allImplicit = serviceConns.every(c => c.implicit);
+            if (allImplicit && serviceConns.length > 0 && this.servers().length === 1) {
+              this.messageService.add({
+                severity: 'info',
+                summary: 'No constraint needed',
+                detail: `${serviceName} is already deployed on all servers by default.`,
+              });
+            } else {
+              // Remove implicit connections for this service (it now has explicit ones)
+              this.connections.update(c => [
+                ...c.filter(x => !(x.serviceName === serviceName && x.implicit)),
+                {
+                  serviceName,
+                  serverName,
+                  constraintType: 'hostname' as const,
+                  constraintValue: serverName,
+                  implicit: false,
+                },
+              ]);
+              this.dirty.set(true);
+            }
           }
         }
       }
@@ -295,9 +306,29 @@ export class TopologyComponent implements OnInit, OnDestroy {
 
   removeConnection(conn: TopologyConnection) {
     if (conn.implicit) return;
-    this.connections.update(c => c.filter(
-      x => !(x.serviceName === conn.serviceName && x.serverName === conn.serverName)
-    ));
+    this.connections.update(c => {
+      const remaining = c.filter(
+        x => !(x.serviceName === conn.serviceName && x.serverName === conn.serverName),
+      );
+      // If this service has no more explicit connections, restore implicit ones
+      const hasExplicit = remaining.some(
+        x => x.serviceName === conn.serviceName && !x.implicit,
+      );
+      if (!hasExplicit) {
+        const servers = this.servers();
+        return [
+          ...remaining,
+          ...servers.map(srv => ({
+            serviceName: conn.serviceName,
+            serverName: srv.name,
+            constraintType: 'role' as const,
+            constraintValue: 'any',
+            implicit: true,
+          })),
+        ];
+      }
+      return remaining;
+    });
     this.dirty.set(true);
   }
 

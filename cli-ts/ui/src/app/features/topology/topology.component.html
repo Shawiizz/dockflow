@@ -55,7 +55,7 @@
             <!-- Existing connections -->
             @for (cp of connectionPaths(); track cp.conn.serviceName + ':' + cp.conn.serverName) {
               <g [class]="cp.conn.implicit ? 'topology-connection topology-connection--implicit' : 'topology-connection'"
-                 (click)="removeConnection(cp.conn)">
+                 (click)="cp.conn.implicit ? null : removeConnection(cp.conn)">
                 <path
                   class="topology-connection__hit"
                   [attr.d]="cp.path"
