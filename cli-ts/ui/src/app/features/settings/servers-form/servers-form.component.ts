@@ -17,6 +17,11 @@ interface ServerEntry {
   env: { key: string; value: string }[];
 }
 
+interface ServerErrors {
+  name?: string;
+  tags?: string;
+}
+
 interface EnvTagEntry {
   tag: string;
   vars: { key: string; value: string }[];
@@ -45,6 +50,7 @@ export class ServersFormComponent {
   defaultUser = signal('dockflow');
   defaultPort = signal(22);
   servers = signal<ServerEntry[]>([]);
+  serverErrors = signal<ServerErrors[]>([]);
   envTags = signal<EnvTagEntry[]>([]);
   newTagName = signal('');
 
@@ -137,8 +143,20 @@ export class ServersFormComponent {
 
   onFieldChange() {
     const data = this.buildData();
+    if (!this.validate()) return;
     this.dataChange.emit(data);
     this.dirtyChange.emit(JSON.stringify(data) !== this.originalJson);
+  }
+
+  private validate(): boolean {
+    const errors: ServerErrors[] = this.servers().map(srv => {
+      const e: ServerErrors = {};
+      if (!srv.name.trim()) e.name = 'Name is required';
+      if (srv.tags.length === 0) e.tags = 'At least one tag is required';
+      return e;
+    });
+    this.serverErrors.set(errors);
+    return errors.every(e => !e.name && !e.tags);
   }
 
   toggleSection(section: string) {
@@ -153,7 +171,7 @@ export class ServersFormComponent {
     this.servers.update(s => [...s, {
       name: '', role: 'manager', host: '', tags: [], user: '', port: null, env: [],
     }]);
-    this.onFieldChange();
+    this.validate();
   }
 
   removeServer(index: number) {

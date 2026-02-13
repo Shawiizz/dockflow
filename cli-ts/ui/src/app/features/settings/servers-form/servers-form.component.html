@@ -50,7 +50,11 @@
                   <label>Name *</label>
                   <input type="text" pInputText [ngModel]="srv.name"
                          (ngModelChange)="updateServer(i, 'name', $event)"
-                         placeholder="main-server" style="width: 100%;">
+                         placeholder="main-server" style="width: 100%;"
+                         [class.p-invalid]="serverErrors()[i]?.name">
+                  @if (serverErrors()[i]?.name) {
+                    <small class="field-error">{{ serverErrors()[i]!.name }}</small>
+                  }
                 </div>
                 <div class="form-row">
                   <label>Role</label>
@@ -96,8 +100,12 @@
                   <input type="text" pInputText #tagInput
                          placeholder="Add tag..."
                          style="width: 100%;"
+                         [class.p-invalid]="serverErrors()[i]?.tags"
                          (keydown.enter)="addTag(i, tagInput)">
                 </div>
+                @if (serverErrors()[i]?.tags) {
+                  <small class="field-error">{{ serverErrors()[i]!.tags }}</small>
+                }
               </div>
 
               <!-- Server Env Vars -->

@@ -64,7 +64,10 @@ export class SettingsComponent implements OnInit {
         this.configFormError.set(null);
         return this.apiService.updateConfig(data).pipe(
           catchError(err => {
-            const errorMsg = err.error?.error || 'Failed to save config';
+            const body = err.error;
+            const errorMsg = body?.errors?.[0]?.message
+              || body?.error
+              || 'Failed to save config';
             this.configFormError.set(errorMsg);
             this.messageService.add({ severity: 'error', summary: 'Error', detail: errorMsg });
             return of(null);
@@ -82,7 +85,10 @@ export class SettingsComponent implements OnInit {
         this.serversFormError.set(null);
         return this.apiService.updateServersConfig(data).pipe(
           catchError(err => {
-            const errorMsg = err.error?.error || 'Failed to save servers config';
+            const body = err.error;
+            const errorMsg = body?.errors?.[0]?.message
+              || body?.error
+              || 'Failed to save servers config';
             this.serversFormError.set(errorMsg);
             this.messageService.add({ severity: 'error', summary: 'Error', detail: errorMsg });
             return of(null);
