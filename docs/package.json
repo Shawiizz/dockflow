@@ -4,8 +4,9 @@
   "description": "Documentation for Dockflow",
   "scripts": {
     "dev": "next dev",
-    "build": "next build && pagefind --site .next/server/app --output-path public/_pagefind",
+    "build": "next build && npx tsx scripts/generate-llms-txt.ts && pagefind --site .next/server/app --output-path public/_pagefind",
     "postbuild": "pagefind --site .next/server/app --output-path public/_pagefind",
+    "generate:llms": "npx tsx scripts/generate-llms-txt.ts",
     "start": "next start"
   },
   "dependencies": {

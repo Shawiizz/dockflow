@@ -4,9 +4,25 @@ import { Callout } from 'nextra/components'
 
 Dockflow can render any file in your project with Jinja2 templating before deployment. This is useful for injecting environment-specific configuration values into files.
 
-## Configuration
+## Automatic Rendering
 
-Define the files to render in `.dockflow/config.yml`:
+All files inside `.dockflow/` are **automatically rendered** with Jinja2 during deployment. No configuration is needed.
+
+This means you can use Jinja2 variables directly in your `docker-compose.yml`, Dockerfiles, and any other file inside `.dockflow/`:
+
+```yaml
+# .dockflow/docker/docker-compose.yml — automatically rendered
+services:
+  app:
+    environment:
+      DOMAIN: {{ current.env.domain_name }}
+    ports:
+      - {{ current.env.app_port }}:3000
+```
+
+## Custom Templates
+
+For files **outside** `.dockflow/`, define them in `.dockflow/config.yml`. Paths are **relative to the project root**:
 
 ```yaml
 templates:
@@ -38,27 +54,15 @@ templates:
 
 ## Available Variables
 
-All Ansible variables are available in your templates (always lowercase):
-
 ### Basic Variables
 
 | Variable | Description | Example |
 |----------|-------------|--------|
 | `{{ env }}` | Target environment | `production` |
 | `{{ version }}` | Deployment version | `1.2.3` |
-| `{{ config.project_name }}` | Project name from config | `my-app` |
-| `{{ stack_name }}` | Swarm stack name | `my-app-production` |
 | `{{ branch_name }}` | Git branch name | `main` |
-
-### Config (`{{ config }}`)
-
-The `config` object contains all values from your `config.yml`:
-
-```yaml
-# In your template
-database: {{ config.project_name }}-db
-replicas: {{ config.options.replicas | default(2) }}
-```
+| `{{ server_name }}` | Current server name | `manager_1` |
+| `{{ config.project_name }}` | Project name from config | `my-app` |
 
 ### Current Server (`{{ current }}`)
 
@@ -73,6 +77,19 @@ The `current` object contains information about the server being deployed to:
 | `{{ current.role }}` | Server role | `manager` or `worker` |
 | `{{ current.tags }}` | Server tags | `['production']` |
 | `{{ current.env.my_var }}` | Environment variable (lowercase key) | `my-value` |
+
+<Callout type="warning">
+**All environment variable keys must be lowercase in templates.** Even if you define `DB_HOST` in `servers.yml`, you must reference it as `{{ current.env.db_host }}`.
+</Callout>
+
+### Config (`{{ config }}`)
+
+The `config` object contains all values from your `config.yml`:
+
+```yaml
+# In your template
+database: {{ config.project_name }}-db
+```
 
 ### All Servers (`{{ servers }}`)
 
@@ -103,10 +120,6 @@ The `cluster` object provides aggregate information about your deployment:
 | `{{ cluster.managers }}` | List of manager IPs | `['192.168.1.10']` |
 | `{{ cluster.workers }}` | List of worker IPs | `['192.168.1.11', '192.168.1.12']` |
 
-<Callout type="warning">
-**All variable names must be lowercase.** Even if you define `DB_HOST` in `servers.yml` or CI secrets, you must reference it as `{{ db_host }}` in your templates.
-</Callout>
-
 ## Examples
 
 ### Application Configuration
@@ -114,11 +127,11 @@ The `cluster` object provides aggregate information about your deployment:
 ```yaml
 # config/application.yml
 database:
-  host: "{{ db_host }}"
-  port: {{ db_port | default(5432) }}
-  name: "{{ db_name }}"
-  username: "{{ db_user }}"
-  password: "{{ db_password }}"
+  host: "{{ current.env.db_host }}"
+  port: {{ current.env.db_port | default(5432) }}
+  name: "{{ current.env.db_name }}"
+  username: "{{ current.env.db_user }}"
+  password: "{{ current.env.db_password }}"
 
 server:
   environment: "{{ env }}"
@@ -129,13 +142,13 @@ server:
 ### Nginx Configuration
 
 ```nginx
-# nginx/nginx.conf
+# .dockflow/templates/nginx/myapp.conf.j2
 server {
     listen 80;
-    server_name {{ domain }};
+    server_name {{ current.env.domain_name }};
 
     location / {
-        proxy_pass http://{{ project_name }}_app:3000;
+        proxy_pass http://127.0.0.1:{{ current.env.app_port }};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
@@ -148,7 +161,7 @@ server {
 #!/bin/bash
 # scripts/init.sh
 
-echo "Initializing {{ project_name }} v{{ version }}"
+echo "Initializing {{ config.project_name }} v{{ version }}"
 echo "Environment: {{ env }}"
 
 {% if env == 'production' %}
@@ -162,11 +175,12 @@ echo "Running in development mode"
 
 Templates are rendered early in the deployment process:
 
-1. Load configuration (`config.yml`)
-2. Render Docker templates (`.dockflow/docker/*`)
-3. **Render custom templates** ← your files
-4. Build Docker images
-5. Deploy to server
+1. Load configuration (`config.yml`, `servers.yml`)
+2. **Render all files in `.dockflow/`** (docker-compose, Dockerfiles, etc.)
+3. **Render custom templates** from `config.yml`
+4. Auto-tag Docker images in `docker-compose.yml` (if `image_auto_tag` is enabled)
+5. Build Docker images
+6. Deploy to swarm
 
 <Callout type="info">
 Templates are rendered **before** the Docker build, so the rendered files will be included in your Docker images if they are in the build context.
@@ -197,8 +211,8 @@ Use Jinja2 filters to provide fallback values:
 
 ```yaml
 database:
-  pool_size: {{ db_pool_size | default(10) }}
-  timeout: {{ db_timeout | default(30) }}
+  pool_size: {{ current.env.db_pool_size | default(10) }}
+  timeout: {{ current.env.db_timeout | default(30) }}
 ```
 
 ## Advanced Examples
@@ -212,15 +226,15 @@ Generate Nginx upstream configuration from all servers tagged as `app`:
 upstream app_cluster {
   {% for name, srv in servers.items() %}
     {% if 'app' in srv.tags %}
-    server {{ srv.host }}:{{ srv.env.APP_PORT | default(3000) }} weight=1;
+    server {{ srv.host }}:{{ srv.env.app_port | default(3000) }} weight=1;
     {% endif %}
   {% endfor %}
 }
 
 server {
     listen 80;
-    server_name {{ domain }};
-    
+    server_name {{ current.env.domain_name }};
+
     location / {
         proxy_pass http://app_cluster;
     }
@@ -251,13 +265,13 @@ cluster:
   node_name: "{{ current.name }}"
   node_role: "{{ current.role }}"
   total_nodes: {{ cluster.size }}
-  
+
   {% if cluster.manager_count > 1 %}
   high_availability: true
   {% else %}
   high_availability: false
   {% endif %}
-  
+
   peers:
     {% for host in cluster.managers %}
     - "{{ host }}:2377"

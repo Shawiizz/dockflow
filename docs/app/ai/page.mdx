@@ -1,0 +1,75 @@
+# AI Integration
+
+import { Callout, Tabs } from 'nextra/components'
+
+Dockflow provides first-class support for AI assistants through the [llms.txt standard](https://llmstxt.org/) and a dedicated [MCP server](https://modelcontextprotocol.io/).
+
+## llms.txt
+
+The documentation is available in machine-readable format following the llms.txt standard:
+
+| File | Description | URL |
+|------|-------------|-----|
+| `llms.txt` | Concise index with links and descriptions for each page | [`/llms.txt`](/llms.txt) |
+| `llms-full.txt` | Complete documentation concatenated into a single file | [`/llms-full.txt`](/llms-full.txt) |
+
+These files are generated automatically at build time from the documentation sources.
+
+<Callout type="info">
+  You can point any AI assistant to `https://your-domain/llms.txt` to give it context about Dockflow.
+</Callout>
+
+## MCP Server
+
+The `@dockflow/mcp` package provides a [Model Context Protocol](https://modelcontextprotocol.io/) server that exposes Dockflow documentation as tools for AI assistants.
+
+### Installation
+
+<Tabs items={['Claude Code', 'Claude Desktop', 'Other MCP clients']}>
+  <Tabs.Tab>
+    ```bash
+    claude mcp add dockflow -- npx -y @dockflow/mcp
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Add to your `claude_desktop_config.json`:
+
+    ```json
+    {
+      "mcpServers": {
+        "dockflow": {
+          "command": "npx",
+          "args": ["-y", "@dockflow/mcp"]
+        }
+      }
+    }
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Run the server via stdio:
+
+    ```bash
+    npx @dockflow/mcp
+    ```
+  </Tabs.Tab>
+</Tabs>
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `list_pages` | List all available documentation pages with descriptions |
+| `search_docs` | Search documentation for a specific topic or keyword |
+| `get_page` | Get the full content of a specific documentation page |
+| `get_config_reference` | Get configuration reference (servers.yml, config.yml, etc.) |
+| `get_cli_commands` | Get the full CLI command reference |
+
+### Example Usage
+
+Once configured, you can ask your AI assistant questions like:
+
+- *"How do I configure multi-host deployment with Dockflow?"*
+- *"What are the available CLI commands?"*
+- *"Show me the accessories configuration reference"*
+
+The MCP server fetches documentation from the live site and caches it in memory for fast responses.

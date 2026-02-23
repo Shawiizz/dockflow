@@ -12,5 +12,6 @@ export default {
   deployment: 'Deployment',
   cli: 'CLI Commands',
   advanced: 'Advanced Usage',
+  ai: 'AI Integration',
   examples: 'Examples'
 }
