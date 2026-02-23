@@ -142,8 +142,8 @@ export class ServersFormComponent {
   }
 
   onFieldChange() {
-    const data = this.buildData();
     if (!this.validate()) return;
+    const data = this.buildData();
     this.dataChange.emit(data);
     this.dirtyChange.emit(JSON.stringify(data) !== this.originalJson);
   }

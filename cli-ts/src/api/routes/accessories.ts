@@ -169,7 +169,10 @@ async function getAccessoriesStatus(url: URL): Promise<Response> {
         if (replicasMatch) {
           acc.replicasRunning = parseInt(replicasMatch[1], 10);
           acc.replicasDesired = parseInt(replicasMatch[2], 10);
-          acc.status = acc.replicasRunning > 0 ? 'running' : 'stopped';
+          if (acc.replicasDesired === 0) acc.status = 'stopped';
+          else if (acc.replicasRunning === acc.replicasDesired) acc.status = 'running';
+          else if (acc.replicasRunning === 0) acc.status = 'stopped';
+          else acc.status = 'error';
         }
       }
     }
@@ -200,7 +203,7 @@ async function restartAccessory(name: string, url: URL): Promise<Response> {
   if (!accStackName) return errorResponse('Cannot determine accessories stack name', 500);
 
   try {
-    const result = await sshExec(conn, `docker service update --force ${accStackName}_${name}`);
+    const result = await sshExec(conn, `docker service update --force --detach ${accStackName}_${name}`);
     const success = result.exitCode === 0;
     return jsonResponse({
       success,
@@ -231,7 +234,7 @@ async function stopAccessory(name: string, url: URL): Promise<Response> {
   if (!accStackName) return errorResponse('Cannot determine accessories stack name', 500);
 
   try {
-    const result = await sshExec(conn, `docker service scale ${accStackName}_${name}=0`);
+    const result = await sshExec(conn, `docker service scale --detach ${accStackName}_${name}=0`);
     const success = result.exitCode === 0;
     return jsonResponse({
       success,
