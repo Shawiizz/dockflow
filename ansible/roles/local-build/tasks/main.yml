@@ -53,37 +53,45 @@
   delegate_to: localhost
 
 # Single image: run without backgrounding for real-time log streaming
-- name: Build Docker image (streaming)
+# Multiple images: parallel builds (output after completion)
+- name: Build Docker images
   shell: |
     set -e
-    echo "Building: {{ build_commands[0].tag }}"
 
+    build_image() {
+      local CONTEXT="$1" DOCKERFILE="$2" TAG="$3"
+      if [ -L "$CONTEXT" ]; then
+        docker build -f "$DOCKERFILE" -t "$TAG" "$CONTEXT"
+      else
+        local DF_NAME CTX_TAR EXCLUDE_FILE
+        DF_NAME=$(basename "$DOCKERFILE")
+        CTX_TAR=$(mktemp)
+        EXCLUDE_FILE=$(mktemp)
+        if [ -f "$CONTEXT/.dockerignore" ] || [ -L "$CONTEXT/.dockerignore" ]; then
+          grep -v '^\s*#' "$CONTEXT/.dockerignore" | grep -v '^\s*$' | grep -v '^!' > "$EXCLUDE_FILE" || true
+        fi
+        tar -chf "$CTX_TAR" --exclude-from="$EXCLUDE_FILE" -C "$CONTEXT" .
+        tar -uf "$CTX_TAR" -C "$(dirname "$DOCKERFILE")" "$DF_NAME"
+        docker build -f "$DF_NAME" -t "$TAG" - < "$CTX_TAR"
+        rm -f "$CTX_TAR" "$EXCLUDE_FILE"
+      fi
+    }
+
+    {% if build_commands | length == 1 %}
+    echo "Building: {{ build_commands[0].tag }}"
     START_TIME=$(date +%s)
-    docker build \
-      -f "{{ build_commands[0].dockerfile }}" \
-      -t "{{ build_commands[0].tag }}" \
-      "{{ build_commands[0].context }}"
+    build_image "{{ build_commands[0].context }}" "{{ build_commands[0].dockerfile }}" "{{ build_commands[0].tag }}"
     END_TIME=$(date +%s)
     echo ""
     echo "✓ Built {{ build_commands[0].tag }} in $((END_TIME - START_TIME))s"
-  delegate_to: localhost
-  register: build_results
-  when: build_commands is defined and build_commands | length == 1
-
-# Multiple images: parallel builds (output after completion)
-- name: Build Docker images locally (parallel)
-  shell: |
-    set -e
+    {% else %}
     PIDS=""
     TIMING_FILE=$(mktemp)
     {% for item in build_commands %}
     echo "Starting build: {{ item.tag }}"
     (
       START_TIME=$(date +%s)
-      docker build \
-        -f "{{ item.dockerfile }}" \
-        -t "{{ item.tag }}" \
-        "{{ item.context }}"
+      build_image "{{ item.context }}" "{{ item.dockerfile }}" "{{ item.tag }}"
       END_TIME=$(date +%s)
       DURATION=$((END_TIME - START_TIME))
       echo "{{ item.tag }}|$DURATION" >> "$TIMING_FILE"
@@ -91,14 +99,12 @@
     ) &
     PIDS="$PIDS $!"
     {% endfor %}
-    # Wait for all builds and capture exit codes
     FAILED=0
     for PID in $PIDS; do
       if ! wait $PID; then
         FAILED=1
       fi
     done
-    # Display timing summary
     echo ""
     echo "Build times:"
     sort -t'|' -k2 -n "$TIMING_FILE" | while IFS='|' read -r TAG TIME; do
@@ -106,9 +112,10 @@
     done
     rm -f "$TIMING_FILE"
     exit $FAILED
+    {% endif %}
   delegate_to: localhost
   register: build_results
-  when: build_commands is defined and build_commands | length > 1
+  when: build_commands is defined and build_commands | length > 0
 
 - name: Display build times
   debug:
