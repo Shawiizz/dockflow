@@ -2,7 +2,9 @@
 
 import { Callout } from 'nextra/components'
 
-Standard compose file with environment variables:
+Dockflow uses a standard `docker-compose.yml` file located at `.dockflow/docker/docker-compose.yml`. This file defines your application services, networks, and volumes.
+
+## Basic Structure
 
 ```yaml
 services:
@@ -10,7 +12,7 @@ services:
     image: my-app
     build:
       context: ../..
-      dockerfile: Dockerfile.app
+      dockerfile: Dockerfile
     ports:
       - "${APP_PORT}:3000"
     environment:
@@ -23,18 +25,240 @@ networks:
   app-network:
 ```
 
+The `build` section tells Dockflow how to build the image. The `context` is relative to the compose file location (`.dockflow/docker/`), so `../..` points to the project root.
+
+## Environment Variables
+
+Environment variables can come from multiple sources:
+
+- **`servers.yml`** — defined per-environment or per-server (see [Environment Files](/configuration/environment))
+- **CI secrets** — override `servers.yml` values
+- **Jinja2 templating** — all files in `.dockflow/` are automatically processed with Jinja2
+
+```yaml
+services:
+  app:
+    image: my-app
+    environment:
+      ENV: ${ENV}                        # Injected automatically
+      VERSION: ${VERSION}                # Injected automatically
+      DB_HOST: ${DB_HOST}                # From servers.yml or CI secrets
+      SECRET_KEY: ${SECRET_KEY}          # From servers.yml or CI secrets
+    ports:
+      - "${APP_PORT:-3000}:3000"         # With default value
+```
+
 <Callout type="info">
-  All files in `.dockflow/docker/` are automatically processed with Jinja2 templating.
+  `${ENV}` and `${VERSION}` are always available — Dockflow injects them automatically during deployment.
 </Callout>
 
-## Environment Isolation (Automatic)
+## Automatic Image Tagging
 
-By default, `${ENV}` and `${VERSION}` are automatically added to:
-- Image names
-- Container names
+Dockflow automatically appends the environment and version to image names for isolation:
 
-This ensures complete isolation between different environments (production, staging, etc.).
+```
+my-app → my-app-production:1.0.0
+my-app → my-app-staging:abc123
+```
+
+When a Docker registry is configured, the registry URL is also prepended:
+
+```
+my-app → ghcr.io/myorg/my-app-production:1.0.0
+```
+
+This behavior can be disabled with `image_auto_tag: false` in [config.yml](/configuration/config-file).
+
+## Deploy Configuration
+
+The `deploy` section controls how Docker Swarm manages your services. Dockflow injects sensible defaults, so you only need to specify what you want to override.
+
+### Default Values
+
+Dockflow automatically injects these deploy settings for application services:
+
+| Setting | Default |
+|---------|---------|
+| `update_config.parallelism` | 1 |
+| `update_config.delay` | 10s |
+| `update_config.failure_action` | rollback |
+| `update_config.monitor` | 30s |
+| `update_config.order` | start-first |
+| `update_config.max_failure_ratio` | 0 |
+| `rollback_config.parallelism` | 1 |
+| `rollback_config.delay` | 5s |
+| `rollback_config.monitor` | 15s |
+| `rollback_config.order` | start-first |
+
+Your compose file values always take priority over these defaults.
+
+### Replicas and Resources
+
+```yaml
+services:
+  app:
+    image: my-app
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+```
+
+### Custom Update Strategy
+
+```yaml
+services:
+  app:
+    image: my-app
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 30s
+        order: start-first        # Start new before stopping old (zero-downtime)
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        order: start-first
+```
+
+## Health Checks
+
+Docker health checks let Swarm verify that containers are actually working:
+
+```yaml
+services:
+  app:
+    image: my-app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+```
 
 <Callout type="info">
-  Volumes and networks are automatically prefixed with the stack name by Docker Swarm (e.g., `myapp-production_volname`), so they don't need additional environment suffixes.
+  Dockflow also supports its own [health check system](/configuration/config-file#health-checks) that runs external HTTP checks after deployment, independently of Docker's built-in health checks.
 </Callout>
+
+## Volumes
+
+```yaml
+services:
+  app:
+    image: my-app
+    volumes:
+      - app-data:/app/data
+      - /host/path:/container/path    # Bind mount
+
+volumes:
+  app-data:
+```
+
+<Callout type="info">
+  Volumes and networks are automatically prefixed with the stack name by Docker Swarm (e.g., `myapp-production_app-data`). No manual prefixing needed.
+</Callout>
+
+## Networks
+
+```yaml
+services:
+  app:
+    image: my-app
+    networks:
+      - frontend
+      - backend
+
+  db:
+    image: postgres:16
+    networks:
+      - backend
+
+networks:
+  frontend:
+  backend:
+```
+
+Dockflow automatically creates external networks and volumes before deploying the stack.
+
+## Placement Constraints
+
+For multi-host deployments, you can control which nodes run each service:
+
+```yaml
+services:
+  app:
+    image: my-app
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+          - node.hostname == server-1
+
+  worker:
+    image: my-worker
+    deploy:
+      placement:
+        constraints:
+          - node.role == worker
+```
+
+See [Multi-Host Deployment](/configuration/multi-host) for details on configuring a multi-node cluster.
+
+## Multi-Service Example
+
+```yaml
+services:
+  frontend:
+    image: my-frontend
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile.frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_URL: http://backend:3000
+    networks:
+      - frontend
+    deploy:
+      replicas: 2
+
+  backend:
+    image: my-backend
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile.backend
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_URL: redis://redis:6379
+    networks:
+      - frontend
+      - backend
+    deploy:
+      replicas: 3
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  frontend:
+  backend:
+```
+
+## Environment Isolation
+
+Dockflow ensures complete isolation between environments (production, staging, etc.) through:
+
+1. **Image names** — automatically tagged with environment and version (`my-app-production:1.0.0`)
+2. **Stack names** — each environment gets its own Swarm stack
+3. **Networks and volumes** — automatically prefixed with the stack name by Docker Swarm

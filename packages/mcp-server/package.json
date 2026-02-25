@@ -1,6 +1,6 @@
 {
   "name": "@dockflow-tools/mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server for Dockflow documentation - enables AI assistants to search and query Dockflow docs",
   "type": "module",
   "main": "dist/index.js",
@@ -10,12 +10,19 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public"
   },
-  "keywords": ["dockflow", "mcp", "model-context-protocol", "ai", "documentation"],
+  "keywords": [
+    "dockflow",
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "documentation"
+  ],
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.26.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "zod": "^3.24.0"
   },
   "devDependencies": {
@@ -23,7 +30,9 @@
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=18"
   }

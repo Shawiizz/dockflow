@@ -1,8 +1,358 @@
-# Real-World Examples
+# Examples
 
-Check out the `example/.dockflow/` folder for complete configuration examples.
+import { Callout, FileTree } from 'nextra/components'
 
-## Projects Using This Framework
+Complete configuration examples for common deployment scenarios.
+
+## Minimal Setup
+
+A single Node.js service deployed to one server.
+
+### Project Structure
+
+<FileTree>
+  <FileTree.Folder name=".dockflow" defaultOpen>
+    <FileTree.Folder name="docker" defaultOpen>
+      <FileTree.File name="docker-compose.yml" />
+      <FileTree.File name="Dockerfile" />
+    </FileTree.Folder>
+    <FileTree.File name="config.yml" />
+    <FileTree.File name="servers.yml" />
+  </FileTree.Folder>
+  <FileTree.File name=".env.dockflow" />
+</FileTree>
+
+### config.yml
+
+```yaml
+project_name: "my-app"
+```
+
+### servers.yml
+
+```yaml
+defaults:
+  user: dockflow
+  port: 22
+
+servers:
+  main_server:
+    role: manager
+    env:
+      APP_PORT: "3000"
+```
+
+### docker-compose.yml
+
+```yaml
+services:
+  app:
+    image: my-app
+    build:
+      context: ../..
+      dockerfile: .dockflow/docker/Dockerfile
+    ports:
+      - "${APP_PORT}:3000"
+    environment:
+      ENV: ${ENV}
+```
+
+### Dockerfile
+
+```dockerfile
+FROM node:22-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+CMD ["node", "dist/index.js"]
+```
+
+### Deploy
+
+```bash
+dockflow deploy production 1.0.0
+```
+
+## Full-Stack with Accessories
+
+A frontend + backend application with PostgreSQL and Redis as accessories.
+
+### Project Structure
+
+<FileTree>
+  <FileTree.Folder name=".dockflow" defaultOpen>
+    <FileTree.Folder name="docker" defaultOpen>
+      <FileTree.File name="docker-compose.yml" />
+      <FileTree.File name="accessories.yml" />
+      <FileTree.File name="Dockerfile.frontend" />
+      <FileTree.File name="Dockerfile.backend" />
+    </FileTree.Folder>
+    <FileTree.Folder name="hooks" defaultOpen>
+      <FileTree.File name="post-deploy.sh" />
+    </FileTree.Folder>
+    <FileTree.File name="config.yml" />
+    <FileTree.File name="servers.yml" />
+  </FileTree.Folder>
+</FileTree>
+
+### config.yml
+
+```yaml
+project_name: "my-stack"
+
+health_checks:
+  enabled: true
+  startup_delay: 15
+  on_failure: rollback
+  endpoints:
+    - name: "API Health"
+      url: "http://localhost:{{ lookup('env', 'API_PORT') }}/health"
+      expected_status: 200
+      timeout: 30
+      retries: 3
+```
+
+### servers.yml
+
+```yaml
+defaults:
+  user: dockflow
+
+servers:
+  main_server:
+    role: manager
+    env:
+      FRONTEND_PORT: "80"
+      API_PORT: "3000"
+      DB_HOST: "postgres"
+      DB_PASSWORD: "secret"
+      REDIS_URL: "redis://redis:6379"
+```
+
+### docker-compose.yml
+
+```yaml
+services:
+  frontend:
+    image: my-frontend
+    build:
+      context: ../..
+      dockerfile: .dockflow/docker/Dockerfile.frontend
+    ports:
+      - "${FRONTEND_PORT}:80"
+    environment:
+      API_URL: http://backend:3000
+    networks:
+      - frontend
+
+  backend:
+    image: my-backend
+    build:
+      context: ../..
+      dockerfile: .dockflow/docker/Dockerfile.backend
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_URL: ${REDIS_URL}
+    networks:
+      - frontend
+      - backend
+    deploy:
+      replicas: 2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  frontend:
+  backend:
+```
+
+### accessories.yml
+
+```yaml
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: myapp
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - backend
+
+volumes:
+  pgdata:
+
+networks:
+  backend:
+```
+
+### Deploy
+
+```bash
+# First deployment: deploy accessories, then app
+dockflow deploy production --all
+
+# Subsequent deployments: app only (accessories auto-detected)
+dockflow deploy production 1.0.0
+
+# Access database
+dockflow acc exec production postgres "psql -U postgres myapp"
+```
+
+## Multi-Host with Registry
+
+A high-availability setup with multiple servers and a Docker registry.
+
+### servers.yml
+
+```yaml
+defaults:
+  user: dockflow
+
+servers:
+  manager_1:
+    role: manager
+    tags: [primary]
+    env:
+      APP_PORT: "3000"
+      DOMAIN: "app.example.com"
+
+  worker_1:
+    role: worker
+    tags: [app]
+    env:
+      APP_PORT: "3000"
+
+  worker_2:
+    role: worker
+    tags: [app]
+    env:
+      APP_PORT: "3000"
+```
+
+### config.yml
+
+```yaml
+project_name: "my-ha-app"
+
+registry:
+  enabled: true
+  type: ghcr
+  url: ghcr.io
+  namespace: myorg
+  token: "{{ registry_token }}"
+  additional_tags:
+    - "latest"
+    - "{branch}-latest"
+
+health_checks:
+  enabled: true
+  startup_delay: 20
+  on_failure: rollback
+  endpoints:
+    - name: "App Health"
+      url: "http://localhost:{{ lookup('env', 'APP_PORT') }}/health"
+      expected_status: 200
+      retries: 5
+```
+
+### docker-compose.yml
+
+```yaml
+services:
+  app:
+    image: my-ha-app
+    build:
+      context: ../..
+      dockerfile: .dockflow/docker/Dockerfile
+    ports:
+      - "${APP_PORT}:3000"
+    environment:
+      ENV: ${ENV}
+      DOMAIN: ${DOMAIN}
+    deploy:
+      replicas: 3
+      placement:
+        constraints:
+          - node.role == worker
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+```
+
+### CI secrets
+
+```bash
+# One connection string per server
+PRODUCTION_MANAGER_1_CONNECTION=eyJob3N0Ijoi...
+PRODUCTION_WORKER_1_CONNECTION=eyJob3N0Ijoi...
+PRODUCTION_WORKER_2_CONNECTION=eyJob3N0Ijoi...
+
+# Registry token
+REGISTRY_TOKEN=ghp_xxxx
+```
+
+### Setup
+
+```bash
+# 1. Setup each server
+dockflow setup remote --host manager-ip --user root --key ~/.ssh/id_ed25519
+dockflow setup remote --host worker1-ip --user root --key ~/.ssh/id_ed25519
+dockflow setup remote --host worker2-ip --user root --key ~/.ssh/id_ed25519
+
+# 2. Initialize Swarm cluster
+dockflow setup swarm production
+
+# 3. Deploy
+dockflow deploy production 1.0.0
+```
+
+## Custom Templates
+
+Using Jinja2 templates to generate Nginx configuration per-server:
+
+### config.yml
+
+```yaml
+project_name: "my-app"
+
+templates:
+  - src: "nginx/app.conf.j2"
+    dest: "nginx/app.conf"
+```
+
+### nginx/app.conf.j2
+
+```nginx
+server {
+    listen 80;
+    server_name {{ current.env.domain }};
+
+    location / {
+        proxy_pass http://127.0.0.1:{{ current.env.app_port }};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+```
+
+See [Templates](/configuration/templates) for the full templating reference.
+
+## Projects Using Dockflow
 
 | Project | Description | Link |
 |---------|-------------|------|

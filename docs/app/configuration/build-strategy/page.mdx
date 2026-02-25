@@ -1,22 +1,50 @@
 # Build Strategy
 
-Dockflow supports different strategies for building and transferring Docker images.
+import { Callout } from 'nextra/components'
+
+Dockflow supports different strategies for building and transferring Docker images to your servers.
 
 ## Strategies Overview
 
-| Strategy | Build Location | Transfer Method |
-|----------|---------------|-----------------|
-| Local (default) | CI/CD runner | SSH streaming |
-| Local + Registry | CI/CD runner | Docker registry |
-| Remote | Server | None |
+| Strategy | Build Location | Transfer Method | Best For |
+|----------|---------------|-----------------|----------|
+| Local (default) | CI/CD runner | SSH streaming | Single-node, small images |
+| Local + Registry | CI/CD runner | Docker registry | Multi-node Swarm clusters |
+| Remote | Target server | None (built in place) | Large contexts, slow networks |
 
-## Local Build
+## Local Build (Default)
 
-By default, images are built in your CI/CD pipeline and transferred to the server via SSH. No additional configuration is required.
+Images are built in your CI/CD pipeline and transferred to the server via SSH. No additional configuration required.
+
+**How it works:**
+1. Dockflow parses `docker-compose.yml` to extract build commands
+2. Images are built locally (in parallel if multiple services)
+3. Images are streamed to all Swarm nodes via SSH:
+   ```
+   docker save IMAGE | gzip -1 | ssh user@host "gunzip | docker load"
+   ```
+
+This is the simplest strategy and works well for single-node deployments or small clusters.
+
+<Callout type="info">
+  Multiple images are built in parallel automatically. Build times are displayed per-service after completion.
+</Callout>
 
 ## Registry Build
 
-For multi-node Swarm clusters, use a Docker registry so worker nodes can pull images. See [Docker Registry](/configuration/registry) for configuration.
+For multi-node Swarm clusters, use a Docker registry so all nodes can pull images independently. This avoids streaming large images over SSH to each node.
+
+**How it works:**
+1. Images are built locally (same as default)
+2. Images are pushed to your configured registry
+3. During `docker stack deploy`, each Swarm node pulls the image from the registry
+
+See [Docker Registry](/configuration/registry) for full configuration (GHCR, GitLab, Docker Hub, self-hosted).
+
+**When to use:**
+- Multi-node Swarm clusters (workers need to pull images)
+- When you want image versioning in a registry
+- CI/CD pipelines with native registry support
 
 ## Remote Build
 
@@ -28,6 +56,65 @@ options:
   remote_build: true
 ```
 
-This clones your repository on the server and builds locally. Useful for large images or slow network connections.
+**How it works:**
+1. Dockflow clones your repository on the target server (supports Git token authentication)
+2. Images are built directly on the server
+3. No image transfer needed — images are already where they need to be
 
-For private repositories, add a `GIT_TOKEN` secret to your CI/CD environment.
+For private repositories, add a `GIT_TOKEN` secret to your CI/CD environment. Dockflow auto-constructs authenticated URLs for GitHub and GitLab.
+
+**When to use:**
+- Large build contexts that would be slow to transfer
+- Slow network connections between CI/CD and server
+- When the server has more build resources than your CI runner
+
+<Callout type="warning">
+  Remote builds prune the Docker builder cache after each build to free disk space. Docker's layer cache still works within a single build but is not preserved across deployments.
+</Callout>
+
+## Trade-Offs
+
+| | Local | Local + Registry | Remote |
+|---|---|---|---|
+| **Setup complexity** | None | Registry config needed | Git access on server |
+| **Network usage** | SSH stream per node | Single push, nodes pull | Git clone only |
+| **Build cache** | Full local cache | Full local cache | Pruned between deploys |
+| **Multi-node** | Streaming to each node | Native Swarm pull | Streaming to workers |
+| **CI resources** | Needs Docker on runner | Needs Docker on runner | Minimal CI resources |
+| **Private repos** | N/A | N/A | Needs `GIT_TOKEN` |
+
+## Build-Only Mode
+
+Use `dockflow build` to build images without deploying:
+
+```bash
+dockflow build production                 # Build all services
+dockflow build production --services app  # Build specific service
+dockflow build production --push          # Build and push to registry
+```
+
+This is useful for validating builds in CI before deploying, or for pre-building images.
+
+## Docker Cache
+
+Docker caches image layers by default. When nothing changes in your source code or Dockerfile, subsequent builds reuse cached layers and complete in seconds.
+
+To maximize cache efficiency:
+- Order Dockerfile instructions from least to most frequently changing
+- Copy dependency files (`package.json`, `requirements.txt`) before source code
+- Use multi-stage builds to separate build and runtime dependencies
+
+```dockerfile
+# Example: good cache utilization
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json ./    # Changes rarely
+RUN npm ci                                # Cached if lockfile unchanged
+COPY . .                                  # Changes often
+RUN npm run build
+
+FROM node:20-alpine
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/node_modules ./node_modules
+CMD ["node", "dist/index.js"]
+```

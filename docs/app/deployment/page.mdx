@@ -26,9 +26,15 @@ If health checks fail, Dockflow automatically rolls back to the previous working
 
 ## Triggering a Deployment
 
-Deployments are triggered through your CI/CD pipeline:
+Deployments can be triggered via CI/CD or manually with the CLI:
 
-**Tag-based deployment:**
+**Manual deployment:**
+
+```bash
+dockflow deploy production 1.0.0
+```
+
+**Tag-based deployment (CI/CD):**
 Push a git tag to deploy that version.
 
 ```bash
@@ -36,11 +42,11 @@ git tag 1.0.0
 git push origin 1.0.0
 ```
 
-**Branch-based deployment:**
+**Branch-based deployment (CI/CD):**
 Push to a branch to deploy the latest commit from that branch.
 
 ```bash
 git push origin main
 ```
 
-The deployment environment is determined by your configuration in `.dockflow/config.yml`.
+The environment name (e.g., `production`, `staging`) corresponds to the server tags defined in your `servers.yml`.

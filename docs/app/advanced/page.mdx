@@ -1,60 +1,184 @@
 # Advanced Usage
 
-import { FileTree } from 'nextra/components'
+import { Callout } from 'nextra/components'
 
-## Custom Templates
+Advanced deployment patterns and operational guides.
 
-Add custom configs in `.dockflow/templates/`:
+## Zero-Downtime Deployments
 
-<FileTree>
-  <FileTree.Folder name=".dockflow" defaultOpen>
-    <FileTree.Folder name="templates" defaultOpen>
-      <FileTree.Folder name="nginx">
-        <FileTree.File name="my-app.conf.j2" />
-      </FileTree.Folder>
-      <FileTree.Folder name="services">
-        <FileTree.File name="my-service.service.j2" />
-        <FileTree.File name="my-service.mount.j2" />
-      </FileTree.Folder>
-    </FileTree.Folder>
-  </FileTree.Folder>
-</FileTree>
+Dockflow uses Docker Swarm's rolling update mechanism. With the default `start-first` order, new containers are started before old ones are stopped:
 
-All templates support **Jinja2 syntax** and have access to environment variables.
-
-### Custom Nginx Configuration
-
-**Example:** Create `.dockflow/templates/nginx/my-app.conf.j2`
-
-```nginx
-server {
-    listen 80;
-    server_name {{ domain }};
-
-    location / {
-        proxy_pass http://localhost:{{ app_port }};
-        proxy_set_header Host $host;
-    }
-}
+```yaml
+# docker-compose.yml
+services:
+  app:
+    image: my-app
+    deploy:
+      replicas: 2
+      update_config:
+        order: start-first          # Start new before killing old
+        failure_action: rollback    # Auto-rollback on failure
+        monitor: 30s                # Watch for 30s after each update
 ```
 
-### Custom Systemd Service
+Combined with [health checks](/configuration/config-file), Dockflow can automatically rollback if the new version fails:
 
-**Example:** Create `.dockflow/templates/services/my-worker.service.j2`
-
-```ini
-[Unit]
-Description={{ service_description }}
-After=docker.service
-
-[Service]
-Type=simple
-ExecStart={{ script_path }}
-Environment="ENV={{ env }}"
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
+```yaml
+# config.yml
+health_checks:
+  enabled: true
+  startup_delay: 15
+  on_failure: rollback
+  endpoints:
+    - name: "Health"
+      url: "http://localhost:3000/health"
+      expected_status: 200
+      retries: 5
+      retry_delay: 5
 ```
 
-For custom scripts that run during deployment, see [Hooks](/configuration/hooks).
+## Deployment Locks
+
+Prevent concurrent deployments with locks:
+
+```bash
+# Lock an environment (e.g., during maintenance)
+dockflow lock acquire production -m "Database migration in progress"
+
+# Check lock status
+dockflow lock status production
+
+# Release when done
+dockflow lock release production
+```
+
+The `dockflow deploy --force` flag overrides locks when needed.
+
+## Release Management
+
+Dockflow keeps previous releases for rollback. Each release stores the compose file and metadata (version, timestamp, branch).
+
+```yaml
+# config.yml
+stack_management:
+  keep_releases: 3          # Number of releases to keep (default: 3)
+  cleanup_on_failure: true   # Clean up failed deployment images
+```
+
+Older releases and their Docker images are automatically cleaned up after deployment.
+
+## Selective Deployment
+
+Deploy specific services without affecting others:
+
+```bash
+# Deploy only the backend service
+dockflow deploy production --services backend
+
+# Deploy frontend and worker
+dockflow deploy production --services frontend,worker
+
+# Skip the build phase (use existing images)
+dockflow deploy production --skip-build
+```
+
+## Debug Deployments
+
+When something goes wrong:
+
+```bash
+# 1. Check what's running
+dockflow ps production
+dockflow details production
+
+# 2. Diagnose issues (shows why containers aren't starting)
+dockflow diagnose production
+
+# 3. Check logs
+dockflow logs production app -f
+dockflow logs production --since 10m
+
+# 4. Shell into a container
+dockflow bash production app
+
+# 5. SSH to the server for manual inspection
+dockflow ssh production "docker service ls"
+
+# 6. Check deployment history
+dockflow audit production
+dockflow metrics production --history
+```
+
+Use `--debug` on deploy for verbose Ansible output:
+
+```bash
+dockflow deploy production --debug
+```
+
+## Custom Server Templates
+
+Dockflow can deploy Nginx configs, systemd services, and scripts to your servers via `.dockflow/templates/`. These files are rendered with Jinja2 and synced during deployment.
+
+```
+.dockflow/templates/
+  nginx/          → /etc/nginx/sites-enabled/
+  services/       → /etc/systemd/system/
+  scripts/        → /opt/dockflow/scripts/
+```
+
+See [Templates](/configuration/templates) for the full variable reference and examples.
+
+## CI/CD Integration
+
+### GitHub Actions
+
+```yaml
+# .github/workflows/deploy.yml
+name: Deploy
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Dockflow
+        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | bash
+      - name: Deploy
+        env:
+          PRODUCTION_MAIN_SERVER_CONNECTION: ${{ secrets.PRODUCTION_MAIN_SERVER_CONNECTION }}
+        run: dockflow deploy production ${GITHUB_REF_NAME}
+```
+
+### GitLab CI
+
+```yaml
+# .gitlab-ci.yml
+deploy:
+  stage: deploy
+  script:
+    - curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | bash
+    - dockflow deploy production $CI_COMMIT_TAG
+  only:
+    - tags
+```
+
+<Callout type="info">
+  `dockflow init github` or `dockflow init gitlab` generates these CI config files automatically.
+</Callout>
+
+## Hooks
+
+Run custom scripts at key points in the deployment:
+
+```
+.dockflow/hooks/
+  pre-build.sh     # Before Docker build
+  post-build.sh    # After Docker build
+  pre-deploy.sh    # Before stack deployment
+  post-deploy.sh   # After stack deployment
+```
+
+Hooks support Jinja2 templating and have access to all environment variables. See [Hooks](/configuration/hooks) for details.
