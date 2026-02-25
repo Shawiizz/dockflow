@@ -7,7 +7,7 @@
  * Run: npx tsx scripts/generate-llms-txt.ts
  */
 
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -202,6 +202,7 @@ function generateFull(): string {
 const index = generateIndex();
 const full = generateFull();
 
+mkdirSync(PUBLIC_DIR, { recursive: true });
 writeFileSync(join(PUBLIC_DIR, 'llms.txt'), index, 'utf-8');
 writeFileSync(join(PUBLIC_DIR, 'llms-full.txt'), full, 'utf-8');
 
