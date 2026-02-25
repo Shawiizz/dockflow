@@ -4,7 +4,7 @@
 
 import * as fs from 'fs';
 import ora from 'ora';
-import { printHeader, printSection, printError, printSuccess, printInfo, colors } from '../../utils/output';
+import { printHeader, printSection, printError, printSuccess, printInfo, printBlank, printDim, colors } from '../../utils/output';
 import { sshExec, sshExecStream, testConnection } from '../../utils/ssh';
 import type { ConnectionInfo } from '../../types';
 import { DOCKFLOW_RELEASE_URL } from './constants';
@@ -30,7 +30,7 @@ async function detectRemoteArch(conn: ConnectionInfo): Promise<'x64' | 'arm64'> 
  */
 export async function promptRemoteConnection(): Promise<RemoteSetupOptions | null> {
   printSection('Remote Connection');
-  console.log('');
+  printBlank();
   
   const choice = await selectMenu('How do you want to connect?', [
     'Enter connection details manually (host, user, password/key)',
@@ -43,7 +43,7 @@ export async function promptRemoteConnection(): Promise<RemoteSetupOptions | nul
   }
   
   if (choice === 1) {
-    console.log('');
+    printBlank();
     const connStr = await prompt('Paste your connection string');
     if (!connStr) {
       printError('Connection string is required');
@@ -65,7 +65,7 @@ export async function promptRemoteConnection(): Promise<RemoteSetupOptions | nul
     };
   }
   
-  console.log('');
+  printBlank();
   const host = await prompt('Server IP or hostname');
   if (!host) {
     printError('Host is required');
@@ -81,7 +81,7 @@ export async function promptRemoteConnection(): Promise<RemoteSetupOptions | nul
     return null;
   }
   
-  console.log('');
+  printBlank();
   const authChoice = await selectMenu('Authentication method', [
     'Password',
     'SSH private key file',
@@ -106,7 +106,7 @@ export async function promptRemoteConnection(): Promise<RemoteSetupOptions | nul
     }
     privateKey = fs.readFileSync(privateKeyPath, 'utf-8');
   } else {
-    console.log(colors.dim('Paste your private key, then press Enter twice:'));
+    printDim('Paste your private key, then press Enter twice:');
     privateKey = await promptMultiline();
     if (!privateKey || !privateKey.includes('PRIVATE KEY')) {
       printError('Invalid SSH private key');
@@ -122,9 +122,9 @@ export async function promptRemoteConnection(): Promise<RemoteSetupOptions | nul
  */
 export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   printHeader('Remote Setup');
-  console.log('');
+  printBlank();
   console.log(colors.info('Target:'), `${opts.user}@${opts.host}:${opts.port}`);
-  console.log('');
+  printBlank();
   
   const testSpinner = ora('Testing SSH connection...').start();
   
@@ -197,10 +197,10 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   
   downloadSpinner.succeed('Dockflow CLI downloaded');
   
-  console.log('');
+  printBlank();
   printSection('Running setup on remote server');
-  console.log(colors.dim('─'.repeat(60)));
-  console.log('');
+  printDim('─'.repeat(60));
+  printBlank();
   
   const setupCmd = `${remotePath} setup`;
   
@@ -210,8 +210,8 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
     await sshExecStream({ host: opts.host, port: opts.port, user: opts.user, password: opts.password! }, setupCmd);
   }
   
-  console.log('');
-  console.log(colors.dim('─'.repeat(60)));
+  printBlank();
+  printDim('─'.repeat(60));
   
   const cleanupSpinner = ora('Cleaning up...').start();
   if (conn) {
@@ -220,8 +220,8 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
     await sshExec({ host: opts.host, port: opts.port, user: opts.user, password: opts.password! }, `rm -f ${remotePath}`);
   }
   cleanupSpinner.succeed('Cleanup complete');
-  
-  console.log('');
+
+  printBlank();
   printSuccess('Remote setup completed');
   printInfo('Copy the connection string displayed above and add it to your CI/CD secrets.');
 }

@@ -7,7 +7,7 @@
  */
 
 import { sshExec } from '../ssh';
-import { colors } from '../output';
+import { colors, printError, printSuccess } from '../output';
 import type { SSHKeyConnection, ResolvedServer } from '../../types';
 import { getFullConnectionInfo } from './resolver';
 
@@ -105,14 +105,14 @@ export async function findActiveManager(
     
     if (status === 'unreachable') {
       if (verbose) {
-        console.log(colors.error(' ✗ unreachable'));
+        printError('unreachable');
       }
       failedManagers.push(`${manager.name} (unreachable)`);
       continue;
     }
     
     if (verbose) {
-      console.log(status === 'leader' ? colors.success(' ✓ LEADER') : colors.success(' ✓ reachable'));
+      printSuccess(status === 'leader' ? 'LEADER' : 'reachable');
     }
     
     // If this is the leader and we prefer leader, return immediately

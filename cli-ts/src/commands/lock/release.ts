@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import ora from 'ora';
-import { printInfo, colors } from '../../utils/output';
+import { printInfo, printDim, printBlank } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createLockService } from '../../services';
 import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
@@ -38,13 +38,13 @@ export function registerLockReleaseCommand(parent: Command): void {
       spinner.stop();
       if (current.data.data) {
         printInfo('Current lock:');
-        console.log(colors.dim(`  Holder:  ${current.data.data.performer}`));
-        console.log(colors.dim(`  Started: ${current.data.data.started_at}`));
-        console.log(colors.dim(`  Version: ${current.data.data.version}`));
+        printDim(`  Holder:  ${current.data.data.performer}`);
+        printDim(`  Started: ${current.data.data.started_at}`);
+        printDim(`  Version: ${current.data.data.version}`);
         if (current.data.data.message) {
-          console.log(colors.dim(`  Message: ${current.data.data.message}`));
+          printDim(`  Message: ${current.data.data.message}`);
         }
-        console.log('');
+        printBlank();
       }
 
       // Release lock
@@ -57,6 +57,6 @@ export function registerLockReleaseCommand(parent: Command): void {
       }
 
       spinner.succeed(`Lock released for ${stackName}`);
-      console.log(colors.dim('  Deployments to this environment are now allowed.'));
+      printDim('  Deployments to this environment are now allowed.');
     }));
 }

@@ -5,7 +5,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { printHeader, printSection, printSuccess, printError, printInfo, colors } from '../../utils/output';
+import { printHeader, printSection, printSuccess, printError, printInfo, printWarning, printBlank, colors } from '../../utils/output';
 import { CLIError, ErrorCode } from '../../utils/errors';
 import { checkDependencies, installDependencies, detectPackageManager } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
@@ -21,13 +21,13 @@ import type { SetupOptions, HostConfig } from './types';
  */
 export async function runNonInteractiveSetup(options: SetupOptions): Promise<void> {
   printHeader('Machine Setup (Non-Interactive)');
-  console.log('');
+  printBlank();
 
   const deps = checkDependencies();
   if (!deps.ok) {
     printInfo('Missing required dependencies, attempting automatic installation...');
-    deps.missing.forEach(m => console.log(colors.warning(`  - ${m}`)));
-    console.log('');
+    deps.missing.forEach(m => printWarning(`  - ${m}`));
+    printBlank();
     
     const pm = detectPackageManager();
     if (pm) {
@@ -38,8 +38,8 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
           ErrorCode.COMMAND_FAILED
         );
       }
-      console.log('');
-      
+      printBlank();
+
       // Re-check dependencies
       const recheck = checkDependencies();
       if (!recheck.ok) {
@@ -112,7 +112,7 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
   console.log(`${colors.info('Create New User:')} ${needsUserSetup ? 'Yes' : 'No'}`);
   console.log(`${colors.info('Skip Docker Install:')} ${options.skipDockerInstall ? 'Yes' : 'No'}`);
   console.log(`${colors.info('Install Portainer:')} ${options.portainer ? 'Yes' : 'No'}`);
-  console.log('');
+  printBlank();
 
   let ansibleDir: string;
   try {
@@ -151,11 +151,11 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
     }
   };
 
-  console.log('');
+  printBlank();
   const success = await runAnsiblePlaybook(config, ansibleDir);
 
   if (success) {
-    console.log('');
+    printBlank();
     printHeader('Setup Complete');
     printSuccess('The machine has been successfully configured!');
 

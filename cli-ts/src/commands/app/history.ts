@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
-import { printSection, printDebug, colors } from '../../utils/output';
+import { printSection, printDebug, colors, printBlank, printWarning, printDim, printJSON, printRaw } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 
@@ -70,9 +70,9 @@ export function registerHistoryCommand(program: Command): void {
         const output = result.stdout.trim();
 
         if (output === 'NO_AUDIT_FILE' || !output) {
-          console.log('');
-          console.log(colors.warning(`No audit log found for ${stackName}`));
-          console.log(colors.dim('Audit logs are created after the first deployment.'));
+          printBlank();
+          printWarning(`No audit log found for ${stackName}`);
+          printDim('Audit logs are created after the first deployment.');
           return;
         }
 
@@ -83,16 +83,16 @@ export function registerHistoryCommand(program: Command): void {
           .reverse(); // Most recent first
 
         if (options.json) {
-          console.log(JSON.stringify(entries, null, 2));
+          printJSON(entries);
           return;
         }
 
-        console.log('');
+        printBlank();
         printSection(`Audit Log: ${stackName}`);
-        console.log('');
-        
+        printBlank();
+
         if (entries.length === 0) {
-          console.log(colors.dim('No audit entries found'));
+          printDim('No audit entries found');
           return;
         }
 
@@ -103,17 +103,17 @@ export function registerHistoryCommand(program: Command): void {
           colors.dim('VERSION'.padEnd(22)) +
           colors.dim('PERFORMER')
         );
-        console.log(colors.dim('─'.repeat(80)));
+        printDim('─'.repeat(80));
 
         // Entries
         entries.forEach(entry => {
-          console.log(formatAuditEntry(entry));
+          printRaw(formatAuditEntry(entry));
         });
 
-        console.log('');
-        console.log(colors.dim(`Showing ${entries.length} most recent entries`));
+        printBlank();
+        printDim(`Showing ${entries.length} most recent entries`);
         if (!options.all) {
-          console.log(colors.dim(`Use --all to show complete history`));
+          printDim(`Use --all to show complete history`);
         }
       } catch (error) {
         throw new DockerError(`Failed to fetch audit log: ${error}`);

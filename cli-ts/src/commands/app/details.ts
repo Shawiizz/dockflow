@@ -5,7 +5,7 @@
 
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
-import { printSection, printHeader, printDebug, colors } from '../../utils/output';
+import { printSection, printHeader, printDebug, printRaw, printWarning, printBlank, printDim } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 
@@ -27,7 +27,7 @@ export function registerDetailsCommand(program: Command): void {
           connection, 
           `docker stack services ${stackName} --format "table {{.Name}}\t{{.Replicas}}\t{{.Image}}"`
         );
-        console.log(servicesResult.stdout);
+        printRaw(servicesResult.stdout);
 
         // Resource usage
         printSection('Resource Usage');
@@ -35,24 +35,24 @@ export function registerDetailsCommand(program: Command): void {
           connection,
           `docker ps --filter "label=com.docker.stack.namespace=${stackName}" --format '{{.ID}}' | tr '\\n' ' '`
         );
-        
+
         if (containerIds.stdout.trim()) {
           const statsResult = await sshExec(
-            connection, 
+            connection,
             `docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}" ${containerIds.stdout.trim()}`
           );
-          console.log(statsResult.stdout);
+          printRaw(statsResult.stdout);
         } else {
-          console.log(colors.warning('No running containers'));
+          printWarning('No running containers');
         }
 
         // Quick tips
-        console.log('');
-        console.log(colors.dim('More commands:'));
-        console.log(colors.dim('  dockflow version <env>        Deployed version info'));
-        console.log(colors.dim('  dockflow ps <env>             Container details'));
-        console.log(colors.dim('  dockflow list images <env>    Available images'));
-        console.log(colors.dim('  dockflow logs <env>           View logs'));
+        printBlank();
+        printDim('More commands:');
+        printDim('  dockflow version <env>        Deployed version info');
+        printDim('  dockflow ps <env>             Container details');
+        printDim('  dockflow list images <env>    Available images');
+        printDim('  dockflow logs <env>           View logs');
       } catch (error) {
         throw new DockerError(`Failed to get details: ${error}`);
       }

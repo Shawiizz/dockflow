@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import { sshShell, sshExecStream } from '../../utils/ssh';
-import { printInfo, printError } from '../../utils/output';
+import { printInfo, printError, printBlank } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { ConnectionError, withErrorHandler } from '../../utils/errors';
 
@@ -20,7 +20,7 @@ export function registerSshCommand(program: Command): void {
       if (commandParts && commandParts.length > 0) {
         const command = commandParts.join(' ');
         printInfo(`Executing on ${env} server (${serverName}): ${command}`);
-        console.log('');
+        printBlank();
 
         try {
           const result = await sshExecStream(connection, command);
@@ -36,7 +36,7 @@ export function registerSshCommand(program: Command): void {
 
       // Otherwise, open interactive shell
       printInfo(`Connecting to ${env} server (${serverName})...`);
-      console.log('');
+      printBlank();
 
       try {
         await sshShell(connection);

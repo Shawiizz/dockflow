@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import inquirer from 'inquirer';
 import { getProjectRoot } from '../utils/config';
-import { printSuccess, printInfo, printHeader, printWarning } from '../utils/output';
+import { printSuccess, printInfo, printHeader, printWarning, printBlank, printRaw } from '../utils/output';
 import { withErrorHandler } from '../utils/errors';
 import { DOCKFLOW_VERSION } from '../constants';
 
@@ -355,7 +355,7 @@ export function registerInitCommand(program: Command): void {
     .description('Initialize project structure')
     .action(withErrorHandler(async (platform?: string) => {
       printHeader('Initialize Project');
-      console.log('');
+      printBlank();
 
       const projectRoot = getProjectRoot();
       const deploymentDir = join(projectRoot, '.dockflow');
@@ -456,16 +456,16 @@ export function registerInitCommand(program: Command): void {
         printSuccess('Created .gitignore');
       }
 
-      console.log('');
+      printBlank();
       printSuccess('Project initialized successfully!');
-      console.log('');
+      printBlank();
       printInfo('Next steps:');
-      console.log('  1. Edit .dockflow/config.yml with your project name');
-      console.log('  2. Edit .dockflow/servers.yml to define your servers');
-      console.log('  3. Configure .dockflow/docker/docker-compose.yml');
-      console.log('  4. Update .dockflow/docker/Dockerfile for your app');
-      console.log('  5. Run "dockflow setup" to configure your server');
-      console.log('  6. Add connection secrets to your CI/CD (e.g., PRODUCTION_MAIN_SERVER_CONNECTION)');
-      console.log('  7. Push a tag to trigger deployment');
+      printRaw('  1. Edit .dockflow/config.yml with your project name');
+      printRaw('  2. Edit .dockflow/servers.yml to define your servers');
+      printRaw('  3. Configure .dockflow/docker/docker-compose.yml');
+      printRaw('  4. Update .dockflow/docker/Dockerfile for your app');
+      printRaw('  5. Run "dockflow setup" to configure your server');
+      printRaw('  6. Add connection secrets to your CI/CD (e.g., PRODUCTION_MAIN_SERVER_CONNECTION)');
+      printRaw('  7. Push a tag to trigger deployment');
     }));
 }

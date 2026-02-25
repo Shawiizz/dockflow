@@ -12,7 +12,7 @@
 import type { Command } from 'commander';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { printHeader, printSuccess, printInfo, printWarning, colors } from '../utils/output';
+import { printHeader, printSuccess, printInfo, printWarning, printBlank } from '../utils/output';
 import { getProjectRoot, loadConfig } from '../utils/config';
 import { loadSecrets } from '../utils/secrets';
 import { withErrorHandler } from '../utils/errors';
@@ -94,7 +94,7 @@ export function registerUICommand(program: Command): void {
       const requestedPort = parseInt(options.port, 10);
       
       printHeader('Dockflow WebUI');
-      console.log('');
+      printBlank();
       
       // Load secrets from .env.dockflow or CI environment
       loadSecrets();
@@ -112,8 +112,8 @@ export function registerUICommand(program: Command): void {
         printWarning('No .dockflow directory found in current directory');
         printInfo('You can open a project from the UI or run "dockflow init" first');
       }
-      
-      console.log('');
+
+      printBlank();
       
       const devMode = options.dev;
       
@@ -140,16 +140,16 @@ export function registerUICommand(program: Command): void {
       
       const url = `http://localhost:${port}`;
       
-      console.log('');
+      printBlank();
       printSuccess(`API server running on port ${port}`);
       if (devMode) {
         printInfo('Open the UI at http://localhost:4201');
       } else {
         printInfo(`Open the UI at ${url}`);
       }
-      console.log('');
+      printBlank();
       printInfo('Press Ctrl+C to stop the server');
-      console.log('');
+      printBlank();
       
       // Open browser
       if (options.open) {

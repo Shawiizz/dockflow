@@ -11,7 +11,7 @@
 
 import type { Command } from 'commander';
 import * as fs from 'fs';
-import { printHeader, printSuccess, printWarning, printInfo, colors } from '../../utils/output';
+import { printHeader, printSuccess, printWarning, printInfo, printBlank, printRaw } from '../../utils/output';
 import { isLinux, checkDependencies, displayDependencyStatus } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
 import { prompt } from './prompts';
@@ -143,11 +143,11 @@ export function registerSetupCommand(program: Command): void {
     .description('Check if all dependencies are installed')
     .action(withErrorHandler(async () => {
       printHeader('Dependency Check');
-      console.log('');
+      printBlank();
 
       if (!isLinux()) {
         printWarning('Not running on Linux - some checks may not be accurate');
-        console.log('');
+        printBlank();
       }
 
       displayDependencyStatus();
@@ -190,9 +190,9 @@ export function registerSetupCommand(program: Command): void {
       if (!keyPath) {
         const keys = listSSHKeys();
         if (keys.length > 0) {
-          console.log('');
-        console.log(colors.info('Available keys:'));
-          keys.forEach((k, i) => console.log(`  ${i + 1}) ${k}`));
+          printBlank();
+        printInfo('Available keys:');
+          keys.forEach((k, i) => printRaw(`  ${i + 1}) ${k}`));
           const keyIdxStr = await prompt('Select key number', '1');
           const keyIdx = parseInt(keyIdxStr, 10) - 1;
           keyPath = keys[keyIdx] || keys[0];

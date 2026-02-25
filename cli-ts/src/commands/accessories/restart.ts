@@ -7,7 +7,7 @@
 
 import type { Command } from 'commander';
 import ora from 'ora';
-import { printSuccess, printHeader, printDebug } from '../../utils/output';
+import { printSuccess, printHeader, printDebug, printBlank, printRaw } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createStackService } from '../../services';
@@ -28,7 +28,7 @@ export function registerAccessoriesRestartCommand(program: Command): void {
       options: { force?: boolean; server?: string }
     ) => {
       printHeader(`Restarting Accessories - ${env}`);
-      console.log('');
+      printBlank();
 
       const { connection } = validateEnv(env, options.server);
       const { stackName } = await requireAccessoriesStack(connection, env);
@@ -58,7 +58,7 @@ export function registerAccessoriesRestartCommand(program: Command): void {
           } else {
             spinner.warn(result.message);
             if (result.output) {
-              console.log(result.output);
+              printRaw(result.output);
             }
           }
         }

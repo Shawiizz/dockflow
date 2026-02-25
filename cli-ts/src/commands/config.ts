@@ -12,7 +12,7 @@ import {
   getProjectRoot
 } from '../utils/config';
 import { getAvailableEnvironments, getServerNamesForEnvironment } from '../utils/servers';
-import { printSection, printError, printSuccess, printWarning, printDim, printSeparator, colors } from '../utils/output';
+import { printSection, printError, printSuccess, printWarning, printDim, printSeparator, printBlank, printJSON, printRaw, colors } from '../utils/output';
 import { withErrorHandler } from '../utils/errors';
 import {
   validateConfig as validateConfigSchema,
@@ -122,20 +122,20 @@ export function registerConfigCommand(program: Command): void {
       const envs = getAvailableEnvironments();
 
       if (options.json) {
-        console.log(JSON.stringify({
+        printJSON({
           config,
           servers,
           environments: envs
-        }, null, 2));
+        });
         return;
       }
 
-      console.log('');
+      printBlank();
       
       // Project info
       if (config) {
         printSection('Project Configuration');
-        console.log('');
+        printBlank();
         console.log(`  ${colors.dim('Project:')}      ${colors.info(config.project_name)}`);
         
         if (config.registry) {
@@ -177,12 +177,12 @@ export function registerConfigCommand(program: Command): void {
       }
 
       // Environments
-      console.log('');
+      printBlank();
       printSection('Environments');
-      console.log('');
+      printBlank();
       
       if (envs.length === 0) {
-        console.log(colors.warning('  No environments configured'));
+        printWarning('  No environments configured');
       } else {
         for (const env of envs) {
           const serverNames = getServerNamesForEnvironment(env);
@@ -192,9 +192,9 @@ export function registerConfigCommand(program: Command): void {
       }
 
       // Files
-      console.log('');
+      printBlank();
       printSection('Configuration Files');
-      console.log('');
+      printBlank();
       
       const root = getProjectRoot();
       const files = [
@@ -208,10 +208,10 @@ export function registerConfigCommand(program: Command): void {
         const exists = existsSync(file.path);
         const icon = exists ? colors.success('✓') : colors.dim('○');
         const name = exists ? file.name : colors.dim(file.name);
-        console.log(`  ${icon} ${name}`);
+        printRaw(`  ${icon} ${name}`);
       }
 
-      console.log('');
+      printBlank();
     }));
 
   // config validate
@@ -225,47 +225,47 @@ export function registerConfigCommand(program: Command): void {
       const result = validateConfigFiles();
 
       if (options.json) {
-        console.log(JSON.stringify({
+        printJSON({
           valid: result.valid,
           errors: result.errors,
           warnings: result.warnings,
           schemaErrors: result.schemaErrors
-        }, null, 2));
+        });
         process.exit(result.valid ? 0 : 1);
         return;
       }
 
-      console.log('');
+      printBlank();
       printSection('Configuration Validation');
-      console.log('');
+      printBlank();
 
       // Show schema errors in detail
       if (result.schemaErrors?.config && result.schemaErrors.config.length > 0) {
-        console.log(colors.error('  config.yml schema errors:'));
-        console.log('');
+        printError('  config.yml schema errors:');
+        printBlank();
         for (const error of result.schemaErrors.config) {
           console.log(`    ${colors.error('✗')} ${colors.warning(error.path)}`);
-          console.log(`      ${error.message}`);
+          printRaw(`      ${error.message}`);
           const suggestion = getSuggestion(error);
           if (suggestion && options.verbose) {
-            console.log(colors.dim(`      💡 ${suggestion}`));
+            printDim(`      💡 ${suggestion}`);
           }
         }
-        console.log('');
+        printBlank();
       }
 
       if (result.schemaErrors?.servers && result.schemaErrors.servers.length > 0) {
-        console.log(colors.error('  servers.yml schema errors:'));
-        console.log('');
+        printError('  servers.yml schema errors:');
+        printBlank();
         for (const error of result.schemaErrors.servers) {
           console.log(`    ${colors.error('✗')} ${colors.warning(error.path)}`);
-          console.log(`      ${error.message}`);
+          printRaw(`      ${error.message}`);
           const suggestion = getSuggestion(error);
           if (suggestion && options.verbose) {
-            console.log(colors.dim(`      💡 ${suggestion}`));
+            printDim(`      💡 ${suggestion}`);
           }
         }
-        console.log('');
+        printBlank();
       }
 
       // Show general errors (file not found, etc.)
@@ -273,38 +273,38 @@ export function registerConfigCommand(program: Command): void {
         !e.includes('validation error(s)')
       );
       if (generalErrors.length > 0) {
-        console.log(colors.error('  General errors:'));
+        printError('  General errors:');
         for (const error of generalErrors) {
           console.log(`    ${colors.error('✗')} ${error}`);
         }
-        console.log('');
+        printBlank();
       }
 
       if (result.warnings.length > 0) {
-        console.log(colors.warning('  Warnings:'));
+        printWarning('  Warnings:');
         for (const warning of result.warnings) {
           console.log(`    ${colors.warning('⚠')} ${warning}`);
         }
-        console.log('');
+        printBlank();
       }
 
       // Summary
       printSeparator(50);
-      console.log('');
+      printBlank();
 
       if (result.valid) {
         if (result.warnings.length === 0) {
-          console.log(colors.success('  ✓ All configuration files are valid!'));
+          printSuccess('All configuration files are valid!');
         } else {
-          console.log(colors.warning('  ⚠ Configuration valid with warnings'));
+          printWarning('Configuration valid with warnings');
         }
       } else {
-        console.log(colors.error('  ✗ Configuration has validation errors'));
-        console.log('');
+        printError('Configuration has validation errors');
+        printBlank();
         printDim('  Fix the errors above and run again.');
         printDim('  Documentation: https://dockflow.shawiizz.dev/configuration');
       }
-      console.log('');
+      printBlank();
 
       process.exit(result.valid ? 0 : 1);
     }));
@@ -315,6 +315,6 @@ export function registerConfigCommand(program: Command): void {
     .description('Show configuration directory path')
     .action(withErrorHandler(async () => {
       const root = getProjectRoot();
-      console.log(join(root, '.dockflow'));
+      printRaw(join(root, '.dockflow'));
     }));
 }

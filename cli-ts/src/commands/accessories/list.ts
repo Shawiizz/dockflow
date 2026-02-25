@@ -8,7 +8,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { getProjectRoot } from '../../utils/config';
 import { sshExec } from '../../utils/ssh';
-import { printInfo, printHeader, printSection, colors } from '../../utils/output';
+import { printInfo, printHeader, printSection, printBlank, printJSON, printDim, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { validateAccessoriesStack } from './utils';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -80,7 +80,7 @@ export function registerAccessoriesListCommand(program: Command): void {
     .action(withErrorHandler(async (env: string, options: { json?: boolean; server?: string }) => {
       if (!options.json) {
         printHeader(`Accessories - ${env}`);
-        console.log('');
+        printBlank();
       }
 
       // Validate environment
@@ -94,7 +94,7 @@ export function registerAccessoriesListCommand(program: Command): void {
             printInfo('Create one to define your accessories (databases, caches, etc.)');
           } else {
             printInfo('Accessories not deployed yet');
-            console.log('');
+            printBlank();
             printInfo(`Deploy with: dockflow deploy ${env} --accessories`);
           }
           return;
@@ -120,13 +120,13 @@ export function registerAccessoriesListCommand(program: Command): void {
         }
 
         if (options.json) {
-          console.log(JSON.stringify(services, null, 2));
+          printJSON(services);
           return;
         }
 
         // Display table header
         console.log(colors.bold('  SERVICE'.padEnd(30) + 'REPLICAS'.padEnd(15) + 'IMAGE'.padEnd(35) + 'PORTS'));
-        console.log(colors.dim('  ' + '-'.repeat(90)));
+        printDim('  ' + '-'.repeat(90));
 
         for (const service of services) {
           const serviceName = service.name.replace(`${stackName}_`, '');
@@ -142,7 +142,7 @@ export function registerAccessoriesListCommand(program: Command): void {
           );
         }
 
-        console.log('');
+        printBlank();
 
         // Show volumes (associated with the stack)
         const volumesResult = await sshExec(connection, 
@@ -156,7 +156,7 @@ export function registerAccessoriesListCommand(program: Command): void {
           }
         }
 
-        console.log('');
+        printBlank();
         printInfo(`Stack: ${stackName}`);
 
       } catch (error) {

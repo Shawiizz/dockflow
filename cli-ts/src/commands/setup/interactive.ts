@@ -6,7 +6,7 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { printHeader, printSection, printSuccess, printError, printInfo, printWarning, colors } from '../../utils/output';
+import { printHeader, printSection, printSuccess, printError, printInfo, printWarning, printBlank, printRaw, colors } from '../../utils/output';
 import { CLIError, ErrorCode } from '../../utils/errors';
 import { checkDependencies, displayDependencyStatus, installDependencies, detectPackageManager } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
@@ -23,21 +23,21 @@ import type { HostConfig } from './types';
  */
 export async function runInteractiveSetup(): Promise<void> {
   printHeader('Machine Setup Wizard');
-  console.log('');
+  printBlank();
 
   displayDependencyStatus();
 
   const deps = checkDependencies();
   if (!deps.ok) {
     printWarning('Missing required dependencies:');
-    deps.missing.forEach(m => console.log(colors.warning(`  - ${m}`)));
-    console.log('');
+    deps.missing.forEach(m => printWarning(`  - ${m}`));
+    printBlank();
 
     const pm = detectPackageManager();
     if (pm) {
       const shouldInstall = await confirm('Install missing dependencies automatically?', true);
       if (shouldInstall) {
-        console.log('');
+        printBlank();
         const success = installDependencies(deps.missingDeps);
         if (!success) {
           throw new CLIError(
@@ -45,7 +45,7 @@ export async function runInteractiveSetup(): Promise<void> {
             ErrorCode.COMMAND_FAILED
           );
         }
-        console.log('');
+        printBlank();
         
         // Re-check dependencies
         const recheck = checkDependencies();
@@ -70,7 +70,7 @@ export async function runInteractiveSetup(): Promise<void> {
   }
 
   printSuccess('All dependencies satisfied');
-  console.log('');
+  printBlank();
 
   const detectedIP = detectPublicIP();
   const detectedPort = detectSSHPort();
@@ -82,7 +82,7 @@ export async function runInteractiveSetup(): Promise<void> {
   const sshPortStr = await prompt('SSH Port', detectedPort.toString());
   const sshPort = parseInt(sshPortStr, 10) || 22;
 
-  console.log('');
+  printBlank();
   printSection('Deployment User');
 
   const userChoice = await selectMenu('What would you like to do?', [
@@ -133,16 +133,16 @@ export async function runInteractiveSetup(): Promise<void> {
     const defaultKeyPath = path.join(userHome, '.ssh', 'dockflow_key');
 
     if (existingKeys.length > 0) {
-      console.log('');
+      printBlank();
       const keyChoice = await selectMenu('SSH Key Selection:', [
         'Generate new SSH key',
         'Use existing SSH key',
       ]);
 
       if (keyChoice === 1) {
-        console.log('');
-        console.log(colors.info('Available keys:'));
-        existingKeys.forEach((k, i) => console.log(`  ${i + 1}) ${k}`));
+        printBlank();
+        printInfo('Available keys:');
+        existingKeys.forEach((k, i) => printRaw(`  ${i + 1}) ${k}`));
         const keyIdxStr = await prompt('Select key number', '1');
         const keyIdx = parseInt(keyIdxStr, 10) - 1;
         privateKeyPath = existingKeys[keyIdx] || existingKeys[0];
@@ -183,7 +183,7 @@ export async function runInteractiveSetup(): Promise<void> {
       deployPassword = await promptAndValidateUserPassword(deployUser);
     }
   } else {
-    console.log('');
+    printBlank();
     deployUser = await prompt('Deployment username', 'dockflow');
     
     const existingKeys = listSSHKeys(deployUser);
@@ -195,9 +195,9 @@ export async function runInteractiveSetup(): Promise<void> {
       );
     }
     
-    console.log('');
-    console.log(colors.info('Available keys:'));
-    existingKeys.forEach((k, i) => console.log(`  ${i + 1}) ${k}`));
+    printBlank();
+    printInfo('Available keys:');
+    existingKeys.forEach((k, i) => printRaw(`  ${i + 1}) ${k}`));
     const keyIdxStr = await prompt('Select key number', '1');
     const keyIdx = parseInt(keyIdxStr, 10) - 1;
     privateKeyPath = existingKeys[keyIdx] || existingKeys[0];
@@ -218,7 +218,7 @@ export async function runInteractiveSetup(): Promise<void> {
     return;  // Early return for display-only option
   }
 
-  console.log('');
+  printBlank();
   printSection('Optional Services');
 
   let portainerConfig = {
@@ -239,9 +239,9 @@ export async function runInteractiveSetup(): Promise<void> {
     }
   }
 
-  console.log('');
+  printBlank();
   printHeader('Configuration Summary');
-  console.log('');
+  printBlank();
   console.log(`${colors.info('Target:')} Local Machine`);
   console.log(`${colors.info('Public Host:')} ${publicHost}`);
   console.log(`${colors.info('SSH Port:')} ${sshPort}`);
@@ -254,14 +254,14 @@ export async function runInteractiveSetup(): Promise<void> {
       console.log(`${colors.info('Portainer Domain:')} ${portainerConfig.domain}`);
     }
   }
-  console.log('');
+  printBlank();
 
   if (!await confirm('Proceed with this configuration?', true)) {
     printWarning('Setup cancelled');
     return;  // User cancelled
   }
 
-  console.log('');
+  printBlank();
   let ansibleDir: string;
   try {
     ansibleDir = await ensureDockflowRepo();
@@ -273,7 +273,7 @@ export async function runInteractiveSetup(): Promise<void> {
   }
 
   if (needsUserSetup && deployPassword) {
-    console.log('');
+    printBlank();
     const pubKey = fs.readFileSync(`${privateKeyPath}.pub`, 'utf-8').trim();
     if (!createDeployUser(deployUser, deployPassword, pubKey)) {
       throw new CLIError(
@@ -283,10 +283,10 @@ export async function runInteractiveSetup(): Promise<void> {
     }
   }
 
-  console.log('');
+  printBlank();
   await installAnsibleRoles(DOCKFLOW_DIR);
 
-  console.log('');
+  printBlank();
   const config: HostConfig = {
     publicHost,
     sshPort,
@@ -300,9 +300,9 @@ export async function runInteractiveSetup(): Promise<void> {
   const success = await runAnsiblePlaybook(config, ansibleDir);
 
   if (success) {
-    console.log('');
+    printBlank();
     printHeader('Setup Complete');
-    console.log('');
+    printBlank();
     printSuccess('The machine has been successfully configured!');
 
     const privateKey = fs.readFileSync(privateKeyPath, 'utf-8');

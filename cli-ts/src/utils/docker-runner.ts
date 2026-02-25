@@ -7,7 +7,7 @@ import ora from 'ora';
 import { existsSync, readdirSync } from 'fs';
 import { join, dirname, parse as parsePath } from 'path';
 import { getProjectRoot, loadConfig, loadServersConfig, isDockerAvailable, getAnsibleDockerImage } from './config';
-import { printSuccess, printDim } from './output';
+import { printSuccess, printDim, printBlank } from './output';
 import { DOCKFLOW_REPO, DOCKFLOW_VERSION, CONTAINER_PATHS } from '../constants';
 import { isCI } from './secrets';
 import { CLIError, ConfigError, DockerError } from './errors';
@@ -125,7 +125,7 @@ ${command.map(c => `"${c}"`).join(' ')}
   dockerCmd.push('bash', '-c', fullScript);
 
   printDim(`Starting ${actionName} container...`);
-  console.log('');
+  printBlank();
 
   const spinner = ora(`Starting ${actionName}...`).start();
 
@@ -140,10 +140,10 @@ ${command.map(c => `"${c}"`).join(' ')}
     const exitCode = await proc.exited;
 
     if (exitCode === 0) {
-      console.log('');
+      printBlank();
       printSuccess(successMessage);
     } else {
-      console.log('');
+      printBlank();
       throw new DockerError(`${actionName.charAt(0).toUpperCase() + actionName.slice(1)} failed with exit code ${exitCode}`);
     }
   } catch (error) {
@@ -164,7 +164,7 @@ export async function checkDockerAvailable(): Promise<void> {
 
   if (!dockerAvailable) {
     spinner.fail('Docker is not available');
-    console.log('');
+    printBlank();
     throw new DockerError(
       'Docker is required',
       { suggestion: 'Install Docker Desktop: https://www.docker.com/products/docker-desktop\nOn Windows, make sure Docker Desktop is running.\nOn Linux, install Docker with: curl -fsSL https://get.docker.com | sh' }

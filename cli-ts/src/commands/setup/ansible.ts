@@ -6,7 +6,7 @@ import { spawnSync, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import ora from 'ora';
-import { printInfo, printSuccess, printError, colors } from '../../utils/output';
+import { printInfo, printSuccess, printError, printBlank, printDim, printRaw } from '../../utils/output';
 import { DOCKFLOW_REPO, DOCKFLOW_DIR } from './constants';
 import type { HostConfig } from './types';
 
@@ -120,19 +120,19 @@ export async function runAnsiblePlaybook(config: HostConfig, ansibleDir: string)
 
   if (!ansibleDir) {
     spinner.fail('Cannot find ansible/configure_host.yml');
-    console.log('');
+    printBlank();
     printInfo('The Ansible playbooks are required for setup.');
     printInfo('Please ensure the dockflow ansible directory is available.');
-    console.log('');
-    console.log(colors.info('Options:'));
-    console.log('  1. Clone the dockflow repository and run from there');
-    console.log('  2. Copy the ansible/ directory next to the binary');
-    console.log('  3. Install to /opt/dockflow/ansible');
-    console.log('');
-    console.log(colors.dim('Example:'));
-    console.log(colors.dim('  git clone https://github.com/Shawiizz/dockflow.git'));
-    console.log(colors.dim('  cd dockflow'));
-    console.log(colors.dim('  ./dockflow-linux-x64 setup'));
+    printBlank();
+    printInfo('Options:');
+    printRaw('  1. Clone the dockflow repository and run from there');
+    printRaw('  2. Copy the ansible/ directory next to the binary');
+    printRaw('  3. Install to /opt/dockflow/ansible');
+    printBlank();
+    printDim('Example:');
+    printDim('  git clone https://github.com/Shawiizz/dockflow.git');
+    printDim('  cd dockflow');
+    printDim('  ./dockflow-linux-x64 setup');
     return false;
   }
 
@@ -165,7 +165,7 @@ export async function runAnsiblePlaybook(config: HostConfig, ansibleDir: string)
 
   spinner.stop();
   printInfo('Executing Ansible playbook...');
-  console.log('');
+  printBlank();
 
   return new Promise((resolve) => {
     const args = [
@@ -201,11 +201,11 @@ export async function runAnsiblePlaybook(config: HostConfig, ansibleDir: string)
 
     proc.on('close', (code) => {
       if (code === 0) {
-        console.log('');
+        printBlank();
         printSuccess('Ansible playbook completed successfully');
         resolve(true);
       } else {
-        console.log('');
+        printBlank();
         printError(`Ansible playbook failed with code ${code}`);
         resolve(false);
       }

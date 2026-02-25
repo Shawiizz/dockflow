@@ -3,6 +3,7 @@
  */
 
 import { jsonResponse, errorResponse } from '../server';
+import { printDebug } from '../../utils/output';
 import { handleServersRoutes } from './servers';
 import { handleConfigRoutes } from './config';
 import { handleProjectRoutes } from './project';
@@ -97,7 +98,7 @@ export async function handleApiRoutes(req: Request): Promise<Response> {
     return errorResponse('API endpoint not found', 404);
     
   } catch (error) {
-    console.error('API Error:', error);
+    printDebug('API Error', { error: error instanceof Error ? error.message : String(error) });
     return errorResponse(
       error instanceof Error ? error.message : 'Internal server error',
       500

@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import { printInfo, printSection, printDebug } from '../../utils/output';
+import { printInfo, printSection, printDebug, printBlank } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createLogsService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -30,7 +30,7 @@ export function registerLogsCommand(program: Command): void {
       printDebug('Connection validated', { stackName, serverName });
       printInfo(`Server: ${serverName}`);
       printInfo(`Fetching logs for stack: ${stackName}`);
-      console.log('');
+      printBlank();
 
       const logsService = createLogsService(connection, stackName);
       const logOptions = {

@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import ora from 'ora';
 import { sshExec } from '../../utils/ssh';
-import { printSuccess, printInfo, printSection, printHeader, printWarning, printDebug } from '../../utils/output';
+import { printSuccess, printInfo, printSection, printHeader, printWarning, printDebug, printBlank, printRaw } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 
@@ -43,7 +43,7 @@ export function registerPruneCommand(program: Command): void {
 
       printHeader(`Prune Docker Resources on ${env}`);
       printInfo(`Targets: ${targets.join(', ')}`);
-      console.log('');
+      printBlank();
 
       if (!options.yes) {
         printWarning('This will permanently remove unused Docker resources.');
@@ -58,12 +58,12 @@ export function registerPruneCommand(program: Command): void {
           rl.question('Are you sure you want to continue? (y/N) ', resolve);
         });
         rl.close();
-        
+
         if (answer.toLowerCase() !== 'y') {
           printInfo('Cancelled');
           return;
         }
-        console.log('');
+        printBlank();
       }
 
       const spinner = ora();
@@ -101,13 +101,13 @@ export function registerPruneCommand(program: Command): void {
           spinner.succeed('Networks pruned');
         }
 
-        console.log('');
+        printBlank();
         printSuccess('Docker resources cleaned up successfully');
 
         // Show disk usage after prune
         printSection('Current Disk Usage');
         const dfResult = await sshExec(connection, 'docker system df');
-        console.log(dfResult.stdout);
+        printRaw(dfResult.stdout);
 
       } catch (error) {
         spinner.fail(`Prune failed: ${error}`);

@@ -7,7 +7,7 @@ import type { Command } from 'commander';
 import ora from 'ora';
 import inquirer from 'inquirer';
 import { sshExec } from '../../utils/ssh';
-import { printInfo, printSuccess, printHeader, printWarning, colors } from '../../utils/output';
+import { printInfo, printSuccess, printHeader, printWarning, printError, printBlank, printRaw, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { validateAccessoriesStack, getShortServiceNames } from './utils';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
@@ -29,7 +29,7 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
       options: { volumes?: boolean; yes?: boolean; server?: string }
     ) => {
       printHeader(`Removing Accessories - ${env}`);
-      console.log('');
+      printBlank();
 
       // Validate environment and check stack exists
       const { connection } = validateEnv(env, options.server);
@@ -47,7 +47,7 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
 
       // Show what will be removed
       if (services.length > 0) {
-        console.log(colors.warning('The following services will be removed:'));
+        printWarning('The following services will be removed:');
         
         // Get replicas info
         const servicesResult = await sshExec(connection, 
@@ -63,20 +63,20 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
 
       // Show volumes if --volumes is specified
       if (options.volumes) {
-        const volumesResult = await sshExec(connection, 
+        const volumesResult = await sshExec(connection,
           `docker volume ls --filter "label=com.docker.stack.namespace=${stackName}" --format "{{.Name}}"`
         );
-        
+
         if (volumesResult.stdout.trim()) {
-          console.log('');
-          console.log(colors.error('⚠ The following volumes will be PERMANENTLY DELETED:'));
+          printBlank();
+          printError('⚠ The following volumes will be PERMANENTLY DELETED:');
           for (const vol of volumesResult.stdout.trim().split('\n').filter(Boolean)) {
             console.log(`  ${colors.error(vol)}`);
           }
         }
       }
 
-      console.log('');
+      printBlank();
 
       // Confirmation
       if (!options.yes) {
@@ -117,8 +117,8 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
         }
       }
 
-      console.log('');
-      
+      printBlank();
+
       try {
         // Remove the stack
         const spinner = ora('Removing accessories stack...').start();
@@ -169,14 +169,14 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
         const accessoriesDir = `/var/lib/dockflow/accessories/${stackName}`;
         await sshExec(connection, `rm -rf ${accessoriesDir}`);
 
-        console.log('');
+        printBlank();
         printSuccess('Accessories removed successfully');
-        
+
         if (!options.volumes) {
-          console.log('');
+          printBlank();
           printInfo('Volumes were preserved. To remove them manually:');
-          console.log(`  docker volume ls --filter "label=com.docker.stack.namespace=${stackName}"`);
-          console.log(`  docker volume rm <volume_name>`);
+          printRaw(`  docker volume ls --filter "label=com.docker.stack.namespace=${stackName}"`);
+          printRaw(`  docker volume rm <volume_name>`);
         }
 
       } catch (error) {

@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import { loadConfig, loadServersConfig } from '../../utils/config';
-import { printSection, printError, colors } from '../../utils/output';
+import { printSection, printError, printBlank, printJSON, printDim, colors } from '../../utils/output';
 import { withErrorHandler } from '../../utils/errors';
 
 interface EnvironmentInfo {
@@ -68,37 +68,37 @@ export function registerListEnvCommand(parent: Command): void {
       const environments = getEnvironmentsInfo();
 
       if (options.json) {
-        console.log(JSON.stringify({
+        printJSON({
           project: config?.project_name || null,
           environments: environments.map(env => ({
             name: env.name,
             servers: env.servers
           }))
-        }, null, 2));
+        });
         return;
       }
 
-      console.log('');
+      printBlank();
       
       if (config?.project_name) {
         printSection(`Environments: ${config.project_name}`);
       } else {
         printSection('Environments');
       }
-      console.log('');
+      printBlank();
 
       if (environments.length === 0) {
         printError('No environments found');
-        console.log(colors.dim('Create .dockflow/servers.yml to define your environments'));
-        console.log('');
-        console.log(colors.dim('Example:'));
-        console.log(colors.dim('  defaults:'));
-        console.log(colors.dim('    user: deploy'));
-        console.log(colors.dim('    port: 22'));
-        console.log(colors.dim('  servers:'));
-        console.log(colors.dim('    prod-server:'));
-        console.log(colors.dim('      host: 192.168.1.100'));
-        console.log(colors.dim('      tags: [production]'));
+        printDim('Create .dockflow/servers.yml to define your environments');
+        printBlank();
+        printDim('Example:');
+        printDim('  defaults:');
+        printDim('    user: deploy');
+        printDim('    port: 22');
+        printDim('  servers:');
+        printDim('    prod-server:');
+        printDim('      host: 192.168.1.100');
+        printDim('      tags: [production]');
         return;
       }
 
@@ -130,16 +130,16 @@ export function registerListEnvCommand(parent: Command): void {
           
           console.log(`  ${roleIcon} ${colors.info(server.name.padEnd(20))} ${hostInfo}:${server.port} ${colors.dim(`(${server.user})`)}`);
         }
-        console.log('');
+        printBlank();
       }
 
       // Show deployment commands hint
-      console.log(colors.dim('─'.repeat(50)));
-      console.log('');
-      console.log(colors.dim('Deploy to an environment:'));
+      printDim('─'.repeat(50));
+      printBlank();
+      printDim('Deploy to an environment:');
       for (const env of environments.slice(0, 2)) {
-        console.log(colors.dim(`  dockflow deploy ${env.name}`));
+        printDim(`  dockflow deploy ${env.name}`);
       }
-      console.log('');
+      printBlank();
     }));
 }

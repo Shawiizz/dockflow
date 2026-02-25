@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
-import { printSection, colors } from '../../utils/output';
+import { printSection, printJSON, printBlank, printDim, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
@@ -63,13 +63,13 @@ export function registerListServicesCommand(parent: Command): void {
         });
 
         if (options.json) {
-          console.log(JSON.stringify({ stack: stackName, services }, null, 2));
+          printJSON({ stack: stackName, services });
           return;
         }
 
-        console.log('');
+        printBlank();
         printSection(`Services: ${stackName}`);
-        console.log('');
+        printBlank();
 
         // Header
         console.log(
@@ -78,7 +78,7 @@ export function registerListServicesCommand(parent: Command): void {
           colors.dim('IMAGE'.padEnd(40)) +
           colors.dim('PORTS')
         );
-        console.log(colors.dim('─'.repeat(90)));
+        printDim('─'.repeat(90));
 
         for (const svc of services) {
           // Parse replicas for coloring
@@ -133,15 +133,15 @@ export function registerListServicesCommand(parent: Command): void {
           }
         }
 
-        console.log('');
-        console.log(colors.dim(`${services.length} service(s)`));
+        printBlank();
+        printDim(`${services.length} service(s)`);
         if (!options.tasks) {
-          console.log(colors.dim('Use -t/--tasks to show individual tasks'));
+          printDim('Use -t/--tasks to show individual tasks');
         }
-        console.log('');
-        console.log(colors.dim('Connect to a service:'));
+        printBlank();
+        printDim('Connect to a service:');
         if (services.length > 0) {
-          console.log(colors.dim(`  dockflow bash ${env} ${services[0].shortName}`));
+          printDim(`  dockflow bash ${env} ${services[0].shortName}`);
         }
       } catch (error) {
         if (error instanceof DockerError) throw error;

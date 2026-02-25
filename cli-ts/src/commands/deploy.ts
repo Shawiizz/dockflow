@@ -11,7 +11,7 @@
 import type { Command } from 'commander';
 import ora from 'ora';
 import { getProjectRoot, getAnsibleDockerImage } from '../utils/config';
-import { printSuccess, printInfo, printHeader, printDebug, setVerbose } from '../utils/output';
+import { printSuccess, printInfo, printHeader, printDebug, printBlank, setVerbose } from '../utils/output';
 import {
   runAnsibleCommand,
   checkDockerAvailable,
@@ -101,7 +101,7 @@ export async function runDeploy(env: string, version: string | undefined, option
   printDebug('Deployment targets resolved', { deployApp, forceAccessories, skipAccessories });
 
   printHeader(`Deploying ${targetDesc} to ${env}`);
-  console.log('');
+  printBlank();
 
   const debug = options.debug || false;
 
@@ -218,7 +218,7 @@ export async function runDeploy(env: string, version: string | undefined, option
   if (options.services) {
     printInfo(`Services: ${options.services}`);
   }
-  console.log('');
+  printBlank();
 
   // Build workers JSON for Ansible (for image distribution)
   const workersWithKeys = workers.map(w => ({
@@ -318,7 +318,7 @@ export async function runDeploy(env: string, version: string | undefined, option
 
   const totalNodes = managers.length + workers.length;
   if (totalNodes > 1) {
-    console.log('');
+    printBlank();
     if (managers.length > 1) {
       printSuccess(`Deployment completed! Swarm cluster: ${managers.length} managers + ${workers.length} worker(s)`);
     } else {

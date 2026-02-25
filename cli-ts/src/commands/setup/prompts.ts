@@ -3,7 +3,7 @@
  */
 
 import * as readline from 'readline';
-import { colors } from '../../utils/output';
+import { colors, printBlank, printInfo } from '../../utils/output';
 
 /**
  * Create readline interface
@@ -93,8 +93,8 @@ export async function confirm(question: string, defaultYes = true): Promise<bool
  * Interactive menu selection
  */
 export async function selectMenu(title: string, options: string[]): Promise<number> {
-  console.log('');
-  console.log(colors.info(title));
+  printBlank();
+  printInfo(title);
 
   options.forEach((opt, idx) => {
     console.log(`  ${colors.warning(`${idx + 1})`)} ${opt}`);

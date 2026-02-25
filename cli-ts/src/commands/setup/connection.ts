@@ -2,7 +2,7 @@
  * Connection string management
  */
 
-import { printHeader, colors } from '../../utils/output';
+import { printHeader, printBlank, printWarning, printError, printInfo, printDim, printRaw, colors } from '../../utils/output';
 import { 
   generateConnectionString as generateConnString,
   parseConnectionString as parseConnString
@@ -35,16 +35,16 @@ export function parseConnectionString(connectionString: string): SSHKeyConnectio
  * Display connection information
  */
 export function displayConnectionInfo(config: HostConfig, privateKey: string): void {
-  console.log('');
+  printBlank();
   printHeader('Connection Information');
-  console.log('');
+  printBlank();
 
-  console.log(colors.warning('━'.repeat(70)));
-  console.log(colors.warning('SSH Private Key (KEEP SECURE):'));
-  console.log(colors.warning('━'.repeat(70)));
-  console.log(privateKey);
-  console.log(colors.warning('━'.repeat(70)));
-  console.log('');
+  printWarning('━'.repeat(70));
+  printWarning('SSH Private Key (KEEP SECURE):');
+  printWarning('━'.repeat(70));
+  printRaw(privateKey);
+  printWarning('━'.repeat(70));
+  printBlank();
 
   const connectionString = generateConnectionString({
     host: config.publicHost,
@@ -54,24 +54,24 @@ export function displayConnectionInfo(config: HostConfig, privateKey: string): v
     password: config.deployPassword
   });
 
-  console.log(colors.error('╔' + '═'.repeat(70) + '╗'));
+  printError('╔' + '═'.repeat(70) + '╗');
   console.log(colors.error('║') + '                         ⚠️  DO NOT SHARE  ⚠️                          ' + colors.error('║'));
   console.log(colors.error('║') + '                                                                      ' + colors.error('║'));
   console.log(colors.error('║') + `  This connection string contains the SSH private key!                ` + colors.error('║'));
   console.log(colors.error('║') + `  Anyone with this string can access your server as: ${config.deployUser.padEnd(15)}   ` + colors.error('║'));
-  console.log(colors.error('╚' + '═'.repeat(70) + '╝'));
-  console.log('');
+  printError('╚' + '═'.repeat(70) + '╝');
+  printBlank();
 
-  console.log(colors.info('Connection String (Base64):'));
-  console.log(colors.warning('━'.repeat(70)));
-  console.log(connectionString);
-  console.log(colors.warning('━'.repeat(70)));
-  console.log('');
+  printInfo('Connection String (Base64):');
+  printWarning('━'.repeat(70));
+  printRaw(connectionString);
+  printWarning('━'.repeat(70));
+  printBlank();
 
   console.log(colors.info('Deployment User:'), colors.bold(config.deployUser));
-  console.log('');
-  console.log(colors.warning('Add this connection string to your CI/CD secrets:'));
-  console.log(colors.dim('   Secret name: [YOURENV]_CONNECTION'));
-  console.log(colors.dim('   (Replace [YOURENV] with your environment, e.g., PRODUCTION_CONNECTION)'));
-  console.log('');
+  printBlank();
+  printWarning('Add this connection string to your CI/CD secrets:');
+  printDim('   Secret name: [YOURENV]_CONNECTION');
+  printDim('   (Replace [YOURENV] with your environment, e.g., PRODUCTION_CONNECTION)');
+  printBlank();
 }

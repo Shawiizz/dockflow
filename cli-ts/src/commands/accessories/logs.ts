@@ -6,7 +6,7 @@
  */
 
 import type { Command } from 'commander';
-import { printInfo, printSection } from '../../utils/output';
+import { printInfo, printSection, printBlank } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createLogsService } from '../../services';
@@ -45,7 +45,7 @@ export function registerAccessoriesLogsCommand(program: Command): void {
       try {
         if (service) {
           printInfo(`Logs for ${service}:`);
-          console.log('');
+          printBlank();
           await logsService.streamServiceLogs(service, logOptions);
         } else {
           await logsService.streamAllLogs(logOptions, (serviceName) => {

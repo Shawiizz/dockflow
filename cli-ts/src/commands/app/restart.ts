@@ -6,7 +6,7 @@
 
 import type { Command } from 'commander';
 import ora from 'ora';
-import { printSuccess, printDebug } from '../../utils/output';
+import { printSuccess, printDebug, printRaw } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -44,7 +44,7 @@ export function registerRestartCommand(program: Command): void {
           } else {
             spinner.warn(result.message);
             if (result.output) {
-              console.log(result.output);
+              printRaw(result.output);
             }
           }
         }

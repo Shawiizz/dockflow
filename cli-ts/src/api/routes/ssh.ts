@@ -9,6 +9,7 @@
  * 2. Exec mode (/ws/exec/:serviceName?env=) - Docker exec into a running container
  */
 
+import type { ServerWebSocket } from 'bun';
 import { Client as SSHClient, type ClientChannel } from 'ssh2';
 import { loadServersConfig } from '../../utils/config';
 import {
@@ -20,8 +21,111 @@ import { normalizePrivateKey } from '../../utils/ssh-keys';
 import { DEFAULT_SSH_PORT } from '../../constants';
 import { getManagerConnection } from './_helpers';
 
+/** Data attached to each WebSocket during upgrade */
+export interface WSData {
+  sessionId?: string;
+  serverName?: string;
+  serviceName?: string;
+  env?: string;
+  mode?: string;
+}
+
+/** Active SSH session state */
+interface SSHSession {
+  client: SSHClient;
+  stream: ClientChannel | null;
+  lastActivity: number;
+}
+
 /** Active SSH sessions keyed by a unique ID */
-const activeSessions = new Map<string, { client: SSHClient; stream: ClientChannel | null }>();
+const activeSessions = new Map<string, SSHSession>();
+
+/** Heartbeat interval (30s) */
+const HEARTBEAT_INTERVAL_MS = 30_000;
+
+/** Idle timeout (15 minutes) */
+const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+
+/** Watchdog scan interval (60s) */
+const WATCHDOG_INTERVAL_MS = 60_000;
+
+/** Track WebSocket references for heartbeat */
+const activeWebSockets = new Map<string, ServerWebSocket<WSData>>();
+
+/** Watchdog interval handle */
+let watchdogInterval: ReturnType<typeof setInterval> | null = null;
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Start the watchdog and heartbeat timers.
+ * Called lazily on first connection.
+ */
+function ensureTimersStarted(): void {
+  if (heartbeatInterval) return;
+
+  // Heartbeat: ping all active WebSockets every 30s
+  heartbeatInterval = setInterval(() => {
+    for (const [sessionId, ws] of activeWebSockets) {
+      try {
+        ws.ping();
+      } catch {
+        // WebSocket already dead — will be cleaned up by watchdog
+        cleanupSession(sessionId);
+      }
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+
+  // Watchdog: scan for idle/stale sessions every 60s
+  watchdogInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [sessionId, session] of activeSessions) {
+      if (now - session.lastActivity > IDLE_TIMEOUT_MS) {
+        cleanupSession(sessionId);
+      }
+    }
+  }, WATCHDOG_INTERVAL_MS);
+}
+
+/**
+ * Clean up a session by ID: close stream, end SSH client, remove from maps
+ */
+function cleanupSession(sessionId: string): void {
+  const session = activeSessions.get(sessionId);
+  if (session) {
+    session.stream?.close();
+    session.client.end();
+    activeSessions.delete(sessionId);
+  }
+
+  const ws = activeWebSockets.get(sessionId);
+  if (ws) {
+    try {
+      ws.close();
+    } catch {
+      // Already closed
+    }
+    activeWebSockets.delete(sessionId);
+  }
+
+  // Stop timers when no sessions remain
+  if (activeSessions.size === 0) {
+    stopTimers();
+  }
+}
+
+/**
+ * Stop the watchdog and heartbeat timers
+ */
+export function stopTimers(): void {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+  if (watchdogInterval) {
+    clearInterval(watchdogInterval);
+    watchdogInterval = null;
+  }
+}
 
 /**
  * Resolve connection info for a server by name
@@ -55,11 +159,19 @@ function resolveServerConnection(serverName: string) {
  * Attach these to Bun.serve({ websocket: sshWebSocketHandlers })
  */
 export const sshWebSocketHandlers = {
-  open(ws: any) {
+  open(ws: ServerWebSocket<WSData>) {
+    ensureTimersStarted();
+
     // ── Exec mode: docker exec into a container ──
     if (ws.data?.mode === 'exec') {
       const serviceName = ws.data.serviceName;
       const env = ws.data.env;
+
+      if (!env) {
+        ws.send(JSON.stringify({ type: 'error', message: 'No environment specified' }));
+        ws.close();
+        return;
+      }
 
       const conn = getManagerConnection(env);
       if (!conn) {
@@ -71,8 +183,9 @@ export const sshWebSocketHandlers = {
       const sessionId = `exec-${serviceName}-${Date.now()}`;
       const client = new SSHClient();
 
-      activeSessions.set(sessionId, { client, stream: null });
+      activeSessions.set(sessionId, { client, stream: null, lastActivity: Date.now() });
       ws.data.sessionId = sessionId;
+      activeWebSockets.set(sessionId, ws);
 
       client.on('ready', () => {
         // First find the container for the service
@@ -94,8 +207,7 @@ export const sshWebSocketHandlers = {
               containerId = containerId.trim();
               if (!containerId) {
                 ws.send(JSON.stringify({ type: 'error', message: `No container found for service ${serviceName}` }));
-                activeSessions.delete(sessionId);
-                client.end();
+                cleanupSession(sessionId);
                 return;
               }
 
@@ -135,14 +247,12 @@ export const sshWebSocketHandlers = {
                   });
 
                   execStream.on('close', () => {
-                    activeSessions.delete(sessionId);
                     try {
                       ws.send(JSON.stringify({ type: 'exit', code: 0 }));
-                      ws.close();
                     } catch {
                       // WebSocket may already be closed
                     }
-                    client.end();
+                    cleanupSession(sessionId);
                   });
                 },
               );
@@ -152,23 +262,21 @@ export const sshWebSocketHandlers = {
       });
 
       client.on('error', (err) => {
-        activeSessions.delete(sessionId);
         try {
           ws.send(JSON.stringify({ type: 'error', message: err.message }));
-          ws.close();
         } catch {
           // Ignore
         }
+        cleanupSession(sessionId);
       });
 
       client.on('close', () => {
-        activeSessions.delete(sessionId);
         try {
           ws.send(JSON.stringify({ type: 'exit', code: 0 }));
-          ws.close();
         } catch {
           // WebSocket may already be closed
         }
+        cleanupSession(sessionId);
       });
 
       // Connect using ssh2 with manager credentials
@@ -193,26 +301,27 @@ export const sshWebSocketHandlers = {
       return;
     }
 
-    const conn = resolveServerConnection(serverName);
-    if (!conn) {
+    const connShell = resolveServerConnection(serverName);
+    if (!connShell) {
       ws.send(JSON.stringify({ type: 'error', message: `Cannot connect to "${serverName}": no credentials found` }));
       ws.close();
       return;
     }
 
     const sessionId = `${serverName}-${Date.now()}`;
-    const client = new SSHClient();
+    const client2 = new SSHClient();
 
-    activeSessions.set(sessionId, { client, stream: null });
+    activeSessions.set(sessionId, { client: client2, stream: null, lastActivity: Date.now() });
     ws.data.sessionId = sessionId;
+    activeWebSockets.set(sessionId, ws);
 
-    client.on('ready', () => {
-      client.shell(
+    client2.on('ready', () => {
+      client2.shell(
         { term: 'xterm-256color', rows: 24, cols: 80 },
         (shellErr, stream) => {
           if (shellErr) {
             ws.send(JSON.stringify({ type: 'error', message: `Shell error: ${shellErr.message}` }));
-            client.end();
+            client2.end();
             return;
           }
 
@@ -241,56 +350,54 @@ export const sshWebSocketHandlers = {
           });
 
           stream.on('close', () => {
-            activeSessions.delete(sessionId);
             try {
               ws.send(JSON.stringify({ type: 'exit', code: 0 }));
-              ws.close();
             } catch {
               // WebSocket may already be closed
             }
-            client.end();
+            cleanupSession(sessionId);
           });
         },
       );
     });
 
-    client.on('error', (err) => {
-      activeSessions.delete(sessionId);
+    client2.on('error', (err) => {
       try {
         ws.send(JSON.stringify({ type: 'error', message: err.message }));
-        ws.close();
       } catch {
         // Ignore
       }
+      cleanupSession(sessionId);
     });
 
-    client.on('close', () => {
-      activeSessions.delete(sessionId);
+    client2.on('close', () => {
       try {
         ws.send(JSON.stringify({ type: 'exit', code: 0 }));
-        ws.close();
       } catch {
         // WebSocket may already be closed
       }
+      cleanupSession(sessionId);
     });
 
     // Connect using ssh2 - private key is passed directly as a string
-    client.connect({
-      host: conn.host,
-      port: conn.port,
-      username: conn.user,
-      privateKey: normalizePrivateKey(conn.privateKey),
-      // Skip host key verification (same behavior as StrictHostKeyChecking=no)
+    client2.connect({
+      host: connShell.host,
+      port: connShell.port,
+      username: connShell.user,
+      privateKey: normalizePrivateKey(connShell.privateKey),
       hostVerifier: () => true,
       readyTimeout: 10000,
       keepaliveInterval: 15000,
     });
   },
 
-  message(ws: any, message: string | Buffer) {
+  message(ws: ServerWebSocket<WSData>, message: string | Buffer) {
     const sessionId = ws.data?.sessionId;
     const session = sessionId ? activeSessions.get(sessionId) : null;
     if (!session?.stream) return;
+
+    // Update activity timestamp
+    session.lastActivity = Date.now();
 
     if (typeof message === 'string') {
       // Check for resize commands
@@ -309,13 +416,10 @@ export const sshWebSocketHandlers = {
     }
   },
 
-  close(ws: any) {
+  close(ws: ServerWebSocket<WSData>) {
     const sessionId = ws.data?.sessionId;
-    const session = sessionId ? activeSessions.get(sessionId) : null;
-    if (session) {
-      session.stream?.close();
-      session.client.end();
-      activeSessions.delete(sessionId);
+    if (sessionId) {
+      cleanupSession(sessionId);
     }
   },
 };

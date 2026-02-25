@@ -5,6 +5,7 @@
  */
 
 import { Client as SSHClient } from 'ssh2';
+import type { ConnectConfig } from 'ssh2';
 import type { ConnectionInfo, SSHExecResult } from '../types';
 import { isKeyConnection } from '../types';
 import { normalizePrivateKey } from './ssh-keys';
@@ -20,7 +21,7 @@ function connectClient(conn: ConnectionInfo): Promise<SSHClient> {
     client.on('ready', () => resolve(client));
     client.on('error', (err) => reject(err));
 
-    const config: Record<string, unknown> = {
+    const config: ConnectConfig = {
       host: conn.host,
       port: conn.port || DEFAULT_SSH_PORT,
       username: conn.user,
@@ -36,7 +37,7 @@ function connectClient(conn: ConnectionInfo): Promise<SSHClient> {
       config.password = conn.password;
     }
 
-    client.connect(config as any);
+    client.connect(config);
   });
 }
 

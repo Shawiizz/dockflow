@@ -6,6 +6,7 @@
 
 import { jsonResponse, errorResponse } from '../server';
 import { sshExec } from '../../utils/ssh';
+import { printDebug } from '../../utils/output';
 import { getManagerConnection, resolveEnvironment } from './_helpers';
 import { DOCKFLOW_METRICS_DIR } from '../../constants';
 import type { DeployHistoryEntry, DeployHistoryResponse } from '../types';
@@ -104,7 +105,7 @@ async function getDeployHistory(url: URL): Promise<Response> {
       total: limited.length,
     } satisfies DeployHistoryResponse);
   } catch (error) {
-    console.error('[deploy/history] Failed to fetch deploy history:', error instanceof Error ? error.message : error);
+    printDebug('[deploy/history] Failed to fetch deploy history', { error: error instanceof Error ? error.message : String(error) });
     return errorResponse(
       error instanceof Error ? error.message : 'Failed to fetch deploy history',
       500,

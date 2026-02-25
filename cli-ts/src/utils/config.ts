@@ -8,7 +8,8 @@ import { join, dirname, parse as parsePath } from 'path';
 import { parse as parseYaml } from 'yaml';
 import { ANSIBLE_DOCKER_IMAGE } from '../constants';
 import type { ServersConfig } from '../types';
-import { 
+import { printError, printRaw } from './output';
+import {
   validateConfig as validateConfigSchema, 
   validateServersConfig as validateServersSchema,
   formatValidationErrors,
@@ -151,17 +152,17 @@ export function loadConfig(options: LoadConfigOptions = {}): DockflowConfig | nu
       const result = validateConfigSchema(parsed);
       if (!result.success) {
         if (!silent) {
-          console.error(formatValidationErrors(result.error, 'config.yml'));
+          printRaw(formatValidationErrors(result.error, 'config.yml'));
         }
         return null;
       }
       return result.data as DockflowConfig;
     }
-    
+
     return parsed as DockflowConfig;
   } catch (error) {
     if (!silent) {
-      console.error(`Error reading config.yml: ${error}`);
+      printError(`Error reading config.yml: ${error}`);
     }
     return null;
   }
@@ -220,17 +221,17 @@ export function loadServersConfig(options: LoadConfigOptions = {}): ServersConfi
       const result = validateServersSchema(parsed);
       if (!result.success) {
         if (!silent) {
-          console.error(formatValidationErrors(result.error, 'servers.yml'));
+          printRaw(formatValidationErrors(result.error, 'servers.yml'));
         }
         return null;
       }
       return result.data as ServersConfig;
     }
-    
+
     return parsed as ServersConfig;
   } catch (error) {
     if (!silent) {
-      console.error(`Error reading servers.yml: ${error}`);
+      printError(`Error reading servers.yml: ${error}`);
     }
     return null;
   }

@@ -5,7 +5,7 @@
 import { spawnSync } from 'child_process';
 import * as os from 'os';
 import * as fs from 'fs';
-import { printSection, printInfo, printSuccess, printError, printWarning, colors } from '../../utils/output';
+import { printSection, printInfo, printSuccess, printError, printWarning, printBlank, colors } from '../../utils/output';
 import { REQUIRED_DEPENDENCIES, OPTIONAL_DEPENDENCIES } from './constants';
 import type { Dependency, DependencyCheckResult } from './types';
 
@@ -113,7 +113,7 @@ export function installDependencies(deps: Dependency[]): boolean {
 
   printInfo(`Detected: ${distro} (${pm})`);
   printInfo(`Installing: ${packages.join(', ')}`);
-  console.log('');
+  printBlank();
 
   // Update package cache
   printInfo('Updating package cache...');
@@ -176,12 +176,12 @@ export function displayDependencyStatus(): void {
     console.log(`  ${status} ${dep.name} - ${dep.description}`);
   }
 
-  console.log('');
+  printBlank();
   printInfo('Optional:');
   for (const dep of OPTIONAL_DEPENDENCIES) {
     const exists = commandExists(dep.name);
     const status = exists ? colors.success('✓') : colors.warning('○');
     console.log(`  ${status} ${dep.name} - ${dep.description}`);
   }
-  console.log('');
+  printBlank();
 }

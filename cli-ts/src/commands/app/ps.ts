@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import { printInfo, printSection, printDebug, colors } from '../../utils/output';
+import { printInfo, printSection, printDebug, colors, printBlank, printDim } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -23,7 +23,7 @@ export function registerPsCommand(program: Command): void {
       const stackService = createStackService(connection, stackName);
       
       printInfo(`Stack: ${stackName}`);
-      console.log('');
+      printBlank();
 
       try {
         if (options.tasks) {
@@ -35,7 +35,7 @@ export function registerPsCommand(program: Command): void {
           }
 
           printSection('Tasks');
-          console.log('');
+          printBlank();
           
           for (const task of tasksResult.data) {
             const stateColor = task.currentState.includes('Running') 
@@ -51,7 +51,7 @@ export function registerPsCommand(program: Command): void {
             if (task.error) {
               console.log(`    Error: ${colors.error(task.error)}`);
             }
-            console.log('');
+            printBlank();
           }
         } else {
           // Show containers
@@ -67,9 +67,9 @@ export function registerPsCommand(program: Command): void {
           }
 
           printSection('Containers');
-          console.log('');
-          console.log(colors.dim('  ID            NAME                                STATUS              PORTS'));
-          console.log(colors.dim('  ' + '─'.repeat(80)));
+          printBlank();
+          printDim('  ID            NAME                                STATUS              PORTS');
+          printDim('  ' + '─'.repeat(80));
           
           for (const container of containersResult.data) {
             const statusColor = container.status.includes('Up') ? colors.success : colors.warning;
@@ -80,7 +80,7 @@ export function registerPsCommand(program: Command): void {
               `${container.ports || ''}`
             );
           }
-          console.log('');
+          printBlank();
         }
       } catch (error) {
         if (error instanceof DockerError) throw error;

@@ -8,7 +8,7 @@
 import type { Command } from 'commander';
 import ora from 'ora';
 import inquirer from 'inquirer';
-import { printInfo, printSuccess, printHeader, printWarning } from '../../utils/output';
+import { printInfo, printSuccess, printHeader, printWarning, printBlank } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createStackService } from '../../services';
@@ -29,7 +29,7 @@ export function registerAccessoriesStopCommand(program: Command): void {
       options: { yes?: boolean; server?: string }
     ) => {
       printHeader(`Stopping Accessories - ${env}`);
-      console.log('');
+      printBlank();
 
       const { connection } = validateEnv(env, options.server);
       const { stackName } = await requireAccessoriesStack(connection, env);
@@ -46,7 +46,7 @@ export function registerAccessoriesStopCommand(program: Command): void {
       if (!options.yes) {
         printWarning(`This will stop ${targetDesc} (scale to 0 replicas)`);
         printInfo('Data in volumes will be preserved');
-        console.log('');
+        printBlank();
 
         const { confirm } = await inquirer.prompt([
           {
@@ -90,10 +90,10 @@ export function registerAccessoriesStopCommand(program: Command): void {
           }
         }
 
-        console.log('');
+        printBlank();
         printSuccess('Accessories stopped');
 
-        console.log('');
+        printBlank();
         printInfo(`To restart: dockflow accessories restart ${env}` + (service ? ` ${service}` : ''));
         printInfo(`To remove:  dockflow accessories remove ${env}` + (service ? ` ${service}` : ''));
 

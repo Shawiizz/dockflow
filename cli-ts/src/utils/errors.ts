@@ -6,7 +6,7 @@
  * across all commands.
  */
 
-import { printError, printWarning, printInfo, colors } from './output';
+import { printError, printWarning, printInfo, printSuccess, printBlank, printRaw, colors } from './output';
 
 /**
  * CLI Error codes for different failure scenarios
@@ -149,9 +149,9 @@ export function formatError(error: CLIError): string {
 export function handleError(error: unknown): never {
   const cliError = CLIError.from(error);
   
-  console.error('');
-  console.error(formatError(cliError));
-  console.error('');
+  printBlank();
+  printRaw(formatError(cliError));
+  printBlank();
   
   process.exit(cliError.code);
 }
@@ -195,7 +195,7 @@ export function withErrorHandler<T extends unknown[]>(
  */
 export function exitSuccess(message?: string): never {
   if (message) {
-    console.log(colors.success(message));
+    printSuccess(message);
   }
   process.exit(0);
 }

@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
-import { printSection, colors } from '../../utils/output';
+import { printSection, printBlank, printRaw, printDim } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { loadConfig } from '../../utils/config';
 import { withErrorHandler, DockerError } from '../../utils/errors';
@@ -21,8 +21,8 @@ export function registerListImagesCommand(parent: Command): void {
       const projectName = config?.project_name || stackName.split('-')[0];
 
       try {
-        console.log('');
-        
+        printBlank();
+
         if (options.all) {
           // Show all images
           printSection('All Docker Images');
@@ -30,29 +30,29 @@ export function registerListImagesCommand(parent: Command): void {
             connection,
             `docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}"`
           );
-          console.log(result.stdout);
+          printRaw(result.stdout);
         } else {
           // Show only app-related images
           printSection(`Images for ${projectName}`);
-          
+
           // Get images matching project name
           const result = await sshExec(
             connection,
             `docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}" | grep -E "^REPOSITORY|${projectName}" || echo "No images found for ${projectName}"`
           );
-          console.log(result.stdout);
+          printRaw(result.stdout);
 
           // Show disk usage summary
-          console.log('');
+          printBlank();
           printSection('Disk Usage');
           const diskResult = await sshExec(
             connection,
             `docker system df --format "table {{.Type}}\t{{.TotalCount}}\t{{.Size}}\t{{.Reclaimable}}"`
           );
-          console.log(diskResult.stdout);
-          
-          console.log('');
-          console.log(colors.dim('Tip: Run `dockflow prune <env>` to clean up unused images'));
+          printRaw(diskResult.stdout);
+
+          printBlank();
+          printDim('Tip: Run `dockflow prune <env>` to clean up unused images');
         }
       } catch (error) {
         throw new DockerError(`Failed to list images: ${error}`);

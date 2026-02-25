@@ -3,7 +3,7 @@
  * Shows what would be deployed without executing
  */
 
-import { colors } from '../utils/output';
+import { colors, printWarning, printDim, printBlank, printRaw } from '../utils/output';
 import type { ResolvedServer, ResolvedDeployment } from '../types';
 
 interface DeployDryRunOptions {
@@ -46,39 +46,39 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
     deployScript,
   } = options;
 
-  console.log(colors.warning('═'.repeat(60)));
+  printWarning('═'.repeat(60));
   console.log(colors.warning(colors.bold('  DRY-RUN MODE - No changes will be made')));
-  console.log(colors.warning('═'.repeat(60)));
-  console.log('');
+  printWarning('═'.repeat(60));
+  printBlank();
 
   // Deployment Summary
   console.log(colors.info(colors.bold('Deployment Summary:')));
-  console.log(colors.dim('─'.repeat(40)));
+  printDim('─'.repeat(40));
   console.log(`  ${colors.bold('Environment:')}     ${env}`);
   console.log(`  ${colors.bold('Version:')}         ${deployVersion}`);
   console.log(`  ${colors.bold('Branch:')}          ${branchName}`);
   console.log(`  ${colors.bold('Project Root:')}    ${projectRoot}`);
   console.log(`  ${colors.bold('Docker Image:')}    ${dockerImage}`);
-  console.log('');
+  printBlank();
 
   // Target Servers
   console.log(colors.info(colors.bold('Target Servers:')));
-  console.log(colors.dim('─'.repeat(40)));
+  printDim('─'.repeat(40));
   console.log(`  ${colors.bold('Manager:')}         ${manager.name} (${manager.host}:${manager.port})`);
   console.log(`  ${colors.bold('User:')}            ${manager.user}`);
   if (workers.length > 0) {
     console.log(`  ${colors.bold('Workers:')}`);
     workers.forEach(w => {
-      console.log(`                    - ${w.name} (${w.host}:${w.port})`);
+      printRaw(`                    - ${w.name} (${w.host}:${w.port})`);
     });
   } else {
     console.log(`  ${colors.bold('Workers:')}         none (single-node cluster)`);
   }
-  console.log('');
+  printBlank();
 
   // Deployment Options
   console.log(colors.info(colors.bold('Deployment Options:')));
-  console.log(colors.dim('─'.repeat(40)));
+  printDim('─'.repeat(40));
   console.log(`  ${colors.bold('Deploy App:')}      ${deployApp}`);
   console.log(`  ${colors.bold('Accessories:')}     ${skipAccessories ? 'skipped' : (forceAccessories ? 'forced' : 'auto-detect')}`);
   console.log(`  ${colors.bold('Skip Build:')}      ${skipBuild || false}`);
@@ -86,11 +86,11 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
   if (services) {
     console.log(`  ${colors.bold('Services:')}        ${services}`);
   }
-  console.log('');
+  printBlank();
 
   // Environment Variables
   console.log(colors.info(colors.bold('Environment Variables:')));
-  console.log(colors.dim('─'.repeat(40)));
+  printDim('─'.repeat(40));
   const envVars = Object.entries(manager.env);
   if (envVars.length > 0) {
     envVars.forEach(([key, value]) => {
@@ -100,27 +100,27 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
         key.toLowerCase().includes('key')
         ? '********'
         : value;
-      console.log(`  ${key}=${displayValue}`);
+      printRaw(`  ${key}=${displayValue}`);
     });
   } else {
-    console.log('  (none)');
+    printRaw('  (none)');
   }
-  console.log('');
+  printBlank();
 
   // Deploy Script (debug mode only)
   if (debug && deployScript) {
     console.log(colors.info(colors.bold('Deploy Script (debug):')));
-    console.log(colors.dim('─'.repeat(40)));
+    printDim('─'.repeat(40));
     // Show script without sensitive data
     const sanitizedScript = deployScript
       .replace(/export SSH_PRIVATE_KEY='[^']*'/g, "export SSH_PRIVATE_KEY='********'")
       .replace(/"privateKey":"[^"]*"/g, '"privateKey":"********"');
-    console.log(colors.dim(sanitizedScript));
-    console.log('');
+    printDim(sanitizedScript);
+    printBlank();
   }
 
   // Footer
-  console.log(colors.warning('═'.repeat(60)));
-  console.log(colors.warning('  To execute this deployment, remove the --dry-run flag'));
-  console.log(colors.warning('═'.repeat(60)));
+  printWarning('═'.repeat(60));
+  printWarning('  To execute this deployment, remove the --dry-run flag');
+  printWarning('═'.repeat(60));
 }

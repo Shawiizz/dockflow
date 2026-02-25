@@ -117,3 +117,24 @@ export function printTableRow(label: string, value: string, labelWidth: number =
   console.log(`  ${colors.bold(label.padEnd(labelWidth))} ${value}`);
 }
 
+/**
+ * Print a blank line
+ */
+export function printBlank(): void {
+  console.log('');
+}
+
+/**
+ * Print JSON data (pretty-printed)
+ */
+export function printJSON(data: unknown): void {
+  console.log(JSON.stringify(data, null, 2));
+}
+
+/**
+ * Print raw text (passthrough output)
+ */
+export function printRaw(text: string): void {
+  console.log(text);
+}
+

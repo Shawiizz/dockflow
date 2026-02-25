@@ -7,7 +7,7 @@
  */
 
 import type { Command } from 'commander';
-import { printInfo, printHeader, printDebug, printWarning, printDim, setVerbose } from '../utils/output';
+import { printInfo, printHeader, printDebug, printWarning, printDim, printBlank, setVerbose } from '../utils/output';
 import { loadSecrets } from '../utils/secrets';
 import { getCurrentBranch } from '../utils/git';
 import { withErrorHandler } from '../utils/errors';
@@ -43,7 +43,7 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
   printDebug('Secrets loaded from environment');
 
   printHeader(`Building Docker images for ${env}`);
-  console.log('');
+  printBlank();
 
   // Check config exists
   const config = validateProjectConfig();
@@ -89,7 +89,7 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
   if (options.skipHooks) {
     printInfo(`Hooks: Skipped`);
   }
-  console.log('');
+  printBlank();
 
   // Build context JSON (needed for Ansible extra-vars)
   // If no server is configured, create a minimal context

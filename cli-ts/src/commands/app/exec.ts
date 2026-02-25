@@ -6,7 +6,7 @@
  */
 
 import type { Command } from 'commander';
-import { printInfo, printDebug } from '../../utils/output';
+import { printInfo, printDebug, printBlank } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createExecService, createStackService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -37,7 +37,7 @@ export function registerExecCommand(program: Command): void {
         if (!cmd || cmd === 'bash' || cmd === 'sh') {
           const shellPath = (options.sh || cmd === 'sh') ? '/bin/sh' : '/bin/bash';
           printInfo(`Connecting to ${stackName}_${service}...`);
-          console.log('');
+          printBlank();
 
           const result = await execService.shell(service, shellPath);
 

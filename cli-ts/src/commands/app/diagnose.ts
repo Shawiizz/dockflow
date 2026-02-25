@@ -7,7 +7,7 @@
 
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
-import { printSection, printHeader, printInfo, printError, printSuccess, printWarning, printDebug, colors } from '../../utils/output';
+import { printSection, printHeader, printInfo, printError, printSuccess, printWarning, printDebug, printBlank, printRaw, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -30,7 +30,7 @@ export function registerDiagnoseCommand(program: Command): void {
       printDebug('Connection validated', { stackName, serverName });
 
       printHeader(`Diagnosing: ${stackName}`);
-      console.log('');
+      printBlank();
 
       const issues: DiagnosticIssue[] = [];
       const stackService = createStackService(connection, stackName);
@@ -113,7 +113,7 @@ export function registerDiagnoseCommand(program: Command): void {
                 suggestion: errorAnalysis.suggestion
               });
             }
-            console.log('');
+            printBlank();
           }
         }
       }
@@ -153,7 +153,7 @@ export function registerDiagnoseCommand(program: Command): void {
             `docker events --since 5m --until 0s --filter "type=container" --filter "event=die" --filter "event=oom" --format '{{.Time}} {{.Actor.Attributes.name}} {{.Action}}' 2>/dev/null | tail -10`
           );
           if (eventsResult.stdout.trim()) {
-            console.log(eventsResult.stdout);
+            printRaw(eventsResult.stdout);
           } else {
             printInfo('No recent container deaths');
           }
@@ -290,7 +290,7 @@ function analyzeTaskError(error: string): { type: string; suggestion: string } {
  * Print diagnostic summary with issues found
  */
 function printDiagnosticSummary(issues: DiagnosticIssue[]): void {
-  console.log('');
+  printBlank();
   printSection('Diagnostic Summary');
 
   const errors = issues.filter(i => i.severity === 'error');
@@ -321,5 +321,5 @@ function printDiagnosticSummary(issues: DiagnosticIssue[]): void {
     }
   }
 
-  console.log('');
+  printBlank();
 }

@@ -8,7 +8,7 @@
 
 import { existsSync, readFileSync } from 'fs';
 import { ENV_FILE_PATH } from '../constants';
-import { printWarning, printSuccess, printError } from './output';
+import { printWarning, printSuccess, printError, printBlank } from './output';
 
 /**
  * Parse a dotenv file content into key-value pairs
@@ -70,11 +70,11 @@ export function loadSecrets(): void {
       
       // Warn in CI that this file should not be committed
       if (isCI()) {
-        console.log('');
+        printBlank();
         printWarning('WARNING: .env.dockflow file detected in CI environment!');
         printWarning('This file should NOT be committed to your repository.');
         printWarning('Add it to .gitignore: echo ".env.dockflow" >> .gitignore');
-        console.log('');
+        printBlank();
       }
       
       printSuccess(`Loaded secrets from ${ENV_FILE_PATH}`);

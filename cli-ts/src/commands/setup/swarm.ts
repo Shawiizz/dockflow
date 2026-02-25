@@ -11,7 +11,7 @@
  */
 
 import ora from 'ora';
-import { printHeader, printError, printSuccess, printInfo, printWarning } from '../../utils/output';
+import { printHeader, printError, printSuccess, printInfo, printWarning, printBlank, printRaw } from '../../utils/output';
 import { hasServersConfig } from '../../utils/config';
 import { CLIError, ConnectionError, ErrorCode } from '../../utils/errors';
 import { 
@@ -207,12 +207,12 @@ async function joinWorkerToSwarm(
  * Display cluster status
  */
 async function displayClusterStatus(connection: SSHKeyConnection): Promise<void> {
-  console.log('');
+  printBlank();
   printInfo('Cluster Status:');
-  
+
   try {
     const nodesResult = await sshExec(connection, 'docker node ls');
-    console.log(nodesResult.stdout);
+    printRaw(nodesResult.stdout);
   } catch (error) {
     printWarning('Could not retrieve cluster status');
   }
@@ -226,7 +226,7 @@ export async function runSetupSwarm(env: string): Promise<void> {
   loadSecrets();
 
   printHeader(`Setting up Docker Swarm cluster for ${env}`);
-  console.log('');
+  printBlank();
 
   // Check servers.yml exists
   if (!hasServersConfig()) {
@@ -258,7 +258,7 @@ export async function runSetupSwarm(env: string): Promise<void> {
   } else {
     printInfo('Workers: none (single-node cluster)');
   }
-  console.log('');
+  printBlank();
 
   // Build manager connection
   const managerConnection = buildConnection(env, manager);
@@ -279,7 +279,7 @@ export async function runSetupSwarm(env: string): Promise<void> {
       await openSwarmPorts(workerConnection, worker.name);
     }
   }
-  console.log('');
+  printBlank();
 
   // Step 2: Initialize Swarm on manager
   printInfo('Step 2/3: Initializing Swarm on manager...');
@@ -291,7 +291,7 @@ export async function runSetupSwarm(env: string): Promise<void> {
     );
   }
   const { token: joinToken, internalIp: managerInternalIp } = swarmInit;
-  console.log('');
+  printBlank();
 
   // Step 3: Join workers
   if (workers.length > 0) {
@@ -319,12 +319,12 @@ export async function runSetupSwarm(env: string): Promise<void> {
   } else {
     printInfo('Step 3/3: No workers to join (single-node cluster)');
   }
-  console.log('');
+  printBlank();
 
   // Display final status
   await displayClusterStatus(managerConnection);
 
   printSuccess('Docker Swarm cluster is ready!');
-  console.log('');
+  printBlank();
   printInfo(`Deploy with: dockflow deploy ${env}`);
 }

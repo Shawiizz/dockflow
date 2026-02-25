@@ -3,16 +3,18 @@
  */
 
 import type { Command } from 'commander';
-import { 
-  printSection, 
-  printSuccess, 
-  printWarning, 
+import {
+  printSection,
+  printSuccess,
+  printWarning,
   printDebug,
   printSectionTitle,
   printSeparator,
   printTableRow,
   printDim,
-  colors 
+  printBlank,
+  printJSON,
+  colors
 } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { withErrorHandler, DockerError } from '../../utils/errors';
@@ -55,34 +57,34 @@ function formatRelativeTime(timestamp: string): string {
  * Display metrics summary
  */
 function displaySummary(summary: MetricsSummary, stackName: string): void {
-  console.log('');
+  printBlank();
   printSection(`Deployment Metrics: ${stackName}`);
-  console.log('');
-  
+  printBlank();
+
   // Overview stats
   printSectionTitle('Overview:');
   printSeparator();
   printTableRow('Total Deployments:', String(summary.total_deployments));
   printTableRow('Success Rate:', colors.success(summary.success_rate.toFixed(1) + '%'));
   printTableRow('Avg Duration:', formatDuration(summary.avg_duration_ms));
-  console.log('');
-  
+  printBlank();
+
   // Status breakdown
   printSectionTitle('Status Breakdown:');
   printSeparator();
   console.log(`  ${colors.success('✓ Successful:')}         ${summary.successful}`);
   console.log(`  ${colors.error('✗ Failed:')}             ${summary.failed}`);
   console.log(`  ${colors.warning('↩ Rolled Back:')}        ${summary.rolled_back}`);
-  console.log('');
-  
+  printBlank();
+
   // Activity
   printSectionTitle('Deployment Activity:');
   printSeparator();
   printTableRow('Last 24 hours:', String(summary.deployments_last_24h));
   printTableRow('Last 7 days:', String(summary.deployments_last_7d));
   printTableRow('Last 30 days:', String(summary.deployments_last_30d));
-  console.log('');
-  
+  printBlank();
+
   // Most deployed versions
   if (summary.most_deployed_versions.length > 0) {
     printSectionTitle('Top Versions:');
@@ -90,9 +92,9 @@ function displaySummary(summary: MetricsSummary, stackName: string): void {
     summary.most_deployed_versions.forEach(({ version, count }, idx) => {
       console.log(`  ${idx + 1}. ${version} (${count} deployments)`);
     });
-    console.log('');
+    printBlank();
   }
-  
+
   // Last deployment
   if (summary.last_deployment) {
     const last = summary.last_deployment;
@@ -131,7 +133,7 @@ function displayHistory(metrics: DeploymentMetric[]): void {
     return;
   }
   
-  console.log('');
+  printBlank();
   console.log(
     colors.dim('TIMESTAMP'.padEnd(22)) +
     colors.dim('VERSION'.padEnd(18)) +
@@ -199,29 +201,29 @@ export function registerMetricsCommand(program: Command): void {
       const metricsData = await fetchDeploymentMetrics(connection, stackName, limit);
       
       if (metricsData.length === 0) {
-        console.log('');
+        printBlank();
         printWarning(`No metrics found for ${stackName}`);
         printDim('Metrics are recorded after each deployment.');
         return;
       }
-      
+
       // JSON output
       if (options.json) {
         if (options.history) {
-          console.log(JSON.stringify(metricsData, null, 2));
+          printJSON(metricsData);
         } else {
           const summary = calculateMetricsSummary(metricsData);
-          console.log(JSON.stringify(summary, null, 2));
+          printJSON(summary);
         }
         return;
       }
-      
+
       // History mode
       if (options.history) {
-        console.log('');
+        printBlank();
         printSection(`Deployment History: ${stackName}`);
         displayHistory(metricsData);
-        console.log('');
+        printBlank();
         printDim(`Showing last ${metricsData.length} deployments`);
         return;
       }
