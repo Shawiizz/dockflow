@@ -9,12 +9,12 @@
  */
 
 import { jsonResponse, errorResponse } from '../server';
-import { loadConfig } from '../../utils/config';
-import { getManagerConnection, resolveEnvironment, getAccessoriesStack } from './_helpers';
+import { loadConfig, getAccessoriesStackName } from '../../utils/config';
+import { getManagerConnection, resolveEnvironment } from './_helpers';
 import { sshExec } from '../../utils/ssh';
-import { getAccessoriesStackName } from '../../utils/config';
+import { parseDockerLogLines } from '../../services';
 import type { AccessoryInfo, AccessoriesResponse } from '../types';
-import type { AccessoryStatusInfo, AccessoriesStatusResponse, AccessoryActionResponse, LogEntry, LogsResponse } from '../types';
+import type { AccessoryStatusInfo, AccessoriesStatusResponse, AccessoryActionResponse, LogsResponse } from '../types';
 
 /**
  * Handle /api/accessories/* routes
@@ -282,26 +282,7 @@ async function getAccessoryLogs(name: string, url: URL): Promise<Response> {
     const command = `docker service logs --tail ${lines} --timestamps ${accStackName}_${name} 2>&1`;
     const result = await sshExec(conn, command);
 
-    const logEntries: LogEntry[] = result.stdout
-      .trim()
-      .split('\n')
-      .filter((l) => l.trim())
-      .map((line) => {
-        // Docker log format: TIMESTAMP SERVICE.REPLICA@HOST MESSAGE
-        const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\S+)\s+(.*)/);
-        if (tsMatch) {
-          return {
-            timestamp: tsMatch[1],
-            message: tsMatch[2],
-            service: name,
-          };
-        }
-        return {
-          timestamp: new Date().toISOString(),
-          message: line,
-          service: name,
-        };
-      });
+    const logEntries = parseDockerLogLines(result.stdout, name);
 
     return jsonResponse({
       logs: logEntries,

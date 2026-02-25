@@ -11,7 +11,7 @@ import { printInfo, printSuccess, printHeader, printWarning, colors } from '../.
 import { validateEnv } from '../../utils/validation';
 import { validateAccessoriesStack, getShortServiceNames } from './utils';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
-import { STACK_REMOVAL_MAX_ATTEMPTS, STACK_REMOVAL_POLL_INTERVAL_MS } from '../../utils/constants';
+import { STACK_REMOVAL_MAX_ATTEMPTS, STACK_REMOVAL_POLL_INTERVAL_MS } from '../../constants';
 
 /**
  * Register the accessories remove command

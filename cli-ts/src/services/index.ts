@@ -18,5 +18,8 @@ export * from './exec-service';
 // Deployment metrics
 export * from './metrics-service';
 
+// Deployment locks
+export * from './lock-service';
+
 // Legacy docker operations (for backward compatibility)
 export * from './docker-service';

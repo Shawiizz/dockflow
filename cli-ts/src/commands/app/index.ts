@@ -15,7 +15,7 @@ import { registerRollbackCommand } from './rollback';
 import { registerPsCommand } from './ps';
 import { registerPruneCommand } from './prune';
 import { registerVersionCommand } from './version';
-import { registerAuditCommand } from './audit';
+import { registerHistoryCommand } from './history';
 import { registerMetricsCommand } from './metrics';
 import { registerDiagnoseCommand } from './diagnose';
 
@@ -28,7 +28,7 @@ export function registerAppCommands(program: Command): void {
   registerDetailsCommand(program);
   registerPsCommand(program);
   registerLogsCommand(program);
-  registerAuditCommand(program);
+  registerHistoryCommand(program);
   registerMetricsCommand(program);
   registerDiagnoseCommand(program);
   

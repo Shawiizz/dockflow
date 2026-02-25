@@ -3,8 +3,8 @@
  * Shows what would be deployed without executing
  */
 
-import { colors } from '../../utils/output';
-import type { ResolvedServer, ResolvedDeployment } from '../../types';
+import { colors } from '../utils/output';
+import type { ResolvedServer, ResolvedDeployment } from '../types';
 
 interface DeployDryRunOptions {
   env: string;

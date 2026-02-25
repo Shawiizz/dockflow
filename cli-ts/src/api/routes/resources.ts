@@ -10,6 +10,7 @@
 
 import { jsonResponse, errorResponse } from '../server';
 import { sshExec } from '../../utils/ssh';
+import { createLockService } from '../../services';
 import { getManagerConnection, resolveEnvironment } from './_helpers';
 import type {
   PruneRequest,
@@ -175,17 +176,7 @@ async function getDiskUsage(url: URL): Promise<Response> {
   }
 }
 
-// ─── Lock implementations ───────────────────────────────────────────────────
-
-const LOCK_DIR = '/var/lib/dockflow/locks';
-const STALE_THRESHOLD_MINUTES = 30;
-
-/**
- * Get the lock file path for a given stack name
- */
-function getLockFilePath(stackName: string): string {
-  return `${LOCK_DIR}/${stackName}.lock`;
-}
+// ─── Lock implementations (using LockService) ──────────────────────────────
 
 /**
  * Get the current lock status for an environment
@@ -194,44 +185,30 @@ async function getLockStatus(env: string): Promise<Response> {
   const conn = getManagerConnection(env);
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
-  const lockFile = getLockFilePath(conn.stackName);
-
   try {
-    const result = await sshExec(conn, `cat ${lockFile} 2>/dev/null || echo "NO_LOCK"`);
-    const output = result.stdout.trim();
+    const lockService = createLockService(conn, conn.stackName);
+    const result = await lockService.status();
 
-    if (output === 'NO_LOCK' || !output) {
-      return jsonResponse({
-        locked: false,
-      } satisfies LockInfo);
+    if (!result.success) {
+      return errorResponse(result.error.message, 500);
     }
 
-    // Parse the JSON lock file
-    try {
-      const lockData = JSON.parse(output);
-      const startedAt = lockData.started_at || lockData.startedAt;
-      const startedTime = startedAt ? new Date(startedAt).getTime() : 0;
-      const durationMinutes = startedTime ? Math.round((Date.now() - startedTime) / 60000) : 0;
-      const isStale = durationMinutes > STALE_THRESHOLD_MINUTES;
+    const { locked, data, durationMinutes, isStale } = result.data;
 
-      return jsonResponse({
-        locked: true,
-        performer: lockData.performer,
-        startedAt,
-        version: lockData.version,
-        message: lockData.message,
-        stack: lockData.stack,
-        isStale,
-        durationMinutes,
-      } satisfies LockInfo);
-    } catch {
-      // Lock file exists but is not valid JSON
-      return jsonResponse({
-        locked: true,
-        message: 'Lock file exists but could not be parsed',
-        isStale: true,
-      } satisfies LockInfo);
+    if (!locked) {
+      return jsonResponse({ locked: false } satisfies LockInfo);
     }
+
+    return jsonResponse({
+      locked: true,
+      performer: data?.performer,
+      startedAt: data?.started_at,
+      version: data?.version,
+      message: data?.message,
+      stack: data?.stack,
+      isStale,
+      durationMinutes,
+    } satisfies LockInfo);
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : 'Failed to read lock status', 500);
   }
@@ -251,58 +228,14 @@ async function acquireLock(env: string, req: Request): Promise<Response> {
     // Body is optional
   }
 
-  const lockFile = getLockFilePath(conn.stackName);
-  const hostname = require('os').hostname();
-
-  const lockContent = {
-    performer: `webui@${hostname}`,
-    started_at: new Date().toISOString(),
-    timestamp: Math.floor(Date.now() / 1000),
-    version: 'manual',
-    stack: conn.stackName,
-    message: body.message || 'Locked via WebUI',
-  };
-
-  const lockJson = JSON.stringify(lockContent);
-
   try {
-    // First check if already locked
-    const checkResult = await sshExec(conn, `cat ${lockFile} 2>/dev/null || echo "NO_LOCK"`);
-    const checkOutput = checkResult.stdout.trim();
+    const lockService = createLockService(conn, conn.stackName);
+    const result = await lockService.acquire({ message: body.message || 'Locked via WebUI' });
 
-    if (checkOutput !== 'NO_LOCK' && checkOutput) {
-      try {
-        const existingLock = JSON.parse(checkOutput);
-        const startedAt = existingLock.started_at || existingLock.startedAt;
-        const startedTime = startedAt ? new Date(startedAt).getTime() : 0;
-        const durationMinutes = startedTime ? Math.round((Date.now() - startedTime) / 60000) : 0;
-
-        // Only block if the existing lock is not stale
-        if (durationMinutes <= STALE_THRESHOLD_MINUTES) {
-          return jsonResponse(
-            {
-              success: false,
-              message: `Already locked by ${existingLock.performer} (${durationMinutes} min ago)`,
-            } satisfies LockActionResponse,
-            409,
-          );
-        }
-      } catch {
-        // Corrupt lock file, allow overwrite
-      }
-    }
-
-    // Write the lock file
-    const writeCmd = `mkdir -p ${LOCK_DIR} && cat > ${lockFile} << 'DOCKFLOW_EOF'\n${lockJson}\nDOCKFLOW_EOF`;
-    const writeResult = await sshExec(conn, writeCmd);
-
-    if (writeResult.exitCode !== 0) {
+    if (!result.success) {
       return jsonResponse(
-        {
-          success: false,
-          message: writeResult.stderr.trim() || 'Failed to create lock file',
-        } satisfies LockActionResponse,
-        500,
+        { success: false, message: result.error.message } satisfies LockActionResponse,
+        409,
       );
     }
 
@@ -322,21 +255,15 @@ async function releaseLock(env: string): Promise<Response> {
   const conn = getManagerConnection(env);
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
-  const lockFile = getLockFilePath(conn.stackName);
-
   try {
-    // Remove the lock file
-    await sshExec(conn, `rm -f ${lockFile}`);
-
-    // Verify removal
-    const verifyResult = await sshExec(conn, `test -f ${lockFile} && echo "EXISTS" || echo "REMOVED"`);
-    const removed = verifyResult.stdout.trim() === 'REMOVED';
+    const lockService = createLockService(conn, conn.stackName);
+    const result = await lockService.release();
 
     return jsonResponse({
-      success: removed,
-      message: removed
+      success: result.success,
+      message: result.success
         ? `Lock released for ${conn.stackName}`
-        : 'Lock file could not be removed',
+        : result.error.message,
     } satisfies LockActionResponse);
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : 'Failed to release lock', 500);

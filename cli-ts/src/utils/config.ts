@@ -303,3 +303,18 @@ export function getAccessoriesStackName(env: string): string | null {
   if (!projectName) return null;
   return `${projectName}-${env}-accessories`;
 }
+
+/**
+ * Get the path to the docker-compose file (.yml or .yaml)
+ * Returns null if neither exists
+ */
+export function getComposePath(): string | null {
+  const root = getProjectRoot();
+  const ymlPath = join(root, '.dockflow', 'docker', 'docker-compose.yml');
+  if (existsSync(ymlPath)) return ymlPath;
+
+  const yamlPath = join(root, '.dockflow', 'docker', 'docker-compose.yaml');
+  if (existsSync(yamlPath)) return yamlPath;
+
+  return null;
+}

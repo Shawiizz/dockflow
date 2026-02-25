@@ -13,12 +13,12 @@ import { jsonResponse, errorResponse } from '../server';
 import { loadConfig } from '../../utils/config';
 import { getAvailableEnvironments } from '../../utils/servers';
 import { sshExec } from '../../utils/ssh';
+import { parseDockerLogLines } from '../../services';
 import { getManagerConnection, resolveEnvironment } from './_helpers';
 import type {
   ServiceInfo,
   ServicesListResponse,
   ServiceActionResponse,
-  LogEntry,
   LogsResponse,
 } from '../types';
 
@@ -304,26 +304,7 @@ async function getServiceLogs(serviceName: string, url: URL): Promise<Response> 
     const command = `docker service logs --tail ${lines} --timestamps --no-trunc ${serviceName} 2>&1`;
     const result = await sshExec(conn, command);
 
-    const logEntries: LogEntry[] = result.stdout
-      .trim()
-      .split('\n')
-      .filter((l) => l.trim())
-      .map((line) => {
-        // Docker log format: TIMESTAMP SERVICE.REPLICA@HOST MESSAGE
-        const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\S+)\s+(.*)/);
-        if (tsMatch) {
-          return {
-            timestamp: tsMatch[1],
-            message: tsMatch[2],
-            service: serviceName,
-          };
-        }
-        return {
-          timestamp: new Date().toISOString(),
-          message: line,
-          service: serviceName,
-        };
-      });
+    const logEntries = parseDockerLogLines(result.stdout, serviceName);
 
     return jsonResponse({
       logs: logEntries,

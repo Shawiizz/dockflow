@@ -4,9 +4,9 @@
 
 import type { Command } from 'commander';
 import ora from 'ora';
-import { sshExec } from '../../utils/ssh';
-import { printSuccess, printInfo, colors } from '../../utils/output';
+import { printInfo, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
+import { createLockService } from '../../services';
 import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
 export function registerLockReleaseCommand(parent: Command): void {
@@ -17,62 +17,46 @@ export function registerLockReleaseCommand(parent: Command): void {
     .option('--force', 'Force release without confirmation')
     .action(withErrorHandler(async (env: string, options: { server?: string; force?: boolean }) => {
       const { stackName, connection } = validateEnv(env, options.server);
-      
-      const lockFile = `/var/lib/dockflow/locks/${stackName}.lock`;
+      const lockService = createLockService(connection, stackName);
       const spinner = ora();
 
-      try {
-        // Check if lock exists
-        spinner.start('Checking lock status...');
-        const checkResult = await sshExec(connection, `cat "${lockFile}" 2>/dev/null || echo "NO_LOCK"`);
-        const output = checkResult.stdout.trim();
+      // Check if lock exists
+      spinner.start('Checking lock status...');
+      const current = await lockService.status();
 
-        if (output === 'NO_LOCK') {
-          spinner.info(`No lock found for ${stackName}`);
-          return;
-        }
-
-        // Show lock info before releasing
-        spinner.stop();
-        try {
-          const lockInfo = JSON.parse(output);
-          printInfo('Current lock:');
-          console.log(colors.dim(`  Holder:  ${lockInfo.performer}`));
-          console.log(colors.dim(`  Started: ${lockInfo.started_at}`));
-          console.log(colors.dim(`  Version: ${lockInfo.version}`));
-          if (lockInfo.message) {
-            console.log(colors.dim(`  Message: ${lockInfo.message}`));
-          }
-          console.log('');
-        } catch {
-          // Ignore parse errors
-        }
-
-        // Release lock
-        spinner.start('Releasing lock...');
-        const removeResult = await sshExec(connection, `rm -f "${lockFile}"`);
-        
-        if (removeResult.exitCode !== 0) {
-          spinner.fail('Failed to remove lock file');
-          throw new CLIError(`Failed to remove lock: ${removeResult.stderr}`, ErrorCode.COMMAND_FAILED);
-        }
-
-        // Verify the lock was actually removed
-        const verifyResult = await sshExec(connection, `test -f "${lockFile}" && echo "EXISTS" || echo "REMOVED"`);
-        if (verifyResult.stdout.trim() === 'EXISTS') {
-          spinner.fail('Lock file still exists after removal attempt');
-          throw new CLIError(
-            'Could not remove lock file. Check permissions on the server.',
-            ErrorCode.COMMAND_FAILED
-          );
-        }
-        
-        spinner.succeed(`Lock released for ${stackName}`);
-        console.log(colors.dim('  Deployments to this environment are now allowed.'));
-      } catch (error) {
-        if (error instanceof CLIError) throw error;
-        spinner.fail('Failed to release lock');
-        throw new CLIError(`${error}`, ErrorCode.COMMAND_FAILED);
+      if (!current.success) {
+        spinner.fail('Failed to check lock status');
+        throw new CLIError(current.error.message, ErrorCode.COMMAND_FAILED);
       }
+
+      if (!current.data.locked) {
+        spinner.info(`No lock found for ${stackName}`);
+        return;
+      }
+
+      // Show lock info before releasing
+      spinner.stop();
+      if (current.data.data) {
+        printInfo('Current lock:');
+        console.log(colors.dim(`  Holder:  ${current.data.data.performer}`));
+        console.log(colors.dim(`  Started: ${current.data.data.started_at}`));
+        console.log(colors.dim(`  Version: ${current.data.data.version}`));
+        if (current.data.data.message) {
+          console.log(colors.dim(`  Message: ${current.data.data.message}`));
+        }
+        console.log('');
+      }
+
+      // Release lock
+      spinner.start('Releasing lock...');
+      const result = await lockService.release();
+
+      if (!result.success) {
+        spinner.fail('Failed to release lock');
+        throw new CLIError(result.error.message, ErrorCode.COMMAND_FAILED);
+      }
+
+      spinner.succeed(`Lock released for ${stackName}`);
+      console.log(colors.dim('  Deployments to this environment are now allowed.'));
     }));
 }

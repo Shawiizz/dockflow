@@ -11,21 +11,12 @@
  */
 
 import { join } from 'path';
-import { jsonResponse, errorResponse } from '../server';
+import { jsonResponse, errorResponse, corsHeaders } from '../server';
 import type {
   DeployOperationRequest,
   BuildOperationRequest,
   OperationStatusResponse,
 } from '../types';
-
-/**
- * CORS headers (mirrored from server.ts for SSE responses)
- */
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
 
 // ─── Global operation mutex ──────────────────────────────────────────────────
 

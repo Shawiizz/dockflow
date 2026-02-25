@@ -1,5 +1,5 @@
 /**
- * Audit command - Show deployment audit log
+ * History command - Show deployment history / audit log
  */
 
 import type { Command } from 'commander';
@@ -44,10 +44,11 @@ function formatAuditEntry(entry: AuditEntry): string {
   return `${colors.dim(entry.timestamp)} ${colorFn(actionPadded)} ${colors.info(entry.version.padEnd(20))} ${entry.performer}${entry.message ? colors.dim(' - ' + entry.message) : ''}`;
 }
 
-export function registerAuditCommand(program: Command): void {
+export function registerHistoryCommand(program: Command): void {
   program
-    .command('audit <env>')
-    .description('Show deployment audit log')
+    .command('history <env>')
+    .alias('audit')
+    .description('Show deployment history')
     .option('-s, --server <name>', 'Target server (defaults to manager)')
     .option('-n, --lines <number>', 'Number of lines to show', '20')
     .option('--all', 'Show all entries')

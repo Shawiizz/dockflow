@@ -36,7 +36,7 @@ import {
   ConnectionError, 
   withErrorHandler,
 } from '../utils/errors';
-import { displayDeployDryRun } from './dry';
+import { displayDeployDryRun } from './deploy-dry-run';
 import { buildDeployContext, writeContextFile, getHostContextPath } from '../utils/context-generator';
 import type { ResolvedDeployment, TemplateContext } from '../types';
 

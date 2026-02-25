@@ -177,6 +177,33 @@ export class LogsService {
 }
 
 /**
+ * Parsed log line with timestamp
+ */
+export interface ParsedLogLine {
+  timestamp: string;
+  message: string;
+  service: string;
+}
+
+/**
+ * Parse Docker log output into structured entries.
+ * Shared between CLI and API routes.
+ */
+export function parseDockerLogLines(stdout: string, serviceName: string): ParsedLogLine[] {
+  return stdout
+    .trim()
+    .split('\n')
+    .filter((l) => l.trim())
+    .map((line) => {
+      const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\S+)\s+(.*)/);
+      if (tsMatch) {
+        return { timestamp: tsMatch[1], message: tsMatch[2], service: serviceName };
+      }
+      return { timestamp: new Date().toISOString(), message: line, service: serviceName };
+    });
+}
+
+/**
  * Factory function to create a LogsService
  */
 export function createLogsService(

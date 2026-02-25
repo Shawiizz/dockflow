@@ -4,9 +4,9 @@
 
 import type { Command } from 'commander';
 import ora from 'ora';
-import { sshExec } from '../../utils/ssh';
-import { printSuccess, printWarning, colors } from '../../utils/output';
+import { printWarning, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
+import { createLockService } from '../../services';
 import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
 export function registerLockAcquireCommand(parent: Command): void {
@@ -18,59 +18,47 @@ export function registerLockAcquireCommand(parent: Command): void {
     .option('--force', 'Force acquire even if already locked')
     .action(withErrorHandler(async (env: string, options: { server?: string; message?: string; force?: boolean }) => {
       const { stackName, connection } = validateEnv(env, options.server);
-      
-      const lockFile = `/var/lib/dockflow/locks/${stackName}.lock`;
-      const lockDir = '/var/lib/dockflow/locks';
+      const lockService = createLockService(connection, stackName);
       const spinner = ora();
 
-      try {
-        // Check for existing lock
+      // Check for existing lock (show info if blocked)
+      if (!options.force) {
         spinner.start('Checking for existing lock...');
-        const checkResult = await sshExec(connection, `cat "${lockFile}" 2>/dev/null || echo "NO_LOCK"`);
-        const output = checkResult.stdout.trim();
+        const current = await lockService.status();
 
-        if (output !== 'NO_LOCK' && !options.force) {
+        if (current.success && current.data.locked) {
           spinner.stop();
-          try {
-            const lockInfo = JSON.parse(output);
-            printWarning('Deployment is already locked');
-            console.log(colors.dim(`  Holder:  ${lockInfo.performer}`));
-            console.log(colors.dim(`  Started: ${lockInfo.started_at}`));
-            console.log(colors.dim(`  Version: ${lockInfo.version}`));
+          printWarning('Deployment is already locked');
+          if (current.data.data) {
+            console.log(colors.dim(`  Holder:  ${current.data.data.performer}`));
+            console.log(colors.dim(`  Started: ${current.data.data.started_at}`));
+            console.log(colors.dim(`  Version: ${current.data.data.version}`));
             console.log('');
-            throw new CLIError('Use --force to override the existing lock.', ErrorCode.DEPLOY_LOCKED);
-          } catch (e) {
-            if (e instanceof CLIError) throw e;
-            throw new CLIError('Lock file exists but could not be parsed. Use --force to override.', ErrorCode.DEPLOY_LOCKED);
           }
+          throw new CLIError('Use --force to override the existing lock.', ErrorCode.DEPLOY_LOCKED);
         }
+        spinner.stop();
+      }
 
-        // Create lock
-        spinner.text = 'Acquiring lock...';
-        const now = new Date();
-        const lockContent = JSON.stringify({
-          performer: `${process.env.USER || 'cli'}@${process.env.HOSTNAME || 'local'}`,
-          started_at: now.toISOString(),
-          timestamp: Math.floor(now.getTime() / 1000),
-          version: 'manual-lock',
-          stack: stackName,
-          message: options.message || 'Manual lock via CLI'
-        }, null, 2);
+      // Acquire lock
+      spinner.start('Acquiring lock...');
+      const result = await lockService.acquire({
+        message: options.message,
+        force: options.force,
+      });
 
-        await sshExec(connection, `mkdir -p "${lockDir}" && cat > "${lockFile}" << 'EOF'\n${lockContent}\nEOF`);
-        
-        spinner.succeed(`Lock acquired for ${stackName}`);
-        console.log('');
-        console.log(colors.dim('  Deployments to this environment are now blocked.'));
-        console.log(colors.dim('  Release with: dockflow lock release ' + env));
-        
-        if (options.message) {
-          console.log(colors.dim(`  Reason: ${options.message}`));
-        }
-      } catch (error) {
-        if (error instanceof CLIError) throw error;
+      if (!result.success) {
         spinner.fail('Failed to acquire lock');
-        throw new CLIError(`${error}`, ErrorCode.COMMAND_FAILED);
+        throw new CLIError(result.error.message, ErrorCode.COMMAND_FAILED);
+      }
+
+      spinner.succeed(`Lock acquired for ${stackName}`);
+      console.log('');
+      console.log(colors.dim('  Deployments to this environment are now blocked.'));
+      console.log(colors.dim('  Release with: dockflow lock release ' + env));
+
+      if (options.message) {
+        console.log(colors.dim(`  Reason: ${options.message}`));
       }
     }));
 }

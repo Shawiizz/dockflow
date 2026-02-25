@@ -1,7 +1,6 @@
 import { jsonResponse, errorResponse } from '../server';
-import { getProjectRoot, loadServersConfig } from '../../utils/config';
-import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { getComposePath, loadServersConfig } from '../../utils/config';
+import { readFileSync, writeFileSync } from 'fs';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type {
   ComposeFile,
@@ -26,17 +25,6 @@ export async function handleTopologyRoutes(req: Request): Promise<Response> {
   }
 
   return errorResponse('Endpoint not found', 404);
-}
-
-function getComposePath(): string | null {
-  const root = getProjectRoot();
-  const ymlPath = join(root, '.dockflow', 'docker', 'docker-compose.yml');
-  if (existsSync(ymlPath)) return ymlPath;
-
-  const yamlPath = join(root, '.dockflow', 'docker', 'docker-compose.yaml');
-  if (existsSync(yamlPath)) return yamlPath;
-
-  return null;
 }
 
 async function getTopology(): Promise<Response> {
