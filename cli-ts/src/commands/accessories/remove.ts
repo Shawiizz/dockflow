@@ -11,6 +11,7 @@ import { printInfo, printSuccess, printHeader, printWarning, colors } from '../.
 import { validateEnv } from '../../utils/validation';
 import { validateAccessoriesStack, getShortServiceNames } from './utils';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
+import { STACK_REMOVAL_MAX_ATTEMPTS, STACK_REMOVAL_POLL_INTERVAL_MS } from '../../utils/constants';
 
 /**
  * Register the accessories remove command
@@ -133,13 +134,13 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
         // Wait for stack to be fully removed
         spinner.text = 'Waiting for stack removal...';
         let attempts = 0;
-        while (attempts < 30) {
+        while (attempts < STACK_REMOVAL_MAX_ATTEMPTS) {
           const checkResult = await sshExec(connection, 
             `docker stack ps ${stackName} 2>&1 | grep -v "Nothing found" | wc -l`
           );
           const count = parseInt(checkResult.stdout.trim(), 10);
           if (count <= 1) break; // Only header line or nothing
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await new Promise(resolve => setTimeout(resolve, STACK_REMOVAL_POLL_INTERVAL_MS));
           attempts++;
         }
 

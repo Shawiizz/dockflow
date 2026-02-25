@@ -49,10 +49,10 @@ export function registerDetailsCommand(program: Command): void {
         // Quick tips
         console.log('');
         console.log(colors.dim('More commands:'));
-        console.log(colors.dim('  dockflow version <env>      Deployed version info'));
-        console.log(colors.dim('  dockflow containers <env>   Container details'));
-        console.log(colors.dim('  dockflow images <env>       Available images'));
-        console.log(colors.dim('  dockflow logs <env>         View logs'));
+        console.log(colors.dim('  dockflow version <env>        Deployed version info'));
+        console.log(colors.dim('  dockflow ps <env>             Container details'));
+        console.log(colors.dim('  dockflow list images <env>    Available images'));
+        console.log(colors.dim('  dockflow logs <env>           View logs'));
       } catch (error) {
         throw new DockerError(`Failed to get details: ${error}`);
       }

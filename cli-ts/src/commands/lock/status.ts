@@ -7,6 +7,7 @@ import { sshExec } from '../../utils/ssh';
 import { printInfo, printSuccess, printWarning, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
+import { LOCK_STALE_THRESHOLD_MINUTES } from '../../utils/constants';
 
 export function registerLockStatusCommand(parent: Command): void {
   parent
@@ -37,7 +38,7 @@ export function registerLockStatusCommand(parent: Command): void {
           const diffMinutes = Math.floor((now.getTime() - lockedAt.getTime()) / 60000);
           
           // Check if stale (> 30 minutes)
-          const isStale = diffMinutes > 30;
+          const isStale = diffMinutes > LOCK_STALE_THRESHOLD_MINUTES;
 
           console.log('');
           if (isStale) {

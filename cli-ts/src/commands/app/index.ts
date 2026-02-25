@@ -16,7 +16,6 @@ import { registerPsCommand } from './ps';
 import { registerPruneCommand } from './prune';
 import { registerVersionCommand } from './version';
 import { registerAuditCommand } from './audit';
-import { registerBashCommand } from './bash';
 import { registerMetricsCommand } from './metrics';
 import { registerDiagnoseCommand } from './diagnose';
 
@@ -34,7 +33,6 @@ export function registerAppCommands(program: Command): void {
   registerDiagnoseCommand(program);
   
   // Action commands
-  registerBashCommand(program);
   registerExecCommand(program);
   registerRestartCommand(program);
   registerStopCommand(program);

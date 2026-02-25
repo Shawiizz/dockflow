@@ -1,12 +1,13 @@
 /**
  * Accessories Deploy Command
  * Deploy accessories (databases, caches, etc.) to the environment
- * 
+ *
  * This is a convenience wrapper around: dockflow deploy <env> --accessories
  */
 
 import type { Command } from 'commander';
 import { printHeader, printInfo } from '../../utils/output';
+import { withErrorHandler } from '../../utils/errors';
 
 /**
  * Register the accessories deploy command
@@ -17,7 +18,7 @@ export function registerAccessoriesDeployCommand(program: Command): void {
     .description('Deploy accessories (databases, caches, etc.)')
     .option('--skip-docker-install', 'Skip Docker installation')
     .option('--debug', 'Enable debug output')
-    .action(async (
+    .action(withErrorHandler(async (
       env: string,
       version: string | undefined,
       options: { skipDockerInstall?: boolean; debug?: boolean }
@@ -34,5 +35,5 @@ export function registerAccessoriesDeployCommand(program: Command): void {
         skipDockerInstall: options.skipDockerInstall,
         debug: options.debug,
       });
-    });
+    }));
 }

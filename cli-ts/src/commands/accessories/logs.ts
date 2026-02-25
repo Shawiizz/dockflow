@@ -1,13 +1,15 @@
 /**
  * Accessories Logs Command
  * View logs for accessory services
+ *
+ * Uses LogsService (shared with app commands)
  */
 
 import type { Command } from 'commander';
-import { sshExecStream } from '../../utils/ssh';
-import { printInfo } from '../../utils/output';
+import { printInfo, printSection } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
-import { requireAccessoriesStack, requireAccessoryService, getShortServiceNames } from './utils';
+import { requireAccessoriesStack } from './utils';
+import { createLogsService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 
 /**
@@ -24,69 +26,35 @@ export function registerAccessoriesLogsCommand(program: Command): void {
     .option('--raw', 'Show raw output without pretty printing')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(async (
-      env: string, 
-      service: string | undefined, 
+      env: string,
+      service: string | undefined,
       options: { follow?: boolean; tail?: string; since?: string; timestamps?: boolean; raw?: boolean; server?: string }
     ) => {
-      // Validate environment and stack
       const { connection } = validateEnv(env, options.server);
-      const { stackName, services } = await requireAccessoriesStack(connection, env);
+      const { stackName } = await requireAccessoriesStack(connection, env);
 
-      if (services.length === 0) {
-        throw new DockerError('No accessories services found');
-      }
-
-      // Build log command options
-      const logOptions: string[] = [];
-      
-      if (options.follow) logOptions.push('-f');
-      if (options.tail) logOptions.push(`--tail=${options.tail}`);
-      if (options.since) logOptions.push(`--since=${options.since}`);
-      if (options.timestamps) logOptions.push('--timestamps');
-      if (options.raw) logOptions.push('--raw');
-
-      const logFlags = logOptions.join(' ');
+      const logsService = createLogsService(connection, stackName);
+      const logOptions = {
+        tail: parseInt(options.tail || '100', 10),
+        follow: options.follow,
+        timestamps: options.timestamps,
+        since: options.since,
+        raw: options.raw,
+      };
 
       try {
         if (service) {
-          // Get the full service name - validate it exists
-          const fullServiceName = await requireAccessoryService(connection, stackName, service);
-
-          // Logs for specific service
           printInfo(`Logs for ${service}:`);
           console.log('');
-          
-          const cmd = `docker service logs ${logFlags} ${fullServiceName} 2>&1`;
-          await sshExecStream(connection, cmd);
-
+          await logsService.streamServiceLogs(service, logOptions);
         } else {
-          const shortNames = getShortServiceNames(services, stackName);
-
-          if (services.length === 1) {
-            // Only one service, show its logs directly
-            printInfo(`Logs for ${shortNames[0]}:`);
-            console.log('');
-            const cmd = `docker service logs ${logFlags} ${services[0]} 2>&1`;
-            await sshExecStream(connection, cmd);
-          } else {
-            // Multiple services - show them all (or follow the first one)
-            if (options.follow) {
-              printInfo(`Following logs for ${shortNames[0]}...`);
-              printInfo(`(Specify a service name to follow a different one)`);
-              console.log('');
-              const cmd = `docker service logs ${logFlags} ${services[0]} 2>&1`;
-              await sshExecStream(connection, cmd);
+          await logsService.streamAllLogs(logOptions, (serviceName) => {
+            if (!options.follow) {
+              printSection(serviceName);
             } else {
-              // Show logs from all services sequentially
-              for (let i = 0; i < services.length; i++) {
-                console.log('');
-                console.log(`=== ${shortNames[i]} ===`);
-                console.log('');
-                const cmd = `docker service logs ${logFlags} ${services[i]} 2>&1`;
-                await sshExecStream(connection, cmd);
-              }
+              printInfo(`Following logs for ${serviceName} (specify a service name to follow a different one)`);
             }
-          }
+          });
         }
       } catch (error) {
         if (error instanceof DockerError) throw error;
