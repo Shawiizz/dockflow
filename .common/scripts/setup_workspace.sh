@@ -12,9 +12,8 @@ materialize_path() {
 	file_part=$(basename "$rel_path")
 
 	local current="$merged"
-	local IFS='/'
-	local components=($dir_part)
-	unset IFS
+	local components
+	IFS='/' read -ra components <<<"$dir_part"
 
 	for component in "${components[@]}"; do
 		[ -z "$component" ] && continue
@@ -43,7 +42,7 @@ materialize_path() {
 }
 
 extract_template_paths() {
-	python3 << 'PYEOF'
+	python3 <<'PYEOF'
 import os
 
 config_file = "/workspace/merged/.dockflow/config.yml"

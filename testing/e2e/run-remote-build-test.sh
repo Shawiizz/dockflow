@@ -41,28 +41,28 @@ log_step "Checking environment..."
 
 SKIP_SETUP=false
 if [[ "${1:-}" == "--skip-setup" ]]; then
-    SKIP_SETUP=true
-    log_info "Skipping setup (--skip-setup flag)"
+	SKIP_SETUP=true
+	log_info "Skipping setup (--skip-setup flag)"
 fi
 
 # Try to setup or verify existing environment
 if check_vms_running 2>/dev/null && check_swarm_ready 2>/dev/null; then
-    log_success "VMs already running and Swarm ready"
-    CLI_BINARY=$(get_cli_binary)
-    CLI_BIN="$CLI_DIR/dist/$CLI_BINARY"
-    
-    # Build CLI if not present
-    if [[ ! -f "$CLI_BIN" ]]; then
-        build_cli || exit 1
-        CLI_BIN="$CLI_BIN_PATH"
-    fi
+	log_success "VMs already running and Swarm ready"
+	CLI_BINARY=$(get_cli_binary)
+	CLI_BIN="$CLI_DIR/dist/$CLI_BINARY"
+
+	# Build CLI if not present
+	if [[ ! -f "$CLI_BIN" ]]; then
+		build_cli || exit 1
+		CLI_BIN="$CLI_BIN_PATH"
+	fi
 elif [[ "$SKIP_SETUP" == "true" ]]; then
-    log_error "VMs not running but --skip-setup was specified"
-    exit 1
+	log_error "VMs not running but --skip-setup was specified"
+	exit 1
 else
-    log_info "Setting up E2E environment (VMs + Swarm)..."
-    setup_e2e_environment "$PRIMARY_TEST_APP_DIR" "$TEST_ENV" || exit 1
-    CLI_BIN="$CLI_BIN_PATH"
+	log_info "Setting up E2E environment (VMs + Swarm)..."
+	setup_e2e_environment "$PRIMARY_TEST_APP_DIR" "$TEST_ENV" || exit 1
+	CLI_BIN="$CLI_BIN_PATH"
 fi
 
 NODE_COUNT=$(check_swarm_ready) || exit 1
@@ -136,8 +136,8 @@ git commit -m "Initial commit for remote build test"
 # The key is stored in the test-app/.env.dockflow file created during main test
 TEST_APP_ENV="$SCRIPT_DIR/test-app/.env.dockflow"
 if [[ ! -f "$TEST_APP_ENV" ]]; then
-    log_error "test-app/.env.dockflow not found - run run-tests.sh first"
-    exit 1
+	log_error "test-app/.env.dockflow not found - run run-tests.sh first"
+	exit 1
 fi
 
 # Extract the connection string and decode the private key
@@ -145,25 +145,25 @@ source "$TEST_APP_ENV"
 DEPLOY_KEY=$(echo "$TEST_MAIN_SERVER_CONNECTION" | base64 -d | jq -r '.privateKey')
 
 if [[ -z "$DEPLOY_KEY" || "$DEPLOY_KEY" == "null" ]]; then
-    log_error "Could not extract deploy user SSH key from connection string"
-    exit 1
+	log_error "Could not extract deploy user SSH key from connection string"
+	exit 1
 fi
 
 # Create temporary SSH key file
 TEMP_KEY=$(mktemp)
-echo "$DEPLOY_KEY" > "$TEMP_KEY"
+echo "$DEPLOY_KEY" >"$TEMP_KEY"
 chmod 600 "$TEMP_KEY"
 
 # Push to manager using SSH
 # We need to use the external port (2222) from host
 GIT_SSH_COMMAND="ssh -i $TEMP_KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p $SSH_PORT_MANAGER" \
-    git remote add origin "deploytest@localhost:$REPO_PATH" 2>/dev/null || \
-    git remote set-url origin "deploytest@localhost:$REPO_PATH"
+	git remote add origin "deploytest@localhost:$REPO_PATH" 2>/dev/null ||
+	git remote set-url origin "deploytest@localhost:$REPO_PATH"
 
 # Git creates 'master' by default, push it
 set +e
 GIT_SSH_COMMAND="ssh -i $TEMP_KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p $SSH_PORT_MANAGER" \
-    git push -u origin master --force 2>&1
+	git push -u origin master --force 2>&1
 PUSH_EXIT=$?
 set -e
 
@@ -171,8 +171,8 @@ set -e
 rm -f "$TEMP_KEY"
 
 if [[ $PUSH_EXIT -ne 0 ]]; then
-    log_error "Failed to push to git repository"
-    exit 1
+	log_error "Failed to push to git repository"
+	exit 1
 fi
 
 log_success "Code pushed to manager Git repository"
@@ -192,7 +192,7 @@ MANAGER_CONN=$(transform_connection_for_docker "$TEST_MAIN_SERVER_CONNECTION" "d
 WORKER_CONN=$(transform_connection_for_docker "$TEST_WORKER_1_CONNECTION" "dockflow-test-w1")
 
 # Create .env.dockflow for test-app-remote
-cat > "$TEST_APP_DIR/.env.dockflow" <<EOF
+cat >"$TEST_APP_DIR/.env.dockflow" <<EOF
 TEST_MAIN_SERVER_CONNECTION=$MANAGER_CONN
 TEST_WORKER_1_CONNECTION=$WORKER_CONN
 EOF
@@ -212,24 +212,24 @@ git remote set-url origin "deploytest@localhost:$REPO_PATH"
 
 set +e
 DOCKFLOW_DEV_PATH="$DOCKFLOW_ROOT" \
-DOCKFLOW_DOCKER_NETWORK="docker_test-network" \
-"$CLI_BIN" deploy "$TEST_ENV" "$TEST_VERSION" --dev --force --skip-docker-install 2>&1
+	DOCKFLOW_DOCKER_NETWORK="docker_test-network" \
+	"$CLI_BIN" deploy "$TEST_ENV" "$TEST_VERSION" --dev --force --skip-docker-install 2>&1
 DEPLOY_EXIT_CODE=$?
 set -e
 
 if [[ $DEPLOY_EXIT_CODE -ne 0 ]]; then
-    log_error "Remote build deployment failed with exit code $DEPLOY_EXIT_CODE"
-    
-    # Show some debug info
-    echo ""
-    log_info "Debug: Checking if image was built..."
-    docker exec dockflow-test-manager docker images | grep -E "test-remote|REPOSITORY" || true
-    
-    echo ""
-    log_info "Debug: Checking services..."
-    docker exec dockflow-test-manager docker service ls 2>/dev/null || true
-    
-    exit 1
+	log_error "Remote build deployment failed with exit code $DEPLOY_EXIT_CODE"
+
+	# Show some debug info
+	echo ""
+	log_info "Debug: Checking if image was built..."
+	docker exec dockflow-test-manager docker images | grep -E "test-remote|REPOSITORY" || true
+
+	echo ""
+	log_info "Debug: Checking services..."
+	docker exec dockflow-test-manager docker service ls 2>/dev/null || true
+
+	exit 1
 fi
 log_success "Remote build deployment completed"
 
@@ -249,17 +249,17 @@ wait_for_service "$SERVICE_NAME" "1/1" 60 || exit 1
 # Verify the image was built on the remote server (not locally)
 log_info "Checking image was built remotely..."
 if check_image_exists "test-remote-web-app"; then
-    log_success "Image 'test-remote-web-app' exists on manager (remote build verified)"
+	log_success "Image 'test-remote-web-app' exists on manager (remote build verified)"
 else
-    log_error "Image not found on manager - remote build may have failed"
-    exit 1
+	log_error "Image not found on manager - remote build may have failed"
+	exit 1
 fi
 
 # Run comprehensive verification (single replica, check manager + worker for images)
 # For remote build with no registry, images should be distributed to workers
 if ! verify_deployment "$STACK_NAME" "$SERVICE_NAME" "1/1" "$MANAGER_NODE" "$WORKER_NODE"; then
-    log_error "Deployment verification failed!"
-    exit 1
+	log_error "Deployment verification failed!"
+	exit 1
 fi
 
 log_success "All deployment verifications passed"
