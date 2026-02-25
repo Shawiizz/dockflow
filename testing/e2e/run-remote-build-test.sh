@@ -213,7 +213,7 @@ git remote set-url origin "deploytest@localhost:$REPO_PATH"
 set +e
 DOCKFLOW_DEV_PATH="$DOCKFLOW_ROOT" \
 	DOCKFLOW_DOCKER_NETWORK="docker_test-network" \
-	"$CLI_BIN" deploy "$TEST_ENV" "$TEST_VERSION" --dev --force --skip-docker-install 2>&1
+	"$CLI_BIN" deploy "$TEST_ENV" "$TEST_VERSION" --force --skip-docker-install 2>&1
 DEPLOY_EXIT_CODE=$?
 set -e
 
