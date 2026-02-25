@@ -16,19 +16,33 @@ The documentation is available in machine-readable format following the llms.txt
 These files are generated automatically at build time from the documentation sources.
 
 <Callout type="info">
-  You can point any AI assistant to `https://your-domain/llms.txt` to give it context about Dockflow.
+  You can point any AI assistant to `https://{{ current.env.docs_domain_name }}/llms.txt` to give it context about Dockflow.
 </Callout>
 
 ## MCP Server
 
-The `@dockflow/mcp` package provides a [Model Context Protocol](https://modelcontextprotocol.io/) server that exposes Dockflow documentation as tools for AI assistants.
+The `@dockflow-tools/mcp` package provides a [Model Context Protocol](https://modelcontextprotocol.io/) server that exposes Dockflow documentation as tools for AI assistants.
 
 ### Installation
 
-<Tabs items={['Claude Code', 'Claude Desktop', 'Other MCP clients']}>
+<Tabs items={['Claude Code', 'VS Code', 'Claude Desktop', 'Other MCP clients']}>
   <Tabs.Tab>
     ```bash
-    claude mcp add dockflow -- npx -y @dockflow/mcp
+    claude mcp add dockflow -- npx -y @dockflow-tools/mcp
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Add to your `.vscode/mcp.json`:
+
+    ```json
+    {
+      "servers": {
+        "dockflow": {
+          "command": "npx",
+          "args": ["-y", "@dockflow-tools/mcp"]
+        }
+      }
+    }
     ```
   </Tabs.Tab>
   <Tabs.Tab>
@@ -39,7 +53,7 @@ The `@dockflow/mcp` package provides a [Model Context Protocol](https://modelcon
       "mcpServers": {
         "dockflow": {
           "command": "npx",
-          "args": ["-y", "@dockflow/mcp"]
+          "args": ["-y", "@dockflow-tools/mcp"]
         }
       }
     }
@@ -49,7 +63,7 @@ The `@dockflow/mcp` package provides a [Model Context Protocol](https://modelcon
     Run the server via stdio:
 
     ```bash
-    npx @dockflow/mcp
+    npx @dockflow-tools/mcp
     ```
   </Tabs.Tab>
 </Tabs>

@@ -4,7 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
-const BASE_URL = 'https://{{ current.env.docs_domain_name }}';
+const BASE_URL = 'https://dockflow.shawiizz.dev';
 
 // ── Documentation cache ─────────────────────────────────────────────────────
 

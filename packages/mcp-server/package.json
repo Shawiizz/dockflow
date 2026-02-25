@@ -1,5 +1,5 @@
 {
-  "name": "@dockflow/mcp",
+  "name": "@dockflow-tools/mcp",
   "version": "1.0.0",
   "description": "MCP server for Dockflow documentation - enables AI assistants to search and query Dockflow docs",
   "type": "module",
