@@ -61,12 +61,33 @@ export interface HooksConfig {
   'post-deploy'?: string;
 }
 
+export interface StackManagementConfig {
+  keep_releases?: number;
+  cleanup_on_failure?: boolean;
+}
+
+export interface TemplateFileConfig {
+  src: string;
+  dest: string;
+}
+
+export interface AccessoryConfig {
+  image?: string;
+  volumes?: string[];
+  ports?: string[];
+  env?: Record<string, string>;
+  deploy?: Record<string, unknown>;
+}
+
 export interface DockflowConfig {
   project_name: string;
   registry?: RegistryConfig;
   options?: BuildOptions;
+  stack_management?: StackManagementConfig;
   health_checks?: HealthCheckConfig;
   hooks?: HooksConfig;
+  templates?: (string | TemplateFileConfig)[];
+  accessories?: Record<string, AccessoryConfig>;
 }
 
 /**

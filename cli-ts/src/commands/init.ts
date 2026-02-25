@@ -4,11 +4,12 @@
  */
 
 import type { Command } from 'commander';
-import { existsSync, mkdirSync, writeFileSync, copyFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import inquirer from 'inquirer';
 import { getProjectRoot } from '../utils/config';
-import { printError, printSuccess, printInfo, printHeader, printWarning } from '../utils/output';
+import { printSuccess, printInfo, printHeader, printWarning } from '../utils/output';
+import { withErrorHandler } from '../utils/errors';
 import { DOCKFLOW_VERSION } from '../constants';
 
 // GitHub Actions workflow using Dockflow reusable workflows
@@ -352,7 +353,7 @@ export function registerInitCommand(program: Command): void {
   program
     .command('init [platform]')
     .description('Initialize project structure')
-    .action(async (platform?: string) => {
+    .action(withErrorHandler(async (platform?: string) => {
       printHeader('Initialize Project');
       console.log('');
 
@@ -466,5 +467,5 @@ export function registerInitCommand(program: Command): void {
       console.log('  5. Run "dockflow setup" to configure your server');
       console.log('  6. Add connection secrets to your CI/CD (e.g., PRODUCTION_MAIN_SERVER_CONNECTION)');
       console.log('  7. Push a tag to trigger deployment');
-    });
+    }));
 }

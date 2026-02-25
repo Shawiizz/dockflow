@@ -69,20 +69,17 @@ async function listAccessories(): Promise<Response> {
     } satisfies AccessoriesResponse & { message?: string });
   }
 
-  const accessoriesConfig = (config as unknown as Record<string, unknown>)['accessories'];
+  const accessoriesConfig = config.accessories;
   const accessories: AccessoryInfo[] = [];
 
-  if (accessoriesConfig && typeof accessoriesConfig === 'object') {
-    for (const [name, value] of Object.entries(accessoriesConfig as Record<string, unknown>)) {
-      const acc = value as Record<string, unknown>;
+  if (accessoriesConfig) {
+    for (const [name, acc] of Object.entries(accessoriesConfig)) {
       accessories.push({
         name,
-        image: (acc['image'] as string) || undefined,
-        volumes: Array.isArray(acc['volumes']) ? acc['volumes'] as string[] : undefined,
-        ports: Array.isArray(acc['ports']) ? acc['ports'] as string[] : undefined,
-        env: (acc['env'] && typeof acc['env'] === 'object')
-          ? acc['env'] as Record<string, string>
-          : undefined,
+        image: acc.image,
+        volumes: acc.volumes,
+        ports: acc.ports,
+        env: acc.env,
       });
     }
   }
@@ -122,20 +119,17 @@ async function getAccessoriesStatus(url: URL): Promise<Response> {
   }
 
   // Get accessories from config
-  const accessoriesConfig = (config as unknown as Record<string, unknown>)['accessories'];
+  const accessoriesConfig = config.accessories;
   const accessories: AccessoryStatusInfo[] = [];
 
-  if (accessoriesConfig && typeof accessoriesConfig === 'object') {
-    for (const [name, value] of Object.entries(accessoriesConfig as Record<string, unknown>)) {
-      const acc = value as Record<string, unknown>;
+  if (accessoriesConfig) {
+    for (const [name, acc] of Object.entries(accessoriesConfig)) {
       accessories.push({
         name,
-        image: (acc['image'] as string) || undefined,
-        volumes: Array.isArray(acc['volumes']) ? acc['volumes'] as string[] : undefined,
-        ports: Array.isArray(acc['ports']) ? acc['ports'] as string[] : undefined,
-        env: (acc['env'] && typeof acc['env'] === 'object')
-          ? acc['env'] as Record<string, string>
-          : undefined,
+        image: acc.image,
+        volumes: acc.volumes,
+        ports: acc.ports,
+        env: acc.env,
         status: 'unknown',
       });
     }

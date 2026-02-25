@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { loadConfig, loadServersConfig } from '../../utils/config';
 import { printSection, printError, colors } from '../../utils/output';
-import type { ServerConfig } from '../../types';
+import { withErrorHandler } from '../../utils/errors';
 
 interface EnvironmentInfo {
   name: string;
@@ -63,7 +63,7 @@ export function registerListEnvCommand(parent: Command): void {
     .alias('environments')
     .description('List available environments and their servers')
     .option('--json', 'Output as JSON')
-    .action(async (options: { json?: boolean }) => {
+    .action(withErrorHandler(async (options: { json?: boolean }) => {
       const config = loadConfig();
       const environments = getEnvironmentsInfo();
 
@@ -141,5 +141,5 @@ export function registerListEnvCommand(parent: Command): void {
         console.log(colors.dim(`  dockflow deploy ${env.name}`));
       }
       console.log('');
-    });
+    }));
 }

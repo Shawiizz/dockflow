@@ -105,9 +105,9 @@ export function registerSetupCommand(program: Command): void {
   setup
     .command('swarm <env>')
     .description('Initialize Docker Swarm cluster for an environment')
-    .action(async (env: string) => {
+    .action(withErrorHandler(async (env: string) => {
       await runSetupSwarm(env);
-    });
+    }));
 
   // Non-interactive mode - local setup with CLI options
   setup
@@ -171,7 +171,7 @@ export function registerSetupCommand(program: Command): void {
     .option('--port <port>', 'SSH port', '22')
     .option('--user <user>', 'Deployment username')
     .option('--key <path>', 'Path to SSH private key')
-    .action(async (options: ConnectionOptions) => {
+    .action(withErrorHandler(async (options: ConnectionOptions) => {
       let host = options.host;
       let port = parseInt(options.port || '22', 10);
       let user = options.user;
@@ -215,7 +215,7 @@ export function registerSetupCommand(program: Command): void {
         skipDockerInstall: false,
         portainer: { install: false, port: 9000 }
       }, privateKey);
-    });
+    }));
 }
 
 // Re-export types for convenience

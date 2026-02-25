@@ -15,6 +15,7 @@ import {
 } from '../utils/config';
 import { getAvailableEnvironments, getServerNamesForEnvironment } from '../utils/servers';
 import { printSection, printError, printSuccess, printWarning, printDim, printSeparator, colors } from '../utils/output';
+import { withErrorHandler } from '../utils/errors';
 import { 
   validateConfig as validateConfigSchema, 
   validateServersConfig as validateServersSchema,
@@ -118,7 +119,7 @@ export function registerConfigCommand(program: Command): void {
     .command('show', { isDefault: true })
     .description('Display current configuration')
     .option('--json', 'Output as JSON')
-    .action(async (options: { json?: boolean }) => {
+    .action(withErrorHandler(async (options: { json?: boolean }) => {
       const config = loadConfig();
       const servers = loadServersConfig();
       const envs = getAvailableEnvironments();
@@ -214,7 +215,7 @@ export function registerConfigCommand(program: Command): void {
       }
 
       console.log('');
-    });
+    }));
 
   // config validate
   configCmd
@@ -223,7 +224,7 @@ export function registerConfigCommand(program: Command): void {
     .description('Validate configuration files against schemas')
     .option('--verbose', 'Show detailed validation output')
     .option('--json', 'Output validation results as JSON')
-    .action(async (options: { verbose?: boolean; json?: boolean }) => {
+    .action(withErrorHandler(async (options: { verbose?: boolean; json?: boolean }) => {
       const result = validateConfigFiles();
 
       if (options.json) {
@@ -309,14 +310,14 @@ export function registerConfigCommand(program: Command): void {
       console.log('');
 
       process.exit(result.valid ? 0 : 1);
-    });
+    }));
 
   // config path
   configCmd
     .command('path')
     .description('Show configuration directory path')
-    .action(() => {
+    .action(withErrorHandler(async () => {
       const root = getProjectRoot();
       console.log(join(root, '.dockflow'));
-    });
+    }));
 }

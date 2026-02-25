@@ -2,7 +2,7 @@
  * Shared API route helpers
  */
 
-import { loadConfig, getAccessoriesStackName } from '../../utils/config';
+import { loadConfig } from '../../utils/config';
 import {
   resolveServersForEnvironment,
   getAvailableEnvironments,
@@ -46,11 +46,4 @@ export function resolveEnvironment(envFilter: string | null): string | null {
   if (envFilter) return envFilter;
   const environments = getAvailableEnvironments();
   return environments[0] || null;
-}
-
-/**
- * Get accessories stack name for an environment
- */
-export function getAccessoriesStack(env: string): string | null {
-  return getAccessoriesStackName(env);
 }
