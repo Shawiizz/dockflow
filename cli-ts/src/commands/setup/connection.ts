@@ -10,9 +10,6 @@ import {
 import type { HostConfig } from './types';
 import type { SSHKeyConnection } from '../../types';
 
-// Re-export for backwards compatibility
-export type { SSHKeyConnection as ConnectionInfo } from '../../types';
-
 /**
  * Generate connection string (base64 encoded JSON)
  */

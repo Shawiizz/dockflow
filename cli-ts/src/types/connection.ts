@@ -39,13 +39,6 @@ export function isKeyConnection(conn: ConnectionInfo): conn is SSHKeyConnection 
 }
 
 /**
- * Type guard for password-based connections
- */
-export function isPasswordConnection(conn: ConnectionInfo): conn is SSHPasswordConnection {
-  return !('privateKey' in conn) && 'password' in conn;
-}
-
-/**
  * SSH command execution result
  */
 export interface SSHExecResult {
@@ -53,8 +46,3 @@ export interface SSHExecResult {
   stderr: string;
   exitCode: number;
 }
-
-/**
- * Default SSH port
- */
-export const DEFAULT_SSH_PORT = 22;

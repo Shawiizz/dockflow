@@ -47,10 +47,6 @@ export function printInfo(message: string): void {
   console.log(colors.info(`→ ${message}`));
 }
 
-export function printStep(message: string): void {
-  console.log(colors.info(`➜ ${message}`));
-}
-
 // === Debug output (verbose mode only) ===
 export function printDebug(message: string, context?: Record<string, unknown>): void {
   if (!isVerbose()) return;
@@ -78,21 +74,7 @@ export function printSection(title: string): void {
   console.log(colors.info(`=== ${title} ===`));
 }
 
-export function printKeyValue(key: string, value: string): void {
-  console.log(`${colors.dim(key + ':')} ${value}`);
-}
-
 // === Formatters ===
-
-/**
- * Format bytes to human readable
- */
-export function formatBytes(bytes: number): string {
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  if (bytes === 0) return '0 B';
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
-}
 
 /**
  * Format duration in seconds to human readable
@@ -103,14 +85,6 @@ export function formatDuration(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
   return `${hours}h ${mins}m`;
-}
-
-/**
- * Format duration in milliseconds to human readable
- */
-export function formatDurationMs(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  return formatDuration(Math.round(ms / 1000));
 }
 
 // === Table & formatting helpers ===
@@ -141,14 +115,5 @@ export function printDim(message: string): void {
  */
 export function printTableRow(label: string, value: string, labelWidth: number = 20): void {
   console.log(`  ${colors.bold(label.padEnd(labelWidth))} ${value}`);
-}
-
-/**
- * Print a status badge with icon
- */
-export function printStatusBadge(status: 'success' | 'error' | 'warning' | 'info', text: string): string {
-  const icons = { success: '✓', error: '✗', warning: '↩', info: '→' };
-  const colorFn = colors[status];
-  return colorFn(`${icons[status]} ${text}`);
 }
 

@@ -6,20 +6,17 @@ import type { Command } from 'commander';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { parse as parseYaml } from 'yaml';
-import { 
-  loadConfig, 
-  loadServersConfig, 
-  getProjectRoot, 
-  loadConfigWithErrors, 
-  loadServersConfigWithErrors 
+import {
+  loadConfig,
+  loadServersConfig,
+  getProjectRoot
 } from '../utils/config';
 import { getAvailableEnvironments, getServerNamesForEnvironment } from '../utils/servers';
 import { printSection, printError, printSuccess, printWarning, printDim, printSeparator, colors } from '../utils/output';
 import { withErrorHandler } from '../utils/errors';
-import { 
-  validateConfig as validateConfigSchema, 
+import {
+  validateConfig as validateConfigSchema,
   validateServersConfig as validateServersSchema,
-  printValidationReport,
   getSuggestion,
   type ValidationIssue
 } from '../schemas';

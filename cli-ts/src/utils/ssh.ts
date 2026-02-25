@@ -5,18 +5,15 @@
  */
 
 import { Client as SSHClient } from 'ssh2';
-import type { ConnectionInfo, SSHKeyConnection, SSHExecResult } from '../types';
+import type { ConnectionInfo, SSHExecResult } from '../types';
 import { isKeyConnection } from '../types';
 import { normalizePrivateKey } from './ssh-keys';
 import { DEFAULT_SSH_PORT } from '../constants';
 
-// Re-export ConnectionInfo for backwards compatibility
-export type { SSHKeyConnection as ConnectionInfo } from '../types';
-
 /**
  * Create and connect an ssh2 client
  */
-function connectClient(conn: ConnectionInfo | SSHKeyConnection): Promise<SSHClient> {
+function connectClient(conn: ConnectionInfo): Promise<SSHClient> {
   return new Promise((resolve, reject) => {
     const client = new SSHClient();
 
@@ -31,8 +28,8 @@ function connectClient(conn: ConnectionInfo | SSHKeyConnection): Promise<SSHClie
       readyTimeout: 10000,
     };
 
-    if (isKeyConnection(conn as ConnectionInfo)) {
-      config.privateKey = normalizePrivateKey((conn as SSHKeyConnection).privateKey);
+    if (isKeyConnection(conn)) {
+      config.privateKey = normalizePrivateKey(conn.privateKey);
     }
 
     if ('password' in conn && conn.password) {
@@ -47,7 +44,7 @@ function connectClient(conn: ConnectionInfo | SSHKeyConnection): Promise<SSHClie
  * Execute a command via SSH (returns collected output)
  */
 export async function sshExec(
-  conn: ConnectionInfo | SSHKeyConnection,
+  conn: ConnectionInfo,
   command: string
 ): Promise<SSHExecResult> {
   const client = await connectClient(conn);
@@ -89,7 +86,7 @@ export async function sshExec(
  * Execute a command via SSH (streaming output to console)
  */
 export async function sshExecStream(
-  conn: ConnectionInfo | SSHKeyConnection,
+  conn: ConnectionInfo,
   command: string,
   options: {
     onStdout?: (data: string) => void;
@@ -146,7 +143,7 @@ export async function sshExecStream(
 /**
  * Open an interactive SSH session
  */
-export async function sshShell(conn: ConnectionInfo | SSHKeyConnection): Promise<number> {
+export async function sshShell(conn: ConnectionInfo): Promise<number> {
   const client = await connectClient(conn);
 
   return new Promise((resolve, reject) => {
@@ -200,7 +197,7 @@ export async function sshShell(conn: ConnectionInfo | SSHKeyConnection): Promise
  * Execute an interactive command via SSH (e.g., docker exec -it)
  */
 export async function executeInteractiveSSH(
-  conn: ConnectionInfo | SSHKeyConnection,
+  conn: ConnectionInfo,
   command: string
 ): Promise<number> {
   const client = await connectClient(conn);
@@ -255,7 +252,7 @@ export async function executeInteractiveSSH(
 /**
  * Test SSH connection
  */
-export async function testConnection(conn: ConnectionInfo | SSHKeyConnection): Promise<boolean> {
+export async function testConnection(conn: ConnectionInfo): Promise<boolean> {
   try {
     const result = await sshExecStream(conn, 'echo ok', {
       onStdout: () => {},
