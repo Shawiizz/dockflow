@@ -141,6 +141,15 @@ export const StackManagementSchema = z.object({
 });
 
 /**
+ * Lock configuration schema
+ */
+export const LockConfigSchema = z.object({
+  stale_threshold_minutes: z.number().int().min(1).max(1440).optional().default(30).describe(
+    'Minutes after which a deployment lock is considered stale (default: 30)'
+  ),
+});
+
+/**
  * Project name validation pattern
  * Must be lowercase alphanumeric with hyphens, no leading/trailing hyphens
  */
@@ -178,7 +187,11 @@ export const DockflowConfigSchema = z.object({
   hooks: HooksConfigSchema.optional().describe(
     'Lifecycle hooks for custom scripts'
   ),
-  
+
+  lock: LockConfigSchema.optional().describe(
+    'Deployment lock settings'
+  ),
+
   templates: z.array(TemplateFileSchema).optional().describe(
     'List of files to render with Jinja2 templating before deployment'
   ),

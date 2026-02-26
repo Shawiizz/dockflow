@@ -16,8 +16,8 @@ export function registerLockReleaseCommand(parent: Command): void {
     .option('-s, --server <name>', 'Target server (defaults to manager)')
     .option('--force', 'Force release without confirmation')
     .action(withErrorHandler(async (env: string, options: { server?: string; force?: boolean }) => {
-      const { stackName, connection } = validateEnv(env, options.server);
-      const lockService = createLockService(connection, stackName);
+      const { stackName, connection, config } = validateEnv(env, options.server);
+      const lockService = createLockService(connection, stackName, config.lock?.stale_threshold_minutes);
       const spinner = ora();
 
       // Check if lock exists

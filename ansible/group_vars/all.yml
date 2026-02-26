@@ -10,7 +10,7 @@ dockflow_defaults:
   convergence_timeout: 300      # Max time to wait for services to converge
   convergence_interval: 5       # Interval between convergence checks
   healthcheck_timeout: 120      # Max time to wait for container healthchecks
-  lock_stale_timeout: 1800      # Lock expires after 30 minutes
+  lock_stale_timeout: 1800      # Lock expires after 30 minutes (overridden by config.lock.stale_threshold_minutes)
   hooks_timeout: 300            # Max hook execution time
   stack_removal_timeout: 60     # Max time to wait for stuck stack removal
   

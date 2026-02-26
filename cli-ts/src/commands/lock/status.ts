@@ -14,8 +14,8 @@ export function registerLockStatusCommand(parent: Command): void {
     .description('Show deployment lock status')
     .option('-s, --server <name>', 'Target server (defaults to manager)')
     .action(withErrorHandler(async (env: string, options: { server?: string }) => {
-      const { stackName, connection } = validateEnv(env, options.server);
-      const lockService = createLockService(connection, stackName);
+      const { stackName, connection, config } = validateEnv(env, options.server);
+      const lockService = createLockService(connection, stackName, config.lock?.stale_threshold_minutes);
 
       const result = await lockService.status();
 

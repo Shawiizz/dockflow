@@ -17,8 +17,8 @@ export function registerLockAcquireCommand(parent: Command): void {
     .option('-m, --message <message>', 'Lock message/reason')
     .option('--force', 'Force acquire even if already locked')
     .action(withErrorHandler(async (env: string, options: { server?: string; message?: string; force?: boolean }) => {
-      const { stackName, connection } = validateEnv(env, options.server);
-      const lockService = createLockService(connection, stackName);
+      const { stackName, connection, config } = validateEnv(env, options.server);
+      const lockService = createLockService(connection, stackName, config.lock?.stale_threshold_minutes);
       const spinner = ora();
 
       // Check for existing lock (show info if blocked)

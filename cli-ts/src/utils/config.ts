@@ -67,6 +67,10 @@ export interface StackManagementConfig {
   cleanup_on_failure?: boolean;
 }
 
+export interface LockConfig {
+  stale_threshold_minutes?: number;
+}
+
 export interface TemplateFileConfig {
   src: string;
   dest: string;
@@ -87,6 +91,7 @@ export interface DockflowConfig {
   stack_management?: StackManagementConfig;
   health_checks?: HealthCheckConfig;
   hooks?: HooksConfig;
+  lock?: LockConfig;
   templates?: (string | TemplateFileConfig)[];
   accessories?: Record<string, AccessoryConfig>;
 }

@@ -38,12 +38,15 @@ export interface LockStatus {
  */
 export class LockService {
   private readonly lockFile: string;
+  private readonly staleThresholdMinutes: number;
 
   constructor(
     private readonly connection: SSHKeyConnection,
-    private readonly stackName: string
+    private readonly stackName: string,
+    staleThresholdMinutes?: number,
   ) {
     this.lockFile = `${DOCKFLOW_LOCKS_DIR}/${stackName}.lock`;
+    this.staleThresholdMinutes = staleThresholdMinutes ?? LOCK_STALE_THRESHOLD_MINUTES;
   }
 
   /**
@@ -62,7 +65,7 @@ export class LockService {
         const data = JSON.parse(output) as LockData;
         const startedAt = new Date(data.started_at);
         const durationMinutes = Math.floor((Date.now() - startedAt.getTime()) / 60000);
-        const isStale = durationMinutes > LOCK_STALE_THRESHOLD_MINUTES;
+        const isStale = durationMinutes > this.staleThresholdMinutes;
 
         return ok({ locked: true, data, durationMinutes, isStale });
       } catch {
@@ -137,7 +140,8 @@ export class LockService {
  */
 export function createLockService(
   connection: SSHKeyConnection,
-  stackName: string
+  stackName: string,
+  staleThresholdMinutes?: number,
 ): LockService {
-  return new LockService(connection, stackName);
+  return new LockService(connection, stackName, staleThresholdMinutes);
 }

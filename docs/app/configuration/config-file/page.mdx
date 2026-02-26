@@ -16,6 +16,10 @@ stack_management:
   keep_releases: 3            # Number of previous releases to retain (default: 3)
   cleanup_on_failure: true    # Clean up failed deployment images (default: true)
 
+# Deploy lock
+lock:
+  stale_threshold_minutes: 30 # Lock expires after N minutes (default: 30)
+
 health_checks:
   enabled: true                 # Enable post-deployment health checks
   startup_delay: 15             # Wait before checking (seconds)
@@ -164,7 +168,17 @@ endpoints:
 
 Dockflow automatically prevents concurrent deployments to the same stack. If a deployment is already in progress, subsequent deployments will fail with an error message showing who holds the lock.
 
-Lock files are stored in `/var/lib/dockflow/locks/` and automatically expire after 30 minutes.
+Lock files are stored in `/var/lib/dockflow/locks/` and automatically expire after the configured stale threshold (default: 30 minutes).
+
+### `stale_threshold_minutes`
+**Default:** `30`
+
+Minutes after which a deployment lock is considered stale and can be overridden. Accepts values from 1 to 1440 (24 hours).
+
+```yaml
+lock:
+  stale_threshold_minutes: 60   # Lock expires after 60 minutes instead of 30
+```
 
 ## Audit Log
 
