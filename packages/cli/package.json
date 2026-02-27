@@ -1,6 +1,6 @@
 {
   "name": "@dockflow-tools/cli",
-  "version": "2.0.21",
+  "version": "2.0.22",
   "description": "Dockflow CLI - Deploy Docker applications with confidence using Docker Swarm",
   "bin": {
     "dockflow": "run.js"
