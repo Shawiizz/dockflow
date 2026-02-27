@@ -122,23 +122,29 @@ export class ValidationError extends CLIError {
 
 /**
  * Format error for display
+ *
+ * Stack trace visibility:
+ * - Unexpected errors (non-CLIError): always shown
+ * - Expected errors (CLIError): shown only when DEBUG or CI is set
  */
-export function formatError(error: CLIError): string {
+export function formatError(error: CLIError, isUnexpected = false): string {
   const lines: string[] = [];
-  
+
   lines.push(colors.error(`Error: ${error.message}`));
-  
+
   if (error.suggestion) {
     lines.push(colors.dim(`  → ${error.suggestion}`));
   }
-  
-  if (process.env.DEBUG && error.cause) {
+
+  const showStack = isUnexpected || process.env.DEBUG || process.env.CI;
+
+  if (showStack && error.cause) {
     lines.push(colors.dim(`  Caused by: ${error.cause.message}`));
     if (error.cause.stack) {
       lines.push(colors.dim(error.cause.stack));
     }
   }
-  
+
   return lines.join('\n');
 }
 
@@ -147,12 +153,13 @@ export function formatError(error: CLIError): string {
  * This is the ONLY place that should call process.exit for errors
  */
 export function handleError(error: unknown): never {
+  const isUnexpected = !(error instanceof CLIError);
   const cliError = CLIError.from(error);
-  
+
   printBlank();
-  printRaw(formatError(cliError));
+  printRaw(formatError(cliError, isUnexpected));
   printBlank();
-  
+
   process.exit(cliError.code);
 }
 
