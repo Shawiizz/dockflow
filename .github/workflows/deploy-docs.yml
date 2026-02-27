@@ -9,7 +9,7 @@ on:
 
 jobs:
   deploy:
-    uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.20
+    uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.19
     with:
       version: ${{ github.ref_name }}-${{ github.sha }}    
     secrets: inherit

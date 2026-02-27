@@ -1,6 +1,6 @@
 {
   "name": "dockflow",
-  "version": "2.0.20",
+  "version": "2.0.21",
   "description": "A deployment framework for Docker applications, leveraging Swarm for orchestration",
   "type": "module",
   "main": "src/index.ts",

@@ -4,7 +4,7 @@
 $ErrorActionPreference = "Stop"
 
 # Version to install
-$Version = "2.0.20"
+$Version = "2.0.21"
 
 # Detect architecture
 $arch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
