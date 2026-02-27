@@ -48,6 +48,9 @@
   delegate_to: "{{ 'localhost' if _from_localhost else omit }}"
   loop: "{{ built_images | default([]) }}"
   register: node_transfer_results
+  retries: 2
+  delay: 10
+  until: node_transfer_results.rc == 0
   loop_control:
     label: "{{ item }} → {{ _node_name }}"
 
