@@ -161,6 +161,8 @@ class VersionManager {
             if (filePath === this.packageJsonPath) continue;
             if (filePath.endsWith('version-manager.js')) continue;
             if (filePath.endsWith('package-lock.json')) continue;
+            if (filePath.endsWith('pnpm-lock.yaml')) continue;
+            if (filePath.endsWith('bun.lockb')) continue;
             if (filePath.endsWith('.md')) continue;
             
             try {
