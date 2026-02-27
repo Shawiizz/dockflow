@@ -7,7 +7,7 @@ import './page.css'
 export default function Page() {
   return (
     <div className="home-content">
-      <HeroBackground />
+      <HeroBackground /> 
       <div className="content-container">
         <div className="hero-section">
           {/* Headline */}
