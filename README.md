@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="dockflow-logo.png" alt="Dockflow" width="120" />
+
 # Dockflow
 
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)

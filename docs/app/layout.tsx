@@ -41,7 +41,12 @@ const banner = (
 
 const navbar = (
   <Navbar
-    logo={<b>Dockflow</b>}
+    logo={
+      <>
+        <img src="/logo.png" alt="Dockflow" style={{ height: 24 }} />
+        <b style={{ marginLeft: 8 }}>Dockflow</b>
+      </>
+    }
     projectLink="https://github.com/Shawiizz/dockflow"
   />
 )
@@ -53,7 +58,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en" dir="ltr" suppressHydrationWarning className={inter.className}>
-      <Head faviconGlyph="🐳" />
+      <Head>
+        <link rel="icon" href="/favicon.ico" />
+      </Head>
       <body>
         <Layout
           banner={banner}
