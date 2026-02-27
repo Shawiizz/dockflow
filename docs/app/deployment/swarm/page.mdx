@@ -24,7 +24,7 @@ Dockflow transfers your Docker images to the server using SSH:
 docker save image:tag | ssh user@host docker load
 ```
 
-No external registry is required for single-node deployments.
+No external registry is required. For multi-node clusters, images are streamed to each node via SSH by default. You can optionally configure a [Docker registry](/configuration/registry) for faster transfers on larger clusters.
 
 ### Stack Deployment
 
@@ -197,7 +197,7 @@ docker stack rm my-app-production
 
 ## Multi-Node Deployments
 
-For clusters with multiple nodes, configure an external registry so worker nodes can pull images:
+By default, Dockflow streams images to all nodes via SSH. For larger clusters where SSH streaming becomes slow, you can configure a registry so nodes pull images independently:
 
 ```yaml
 registry:
@@ -208,7 +208,7 @@ registry:
   token: "{{ github_token }}"
 ```
 
-See [Registry Configuration](/configuration/registry) for setup instructions.
+See [Registry Configuration](/configuration/registry) for setup instructions and [Build Strategy](/configuration/build-strategy) for a comparison of transfer methods.
 
 ## Troubleshooting
 

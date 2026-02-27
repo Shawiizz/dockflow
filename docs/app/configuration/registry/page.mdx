@@ -2,12 +2,12 @@
 
 import { Callout, Tabs } from 'nextra/components'
 
-A Docker registry stores your images centrally. This is optional for single-node deployments but required for multi-node Swarm clusters.
+A Docker registry stores your images centrally so Swarm nodes can pull them independently.
 
 ## When to Use
 
 - **Single node**: Not required. Images are transferred via SSH.
-- **Multi-node Swarm**: Required. Worker nodes pull images from the registry.
+- **Multi-node Swarm**: Recommended for large clusters. Without a registry, Dockflow transfers images to each node via SSH (`docker save | ssh | docker load`), which works well for small clusters but becomes slower as the number of nodes or image size grows.
 
 ## Configuration
 

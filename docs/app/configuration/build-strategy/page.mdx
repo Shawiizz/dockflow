@@ -8,8 +8,8 @@ Dockflow supports different strategies for building and transferring Docker imag
 
 | Strategy | Build Location | Transfer Method | Best For |
 |----------|---------------|-----------------|----------|
-| Local (default) | CI/CD runner | SSH streaming | Single-node, small images |
-| Local + Registry | CI/CD runner | Docker registry | Multi-node Swarm clusters |
+| Local (default) | CI/CD runner | SSH streaming | Single-node, small clusters |
+| Local + Registry | CI/CD runner | Docker registry | Large multi-node clusters |
 | Remote | Target server | None (built in place) | Large contexts, slow networks |
 
 ## Local Build (Default)
@@ -24,7 +24,7 @@ Images are built in your CI/CD pipeline and transferred to the server via SSH. N
    docker save IMAGE | gzip -1 | ssh user@host "gunzip | docker load"
    ```
 
-This is the simplest strategy and works well for single-node deployments or small clusters.
+This is the simplest strategy and works for both single-node deployments and multi-node clusters. For larger clusters with many nodes or heavy images, consider using a [registry](/configuration/registry) instead.
 
 <Callout type="info">
   Multiple images are built in parallel automatically. Build times are displayed per-service after completion.
@@ -32,7 +32,7 @@ This is the simplest strategy and works well for single-node deployments or smal
 
 ## Registry Build
 
-For multi-node Swarm clusters, use a Docker registry so all nodes can pull images independently. This avoids streaming large images over SSH to each node.
+For larger multi-node Swarm clusters, use a Docker registry so all nodes can pull images independently. This avoids streaming large images over SSH to each node individually.
 
 **How it works:**
 1. Images are built locally (same as default)
@@ -42,7 +42,7 @@ For multi-node Swarm clusters, use a Docker registry so all nodes can pull image
 See [Docker Registry](/configuration/registry) for full configuration (GHCR, GitLab, Docker Hub, self-hosted).
 
 **When to use:**
-- Multi-node Swarm clusters (workers need to pull images)
+- Large multi-node clusters where SSH streaming becomes a bottleneck
 - When you want image versioning in a registry
 - CI/CD pipelines with native registry support
 
