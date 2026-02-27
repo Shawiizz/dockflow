@@ -1,0 +1,39 @@
+{
+  "name": "@dockflow-tools/cli",
+  "version": "2.0.19",
+  "description": "Dockflow CLI - Deploy Docker applications with confidence using Docker Swarm",
+  "bin": {
+    "dockflow": "run.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "files": [
+    "install.js",
+    "run.js",
+    "bin/"
+  ],
+  "keywords": [
+    "dockflow",
+    "docker",
+    "swarm",
+    "deployment",
+    "cli",
+    "devops"
+  ],
+  "os": [
+    "linux",
+    "darwin",
+    "win32"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "author": "Shawiizz",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Shawiizz/dockflow"
+  },
+  "homepage": "https://dockflow.shawiizz.dev"
+}

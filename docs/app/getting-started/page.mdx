@@ -10,7 +10,25 @@ import { Steps, Callout, FileTree, Tabs } from 'nextra/components'
 
 ### Installation
 
-<Tabs items={['Remote Setup (Windows/macOS)', 'Direct Setup (Linux)']}>
+<Tabs items={['npm', 'Remote Setup (Windows/macOS)', 'Direct Setup (Linux)']}>
+  <Tabs.Tab>
+    Install globally:
+
+    ```bash
+    npm install -g @dockflow-tools/cli
+    dockflow --version
+    ```
+
+    Or run directly with npx:
+
+    ```bash
+    npx @dockflow-tools/cli deploy production
+    ```
+
+    <Callout type="info">
+      The npm package automatically downloads the correct binary for your platform.
+    </Callout>
+  </Tabs.Tab>
   <Tabs.Tab>
     Install the CLI and run setup remotely:
 

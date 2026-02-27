@@ -109,6 +109,14 @@ class VersionManager {
                     fs.writeFileSync(cliPackageJsonPath, JSON.stringify(cliPackageJson, null, 2) + '\n');
                     console.log(`✓ Updated cli-ts/package.json version: ${newVersion}`);
                 }
+
+                const npmCliPackageJsonPath = path.join(process.cwd(), 'packages', 'cli', 'package.json');
+                if (fs.existsSync(npmCliPackageJsonPath)) {
+                    const npmCliPackageJson = JSON.parse(fs.readFileSync(npmCliPackageJsonPath, 'utf8'));
+                    npmCliPackageJson.version = newVersion;
+                    fs.writeFileSync(npmCliPackageJsonPath, JSON.stringify(npmCliPackageJson, null, 2) + '\n');
+                    console.log(`✓ Updated packages/cli/package.json version: ${newVersion}`);
+                }
             }
         } catch (error) {
             console.error('Error updating package.json:', error.message);
