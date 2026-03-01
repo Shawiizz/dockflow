@@ -3,4 +3,6 @@ node_modules
 .DS_Store
 out
 build
-public
+public/_pagefind
+public/llms.txt
+public/llms-full.txt
