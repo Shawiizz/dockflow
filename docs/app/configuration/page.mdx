@@ -1,60 +1,59 @@
 ---
 asIndexPage: true
 description:
-  Configure your Dockflow deployment with flexible options for connections,
-  environment variables, Docker Compose, build strategies, multi-host setups,
-  and advanced configuration files.
+  Configure your Dockflow project — from the main config file to servers, Docker Compose, build strategy, and more.
 ---
 
 import { Cards } from 'nextra/components'
 
 # Configuration
 
-Dockflow provides flexible configuration options to adapt to your deployment needs. You can configure connections, environment variables, build strategies, and more.
+Start with your project configuration, then define your servers and Docker Compose stack. The remaining topics are optional and can be explored as needed.
 
 <Cards>
   <Cards.Card
-    title="Connection"
-    href="/configuration/connection"
+    title="Project Configuration"
+    description="Project name, health checks, deploy lock, release management"
+    href="/configuration/config-file"
   />
   <Cards.Card
-    title="Servers"
+    title="Servers & Connections"
+    description="Server definitions, environment variables, CI secrets"
     href="/configuration/servers"
   />
   <Cards.Card
-    title="Environment Files"
-    href="/configuration/environment"
-  />
-  <Cards.Card
     title="Docker Compose"
+    description="Services, networks, volumes, deploy settings"
     href="/configuration/docker-compose"
   />
   <Cards.Card
     title="Build Strategy"
+    description="Local build, registry push, or remote build"
     href="/configuration/build-strategy"
   />
   <Cards.Card
     title="Docker Registry"
+    description="GHCR, GitLab, Docker Hub, self-hosted"
     href="/configuration/registry"
   />
   <Cards.Card
     title="Accessories"
+    description="Databases, caches, and other stateful services"
     href="/configuration/accessories"
   />
   <Cards.Card
     title="Hooks"
+    description="Custom scripts at build and deploy time"
     href="/configuration/hooks"
   />
   <Cards.Card
     title="Templates"
+    description="Jinja2 templating for config files"
     href="/configuration/templates"
   />
   <Cards.Card
-    title="Multi-Host Deployment"
+    title="Multi-Node Deployment"
+    description="Managers, workers, failover, scaling"
     href="/configuration/multi-host"
-  />
-  <Cards.Card
-    title="Configuration File"
-    href="/configuration/config-file"
   />
 </Cards>

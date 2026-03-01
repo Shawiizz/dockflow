@@ -1,4 +1,3 @@
 export default {
-  index: 'Overview',
-  swarm: 'Docker Swarm'
+  index: 'Overview'
 }

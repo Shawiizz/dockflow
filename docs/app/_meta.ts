@@ -10,8 +10,8 @@ export default {
   'getting-started': 'Getting Started',
   configuration: 'Configuration',
   deployment: 'Deployment',
-  cli: 'CLI Commands',
-  advanced: 'Advanced Usage',
-  ai: 'AI Integration',
-  examples: 'Examples'
+  cli: 'CLI Reference',
+  advanced: 'Advanced',
+  examples: 'Examples',
+  ai: 'AI Integration'
 }

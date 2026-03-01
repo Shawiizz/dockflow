@@ -2,115 +2,77 @@
 
 import { Steps, Callout, FileTree, Tabs } from 'nextra/components'
 
+Dockflow deploys to a single server or a multi-node cluster — same workflow. All you need to get started is one Linux server.
+
 <Steps>
-## Server Setup
+## Install the CLI
 
-**Prerequisites:**
-- A Debian/Ubuntu server with SSH access (root or sudo user)
-
-### Installation
-
-<Tabs items={['npm', 'Remote Setup (Windows/macOS)', 'Direct Setup (Linux)']}>
+<Tabs items={['npm (any OS)', 'Linux / macOS', 'Windows']}>
   <Tabs.Tab>
-    Install globally:
-
     ```bash
     npm install -g @dockflow-tools/cli
     dockflow --version
     ```
-
-    Or run directly with npx:
-
-    ```bash
-    npx @dockflow-tools/cli deploy production
-    ```
-
-    <Callout type="info">
-      The npm package automatically downloads the correct binary for your platform.
-    </Callout>
   </Tabs.Tab>
   <Tabs.Tab>
-    Install the CLI and run setup remotely:
-
-    **Windows:**
-    ```powershell
-    irm https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.ps1 | iex
-    dockflow setup remote
-    ```
-
-    **macOS:**
-    ```bash
-    curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | bash
-    dockflow setup remote
-    ```
-
-    The CLI will prompt you to connect to your Linux server via SSH. You can provide:
-    - SSH host, port, username, and password/key
-    - Or an existing Dockflow connection string
-  </Tabs.Tab>
-  <Tabs.Tab>
-    Install the Dockflow CLI directly on your Linux server:
-
     ```bash
     curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | bash
     dockflow --version
     ```
-
-    <Callout type="info">
-      The script automatically detects your architecture (x64 or ARM64).
-    </Callout>
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```powershell
+    irm https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.ps1 | iex
+    dockflow --version
+    ```
   </Tabs.Tab>
 </Tabs>
 
-### Interactive Setup (Recommended)
+## Setup Your Server
+
+You need a Debian/Ubuntu server with SSH access (root or sudo user).
+
+<Tabs items={['Interactive (Recommended)', 'Non-Interactive']}>
+  <Tabs.Tab>
+    If the CLI is installed **on the server**:
+
+    ```bash
+    dockflow setup
+    ```
+
+    If the CLI is installed **on your local machine**:
+
+    ```bash
+    dockflow setup remote
+    ```
+
+    The wizard handles everything: Docker installation, Swarm initialization, SSH keys, and deployment user creation.
+    At the end, it generates a **connection string** — save it for later.
+  </Tabs.Tab>
+  <Tabs.Tab>
+    For automated provisioning (Terraform, CI, etc.). Must be run **on the target server**:
+
+    ```bash
+    dockflow setup auto \
+      --host $(hostname -I | awk '{print $1}') \
+      --user dockflow \
+      --password "your-secure-password" \
+      --generate-key \
+      --portainer \
+      --portainer-password "portainer-admin-password"
+    ```
+
+    See `dockflow setup auto --help` for all options.
+  </Tabs.Tab>
+</Tabs>
+
+## Create Your Project
 
 ```bash
-dockflow setup
+dockflow init
 ```
 
-The interactive wizard will guide you through:
-- Checking required dependencies (Ansible, SSH)
-- Creating a deployment user with sudo privileges
-- Configuring SSH key authentication
-- Installing Docker and initializing Swarm mode
-- Optionally installing Portainer for container management
-- Generating a connection string for CI/CD
-
-### Non-Interactive Setup (Linux only)
-
-For automated provisioning, Terraform, or CI environments (must be run directly on the target host):
-
-```bash
-dockflow setup auto \
-  --host $(hostname -I | awk '{print $1}') \
-  --user dockflow \
-  --password "your-secure-password" \
-  --generate-key \
-  --portainer \
-  --portainer-password "portainer-admin-password"
-```
-
-**Available options:**
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--host` | Public IP/hostname for connection string | Required |
-| `--port` | SSH port | 22 |
-| `--user` | Deployment username | dockflow |
-| `--password` | User password (for new user or sudo) | Required |
-| `--ssh-key` | Path to existing SSH private key | - |
-| `--generate-key` | Generate a new SSH key | false |
-| `--skip-docker-install` | Skip Docker installation | false |
-| `--portainer` | Install Portainer | false |
-| `--portainer-port` | Portainer HTTP port | 9000 |
-| `--portainer-password` | Portainer admin password | - |
-| `--portainer-domain` | Portainer domain name | - |
-
-See `dockflow setup auto --help` for the complete list.
-
-### Create Project Structure
-
-Run `dockflow init` to scaffold the project, or create the structure manually:
+This generates the following structure at the root of your project:
 
 <FileTree>
   <FileTree.Folder name=".dockflow" defaultOpen>
@@ -125,134 +87,134 @@ Run `dockflow init` to scaffold the project, or create the structure manually:
       <FileTree.File name="post-deploy.sh" />
     </FileTree.Folder>
     <FileTree.Folder name="templates">
-      <FileTree.Folder name="nginx" />
+      <FileTree.File name="nginx" />
     </FileTree.Folder>
   </FileTree.Folder>
 </FileTree>
 
-**Notes:**
-- `servers.yml` defines your servers and environment variables
-- `hooks/` and `templates/` folders are optional
+- **`config.yml`** — Project name, build strategy, health checks ([reference](/configuration))
+- **`servers.yml`** — Servers and environment variables ([reference](/configuration/servers))
+- **`docker/`** — Docker Compose stack and Dockerfiles
 
-### Copy CI Config File
+## Deploy
 
-<Callout type="warning">
-  **GitHub users in organizations**: Fork [the dockflow repo](https://github.com/Shawiizz/dockflow) and update the `uses` URL in your workflow file.
-</Callout>
-
-<Tabs items={['GitHub Actions', 'GitLab CI']}>
+<Tabs items={['CLI', 'CI/CD']}>
   <Tabs.Tab>
-    Create `.github/workflows/deploy.yml`:
-    
-    ```yaml copy
-    name: Github CI/CD
+    Create a `.env.dockflow` file at the root of your project with the connection string(s) from setup:
 
-    on:
-      push:
-        branches:
-          - '*'
-        tags:
-          - '*'
-
-    # Note: Make sure your .dockflow/config.yml has project_name set:
-    # project_name: "my-app"
-
-    jobs:
-      # Basic CI job to run on every push to branches (not used for deployment)
-      build:
-        if: github.ref_type == 'branch'
-        uses: Shawiizz/dockflow/.github/workflows/build.yml@2.0.0
-        with:
-          free-disk-space: false # Set to true if you need to free disk space during build (for big docker images)
-
-      # Deploy your application on tag push
-      deploy-tag:
-        if: github.ref_type == 'tag'
-        uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.0
-        with:
-          tag: ${{ github.ref_name }}
-          free-disk-space: false # Set to true if you need to free disk space during deployment (for big docker images)
-        secrets: inherit
-
-      # Deploy your application on push to branch
-      deploy-branch:
-        if: github.ref_type == 'branch'
-        uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.0
-        with:
-          version: ${{ github.ref_name }}-${{ github.sha }} # Note: the variable is called "version" specifically for branch deployments
-          free-disk-space: false # Set to true if you need to free disk space during deployment (for big docker images)
-        secrets: inherit
+    ```bash
+    PRODUCTION_MAIN_SERVER_CONNECTION=eyJ...base64...
     ```
-  </Tabs.Tab>
-  
-  <Tabs.Tab>
-    Create `.gitlab-ci.yml` at the root of your project:
-    
-    ```yaml copy
-    stages:
-      # Build stage for continuous integration
-      - build
 
-      # Deploy your application on tag or branch push
-      - deploy
+    Then deploy:
 
-    # Note: Make sure your .dockflow/config.yml has project_name set:
-    # project_name: "my-app"
-
-    include:
-      # Continuous Integration (CI) template for building Docker images (not used for deployment)
-      - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/2.0.0/.gitlab/workflows/build.yml'
-
-      # Deploy your application on tag push
-      - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/2.0.0/.gitlab/workflows/deploy.yml'
-
-      # Deploy your application on branch push (will deploy to production environment)
-      - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/2.0.0/.gitlab/workflows/deploy-branch.yml'
+    ```bash
+    dockflow deploy production
     ```
-  </Tabs.Tab>
-</Tabs>
-
-## Add Repository Secrets
-
-Configure secrets in your CI/CD settings:
-
-<Tabs items={['Recommended', 'Alternative']}>
-  <Tabs.Tab>
-    **Using Connection String (Easiest)**
-
-    | Secret Name | Description | Example |
-    |-------------|-------------|---------|
-    | `[ENV]_[SERVERNAME]_CONNECTION` | All-in-one connection string per server | `PRODUCTION_MAIN_SERVER_CONNECTION` |
-    | `GIT_TOKEN` | OPTIONAL: For remote build option | GitHub/GitLab token |
 
     <Callout type="info">
-      The connection string is automatically generated by the CLI during server setup. It contains all necessary connection details (Host, Port, User, Private Key, Password).
-    </Callout>
-    
-    <Callout type="error">
-      **Do not share connection strings** - they contain sensitive credentials including SSH private keys.
+      The `.env.dockflow` file is loaded automatically by the CLI. Do not commit it to your repository.
     </Callout>
   </Tabs.Tab>
-  
   <Tabs.Tab>
-    **Using Individual Secrets**
+    ### Workflow file
 
-    | Secret Name | Description | Example |
-    |-------------|-------------|---------|
-    | `[ENV]_[SERVERNAME]_SSH_PRIVATE_KEY` | SSH key for server | `PRODUCTION_MAIN_SERVER_SSH_PRIVATE_KEY` |
-    | `[ENV]_[SERVERNAME]_HOST` | Server IP/hostname | `PRODUCTION_MAIN_SERVER_HOST` |
-    | `[ENV]_[SERVERNAME]_USER` | SSH user (default: dockflow) | `PRODUCTION_MAIN_SERVER_USER` |
-    | `[ENV]_[SERVERNAME]_PORT` | SSH port (default: 22) | `PRODUCTION_MAIN_SERVER_PORT` |
-    | `[ENV]_[SERVERNAME]_PASSWORD` | Sudo password (optional) | `PRODUCTION_MAIN_SERVER_PASSWORD` |
-    | `GIT_TOKEN` | OPTIONAL: For remote build option | GitHub/GitLab token |
+    <Callout type="warning">
+      **GitHub organizations**: Fork [the Dockflow repo](https://github.com/Shawiizz/dockflow) and update the `uses` URL in your workflow file.
+    </Callout>
+
+    <Tabs items={['GitHub Actions', 'GitLab CI']}>
+      <Tabs.Tab>
+        Create `.github/workflows/deploy.yml`:
+
+        ```yaml copy
+        name: Github CI/CD
+
+        on:
+          push:
+            branches:
+              - '*'
+            tags:
+              - '*'
+
+        # Note: Make sure your .dockflow/config.yml has project_name set:
+        # project_name: "my-app"
+
+        jobs:
+          build:
+            if: github.ref_type == 'branch'
+            uses: Shawiizz/dockflow/.github/workflows/build.yml@2.0.0
+            with:
+              free-disk-space: false
+
+          deploy-tag:
+            if: github.ref_type == 'tag'
+            uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.0
+            with:
+              tag: ${{ github.ref_name }}
+              free-disk-space: false
+            secrets: inherit
+
+          deploy-branch:
+            if: github.ref_type == 'branch'
+            uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.0
+            with:
+              version: ${{ github.ref_name }}-${{ github.sha }}
+              free-disk-space: false
+            secrets: inherit
+        ```
+      </Tabs.Tab>
+
+      <Tabs.Tab>
+        Create `.gitlab-ci.yml` at the root of your project:
+
+        ```yaml copy
+        stages:
+          - build
+          - deploy
+
+        # Note: Make sure your .dockflow/config.yml has project_name set:
+        # project_name: "my-app"
+
+        include:
+          - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/2.0.0/.gitlab/workflows/build.yml'
+          - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/2.0.0/.gitlab/workflows/deploy.yml'
+          - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/2.0.0/.gitlab/workflows/deploy-branch.yml'
+        ```
+      </Tabs.Tab>
+    </Tabs>
+
+    ### Repository secrets
+
+    Add the connection string generated during setup to your CI/CD secrets:
+
+    <Tabs items={['Connection String (Recommended)', 'Individual Secrets']}>
+      <Tabs.Tab>
+        | Secret Name | Description | Example |
+        |-------------|-------------|---------|
+        | `[ENV]_[SERVERNAME]_CONNECTION` | Connection string per server | `PRODUCTION_MAIN_SERVER_CONNECTION` |
+        | `GIT_TOKEN` | Optional: for remote build strategy | GitHub/GitLab token |
+
+        <Callout type="error">
+          **Do not share connection strings** — they contain SSH private keys.
+        </Callout>
+      </Tabs.Tab>
+
+      <Tabs.Tab>
+        | Secret Name | Description | Example |
+        |-------------|-------------|---------|
+        | `[ENV]_[SERVERNAME]_SSH_PRIVATE_KEY` | SSH private key | `PRODUCTION_MAIN_SERVER_SSH_PRIVATE_KEY` |
+        | `[ENV]_[SERVERNAME]_HOST` | Server IP/hostname | `PRODUCTION_MAIN_SERVER_HOST` |
+        | `[ENV]_[SERVERNAME]_USER` | SSH user (default: dockflow) | `PRODUCTION_MAIN_SERVER_USER` |
+        | `[ENV]_[SERVERNAME]_PORT` | SSH port (default: 22) | `PRODUCTION_MAIN_SERVER_PORT` |
+        | `[ENV]_[SERVERNAME]_PASSWORD` | Sudo password (optional) | `PRODUCTION_MAIN_SERVER_PASSWORD` |
+        | `GIT_TOKEN` | Optional: for remote build strategy | GitHub/GitLab token |
+      </Tabs.Tab>
+    </Tabs>
+
+    <Callout type="warning">
+      Server names use underscores in secrets. A server named `main_server` becomes `MAIN_SERVER` in secret names.
+    </Callout>
   </Tabs.Tab>
 </Tabs>
-
-<Callout type="warning">
-  Server names in `servers.yml` use underscores in CI secrets. A server named `main_server` uses `MAIN_SERVER` in secrets.
-</Callout>
-
-**Dynamic Variable Override System:**
-
-Any CI secret starting with `[ENV]_` or `[ENV]_[SERVERNAME]_` will automatically override corresponding environment variables defined in your `servers.yml`.
 </Steps>

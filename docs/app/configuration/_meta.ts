@@ -1,13 +1,11 @@
 export default {
-  connection: 'Connection',
-  servers: 'Servers Configuration',
-  environment: 'Environment Variables',
+  'config-file': 'Project Configuration',
+  servers: 'Servers & Connections',
   'docker-compose': 'Docker Compose',
-  accessories: 'Accessories (Databases, Caches)',
   'build-strategy': 'Build Strategy',
   registry: 'Docker Registry',
-  templates: 'Templates',
+  accessories: 'Accessories',
   hooks: 'Hooks',
-  'multi-host': 'Multi-Host Deployment',
-  'config-file': 'Configuration File'
+  templates: 'Templates',
+  'multi-host': 'Multi-Node Deployment'
 }

@@ -1,52 +1,227 @@
 # Deployment
 
-import { Cards } from 'nextra/components'
+import { Callout, Steps, Tabs } from 'nextra/components'
 
-Dockflow deploys your application using Docker Swarm. This section covers the deployment process, health checks, and rollback behavior.
-
-## How Deployment Works
-
-When you trigger a deployment, Dockflow performs the following steps:
-
-1. **Build** - Docker images are built from your Dockerfiles
-2. **Transfer** - Images are sent to your server via SSH
-3. **Deploy** - The application is deployed as a Swarm stack
-4. **Verify** - Health checks confirm the deployment succeeded
-
-If health checks fail, Dockflow automatically rolls back to the previous working version.
-
-## Deployment Topics
-
-<Cards>
-  <Cards.Card
-    title="Docker Swarm"
-    href="/deployment/swarm"
-  />
-</Cards>
+When you run `dockflow deploy`, Dockflow builds your Docker images, transfers them to your server, deploys the stack via Docker Swarm, and verifies that services are healthy. If health checks fail, it rolls back automatically.
 
 ## Triggering a Deployment
 
-Deployments can be triggered via CI/CD or manually with the CLI:
+<Tabs items={['CLI', 'Tag (CI/CD)', 'Branch (CI/CD)']}>
+  <Tabs.Tab>
+    ```bash
+    dockflow deploy production 1.0.0
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Push a git tag to trigger a deployment:
 
-**Manual deployment:**
+    ```bash
+    git tag 1.0.0              # → deploys to production
+    git tag 1.0.0-staging      # → deploys to staging
+    git push origin --tags
+    ```
 
-```bash
-dockflow deploy production 1.0.0
+    A tag without a suffix (e.g., `1.0.0`) deploys to `production`. A tag ending with `-<env>` (e.g., `1.0.0-staging`) deploys to that environment.
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Push to a branch to deploy the latest commit:
+
+    ```bash
+    git push origin main
+    ```
+  </Tabs.Tab>
+</Tabs>
+
+The environment name must match a server tag in your [`servers.yml`](/configuration/servers).
+
+## Deployment Process
+
+<Steps>
+### Image Transfer
+
+Dockflow transfers your Docker images to the server via SSH:
+
+```
+docker save image:tag | gzip -1 | ssh user@host "gunzip | docker load"
 ```
 
-**Tag-based deployment (CI/CD):**
-Push a git tag to deploy that version.
+No external registry required. For multi-node clusters, images are streamed to each node via SSH by default. You can optionally configure a [Docker registry](/configuration/registry) for faster transfers.
 
-```bash
-git tag 1.0.0
-git push origin 1.0.0
+### Stack Deployment
+
+Your application is deployed as a Swarm stack:
+
+```
+docker stack deploy -c docker-compose.yml my-app-production
 ```
 
-**Branch-based deployment (CI/CD):**
-Push to a branch to deploy the latest commit from that branch.
+Each deployment creates a new release directory on the server.
 
-```bash
-git push origin main
+### Health Verification
+
+After deployment, Dockflow verifies:
+
+1. Swarm reports all services as healthy
+2. The correct image version is running
+3. External health check endpoints respond (if [configured](/configuration/config-file#health-checks))
+
+### Rollback on Failure
+
+If health checks fail, Dockflow:
+
+1. Detects the rollback via Swarm status
+2. Waits for the previous version to stabilize
+3. Cleans up the failed release
+4. Reports the deployment as failed
+</Steps>
+
+## Release Management
+
+Dockflow organizes releases on your server:
+
+```
+/var/lib/dockflow/stacks/my-app-production/
+├── 1.0.0/
+│   └── docker-compose.yml
+├── 1.0.1/
+│   └── docker-compose.yml
+├── 1.0.2/
+│   └── docker-compose.yml
+└── current -> 1.0.2/
 ```
 
-The environment name (e.g., `production`, `staging`) corresponds to the server tags defined in your `servers.yml`.
+The `current` symlink points to the active release. By default, Dockflow keeps the last 3 releases (configurable via [`keep_releases`](/configuration/config-file#keep_releases)).
+
+## Health Checks
+
+### Swarm Health Checks
+
+Define health checks in your `docker-compose.yml`:
+
+```yaml
+services:
+  app:
+    image: my-app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+```
+
+Swarm monitors these checks and triggers automatic rollback if containers become unhealthy.
+
+### External Health Checks
+
+Configure additional HTTP checks in `.dockflow/config.yml`:
+
+```yaml
+health_checks:
+  enabled: true
+  startup_delay: 15
+  on_failure: rollback
+  endpoints:
+    - name: "API"
+      url: "http://localhost:3000/health"
+      expected_status: 200
+      timeout: 30
+      retries: 3
+```
+
+See [Health Checks configuration](/configuration/config-file#health-checks) for all options.
+
+## Rolling Updates
+
+Dockflow injects safe defaults for zero-downtime deployments. These are **only applied** if not already defined in your `docker-compose.yml`.
+
+### Default Settings
+
+| Setting | Update | Rollback |
+|---------|--------|----------|
+| `parallelism` | 1 | 1 |
+| `delay` | 10s | 5s |
+| `failure_action` | rollback | — |
+| `monitor` | 30s | 15s |
+| `order` | start-first | start-first |
+| `max_failure_ratio` | 0 | — |
+
+<Callout type="info">
+Your `docker-compose.yml` values always take precedence. Dockflow only fills in missing fields.
+</Callout>
+
+### Customizing
+
+Override any setting in your `docker-compose.yml`:
+
+```yaml
+services:
+  app:
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 2
+        delay: 5s
+        failure_action: pause
+        monitor: 60s
+        order: stop-first
+      rollback_config:
+        parallelism: 2
+        delay: 3s
+```
+
+### Update Order
+
+- **`start-first`** (default): New container starts before the old one stops. Zero downtime, but requires brief extra resources.
+- **`stop-first`**: Old container stops before the new one starts. Less resources but causes brief downtime.
+
+For zero-downtime deployments, use `start-first` with at least 2 replicas.
+
+## Manual Operations
+
+```bash
+# View stack status
+docker stack services my-app-production
+
+# View service logs
+docker service logs my-app-production_app
+
+# Force redeployment
+docker service update --force my-app-production_app
+
+# Manual rollback
+docker service rollback my-app-production_app
+
+# Remove stack
+docker stack rm my-app-production
+```
+
+## Troubleshooting
+
+### Deployment Stuck
+
+```bash
+docker service ps my-app-production_app --no-trunc
+```
+
+Look for error messages in the task output.
+
+### Rollback Loop
+
+If services keep rolling back, the issue is usually in your container health check. Verify the health check command works:
+
+```bash
+docker exec <container_id> curl -f http://localhost:3000/health
+```
+
+### Images Not Found
+
+If Swarm cannot find images after a rollback, cleanup may have removed them. Redeploy:
+
+```bash
+dockflow deploy production 1.0.3
+```
+
+---
+
+**Next:** [CLI Reference](/cli) — all available commands and options.

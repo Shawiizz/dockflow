@@ -50,7 +50,7 @@ services:
     image: my-app
     build:
       context: ../..
-      dockerfile: .dockflow/docker/Dockerfile
+      dockerfile: Dockerfile
     ports:
       - "${APP_PORT}:3000"
     environment:
@@ -139,7 +139,7 @@ services:
     image: my-frontend
     build:
       context: ../..
-      dockerfile: .dockflow/docker/Dockerfile.frontend
+      dockerfile: Dockerfile.frontend
     ports:
       - "${FRONTEND_PORT}:80"
     environment:
@@ -151,7 +151,7 @@ services:
     image: my-backend
     build:
       context: ../..
-      dockerfile: .dockflow/docker/Dockerfile.backend
+      dockerfile: Dockerfile.backend
     environment:
       DB_HOST: ${DB_HOST}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -276,7 +276,7 @@ services:
     image: my-ha-app
     build:
       context: ../..
-      dockerfile: .dockflow/docker/Dockerfile
+      dockerfile: Dockerfile
     ports:
       - "${APP_PORT}:3000"
     environment:

@@ -31,7 +31,7 @@ The `build` section tells Dockflow how to build the image. The `context` is rela
 
 Environment variables can come from multiple sources:
 
-- **`servers.yml`** — defined per-environment or per-server (see [Environment Files](/configuration/environment))
+- **`servers.yml`** — defined per-environment or per-server (see [Servers & Connections](/configuration/servers))
 - **CI secrets** — override `servers.yml` values
 - **Jinja2 templating** — all files in `.dockflow/` are automatically processed with Jinja2
 
@@ -219,7 +219,7 @@ services:
     image: my-frontend
     build:
       context: ../..
-      dockerfile: docker/Dockerfile.frontend
+      dockerfile: Dockerfile.frontend
     ports:
       - "80:80"
       - "443:443"
@@ -234,7 +234,7 @@ services:
     image: my-backend
     build:
       context: ../..
-      dockerfile: docker/Dockerfile.backend
+      dockerfile: Dockerfile.backend
     environment:
       DB_HOST: ${DB_HOST}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -262,3 +262,7 @@ Dockflow ensures complete isolation between environments (production, staging, e
 1. **Image names** — automatically tagged with environment and version (`my-app-production:1.0.0`)
 2. **Stack names** — each environment gets its own Swarm stack
 3. **Networks and volumes** — automatically prefixed with the stack name by Docker Swarm
+
+---
+
+**Next:** [Build Strategy](/configuration/build-strategy) — choose how to build and transfer Docker images.

@@ -1,31 +1,33 @@
-# Configuration File Options
+# Project Configuration
 
-Create `.dockflow/config.yml` to customize behavior.
+import { Callout } from 'nextra/components'
+
+The `config.yml` file defines your project identity, build options, health checks, and deployment behavior. This is the first file to configure in any Dockflow project.
+
+## Full Example
 
 ```yaml
-# Required: Unique project identifier
-project_name: "my-app"          # Must be lowercase, alphanumeric with hyphens only
+# .dockflow/config.yml
+
+project_name: "my-app"
 
 options:
-  image_auto_tag: true          # Auto-append -<env>:<version> to images (default: true)
-  enable_debug_logs: false      # Verbose logging (default: false)
-  remote_build: false           # Build on server (default: false)
+  image_auto_tag: true
+  enable_debug_logs: false
+  remote_build: false
 
-# Stack management
 stack_management:
-  keep_releases: 3            # Number of previous releases to retain (default: 3)
-  cleanup_on_failure: true    # Clean up failed deployment images (default: true)
+  keep_releases: 3
+  cleanup_on_failure: true
 
-# Deploy lock
 lock:
-  stale_threshold_minutes: 30 # Lock expires after N minutes (default: 30)
+  stale_threshold_minutes: 30
 
 health_checks:
-  enabled: true                 # Enable post-deployment health checks
-  startup_delay: 15             # Wait before checking (seconds)
-  on_failure: "rollback"        # Action: "fail", "notify", "ignore" or "rollback"
-  wait_for_internal: true       # Wait for Swarm internal healthchecks first
-  
+  enabled: true
+  startup_delay: 15
+  on_failure: "rollback"
+  wait_for_internal: true
   endpoints:
     - name: "Main Application"
       url: "http://localhost:{{ app_external_port }}/health"
@@ -34,52 +36,37 @@ health_checks:
       retries: 3
 ```
 
-## Required Fields
+## `project_name` (required)
 
-### `project_name`
-**Required:** Yes
+Unique identifier for your project. Used as the Docker Swarm stack name prefix and release directory name.
 
-A unique identifier for your project. This is used to:
-- Name the Docker Swarm stack
-- Organize releases on the server
-- Identify your project across deployments
-
-**Format requirements:**
-- Lowercase letters, numbers, and hyphens only
-- Must start and end with a letter or number
-- Example: `my-app`, `webapp-v2`, `api-backend`
+**Format**: lowercase letters, numbers, and hyphens only.
 
 ```yaml
-project_name: "my-awesome-app"
+project_name: "my-app"
 ```
 
-The stack name is automatically set to `{project_name}-{env}` and cannot be customized. Releases are stored in:
+The stack name is derived as `{project_name}-{env}`. Releases are stored at:
+
 ```
-/var/lib/dockflow/stacks/my-awesome-app-production/
+/var/lib/dockflow/stacks/my-app-production/
   1/
   2/
   3/
   current -> 3/
 ```
 
-## Options Reference
+## Options
 
 ### `image_auto_tag`
 **Default:** `true`
 
-Automatically appends `-<env>:<version>` to image names for environment isolation.
+Appends `-{env}:{version}` to image names for environment isolation:
 
-When enabled, image names are transformed:
 - `my-app` → `my-app-production:1.0.0`
-- `backend:latest` → `backend-staging:2.1.0` (existing tag replaced)
+- `backend:latest` → `backend-staging:2.1.0`
 
-This ensures each environment has isolated images and enables easy version tracking.
-
-```yaml
-options:
-  image_auto_tag: true   # Images become my-app-production:1.0.0
-  image_auto_tag: false  # Images keep original names as-is
-```
+Set to `false` to keep image names as defined in `docker-compose.yml`.
 
 ### `enable_debug_logs`
 **Default:** `false`
@@ -89,35 +76,26 @@ Enables verbose logging for debugging deployment issues.
 ### `remote_build`
 **Default:** `false`
 
-Build Docker images on the server instead of in the CI/CD pipeline.
+Build Docker images on the server instead of in the CI/CD pipeline. See [Build Strategy](/configuration/build-strategy) for details.
 
 ## Stack Management
 
 ### `keep_releases`
 **Default:** `3`
 
-Number of previous releases to retain on the server. This enables:
-- Quick rollback to previous versions
-- Audit trail of deployments
-- Automatic cleanup of old releases and unused images
+Number of previous releases to retain on the server. Enables quick rollback and automatic cleanup of old releases and images.
 
 ### `cleanup_on_failure`
 **Default:** `true`
 
-Clean up failed deployment images immediately when health checks fail.
-
-```yaml
-stack_management:
-  keep_releases: 5           # Keep 5 previous deployments
-  cleanup_on_failure: true   # Remove images from failed deployments
-```
+Remove Docker images from failed deployments immediately.
 
 ## Health Checks
 
-Dockflow provides two layers of health checks:
+Two layers of health verification:
 
-1. **Internal (Swarm)**: Docker Swarm monitors container healthchecks and automatically rolls back if they fail
-2. **External (Dockflow)**: HTTP endpoint checks from the host to verify services are accessible
+1. **Swarm internal** — Docker monitors container healthchecks defined in `docker-compose.yml` and rolls back automatically on failure.
+2. **Dockflow external** — HTTP endpoint checks from the host, configured below.
 
 ### `enabled`
 **Default:** `true`
@@ -132,66 +110,56 @@ Time to wait after deployment before running external health checks.
 ### `wait_for_internal`
 **Default:** `true`
 
-Wait for Swarm internal healthchecks to complete before running external checks.
+Wait for Swarm internal healthchecks to pass before running external checks.
 
 ### `on_failure`
-**Options:** `"fail"`, `"notify"`, `"ignore"`, `"rollback"`
 
-Action to take when external health checks fail:
-- `fail`: Mark deployment as failed
-- `notify`: Log warning but continue
-- `ignore`: Skip health check failures
-- `rollback`: Automatically rollback to previous stack
+Action when external health checks fail:
+
+| Value | Behavior |
+|-------|----------|
+| `"fail"` | Mark deployment as failed |
+| `"rollback"` | Rollback to the previous stack |
+| `"notify"` | Log a warning but continue |
+| `"ignore"` | Skip health check failures |
 
 ### `endpoints`
 
-List of external endpoints to check after deployment:
+List of HTTP endpoints to check after deployment:
 
 ```yaml
 endpoints:
-  - name: "API Health"
+  - name: "API"
     url: "http://localhost:3000/health"
     expected_status: 200
     timeout: 30
     retries: 3
 ```
 
-#### Endpoint Properties
-
-- `name`: Descriptive name for the endpoint
-- `url`: URL to check (supports Jinja2 templating)
-- `expected_status`: Expected HTTP status code
-- `timeout`: Request timeout in seconds
-- `retries`: Number of retry attempts
+| Field | Description |
+|-------|-------------|
+| `name` | Descriptive label |
+| `url` | URL to check (supports Jinja2: `{{ app_external_port }}`) |
+| `expected_status` | Expected HTTP status code |
+| `timeout` | Request timeout in seconds |
+| `retries` | Number of retry attempts |
 
 ## Deploy Lock
-
-Dockflow automatically prevents concurrent deployments to the same stack. If a deployment is already in progress, subsequent deployments will fail with an error message showing who holds the lock.
-
-Lock files are stored in `/var/lib/dockflow/locks/` and automatically expire after the configured stale threshold (default: 30 minutes).
 
 ### `stale_threshold_minutes`
 **Default:** `30`
 
-Minutes after which a deployment lock is considered stale and can be overridden. Accepts values from 1 to 1440 (24 hours).
-
-```yaml
-lock:
-  stale_threshold_minutes: 60   # Lock expires after 60 minutes instead of 30
-```
+Dockflow prevents concurrent deployments to the same stack. Lock files are stored in `/var/lib/dockflow/locks/` and expire after this threshold. Accepts values from 1 to 1440 (24 hours).
 
 ## Audit Log
 
-Every deployment is recorded in an audit log at `/var/lib/dockflow/audit/[stack-name].log`:
+Every deployment is recorded at `/var/lib/dockflow/audit/{stack-name}.log`:
 
 ```
 2024-01-15T10:30:00Z | DEPLOYED | 1.0.0 | user@ci-runner | success
 2024-01-16T14:20:00Z | DEPLOYED | 1.0.1 | user@ci-runner | success
-2024-01-17T09:15:00Z | DEPLOYED | 1.0.2 | user@ci-runner | with warnings
 ```
 
-View the audit log on your server:
+---
 
-```bash
-cat /var/lib/dockflow/audit/my-app-production.log
-```
+**Next:** [Servers & Connections](/configuration/servers) — define your servers, environment variables, and CI secrets.

@@ -2,13 +2,11 @@
 
 import { Callout } from 'nextra/components'
 
-Dockflow can render any file in your project with Jinja2 templating before deployment. This is useful for injecting environment-specific configuration values into files.
+Dockflow renders files with Jinja2 templating before deployment, injecting environment-specific values into your configuration.
 
 ## Automatic Rendering
 
-All files inside `.dockflow/` are **automatically rendered** with Jinja2 during deployment. No configuration is needed.
-
-This means you can use Jinja2 variables directly in your `docker-compose.yml`, Dockerfiles, and any other file inside `.dockflow/`:
+All files inside `.dockflow/` are **automatically rendered** with Jinja2 during deployment. No configuration needed.
 
 ```yaml
 # .dockflow/docker/docker-compose.yml — automatically rendered
@@ -22,30 +20,20 @@ services:
 
 ## Custom Templates
 
-For files **outside** `.dockflow/`, define them in `.dockflow/config.yml`. Paths are **relative to the project root**:
+For files **outside** `.dockflow/`, declare them in `.dockflow/config.yml`. Paths are relative to the project root:
 
 ```yaml
+# .dockflow/config.yml
 templates:
   - "config/application.yml"
   - "nginx/nginx.conf"
   - "scripts/init.sh"
 ```
 
-### Extended Format
-
-If you want to keep the source file unchanged and output to a different location:
+These files are rendered in-place. To output to a different location, use the extended format:
 
 ```yaml
-templates:
-  - src: "config/application.yml.j2"
-    dest: "config/application.yml"
-  - src: "nginx/nginx.conf.j2"
-    dest: "nginx/nginx.conf"
-```
-
-You can mix both formats:
-
-```yaml
+# .dockflow/config.yml
 templates:
   - "scripts/init.sh"                    # Rendered in-place
   - src: "config/app.yml.j2"             # Source → different destination
@@ -84,33 +72,17 @@ The `current` object contains information about the server being deployed to:
 
 ### Config (`{{ config }}`)
 
-The `config` object contains all values from your `config.yml`:
+All values from your `config.yml`:
 
 ```yaml
-# In your template
 database: {{ config.project_name }}-db
 ```
 
 ### All Servers (`{{ servers }}`)
 
-The `servers` object contains all servers in the current environment, keyed by name. This enables cross-server configuration:
-
-```nginx
-# Generate upstream from all app servers
-upstream backend {
-  {% for name, srv in servers.items() %}
-    {% if 'app' in srv.tags %}
-    server {{ srv.host }}:3000;
-    {% endif %}
-  {% endfor %}
-}
-```
-
-Each server has the same properties as `current`: `name`, `host`, `port`, `user`, `role`, `tags`, `env`.
+All servers in the current environment, keyed by name. Each server has the same properties as `current`.
 
 ### Cluster Metadata (`{{ cluster }}`)
-
-The `cluster` object provides aggregate information about your deployment:
 
 | Variable | Description | Example |
 |----------|-------------|--------|
@@ -120,55 +92,42 @@ The `cluster` object provides aggregate information about your deployment:
 | `{{ cluster.managers }}` | List of manager IPs | `['192.168.1.10']` |
 | `{{ cluster.workers }}` | List of worker IPs | `['192.168.1.11', '192.168.1.12']` |
 
-## Examples
+## Jinja2 Syntax
 
-### Application Configuration
+### Conditionals
 
 ```yaml
-# config/application.yml
-database:
-  host: "{{ current.env.db_host }}"
-  port: {{ current.env.db_port | default(5432) }}
-  name: "{{ current.env.db_name }}"
-  username: "{{ current.env.db_user }}"
-  password: "{{ current.env.db_password }}"
+logging:
+{% if env == 'production' %}
+  level: "warn"
+  format: "json"
+{% else %}
+  level: "debug"
+  format: "pretty"
+{% endif %}
 
-server:
-  environment: "{{ env }}"
-  version: "{{ version }}"
-  debug: {{ 'true' if env == 'development' else 'false' }}
+features:
+  debug_toolbar: {{ 'true' if env != 'production' else 'false' }}
 ```
 
-### Nginx Configuration
+### Default values
+
+```yaml
+database:
+  pool_size: {{ current.env.db_pool_size | default(10) }}
+  timeout: {{ current.env.db_timeout | default(30) }}
+```
+
+### Loops
 
 ```nginx
-# .dockflow/templates/nginx/myapp.conf.j2
-server {
-    listen 80;
-    server_name {{ current.env.domain_name }};
-
-    location / {
-        proxy_pass http://127.0.0.1:{{ current.env.app_port }};
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
+upstream backend {
+  {% for name, srv in servers.items() %}
+    {% if 'app' in srv.tags %}
+    server {{ srv.host }}:{{ srv.env.app_port | default(3000) }};
+    {% endif %}
+  {% endfor %}
 }
-```
-
-### Init Script
-
-```bash
-#!/bin/bash
-# scripts/init.sh
-
-echo "Initializing {{ config.project_name }} v{{ version }}"
-echo "Environment: {{ env }}"
-
-{% if env == 'production' %}
-echo "Running production optimizations..."
-{% else %}
-echo "Running in development mode"
-{% endif %}
 ```
 
 ## Execution Order
@@ -186,94 +145,59 @@ Templates are rendered early in the deployment process:
 Templates are rendered **before** the Docker build, so the rendered files will be included in your Docker images if they are in the build context.
 </Callout>
 
-## Conditional Rendering
+## Examples
 
-Use Jinja2 conditionals for environment-specific content:
+These are example template files you could create in your project.
 
-```yaml
-# config/settings.yml
-logging:
-{% if env == 'production' %}
-  level: "warn"
-  format: "json"
-{% else %}
-  level: "debug"
-  format: "pretty"
-{% endif %}
-
-features:
-  debug_toolbar: {{ 'true' if env != 'production' else 'false' }}
-```
-
-## Default Values
-
-Use Jinja2 filters to provide fallback values:
+### Application config (e.g. `config/application.yml`)
 
 ```yaml
 database:
-  pool_size: {{ current.env.db_pool_size | default(10) }}
-  timeout: {{ current.env.db_timeout | default(30) }}
+  host: "{{ current.env.db_host }}"
+  port: {{ current.env.db_port | default(5432) }}
+  name: "{{ current.env.db_name }}"
+  password: "{{ current.env.db_password }}"
+
+server:
+  environment: "{{ env }}"
+  version: "{{ version }}"
 ```
 
-## Advanced Examples
-
-### Dynamic Load Balancer Configuration
-
-Generate Nginx upstream configuration from all servers tagged as `app`:
+### Nginx reverse proxy (e.g. `nginx/myapp.conf.j2`)
 
 ```nginx
-# nginx/loadbalancer.conf.j2
-upstream app_cluster {
-  {% for name, srv in servers.items() %}
-    {% if 'app' in srv.tags %}
-    server {{ srv.host }}:{{ srv.env.app_port | default(3000) }} weight=1;
-    {% endif %}
-  {% endfor %}
-}
-
 server {
     listen 80;
     server_name {{ current.env.domain_name }};
 
     location / {
-        proxy_pass http://app_cluster;
+        proxy_pass http://127.0.0.1:{{ current.env.app_port }};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
     }
 }
 ```
 
-### Database Access Control
+### Init script (e.g. `scripts/init.sh`)
 
-Generate PostgreSQL `pg_hba.conf` to allow connections from all app servers:
+```bash
+#!/bin/bash
+echo "Initializing {{ config.project_name }} v{{ version }}"
+echo "Environment: {{ env }}"
+
+{% if env == 'production' %}
+echo "Running production optimizations..."
+{% else %}
+echo "Running in development mode"
+{% endif %}
+```
+
+### PostgreSQL access control (e.g. `config/pg_hba.conf.j2`)
 
 ```conf
-# config/pg_hba.conf.j2
-# Allow connections from all app servers
 {% for name, srv in servers.items() %}
   {% if srv.role == 'worker' or 'app' in srv.tags %}
 host    all    all    {{ srv.host }}/32    md5
   {% endif %}
 {% endfor %}
-```
-
-### Cluster-Aware Configuration
-
-Adapt settings based on cluster size:
-
-```yaml
-# config/app.yml.j2
-cluster:
-  node_name: "{{ current.name }}"
-  node_role: "{{ current.role }}"
-  total_nodes: {{ cluster.size }}
-
-  {% if cluster.manager_count > 1 %}
-  high_availability: true
-  {% else %}
-  high_availability: false
-  {% endif %}
-
-  peers:
-    {% for host in cluster.managers %}
-    - "{{ host }}:2377"
-    {% endfor %}
 ```

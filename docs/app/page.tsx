@@ -28,7 +28,7 @@ export default function Page() {
               Get Started
               <ArrowRight style={{ width: 16, height: 16 }} />
             </Link>
-            <Link href="/configuration" className="hero-button hero-button-secondary">
+            <Link href="/getting-started" className="hero-button hero-button-secondary">
               Documentation
             </Link>
           </div>
