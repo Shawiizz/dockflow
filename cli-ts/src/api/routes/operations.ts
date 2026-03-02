@@ -137,10 +137,10 @@ function createSSEStream(proc: ReturnType<typeof Bun.spawn>, operationType: 'dep
       // Read both stdout and stderr concurrently
       const readers: Promise<void>[] = [];
 
-      if (proc.stdout) {
+      if (proc.stdout && typeof proc.stdout !== 'number') {
         readers.push(readStream(proc.stdout.getReader(), 'stdout'));
       }
-      if (proc.stderr) {
+      if (proc.stderr && typeof proc.stderr !== 'number') {
         readers.push(readStream(proc.stderr.getReader(), 'stderr'));
       }
 

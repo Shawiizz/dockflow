@@ -166,7 +166,7 @@ async function getAccessoriesStatus(url: URL): Promise<Response> {
           if (acc.replicasDesired === 0) acc.status = 'stopped';
           else if (acc.replicasRunning === acc.replicasDesired) acc.status = 'running';
           else if (acc.replicasRunning === 0) acc.status = 'stopped';
-          else acc.status = 'error';
+          else acc.status = 'unknown';
         }
       }
     }
