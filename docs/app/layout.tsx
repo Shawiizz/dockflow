@@ -43,7 +43,7 @@ const navbar = (
   <Navbar
     logo={
       <>
-        <img src="/logo.png" alt="Dockflow" style={{ height: 24 }} />
+        <img src="/logo.svg" alt="Dockflow" style={{ height: 24 }} />
         <b style={{ marginLeft: 8 }}>Dockflow</b>
       </>
     }
@@ -59,7 +59,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" dir="ltr" suppressHydrationWarning className={inter.className}>
       <Head>
-        <link rel="icon" href="/favicon.ico" />
+        <link rel="icon" href="/logo.svg" type="image/svg+xml" />
       </Head>
       <body>
         <Layout

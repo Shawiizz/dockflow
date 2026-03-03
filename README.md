@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="dockflow-logo.png" alt="Dockflow" width="120" />
+<img src="dockflow-logo.svg" alt="Dockflow" width="120" />
 
 # Dockflow
 
