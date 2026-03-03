@@ -1,5 +1,5 @@
 import { Component, input, output, inject, signal, OnInit, DestroyRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, NavigationEnd } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -15,7 +15,7 @@ import { ThemeService } from '@core/services/theme.service';
 @Component({
   selector: 'app-header',
   standalone: true,
-  imports: [CommonModule, FormsModule, SelectModule, TooltipModule, RippleModule, SkeletonModule],
+  imports: [NgClass, FormsModule, SelectModule, TooltipModule, RippleModule, SkeletonModule],
   templateUrl: './header.component.html',
   styleUrl: './header.component.scss',
 })

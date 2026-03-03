@@ -1,0 +1,48 @@
+<div class="flex gap-4 p-4 bg-bg-secondary border border-border-primary rounded-xl transition-colors hover:border-border-secondary">
+  <div class="flex items-start pt-0.5">
+    <div class="flex items-center justify-center w-8 h-8 rounded-full text-base" [class]="statusColorClass(deploy().status)">
+      <i [class]="statusIcon(deploy().status)"></i>
+    </div>
+  </div>
+  <div class="flex-1 min-w-0">
+    <div class="flex flex-col gap-1.5">
+      <div class="flex items-center justify-between gap-2">
+        <h3 class="m-0 text-[0.9375rem] font-semibold text-text-primary">
+          {{ deploy().environment }}
+          <span class="font-normal text-text-muted text-[0.8125rem]">({{ deploy().target }})</span>
+        </h3>
+        <p-tag
+          [value]="deploy().status"
+          [severity]="statusSeverity(deploy().status)"
+          [rounded]="true"
+        />
+      </div>
+      <div class="flex gap-4 flex-wrap text-[0.8125rem] text-text-muted">
+        @if (deploy().version) {
+          <span class="flex items-center gap-1 text-accent">
+            <i class="pi pi-tag text-xs"></i> {{ deploy().version }}
+          </span>
+        }
+        <span class="flex items-center gap-1" [pTooltip]="formatDate(deploy().startedAt)">
+          <i class="pi pi-clock text-xs"></i> {{ relativeTime(deploy().startedAt) }}
+        </span>
+        @if (deploy().duration) {
+          <span class="flex items-center gap-1">
+            <i class="pi pi-stopwatch text-xs"></i> {{ formatDuration(deploy().duration) }}
+          </span>
+        }
+        @if (deploy().user) {
+          <span class="flex items-center gap-1">
+            <i class="pi pi-user text-xs"></i> {{ deploy().user }}
+          </span>
+        }
+      </div>
+    </div>
+    @if (deploy().error) {
+      <div class="flex items-start gap-2 mt-2 px-3 py-2 rounded-md bg-error-muted text-error text-[0.8125rem]">
+        <i class="pi pi-exclamation-triangle shrink-0 pt-0.5"></i>
+        <span class="break-words">{{ deploy().error }}</span>
+      </div>
+    }
+  </div>
+</div>

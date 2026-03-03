@@ -1,5 +1,4 @@
-import { Component, inject, signal, computed, OnInit, OnDestroy, DestroyRef, ElementRef, ViewChild } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, inject, signal, computed, viewChild, OnInit, OnDestroy, DestroyRef, ElementRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TooltipModule } from 'primeng/tooltip';
 import { SkeletonModule } from 'primeng/skeleton';
@@ -38,7 +37,6 @@ interface DragState {
   selector: 'app-topology',
   standalone: true,
   imports: [
-    CommonModule,
     TooltipModule,
     SkeletonModule,
     MessageModule,
@@ -55,7 +53,7 @@ export class TopologyComponent implements OnInit, OnDestroy {
   private confirmService = inject(ConfirmationService);
   private destroyRef = inject(DestroyRef);
 
-  @ViewChild('canvas', { static: false }) canvasRef!: ElementRef<HTMLDivElement>;
+  canvasRef = viewChild<ElementRef<HTMLDivElement>>('canvas');
 
   loading = signal(true);
   error = signal<string | null>(null);
@@ -176,9 +174,10 @@ export class TopologyComponent implements OnInit, OnDestroy {
       : this.servers().find(s => s.name === name);
     if (!card) return;
 
-    const canvasRect = this.canvasRef.nativeElement.getBoundingClientRect();
-    const scrollLeft = this.canvasRef.nativeElement.parentElement?.scrollLeft ?? 0;
-    const scrollTop = this.canvasRef.nativeElement.parentElement?.scrollTop ?? 0;
+    const canvasRect = this.canvasRef()?.nativeElement.getBoundingClientRect();
+    if (!canvasRect) return;
+    const scrollLeft = this.canvasRef()?.nativeElement.parentElement?.scrollLeft ?? 0;
+    const scrollTop = this.canvasRef()?.nativeElement.parentElement?.scrollTop ?? 0;
     const mouseCanvasX = event.clientX - canvasRect.left + scrollLeft;
     const mouseCanvasY = event.clientY - canvasRect.top + scrollTop;
 
@@ -226,10 +225,10 @@ export class TopologyComponent implements OnInit, OnDestroy {
   private onMouseMove(event: MouseEvent) {
     if (!this.dragState) return;
 
-    const canvasRect = this.canvasRef?.nativeElement?.getBoundingClientRect();
+    const canvasRect = this.canvasRef()?.nativeElement?.getBoundingClientRect();
     if (!canvasRect) return;
-    const scrollLeft = this.canvasRef.nativeElement.parentElement?.scrollLeft ?? 0;
-    const scrollTop = this.canvasRef.nativeElement.parentElement?.scrollTop ?? 0;
+    const scrollLeft = this.canvasRef()?.nativeElement.parentElement?.scrollLeft ?? 0;
+    const scrollTop = this.canvasRef()?.nativeElement.parentElement?.scrollTop ?? 0;
     const mouseCanvasX = event.clientX - canvasRect.left + scrollLeft;
     const mouseCanvasY = event.clientY - canvasRect.top + scrollTop;
 

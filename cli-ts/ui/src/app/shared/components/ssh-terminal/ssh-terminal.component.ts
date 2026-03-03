@@ -8,7 +8,6 @@ import {
   viewChild,
   ElementRef,
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { DialogModule } from 'primeng/dialog';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -17,7 +16,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 @Component({
   selector: 'app-ssh-terminal',
   standalone: true,
-  imports: [CommonModule, DialogModule],
+  imports: [DialogModule],
   templateUrl: './ssh-terminal.component.html',
   styleUrl: './ssh-terminal.component.scss',
 })

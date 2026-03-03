@@ -12,30 +12,30 @@
   styleClass="ssh-dialog"
 >
   <!-- Status Bar -->
-  <div class="ssh-status-bar">
+  <div class="flex items-center px-4 py-2 bg-bg-tertiary border-b border-border-primary text-xs">
     @if (connecting()) {
-      <span class="ssh-status ssh-status--connecting">
+      <span class="flex items-center gap-2 font-medium text-accent">
         <i class="pi pi-spin pi-spinner"></i>
         <span>Connecting...</span>
       </span>
     } @else if (connected()) {
-      <span class="ssh-status ssh-status--connected">
-        <span class="status-dot status-dot--online"></span>
+      <span class="flex items-center gap-2 font-medium text-success">
+        <span class="size-1.5 rounded-full bg-success"></span>
         <span>Connected to {{ serverHost() || serverName() }}</span>
       </span>
     } @else if (error()) {
-      <span class="ssh-status ssh-status--error">
+      <span class="flex items-center gap-2 font-medium text-error">
         <i class="pi pi-exclamation-triangle"></i>
         <span>{{ error() }}</span>
       </span>
     } @else {
-      <span class="ssh-status ssh-status--disconnected">
-        <span class="status-dot status-dot--offline"></span>
+      <span class="flex items-center gap-2 font-medium text-text-muted">
+        <span class="size-1.5 rounded-full bg-text-muted"></span>
         <span>Disconnected</span>
       </span>
     }
   </div>
 
   <!-- Terminal Container -->
-  <div class="ssh-terminal-container" #terminalEl></div>
+  <div class="flex-1 bg-[#0a0a0a] p-2 overflow-hidden" #terminalEl></div>
 </p-dialog>

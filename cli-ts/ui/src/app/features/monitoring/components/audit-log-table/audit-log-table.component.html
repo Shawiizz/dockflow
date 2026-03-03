@@ -1,0 +1,56 @@
+<div class="flex items-center gap-2 mt-4 mb-4">
+  <button
+    class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-border-primary bg-bg-tertiary text-text-primary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:border-border-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+    (click)="refresh.emit()"
+    [disabled]="loading()"
+  >
+    <i class="pi pi-refresh" [class.pi-spin]="loading()"></i>
+    <span>Refresh</span>
+  </button>
+</div>
+
+@if (error()) {
+  <div class="flex items-center gap-2 p-3 bg-error-muted text-error rounded-lg mb-4">
+    <i class="pi pi-exclamation-triangle"></i>
+    <span class="text-sm">{{ error() }}</span>
+  </div>
+}
+
+@if (loading() && entries().length === 0) {
+  <div class="flex flex-col gap-2">
+    @for (i of [1,2,3]; track i) {
+      <p-skeleton width="100%" height="2.5rem" />
+    }
+  </div>
+} @else if (entries().length === 0) {
+  <div class="flex flex-col items-center justify-center gap-4 py-16 px-8 text-text-muted">
+    <i class="pi pi-list text-5xl opacity-30"></i>
+    <h3 class="m-0 text-base font-medium">No audit entries</h3>
+    <p class="m-0 text-sm text-center max-w-[400px]">No deployment audit log found.</p>
+  </div>
+} @else {
+  <div class="overflow-x-auto rounded-lg border border-border-primary">
+    <table class="w-full border-collapse text-sm">
+      <thead>
+        <tr>
+          <th class="px-3 py-2.5 text-left whitespace-nowrap bg-bg-tertiary font-semibold text-text-secondary text-xs uppercase tracking-wide">Time</th>
+          <th class="px-3 py-2.5 text-left whitespace-nowrap bg-bg-tertiary font-semibold text-text-secondary text-xs uppercase tracking-wide">Action</th>
+          <th class="px-3 py-2.5 text-left whitespace-nowrap bg-bg-tertiary font-semibold text-text-secondary text-xs uppercase tracking-wide">Version</th>
+          <th class="px-3 py-2.5 text-left whitespace-nowrap bg-bg-tertiary font-semibold text-text-secondary text-xs uppercase tracking-wide">Performer</th>
+          <th class="px-3 py-2.5 text-left whitespace-nowrap bg-bg-tertiary font-semibold text-text-secondary text-xs uppercase tracking-wide">Message</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (entry of entries(); track $index) {
+          <tr class="border-t border-border-primary transition-colors hover:bg-bg-hover">
+            <td class="px-3 py-2.5 whitespace-nowrap text-text-muted text-sm" [pTooltip]="entry.timestamp">{{ formatTime(entry.timestamp) }}</td>
+            <td class="px-3 py-2.5 whitespace-nowrap"><p-tag [value]="entry.action" [severity]="actionSeverity(entry.action)" [rounded]="true" /></td>
+            <td class="px-3 py-2.5 whitespace-nowrap"><code>{{ entry.version }}</code></td>
+            <td class="px-3 py-2.5 whitespace-nowrap">{{ entry.performer }}</td>
+            <td class="px-3 py-2.5 text-text-muted">{{ entry.message || '\u2014' }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

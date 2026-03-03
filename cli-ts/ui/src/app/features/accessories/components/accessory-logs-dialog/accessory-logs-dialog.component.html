@@ -1,0 +1,14 @@
+<p-dialog [header]="'Logs: ' + target()" [(visible)]="visible" [modal]="true" [style]="{ width: '50rem', height: '30rem' }">
+  @if (loading()) {
+    <p-skeleton width="100%" height="20rem" />
+  } @else {
+    <div class="bg-[#0a0a0a] text-[#fafafa] font-mono text-[0.8125rem] p-4 rounded-lg max-h-96 overflow-y-auto whitespace-pre-wrap break-all">
+      @for (log of logs(); track $index) {
+        <div>{{ log.message }}</div>
+      }
+      @if (logs().length === 0) {
+        <span class="text-text-muted">No logs available</span>
+      }
+    </div>
+  }
+</p-dialog>

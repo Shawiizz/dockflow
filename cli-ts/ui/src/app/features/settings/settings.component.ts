@@ -1,5 +1,4 @@
 import { Component, inject, signal, OnInit, DestroyRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subject, switchMap, debounceTime, catchError, of } from 'rxjs';
@@ -17,7 +16,6 @@ import { ServersFormComponent } from './servers-form/servers-form.component';
   selector: 'app-settings',
   standalone: true,
   imports: [
-    CommonModule,
     FormsModule,
     TabsModule,
     TooltipModule,

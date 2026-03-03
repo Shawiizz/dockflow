@@ -1,73 +1,99 @@
-<div class="server-card" [class]="'server-card--' + statusClass()">
+<div
+  class="relative flex flex-col gap-3 p-4 bg-bg-secondary border border-border-primary rounded-xl transition-colors overflow-hidden hover:border-border-secondary"
+  [ngClass]="{
+    'border-[rgba(34,197,94,0.3)]': statusClass() === 'online',
+    'border-[rgba(239,68,68,0.3)]': statusClass() === 'offline' || statusClass() === 'error',
+    'border-[rgba(59,130,246,0.3)]': statusClass() === 'checking'
+  }"
+>
   <!-- Header -->
-  <div class="server-card__header">
-    <div class="server-card__info">
-      <div class="server-card__status-icon" [class]="'server-card__status-icon--' + statusClass()">
+  <div class="flex items-start justify-between gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+      <div
+        class="flex items-center justify-center size-9 rounded-lg shrink-0"
+        [ngClass]="{
+          'bg-bg-tertiary text-text-muted': statusClass() === 'unknown',
+          'bg-success-muted text-success': statusClass() === 'online',
+          'bg-error-muted text-error': statusClass() === 'offline' || statusClass() === 'error',
+          'bg-accent-muted text-accent': statusClass() === 'checking'
+        }"
+      >
         @if (checkingStatus()) {
-          <i class="pi pi-spin pi-spinner"></i>
+          <i class="pi pi-spin pi-spinner text-base"></i>
         } @else {
-          <i [class]="statusIcon()"></i>
+          <i [class]="statusIcon()" class="text-base"></i>
         }
       </div>
-      <div class="server-card__details">
-        <h3 class="server-card__name">{{ server().name }}</h3>
-        <span class="server-card__host">{{ server().host }}:{{ server().port }}</span>
+      <div class="flex flex-col min-w-0">
+        <h3 class="m-0 text-[0.9375rem] font-semibold text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{{ server().name }}</h3>
+        <span class="text-xs text-text-muted whitespace-nowrap overflow-hidden text-ellipsis">{{ server().host }}:{{ server().port }}</span>
       </div>
     </div>
-    <span class="server-card__role" [class]="'server-card__role--' + server().role">
+    <span
+      class="px-2 py-1 text-[0.6875rem] font-medium uppercase tracking-wide rounded shrink-0"
+      [ngClass]="server().role === 'manager' ? 'bg-accent-muted text-accent' : 'bg-bg-tertiary text-text-secondary'"
+    >
       {{ server().role }}
     </span>
   </div>
 
   <!-- Tags -->
   @if (server().tags.length > 0) {
-    <div class="server-card__tags">
+    <div class="flex flex-wrap gap-1.5">
       @for (tag of server().tags; track tag) {
-        <span class="server-card__tag">{{ tag }}</span>
+        <span class="px-2 py-0.5 text-[0.6875rem] font-medium rounded bg-bg-tertiary text-text-muted">{{ tag }}</span>
       }
     </div>
   }
 
   <!-- Status -->
-  <div class="server-card__status-row">
-    <div class="server-card__status">
+  <div class="flex items-center justify-between text-[0.8125rem]">
+    <div class="flex items-center gap-2">
       @if (checkingStatus()) {
-        <i class="pi pi-spin pi-spinner server-card__status-spinner"></i>
-        <span class="server-card__status-text server-card__status-text--checking">Checking…</span>
+        <i class="pi pi-spin pi-spinner text-[0.8125rem] text-accent"></i>
+        <span class="text-xs text-accent">Checking...</span>
       } @else {
-        <span class="server-card__status-dot" [class]="'server-card__status-dot--' + statusClass()"></span>
-        <span class="server-card__status-text">{{ statusLabel() }}</span>
+        <span
+          class="size-1.5 rounded-full"
+          [ngClass]="{
+            'bg-text-muted': statusClass() === 'unknown',
+            'bg-success': statusClass() === 'online',
+            'bg-error': statusClass() === 'offline' || statusClass() === 'error',
+            'bg-accent animate-pulse-slow': statusClass() === 'checking'
+          }"
+        ></span>
+        <span class="text-text-secondary">{{ statusLabel() }}</span>
       }
     </div>
     @if (server().swarmStatus) {
-      <span class="server-card__swarm">Swarm: {{ server().swarmStatus }}</span>
+      <span class="text-xs text-text-muted">Swarm: {{ server().swarmStatus }}</span>
     }
   </div>
 
   <!-- Error -->
   @if (server().error) {
-    <p class="server-card__error" [pTooltip]="server().error">
+    <p class="m-0 p-2 text-xs text-error bg-error-muted rounded-md whitespace-nowrap overflow-hidden text-ellipsis" [pTooltip]="server().error">
       {{ server().error }}
     </p>
   }
 
   <!-- Actions -->
-  <div class="server-card__actions">
+  <div class="flex gap-2 mt-1 pt-3 border-t border-border-primary">
     <button
-      class="btn btn--ghost btn--icon"
+      class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
       [disabled]="checkingStatus()"
       (click)="checkStatus.emit()"
       pTooltip="Check status"
     >
-      <i class="pi pi-refresh" [class.pi-spin]="checkingStatus()"></i>
+      <i class="pi pi-refresh text-base" [class.pi-spin]="checkingStatus()"></i>
     </button>
     <button
-      class="btn btn--ghost btn--icon"
+      class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
       [disabled]="server().status !== 'online'"
       (click)="sshOpen.emit()"
       pTooltip="SSH"
     >
-      <i class="pi pi-code"></i>
+      <i class="pi pi-code text-base"></i>
     </button>
   </div>
 </div>

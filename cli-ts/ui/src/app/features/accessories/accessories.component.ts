@@ -1,21 +1,21 @@
 import { Component, inject, signal, DestroyRef, effect } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
 import { SkeletonModule } from 'primeng/skeleton';
-import { DialogModule } from 'primeng/dialog';
 import { ApiService } from '@core/services/api.service';
 import { EnvironmentService } from '@core/services/environment.service';
 import { DataCacheService } from '@core/services/data-cache.service';
+import { AccessoryCardComponent } from './components/accessory-card/accessory-card.component';
+import { AccessoryLogsDialogComponent } from './components/accessory-logs-dialog/accessory-logs-dialog.component';
 import type { AccessoryStatusInfo, LogEntry } from '@api-types';
 
 @Component({
   selector: 'app-accessories',
   standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule, TagModule, TooltipModule, SkeletonModule, DialogModule],
+  imports: [RouterModule, FormsModule, TagModule, TooltipModule, SkeletonModule, AccessoryCardComponent, AccessoryLogsDialogComponent],
   templateUrl: './accessories.component.html',
   styleUrl: './accessories.component.scss',
 })
@@ -169,18 +169,5 @@ export class AccessoriesComponent {
           this.logsLoading.set(false);
         },
       });
-  }
-
-  envEntries(env?: Record<string, string>): Array<{ key: string; value: string }> {
-    if (!env) return [];
-    return Object.entries(env).map(([key, value]) => ({ key, value }));
-  }
-
-  statusSeverity(status?: string): 'success' | 'danger' | 'secondary' | undefined {
-    switch (status) {
-      case 'running': return 'success';
-      case 'stopped': return 'danger';
-      default: return 'secondary';
-    }
   }
 }

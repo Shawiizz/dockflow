@@ -1,0 +1,63 @@
+<div class="flex flex-col gap-4 p-6 bg-bg-secondary border border-border-primary rounded-xl">
+  <h3 class="m-0 text-base font-semibold text-text-primary">Prune Resources</h3>
+  <p class="text-sm text-text-muted m-0">Remove unused Docker resources from the remote server.</p>
+  <div class="flex flex-wrap gap-4">
+    <div class="flex items-center gap-2">
+      <p-checkbox [(ngModel)]="pruneContainers" [binary]="true" inputId="pruneContainers" />
+      <label for="pruneContainers">Containers</label>
+    </div>
+    <div class="flex items-center gap-2">
+      <p-checkbox [(ngModel)]="pruneImages" [binary]="true" inputId="pruneImages" />
+      <label for="pruneImages">Images</label>
+    </div>
+    <div class="flex items-center gap-2">
+      <p-checkbox [(ngModel)]="pruneVolumes" [binary]="true" inputId="pruneVolumes" />
+      <label for="pruneVolumes">Volumes</label>
+    </div>
+    <div class="flex items-center gap-2">
+      <p-checkbox [(ngModel)]="pruneNetworks" [binary]="true" inputId="pruneNetworks" />
+      <label for="pruneNetworks">Networks</label>
+    </div>
+  </div>
+  @if (pruneImages) {
+    <div class="flex items-center gap-2">
+      <p-checkbox [(ngModel)]="pruneAll" [binary]="true" inputId="pruneAll" />
+      <label for="pruneAll">Remove ALL images (not just dangling)</label>
+    </div>
+  }
+  @if (pruneVolumes) {
+    <div class="flex items-center gap-2 p-3 bg-warning-muted text-warning rounded-lg">
+      <i class="pi pi-exclamation-triangle"></i>
+      <span class="text-sm">Warning: pruning volumes will permanently delete data!</span>
+    </div>
+  }
+  <button
+    class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-accent text-white cursor-pointer transition-all duration-150 hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed self-start"
+    (click)="runPrune()"
+    [disabled]="pruning() || pruneTargets.length === 0"
+  >
+    <i class="pi pi-trash"></i>
+    <span>{{ pruning() ? 'Pruning...' : 'Prune' }}</span>
+  </button>
+
+  @if (results().length > 0) {
+    <div class="flex flex-col gap-2">
+      @for (r of results(); track r.target) {
+        <div class="flex items-center gap-2">
+          @if (r.success) {
+            <p-tag value="OK" severity="success" />
+          } @else {
+            <p-tag value="Error" severity="danger" />
+          }
+          <span class="font-medium">{{ r.target }}</span>
+          @if (r.reclaimed) {
+            <span class="text-text-muted text-sm">{{ r.reclaimed }} reclaimed</span>
+          }
+          @if (r.error) {
+            <span class="text-sm text-error">{{ r.error }}</span>
+          }
+        </div>
+      }
+    </div>
+  }
+</div>

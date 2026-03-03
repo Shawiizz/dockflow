@@ -1,22 +1,22 @@
-<div class="servers-form">
+<div>
   <!-- Defaults -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('defaults')">
-    <div class="form-section__header" (click)="toggleSection('defaults')">
-      <i class="pi pi-chevron-right"></i>
+    <div class="flex items-center gap-2 px-6 py-3.5 cursor-pointer font-semibold text-[0.9375rem] text-text-primary select-none transition-colors hover:bg-bg-secondary" (click)="toggleSection('defaults')">
+      <i class="pi pi-chevron-right text-xs text-text-muted transition-transform duration-200"></i>
       <span>Defaults</span>
     </div>
     <div class="form-section__collapse">
-      <div class="form-section__body">
-        <div class="form-grid">
-          <div class="form-row">
-            <label for="defaultUser">SSH User</label>
+      <div class="px-6 pb-5">
+        <div class="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-x-4">
+          <div class="flex flex-col gap-1 mb-3">
+            <label for="defaultUser" class="text-[0.8125rem] text-text-muted font-medium">SSH User</label>
             <input type="text" pInputText id="defaultUser"
                    [ngModel]="defaultUser()"
                    (ngModelChange)="defaultUser.set($event); onFieldChange()"
                    placeholder="dockflow" style="width: 100%;">
           </div>
-          <div class="form-row">
-            <label for="defaultPort">SSH Port</label>
+          <div class="flex flex-col gap-1 mb-3">
+            <label for="defaultPort" class="text-[0.8125rem] text-text-muted font-medium">SSH Port</label>
             <p-inputnumber id="defaultPort"
                            [ngModel]="defaultPort()"
                            (ngModelChange)="defaultPort.set($event ?? 22); onFieldChange()"
@@ -30,53 +30,53 @@
 
   <!-- Servers -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('servers')">
-    <div class="form-section__header" (click)="toggleSection('servers')">
-      <i class="pi pi-chevron-right"></i>
+    <div class="flex items-center gap-2 px-6 py-3.5 cursor-pointer font-semibold text-[0.9375rem] text-text-primary select-none transition-colors hover:bg-bg-secondary" (click)="toggleSection('servers')">
+      <i class="pi pi-chevron-right text-xs text-text-muted transition-transform duration-200"></i>
       <span>Servers ({{ servers().length }})</span>
     </div>
     <div class="form-section__collapse">
-      <div class="form-section__body">
+      <div class="px-6 pb-5">
         @for (srv of servers(); track $index; let i = $index) {
-          <div class="server-card">
-            <div class="server-card__header">
-              <span class="server-card__title">{{ srv.name || 'New Server' }}</span>
-              <button class="btn btn--ghost btn--icon" (click)="removeServer(i)" pTooltip="Remove server">
+          <div class="border border-border-primary rounded-lg mb-3 bg-bg-secondary overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-2.5 bg-bg-tertiary border-b border-border-primary">
+              <span class="font-semibold text-sm text-text-primary">{{ srv.name || 'New Server' }}</span>
+              <button class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-muted cursor-pointer transition-all duration-150 hover:bg-error-muted hover:text-error" (click)="removeServer(i)" pTooltip="Remove server">
                 <i class="pi pi-trash"></i>
               </button>
             </div>
-            <div class="server-card__body">
-              <div class="form-grid">
-                <div class="form-row">
-                  <label>Name *</label>
+            <div class="p-4">
+              <div class="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-x-4">
+                <div class="flex flex-col gap-1 mb-3">
+                  <label class="text-[0.8125rem] text-text-muted font-medium">Name *</label>
                   <input type="text" pInputText [ngModel]="srv.name"
                          (ngModelChange)="updateServer(i, 'name', $event)"
                          placeholder="main-server" style="width: 100%;"
                          [class.p-invalid]="serverErrors()[i]?.name">
                   @if (serverErrors()[i]?.name) {
-                    <small class="field-error">{{ serverErrors()[i]!.name }}</small>
+                    <small class="text-xs text-error mt-1">{{ serverErrors()[i]!.name }}</small>
                   }
                 </div>
-                <div class="form-row">
-                  <label>Role</label>
+                <div class="flex flex-col gap-1 mb-3">
+                  <label class="text-[0.8125rem] text-text-muted font-medium">Role</label>
                   <p-select [options]="roleOptions" optionLabel="label" optionValue="value"
                             [ngModel]="srv.role"
                             (ngModelChange)="updateServer(i, 'role', $event)"
                             [style]="{ width: '100%' }" />
                 </div>
-                <div class="form-row">
-                  <label>Host</label>
+                <div class="flex flex-col gap-1 mb-3">
+                  <label class="text-[0.8125rem] text-text-muted font-medium">Host</label>
                   <input type="text" pInputText [ngModel]="srv.host"
                          (ngModelChange)="updateServer(i, 'host', $event)"
                          placeholder="192.168.0.1" style="width: 100%;">
                 </div>
-                <div class="form-row">
-                  <label>SSH User (override)</label>
+                <div class="flex flex-col gap-1 mb-3">
+                  <label class="text-[0.8125rem] text-text-muted font-medium">SSH User (override)</label>
                   <input type="text" pInputText [ngModel]="srv.user"
                          (ngModelChange)="updateServer(i, 'user', $event)"
                          placeholder="(use default)" style="width: 100%;">
                 </div>
-                <div class="form-row">
-                  <label>SSH Port (override)</label>
+                <div class="flex flex-col gap-1 mb-3">
+                  <label class="text-[0.8125rem] text-text-muted font-medium">SSH Port (override)</label>
                   <p-inputnumber [ngModel]="srv.port"
                                  (ngModelChange)="updateServer(i, 'port', $event)"
                                  [min]="1" [max]="65535"
@@ -86,14 +86,14 @@
               </div>
 
               <!-- Tags -->
-              <div class="form-row">
-                <label>Tags *</label>
-                <div class="tags-input">
-                  <div class="tags-input__list">
+              <div class="flex flex-col gap-1 mb-3">
+                <label class="text-[0.8125rem] text-text-muted font-medium">Tags *</label>
+                <div>
+                  <div class="flex flex-wrap gap-1.5 mb-2">
                     @for (tag of srv.tags; track $index; let ti = $index) {
-                      <span class="tag-chip">
+                      <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[0.8125rem] font-medium rounded-full bg-accent-muted text-accent">
                         {{ tag }}
-                        <i class="pi pi-times tag-chip__remove" (click)="removeTag(i, ti)"></i>
+                        <i class="pi pi-times text-[0.625rem] cursor-pointer opacity-70 hover:opacity-100" (click)="removeTag(i, ti)"></i>
                       </span>
                     }
                   </div>
@@ -104,28 +104,28 @@
                          (keydown.enter)="addTag(i, tagInput)">
                 </div>
                 @if (serverErrors()[i]?.tags) {
-                  <small class="field-error">{{ serverErrors()[i]!.tags }}</small>
+                  <small class="text-xs text-error mt-1">{{ serverErrors()[i]!.tags }}</small>
                 }
               </div>
 
               <!-- Server Env Vars -->
-              <div class="form-subsection">
-                <div class="form-subsection__header">
-                  <span>Environment Variables</span>
-                  <button class="btn btn--ghost btn--sm" (click)="addServerEnv(i)">
+              <div class="mt-2">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-[0.8125rem] font-semibold text-text-primary">Environment Variables</span>
+                  <button class="inline-flex items-center justify-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary" (click)="addServerEnv(i)">
                     <i class="pi pi-plus"></i> Add
                   </button>
                 </div>
                 @for (envVar of srv.env; track $index; let ei = $index) {
-                  <div class="kv-pair">
+                  <div class="flex gap-2 items-center mb-1.5">
                     <input type="text" pInputText [ngModel]="envVar.key"
                            (ngModelChange)="updateServerEnv(i, ei, 'key', $event)"
                            placeholder="KEY" style="width: 40%;">
-                    <span class="kv-pair__sep">=</span>
+                    <span class="text-text-muted font-semibold">=</span>
                     <input type="text" pInputText [ngModel]="envVar.value"
                            (ngModelChange)="updateServerEnv(i, ei, 'value', $event)"
                            placeholder="value" style="flex: 1;">
-                    <button class="btn btn--ghost btn--icon" (click)="removeServerEnv(i, ei)">
+                    <button class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-muted cursor-pointer transition-all duration-150 hover:bg-error-muted hover:text-error" (click)="removeServerEnv(i, ei)">
                       <i class="pi pi-trash"></i>
                     </button>
                   </div>
@@ -134,7 +134,7 @@
             </div>
           </div>
         }
-        <button class="btn btn--ghost" style="width: 100%;" (click)="addServer()">
+        <button class="inline-flex items-center justify-center gap-2 w-full px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary" (click)="addServer()">
           <i class="pi pi-plus"></i> Add Server
         </button>
       </div>
@@ -143,49 +143,49 @@
 
   <!-- Env by Tag -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('env')">
-    <div class="form-section__header" (click)="toggleSection('env')">
-      <i class="pi pi-chevron-right"></i>
+    <div class="flex items-center gap-2 px-6 py-3.5 cursor-pointer font-semibold text-[0.9375rem] text-text-primary select-none transition-colors hover:bg-bg-secondary" (click)="toggleSection('env')">
+      <i class="pi pi-chevron-right text-xs text-text-muted transition-transform duration-200"></i>
       <span>Environment Variables by Tag</span>
     </div>
     <div class="form-section__collapse">
-      <div class="form-section__body">
+      <div class="px-6 pb-5">
         @for (et of envTags(); track $index; let ti = $index) {
-          <div class="env-tag-card">
-            <div class="env-tag-card__header">
-              <span class="env-tag-card__title">{{ et.tag }}</span>
-              <button class="btn btn--ghost btn--icon" (click)="removeEnvTag(ti)" pTooltip="Remove tag group">
+          <div class="border border-border-primary rounded-lg mb-3 overflow-hidden">
+            <div class="flex items-center justify-between px-3 py-2 bg-bg-tertiary border-b border-border-primary">
+              <span class="font-semibold text-sm text-text-primary">{{ et.tag }}</span>
+              <button class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-muted cursor-pointer transition-all duration-150 hover:bg-error-muted hover:text-error" (click)="removeEnvTag(ti)" pTooltip="Remove tag group">
                 <i class="pi pi-trash"></i>
               </button>
             </div>
-            <div class="env-tag-card__body">
+            <div class="p-3">
               @for (v of et.vars; track $index; let vi = $index) {
-                <div class="kv-pair">
+                <div class="flex gap-2 items-center mb-1.5">
                   <input type="text" pInputText [ngModel]="v.key"
                          (ngModelChange)="updateEnvTagVar(ti, vi, 'key', $event)"
                          placeholder="KEY" style="width: 40%;">
-                  <span class="kv-pair__sep">=</span>
+                  <span class="text-text-muted font-semibold">=</span>
                   <input type="text" pInputText [ngModel]="v.value"
                          (ngModelChange)="updateEnvTagVar(ti, vi, 'value', $event)"
                          placeholder="value" style="flex: 1;">
-                  <button class="btn btn--ghost btn--icon" (click)="removeEnvTagVar(ti, vi)">
+                  <button class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-muted cursor-pointer transition-all duration-150 hover:bg-error-muted hover:text-error" (click)="removeEnvTagVar(ti, vi)">
                     <i class="pi pi-trash"></i>
                   </button>
                 </div>
               }
-              <button class="btn btn--ghost btn--sm" (click)="addEnvTagVar(ti)">
+              <button class="inline-flex items-center justify-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary" (click)="addEnvTagVar(ti)">
                 <i class="pi pi-plus"></i> Add Variable
               </button>
             </div>
           </div>
         }
-        <div class="add-tag-row">
+        <div class="flex gap-2 items-center mt-2">
           <input type="text" pInputText
                  [ngModel]="newTagName()"
                  (ngModelChange)="newTagName.set($event)"
                  placeholder="Tag name (e.g. production)"
                  style="flex: 1;"
                  (keydown.enter)="addEnvTag()">
-          <button class="btn btn--ghost" (click)="addEnvTag()" [disabled]="!newTagName()">
+          <button class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed" (click)="addEnvTag()" [disabled]="!newTagName()">
             <i class="pi pi-plus"></i> Add Tag Group
           </button>
         </div>

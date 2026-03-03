@@ -1,0 +1,69 @@
+<div class="flex items-center gap-2 mt-4 mb-4">
+  <button
+    class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-border-primary bg-bg-tertiary text-text-primary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:border-border-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+    (click)="refresh.emit()"
+    [disabled]="loading()"
+  >
+    <i class="pi pi-refresh" [class.pi-spin]="loading()"></i>
+    <span>Refresh</span>
+  </button>
+  <button
+    class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent cursor-pointer transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+    [ngClass]="autoRefresh() ? 'bg-accent text-white hover:bg-accent-hover' : 'bg-bg-tertiary border-border-primary text-text-primary hover:bg-bg-hover hover:border-border-secondary'"
+    (click)="toggleAutoRefresh.emit()"
+  >
+    <i class="pi pi-sync"></i>
+    <span>{{ autoRefresh() ? 'Auto (10s)' : 'Auto-refresh' }}</span>
+  </button>
+  @if (timestamp()) {
+    <span class="text-sm text-text-muted">Updated: {{ formatTime(timestamp()) }}</span>
+  }
+</div>
+
+@if (error()) {
+  <div class="flex items-center gap-2 p-3 bg-error-muted text-error rounded-lg mb-4">
+    <i class="pi pi-exclamation-triangle"></i>
+    <span class="text-sm">{{ error() }}</span>
+  </div>
+}
+
+@if (loading() && containers().length === 0) {
+  <div class="flex flex-col gap-2">
+    @for (i of [1,2,3]; track i) {
+      <p-skeleton width="100%" height="2.5rem" />
+    }
+  </div>
+} @else if (containers().length === 0) {
+  <div class="flex flex-col items-center justify-center gap-4 py-16 px-8 text-text-muted">
+    <i class="pi pi-chart-bar text-5xl opacity-30"></i>
+    <h3 class="m-0 text-base font-medium">No container stats</h3>
+    <p class="m-0 text-sm text-center max-w-[400px]">No running containers found.</p>
+  </div>
+} @else {
+  <div class="overflow-x-auto rounded-lg border border-border-primary">
+    <table class="w-full border-collapse text-sm">
+      <thead>
+        <tr>
+          <th class="px-3 py-2.5 text-left whitespace-nowrap bg-bg-tertiary font-semibold text-text-secondary text-xs uppercase tracking-wide">Container</th>
+          <th class="px-3 py-2.5 text-left whitespace-nowrap bg-bg-tertiary font-semibold text-text-secondary text-xs uppercase tracking-wide">CPU %</th>
+          <th class="px-3 py-2.5 text-left whitespace-nowrap bg-bg-tertiary font-semibold text-text-secondary text-xs uppercase tracking-wide">Memory Usage</th>
+          <th class="px-3 py-2.5 text-left whitespace-nowrap bg-bg-tertiary font-semibold text-text-secondary text-xs uppercase tracking-wide">Mem %</th>
+          <th class="px-3 py-2.5 text-left whitespace-nowrap bg-bg-tertiary font-semibold text-text-secondary text-xs uppercase tracking-wide">Net I/O</th>
+          <th class="px-3 py-2.5 text-left whitespace-nowrap bg-bg-tertiary font-semibold text-text-secondary text-xs uppercase tracking-wide">Block I/O</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (c of containers(); track c.name) {
+          <tr class="border-t border-border-primary transition-colors hover:bg-bg-hover">
+            <td class="px-3 py-2.5 whitespace-nowrap font-medium">{{ c.name }}</td>
+            <td class="px-3 py-2.5 whitespace-nowrap">{{ c.cpuPercent }}</td>
+            <td class="px-3 py-2.5 whitespace-nowrap">{{ c.memUsage }}</td>
+            <td class="px-3 py-2.5 whitespace-nowrap">{{ c.memPercent }}</td>
+            <td class="px-3 py-2.5 whitespace-nowrap">{{ c.netIO }}</td>
+            <td class="px-3 py-2.5 whitespace-nowrap">{{ c.blockIO }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

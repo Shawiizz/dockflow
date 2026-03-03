@@ -1,12 +1,16 @@
-<div class="servers-page animate-fade-in">
+<div class="flex flex-col gap-6 animate-fade-in">
   <!-- Page Header -->
-  <div class="page-header">
-    <div class="page-header__left">
-      <h1 class="page-header__title">Servers</h1>
-      <p class="page-header__subtitle">Manage and monitor your infrastructure</p>
+  <div class="flex justify-between items-start gap-4 flex-wrap">
+    <div>
+      <h1 class="m-0 text-2xl font-semibold text-text-primary">Servers</h1>
+      <p class="mt-1 mb-0 text-sm text-text-muted">Manage and monitor your infrastructure</p>
     </div>
-    <div class="page-header__actions">
-      <button class="btn btn--secondary" (click)="serverStatus.checkAll()" [disabled]="serverStatus.loading()">
+    <div class="flex items-center gap-2">
+      <button
+        class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-border-primary bg-bg-tertiary text-text-primary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:border-border-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+        (click)="serverStatus.checkAll()"
+        [disabled]="serverStatus.loading()"
+      >
         <i class="pi pi-refresh" [class.pi-spin]="serverStatus.checkingServers().size > 0"></i>
         <span>Check All</span>
       </button>
@@ -15,19 +19,19 @@
 
   <!-- Stats -->
   @if (!serverStatus.loading()) {
-    <div class="servers-page__stats">
-      <div class="stat-pill">
-        <span class="stat-pill__value">{{ serverStatus.servers().length }}</span>
-        <span class="stat-pill__label">Total</span>
+    <div class="flex gap-3 flex-wrap">
+      <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-bg-tertiary">
+        <span class="text-sm font-semibold">{{ serverStatus.servers().length }}</span>
+        <span class="text-xs text-text-muted">Total</span>
       </div>
-      <div class="stat-pill stat-pill--success">
-        <span class="stat-pill__value">{{ serverStatus.onlineCount() }}</span>
-        <span class="stat-pill__label">Online</span>
+      <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-bg-tertiary">
+        <span class="text-sm font-semibold text-success">{{ serverStatus.onlineCount() }}</span>
+        <span class="text-xs text-text-muted">Online</span>
       </div>
       @if (serverStatus.offlineCount() > 0) {
-        <div class="stat-pill stat-pill--error">
-          <span class="stat-pill__value">{{ serverStatus.offlineCount() }}</span>
-          <span class="stat-pill__label">Offline</span>
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-bg-tertiary">
+          <span class="text-sm font-semibold text-error">{{ serverStatus.offlineCount() }}</span>
+          <span class="text-xs text-text-muted">Offline</span>
         </div>
       }
     </div>
@@ -35,10 +39,13 @@
 
   <!-- Error -->
   @if (serverStatus.error()) {
-    <div class="error-banner">
+    <div class="flex items-center gap-2 p-3 bg-error-muted text-error rounded-lg">
       <i class="pi pi-exclamation-triangle"></i>
-      <span class="error-banner__text">{{ serverStatus.error() }}</span>
-      <button class="btn btn--ghost btn--icon" (click)="serverStatus.reload(envService.selectedOrUndefined())">
+      <span class="text-sm">{{ serverStatus.error() }}</span>
+      <button
+        class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+        (click)="serverStatus.reload(envService.selectedOrUndefined())"
+      >
         <i class="pi pi-refresh"></i>
       </button>
     </div>
@@ -46,14 +53,14 @@
 
   <!-- Loading -->
   @if (serverStatus.loading()) {
-    <div class="card" style="padding: 0; overflow: hidden;">
+    <div class="bg-bg-secondary border border-border-primary rounded-xl overflow-hidden">
       @for (i of [1, 2, 3, 4]; track i) {
-        <div style="display: flex; gap: 1rem; align-items: center; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-primary);">
+        <div class="flex gap-4 items-center px-5 py-4 border-b border-border-primary">
           <p-skeleton width="4rem" height="1.375rem" borderRadius="9999px" />
           <p-skeleton width="8rem" height="0.875rem" />
           <p-skeleton width="10rem" height="0.875rem" />
           <p-skeleton width="4rem" height="1.375rem" borderRadius="9999px" />
-          <div style="margin-left: auto; display: flex; gap: 0.5rem;">
+          <div class="ml-auto flex gap-2">
             <p-skeleton width="2rem" height="2rem" borderRadius="0.5rem" />
             <p-skeleton width="2rem" height="2rem" borderRadius="0.5rem" />
           </div>
@@ -61,10 +68,10 @@
       }
     </div>
   } @else if (serverStatus.servers().length === 0) {
-    <div class="empty-state">
-      <i class="pi pi-server"></i>
-      <h3>No servers configured</h3>
-      <p>Add servers to your <code>servers.yml</code> configuration file.</p>
+    <div class="flex flex-col items-center justify-center gap-4 py-16 px-8 text-text-muted">
+      <i class="pi pi-server text-5xl opacity-30"></i>
+      <h3 class="m-0 text-base font-medium">No servers configured</h3>
+      <p class="m-0 text-sm text-center max-w-[400px]">Add servers to your <code>servers.yml</code> configuration file.</p>
     </div>
   } @else {
     <!-- Server Table -->
@@ -85,24 +92,24 @@
           <th>Role</th>
           <th>Environment</th>
           <th>Swarm</th>
-          <th style="width: 7rem; text-align: right">Actions</th>
+          <th class="w-28 text-right">Actions</th>
         </tr>
       </ng-template>
       <ng-template #body let-server>
         <tr>
           <!-- Name -->
           <td>
-            <span class="server-name">{{ server.name }}</span>
+            <span class="font-medium text-text-primary">{{ server.name }}</span>
           </td>
           <!-- Host -->
           <td>
-            <span class="server-host">{{ server.host }}:{{ server.port }}</span>
+            <span class="font-mono text-[0.8125rem] text-text-secondary">{{ server.host }}:{{ server.port }}</span>
           </td>
           <!-- Status -->
           <td>
             @if (checkingSet().has(server.name)) {
               <p-tag severity="info" [rounded]="true">
-                <i class="pi pi-spin pi-spinner" style="font-size: 0.7rem; margin-right: 0.25rem;"></i>
+                <i class="pi pi-spin pi-spinner text-[0.7rem] mr-1"></i>
                 Checking
               </p-tag>
             } @else {
@@ -120,9 +127,9 @@
           </td>
           <!-- Environment -->
           <td>
-            <div class="tag-list">
+            <div class="flex gap-1.5 flex-wrap">
               @for (tag of server.tags; track tag) {
-                <span class="env-tag">{{ tag }}</span>
+                <span class="px-2 py-0.5 text-xs font-medium rounded bg-bg-tertiary text-text-muted">{{ tag }}</span>
               }
             </div>
           </td>
@@ -135,14 +142,14 @@
                 [rounded]="true"
               />
             } @else {
-              <span class="text-muted">—</span>
+              <span class="text-text-muted">—</span>
             }
           </td>
           <!-- Actions -->
           <td>
-            <div class="action-buttons" style="justify-content: flex-end;">
+            <div class="flex gap-1 justify-end">
               <button
-                class="btn btn--ghost btn--icon"
+                class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 [disabled]="checkingSet().has(server.name)"
                 (click)="serverStatus.checkStatus(server.name)"
                 pTooltip="Check status"
@@ -150,7 +157,7 @@
                 <i class="pi pi-refresh" [class.pi-spin]="checkingSet().has(server.name)"></i>
               </button>
               <button
-                class="btn btn--ghost btn--icon"
+                class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 [disabled]="server.status !== 'online'"
                 (click)="openSsh(server)"
                 pTooltip="SSH Terminal"

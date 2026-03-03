@@ -1,5 +1,4 @@
 import { Component, inject, signal, computed, OnInit, DestroyRef, effect } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SkeletonModule } from 'primeng/skeleton';
@@ -16,7 +15,6 @@ import type { ProjectInfo, ConnectionInfo } from '@api-types';
   selector: 'app-dashboard',
   standalone: true,
   imports: [
-    CommonModule,
     RouterModule,
     SkeletonModule,
     StatsCardComponent,

@@ -10,10 +10,47 @@
 /* PrimeNG + Tailwind integration */
 @plugin "tailwindcss-primeui";
 
-/* Custom Theme - Coolify/Dokploy inspired */
+/* ============================================
+   TAILWIND THEME TOKENS
+   ============================================ */
+
 @theme {
   --font-family-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-family-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+
+  /* Surface colors */
+  --color-bg-primary: var(--bg-primary);
+  --color-bg-secondary: var(--bg-secondary);
+  --color-bg-tertiary: var(--bg-tertiary);
+  --color-bg-hover: var(--bg-hover);
+  --color-bg-active: var(--bg-active);
+
+  /* Border colors */
+  --color-border-primary: var(--border-primary);
+  --color-border-secondary: var(--border-secondary);
+
+  /* Text colors */
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+
+  /* Accent */
+  --color-accent: var(--accent-blue);
+  --color-accent-hover: var(--accent-blue-hover);
+  --color-accent-muted: var(--accent-blue-muted);
+
+  /* Semantic */
+  --color-success: var(--success);
+  --color-success-muted: var(--success-muted);
+  --color-warning: var(--warning);
+  --color-warning-muted: var(--warning-muted);
+  --color-error: var(--error);
+  --color-error-muted: var(--error-muted);
+
+  /* Animations */
+  --animate-fade-in: fade-in 0.2s ease-out;
+  --animate-spin-fast: spin 0.6s linear infinite;
+  --animate-pulse-slow: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 /* ============================================
@@ -145,115 +182,10 @@ pre {
 }
 
 /* ============================================
-   CARD COMPONENT
+   ANIMATIONS
    ============================================ */
 
-.card {
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 0.75rem;
-
-  &--hover {
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
-
-    &:hover {
-      border-color: var(--border-secondary);
-    }
-  }
-}
-
-/* ============================================
-   BUTTON OVERRIDES
-   ============================================ */
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  border: 1px solid transparent;
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  &--primary {
-    background-color: var(--accent-blue);
-    color: white;
-
-    &:hover:not(:disabled) {
-      background-color: var(--accent-blue-hover);
-    }
-  }
-
-  &--secondary {
-    background-color: var(--bg-tertiary);
-    border-color: var(--border-primary);
-    color: var(--text-primary);
-
-    &:hover:not(:disabled) {
-      background-color: var(--bg-hover);
-      border-color: var(--border-secondary);
-    }
-  }
-
-  &--ghost {
-    background-color: transparent;
-    color: var(--text-secondary);
-
-    &:hover:not(:disabled) {
-      background-color: var(--bg-hover);
-      color: var(--text-primary);
-    }
-  }
-
-  &--icon {
-    padding: 0.5rem;
-
-    i {
-      font-size: 1rem;
-    }
-  }
-}
-
-/* ============================================
-   STATUS INDICATORS
-   ============================================ */
-
-.status-dot {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-
-  &--online {
-    background-color: var(--success);
-    box-shadow: 0 0 0 2px var(--success-muted);
-  }
-
-  &--offline {
-    background-color: var(--error);
-    box-shadow: 0 0 0 2px var(--error-muted);
-  }
-
-  &--warning {
-    background-color: var(--warning);
-    box-shadow: 0 0 0 2px var(--warning-muted);
-  }
-
-  &--unknown {
-    background-color: var(--text-muted);
-  }
-}
-
-/* Fade in animation */
-@keyframes fadeIn {
+@keyframes fade-in {
   from {
     opacity: 0;
     transform: translateY(4px);
@@ -264,11 +196,6 @@ pre {
   }
 }
 
-.animate-fade-in {
-  animation: fadeIn 0.2s ease-out;
-}
-
-/* Pulse animation for status dots */
 @keyframes pulse {
   0%, 100% {
     opacity: 1;
@@ -278,67 +205,6 @@ pre {
   }
 }
 
-.animate-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-/* ============================================
-   LOADING UTILITIES
-   ============================================ */
-
 @keyframes spin {
   to { transform: rotate(360deg); }
-}
-
-.loading-spinner {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.25rem;
-  height: 1.25rem;
-  border: 2px solid var(--border-secondary);
-  border-top-color: var(--accent-blue);
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
-
-.loading-spinner--sm {
-  width: 0.875rem;
-  height: 0.875rem;
-  border-width: 1.5px;
-}
-
-.loading-spinner--lg {
-  width: 2rem;
-  height: 2rem;
-  border-width: 3px;
-}
-
-/* ============================================
-   ERROR BANNER (shared)
-   ============================================ */
-
-.error-banner {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
-  background-color: var(--error-muted);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  color: var(--error);
-  font-size: 0.875rem;
-
-  i {
-    font-size: 1rem;
-    flex-shrink: 0;
-  }
-
-  &__text {
-    flex: 1;
-  }
-
-  &__action {
-    flex-shrink: 0;
-  }
 }

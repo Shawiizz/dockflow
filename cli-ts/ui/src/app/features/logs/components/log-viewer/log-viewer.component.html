@@ -1,0 +1,28 @@
+@if (!selectedService()) {
+  <div class="flex flex-col items-center justify-center gap-4 py-16 px-8 text-text-muted">
+    <i class="pi pi-file-edit text-5xl opacity-30"></i>
+    <h3 class="m-0 text-base font-medium">Select a service</h3>
+    <p class="m-0 text-sm text-center max-w-[400px]">Choose a service from the dropdown to view its logs.</p>
+  </div>
+} @else {
+  <div class="bg-bg-secondary border border-border-primary rounded-xl flex-1 min-h-[400px] max-h-[calc(100vh-360px)] overflow-y-auto font-mono text-[0.8125rem] leading-relaxed" #logViewer>
+    @if (loading() && logs().length === 0) {
+      <div class="flex items-center gap-2 p-8 text-text-muted font-sans">
+        <i class="pi pi-spin pi-spinner"></i>
+        <span>Loading logs...</span>
+      </div>
+    } @else if (logs().length === 0) {
+      <div class="flex items-center gap-2 p-8 text-text-muted font-sans">
+        <i class="pi pi-info-circle"></i>
+        <span>No logs available for this service.</span>
+      </div>
+    } @else {
+      @for (log of logs(); track $index) {
+        <div class="flex gap-4 px-4 py-0.5 border-b border-border-primary transition-colors hover:bg-bg-hover">
+          <span class="text-xs text-text-muted font-mono shrink-0 pt-0.5">{{ formatTimestamp(log.timestamp) }}</span>
+          <span class="text-xs font-mono whitespace-pre-wrap break-all">{{ log.message }}</span>
+        </div>
+      }
+    }
+  </div>
+}

@@ -1,22 +1,24 @@
-<div class="settings-page animate-fade-in">
+<div class="flex flex-col gap-6 animate-fade-in">
   <!-- Page Header -->
-  <div class="page-header">
-    <h1 class="page-header__title">Settings</h1>
-    <p class="page-header__subtitle">Edit your Dockflow configuration files</p>
+  <div class="flex justify-between items-start gap-4 flex-wrap">
+    <div>
+      <h1 class="m-0 text-2xl font-semibold text-text-primary">Settings</h1>
+      <p class="mt-1 mb-0 text-sm text-text-muted">Edit your Dockflow configuration files</p>
+    </div>
   </div>
 
   <!-- Tabs -->
-  <div class="config-editor card">
+  <div class="bg-bg-secondary border border-border-primary rounded-xl overflow-hidden">
     <p-tabs [value]="activeIndex()" (valueChange)="activeIndex.set(+$event!)">
       <p-tablist>
         <p-tab [value]="0">
-          <span class="tab-label">
+          <span class="inline-flex items-center gap-2 text-sm">
             <i class="pi pi-cog"></i>
             <span>Config</span>
           </span>
         </p-tab>
         <p-tab [value]="1">
-          <span class="tab-label">
+          <span class="inline-flex items-center gap-2 text-sm">
             <i class="pi pi-server"></i>
             <span>Servers</span>
           </span>
@@ -26,44 +28,44 @@
       <!-- Tab 0: Config split-view -->
       <p-tabpanel [value]="0">
         @if (configFormLoading()) {
-          <div class="editor-loading">
+          <div class="p-6">
             @for (j of [1, 2, 3, 4, 5, 6]; track j) {
               <p-skeleton [height]="'20px'" styleClass="mb-1" />
             }
           </div>
         } @else if (configFormError() && !configData()) {
-          <div class="editor-error">
+          <div class="flex justify-center p-8">
             <p-message severity="error" [text]="configFormError()!" />
           </div>
         } @else {
-          <div class="split-view">
+          <div class="flex border-t border-border-primary max-lg:flex-col">
             <!-- Form side -->
-            <div class="split-view__form">
+            <div class="flex-1 overflow-y-auto max-h-[calc(100vh-280px)] border-r border-border-primary max-lg:border-r-0 max-lg:border-b max-lg:max-h-none" style="scrollbar-gutter: stable">
               <app-config-form
                 [data]="configData()"
                 (dataChange)="onConfigFormChange($event)" />
             </div>
             <!-- YAML preview side -->
-            <div class="split-view__yaml">
+            <div class="flex-1 flex flex-col min-w-0">
               @if (configYamlLoading()) {
-                <div class="editor-loading" style="padding: 1rem;">
+                <div class="p-4">
                   @for (j of [1, 2, 3, 4]; track j) {
                     <p-skeleton [height]="'16px'" styleClass="mb-1" />
                   }
                 </div>
               } @else {
-                <div class="yaml-preview">
-                  <div class="yaml-preview__header">
+                <div class="flex flex-col h-full">
+                  <div class="flex items-center px-4 py-2 bg-bg-tertiary border-b border-border-primary text-[0.8125rem] font-semibold text-text-muted font-mono">
                     <span>config.yml</span>
                   </div>
-                  <div class="yaml-preview__content">
-                    <div class="editor-line-numbers">
+                  <div class="flex flex-1 overflow-y-auto max-h-[calc(100vh-330px)]">
+                    <div class="flex flex-col py-3 pl-4 pr-3 bg-bg-secondary border-r border-border-primary select-none shrink-0 font-mono text-[0.8125rem] leading-[1.7] text-text-muted text-right">
                       @for (line of configYaml().split('\n'); track $index; let ln = $index) {
-                        <span>{{ ln + 1 }}</span>
+                        <span class="min-w-[2ch]">{{ ln + 1 }}</span>
                       }
                     </div>
                     <textarea
-                      class="editor-textarea editor-textarea--readonly"
+                      class="flex-1 w-full min-h-[200px] py-3 px-4 bg-bg-secondary text-text-muted border-none font-mono text-[0.8125rem] leading-[1.7] resize-none outline-none cursor-default"
                       [value]="configYaml()"
                       readonly
                       spellcheck="false"
@@ -76,7 +78,7 @@
           </div>
 
           @if (configFormError()) {
-            <div class="editor-error-inline">
+            <div class="px-6 pb-4">
               <p-message severity="error" [text]="configFormError()!" />
             </div>
           }
@@ -86,44 +88,44 @@
       <!-- Tab 1: Servers split-view -->
       <p-tabpanel [value]="1">
         @if (serversFormLoading()) {
-          <div class="editor-loading">
+          <div class="p-6">
             @for (j of [1, 2, 3, 4, 5, 6]; track j) {
               <p-skeleton [height]="'20px'" styleClass="mb-1" />
             }
           </div>
         } @else if (serversFormError() && !serversData()) {
-          <div class="editor-error">
+          <div class="flex justify-center p-8">
             <p-message severity="error" [text]="serversFormError()!" />
           </div>
         } @else {
-          <div class="split-view">
+          <div class="flex border-t border-border-primary max-lg:flex-col">
             <!-- Form side -->
-            <div class="split-view__form">
+            <div class="flex-1 overflow-y-auto max-h-[calc(100vh-280px)] border-r border-border-primary max-lg:border-r-0 max-lg:border-b max-lg:max-h-none" style="scrollbar-gutter: stable">
               <app-servers-form
                 [data]="serversData()"
                 (dataChange)="onServersFormChange($event)" />
             </div>
             <!-- YAML preview side -->
-            <div class="split-view__yaml">
+            <div class="flex-1 flex flex-col min-w-0">
               @if (serversYamlLoading()) {
-                <div class="editor-loading" style="padding: 1rem;">
+                <div class="p-4">
                   @for (j of [1, 2, 3, 4]; track j) {
                     <p-skeleton [height]="'16px'" styleClass="mb-1" />
                   }
                 </div>
               } @else {
-                <div class="yaml-preview">
-                  <div class="yaml-preview__header">
+                <div class="flex flex-col h-full">
+                  <div class="flex items-center px-4 py-2 bg-bg-tertiary border-b border-border-primary text-[0.8125rem] font-semibold text-text-muted font-mono">
                     <span>servers.yml</span>
                   </div>
-                  <div class="yaml-preview__content">
-                    <div class="editor-line-numbers">
+                  <div class="flex flex-1 overflow-y-auto max-h-[calc(100vh-330px)]">
+                    <div class="flex flex-col py-3 pl-4 pr-3 bg-bg-secondary border-r border-border-primary select-none shrink-0 font-mono text-[0.8125rem] leading-[1.7] text-text-muted text-right">
                       @for (line of serversYaml().split('\n'); track $index; let ln = $index) {
-                        <span>{{ ln + 1 }}</span>
+                        <span class="min-w-[2ch]">{{ ln + 1 }}</span>
                       }
                     </div>
                     <textarea
-                      class="editor-textarea editor-textarea--readonly"
+                      class="flex-1 w-full min-h-[200px] py-3 px-4 bg-bg-secondary text-text-muted border-none font-mono text-[0.8125rem] leading-[1.7] resize-none outline-none cursor-default"
                       [value]="serversYaml()"
                       readonly
                       spellcheck="false"
@@ -136,7 +138,7 @@
           </div>
 
           @if (serversFormError()) {
-            <div class="editor-error-inline">
+            <div class="px-6 pb-4">
               <p-message severity="error" [text]="serversFormError()!" />
             </div>
           }

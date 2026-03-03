@@ -1,24 +1,24 @@
-<div class="app-layout">
+<div class="flex h-full bg-bg-primary">
   <!-- Sidebar -->
-  <app-sidebar 
-    [collapsed]="sidebarCollapsed()" 
-    (collapsedChange)="sidebarCollapsed.set($event)" 
+  <app-sidebar
+    [collapsed]="sidebarCollapsed()"
+    (collapsedChange)="sidebarCollapsed.set($event)"
   />
-  
+
   <!-- Main Content -->
-  <div class="main-content">
+  <div class="flex flex-col flex-1 min-w-0 overflow-hidden">
     <!-- Header -->
-    <app-header 
+    <app-header
       [sidebarCollapsed]="sidebarCollapsed()"
       (toggleSidebar)="sidebarCollapsed.set(!sidebarCollapsed())"
     />
-    
+
     <!-- Page Content -->
-    <main class="page-content">
+    <main class="flex-1 overflow-auto p-6 bg-bg-primary" style="scrollbar-gutter: stable">
       <router-outlet />
     </main>
   </div>
-  
+
   <!-- Toast Notifications -->
   <p-toast position="top-right" />
 </div>

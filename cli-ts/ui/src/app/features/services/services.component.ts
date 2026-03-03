@@ -1,23 +1,22 @@
 import { Component, inject, signal, computed, OnInit, DestroyRef, effect } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
 import { SkeletonModule } from 'primeng/skeleton';
-import { DialogModule } from 'primeng/dialog';
-import { InputNumberModule } from 'primeng/inputnumber';
 import { ApiService } from '@core/services/api.service';
 import { EnvironmentService } from '@core/services/environment.service';
 import { DataCacheService } from '@core/services/data-cache.service';
 import { SshTerminalComponent } from '@shared/components/ssh-terminal/ssh-terminal.component';
+import { ServiceCardComponent } from './components/service-card/service-card.component';
+import { ScaleDialogComponent } from './components/scale-dialog/scale-dialog.component';
 import type { ServiceInfo } from '@api-types';
 
 @Component({
   selector: 'app-services',
   standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule, TagModule, TooltipModule, SkeletonModule, DialogModule, InputNumberModule, SshTerminalComponent],
+  imports: [RouterModule, FormsModule, TagModule, TooltipModule, SkeletonModule, SshTerminalComponent, ServiceCardComponent, ScaleDialogComponent],
   templateUrl: './services.component.html',
   styleUrl: './services.component.scss',
 })
@@ -36,7 +35,6 @@ export class ServicesComponent implements OnInit {
   actionLoading = signal<string | null>(null);
   scaleDialogVisible = signal(false);
   scaleTarget = signal<ServiceInfo | null>(null);
-  scaleValueNum = 1;
   terminalVisible = signal(false);
   terminalService = signal<ServiceInfo | null>(null);
   private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -128,28 +126,6 @@ export class ServicesComponent implements OnInit {
     }
   }
 
-  replicaPercent(service: ServiceInfo): number {
-    if (service.replicas === 0) return 0;
-    return (service.replicasRunning / service.replicas) * 100;
-  }
-
-  replicaFillClass(service: ServiceInfo): string {
-    const pct = this.replicaPercent(service);
-    if (pct >= 100) return 'service-card__replicas-fill--full';
-    if (pct > 0) return 'service-card__replicas-fill--partial';
-    return 'service-card__replicas-fill--zero';
-  }
-
-  stateSeverity(state: string): 'success' | 'danger' | 'warn' | 'info' | 'secondary' | 'contrast' | undefined {
-    switch (state) {
-      case 'running': return 'success';
-      case 'stopped': return 'danger';
-      case 'paused': return 'warn';
-      case 'error': return 'danger';
-      default: return 'secondary';
-    }
-  }
-
   // ── Service Actions ─────────────────────────────────────────────────────
 
   private handleActionResult(res: { success: boolean; message: string }, serviceName: string, env?: string) {
@@ -205,17 +181,15 @@ export class ServicesComponent implements OnInit {
 
   onScale(service: ServiceInfo) {
     this.scaleTarget.set(service);
-    this.scaleValueNum = service.replicas;
     this.scaleDialogVisible.set(true);
   }
 
-  confirmScale() {
-    const target = this.scaleTarget();
-    if (!target) return;
+  confirmScale(event: { service: ServiceInfo; replicas: number }) {
+    const target = event.service;
     const env = this.envService.selectedOrUndefined();
     this.actionLoading.set(target.name);
     this.scaleDialogVisible.set(false);
-    this.apiService.scaleService(target.name, this.scaleValueNum, env)
+    this.apiService.scaleService(target.name, event.replicas, env)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (res) => {

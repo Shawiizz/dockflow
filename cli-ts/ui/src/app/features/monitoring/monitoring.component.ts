@@ -1,17 +1,16 @@
 import { Component, inject, signal, OnDestroy, effect } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { TabsModule } from 'primeng/tabs';
-import { TagModule } from 'primeng/tag';
 import { SkeletonModule } from 'primeng/skeleton';
-import { TooltipModule } from 'primeng/tooltip';
 import { ApiService } from '@core/services/api.service';
 import { EnvironmentService } from '@core/services/environment.service';
 import type { ContainerStatsEntry, AuditEntry } from '@api-types';
+import { ContainerStatsTableComponent } from './components/container-stats-table/container-stats-table.component';
+import { AuditLogTableComponent } from './components/audit-log-table/audit-log-table.component';
 
 @Component({
   selector: 'app-monitoring',
   standalone: true,
-  imports: [CommonModule, TabsModule, TagModule, SkeletonModule, TooltipModule],
+  imports: [TabsModule, SkeletonModule, ContainerStatsTableComponent, AuditLogTableComponent],
   templateUrl: './monitoring.component.html',
   styleUrl: './monitoring.component.scss',
 })
@@ -91,20 +90,6 @@ export class MonitoringComponent implements OnDestroy {
 
   refreshAudit() {
     this.loadAudit(this.envService.selectedOrUndefined());
-  }
-
-  formatTime(ts: string): string {
-    try { return new Date(ts).toLocaleString(); } catch { return ts; }
-  }
-
-  actionSeverity(action: string): 'success' | 'danger' | 'warn' | 'info' | 'secondary' | 'contrast' | undefined {
-    switch (action?.toLowerCase()) {
-      case 'deploy': return 'success';
-      case 'rollback': return 'warn';
-      case 'scale': return 'info';
-      case 'stop': case 'error': return 'danger';
-      default: return 'secondary';
-    }
   }
 
   ngOnDestroy() {

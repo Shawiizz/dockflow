@@ -1,12 +1,12 @@
 import { Component, input, output } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { NgClass } from '@angular/common';
 import { TooltipModule } from 'primeng/tooltip';
 import type { ServerStatus } from '@api-types';
 
 @Component({
   selector: 'app-server-card',
   standalone: true,
-  imports: [CommonModule, TooltipModule],
+  imports: [NgClass, TooltipModule],
   templateUrl: './server-card.component.html',
   styleUrl: './server-card.component.scss',
 })

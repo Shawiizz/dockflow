@@ -1,5 +1,4 @@
 import { Component, inject, effect, viewChild, ElementRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TagModule } from 'primeng/tag';
 import { InputTextModule } from 'primeng/inputtext';
@@ -10,7 +9,7 @@ import { OperationStateService } from '@core/services/operation-state.service';
 @Component({
   selector: 'app-build',
   standalone: true,
-  imports: [CommonModule, FormsModule, TagModule, InputTextModule, CheckboxModule],
+  imports: [FormsModule, TagModule, InputTextModule, CheckboxModule],
   templateUrl: './build.component.html',
   styleUrl: './build.component.scss',
 })

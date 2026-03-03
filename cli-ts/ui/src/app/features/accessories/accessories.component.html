@@ -1,12 +1,12 @@
-<div class="accessories-page animate-fade-in">
+<div class="flex flex-col gap-6 animate-fade-in">
   <!-- Page Header -->
-  <div class="page-header">
-    <div class="page-header__left">
-      <h1 class="page-header__title">Accessories</h1>
-      <p class="page-header__subtitle">Database and auxiliary services managed alongside your app</p>
+  <div class="flex justify-between items-start gap-4 flex-wrap">
+    <div>
+      <h1 class="m-0 text-2xl font-semibold text-text-primary">Accessories</h1>
+      <p class="mt-1 mb-0 text-sm text-text-muted">Database and auxiliary services managed alongside your app</p>
     </div>
-    <div class="page-header__actions">
-      <button class="btn btn--secondary" (click)="refresh()" [disabled]="loading()">
+    <div class="flex items-center gap-3">
+      <button class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-border-primary bg-bg-tertiary text-text-primary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:border-border-secondary disabled:opacity-50 disabled:cursor-not-allowed" (click)="refresh()" [disabled]="loading()">
         <i class="pi pi-refresh" [class.pi-spin]="loading()"></i>
         <span>Refresh</span>
       </button>
@@ -15,28 +15,28 @@
 
   <!-- Error -->
   @if (error()) {
-    <div class="error-banner">
-      <i class="pi pi-exclamation-triangle"></i>
-      <span class="error-banner__text">{{ error() }}</span>
-      <button class="btn btn--ghost btn--icon" (click)="refresh()">
-        <i class="pi pi-refresh"></i>
+    <div class="flex items-center gap-3 px-4 py-3 rounded-lg bg-error-muted border border-[rgba(239,68,68,0.2)] text-error text-sm">
+      <i class="pi pi-exclamation-triangle text-base shrink-0"></i>
+      <span class="flex-1">{{ error() }}</span>
+      <button class="inline-flex items-center justify-center p-2 rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary" (click)="refresh()">
+        <i class="pi pi-refresh text-base"></i>
       </button>
     </div>
   }
 
   <!-- Loading -->
   @if (loading()) {
-    <div class="accessories-grid">
+    <div class="grid grid-cols-[repeat(auto-fill,minmax(380px,1fr))] gap-4">
       @for (i of [1, 2]; track i) {
-        <div class="card" style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem;">
+        <div class="p-5 flex flex-col gap-4 bg-bg-secondary border border-border-primary rounded-xl">
           <div class="flex items-center gap-3">
             <p-skeleton size="2.5rem" borderRadius="0.5rem" />
-            <div style="flex: 1; display: flex; flex-direction: column; gap: 0.25rem;">
+            <div class="flex-1 flex flex-col gap-1">
               <p-skeleton width="45%" height="1rem" />
               <p-skeleton width="60%" height="0.625rem" />
             </div>
           </div>
-          <div style="display: flex; flex-direction: column; gap: 0.375rem;">
+          <div class="flex flex-col gap-1.5">
             <p-skeleton width="2rem" height="0.5rem" />
             <div class="flex gap-2">
               <p-skeleton width="4.5rem" height="1.25rem" />
@@ -47,108 +47,34 @@
       }
     </div>
   } @else if (accessories().length === 0) {
-    <div class="empty-state">
-      <i class="pi pi-database"></i>
-      <h3>No accessories configured</h3>
-      <p>Add accessories to your <code>config.yml</code> to manage databases and other services.</p>
-      <a routerLink="/settings" class="btn btn--primary" style="margin-top: 1rem;">
+    <div class="flex flex-col items-center justify-center py-16 px-8 text-center text-text-muted">
+      <i class="pi pi-database text-5xl mb-4 opacity-30"></i>
+      <h3 class="m-0 mb-2 text-lg font-medium text-text-secondary">No accessories configured</h3>
+      <p class="m-0 text-sm">Add accessories to your <code>config.yml</code> to manage databases and other services.</p>
+      <a routerLink="/settings" class="inline-flex items-center justify-center gap-2 mt-4 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-accent text-white no-underline cursor-pointer transition-all duration-150 hover:bg-accent-hover">
         <i class="pi pi-cog"></i>
         <span>Go to Settings</span>
       </a>
     </div>
   } @else {
-    <div class="accessories-grid">
+    <div class="grid grid-cols-[repeat(auto-fill,minmax(380px,1fr))] gap-4">
       @for (acc of accessories(); track acc.name) {
-        <div class="accessory-card card card--hover">
-          <div class="accessory-card__header">
-            <div class="accessory-card__icon">
-              <i class="pi pi-database"></i>
-            </div>
-            <div class="accessory-card__title-col">
-              <div class="flex items-center gap-2">
-                <h3 class="accessory-card__name">{{ acc.name }}</h3>
-                @if (acc.status) {
-                  <p-tag [value]="acc.status" [severity]="statusSeverity(acc.status)" [rounded]="true" />
-                }
-              </div>
-              @if (acc.image) {
-                <span class="accessory-card__image">{{ acc.image }}</span>
-              }
-            </div>
-          </div>
-
-          @if (acc.replicas) {
-            <div class="accessory-card__section">
-              <span class="accessory-card__section-label">Replicas</span>
-              <span class="text-sm">{{ acc.replicasRunning || 0 }}/{{ acc.replicasDesired || 0 }}</span>
-            </div>
-          }
-
-          @if (acc.ports && acc.ports.length > 0) {
-            <div class="accessory-card__section">
-              <span class="accessory-card__section-label">Ports</span>
-              <div class="accessory-card__tags">
-                @for (port of acc.ports; track port) {
-                  <code class="accessory-card__tag">{{ port }}</code>
-                }
-              </div>
-            </div>
-          }
-
-          @if (acc.volumes && acc.volumes.length > 0) {
-            <div class="accessory-card__section">
-              <span class="accessory-card__section-label">Volumes</span>
-              <div class="accessory-card__tags">
-                @for (vol of acc.volumes; track vol) {
-                  <code class="accessory-card__tag">{{ vol }}</code>
-                }
-              </div>
-            </div>
-          }
-
-          @if (envEntries(acc.env).length > 0) {
-            <div class="accessory-card__section">
-              <span class="accessory-card__section-label">Environment</span>
-              <div class="accessory-card__env-list">
-                @for (entry of envEntries(acc.env); track entry.key) {
-                  <div class="accessory-card__env-row">
-                    <code class="accessory-card__env-key">{{ entry.key }}</code>
-                    <code class="accessory-card__env-value">{{ entry.value }}</code>
-                  </div>
-                }
-              </div>
-            </div>
-          }
-
-          <div class="accessory-card__actions" style="display: flex; gap: 0.25rem; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-primary);">
-            <button class="btn btn--ghost btn--icon" pTooltip="Restart" (click)="onRestart(acc)" [disabled]="actionLoading()">
-              <i class="pi pi-refresh" [class.pi-spin]="actionLoading() === acc.name"></i>
-            </button>
-            <button class="btn btn--ghost btn--icon" pTooltip="Stop" (click)="onStop(acc)" [disabled]="actionLoading()">
-              <i class="pi pi-stop-circle"></i>
-            </button>
-            <button class="btn btn--ghost btn--icon" pTooltip="View Logs" (click)="onViewLogs(acc)">
-              <i class="pi pi-file-edit"></i>
-            </button>
-          </div>
-        </div>
+        <app-accessory-card
+          [accessory]="acc"
+          [actionLoading]="actionLoading()"
+          (restart)="onRestart($event)"
+          (stop)="onStop($event)"
+          (viewLogs)="onViewLogs($event)"
+        />
       }
     </div>
   }
 
   <!-- Logs Dialog -->
-  <p-dialog [header]="'Logs: ' + logsTarget()" [(visible)]="logsDialogVisible" [modal]="true" [style]="{ width: '50rem', height: '30rem' }">
-    @if (logsLoading()) {
-      <p-skeleton width="100%" height="20rem" />
-    } @else {
-      <div style="background: #0a0a0a; color: #fafafa; font-family: monospace; font-size: 0.8125rem; padding: 1rem; border-radius: 0.5rem; max-height: 24rem; overflow-y: auto; white-space: pre-wrap; word-break: break-all;">
-        @for (log of logsContent(); track $index) {
-          <div>{{ log.message }}</div>
-        }
-        @if (logsContent().length === 0) {
-          <span style="color: #71717a">No logs available</span>
-        }
-      </div>
-    }
-  </p-dialog>
+  <app-accessory-logs-dialog
+    [(visible)]="logsDialogVisible"
+    [target]="logsTarget()"
+    [logs]="logsContent()"
+    [loading]="logsLoading()"
+  />
 </div>

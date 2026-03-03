@@ -1,5 +1,4 @@
 import { Component, input, output } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { TooltipModule } from 'primeng/tooltip';
 import { RippleModule } from 'primeng/ripple';
@@ -13,7 +12,7 @@ interface NavItem {
 @Component({
   selector: 'app-sidebar',
   standalone: true,
-  imports: [CommonModule, RouterModule, TooltipModule, RippleModule],
+  imports: [RouterModule, TooltipModule, RippleModule],
   templateUrl: './sidebar.component.html',
   styleUrl: './sidebar.component.scss',
 })

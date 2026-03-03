@@ -1,0 +1,52 @@
+<div class="flex flex-col gap-4 p-6 bg-bg-secondary border border-border-primary rounded-xl">
+  <div class="flex items-center justify-between">
+    <h3 class="m-0 text-base font-semibold text-text-primary">Deploy Lock</h3>
+    <button
+      class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+      (click)="refresh.emit()"
+      [disabled]="loading()"
+    >
+      <i class="pi pi-refresh text-base" [class.pi-spin]="loading()"></i>
+    </button>
+  </div>
+
+  @if (error()) {
+    <div class="flex items-center gap-2 p-3 bg-error-muted text-error rounded-lg">
+      <i class="pi pi-exclamation-triangle"></i>
+      <span class="text-sm">{{ error() }}</span>
+    </div>
+  } @else if (loading()) {
+    <p-skeleton width="60%" height="1rem" />
+  } @else {
+    @if (lockInfo().locked) {
+      <div class="flex items-center gap-2">
+        <p-tag [value]="lockInfo().isStale ? 'Stale Lock' : 'Locked'" [severity]="lockInfo().isStale ? 'warn' : 'danger'" />
+        <span class="text-sm text-text-muted">by {{ lockInfo().performer }} ({{ lockInfo().durationMinutes }}min ago)</span>
+      </div>
+      @if (lockInfo().message) {
+        <p class="text-sm text-text-muted m-0">{{ lockInfo().message }}</p>
+      }
+      <button
+        class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-error text-white cursor-pointer transition-all duration-150 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed self-start"
+        (click)="release.emit()"
+        [disabled]="actioning()"
+      >
+        <i class="pi pi-lock-open"></i>
+        <span>Release Lock</span>
+      </button>
+    } @else {
+      <div class="flex items-center gap-2">
+        <p-tag value="Unlocked" severity="success" />
+        <span class="text-sm text-text-muted">No active deploy lock</span>
+      </div>
+      <button
+        class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-border-primary bg-bg-tertiary text-text-primary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:border-border-secondary disabled:opacity-50 disabled:cursor-not-allowed self-start"
+        (click)="acquire.emit()"
+        [disabled]="actioning()"
+      >
+        <i class="pi pi-lock"></i>
+        <span>Acquire Lock</span>
+      </button>
+    }
+  }
+</div>

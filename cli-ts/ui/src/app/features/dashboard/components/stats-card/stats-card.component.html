@@ -1,18 +1,37 @@
-<div class="stats-card" [class]="'stats-card--' + variant()" [class.stats-card--loading]="loading()">
-  <div class="stats-card__icon">
+<div class="flex items-center gap-4 p-4 bg-bg-secondary border border-border-primary rounded-xl transition-colors hover:border-border-secondary">
+  <div
+    class="flex items-center justify-center size-10 rounded-lg shrink-0"
+    [ngClass]="{
+      'bg-bg-tertiary text-text-secondary': loading() || variant() === 'default',
+      'bg-success-muted text-success': !loading() && variant() === 'success',
+      'bg-error-muted text-error': !loading() && variant() === 'error',
+      'bg-warning-muted text-warning': !loading() && variant() === 'warning',
+      'bg-accent-muted text-accent': !loading() && variant() === 'info',
+      '!bg-transparent': loading()
+    }"
+  >
     @if (loading()) {
       <p-skeleton shape="circle" size="2.25rem" />
     } @else {
-      <i [class]="icon()"></i>
+      <i [class]="icon()" class="text-lg"></i>
     }
   </div>
-  <div class="stats-card__content">
+  <div class="flex flex-col min-w-0">
     @if (loading()) {
       <p-skeleton width="2.5rem" height="1.5rem" />
       <p-skeleton width="4rem" height="0.625rem" styleClass="mt-1" />
     } @else {
-      <span class="stats-card__value">{{ value() }}</span>
-      <span class="stats-card__label">{{ label() }}</span>
+      <span
+        class="text-2xl font-semibold leading-tight"
+        [ngClass]="{
+          'text-text-primary': variant() === 'default',
+          'text-success': variant() === 'success',
+          'text-error': variant() === 'error',
+          'text-warning': variant() === 'warning',
+          'text-accent': variant() === 'info'
+        }"
+      >{{ value() }}</span>
+      <span class="text-xs font-medium text-text-muted uppercase tracking-wide">{{ label() }}</span>
     }
   </div>
 </div>

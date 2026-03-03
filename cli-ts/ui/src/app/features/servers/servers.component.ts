@@ -1,5 +1,4 @@
 import { Component, inject, signal, computed, OnInit, DestroyRef, effect } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SelectModule } from 'primeng/select';
 import { TableModule } from 'primeng/table';
@@ -14,7 +13,6 @@ import { SshTerminalComponent } from '@shared/components/ssh-terminal/ssh-termin
   selector: 'app-servers',
   standalone: true,
   imports: [
-    CommonModule,
     FormsModule,
     SelectModule,
     TableModule,

@@ -1,37 +1,37 @@
-<div class="welcome">
-  <div class="welcome__content">
-    <div class="welcome__header">
-      <div class="welcome__icon">
-        <i class="pi pi-box"></i>
+<div class="bg-bg-secondary border border-border-primary rounded-xl p-8">
+  <div class="max-w-[600px]">
+    <div class="flex gap-5 mb-6">
+      <div class="flex items-center justify-center size-12 rounded-xl bg-accent text-white shrink-0">
+        <i class="pi pi-box text-2xl"></i>
       </div>
-      <div class="welcome__text">
-        <h1 class="welcome__title">Welcome to Dockflow</h1>
-        <p class="welcome__description">
+      <div class="flex flex-col gap-1.5">
+        <h1 class="m-0 text-2xl font-semibold text-text-primary">Welcome to Dockflow</h1>
+        <p class="m-0 text-[0.9375rem] text-text-secondary leading-relaxed">
           No Dockflow project detected in the current directory. Get started by initializing a new project.
         </p>
       </div>
     </div>
-    
-    <div class="welcome__actions">
-      <button class="btn btn--primary">
+
+    <div class="flex gap-3 mb-8">
+      <button class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-accent text-white cursor-pointer transition-all duration-150 hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed">
         <i class="pi pi-plus"></i>
         <span>Initialize Project</span>
       </button>
-      <button class="btn btn--secondary">
+      <button class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-border-primary bg-bg-tertiary text-text-primary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:border-border-secondary disabled:opacity-50 disabled:cursor-not-allowed">
         <i class="pi pi-folder-open"></i>
         <span>Open Project</span>
       </button>
     </div>
-    
-    <div class="welcome__quickstart">
-      <h3 class="welcome__quickstart-title">Quick Start</h3>
-      <pre class="welcome__code"><code><span class="comment"># Initialize a new project</span>
+
+    <div class="border-t border-border-primary pt-6">
+      <h3 class="m-0 mb-3 text-sm font-semibold text-text-primary">Quick Start</h3>
+      <pre class="m-0 p-4 bg-bg-primary border border-border-primary rounded-lg font-mono text-[0.8125rem] leading-relaxed text-text-secondary overflow-x-auto"><code><span class="text-text-muted"># Initialize a new project</span>
 $ dockflow init
 
-<span class="comment"># Configure your servers</span>
+<span class="text-text-muted"># Configure your servers</span>
 $ vim .dockflow/servers.yml
 
-<span class="comment"># Deploy to production</span>
+<span class="text-text-muted"># Deploy to production</span>
 $ dockflow deploy production</code></pre>
     </div>
   </div>

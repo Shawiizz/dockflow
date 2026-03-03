@@ -1,11 +1,11 @@
 import { Component, input } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { NgClass } from '@angular/common';
 import { SkeletonModule } from 'primeng/skeleton';
 
 @Component({
   selector: 'app-stats-card',
   standalone: true,
-  imports: [CommonModule, SkeletonModule],
+  imports: [NgClass, SkeletonModule],
   templateUrl: './stats-card.component.html',
   styleUrl: './stats-card.component.scss',
 })

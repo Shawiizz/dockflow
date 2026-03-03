@@ -1,11 +1,14 @@
-<div class="dashboard animate-fade-in">
+<div class="flex flex-col gap-6 max-w-[1400px] mx-auto animate-fade-in">
   <!-- Error banner -->
   @if (errorMessage()) {
-    <div class="error-banner">
-      <i class="pi pi-exclamation-triangle"></i>
-      <span class="error-banner__text">{{ errorMessage() }}</span>
-      <button class="btn btn--ghost btn--icon" (click)="errorMessage.set(null)">
-        <i class="pi pi-times"></i>
+    <div class="flex items-center gap-3 px-4 py-3 rounded-lg bg-error-muted border border-[rgba(239,68,68,0.2)] text-error text-sm">
+      <i class="pi pi-exclamation-triangle text-base shrink-0"></i>
+      <span class="flex-1">{{ errorMessage() }}</span>
+      <button
+        class="inline-flex items-center justify-center p-2 rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary shrink-0"
+        (click)="errorMessage.set(null)"
+      >
+        <i class="pi pi-times text-base"></i>
       </button>
     </div>
   }
@@ -15,7 +18,7 @@
     <app-welcome-card />
   } @else {
     <!-- Stats Row -->
-    <div class="dashboard__stats">
+    <div class="grid grid-cols-4 gap-4 max-lg:grid-cols-2 max-sm:grid-cols-1">
       <app-stats-card
         icon="pi pi-server"
         label="Total Servers"
@@ -48,12 +51,12 @@
 
     <!-- Connection Warning -->
     @if (connectionInfo() && !connectionInfo()!.ready) {
-      <div class="dashboard__warning card">
-        <i class="pi pi-exclamation-triangle"></i>
+      <div class="flex items-center gap-3 px-4 py-3.5 rounded-lg bg-warning-muted border border-[rgba(245,158,11,0.2)] text-warning text-sm">
+        <i class="pi pi-exclamation-triangle text-base shrink-0"></i>
         <div>
           <p><strong>No connection credentials</strong></p>
           <p>{{ connectionInfo()!.message }}</p>
-          <a routerLink="/settings" class="btn btn--ghost" style="margin-top: 0.5rem; padding: 0.25rem 0.5rem; font-size: 0.8125rem">
+          <a routerLink="/settings" class="inline-flex items-center gap-2 mt-2 px-2 py-1 text-[0.8125rem] rounded-lg bg-transparent text-text-secondary no-underline transition-all duration-150 hover:bg-bg-hover hover:text-text-primary">
             <i class="pi pi-cog"></i>
             <span>Go to Settings</span>
           </a>
@@ -62,11 +65,14 @@
     }
 
     <!-- Servers Grid -->
-    <div class="dashboard__section">
-      <div class="dashboard__section-header">
-        <h2 class="dashboard__section-title">Servers</h2>
+    <div class="flex flex-col gap-4">
+      <div class="flex items-center justify-between">
+        <h2 class="m-0 text-lg font-semibold text-text-primary">Servers</h2>
         @if (!serverStatus.loading()) {
-          <button class="btn btn--ghost" (click)="serverStatus.checkAll()">
+          <button
+            class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary"
+            (click)="serverStatus.checkAll()"
+          >
             <i class="pi pi-refresh"></i>
             <span>Check All</span>
           </button>
@@ -74,12 +80,12 @@
       </div>
 
       @if (serverStatus.loading()) {
-        <div class="dashboard__servers-grid">
+        <div class="grid grid-cols-3 gap-4 max-lg:grid-cols-2 max-sm:grid-cols-1">
           @for (i of [1, 2, 3, 4]; track i) {
-            <div class="card" style="padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
+            <div class="p-4 flex flex-col gap-3 bg-bg-secondary border border-border-primary rounded-xl">
               <div class="flex items-center gap-3">
                 <p-skeleton shape="circle" size="2.25rem" />
-                <div style="flex: 1;">
+                <div class="flex-1">
                   <p-skeleton width="60%" height="0.875rem" styleClass="mb-1" />
                   <p-skeleton width="40%" height="0.625rem" />
                 </div>
@@ -89,17 +95,17 @@
           }
         </div>
       } @else if (serverStatus.servers().length === 0) {
-        <div class="empty-state">
-          <i class="pi pi-server"></i>
-          <h3>No servers configured</h3>
-          <p>Add servers to your servers.yml configuration file.</p>
-          <a routerLink="/settings" class="btn btn--primary" style="margin-top: 1rem">
+        <div class="flex flex-col items-center justify-center py-12 px-8 bg-bg-secondary border border-border-primary rounded-xl text-center">
+          <i class="pi pi-server text-4xl text-text-muted mb-4"></i>
+          <h3 class="m-0 text-base font-medium text-text-secondary">No servers configured</h3>
+          <p class="m-0 mt-1 text-sm text-text-muted">Add servers to your servers.yml configuration file.</p>
+          <a routerLink="/settings" class="inline-flex items-center justify-center gap-2 mt-4 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-accent text-white no-underline cursor-pointer transition-all duration-150 hover:bg-accent-hover">
             <i class="pi pi-cog"></i>
             <span>Go to Settings</span>
           </a>
         </div>
       } @else {
-        <div class="dashboard__servers-grid">
+        <div class="grid grid-cols-3 gap-4 max-lg:grid-cols-2 max-sm:grid-cols-1">
           @for (server of serverStatus.servers(); track server.name) {
             <app-server-card
               [server]="server"

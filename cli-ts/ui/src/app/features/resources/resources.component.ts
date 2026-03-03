@@ -1,17 +1,17 @@
 import { Component, inject, signal, effect } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { TagModule } from 'primeng/tag';
 import { SkeletonModule } from 'primeng/skeleton';
-import { CheckboxModule } from 'primeng/checkbox';
 import { ApiService } from '@core/services/api.service';
 import { EnvironmentService } from '@core/services/environment.service';
 import type { PruneResult, LockInfo } from '@api-types';
+import { PruneSectionComponent } from './components/prune-section/prune-section.component';
+import { LockSectionComponent } from './components/lock-section/lock-section.component';
+import { DiskUsageSectionComponent } from './components/disk-usage-section/disk-usage-section.component';
 
 @Component({
   selector: 'app-resources',
   standalone: true,
-  imports: [CommonModule, FormsModule, TagModule, SkeletonModule, CheckboxModule],
+  imports: [TagModule, SkeletonModule, PruneSectionComponent, LockSectionComponent, DiskUsageSectionComponent],
   templateUrl: './resources.component.html',
   styleUrl: './resources.component.scss',
 })
@@ -20,11 +20,6 @@ export class ResourcesComponent {
   envService = inject(EnvironmentService);
 
   // Prune
-  pruneContainers = false;
-  pruneImages = false;
-  pruneVolumes = false;
-  pruneNetworks = false;
-  pruneAll = false;
   pruning = signal(false);
   pruneResults = signal<PruneResult[]>([]);
 
@@ -51,23 +46,11 @@ export class ResourcesComponent {
 
   // ── Prune ──
 
-  get pruneTargets(): string[] {
-    const targets: string[] = [];
-    if (this.pruneContainers) targets.push('containers');
-    if (this.pruneImages) targets.push('images');
-    if (this.pruneVolumes) targets.push('volumes');
-    if (this.pruneNetworks) targets.push('networks');
-    return targets;
-  }
-
-  runPrune() {
-    const targets = this.pruneTargets;
-    if (targets.length === 0) return;
-
+  runPrune(event: { targets: string[]; all: boolean }) {
     this.pruning.set(true);
     this.pruneResults.set([]);
     this.apiService.pruneResources(
-      { targets: targets as any, all: this.pruneAll },
+      { targets: event.targets as any, all: event.all },
       this.envService.selectedOrUndefined()
     ).subscribe({
       next: (res) => {

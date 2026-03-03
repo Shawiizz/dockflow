@@ -1,9 +1,9 @@
-<header class="header">
+<header class="flex items-center justify-between h-14 px-4 bg-bg-secondary border-b border-border-primary">
   <!-- Left side -->
-  <div class="header__left">
+  <div class="flex items-center gap-4">
     <!-- Menu toggle -->
     <button
-      class="header__menu-btn"
+      class="flex items-center justify-center size-9 border-none rounded-lg bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary"
       (click)="toggleSidebar.emit()"
       pTooltip="Toggle sidebar"
       pRipple
@@ -12,19 +12,19 @@
     </button>
 
     <!-- Project name & page title -->
-    <div class="header__project">
+    <div class="flex items-center gap-2">
       @if (loadingProject()) {
         <p-skeleton width="6rem" height="1rem" />
       } @else {
-        <span class="header__project-name">{{ projectName() }}</span>
-        <span class="header__separator">/</span>
-        <span class="header__page-title">{{ pageTitle() }}</span>
+        <span class="text-base font-semibold text-text-primary">{{ projectName() }}</span>
+        <span class="text-sm text-text-muted">/</span>
+        <span class="text-sm font-medium text-text-secondary">{{ pageTitle() }}</span>
       }
     </div>
   </div>
 
   <!-- Right side -->
-  <div class="header__right">
+  <div class="flex items-center gap-2">
     <!-- Environment selector -->
     @if (envService.environments().length > 0) {
       <p-select
@@ -35,20 +35,26 @@
         optionValue="value"
         placeholder="Environment"
         size="small"
-        class="header__env-select"
+        class="min-w-40"
       />
     }
 
     <!-- Connection status -->
     @if (loadingConnection()) {
-      <div class="header__status header__status--loading">
-        <span class="loading-spinner loading-spinner--sm"></span>
-        <span class="header__status-text">Connecting...</span>
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-accent-muted text-accent transition-all duration-300">
+        <i class="pi pi-spinner animate-spin-fast"></i>
+        <span class="whitespace-nowrap">Connecting...</span>
       </div>
     } @else {
-      <div class="header__status" [class.header__status--connected]="connectionReady()">
-        <span class="header__status-dot"></span>
-        <span class="header__status-text">
+      <div
+        class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-300"
+        [ngClass]="connectionReady() ? 'bg-success-muted text-success' : 'bg-warning-muted text-warning'"
+      >
+        <span
+          class="size-1.5 rounded-full"
+          [ngClass]="connectionReady() ? 'bg-success' : 'bg-warning'"
+        ></span>
+        <span class="whitespace-nowrap">
           {{ connectionReady() ? 'Connected' : 'No credentials' }}
         </span>
       </div>
@@ -56,7 +62,7 @@
 
     <!-- Theme toggle -->
     <button
-      class="header__action-btn"
+      class="flex items-center justify-center size-9 border-none rounded-lg bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary"
       (click)="themeService.toggle()"
       [pTooltip]="themeService.isDark() ? 'Light mode' : 'Dark mode'"
       pRipple
@@ -66,7 +72,7 @@
 
     <!-- Refresh -->
     <button
-      class="header__action-btn"
+      class="flex items-center justify-center size-9 border-none rounded-lg bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary"
       (click)="refresh()"
       pTooltip="Refresh"
       pRipple

@@ -1,0 +1,95 @@
+<div class="flex flex-col bg-bg-secondary border border-border-primary rounded-xl overflow-hidden transition-colors hover:border-border-secondary">
+  <div class="flex flex-col gap-1 p-4">
+    <div class="flex items-center justify-between gap-2">
+      <h3 class="m-0 text-[0.9375rem] font-semibold text-text-primary truncate" [pTooltip]="service().name">{{ service().name }}</h3>
+      <p-tag [value]="service().state" [severity]="stateSeverity(service().state)" [rounded]="true" />
+    </div>
+    <span class="text-xs text-text-muted font-mono truncate">{{ service().image }}</span>
+  </div>
+
+  <div class="flex flex-col gap-1.5 px-4 pb-3">
+    <div class="flex justify-between items-center">
+      <span class="text-xs text-text-muted uppercase tracking-wide">Replicas</span>
+      <span class="text-[0.8125rem] font-semibold text-text-secondary font-mono">{{ service().replicasRunning }}/{{ service().replicas }}</span>
+    </div>
+    <div class="h-1 rounded-full bg-bg-tertiary overflow-hidden">
+      <div class="h-full rounded-full transition-all duration-300" [class]="replicaFillClass()" [style.width.%]="replicaPercent()"></div>
+    </div>
+  </div>
+
+  @if (service().ports.length > 0) {
+    <div class="flex flex-wrap gap-1.5 px-4 pb-3">
+      @for (port of service().ports; track port) {
+        <span class="px-1.5 py-0.5 text-[0.6875rem] font-mono rounded bg-bg-tertiary text-text-muted">{{ port }}</span>
+      }
+    </div>
+  }
+
+  <div class="flex gap-1 justify-end mt-auto pt-2 pb-3 px-4 border-t border-border-primary">
+    @if (service().state === 'stopped') {
+      <button
+        class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+        pTooltip="Start"
+        (click)="start.emit(service())"
+        [disabled]="actionLoading()"
+      >
+        @if (actionLoading() === service().name) {
+          <i class="pi pi-spinner pi-spin"></i>
+        } @else {
+          <i class="pi pi-play"></i>
+        }
+      </button>
+    } @else {
+      <button
+        class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+        pTooltip="Restart"
+        (click)="restart.emit(service())"
+        [disabled]="actionLoading()"
+      >
+        <i class="pi pi-refresh" [class.pi-spin]="actionLoading() === service().name"></i>
+      </button>
+      <button
+        class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+        pTooltip="Stop"
+        (click)="stop.emit(service())"
+        [disabled]="actionLoading()"
+      >
+        <i class="pi pi-stop-circle"></i>
+      </button>
+    }
+    <button
+      class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+      pTooltip="Scale"
+      (click)="scale.emit(service())"
+      [disabled]="actionLoading()"
+    >
+      <i class="pi pi-arrows-alt"></i>
+    </button>
+    @if (service().state !== 'stopped') {
+      <button
+        class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+        pTooltip="Rollback"
+        (click)="rollback.emit(service())"
+        [disabled]="actionLoading()"
+      >
+        <i class="pi pi-undo"></i>
+      </button>
+      <button
+        class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+        pTooltip="Terminal"
+        (click)="exec.emit(service())"
+        [disabled]="actionLoading()"
+      >
+        <i class="pi pi-code"></i>
+      </button>
+    }
+    <a
+      [routerLink]="['/logs']"
+      [queryParams]="{ service: service().name }"
+      class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary"
+      pTooltip="View logs"
+    >
+      <i class="pi pi-file-edit"></i>
+    </a>
+  </div>
+</div>

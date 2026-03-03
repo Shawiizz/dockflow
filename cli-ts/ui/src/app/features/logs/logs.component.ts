@@ -1,20 +1,18 @@
-import { Component, inject, signal, computed, OnInit, OnDestroy, DestroyRef, effect, viewChild, ElementRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, inject, signal, computed, OnInit, OnDestroy, DestroyRef, effect, viewChild } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
-import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { SelectModule } from 'primeng/select';
-import { ToggleSwitchModule } from 'primeng/toggleswitch';
 import { SkeletonModule } from 'primeng/skeleton';
 import { TooltipModule } from 'primeng/tooltip';
 import { ApiService } from '@core/services/api.service';
 import { EnvironmentService } from '@core/services/environment.service';
 import type { ServiceInfo, LogEntry } from '@api-types';
+import { LogControlsComponent } from './components/log-controls/log-controls.component';
+import { LogViewerComponent } from './components/log-viewer/log-viewer.component';
 
 @Component({
   selector: 'app-logs',
   standalone: true,
-  imports: [CommonModule, FormsModule, SelectModule, ToggleSwitchModule, SkeletonModule, TooltipModule],
+  imports: [SkeletonModule, TooltipModule, LogControlsComponent, LogViewerComponent],
   templateUrl: './logs.component.html',
   styleUrl: './logs.component.scss',
 })
@@ -39,14 +37,7 @@ export class LogsComponent implements OnInit, OnDestroy {
 
   private autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
-  logViewer = viewChild<ElementRef<HTMLDivElement>>('logViewer');
-
-  tailOptions = [
-    { label: '50 lines', value: 50 },
-    { label: '100 lines', value: 100 },
-    { label: '200 lines', value: 200 },
-    { label: '500 lines', value: 500 },
-  ];
+  logViewer = viewChild(LogViewerComponent);
 
   serviceOptions = computed(() =>
     this.services().map(s => ({ label: s.name, value: s.name })),
@@ -147,18 +138,6 @@ export class LogsComponent implements OnInit, OnDestroy {
   }
 
   private scrollToBottom() {
-    const viewer = this.logViewer()?.nativeElement;
-    if (viewer) {
-      viewer.scrollTop = viewer.scrollHeight;
-    }
-  }
-
-  formatTimestamp(ts: string): string {
-    try {
-      const date = new Date(ts);
-      return date.toLocaleTimeString();
-    } catch {
-      return ts;
-    }
+    this.logViewer()?.scrollToBottom();
   }
 }

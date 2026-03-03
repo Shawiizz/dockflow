@@ -1,5 +1,4 @@
 import { Component, input, output, effect, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { InputTextModule } from 'primeng/inputtext';
 import { InputNumberModule } from 'primeng/inputnumber';
@@ -31,7 +30,6 @@ interface EnvTagEntry {
   selector: 'app-servers-form',
   standalone: true,
   imports: [
-    CommonModule,
     FormsModule,
     InputTextModule,
     InputNumberModule,

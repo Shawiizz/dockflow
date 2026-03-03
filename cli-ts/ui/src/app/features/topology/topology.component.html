@@ -1,21 +1,21 @@
-<div class="topology-page animate-fade-in">
+<div class="flex flex-col gap-6 animate-fade-in">
   <!-- Page Header -->
-  <div class="page-header">
-    <div class="page-header__left">
-      <h1 class="page-header__title">Topology</h1>
-      <p class="page-header__subtitle">Visual service-to-server mapping</p>
+  <div class="flex justify-between items-start gap-4 flex-wrap">
+    <div>
+      <h1 class="m-0 text-2xl font-semibold text-text-primary">Topology</h1>
+      <p class="mt-1 mb-0 text-sm text-text-muted">Visual service-to-server mapping</p>
     </div>
-    <div class="page-header__actions">
-      <button class="btn btn--ghost" (click)="autoLayout()" pTooltip="Reset layout">
+    <div class="flex items-center gap-2">
+      <button class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary" (click)="autoLayout()" pTooltip="Reset layout">
         <i class="pi pi-th-large"></i>
         <span>Auto Layout</span>
       </button>
-      <button class="btn btn--ghost" (click)="loadData()" pTooltip="Reload data">
+      <button class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary" (click)="loadData()" pTooltip="Reload data">
         <i class="pi pi-refresh"></i>
         <span>Reload</span>
       </button>
       <button
-        class="btn btn--primary"
+        class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-accent text-white cursor-pointer transition-all duration-150 hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
         (click)="save()"
         [disabled]="!dirty() || saving()"
       >
@@ -26,21 +26,21 @@
   </div>
 
   @if (loading()) {
-    <div class="card topology-loading">
+    <div class="flex gap-8 p-8 flex-wrap bg-bg-secondary border border-border-primary rounded-xl">
       @for (j of [1, 2, 3, 4]; track j) {
         <p-skeleton [width]="'220px'" [height]="'120px'" />
       }
     </div>
   } @else if (error()) {
-    <div class="card topology-error">
+    <div class="flex justify-center p-8 bg-bg-secondary border border-border-primary rounded-xl">
       <p-message severity="error" [text]="error()!" />
     </div>
   } @else {
-    <div class="card topology-wrapper">
+    <div class="p-0 overflow-auto relative bg-bg-secondary border border-border-primary rounded-xl">
       @if (services().length === 0 && servers().length === 0) {
-        <div class="topology-empty">
-          <i class="pi pi-sitemap"></i>
-          <p>No services or servers found. Add services in docker-compose.yml and servers in servers.yml.</p>
+        <div class="flex flex-col items-center justify-center gap-4 py-16 px-8 text-text-muted">
+          <i class="pi pi-sitemap text-5xl opacity-30"></i>
+          <p class="text-center max-w-[400px] m-0 text-sm">No services or servers found. Add services in docker-compose.yml and servers in servers.yml.</p>
         </div>
       } @else {
         <div class="topology-canvas" #canvas

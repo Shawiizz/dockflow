@@ -1,14 +1,14 @@
-<div class="config-form">
+<div>
   <!-- Project -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('project')">
-    <div class="form-section__header" (click)="toggleSection('project')">
-      <i class="pi pi-chevron-right"></i>
+    <div class="flex items-center gap-2 px-6 py-3.5 cursor-pointer font-semibold text-[0.9375rem] text-text-primary select-none transition-colors hover:bg-bg-secondary" (click)="toggleSection('project')">
+      <i class="pi pi-chevron-right text-xs text-text-muted transition-transform duration-200"></i>
       <span>Project</span>
     </div>
     <div class="form-section__collapse">
-      <div class="form-section__body">
-        <div class="form-row">
-          <label for="projectName">Project Name *</label>
+      <div class="px-6 pb-5">
+        <div class="flex flex-col gap-1 mb-3">
+          <label for="projectName" class="text-[0.8125rem] text-text-muted font-medium">Project Name *</label>
           <input type="text" pInputText id="projectName"
                  [ngModel]="projectName()"
                  (ngModelChange)="projectName.set($event); onFieldChange()"
@@ -20,63 +20,63 @@
 
   <!-- Registry -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('registry')">
-    <div class="form-section__header" (click)="toggleSection('registry')">
-      <i class="pi pi-chevron-right"></i>
+    <div class="flex items-center gap-2 px-6 py-3.5 cursor-pointer font-semibold text-[0.9375rem] text-text-primary select-none transition-colors hover:bg-bg-secondary" (click)="toggleSection('registry')">
+      <i class="pi pi-chevron-right text-xs text-text-muted transition-transform duration-200"></i>
       <span>Registry</span>
     </div>
     <div class="form-section__collapse">
-      <div class="form-section__body">
-        <div class="form-grid">
-          <div class="form-row">
-            <label for="regType">Type</label>
+      <div class="px-6 pb-5">
+        <div class="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-x-4">
+          <div class="flex flex-col gap-1 mb-3">
+            <label for="regType" class="text-[0.8125rem] text-text-muted font-medium">Type</label>
             <p-select id="regType" [options]="registryTypes" optionLabel="label" optionValue="value"
                       [ngModel]="registryType()"
                       (ngModelChange)="registryType.set($event); onFieldChange()"
                       [style]="{ width: '100%' }" />
           </div>
           @if (registryType() === 'custom') {
-            <div class="form-row">
-              <label for="regUrl">URL</label>
+            <div class="flex flex-col gap-1 mb-3">
+              <label for="regUrl" class="text-[0.8125rem] text-text-muted font-medium">URL</label>
               <input type="text" pInputText id="regUrl"
                      [ngModel]="registryUrl()"
                      (ngModelChange)="registryUrl.set($event); onFieldChange()"
                      placeholder="registry.example.com" style="width: 100%;">
             </div>
           }
-          <div class="form-row">
-            <label for="regUsername">Username</label>
+          <div class="flex flex-col gap-1 mb-3">
+            <label for="regUsername" class="text-[0.8125rem] text-text-muted font-medium">Username</label>
             <input type="text" pInputText id="regUsername"
                    [ngModel]="registryUsername()"
                    (ngModelChange)="registryUsername.set($event); onFieldChange()"
                    style="width: 100%;">
           </div>
-          <div class="form-row">
-            <label for="regPassword">Password</label>
+          <div class="flex flex-col gap-1 mb-3">
+            <label for="regPassword" class="text-[0.8125rem] text-text-muted font-medium">Password</label>
             <input type="password" pInputText id="regPassword"
                    [ngModel]="registryPassword()"
                    (ngModelChange)="registryPassword.set($event); onFieldChange()"
                    style="width: 100%;">
           </div>
-          <div class="form-row">
-            <label for="regNamespace">Namespace</label>
+          <div class="flex flex-col gap-1 mb-3">
+            <label for="regNamespace" class="text-[0.8125rem] text-text-muted font-medium">Namespace</label>
             <input type="text" pInputText id="regNamespace"
                    [ngModel]="registryNamespace()"
                    (ngModelChange)="registryNamespace.set($event); onFieldChange()"
                    placeholder="myorg" style="width: 100%;">
           </div>
-          <div class="form-row">
-            <label for="regToken">Token</label>
+          <div class="flex flex-col gap-1 mb-3">
+            <label for="regToken" class="text-[0.8125rem] text-text-muted font-medium">Token</label>
             <input type="password" pInputText id="regToken"
                    [ngModel]="registryToken()"
                    (ngModelChange)="registryToken.set($event); onFieldChange()"
                    style="width: 100%;">
           </div>
         </div>
-        <div class="form-row form-row--toggle">
+        <div class="flex items-center gap-2 mb-3">
           <p-toggleswitch [ngModel]="registryEnabled()"
                           (ngModelChange)="registryEnabled.set($event); onFieldChange()"
                           inputId="regEnabled" />
-          <label for="regEnabled">Enabled</label>
+          <label for="regEnabled" class="text-[0.8125rem] text-text-muted font-medium">Enabled</label>
         </div>
       </div>
     </div>
@@ -84,29 +84,29 @@
 
   <!-- Options -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('options')">
-    <div class="form-section__header" (click)="toggleSection('options')">
-      <i class="pi pi-chevron-right"></i>
+    <div class="flex items-center gap-2 px-6 py-3.5 cursor-pointer font-semibold text-[0.9375rem] text-text-primary select-none transition-colors hover:bg-bg-secondary" (click)="toggleSection('options')">
+      <i class="pi pi-chevron-right text-xs text-text-muted transition-transform duration-200"></i>
       <span>Options</span>
     </div>
     <div class="form-section__collapse">
-      <div class="form-section__body">
-        <div class="form-row form-row--toggle">
+      <div class="px-6 pb-5">
+        <div class="flex items-center gap-2 mb-3">
           <p-toggleswitch [ngModel]="remoteBuild()"
                           (ngModelChange)="remoteBuild.set($event); onFieldChange()"
                           inputId="remoteBuild" />
-          <label for="remoteBuild">Remote Build</label>
+          <label for="remoteBuild" class="text-[0.8125rem] text-text-muted font-medium">Remote Build</label>
         </div>
-        <div class="form-row form-row--toggle">
+        <div class="flex items-center gap-2 mb-3">
           <p-toggleswitch [ngModel]="imageAutoTag()"
                           (ngModelChange)="imageAutoTag.set($event); onFieldChange()"
                           inputId="imageAutoTag" />
-          <label for="imageAutoTag">Image Auto Tag</label>
+          <label for="imageAutoTag" class="text-[0.8125rem] text-text-muted font-medium">Image Auto Tag</label>
         </div>
-        <div class="form-row form-row--toggle">
+        <div class="flex items-center gap-2 mb-3">
           <p-toggleswitch [ngModel]="enableDebugLogs()"
                           (ngModelChange)="enableDebugLogs.set($event); onFieldChange()"
                           inputId="debugLogs" />
-          <label for="debugLogs">Enable Debug Logs</label>
+          <label for="debugLogs" class="text-[0.8125rem] text-text-muted font-medium">Enable Debug Logs</label>
         </div>
       </div>
     </div>
@@ -114,15 +114,15 @@
 
   <!-- Stack Management -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('stack')">
-    <div class="form-section__header" (click)="toggleSection('stack')">
-      <i class="pi pi-chevron-right"></i>
+    <div class="flex items-center gap-2 px-6 py-3.5 cursor-pointer font-semibold text-[0.9375rem] text-text-primary select-none transition-colors hover:bg-bg-secondary" (click)="toggleSection('stack')">
+      <i class="pi pi-chevron-right text-xs text-text-muted transition-transform duration-200"></i>
       <span>Stack Management</span>
     </div>
     <div class="form-section__collapse">
-      <div class="form-section__body">
-        <div class="form-grid">
-          <div class="form-row">
-            <label for="keepReleases">Keep Releases</label>
+      <div class="px-6 pb-5">
+        <div class="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-x-4">
+          <div class="flex flex-col gap-1 mb-3">
+            <label for="keepReleases" class="text-[0.8125rem] text-text-muted font-medium">Keep Releases</label>
             <p-inputnumber id="keepReleases"
                            [ngModel]="keepReleases()"
                            (ngModelChange)="keepReleases.set($event ?? 3); onFieldChange()"
@@ -130,11 +130,11 @@
                            [style]="{ width: '100%' }" />
           </div>
         </div>
-        <div class="form-row form-row--toggle">
+        <div class="flex items-center gap-2 mb-3">
           <p-toggleswitch [ngModel]="cleanupOnFailure()"
                           (ngModelChange)="cleanupOnFailure.set($event); onFieldChange()"
                           inputId="cleanupOnFailure" />
-          <label for="cleanupOnFailure">Cleanup on Failure</label>
+          <label for="cleanupOnFailure" class="text-[0.8125rem] text-text-muted font-medium">Cleanup on Failure</label>
         </div>
       </div>
     </div>
@@ -142,28 +142,28 @@
 
   <!-- Health Checks -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('health')">
-    <div class="form-section__header" (click)="toggleSection('health')">
-      <i class="pi pi-chevron-right"></i>
+    <div class="flex items-center gap-2 px-6 py-3.5 cursor-pointer font-semibold text-[0.9375rem] text-text-primary select-none transition-colors hover:bg-bg-secondary" (click)="toggleSection('health')">
+      <i class="pi pi-chevron-right text-xs text-text-muted transition-transform duration-200"></i>
       <span>Health Checks</span>
     </div>
     <div class="form-section__collapse">
-      <div class="form-section__body">
-        <div class="form-row form-row--toggle">
+      <div class="px-6 pb-5">
+        <div class="flex items-center gap-2 mb-3">
           <p-toggleswitch [ngModel]="healthEnabled()"
                           (ngModelChange)="healthEnabled.set($event); onFieldChange()"
                           inputId="healthEnabled" />
-          <label for="healthEnabled">Enabled</label>
+          <label for="healthEnabled" class="text-[0.8125rem] text-text-muted font-medium">Enabled</label>
         </div>
-        <div class="form-grid">
-          <div class="form-row">
-            <label for="onFailure">On Failure</label>
+        <div class="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-x-4">
+          <div class="flex flex-col gap-1 mb-3">
+            <label for="onFailure" class="text-[0.8125rem] text-text-muted font-medium">On Failure</label>
             <p-select id="onFailure" [options]="onFailureOptions" optionLabel="label" optionValue="value"
                       [ngModel]="onFailure()"
                       (ngModelChange)="onFailure.set($event); onFieldChange()"
                       [style]="{ width: '100%' }" />
           </div>
-          <div class="form-row">
-            <label for="startupDelay">Startup Delay (s)</label>
+          <div class="flex flex-col gap-1 mb-3">
+            <label for="startupDelay" class="text-[0.8125rem] text-text-muted font-medium">Startup Delay (s)</label>
             <p-inputnumber id="startupDelay"
                            [ngModel]="startupDelay()"
                            (ngModelChange)="startupDelay.set($event ?? 10); onFieldChange()"
@@ -171,64 +171,64 @@
                            [style]="{ width: '100%' }" />
           </div>
         </div>
-        <div class="form-row form-row--toggle">
+        <div class="flex items-center gap-2 mb-3">
           <p-toggleswitch [ngModel]="waitForInternal()"
                           (ngModelChange)="waitForInternal.set($event); onFieldChange()"
                           inputId="waitForInternal" />
-          <label for="waitForInternal">Wait for Internal Health Checks</label>
+          <label for="waitForInternal" class="text-[0.8125rem] text-text-muted font-medium">Wait for Internal Health Checks</label>
         </div>
 
-        <div class="form-subsection">
-          <div class="form-subsection__header">
-            <span>Endpoints</span>
-            <button class="btn btn--ghost btn--sm" (click)="addEndpoint()">
+        <div class="mt-2">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-[0.8125rem] font-semibold text-text-primary">Endpoints</span>
+            <button class="inline-flex items-center justify-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary" (click)="addEndpoint()">
               <i class="pi pi-plus"></i> Add
             </button>
           </div>
           @for (ep of endpoints(); track $index; let i = $index) {
-            <div class="dynamic-list-item">
-              <div class="dynamic-list-item__content">
-                <div class="form-grid">
-                  <div class="form-row">
-                    <label>Name</label>
+            <div class="flex gap-3 items-start p-3 border border-border-primary rounded-lg mb-2 bg-bg-secondary">
+              <div class="flex-1 min-w-0">
+                <div class="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-x-4">
+                  <div class="flex flex-col gap-1 mb-3">
+                    <label class="text-[0.8125rem] text-text-muted font-medium">Name</label>
                     <input type="text" pInputText [ngModel]="ep.name ?? ''"
                            (ngModelChange)="updateEndpoint(i, 'name', $event)" style="width: 100%;">
                   </div>
-                  <div class="form-row" style="grid-column: span 2;">
-                    <label>URL *</label>
+                  <div class="flex flex-col gap-1 mb-3 col-span-2">
+                    <label class="text-[0.8125rem] text-text-muted font-medium">URL *</label>
                     <input type="text" pInputText [ngModel]="ep.url"
                            (ngModelChange)="updateEndpoint(i, 'url', $event)" style="width: 100%;">
                   </div>
-                  <div class="form-row">
-                    <label>Method</label>
+                  <div class="flex flex-col gap-1 mb-3">
+                    <label class="text-[0.8125rem] text-text-muted font-medium">Method</label>
                     <p-select [options]="httpMethods" optionLabel="label" optionValue="value"
                               [ngModel]="ep.method ?? 'GET'"
                               (ngModelChange)="updateEndpoint(i, 'method', $event)"
                               [style]="{ width: '100%' }" />
                   </div>
-                  <div class="form-row">
-                    <label>Expected Status</label>
+                  <div class="flex flex-col gap-1 mb-3">
+                    <label class="text-[0.8125rem] text-text-muted font-medium">Expected Status</label>
                     <p-inputnumber [ngModel]="ep.expected_status ?? 200"
                                    (ngModelChange)="updateEndpoint(i, 'expected_status', $event)"
                                    [min]="100" [max]="599"
                                    [style]="{ width: '100%' }" />
                   </div>
-                  <div class="form-row">
-                    <label>Timeout (s)</label>
+                  <div class="flex flex-col gap-1 mb-3">
+                    <label class="text-[0.8125rem] text-text-muted font-medium">Timeout (s)</label>
                     <p-inputnumber [ngModel]="ep.timeout ?? 30"
                                    (ngModelChange)="updateEndpoint(i, 'timeout', $event)"
                                    [min]="1" [max]="300"
                                    [style]="{ width: '100%' }" />
                   </div>
-                  <div class="form-row">
-                    <label>Retries</label>
+                  <div class="flex flex-col gap-1 mb-3">
+                    <label class="text-[0.8125rem] text-text-muted font-medium">Retries</label>
                     <p-inputnumber [ngModel]="ep.retries ?? 3"
                                    (ngModelChange)="updateEndpoint(i, 'retries', $event)"
                                    [min]="1" [max]="20"
                                    [style]="{ width: '100%' }" />
                   </div>
-                  <div class="form-row">
-                    <label>Retry Delay (s)</label>
+                  <div class="flex flex-col gap-1 mb-3">
+                    <label class="text-[0.8125rem] text-text-muted font-medium">Retry Delay (s)</label>
                     <p-inputnumber [ngModel]="ep.retry_delay ?? 5"
                                    (ngModelChange)="updateEndpoint(i, 'retry_delay', $event)"
                                    [min]="1" [max]="60"
@@ -236,7 +236,7 @@
                   </div>
                 </div>
               </div>
-              <button class="btn btn--ghost btn--icon" (click)="removeEndpoint(i)" pTooltip="Remove">
+              <button class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-muted cursor-pointer transition-all duration-150 hover:bg-error-muted hover:text-error" (click)="removeEndpoint(i)" pTooltip="Remove">
                 <i class="pi pi-trash"></i>
               </button>
             </div>
@@ -248,52 +248,52 @@
 
   <!-- Hooks -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('hooks')">
-    <div class="form-section__header" (click)="toggleSection('hooks')">
-      <i class="pi pi-chevron-right"></i>
+    <div class="flex items-center gap-2 px-6 py-3.5 cursor-pointer font-semibold text-[0.9375rem] text-text-primary select-none transition-colors hover:bg-bg-secondary" (click)="toggleSection('hooks')">
+      <i class="pi pi-chevron-right text-xs text-text-muted transition-transform duration-200"></i>
       <span>Hooks</span>
     </div>
     <div class="form-section__collapse">
-      <div class="form-section__body">
-        <div class="form-row form-row--toggle">
+      <div class="px-6 pb-5">
+        <div class="flex items-center gap-2 mb-3">
           <p-toggleswitch [ngModel]="hooksEnabled()"
                           (ngModelChange)="hooksEnabled.set($event); onFieldChange()"
                           inputId="hooksEnabled" />
-          <label for="hooksEnabled">Enabled</label>
+          <label for="hooksEnabled" class="text-[0.8125rem] text-text-muted font-medium">Enabled</label>
         </div>
-        <div class="form-row">
-          <label for="hooksTimeout">Timeout (s)</label>
+        <div class="flex flex-col gap-1 mb-3">
+          <label for="hooksTimeout" class="text-[0.8125rem] text-text-muted font-medium">Timeout (s)</label>
           <p-inputnumber id="hooksTimeout"
                          [ngModel]="hooksTimeout()"
                          (ngModelChange)="hooksTimeout.set($event ?? 300); onFieldChange()"
                          [min]="1" [max]="3600"
                          [style]="{ width: '100%' }" />
         </div>
-        <div class="form-row">
-          <label for="preBuild">Pre-Build</label>
+        <div class="flex flex-col gap-1 mb-3">
+          <label for="preBuild" class="text-[0.8125rem] text-text-muted font-medium">Pre-Build</label>
           <textarea pTextarea id="preBuild" rows="3"
                     [ngModel]="preBuild()"
                     (ngModelChange)="preBuild.set($event); onFieldChange()"
                     placeholder="Script to run before building..."
                     style="width: 100%;"></textarea>
         </div>
-        <div class="form-row">
-          <label for="postBuild">Post-Build</label>
+        <div class="flex flex-col gap-1 mb-3">
+          <label for="postBuild" class="text-[0.8125rem] text-text-muted font-medium">Post-Build</label>
           <textarea pTextarea id="postBuild" rows="3"
                     [ngModel]="postBuild()"
                     (ngModelChange)="postBuild.set($event); onFieldChange()"
                     placeholder="Script to run after building..."
                     style="width: 100%;"></textarea>
         </div>
-        <div class="form-row">
-          <label for="preDeploy">Pre-Deploy</label>
+        <div class="flex flex-col gap-1 mb-3">
+          <label for="preDeploy" class="text-[0.8125rem] text-text-muted font-medium">Pre-Deploy</label>
           <textarea pTextarea id="preDeploy" rows="3"
                     [ngModel]="preDeploy()"
                     (ngModelChange)="preDeploy.set($event); onFieldChange()"
                     placeholder="Script to run before deploying..."
                     style="width: 100%;"></textarea>
         </div>
-        <div class="form-row">
-          <label for="postDeploy">Post-Deploy</label>
+        <div class="flex flex-col gap-1 mb-3">
+          <label for="postDeploy" class="text-[0.8125rem] text-text-muted font-medium">Post-Deploy</label>
           <textarea pTextarea id="postDeploy" rows="3"
                     [ngModel]="postDeploy()"
                     (ngModelChange)="postDeploy.set($event); onFieldChange()"
@@ -306,44 +306,44 @@
 
   <!-- Templates -->
   <div class="form-section" [class.form-section--expanded]="isExpanded('templates')">
-    <div class="form-section__header" (click)="toggleSection('templates')">
-      <i class="pi pi-chevron-right"></i>
+    <div class="flex items-center gap-2 px-6 py-3.5 cursor-pointer font-semibold text-[0.9375rem] text-text-primary select-none transition-colors hover:bg-bg-secondary" (click)="toggleSection('templates')">
+      <i class="pi pi-chevron-right text-xs text-text-muted transition-transform duration-200"></i>
       <span>Templates</span>
     </div>
     <div class="form-section__collapse">
-      <div class="form-section__body">
-        <div class="form-subsection">
-          <div class="form-subsection__header">
-            <span>Jinja2 Template Files</span>
-            <button class="btn btn--ghost btn--sm" (click)="addTemplate()">
+      <div class="px-6 pb-5">
+        <div class="mt-2">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-[0.8125rem] font-semibold text-text-primary">Jinja2 Template Files</span>
+            <button class="inline-flex items-center justify-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary" (click)="addTemplate()">
               <i class="pi pi-plus"></i> Add
             </button>
           </div>
           @for (tmpl of templates(); track $index; let i = $index) {
-            <div class="dynamic-list-item">
-              <div class="dynamic-list-item__content">
-                <div class="form-row form-row--toggle">
+            <div class="flex gap-3 items-start p-3 border border-border-primary rounded-lg mb-2 bg-bg-secondary">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-3">
                   <p-toggleswitch [ngModel]="tmpl.mode === 'object'"
                                   (ngModelChange)="updateTemplate(i, { mode: $event ? 'object' : 'string' })" />
-                  <label>Separate src/dest</label>
+                  <label class="text-[0.8125rem] text-text-muted font-medium">Separate src/dest</label>
                 </div>
                 @if (tmpl.mode === 'string') {
-                  <div class="form-row">
-                    <label>Path</label>
+                  <div class="flex flex-col gap-1 mb-3">
+                    <label class="text-[0.8125rem] text-text-muted font-medium">Path</label>
                     <input type="text" pInputText [ngModel]="tmpl.value"
                            (ngModelChange)="updateTemplate(i, { value: $event })"
                            placeholder="path/to/template" style="width: 100%;">
                   </div>
                 } @else {
-                  <div class="form-grid">
-                    <div class="form-row">
-                      <label>Source</label>
+                  <div class="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-x-4">
+                    <div class="flex flex-col gap-1 mb-3">
+                      <label class="text-[0.8125rem] text-text-muted font-medium">Source</label>
                       <input type="text" pInputText [ngModel]="tmpl.src"
                              (ngModelChange)="updateTemplate(i, { src: $event })"
                              placeholder="src/template.j2" style="width: 100%;">
                     </div>
-                    <div class="form-row">
-                      <label>Destination</label>
+                    <div class="flex flex-col gap-1 mb-3">
+                      <label class="text-[0.8125rem] text-text-muted font-medium">Destination</label>
                       <input type="text" pInputText [ngModel]="tmpl.dest"
                              (ngModelChange)="updateTemplate(i, { dest: $event })"
                              placeholder="dest/file" style="width: 100%;">
@@ -351,7 +351,7 @@
                   </div>
                 }
               </div>
-              <button class="btn btn--ghost btn--icon" (click)="removeTemplate(i)" pTooltip="Remove">
+              <button class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-muted cursor-pointer transition-all duration-150 hover:bg-error-muted hover:text-error" (click)="removeTemplate(i)" pTooltip="Remove">
                 <i class="pi pi-trash"></i>
               </button>
             </div>

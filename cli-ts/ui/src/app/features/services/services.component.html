@@ -1,12 +1,16 @@
-<div class="services-page animate-fade-in">
+<div class="flex flex-col gap-6 animate-fade-in">
   <!-- Page Header -->
-  <div class="page-header">
-    <div class="page-header__left">
-      <h1 class="page-header__title">Services</h1>
-      <p class="page-header__subtitle">Docker Swarm services {{ stackName() ? '(' + stackName() + ')' : '' }}</p>
+  <div class="flex justify-between items-start gap-4 flex-wrap">
+    <div>
+      <h1 class="m-0 text-2xl font-semibold text-text-primary">Services</h1>
+      <p class="mt-1 mb-0 text-sm text-text-muted">Docker Swarm services {{ stackName() ? '(' + stackName() + ')' : '' }}</p>
     </div>
-    <div class="page-header__actions">
-      <button class="btn btn--secondary" (click)="refresh()" [disabled]="loading()">
+    <div class="flex items-center gap-2">
+      <button
+        class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-border-primary bg-bg-tertiary text-text-primary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:border-border-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+        (click)="refresh()"
+        [disabled]="loading()"
+      >
         <i class="pi pi-refresh" [class.pi-spin]="loading()"></i>
         <span>Refresh</span>
       </button>
@@ -15,15 +19,15 @@
 
   <!-- Stats -->
   @if (!loading() && services().length > 0) {
-    <div class="services-page__stats">
-      <div class="stat-pill stat-pill--success">
-        <span class="stat-pill__value">{{ runningCount() }}</span>
-        <span class="stat-pill__label">Running</span>
+    <div class="flex flex-wrap gap-3">
+      <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-bg-tertiary">
+        <span class="text-sm font-semibold text-success">{{ runningCount() }}</span>
+        <span class="text-xs text-text-muted">Running</span>
       </div>
       @if (stoppedCount() > 0) {
-        <div class="stat-pill stat-pill--error">
-          <span class="stat-pill__value">{{ stoppedCount() }}</span>
-          <span class="stat-pill__label">Stopped</span>
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-bg-tertiary">
+          <span class="text-sm font-semibold text-error">{{ stoppedCount() }}</span>
+          <span class="text-xs text-text-muted">Stopped</span>
         </div>
       }
     </div>
@@ -31,10 +35,13 @@
 
   <!-- Error -->
   @if (error()) {
-    <div class="error-banner">
+    <div class="flex items-center gap-2 p-3 bg-error-muted text-error rounded-lg">
       <i class="pi pi-exclamation-triangle"></i>
-      <span class="error-banner__text">{{ error() }}</span>
-      <button class="btn btn--ghost btn--icon" (click)="refresh()">
+      <span class="text-sm">{{ error() }}</span>
+      <button
+        class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
+        (click)="refresh()"
+      >
         <i class="pi pi-refresh"></i>
       </button>
     </div>
@@ -42,9 +49,9 @@
 
   <!-- Loading -->
   @if (loading()) {
-    <div class="services-grid">
+    <div class="grid grid-cols-3 gap-4 max-lg:grid-cols-2 max-sm:grid-cols-1">
       @for (i of [1, 2, 3]; track i) {
-        <div class="card" style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem;">
+        <div class="flex flex-col gap-4 p-5 bg-bg-secondary border border-border-primary rounded-xl">
           <div class="flex items-center justify-between">
             <p-skeleton width="60%" height="0.9375rem" />
             <p-skeleton width="3.5rem" height="1.375rem" borderRadius="9999px" />
@@ -55,91 +62,35 @@
       }
     </div>
   } @else if (services().length === 0 && !error()) {
-    <div class="empty-state">
-      <i class="pi pi-th-large"></i>
-      <h3>No services running</h3>
-      <p>Deploy your stack to see services here.</p>
+    <div class="flex flex-col items-center justify-center gap-4 py-16 px-8 text-text-muted">
+      <i class="pi pi-th-large text-5xl opacity-30"></i>
+      <h3 class="m-0 text-base font-medium">No services running</h3>
+      <p class="m-0 text-sm text-center max-w-[400px]">Deploy your stack to see services here.</p>
     </div>
   } @else {
-    <div class="services-grid">
+    <div class="grid grid-cols-3 gap-4 max-lg:grid-cols-2 max-sm:grid-cols-1">
       @for (service of services(); track service.id) {
-        <div class="service-card card card--hover">
-          <div class="service-card__header">
-            <div class="service-card__name-row">
-              <h3 class="service-card__name" [pTooltip]="service.name">{{ service.name }}</h3>
-              <p-tag [value]="service.state" [severity]="stateSeverity(service.state)" [rounded]="true" />
-            </div>
-            <span class="service-card__image">{{ service.image }}</span>
-          </div>
-
-          <div class="service-card__replicas">
-            <div class="service-card__replicas-header">
-              <span class="service-card__replicas-label">Replicas</span>
-              <span class="service-card__replicas-count">{{ service.replicasRunning }}/{{ service.replicas }}</span>
-            </div>
-            <div class="service-card__replicas-bar">
-              <div class="service-card__replicas-fill" [class]="replicaFillClass(service)" [style.width.%]="replicaPercent(service)"></div>
-            </div>
-          </div>
-
-          @if (service.ports.length > 0) {
-            <div class="service-card__ports">
-              @for (port of service.ports; track port) {
-                <span class="service-card__port">{{ port }}</span>
-              }
-            </div>
-          }
-
-          <div class="service-card__actions">
-            @if (service.state === 'stopped') {
-              <button class="btn btn--ghost btn--icon" pTooltip="Start" (click)="onStart(service)" [disabled]="actionLoading()">
-                @if (actionLoading() === service.name) {
-                  <i class="pi pi-spinner pi-spin"></i>
-                } @else {
-                  <i class="pi pi-play"></i>
-                }
-              </button>
-            } @else {
-              <button class="btn btn--ghost btn--icon" pTooltip="Restart" (click)="onRestart(service)" [disabled]="actionLoading()">
-                <i class="pi pi-refresh" [class.pi-spin]="actionLoading() === service.name"></i>
-              </button>
-              <button class="btn btn--ghost btn--icon" pTooltip="Stop" (click)="onStop(service)" [disabled]="actionLoading()">
-                <i class="pi pi-stop-circle"></i>
-              </button>
-            }
-            <button class="btn btn--ghost btn--icon" pTooltip="Scale" (click)="onScale(service)" [disabled]="actionLoading()">
-              <i class="pi pi-arrows-alt"></i>
-            </button>
-            @if (service.state !== 'stopped') {
-              <button class="btn btn--ghost btn--icon" pTooltip="Rollback" (click)="onRollback(service)" [disabled]="actionLoading()">
-                <i class="pi pi-undo"></i>
-              </button>
-              <button class="btn btn--ghost btn--icon" pTooltip="Terminal" (click)="onExec(service)" [disabled]="actionLoading()">
-                <i class="pi pi-code"></i>
-              </button>
-            }
-            <a [routerLink]="['/logs']" [queryParams]="{ service: service.name }" class="btn btn--ghost btn--icon" pTooltip="View logs">
-              <i class="pi pi-file-edit"></i>
-            </a>
-          </div>
-        </div>
+        <app-service-card
+          [service]="service"
+          [actionLoading]="actionLoading()"
+          (restart)="onRestart($event)"
+          (stop)="onStop($event)"
+          (start)="onStart($event)"
+          (scale)="onScale($event)"
+          (rollback)="onRollback($event)"
+          (exec)="onExec($event)"
+        />
       }
     </div>
   }
 
   <!-- Scale Dialog -->
-  <p-dialog header="Scale Service" [(visible)]="scaleDialogVisible" [modal]="true" [style]="{ width: '24rem' }">
-    @if (scaleTarget()) {
-      <div class="flex flex-col gap-4">
-        <p>Scale <strong>{{ scaleTarget()!.name }}</strong> to how many replicas?</p>
-        <p-inputnumber [(ngModel)]="scaleValueNum" [min]="0" [max]="20" [showButtons]="true" />
-        <div class="flex justify-end gap-2">
-          <button class="btn btn--secondary" (click)="scaleDialogVisible.set(false)">Cancel</button>
-          <button class="btn btn--primary" (click)="confirmScale()" [disabled]="actionLoading()">Scale</button>
-        </div>
-      </div>
-    }
-  </p-dialog>
+  <app-scale-dialog
+    [(visible)]="scaleDialogVisible"
+    [target]="scaleTarget()"
+    [loading]="!!actionLoading()"
+    (confirm)="confirmScale($event)"
+  />
 
   <!-- Exec Terminal -->
   @if (terminalService()) {
