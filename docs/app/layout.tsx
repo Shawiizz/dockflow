@@ -4,11 +4,11 @@ import { getPageMap } from 'nextra/page-map'
 import { Inter } from 'next/font/google'
 import 'nextra-theme-docs/style.css'
 
-const inter = Inter({ 
+const inter = Inter({
   subsets: ['latin'],
   display: 'swap',
   variable: '--font-inter'
-}) 
+})
 
 export const metadata = {
   title: {
