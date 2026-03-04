@@ -8,14 +8,14 @@ import { HeroBackground } from "./_components/hero-background"
 /* ─────────────────────── Page ─────────────────────── */
 export default function Page() {
   return (
-    <div className="landing-page font-sans text-neutral-50 bg-neutral-950">
+    <div className="landing-page font-sans text-neutral-900 dark:text-neutral-50 bg-white dark:bg-neutral-950">
       {/* ── Hero ── */}
       <section className="relative overflow-hidden min-h-[min(85vh,900px)] flex items-start">
         <div className="absolute inset-0 z-0 opacity-60 pointer-events-none">
           <HeroBackground />
         </div>
-        <div className="relative z-[1] max-w-[900px] mx-auto px-6 pt-[max(10vh,3rem)] pb-16 text-center w-full">
-          <div className="inline-block px-3.5 py-[5px] rounded-full border border-neutral-800 text-xs text-neutral-400 mb-6 bg-neutral-900/60">
+        <div className="relative z-[1] max-w-[900px] mx-auto px-6 pt-[max(6vh,2rem)] pb-16 text-center w-full">
+          <div className="inline-block px-3.5 py-[5px] rounded-full border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-500 dark:text-neutral-400 mb-6 bg-neutral-100/60 dark:bg-neutral-900/60">
             Open source &middot; Self-hosted &middot; Free forever
           </div>
 
@@ -25,20 +25,28 @@ export default function Page() {
             <span className="bg-gradient-to-br from-[#0b4a98] to-[#1482e9] bg-clip-text text-transparent">the simple way.</span>
           </h1>
 
-          <p className="mt-5 text-lg text-neutral-400 max-w-[560px] mx-auto leading-relaxed">
+          <p className="mt-5 text-lg text-neutral-500 dark:text-neutral-400 max-w-[560px] mx-auto leading-relaxed">
             A CLI that scaffolds, provisions, and deploys Docker applications to your own servers.
             Powered by Docker Swarm and Ansible. No Kubernetes needed.
           </p>
 
           <div className="flex justify-center gap-3 mt-8 flex-wrap">
-            <Link href="/getting-started" className="inline-flex items-center gap-2 px-7 py-3 rounded-[10px] bg-neutral-50 text-neutral-950 text-[15px] font-semibold no-underline transition-all duration-200 hover:bg-white hover:shadow-lg hover:shadow-white/10 hover:scale-[1.02]">
+            <Link href="/getting-started" className="inline-flex items-center gap-2 px-7 py-3 rounded-[10px] bg-neutral-900 dark:bg-neutral-50 text-neutral-50 dark:text-neutral-950 text-[15px] font-semibold no-underline transition-all duration-200 hover:bg-neutral-800 dark:hover:bg-white hover:shadow-lg hover:shadow-neutral-900/10 dark:hover:shadow-white/10 hover:scale-[1.02]">
               Get Started
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
             </Link>
-            <a href="https://github.com/Shawiizz/dockflow" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-7 py-3 rounded-[10px] border border-neutral-800 text-neutral-50 text-[15px] font-medium no-underline bg-neutral-900/50 transition-all duration-200 hover:bg-neutral-800/80 hover:border-neutral-700">
+            <a href="https://github.com/Shawiizz/dockflow" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-7 py-3 rounded-[10px] border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-neutral-50 text-[15px] font-medium no-underline bg-neutral-100/50 dark:bg-neutral-900/50 transition-all duration-200 hover:bg-neutral-200/80 dark:hover:bg-neutral-800/80 hover:border-neutral-300 dark:hover:border-neutral-700">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" /></svg>
               GitHub
             </a>
+          </div>
+
+          <div className="mt-14 max-w-[1000px] mx-auto">
+            <img
+              src="/ui-preview.png"
+              alt="Dockflow UI Dashboard"
+              className="w-full rounded-xl border border-neutral-200 dark:border-neutral-800"
+            />
           </div>
         </div>
       </section>
@@ -52,7 +60,7 @@ export default function Page() {
             <br />
             <span className="bg-gradient-to-br from-[#0b4a98] to-[#1482e9] bg-clip-text text-transparent">Deployed.</span>
           </h2>
-          <p className="text-neutral-400 text-[15px] mt-4 leading-relaxed">
+          <p className="text-neutral-500 dark:text-neutral-400 text-[15px] mt-4 leading-relaxed">
             Dockflow scaffolds your Dockerfile, Compose stack, and server config.
             You customize them, point at your server, and deploy with one command.
           </p>
@@ -75,13 +83,13 @@ export default function Page() {
         <h2 className="text-[32px] font-bold text-center m-0">
           Skip the complexity
         </h2>
-        <p className="text-neutral-400 text-center text-[15px] mt-3 mb-12">
+        <p className="text-neutral-500 dark:text-neutral-400 text-center text-[15px] mt-3 mb-12">
           Server provisioning, Swarm orchestration, rollbacks — handled for you.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {/* Without */}
-          <div className="rounded-xl p-7 border border-neutral-800 bg-[var(--color-card)] transition-all duration-300 hover:border-neutral-700">
+          <div className="rounded-xl p-7 border border-neutral-200 dark:border-neutral-800 bg-[var(--color-card)] transition-all duration-300 hover:border-neutral-300 dark:hover:border-neutral-700">
             <div className="text-[11px] font-bold uppercase tracking-widest text-neutral-500 mb-5">
               Without Dockflow
             </div>
@@ -94,7 +102,7 @@ export default function Page() {
               "SSH into servers to check logs",
             ].map((t) => (
               <div key={t} className="flex items-start gap-2.5 mb-3">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#525252" strokeWidth="2" className="mt-[3px] shrink-0"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" strokeWidth="2" className="mt-[3px] shrink-0"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
                 <span className="text-neutral-500 line-through text-sm leading-normal">{t}</span>
               </div>
             ))}
@@ -130,7 +138,7 @@ export default function Page() {
         <h2 className="text-[32px] font-bold text-center m-0">
           Everything you need
         </h2>
-        <p className="text-neutral-400 text-center text-[15px] mt-3 mb-12">
+        <p className="text-neutral-500 dark:text-neutral-400 text-center text-[15px] mt-3 mb-12">
           From server provisioning to production deploys. One CLI, zero vendor lock-in.
         </p>
 
@@ -159,12 +167,12 @@ export default function Page() {
       </section>
 
       {/* ── CTA ── */}
-      <section className="text-center px-6 py-20 border-t border-neutral-800">
+      <section className="text-center px-6 py-20 border-t border-neutral-200 dark:border-neutral-800">
         <h2 className="text-[32px] font-bold m-0">Ready to deploy?</h2>
-        <p className="text-neutral-400 text-[15px] mt-2.5">
+        <p className="text-neutral-500 dark:text-neutral-400 text-[15px] mt-2.5">
           Your first deployment in under 5 minutes.
         </p>
-        <Link href="/getting-started" className="inline-flex items-center gap-2 mt-7 px-7 py-3 rounded-[10px] bg-neutral-50 text-neutral-950 text-[15px] font-semibold no-underline transition-all duration-200 hover:bg-white hover:shadow-lg hover:shadow-white/10 hover:scale-[1.02]">
+        <Link href="/getting-started" className="inline-flex items-center gap-2 mt-7 px-7 py-3 rounded-[10px] bg-neutral-900 dark:bg-neutral-50 text-neutral-50 dark:text-neutral-950 text-[15px] font-semibold no-underline transition-all duration-200 hover:bg-neutral-800 dark:hover:bg-white hover:shadow-lg hover:shadow-neutral-900/10 dark:hover:shadow-white/10 hover:scale-[1.02]">
           Get Started
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
         </Link>
@@ -176,10 +184,10 @@ export default function Page() {
 /* ─────────────────────── Feature card ─────────────────────── */
 function FeatureCard({ icon, title, desc, large }: { icon: React.ReactNode; title: string; desc: string; large?: boolean }) {
   return (
-    <div className={`rounded-xl border border-neutral-800 bg-[var(--color-card)] transition-all duration-300 ease-out hover:border-neutral-700 hover:bg-neutral-900/80 hover:shadow-lg hover:shadow-[#1482e9]/5 hover:-translate-y-0.5 ${large ? "p-7" : "p-5"}`}>
+    <div className={`rounded-xl border border-neutral-200 dark:border-neutral-800 bg-[var(--color-card)] transition-all duration-300 ease-out hover:border-neutral-300 dark:hover:border-neutral-700 hover:bg-neutral-100/80 dark:hover:bg-neutral-900/80 hover:shadow-lg hover:shadow-[#1482e9]/5 hover:-translate-y-0.5 ${large ? "p-7" : "p-5"}`}>
       <div className={large ? "mb-3.5" : "mb-2.5"}>{icon}</div>
       <div className={`font-semibold ${large ? "text-[17px]" : "text-sm"} mb-1.5`}>{title}</div>
-      <p className={`text-neutral-400 leading-relaxed m-0 ${large ? "text-sm" : "text-[13px]"}`}>{desc}</p>
+      <p className={`text-neutral-500 dark:text-neutral-400 leading-relaxed m-0 ${large ? "text-sm" : "text-[13px]"}`}>{desc}</p>
     </div>
   )
 }

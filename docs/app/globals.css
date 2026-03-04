@@ -1,10 +1,18 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --font-mono: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --color-card: #141414;
-  --color-dim: #737373;
   --color-accent1: #1482e9;
   --color-accent2: #0b4a98;
+}
+
+:root {
+  --color-card: #f5f5f5;
+  --color-dim: #737373;
+}
+
+:is(.dark) {
+  --color-card: #141414;
 }

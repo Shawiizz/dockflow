@@ -68,7 +68,7 @@ export function Terminal() {
   }, [])
 
   return (
-    <div className="w-full rounded-xl overflow-hidden border border-neutral-800 shadow-2xl">
+    <div className="w-full rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-800">
       <div className="flex items-center px-4 py-2.5 bg-neutral-900 border-b border-neutral-800">
         <span className="w-2.5 h-2.5 rounded-full bg-red-500 mr-1.5" />
         <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 mr-1.5" />
