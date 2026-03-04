@@ -43,7 +43,7 @@ npm start     # starts ng serve on port 4201
 **Terminal 2** — CLI API server (proxies to Angular):
 
 ```bash
-bun cli-ts/src/index.ts ui --dev
+bun cli-ts/src/index.ts ui
 # API server on port 4200, proxies frontend requests to :4201
 ```
 

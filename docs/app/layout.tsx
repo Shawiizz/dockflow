@@ -2,7 +2,9 @@ import { Footer, Layout, Navbar } from 'nextra-theme-docs'
 import { Banner, Head } from 'nextra/components'
 import { getPageMap } from 'nextra/page-map'
 import { Inter } from 'next/font/google'
+import { NavbarCTA } from './_components/navbar-cta'
 import 'nextra-theme-docs/style.css'
+import './globals.css'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -48,10 +50,12 @@ const navbar = (
       </>
     }
     projectLink="https://github.com/Shawiizz/dockflow"
-  />
+  >
+    <NavbarCTA />
+  </Navbar>
 )
 
-const footer = <Footer>Dockflow Documentation</Footer>
+const footer = <Footer>Dockflow &mdash; Deploy with confidence.</Footer>
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const pageMap = await getPageMap()

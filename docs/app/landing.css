@@ -1,10 +1,5 @@
-@import "tailwindcss" important;
-
-@theme {
-  --font-mono: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --color-card: #141414;
-  --color-dim: #737373;
-  --color-accent1: #ef4444;
-  --color-accent2: #f97316;
+/* Remove Nextra article padding for the landing page */
+article:has(> .landing-page) {
+  padding: 0 !important;
+  max-width: none !important;
 }
