@@ -43,7 +43,8 @@
             <div class="flex-1 overflow-y-auto max-h-[calc(100vh-280px)] border-r border-border-primary max-lg:border-r-0 max-lg:border-b max-lg:max-h-none" style="scrollbar-gutter: stable">
               <app-config-form
                 [data]="configData()"
-                (dataChange)="onConfigFormChange($event)" />
+                (dataChange)="onConfigFormChange($event)"
+                (dirtyChange)="configDirty.set($event)" />
             </div>
             <!-- YAML preview side -->
             <div class="flex-1 flex flex-col min-w-0">
@@ -60,7 +61,7 @@
                   </div>
                   <div class="flex flex-1 overflow-y-auto max-h-[calc(100vh-330px)]">
                     <div class="flex flex-col py-3 pl-4 pr-3 bg-bg-secondary border-r border-border-primary select-none shrink-0 font-mono text-[0.8125rem] leading-[1.7] text-text-muted text-right">
-                      @for (line of configYaml().split('\n'); track $index; let ln = $index) {
+                      @for (line of configYamlLines(); track $index; let ln = $index) {
                         <span class="min-w-[2ch]">{{ ln + 1 }}</span>
                       }
                     </div>
@@ -103,7 +104,8 @@
             <div class="flex-1 overflow-y-auto max-h-[calc(100vh-280px)] border-r border-border-primary max-lg:border-r-0 max-lg:border-b max-lg:max-h-none" style="scrollbar-gutter: stable">
               <app-servers-form
                 [data]="serversData()"
-                (dataChange)="onServersFormChange($event)" />
+                (dataChange)="onServersFormChange($event)"
+                (dirtyChange)="serversDirty.set($event)" />
             </div>
             <!-- YAML preview side -->
             <div class="flex-1 flex flex-col min-w-0">
@@ -120,7 +122,7 @@
                   </div>
                   <div class="flex flex-1 overflow-y-auto max-h-[calc(100vh-330px)]">
                     <div class="flex flex-col py-3 pl-4 pr-3 bg-bg-secondary border-r border-border-primary select-none shrink-0 font-mono text-[0.8125rem] leading-[1.7] text-text-muted text-right">
-                      @for (line of serversYaml().split('\n'); track $index; let ln = $index) {
+                      @for (line of serversYamlLines(); track $index; let ln = $index) {
                         <span class="min-w-[2ch]">{{ ln + 1 }}</span>
                       }
                     </div>

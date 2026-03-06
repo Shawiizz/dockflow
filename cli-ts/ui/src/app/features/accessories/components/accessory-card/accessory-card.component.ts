@@ -1,7 +1,8 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
 import type { AccessoryStatusInfo } from '@api-types';
+import { serviceStateSeverity } from '@shared/utils/status.utils';
 
 @Component({
   selector: 'app-accessory-card',
@@ -9,6 +10,7 @@ import type { AccessoryStatusInfo } from '@api-types';
   imports: [TagModule, TooltipModule],
   templateUrl: './accessory-card.component.html',
   styleUrl: './accessory-card.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AccessoryCardComponent {
   accessory = input.required<AccessoryStatusInfo>();
@@ -23,11 +25,5 @@ export class AccessoryCardComponent {
     return Object.entries(env).map(([key, value]) => ({ key, value }));
   }
 
-  statusSeverity(status?: string): 'success' | 'danger' | 'secondary' | undefined {
-    switch (status) {
-      case 'running': return 'success';
-      case 'stopped': return 'danger';
-      default: return 'secondary';
-    }
-  }
+  statusSeverity = serviceStateSeverity;
 }

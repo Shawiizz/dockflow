@@ -43,7 +43,7 @@
       <tbody>
         @for (entry of entries(); track $index) {
           <tr class="border-t border-border-primary transition-colors hover:bg-bg-hover">
-            <td class="px-3 py-2.5 whitespace-nowrap text-text-muted text-sm" [pTooltip]="entry.timestamp">{{ formatTime(entry.timestamp) }}</td>
+            <td class="px-3 py-2.5 whitespace-nowrap text-text-muted text-sm" [pTooltip]="entry.timestamp">{{ entry.timestamp | formatTime }}</td>
             <td class="px-3 py-2.5 whitespace-nowrap"><p-tag [value]="entry.action" [severity]="actionSeverity(entry.action)" [rounded]="true" /></td>
             <td class="px-3 py-2.5 whitespace-nowrap"><code>{{ entry.version }}</code></td>
             <td class="px-3 py-2.5 whitespace-nowrap">{{ entry.performer }}</td>

@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { SelectModule } from 'primeng/select';
 import { ToggleSwitchModule } from 'primeng/toggleswitch';
@@ -10,6 +10,7 @@ import { SkeletonModule } from 'primeng/skeleton';
   imports: [FormsModule, SelectModule, ToggleSwitchModule, SkeletonModule],
   templateUrl: './log-controls.component.html',
   styleUrl: './log-controls.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LogControlsComponent {
   serviceOptions = input<{ label: string; value: string }[]>([]);

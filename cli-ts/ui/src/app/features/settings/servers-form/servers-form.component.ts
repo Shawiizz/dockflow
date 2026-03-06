@@ -1,4 +1,4 @@
-import { Component, input, output, effect, signal } from '@angular/core';
+import { Component, input, output, effect, signal, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { InputTextModule } from 'primeng/inputtext';
 import { InputNumberModule } from 'primeng/inputnumber';
@@ -39,6 +39,7 @@ interface EnvTagEntry {
   ],
   templateUrl: './servers-form.component.html',
   styleUrl: './servers-form.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ServersFormComponent {
   data = input<Record<string, unknown> | null>(null);

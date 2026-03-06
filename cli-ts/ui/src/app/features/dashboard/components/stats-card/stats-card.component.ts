@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { Component, input, ChangeDetectionStrategy } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { SkeletonModule } from 'primeng/skeleton';
 
@@ -8,6 +8,7 @@ import { SkeletonModule } from 'primeng/skeleton';
   imports: [NgClass, SkeletonModule],
   templateUrl: './stats-card.component.html',
   styleUrl: './stats-card.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class StatsCardComponent {
   icon = input.required<string>();

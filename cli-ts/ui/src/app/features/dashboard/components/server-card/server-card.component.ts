@@ -1,7 +1,8 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { TooltipModule } from 'primeng/tooltip';
 import type { ServerStatus } from '@api-types';
+import { serverStatusIcon, serverStatusLabel } from '@shared/utils/status.utils';
 
 @Component({
   selector: 'app-server-card',
@@ -9,6 +10,7 @@ import type { ServerStatus } from '@api-types';
   imports: [NgClass, TooltipModule],
   templateUrl: './server-card.component.html',
   styleUrl: './server-card.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ServerCardComponent {
   server = input.required<ServerStatus>();
@@ -21,24 +23,10 @@ export class ServerCardComponent {
     return this.server().status;
   };
 
-  statusIcon = () => {
-    const status = this.server().status;
-    switch (status) {
-      case 'online': return 'pi pi-check';
-      case 'offline': return 'pi pi-times';
-      case 'error': return 'pi pi-exclamation-triangle';
-      default: return 'pi pi-question';
-    }
-  };
+  statusIcon = () => serverStatusIcon(this.server().status);
 
   statusLabel = () => {
     if (this.checkingStatus()) return 'Checking...';
-    const status = this.server().status;
-    switch (status) {
-      case 'online': return 'Online';
-      case 'offline': return 'Offline';
-      case 'error': return 'Error';
-      default: return 'Unknown';
-    }
+    return serverStatusLabel(this.server().status);
   };
 }

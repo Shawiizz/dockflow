@@ -1,20 +1,6 @@
 <div class="flex flex-col gap-6 max-w-[1400px] mx-auto animate-fade-in">
-  <!-- Error banner -->
-  @if (errorMessage()) {
-    <div class="flex items-center gap-3 px-4 py-3 rounded-lg bg-error-muted border border-[rgba(239,68,68,0.2)] text-error text-sm">
-      <i class="pi pi-exclamation-triangle text-base shrink-0"></i>
-      <span class="flex-1">{{ errorMessage() }}</span>
-      <button
-        class="inline-flex items-center justify-center p-2 rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary shrink-0"
-        (click)="errorMessage.set(null)"
-      >
-        <i class="pi pi-times text-base"></i>
-      </button>
-    </div>
-  }
-
   <!-- Welcome card if no project -->
-  @if (!loadingProject() && projectInfo() && !projectInfo()!.hasDockflow) {
+  @if (showWelcome()) {
     <app-welcome-card />
   } @else {
     <!-- Stats Row -->
@@ -50,12 +36,12 @@
     </div>
 
     <!-- Connection Warning -->
-    @if (connectionInfo() && !connectionInfo()!.ready) {
+    @if (projectInfoService.connectionInfo() && !projectInfoService.connectionInfo()!.ready) {
       <div class="flex items-center gap-3 px-4 py-3.5 rounded-lg bg-warning-muted border border-[rgba(245,158,11,0.2)] text-warning text-sm">
         <i class="pi pi-exclamation-triangle text-base shrink-0"></i>
         <div>
           <p><strong>No connection credentials</strong></p>
-          <p>{{ connectionInfo()!.message }}</p>
+          <p>{{ projectInfoService.connectionInfo()!.message }}</p>
           <a routerLink="/settings" class="inline-flex items-center gap-2 mt-2 px-2 py-1 text-[0.8125rem] rounded-lg bg-transparent text-text-secondary no-underline transition-all duration-150 hover:bg-bg-hover hover:text-text-primary">
             <i class="pi pi-cog"></i>
             <span>Go to Settings</span>

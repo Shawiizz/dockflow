@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { TagModule } from 'primeng/tag';
 import { CheckboxModule } from 'primeng/checkbox';
@@ -10,6 +10,7 @@ import type { PruneResult } from '@api-types';
   imports: [FormsModule, TagModule, CheckboxModule],
   templateUrl: './prune-section.component.html',
   styleUrl: './prune-section.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PruneSectionComponent {
   pruning = input(false);

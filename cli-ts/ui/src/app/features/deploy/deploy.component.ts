@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit, DestroyRef, effect, viewChild, ElementRef } from '@angular/core';
+import { Component, inject, signal, DestroyRef, effect, viewChild, ElementRef } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SelectModule } from 'primeng/select';
@@ -21,7 +21,7 @@ import type { DeployHistoryEntry } from '@api-types';
   templateUrl: './deploy.component.html',
   styleUrl: './deploy.component.scss',
 })
-export class DeployComponent implements OnInit {
+export class DeployComponent {
   private apiService = inject(ApiService);
   private destroyRef = inject(DestroyRef);
   private cache = inject(DataCacheService);
@@ -63,8 +63,6 @@ export class DeployComponent implements OnInit {
       }
     });
   }
-
-  ngOnInit() {}
 
   loadHistory(env?: string) {
     const cacheKey = `deploy:${env || 'all'}`;

@@ -8,6 +8,7 @@ import { SkeletonModule } from 'primeng/skeleton';
 import { ApiService } from '@core/services/api.service';
 import { EnvironmentService } from '@core/services/environment.service';
 import { DataCacheService } from '@core/services/data-cache.service';
+import { pollUntilStateChange } from '@shared/utils/polling.utils';
 import { AccessoryCardComponent } from './components/accessory-card/accessory-card.component';
 import { AccessoryLogsDialogComponent } from './components/accessory-logs-dialog/accessory-logs-dialog.component';
 import type { AccessoryStatusInfo, LogEntry } from '@api-types';
@@ -38,6 +39,7 @@ export class AccessoriesComponent {
   logsLoading = signal(false);
 
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private stopPollingFn: (() => void) | null = null;
   private loadVersion = 0;
 
   constructor() {
@@ -100,30 +102,20 @@ export class AccessoriesComponent {
 
   private refreshAfterAction(accName: string, env?: string) {
     this.stopPolling();
-    const initialStatus = this.accessories().find(a => a.name === accName)?.status;
-    let elapsed = 0;
-    this.pollTimer = setInterval(() => {
-      elapsed += 3000;
-      const currentStatus = this.accessories().find(a => a.name === accName)?.status;
-      if (currentStatus !== initialStatus) {
-        this.actionLoading.set(null);
-        this.stopPolling();
-        return;
-      }
-      if (elapsed >= 45_000) {
-        this.actionLoading.set(null);
-        this.stopPolling();
-        return;
-      }
-      this.cache.invalidatePrefix('accessories-status:');
-      this.loadAccessories(env, { silent: true });
-    }, 3000);
+    this.stopPollingFn = pollUntilStateChange({
+      items: this.accessories,
+      findItem: (items) => items.find(a => a.name === accName),
+      getState: (item) => item?.status,
+      actionLoading: this.actionLoading,
+      invalidateCache: () => this.cache.invalidatePrefix('accessories-status:'),
+      reload: () => this.loadAccessories(env, { silent: true }),
+    });
   }
 
   private stopPolling() {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = null;
+    if (this.stopPollingFn) {
+      this.stopPollingFn();
+      this.stopPollingFn = null;
     }
   }
 

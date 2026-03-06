@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit, DestroyRef } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, DestroyRef } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subject, switchMap, debounceTime, catchError, of } from 'rxjs';
@@ -9,6 +9,7 @@ import { MessageModule } from 'primeng/message';
 import { MessageService } from 'primeng/api';
 import { ToastModule } from 'primeng/toast';
 import { ApiService } from '@core/services/api.service';
+import { HasUnsavedChanges } from '@core/guards/unsaved-changes.guard';
 import { ConfigFormComponent } from './config-form/config-form.component';
 import { ServersFormComponent } from './servers-form/servers-form.component';
 
@@ -29,7 +30,7 @@ import { ServersFormComponent } from './servers-form/servers-form.component';
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.scss',
 })
-export class SettingsComponent implements OnInit {
+export class SettingsComponent implements OnInit, HasUnsavedChanges {
   private apiService = inject(ApiService);
   private messageService = inject(MessageService);
   private destroyRef = inject(DestroyRef);
@@ -50,6 +51,12 @@ export class SettingsComponent implements OnInit {
   serversYamlLoading = signal(true);
 
   activeIndex = signal(0);
+  configDirty = signal(false);
+  serversDirty = signal(false);
+
+  // Computed YAML lines for template (avoids .split('\n') in @for loops)
+  configYamlLines = computed(() => this.configYaml().split('\n'));
+  serversYamlLines = computed(() => this.serversYaml().split('\n'));
 
   // Auto-save subjects
   private configSave$ = new Subject<Record<string, unknown>>();
@@ -74,7 +81,7 @@ export class SettingsComponent implements OnInit {
       }),
       takeUntilDestroyed(this.destroyRef),
     ).subscribe(result => {
-      if (result) this.loadYaml(0);
+      if (result) { this.configDirty.set(false); this.loadYaml(0); }
     });
 
     this.serversSave$.pipe(
@@ -95,7 +102,7 @@ export class SettingsComponent implements OnInit {
       }),
       takeUntilDestroyed(this.destroyRef),
     ).subscribe(result => {
-      if (result) this.loadYaml(1);
+      if (result) { this.serversDirty.set(false); this.loadYaml(1); }
     });
   }
 
@@ -179,5 +186,9 @@ export class SettingsComponent implements OnInit {
 
   onServersFormChange(data: Record<string, unknown>) {
     this.serversSave$.next(data);
+  }
+
+  hasUnsavedChanges(): boolean {
+    return this.configDirty() || this.serversDirty();
   }
 }

@@ -23,7 +23,7 @@
             <i class="pi pi-tag text-xs"></i> {{ deploy().version }}
           </span>
         }
-        <span class="flex items-center gap-1" [pTooltip]="formatDate(deploy().startedAt)">
+        <span class="flex items-center gap-1" [pTooltip]="deploy().startedAt | formatTime">
           <i class="pi pi-clock text-xs"></i> {{ relativeTime(deploy().startedAt) }}
         </span>
         @if (deploy().duration) {

@@ -7,8 +7,7 @@ interface CacheEntry<T> {
 
 /**
  * Simple in-memory data cache with TTL.
- * Replaces KeepAliveRouteStrategy by caching API responses
- * so navigating between pages doesn't re-fetch everything.
+ * Caches API responses so navigating between pages doesn't re-fetch everything.
  */
 @Injectable({ providedIn: 'root' })
 export class DataCacheService {

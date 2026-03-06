@@ -19,7 +19,7 @@
     } @else {
       @for (log of logs(); track $index) {
         <div class="flex gap-4 px-4 py-0.5 border-b border-border-primary transition-colors hover:bg-bg-hover">
-          <span class="text-xs text-text-muted font-mono shrink-0 pt-0.5">{{ formatTimestamp(log.timestamp) }}</span>
+          <span class="text-xs text-text-muted font-mono shrink-0 pt-0.5">{{ log.timestamp | formatTime:'time' }}</span>
           <span class="text-xs font-mono whitespace-pre-wrap break-all">{{ log.message }}</span>
         </div>
       }

@@ -3,13 +3,13 @@ import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, NavigationEnd } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { filter, forkJoin } from 'rxjs';
+import { filter } from 'rxjs';
 import { SelectModule } from 'primeng/select';
 import { TooltipModule } from 'primeng/tooltip';
 import { RippleModule } from 'primeng/ripple';
 import { SkeletonModule } from 'primeng/skeleton';
-import { ApiService } from '@core/services/api.service';
 import { EnvironmentService } from '@core/services/environment.service';
+import { ProjectInfoService } from '@core/services/project-info.service';
 import { ThemeService } from '@core/services/theme.service';
 
 @Component({
@@ -23,24 +23,18 @@ export class HeaderComponent implements OnInit {
   sidebarCollapsed = input(false);
   toggleSidebar = output<void>();
 
-  private apiService = inject(ApiService);
   private router = inject(Router);
   private destroyRef = inject(DestroyRef);
 
   envService = inject(EnvironmentService);
+  projectInfoService = inject(ProjectInfoService);
   themeService = inject(ThemeService);
 
-  projectName = signal('Dockflow');
-  connectionReady = signal(false);
-  loadingProject = signal(true);
-  loadingConnection = signal(true);
-  refreshing = signal(false);
   pageTitle = signal('Dashboard');
 
   ngOnInit() {
     this.envService.load();
-    this.loadProjectInfo();
-    this.loadConnectionInfo();
+    this.projectInfoService.load();
 
     // Track current page title
     this.router.events.pipe(
@@ -51,52 +45,8 @@ export class HeaderComponent implements OnInit {
     });
   }
 
-  private loadProjectInfo() {
-    this.loadingProject.set(true);
-    this.apiService.getProjectInfo()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (info) => {
-          this.projectName.set(info.projectName);
-          this.loadingProject.set(false);
-        },
-        error: () => {
-          this.loadingProject.set(false);
-        },
-      });
-  }
-
-  private loadConnectionInfo() {
-    this.loadingConnection.set(true);
-    this.apiService.getConnectionInfo()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (info) => {
-          this.connectionReady.set(info.ready);
-          this.loadingConnection.set(false);
-        },
-        error: () => {
-          this.connectionReady.set(false);
-          this.loadingConnection.set(false);
-        },
-      });
-  }
-
   refresh() {
-    this.refreshing.set(true);
-    forkJoin([
-      this.apiService.getProjectInfo(),
-      this.apiService.getConnectionInfo(),
-    ]).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: ([project, connection]) => {
-        this.projectName.set(project.projectName);
-        this.connectionReady.set(connection.ready);
-        this.refreshing.set(false);
-      },
-      error: () => {
-        this.refreshing.set(false);
-      },
-    });
+    this.projectInfoService.reload();
     this.envService.reload();
   }
 
@@ -108,7 +58,11 @@ export class HeaderComponent implements OnInit {
       'services': 'Services',
       'logs': 'Logs',
       'deploy': 'Deployments',
+      'build': 'Build',
       'accessories': 'Accessories',
+      'monitoring': 'Monitoring',
+      'resources': 'Resources',
+      'topology': 'Topology',
       'settings': 'Settings',
     };
     return titles[path] || 'Dashboard';

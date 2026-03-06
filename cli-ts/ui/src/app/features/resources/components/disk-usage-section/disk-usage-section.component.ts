@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { SkeletonModule } from 'primeng/skeleton';
 
 @Component({
@@ -7,6 +7,7 @@ import { SkeletonModule } from 'primeng/skeleton';
   imports: [SkeletonModule],
   templateUrl: './disk-usage-section.component.html',
   styleUrl: './disk-usage-section.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DiskUsageSectionComponent {
   raw = input('');

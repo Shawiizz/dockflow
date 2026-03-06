@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit, DestroyRef, effect } from '@angular/core';
+import { Component, inject, signal, computed, DestroyRef, effect } from '@angular/core';
 import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -8,6 +8,7 @@ import { SkeletonModule } from 'primeng/skeleton';
 import { ApiService } from '@core/services/api.service';
 import { EnvironmentService } from '@core/services/environment.service';
 import { DataCacheService } from '@core/services/data-cache.service';
+import { pollUntilStateChange } from '@shared/utils/polling.utils';
 import { SshTerminalComponent } from '@shared/components/ssh-terminal/ssh-terminal.component';
 import { ServiceCardComponent } from './components/service-card/service-card.component';
 import { ScaleDialogComponent } from './components/scale-dialog/scale-dialog.component';
@@ -20,7 +21,7 @@ import type { ServiceInfo } from '@api-types';
   templateUrl: './services.component.html',
   styleUrl: './services.component.scss',
 })
-export class ServicesComponent implements OnInit {
+export class ServicesComponent {
   private apiService = inject(ApiService);
   private destroyRef = inject(DestroyRef);
   private cache = inject(DataCacheService);
@@ -38,6 +39,7 @@ export class ServicesComponent implements OnInit {
   terminalVisible = signal(false);
   terminalService = signal<ServiceInfo | null>(null);
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private stopPollingFn: (() => void) | null = null;
   private loadVersion = 0;
 
   runningCount = computed(() => this.services().filter(s => s.state === 'running').length);
@@ -50,8 +52,6 @@ export class ServicesComponent implements OnInit {
     });
     this.destroyRef.onDestroy(() => this.stopPolling());
   }
-
-  ngOnInit() {}
 
   loadServices(env?: string, opts?: { silent?: boolean }) {
     const cacheKey = `services:${env || 'all'}`;
@@ -98,31 +98,20 @@ export class ServicesComponent implements OnInit {
 
   private refreshAfterAction(serviceName: string, env?: string) {
     this.stopPolling();
-    const initialState = this.services().find(s => s.name === serviceName)?.state;
-    // Docker applies changes async, poll every 3s until state changes (up to 45s)
-    let elapsed = 0;
-    this.pollTimer = setInterval(() => {
-      elapsed += 3000;
-      const currentState = this.services().find(s => s.name === serviceName)?.state;
-      if (currentState !== initialState) {
-        this.actionLoading.set(null);
-        this.stopPolling();
-        return;
-      }
-      if (elapsed >= 45_000) {
-        this.actionLoading.set(null);
-        this.stopPolling();
-        return;
-      }
-      this.cache.invalidatePrefix('services:');
-      this.loadServices(env, { silent: true });
-    }, 3000);
+    this.stopPollingFn = pollUntilStateChange({
+      items: this.services,
+      findItem: (items) => items.find(s => s.name === serviceName),
+      getState: (item) => item?.state,
+      actionLoading: this.actionLoading,
+      invalidateCache: () => this.cache.invalidatePrefix('services:'),
+      reload: () => this.loadServices(env, { silent: true }),
+    });
   }
 
   private stopPolling() {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = null;
+    if (this.stopPollingFn) {
+      this.stopPollingFn();
+      this.stopPollingFn = null;
     }
   }
 

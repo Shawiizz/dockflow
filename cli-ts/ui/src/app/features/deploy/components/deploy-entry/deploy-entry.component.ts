@@ -1,51 +1,24 @@
-import { Component, input } from '@angular/core';
+import { Component, input, ChangeDetectionStrategy } from '@angular/core';
 import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
 import type { DeployHistoryEntry } from '@api-types';
+import { deployStatusSeverity, deployStatusIcon, deployStatusColorClass } from '@shared/utils/status.utils';
+import { FormatTimePipe } from '@shared/utils/format-time.pipe';
 
 @Component({
   selector: 'app-deploy-entry',
   standalone: true,
-  imports: [TagModule, TooltipModule],
+  imports: [TagModule, TooltipModule, FormatTimePipe],
   templateUrl: './deploy-entry.component.html',
   styleUrl: './deploy-entry.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DeployEntryComponent {
   deploy = input.required<DeployHistoryEntry>();
 
-  statusSeverity(status: string): 'success' | 'danger' | 'warn' | 'info' | 'secondary' | 'contrast' | undefined {
-    switch (status) {
-      case 'success': return 'success';
-      case 'failed': return 'danger';
-      case 'running': return 'info';
-      case 'pending': return 'warn';
-      default: return 'secondary';
-    }
-  }
-
-  statusColorClass(status: string): string {
-    switch (status) {
-      case 'success': return 'bg-success-muted text-success';
-      case 'failed': return 'bg-error-muted text-error';
-      case 'running': return 'bg-accent-muted text-accent';
-      case 'pending': return 'bg-warning-muted text-warning';
-      default: return 'bg-bg-tertiary text-text-muted';
-    }
-  }
-
-  statusIcon(status: string): string {
-    switch (status) {
-      case 'success': return 'pi pi-check-circle';
-      case 'failed': return 'pi pi-times-circle';
-      case 'running': return 'pi pi-spin pi-spinner';
-      case 'pending': return 'pi pi-clock';
-      default: return 'pi pi-circle';
-    }
-  }
-
-  formatDate(dateStr: string): string {
-    try { return new Date(dateStr).toLocaleString(); } catch { return dateStr; }
-  }
+  statusSeverity = deployStatusSeverity;
+  statusColorClass = deployStatusColorClass;
+  statusIcon = deployStatusIcon;
 
   formatDuration(seconds?: number): string {
     if (!seconds) return '\u2014';

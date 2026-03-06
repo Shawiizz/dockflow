@@ -1,4 +1,5 @@
-import { Component, inject, signal, effect } from '@angular/core';
+import { Component, inject, signal, effect, DestroyRef } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TagModule } from 'primeng/tag';
 import { SkeletonModule } from 'primeng/skeleton';
 import { ApiService } from '@core/services/api.service';
@@ -17,6 +18,7 @@ import { DiskUsageSectionComponent } from './components/disk-usage-section/disk-
 })
 export class ResourcesComponent {
   private apiService = inject(ApiService);
+  private destroyRef = inject(DestroyRef);
   envService = inject(EnvironmentService);
 
   // Prune
@@ -52,7 +54,7 @@ export class ResourcesComponent {
     this.apiService.pruneResources(
       { targets: event.targets as any, all: event.all },
       this.envService.selectedOrUndefined()
-    ).subscribe({
+    ).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (res) => {
         this.pruneResults.set(res.results);
         this.pruning.set(false);
@@ -68,42 +70,48 @@ export class ResourcesComponent {
   loadLock(env: string) {
     this.lockLoading.set(true);
     this.lockError.set(null);
-    this.apiService.getLockStatus(env).subscribe({
-      next: (info) => {
-        this.lockInfo.set(info);
-        this.lockLoading.set(false);
-      },
-      error: (err) => {
-        this.lockLoading.set(false);
-        this.lockError.set(err?.error?.error || 'Failed to get lock status');
-      },
-    });
+    this.apiService.getLockStatus(env)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (info) => {
+          this.lockInfo.set(info);
+          this.lockLoading.set(false);
+        },
+        error: (err) => {
+          this.lockLoading.set(false);
+          this.lockError.set(err?.error?.error || 'Failed to get lock status');
+        },
+      });
   }
 
   acquireLock() {
     const env = this.envService.selectedOrUndefined();
     if (!env) return;
     this.lockActioning.set(true);
-    this.apiService.acquireLock(env).subscribe({
-      next: () => {
-        this.loadLock(env);
-        this.lockActioning.set(false);
-      },
-      error: () => this.lockActioning.set(false),
-    });
+    this.apiService.acquireLock(env)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.loadLock(env);
+          this.lockActioning.set(false);
+        },
+        error: () => this.lockActioning.set(false),
+      });
   }
 
   releaseLock() {
     const env = this.envService.selectedOrUndefined();
     if (!env) return;
     this.lockActioning.set(true);
-    this.apiService.releaseLock(env).subscribe({
-      next: () => {
-        this.loadLock(env);
-        this.lockActioning.set(false);
-      },
-      error: () => this.lockActioning.set(false),
-    });
+    this.apiService.releaseLock(env)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.loadLock(env);
+          this.lockActioning.set(false);
+        },
+        error: () => this.lockActioning.set(false),
+      });
   }
 
   refreshLock() {
@@ -116,16 +124,18 @@ export class ResourcesComponent {
   loadDisk(env: string) {
     this.diskLoading.set(true);
     this.diskError.set(null);
-    this.apiService.getDiskUsage(env).subscribe({
-      next: (res) => {
-        this.diskRaw.set(res.raw);
-        this.diskLoading.set(false);
-      },
-      error: (err) => {
-        this.diskLoading.set(false);
-        this.diskError.set(err?.error?.error || 'Failed to get disk usage');
-      },
-    });
+    this.apiService.getDiskUsage(env)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (res) => {
+          this.diskRaw.set(res.raw);
+          this.diskLoading.set(false);
+        },
+        error: (err) => {
+          this.diskLoading.set(false);
+          this.diskError.set(err?.error?.error || 'Failed to get disk usage');
+        },
+      });
   }
 
   refreshDisk() {

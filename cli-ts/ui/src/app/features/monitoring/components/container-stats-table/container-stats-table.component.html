@@ -16,7 +16,7 @@
     <span>{{ autoRefresh() ? 'Auto (10s)' : 'Auto-refresh' }}</span>
   </button>
   @if (timestamp()) {
-    <span class="text-sm text-text-muted">Updated: {{ formatTime(timestamp()) }}</span>
+    <span class="text-sm text-text-muted">Updated: {{ timestamp() | formatTime }}</span>
   }
 </div>
 

@@ -1,4 +1,4 @@
-import { Component, input, output, model } from '@angular/core';
+import { Component, input, output, model, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DialogModule } from 'primeng/dialog';
 import { InputNumberModule } from 'primeng/inputnumber';
@@ -10,6 +10,7 @@ import type { ServiceInfo } from '@api-types';
   imports: [FormsModule, DialogModule, InputNumberModule],
   templateUrl: './scale-dialog.component.html',
   styleUrl: './scale-dialog.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ScaleDialogComponent {
   visible = model(false);

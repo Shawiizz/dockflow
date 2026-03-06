@@ -5,6 +5,8 @@ import { SkeletonModule } from 'primeng/skeleton';
 import { TooltipModule } from 'primeng/tooltip';
 import { ApiService } from '@core/services/api.service';
 import { EnvironmentService } from '@core/services/environment.service';
+import { DataCacheService } from '@core/services/data-cache.service';
+import { VisibilityService } from '@core/services/visibility.service';
 import type { ServiceInfo, LogEntry } from '@api-types';
 import { LogControlsComponent } from './components/log-controls/log-controls.component';
 import { LogViewerComponent } from './components/log-viewer/log-viewer.component';
@@ -20,6 +22,8 @@ export class LogsComponent implements OnInit, OnDestroy {
   private apiService = inject(ApiService);
   private route = inject(ActivatedRoute);
   private destroyRef = inject(DestroyRef);
+  private cache = inject(DataCacheService);
+  private visibility = inject(VisibilityService);
 
   envService = inject(EnvironmentService);
 
@@ -54,7 +58,11 @@ export class LogsComponent implements OnInit, OnDestroy {
       const enabled = this.autoRefresh();
       this.clearAutoRefresh();
       if (enabled && this.selectedService()) {
-        this.autoRefreshTimer = setInterval(() => this.loadLogs(), 5000);
+        this.autoRefreshTimer = setInterval(() => {
+          // Skip polling when tab is hidden
+          if (!this.visibility.visible()) return;
+          this.loadLogs();
+        }, 5000);
       }
     });
   }
@@ -83,12 +91,26 @@ export class LogsComponent implements OnInit, OnDestroy {
   loadServiceList(env?: string) {
     this.loadingServices.set(true);
     this.servicesError.set(null);
+
+    const cacheKey = `logs-services:${env || 'all'}`;
+    const cached = this.cache.get<ServiceInfo[]>(cacheKey);
+    if (cached) {
+      this.services.set(cached);
+      this.loadingServices.set(false);
+      if (cached.length > 0 && !this.selectedService()) {
+        this.selectedService.set(cached[0].name);
+        this.loadLogs();
+      }
+      return;
+    }
+
     this.apiService.getServices(env)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (response) => {
           this.services.set(response.services);
           this.loadingServices.set(false);
+          this.cache.set(cacheKey, response.services, 60_000);
           if (response.services.length === 0 && response.message) {
             this.servicesError.set(response.message);
           }

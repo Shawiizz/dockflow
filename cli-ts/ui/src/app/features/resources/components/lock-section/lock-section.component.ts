@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { TagModule } from 'primeng/tag';
 import { SkeletonModule } from 'primeng/skeleton';
 import type { LockInfo } from '@api-types';
@@ -9,6 +9,7 @@ import type { LockInfo } from '@api-types';
   imports: [TagModule, SkeletonModule],
   templateUrl: './lock-section.component.html',
   styleUrl: './lock-section.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LockSectionComponent {
   lockInfo = input<LockInfo>({ locked: false });

@@ -1,8 +1,9 @@
-import { Component, input, output, computed } from '@angular/core';
+import { Component, input, output, computed, ChangeDetectionStrategy } from '@angular/core';
 import { RouterModule } from '@angular/router';
 import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
 import type { ServiceInfo } from '@api-types';
+import { serviceStateSeverity } from '@shared/utils/status.utils';
 
 @Component({
   selector: 'app-service-card',
@@ -10,6 +11,7 @@ import type { ServiceInfo } from '@api-types';
   imports: [RouterModule, TagModule, TooltipModule],
   templateUrl: './service-card.component.html',
   styleUrl: './service-card.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ServiceCardComponent {
   service = input.required<ServiceInfo>();
@@ -36,13 +38,5 @@ export class ServiceCardComponent {
     return 'bg-error';
   });
 
-  stateSeverity(state: string): 'success' | 'danger' | 'warn' | 'info' | 'secondary' | 'contrast' | undefined {
-    switch (state) {
-      case 'running': return 'success';
-      case 'stopped': return 'danger';
-      case 'paused': return 'warn';
-      case 'error': return 'danger';
-      default: return 'secondary';
-    }
-  }
+  stateSeverity = serviceStateSeverity;
 }
