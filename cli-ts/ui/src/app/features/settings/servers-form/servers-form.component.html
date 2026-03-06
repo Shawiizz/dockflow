@@ -40,9 +40,7 @@
           <div class="border border-border-primary rounded-lg mb-3 bg-bg-secondary overflow-hidden">
             <div class="flex items-center justify-between px-4 py-2.5 bg-bg-tertiary border-b border-border-primary">
               <span class="font-semibold text-sm text-text-primary">{{ srv.name || 'New Server' }}</span>
-              <button class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-muted cursor-pointer transition-all duration-150 hover:bg-error-muted hover:text-error" (click)="removeServer(i)" pTooltip="Remove server">
-                <i class="pi pi-trash"></i>
-              </button>
+              <p-button icon="pi pi-trash" [text]="true" [rounded]="true" severity="danger" (onClick)="removeServer(i)" pTooltip="Remove server" ariaLabel="Remove server" />
             </div>
             <div class="p-4">
               <div class="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-x-4">
@@ -112,9 +110,7 @@
               <div class="mt-2">
                 <div class="flex items-center justify-between mb-2">
                   <span class="text-[0.8125rem] font-semibold text-text-primary">Environment Variables</span>
-                  <button class="inline-flex items-center justify-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary" (click)="addServerEnv(i)">
-                    <i class="pi pi-plus"></i> Add
-                  </button>
+                  <p-button label="Add" icon="pi pi-plus" [text]="true" severity="secondary" size="small" (onClick)="addServerEnv(i)" />
                 </div>
                 @for (envVar of srv.env; track $index; let ei = $index) {
                   <div class="flex gap-2 items-center mb-1.5">
@@ -125,18 +121,14 @@
                     <input type="text" pInputText [ngModel]="envVar.value"
                            (ngModelChange)="updateServerEnv(i, ei, 'value', $event)"
                            placeholder="value" style="flex: 1;">
-                    <button class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-muted cursor-pointer transition-all duration-150 hover:bg-error-muted hover:text-error" (click)="removeServerEnv(i, ei)">
-                      <i class="pi pi-trash"></i>
-                    </button>
+                    <p-button icon="pi pi-trash" [text]="true" [rounded]="true" severity="danger" (onClick)="removeServerEnv(i, ei)" ariaLabel="Remove environment variable" />
                   </div>
                 }
               </div>
             </div>
           </div>
         }
-        <button class="inline-flex items-center justify-center gap-2 w-full px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary" (click)="addServer()">
-          <i class="pi pi-plus"></i> Add Server
-        </button>
+        <p-button label="Add Server" icon="pi pi-plus" [text]="true" severity="secondary" styleClass="w-full" (onClick)="addServer()" />
       </div>
     </div>
   </div>
@@ -153,9 +145,7 @@
           <div class="border border-border-primary rounded-lg mb-3 overflow-hidden">
             <div class="flex items-center justify-between px-3 py-2 bg-bg-tertiary border-b border-border-primary">
               <span class="font-semibold text-sm text-text-primary">{{ et.tag }}</span>
-              <button class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-muted cursor-pointer transition-all duration-150 hover:bg-error-muted hover:text-error" (click)="removeEnvTag(ti)" pTooltip="Remove tag group">
-                <i class="pi pi-trash"></i>
-              </button>
+              <p-button icon="pi pi-trash" [text]="true" [rounded]="true" severity="danger" (onClick)="removeEnvTag(ti)" pTooltip="Remove tag group" ariaLabel="Remove tag group" />
             </div>
             <div class="p-3">
               @for (v of et.vars; track $index; let vi = $index) {
@@ -167,14 +157,10 @@
                   <input type="text" pInputText [ngModel]="v.value"
                          (ngModelChange)="updateEnvTagVar(ti, vi, 'value', $event)"
                          placeholder="value" style="flex: 1;">
-                  <button class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-muted cursor-pointer transition-all duration-150 hover:bg-error-muted hover:text-error" (click)="removeEnvTagVar(ti, vi)">
-                    <i class="pi pi-trash"></i>
-                  </button>
+                  <p-button icon="pi pi-trash" [text]="true" [rounded]="true" severity="danger" (onClick)="removeEnvTagVar(ti, vi)" ariaLabel="Remove variable" />
                 </div>
               }
-              <button class="inline-flex items-center justify-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary" (click)="addEnvTagVar(ti)">
-                <i class="pi pi-plus"></i> Add Variable
-              </button>
+              <p-button label="Add Variable" icon="pi pi-plus" [text]="true" severity="secondary" size="small" (onClick)="addEnvTagVar(ti)" />
             </div>
           </div>
         }
@@ -185,9 +171,7 @@
                  placeholder="Tag name (e.g. production)"
                  style="flex: 1;"
                  (keydown.enter)="addEnvTag()">
-          <button class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed" (click)="addEnvTag()" [disabled]="!newTagName()">
-            <i class="pi pi-plus"></i> Add Tag Group
-          </button>
+          <p-button label="Add Tag Group" icon="pi pi-plus" [text]="true" severity="secondary" (onClick)="addEnvTag()" [disabled]="!newTagName()" />
         </div>
       </div>
     </div>

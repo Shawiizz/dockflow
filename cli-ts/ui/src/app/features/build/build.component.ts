@@ -3,13 +3,15 @@ import { FormsModule } from '@angular/forms';
 import { TagModule } from 'primeng/tag';
 import { InputTextModule } from 'primeng/inputtext';
 import { CheckboxModule } from 'primeng/checkbox';
+import { ButtonModule } from 'primeng/button';
 import { EnvironmentService } from '@core/services/environment.service';
 import { OperationStateService } from '@core/services/operation-state.service';
+import { PageHeaderComponent } from '@shared/components/page-header/page-header.component';
 
 @Component({
   selector: 'app-build',
   standalone: true,
-  imports: [FormsModule, TagModule, InputTextModule, CheckboxModule],
+  imports: [FormsModule, TagModule, InputTextModule, CheckboxModule, ButtonModule, PageHeaderComponent],
   templateUrl: './build.component.html',
   styleUrl: './build.component.scss',
 })

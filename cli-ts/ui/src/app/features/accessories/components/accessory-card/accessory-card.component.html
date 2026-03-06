@@ -7,7 +7,7 @@
       <div class="flex items-center gap-2">
         <h3 class="m-0 text-base font-semibold text-text-primary">{{ accessory().name }}</h3>
         @if (accessory().status) {
-          <p-tag [value]="accessory().status" [severity]="statusSeverity(accessory().status)" [rounded]="true" />
+          <p-tag [value]="accessory().status" [severity]="statusSeverity(accessory().status)" />
         }
       </div>
       @if (accessory().image) {
@@ -28,7 +28,7 @@
       <span class="text-[0.6875rem] font-medium text-text-muted uppercase tracking-wider">Ports</span>
       <div class="flex gap-1.5 flex-wrap">
         @for (port of accessory().ports; track port) {
-          <code class="px-2 py-0.5 rounded bg-bg-tertiary text-xs text-text-secondary">{{ port }}</code>
+          <p-tag [value]="port" severity="contrast" />
         }
       </div>
     </div>
@@ -39,7 +39,7 @@
       <span class="text-[0.6875rem] font-medium text-text-muted uppercase tracking-wider">Volumes</span>
       <div class="flex gap-1.5 flex-wrap">
         @for (vol of accessory().volumes; track vol) {
-          <code class="px-2 py-0.5 rounded bg-bg-tertiary text-xs text-text-secondary">{{ vol }}</code>
+          <p-tag [value]="vol" severity="contrast" />
         }
       </div>
     </div>
@@ -60,14 +60,8 @@
   }
 
   <div class="flex gap-1 mt-2 pt-2 border-t border-border-primary">
-    <button class="inline-flex items-center justify-center p-2 rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed" pTooltip="Restart" (click)="restart.emit(accessory())" [disabled]="actionLoading()">
-      <i class="pi pi-refresh text-base" [class.pi-spin]="actionLoading() === accessory().name"></i>
-    </button>
-    <button class="inline-flex items-center justify-center p-2 rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed" pTooltip="Stop" (click)="stop.emit(accessory())" [disabled]="actionLoading()">
-      <i class="pi pi-stop-circle text-base"></i>
-    </button>
-    <button class="inline-flex items-center justify-center p-2 rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary" pTooltip="View Logs" (click)="viewLogs.emit(accessory())">
-      <i class="pi pi-file-edit text-base"></i>
-    </button>
+    <p-button icon="pi pi-refresh" [text]="true" [rounded]="true" severity="secondary" pTooltip="Restart" ariaLabel="Restart" (onClick)="restart.emit(accessory())" [disabled]="!!actionLoading()" [loading]="actionLoading() === accessory().name" />
+    <p-button icon="pi pi-stop-circle" [text]="true" [rounded]="true" severity="secondary" pTooltip="Stop" ariaLabel="Stop" (onClick)="stop.emit(accessory())" [disabled]="!!actionLoading()" />
+    <p-button icon="pi pi-file-edit" [text]="true" [rounded]="true" severity="secondary" pTooltip="View Logs" ariaLabel="View Logs" (onClick)="viewLogs.emit(accessory())" />
   </div>
 </div>

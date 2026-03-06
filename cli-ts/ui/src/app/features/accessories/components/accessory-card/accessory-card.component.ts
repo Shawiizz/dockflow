@@ -1,13 +1,14 @@
 import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
+import { ButtonModule } from 'primeng/button';
 import type { AccessoryStatusInfo } from '@api-types';
 import { serviceStateSeverity } from '@shared/utils/status.utils';
 
 @Component({
   selector: 'app-accessory-card',
   standalone: true,
-  imports: [TagModule, TooltipModule],
+  imports: [TagModule, TooltipModule, ButtonModule],
   templateUrl: './accessory-card.component.html',
   styleUrl: './accessory-card.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

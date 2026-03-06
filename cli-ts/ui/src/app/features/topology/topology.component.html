@@ -1,29 +1,10 @@
 <div class="flex flex-col gap-6 animate-fade-in">
   <!-- Page Header -->
-  <div class="flex justify-between items-start gap-4 flex-wrap">
-    <div>
-      <h1 class="m-0 text-2xl font-semibold text-text-primary">Topology</h1>
-      <p class="mt-1 mb-0 text-sm text-text-muted">Visual service-to-server mapping</p>
-    </div>
-    <div class="flex items-center gap-2">
-      <button class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary" (click)="autoLayout()" pTooltip="Reset layout">
-        <i class="pi pi-th-large"></i>
-        <span>Auto Layout</span>
-      </button>
-      <button class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary" (click)="loadData()" pTooltip="Reload data">
-        <i class="pi pi-refresh"></i>
-        <span>Reload</span>
-      </button>
-      <button
-        class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-accent text-white cursor-pointer transition-all duration-150 hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
-        (click)="save()"
-        [disabled]="!dirty() || saving()"
-      >
-        <i class="pi pi-save" [class.pi-spin]="saving()"></i>
-        <span>Save</span>
-      </button>
-    </div>
-  </div>
+  <app-page-header title="Topology" subtitle="Visual service-to-server mapping">
+    <p-button actions label="Auto Layout" icon="pi pi-th-large" [text]="true" severity="secondary" (onClick)="autoLayout()" pTooltip="Reset layout" />
+    <p-button actions label="Reload" icon="pi pi-refresh" [text]="true" severity="secondary" (onClick)="loadData()" pTooltip="Reload data" />
+    <p-button actions label="Save" icon="pi pi-save" (onClick)="save()" [disabled]="!dirty() || saving()" [loading]="saving()" />
+  </app-page-header>
 
   @if (loading()) {
     <div class="flex gap-8 p-8 flex-wrap bg-bg-secondary border border-border-primary rounded-xl">
@@ -32,16 +13,11 @@
       }
     </div>
   } @else if (error()) {
-    <div class="flex justify-center p-8 bg-bg-secondary border border-border-primary rounded-xl">
-      <p-message severity="error" [text]="error()!" />
-    </div>
+    <app-error-banner [message]="error()!" (retry)="loadData()" />
   } @else {
     <div class="p-0 overflow-auto relative bg-bg-secondary border border-border-primary rounded-xl">
       @if (services().length === 0 && servers().length === 0) {
-        <div class="flex flex-col items-center justify-center gap-4 py-16 px-8 text-text-muted">
-          <i class="pi pi-sitemap text-5xl opacity-30"></i>
-          <p class="text-center max-w-[400px] m-0 text-sm">No services or servers found. Add services in docker-compose.yml and servers in servers.yml.</p>
-        </div>
+        <app-empty-state icon="pi pi-sitemap" title="No topology data" description="No services or servers found. Add services in docker-compose.yml and servers in servers.yml." />
       } @else {
         <div class="topology-canvas" #canvas
              [style.width.px]="canvasWidth()"
@@ -153,9 +129,7 @@
               <div class="topology-card__header">
                 <i class="pi pi-server"></i>
                 <span class="topology-card__name">{{ srv.name }}</span>
-                <span class="topology-card__role" [class.topology-card__role--manager]="srv.role === 'manager'">
-                  {{ srv.role }}
-                </span>
+                <p-tag [value]="srv.role" [severity]="roleSeverity(srv.role)" />
               </div>
               <div class="topology-card__body">
                 @if (srv.host) {

@@ -1,27 +1,12 @@
 <div class="flex flex-col gap-6 animate-fade-in">
   <!-- Page Header -->
-  <div class="flex justify-between items-start gap-4 flex-wrap">
-    <div>
-      <h1 class="m-0 text-2xl font-semibold text-text-primary">Accessories</h1>
-      <p class="mt-1 mb-0 text-sm text-text-muted">Database and auxiliary services managed alongside your app</p>
-    </div>
-    <div class="flex items-center gap-3">
-      <button class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-border-primary bg-bg-tertiary text-text-primary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:border-border-secondary disabled:opacity-50 disabled:cursor-not-allowed" (click)="refresh()" [disabled]="loading()">
-        <i class="pi pi-refresh" [class.pi-spin]="loading()"></i>
-        <span>Refresh</span>
-      </button>
-    </div>
-  </div>
+  <app-page-header title="Accessories" subtitle="Database and auxiliary services managed alongside your app">
+    <p-button actions label="Refresh" icon="pi pi-refresh" severity="secondary" [outlined]="true" (onClick)="refresh()" [disabled]="loading()" [loading]="loading()" />
+  </app-page-header>
 
   <!-- Error -->
   @if (error()) {
-    <div class="flex items-center gap-3 px-4 py-3 rounded-lg bg-error-muted border border-[rgba(239,68,68,0.2)] text-error text-sm">
-      <i class="pi pi-exclamation-triangle text-base shrink-0"></i>
-      <span class="flex-1">{{ error() }}</span>
-      <button class="inline-flex items-center justify-center p-2 rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary" (click)="refresh()">
-        <i class="pi pi-refresh text-base"></i>
-      </button>
-    </div>
+    <app-error-banner [message]="error()!" (retry)="refresh()" />
   }
 
   <!-- Loading -->
@@ -47,27 +32,31 @@
       }
     </div>
   } @else if (accessories().length === 0) {
-    <div class="flex flex-col items-center justify-center py-16 px-8 text-center text-text-muted">
-      <i class="pi pi-database text-5xl mb-4 opacity-30"></i>
-      <h3 class="m-0 mb-2 text-lg font-medium text-text-secondary">No accessories configured</h3>
-      <p class="m-0 text-sm">Add accessories to your <code>config.yml</code> to manage databases and other services.</p>
-      <a routerLink="/settings" class="inline-flex items-center justify-center gap-2 mt-4 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-accent text-white no-underline cursor-pointer transition-all duration-150 hover:bg-accent-hover">
+    <app-empty-state icon="pi pi-database" title="No accessories configured" description="Add accessories to your config.yml to manage databases and other services.">
+      <a routerLink="/settings" class="btn-primary no-underline">
         <i class="pi pi-cog"></i>
         <span>Go to Settings</span>
       </a>
-    </div>
+    </app-empty-state>
   } @else {
-    <div class="grid grid-cols-[repeat(auto-fill,minmax(380px,1fr))] gap-4">
-      @for (acc of accessories(); track acc.name) {
-        <app-accessory-card
-          [accessory]="acc"
-          [actionLoading]="actionLoading()"
-          (restart)="onRestart($event)"
-          (stop)="onStop($event)"
-          (viewLogs)="onViewLogs($event)"
-        />
-      }
-    </div>
+    <!-- Search -->
+    <app-search-filter placeholder="Filter accessories..." (search)="searchQuery.set($event)" />
+
+    @if (filteredAccessories().length === 0) {
+      <app-empty-state icon="pi pi-search" title="No matching accessories" description="Try adjusting your search query." />
+    } @else {
+      <div class="grid grid-cols-[repeat(auto-fill,minmax(380px,1fr))] gap-4">
+        @for (acc of filteredAccessories(); track acc.name) {
+          <app-accessory-card
+            [accessory]="acc"
+            [actionLoading]="actionLoading()"
+            (restart)="onRestart($event)"
+            (stop)="onStop($event)"
+            (viewLogs)="onViewLogs($event)"
+          />
+        }
+      </div>
+    }
   }
 
   <!-- Logs Dialog -->

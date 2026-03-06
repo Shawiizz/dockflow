@@ -2,12 +2,13 @@ import { Component, input, output, ChangeDetectionStrategy } from '@angular/core
 import { FormsModule } from '@angular/forms';
 import { TagModule } from 'primeng/tag';
 import { CheckboxModule } from 'primeng/checkbox';
+import { ButtonModule } from 'primeng/button';
 import type { PruneResult } from '@api-types';
 
 @Component({
   selector: 'app-prune-section',
   standalone: true,
-  imports: [FormsModule, TagModule, CheckboxModule],
+  imports: [FormsModule, TagModule, CheckboxModule, ButtonModule],
   templateUrl: './prune-section.component.html',
   styleUrl: './prune-section.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

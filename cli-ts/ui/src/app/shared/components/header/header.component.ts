@@ -6,7 +6,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter } from 'rxjs';
 import { SelectModule } from 'primeng/select';
 import { TooltipModule } from 'primeng/tooltip';
-import { RippleModule } from 'primeng/ripple';
+import { ButtonModule } from 'primeng/button';
 import { SkeletonModule } from 'primeng/skeleton';
 import { EnvironmentService } from '@core/services/environment.service';
 import { ProjectInfoService } from '@core/services/project-info.service';
@@ -15,13 +15,14 @@ import { ThemeService } from '@core/services/theme.service';
 @Component({
   selector: 'app-header',
   standalone: true,
-  imports: [NgClass, FormsModule, SelectModule, TooltipModule, RippleModule, SkeletonModule],
+  imports: [NgClass, FormsModule, SelectModule, TooltipModule, ButtonModule, SkeletonModule],
   templateUrl: './header.component.html',
   styleUrl: './header.component.scss',
 })
 export class HeaderComponent implements OnInit {
   sidebarCollapsed = input(false);
   toggleSidebar = output<void>();
+  isMobile = input(false);
 
   private router = inject(Router);
   private destroyRef = inject(DestroyRef);

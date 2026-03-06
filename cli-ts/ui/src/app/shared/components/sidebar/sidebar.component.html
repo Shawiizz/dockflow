@@ -1,54 +1,104 @@
-<aside
-  class="flex flex-col h-full bg-bg-secondary border-r border-border-primary overflow-hidden"
-  [style.width.px]="collapsed() ? 60 : 220"
-  style="transition: width 0.2s ease"
->
-  <!-- Logo -->
-  <div class="flex items-center gap-3 h-14 px-4 border-b border-border-primary shrink-0 overflow-hidden">
-    <div class="flex items-center justify-center size-8 shrink-0">
-      <img src="logo.svg" alt="Dockflow" class="size-8" />
+<!-- Mobile: PrimeNG Drawer -->
+@if (isMobile()) {
+  <p-drawer
+    [visible]="mobileOpen()"
+    (visibleChange)="mobileOpenChange.emit($event)"
+    [modal]="true"
+    [showCloseIcon]="false"
+    position="left"
+    [style]="{ width: '260px' }"
+    styleClass="sidebar-drawer"
+  >
+    <ng-template #header>
+      <div class="flex items-center gap-3 px-1">
+        <img src="logo.svg" alt="Dockflow" class="size-8" />
+        <span class="text-lg font-semibold text-text-primary">Dockflow</span>
+      </div>
+    </ng-template>
+    <ng-container *ngTemplateOutlet="navContent; context: { $implicit: false }" />
+  </p-drawer>
+}
+
+<!-- Desktop: Static sidebar -->
+@if (!isMobile()) {
+  <aside
+    class="flex flex-col h-full bg-bg-secondary border-r border-border-primary overflow-hidden"
+    [style.width.px]="collapsed() ? 60 : 220"
+    style="transition: width 0.2s ease"
+    role="navigation"
+    aria-label="Main navigation"
+  >
+    <!-- Logo -->
+    <div class="flex items-center gap-3 h-14 px-4 border-b border-border-primary shrink-0 overflow-hidden">
+      <div class="flex items-center justify-center size-8 shrink-0">
+        <img src="logo.svg" alt="Dockflow" class="size-8" />
+      </div>
+      <span
+        class="text-lg font-semibold text-text-primary whitespace-nowrap overflow-hidden transition-all duration-150"
+        [style.opacity]="collapsed() ? 0 : 1"
+        [style.max-width.px]="collapsed() ? 0 : 200"
+      >Dockflow</span>
     </div>
-    <span
-      class="text-lg font-semibold text-text-primary whitespace-nowrap overflow-hidden transition-all duration-150"
-      [style.opacity]="collapsed() ? 0 : 1"
-      [style.max-width.px]="collapsed() ? 0 : 200"
-    >Dockflow</span>
-  </div>
 
-  <!-- Navigation -->
-  <nav class="flex-1 py-3 px-2 overflow-y-auto overflow-x-hidden">
-    <ul class="flex flex-col gap-1 list-none m-0 p-0">
-      @for (item of navItems; track item.route) {
-        <li>
-          <a
-            [routerLink]="item.route"
-            routerLinkActive="!bg-accent-muted !text-accent"
-            [routerLinkActiveOptions]="{ exact: item.route === '/' }"
-            class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-text-secondary no-underline transition-all duration-150 hover:bg-bg-hover hover:text-text-primary whitespace-nowrap overflow-hidden"
-            [pTooltip]="collapsed() ? item.label : ''"
-            tooltipPosition="right"
-            pRipple
+    <!-- Navigation -->
+    <ng-container *ngTemplateOutlet="navContent; context: { $implicit: collapsed() }" />
+
+    <!-- Collapse Button -->
+    <div class="p-2 border-t border-border-primary shrink-0">
+      <p-button
+        [icon]="collapsed() ? 'pi pi-angle-right' : 'pi pi-angle-left'"
+        [text]="true"
+        severity="secondary"
+        (onClick)="collapsedChange.emit(!collapsed())"
+        [attr.aria-label]="collapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+        [attr.aria-expanded]="!collapsed()"
+        styleClass="w-full"
+      />
+    </div>
+  </aside>
+}
+
+<!-- Shared nav template -->
+<ng-template #navContent let-isCollapsed>
+  <nav class="flex-1 py-3 px-2 overflow-y-auto overflow-x-hidden flex flex-col">
+    @for (group of navGroups; track group.label ?? $index) {
+      <div [class]="group.separator ? 'mt-auto pt-2' : ''">
+        @if (group.separator) {
+          <div class="mx-3 mb-2 border-t border-border-primary"></div>
+        }
+        @if (group.label) {
+          <div
+            class="px-3 pt-3 pb-1 overflow-hidden transition-all duration-150"
+            [style.opacity]="isCollapsed ? 0 : 1"
+            [style.max-width.px]="isCollapsed ? 0 : 200"
+            [style.height]="isCollapsed ? '0px' : 'auto'"
           >
-            <i [class]="item.icon" class="text-base shrink-0"></i>
-            <span
-              class="overflow-hidden transition-all duration-150"
-              [style.opacity]="collapsed() ? 0 : 1"
-              [style.max-width.px]="collapsed() ? 0 : 200"
-            >{{ item.label }}</span>
-          </a>
-        </li>
-      }
-    </ul>
+            <span class="text-[0.625rem] font-semibold uppercase tracking-widest text-text-muted">{{ group.label }}</span>
+          </div>
+        }
+        <ul class="flex flex-col gap-0.5 list-none m-0 p-0">
+          @for (item of group.items; track item.route) {
+            <li>
+              <a
+                [routerLink]="item.route"
+                routerLinkActive="!bg-accent-muted !text-accent"
+                [routerLinkActiveOptions]="{ exact: item.route === '/' }"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-text-secondary no-underline transition-all duration-150 hover:bg-bg-hover hover:text-text-primary whitespace-nowrap overflow-hidden"
+                [pTooltip]="isCollapsed ? item.label : ''"
+                tooltipPosition="right"
+                pRipple
+              >
+                <i [class]="item.icon" class="text-base shrink-0"></i>
+                <span
+                  class="overflow-hidden transition-all duration-150"
+                  [style.opacity]="isCollapsed ? 0 : 1"
+                  [style.max-width.px]="isCollapsed ? 0 : 200"
+                >{{ item.label }}</span>
+              </a>
+            </li>
+          }
+        </ul>
+      </div>
+    }
   </nav>
-
-  <!-- Collapse Button -->
-  <div class="p-2 border-t border-border-primary shrink-0">
-    <button
-      class="flex items-center justify-center w-full h-9 rounded-lg border-none bg-transparent text-text-muted cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary"
-      (click)="collapsedChange.emit(!collapsed())"
-      pRipple
-    >
-      <i [class]="collapsed() ? 'pi pi-angle-right' : 'pi pi-angle-left'" class="text-sm"></i>
-    </button>
-  </div>
-</aside>
+</ng-template>

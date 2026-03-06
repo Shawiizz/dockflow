@@ -5,11 +5,18 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
 import { SkeletonModule } from 'primeng/skeleton';
+import { ButtonModule } from 'primeng/button';
+import { ConfirmPopupModule } from 'primeng/confirmpopup';
+import { ConfirmationService } from 'primeng/api';
 import { ApiService } from '@core/services/api.service';
 import { EnvironmentService } from '@core/services/environment.service';
 import { DataCacheService } from '@core/services/data-cache.service';
 import { pollUntilStateChange } from '@shared/utils/polling.utils';
 import { SshTerminalComponent } from '@shared/components/ssh-terminal/ssh-terminal.component';
+import { PageHeaderComponent } from '@shared/components/page-header/page-header.component';
+import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.component';
+import { ErrorBannerComponent } from '@shared/components/error-banner/error-banner.component';
+import { SearchFilterComponent } from '@shared/components/search-filter/search-filter.component';
 import { ServiceCardComponent } from './components/service-card/service-card.component';
 import { ScaleDialogComponent } from './components/scale-dialog/scale-dialog.component';
 import type { ServiceInfo } from '@api-types';
@@ -17,7 +24,23 @@ import type { ServiceInfo } from '@api-types';
 @Component({
   selector: 'app-services',
   standalone: true,
-  imports: [RouterModule, FormsModule, TagModule, TooltipModule, SkeletonModule, SshTerminalComponent, ServiceCardComponent, ScaleDialogComponent],
+  imports: [
+    RouterModule,
+    FormsModule,
+    TagModule,
+    TooltipModule,
+    SkeletonModule,
+    ButtonModule,
+    ConfirmPopupModule,
+    SshTerminalComponent,
+    PageHeaderComponent,
+    EmptyStateComponent,
+    ErrorBannerComponent,
+    SearchFilterComponent,
+    ServiceCardComponent,
+    ScaleDialogComponent,
+  ],
+  providers: [ConfirmationService],
   templateUrl: './services.component.html',
   styleUrl: './services.component.scss',
 })
@@ -25,6 +48,7 @@ export class ServicesComponent {
   private apiService = inject(ApiService);
   private destroyRef = inject(DestroyRef);
   private cache = inject(DataCacheService);
+  private confirmationService = inject(ConfirmationService);
 
   envService = inject(EnvironmentService);
 
@@ -38,12 +62,18 @@ export class ServicesComponent {
   scaleTarget = signal<ServiceInfo | null>(null);
   terminalVisible = signal(false);
   terminalService = signal<ServiceInfo | null>(null);
+  searchQuery = signal('');
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private stopPollingFn: (() => void) | null = null;
   private loadVersion = 0;
 
   runningCount = computed(() => this.services().filter(s => s.state === 'running').length);
   stoppedCount = computed(() => this.services().filter(s => s.state !== 'running').length);
+  filteredServices = computed(() => {
+    const query = this.searchQuery().toLowerCase();
+    if (!query) return this.services();
+    return this.services().filter(s => s.name.toLowerCase().includes(query));
+  });
 
   constructor() {
     effect(() => {
@@ -205,6 +235,37 @@ export class ServicesComponent {
           this.error.set(err?.error?.error || `Failed to rollback ${service.name}`);
         },
       });
+  }
+
+  requestConfirm(type: string, { event, service }: { event: Event; service: ServiceInfo }) {
+    const isStopping = type === 'stop';
+    this.confirmationService.confirm({
+      target: event.currentTarget as EventTarget,
+      message: `Are you sure you want to ${type} ${service.name}?`,
+      icon: isStopping ? 'pi pi-exclamation-triangle' : 'pi pi-info-circle',
+      rejectButtonProps: {
+        label: 'Cancel',
+        severity: 'secondary',
+        outlined: true,
+      },
+      acceptButtonProps: {
+        label: type.charAt(0).toUpperCase() + type.slice(1),
+        severity: isStopping ? 'danger' : 'warn',
+      },
+      accept: () => {
+        switch (type) {
+          case 'restart':
+            this.onRestart(service);
+            break;
+          case 'stop':
+            this.onStop(service);
+            break;
+          case 'rollback':
+            this.onRollback(service);
+            break;
+        }
+      },
+    });
   }
 
   onExec(service: ServiceInfo) {

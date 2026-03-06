@@ -1,30 +1,30 @@
 <header class="flex items-center justify-between h-14 px-4 bg-bg-secondary border-b border-border-primary">
   <!-- Left side -->
-  <div class="flex items-center gap-4">
+  <div class="flex items-center gap-4 min-w-0">
     <!-- Menu toggle -->
-    <button
-      class="flex items-center justify-center size-9 border-none rounded-lg bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary"
-      (click)="toggleSidebar.emit()"
-      pTooltip="Toggle sidebar"
-      pRipple
-    >
-      <i class="pi pi-bars"></i>
-    </button>
+    <p-button
+      icon="pi pi-bars"
+      [text]="true"
+      severity="secondary"
+      [rounded]="true"
+      (onClick)="toggleSidebar.emit()"
+      [ariaLabel]="isMobile() ? 'Open menu' : 'Toggle sidebar'"
+    />
 
     <!-- Project name & page title -->
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 min-w-0">
       @if (projectInfoService.loadingProject()) {
         <p-skeleton width="6rem" height="1rem" />
       } @else {
-        <span class="text-base font-semibold text-text-primary">{{ projectInfoService.projectInfo()?.projectName }}</span>
-        <span class="text-sm text-text-muted">/</span>
-        <span class="text-sm font-medium text-text-secondary">{{ pageTitle() }}</span>
+        <span class="text-base font-semibold text-text-primary truncate max-sm:hidden">{{ projectInfoService.projectInfo()?.projectName }}</span>
+        <span class="text-sm text-text-muted max-sm:hidden">/</span>
+        <span class="text-sm font-medium text-text-secondary truncate">{{ pageTitle() }}</span>
       }
     </div>
   </div>
 
   <!-- Right side -->
-  <div class="flex items-center gap-2">
+  <div class="flex items-center gap-2 shrink-0">
     <!-- Environment selector -->
     @if (envService.environments().length > 0) {
       <p-select
@@ -33,51 +33,57 @@
         (ngModelChange)="envService.selected.set($event)"
         optionLabel="label"
         optionValue="value"
-        placeholder="Environment"
+        placeholder="Env"
         size="small"
-        class="min-w-40"
+        [class]="isMobile() ? 'min-w-24' : 'min-w-40'"
       />
     }
 
     <!-- Connection status -->
     @if (projectInfoService.loadingConnection()) {
-      <div class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-accent-muted text-accent transition-all duration-300">
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-accent-muted text-accent transition-all duration-300" role="status" aria-live="polite">
         <i class="pi pi-spinner animate-spin-fast"></i>
-        <span class="whitespace-nowrap">Connecting...</span>
+        <span class="whitespace-nowrap max-sm:hidden">Connecting...</span>
       </div>
     } @else {
       <div
         class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-300"
         [ngClass]="projectInfoService.connectionInfo()?.ready ? 'bg-success-muted text-success' : 'bg-warning-muted text-warning'"
+        [pTooltip]="projectInfoService.connectionInfo()?.ready ? 'Connected' : 'No credentials'"
+        role="status"
+        aria-live="polite"
       >
         <span
           class="size-1.5 rounded-full"
           [ngClass]="projectInfoService.connectionInfo()?.ready ? 'bg-success' : 'bg-warning'"
         ></span>
-        <span class="whitespace-nowrap">
+        <span class="whitespace-nowrap max-sm:hidden">
           {{ projectInfoService.connectionInfo()?.ready ? 'Connected' : 'No credentials' }}
         </span>
       </div>
     }
 
     <!-- Theme toggle -->
-    <button
-      class="flex items-center justify-center size-9 border-none rounded-lg bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary"
-      (click)="themeService.toggle()"
+    <p-button
+      [icon]="themeService.isDark() ? 'pi pi-sun' : 'pi pi-moon'"
+      [text]="true"
+      severity="secondary"
+      [rounded]="true"
+      (onClick)="themeService.toggle()"
       [pTooltip]="themeService.isDark() ? 'Light mode' : 'Dark mode'"
-      pRipple
-    >
-      <i [class]="themeService.isDark() ? 'pi pi-sun' : 'pi pi-moon'"></i>
-    </button>
+      [ariaLabel]="themeService.isDark() ? 'Switch to light mode' : 'Switch to dark mode'"
+    />
 
     <!-- Refresh -->
-    <button
-      class="flex items-center justify-center size-9 border-none rounded-lg bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary"
-      (click)="refresh()"
+    <p-button
+      icon="pi pi-refresh"
+      [text]="true"
+      severity="secondary"
+      [rounded]="true"
+      (onClick)="refresh()"
       pTooltip="Refresh"
-      pRipple
-    >
-      <i class="pi pi-refresh" [class.pi-spin]="projectInfoService.refreshing()"></i>
-    </button>
+      ariaLabel="Refresh data"
+      [loading]="projectInfoService.refreshing()"
+    />
   </div>
 </header>

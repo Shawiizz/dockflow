@@ -3,11 +3,17 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TooltipModule } from 'primeng/tooltip';
 import { SkeletonModule } from 'primeng/skeleton';
 import { MessageModule } from 'primeng/message';
+import { ButtonModule } from 'primeng/button';
 import { MessageService, ConfirmationService } from 'primeng/api';
 import { ToastModule } from 'primeng/toast';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
+import { TagModule } from 'primeng/tag';
 import { ApiService } from '@core/services/api.service';
 import type { TopologyConnection, TopologyService, TopologyServer } from '@core/services/api.service';
+import { PageHeaderComponent } from '@shared/components/page-header/page-header.component';
+import { ErrorBannerComponent } from '@shared/components/error-banner/error-banner.component';
+import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.component';
+import { roleSeverity } from '@shared/utils/status.utils';
 
 const CARD_WIDTH = 220;
 const CARD_HEIGHT = 120;
@@ -40,8 +46,13 @@ interface DragState {
     TooltipModule,
     SkeletonModule,
     MessageModule,
+    ButtonModule,
     ToastModule,
     ConfirmDialogModule,
+    TagModule,
+    PageHeaderComponent,
+    ErrorBannerComponent,
+    EmptyStateComponent,
   ],
   providers: [MessageService, ConfirmationService],
   templateUrl: './topology.component.html',
@@ -54,6 +65,8 @@ export class TopologyComponent implements OnInit, OnDestroy {
   private destroyRef = inject(DestroyRef);
 
   canvasRef = viewChild<ElementRef<HTMLDivElement>>('canvas');
+
+  roleSeverity = roleSeverity;
 
   loading = signal(true);
   error = signal<string | null>(null);

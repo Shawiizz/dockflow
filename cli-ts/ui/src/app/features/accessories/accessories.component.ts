@@ -1,14 +1,19 @@
-import { Component, inject, signal, DestroyRef, effect } from '@angular/core';
+import { Component, inject, signal, computed, DestroyRef, effect } from '@angular/core';
 import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
 import { SkeletonModule } from 'primeng/skeleton';
+import { ButtonModule } from 'primeng/button';
 import { ApiService } from '@core/services/api.service';
 import { EnvironmentService } from '@core/services/environment.service';
 import { DataCacheService } from '@core/services/data-cache.service';
 import { pollUntilStateChange } from '@shared/utils/polling.utils';
+import { PageHeaderComponent } from '@shared/components/page-header/page-header.component';
+import { ErrorBannerComponent } from '@shared/components/error-banner/error-banner.component';
+import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.component';
+import { SearchFilterComponent } from '@shared/components/search-filter/search-filter.component';
 import { AccessoryCardComponent } from './components/accessory-card/accessory-card.component';
 import { AccessoryLogsDialogComponent } from './components/accessory-logs-dialog/accessory-logs-dialog.component';
 import type { AccessoryStatusInfo, LogEntry } from '@api-types';
@@ -16,7 +21,7 @@ import type { AccessoryStatusInfo, LogEntry } from '@api-types';
 @Component({
   selector: 'app-accessories',
   standalone: true,
-  imports: [RouterModule, FormsModule, TagModule, TooltipModule, SkeletonModule, AccessoryCardComponent, AccessoryLogsDialogComponent],
+  imports: [RouterModule, FormsModule, TagModule, TooltipModule, SkeletonModule, ButtonModule, PageHeaderComponent, ErrorBannerComponent, EmptyStateComponent, SearchFilterComponent, AccessoryCardComponent, AccessoryLogsDialogComponent],
   templateUrl: './accessories.component.html',
   styleUrl: './accessories.component.scss',
 })
@@ -31,6 +36,17 @@ export class AccessoriesComponent {
   accessories = signal<AccessoryStatusInfo[]>([]);
   error = signal<string | null>(null);
   actionLoading = signal<string | null>(null);
+  searchQuery = signal('');
+
+  filteredAccessories = computed(() => {
+    const query = this.searchQuery().toLowerCase().trim();
+    if (!query) return this.accessories();
+    return this.accessories().filter(acc =>
+      acc.name.toLowerCase().includes(query) ||
+      acc.image?.toLowerCase().includes(query) ||
+      acc.status?.toLowerCase().includes(query)
+    );
+  });
 
   // Logs dialog
   logsDialogVisible = signal(false);

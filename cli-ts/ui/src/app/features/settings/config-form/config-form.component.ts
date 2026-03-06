@@ -6,6 +6,7 @@ import { SelectModule } from 'primeng/select';
 import { ToggleSwitchModule } from 'primeng/toggleswitch';
 import { TextareaModule } from 'primeng/textarea';
 import { TooltipModule } from 'primeng/tooltip';
+import { ButtonModule } from 'primeng/button';
 
 interface HealthEndpoint {
   url: string;
@@ -36,6 +37,7 @@ interface TemplateEntry {
     ToggleSwitchModule,
     TextareaModule,
     TooltipModule,
+    ButtonModule,
   ],
   templateUrl: './config-form.component.html',
   styleUrl: './config-form.component.scss',

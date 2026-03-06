@@ -10,11 +10,13 @@ import { VisibilityService } from '@core/services/visibility.service';
 import type { ServiceInfo, LogEntry } from '@api-types';
 import { LogControlsComponent } from './components/log-controls/log-controls.component';
 import { LogViewerComponent } from './components/log-viewer/log-viewer.component';
+import { PageHeaderComponent } from '@shared/components/page-header/page-header.component';
+import { ErrorBannerComponent } from '@shared/components/error-banner/error-banner.component';
 
 @Component({
   selector: 'app-logs',
   standalone: true,
-  imports: [SkeletonModule, TooltipModule, LogControlsComponent, LogViewerComponent],
+  imports: [SkeletonModule, TooltipModule, LogControlsComponent, LogViewerComponent, PageHeaderComponent, ErrorBannerComponent],
   templateUrl: './logs.component.html',
   styleUrl: './logs.component.scss',
 })

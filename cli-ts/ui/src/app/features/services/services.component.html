@@ -1,21 +1,17 @@
 <div class="flex flex-col gap-6 animate-fade-in">
   <!-- Page Header -->
-  <div class="flex justify-between items-start gap-4 flex-wrap">
-    <div>
-      <h1 class="m-0 text-2xl font-semibold text-text-primary">Services</h1>
-      <p class="mt-1 mb-0 text-sm text-text-muted">Docker Swarm services {{ stackName() ? '(' + stackName() + ')' : '' }}</p>
-    </div>
-    <div class="flex items-center gap-2">
-      <button
-        class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-border-primary bg-bg-tertiary text-text-primary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:border-border-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-        (click)="refresh()"
-        [disabled]="loading()"
-      >
-        <i class="pi pi-refresh" [class.pi-spin]="loading()"></i>
-        <span>Refresh</span>
-      </button>
-    </div>
-  </div>
+  <app-page-header title="Services" [subtitle]="'Docker Swarm services ' + (stackName() ? '(' + stackName() + ')' : '')">
+    <ng-container actions>
+      <p-button
+        label="Refresh"
+        icon="pi pi-refresh"
+        severity="secondary"
+        [outlined]="true"
+        [loading]="loading()"
+        (onClick)="refresh()"
+      />
+    </ng-container>
+  </app-page-header>
 
   <!-- Stats -->
   @if (!loading() && services().length > 0) {
@@ -35,16 +31,7 @@
 
   <!-- Error -->
   @if (error()) {
-    <div class="flex items-center gap-2 p-3 bg-error-muted text-error rounded-lg">
-      <i class="pi pi-exclamation-triangle"></i>
-      <span class="text-sm">{{ error() }}</span>
-      <button
-        class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
-        (click)="refresh()"
-      >
-        <i class="pi pi-refresh"></i>
-      </button>
-    </div>
+    <app-error-banner [message]="error()!" (retry)="refresh()" />
   }
 
   <!-- Loading -->
@@ -62,26 +49,29 @@
       }
     </div>
   } @else if (services().length === 0 && !error()) {
-    <div class="flex flex-col items-center justify-center gap-4 py-16 px-8 text-text-muted">
-      <i class="pi pi-th-large text-5xl opacity-30"></i>
-      <h3 class="m-0 text-base font-medium">No services running</h3>
-      <p class="m-0 text-sm text-center max-w-[400px]">Deploy your stack to see services here.</p>
-    </div>
+    <app-empty-state icon="pi pi-th-large" title="No services running" description="Deploy your stack to see services here." />
   } @else {
-    <div class="grid grid-cols-3 gap-4 max-lg:grid-cols-2 max-sm:grid-cols-1">
-      @for (service of services(); track service.id) {
-        <app-service-card
-          [service]="service"
-          [actionLoading]="actionLoading()"
-          (restart)="onRestart($event)"
-          (stop)="onStop($event)"
-          (start)="onStart($event)"
-          (scale)="onScale($event)"
-          (rollback)="onRollback($event)"
-          (exec)="onExec($event)"
-        />
-      }
-    </div>
+    <!-- Search -->
+    <app-search-filter placeholder="Search services..." (search)="searchQuery.set($event)" />
+
+    @if (filteredServices().length === 0) {
+      <app-empty-state icon="pi pi-search" title="No matching services" description="Try a different search term." />
+    } @else {
+      <div class="grid grid-cols-3 gap-4 max-lg:grid-cols-2 max-sm:grid-cols-1">
+        @for (service of filteredServices(); track service.id) {
+          <app-service-card
+            [service]="service"
+            [actionLoading]="actionLoading()"
+            (restart)="requestConfirm('restart', $event)"
+            (stop)="requestConfirm('stop', $event)"
+            (start)="onStart($event)"
+            (scale)="onScale($event)"
+            (rollback)="requestConfirm('rollback', $event)"
+            (exec)="onExec($event)"
+          />
+        }
+      </div>
+    }
   }
 
   <!-- Scale Dialog -->
@@ -91,6 +81,9 @@
     [loading]="!!actionLoading()"
     (confirm)="confirmScale($event)"
   />
+
+  <!-- Confirm Popup -->
+  <p-confirmpopup />
 
   <!-- Exec Terminal -->
   @if (terminalService()) {

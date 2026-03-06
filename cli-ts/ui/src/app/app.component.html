@@ -3,6 +3,9 @@
   <app-sidebar
     [collapsed]="sidebarCollapsed()"
     (collapsedChange)="sidebarCollapsed.set($event)"
+    [isMobile]="isMobile()"
+    [mobileOpen]="mobileOpen()"
+    (mobileOpenChange)="mobileOpen.set($event)"
   />
 
   <!-- Main Content -->
@@ -10,11 +13,12 @@
     <!-- Header -->
     <app-header
       [sidebarCollapsed]="sidebarCollapsed()"
-      (toggleSidebar)="sidebarCollapsed.set(!sidebarCollapsed())"
+      (toggleSidebar)="toggleMobileSidebar()"
+      [isMobile]="isMobile()"
     />
 
     <!-- Page Content -->
-    <main class="flex-1 overflow-auto p-6 bg-bg-primary" style="scrollbar-gutter: stable">
+    <main class="flex-1 overflow-auto p-6 max-sm:p-4 bg-bg-primary" style="scrollbar-gutter: stable">
       <router-outlet />
     </main>
   </div>

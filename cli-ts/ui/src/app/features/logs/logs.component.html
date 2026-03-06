@@ -1,24 +1,10 @@
 <div class="flex flex-col gap-4 h-full animate-fade-in">
   <!-- Page Header -->
-  <div class="flex justify-between items-start gap-4 flex-wrap">
-    <div>
-      <h1 class="m-0 text-2xl font-semibold text-text-primary">Logs</h1>
-      <p class="mt-1 mb-0 text-sm text-text-muted">View Docker service logs</p>
-    </div>
-  </div>
+  <app-page-header title="Logs" subtitle="View Docker service logs" />
 
   <!-- Services Error -->
   @if (servicesError()) {
-    <div class="flex items-center gap-2 p-3 bg-error-muted text-error rounded-lg">
-      <i class="pi pi-exclamation-triangle"></i>
-      <span class="text-sm">{{ servicesError() }}</span>
-      <button
-        class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
-        (click)="loadServiceList(envService.selectedOrUndefined())"
-      >
-        <i class="pi pi-refresh"></i>
-      </button>
-    </div>
+    <app-error-banner [message]="servicesError()!" (retry)="loadServiceList(envService.selectedOrUndefined())" />
   }
 
   <!-- Controls -->
@@ -39,16 +25,7 @@
 
   <!-- Logs Error -->
   @if (error()) {
-    <div class="flex items-center gap-2 p-3 bg-error-muted text-error rounded-lg">
-      <i class="pi pi-exclamation-triangle"></i>
-      <span class="text-sm">{{ error() }}</span>
-      <button
-        class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
-        (click)="loadLogs()"
-      >
-        <i class="pi pi-refresh"></i>
-      </button>
-    </div>
+    <app-error-banner [message]="error()!" (retry)="loadLogs()" />
   }
 
   <!-- Log Viewer -->

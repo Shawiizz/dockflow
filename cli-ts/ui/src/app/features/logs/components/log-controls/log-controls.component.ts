@@ -3,11 +3,12 @@ import { FormsModule } from '@angular/forms';
 import { SelectModule } from 'primeng/select';
 import { ToggleSwitchModule } from 'primeng/toggleswitch';
 import { SkeletonModule } from 'primeng/skeleton';
+import { ButtonModule } from 'primeng/button';
 
 @Component({
   selector: 'app-log-controls',
   standalone: true,
-  imports: [FormsModule, SelectModule, ToggleSwitchModule, SkeletonModule],
+  imports: [FormsModule, SelectModule, ToggleSwitchModule, SkeletonModule, ButtonModule],
   templateUrl: './log-controls.component.html',
   styleUrl: './log-controls.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -5,9 +5,13 @@ import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
 import { SkeletonModule } from 'primeng/skeleton';
+import { ButtonModule } from 'primeng/button';
 import { EnvironmentService } from '@core/services/environment.service';
 import { ServerStatusService } from '@core/services/server-status.service';
 import { SshTerminalComponent } from '@shared/components/ssh-terminal/ssh-terminal.component';
+import { PageHeaderComponent } from '@shared/components/page-header/page-header.component';
+import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.component';
+import { ErrorBannerComponent } from '@shared/components/error-banner/error-banner.component';
 import { serverStatusSeverity, serverStatusLabel, serverStatusIcon, swarmSeverity, roleSeverity } from '@shared/utils/status.utils';
 
 @Component({
@@ -20,7 +24,11 @@ import { serverStatusSeverity, serverStatusLabel, serverStatusIcon, swarmSeverit
     TagModule,
     TooltipModule,
     SkeletonModule,
+    ButtonModule,
     SshTerminalComponent,
+    PageHeaderComponent,
+    EmptyStateComponent,
+    ErrorBannerComponent,
   ],
   templateUrl: './servers.component.html',
   styleUrl: './servers.component.scss',

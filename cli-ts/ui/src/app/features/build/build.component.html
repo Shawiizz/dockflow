@@ -1,11 +1,6 @@
 <div class="flex flex-col gap-6 animate-fade-in">
   <!-- Page Header -->
-  <div class="flex justify-between items-start gap-4 flex-wrap">
-    <div>
-      <h1 class="m-0 text-2xl font-semibold text-text-primary">Build</h1>
-      <p class="mt-1 mb-0 text-sm text-text-muted">Build Docker images for your services</p>
-    </div>
-  </div>
+  <app-page-header title="Build" subtitle="Build Docker images for your services" />
 
   <div class="flex flex-col gap-4 p-6 bg-bg-secondary border border-border-primary rounded-xl">
     <div class="flex flex-wrap gap-4">
@@ -21,22 +16,19 @@
       </div>
     </div>
     <div class="flex gap-2">
-      <button
-        class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-accent text-white cursor-pointer transition-all duration-150 hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
-        (click)="startBuild()"
+      <p-button
+        [label]="building() ? 'Building...' : 'Build'"
+        icon="pi pi-hammer"
+        (onClick)="startBuild()"
         [disabled]="building() || !envService.selectedOrUndefined()"
-      >
-        <i class="pi pi-hammer"></i>
-        <span>{{ building() ? 'Building...' : 'Build' }}</span>
-      </button>
+      />
       @if (building()) {
-        <button
-          class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-error text-white cursor-pointer transition-all duration-150 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
-          (click)="cancelBuild()"
-        >
-          <i class="pi pi-times"></i>
-          <span>Cancel</span>
-        </button>
+        <p-button
+          label="Cancel"
+          icon="pi pi-times"
+          severity="danger"
+          (onClick)="cancelBuild()"
+        />
       }
     </div>
   </div>
@@ -46,14 +38,14 @@
       <div class="flex items-center justify-between px-4 py-3 border-b border-border-primary">
         <span class="text-sm font-medium text-text-primary">Output</span>
         @if (buildSuccess() === true) {
-          <p-tag value="Success" severity="success" [rounded]="true" />
+          <p-tag value="Success" severity="success" />
         } @else if (buildSuccess() === false) {
-          <p-tag value="Failed" severity="danger" [rounded]="true" />
+          <p-tag value="Failed" severity="danger" />
         } @else if (building()) {
-          <p-tag value="Running" severity="info" [rounded]="true" />
+          <p-tag value="Running" severity="info" />
         }
       </div>
-      <div #outputContainer class="bg-[#0a0a0a] text-[#fafafa] font-mono text-[0.8125rem] p-4 max-h-[30rem] overflow-y-auto whitespace-pre-wrap break-all">
+      <div #outputContainer class="bg-[#0a0a0a] text-[#fafafa] font-mono text-[0.8125rem] p-4 max-h-[30rem] overflow-y-auto whitespace-pre-wrap break-all" role="log" aria-live="polite" aria-label="Build output">
         @for (line of buildLogs(); track $index) {
           <div>{{ line }}</div>
         }

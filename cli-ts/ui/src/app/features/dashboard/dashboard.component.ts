@@ -1,6 +1,7 @@
 import { Component, inject, signal, computed, DestroyRef, effect } from '@angular/core';
 import { RouterModule } from '@angular/router';
 import { SkeletonModule } from 'primeng/skeleton';
+import { ButtonModule } from 'primeng/button';
 import { EnvironmentService } from '@core/services/environment.service';
 import { ProjectInfoService } from '@core/services/project-info.service';
 import { ServerStatusService } from '@core/services/server-status.service';
@@ -8,6 +9,8 @@ import { StatsCardComponent } from './components/stats-card/stats-card.component
 import { ServerCardComponent } from './components/server-card/server-card.component';
 import { WelcomeCardComponent } from './components/welcome-card/welcome-card.component';
 import { SshTerminalComponent } from '@shared/components/ssh-terminal/ssh-terminal.component';
+import { PageHeaderComponent } from '@shared/components/page-header/page-header.component';
+import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.component';
 
 @Component({
   selector: 'app-dashboard',
@@ -19,6 +22,9 @@ import { SshTerminalComponent } from '@shared/components/ssh-terminal/ssh-termin
     ServerCardComponent,
     WelcomeCardComponent,
     SshTerminalComponent,
+    PageHeaderComponent,
+    EmptyStateComponent,
+    ButtonModule,
   ],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',

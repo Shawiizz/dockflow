@@ -7,17 +7,21 @@ import { TooltipModule } from 'primeng/tooltip';
 import { SkeletonModule } from 'primeng/skeleton';
 import { InputTextModule } from 'primeng/inputtext';
 import { CheckboxModule } from 'primeng/checkbox';
+import { ButtonModule } from 'primeng/button';
 import { ApiService } from '@core/services/api.service';
 import { EnvironmentService } from '@core/services/environment.service';
 import { DataCacheService } from '@core/services/data-cache.service';
 import { OperationStateService } from '@core/services/operation-state.service';
 import { DeployEntryComponent } from './components/deploy-entry/deploy-entry.component';
+import { PageHeaderComponent } from '@shared/components/page-header/page-header.component';
+import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.component';
+import { ErrorBannerComponent } from '@shared/components/error-banner/error-banner.component';
 import type { DeployHistoryEntry } from '@api-types';
 
 @Component({
   selector: 'app-deploy',
   standalone: true,
-  imports: [FormsModule, SelectModule, TagModule, TooltipModule, SkeletonModule, InputTextModule, CheckboxModule, DeployEntryComponent],
+  imports: [FormsModule, SelectModule, TagModule, TooltipModule, SkeletonModule, InputTextModule, CheckboxModule, ButtonModule, DeployEntryComponent, PageHeaderComponent, EmptyStateComponent, ErrorBannerComponent],
   templateUrl: './deploy.component.html',
   styleUrl: './deploy.component.scss',
 })

@@ -2,13 +2,14 @@ import { Component, input, output, computed, ChangeDetectionStrategy } from '@an
 import { RouterModule } from '@angular/router';
 import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
+import { ButtonModule } from 'primeng/button';
 import type { ServiceInfo } from '@api-types';
 import { serviceStateSeverity } from '@shared/utils/status.utils';
 
 @Component({
   selector: 'app-service-card',
   standalone: true,
-  imports: [RouterModule, TagModule, TooltipModule],
+  imports: [RouterModule, TagModule, TooltipModule, ButtonModule],
   templateUrl: './service-card.component.html',
   styleUrl: './service-card.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -17,11 +18,11 @@ export class ServiceCardComponent {
   service = input.required<ServiceInfo>();
   actionLoading = input<string | null>(null);
 
-  restart = output<ServiceInfo>();
-  stop = output<ServiceInfo>();
+  restart = output<{ event: Event; service: ServiceInfo }>();
+  stop = output<{ event: Event; service: ServiceInfo }>();
   start = output<ServiceInfo>();
   scale = output<ServiceInfo>();
-  rollback = output<ServiceInfo>();
+  rollback = output<{ event: Event; service: ServiceInfo }>();
   exec = output<ServiceInfo>();
   viewLogs = output<ServiceInfo>();
 

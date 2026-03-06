@@ -1,28 +1,21 @@
 <div class="flex flex-col gap-6 animate-fade-in">
   <!-- Page Header -->
-  <div class="flex justify-between items-start gap-4 flex-wrap">
-    <div>
-      <h1 class="m-0 text-2xl font-semibold text-text-primary">Deployments</h1>
-      <p class="mt-1 mb-0 text-sm text-text-muted">Deploy your project and view history</p>
-    </div>
-    <div class="flex items-center gap-2">
-      <button
-        class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-accent text-white cursor-pointer transition-all duration-150 hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
-        (click)="showForm.set(!showForm())"
-      >
-        <i class="pi" [class.pi-plus]="!showForm()" [class.pi-times]="showForm()"></i>
-        <span>{{ showForm() ? 'Close' : 'New Deploy' }}</span>
-      </button>
-      <button
-        class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-border-primary bg-bg-tertiary text-text-primary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:border-border-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-        (click)="refresh()"
-        [disabled]="loading()"
-      >
-        <i class="pi pi-refresh" [class.pi-spin]="loading()"></i>
-        <span>Refresh</span>
-      </button>
-    </div>
-  </div>
+  <app-page-header title="Deployments" subtitle="Deploy your project and view history">
+    <ng-container actions>
+      <p-button
+        [label]="showForm() ? 'Close' : 'New Deploy'"
+        [icon]="showForm() ? 'pi pi-times' : 'pi pi-plus'"
+        (onClick)="showForm.set(!showForm())"
+      />
+      <p-button
+        label="Refresh"
+        icon="pi pi-refresh"
+        severity="secondary"
+        [loading]="loading()"
+        (onClick)="refresh()"
+      />
+    </ng-container>
+  </app-page-header>
 
   <!-- Deploy Form -->
   @if (showForm()) {
@@ -65,22 +58,19 @@
         </div>
       </div>
       <div class="flex gap-2">
-        <button
-          class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-accent text-white cursor-pointer transition-all duration-150 hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
-          (click)="startDeploy()"
+        <p-button
+          [label]="deploying() ? 'Deploying...' : 'Deploy'"
+          icon="pi pi-upload"
+          (onClick)="startDeploy()"
           [disabled]="deploying() || !envService.selectedOrUndefined()"
-        >
-          <i class="pi pi-upload"></i>
-          <span>{{ deploying() ? 'Deploying...' : 'Deploy' }}</span>
-        </button>
+        />
         @if (deploying()) {
-          <button
-            class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-error text-white cursor-pointer transition-all duration-150 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
-            (click)="cancelDeploy()"
-          >
-            <i class="pi pi-times"></i>
-            <span>Cancel</span>
-          </button>
+          <p-button
+            label="Cancel"
+            icon="pi pi-times"
+            severity="danger"
+            (onClick)="cancelDeploy()"
+          />
         }
       </div>
     </div>
@@ -92,14 +82,14 @@
       <div class="flex items-center justify-between px-4 py-3 border-b border-border-primary">
         <span class="text-sm font-medium text-text-primary">Output</span>
         @if (deploySuccess() === true) {
-          <p-tag value="Success" severity="success" [rounded]="true" />
+          <p-tag value="Success" severity="success" />
         } @else if (deploySuccess() === false) {
-          <p-tag value="Failed" severity="danger" [rounded]="true" />
+          <p-tag value="Failed" severity="danger" />
         } @else if (deploying()) {
-          <p-tag value="Running" severity="info" [rounded]="true" />
+          <p-tag value="Running" severity="info" />
         }
       </div>
-      <div #outputContainer class="bg-[#0a0a0a] text-[#fafafa] font-mono text-[0.8125rem] p-4 max-h-[25rem] overflow-y-auto whitespace-pre-wrap break-all">
+      <div #outputContainer class="bg-[#0a0a0a] text-[#fafafa] font-mono text-[0.8125rem] p-4 max-h-[25rem] overflow-y-auto whitespace-pre-wrap break-all" role="log" aria-live="polite" aria-label="Deploy output">
         @for (line of deployLogs(); track $index) {
           <div>{{ line }}</div>
         }
@@ -109,16 +99,7 @@
 
   <!-- Error -->
   @if (error()) {
-    <div class="flex items-center gap-2 p-3 bg-error-muted text-error rounded-lg">
-      <i class="pi pi-exclamation-triangle"></i>
-      <span class="text-sm">{{ error() }}</span>
-      <button
-        class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
-        (click)="refresh()"
-      >
-        <i class="pi pi-refresh"></i>
-      </button>
-    </div>
+    <app-error-banner [message]="error()!" (retry)="refresh()" />
   }
 
   <!-- Loading -->
@@ -142,11 +123,7 @@
       }
     </div>
   } @else if (deployments().length === 0) {
-    <div class="flex flex-col items-center justify-center gap-4 py-16 px-8 text-text-muted">
-      <i class="pi pi-upload text-5xl opacity-30"></i>
-      <h3 class="m-0 text-base font-medium">No deployments yet</h3>
-      <p class="m-0 text-sm text-center max-w-[400px]">Deploy your project to start recording history.</p>
-    </div>
+    <app-empty-state icon="pi pi-upload" title="No deployments yet" description="Deploy your project to start recording history." />
   } @else {
     <!-- Deployment History -->
     <div class="flex flex-col gap-3">

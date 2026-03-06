@@ -29,25 +29,20 @@
         <span class="text-xs text-text-muted whitespace-nowrap overflow-hidden text-ellipsis">{{ server().host }}:{{ server().port }}</span>
       </div>
     </div>
-    <span
-      class="px-2 py-1 text-[0.6875rem] font-medium uppercase tracking-wide rounded shrink-0"
-      [ngClass]="server().role === 'manager' ? 'bg-accent-muted text-accent' : 'bg-bg-tertiary text-text-secondary'"
-    >
-      {{ server().role }}
-    </span>
+    <p-tag [value]="server().role" [severity]="roleSeverity(server().role)" />
   </div>
 
   <!-- Tags -->
   @if (server().tags.length > 0) {
     <div class="flex flex-wrap gap-1.5">
       @for (tag of server().tags; track tag) {
-        <span class="px-2 py-0.5 text-[0.6875rem] font-medium rounded bg-bg-tertiary text-text-muted">{{ tag }}</span>
+        <p-tag [value]="tag" severity="secondary" />
       }
     </div>
   }
 
   <!-- Status -->
-  <div class="flex items-center justify-between text-[0.8125rem]">
+  <div class="flex items-center justify-between text-[0.8125rem]" role="status" aria-live="polite">
     <div class="flex items-center gap-2">
       @if (checkingStatus()) {
         <i class="pi pi-spin pi-spinner text-[0.8125rem] text-accent"></i>
@@ -79,21 +74,26 @@
 
   <!-- Actions -->
   <div class="flex gap-2 mt-1 pt-3 border-t border-border-primary">
-    <button
-      class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+    <p-button
+      icon="pi pi-refresh"
+      [text]="true"
+      [rounded]="true"
+      severity="secondary"
       [disabled]="checkingStatus()"
-      (click)="checkStatus.emit()"
+      [loading]="checkingStatus()"
+      (onClick)="checkStatus.emit()"
       pTooltip="Check status"
-    >
-      <i class="pi pi-refresh text-base" [class.pi-spin]="checkingStatus()"></i>
-    </button>
-    <button
-      class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+      ariaLabel="Check status"
+    />
+    <p-button
+      icon="pi pi-code"
+      [text]="true"
+      [rounded]="true"
+      severity="secondary"
       [disabled]="server().status !== 'online'"
-      (click)="sshOpen.emit()"
+      (onClick)="sshOpen.emit()"
       pTooltip="SSH"
-    >
-      <i class="pi pi-code text-base"></i>
-    </button>
+      ariaLabel="SSH"
+    />
   </div>
 </div>

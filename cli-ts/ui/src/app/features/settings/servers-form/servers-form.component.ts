@@ -5,6 +5,7 @@ import { InputNumberModule } from 'primeng/inputnumber';
 import { SelectModule } from 'primeng/select';
 import { TooltipModule } from 'primeng/tooltip';
 import { TagModule } from 'primeng/tag';
+import { ButtonModule } from 'primeng/button';
 
 interface ServerEntry {
   name: string;
@@ -36,6 +37,7 @@ interface EnvTagEntry {
     SelectModule,
     TooltipModule,
     TagModule,
+    ButtonModule,
   ],
   templateUrl: './servers-form.component.html',
   styleUrl: './servers-form.component.scss',

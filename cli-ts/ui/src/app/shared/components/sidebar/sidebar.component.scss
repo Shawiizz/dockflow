@@ -1,3 +1,10 @@
 :host {
   display: block;
 }
+
+:host ::ng-deep .sidebar-drawer {
+  .p-drawer-content {
+    padding: 0;
+    overflow-y: auto;
+  }
+}

@@ -1,21 +1,17 @@
 <div class="flex flex-col gap-6 animate-fade-in">
   <!-- Page Header -->
-  <div class="flex justify-between items-start gap-4 flex-wrap">
-    <div>
-      <h1 class="m-0 text-2xl font-semibold text-text-primary">Servers</h1>
-      <p class="mt-1 mb-0 text-sm text-text-muted">Manage and monitor your infrastructure</p>
-    </div>
-    <div class="flex items-center gap-2">
-      <button
-        class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-border-primary bg-bg-tertiary text-text-primary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:border-border-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-        (click)="serverStatus.checkAll()"
+  <app-page-header title="Servers" subtitle="Manage and monitor your infrastructure">
+    <ng-container actions>
+      <p-button
+        label="Check All"
+        icon="pi pi-refresh"
+        severity="secondary"
+        [loading]="serverStatus.checkingServers().size > 0"
         [disabled]="serverStatus.loading()"
-      >
-        <i class="pi pi-refresh" [class.pi-spin]="serverStatus.checkingServers().size > 0"></i>
-        <span>Check All</span>
-      </button>
-    </div>
-  </div>
+        (onClick)="serverStatus.checkAll()"
+      />
+    </ng-container>
+  </app-page-header>
 
   <!-- Stats -->
   @if (!serverStatus.loading()) {
@@ -39,16 +35,7 @@
 
   <!-- Error -->
   @if (serverStatus.error()) {
-    <div class="flex items-center gap-2 p-3 bg-error-muted text-error rounded-lg">
-      <i class="pi pi-exclamation-triangle"></i>
-      <span class="text-sm">{{ serverStatus.error() }}</span>
-      <button
-        class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
-        (click)="serverStatus.reload(envService.selectedOrUndefined())"
-      >
-        <i class="pi pi-refresh"></i>
-      </button>
-    </div>
+    <app-error-banner [message]="serverStatus.error()!" (retry)="serverStatus.reload(envService.selectedOrUndefined())" />
   }
 
   <!-- Loading -->
@@ -68,11 +55,7 @@
       }
     </div>
   } @else if (serverStatus.servers().length === 0) {
-    <div class="flex flex-col items-center justify-center gap-4 py-16 px-8 text-text-muted">
-      <i class="pi pi-server text-5xl opacity-30"></i>
-      <h3 class="m-0 text-base font-medium">No servers configured</h3>
-      <p class="m-0 text-sm text-center max-w-[400px]">Add servers to your <code>servers.yml</code> configuration file.</p>
-    </div>
+    <app-empty-state icon="pi pi-server" title="No servers configured" description="Add servers to your servers.yml configuration file." />
   } @else {
     <!-- Server Table -->
     <p-table
@@ -81,8 +64,6 @@
       [rows]="10"
       [rowsPerPageOptions]="[10, 25, 50]"
       [rowHover]="true"
-      [stripedRows]="true"
-      size="small"
     >
       <ng-template #header>
         <tr>
@@ -108,7 +89,7 @@
           <!-- Status -->
           <td>
             @if (checkingSet().has(server.name)) {
-              <p-tag severity="info" [rounded]="true">
+              <p-tag severity="info">
                 <i class="pi pi-spin pi-spinner text-[0.7rem] mr-1"></i>
                 Checking
               </p-tag>
@@ -116,20 +97,19 @@
               <p-tag
                 [value]="statusLabel(server.status)"
                 [severity]="statusSeverity(server.status)"
-                [rounded]="true"
                 [icon]="statusIcon(server.status)"
               />
             }
           </td>
           <!-- Role -->
           <td>
-            <p-tag [value]="server.role" [severity]="roleSeverity(server.role)" [rounded]="true" />
+            <p-tag [value]="server.role" [severity]="roleSeverity(server.role)" />
           </td>
           <!-- Environment -->
           <td>
             <div class="flex gap-1.5 flex-wrap">
               @for (tag of server.tags; track tag) {
-                <span class="px-2 py-0.5 text-xs font-medium rounded bg-bg-tertiary text-text-muted">{{ tag }}</span>
+                <p-tag [value]="tag" severity="secondary" />
               }
             </div>
           </td>
@@ -139,7 +119,6 @@
               <p-tag
                 [value]="server.swarmStatus"
                 [severity]="swarmSeverity(server.swarmStatus)"
-                [rounded]="true"
               />
             } @else {
               <span class="text-text-muted">—</span>
@@ -148,22 +127,27 @@
           <!-- Actions -->
           <td>
             <div class="flex gap-1 justify-end">
-              <button
-                class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              <p-button
+                icon="pi pi-refresh"
+                [text]="true"
+                [rounded]="true"
+                severity="secondary"
+                [loading]="checkingSet().has(server.name)"
                 [disabled]="checkingSet().has(server.name)"
-                (click)="serverStatus.checkStatus(server.name)"
+                (onClick)="serverStatus.checkStatus(server.name)"
                 pTooltip="Check status"
-              >
-                <i class="pi pi-refresh" [class.pi-spin]="checkingSet().has(server.name)"></i>
-              </button>
-              <button
-                class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                ariaLabel="Check status"
+              />
+              <p-button
+                icon="pi pi-code"
+                [text]="true"
+                [rounded]="true"
+                severity="secondary"
                 [disabled]="server.status !== 'online'"
-                (click)="openSsh(server)"
+                (onClick)="openSsh(server)"
                 pTooltip="SSH Terminal"
-              >
-                <i class="pi pi-code"></i>
-              </button>
+                ariaLabel="SSH Terminal"
+              />
             </div>
           </td>
         </tr>

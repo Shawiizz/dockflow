@@ -1,11 +1,6 @@
 <div class="flex flex-col gap-6 animate-fade-in">
   <!-- Page Header -->
-  <div class="flex justify-between items-start gap-4 flex-wrap">
-    <div>
-      <h1 class="m-0 text-2xl font-semibold text-text-primary">Monitoring</h1>
-      <p class="mt-1 mb-0 text-sm text-text-muted">Container stats and audit log</p>
-    </div>
-  </div>
+  <app-page-header title="Monitoring" subtitle="Container stats and audit log" />
 
   <p-tabs [(value)]="activeTab">
     <p-tablist>

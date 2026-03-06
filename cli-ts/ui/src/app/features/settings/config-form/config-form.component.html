@@ -181,9 +181,7 @@
         <div class="mt-2">
           <div class="flex items-center justify-between mb-3">
             <span class="text-[0.8125rem] font-semibold text-text-primary">Endpoints</span>
-            <button class="inline-flex items-center justify-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary" (click)="addEndpoint()">
-              <i class="pi pi-plus"></i> Add
-            </button>
+            <p-button label="Add" icon="pi pi-plus" [text]="true" severity="secondary" size="small" (onClick)="addEndpoint()" />
           </div>
           @for (ep of endpoints(); track $index; let i = $index) {
             <div class="flex gap-3 items-start p-3 border border-border-primary rounded-lg mb-2 bg-bg-secondary">
@@ -236,9 +234,7 @@
                   </div>
                 </div>
               </div>
-              <button class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-muted cursor-pointer transition-all duration-150 hover:bg-error-muted hover:text-error" (click)="removeEndpoint(i)" pTooltip="Remove">
-                <i class="pi pi-trash"></i>
-              </button>
+              <p-button icon="pi pi-trash" [text]="true" [rounded]="true" severity="danger" (onClick)="removeEndpoint(i)" pTooltip="Remove" ariaLabel="Remove endpoint" />
             </div>
           }
         </div>
@@ -315,9 +311,7 @@
         <div class="mt-2">
           <div class="flex items-center justify-between mb-3">
             <span class="text-[0.8125rem] font-semibold text-text-primary">Jinja2 Template Files</span>
-            <button class="inline-flex items-center justify-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary" (click)="addTemplate()">
-              <i class="pi pi-plus"></i> Add
-            </button>
+            <p-button label="Add" icon="pi pi-plus" [text]="true" severity="secondary" size="small" (onClick)="addTemplate()" />
           </div>
           @for (tmpl of templates(); track $index; let i = $index) {
             <div class="flex gap-3 items-start p-3 border border-border-primary rounded-lg mb-2 bg-bg-secondary">
@@ -351,9 +345,7 @@
                   </div>
                 }
               </div>
-              <button class="inline-flex items-center justify-center p-2 text-sm rounded-lg border-none bg-transparent text-text-muted cursor-pointer transition-all duration-150 hover:bg-error-muted hover:text-error" (click)="removeTemplate(i)" pTooltip="Remove">
-                <i class="pi pi-trash"></i>
-              </button>
+              <p-button icon="pi pi-trash" [text]="true" [rounded]="true" severity="danger" (onClick)="removeTemplate(i)" pTooltip="Remove" ariaLabel="Remove template" />
             </div>
           }
         </div>

@@ -42,7 +42,7 @@
         <div>
           <p><strong>No connection credentials</strong></p>
           <p>{{ projectInfoService.connectionInfo()!.message }}</p>
-          <a routerLink="/settings" class="inline-flex items-center gap-2 mt-2 px-2 py-1 text-[0.8125rem] rounded-lg bg-transparent text-text-secondary no-underline transition-all duration-150 hover:bg-bg-hover hover:text-text-primary">
+          <a routerLink="/settings" class="btn-primary no-underline">
             <i class="pi pi-cog"></i>
             <span>Go to Settings</span>
           </a>
@@ -52,18 +52,19 @@
 
     <!-- Servers Grid -->
     <div class="flex flex-col gap-4">
-      <div class="flex items-center justify-between">
-        <h2 class="m-0 text-lg font-semibold text-text-primary">Servers</h2>
-        @if (!serverStatus.loading()) {
-          <button
-            class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-transparent text-text-secondary cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary"
-            (click)="serverStatus.checkAll()"
-          >
-            <i class="pi pi-refresh"></i>
-            <span>Check All</span>
-          </button>
-        }
-      </div>
+      <app-page-header title="Servers">
+        <ng-container actions>
+          @if (!serverStatus.loading()) {
+            <p-button
+              label="Check All"
+              icon="pi pi-refresh"
+              severity="secondary"
+              [text]="true"
+              (onClick)="serverStatus.checkAll()"
+            />
+          }
+        </ng-container>
+      </app-page-header>
 
       @if (serverStatus.loading()) {
         <div class="grid grid-cols-3 gap-4 max-lg:grid-cols-2 max-sm:grid-cols-1">
@@ -81,15 +82,12 @@
           }
         </div>
       } @else if (serverStatus.servers().length === 0) {
-        <div class="flex flex-col items-center justify-center py-12 px-8 bg-bg-secondary border border-border-primary rounded-xl text-center">
-          <i class="pi pi-server text-4xl text-text-muted mb-4"></i>
-          <h3 class="m-0 text-base font-medium text-text-secondary">No servers configured</h3>
-          <p class="m-0 mt-1 text-sm text-text-muted">Add servers to your servers.yml configuration file.</p>
-          <a routerLink="/settings" class="inline-flex items-center justify-center gap-2 mt-4 px-4 py-2 text-sm font-medium rounded-lg border border-transparent bg-accent text-white no-underline cursor-pointer transition-all duration-150 hover:bg-accent-hover">
+        <app-empty-state icon="pi pi-server" title="No servers configured" description="Add servers to your servers.yml configuration file.">
+          <a routerLink="/settings" class="btn-primary no-underline">
             <i class="pi pi-cog"></i>
             <span>Go to Settings</span>
           </a>
-        </div>
+        </app-empty-state>
       } @else {
         <div class="grid grid-cols-3 gap-4 max-lg:grid-cols-2 max-sm:grid-cols-1">
           @for (server of serverStatus.servers(); track server.name) {

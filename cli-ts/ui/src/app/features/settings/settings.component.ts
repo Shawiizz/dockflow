@@ -10,6 +10,7 @@ import { MessageService } from 'primeng/api';
 import { ToastModule } from 'primeng/toast';
 import { ApiService } from '@core/services/api.service';
 import { HasUnsavedChanges } from '@core/guards/unsaved-changes.guard';
+import { PageHeaderComponent } from '@shared/components/page-header/page-header.component';
 import { ConfigFormComponent } from './config-form/config-form.component';
 import { ServersFormComponent } from './servers-form/servers-form.component';
 
@@ -23,6 +24,7 @@ import { ServersFormComponent } from './servers-form/servers-form.component';
     SkeletonModule,
     MessageModule,
     ToastModule,
+    PageHeaderComponent,
     ConfigFormComponent,
     ServersFormComponent,
   ],
