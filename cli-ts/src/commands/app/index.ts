@@ -16,6 +16,7 @@ import { registerPsCommand } from './ps';
 import { registerPruneCommand } from './prune';
 import { registerVersionCommand } from './version';
 import { registerHistoryCommand } from './history';
+import { registerHistorySyncCommand } from './history-sync';
 import { registerMetricsCommand } from './metrics';
 import { registerDiagnoseCommand } from './diagnose';
 
@@ -29,6 +30,7 @@ export function registerAppCommands(program: Command): void {
   registerPsCommand(program);
   registerLogsCommand(program);
   registerHistoryCommand(program);
+  registerHistorySyncCommand(program);
   registerMetricsCommand(program);
   registerDiagnoseCommand(program);
   

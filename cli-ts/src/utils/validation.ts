@@ -6,14 +6,15 @@
  */
 
 import { loadConfig, getStackName, hasServersConfig, type DockflowConfig } from './config';
-import { 
-  resolveServersForEnvironment, 
+import {
+  resolveServersForEnvironment,
   getFullConnectionInfo,
-  getAvailableEnvironments
+  getAvailableEnvironments,
+  getAllNodeConnections,
 } from './servers';
 import { loadSecrets } from './secrets';
-import { 
-  CLIError, 
+import {
+  CLIError,
   ErrorCode
 } from './errors';
 import type { SSHKeyConnection } from '../types';
@@ -144,10 +145,13 @@ function toCliError(error: ValidationError): CLIError {
  */
 export function validateEnv(env: string, serverName?: string): EnvironmentContext {
   const result = validateEnvironment(env, serverName);
-  
+
   if (isValidationError(result)) {
     throw toCliError(result);
   }
-  
+
   return result;
 }
+
+// Re-export for CLI commands that need all node connections after validateEnv()
+export { getAllNodeConnections };

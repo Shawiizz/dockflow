@@ -255,6 +255,28 @@ export function getFullConnectionInfo(env: string, serverName: string): SSHKeyCo
 }
 
 /**
+ * Get SSH connections to ALL nodes in an environment (managers first, then workers).
+ * Used for reading replicated data (history, metrics) with fallback.
+ * Skips nodes without SSH credentials.
+ */
+export function getAllNodeConnections(environment: string): SSHKeyConnection[] {
+  const servers = resolveServersForEnvironment(environment);
+  const sorted = [
+    ...servers.filter(s => s.role === 'manager'),
+    ...servers.filter(s => s.role === 'worker'),
+  ];
+
+  const connections: SSHKeyConnection[] = [];
+  for (const server of sorted) {
+    const conn = getFullConnectionInfo(environment, server.name);
+    if (conn) {
+      connections.push(conn);
+    }
+  }
+  return connections;
+}
+
+/**
  * Get environment variables for a given environment (for build mode)
  * This doesn't require SSH connection, just merges env vars from servers.yml + CI secrets
  * Uses the first server with the matching tag to get the env vars

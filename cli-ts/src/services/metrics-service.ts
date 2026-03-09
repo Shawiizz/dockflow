@@ -63,6 +63,25 @@ function getMetricsPath(stackName: string): string {
 }
 
 /**
+ * Parse JSONL (JSON Lines) output into typed objects.
+ * Skips empty and malformed lines.
+ */
+export function parseJsonlLines<T = unknown>(raw: string): T[] {
+  if (!raw.trim()) return [];
+
+  const results: T[] = [];
+  for (const line of raw.trim().split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      results.push(JSON.parse(line));
+    } catch {
+      // Skip malformed lines
+    }
+  }
+  return results;
+}
+
+/**
  * Record a deployment metric on the remote server
  */
 export async function recordDeploymentMetric(
@@ -104,24 +123,7 @@ export async function fetchDeploymentMetrics(
     : `cat "${metricsPath}" 2>/dev/null || echo ""`;
   
   const result = await sshExec(connection, cmd);
-  
-  if (!result.stdout.trim()) {
-    return [];
-  }
-  
-  const metrics: DeploymentMetric[] = [];
-  const lines = result.stdout.trim().split('\n');
-  
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    try {
-      metrics.push(JSON.parse(line));
-    } catch {
-      // Skip malformed lines
-    }
-  }
-  
-  return metrics;
+  return parseJsonlLines<DeploymentMetric>(result.stdout);
 }
 
 /**

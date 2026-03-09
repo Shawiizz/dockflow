@@ -11,7 +11,7 @@
 import type { Command } from 'commander';
 import ora from 'ora';
 import { getProjectRoot, getAnsibleDockerImage } from '../utils/config';
-import { printSuccess, printInfo, printHeader, printDebug, printBlank, setVerbose } from '../utils/output';
+import { printSuccess, printInfo, printHeader, printDebug, printBlank, printWarning, printDim, setVerbose } from '../utils/output';
 import {
   runAnsibleCommand,
   checkDockerAvailable,
@@ -226,6 +226,26 @@ export async function runDeploy(env: string, version: string | undefined, option
     privateKey: getServerPrivateKey(env, w.name) || '',
   }));
 
+  // Build other managers for history replication (exclude current manager, skip those without keys)
+  const otherManagersWithKeys: Array<{ server: typeof managers[0]; privateKey: string }> = [];
+  const managersWithoutKeys: string[] = [];
+  for (const m of managers) {
+    if (m.name === manager.name) continue;
+    const key = getServerPrivateKey(env, m.name);
+    if (key) {
+      otherManagersWithKeys.push({ server: m, privateKey: key });
+    } else {
+      managersWithoutKeys.push(m.name);
+    }
+  }
+
+  // Warn about nodes excluded from history replication
+  const nodesWithoutKeys = [...managersWithoutKeys];
+  if (nodesWithoutKeys.length > 0) {
+    printWarning(`History sync: no SSH key for ${nodesWithoutKeys.join(', ')} — history won't replicate to these nodes`);
+    printDim(`  Add CI secrets to enable replication, or run 'dockflow history-sync ${env}' later`);
+  }
+
   printDebug('Workers configuration built', { workerCount: workers.length });
 
   // Build template context for Jinja2 (current, servers, cluster)
@@ -261,6 +281,7 @@ export async function runDeploy(env: string, version: string | undefined, option
     managerPrivateKey,
     managerPassword,
     workers: workersWithKeys,
+    otherManagers: otherManagersWithKeys,
     config: config as unknown as Record<string, unknown>,
     options: {
       skipBuild: options.skipBuild,

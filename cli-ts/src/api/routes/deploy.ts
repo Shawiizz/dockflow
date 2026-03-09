@@ -5,9 +5,10 @@
  */
 
 import { jsonResponse, errorResponse } from '../server';
-import { sshExec } from '../../utils/ssh';
+import { sshExecWithFallback } from '../../utils/ssh-fallback';
 import { printDebug } from '../../utils/output';
-import { getManagerConnection, resolveEnvironment } from './_helpers';
+import { getManagerConnection, getAllNodeConnections, resolveEnvironment } from './_helpers';
+import { parseJsonlLines } from '../../services/metrics-service';
 import { DOCKFLOW_METRICS_DIR } from '../../constants';
 import type { DeployHistoryEntry, DeployHistoryResponse } from '../types';
 
@@ -60,35 +61,29 @@ async function getDeployHistory(url: URL): Promise<Response> {
 
   try {
     // Read the last N*2 lines to account for potential filtering
+    // Use fallback across all nodes since history is replicated
     const cmd = `tail -n ${limit * 2} "${metricsPath}" 2>/dev/null || echo ""`;
-    const result = await sshExec(conn, cmd);
+    const nodeConnections = getAllNodeConnections(env);
+    const connections = nodeConnections.length > 0 ? nodeConnections : [conn];
+    const result = await sshExecWithFallback(connections, cmd);
 
-    if (!result.stdout.trim()) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const metrics = parseJsonlLines<any>(result.stdout);
+    if (metrics.length === 0) {
       return jsonResponse({ deployments: [], total: 0 } satisfies DeployHistoryResponse);
     }
 
-    const entries: DeployHistoryEntry[] = [];
-    const lines = result.stdout.trim().split('\n');
-
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const metric = JSON.parse(line);
-        entries.push({
-          id: metric.id || `${Date.now()}`,
-          environment: metric.environment || env,
-          target: metric.accessories_deployed ? 'all' : 'app',
-          version: metric.version || 'unknown',
-          status: mapMetricStatus(metric.status),
-          startedAt: metric.timestamp || new Date().toISOString(),
-          duration: metric.duration_ms ? Math.round(metric.duration_ms / 1000) : undefined,
-          error: metric.error || undefined,
-          user: metric.performer || undefined,
-        });
-      } catch {
-        // Skip malformed lines
-      }
-    }
+    const entries: DeployHistoryEntry[] = metrics.map((metric) => ({
+      id: metric.id || `${Date.now()}`,
+      environment: metric.environment || env,
+      target: metric.accessories_deployed ? 'all' : 'app',
+      version: metric.version || 'unknown',
+      status: mapMetricStatus(metric.status),
+      startedAt: metric.timestamp || new Date().toISOString(),
+      duration: metric.duration_ms ? Math.round(metric.duration_ms / 1000) : undefined,
+      error: metric.error || undefined,
+      user: metric.performer || undefined,
+    }));
 
     // Sort by most recent first
     entries.sort((a, b) => {

@@ -4,11 +4,14 @@
 
 import { loadConfig } from '../../utils/config';
 import {
-  resolveServersForEnvironment,
   getAvailableEnvironments,
   getServerPrivateKey,
+  resolveServersForEnvironment,
+  getAllNodeConnections,
 } from '../../utils/servers';
 import { DEFAULT_SSH_PORT } from '../../constants';
+
+export { getAllNodeConnections };
 
 export interface ManagerConnection {
   host: string;

@@ -3,9 +3,9 @@
  */
 
 import type { Command } from 'commander';
-import { sshExec } from '../../utils/ssh';
+import { sshExecWithFallback } from '../../utils/ssh-fallback';
 import { printSection, printDebug, colors, printBlank, printWarning, printDim, printJSON, printRaw } from '../../utils/output';
-import { validateEnv } from '../../utils/validation';
+import { validateEnv, getAllNodeConnections } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 
 interface AuditEntry {
@@ -56,14 +56,19 @@ export function registerHistoryCommand(program: Command): void {
     .action(withErrorHandler(async (env: string, options: { server?: string; lines?: string; all?: boolean; json?: boolean }) => {
       const { stackName, connection } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName, lines: options.lines, json: options.json });
-      
+
       const auditFile = `/var/lib/dockflow/audit/${stackName}.log`;
       const lines = options.all ? 1000 : parseInt(options.lines || '20', 10);
 
+      // Use fallback across all nodes unless a specific server was requested
+      const connections = options.server
+        ? [connection]
+        : getAllNodeConnections(env);
+      const fallbackConnections = connections.length > 0 ? connections : [connection];
+
       try {
-        // Check if audit file exists and get content
-        const result = await sshExec(
-          connection,
+        const result = await sshExecWithFallback(
+          fallbackConnections,
           `cat "${auditFile}" 2>/dev/null | tail -n ${lines} || echo "NO_AUDIT_FILE"`
         );
 

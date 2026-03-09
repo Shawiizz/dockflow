@@ -272,6 +272,12 @@
         metric_status: "{{ 'success' if (failed_health_checks | default([]) | length) == 0 else 'failed' }}"
         metric_error: "{{ failed_health_checks | default([]) | join(', ') }}"
 
+    # Replicate history to all other nodes (managers + workers)
+    - name: Sync history to all cluster nodes
+      include_role:
+        name: history-sync
+      when: (other_managers | default([]) | length + workers | default([]) | length) > 0
+
     # Release deploy lock (always, even on failure)
     - name: Release deploy lock
       include_role:

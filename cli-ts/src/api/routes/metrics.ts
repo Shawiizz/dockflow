@@ -9,7 +9,8 @@
 
 import { jsonResponse, errorResponse } from '../server';
 import { sshExec } from '../../utils/ssh';
-import { getManagerConnection, resolveEnvironment } from './_helpers';
+import { sshExecWithFallback } from '../../utils/ssh-fallback';
+import { getManagerConnection, getAllNodeConnections, resolveEnvironment } from './_helpers';
 import type {
   ContainerStatsEntry,
   ContainerStatsResponse,
@@ -127,7 +128,10 @@ async function getAuditLog(url: URL): Promise<Response> {
 
   try {
     const command = `tail -n ${lines} ${auditFile} 2>/dev/null || echo ""`;
-    const result = await sshExec(conn, command);
+    // Use fallback across all nodes since audit log is replicated
+    const nodeConnections = getAllNodeConnections(env);
+    const connections = nodeConnections.length > 0 ? nodeConnections : [conn];
+    const result = await sshExecWithFallback(connections, command);
 
     const output = result.stdout.trim();
 

@@ -39,6 +39,17 @@ export interface WorkerContext {
 }
 
 /**
+ * Other manager connection info for history replication
+ */
+export interface OtherManagerContext {
+  name: string;
+  host: string;
+  port: number;
+  user: string;
+  private_key: string;
+}
+
+/**
  * Deployment options passed to Ansible
  */
 export interface DeploymentOptions {
@@ -72,6 +83,9 @@ export interface AnsibleContext {
   // Workers for image distribution (when no registry)
   workers: WorkerContext[];
   workers_count: number;
+
+  // Other managers for history replication
+  other_managers: OtherManagerContext[];
   
   // Template context (current, servers, cluster)
   current: TemplateContext['current'];
@@ -97,6 +111,10 @@ export interface BuildDeployContextParams {
     server: ResolvedServer;
     privateKey: string;
   }>;
+  otherManagers: Array<{
+    server: ResolvedServer;
+    privateKey: string;
+  }>;
   config: Record<string, unknown>;
   options: {
     skipBuild?: boolean;
@@ -113,7 +131,7 @@ export interface BuildDeployContextParams {
  * Build the complete Ansible context for deployment
  */
 export function buildDeployContext(params: BuildDeployContextParams): AnsibleContext {
-  const { env, version, branchName, deployment, templateContext, managerPrivateKey, managerPassword, workers, config, options } = params;
+  const { env, version, branchName, deployment, templateContext, managerPrivateKey, managerPassword, workers, otherManagers, config, options } = params;
   const manager = deployment.manager;
 
   // Build worker contexts
@@ -123,6 +141,15 @@ export function buildDeployContext(params: BuildDeployContextParams): AnsibleCon
     port: w.server.port,
     user: w.server.user,
     private_key: w.privateKey,
+  }));
+
+  // Build other manager contexts (for history replication)
+  const otherManagerContexts: OtherManagerContext[] = otherManagers.map(m => ({
+    name: m.server.name,
+    host: m.server.host,
+    port: m.server.port,
+    user: m.server.user,
+    private_key: m.privateKey,
   }));
 
   return {
@@ -145,6 +172,8 @@ export function buildDeployContext(params: BuildDeployContextParams): AnsibleCon
     
     workers: workerContexts,
     workers_count: workerContexts.length,
+
+    other_managers: otherManagerContexts,
     
     current: templateContext.current,
     servers: templateContext.servers,

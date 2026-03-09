@@ -1,0 +1,55 @@
+---
+# Sync history entries to a single node
+# Uses the same SSH key write pattern as local-registry/transfer_to_node.yml
+# Params: sync_node (dict with name, host, port, user, private_key)
+
+- name: "Skip {{ sync_node.name | default(sync_node.host) }} — no SSH key"
+  debug:
+    msg: "Skipping history sync: no private key provided"
+  when: sync_node.private_key is not defined or sync_node.private_key | length == 0
+
+- name: "Sync to {{ sync_node.name | default(sync_node.host) }}"
+  when: sync_node.private_key is defined and sync_node.private_key | length > 0
+  block:
+    - name: Prepare SSH key
+      copy:
+        content: "{{ sync_node.private_key }}"
+        dest: "/tmp/.ssh_history_sync_key"
+        mode: '0600'
+      no_log: "{{ global_no_log | default(true) }}"
+
+    - name: Set SSH options
+      set_fact:
+        _sync_ssh_opts: >-
+          -o StrictHostKeyChecking=no
+          -o UserKnownHostsFile=/dev/null
+          -o ConnectTimeout={{ sync_timeout }}
+          -o BatchMode=yes
+          -i /tmp/.ssh_history_sync_key
+          -p {{ sync_node.port | default(22) }}
+
+    - name: Sync audit entry
+      shell: |
+        echo '{{ last_audit_entry.stdout }}' | \
+        ssh {{ _sync_ssh_opts }} \
+        {{ sync_node.user }}@{{ sync_node.host }} \
+        "mkdir -p '{{ dockflow_paths.audit }}' && cat >> '{{ dockflow_paths.audit }}/{{ stack_name }}.log'"
+      when: last_audit_entry.stdout | default('') | length > 0
+      ignore_errors: true
+      no_log: "{{ global_no_log | default(true) }}"
+
+    - name: Sync metrics entry
+      shell: |
+        echo '{{ last_metrics_entry.stdout }}' | \
+        ssh {{ _sync_ssh_opts }} \
+        {{ sync_node.user }}@{{ sync_node.host }} \
+        "mkdir -p '{{ dockflow_paths.metrics }}/{{ stack_name }}' && cat >> '{{ dockflow_paths.metrics }}/{{ stack_name }}/deployments.json'"
+      when: last_metrics_entry.stdout | default('') | length > 0
+      ignore_errors: true
+      no_log: "{{ global_no_log | default(true) }}"
+
+  always:
+    - name: Cleanup SSH key
+      file:
+        path: /tmp/.ssh_history_sync_key
+        state: absent
