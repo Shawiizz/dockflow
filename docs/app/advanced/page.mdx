@@ -78,3 +78,27 @@ Enable verbose Ansible output during deploy:
 ```bash
 dockflow deploy production --debug
 ```
+
+## History Replication
+
+Deployment history (audit log and metrics) is automatically replicated to **all cluster nodes** (managers and workers) after each deployment. This ensures:
+
+- No data loss if a manager goes down
+- Seamless history access after worker-to-manager promotion
+- No fragmented history when manager failover occurs
+
+History is read with automatic fallback: if the primary manager is unreachable, Dockflow tries other managers, then workers.
+
+### Manual Sync
+
+If a node was offline during a deployment or a new node was added to the cluster, manually sync the full history:
+
+```bash
+dockflow history-sync production
+```
+
+This reads history from all reachable nodes, merges and deduplicates entries, then writes the complete dataset back to every node.
+
+<Callout type="info">
+  `history-sync` deduplicates by metric ID (JSONL) and exact line match (audit log), so running it multiple times is safe.
+</Callout>

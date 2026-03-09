@@ -10,8 +10,11 @@ export default {
   'getting-started': 'Getting Started',
   configuration: 'Configuration',
   deployment: 'Deployment',
+  ui: 'Web Dashboard',
   cli: 'CLI Reference',
   advanced: 'Advanced',
   examples: 'Examples',
-  ai: 'AI Integration'
+  ai: {
+    title: <span className="badge-new">AI Integration</span>
+  }
 }

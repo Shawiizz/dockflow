@@ -1,12 +1,8 @@
 /**
  * UI command - Launch the Dockflow WebUI
- * 
+ *
  * Starts a local Bun HTTP server that serves the Angular frontend
  * and exposes API endpoints to interact with the Dockflow CLI.
- * 
- * Modes:
- * - Default: serves pre-built UI from disk (or embedded in compiled binary)
- * - --dev: proxies to Angular dev server running on port 4201 (start it manually)
  */
 
 import type { Command } from 'commander';
@@ -20,7 +16,6 @@ import { withErrorHandler } from '../utils/errors';
 interface UIOptions {
   port: string;
   open: boolean;
-  dev: boolean;
 }
 
 /**
@@ -89,7 +84,6 @@ export function registerUICommand(program: Command): void {
     .description('Launch the Dockflow WebUI dashboard')
     .option('-p, --port <port>', 'Port to listen on', '4200')
     .option('--no-open', 'Do not open browser automatically')
-    .option('--dev', 'Development mode (proxy to Angular dev server on port 4201)')
     .action(withErrorHandler(async (options: UIOptions) => {
       const requestedPort = parseInt(options.port, 10);
       
@@ -114,20 +108,7 @@ export function registerUICommand(program: Command): void {
       }
 
       printBlank();
-      
-      const devMode = options.dev;
-      
-      // In dev mode, check if Angular dev server is reachable
-      if (devMode) {
-        try {
-          await fetch('http://localhost:4201', { signal: AbortSignal.timeout(2000) });
-          printSuccess('Angular dev server detected on port 4201');
-        } catch {
-          printWarning('Angular dev server not detected on port 4201');
-          printInfo('Start it manually: cd cli-ts/ui && npm start');
-        }
-      }
-      
+
       // Find available port
       const port = await findAvailablePort(requestedPort);
       if (port !== requestedPort) {
@@ -136,17 +117,13 @@ export function registerUICommand(program: Command): void {
       
       // Start the server
       const { startWebServer } = await import('../api/server');
-      await startWebServer(port, { devMode });
+      await startWebServer(port);
       
       const url = `http://localhost:${port}`;
       
       printBlank();
       printSuccess(`API server running on port ${port}`);
-      if (devMode) {
-        printInfo('Open the UI at http://localhost:4201');
-      } else {
-        printInfo(`Open the UI at ${url}`);
-      }
+      printInfo(`Open the UI at ${url}`);
       printBlank();
       printInfo('Press Ctrl+C to stop the server');
       printBlank();

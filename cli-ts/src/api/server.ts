@@ -1,27 +1,18 @@
 /**
  * API Server - Bun HTTP server for Dockflow WebUI
- * 
+ *
  * Serves the Angular frontend and exposes REST API endpoints
  * for interacting with the Dockflow CLI functionality.
- * 
- * Supports three modes:
- * 1. Dev mode: proxies to Angular dev server (ng serve on port 4201)
- * 2. Compiled binary: serves embedded UI assets via generated manifest
- * 3. Source mode: serves from ui/dist/browser/browser on disk
+ *
+ * Supports two modes:
+ * 1. Compiled binary: serves embedded UI assets via generated manifest
+ * 2. Source mode: serves from ui/dist/browser/browser on disk
  */
 
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { handleApiRoutes } from './routes/index';
 import { sshWebSocketHandlers, parseSSHServerName, parseExecServiceName } from './routes/ssh';
-
-/**
- * Server configuration options
- */
-export interface ServerOptions {
-  /** Development mode - proxy to Angular dev server */
-  devMode?: boolean;
-}
 
 /**
  * Try to load embedded UI assets (only available in compiled binary)
@@ -82,13 +73,11 @@ export function errorResponse(message: string, status = 500): Response {
 /**
  * Start the Dockflow WebUI server
  */
-export async function startWebServer(port: number, options: ServerOptions = {}): Promise<void> {
-  const { devMode = false } = options;
+export async function startWebServer(port: number): Promise<void> {
   const uiDistPath = getUIDistPath();
-  const angularDevServer = 'http://localhost:4201';
-  
+
   // Try to load embedded assets (compiled binary mode)
-  const embeddedAssets = !devMode ? await loadEmbeddedAssets() : null;
+  const embeddedAssets = await loadEmbeddedAssets();
   const hasEmbeddedUI = embeddedAssets !== null && embeddedAssets.size > 0;
   const hasDiskUI = existsSync(join(uiDistPath, 'index.html'));
   
@@ -134,23 +123,6 @@ export async function startWebServer(port: number, options: ServerOptions = {}):
         });
         if (success) return undefined as unknown as Response;
         return new Response('WebSocket upgrade failed', { status: 400 });
-      }
-      
-      // In dev mode, proxy to Angular dev server
-      if (devMode) {
-        try {
-          const proxyUrl = `${angularDevServer}${pathname}${url.search}`;
-          const proxyResponse = await fetch(proxyUrl, {
-            method: req.method,
-            headers: req.headers,
-            body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined,
-          });
-          return proxyResponse;
-        } catch {
-          return new Response('Angular dev server not running. Start it with: cd ui && pnpm start', {
-            status: 503,
-          });
-        }
       }
       
       // Serve from embedded assets (compiled binary)
@@ -314,8 +286,6 @@ function getNoUIHTML(): string {
     <h1>Dockflow UI</h1>
     <p>The WebUI needs to be built first.</p>
     <div class="code">cd cli-ts/ui && pnpm install && pnpm build</div>
-    <p>Or run in development mode:</p>
-    <div class="code">dockflow ui --dev</div>
     <br>
     <div class="status">API Server Running</div>
   </div>

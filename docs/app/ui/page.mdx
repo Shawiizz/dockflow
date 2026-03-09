@@ -1,0 +1,168 @@
+# Web Dashboard
+
+import { Callout, Steps } from 'nextra/components'
+
+Dockflow includes a built-in web dashboard to manage deployments, monitor services, and interact with your infrastructure from the browser.
+
+## Getting Started
+
+<Steps>
+## Launch the dashboard
+
+```bash
+dockflow ui
+```
+
+This starts a local server and opens the dashboard in your default browser.
+
+| Option | Description |
+|--------|-------------|
+| `-p, --port <port>` | Custom port (default: `4200`) |
+| `--no-open` | Don't open the browser automatically |
+
+## Select your environment
+
+Use the environment selector in the top-right corner to switch between environments (e.g., `production`, `staging`). All pages react to this selection.
+
+</Steps>
+
+<Callout type="info">
+  The dashboard runs locally and connects to your servers via SSH using the credentials from your `servers.yml`. There is no authentication layer — it is designed for local or trusted network use.
+</Callout>
+
+## Pages
+
+### Dashboard
+
+The home page shows an overview of your cluster:
+
+- **Stats cards**: Total servers, online/offline counts, environments
+- **Server cards**: Each server displays its name, host, role (manager/worker), environment tags, and live status
+- **Quick actions**: Check server status, open an SSH terminal session
+
+If no project is detected, a welcome screen guides you through initialization.
+
+### Servers
+
+A detailed table view of all servers with columns for name, host, status, role, environment, and Swarm status. Supports pagination and per-server status checks.
+
+Click the terminal icon on any online server to open an interactive SSH session.
+
+### Services
+
+Displays all Docker services as cards showing name, state, image, replica progress, and ports.
+
+Available actions per service:
+
+| Action | Description |
+|--------|-------------|
+| **Start** | Scale a stopped service to 1 replica |
+| **Restart** | Restart the service (with confirmation) |
+| **Stop** | Scale to 0 replicas (with confirmation) |
+| **Scale** | Set a specific replica count (0–20) |
+| **Rollback** | Revert to the previous version (with confirmation) |
+| **Terminal** | Open an exec session into a running container |
+| **Logs** | Jump to the Logs page filtered to this service |
+
+A search bar filters services by name. After any action, the UI polls until the service state updates.
+
+### Accessories
+
+Grid of accessory containers (databases, caches, etc.) showing name, image, status, replicas, ports, volumes, and environment variables.
+
+Actions: Restart, Stop, View Logs (in a dialog).
+
+### Logs
+
+Real-time log viewer for any service.
+
+- **Service selector**: Pick which service to tail
+- **Lines**: Choose how many lines to fetch (50/100/200/500)
+- **Auto-scroll**: Keep the view pinned to the latest output
+- **Auto-refresh**: Poll for new logs every 5 seconds (pauses when the browser tab is hidden)
+
+### Deploy
+
+Trigger and monitor deployments from the browser.
+
+**Deploy form options:**
+
+| Option | Description |
+|--------|-------------|
+| Version | Version string for this deployment |
+| Services | Comma-separated list to deploy selectively |
+| Skip Build | Skip the image build phase |
+| Force | Override deployment locks |
+| Accessories | Deploy accessories only |
+| All | Deploy app + accessories |
+| Skip Accessories | Skip accessories entirely |
+| Dry Run | Preview without executing |
+
+The console panel streams deployment output in real-time. Below it, a timeline shows past deployments with status, version, duration, and performer.
+
+### Build
+
+Trigger image builds with optional registry push. The console streams build output in real-time, same as the Deploy page.
+
+### Topology
+
+An interactive visual map of your cluster architecture.
+
+- **Service cards** (left) connect to **Server cards** (right) via Bezier curves
+- **Drag cards** to rearrange the layout (positions are saved locally)
+- **Drag from a service port** to a server to create a placement constraint
+- **Click a connection** to remove it
+- **Save** writes placement constraints back to your `docker-compose.yml`
+
+<Callout type="info">
+  Dashed lines represent implicit connections (Swarm-assigned). Solid blue lines are explicit placement constraints you define.
+</Callout>
+
+### Monitoring
+
+Two tabs for observability:
+
+**Container Stats** — Real-time resource usage table (CPU %, memory, network I/O, block I/O) with 10-second auto-refresh.
+
+**Audit Log** — Deployment history table with color-coded action tags (deployed, rollback, scale, stop), version, performer, and message.
+
+### Resources
+
+Three tools for cluster maintenance:
+
+**Prune** — Remove unused containers, images, volumes, and/or networks. Select targets and run cleanup. Displays reclaimed space per target.
+
+<Callout type="warning">
+  Pruning volumes permanently deletes data. The UI shows a warning when volumes are selected.
+</Callout>
+
+**Deploy Lock** — View and manage the deployment lock. Shows lock status (locked/unlocked/stale), performer, and duration. Acquire or release locks manually.
+
+**Disk Usage** — Raw `docker system df` output showing Docker disk consumption.
+
+### Settings
+
+Edit your Dockflow configuration directly from the browser with a live YAML preview.
+
+**Config tab** — Edit `config.yml` fields organized in collapsible sections: project name, registry, options, stack management, health checks, hooks, and templates.
+
+**Servers tab** — Edit `servers.yml`: default SSH settings, server list (name, role, host, user, port, tags, env vars), and environment variables by tag.
+
+Changes auto-save after 800ms of inactivity. A navigation guard warns you about unsaved changes.
+
+## SSH Terminal
+
+The built-in terminal uses [xterm.js](https://xtermjs.org/) and connects via WebSocket to your servers.
+
+It operates in two modes:
+
+| Mode | Trigger | WebSocket path |
+|------|---------|---------------|
+| **SSH** | Terminal button on a server card | `/ws/ssh/:serverName` |
+| **Exec** | Terminal button on a service card | `/ws/exec/:serviceName` |
+
+The terminal supports resize, clickable URLs, and shows a connection status indicator.
+
+---
+
+Next: [CLI Reference](/cli)
