@@ -253,6 +253,13 @@ export async function executeInteractiveSSH(
 /**
  * Test SSH connection
  */
+/**
+ * Shell-escape a value for safe use inside single quotes in SSH commands
+ */
+export function shellEscape(value: string): string {
+  return value.replace(/'/g, "'\\''");
+}
+
 export async function testConnection(conn: ConnectionInfo): Promise<boolean> {
   try {
     const result = await sshExecStream(conn, 'echo ok', {

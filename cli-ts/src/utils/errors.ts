@@ -46,6 +46,12 @@ export enum ErrorCode {
   // Validation errors (60-69)
   VALIDATION_FAILED = 60,
   INVALID_ARGUMENT = 61,
+
+  // Backup errors (70-79)
+  BACKUP_FAILED = 70,
+  BACKUP_NOT_FOUND = 71,
+  RESTORE_FAILED = 72,
+  BACKUP_CONFIG_MISSING = 73,
 }
 
 /**
@@ -117,6 +123,13 @@ export class ValidationError extends CLIError {
   constructor(message: string, suggestion?: string) {
     super(message, ErrorCode.VALIDATION_FAILED, suggestion);
     this.name = 'ValidationError';
+  }
+}
+
+export class BackupError extends CLIError {
+  constructor(message: string, options?: { code?: ErrorCode; suggestion?: string }) {
+    super(message, options?.code ?? ErrorCode.BACKUP_FAILED, options?.suggestion);
+    this.name = 'BackupError';
   }
 }
 

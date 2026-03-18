@@ -150,6 +150,63 @@ export const LockConfigSchema = z.object({
 });
 
 /**
+ * Supported database types for backup/restore
+ */
+export const BackupDbType = z.enum(['postgres', 'mysql', 'mongodb', 'redis', 'raw', 'volume']);
+
+/**
+ * Backup configuration for a single accessory service
+ */
+export const BackupAccessorySchema = z.object({
+  type: BackupDbType.describe(
+    'Database type: postgres, mysql, mongodb, redis, raw (custom command), or volume (Docker volumes)'
+  ),
+  dump_command: z.string().optional().describe(
+    'Custom dump command (required for raw type, overrides default for other types)'
+  ),
+  restore_command: z.string().optional().describe(
+    'Custom restore command (required for raw type, overrides default for other types)'
+  ),
+  dump_options: z.string().optional().describe(
+    'Additional options passed to the dump command (e.g., "--no-owner --clean")'
+  ),
+  restore_options: z.string().optional().describe(
+    'Additional options passed to the restore command'
+  ),
+  exclude_volumes: z.array(z.string()).optional().describe(
+    'Volume name patterns to exclude from backup (only for volume type)'
+  ),
+  include_bind_mounts: z.boolean().optional().default(true).describe(
+    'Include host bind mounts in volume backup (default: true, only for volume type)'
+  ),
+}).refine(
+  (data) => {
+    if (data.type === 'raw' && !data.dump_command) return false;
+    if (data.type === 'raw' && !data.restore_command) return false;
+    return true;
+  },
+  { message: 'Raw backup type requires both dump_command and restore_command' }
+);
+
+/**
+ * Backup/restore configuration schema
+ */
+export const BackupConfigSchema = z.object({
+  retention_count: z.number().int().min(1).max(1000).optional().default(10).describe(
+    'Number of backups to retain per service (used by prune command)'
+  ),
+  compression: z.enum(['gzip', 'none']).optional().default('gzip').describe(
+    'Compression method for backups'
+  ),
+  accessories: z.record(z.string(), BackupAccessorySchema).optional().describe(
+    'Per-accessory backup configuration (key = service name from accessories.yml)'
+  ),
+  services: z.record(z.string(), BackupAccessorySchema).optional().describe(
+    'Per-service backup configuration for main stack services (key = service name from docker-compose.yml)'
+  ),
+});
+
+/**
  * Project name validation pattern
  * Must be lowercase alphanumeric with hyphens, no leading/trailing hyphens
  */
@@ -190,6 +247,10 @@ export const DockflowConfigSchema = z.object({
 
   lock: LockConfigSchema.optional().describe(
     'Deployment lock settings'
+  ),
+
+  backup: BackupConfigSchema.optional().describe(
+    'Backup/restore configuration for accessories'
   ),
 
   templates: z.array(TemplateFileSchema).optional().describe(

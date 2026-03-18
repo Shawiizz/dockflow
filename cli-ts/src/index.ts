@@ -16,6 +16,7 @@ import { registerBuildCommand } from './commands/build';
 import { registerSetupCommand } from './commands/setup';
 import { registerInitCommand } from './commands/init';
 import { registerAccessoriesCommands } from './commands/accessories';
+import { registerBackupCommands } from './commands/backup';
 import { registerLockCommands } from './commands/lock';
 import { registerListCommands } from './commands/list';
 import { registerConfigCommand } from './commands/config';
@@ -39,6 +40,7 @@ program
 // Register all commands
 registerAppCommands(program);
 registerAccessoriesCommands(program);
+registerBackupCommands(program);
 registerLockCommands(program);
 registerListCommands(program);
 registerConfigCommand(program);
@@ -83,6 +85,12 @@ program.action(async () => {
   printBlank();
   printWarning('Accessories (databases, caches...):');
   printRaw('  dockflow accessories <cmd>      Manage stateful services');
+  printBlank();
+  printWarning('Backup & Restore:');
+  printRaw('  dockflow backup create <env> <svc>  Backup an accessory database');
+  printRaw('  dockflow backup list <env>          List available backups');
+  printRaw('  dockflow backup restore <env> <svc> Restore from a backup');
+  printRaw('  dockflow backup prune <env>         Clean up old backups');
 });
 
 // Error handling

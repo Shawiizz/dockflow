@@ -48,8 +48,9 @@ export interface HealthCheckEndpoint {
 
 export interface HealthCheckConfig {
   enabled?: boolean;
-  on_failure?: 'notify' | 'rollback' | 'fail';
+  on_failure?: 'notify' | 'rollback' | 'fail' | 'ignore';
   startup_delay?: number;
+  wait_for_internal?: boolean;
   endpoints?: HealthCheckEndpoint[];
 }
 
@@ -69,6 +70,25 @@ export interface StackManagementConfig {
 
 export interface LockConfig {
   stale_threshold_minutes?: number;
+}
+
+export type BackupDbType = 'postgres' | 'mysql' | 'mongodb' | 'redis' | 'raw' | 'volume';
+
+export interface BackupAccessoryConfig {
+  type: BackupDbType;
+  dump_command?: string;
+  restore_command?: string;
+  dump_options?: string;
+  restore_options?: string;
+  exclude_volumes?: string[];
+  include_bind_mounts?: boolean;
+}
+
+export interface BackupConfig {
+  retention_count?: number;
+  compression?: 'gzip' | 'none';
+  accessories?: Record<string, BackupAccessoryConfig>;
+  services?: Record<string, BackupAccessoryConfig>;
 }
 
 export interface TemplateFileConfig {
@@ -92,6 +112,7 @@ export interface DockflowConfig {
   health_checks?: HealthCheckConfig;
   hooks?: HooksConfig;
   lock?: LockConfig;
+  backup?: BackupConfig;
   templates?: (string | TemplateFileConfig)[];
   accessories?: Record<string, AccessoryConfig>;
 }

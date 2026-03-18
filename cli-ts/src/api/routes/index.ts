@@ -10,6 +10,7 @@ import { handleProjectRoutes } from './project';
 import { handleServicesRoutes } from './services';
 import { handleDeployRoutes } from './deploy';
 import { handleAccessoriesRoutes } from './accessories';
+import { handleBackupRoutes } from './backup';
 import { handleOperationsRoutes } from './operations';
 import { handleResourcesRoutes, handleLocksRoutes } from './resources';
 import { handleMetricsRoutes } from './metrics';
@@ -58,6 +59,11 @@ export async function handleApiRoutes(req: Request): Promise<Response> {
     // /api/accessories/* - Accessories
     if (pathname.startsWith('/api/accessories')) {
       return handleAccessoriesRoutes(req);
+    }
+
+    // /api/backup/* - Backup & Restore
+    if (pathname.startsWith('/api/backup')) {
+      return handleBackupRoutes(req);
     }
 
     // /api/resources/* - Prune & disk usage

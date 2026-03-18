@@ -5,6 +5,7 @@ export default {
   'build-strategy': 'Build Strategy',
   registry: 'Docker Registry',
   accessories: 'Accessories',
+  backup: 'Backup & Restore',
   hooks: 'Hooks',
   templates: 'Templates',
   'multi-host': 'Multi-Node Deployment'

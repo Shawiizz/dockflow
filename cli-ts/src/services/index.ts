@@ -20,3 +20,6 @@ export * from './metrics-service';
 
 // Deployment locks
 export * from './lock-service';
+
+// Backup & restore
+export * from './backup-service';

@@ -448,3 +448,33 @@ export interface ValidationError {
   path: string;
   message: string;
 }
+
+// ─── Backup ──────────────────────────────────────────────────────────────────
+
+export type BackupDbType = 'postgres' | 'mysql' | 'mongodb' | 'redis' | 'raw' | 'volume';
+
+export interface BackupEntry {
+  id: string;
+  service: string;
+  dbType: BackupDbType;
+  timestamp: string;
+  size: string;
+  sizeBytes: number;
+}
+
+export interface BackupListResponse {
+  backups: BackupEntry[];
+  total: number;
+}
+
+export interface BackupActionResponse {
+  success: boolean;
+  message: string;
+  backup?: BackupEntry;
+}
+
+export interface BackupPruneResponse {
+  success: boolean;
+  pruned: number;
+  message: string;
+}
