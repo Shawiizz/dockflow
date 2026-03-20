@@ -127,20 +127,20 @@ const DB_STRATEGIES: Record<Exclude<BackupDbType, 'raw' | 'volume'>, DbStrategy>
     buildDumpCommand(creds, options) {
       const parts = ['mongodump', '--archive'];
       if (creds.user) {
-        parts.push(`--username=${creds.user}`, `--authenticationDatabase=admin`);
+        parts.push(`--username="${creds.user}"`, `--authenticationDatabase=admin`);
       }
-      if (creds.password) parts.push(`--password=${creds.password}`);
-      if (creds.database) parts.push(`--db=${creds.database}`);
+      if (creds.password) parts.push(`--password="${creds.password}"`);
+      if (creds.database) parts.push(`--db="${creds.database}"`);
       if (options) parts.push(options);
       return parts.join(' ');
     },
     buildRestoreCommand(creds, options) {
       const parts = ['mongorestore', '--archive'];
       if (creds.user) {
-        parts.push(`--username=${creds.user}`, `--authenticationDatabase=admin`);
+        parts.push(`--username="${creds.user}"`, `--authenticationDatabase=admin`);
       }
-      if (creds.password) parts.push(`--password=${creds.password}`);
-      if (creds.database) parts.push(`--db=${creds.database}`);
+      if (creds.password) parts.push(`--password="${creds.password}"`);
+      if (creds.database) parts.push(`--db="${creds.database}"`);
       if (options) parts.push(options);
       return parts.join(' ');
     },
@@ -241,7 +241,7 @@ export class BackupService {
     const strategy = DB_STRATEGIES[dbType];
     const result = await sshExec(
       this.connection,
-      `docker inspect --format '{{json .Config.Env}}' ${containerId}`
+      `docker inspect --format '{{json .Config.Env}}' '${shellEscape(containerId)}'`
     );
 
     const creds: ContainerCredentials = {};
@@ -289,8 +289,15 @@ export class BackupService {
     const backupId = generateBackupId();
     const backupDir = this.getBackupDir(service);
 
-    // Get credentials from container
-    const creds = await this.getContainerCredentials(containerId, dbType);
+    // Get credentials and create backup directory in parallel (independent SSH calls)
+    const [creds, mkdirResult] = await Promise.all([
+      this.getContainerCredentials(containerId, dbType),
+      sshExec(this.connection, `mkdir -p '${shellEscape(backupDir)}'`),
+    ]);
+
+    if (mkdirResult.exitCode !== 0) {
+      return err(new Error(`Failed to create backup directory: ${mkdirResult.stderr}`));
+    }
 
     // Build dump command
     let dumpCommand: string;
@@ -303,12 +310,6 @@ export class BackupService {
 
     const filePath = this.getDataFilePath(backupDir, backupId, dbType, compression);
 
-    // Create backup directory
-    const mkdirResult = await sshExec(this.connection, `mkdir -p '${shellEscape(backupDir)}'`);
-    if (mkdirResult.exitCode !== 0) {
-      return err(new Error(`Failed to create backup directory: ${mkdirResult.stderr}`));
-    }
-
     const startTime = Date.now();
 
     // Build exec env flags (e.g. PGPASSWORD, MYSQL_PWD)
@@ -317,7 +318,7 @@ export class BackupService {
       : '';
     const envPart = execEnvFlags ? `${execEnvFlags} ` : '';
 
-    const dockerExec = `docker exec ${envPart}${containerId} sh -c '${shellEscape(dumpCommand)}'`;
+    const dockerExec = `docker exec ${envPart}'${shellEscape(containerId)}' sh -c '${shellEscape(dumpCommand)}'`;
     const fullCommand = compression === 'gzip'
       ? `${dockerExec} | gzip > '${shellEscape(filePath)}'`
       : `${dockerExec} > '${shellEscape(filePath)}'`;
@@ -372,7 +373,7 @@ export class BackupService {
   ): Promise<MountInfo[]> {
     const result = await sshExec(
       this.connection,
-      `docker inspect --format '{{json .Mounts}}' ${containerId}`
+      `docker inspect --format '{{json .Mounts}}' '${shellEscape(containerId)}'`
     );
 
     if (!result.stdout.trim()) return [];
@@ -668,7 +669,7 @@ export class BackupService {
       : '';
     const envPart = execEnvFlags ? `${execEnvFlags} ` : '';
 
-    const dockerExec = `docker exec -i ${envPart}${containerId} sh -c '${shellEscape(restoreCommand)}'`;
+    const dockerExec = `docker exec -i ${envPart}'${shellEscape(containerId)}' sh -c '${shellEscape(restoreCommand)}'`;
     const fullCommand = backupCompression === 'gzip'
       ? `gunzip -c '${shellEscape(dataFile)}' | ${dockerExec}`
       : `cat '${shellEscape(dataFile)}' | ${dockerExec}`;

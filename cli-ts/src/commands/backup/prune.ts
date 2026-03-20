@@ -35,9 +35,8 @@ export function registerBackupPruneCommand(program: Command): void {
         ? parseInt(options.keep, 10)
         : config?.backup?.retention_count ?? 10;
 
-      // Collect all entries across relevant stacks
-      let allEntries: BackupListEntry[] = [];
-      const stackServices: { stackName: string; backupService: ReturnType<typeof createBackupService> }[] = [];
+      // Collect entries per stack, grouped by service
+      const stackData: { backupService: ReturnType<typeof createBackupService>; byService: Record<string, BackupListEntry[]> }[] = [];
 
       if (service) {
         // Specific service — resolve which stack it belongs to
@@ -46,42 +45,34 @@ export function registerBackupPruneCommand(program: Command): void {
         const backupService = createBackupService(connection, stackName);
         const result = await backupService.list(service);
         if (!result.success) throw new BackupError(result.error.message);
-        allEntries = result.data;
-        stackServices.push({ stackName, backupService });
+        stackData.push({ backupService, byService: { [service]: result.data } });
       } else {
-        // No service specified — list from all configured stacks
+        // No service specified — list from all configured stacks, grouped per stack
         const stacks = getAllBackupStacks(env);
         for (const { stackName } of stacks) {
           const backupService = createBackupService(connection, stackName);
           const result = await backupService.list();
-          if (result.success) {
-            allEntries.push(...result.data);
-            stackServices.push({ stackName, backupService });
+          if (!result.success) continue;
+
+          const byService: Record<string, BackupListEntry[]> = {};
+          for (const entry of result.data) {
+            (byService[entry.service] ??= []).push(entry);
           }
+          stackData.push({ backupService, byService });
         }
       }
 
-      // Group pre-fetched entries by service
-      const entriesPerService: Record<string, BackupListEntry[]> = {};
-      for (const entry of allEntries) {
-        (entriesPerService[entry.service] ??= []).push(entry);
-      }
-
-      const servicesToPrune = service
-        ? [service]
-        : Object.keys(entriesPerService);
-
-      // Count per service
-      const countPerService: Record<string, number> = {};
-      for (const [svc, entries] of Object.entries(entriesPerService)) {
-        countPerService[svc] = entries.length;
-      }
-
+      // Count what needs pruning across all stacks
       let totalToPrune = 0;
-      for (const svc of servicesToPrune) {
-        const count = countPerService[svc] || 0;
-        if (count > retentionCount) {
-          totalToPrune += count - retentionCount;
+      const pruneSummary: { service: string; total: number; toRemove: number }[] = [];
+
+      for (const { byService } of stackData) {
+        for (const [svc, entries] of Object.entries(byService)) {
+          if (entries.length > retentionCount) {
+            const toRemove = entries.length - retentionCount;
+            totalToPrune += toRemove;
+            pruneSummary.push({ service: svc, total: entries.length, toRemove });
+          }
         }
       }
 
@@ -91,11 +82,8 @@ export function registerBackupPruneCommand(program: Command): void {
       }
 
       printWarning(`Will remove ${totalToPrune} backup(s), keeping ${retentionCount} per service:`);
-      for (const svc of servicesToPrune) {
-        const count = countPerService[svc] || 0;
-        if (count > retentionCount) {
-          printRaw(`  ${colors.info(svc)}: ${count} total, removing ${count - retentionCount}`);
-        }
+      for (const { service: svc, total, toRemove } of pruneSummary) {
+        printRaw(`  ${colors.info(svc)}: ${total} total, removing ${toRemove}`);
       }
       printBlank();
 
@@ -119,13 +107,11 @@ export function registerBackupPruneCommand(program: Command): void {
       const spinner = ora('Pruning backups...').start();
       let totalPruned = 0;
 
-      // Prune across all backup services
-      for (const { backupService } of stackServices) {
-        for (const svc of servicesToPrune) {
-          const svcEntries = entriesPerService[svc];
-          if (!svcEntries || svcEntries.length <= retentionCount) continue;
-
-          const result = await backupService.prune(svc, retentionCount, svcEntries);
+      // Prune per-stack, per-service (avoids cross-stack entry mixing)
+      for (const { backupService, byService } of stackData) {
+        for (const [svc, entries] of Object.entries(byService)) {
+          if (entries.length <= retentionCount) continue;
+          const result = await backupService.prune(svc, retentionCount, entries);
           if (result.success) {
             totalPruned += result.data;
           }
