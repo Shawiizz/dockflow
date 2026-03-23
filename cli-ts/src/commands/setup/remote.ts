@@ -5,7 +5,7 @@
 import * as fs from 'fs';
 import ora from 'ora';
 import { printHeader, printSection, printError, printSuccess, printInfo, printBlank, printDim } from '../../utils/output';
-import { sshExec, sshExecStream, testConnection } from '../../utils/ssh';
+import { sshExec, sshExecStream } from '../../utils/ssh';
 import type { ConnectionInfo } from '../../types';
 import { DOCKFLOW_RELEASE_URL } from './constants';
 import { prompt, promptPassword, selectMenu, promptMultiline } from './prompts';
@@ -133,95 +133,77 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
 
   const testSpinner = ora('Testing SSH connection...').start();
 
-  let conn: ConnectionInfo | null = null;
-  
-  if (opts.privateKey) {
-    conn = {
-      host: opts.host,
-      port: opts.port,
-      user: opts.user,
-      privateKey: opts.privateKey,
-      password: opts.password
-    };
-    
-    const connected = await testConnection(conn);
-    if (!connected) {
-      testSpinner.fail('SSH connection failed');
-      printError('Could not connect to the remote server. Check your credentials.');
-      return;
-    }
-  } else if (opts.password) {
-    const result = await sshExec({ host: opts.host, port: opts.port, user: opts.user, password: opts.password }, 'echo ok');
-    if (result.exitCode !== 0 || !result.stdout.includes('ok')) {
-      testSpinner.fail('SSH connection failed');
-      printError('Could not connect to the remote server. Check your credentials.');
-      return;
-    }
-  } else {
+  if (!opts.privateKey && !opts.password) {
     testSpinner.fail('No authentication method provided');
     return;
   }
-  
-  testSpinner.succeed('SSH connection successful');
-  
-  const archSpinner = ora('Detecting server architecture...').start();
-  let arch: 'x64' | 'arm64' = 'x64';
-  
-  if (conn) {
-    arch = await detectRemoteArch(conn);
-  } else if (opts.password) {
-    const archResult = await sshExec({ host: opts.host, port: opts.port, user: opts.user, password: opts.password! }, 'uname -m');
-    const archStr = archResult.stdout.trim();
-    arch = (archStr === 'aarch64' || archStr === 'arm64') ? 'arm64' : 'x64';
+
+  const base = { host: opts.host, port: opts.port, user: opts.user };
+  const conn: ConnectionInfo = opts.privateKey
+    ? { ...base, privateKey: opts.privateKey, ...(opts.password ? { password: opts.password } : {}) }
+    : { ...base, password: opts.password! };
+
+  try {
+    const result = await sshExec(conn, 'echo ok');
+    if (result.exitCode !== 0 || !result.stdout.includes('ok')) {
+      testSpinner.fail('SSH connection failed');
+      printError('Connected but command execution failed. Check that the user has shell access.');
+      return;
+    }
+  } catch (err: unknown) {
+    testSpinner.fail('SSH connection failed');
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('ECONNREFUSED')) {
+      printError(`Connection refused on ${opts.host}:${opts.port}. Is SSH running on that port?`);
+    } else if (msg.includes('ENOTFOUND') || msg.includes('getaddrinfo')) {
+      printError(`Host "${opts.host}" not found. Check the hostname or IP address.`);
+    } else if (msg.includes('ETIMEDOUT') || msg.includes('Timed out')) {
+      printError(`Connection to ${opts.host}:${opts.port} timed out. Check firewall rules and network access.`);
+    } else if (msg.includes('authentication') || msg.includes('All configured authentication methods failed')) {
+      printError(opts.privateKey
+        ? 'Authentication failed. Check that the SSH key is correct and authorized on the server.'
+        : 'Authentication failed. Check the username and password.');
+    } else {
+      printError(`SSH error: ${msg}`);
+    }
+    return;
   }
-  
+
+  testSpinner.succeed('SSH connection successful');
+
+  const archSpinner = ora('Detecting server architecture...').start();
+  const arch = await detectRemoteArch(conn);
   archSpinner.succeed(`Server architecture: ${arch}`);
-  
+
   const binaryName = `dockflow-linux-${arch}`;
   const downloadUrl = `${DOCKFLOW_RELEASE_URL}/${binaryName}`;
   const remotePath = '/tmp/dockflow';
-  
+
   const downloadSpinner = ora('Downloading Dockflow CLI to remote server...').start();
-  
+
   const downloadCmd = `curl -fsSL "${downloadUrl}" -o ${remotePath} && chmod +x ${remotePath}`;
-  
-  let downloadResult;
-  if (conn) {
-    downloadResult = await sshExec(conn, downloadCmd);
-  } else {
-    downloadResult = await sshExec({ host: opts.host, port: opts.port, user: opts.user, password: opts.password! }, downloadCmd);
-  }
-  
+  const downloadResult = await sshExec(conn, downloadCmd);
+
   if (downloadResult.exitCode !== 0) {
     downloadSpinner.fail('Failed to download Dockflow CLI');
     printError(downloadResult.stderr || 'Download failed');
     return;
   }
-  
+
   downloadSpinner.succeed('Dockflow CLI downloaded');
-  
+
   printBlank();
   printSection('Running setup on remote server');
   printDim('─'.repeat(60));
   printBlank();
-  
-  const setupCmd = `${remotePath} setup`;
-  
-  if (conn) {
-    await sshExecStream(conn, setupCmd);
-  } else {
-    await sshExecStream({ host: opts.host, port: opts.port, user: opts.user, password: opts.password! }, setupCmd);
-  }
-  
+
+  await sshExecStream(conn, `${remotePath} setup`);
+
   printBlank();
   printDim('─'.repeat(60));
-  
+
   const cleanupSpinner = ora('Cleaning up...').start();
-  if (conn) {
-    await sshExec(conn, `rm -f ${remotePath}`);
-  } else {
-    await sshExec({ host: opts.host, port: opts.port, user: opts.user, password: opts.password! }, `rm -f ${remotePath}`);
-  }
+  await sshExec(conn, `rm -f ${remotePath}`);
   cleanupSpinner.succeed('Cleanup complete');
 
   printBlank();

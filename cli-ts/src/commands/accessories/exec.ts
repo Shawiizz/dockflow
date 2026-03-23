@@ -20,7 +20,7 @@ export function registerAccessoriesExecCommand(program: Command): void {
     .command('exec <env> <service> [command...]')
     .description('Execute a command in an accessory container (default: sh)')
     .option('-u, --user <user>', 'Run command as specific user')
-    .option('--workdir <dir>', 'Working directory inside the container')
+    .option('-w, --workdir <dir>', 'Working directory inside the container')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(async (
       env: string,

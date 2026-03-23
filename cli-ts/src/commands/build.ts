@@ -164,7 +164,7 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
  */
 export function registerBuildCommand(program: Command): void {
   program
-    .command('build <environment>')
+    .command('build <env>')
     .description('Build Docker images locally without deploying')
     .option('--services <services>', 'Comma-separated list of services to build')
     .option('--push', 'Push images to registry after build')

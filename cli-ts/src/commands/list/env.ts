@@ -62,7 +62,7 @@ export function registerListEnvCommand(parent: Command): void {
     .alias('envs')
     .alias('environments')
     .description('List available environments and their servers')
-    .option('--json', 'Output as JSON')
+    .option('-j, --json', 'Output as JSON')
     .action(withErrorHandler(async (options: { json?: boolean }) => {
       const config = loadConfig();
       const environments = getEnvironmentsInfo();

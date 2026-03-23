@@ -75,7 +75,7 @@ export function registerAccessoriesListCommand(program: Command): void {
     .command('list <env>')
     .alias('ls')
     .description('List running accessories and their status')
-    .option('--json', 'Output in JSON format')
+    .option('-j, --json', 'Output in JSON format')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(async (env: string, options: { json?: boolean; server?: string }) => {
       if (!options.json) {

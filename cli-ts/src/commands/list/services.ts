@@ -32,7 +32,7 @@ export function registerListServicesCommand(parent: Command): void {
     .description('List services in a deployed stack')
     .option('-s, --server <name>', 'Target server (defaults to manager)')
     .option('-t, --tasks', 'Show individual containers/tasks for each service')
-    .option('--json', 'Output as JSON')
+    .option('-j, --json', 'Output as JSON')
     .action(withErrorHandler(async (env: string, options: { server?: string; tasks?: boolean; json?: boolean }) => {
       const { stackName, connection } = validateEnv(env, options.server);
 

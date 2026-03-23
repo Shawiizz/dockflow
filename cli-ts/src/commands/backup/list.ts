@@ -15,7 +15,7 @@ export function registerBackupListCommand(program: Command): void {
     .command('list <env> [service]')
     .alias('ls')
     .description('List available backups')
-    .option('--json', 'Output in JSON format')
+    .option('-j, --json', 'Output in JSON format')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(async (
       env: string,

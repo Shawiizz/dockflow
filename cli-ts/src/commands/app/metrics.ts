@@ -160,7 +160,7 @@ export function registerMetricsCommand(program: Command): void {
     .option('-s, --server <name>', 'Target server (defaults to manager)')
     .option('--history', 'Show deployment history')
     .option('-n, --lines <number>', 'Number of history entries to show', '20')
-    .option('--json', 'Output as JSON')
+    .option('-j, --json', 'Output as JSON')
     .option('--prune', 'Remove old metrics (keep last 1000)')
     .action(withErrorHandler(async (env: string, options: { 
       server?: string; 

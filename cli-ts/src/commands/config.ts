@@ -115,7 +115,7 @@ export function registerConfigCommand(program: Command): void {
   configCmd
     .command('show', { isDefault: true })
     .description('Display current configuration')
-    .option('--json', 'Output as JSON')
+    .option('-j, --json', 'Output as JSON')
     .action(withErrorHandler(async (options: { json?: boolean }) => {
       const config = loadConfig();
       const servers = loadServersConfig();
@@ -220,7 +220,7 @@ export function registerConfigCommand(program: Command): void {
     .alias('check')
     .description('Validate configuration files against schemas')
     .option('--verbose', 'Show detailed validation output')
-    .option('--json', 'Output validation results as JSON')
+    .option('-j, --json', 'Output validation results as JSON')
     .action(withErrorHandler(async (options: { verbose?: boolean; json?: boolean }) => {
       const result = validateConfigFiles();
 

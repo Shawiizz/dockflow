@@ -16,7 +16,7 @@ export function registerLogsCommand(program: Command): void {
     .description('Show logs for services')
     .option('-f, --follow', 'Follow log output')
     .option('-n, --tail <lines>', 'Number of lines to show', '100')
-    .option('-t, --timestamps', 'Show timestamps')
+    .option('-T, --timestamps', 'Show timestamps')
     .option('--since <time>', 'Show logs since timestamp (e.g., "1h", "2024-01-01")')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(async (env: string, service: string | undefined, options: { 

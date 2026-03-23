@@ -15,7 +15,7 @@ export function registerVersionCommand(program: Command): void {
     .command('version <env>')
     .description('Show app version currently deployed')
     .option('-s, --server <name>', 'Target server (defaults to manager)')
-    .option('--json', 'Output as JSON')
+    .option('-j, --json', 'Output as JSON')
     .action(withErrorHandler(async (env: string, options: { server?: string; json?: boolean }) => {
       const { stackName, connection } = validateEnv(env, options.server);
 

@@ -17,7 +17,7 @@ export function registerBackupPruneCommand(program: Command): void {
   program
     .command('prune <env> [service]')
     .description('Remove old backups (keeps the latest N per service)')
-    .option('--keep <n>', 'Number of backups to keep per service (overrides config)')
+    .option('--keep <n>', 'Number of backups to keep per service (default: config retention_count or 10)')
     .option('-y, --yes', 'Skip confirmation prompt')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(async (

@@ -60,6 +60,7 @@ program.action(async () => {
   printBlank();
   printWarning('Quick start:');
   printRaw('  dockflow init                   Initialize project structure');
+  printRaw('  dockflow setup                  Setup Docker Swarm on server');
   printRaw('  dockflow build                  Build Docker images locally');
   printRaw('  dockflow deploy <env>           Deploy to environment');
   printBlank();

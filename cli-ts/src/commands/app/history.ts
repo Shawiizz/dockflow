@@ -52,7 +52,7 @@ export function registerHistoryCommand(program: Command): void {
     .option('-s, --server <name>', 'Target server (defaults to manager)')
     .option('-n, --lines <number>', 'Number of lines to show', '20')
     .option('--all', 'Show all entries')
-    .option('--json', 'Output as JSON')
+    .option('-j, --json', 'Output as JSON')
     .action(withErrorHandler(async (env: string, options: { server?: string; lines?: string; all?: boolean; json?: boolean }) => {
       const { stackName, connection } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName, lines: options.lines, json: options.json });
