@@ -4,7 +4,7 @@
 
 import * as fs from 'fs';
 import ora from 'ora';
-import { printHeader, printSection, printError, printSuccess, printInfo, printBlank, printDim, colors } from '../../utils/output';
+import { printHeader, printSection, printError, printSuccess, printInfo, printBlank, printDim } from '../../utils/output';
 import { sshExec, sshExecStream, testConnection } from '../../utils/ssh';
 import type { ConnectionInfo } from '../../types';
 import { DOCKFLOW_RELEASE_URL } from './constants';
@@ -26,78 +26,83 @@ async function detectRemoteArch(conn: ConnectionInfo): Promise<'x64' | 'arm64'> 
 }
 
 /**
- * Prompt for remote connection info
+ * Prompt for remote connection info.
+ * If `prefilled` is provided (e.g. from user@host parsing), only the auth method is prompted.
+ * Otherwise, full interactive prompts are shown.
  */
-export async function promptRemoteConnection(): Promise<RemoteSetupOptions | null> {
+export async function promptRemoteConnection(prefilled?: RemoteSetupOptions): Promise<RemoteSetupOptions | null> {
   printSection('Remote Connection');
   printBlank();
-  
-  const choice = await selectMenu('How do you want to connect?', [
-    'Enter connection details manually (host, user, password/key)',
-    'Use an existing Dockflow connection string',
-    'Cancel'
-  ]);
-  
-  if (choice === 2) {
-    return null;
-  }
-  
-  if (choice === 1) {
+
+  let host: string;
+  let port: number;
+  let user: string;
+
+  if (prefilled) {
+    // Already have host/user from CLI target — just need auth
+    host = prefilled.host;
+    port = prefilled.port;
+    user = prefilled.user;
+    printInfo(`Target: ${user}@${host}:${port}`);
     printBlank();
-    const connStr = await prompt('Paste your connection string');
-    if (!connStr) {
-      printError('Connection string is required');
-      return null;
+  } else {
+    const choice = await selectMenu('How do you want to connect?', [
+      'Enter connection details manually (host, user, password/key)',
+      'Use an existing Dockflow connection string',
+      'Cancel'
+    ]);
+
+    if (choice === 2) return null;
+
+    if (choice === 1) {
+      printBlank();
+      const connStr = await prompt('Paste your connection string');
+      if (!connStr) {
+        printError('Connection string is required');
+        return null;
+      }
+      const conn = parseConnectionString(connStr);
+      if (!conn) {
+        printError('Invalid connection string format');
+        return null;
+      }
+      return {
+        host: conn.host,
+        port: conn.port || 22,
+        user: conn.user,
+        privateKey: conn.privateKey,
+        password: conn.password,
+      };
     }
-    
-    const conn = parseConnectionString(connStr);
-    if (!conn) {
-      printError('Invalid connection string format');
-      return null;
-    }
-    
-    return {
-      host: conn.host,
-      port: conn.port || 22,
-      user: conn.user,
-      privateKey: conn.privateKey,
-      password: conn.password
-    };
+
+    printBlank();
+    const hostInput = await prompt('Server IP or hostname');
+    if (!hostInput) { printError('Host is required'); return null; }
+    host = hostInput;
+
+    const portStr = await prompt('SSH port', '22');
+    port = parseInt(portStr, 10) || 22;
+
+    const userInput = await prompt('SSH username', 'root');
+    if (!userInput) { printError('Username is required'); return null; }
+    user = userInput;
+
+    printBlank();
   }
-  
-  printBlank();
-  const host = await prompt('Server IP or hostname');
-  if (!host) {
-    printError('Host is required');
-    return null;
-  }
-  
-  const portStr = await prompt('SSH port', '22');
-  const port = parseInt(portStr, 10) || 22;
-  
-  const user = await prompt('SSH username', 'root');
-  if (!user) {
-    printError('Username is required');
-    return null;
-  }
-  
-  printBlank();
+
   const authChoice = await selectMenu('Authentication method', [
     'Password',
     'SSH private key file',
     'Paste SSH private key'
   ]);
-  
+
   let password: string | undefined;
   let privateKey: string | undefined;
   let privateKeyPath: string | undefined;
-  
+
   if (authChoice === 0) {
     password = await promptPassword('SSH password');
-    if (!password) {
-      printError('Password is required');
-      return null;
-    }
+    if (!password) { printError('Password is required'); return null; }
   } else if (authChoice === 1) {
     privateKeyPath = await prompt('Path to SSH private key');
     if (!privateKeyPath || !fs.existsSync(privateKeyPath)) {
@@ -113,7 +118,7 @@ export async function promptRemoteConnection(): Promise<RemoteSetupOptions | nul
       return null;
     }
   }
-  
+
   return { host, port, user, password, privateKey, privateKeyPath };
 }
 
@@ -123,12 +128,11 @@ export async function promptRemoteConnection(): Promise<RemoteSetupOptions | nul
 export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   printHeader('Remote Setup');
   printBlank();
-  console.log(colors.info('Target:'), `${opts.user}@${opts.host}:${opts.port}`);
+  printInfo(`Target: ${opts.user}@${opts.host}:${opts.port}`);
   printBlank();
-  
+
   const testSpinner = ora('Testing SSH connection...').start();
-  
-  let usePasswordAuth = false;
+
   let conn: ConnectionInfo | null = null;
   
   if (opts.privateKey) {
@@ -147,7 +151,6 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
       return;
     }
   } else if (opts.password) {
-    usePasswordAuth = true;
     const result = await sshExec({ host: opts.host, port: opts.port, user: opts.user, password: opts.password }, 'echo ok');
     if (result.exitCode !== 0 || !result.stdout.includes('ok')) {
       testSpinner.fail('SSH connection failed');

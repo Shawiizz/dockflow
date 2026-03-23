@@ -309,9 +309,9 @@ REGISTRY_TOKEN=ghp_xxxx
 
 ```bash
 # 1. Setup each server
-dockflow setup remote --host manager-ip --user root --key ~/.ssh/id_ed25519
-dockflow setup remote --host worker1-ip --user root --key ~/.ssh/id_ed25519
-dockflow setup remote --host worker2-ip --user root --key ~/.ssh/id_ed25519
+dockflow setup root@manager-ip -k ~/.ssh/id_ed25519
+dockflow setup root@worker1-ip -k ~/.ssh/id_ed25519
+dockflow setup root@worker2-ip -k ~/.ssh/id_ed25519
 
 # 2. Initialize Swarm cluster
 dockflow setup swarm production

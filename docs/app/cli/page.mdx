@@ -23,7 +23,7 @@ The script detects your platform and architecture, downloads the binary, and add
 
 <Callout type="info">
   The CLI binary is self-contained and requires no external dependencies for most commands.
-  Use `dockflow setup` on the target Linux host, or `dockflow setup remote` from any platform to configure a remote server via SSH.
+  Use `dockflow setup` on the target Linux host, or `dockflow setup user@host` from any platform to configure a remote server via SSH.
 </Callout>
 
 ### Available Binaries
@@ -614,7 +614,7 @@ Remove the accessories stack entirely.
 
 ## Setup Commands
 
-Configure servers for deployment. Must be run on a Linux host or via `setup remote`.
+Configure servers for deployment. Must be run on a Linux host, or use `setup user@host` for remote servers.
 
 ### Interactive Setup
 
@@ -627,23 +627,21 @@ Run the interactive setup wizard. On Windows/macOS, prompts to connect to a Linu
 ### Remote Setup
 
 ```bash
-dockflow setup remote
+dockflow setup user@host[:port]
 ```
 
 Run setup on a remote Linux server from any platform.
 
 | Option | Description |
 |--------|-------------|
-| `--host <host>` | Remote server IP or hostname |
-| `--port <port>` | SSH port (default: 22) |
-| `--user <user>` | SSH username |
+| `-k, --key <path>` | Path to SSH private key |
 | `--password <password>` | SSH password |
-| `--key <path>` | Path to SSH private key |
 | `--connection <string>` | Use existing Dockflow connection string |
 
 ```bash
-dockflow setup remote --host 192.168.1.10 --user root --key ~/.ssh/id_ed25519
-dockflow setup remote --connection "eyJob3N0Ijoi..."
+dockflow setup root@192.168.1.10 -k ~/.ssh/id_ed25519
+dockflow setup root@192.168.1.10:2222 -k ~/.ssh/id_ed25519
+dockflow setup --connection "eyJob3N0Ijoi..."
 ```
 
 ### Non-Interactive Setup
@@ -713,7 +711,7 @@ Display connection string for an existing deployment user.
 
 ```bash
 # 1. Setup server
-dockflow setup remote --host 192.168.1.10 --user root --key ~/.ssh/id_ed25519
+dockflow setup root@192.168.1.10 -k ~/.ssh/id_ed25519
 
 # 2. Save connection string
 echo "PRODUCTION_MAIN_SERVER_CONNECTION=..." > .env.dockflow

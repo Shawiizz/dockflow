@@ -68,15 +68,6 @@ export interface SSHKeyResult {
   error?: string;
 }
 
-export interface RemoteOptions {
-  host?: string;
-  port?: string;
-  user?: string;
-  password?: string;
-  key?: string;
-  connection?: string;
-}
-
 export interface ConnectionOptions {
   host?: string;
   port?: string;

@@ -22,58 +22,50 @@ import { runNonInteractiveSetup } from './non-interactive';
 import { runRemoteSetup, promptRemoteConnection } from './remote';
 import { runSetupSwarm } from './swarm';
 import { CLIError, ConfigError, ErrorCode, withErrorHandler } from '../../utils/errors';
-import type { SetupOptions, RemoteOptions, ConnectionOptions, RemoteSetupOptions } from './types';
+import type { SetupOptions, ConnectionOptions, RemoteSetupOptions } from './types';
+
+/** Parse a `user@host[:port]` target string */
+function parseTarget(target: string): { user: string; host: string; port: number } | null {
+  const match = target.match(/^([^@]+)@([^:]+)(?::(\d+))?$/);
+  if (!match) return null;
+  return { user: match[1], host: match[2], port: match[3] ? parseInt(match[3], 10) : 22 };
+}
 
 /**
  * Register setup commands
  */
 export function registerSetupCommand(program: Command): void {
   const setup = program
-    .command('setup')
-    .description('Setup host machine for deployment');
-
-  // Interactive mode (default) - local setup on Linux only
-  setup
-    .command('interactive', { isDefault: true })
-    .description('Run interactive setup wizard on the local machine')
-    .action(withErrorHandler(async () => {
-      if (!isLinux()) {
-        throw new CLIError(
-          'This command must be run directly on a Linux host.',
-          ErrorCode.INVALID_ARGUMENT,
-          'Use "dockflow setup remote" to setup a remote Linux server via SSH.'
-        );
-      }
-
-      await runInteractiveSetup();
-    }));
-
-  // Remote mode - setup a remote Linux server via SSH
-  setup
-    .command('remote')
-    .description('Run setup on a remote Linux server via SSH')
-    .option('--host <host>', 'Remote server IP or hostname')
-    .option('--port <port>', 'SSH port', '22')
-    .option('--user <user>', 'SSH username')
-    .option('--password <password>', 'SSH password')
-    .option('--key <path>', 'Path to SSH private key')
-    .option('--connection <string>', 'Dockflow connection string')
-    .action(withErrorHandler(async (options: RemoteOptions) => {
+    .command('setup [target]')
+    .description('Setup host machine for deployment (use user@host for remote setup)')
+    .option('-k, --key <path>', 'Path to SSH private key (remote)')
+    .option('--password <password>', 'SSH password (remote)')
+    .option('--connection <string>', 'Dockflow connection string (remote)')
+    .action(withErrorHandler(async (target: string | undefined, options: { key?: string; password?: string; connection?: string }) => {
       let remoteOpts: RemoteSetupOptions | null = null;
-      
+
       if (options.connection) {
+        // Connection string mode
         const conn = parseConnectionString(options.connection);
-        if (!conn) {
-          throw new ConfigError('Invalid connection string');
-        }
+        if (!conn) throw new ConfigError('Invalid connection string');
         remoteOpts = {
           host: conn.host,
           port: conn.port || 22,
           user: conn.user,
           privateKey: conn.privateKey,
-          password: conn.password
+          password: conn.password,
         };
-      } else if (options.host && options.user) {
+      } else if (target) {
+        // user@host[:port] mode
+        const parsed = parseTarget(target);
+        if (!parsed) {
+          throw new CLIError(
+            `Invalid target format: "${target}"`,
+            ErrorCode.INVALID_ARGUMENT,
+            'Use the format: dockflow setup user@host[:port]'
+          );
+        }
+
         let privateKey: string | undefined;
         if (options.key) {
           if (!fs.existsSync(options.key)) {
@@ -81,24 +73,37 @@ export function registerSetupCommand(program: Command): void {
           }
           privateKey = fs.readFileSync(options.key, 'utf-8');
         }
-        
+
         remoteOpts = {
-          host: options.host,
-          port: parseInt(options.port || '22', 10),
-          user: options.user,
+          host: parsed.host,
+          port: parsed.port,
+          user: parsed.user,
           password: options.password,
-          privateKey
+          privateKey,
         };
-      } else {
-        remoteOpts = await promptRemoteConnection();
       }
-      
-      if (!remoteOpts) {
+
+      // Remote setup
+      if (remoteOpts) {
+        // If no auth method provided, fall back to interactive prompt
+        if (!remoteOpts.privateKey && !remoteOpts.password) {
+          remoteOpts = await promptRemoteConnection(remoteOpts);
+          if (!remoteOpts) { process.exit(0); }
+        }
+        await runRemoteSetup(remoteOpts);
         process.exit(0);
       }
-      
-      await runRemoteSetup(remoteOpts);
-      process.exit(0);
+
+      // Local setup (no target)
+      if (!isLinux()) {
+        throw new CLIError(
+          'This command must be run directly on a Linux host.',
+          ErrorCode.INVALID_ARGUMENT,
+          'Use "dockflow setup user@host" to setup a remote Linux server via SSH.'
+        );
+      }
+
+      await runInteractiveSetup();
     }));
 
   // Swarm cluster setup
@@ -130,7 +135,7 @@ export function registerSetupCommand(program: Command): void {
         throw new CLIError(
           'The "auto" command must be run directly on the target Linux host.',
           ErrorCode.INVALID_ARGUMENT,
-          'Use "dockflow setup remote" to run setup on a remote server via SSH.'
+          'Use "dockflow setup user@host" to run setup on a remote server via SSH.'
         );
       }
 
