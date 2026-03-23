@@ -4,6 +4,8 @@
 
 import { loadConfig, getStackName, getAccessoriesStackName, type BackupAccessoryConfig } from '../../utils/config';
 import { BackupError, ErrorCode } from '../../utils/errors';
+import type { SSHKeyConnection } from '../../types';
+import { createBackupService, type BackupService, type BackupListEntry } from '../../services/backup-service';
 
 export type BackupSource = 'services' | 'accessories';
 
@@ -77,4 +79,58 @@ export function getAllBackupStacks(env: string): { stackName: string; source: Ba
   }
 
   return stacks;
+}
+
+// ─── Shared data-fetching helpers (used by both CLI commands and API routes) ──
+
+/** Backup entries grouped by service within a single stack */
+export interface StackGroupedEntries {
+  backupService: BackupService;
+  byService: Record<string, BackupListEntry[]>;
+}
+
+/**
+ * List backups across all configured stacks, sorted newest-first.
+ */
+export async function listFromAllStacks(
+  connection: SSHKeyConnection,
+  env: string
+): Promise<BackupListEntry[]> {
+  const stacks = getAllBackupStacks(env);
+  const entries: BackupListEntry[] = [];
+
+  for (const { stackName } of stacks) {
+    const backupService = createBackupService(connection, stackName);
+    const result = await backupService.list();
+    if (result.success) entries.push(...result.data);
+  }
+
+  entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  return entries;
+}
+
+/**
+ * List backups across all configured stacks, grouped by stack and service.
+ * Returns one entry per stack, each containing a BackupService and its entries grouped by service name.
+ */
+export async function listGroupedFromAllStacks(
+  connection: SSHKeyConnection,
+  env: string
+): Promise<StackGroupedEntries[]> {
+  const stacks = getAllBackupStacks(env);
+  const result: StackGroupedEntries[] = [];
+
+  for (const { stackName } of stacks) {
+    const backupService = createBackupService(connection, stackName);
+    const listResult = await backupService.list();
+    if (!listResult.success) continue;
+
+    const byService: Record<string, BackupListEntry[]> = {};
+    for (const entry of listResult.data) {
+      (byService[entry.service] ??= []).push(entry);
+    }
+    result.push({ backupService, byService });
+  }
+
+  return result;
 }

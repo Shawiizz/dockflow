@@ -10,8 +10,8 @@ import { validateEnv } from '../../utils/validation';
 import { loadConfig } from '../../utils/config';
 import { printHeader, printSuccess, printInfo, printWarning, printBlank, printRaw, colors } from '../../utils/output';
 import { BackupError, withErrorHandler } from '../../utils/errors';
-import { createBackupService, type BackupListEntry } from '../../services/backup-service';
-import { requireBackupConfig, resolveBackupStack, getAllBackupStacks } from './utils';
+import { createBackupService } from '../../services/backup-service';
+import { requireBackupConfig, resolveBackupStack, listGroupedFromAllStacks, type StackGroupedEntries } from './utils';
 
 export function registerBackupPruneCommand(program: Command): void {
   program
@@ -36,10 +36,9 @@ export function registerBackupPruneCommand(program: Command): void {
         : config?.backup?.retention_count ?? 10;
 
       // Collect entries per stack, grouped by service
-      const stackData: { backupService: ReturnType<typeof createBackupService>; byService: Record<string, BackupListEntry[]> }[] = [];
+      const stackData: StackGroupedEntries[] = [];
 
       if (service) {
-        // Specific service — resolve which stack it belongs to
         const { source } = requireBackupConfig(service);
         const stackName = resolveBackupStack(env, source);
         const backupService = createBackupService(connection, stackName);
@@ -47,19 +46,7 @@ export function registerBackupPruneCommand(program: Command): void {
         if (!result.success) throw new BackupError(result.error.message);
         stackData.push({ backupService, byService: { [service]: result.data } });
       } else {
-        // No service specified — list from all configured stacks, grouped per stack
-        const stacks = getAllBackupStacks(env);
-        for (const { stackName } of stacks) {
-          const backupService = createBackupService(connection, stackName);
-          const result = await backupService.list();
-          if (!result.success) continue;
-
-          const byService: Record<string, BackupListEntry[]> = {};
-          for (const entry of result.data) {
-            (byService[entry.service] ??= []).push(entry);
-          }
-          stackData.push({ backupService, byService });
-        }
+        stackData.push(...await listGroupedFromAllStacks(connection, env));
       }
 
       // Count what needs pruning across all stacks

@@ -61,6 +61,9 @@ interface DbStrategy {
   /** Env vars to inject via `docker exec -e` (e.g. for password passing) */
   buildExecEnv(creds: ContainerCredentials): Record<string, string>;
   fileExtension: string;
+  /** When true, the restore command kills the container process (e.g. Redis SHUTDOWN NOSAVE)
+   *  and requires an explicit Swarm service restart to guarantee the container comes back. */
+  requiresServiceRestart?: boolean;
 }
 
 const DB_STRATEGIES: Record<Exclude<BackupDbType, 'raw' | 'volume'>, DbStrategy> = {
@@ -157,17 +160,16 @@ const DB_STRATEGIES: Record<Exclude<BackupDbType, 'raw' | 'volume'>, DbStrategy>
       return 'BEFORE=$(redis-cli LASTSAVE) && redis-cli BGSAVE && for i in $(seq 1 30); do AFTER=$(redis-cli LASTSAVE); [ "$AFTER" != "$BEFORE" ] && break; sleep 1; done && cat /data/dump.rdb';
     },
     buildRestoreCommand() {
-      // Write the RDB file first, then shut down Redis without saving (so it doesn't
-      // overwrite the restored dump). Docker Swarm's restart policy will restart the
-      // container, and Redis loads the new dump.rdb on boot.
-      // This avoids `DEBUG RELOAD` which is often disabled in production via ACLs.
-      // `|| true` prevents a non-zero exit from SHUTDOWN propagating as a restore failure.
+      // Write the RDB file, then SHUTDOWN NOSAVE so Redis doesn't overwrite it
+      // with in-memory data during shutdown. The service restart is handled
+      // explicitly by the restore() method via `docker service update --force`.
       return 'cat > /data/dump.rdb && redis-cli SHUTDOWN NOSAVE || true';
     },
     buildExecEnv() {
       return {};
     },
     fileExtension: 'rdb',
+    requiresServiceRestart: true,
   },
 };
 
@@ -180,10 +182,19 @@ function generateBackupId(): string {
   return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}-${suffix}`;
 }
 
-/** Build docker exec env flags from a key-value map */
+/**
+ * Build docker exec env flags from a key-value map.
+ * SAFETY: Keys are NOT shell-escaped — callers must only pass hardcoded keys
+ * (e.g. PGPASSWORD, MYSQL_PWD) via DbStrategy.buildExecEnv(). Never pass user input as keys.
+ */
 function buildExecEnvFlags(env: Record<string, string>): string {
   return Object.entries(env)
-    .map(([k, v]) => `-e ${k}='${shellEscape(v)}'`)
+    .map(([k, v]) => {
+      if (!/^[A-Z_][A-Z0-9_]*$/i.test(k)) {
+        throw new Error(`Invalid env key: ${k}`);
+      }
+      return `-e ${k}='${shellEscape(v)}'`;
+    })
     .join(' ');
 }
 
@@ -444,11 +455,13 @@ export class BackupService {
     }
 
     const startTime = Date.now();
-    let totalSizeBytes = 0;
-    const volumeEntries: { name: string; sizeBytes: number; mountType: 'volume' | 'bind'; sourcePath: string }[] = [];
 
-    for (const mount of mounts) {
-      const filePath = this.getDataFilePath(backupDir, backupId, 'volume', compression, mount.name);
+    // Build all file paths upfront for reliable cleanup
+    const filePaths = mounts.map(m => this.getDataFilePath(backupDir, backupId, 'volume', compression, m.name));
+
+    // Backup all volumes in parallel (independent SSH calls)
+    const backupResults = await Promise.all(mounts.map(async (mount, i) => {
+      const filePath = filePaths[i];
 
       // Named volumes: tar via temporary alpine container
       // Bind mounts: tar the host path directly
@@ -462,15 +475,30 @@ export class BackupService {
 
       const result = await sshExec(this.connection, fullCommand);
       if (result.exitCode !== 0) {
-        await sshExec(this.connection, `rm -f '${shellEscape(backupDir)}'/${backupId}.*`);
-        return err(new Error(`Backup failed for ${mount.mountType} ${mount.source}: ${result.stderr}`));
+        return { ok: false as const, mount, error: result.stderr };
       }
 
       const sizeCmd = `stat -c %s '${shellEscape(filePath)}' 2>/dev/null || echo 0`;
       const sizeResult = await sshExec(this.connection, sizeCmd);
       const sizeBytes = parseInt(sizeResult.stdout.trim(), 10) || 0;
-      totalSizeBytes += sizeBytes;
-      volumeEntries.push({ name: mount.name, sizeBytes, mountType: mount.mountType, sourcePath: mount.source });
+      return { ok: true as const, mount, sizeBytes };
+    }));
+
+    // Check for failures — clean up all files for this backup ID on any error
+    const failed = backupResults.find(r => !r.ok);
+    if (failed) {
+      const cleanupPaths = filePaths.map(f => `'${shellEscape(f)}'`).join(' ');
+      await sshExec(this.connection, `rm -f ${cleanupPaths}`);
+      return err(new Error(`Backup failed for ${failed.mount.mountType} ${failed.mount.source}: ${failed.error}`));
+    }
+
+    let totalSizeBytes = 0;
+    const volumeEntries: { name: string; sizeBytes: number; mountType: 'volume' | 'bind'; sourcePath: string }[] = [];
+    for (const r of backupResults) {
+      if (r.ok) {
+        totalSizeBytes += r.sizeBytes;
+        volumeEntries.push({ name: r.mount.name, sizeBytes: r.sizeBytes, mountType: r.mount.mountType, sourcePath: r.mount.source });
+      }
     }
 
     const durationMs = Date.now() - startTime;
@@ -677,6 +705,16 @@ export class BackupService {
     const result = await sshExec(this.connection, fullCommand);
     if (result.exitCode !== 0) {
       return err(new Error(`Restore failed: ${result.stderr}`));
+    }
+
+    // If the restore killed the container (e.g. Redis SHUTDOWN NOSAVE),
+    // explicitly restart the Swarm service to guarantee it comes back up.
+    if (dbType !== 'raw' && DB_STRATEGIES[dbType].requiresServiceRestart) {
+      printDebug(`Restarting service ${service} after restore...`);
+      const restartResult = await this.stackService.restart(service);
+      if (!restartResult.success) {
+        return err(new Error(`Restore succeeded but service restart failed: ${restartResult.message}`));
+      }
     }
 
     return ok(undefined);

@@ -162,7 +162,7 @@ backup:
 
 ### Redis
 
-Triggers `BGSAVE` and copies the RDB dump file. Restore replaces the dump file and reloads.
+Triggers `BGSAVE` and copies the RDB dump file. Restore writes the new dump file, issues `SHUTDOWN NOSAVE` to prevent Redis from overwriting it, then explicitly restarts the Swarm service via `docker service update --force`.
 
 ```yaml
 backup:
@@ -170,6 +170,10 @@ backup:
     redis:
       type: redis
 ```
+
+<Callout type="info">
+  Redis restore automatically handles the full cycle: write the RDB file, shut down Redis without saving, and restart the service. This works regardless of the service's restart policy configuration.
+</Callout>
 
 ### Custom (Raw)
 

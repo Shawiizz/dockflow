@@ -8,7 +8,7 @@ import { validateEnv } from '../../utils/validation';
 import { printHeader, printInfo, printBlank, printJSON, printRaw, printDim, colors, formatRelativeTime } from '../../utils/output';
 import { withErrorHandler, BackupError } from '../../utils/errors';
 import { createBackupService, type BackupListEntry } from '../../services/backup-service';
-import { requireBackupConfig, resolveBackupStack, getAllBackupStacks } from './utils';
+import { requireBackupConfig, resolveBackupStack, listFromAllStacks } from './utils';
 
 export function registerBackupListCommand(program: Command): void {
   program
@@ -35,18 +35,7 @@ export function registerBackupListCommand(program: Command): void {
         if (!result.success) throw new BackupError(result.error.message);
         entries = result.data;
       } else {
-        // No service specified — list from all configured stacks
-        entries = [];
-        const stacks = getAllBackupStacks(env);
-        for (const { stackName } of stacks) {
-          const backupService = createBackupService(connection, stackName);
-          const result = await backupService.list();
-          if (result.success) {
-            entries.push(...result.data);
-          }
-        }
-        // Sort merged results newest-first
-        entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+        entries = await listFromAllStacks(connection, env);
       }
 
       if (options.json) {

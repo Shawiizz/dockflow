@@ -11,7 +11,7 @@ import { jsonResponse, errorResponse } from '../server';
 import { loadConfig, getStackName, getAccessoriesStackName, type BackupAccessoryConfig } from '../../utils/config';
 import { getManagerConnection, resolveEnvironment } from './_helpers';
 import { createBackupService, type BackupService, type BackupBaseEntry } from '../../services/backup-service';
-import { requireBackupConfig, getAllBackupStacks, type BackupSource } from '../../commands/backup/utils';
+import { requireBackupConfig, listFromAllStacks, listGroupedFromAllStacks, type BackupSource } from '../../commands/backup/utils';
 import type { SSHKeyConnection } from '../../types';
 import type { BackupEntry, BackupListResponse, BackupActionResponse, BackupPruneResponse } from '../types';
 
@@ -74,11 +74,6 @@ function getBackupConfig(service: string): { backupConfig: BackupAccessoryConfig
   }
 }
 
-/** Get all configured backup stack names for an environment */
-function getAllBackupStackNames(env: string): string[] {
-  return getAllBackupStacks(env).map(s => s.stackName);
-}
-
 // ─── Router ───────────────────────────────────────────────────────────────
 
 /**
@@ -126,14 +121,7 @@ async function listBackups(url: URL): Promise<Response> {
     if (!result.success) return errorResponse(result.error.message, 500);
     allEntries = result.data;
   } else {
-    // List from all configured stacks
-    const stackNames = getAllBackupStackNames(base.env);
-    for (const stackName of stackNames) {
-      const backupService = createBackupService(base.conn, stackName);
-      const result = await backupService.list();
-      if (result.success) allEntries.push(...result.data);
-    }
-    allEntries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    allEntries = await listFromAllStacks(base.conn, base.env);
   }
 
   const response: BackupListResponse = {
@@ -228,19 +216,8 @@ async function pruneBackups(url: URL): Promise<Response> {
     if (!result.success) return errorResponse(result.error.message, 500);
     totalPruned = result.data;
   } else {
-    // Prune across all configured stacks, grouped per service
-    const stackNames = getAllBackupStackNames(base.env);
-    for (const stackName of stackNames) {
-      const backupService = createBackupService(base.conn, stackName);
-      const listResult = await backupService.list();
-      if (!listResult.success) continue;
-
-      // Group entries by service and prune each independently
-      const byService: Record<string, typeof listResult.data> = {};
-      for (const entry of listResult.data) {
-        (byService[entry.service] ??= []).push(entry);
-      }
-
+    const stackData = await listGroupedFromAllStacks(base.conn, base.env);
+    for (const { backupService, byService } of stackData) {
       for (const [svc, entries] of Object.entries(byService)) {
         if (entries.length <= retentionCount) continue;
         const result = await backupService.prune(svc, retentionCount, entries);
