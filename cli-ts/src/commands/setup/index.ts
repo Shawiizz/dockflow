@@ -12,7 +12,7 @@
 import type { Command } from 'commander';
 import * as fs from 'fs';
 import { printHeader, printSuccess, printWarning, printInfo, printBlank, printRaw } from '../../utils/output';
-import { isLinux, checkDependencies, displayDependencyStatus } from './dependencies';
+import { isLinux, displayDependencyStatus } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
 import { prompt } from './prompts';
 import { listSSHKeys } from './ssh-keys';
@@ -38,10 +38,24 @@ export function registerSetupCommand(program: Command): void {
   const setup = program
     .command('setup [target]')
     .description('Setup host machine for deployment (use user@host for remote setup)')
+    // Remote options
     .option('-k, --key <path>', 'Path to SSH private key (remote)')
-    .option('--password <password>', 'SSH password (remote)')
     .option('--connection <string>', 'Dockflow connection string (remote)')
-    .action(withErrorHandler(async (target: string | undefined, options: { key?: string; password?: string; connection?: string }) => {
+    // Shared options
+    .option('--password <password>', 'SSH password (remote) or sudo password (local)')
+    // Local non-interactive options
+    .option('--host <host>', 'Public IP/hostname for connection string (local)')
+    .option('--port <port>', 'SSH port (local)', '22')
+    .option('--user <user>', 'Deployment username (local, creates new user if different from current)')
+    .option('--ssh-key <path>', 'Path to existing SSH private key (local)')
+    .option('--generate-key', 'Generate new SSH key (local)')
+    .option('--skip-docker-install', 'Skip Docker installation (local)')
+    .option('--portainer', 'Install Portainer (local)')
+    .option('--portainer-port <port>', 'Portainer HTTP port (local)', '9000')
+    .option('--portainer-password <password>', 'Portainer admin password (local)')
+    .option('--portainer-domain <domain>', 'Portainer domain name (local)')
+    .option('-y, --yes', 'Skip confirmations (local)')
+    .action(withErrorHandler(async (target: string | undefined, options: SetupOptions & { key?: string; connection?: string }) => {
       let remoteOpts: RemoteSetupOptions | null = null;
 
       if (options.connection) {
@@ -103,7 +117,15 @@ export function registerSetupCommand(program: Command): void {
         );
       }
 
-      await runInteractiveSetup();
+      // Detect non-interactive mode: any local-specific flag provided
+      const hasLocalFlags = options.host || options.user || options.sshKey || options.generateKey
+        || options.skipDockerInstall || options.portainer;
+
+      if (hasLocalFlags) {
+        await runNonInteractiveSetup(options);
+      } else {
+        await runInteractiveSetup();
+      }
     }));
 
   // Swarm cluster setup
@@ -112,34 +134,6 @@ export function registerSetupCommand(program: Command): void {
     .description('Initialize Docker Swarm cluster for an environment')
     .action(withErrorHandler(async (env: string) => {
       await runSetupSwarm(env);
-    }));
-
-  // Non-interactive mode - local setup with CLI options
-  setup
-    .command('auto')
-    .description('Run non-interactive setup with command-line options')
-    .option('--host <host>', 'Public IP/hostname for connection string')
-    .option('--port <port>', 'SSH port', '22')
-    .option('--user <user>', 'Deployment username (creates new user if different from current)')
-    .option('--password <password>', 'Password for new user or sudo')
-    .option('--ssh-key <path>', 'Path to existing SSH private key')
-    .option('--generate-key', 'Generate new SSH key')
-    .option('--skip-docker-install', 'Skip Docker installation')
-    .option('--portainer', 'Install Portainer')
-    .option('--portainer-port <port>', 'Portainer HTTP port', '9000')
-    .option('--portainer-password <password>', 'Portainer admin password')
-    .option('--portainer-domain <domain>', 'Portainer domain name')
-    .option('-y, --yes', 'Skip confirmations')
-    .action(withErrorHandler(async (options: SetupOptions) => {
-      if (!isLinux()) {
-        throw new CLIError(
-          'The "auto" command must be run directly on the target Linux host.',
-          ErrorCode.INVALID_ARGUMENT,
-          'Use "dockflow setup user@host" to run setup on a remote server via SSH.'
-        );
-      }
-
-      await runNonInteractiveSetup(options);
     }));
 
   // Check dependencies
@@ -155,9 +149,7 @@ export function registerSetupCommand(program: Command): void {
         printBlank();
       }
 
-      displayDependencyStatus();
-
-      const deps = checkDependencies();
+      const deps = displayDependencyStatus();
       if (deps.ok) {
         printSuccess('All required dependencies are installed');
       } else {

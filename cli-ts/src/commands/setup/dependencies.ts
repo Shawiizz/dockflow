@@ -146,15 +146,35 @@ export function installDependencies(deps: Dependency[]): boolean {
 /**
  * Check all required dependencies
  */
-export function checkDependencies(): DependencyCheckResult {
+export function checkDependencies(options?: { display?: boolean }): DependencyCheckResult {
   const missing: string[] = [];
   const missingDeps: Dependency[] = [];
 
+  if (options?.display) {
+    printSection('Dependency Check');
+  }
+
   for (const dep of REQUIRED_DEPENDENCIES) {
-    if (!commandExists(dep.name)) {
+    const exists = commandExists(dep.name);
+    if (!exists) {
       missing.push(`${dep.name} (${dep.description})`);
       missingDeps.push(dep);
     }
+    if (options?.display) {
+      const status = exists ? colors.success('✓') : colors.error('✗');
+      console.log(`  ${status} ${dep.name} - ${dep.description}`);
+    }
+  }
+
+  if (options?.display) {
+    printBlank();
+    printInfo('Optional:');
+    for (const dep of OPTIONAL_DEPENDENCIES) {
+      const exists = commandExists(dep.name);
+      const status = exists ? colors.success('✓') : colors.warning('○');
+      console.log(`  ${status} ${dep.name} - ${dep.description}`);
+    }
+    printBlank();
   }
 
   return {
@@ -165,23 +185,8 @@ export function checkDependencies(): DependencyCheckResult {
 }
 
 /**
- * Display dependency check results
+ * Display dependency check results (convenience wrapper)
  */
-export function displayDependencyStatus(): void {
-  printSection('Dependency Check');
-
-  for (const dep of REQUIRED_DEPENDENCIES) {
-    const exists = commandExists(dep.name);
-    const status = exists ? colors.success('✓') : colors.error('✗');
-    console.log(`  ${status} ${dep.name} - ${dep.description}`);
-  }
-
-  printBlank();
-  printInfo('Optional:');
-  for (const dep of OPTIONAL_DEPENDENCIES) {
-    const exists = commandExists(dep.name);
-    const status = exists ? colors.success('✓') : colors.warning('○');
-    console.log(`  ${status} ${dep.name} - ${dep.description}`);
-  }
-  printBlank();
+export function displayDependencyStatus(): DependencyCheckResult {
+  return checkDependencies({ display: true });
 }

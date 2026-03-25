@@ -25,9 +25,7 @@ export async function runInteractiveSetup(): Promise<void> {
   printHeader('Machine Setup Wizard');
   printBlank();
 
-  displayDependencyStatus();
-
-  const deps = checkDependencies();
+  const deps = displayDependencyStatus();
   if (!deps.ok) {
     printWarning('Missing required dependencies:');
     deps.missing.forEach(m => printWarning(`  - ${m}`));
