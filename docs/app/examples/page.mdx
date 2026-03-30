@@ -352,6 +352,59 @@ server {
 
 See [Templates](/configuration/templates) for the full templating reference.
 
+## App with Automatic HTTPS
+
+A single service deployed with automatic HTTPS via Traefik. No Nginx config required.
+
+### config.yml
+
+```yaml
+project_name: "my-app"
+
+proxy:
+  enabled: true
+  email: admin@example.com
+  domains:
+    production: my-app.example.com
+    staging: staging.my-app.example.com
+
+health_checks:
+  enabled: true
+  on_failure: rollback
+  endpoints:
+    - name: "App"
+      url: "https://my-app.example.com/health"
+      expected_status: 200
+```
+
+### docker-compose.yml
+
+```yaml
+services:
+  app:
+    image: my-app
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: ${ENV}
+```
+
+Dockflow automatically injects the Traefik routing labels and connects the service to the `traefik-public` network. No manual label configuration needed.
+
+### Deploy
+
+```bash
+dockflow deploy production 1.0.0
+# → Traefik deployed on manager
+# → Certificate obtained from Let's Encrypt
+# → https://my-app.example.com is live
+```
+
+See [Automatic HTTPS Proxy](/configuration/proxy) for all options.
+
 ## Projects Using Dockflow
 
 | Project | Description | Link |

@@ -228,8 +228,8 @@ export const ProxyConfigSchema = z.object({
   enabled: z.boolean().optional().default(false).describe(
     'Enable automatic HTTPS routing via Traefik'
   ),
-  email: z.string().email().describe(
-    'Email address for Let\'s Encrypt certificate notifications'
+  email: z.string().email().optional().describe(
+    'Email address for Let\'s Encrypt certificate notifications (required when enabled)'
   ),
   domains: z.record(z.string(), z.string()).optional().describe(
     'Domain per environment, e.g. { production: "app.example.com", staging: "staging.example.com" }'

@@ -1,0 +1,170 @@
+# Automatic HTTPS Proxy
+
+import { Callout, Steps, Tabs } from 'nextra/components'
+
+Dockflow can automatically provision HTTPS certificates and route traffic to your services using [Traefik](https://traefik.io) as a reverse proxy. Add a domain to your config and it works — no Nginx config to write, no Certbot to manage.
+
+<Callout type="info">
+  Traefik is deployed as a Docker Swarm service on your manager node. It watches your stack deployments and automatically obtains Let's Encrypt certificates via HTTP challenge.
+</Callout>
+
+## Minimal Configuration
+
+```yaml
+# .dockflow/config.yml
+project_name: "my-app"
+
+proxy:
+  enabled: true
+  email: admin@example.com
+  domains:
+    production: my-app.example.com
+```
+
+That's it. On the next `dockflow deploy production`, Dockflow will:
+
+1. Deploy Traefik on your manager node (if not already running)
+2. Inject Traefik routing labels into your app services
+3. Traefik contacts Let's Encrypt and obtains the certificate
+4. HTTPS is live, HTTP automatically redirects to HTTPS
+
+## Multiple Environments
+
+```yaml
+proxy:
+  enabled: true
+  email: admin@example.com
+  domains:
+    production: my-app.example.com
+    staging: staging.my-app.example.com
+```
+
+Each environment gets its own domain and certificate. Traefik handles renewals automatically.
+
+## All Options
+
+```yaml
+proxy:
+  enabled: true
+  email: admin@example.com        # Required when enabled
+  domains:
+    production: my-app.example.com
+    staging: staging.my-app.example.com
+  dashboard:
+    enabled: true                  # Optional: expose Traefik dashboard
+    domain: traefik.example.com
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `enabled` | boolean | Enable Traefik proxy (default: `false`) |
+| `email` | string | Email for Let's Encrypt notifications. Required when `enabled: true` |
+| `domains` | map | Domain per environment |
+| `dashboard.enabled` | boolean | Expose the Traefik dashboard (default: `false`) |
+| `dashboard.domain` | string | Domain for the dashboard. Required if `dashboard.enabled: true` |
+
+<Callout type="warning">
+  **Dashboard security** — The Traefik dashboard is exposed publicly when enabled. Restrict access with your firewall or add [Traefik middleware](https://doc.traefik.io/traefik/middlewares/http/basicauth/) for basic auth.
+</Callout>
+
+## Requirements
+
+- Ports **80** and **443** must be open and reachable from the internet on your manager node
+- Your domain's DNS must point to your manager's IP before deploying
+- Your app service must expose a port in `docker-compose.yml` (Traefik reads this to know the container port)
+
+## How It Works
+
+<Steps>
+### Traefik deployment
+
+On `dockflow deploy`, Dockflow creates a `traefik-public` overlay network and deploys Traefik as a Swarm service on the manager node. Traefik watches the Docker Swarm API for services with `traefik.enable=true` labels.
+
+### Label injection
+
+Dockflow automatically injects Traefik routing labels into your app services (any service that has `ports:` defined):
+
+```yaml
+# What Dockflow injects automatically
+deploy:
+  labels:
+    - "traefik.enable=true"
+    - "traefik.http.routers.my-app-production-app.rule=Host(`my-app.example.com`)"
+    - "traefik.http.routers.my-app-production-app.entrypoints=websecure"
+    - "traefik.http.routers.my-app-production-app.tls.certresolver=letsencrypt"
+    - "traefik.http.services.my-app-production-app.loadbalancer.server.port=3000"
+networks:
+  - default
+  - traefik-public
+```
+
+### Certificate issuance
+
+Traefik performs an HTTP-01 ACME challenge with Let's Encrypt. The certificate is stored in a persistent Docker volume (`traefik-certs`) and renewed automatically before expiry.
+</Steps>
+
+## Coexistence with Nginx
+
+When `proxy.enabled: true`, Dockflow skips the Nginx role during deployment. If you have existing Nginx templates in `.dockflow/templates/nginx/`, disable the proxy or migrate your routing to Traefik labels.
+
+## Let's Encrypt Rate Limits
+
+Let's Encrypt enforces [rate limits](https://letsencrypt.org/docs/rate-limits/). During testing, avoid triggering repeated certificate requests for the same domain. Errors are reported in Traefik logs:
+
+```bash
+# Check Traefik logs
+dockflow exec production traefik "traefik logs"
+# Or directly on the server
+docker service logs traefik_traefik
+```
+
+## Example: App with HTTPS
+
+<Tabs items={['config.yml', 'docker-compose.yml', 'servers.yml']}>
+  <Tabs.Tab>
+```yaml
+project_name: "my-app"
+
+proxy:
+  enabled: true
+  email: admin@example.com
+  domains:
+    production: my-app.example.com
+    staging: staging.my-app.example.com
+
+health_checks:
+  enabled: true
+  on_failure: rollback
+  endpoints:
+    - name: "App"
+      url: "https://my-app.example.com/health"
+      expected_status: 200
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```yaml
+services:
+  app:
+    image: my-app
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```yaml
+defaults:
+  user: dockflow
+
+servers:
+  main:
+    role: manager
+    env:
+      APP_ENV: production
+```
+  </Tabs.Tab>
+</Tabs>

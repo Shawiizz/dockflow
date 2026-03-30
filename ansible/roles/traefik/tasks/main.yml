@@ -21,7 +21,7 @@
     mode: '0644'
 
 - name: Deploy Traefik stack
-  shell: docker stack deploy --prune --resolve-image always -c /tmp/traefik-stack.yml {{ traefik_stack_name }}
+  shell: docker stack deploy --prune --resolve-image changed -c /tmp/traefik-stack.yml {{ traefik_stack_name }}
 
 - name: Remove temporary stack file
   file:

@@ -103,7 +103,7 @@ export interface ProxyDashboardConfig {
 
 export interface ProxyConfig {
   enabled?: boolean;
-  email: string;
+  email?: string;
   domains?: Record<string, string>;
   dashboard?: ProxyDashboardConfig;
 }

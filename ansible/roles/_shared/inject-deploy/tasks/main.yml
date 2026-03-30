@@ -59,7 +59,7 @@
           {%- set ns.has_proxied = true -%}
           {%- set port_raw = svc_config.ports[0] | string -%}
           {%- if ':' in port_raw -%}
-            {%- set svc_port = port_raw.split(':')[1].split('/')[0] -%}
+            {%- set svc_port = port_raw.split(':')[-1].split('/')[0] -%}
           {%- else -%}
             {%- set svc_port = port_raw.split('/')[0] -%}
           {%- endif -%}
