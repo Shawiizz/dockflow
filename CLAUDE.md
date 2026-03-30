@@ -189,6 +189,49 @@ CI secrets format: `{ENV}_{SERVER}_{CONNECTION}` = base64-encoded `user@host:por
 - **Use centralized output helpers**: Never add raw `console.log`/`console.error` in CLI commands or API routes.
 - **Config schema + interface parity**: Update both Zod schema and TypeScript interface when adding config fields.
 - **Ansible variable centralization**: Defaults in `ansible/group_vars/all.yml`. Roles reference `dockflow_defaults.*`.
-- **Document new features**: Update the relevant MDX page in `docs/app/` or create a new one.
 - **Error handling**: Throw typed `CLIError` subclasses from commands. Never catch-and-exit manually.
 - **Services for Docker ops**: Use the services layer (`cli-ts/src/services/`) for Docker Swarm interactions, not raw SSH commands in command handlers.
+
+## Self-Review Before Finishing
+
+After implementing any feature or fix, always ask:
+
+- **Is the logic correct?** Re-read the code with fresh eyes. Check edge cases: empty inputs, missing fields, format variations (e.g. port formats `host:container` vs `ip:host:container`).
+- **Is it consistent with the rest of the codebase?** Patterns, naming, error handling, output style.
+- **Did I break anything?** Run `bun run typecheck`. Think about what else calls the code I changed.
+- **Is this the simplest approach?** If the implementation feels complex, step back — there's often a simpler path.
+- **Are there silent failure modes?** Especially in Ansible Jinja2 (type coercions, undefined variables, filter behavior differences).
+
+## Documentation Rules
+
+Every new user-facing feature **must** be documented before the task is considered done.
+
+### When to create a new page vs update an existing one
+
+- **New page**: The feature is a standalone concept with its own config block, workflow, or set of options (e.g. `proxy`, `registry`, `hooks`).
+- **Update existing page**: The change adds a field to an existing concept (e.g. adding a flag to `health_checks`).
+
+### Doc page structure
+
+New pages in `docs/app/configuration/` or `docs/app/` should follow this order:
+1. **One-line intro** — what this feature does and why it matters
+2. **Minimal working example** — the simplest config that makes it work
+3. **All options** — table with field, type, description, default
+4. **How it works** — brief explanation of the mechanism (use `<Steps>` for multi-step flows)
+5. **Edge cases / caveats** — things that can go wrong, `<Callout type="warning">` for important ones
+6. **Full example** — realistic config using `<Tabs>` when it spans multiple files
+
+### Doc style
+
+- Use `<Callout type="info">` for tips, `<Callout type="warning">` for gotchas
+- Code blocks always have a language tag and a comment showing the file path (`# .dockflow/config.yml`)
+- Tables for option references: `| Field | Type | Description | Default |`
+- Link to related pages at the end with "See also" or inline contextual links
+- No marketing language. Direct, technical, factual.
+
+### Navigation and index
+
+After creating a new page:
+1. Add its slug to `docs/app/configuration/_meta.ts` (or the relevant `_meta.ts`) so it appears in the sidebar
+2. Add a `<Cards.Card>` entry in the parent index page (`docs/app/configuration/page.mdx`)
+3. Add the entry to `docs/scripts/generate-llms-txt.ts` so LLM context stays up to date
