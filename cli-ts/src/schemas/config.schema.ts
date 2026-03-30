@@ -207,6 +207,42 @@ export const BackupConfigSchema = z.object({
 });
 
 /**
+ * Traefik dashboard configuration schema
+ */
+export const ProxyDashboardSchema = z.object({
+  enabled: z.boolean().optional().default(false).describe(
+    'Enable the Traefik dashboard'
+  ),
+  domain: z.string().optional().describe(
+    'Domain to expose the Traefik dashboard on (required if enabled)'
+  ),
+}).refine(
+  (data) => !data.enabled || !!data.domain,
+  { message: 'proxy.dashboard.domain is required when proxy.dashboard.enabled is true' }
+);
+
+/**
+ * Reverse proxy configuration schema (Traefik + Let's Encrypt)
+ */
+export const ProxyConfigSchema = z.object({
+  enabled: z.boolean().optional().default(false).describe(
+    'Enable automatic HTTPS routing via Traefik'
+  ),
+  email: z.string().email().describe(
+    'Email address for Let\'s Encrypt certificate notifications'
+  ),
+  domains: z.record(z.string(), z.string()).optional().describe(
+    'Domain per environment, e.g. { production: "app.example.com", staging: "staging.example.com" }'
+  ),
+  dashboard: ProxyDashboardSchema.optional().describe(
+    'Traefik dashboard configuration'
+  ),
+}).refine(
+  (data) => !data.enabled || !!data.email,
+  { message: 'proxy.email is required when proxy.enabled is true' }
+);
+
+/**
  * Project name validation pattern
  * Must be lowercase alphanumeric with hyphens, no leading/trailing hyphens
  */
@@ -255,6 +291,10 @@ export const DockflowConfigSchema = z.object({
 
   templates: z.array(TemplateFileSchema).optional().describe(
     'List of files to render with Jinja2 templating before deployment'
+  ),
+
+  proxy: ProxyConfigSchema.optional().describe(
+    'Automatic HTTPS proxy configuration (Traefik + Let\'s Encrypt)'
   ),
 });
 

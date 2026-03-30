@@ -138,7 +138,12 @@
   roles:
     - role: geerlingguy.docker
       when: not (skip_docker_install | default(false) | bool)
+    - role: traefik
+      when: config.proxy is defined and (config.proxy.enabled | default(false) | bool)
+      tags:
+        - traefik
     - role: nginx
+      when: not (config.proxy is defined and (config.proxy.enabled | default(false) | bool))
       tags:
         - nginx
     - role: private_ssh_keys

@@ -96,6 +96,18 @@ export interface TemplateFileConfig {
   dest: string;
 }
 
+export interface ProxyDashboardConfig {
+  enabled?: boolean;
+  domain?: string;
+}
+
+export interface ProxyConfig {
+  enabled?: boolean;
+  email: string;
+  domains?: Record<string, string>;
+  dashboard?: ProxyDashboardConfig;
+}
+
 export interface AccessoryConfig {
   image?: string;
   volumes?: string[];
@@ -115,6 +127,7 @@ export interface DockflowConfig {
   backup?: BackupConfig;
   templates?: (string | TemplateFileConfig)[];
   accessories?: Record<string, AccessoryConfig>;
+  proxy?: ProxyConfig;
 }
 
 /**
