@@ -84,7 +84,7 @@
       {% endfor %}
 
       Check SSH connectivity and disk space on the target node.
-  when: node_transfer_results.results | selectattr('skipped', 'equalto', false) | selectattr('rc', 'defined') | selectattr('rc', 'ne', 0) | list | length > 0
+  when: node_transfer_results.results | selectattr('rc', 'defined') | selectattr('rc', 'ne', 0) | list | length > 0
 
 - name: "Cleanup SSH key for {{ _node_name }}"
   file:

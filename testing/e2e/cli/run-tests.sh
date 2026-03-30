@@ -47,7 +47,7 @@ if [[ -z "${SSH_USER:-}" || -z "${SSH_PASSWORD:-}" || -z "${DEPLOY_USER:-}" ]]; 
 fi
 
 # =============================================================================
-# Setup function - runs dockflow setup auto on a node
+# Setup function - runs dockflow setup on a node (non-interactive local mode)
 # =============================================================================
 setup_node() {
 	local node_name="$1"
@@ -82,7 +82,7 @@ setup_node() {
 	# This is what the CLI will use to connect from outside Docker
 	set +e
 	local cli_output
-	cli_output=$(ssh_node "cd $remote_temp && ./dockflow setup auto \
+	cli_output=$(ssh_node "cd $remote_temp && ./dockflow setup \
         --host localhost \
         --port $external_port \
         --user $DEPLOY_USER \
@@ -102,9 +102,9 @@ setup_node() {
 		return 1
 	fi
 
-	# Extract connection string
+	# Extract connection string — grep for the base64 line directly (long alphanumeric line)
 	local conn_string
-	conn_string=$(echo "$cli_output" | grep -A 2 "Connection String (Base64):" | tail -n 1 | grep -v "━" | xargs || true)
+	conn_string=$(echo "$cli_output" | grep -E '^[A-Za-z0-9+/]{50,}={0,2}$' | tail -1 || true)
 
 	if [[ -z "$conn_string" ]]; then
 		echo "ERROR: No connection string for $node_name"

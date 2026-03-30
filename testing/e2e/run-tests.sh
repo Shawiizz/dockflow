@@ -5,7 +5,7 @@
 # Architecture:
 #   1. Build CLI binary
 #   2. Start VMs (manager + worker)
-#   3. Setup machines (dockflow setup auto on both nodes)
+#   3. Setup machines (dockflow setup on both nodes)
 #   4. Setup Swarm cluster (dockflow setup swarm)
 #   5. Deploy with 2 replicas
 #   6. Verify replicas distributed across nodes
