@@ -109,11 +109,64 @@ fi
 log_success "All deployment verifications passed"
 
 # =============================================================================
-# Step 7: Remote Build Test (runs by default, skip with --skip-remote-build)
+# Step 7: Traefik Proxy Verification
+# =============================================================================
+log_step "Step 7: Verifying Traefik proxy routing..."
+
+# 1. Traefik stack is running
+TRAEFIK_REPLICAS=$(docker exec $MANAGER_NODE docker service ls \
+	--filter "name=traefik_traefik" \
+	--format '{{.Replicas}}' 2>/dev/null || echo "0/0")
+
+if [[ "$TRAEFIK_REPLICAS" != "1/1" ]]; then
+	log_error "Traefik service not running (replicas: $TRAEFIK_REPLICAS)"
+	docker exec $MANAGER_NODE docker service ps traefik_traefik 2>/dev/null || true
+	exit 1
+fi
+log_success "Traefik stack running (1/1)"
+
+# 2. Traefik labels injected on web service
+TRAEFIK_LABEL=$(docker exec $MANAGER_NODE docker service inspect "${SERVICE_NAME}" \
+	--format '{{json .Spec.Labels}}' 2>/dev/null | grep -o '"traefik\.enable":"true"' || true)
+
+if [[ -z "$TRAEFIK_LABEL" ]]; then
+	log_error "Traefik labels not found on service ${SERVICE_NAME}"
+	docker exec $MANAGER_NODE docker service inspect "${SERVICE_NAME}" \
+		--format '{{json .Spec.Labels}}' 2>/dev/null || true
+	exit 1
+fi
+log_success "Traefik labels injected on ${SERVICE_NAME}"
+
+# 3. HTTP routing via Host header
+# Retry up to 30s for Traefik to finish routing configuration
+TRAEFIK_HTTP_OK=""
+for ((i = 1; i <= 30; i++)); do
+	HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+		-H "Host: test.local" \
+		--connect-timeout 2 \
+		--max-time 5 \
+		http://localhost:80/ 2>/dev/null || echo "000")
+	if [[ "$HTTP_STATUS" =~ ^[23] ]]; then
+		TRAEFIK_HTTP_OK="yes"
+		break
+	fi
+	sleep 1
+done
+
+if [[ -z "$TRAEFIK_HTTP_OK" ]]; then
+	log_error "Traefik HTTP routing failed (last status: $HTTP_STATUS)"
+	log_info "Traefik logs:"
+	docker exec $MANAGER_NODE docker service logs traefik_traefik --tail 20 2>/dev/null || true
+	exit 1
+fi
+log_success "HTTP routing works (Host: test.local → HTTP $HTTP_STATUS)"
+
+# =============================================================================
+# Step 8: Remote Build Test (runs by default, skip with --skip-remote-build)
 # =============================================================================
 REMOTE_BUILD_PASSED=""
 if [[ "${1:-}" != "--skip-remote-build" ]]; then
-	log_step "Step 7: Running remote build test..."
+	log_step "Step 8: Running remote build test..."
 
 	# Pass --skip-setup flag since environment is already ready
 	if bash "$SCRIPT_DIR/run-remote-build-test.sh" --skip-setup; then
@@ -139,6 +192,7 @@ echo "  ✓ Machines configured"
 echo "  ✓ Swarm cluster initialized (2 nodes)"
 echo "  ✓ Application deployed (2 replicas)"
 echo "  ✓ Replicas distributed across nodes"
+echo "  ✓ Traefik proxy routing verified"
 if [[ -n "$REMOTE_BUILD_PASSED" ]]; then
 	echo "  ✓ Remote build test passed"
 fi

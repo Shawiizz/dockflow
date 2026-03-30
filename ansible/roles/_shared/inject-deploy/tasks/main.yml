@@ -64,13 +64,20 @@
             {%- set svc_port = port_raw.split('/')[0] -%}
           {%- endif -%}
           {%- set router_name = stack_name + '-' + svc_name -%}
-          {%- set traefik_labels = [
+          {%- set _acme_enabled = config.proxy.acme | default(true) | bool -%}
+          {%- set _entrypoint = 'websecure' if _acme_enabled else 'web' -%}
+          {%- set _base_labels = [
             'traefik.enable=true',
             'traefik.http.routers.' + router_name + '.rule=Host(`' + _domain + '`)',
-            'traefik.http.routers.' + router_name + '.entrypoints=websecure',
-            'traefik.http.routers.' + router_name + '.tls.certresolver=letsencrypt',
+            'traefik.http.routers.' + router_name + '.entrypoints=' + _entrypoint,
             'traefik.http.services.' + router_name + '.loadbalancer.server.port=' + svc_port
           ] -%}
+          {%- if _acme_enabled -%}
+            {%- set _tls_label = ['traefik.http.routers.' + router_name + '.tls.certresolver=letsencrypt'] -%}
+            {%- set traefik_labels = _base_labels + _tls_label -%}
+          {%- else -%}
+            {%- set traefik_labels = _base_labels -%}
+          {%- endif -%}
           {%- set existing_deploy = svc_config.deploy | default({}) -%}
           {%- set raw_deploy_labels = existing_deploy.labels | default([]) -%}
           {%- if raw_deploy_labels is mapping -%}

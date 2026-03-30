@@ -6,3 +6,9 @@ options:
 stack_management:
   keep_releases: 3
   cleanup_on_failure: true
+
+proxy:
+  enabled: true
+  acme: false
+  domains:
+    test: "test.local"

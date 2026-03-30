@@ -17,6 +17,7 @@ services:
       - "${SSH_PORT_MANAGER:-2222}:22"
       - "${DOCKER_PORT:-2375}:2375"
       - "8080:8080"
+      - "80:80"
     volumes:
       - /tmp
     networks:

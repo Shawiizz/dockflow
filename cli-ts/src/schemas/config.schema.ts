@@ -231,6 +231,9 @@ export const ProxyConfigSchema = z.object({
   email: z.string().email().optional().describe(
     'Email address for Let\'s Encrypt certificate notifications (required when enabled)'
   ),
+  acme: z.boolean().optional().default(true).describe(
+    'Enable ACME/Let\'s Encrypt TLS certificates. Set to false for HTTP-only (dev/test environments)'
+  ),
   domains: z.record(z.string(), z.string()).optional().describe(
     'Domain per environment, e.g. { production: "app.example.com", staging: "staging.example.com" }'
   ),
@@ -238,8 +241,8 @@ export const ProxyConfigSchema = z.object({
     'Traefik dashboard configuration'
   ),
 }).refine(
-  (data) => !data.enabled || !!data.email,
-  { message: 'proxy.email is required when proxy.enabled is true' }
+  (data) => !data.enabled || data.acme === false || !!data.email,
+  { message: 'proxy.email is required when proxy.enabled is true and acme is not disabled' }
 );
 
 /**

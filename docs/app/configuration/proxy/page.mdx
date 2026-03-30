@@ -55,16 +55,39 @@ proxy:
     domain: traefik.example.com
 ```
 
-| Field | Type | Description |
-|---|---|---|
-| `enabled` | boolean | Enable Traefik proxy (default: `false`) |
-| `email` | string | Email for Let's Encrypt notifications. Required when `enabled: true` |
-| `domains` | map | Domain per environment |
-| `dashboard.enabled` | boolean | Expose the Traefik dashboard (default: `false`) |
-| `dashboard.domain` | string | Domain for the dashboard. Required if `dashboard.enabled: true` |
+| Field | Type | Description | Default |
+|---|---|---|---|
+| `enabled` | boolean | Enable Traefik proxy | `false` |
+| `email` | string | Email for Let's Encrypt notifications. Required when `acme` is not disabled | — |
+| `acme` | boolean | Enable ACME/Let's Encrypt TLS. Set to `false` for HTTP-only mode | `true` |
+| `domains` | map | Domain per environment | — |
+| `dashboard.enabled` | boolean | Expose the Traefik dashboard | `false` |
+| `dashboard.domain` | string | Domain for the dashboard. Required if `dashboard.enabled: true` | — |
 
 <Callout type="warning">
   **Dashboard security** — The Traefik dashboard is exposed publicly when enabled. Restrict access with your firewall or add [Traefik middleware](https://doc.traefik.io/traefik/middlewares/http/basicauth/) for basic auth.
+</Callout>
+
+## HTTP-Only Mode (no TLS)
+
+Set `acme: false` to run Traefik without HTTPS — useful for internal networks, development environments, or staging setups where you handle TLS termination elsewhere.
+
+```yaml
+# .dockflow/config.yml
+proxy:
+  enabled: true
+  acme: false
+  domains:
+    staging: staging.internal
+```
+
+When `acme: false`:
+- Port 443 and the HTTPS redirect are disabled — Traefik only listens on port 80
+- No Let's Encrypt certificate is requested — `email` is not required
+- Routing labels use `entrypoints=web` instead of `websecure`
+
+<Callout type="warning">
+  Do not use `acme: false` in production with public traffic. Your app will be served over plain HTTP.
 </Callout>
 
 ## Requirements
