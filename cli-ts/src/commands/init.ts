@@ -6,8 +6,8 @@
 import type { Command } from 'commander';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import inquirer from 'inquirer';
 import { getProjectRoot } from '../utils/config';
+import { confirmPrompt, selectPrompt } from '../utils/prompts';
 import { printSuccess, printInfo, printHeader, printWarning, printBlank, printRaw } from '../utils/output';
 import { withErrorHandler } from '../utils/errors';
 import { DOCKFLOW_VERSION } from '../constants';
@@ -363,14 +363,10 @@ export function registerInitCommand(program: Command): void {
       // Check if already initialized
       if (existsSync(deploymentDir)) {
         printWarning('.dockflow folder already exists');
-        const { overwrite } = await inquirer.prompt([
-          {
-            type: 'confirm',
-            name: 'overwrite',
-            message: 'Do you want to overwrite existing files?',
-            default: false,
-          },
-        ]);
+        const overwrite = await confirmPrompt({
+          message: 'Do you want to overwrite existing files?',
+          initialValue: false,
+        });
         if (!overwrite) {
           printInfo('Initialization cancelled');
           return;
@@ -380,18 +376,13 @@ export function registerInitCommand(program: Command): void {
       // Ask for platform if not provided
       let ciPlatform = platform;
       if (!ciPlatform) {
-        const answer = await inquirer.prompt([
-          {
-            type: 'list',
-            name: 'platform',
-            message: 'Select CI/CD platform:',
-            choices: [
-              { name: 'GitHub Actions', value: 'github' },
-              { name: 'GitLab CI', value: 'gitlab' },
-            ],
-          },
-        ]);
-        ciPlatform = answer.platform;
+        ciPlatform = await selectPrompt({
+          message: 'Select CI/CD platform:',
+          options: [
+            { value: 'github', label: 'GitHub Actions' },
+            { value: 'gitlab', label: 'GitLab CI' },
+          ],
+        });
       }
 
       // Create directory structure

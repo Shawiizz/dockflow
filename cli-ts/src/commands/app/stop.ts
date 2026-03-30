@@ -4,8 +4,8 @@
 
 import type { Command } from 'commander';
 import ora from 'ora';
-import inquirer from 'inquirer';
 import { printWarning, printInfo, printDebug } from '../../utils/output';
+import { confirmPrompt } from '../../utils/prompts';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -23,16 +23,12 @@ export function registerStopCommand(program: Command): void {
       if (!options.yes) {
         printWarning(`This will remove all services in stack: ${stackName}`);
 
-        const { confirm } = await inquirer.prompt([
-          {
-            type: 'confirm',
-            name: 'confirm',
-            message: 'Are you sure?',
-            default: false,
-          },
-        ]);
+        const confirmed = await confirmPrompt({
+          message: 'Are you sure?',
+          initialValue: false,
+        });
 
-        if (!confirm) {
+        if (!confirmed) {
           printInfo('Cancelled');
           return;
         }

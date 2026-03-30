@@ -7,8 +7,8 @@
 
 import type { Command } from 'commander';
 import ora from 'ora';
-import inquirer from 'inquirer';
 import { printInfo, printSuccess, printHeader, printWarning, printBlank } from '../../utils/output';
+import { confirmPrompt } from '../../utils/prompts';
 import { validateEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createStackService } from '../../services';
@@ -48,16 +48,12 @@ export function registerAccessoriesStopCommand(program: Command): void {
         printInfo('Data in volumes will be preserved');
         printBlank();
 
-        const { confirm } = await inquirer.prompt([
-          {
-            type: 'confirm',
-            name: 'confirm',
-            message: `Are you sure you want to stop ${targetDesc}?`,
-            default: false,
-          },
-        ]);
+        const confirmed = await confirmPrompt({
+          message: `Are you sure you want to stop ${targetDesc}?`,
+          initialValue: false,
+        });
 
-        if (!confirm) {
+        if (!confirmed) {
           printInfo('Cancelled');
           return;
         }

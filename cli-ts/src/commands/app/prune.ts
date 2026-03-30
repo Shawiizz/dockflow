@@ -8,6 +8,7 @@ import { sshExec } from '../../utils/ssh';
 import { printSuccess, printInfo, printSection, printHeader, printWarning, printDebug, printBlank, printRaw } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
+import { confirmPrompt } from '../../utils/prompts';
 
 export function registerPruneCommand(program: Command): void {
   program
@@ -51,15 +52,12 @@ export function registerPruneCommand(program: Command): void {
           printWarning('WARNING: Pruning volumes will delete data that is not attached to containers!');
         }
         
-        const readline = await import('readline');
-        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-        
-        const answer = await new Promise<string>((resolve) => {
-          rl.question('Are you sure you want to continue? (y/N) ', resolve);
+        const confirmed = await confirmPrompt({
+          message: 'Are you sure you want to continue?',
+          initialValue: false,
         });
-        rl.close();
 
-        if (answer.toLowerCase() !== 'y') {
+        if (!confirmed) {
           printInfo('Cancelled');
           return;
         }

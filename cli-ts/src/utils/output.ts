@@ -4,6 +4,7 @@
  */
 
 import chalk from 'chalk';
+import * as clack from '@clack/prompts';
 
 // === Verbose mode ===
 let verboseMode = false;
@@ -162,5 +163,28 @@ export function formatRelativeTime(timestamp: string): string {
   if (hours < 24) return `${hours}h ago`;
   if (days < 7) return `${days}d ago`;
   return new Date(timestamp).toLocaleDateString();
+}
+
+// === @clack visual helpers ===
+
+/**
+ * Display a styled intro banner
+ */
+export function printIntro(title: string): void {
+  clack.intro(colors.bold(title));
+}
+
+/**
+ * Display a styled outro message
+ */
+export function printOutro(message: string): void {
+  clack.outro(message);
+}
+
+/**
+ * Display a boxed note section
+ */
+export function printNote(message: string, title?: string): void {
+  clack.note(message, title);
 }
 

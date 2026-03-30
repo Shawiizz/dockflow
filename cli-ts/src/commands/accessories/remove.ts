@@ -5,8 +5,8 @@
 
 import type { Command } from 'commander';
 import ora from 'ora';
-import inquirer from 'inquirer';
 import { sshExec } from '../../utils/ssh';
+import { confirmPrompt, dangerousConfirmPrompt } from '../../utils/prompts';
 import { printInfo, printSuccess, printHeader, printWarning, printError, printBlank, printRaw, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { validateAccessoriesStack, getShortServiceNames } from './utils';
@@ -88,29 +88,22 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
         
         if (options.volumes) {
           // Extra confirmation for volume deletion
-          const { confirmText } = await inquirer.prompt([
-            {
-              type: 'input',
-              name: 'confirmText',
-              message: `Type '${env}' to confirm removal with volumes:`,
-            },
-          ]);
+          const confirmed = await dangerousConfirmPrompt({
+            message: `Type '${env}' to confirm removal with volumes:`,
+            expectedText: env,
+          });
 
-          if (confirmText !== env) {
+          if (!confirmed) {
             printInfo('Cancelled - text did not match');
             return;
           }
         } else {
-          const { confirm } = await inquirer.prompt([
-            {
-              type: 'confirm',
-              name: 'confirm',
-              message: 'Are you sure you want to remove the accessories stack?',
-              default: false,
-            },
-          ]);
+          const confirmed = await confirmPrompt({
+            message: 'Are you sure you want to remove the accessories stack?',
+            initialValue: false,
+          });
 
-          if (!confirm) {
+          if (!confirmed) {
             printInfo('Cancelled');
             return;
           }

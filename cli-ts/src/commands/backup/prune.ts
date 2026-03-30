@@ -5,8 +5,8 @@
 
 import type { Command } from 'commander';
 import ora from 'ora';
-import inquirer from 'inquirer';
 import { validateEnv } from '../../utils/validation';
+import { confirmPrompt } from '../../utils/prompts';
 import { loadConfig } from '../../utils/config';
 import { printHeader, printSuccess, printInfo, printWarning, printBlank, printRaw, colors } from '../../utils/output';
 import { BackupError, withErrorHandler } from '../../utils/errors';
@@ -76,16 +76,12 @@ export function registerBackupPruneCommand(program: Command): void {
 
       // Confirmation
       if (!options.yes) {
-        const { confirm } = await inquirer.prompt([
-          {
-            type: 'confirm',
-            name: 'confirm',
-            message: 'Proceed with pruning?',
-            default: false,
-          },
-        ]);
+        const confirmed = await confirmPrompt({
+          message: 'Proceed with pruning?',
+          initialValue: false,
+        });
 
-        if (!confirm) {
+        if (!confirmed) {
           printInfo('Cancelled');
           return;
         }

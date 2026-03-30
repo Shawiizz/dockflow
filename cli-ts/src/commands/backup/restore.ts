@@ -5,8 +5,8 @@
 
 import type { Command } from 'commander';
 import ora from 'ora';
-import inquirer from 'inquirer';
 import { validateEnv } from '../../utils/validation';
+import { dangerousConfirmPrompt } from '../../utils/prompts';
 import { printHeader, printSuccess, printInfo, printWarning, printBlank, printRaw, colors } from '../../utils/output';
 import { BackupError, ErrorCode, withErrorHandler } from '../../utils/errors';
 import { createBackupService } from '../../services/backup-service';
@@ -54,15 +54,12 @@ export function registerBackupRestoreCommand(program: Command): void {
 
       // Confirmation
       if (!options.yes) {
-        const { confirmText } = await inquirer.prompt([
-          {
-            type: 'input',
-            name: 'confirmText',
-            message: `Type '${env}' to confirm restore:`,
-          },
-        ]);
+        const confirmed = await dangerousConfirmPrompt({
+          message: `Type '${env}' to confirm restore:`,
+          expectedText: env,
+        });
 
-        if (confirmText !== env) {
+        if (!confirmed) {
           printInfo('Cancelled - text did not match');
           return;
         }
