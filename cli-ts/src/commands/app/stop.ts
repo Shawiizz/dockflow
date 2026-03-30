@@ -3,8 +3,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
-import { printWarning, printInfo, printDebug } from '../../utils/output';
+import { printWarning, printInfo, printDebug, createSpinner } from '../../utils/output';
 import { confirmPrompt } from '../../utils/prompts';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
@@ -35,7 +34,8 @@ export function registerStopCommand(program: Command): void {
       }
 
       const stackService = createStackService(connection, stackName);
-      const spinner = ora(`Stopping stack ${stackName}...`).start();
+      const spinner = createSpinner();
+      spinner.start(`Stopping stack ${stackName}...`);
 
       try {
         const result = await stackService.remove();

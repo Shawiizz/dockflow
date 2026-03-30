@@ -10,8 +10,7 @@
  * to set up the cluster topology.
  */
 
-import ora from 'ora';
-import { printHeader, printError, printSuccess, printInfo, printWarning, printBlank, printRaw } from '../../utils/output';
+import { printIntro, printOutro, printNote, printError, printInfo, printWarning, printBlank, printRaw, createSpinner } from '../../utils/output';
 import { hasServersConfig } from '../../utils/config';
 import { CLIError, ConnectionError, ErrorCode } from '../../utils/errors';
 import { 
@@ -53,7 +52,8 @@ function buildConnection(env: string, server: ResolvedServer): SSHKeyConnection 
  * Open firewall ports for Swarm
  */
 async function openSwarmPorts(connection: SSHKeyConnection, serverName: string): Promise<boolean> {
-  const spinner = ora(`Opening Swarm ports on ${serverName}...`).start();
+  const spinner = createSpinner();
+  spinner.start(`Opening Swarm ports on ${serverName}...`);
   
   try {
     // Check which firewall is available
@@ -95,7 +95,8 @@ async function initializeSwarm(
   managerName: string,
   managerHost: string
 ): Promise<{ token: string; internalIp: string } | null> {
-  const spinner = ora(`Initializing Docker Swarm on ${managerName}...`).start();
+  const spinner = createSpinner();
+  spinner.start(`Initializing Docker Swarm on ${managerName}...`);
   
   try {
     // Determine the IP for workers to join
@@ -168,7 +169,8 @@ async function joinWorkerToSwarm(
   managerHost: string,
   joinToken: string
 ): Promise<boolean> {
-  const spinner = ora(`Joining ${workerName} to Swarm cluster...`).start();
+  const spinner = createSpinner();
+  spinner.start(`Joining ${workerName} to Swarm cluster...`);
   
   try {
     // Check if already in swarm
@@ -225,7 +227,7 @@ export async function runSetupSwarm(env: string): Promise<void> {
   // Load secrets from .env.dockflow or CI environment
   loadSecrets();
 
-  printHeader(`Setting up Docker Swarm cluster for ${env}`);
+  printIntro(`Setting up Docker Swarm cluster for ${env}`);
   printBlank();
 
   // Check servers.yml exists
@@ -324,7 +326,6 @@ export async function runSetupSwarm(env: string): Promise<void> {
   // Display final status
   await displayClusterStatus(managerConnection);
 
-  printSuccess('Docker Swarm cluster is ready!');
-  printBlank();
-  printInfo(`Deploy with: dockflow deploy ${env}`);
+  printNote(`Deploy with: dockflow deploy ${env}`);
+  printOutro('Docker Swarm cluster is ready!');
 }

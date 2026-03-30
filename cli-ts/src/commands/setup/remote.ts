@@ -3,8 +3,7 @@
  */
 
 import * as fs from 'fs';
-import ora from 'ora';
-import { printHeader, printSection, printError, printSuccess, printInfo, printBlank, printDim } from '../../utils/output';
+import { printIntro, printOutro, printSection, printError, printInfo, printBlank, printDim, createSpinner } from '../../utils/output';
 import { sshExec, sshExecStream } from '../../utils/ssh';
 import type { ConnectionInfo } from '../../types';
 import { DOCKFLOW_RELEASE_URL } from './constants';
@@ -126,12 +125,13 @@ export async function promptRemoteConnection(prefilled?: RemoteSetupOptions): Pr
  * Run remote setup via SSH
  */
 export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
-  printHeader('Remote Setup');
+  printIntro('Remote Setup');
   printBlank();
   printInfo(`Target: ${opts.user}@${opts.host}:${opts.port}`);
   printBlank();
 
-  const testSpinner = ora('Testing SSH connection...').start();
+  const testSpinner = createSpinner();
+  testSpinner.start('Testing SSH connection...');
 
   if (!opts.privateKey && !opts.password) {
     testSpinner.fail('No authentication method provided');
@@ -171,7 +171,8 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
 
   testSpinner.succeed('SSH connection successful');
 
-  const archSpinner = ora('Detecting server architecture...').start();
+  const archSpinner = createSpinner();
+  archSpinner.start('Detecting server architecture...');
   const arch = await detectRemoteArch(conn);
   archSpinner.succeed(`Server architecture: ${arch}`);
 
@@ -179,7 +180,8 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   const downloadUrl = `${DOCKFLOW_RELEASE_URL}/${binaryName}`;
   const remotePath = '/tmp/dockflow';
 
-  const downloadSpinner = ora('Downloading Dockflow CLI to remote server...').start();
+  const downloadSpinner = createSpinner();
+  downloadSpinner.start('Downloading Dockflow CLI to remote server...');
 
   const downloadCmd = `curl -fsSL "${downloadUrl}" -o ${remotePath} && chmod +x ${remotePath}`;
   const downloadResult = await sshExec(conn, downloadCmd);
@@ -202,11 +204,11 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   printBlank();
   printDim('─'.repeat(60));
 
-  const cleanupSpinner = ora('Cleaning up...').start();
+  const cleanupSpinner = createSpinner();
+  cleanupSpinner.start('Cleaning up...');
   await sshExec(conn, `rm -f ${remotePath}`);
   cleanupSpinner.succeed('Cleanup complete');
 
   printBlank();
-  printSuccess('Remote setup completed');
-  printInfo('Copy the connection string displayed above and add it to your CI/CD secrets.');
+  printOutro('Remote setup completed');
 }

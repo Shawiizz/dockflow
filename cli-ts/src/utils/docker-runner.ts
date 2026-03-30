@@ -3,11 +3,10 @@
  * Shared logic for running Ansible playbooks in Docker containers
  */
 
-import ora from 'ora';
 import { existsSync, readdirSync } from 'fs';
 import { join, dirname, parse as parsePath } from 'path';
 import { getProjectRoot, loadConfig, loadServersConfig, isDockerAvailable, getAnsibleDockerImage } from './config';
-import { printSuccess, printDim, printBlank } from './output';
+import { printSuccess, printDim, printBlank, createSpinner } from './output';
 import { DOCKFLOW_REPO, DOCKFLOW_VERSION, CONTAINER_PATHS } from '../constants';
 import { isCI } from './secrets';
 import { CLIError, ConfigError, DockerError } from './errors';
@@ -127,7 +126,8 @@ ${command.map(c => `"${c}"`).join(' ')}
   printDim(`Starting ${actionName} container...`);
   printBlank();
 
-  const spinner = ora(`Starting ${actionName}...`).start();
+  const spinner = createSpinner();
+  spinner.start(`Starting ${actionName}...`);
 
   try {
     const proc = Bun.spawn(dockerCmd, {
@@ -159,7 +159,8 @@ ${command.map(c => `"${c}"`).join(' ')}
  * Check Docker availability with spinner feedback
  */
 export async function checkDockerAvailable(): Promise<void> {
-  const spinner = ora('Checking Docker availability...').start();
+  const spinner = createSpinner();
+  spinner.start('Checking Docker availability...');
   const dockerAvailable = await isDockerAvailable();
 
   if (!dockerAvailable) {

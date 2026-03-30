@@ -4,10 +4,9 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
 import { sshExec } from '../../utils/ssh';
 import { confirmPrompt, dangerousConfirmPrompt } from '../../utils/prompts';
-import { printInfo, printSuccess, printHeader, printWarning, printError, printBlank, printRaw, colors } from '../../utils/output';
+import { printInfo, printIntro, printOutro, printNote, printWarning, printError, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { validateAccessoriesStack, getShortServiceNames } from './utils';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
@@ -28,7 +27,7 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
       env: string,
       options: { volumes?: boolean; yes?: boolean; server?: string }
     ) => {
-      printHeader(`Removing Accessories - ${env}`);
+      printIntro(`Removing Accessories - ${env}`);
       printBlank();
 
       // Validate environment and check stack exists
@@ -57,7 +56,7 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
         for (const line of servicesResult.stdout.trim().split('\n')) {
           const [name, replicas] = line.split('\t');
           const shortName = name.replace(`${stackName}_`, '');
-          console.log(`  ${colors.info(shortName)} ${colors.dim(`(${replicas})`)}`);
+          printRaw(`  ${colors.info(shortName)} ${colors.dim(`(${replicas})`)}`);
         }
       }
 
@@ -71,7 +70,7 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
           printBlank();
           printError('⚠ The following volumes will be PERMANENTLY DELETED:');
           for (const vol of volumesResult.stdout.trim().split('\n').filter(Boolean)) {
-            console.log(`  ${colors.error(vol)}`);
+            printRaw(`  ${colors.error(vol)}`);
           }
         }
       }
@@ -114,7 +113,8 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
 
       try {
         // Remove the stack
-        const spinner = ora('Removing accessories stack...').start();
+        const spinner = createSpinner();
+        spinner.start('Removing accessories stack...');
         
         const removeCmd = `docker stack rm ${stackName}`;
         const result = await sshExec(connection, removeCmd);
@@ -148,7 +148,8 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
           const volumes = volumesResult.stdout.trim().split('\n').filter(Boolean);
           
           if (volumes.length > 0) {
-            const volSpinner = ora('Removing volumes...').start();
+            const volSpinner = createSpinner();
+            volSpinner.start('Removing volumes...');
             
             for (const vol of volumes) {
               await sshExec(connection, `docker volume rm ${vol}`);
@@ -163,14 +164,14 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
         await sshExec(connection, `rm -rf ${accessoriesDir}`);
 
         printBlank();
-        printSuccess('Accessories removed successfully');
-
         if (!options.volumes) {
-          printBlank();
-          printInfo('Volumes were preserved. To remove them manually:');
-          printRaw(`  docker volume ls --filter "label=com.docker.stack.namespace=${stackName}"`);
-          printRaw(`  docker volume rm <volume_name>`);
+          printNote(
+            `docker volume ls --filter "label=com.docker.stack.namespace=${stackName}"\n` +
+            `docker volume rm <volume_name>`,
+            'Volumes preserved — remove manually'
+          );
         }
+        printOutro('Accessories removed successfully');
 
       } catch (error) {
         if (error instanceof DockerError) throw error;

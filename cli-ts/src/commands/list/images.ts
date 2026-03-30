@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
-import { printSection, printBlank, printRaw, printDim } from '../../utils/output';
+import { printSection, printNote, printBlank, printRaw } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { loadConfig } from '../../utils/config';
 import { withErrorHandler, DockerError } from '../../utils/errors';
@@ -51,8 +51,7 @@ export function registerListImagesCommand(parent: Command): void {
           );
           printRaw(diskResult.stdout);
 
-          printBlank();
-          printDim('Tip: Run `dockflow prune <env>` to clean up unused images');
+          printNote('Run `dockflow prune <env>` to clean up unused images', 'Tip');
         }
       } catch (error) {
         throw new DockerError(`Failed to list images: ${error}`);

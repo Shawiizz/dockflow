@@ -6,8 +6,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
-import { printInfo, printSuccess, printHeader, printWarning, printBlank } from '../../utils/output';
+import { printInfo, printIntro, printOutro, printNote, printWarning, printBlank, createSpinner } from '../../utils/output';
 import { confirmPrompt } from '../../utils/prompts';
 import { validateEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
@@ -28,7 +27,7 @@ export function registerAccessoriesStopCommand(program: Command): void {
       service: string | undefined,
       options: { yes?: boolean; server?: string }
     ) => {
-      printHeader(`Stopping Accessories - ${env}`);
+      printIntro(`Stopping Accessories - ${env}`);
       printBlank();
 
       const { connection } = validateEnv(env, options.server);
@@ -61,7 +60,8 @@ export function registerAccessoriesStopCommand(program: Command): void {
 
       try {
         if (service) {
-          const spinner = ora(`Stopping ${service}...`).start();
+          const spinner = createSpinner();
+          spinner.start(`Stopping ${service}...`);
           const result = await stackService.scale(service, 0);
 
           if (result.success) {
@@ -71,7 +71,8 @@ export function registerAccessoriesStopCommand(program: Command): void {
             throw new DockerError(result.message || 'Failed to stop service');
           }
         } else {
-          const spinner = ora('Scaling all services to 0...').start();
+          const spinner = createSpinner();
+          spinner.start('Scaling all services to 0...');
           let allSuccess = true;
 
           for (const svc of serviceNames) {
@@ -87,11 +88,12 @@ export function registerAccessoriesStopCommand(program: Command): void {
         }
 
         printBlank();
-        printSuccess('Accessories stopped');
-
-        printBlank();
-        printInfo(`To restart: dockflow accessories restart ${env}` + (service ? ` ${service}` : ''));
-        printInfo(`To remove:  dockflow accessories remove ${env}` + (service ? ` ${service}` : ''));
+        printNote(
+          `To restart: dockflow accessories restart ${env}` + (service ? ` ${service}` : '') + '\n' +
+          `To remove:  dockflow accessories remove ${env}` + (service ? ` ${service}` : ''),
+          'Next steps'
+        );
+        printOutro('Accessories stopped');
 
       } catch (error) {
         if (error instanceof DockerError) throw error;

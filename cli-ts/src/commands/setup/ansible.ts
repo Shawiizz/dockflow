@@ -5,8 +5,7 @@
 import { spawnSync, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import ora from 'ora';
-import { printInfo, printSuccess, printError, printBlank, printDim, printRaw } from '../../utils/output';
+import { printInfo, printSuccess, printError, printBlank, printDim, printRaw, createSpinner } from '../../utils/output';
 import { DOCKFLOW_REPO, DOCKFLOW_DIR } from './constants';
 import type { HostConfig } from './types';
 
@@ -14,7 +13,8 @@ import type { HostConfig } from './types';
  * Clone or update the dockflow repository
  */
 export async function ensureDockflowRepo(): Promise<string> {
-  const spinner = ora('Setting up Dockflow framework...').start();
+  const spinner = createSpinner();
+  spinner.start('Setting up Dockflow framework...');
 
   try {
     if (fs.existsSync(DOCKFLOW_DIR)) {
@@ -84,7 +84,8 @@ export async function ensureDockflowRepo(): Promise<string> {
  * Install required Ansible roles
  */
 export async function installAnsibleRoles(cwd: string): Promise<boolean> {
-  const spinner = ora('Installing Ansible roles...').start();
+  const spinner = createSpinner();
+  spinner.start('Installing Ansible roles...');
 
   return new Promise((resolve) => {
     const proc = spawn('ansible-galaxy', ['role', 'install', 'geerlingguy.docker'], {
@@ -116,7 +117,8 @@ export async function installAnsibleRoles(cwd: string): Promise<boolean> {
  * Run Ansible playbook for host configuration
  */
 export async function runAnsiblePlaybook(config: HostConfig, ansibleDir: string): Promise<boolean> {
-  const spinner = ora('Running Ansible playbook...').start();
+  const spinner = createSpinner();
+  spinner.start('Running Ansible playbook...');
 
   if (!ansibleDir) {
     spinner.fail('Cannot find ansible/configure_host.yml');

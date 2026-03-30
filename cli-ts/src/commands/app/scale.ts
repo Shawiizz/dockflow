@@ -5,8 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
-import { printDebug } from '../../utils/output';
+import { printDebug, createSpinner } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { CLIError, DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
@@ -26,13 +25,14 @@ export function registerScaleCommand(program: Command): void {
       }
 
       const stackService = createStackService(connection, stackName);
-      const spinner = ora(`Scaling ${stackName}_${service} to ${replicaCount} replicas...`).start();
+      const spinner = createSpinner();
+      spinner.start(`Scaling ${stackName}_${service} to ${replicaCount} replicas...`);
 
       try {
         const result = await stackService.scale(service, replicaCount);
         
         if (result.success) {
-          spinner.succeed(result.message);
+          spinner.succeed(result.message || 'Done');
         } else {
           spinner.fail(result.message || 'Scale failed');
           throw new DockerError(result.message || 'Failed to scale service');

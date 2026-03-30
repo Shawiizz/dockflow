@@ -6,7 +6,7 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { printHeader, printSection, printSuccess, printError, printInfo, printWarning, printBlank, printRaw, colors } from '../../utils/output';
+import { printIntro, printSection, printSuccess, printError, printInfo, printWarning, printBlank, printRaw, colors } from '../../utils/output';
 import { CLIError, ErrorCode } from '../../utils/errors';
 import { checkDependencies, displayDependencyStatus, installDependencies, detectPackageManager } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
@@ -22,7 +22,7 @@ import type { HostConfig } from './types';
  * Run interactive setup wizard
  */
 export async function runInteractiveSetup(): Promise<void> {
-  printHeader('Machine Setup Wizard');
+  printIntro('Machine Setup Wizard');
   printBlank();
 
   const deps = displayDependencyStatus();
@@ -238,18 +238,18 @@ export async function runInteractiveSetup(): Promise<void> {
   }
 
   printBlank();
-  printHeader('Configuration Summary');
+  printSection('Configuration Summary');
   printBlank();
-  console.log(`${colors.info('Target:')} Local Machine`);
-  console.log(`${colors.info('Public Host:')} ${publicHost}`);
-  console.log(`${colors.info('SSH Port:')} ${sshPort}`);
-  console.log(`${colors.info('Deployment User:')} ${deployUser}`);
-  console.log(`${colors.info('Create New User:')} ${needsUserSetup ? 'Yes' : 'No'}`);
-  console.log(`${colors.info('Install Portainer:')} ${portainerConfig.install ? 'Yes' : 'No'}`);
+  printRaw(`${colors.info('Target:')} Local Machine`);
+  printRaw(`${colors.info('Public Host:')} ${publicHost}`);
+  printRaw(`${colors.info('SSH Port:')} ${sshPort}`);
+  printRaw(`${colors.info('Deployment User:')} ${deployUser}`);
+  printRaw(`${colors.info('Create New User:')} ${needsUserSetup ? 'Yes' : 'No'}`);
+  printRaw(`${colors.info('Install Portainer:')} ${portainerConfig.install ? 'Yes' : 'No'}`);
   if (portainerConfig.install) {
-    console.log(`${colors.info('Portainer Port:')} ${portainerConfig.port}`);
+    printRaw(`${colors.info('Portainer Port:')} ${portainerConfig.port}`);
     if (portainerConfig.domain) {
-      console.log(`${colors.info('Portainer Domain:')} ${portainerConfig.domain}`);
+      printRaw(`${colors.info('Portainer Domain:')} ${portainerConfig.domain}`);
     }
   }
   printBlank();
@@ -299,7 +299,7 @@ export async function runInteractiveSetup(): Promise<void> {
 
   if (success) {
     printBlank();
-    printHeader('Setup Complete');
+    printSection('Setup Complete');
     printBlank();
     printSuccess('The machine has been successfully configured!');
 

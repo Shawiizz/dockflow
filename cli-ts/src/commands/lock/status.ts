@@ -3,7 +3,7 @@
  */
 
 import type { Command } from 'commander';
-import { printInfo, printSuccess, printWarning, printDim, printBlank, colors } from '../../utils/output';
+import { printInfo, printSuccess, printWarning, printDim, printBlank, printRaw, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createLockService } from '../../services';
 import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
@@ -40,7 +40,7 @@ export function registerLockStatusCommand(parent: Command): void {
 
       printBlank();
       if (data) {
-        console.log(colors.bold('  Lock Details:'));
+        printRaw(colors.bold('  Lock Details:'));
         printDim(`    Stack:     ${data.stack}`);
         printDim(`    Holder:    ${data.performer}`);
         printDim(`    Started:   ${data.started_at}`);

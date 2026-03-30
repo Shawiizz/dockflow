@@ -5,7 +5,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { printHeader, printSection, printSuccess, printError, printInfo, printWarning, printBlank, colors } from '../../utils/output';
+import { printIntro, printSection, printSuccess, printError, printInfo, printWarning, printBlank, printRaw, colors } from '../../utils/output';
 import { CLIError, ErrorCode } from '../../utils/errors';
 import { checkDependencies, installDependencies, detectPackageManager } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
@@ -20,7 +20,7 @@ import type { SetupOptions, HostConfig } from './types';
  * Run non-interactive setup
  */
 export async function runNonInteractiveSetup(options: SetupOptions): Promise<void> {
-  printHeader('Machine Setup (Non-Interactive)');
+  printIntro('Machine Setup (Non-Interactive)');
   printBlank();
 
   const deps = checkDependencies();
@@ -106,12 +106,12 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
   }
 
   printSection('Configuration');
-  console.log(`${colors.info('Public Host:')} ${publicHost}`);
-  console.log(`${colors.info('SSH Port:')} ${sshPort}`);
-  console.log(`${colors.info('Deployment User:')} ${deployUser}`);
-  console.log(`${colors.info('Create New User:')} ${needsUserSetup ? 'Yes' : 'No'}`);
-  console.log(`${colors.info('Skip Docker Install:')} ${options.skipDockerInstall ? 'Yes' : 'No'}`);
-  console.log(`${colors.info('Install Portainer:')} ${options.portainer ? 'Yes' : 'No'}`);
+  printRaw(`${colors.info('Public Host:')} ${publicHost}`);
+  printRaw(`${colors.info('SSH Port:')} ${sshPort}`);
+  printRaw(`${colors.info('Deployment User:')} ${deployUser}`);
+  printRaw(`${colors.info('Create New User:')} ${needsUserSetup ? 'Yes' : 'No'}`);
+  printRaw(`${colors.info('Skip Docker Install:')} ${options.skipDockerInstall ? 'Yes' : 'No'}`);
+  printRaw(`${colors.info('Install Portainer:')} ${options.portainer ? 'Yes' : 'No'}`);
   printBlank();
 
   let ansibleDir: string;
@@ -156,7 +156,7 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
 
   if (success) {
     printBlank();
-    printHeader('Setup Complete');
+    printSection('Setup Complete');
     printSuccess('The machine has been successfully configured!');
 
     const privateKey = fs.readFileSync(privateKeyPath, 'utf-8');

@@ -3,8 +3,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
-import { printInfo, printDim, printBlank } from '../../utils/output';
+import { printInfo, printNote, printBlank, printDim, createSpinner } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createLockService } from '../../services';
 import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
@@ -18,7 +17,7 @@ export function registerLockReleaseCommand(parent: Command): void {
     .action(withErrorHandler(async (env: string, options: { server?: string; force?: boolean }) => {
       const { stackName, connection, config } = validateEnv(env, options.server);
       const lockService = createLockService(connection, stackName, config.lock?.stale_threshold_minutes);
-      const spinner = ora();
+      const spinner = createSpinner();
 
       // Check if lock exists
       spinner.start('Checking lock status...');
@@ -57,6 +56,6 @@ export function registerLockReleaseCommand(parent: Command): void {
       }
 
       spinner.succeed(`Lock released for ${stackName}`);
-      printDim('  Deployments to this environment are now allowed.');
+      printNote('Deployments to this environment are now allowed.');
     }));
 }

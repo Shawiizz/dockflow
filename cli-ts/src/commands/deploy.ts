@@ -9,9 +9,8 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
 import { getProjectRoot, getAnsibleDockerImage } from '../utils/config';
-import { printSuccess, printInfo, printHeader, printDebug, printBlank, printWarning, printDim, setVerbose } from '../utils/output';
+import { printSuccess, printInfo, printIntro, printDebug, printBlank, printWarning, printDim, setVerbose, createSpinner } from '../utils/output';
 import {
   runAnsibleCommand,
   checkDockerAvailable,
@@ -100,7 +99,7 @@ export async function runDeploy(env: string, version: string | undefined, option
 
   printDebug('Deployment targets resolved', { deployApp, forceAccessories, skipAccessories });
 
-  printHeader(`Deploying ${targetDesc} to ${env}`);
+  printIntro(`Deploying ${targetDesc} to ${env}`);
   printBlank();
 
   const debug = options.debug || false;
@@ -127,7 +126,8 @@ export async function runDeploy(env: string, version: string | undefined, option
 
   // Multi-manager failover: find active manager
   if (managers.length > 1 && !options.noFailover) {
-    const managerSpinner = ora(`Checking ${managers.length} managers for active leader...`).start();
+    const managerSpinner = createSpinner();
+    managerSpinner.start(`Checking ${managers.length} managers for active leader...`);
     
     const activeResult = await findActiveManager(env, managers, { verbose: debug });
     
@@ -189,7 +189,8 @@ export async function runDeploy(env: string, version: string | undefined, option
       password: managerPassword,
     })).toString('base64');
 
-    const versionSpinner = ora('Fetching latest deployed version...').start();
+    const versionSpinner = createSpinner();
+    versionSpinner.start('Fetching latest deployed version...');
     const projectName = config.project_name || 'app';
     const latestVersion = await getLatestVersion(connectionString, projectName, env, debug);
 

@@ -47,49 +47,49 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
   } = options;
 
   printWarning('═'.repeat(60));
-  console.log(colors.warning(colors.bold('  DRY-RUN MODE - No changes will be made')));
+  printRaw(colors.warning(colors.bold('  DRY-RUN MODE - No changes will be made')));
   printWarning('═'.repeat(60));
   printBlank();
 
   // Deployment Summary
-  console.log(colors.info(colors.bold('Deployment Summary:')));
+  printRaw(colors.info(colors.bold('Deployment Summary:')));
   printDim('─'.repeat(40));
-  console.log(`  ${colors.bold('Environment:')}     ${env}`);
-  console.log(`  ${colors.bold('Version:')}         ${deployVersion}`);
-  console.log(`  ${colors.bold('Branch:')}          ${branchName}`);
-  console.log(`  ${colors.bold('Project Root:')}    ${projectRoot}`);
-  console.log(`  ${colors.bold('Docker Image:')}    ${dockerImage}`);
+  printRaw(`  ${colors.bold('Environment:')}     ${env}`);
+  printRaw(`  ${colors.bold('Version:')}         ${deployVersion}`);
+  printRaw(`  ${colors.bold('Branch:')}          ${branchName}`);
+  printRaw(`  ${colors.bold('Project Root:')}    ${projectRoot}`);
+  printRaw(`  ${colors.bold('Docker Image:')}    ${dockerImage}`);
   printBlank();
 
   // Target Servers
-  console.log(colors.info(colors.bold('Target Servers:')));
+  printRaw(colors.info(colors.bold('Target Servers:')));
   printDim('─'.repeat(40));
-  console.log(`  ${colors.bold('Manager:')}         ${manager.name} (${manager.host}:${manager.port})`);
-  console.log(`  ${colors.bold('User:')}            ${manager.user}`);
+  printRaw(`  ${colors.bold('Manager:')}         ${manager.name} (${manager.host}:${manager.port})`);
+  printRaw(`  ${colors.bold('User:')}            ${manager.user}`);
   if (workers.length > 0) {
-    console.log(`  ${colors.bold('Workers:')}`);
+    printRaw(`  ${colors.bold('Workers:')}`);
     workers.forEach(w => {
       printRaw(`                    - ${w.name} (${w.host}:${w.port})`);
     });
   } else {
-    console.log(`  ${colors.bold('Workers:')}         none (single-node cluster)`);
+    printRaw(`  ${colors.bold('Workers:')}         none (single-node cluster)`);
   }
   printBlank();
 
   // Deployment Options
-  console.log(colors.info(colors.bold('Deployment Options:')));
+  printRaw(colors.info(colors.bold('Deployment Options:')));
   printDim('─'.repeat(40));
-  console.log(`  ${colors.bold('Deploy App:')}      ${deployApp}`);
-  console.log(`  ${colors.bold('Accessories:')}     ${skipAccessories ? 'skipped' : (forceAccessories ? 'forced' : 'auto-detect')}`);
-  console.log(`  ${colors.bold('Skip Build:')}      ${skipBuild || false}`);
-  console.log(`  ${colors.bold('Force Deploy:')}    ${force || false}`);
+  printRaw(`  ${colors.bold('Deploy App:')}      ${deployApp}`);
+  printRaw(`  ${colors.bold('Accessories:')}     ${skipAccessories ? 'skipped' : (forceAccessories ? 'forced' : 'auto-detect')}`);
+  printRaw(`  ${colors.bold('Skip Build:')}      ${skipBuild || false}`);
+  printRaw(`  ${colors.bold('Force Deploy:')}    ${force || false}`);
   if (services) {
-    console.log(`  ${colors.bold('Services:')}        ${services}`);
+    printRaw(`  ${colors.bold('Services:')}        ${services}`);
   }
   printBlank();
 
   // Environment Variables
-  console.log(colors.info(colors.bold('Environment Variables:')));
+  printRaw(colors.info(colors.bold('Environment Variables:')));
   printDim('─'.repeat(40));
   const envVars = Object.entries(manager.env);
   if (envVars.length > 0) {
@@ -109,7 +109,7 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
 
   // Deploy Script (debug mode only)
   if (debug && deployScript) {
-    console.log(colors.info(colors.bold('Deploy Script (debug):')));
+    printRaw(colors.info(colors.bold('Deploy Script (debug):')));
     printDim('─'.repeat(40));
     // Show script without sensitive data
     const sanitizedScript = deployScript

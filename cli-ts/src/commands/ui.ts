@@ -8,7 +8,7 @@
 import type { Command } from 'commander';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { printHeader, printSuccess, printInfo, printWarning, printBlank } from '../utils/output';
+import { printIntro, printSuccess, printInfo, printWarning, printBlank } from '../utils/output';
 import { getProjectRoot, loadConfig } from '../utils/config';
 import { loadSecrets } from '../utils/secrets';
 import { withErrorHandler } from '../utils/errors';
@@ -87,7 +87,7 @@ export function registerUICommand(program: Command): void {
     .action(withErrorHandler(async (options: UIOptions) => {
       const requestedPort = parseInt(options.port, 10);
       
-      printHeader('Dockflow WebUI');
+      printIntro('Dockflow WebUI');
       printBlank();
       
       // Load secrets from .env.dockflow or CI environment

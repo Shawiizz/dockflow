@@ -2,7 +2,7 @@
  * Connection string management
  */
 
-import { printHeader, printBlank, printWarning, printError, printInfo, printDim, printRaw, colors } from '../../utils/output';
+import { printSection, printBlank, printWarning, printError, printInfo, printDim, printRaw, colors } from '../../utils/output';
 import { 
   generateConnectionString as generateConnString,
   parseConnectionString as parseConnString
@@ -36,7 +36,7 @@ export function parseConnectionString(connectionString: string): SSHKeyConnectio
  */
 export function displayConnectionInfo(config: HostConfig, privateKey: string): void {
   printBlank();
-  printHeader('Connection Information');
+  printSection('Connection Information');
   printBlank();
 
   printWarning('━'.repeat(70));
@@ -55,10 +55,10 @@ export function displayConnectionInfo(config: HostConfig, privateKey: string): v
   });
 
   printError('╔' + '═'.repeat(70) + '╗');
-  console.log(colors.error('║') + '                         ⚠️  DO NOT SHARE  ⚠️                          ' + colors.error('║'));
-  console.log(colors.error('║') + '                                                                      ' + colors.error('║'));
-  console.log(colors.error('║') + `  This connection string contains the SSH private key!                ` + colors.error('║'));
-  console.log(colors.error('║') + `  Anyone with this string can access your server as: ${config.deployUser.padEnd(15)}   ` + colors.error('║'));
+  printRaw(colors.error('║') + '                         ⚠️  DO NOT SHARE  ⚠️                          ' + colors.error('║'));
+  printRaw(colors.error('║') + '                                                                      ' + colors.error('║'));
+  printRaw(colors.error('║') + `  This connection string contains the SSH private key!                ` + colors.error('║'));
+  printRaw(colors.error('║') + `  Anyone with this string can access your server as: ${config.deployUser.padEnd(15)}   ` + colors.error('║'));
   printError('╚' + '═'.repeat(70) + '╝');
   printBlank();
 
@@ -68,7 +68,7 @@ export function displayConnectionInfo(config: HostConfig, privateKey: string): v
   printWarning('━'.repeat(70));
   printBlank();
 
-  console.log(colors.info('Deployment User:'), colors.bold(config.deployUser));
+  printRaw(colors.info('Deployment User:') + ' ' + colors.bold(config.deployUser));
   printBlank();
   printWarning('Add this connection string to your CI/CD secrets:');
   printDim('   Secret name: [YOURENV]_CONNECTION');

@@ -5,7 +5,7 @@
 import { spawnSync } from 'child_process';
 import * as os from 'os';
 import * as fs from 'fs';
-import { printSection, printInfo, printSuccess, printError, printWarning, printBlank, colors } from '../../utils/output';
+import { printSection, printInfo, printSuccess, printError, printWarning, printBlank, printRaw, colors } from '../../utils/output';
 import { REQUIRED_DEPENDENCIES, OPTIONAL_DEPENDENCIES } from './constants';
 import type { Dependency, DependencyCheckResult } from './types';
 
@@ -162,7 +162,7 @@ export function checkDependencies(options?: { display?: boolean }): DependencyCh
     }
     if (options?.display) {
       const status = exists ? colors.success('✓') : colors.error('✗');
-      console.log(`  ${status} ${dep.name} - ${dep.description}`);
+      printRaw(`  ${status} ${dep.name} - ${dep.description}`);
     }
   }
 
@@ -172,7 +172,7 @@ export function checkDependencies(options?: { display?: boolean }): DependencyCh
     for (const dep of OPTIONAL_DEPENDENCIES) {
       const exists = commandExists(dep.name);
       const status = exists ? colors.success('✓') : colors.warning('○');
-      console.log(`  ${status} ${dep.name} - ${dep.description}`);
+      printRaw(`  ${status} ${dep.name} - ${dep.description}`);
     }
     printBlank();
   }

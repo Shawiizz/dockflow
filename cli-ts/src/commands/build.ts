@@ -7,7 +7,7 @@
  */
 
 import type { Command } from 'commander';
-import { printInfo, printHeader, printDebug, printWarning, printDim, printBlank, setVerbose } from '../utils/output';
+import { printInfo, printIntro, printDebug, printWarning, printDim, printBlank, setVerbose } from '../utils/output';
 import { loadSecrets } from '../utils/secrets';
 import { getCurrentBranch } from '../utils/git';
 import { withErrorHandler } from '../utils/errors';
@@ -42,7 +42,7 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
   loadSecrets();
   printDebug('Secrets loaded from environment');
 
-  printHeader(`Building Docker images for ${env}`);
+  printIntro(`Building Docker images for ${env}`);
   printBlank();
 
   // Check config exists

@@ -3,9 +3,8 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
 import { sshExec } from '../../utils/ssh';
-import { printSuccess, printInfo, printSection, printHeader, printWarning, printDebug, printBlank, printRaw } from '../../utils/output';
+import { printIntro, printOutro, printInfo, printSection, printWarning, printDebug, printBlank, printRaw, createSpinner } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 import { confirmPrompt } from '../../utils/prompts';
@@ -42,7 +41,7 @@ export function registerPruneCommand(program: Command): void {
       if (pruneAll || options.volumes) targets.push('volumes');
       if (pruneAll || options.networks) targets.push('networks');
 
-      printHeader(`Prune Docker Resources on ${env}`);
+      printIntro(`Prune Docker Resources on ${env}`);
       printInfo(`Targets: ${targets.join(', ')}`);
       printBlank();
 
@@ -64,7 +63,7 @@ export function registerPruneCommand(program: Command): void {
         printBlank();
       }
 
-      const spinner = ora();
+      const spinner = createSpinner();
 
       try {
         // Prune containers
@@ -100,7 +99,7 @@ export function registerPruneCommand(program: Command): void {
         }
 
         printBlank();
-        printSuccess('Docker resources cleaned up successfully');
+        printOutro('Docker resources cleaned up successfully');
 
         // Show disk usage after prune
         printSection('Current Disk Usage');

@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import { printInfo, printSection, printDebug, colors, printBlank, printDim } from '../../utils/output';
+import { printInfo, printSection, printDebug, colors, printBlank, printDim, printRaw } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -44,12 +44,12 @@ export function registerPsCommand(program: Command): void {
                 ? colors.error 
                 : colors.warning;
             
-            console.log(`  ${colors.info(task.name)}`);
-            console.log(`    ID: ${task.id.substring(0, 12)}`);
-            console.log(`    Node: ${task.node}`);
-            console.log(`    State: ${stateColor(task.currentState)}`);
+            printRaw(`  ${colors.info(task.name)}`);
+            printRaw(`    ID: ${task.id.substring(0, 12)}`);
+            printRaw(`    Node: ${task.node}`);
+            printRaw(`    State: ${stateColor(task.currentState)}`);
             if (task.error) {
-              console.log(`    Error: ${colors.error(task.error)}`);
+              printRaw(`    Error: ${colors.error(task.error)}`);
             }
             printBlank();
           }
@@ -73,7 +73,7 @@ export function registerPsCommand(program: Command): void {
           
           for (const container of containersResult.data) {
             const statusColor = container.status.includes('Up') ? colors.success : colors.warning;
-            console.log(
+            printRaw(
               `  ${container.id.substring(0, 12).padEnd(14)}` +
               `${container.name.substring(0, 35).padEnd(36)}` +
               `${statusColor(container.status.substring(0, 18).padEnd(20))}` +

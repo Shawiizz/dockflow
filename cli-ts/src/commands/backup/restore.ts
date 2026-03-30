@@ -4,10 +4,9 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
 import { validateEnv } from '../../utils/validation';
 import { dangerousConfirmPrompt } from '../../utils/prompts';
-import { printHeader, printSuccess, printInfo, printWarning, printBlank, printRaw, colors } from '../../utils/output';
+import { printIntro, printOutro, printInfo, printWarning, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
 import { BackupError, ErrorCode, withErrorHandler } from '../../utils/errors';
 import { createBackupService } from '../../services/backup-service';
 import { requireBackupConfig, resolveBackupStack } from './utils';
@@ -24,7 +23,7 @@ export function registerBackupRestoreCommand(program: Command): void {
       service: string,
       options: { from?: string; yes?: boolean; server?: string }
     ) => {
-      printHeader(`Restore - ${service} (${env})`);
+      printIntro(`Restore - ${service} (${env})`);
       printBlank();
 
       const { connection } = validateEnv(env, options.server);
@@ -66,7 +65,8 @@ export function registerBackupRestoreCommand(program: Command): void {
       }
 
       printBlank();
-      const spinner = ora('Restoring backup...').start();
+      const spinner = createSpinner();
+      spinner.start('Restoring backup...');
       const result = await backupService.restore(service, backup.id, backupConfig, backup.compression);
 
       if (!result.success) {
@@ -76,7 +76,7 @@ export function registerBackupRestoreCommand(program: Command): void {
 
       spinner.succeed('Restore completed');
       printBlank();
-      printSuccess(backup.dbType === 'volume'
+      printOutro(backup.dbType === 'volume'
         ? `Volumes for ${service} restored from backup ${backup.id}`
         : `Database ${service} restored from backup ${backup.id}`);
     }));

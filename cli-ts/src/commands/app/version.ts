@@ -8,7 +8,7 @@ import type { Command } from 'commander';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
-import { colors, printJSON, printBlank, printDim } from '../../utils/output';
+import { colors, printJSON, printBlank, printDim, printRaw } from '../../utils/output';
 
 export function registerVersionCommand(program: Command): void {
   program
@@ -40,18 +40,18 @@ export function registerVersionCommand(program: Command): void {
         const servicesResult = await stackService.getServices();
 
         printBlank();
-        console.log(`Stack: ${colors.info(stackName)}`);
+        printRaw(`Stack: ${colors.info(stackName)}`);
         printBlank();
-        console.log(colors.dim('  Version:     ') + colors.success(metadata.version));
-        console.log(colors.dim('  Environment: ') + metadata.environment);
-        console.log(colors.dim('  Branch:      ') + (metadata.branch || 'N/A'));
-        console.log(colors.dim('  Deployed:    ') + metadata.timestamp);
+        printRaw(colors.dim('  Version:     ') + colors.success(metadata.version));
+        printRaw(colors.dim('  Environment: ') + metadata.environment);
+        printRaw(colors.dim('  Branch:      ') + (metadata.branch || 'N/A'));
+        printRaw(colors.dim('  Deployed:    ') + metadata.timestamp);
         printBlank();
 
         if (servicesResult.success && servicesResult.data.length > 0) {
           printDim('Running images:');
           for (const service of servicesResult.data) {
-            console.log(colors.dim('  ') + `${service.name}: ${service.image}`);
+            printRaw(colors.dim('  ') + `${service.name}: ${service.image}`);
           }
           printBlank();
         }

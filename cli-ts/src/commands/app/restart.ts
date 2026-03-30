@@ -5,8 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
-import { printSuccess, printDebug, printRaw } from '../../utils/output';
+import { printSuccess, printDebug, printRaw, createSpinner } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -21,7 +20,7 @@ export function registerRestartCommand(program: Command): void {
       printDebug('Connection validated', { stackName });
       
       const stackService = createStackService(connection, stackName);
-      const spinner = ora();
+      const spinner = createSpinner();
 
       try {
         if (service) {
@@ -29,7 +28,7 @@ export function registerRestartCommand(program: Command): void {
           const result = await stackService.restart(service);
           
           if (result.success) {
-            spinner.succeed(result.message);
+            spinner.succeed(result.message || 'Done');
           } else {
             spinner.fail(result.message || 'Restart failed');
             throw new DockerError(result.message || 'Failed to restart service');
@@ -37,12 +36,12 @@ export function registerRestartCommand(program: Command): void {
         } else {
           spinner.start('Restarting all services...');
           const result = await stackService.restart();
-          
+
           if (result.success) {
-            spinner.succeed(result.message);
+            spinner.succeed(result.message || 'Done');
             printSuccess('All services restarted');
           } else {
-            spinner.warn(result.message);
+            spinner.warn(result.message || 'Restart failed');
             if (result.output) {
               printRaw(result.output);
             }

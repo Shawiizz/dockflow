@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { getProjectRoot } from '../utils/config';
 import { confirmPrompt, selectPrompt } from '../utils/prompts';
-import { printSuccess, printInfo, printHeader, printWarning, printBlank, printRaw } from '../utils/output';
+import { printSuccess, printInfo, printIntro, printOutro, printNote, printWarning, printBlank } from '../utils/output';
 import { withErrorHandler } from '../utils/errors';
 import { DOCKFLOW_VERSION } from '../constants';
 
@@ -354,7 +354,7 @@ export function registerInitCommand(program: Command): void {
     .command('init [platform]')
     .description('Initialize project structure')
     .action(withErrorHandler(async (platform?: string) => {
-      printHeader('Initialize Project');
+      printIntro('Initialize Project');
       printBlank();
 
       const projectRoot = getProjectRoot();
@@ -448,15 +448,16 @@ export function registerInitCommand(program: Command): void {
       }
 
       printBlank();
-      printSuccess('Project initialized successfully!');
-      printBlank();
-      printInfo('Next steps:');
-      printRaw('  1. Edit .dockflow/config.yml with your project name');
-      printRaw('  2. Edit .dockflow/servers.yml to define your servers');
-      printRaw('  3. Configure .dockflow/docker/docker-compose.yml');
-      printRaw('  4. Update .dockflow/docker/Dockerfile for your app');
-      printRaw('  5. Run "dockflow setup" to configure your server');
-      printRaw('  6. Add connection secrets to your CI/CD (e.g., PRODUCTION_MAIN_SERVER_CONNECTION)');
-      printRaw('  7. Push a tag to trigger deployment');
+      printNote(
+        '1. Edit .dockflow/config.yml with your project name\n' +
+        '2. Edit .dockflow/servers.yml to define your servers\n' +
+        '3. Configure .dockflow/docker/docker-compose.yml\n' +
+        '4. Update .dockflow/docker/Dockerfile for your app\n' +
+        '5. Run "dockflow setup" to configure your server\n' +
+        '6. Add connection secrets to your CI/CD (e.g., PRODUCTION_MAIN_SERVER_CONNECTION)\n' +
+        '7. Push a tag to trigger deployment',
+        'Next steps'
+      );
+      printOutro('Project initialized successfully!');
     }));
 }

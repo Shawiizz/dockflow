@@ -5,8 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
-import { printSuccess, printDebug, printRaw } from '../../utils/output';
+import { printSuccess, printDebug, printRaw, createSpinner } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -21,7 +20,7 @@ export function registerRollbackCommand(program: Command): void {
       printDebug('Connection validated', { stackName });
       
       const stackService = createStackService(connection, stackName);
-      const spinner = ora();
+      const spinner = createSpinner();
 
       try {
         if (service) {
@@ -29,18 +28,18 @@ export function registerRollbackCommand(program: Command): void {
           const result = await stackService.rollback(service);
           
           if (result.success) {
-            spinner.succeed(result.message);
+            spinner.succeed(result.message || 'Done');
           } else {
             spinner.warn(`Rollback may have failed: ${result.message}`);
           }
         } else {
           spinner.start('Rolling back all services...');
           const result = await stackService.rollback();
-          
+
           if (result.success) {
-            spinner.succeed(result.message);
+            spinner.succeed(result.message || 'Done');
           } else {
-            spinner.warn(result.message);
+            spinner.warn(result.message || 'Rollback failed');
             if (result.output) {
               printRaw(result.output);
             }

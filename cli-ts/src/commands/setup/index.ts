@@ -11,7 +11,7 @@
 
 import type { Command } from 'commander';
 import * as fs from 'fs';
-import { printHeader, printSuccess, printWarning, printInfo, printBlank, printRaw } from '../../utils/output';
+import { printIntro, printSuccess, printWarning, printInfo, printBlank, printRaw } from '../../utils/output';
 import { isLinux, displayDependencyStatus } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
 import { prompt } from './prompts';
@@ -141,7 +141,7 @@ export function registerSetupCommand(program: Command): void {
     .command('check')
     .description('Check if all dependencies are installed')
     .action(withErrorHandler(async () => {
-      printHeader('Dependency Check');
+      printIntro('Dependency Check');
       printBlank();
 
       if (!isLinux()) {

@@ -6,7 +6,7 @@
  */
 
 import type { Command } from 'commander';
-import { printHeader, printInfo, printBlank } from '../../utils/output';
+import { printIntro, printInfo, printBlank } from '../../utils/output';
 import { withErrorHandler } from '../../utils/errors';
 
 /**
@@ -23,7 +23,7 @@ export function registerAccessoriesDeployCommand(program: Command): void {
       version: string | undefined,
       options: { skipDockerInstall?: boolean; debug?: boolean }
     ) => {
-      printHeader(`Deploying Accessories to ${env}`);
+      printIntro(`Deploying Accessories to ${env}`);
       printBlank();
       printInfo('Redirecting to: dockflow deploy --accessories');
       printBlank();

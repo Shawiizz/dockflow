@@ -3,8 +3,7 @@
  */
 
 import { spawnSync } from 'child_process';
-import ora from 'ora';
-import { printWarning, printSuccess, printInfo } from '../../utils/output';
+import { printWarning, printSuccess, printInfo, createSpinner } from '../../utils/output';
 import { CLIError, ErrorCode } from '../../utils/errors';
 import { promptPassword } from './prompts';
 
@@ -12,7 +11,8 @@ import { promptPassword } from './prompts';
  * Create deployment user with sudo privileges
  */
 export function createDeployUser(username: string, password: string, publicKey: string): boolean {
-  const spinner = ora(`Creating user ${username}...`).start();
+  const spinner = createSpinner();
+  spinner.start(`Creating user ${username}...`);
 
   let result = spawnSync('sudo', ['useradd', '-m', '-s', '/bin/bash', username], {
     encoding: 'utf-8',

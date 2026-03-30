@@ -5,7 +5,7 @@
 
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
-import { printSection, printHeader, printDebug, printRaw, printWarning, printBlank, printDim } from '../../utils/output';
+import { printSection, printIntro, printNote, printDebug, printRaw, printWarning, printBlank } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 
@@ -18,7 +18,7 @@ export function registerDetailsCommand(program: Command): void {
       const { stackName, connection } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName });
       
-      printHeader(`Stack: ${stackName}`);
+      printIntro(`Stack: ${stackName}`);
 
       try {
         // Services summary (compact)
@@ -47,12 +47,13 @@ export function registerDetailsCommand(program: Command): void {
         }
 
         // Quick tips
-        printBlank();
-        printDim('More commands:');
-        printDim('  dockflow version <env>        Deployed version info');
-        printDim('  dockflow ps <env>             Container details');
-        printDim('  dockflow list images <env>    Available images');
-        printDim('  dockflow logs <env>           View logs');
+        printNote(
+          'dockflow version <env>        Deployed version info\n' +
+          'dockflow ps <env>             Container details\n' +
+          'dockflow list images <env>    Available images\n' +
+          'dockflow logs <env>           View logs',
+          'More commands'
+        );
       } catch (error) {
         throw new DockerError(`Failed to get details: ${error}`);
       }

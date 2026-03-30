@@ -8,7 +8,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { getProjectRoot } from '../../utils/config';
 import { sshExec } from '../../utils/ssh';
-import { printInfo, printHeader, printSection, printBlank, printJSON, printDim, colors } from '../../utils/output';
+import { printInfo, printIntro, printSection, printBlank, printJSON, printDim, printRaw, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { validateAccessoriesStack } from './utils';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -79,7 +79,7 @@ export function registerAccessoriesListCommand(program: Command): void {
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(async (env: string, options: { json?: boolean; server?: string }) => {
       if (!options.json) {
-        printHeader(`Accessories - ${env}`);
+        printIntro(`Accessories - ${env}`);
         printBlank();
       }
 
@@ -125,7 +125,7 @@ export function registerAccessoriesListCommand(program: Command): void {
         }
 
         // Display table header
-        console.log(colors.bold('  SERVICE'.padEnd(30) + 'REPLICAS'.padEnd(15) + 'IMAGE'.padEnd(35) + 'PORTS'));
+        printRaw(colors.bold('  SERVICE'.padEnd(30) + 'REPLICAS'.padEnd(15) + 'IMAGE'.padEnd(35) + 'PORTS'));
         printDim('  ' + '-'.repeat(90));
 
         for (const service of services) {
@@ -134,7 +134,7 @@ export function registerAccessoriesListCommand(program: Command): void {
             ? service.image.substring(0, 29) + '...' 
             : service.image;
           
-          console.log(
+          printRaw(
             `  ${colors.info(serviceName.padEnd(28))} ` +
             `${formatReplicas(service.replicas).padEnd(25)} ` +
             `${colors.dim(imageShort.padEnd(35))} ` +
@@ -152,7 +152,7 @@ export function registerAccessoriesListCommand(program: Command): void {
         if (volumesResult.stdout.trim()) {
           printSection('Volumes');
           for (const vol of volumesResult.stdout.trim().split('\n').filter(Boolean)) {
-            console.log(`  ${colors.info(vol)}`);
+            printRaw(`  ${colors.info(vol)}`);
           }
         }
 

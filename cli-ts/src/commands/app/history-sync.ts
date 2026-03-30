@@ -7,9 +7,8 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
 import { sshExec } from '../../utils/ssh';
-import { printSuccess, printInfo, printBlank, printWarning, printDebug } from '../../utils/output';
+import { printSuccess, printInfo, printBlank, printWarning, printDebug, createSpinner } from '../../utils/output';
 import { validateEnv, getAllNodeConnections } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 import { DOCKFLOW_AUDIT_DIR, DOCKFLOW_METRICS_DIR } from '../../constants';
@@ -114,7 +113,8 @@ export function registerHistorySyncCommand(program: Command): void {
       printBlank();
 
       // 1. Read history from all nodes
-      const spinner = ora('Reading history from all nodes...').start();
+      const spinner = createSpinner();
+      spinner.start('Reading history from all nodes...');
       const nodeData: NodeData[] = [];
 
       for (const conn of connections) {
@@ -164,7 +164,8 @@ export function registerHistorySyncCommand(program: Command): void {
       printInfo(`Merged: ${mergedAudit.length} audit entries, ${mergedMetrics.length} metric entries`);
 
       // 3. Write merged data to all reachable nodes
-      const writeSpinner = ora('Writing merged history to all nodes...').start();
+      const writeSpinner = createSpinner();
+      writeSpinner.start('Writing merged history to all nodes...');
       const auditContent = mergedAudit.join('\n');
       const metricsContent = mergedMetrics.join('\n');
       let synced = 0;

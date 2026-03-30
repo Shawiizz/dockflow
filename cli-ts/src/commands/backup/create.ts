@@ -4,9 +4,8 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
 import { validateEnv } from '../../utils/validation';
-import { printHeader, printSuccess, printInfo, printBlank, printDim } from '../../utils/output';
+import { printIntro, printOutro, printInfo, printBlank, printDim, createSpinner } from '../../utils/output';
 import { BackupError, withErrorHandler } from '../../utils/errors';
 import { createBackupService } from '../../services/backup-service';
 import { requireBackupConfig, resolveBackupStack } from './utils';
@@ -22,7 +21,7 @@ export function registerBackupCreateCommand(program: Command): void {
       service: string,
       options: { server?: string }
     ) => {
-      printHeader(`Backup - ${service} (${env})`);
+      printIntro(`Backup - ${service} (${env})`);
       printBlank();
 
       const { connection } = validateEnv(env, options.server);
@@ -30,7 +29,8 @@ export function registerBackupCreateCommand(program: Command): void {
       const stackName = resolveBackupStack(env, source);
       const backupService = createBackupService(connection, stackName);
 
-      const spinner = ora('Creating backup...').start();
+      const spinner = createSpinner();
+      spinner.start('Creating backup...');
       const result = await backupService.backup(service, backupConfig, compression);
 
       if (!result.success) {
@@ -40,9 +40,10 @@ export function registerBackupCreateCommand(program: Command): void {
 
       spinner.succeed('Backup created');
       printBlank();
-      printSuccess(`Backup ID: ${result.data.id}`);
+      printInfo(`Backup ID: ${result.data.id}`);
       printInfo(`Size: ${result.data.size}`);
       printInfo(`Duration: ${(result.data.durationMs / 1000).toFixed(1)}s`);
       printDim(`Path: ${DOCKFLOW_BACKUPS_DIR}/${stackName}/${service}/${result.data.id}.*`);
+      printOutro('Backup complete');
     }));
 }

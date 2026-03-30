@@ -8,12 +8,12 @@ import {
   printSuccess,
   printWarning,
   printDebug,
-  printSectionTitle,
   printSeparator,
   printTableRow,
   printDim,
   printBlank,
   printJSON,
+  printRaw,
   colors,
   formatRelativeTime
 } from '../../utils/output';
@@ -48,7 +48,7 @@ function displaySummary(summary: MetricsSummary, stackName: string): void {
   printBlank();
 
   // Overview stats
-  printSectionTitle('Overview:');
+  printSection('Overview:');
   printSeparator();
   printTableRow('Total Deployments:', String(summary.total_deployments));
   printTableRow('Success Rate:', colors.success(summary.success_rate.toFixed(1) + '%'));
@@ -56,15 +56,15 @@ function displaySummary(summary: MetricsSummary, stackName: string): void {
   printBlank();
 
   // Status breakdown
-  printSectionTitle('Status Breakdown:');
+  printSection('Status Breakdown:');
   printSeparator();
-  console.log(`  ${colors.success('✓ Successful:')}         ${summary.successful}`);
-  console.log(`  ${colors.error('✗ Failed:')}             ${summary.failed}`);
-  console.log(`  ${colors.warning('↩ Rolled Back:')}        ${summary.rolled_back}`);
+  printRaw(`  ${colors.success('✓ Successful:')}         ${summary.successful}`);
+  printRaw(`  ${colors.error('✗ Failed:')}             ${summary.failed}`);
+  printRaw(`  ${colors.warning('↩ Rolled Back:')}        ${summary.rolled_back}`);
   printBlank();
 
   // Activity
-  printSectionTitle('Deployment Activity:');
+  printSection('Deployment Activity:');
   printSeparator();
   printTableRow('Last 24 hours:', String(summary.deployments_last_24h));
   printTableRow('Last 7 days:', String(summary.deployments_last_7d));
@@ -73,10 +73,10 @@ function displaySummary(summary: MetricsSummary, stackName: string): void {
 
   // Most deployed versions
   if (summary.most_deployed_versions.length > 0) {
-    printSectionTitle('Top Versions:');
+    printSection('Top Versions:');
     printSeparator();
     summary.most_deployed_versions.forEach(({ version, count }, idx) => {
-      console.log(`  ${idx + 1}. ${version} (${count} deployments)`);
+      printRaw(`  ${idx + 1}. ${version} (${count} deployments)`);
     });
     printBlank();
   }
@@ -84,7 +84,7 @@ function displaySummary(summary: MetricsSummary, stackName: string): void {
   // Last deployment
   if (summary.last_deployment) {
     const last = summary.last_deployment;
-    printSectionTitle('Last Deployment:');
+    printSection('Last Deployment:');
     printSeparator();
     printTableRow('Version:', last.version);
     printTableRow('Status:', getStatusBadge(last.status));
@@ -120,7 +120,7 @@ function displayHistory(metrics: DeploymentMetric[]): void {
   }
   
   printBlank();
-  console.log(
+  printRaw(
     colors.dim('TIMESTAMP'.padEnd(22)) +
     colors.dim('VERSION'.padEnd(18)) +
     colors.dim('STATUS'.padEnd(14)) +
@@ -143,7 +143,7 @@ function displayHistory(metrics: DeploymentMetric[]): void {
       minute: '2-digit',
     });
     
-    console.log(
+    printRaw(
       colors.dim(time.padEnd(22)) +
       colors.info(m.version.padEnd(18)) +
       getStatusBadge(m.status).padEnd(24) +

@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import { sshExecWithFallback } from '../../utils/ssh-fallback';
-import { printSection, printDebug, colors, printBlank, printWarning, printDim, printJSON, printRaw } from '../../utils/output';
+import { printSection, printNote, printDebug, colors, printBlank, printWarning, printDim, printJSON, printRaw } from '../../utils/output';
 import { validateEnv, getAllNodeConnections } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 
@@ -102,7 +102,7 @@ export function registerHistoryCommand(program: Command): void {
         }
 
         // Header
-        console.log(
+        printRaw(
           colors.dim('TIMESTAMP'.padEnd(26)) +
           colors.dim('ACTION'.padEnd(12)) +
           colors.dim('VERSION'.padEnd(22)) +
@@ -118,7 +118,7 @@ export function registerHistoryCommand(program: Command): void {
         printBlank();
         printDim(`Showing ${entries.length} most recent entries`);
         if (!options.all) {
-          printDim(`Use --all to show complete history`);
+          printNote('Use --all to show complete history');
         }
       } catch (error) {
         throw new DockerError(`Failed to fetch audit log: ${error}`);

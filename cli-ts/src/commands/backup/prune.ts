@@ -4,11 +4,10 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
 import { validateEnv } from '../../utils/validation';
 import { confirmPrompt } from '../../utils/prompts';
 import { loadConfig } from '../../utils/config';
-import { printHeader, printSuccess, printInfo, printWarning, printBlank, printRaw, colors } from '../../utils/output';
+import { printIntro, printOutro, printInfo, printWarning, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
 import { BackupError, withErrorHandler } from '../../utils/errors';
 import { createBackupService } from '../../services/backup-service';
 import { requireBackupConfig, resolveBackupStack, listGroupedFromAllStacks, type StackGroupedEntries } from './utils';
@@ -25,7 +24,7 @@ export function registerBackupPruneCommand(program: Command): void {
       service: string | undefined,
       options: { keep?: string; yes?: boolean; server?: string }
     ) => {
-      printHeader(`Prune Backups (${env})`);
+      printIntro(`Prune Backups (${env})`);
       printBlank();
 
       const { connection } = validateEnv(env, options.server);
@@ -87,7 +86,8 @@ export function registerBackupPruneCommand(program: Command): void {
         }
       }
 
-      const spinner = ora('Pruning backups...').start();
+      const spinner = createSpinner();
+      spinner.start('Pruning backups...');
       let totalPruned = 0;
 
       // Prune per-stack, per-service (avoids cross-stack entry mixing)
@@ -103,6 +103,6 @@ export function registerBackupPruneCommand(program: Command): void {
 
       spinner.succeed(`Pruned ${totalPruned} backup(s)`);
       printBlank();
-      printSuccess('Prune completed');
+      printOutro('Prune completed');
     }));
 }

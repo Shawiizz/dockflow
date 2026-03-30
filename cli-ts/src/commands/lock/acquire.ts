@@ -3,8 +3,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
-import { printWarning, printDim, printBlank } from '../../utils/output';
+import { printWarning, printNote, printDim, printBlank, createSpinner } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createLockService } from '../../services';
 import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
@@ -19,7 +18,7 @@ export function registerLockAcquireCommand(parent: Command): void {
     .action(withErrorHandler(async (env: string, options: { server?: string; message?: string; force?: boolean }) => {
       const { stackName, connection, config } = validateEnv(env, options.server);
       const lockService = createLockService(connection, stackName, config.lock?.stale_threshold_minutes);
-      const spinner = ora();
+      const spinner = createSpinner();
 
       // Check for existing lock (show info if blocked)
       if (!options.force) {
@@ -53,12 +52,11 @@ export function registerLockAcquireCommand(parent: Command): void {
       }
 
       spinner.succeed(`Lock acquired for ${stackName}`);
-      printBlank();
-      printDim('  Deployments to this environment are now blocked.');
-      printDim('  Release with: dockflow lock release ' + env);
-
-      if (options.message) {
-        printDim(`  Reason: ${options.message}`);
-      }
+      const noteLines = [
+        'Deployments to this environment are now blocked.',
+        `Release with: dockflow lock release ${env}`,
+      ];
+      if (options.message) noteLines.push(`Reason: ${options.message}`);
+      printNote(noteLines.join('\n'));
     }));
 }

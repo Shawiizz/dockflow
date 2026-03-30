@@ -7,7 +7,7 @@
 
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
-import { printSection, printHeader, printInfo, printError, printSuccess, printWarning, printDebug, printBlank, printRaw, colors } from '../../utils/output';
+import { printSection, printIntro, printInfo, printError, printSuccess, printWarning, printDebug, printBlank, printRaw, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -29,7 +29,7 @@ export function registerDiagnoseCommand(program: Command): void {
       const { stackName, connection, serverName } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName, serverName });
 
-      printHeader(`Diagnosing: ${stackName}`);
+      printIntro(`Diagnosing: ${stackName}`);
       printBlank();
 
       const issues: DiagnosticIssue[] = [];
@@ -60,7 +60,7 @@ export function registerDiagnoseCommand(program: Command): void {
         for (const service of servicesResult.data) {
           const [current, desired] = service.replicas.split('/').map(s => parseInt(s.trim()));
           if (current === 0 && desired > 0) {
-            console.log(`  ${colors.error('✗')} ${service.name}: ${colors.error(service.replicas)} replicas`);
+            printRaw(`  ${colors.error('✗')} ${service.name}: ${colors.error(service.replicas)} replicas`);
             issues.push({
               severity: 'error',
               category: 'Replicas',
@@ -68,14 +68,14 @@ export function registerDiagnoseCommand(program: Command): void {
               suggestion: 'Check task errors below for details'
             });
           } else if (current < desired) {
-            console.log(`  ${colors.warning('!')} ${service.name}: ${colors.warning(service.replicas)} replicas`);
+            printRaw(`  ${colors.warning('!')} ${service.name}: ${colors.warning(service.replicas)} replicas`);
             issues.push({
               severity: 'warning',
               category: 'Replicas',
               message: `Service '${service.name}' has only ${current}/${desired} replicas`,
             });
           } else {
-            console.log(`  ${colors.success('✓')} ${service.name}: ${colors.success(service.replicas)} replicas`);
+            printRaw(`  ${colors.success('✓')} ${service.name}: ${colors.success(service.replicas)} replicas`);
           }
         }
       }
@@ -99,10 +99,10 @@ export function registerDiagnoseCommand(program: Command): void {
           printSuccess('No task errors found');
         } else {
           for (const task of recentFailures) {
-            console.log(`  ${colors.error('✗')} ${task.name}`);
-            console.log(`    State: ${colors.warning(task.currentState)}`);
+            printRaw(`  ${colors.error('✗')} ${task.name}`);
+            printRaw(`    State: ${colors.warning(task.currentState)}`);
             if (task.error) {
-              console.log(`    Error: ${colors.error(task.error)}`);
+              printRaw(`    Error: ${colors.error(task.error)}`);
               
               // Parse common errors
               const errorAnalysis = analyzeTaskError(task.error);
@@ -131,7 +131,7 @@ export function registerDiagnoseCommand(program: Command): void {
           printInfo('No pending tasks');
         } else {
           for (const task of pendingTasks) {
-            console.log(`  ${colors.warning('○')} ${task.name}: ${task.currentState}`);
+            printRaw(`  ${colors.warning('○')} ${task.name}: ${task.currentState}`);
           }
           if (pendingTasks.some(t => t.currentState.includes('Pending'))) {
             issues.push({
@@ -168,7 +168,7 @@ export function registerDiagnoseCommand(program: Command): void {
         const dfResult = await sshExec(connection, `df -h / | tail -1 | awk '{print $5}'`);
         const diskUsage = parseInt(dfResult.stdout.trim().replace('%', ''));
         if (diskUsage >= 90) {
-          console.log(`  Disk usage: ${colors.error(dfResult.stdout.trim())}`);
+          printRaw(`  Disk usage: ${colors.error(dfResult.stdout.trim())}`);
           issues.push({
             severity: 'error',
             category: 'System',
@@ -176,7 +176,7 @@ export function registerDiagnoseCommand(program: Command): void {
             suggestion: `Run 'dockflow prune ${env}' to clean up unused Docker resources`
           });
         } else if (diskUsage >= 80) {
-          console.log(`  Disk usage: ${colors.warning(dfResult.stdout.trim())}`);
+          printRaw(`  Disk usage: ${colors.warning(dfResult.stdout.trim())}`);
           issues.push({
             severity: 'warning',
             category: 'System',
@@ -184,7 +184,7 @@ export function registerDiagnoseCommand(program: Command): void {
             suggestion: 'Consider cleaning up unused Docker resources'
           });
         } else {
-          console.log(`  Disk usage: ${colors.success(dfResult.stdout.trim())}`);
+          printRaw(`  Disk usage: ${colors.success(dfResult.stdout.trim())}`);
         }
       } catch {
         printInfo('Could not check disk space');
@@ -195,7 +195,7 @@ export function registerDiagnoseCommand(program: Command): void {
         const memResult = await sshExec(connection, `free -m | awk 'NR==2{printf "%.0f", $3*100/$2}'`);
         const memUsage = parseInt(memResult.stdout.trim());
         if (memUsage >= 90) {
-          console.log(`  Memory usage: ${colors.error(memUsage + '%')}`);
+          printRaw(`  Memory usage: ${colors.error(memUsage + '%')}`);
           issues.push({
             severity: 'warning',
             category: 'System',
@@ -203,9 +203,9 @@ export function registerDiagnoseCommand(program: Command): void {
             suggestion: 'High memory usage may prevent containers from starting'
           });
         } else if (memUsage >= 80) {
-          console.log(`  Memory usage: ${colors.warning(memUsage + '%')}`);
+          printRaw(`  Memory usage: ${colors.warning(memUsage + '%')}`);
         } else {
-          console.log(`  Memory usage: ${colors.success(memUsage + '%')}`);
+          printRaw(`  Memory usage: ${colors.success(memUsage + '%')}`);
         }
       } catch {
         printInfo('Could not check memory usage');
@@ -302,21 +302,21 @@ function printDiagnosticSummary(issues: DiagnosticIssue[]): void {
   }
 
   if (errors.length > 0) {
-    console.log(`  ${colors.error('Errors:')} ${errors.length}`);
+    printRaw(`  ${colors.error('Errors:')} ${errors.length}`);
     for (const issue of errors) {
-      console.log(`    ${colors.error('•')} ${issue.message}`);
+      printRaw(`    ${colors.error('•')} ${issue.message}`);
       if (issue.suggestion) {
-        console.log(`      ${colors.dim('→')} ${colors.info(issue.suggestion)}`);
+        printRaw(`      ${colors.dim('→')} ${colors.info(issue.suggestion)}`);
       }
     }
   }
 
   if (warnings.length > 0) {
-    console.log(`  ${colors.warning('Warnings:')} ${warnings.length}`);
+    printRaw(`  ${colors.warning('Warnings:')} ${warnings.length}`);
     for (const issue of warnings) {
-      console.log(`    ${colors.warning('•')} ${issue.message}`);
+      printRaw(`    ${colors.warning('•')} ${issue.message}`);
       if (issue.suggestion) {
-        console.log(`      ${colors.dim('→')} ${colors.info(issue.suggestion)}`);
+        printRaw(`      ${colors.dim('→')} ${colors.info(issue.suggestion)}`);
       }
     }
   }

@@ -33,19 +33,19 @@ export const colors = {
 
 // === User feedback ===
 export function printSuccess(message: string): void {
-  console.log(colors.success(`✓ ${message}`));
+  clack.log.success(message);
 }
 
 export function printError(message: string): void {
-  console.error(colors.error(`✗ ${message}`));
+  process.stderr.write(colors.error(`  ✘  ${message}`) + '\n');
 }
 
 export function printWarning(message: string): void {
-  console.log(colors.warning(`⚠ ${message}`));
+  clack.log.warn(message);
 }
 
 export function printInfo(message: string): void {
-  console.log(colors.info(`→ ${message}`));
+  clack.log.info(message);
 }
 
 // === Debug output (verbose mode only) ===
@@ -63,16 +63,8 @@ export function printDebug(message: string, context?: Record<string, unknown>): 
 }
 
 // === Sections & headers ===
-export function printHeader(title: string): void {
-  const line = '='.repeat(56);
-  console.log(colors.success(line));
-  console.log(colors.success(`   ${title}`));
-  console.log(colors.success(line));
-}
-
 export function printSection(title: string): void {
-  console.log('');
-  console.log(colors.info(`=== ${title} ===`));
+  clack.log.step(title);
 }
 
 // === Formatters ===
@@ -95,13 +87,6 @@ export function formatDuration(seconds: number): string {
  */
 export function printSeparator(length: number = 50): void {
   console.log(colors.dim('─'.repeat(length)));
-}
-
-/**
- * Print a section title (bold cyan)
- */
-export function printSectionTitle(title: string): void {
-  console.log(colors.info(colors.bold(title)));
 }
 
 /**
@@ -168,7 +153,7 @@ export function formatRelativeTime(timestamp: string): string {
 // === @clack visual helpers ===
 
 /**
- * Display a styled intro banner
+ * Display a styled intro banner (clack-style)
  */
 export function printIntro(title: string): void {
   clack.intro(colors.bold(title));
@@ -186,5 +171,26 @@ export function printOutro(message: string): void {
  */
 export function printNote(message: string, title?: string): void {
   clack.note(message, title);
+}
+
+/**
+ * Create a clack spinner with ora-compatible API
+ * stop()    → success (◆)
+ * cancel()  → warning (◼)
+ * error()   → failure (✘)
+ * message() → update mid-spin
+ */
+export function createSpinner() {
+  const s = clack.spinner();
+  return {
+    start:   (msg: string)   => s.start(msg),
+    succeed: (msg: string)   => s.stop(msg),
+    fail:    (msg: string)   => s.error(msg),
+    warn:    (msg: string)   => s.cancel(msg),
+    info:    (msg: string)   => s.stop(msg),
+    stop:    (msg?: string)  => s.stop(msg),
+    update:  (msg: string)   => s.message(msg),
+    set text(msg: string)    { s.message(msg); },
+  };
 }
 

@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import { loadConfig, loadServersConfig } from '../../utils/config';
-import { printSection, printError, printBlank, printJSON, printDim, colors } from '../../utils/output';
+import { printSection, printNote, printError, printBlank, printJSON, printDim, printRaw, colors } from '../../utils/output';
 import { withErrorHandler } from '../../utils/errors';
 
 interface EnvironmentInfo {
@@ -120,26 +120,21 @@ export function registerListEnvCommand(parent: Command): void {
           clusterInfo = colors.dim(` (${parts.join(', ')})`);
         }
 
-        console.log(envColor(`● ${env.name}`) + clusterInfo);
-        
+        printRaw(envColor(`● ${env.name}`) + clusterInfo);
+
         for (const server of env.servers) {
           const roleIcon = server.role === 'manager' ? '👑' : '⚙️';
-          const hostInfo = server.host.startsWith('<') 
-            ? colors.dim(server.host) 
+          const hostInfo = server.host.startsWith('<')
+            ? colors.dim(server.host)
             : server.host;
-          
-          console.log(`  ${roleIcon} ${colors.info(server.name.padEnd(20))} ${hostInfo}:${server.port} ${colors.dim(`(${server.user})`)}`);
+
+          printRaw(`  ${roleIcon} ${colors.info(server.name.padEnd(20))} ${hostInfo}:${server.port} ${colors.dim(`(${server.user})`)}`);
         }
         printBlank();
       }
 
       // Show deployment commands hint
-      printDim('─'.repeat(50));
-      printBlank();
-      printDim('Deploy to an environment:');
-      for (const env of environments.slice(0, 2)) {
-        printDim(`  dockflow deploy ${env.name}`);
-      }
-      printBlank();
+      const deployHints = environments.slice(0, 2).map(env => `dockflow deploy ${env.name}`).join('\n');
+      printNote(deployHints, 'Deploy to an environment');
     }));
 }

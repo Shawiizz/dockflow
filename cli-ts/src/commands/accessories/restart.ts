@@ -6,8 +6,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
-import { printSuccess, printHeader, printDebug, printBlank, printRaw } from '../../utils/output';
+import { printSuccess, printIntro, printOutro, printDebug, printBlank, printRaw, createSpinner } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createStackService } from '../../services';
@@ -27,7 +26,7 @@ export function registerAccessoriesRestartCommand(program: Command): void {
       service: string | undefined,
       options: { force?: boolean; server?: string }
     ) => {
-      printHeader(`Restarting Accessories - ${env}`);
+      printIntro(`Restarting Accessories - ${env}`);
       printBlank();
 
       const { connection } = validateEnv(env, options.server);
@@ -35,7 +34,7 @@ export function registerAccessoriesRestartCommand(program: Command): void {
       const stackService = createStackService(connection, stackName);
 
       printDebug('Connection validated', { stackName });
-      const spinner = ora();
+      const spinner = createSpinner();
 
       try {
         if (service) {
@@ -53,10 +52,10 @@ export function registerAccessoriesRestartCommand(program: Command): void {
           const result = await stackService.restart();
 
           if (result.success) {
-            spinner.succeed(result.message);
-            printSuccess('Restart complete');
+            spinner.succeed(result.message || 'Done');
+            printOutro('Restart complete');
           } else {
-            spinner.warn(result.message);
+            spinner.warn(result.message || 'Restart failed');
             if (result.output) {
               printRaw(result.output);
             }

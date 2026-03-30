@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
-import { printSection, printJSON, printBlank, printDim, colors } from '../../utils/output';
+import { printSection, printNote, printJSON, printBlank, printDim, printRaw, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
@@ -72,7 +72,7 @@ export function registerListServicesCommand(parent: Command): void {
         printBlank();
 
         // Header
-        console.log(
+        printRaw(
           colors.dim('SERVICE'.padEnd(25)) +
           colors.dim('REPLICAS'.padEnd(12)) +
           colors.dim('IMAGE'.padEnd(40)) +
@@ -94,7 +94,7 @@ export function registerListServicesCommand(parent: Command): void {
             ? '...' + svc.image.slice(-35) 
             : svc.image;
 
-          console.log(
+          printRaw(
             colors.info(svc.shortName.padEnd(25)) +
             replicasColor(svc.replicas.padEnd(12)) +
             shortImage.padEnd(40) +
@@ -121,7 +121,7 @@ export function registerListServicesCommand(parent: Command): void {
               const stateStr = state || 'unknown';
               const errorStr = error ? colors.error(` (${error.substring(0, 30)})`) : '';
               
-              console.log(
+              printRaw(
                 colors.dim('  └─ ') +
                 colors.dim(shortId.padEnd(14)) +
                 taskName.padEnd(20) +
@@ -139,9 +139,8 @@ export function registerListServicesCommand(parent: Command): void {
           printDim('Use -t/--tasks to show individual tasks');
         }
         printBlank();
-        printDim('Connect to a service:');
         if (services.length > 0) {
-          printDim(`  dockflow bash ${env} ${services[0].shortName}`);
+          printNote(`dockflow bash ${env} ${services[0].shortName}`, 'Connect to a service');
         }
       } catch (error) {
         if (error instanceof DockerError) throw error;

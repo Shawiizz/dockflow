@@ -5,7 +5,7 @@
 
 import type { Command } from 'commander';
 import { validateEnv } from '../../utils/validation';
-import { printHeader, printInfo, printBlank, printJSON, printRaw, printDim, colors, formatRelativeTime } from '../../utils/output';
+import { printIntro, printInfo, printBlank, printJSON, printRaw, printDim, colors, formatRelativeTime } from '../../utils/output';
 import { withErrorHandler, BackupError } from '../../utils/errors';
 import { createBackupService, type BackupListEntry } from '../../services/backup-service';
 import { requireBackupConfig, resolveBackupStack, listFromAllStacks } from './utils';
@@ -43,7 +43,7 @@ export function registerBackupListCommand(program: Command): void {
         return;
       }
 
-      printHeader(`Backups - ${service || 'all'} (${env})`);
+      printIntro(`Backups - ${service || 'all'} (${env})`);
       printBlank();
 
       if (entries.length === 0) {

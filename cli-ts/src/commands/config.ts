@@ -136,14 +136,14 @@ export function registerConfigCommand(program: Command): void {
       if (config) {
         printSection('Project Configuration');
         printBlank();
-        console.log(`  ${colors.dim('Project:')}      ${colors.info(config.project_name)}`);
-        
+        printRaw(`  ${colors.dim('Project:')}      ${colors.info(config.project_name)}`);
+
         if (config.registry) {
           const regType = config.registry.type || 'local';
           const regUrl = config.registry.url || '(local registry)';
-          console.log(`  ${colors.dim('Registry:')}     ${regType} ${colors.dim(`(${regUrl})`)}`);
+          printRaw(`  ${colors.dim('Registry:')}     ${regType} ${colors.dim(`(${regUrl})`)}`);
         } else {
-          console.log(`  ${colors.dim('Registry:')}     ${colors.warning('not configured')}`);
+          printRaw(`  ${colors.dim('Registry:')}     ${colors.warning('not configured')}`);
         }
 
         if (config.options) {
@@ -151,13 +151,13 @@ export function registerConfigCommand(program: Command): void {
           if (config.options.remote_build) opts.push('remote-build');
           if (config.options.image_auto_tag !== false) opts.push('image-auto-tag');
           if (opts.length > 0) {
-            console.log(`  ${colors.dim('Options:')}      ${opts.join(', ')}`);
+            printRaw(`  ${colors.dim('Options:')}      ${opts.join(', ')}`);
           }
         }
 
         if (config.health_checks?.enabled) {
           const count = config.health_checks.endpoints?.length || 0;
-          console.log(`  ${colors.dim('Health:')}       ${colors.success('enabled')} ${colors.dim(`(${count} endpoint${count !== 1 ? 's' : ''})`)}`);
+          printRaw(`  ${colors.dim('Health:')}       ${colors.success('enabled')} ${colors.dim(`(${count} endpoint${count !== 1 ? 's' : ''})`)}`);
         }
 
         if (config.hooks?.enabled !== false) {
@@ -167,7 +167,7 @@ export function registerConfigCommand(program: Command): void {
           if (config.hooks?.['pre-deploy']) hooks.push('pre-deploy');
           if (config.hooks?.['post-deploy']) hooks.push('post-deploy');
           if (hooks.length > 0) {
-            console.log(`  ${colors.dim('Hooks:')}        ${hooks.join(', ')}`);
+            printRaw(`  ${colors.dim('Hooks:')}        ${hooks.join(', ')}`);
           }
         }
       } else {
@@ -187,7 +187,7 @@ export function registerConfigCommand(program: Command): void {
         for (const env of envs) {
           const serverNames = getServerNamesForEnvironment(env);
           const envColor = env === 'production' ? colors.error : env === 'staging' ? colors.warning : colors.primary;
-          console.log(`  ${envColor('●')} ${env.padEnd(15)} ${colors.dim(`${serverNames.length} server(s)`)}`);
+          printRaw(`  ${envColor('●')} ${env.padEnd(15)} ${colors.dim(`${serverNames.length} server(s)`)}`);
         }
       }
 
@@ -244,7 +244,7 @@ export function registerConfigCommand(program: Command): void {
         printError('  config.yml schema errors:');
         printBlank();
         for (const error of result.schemaErrors.config) {
-          console.log(`    ${colors.error('✗')} ${colors.warning(error.path)}`);
+          printRaw(`    ${colors.error('✗')} ${colors.warning(error.path)}`);
           printRaw(`      ${error.message}`);
           const suggestion = getSuggestion(error);
           if (suggestion && options.verbose) {
@@ -258,7 +258,7 @@ export function registerConfigCommand(program: Command): void {
         printError('  servers.yml schema errors:');
         printBlank();
         for (const error of result.schemaErrors.servers) {
-          console.log(`    ${colors.error('✗')} ${colors.warning(error.path)}`);
+          printRaw(`    ${colors.error('✗')} ${colors.warning(error.path)}`);
           printRaw(`      ${error.message}`);
           const suggestion = getSuggestion(error);
           if (suggestion && options.verbose) {
@@ -275,7 +275,7 @@ export function registerConfigCommand(program: Command): void {
       if (generalErrors.length > 0) {
         printError('  General errors:');
         for (const error of generalErrors) {
-          console.log(`    ${colors.error('✗')} ${error}`);
+          printRaw(`    ${colors.error('✗')} ${error}`);
         }
         printBlank();
       }
@@ -283,7 +283,7 @@ export function registerConfigCommand(program: Command): void {
       if (result.warnings.length > 0) {
         printWarning('  Warnings:');
         for (const warning of result.warnings) {
-          console.log(`    ${colors.warning('⚠')} ${warning}`);
+          printRaw(`    ${colors.warning('⚠')} ${warning}`);
         }
         printBlank();
       }
