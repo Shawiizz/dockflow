@@ -8,5 +8,6 @@ export default {
   backup: 'Backup & Restore',
   hooks: 'Hooks',
   templates: 'Templates',
-  'multi-host': 'Multi-Node Deployment'
+  'multi-host': 'Multi-Node Deployment',
+  proxy: 'Automatic HTTPS Proxy'
 }

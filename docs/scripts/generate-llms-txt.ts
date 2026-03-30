@@ -38,9 +38,7 @@ const structure: PageEntry[] = [
     title: 'Configuration',
     path: 'configuration',
     children: [
-      { slug: 'connection', title: 'Connection', path: 'configuration/connection' },
       { slug: 'servers', title: 'Servers Configuration', path: 'configuration/servers' },
-      { slug: 'environment', title: 'Environment Variables', path: 'configuration/environment' },
       { slug: 'docker-compose', title: 'Docker Compose', path: 'configuration/docker-compose' },
       { slug: 'accessories', title: 'Accessories (Databases, Caches)', path: 'configuration/accessories' },
       { slug: 'build-strategy', title: 'Build Strategy', path: 'configuration/build-strategy' },
@@ -49,6 +47,7 @@ const structure: PageEntry[] = [
       { slug: 'hooks', title: 'Hooks', path: 'configuration/hooks' },
       { slug: 'multi-host', title: 'Multi-Host Deployment', path: 'configuration/multi-host' },
       { slug: 'config-file', title: 'Configuration File', path: 'configuration/config-file' },
+      { slug: 'proxy', title: 'Automatic HTTPS Proxy', path: 'configuration/proxy' },
     ],
   },
   {
