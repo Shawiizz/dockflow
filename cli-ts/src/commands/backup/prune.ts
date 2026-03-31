@@ -11,6 +11,7 @@ import { printIntro, printOutro, printInfo, printWarning, printBlank, printRaw, 
 import { BackupError, withErrorHandler } from '../../utils/errors';
 import { createBackupService } from '../../services/backup-service';
 import { requireBackupConfig, resolveBackupStack, listGroupedFromAllStacks, type StackGroupedEntries } from './utils';
+import { getAllNodeConnections } from '../../utils/servers';
 
 export function registerBackupPruneCommand(program: Command): void {
   program
@@ -40,7 +41,7 @@ export function registerBackupPruneCommand(program: Command): void {
       if (service) {
         const { source } = requireBackupConfig(service);
         const stackName = resolveBackupStack(env, source);
-        const backupService = createBackupService(connection, stackName);
+        const backupService = createBackupService(connection, stackName, getAllNodeConnections(env));
         const result = await backupService.list(service);
         if (!result.success) throw new BackupError(result.error.message);
         stackData.push({ backupService, byService: { [service]: result.data } });

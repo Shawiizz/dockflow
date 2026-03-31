@@ -9,7 +9,7 @@
 
 import { jsonResponse, errorResponse } from '../server';
 import { loadConfig, getStackName, getAccessoriesStackName, type BackupAccessoryConfig } from '../../utils/config';
-import { getManagerConnection, resolveEnvironment } from './_helpers';
+import { getManagerConnection, resolveEnvironment, getAllNodeConnections } from './_helpers';
 import { createBackupService, type BackupService, type BackupBaseEntry } from '../../services/backup-service';
 import { requireBackupConfig, listFromAllStacks, listGroupedFromAllStacks, type BackupSource } from '../../commands/backup/utils';
 import type { SSHKeyConnection } from '../../types';
@@ -47,7 +47,7 @@ function resolveBackupContextForService(env: string, conn: SSHKeyConnection, ser
 
   return {
     env, conn, stackName,
-    backupService: createBackupService(conn, stackName),
+    backupService: createBackupService(conn, stackName, getAllNodeConnections(env)),
     backupConfig: cfg.backupConfig,
     compression: cfg.compression,
   };

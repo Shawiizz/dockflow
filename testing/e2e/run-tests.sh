@@ -162,11 +162,23 @@ fi
 log_success "HTTP routing works (Host: test.local → HTTP $HTTP_STATUS)"
 
 # =============================================================================
-# Step 8: Remote Build Test (runs by default, skip with --skip-remote-build)
+# Step 8: Backup & Restore Test
+# =============================================================================
+log_step "Step 8: Running backup & restore test..."
+
+if bash "$SCRIPT_DIR/run-backup-test.sh"; then
+	log_success "Backup & restore test passed"
+else
+	log_error "Backup & restore test failed"
+	exit 1
+fi
+
+# =============================================================================
+# Step 9: Remote Build Test (runs by default, skip with --skip-remote-build)
 # =============================================================================
 REMOTE_BUILD_PASSED=""
 if [[ "${1:-}" != "--skip-remote-build" ]]; then
-	log_step "Step 8: Running remote build test..."
+	log_step "Step 9: Running remote build test..."
 
 	# Pass --skip-setup flag since environment is already ready
 	if bash "$SCRIPT_DIR/run-remote-build-test.sh" --skip-setup; then
@@ -193,6 +205,7 @@ echo "  ✓ Swarm cluster initialized (2 nodes)"
 echo "  ✓ Application deployed (2 replicas)"
 echo "  ✓ Replicas distributed across nodes"
 echo "  ✓ Traefik proxy routing verified"
+echo "  ✓ Backup & restore verified (Redis)"
 if [[ -n "$REMOTE_BUILD_PASSED" ]]; then
 	echo "  ✓ Remote build test passed"
 fi

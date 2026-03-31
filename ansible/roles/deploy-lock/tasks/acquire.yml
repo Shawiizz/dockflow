@@ -3,7 +3,10 @@
   file:
     path: "{{ lock_dir }}"
     state: directory
-    mode: '1777'
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+  become: true
 
 - name: Check for existing lock
   stat:

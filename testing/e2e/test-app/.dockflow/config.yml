@@ -12,3 +12,10 @@ proxy:
   acme: false
   domains:
     test: "test.local"
+
+backup:
+  retention: 3
+  compression: gzip
+  accessories:
+    redis:
+      type: redis

@@ -9,6 +9,7 @@ import { printIntro, printInfo, printBlank, printJSON, printRaw, printDim, color
 import { withErrorHandler, BackupError } from '../../utils/errors';
 import { createBackupService, type BackupListEntry } from '../../services/backup-service';
 import { requireBackupConfig, resolveBackupStack, listFromAllStacks } from './utils';
+import { getAllNodeConnections } from '../../utils/servers';
 
 export function registerBackupListCommand(program: Command): void {
   program
@@ -30,7 +31,7 @@ export function registerBackupListCommand(program: Command): void {
         // Specific service — resolve which stack it belongs to
         const { source } = requireBackupConfig(service);
         const stackName = resolveBackupStack(env, source);
-        const backupService = createBackupService(connection, stackName);
+        const backupService = createBackupService(connection, stackName, getAllNodeConnections(env));
         const result = await backupService.list(service);
         if (!result.success) throw new BackupError(result.error.message);
         entries = result.data;

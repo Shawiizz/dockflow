@@ -93,16 +93,16 @@ export class ExecService {
     command: string | string[],
     options: ExecOptions = {}
   ): Promise<Result<ExecResult, Error>> {
-    const containerId = await this.stackService.findContainerForService(serviceName);
-    
-    if (!containerId) {
+    const found = await this.stackService.findContainerForService(serviceName);
+
+    if (!found) {
       return err(new Error(`No running container found for service ${serviceName}`));
     }
 
-    const cmd = this.buildExecCommand(containerId, command, options);
-    
+    const cmd = this.buildExecCommand(found.containerId, command, options);
+
     try {
-      const result = await sshExec(this.connection, cmd);
+      const result = await sshExec(found.connection, cmd);
       return ok({
         exitCode: result.exitCode,
         stdout: result.stdout,
@@ -125,16 +125,16 @@ export class ExecService {
       onStderr?: (data: string) => void;
     }
   ): Promise<Result<number, Error>> {
-    const containerId = await this.stackService.findContainerForService(serviceName);
-    
-    if (!containerId) {
+    const found = await this.stackService.findContainerForService(serviceName);
+
+    if (!found) {
       return err(new Error(`No running container found for service ${serviceName}`));
     }
 
-    const cmd = this.buildExecCommand(containerId, command, { ...options, interactive: false });
-    
+    const cmd = this.buildExecCommand(found.containerId, command, { ...options, interactive: false });
+
     try {
-      const result = await sshExecStream(this.connection, cmd, callbacks);
+      const result = await sshExecStream(found.connection, cmd, callbacks);
       return ok(result.exitCode);
     } catch (error) {
       return err(error instanceof Error ? error : new Error(String(error)));
@@ -148,17 +148,16 @@ export class ExecService {
     serviceName: string,
     shell: string = '/bin/sh'
   ): Promise<Result<void, Error>> {
-    const containerId = await this.stackService.findContainerForService(serviceName);
-    
-    if (!containerId) {
+    const found = await this.stackService.findContainerForService(serviceName);
+
+    if (!found) {
       return err(new Error(`No running container found for service ${serviceName}`));
     }
 
-    // Build the full SSH command for interactive mode
-    const dockerCmd = `docker exec -it ${containerId} ${shell}`;
-    
+    const dockerCmd = `docker exec -it ${found.containerId} ${shell}`;
+
     try {
-      await executeInteractiveSSH(this.connection, dockerCmd);
+      await executeInteractiveSSH(found.connection, dockerCmd);
       return ok(undefined);
     } catch (error) {
       return err(error instanceof Error ? error : new Error(String(error)));
@@ -169,18 +168,17 @@ export class ExecService {
    * Open a bash shell (falls back to sh if bash not available)
    */
   async bash(serviceName: string): Promise<Result<void, Error>> {
-    const containerId = await this.stackService.findContainerForService(serviceName);
-    
-    if (!containerId) {
+    const found = await this.stackService.findContainerForService(serviceName);
+
+    if (!found) {
       return err(new Error(`No running container found for service ${serviceName}`));
     }
 
-    // Check if bash is available
     const checkResult = await sshExec(
-      this.connection,
-      `docker exec ${containerId} which bash 2>/dev/null || echo "not_found"`
+      found.connection,
+      `docker exec ${found.containerId} which bash 2>/dev/null || echo "not_found"`
     );
-    
+
     const shell = checkResult.stdout.trim() === 'not_found' ? '/bin/sh' : '/bin/bash';
     return this.shell(serviceName, shell);
   }
@@ -193,18 +191,18 @@ export class ExecService {
     localPath: string,
     containerPath: string
   ): Promise<Result<void, Error>> {
-    const containerId = await this.stackService.findContainerForService(serviceName);
-    
-    if (!containerId) {
+    const found = await this.stackService.findContainerForService(serviceName);
+
+    if (!found) {
       return err(new Error(`No running container found for service ${serviceName}`));
     }
 
-    const result = await sshExec(this.connection, `docker cp ${localPath} ${containerId}:${containerPath}`);
-    
+    const result = await sshExec(found.connection, `docker cp ${localPath} ${found.containerId}:${containerPath}`);
+
     if (result.exitCode !== 0) {
       return err(new Error(`Failed to copy file: ${result.stderr}`));
     }
-    
+
     return ok(undefined);
   }
 
@@ -216,18 +214,18 @@ export class ExecService {
     containerPath: string,
     localPath: string
   ): Promise<Result<void, Error>> {
-    const containerId = await this.stackService.findContainerForService(serviceName);
-    
-    if (!containerId) {
+    const found = await this.stackService.findContainerForService(serviceName);
+
+    if (!found) {
       return err(new Error(`No running container found for service ${serviceName}`));
     }
 
-    const result = await sshExec(this.connection, `docker cp ${containerId}:${containerPath} ${localPath}`);
-    
+    const result = await sshExec(found.connection, `docker cp ${found.containerId}:${containerPath} ${localPath}`);
+
     if (result.exitCode !== 0) {
       return err(new Error(`Failed to copy file: ${result.stderr}`));
     }
-    
+
     return ok(undefined);
   }
 }

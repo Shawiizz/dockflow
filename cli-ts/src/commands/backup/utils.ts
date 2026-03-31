@@ -6,6 +6,7 @@ import { loadConfig, getStackName, getAccessoriesStackName, type BackupAccessory
 import { BackupError, ErrorCode } from '../../utils/errors';
 import type { SSHKeyConnection } from '../../types';
 import { createBackupService, type BackupService, type BackupListEntry } from '../../services/backup-service';
+import { getAllNodeConnections } from '../../utils/servers';
 
 export type BackupSource = 'services' | 'accessories';
 
@@ -99,8 +100,10 @@ export async function listFromAllStacks(
   const stacks = getAllBackupStacks(env);
   const entries: BackupListEntry[] = [];
 
+  const allConnections = getAllNodeConnections(env);
+
   for (const { stackName } of stacks) {
-    const backupService = createBackupService(connection, stackName);
+    const backupService = createBackupService(connection, stackName, allConnections);
     const result = await backupService.list();
     if (result.success) entries.push(...result.data);
   }
@@ -119,9 +122,10 @@ export async function listGroupedFromAllStacks(
 ): Promise<StackGroupedEntries[]> {
   const stacks = getAllBackupStacks(env);
   const result: StackGroupedEntries[] = [];
+  const allConnections = getAllNodeConnections(env);
 
   for (const { stackName } of stacks) {
-    const backupService = createBackupService(connection, stackName);
+    const backupService = createBackupService(connection, stackName, allConnections);
     const listResult = await backupService.list();
     if (!listResult.success) continue;
 

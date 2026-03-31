@@ -216,19 +216,39 @@ export class StackService {
   }
 
   /**
-   * Find a container ID for a specific service
+   * Find a container ID and its host connection for a specific service.
+   *
+   * Searches all provided connections in parallel (manager first, then workers).
+   * Returns the connection + container ID of whichever node responds first.
+   * This supports accessories scheduled on any Swarm node, not just the manager.
    */
-  async findContainerForService(serviceName: string): Promise<string | null> {
-    const fullServiceName = serviceName.includes('_') 
-      ? serviceName 
+  async findContainerForService(
+    serviceName: string,
+    allConnections: SSHKeyConnection[] = []
+  ): Promise<{ containerId: string; connection: SSHKeyConnection } | null> {
+    const fullServiceName = serviceName.includes('_')
+      ? serviceName
       : `${this.stackName}_${serviceName}`;
-      
-    const result = await sshExec(
-      this.connection,
-      `docker ps --filter "label=com.docker.swarm.service.name=${fullServiceName}" --format '{{.ID}}' | head -n1`
-    );
-    
-    return result.stdout.trim() || null;
+
+    const query = `docker ps --filter "label=com.docker.swarm.service.name=${fullServiceName}" --format '{{.ID}}' | head -n1`;
+
+    // Deduplicate: manager connection + any additional ones
+    const connections = [this.connection, ...allConnections.filter(
+      c => !(c.host === this.connection.host && c.port === this.connection.port)
+    )];
+
+    const attempts = connections.map(async (conn) => {
+      const result = await sshExec(conn, query);
+      const containerId = result.stdout.trim();
+      if (!containerId) throw new Error('not found');
+      return { containerId, connection: conn };
+    });
+
+    try {
+      return await Promise.any(attempts);
+    } catch {
+      return null;
+    }
   }
 
   /**

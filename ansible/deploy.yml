@@ -111,12 +111,16 @@
         path: "{{ item }}"
         state: directory
         mode: '0755'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      become: true
       loop:
         - "{{ dockflow_paths.base }}"
         - "{{ dockflow_paths.stacks }}"
         - "{{ dockflow_paths.accessories }}"
         - "{{ dockflow_paths.audit }}"
         - "{{ dockflow_paths.metrics }}"
+        - "{{ dockflow_paths.backups }}"
       loop_control:
         label: "{{ item }}"
 
@@ -124,7 +128,10 @@
       file:
         path: "{{ dockflow_paths.locks }}"
         state: directory
-        mode: '1777'
+        mode: '0755'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      become: true
 
     - name: Record deployment start time
       set_fact:

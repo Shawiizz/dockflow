@@ -10,6 +10,7 @@ import { printIntro, printOutro, printInfo, printWarning, printBlank, printRaw, 
 import { BackupError, ErrorCode, withErrorHandler } from '../../utils/errors';
 import { createBackupService } from '../../services/backup-service';
 import { requireBackupConfig, resolveBackupStack } from './utils';
+import { getAllNodeConnections } from '../../utils/servers';
 
 export function registerBackupRestoreCommand(program: Command): void {
   program
@@ -29,7 +30,7 @@ export function registerBackupRestoreCommand(program: Command): void {
       const { connection } = validateEnv(env, options.server);
       const { backupConfig, source } = requireBackupConfig(service);
       const stackName = resolveBackupStack(env, source);
-      const backupService = createBackupService(connection, stackName);
+      const backupService = createBackupService(connection, stackName, getAllNodeConnections(env));
 
       // Resolve which backup to restore
       const resolveResult = await backupService.resolveBackup(service, options.from);
