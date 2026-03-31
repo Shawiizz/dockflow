@@ -63,6 +63,9 @@ RUN chmod +x /entrypoint.sh
 COPY healthcheck.sh /healthcheck.sh
 RUN chmod +x /healthcheck.sh
 
+# Create dockflow runtime directory (mirrors what configure_host.yml does during dockflow setup)
+RUN mkdir -p /var/lib/dockflow && chmod 1777 /var/lib/dockflow
+
 EXPOSE 22 2375 2376 80 443
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \

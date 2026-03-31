@@ -1,6 +1,6 @@
 ---
 - name: Deploy Docker Images to Remote Server
-  hosts: all:!localhost
+  hosts: managers
   vars:    
     root_path: "{{ lookup('env', 'ROOT_PATH') }}"
     compose_path: "{{ root_path }}/.dockflow/docker/docker-compose.yml"

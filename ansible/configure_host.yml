@@ -5,6 +5,13 @@
   vars_files:
     - roles/portainer/vars/vault.yml
 
+  tasks:
+    - name: Ensure /var/lib/dockflow exists
+      file:
+        path: /var/lib/dockflow
+        state: directory
+        mode: '1777'
+
   roles:
     - role: geerlingguy.docker
       when: not (skip_docker_install | default(false) | bool)
