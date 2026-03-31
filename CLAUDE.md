@@ -4,7 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Dockflow is a deployment framework for Docker applications using Docker Swarm orchestration. It consists of a TypeScript CLI (Bun runtime), an Angular WebUI, Ansible playbooks, and a Next.js documentation site.
+Dockflow is a CLI-first deployment framework for Docker Swarm. It wraps Ansible-based provisioning and deployment behind a single binary, so users run `dockflow deploy` instead of writing playbooks themselves.
+
+**Stack at a glance:**
+- `cli-ts/` — TypeScript CLI (Bun runtime) + embedded Angular WebUI
+- `ansible/` — Ansible roles and playbooks (run inside a Docker container by the CLI)
+- `docs/` — Next.js 15 + Nextra documentation site
+- `packages/` — MCP server, npm CLI wrapper
+- `testing/e2e/` — End-to-end tests using Docker-in-Docker Swarm
 
 ## Repository Structure
 
@@ -69,6 +76,24 @@ node scripts/version-manager.js release   # Release version (e.g., 2.0.23-dev1 �
 node scripts/version-manager.js patch     # Bump patch version
 ```
 
+## Architecture: Two Distinct SSH Contexts
+
+This is the most important thing to understand about Dockflow's internals. There are **two completely different SSH contexts** depending on the operation:
+
+### Context 1 — CLI direct SSH (TypeScript/ssh2)
+Used by: `backup`, `logs`, `exec`, `shell`, `status`, and all read operations.
+
+The CLI connects directly to remote nodes via the `ssh2` library. Connection credentials come from `.env.dockflow` (or CI secrets). The CLI runs on the user's machine (or WSL), so **hostnames must be reachable from there**.
+
+### Context 2 — Ansible SSH (inside a Docker container)
+Used by: `deploy`, `setup`, `accessories deploy`.
+
+The CLI launches a Docker container (`shawiizz/dockflow-ci:latest`) which runs Ansible inside. This container is on the same Docker network as the test VMs (in E2E) or has network access to the real servers (in production). **Ansible connects from inside that container**, not from the user's machine.
+
+**Why this matters for E2E tests:** The `.env.dockflow` file contains Docker-internal hostnames (`dockflow-test-mgr`, `dockflow-test-w1`) which work for Ansible (container-to-container), but not for direct CLI SSH from WSL. The `run-backup-test.sh` script rewrites `.env.dockflow` with `localhost:222x` before invoking CLI commands, then restores it.
+
+**Why this does not matter in production:** Real servers have actual IPs/hostnames accessible from both the user's machine and any Docker container.
+
 ## Key Architecture Patterns
 
 ### CLI Command Pattern
@@ -98,7 +123,7 @@ Always throw these typed errors from commands. The `withErrorHandler` wrapper di
 ### Services Layer
 
 `cli-ts/src/services/` contains type-safe service classes for Docker Swarm operations:
-- `StackService` — stack lifecycle (getServices, exists, scale, etc.)
+- `StackService` — stack lifecycle (getServices, exists, scale, etc.). Also holds `findContainerForService()` which searches all Swarm nodes in parallel via `Promise.any()`.
 - `ExecService` — remote command execution in containers
 - `LogsService` — log streaming
 - `MetricsService` — container stats
@@ -106,6 +131,8 @@ Always throw these typed errors from commands. The `withErrorHandler` wrapper di
 - `BackupService` — backup/restore for accessories
 
 Services use the `Result<T, E>` type pattern (`ok()` / `err()`) from `cli-ts/src/types/`.
+
+**Multi-node awareness:** Services that need to find or operate on containers (BackupService, ExecService) accept an `allConnections: SSHKeyConnection[]` parameter alongside the manager connection. This is required because in a multi-node Swarm, a container may run on any worker — not just the manager. Always pass `getAllNodeConnections(env)` when creating these services.
 
 ### Console Output
 
@@ -142,13 +169,27 @@ Keys are passed in-memory (never written to temp files). Core functions: `sshExe
 
 The Docker runner logic lives in `cli-ts/src/utils/docker-runner.ts`.
 
-### Ansible Defaults
+### Ansible Roles
 
-Centralized in `ansible/group_vars/all.yml` under `dockflow_defaults` and `dockflow_paths`:
+Roles live in `ansible/roles/`. Shared utility roles are in `ansible/roles/_shared/` and are meant to be included by other roles:
+- `create-resources` — creates Docker networks and volumes from a compose file
+- `inject-deploy` — injects Swarm `deploy` config (update/rollback policies for apps, restart policy for accessories) and Traefik routing labels
+- `registry-login` — handles Docker registry authentication
+- `wait-convergence` — polls until all Swarm services reach their desired replica count
+
+**Ansible Defaults:** Centralized in `ansible/group_vars/all.yml` under `dockflow_defaults` and `dockflow_paths`:
 - `dockflow_defaults` — timeouts (convergence: 300s, healthcheck: 120s, lock: 1800s, hooks: 300s), retries, release management
 - `dockflow_paths` — all under `/var/lib/dockflow/` (stacks, accessories, locks, audit, metrics, backups)
 
-Roles **always** reference `dockflow_defaults.*` — never hardcode values. Shared utility roles live in `ansible/roles/_shared/` (create-resources, inject-deploy, registry-login, wait-convergence).
+Roles **always** reference `dockflow_defaults.*` — never hardcode values.
+
+**Ansible Jinja2 pitfalls:** Type coercions are silent. Always use `| default(...)` for optional variables. Use `| bool` when a value must be boolean (Jinja2 may receive a string `"true"` from JSON). Test filters with `selectattr` only on keys that are guaranteed to exist — missing keys silently skip the item rather than erroring.
+
+### Remote Directory Permissions
+
+All directories under `/var/lib/dockflow/` are created by Ansible with `owner: "{{ ansible_user }}"` so the deploy user (e.g. `deploytest`) can write to them directly via SSH without sudo. This matters for operations the CLI does directly (backup, audit logs, metrics) as opposed to operations Ansible does (which run as the deploy user via SSH anyway).
+
+If you add a new path to `dockflow_paths`, add it to the directory creation loop in `ansible/deploy.yml`.
 
 ### API Server & WebUI
 
@@ -173,6 +214,16 @@ Angular 21 standalone components with lazy-loaded routes in `cli-ts/ui/src/app/a
 
 Key values in `cli-ts/src/constants.ts`: `DOCKFLOW_VERSION` (from package.json), `ANSIBLE_DOCKER_IMAGE`, `CONTAINER_PATHS`, `DEFAULT_SSH_PORT` (22), `LOCK_STALE_THRESHOLD_MINUTES` (30).
 
+## E2E Tests
+
+Tests run in Docker-in-Docker: a manager container (`dockflow-test-manager`) and a worker (`dockflow-test-worker-1`) form a real Swarm cluster. The full suite is in `testing/e2e/run-tests.sh` and covers deployment, Traefik routing, backup/restore, and remote builds.
+
+**Key constraint:** E2E tests run from WSL. This creates a network context mismatch:
+- The deploy step runs Ansible inside a Docker container → uses Docker-internal hostnames (`dockflow-test-mgr:22`)
+- CLI commands (backup, etc.) run directly from WSL → use `localhost:2222` / `localhost:2223`
+
+The `run-backup-test.sh` script handles this by temporarily rewriting `.env.dockflow` before invoking CLI commands and restoring it on exit via `trap`.
+
 ## CI/CD Workflows (`.github/workflows/`)
 
 - **build-cli.yml** — Triggered by version tags. Builds multi-platform binaries (linux-x64/arm64, macos-x64/arm64, windows-x64), creates GitHub Release, publishes to npm (`@dockflow-tools/cli`).
@@ -191,6 +242,8 @@ CI secrets format: `{ENV}_{SERVER}_{CONNECTION}` = base64-encoded `user@host:por
 - **Ansible variable centralization**: Defaults in `ansible/group_vars/all.yml`. Roles reference `dockflow_defaults.*`.
 - **Error handling**: Throw typed `CLIError` subclasses from commands. Never catch-and-exit manually.
 - **Services for Docker ops**: Use the services layer (`cli-ts/src/services/`) for Docker Swarm interactions, not raw SSH commands in command handlers.
+- **Multi-node services**: When creating `BackupService` or `ExecService`, always pass `getAllNodeConnections(env)` as the third argument so container lookups work on worker nodes too.
+- **New dockflow_paths entries**: Add them to the directory creation loop in `ansible/deploy.yml` with `owner: "{{ ansible_user }}"`.
 
 ## Self-Review Before Finishing
 
@@ -201,6 +254,7 @@ After implementing any feature or fix, always ask:
 - **Did I break anything?** Run `bun run typecheck`. Think about what else calls the code I changed.
 - **Is this the simplest approach?** If the implementation feels complex, step back — there's often a simpler path.
 - **Are there silent failure modes?** Especially in Ansible Jinja2 (type coercions, undefined variables, filter behavior differences).
+- **Which SSH context does this run in?** Direct CLI SSH (user's machine) or Ansible SSH (Docker container)? This affects which hostnames are reachable.
 
 ## Documentation Rules
 
