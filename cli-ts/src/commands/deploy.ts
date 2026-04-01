@@ -307,6 +307,7 @@ export async function runDeploy(
       branch: branchName,
       project_name: config.project_name,
       config,
+      current: templateContext?.current ?? {},
       servers: templateContext?.servers ?? {},
       cluster: templateContext?.cluster ?? {},
     };
