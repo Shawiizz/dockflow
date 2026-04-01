@@ -4,11 +4,12 @@
  * Deploys the application to a Docker Swarm cluster using direct SSH.
  * No Ansible or Docker container needed — all operations go through
  * the ssh2 library from the CLI process.
+ *
+ * Template rendering is entirely in-memory — no files are written to disk.
  */
 
 import os from 'os';
-import { existsSync } from 'fs';
-import { join } from 'path';
+import { dirname, relative } from 'path';
 import type { Command } from 'commander';
 import {
   getProjectRoot,
@@ -47,7 +48,7 @@ import {
 import { displayDeployDryRun } from './deploy-dry-run';
 import type { SSHKeyConnection } from '../types';
 
-// New services
+// Services
 import { ComposeService } from '../services/compose-service';
 import type { ComposeRenderContext } from '../services/compose-service';
 import { SwarmDeployService } from '../services/swarm-deploy-service';
@@ -298,31 +299,41 @@ export async function runDeploy(
     throw new DeployError(lockResult.error.message, ErrorCode.DEPLOY_LOCKED);
   }
 
+  // --- Render templates in memory (no disk writes) ---
+  const templateContext = buildTemplateContext(env, manager.name);
+  const renderCtx: ComposeRenderContext = {
+    env,
+    version: deployVersion,
+    branch: branchName,
+    project_name: config.project_name,
+    config,
+    current: templateContext?.current ?? {},
+    servers: templateContext?.servers ?? {},
+    cluster: templateContext?.cluster ?? {},
+  };
+  const rendered = ComposeService.renderTemplates(projectRoot, renderCtx);
+
+  // --- Get compose content from rendered map ---
+  const originalComposePath = getComposePath();
+  if (!originalComposePath) {
+    throw new ConfigError(
+      'No docker-compose.yml found',
+      'Expected at .dockflow/docker/docker-compose.yml',
+    );
+  }
+  const composeRelPath = relative(projectRoot, originalComposePath).replace(/\\/g, '/');
+  const composeContent = rendered.get(composeRelPath);
+  if (!composeContent) {
+    throw new ConfigError(
+      'Compose file not found in rendered templates',
+      `Expected key "${composeRelPath}" in rendered files map`,
+    );
+  }
+  const composeDirPath = dirname(originalComposePath);
+
   try {
-    // --- Render templates ---
-    const templateContext = buildTemplateContext(env, manager.name);
-    const renderCtx: ComposeRenderContext = {
-      env,
-      version: deployVersion,
-      branch: branchName,
-      project_name: config.project_name,
-      config,
-      current: templateContext?.current ?? {},
-      servers: templateContext?.servers ?? {},
-      cluster: templateContext?.cluster ?? {},
-    };
-    await ComposeService.renderTemplates(projectRoot, renderCtx);
-
     // --- Prepare compose ---
-    const composePath = getComposePath();
-    if (!composePath) {
-      throw new ConfigError(
-        'No docker-compose.yml found',
-        'Expected at .dockflow/docker/docker-compose.yml',
-      );
-    }
-
-    const compose = ComposeService.load(composePath);
+    const compose = ComposeService.loadFromString(composeContent);
     ComposeService.updateImageTags(compose, config, env, deployVersion);
     ComposeService.injectSwarmDefaults(compose);
     if (config.proxy?.enabled) {
@@ -337,7 +348,8 @@ export async function runDeploy(
       if (config.options?.remote_build) {
         const result = await BuildService.buildRemote(managerConn, {
           projectRoot,
-          composePath,
+          composeContent,
+          composeDirPath,
           projectName: config.project_name,
           env,
           branch: branchName,
@@ -345,8 +357,13 @@ export async function runDeploy(
         });
         builtImages = result.images;
       } else {
-        const targets = await BuildService.getBuildTargets(composePath, options.services);
+        const targets = await BuildService.getBuildTargets(composeContent, composeDirPath, options.services);
         if (targets.length > 0) {
+          // Attach rendered overrides to each target
+          for (const target of targets) {
+            target.renderedOverrides = BuildService.getOverridesForTarget(rendered, target, projectRoot);
+          }
+
           const result = await BuildService.buildAll(targets);
           builtImages = result.images;
 
@@ -384,9 +401,10 @@ export async function runDeploy(
 
     // --- Deploy accessories ---
     if (!skipAccessories) {
-      const accessoriesPath = join(projectRoot, '.dockflow', 'docker', 'accessories.yml');
-      if (existsSync(accessoriesPath)) {
-        const accessoriesCompose = ComposeService.load(accessoriesPath);
+      const accessoriesRelPath = '.dockflow/docker/accessories.yml';
+      const accessoriesContent = rendered.get(accessoriesRelPath);
+      if (accessoriesContent) {
+        const accessoriesCompose = ComposeService.loadFromString(accessoriesContent);
         ComposeService.updateImageTags(accessoriesCompose, config, env, deployVersion);
         ComposeService.injectAccessoriesDefaults(accessoriesCompose);
         const externalNets = ComposeService.getExternalNetworks(accessoriesCompose);
@@ -395,7 +413,7 @@ export async function runDeploy(
         await swarmDeploy.createExternalVolumes(externalVols);
         await swarmDeploy.deployAccessories(
           stackName,
-          accessoriesPath,
+          accessoriesRelPath,
           ComposeService.serialize(accessoriesCompose),
           { force: forceAccessories },
         );

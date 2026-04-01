@@ -3,8 +3,13 @@
  *
  * Builds Docker images locally without deploying to a Swarm cluster.
  * Uses the BuildService and HookService directly — no Ansible container needed.
+ *
+ * Template rendering is entirely in-memory. Docker build contexts are
+ * assembled as tar archives and piped to `docker build -` via stdin.
+ * No temporary files are written to disk.
  */
 
+import { dirname, relative } from 'path';
 import type { Command } from 'commander';
 import { printInfo, printIntro, printDebug, printWarning, printDim, printBlank, printSuccess, setVerbose } from '../utils/output';
 import { loadSecrets } from '../utils/secrets';
@@ -57,7 +62,7 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
   if (options.skipHooks) printInfo(`Hooks: Skipped`);
   printBlank();
 
-  // Render templates (needed for compose files with Jinja2)
+  // Render templates in memory (no disk writes)
   const managers = getManagersForEnvironment(env);
   const currentServerName = managers.length > 0 ? managers[0].name : undefined;
   const templateContext = currentServerName ? buildTemplateContext(env, currentServerName) : null;
@@ -72,27 +77,41 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
     servers: templateContext?.servers ?? {},
     cluster: templateContext?.cluster ?? {},
   };
-  await ComposeService.renderTemplates(projectRoot, renderCtx);
+  const rendered = ComposeService.renderTemplates(projectRoot, renderCtx);
 
-  // Get compose path
-  const composePath = getComposePath();
-  if (!composePath) {
+  // Get compose content from rendered map
+  const originalComposePath = getComposePath();
+  if (!originalComposePath) {
     throw new ConfigError(
       'No docker-compose.yml found',
       'Expected at .dockflow/docker/docker-compose.yml',
     );
   }
+  const composeRelPath = relative(projectRoot, originalComposePath).replace(/\\/g, '/');
+  const composeContent = rendered.get(composeRelPath);
+  if (!composeContent) {
+    throw new ConfigError(
+      'Compose file not found in rendered templates',
+      `Expected key "${composeRelPath}" in rendered files map`,
+    );
+  }
+  const composeDirPath = dirname(originalComposePath);
 
   // Pre-build hook
   if (!options.skipHooks) {
     await HookService.runLocal('pre-build', projectRoot, config);
   }
 
-  // Build images
-  const targets = await BuildService.getBuildTargets(composePath, options.services);
+  // Build images (targets resolved from rendered compose via stdin)
+  const targets = await BuildService.getBuildTargets(composeContent, composeDirPath, options.services);
   if (targets.length === 0) {
     printWarning('No build targets found in docker-compose.yml');
     return;
+  }
+
+  // Attach rendered overrides to each target
+  for (const target of targets) {
+    target.renderedOverrides = BuildService.getOverridesForTarget(rendered, target, projectRoot);
   }
 
   const result = await BuildService.buildAll(targets);

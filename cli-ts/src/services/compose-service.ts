@@ -5,14 +5,17 @@
  * Handles Jinja2/nunjucks template rendering, docker-compose YAML
  * manipulation, image tag updates, Swarm deploy config injection,
  * and Traefik label generation — all in pure TypeScript.
+ *
+ * Template rendering is entirely in-memory — no files are ever
+ * written to disk. Returns a Map<relativePath, renderedContent>.
  */
 
-import { readFileSync, existsSync, writeFileSync, readdirSync, statSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { join, relative } from 'path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import nunjucks from 'nunjucks';
 import type { DockflowConfig } from '../utils/config';
-import { printDebug, printInfo } from '../utils/output';
+import { printDebug } from '../utils/output';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -28,6 +31,12 @@ export interface ComposeRenderContext {
   cluster?: Record<string, unknown>;
   [key: string]: unknown;
 }
+
+/**
+ * Result of renderTemplates — a Map of relative paths to rendered content.
+ * No files are written to disk. Keys use forward slashes.
+ */
+export type RenderedFiles = Map<string, string>;
 
 export interface ParsedCompose {
   raw: Record<string, unknown>;
@@ -152,26 +161,23 @@ function hasRegistryDomain(image: string): boolean {
 
 export class ComposeService {
   /**
-   * Render all .j2 files under `projectRoot/.dockflow/` using nunjucks.
-   * Also renders custom template files defined in `config.templates`.
+   * Render all templates purely in memory.
+   * The original project files are NEVER modified — nothing is written to disk.
    *
-   * For each `*.j2` file the rendered output is written next to it
-   * without the `.j2` extension. The original `.j2` file is kept.
+   * Returns a Map<relativePath, renderedContent> where keys use forward slashes
+   * and are relative to projectRoot (e.g. ".dockflow/docker/docker-compose.yml").
    *
-   * For regular (non-.j2) files the file is rendered *in-place*, matching
-   * the Ansible `template src=dest` behaviour.
+   * .j2 files produce an entry without the .j2 extension.
+   * All files inside .dockflow/ are rendered through Nunjucks.
+   * Custom templates from config.templates are rendered at their dest path.
    */
-  static async renderTemplates(
+  static renderTemplates(
     projectRoot: string,
     ctx: ComposeRenderContext,
-  ): Promise<void> {
-    const env = nunjucks.configure({ autoescape: false, noCache: true });
+  ): RenderedFiles {
+    const njk = nunjucks.configure({ autoescape: false, noCache: true });
     const dockflowDir = join(projectRoot, '.dockflow');
-
-    if (!existsSync(dockflowDir)) {
-      printDebug('.dockflow directory not found, skipping template rendering');
-      return;
-    }
+    const rendered: RenderedFiles = new Map();
 
     // Build flat template context
     const templateCtx: Record<string, unknown> = {
@@ -181,28 +187,26 @@ export class ComposeService {
 
     // 1. Render all files inside .dockflow/
     const files = walkDir(dockflowDir);
-    let rendered = 0;
+    let count = 0;
 
     for (const filePath of files) {
       try {
         const content = readFileSync(filePath, 'utf-8');
-        const result = env.renderString(content, templateCtx);
+        const renderedContent = njk.renderString(content, templateCtx);
 
-        if (filePath.endsWith('.j2')) {
-          // Write rendered output without .j2 extension
-          const destPath = filePath.slice(0, -3);
-          writeFileSync(destPath, result, 'utf-8');
-        } else {
-          // In-place rendering (like Ansible template src=dest)
-          writeFileSync(filePath, result, 'utf-8');
+        let relPath = relative(projectRoot, filePath).replace(/\\/g, '/');
+        if (relPath.endsWith('.j2')) {
+          relPath = relPath.slice(0, -3);
         }
-        rendered++;
+
+        rendered.set(relPath, renderedContent);
+        count++;
       } catch (error) {
         printDebug(`Template render skipped for ${relative(projectRoot, filePath)}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
-    printDebug(`Rendered ${rendered} file(s) in .dockflow/`);
+    printDebug(`Rendered ${count} file(s) in .dockflow/`);
 
     // 2. Render custom template files from config.templates
     const templates = ctx.config.templates ?? [];
@@ -210,7 +214,6 @@ export class ComposeService {
       const src = typeof tmpl === 'string' ? tmpl : tmpl.src;
       const dest = typeof tmpl === 'string' ? tmpl : tmpl.dest;
       const srcPath = join(projectRoot, src);
-      const destPath = join(projectRoot, dest);
 
       if (!existsSync(srcPath)) {
         printDebug(`Custom template not found: ${src}`);
@@ -219,20 +222,30 @@ export class ComposeService {
 
       try {
         const content = readFileSync(srcPath, 'utf-8');
-        const result = env.renderString(content, templateCtx);
-        writeFileSync(destPath, result, 'utf-8');
+        const renderedContent = njk.renderString(content, templateCtx);
+        const relDest = dest.replace(/\\/g, '/');
+        rendered.set(relDest, renderedContent);
         printDebug(`Rendered custom template: ${src} → ${dest}`);
       } catch (error) {
         printDebug(`Custom template render failed for ${src}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+
+    return rendered;
   }
 
   /**
-   * Load and parse a docker-compose YAML file.
+   * Load and parse a docker-compose YAML file from disk.
    */
   static load(composePath: string): ParsedCompose {
     const content = readFileSync(composePath, 'utf-8');
+    return ComposeService.loadFromString(content);
+  }
+
+  /**
+   * Parse a docker-compose YAML string into a ParsedCompose.
+   */
+  static loadFromString(content: string): ParsedCompose {
     const raw = parseYaml(content) as Record<string, unknown>;
 
     return {

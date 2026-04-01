@@ -4,19 +4,33 @@
  * Replaces the Ansible roles `local-build` and `remote-build`.
  * Extracts build targets from docker-compose via decomposerize,
  * executes local or remote Docker builds, and handles .dockerignore.
+ *
+ * Local builds use tar-stdin: the build context is assembled in memory
+ * (with rendered template overrides) and piped to `docker build -`.
+ * No temporary files are written to disk.
  */
 
-import { resolve, dirname, join } from 'path';
+import { resolve, dirname, join, relative } from 'path';
+import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import type { SSHKeyConnection } from '../types';
 import { sshExec } from '../utils/ssh';
 import { shellEscape } from '../utils/ssh';
 import { printDebug, printDim, printRaw, printSuccess, printWarning, createTaskLog } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
+import { createTar, type TarEntry } from '../utils/tar';
+import { parseDockerignore } from '../utils/dockerignore';
 
 export interface BuildTarget {
+  /** Relative path used for `-f` flag (path within the tar) */
   dockerfile: string;
+  /** Absolute path to the Dockerfile on disk */
+  dockerfileAbsPath: string;
+  /** Absolute path to the context directory on disk */
   context: string;
+  /** Docker image tag */
   tag: string;
+  /** Rendered template overrides: relative path (within context) → content */
+  renderedOverrides?: Map<string, string>;
 }
 
 export interface BuildResult {
@@ -53,28 +67,150 @@ function parseBuildCommand(line: string, basePath: string): BuildTarget | null {
 
   if (!dockerfile || !tag) return null;
 
+  const contextAbsolute = resolve(basePath, context);
+
   return {
-    dockerfile: resolve(basePath, dockerfile),
-    context: resolve(basePath, context),
+    dockerfile,
+    dockerfileAbsPath: resolve(basePath, dockerfile),
+    context: contextAbsolute,
     tag,
   };
 }
 
+/**
+ * Walk a directory collecting tar entries, skipping ignored dirs early.
+ * This avoids traversing into node_modules, .next, .git etc.
+ */
+function collectEntries(
+  dir: string,
+  contextDir: string,
+  shouldInclude: (relPath: string) => boolean,
+  overrides: Map<string, string> | undefined,
+  entries: TarEntry[],
+  addedOverrides: Set<string>,
+): void {
+  if (!existsSync(dir)) return;
+
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    const relPath = relative(contextDir, full).replace(/\\/g, '/');
+
+    // Check ignore BEFORE descending — this is the key optimization
+    if (!shouldInclude(relPath)) continue;
+
+    const stat = statSync(full);
+    if (stat.isDirectory()) {
+      collectEntries(full, contextDir, shouldInclude, overrides, entries, addedOverrides);
+    } else {
+      if (overrides?.has(relPath)) {
+        entries.push({ path: relPath, content: overrides.get(relPath)! });
+        addedOverrides.add(relPath);
+      } else {
+        entries.push({ path: relPath, content: readFileSync(full) });
+      }
+    }
+  }
+}
+
+/**
+ * Build a tar archive for a Docker build context.
+ * Walks the context directory skipping .dockerignore'd paths at the directory
+ * level (never descends into node_modules etc.), overlays rendered template
+ * overrides, and returns a single tar buffer.
+ */
+async function buildContextTar(target: BuildTarget): Promise<Buffer> {
+  const contextDir = target.context;
+  const entries: TarEntry[] = [];
+
+  // Parse .dockerignore if present
+  const dockerignorePath = join(contextDir, '.dockerignore');
+  let shouldInclude: (path: string) => boolean = () => true;
+  if (existsSync(dockerignorePath)) {
+    const ignoreContent = readFileSync(dockerignorePath, 'utf-8');
+    shouldInclude = parseDockerignore(ignoreContent);
+  }
+
+  const overrides = target.renderedOverrides;
+  const addedOverrides = new Set<string>();
+
+  // Walk + filter in one pass (skips ignored directories early)
+  collectEntries(contextDir, contextDir, shouldInclude, overrides, entries, addedOverrides);
+
+  // Add any overrides for files that don't exist on disk yet
+  // (e.g. .j2 files that produce a new file)
+  if (overrides) {
+    for (const [relPath, content] of overrides) {
+      if (!addedOverrides.has(relPath) && shouldInclude(relPath)) {
+        entries.push({ path: relPath, content });
+      }
+    }
+  }
+
+  // Inject Dockerfile if it's outside the context directory
+  const dockerfilePath = target.dockerfile.replace(/\\/g, '/');
+  const hasDockerfile = entries.some(e => e.path === dockerfilePath);
+  if (!hasDockerfile) {
+    if (overrides?.has(dockerfilePath)) {
+      entries.push({ path: dockerfilePath, content: overrides.get(dockerfilePath)! });
+    } else if (existsSync(target.dockerfileAbsPath)) {
+      entries.push({ path: dockerfilePath, content: readFileSync(target.dockerfileAbsPath) });
+    }
+  }
+
+  return await createTar(entries);
+}
+
 export class BuildService {
   /**
-   * Extract build targets from a docker-compose file using decomposerize.
+   * Compute rendered overrides for a build target from a RenderedFiles map.
+   * Filters entries within the target's context dir, re-keys them relative
+   * to the context, and includes the Dockerfile override if it's outside.
+   */
+  static getOverridesForTarget(
+    rendered: Map<string, string>,
+    target: BuildTarget,
+    projectRoot: string,
+  ): Map<string, string> {
+    const overrides = new Map<string, string>();
+    const contextRel = relative(projectRoot, target.context).replace(/\\/g, '/');
+
+    for (const [relPath, content] of rendered) {
+      const normalized = relPath.replace(/\\/g, '/');
+      if (normalized.startsWith(contextRel + '/')) {
+        const contextRelPath = normalized.slice(contextRel.length + 1);
+        overrides.set(contextRelPath, content);
+      }
+    }
+
+    // Include Dockerfile override if it's outside the context
+    const dockerfileProjectRel = relative(projectRoot, target.dockerfileAbsPath).replace(/\\/g, '/');
+    if (!dockerfileProjectRel.startsWith(contextRel + '/')) {
+      const renderedDockerfile = rendered.get(dockerfileProjectRel);
+      if (renderedDockerfile) {
+        overrides.set(target.dockerfile.replace(/\\/g, '/'), renderedDockerfile);
+      }
+    }
+
+    return overrides;
+  }
+
+  /**
+   * Extract build targets from compose content using decomposerize via stdin.
+   * No temporary files are written.
    */
   static async getBuildTargets(
-    composePath: string,
+    composeContent: string,
+    basePath: string,
     servicesFilter?: string,
   ): Promise<BuildTarget[]> {
-    const args = [composePath, '--docker-build'];
+    const args = ['--docker-build'];
     if (servicesFilter) {
       args.push(`--services=${servicesFilter}`);
     }
 
     const proc = Bun.spawn(['decomposerize', ...args], {
-      cwd: dirname(composePath),
+      cwd: basePath,
+      stdin: new Response(composeContent).body!,
       stdout: 'pipe',
       stderr: 'pipe',
     });
@@ -90,7 +226,6 @@ export class BuildService {
       );
     }
 
-    const basePath = dirname(composePath);
     const targets: BuildTarget[] = [];
 
     for (const line of stdout.trim().split('\n')) {
@@ -102,13 +237,18 @@ export class BuildService {
   }
 
   /**
-   * Build a single Docker image locally.
+   * Build a single Docker image locally via tar-stdin.
+   * Assembles the build context as a tar archive in memory (including
+   * rendered template overrides) and pipes it to `docker build -`.
    * Streams output via clack taskLog (shows live, clears on success).
    */
   static async buildImage(target: BuildTarget): Promise<void> {
+    const tar = await buildContextTar(target);
+
     const proc = Bun.spawn(
-      ['docker', 'build', '--progress=plain', '-f', target.dockerfile, '-t', target.tag, target.context],
+      ['docker', 'build', '--progress=plain', '-f', target.dockerfile, '-t', target.tag, '-'],
       {
+        stdin: new Blob([new Uint8Array(tar)]).stream(),
         stdout: 'pipe',
         stderr: 'pipe',
       },
@@ -215,7 +355,8 @@ export class BuildService {
     connection: SSHKeyConnection,
     params: {
       projectRoot: string;
-      composePath: string;
+      composeContent: string;
+      composeDirPath: string;
       projectName: string;
       env: string;
       branch: string;
@@ -263,9 +404,10 @@ export class BuildService {
       // Checkout exact commit
       await sshExec(connection, `git -C ${tmpDir} checkout ${commitSha} 2>&1`);
 
-      // 4. Get build targets from local compose
+      // 4. Get build targets from compose content via stdin
       const targets = await BuildService.getBuildTargets(
-        params.composePath,
+        params.composeContent,
+        params.composeDirPath,
         params.servicesFilter,
       );
 
@@ -280,14 +422,13 @@ export class BuildService {
 
       for (const target of targets) {
         // Rebase paths to remote tmpDir
-        const relDockerfile = target.dockerfile.replace(params.projectRoot, '').replace(/\\/g, '/');
-        const relContext = target.context.replace(params.projectRoot, '').replace(/\\/g, '/');
-        const remoteDockerfile = `${tmpDir}${relDockerfile}`;
-        const remoteContext = `${tmpDir}${relContext}`;
+        const relDockerfile = target.dockerfile;
+        const relContext = relative(params.projectRoot, target.context).replace(/\\/g, '/');
+        const remoteContext = `${tmpDir}/${relContext}`;
 
         const buildResult = await sshExec(
           connection,
-          `docker build -f "${remoteDockerfile}" -t "${target.tag}" "${remoteContext}" 2>&1`,
+          `docker build -f "${remoteContext}/${relDockerfile}" -t "${target.tag}" "${remoteContext}" 2>&1`,
         );
 
         if (buildResult.exitCode !== 0) {
