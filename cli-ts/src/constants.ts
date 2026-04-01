@@ -62,3 +62,8 @@ export const LOCK_STALE_THRESHOLD_MINUTES = 30;
 export const STACK_REMOVAL_MAX_ATTEMPTS = 30;
 /** Delay (ms) between stack removal polling attempts */
 export const STACK_REMOVAL_POLL_INTERVAL_MS = 2000;
+
+/** Default timeout (s) for waiting for Swarm service convergence */
+export const CONVERGENCE_TIMEOUT_S = 300;
+/** Default polling interval (s) for convergence checks */
+export const CONVERGENCE_INTERVAL_S = 5;

@@ -32,3 +32,6 @@ export * from './history-sync-service';
 
 // Compose manipulation (template rendering, image tagging, deploy config injection)
 export * from './compose-service';
+
+// Swarm stack deployment, convergence, accessories
+export * from './swarm-deploy-service';
