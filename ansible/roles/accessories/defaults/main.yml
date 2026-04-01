@@ -1,5 +1,0 @@
----
-# Default variables for accessories role
-
-# Force accessories deployment even if hash unchanged (--accessories flag)
-force_accessories: false

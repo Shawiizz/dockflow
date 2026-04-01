@@ -6,7 +6,6 @@
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname, parse as parsePath } from 'path';
 import { parse as parseYaml } from 'yaml';
-import { ANSIBLE_DOCKER_IMAGE } from '../constants';
 import type { ServersConfig } from '../types';
 import { printError, printRaw } from './output';
 import {
@@ -348,13 +347,6 @@ export async function isDockerAvailable(): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/**
- * Get the Docker image for Ansible operations
- */
-export function getAnsibleDockerImage(): string {
-  return ANSIBLE_DOCKER_IMAGE;
 }
 
 /**

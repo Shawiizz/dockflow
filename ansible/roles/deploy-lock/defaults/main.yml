@@ -1,9 +1,0 @@
----
-# Deploy lock role defaults
-lock_dir: "{{ dockflow_paths.locks | default('/var/lib/dockflow/locks') }}"
-# config.lock.stale_threshold_minutes (from .dockflow/config.yml, in minutes) overrides the default
-lock_stale_timeout: >-
-  {{ (config.lock.stale_threshold_minutes | int * 60)
-     if (config is defined and config.lock is defined and config.lock.stale_threshold_minutes is defined)
-     else dockflow_defaults.lock_stale_timeout }}
-lock_file: "{{ lock_dir }}/{{ stack_name }}.lock"

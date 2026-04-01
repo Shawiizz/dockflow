@@ -1,5 +1,0 @@
----
-# Default variables for create-resources role
-skip_networks: false
-skip_volumes: false
-resource_label: "resources"

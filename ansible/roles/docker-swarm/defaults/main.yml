@@ -1,3 +1,0 @@
----
-# Docker Swarm role defaults
-swarm_stack_removal_timeout: "{{ dockflow_defaults.stack_removal_timeout | default(60) }}"

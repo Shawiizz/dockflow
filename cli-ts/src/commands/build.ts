@@ -1,26 +1,22 @@
 /**
  * Build command
- * Uses Docker to run Ansible playbook for building images only (no deployment)
- * 
- * This command builds Docker images locally without deploying to a Swarm cluster.
- * Useful for CI/CD pipelines where you want to validate builds before deployment.
+ *
+ * Builds Docker images locally without deploying to a Swarm cluster.
+ * Uses the BuildService and HookService directly — no Ansible container needed.
  */
 
 import type { Command } from 'commander';
-import { printInfo, printIntro, printDebug, printWarning, printDim, printBlank, setVerbose } from '../utils/output';
+import { printInfo, printIntro, printDebug, printWarning, printDim, printBlank, printSuccess, setVerbose } from '../utils/output';
 import { loadSecrets } from '../utils/secrets';
 import { getCurrentBranch } from '../utils/git';
-import { withErrorHandler } from '../utils/errors';
-import { getEnvVarsForEnvironment, buildTemplateContext, getManagersForEnvironment } from '../utils/servers';
-import { buildBuildContext, writeContextFile, getHostContextPath } from '../utils/context-generator';
-import type { TemplateContext } from '../types';
-import {
-  runAnsibleCommand,
-  checkDockerAvailable,
-  validateProjectConfig,
-  validateServersYaml,
-  buildBuildAnsibleCommand,
-} from '../utils/docker-runner';
+import { withErrorHandler, ConfigError } from '../utils/errors';
+import { getProjectRoot, loadConfig, getComposePath } from '../utils/config';
+import { buildTemplateContext, getManagersForEnvironment } from '../utils/servers';
+import { BuildService } from '../services/build-service';
+import { HookService } from '../services/hook-service';
+import { DistributionService } from '../services/distribution-service';
+import { ComposeService } from '../services/compose-service';
+import type { ComposeRenderContext } from '../services/compose-service';
 
 interface BuildOptions {
   services?: string;
@@ -30,133 +26,95 @@ interface BuildOptions {
 }
 
 /**
- * Run build - can be called directly or via CLI command
+ * Run build — can be called directly or via CLI command
  */
 export async function runBuild(env: string, options: Partial<BuildOptions>): Promise<void> {
-  // Enable verbose mode if debug flag is set
-  if (options.debug) {
-    setVerbose(true);
-  }
+  if (options.debug) setVerbose(true);
 
-  // Load secrets from file or environment (for CI)
   loadSecrets();
   printDebug('Secrets loaded from environment');
 
   printIntro(`Building Docker images for ${env}`);
   printBlank();
 
-  // Check config exists
-  const config = validateProjectConfig();
-
-  // Validate servers.yml schema
-  validateServersYaml();
-
-  // Check Docker is available
-  await checkDockerAvailable();
+  // Load config
+  const config = loadConfig();
+  if (!config) {
+    throw new ConfigError(
+      'No config.yml found',
+      'Run `dockflow init` to create a project configuration.',
+    );
+  }
 
   const branchName = getCurrentBranch();
-
-  // Get environment variables for this environment
-  const envVars = getEnvVarsForEnvironment(env);
-  printDebug('Environment variables loaded', envVars);
-
-  // Build template context for Jinja2 (current, servers, cluster)
-  // For build, we use the first manager as "current" since we're building locally
-  const managers = getManagersForEnvironment(env);
-  const currentServerName = managers.length > 0 ? managers[0].name : undefined;
-  const templateContext = currentServerName ? buildTemplateContext(env, currentServerName) : null;
-  if (templateContext) {
-    printDebug('Template context built', {
-      currentServer: templateContext.current.name,
-      serversCount: Object.keys(templateContext.servers).length,
-      clusterSize: templateContext.cluster.size,
-    });
-  }
+  const projectRoot = getProjectRoot();
 
   // Display build info
   printInfo(`Project: ${config.project_name || 'app'}`);
   printInfo(`Environment: ${env}`);
   printInfo(`Branch: ${branchName}`);
-  if (Object.keys(envVars).length > 0) {
-    printInfo(`Env vars: ${Object.keys(envVars).length} variables loaded`);
-  } else {
-    printWarning(`No environment variables found for "${env}"`);
-    printDim(`  Check that servers.yml has a server with tag "${env}" and env vars defined`);
-  }
-  if (options.services) {
-    printInfo(`Services: ${options.services}`);
-  }
-  if (options.skipHooks) {
-    printInfo(`Hooks: Skipped`);
-  }
+  if (options.services) printInfo(`Services: ${options.services}`);
+  if (options.skipHooks) printInfo(`Hooks: Skipped`);
   printBlank();
 
-  // Build context JSON (needed for Ansible extra-vars)
-  // If no server is configured, create a minimal context
-  const contextFilePath = getHostContextPath();
-  
-  if (templateContext) {
-    const buildContext = buildBuildContext({
-      env,
-      branchName,
-      templateContext,
-      config: config as unknown as Record<string, unknown>,
-      options: {
-        skipHooks: options.skipHooks,
-        services: options.services,
-      },
-    });
-    writeContextFile(buildContext, contextFilePath);
-  } else {
-    // Minimal context when no server is configured
-    // Provide empty current/servers/cluster to avoid template errors
-    // Convert env vars to lowercase keys for Jinja2 compatibility
-    const lowerEnvVars: Record<string, string> = {};
-    for (const [key, value] of Object.entries(envVars)) {
-      lowerEnvVars[key.toLowerCase()] = value;
-    }
-    
-    const minimalContext = {
-      env,
-      version: 'build',
-      branch_name: branchName,
-      config: config as unknown as Record<string, unknown>,
-      current: {
-        name: 'localhost',
-        role: 'manager',
-        host: 'localhost',
-        port: 22,
-        user: 'root',
-        tags: [env],
-        env: lowerEnvVars,
-      },
-      servers: {},
-      cluster: {
-        size: 0,
-        manager_count: 0,
-        worker_count: 0,
-        managers: [],
-        workers: [],
-      },
-      options: {
-        skip_hooks: options.skipHooks || false,
-        services: options.services,
-      },
-    };
-    writeContextFile(minimalContext as any, contextFilePath);
+  // Render templates (needed for compose files with Jinja2)
+  const managers = getManagersForEnvironment(env);
+  const currentServerName = managers.length > 0 ? managers[0].name : undefined;
+  const templateContext = currentServerName ? buildTemplateContext(env, currentServerName) : null;
+
+  const renderCtx: ComposeRenderContext = {
+    env,
+    version: 'build',
+    branch: branchName,
+    project_name: config.project_name,
+    config,
+    servers: templateContext?.servers ?? {},
+    cluster: templateContext?.cluster ?? {},
+  };
+  await ComposeService.renderTemplates(projectRoot, renderCtx);
+
+  // Get compose path
+  const composePath = getComposePath();
+  if (!composePath) {
+    throw new ConfigError(
+      'No docker-compose.yml found',
+      'Expected at .dockflow/docker/docker-compose.yml',
+    );
   }
-  printDebug('Context file written', { path: contextFilePath });
 
-  // Build the Ansible command
-  const ansibleCommand = buildBuildAnsibleCommand({});
-  printDebug('Ansible command', { command: ansibleCommand.join(' ') });
+  // Pre-build hook
+  if (!options.skipHooks) {
+    await HookService.runLocal('pre-build', projectRoot, config);
+  }
 
-  await runAnsibleCommand({
-    command: ansibleCommand,
-    actionName: 'build',
-    successMessage: 'Build completed successfully!',
-    contextFilePath,
-  });
+  // Build images
+  const targets = await BuildService.getBuildTargets(composePath, options.services);
+  if (targets.length === 0) {
+    printWarning('No build targets found in docker-compose.yml');
+    return;
+  }
+
+  const result = await BuildService.buildAll(targets);
+
+  // Post-build hook
+  if (!options.skipHooks) {
+    await HookService.runLocal('post-build', projectRoot, config);
+  }
+
+  // Push to registry if requested
+  if (options.push && config.registry?.enabled && config.registry.url && config.registry.password) {
+    printDim('Pushing images to registry...');
+    // Login locally for push
+    const proc = Bun.spawn(
+      ['docker', 'login', config.registry.url, '-u', config.registry.username || '', '--password-stdin'],
+      { stdin: new Response(config.registry.password).body!, stdout: 'pipe', stderr: 'pipe' },
+    );
+    await proc.exited;
+    await DistributionService.pushImages(result.images);
+  }
+
+  printBlank();
+  printSuccess(`Build completed! ${result.images.length} image(s) built in ${(result.durationMs / 1000).toFixed(1)}s`);
 }
 
 /**

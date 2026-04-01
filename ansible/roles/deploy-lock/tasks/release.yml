@@ -1,9 +1,0 @@
----
-- name: Release deploy lock
-  file:
-    path: "{{ lock_file }}"
-    state: absent
-
-- name: Display lock released
-  debug:
-    msg: "Deploy lock released for {{ stack_name }}"

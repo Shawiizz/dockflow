@@ -1,5 +1,0 @@
----
-# Default variables for history-sync role
-
-# Maximum time (seconds) to wait for each node sync
-sync_timeout: 10

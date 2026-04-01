@@ -1,27 +1,34 @@
 /**
  * Deploy command
- * Uses Docker to run Ansible playbooks
- * 
- * Architecture: Docker Swarm deployment
- * - Deploy targets only the manager node
- * - Images are distributed to all nodes (via registry or docker save/load)
- * - Swarm handles workload distribution automatically
+ *
+ * Deploys the application to a Docker Swarm cluster using direct SSH.
+ * No Ansible or Docker container needed — all operations go through
+ * the ssh2 library from the CLI process.
  */
 
+import os from 'os';
+import { existsSync } from 'fs';
+import { join } from 'path';
 import type { Command } from 'commander';
-import { getProjectRoot, getAnsibleDockerImage } from '../utils/config';
-import { printSuccess, printInfo, printIntro, printDebug, printBlank, printWarning, printDim, setVerbose, createSpinner } from '../utils/output';
 import {
-  runAnsibleCommand,
-  checkDockerAvailable,
-  validateProjectConfig,
-  validateServersYaml,
-  buildDeployAnsibleCommand,
-  hasNginxConfig,
-} from '../utils/docker-runner';
-import { 
+  getProjectRoot,
+  loadConfig,
+  getComposePath,
+} from '../utils/config';
+import {
+  printSuccess,
+  printInfo,
+  printIntro,
+  printDebug,
+  printBlank,
+  printWarning,
+  printDim,
+  setVerbose,
+  createSpinner,
+} from '../utils/output';
+import {
   resolveDeploymentForEnvironment,
-  getServerPrivateKey, 
+  getServerPrivateKey,
   getServerPassword,
   getAvailableEnvironments,
   findActiveManager,
@@ -30,14 +37,29 @@ import {
 import { loadSecrets } from '../utils/secrets';
 import { getCurrentBranch } from '../utils/git';
 import { getLatestVersion, incrementVersion } from '../utils/version';
-import { 
-  ConfigError, 
-  ConnectionError, 
+import {
+  ConfigError,
+  ConnectionError,
+  DeployError,
+  ErrorCode,
   withErrorHandler,
 } from '../utils/errors';
 import { displayDeployDryRun } from './deploy-dry-run';
-import { buildDeployContext, writeContextFile, getHostContextPath } from '../utils/context-generator';
-import type { ResolvedDeployment, TemplateContext } from '../types';
+import type { SSHKeyConnection } from '../types';
+
+// New services
+import { ComposeService } from '../services/compose-service';
+import type { ComposeRenderContext } from '../services/compose-service';
+import { SwarmDeployService } from '../services/swarm-deploy-service';
+import { HealthCheckService } from '../services/health-check-service';
+import { ReleaseService } from '../services/release-service';
+import { LockService } from '../services/lock-service';
+import { AuditService } from '../services/audit-service';
+import { MetricsWriteService } from '../services/metrics-service';
+import { HistorySyncService } from '../services/history-sync-service';
+import { BuildService } from '../services/build-service';
+import { DistributionService } from '../services/distribution-service';
+import { HookService } from '../services/hook-service';
 
 interface DeployOptions {
   services?: string;
@@ -47,23 +69,15 @@ interface DeployOptions {
   accessories?: boolean;
   all?: boolean;
   skipAccessories?: boolean;
-  skipDockerInstall?: boolean;
   noFailover?: boolean;
   dryRun?: boolean;
 }
 
 /**
  * Determine what to deploy based on options
- * 
- * New behavior with hash-based detection:
- * - Accessories are ALWAYS checked (hash comparison)
- * - --accessories: force redeploy accessories only (skip app)
- * - --all: force redeploy both app and accessories
- * - --skip-accessories: completely skip accessories check
- * - default: deploy app + auto-check accessories (deploy if changed)
  */
-function getDeploymentTargets(options: DeployOptions): { 
-  deployApp: boolean; 
+function getDeploymentTargets(options: DeployOptions): {
+  deployApp: boolean;
   forceAccessories: boolean;
   skipAccessories: boolean;
 } {
@@ -76,124 +90,147 @@ function getDeploymentTargets(options: DeployOptions): {
   if (options.accessories) {
     return { deployApp: false, forceAccessories: true, skipAccessories: false };
   }
-  // Default: deploy app + auto-check accessories (hash-based)
   return { deployApp: true, forceAccessories: false, skipAccessories: false };
 }
 
 /**
- * Run deployment - can be called directly or via CLI command
+ * Build an SSHKeyConnection from a resolved server
  */
-export async function runDeploy(env: string, version: string | undefined, options: Partial<DeployOptions>): Promise<void> {
-  // Enable verbose mode if debug flag is set
-  if (options.debug) {
-    setVerbose(true);
+function buildConnection(
+  env: string,
+  serverName: string,
+  host: string,
+  port: number,
+  user: string,
+): SSHKeyConnection {
+  const privateKey = getServerPrivateKey(env, serverName);
+  if (!privateKey) {
+    throw new ConnectionError(
+      `No SSH private key found for "${serverName}"`,
+      `Expected CI secret: ${env.toUpperCase()}_${serverName.toUpperCase()}_CONNECTION`,
+    );
   }
+  const password = getServerPassword(env, serverName);
+  return { host, port, user, privateKey, password: password || undefined };
+}
 
-  // Load secrets from file or environment (for CI)
+/**
+ * Run deployment — can be called directly or via CLI command
+ */
+export async function runDeploy(
+  env: string,
+  version: string | undefined,
+  options: Partial<DeployOptions>,
+): Promise<void> {
+  if (options.debug) setVerbose(true);
+
   loadSecrets();
   printDebug('Secrets loaded from environment');
 
-  const { deployApp, forceAccessories, skipAccessories } = getDeploymentTargets(options as DeployOptions);
-  const accessoriesDesc = skipAccessories ? '' : (forceAccessories ? ' + Accessories (forced)' : ' + Accessories (auto)');
-  const targetDesc = options.accessories ? 'Accessories only' : `App${accessoriesDesc}`;
-
-  printDebug('Deployment targets resolved', { deployApp, forceAccessories, skipAccessories });
+  const { deployApp, forceAccessories, skipAccessories } = getDeploymentTargets(
+    options as DeployOptions,
+  );
+  const accessoriesDesc = skipAccessories
+    ? ''
+    : forceAccessories
+      ? ' + Accessories (forced)'
+      : ' + Accessories (auto)';
+  const targetDesc = options.accessories
+    ? 'Accessories only'
+    : `App${accessoriesDesc}`;
 
   printIntro(`Deploying ${targetDesc} to ${env}`);
   printBlank();
 
-  const debug = options.debug || false;
+  // --- Load config ---
+  const config = loadConfig();
+  if (!config) {
+    throw new ConfigError(
+      'No config.yml found',
+      'Run `dockflow init` to create a project configuration.',
+    );
+  }
 
-  // Check config exists
-  const config = validateProjectConfig();
-
-  // Validate servers.yml exists and schema is valid
-  validateServersYaml();
-
-  // Resolve deployment (manager + workers)
+  // --- Resolve deployment ---
   const deployment = resolveDeploymentForEnvironment(env);
   if (!deployment) {
     const availableEnvs = getAvailableEnvironments();
     throw new ConfigError(
       `No manager server found for environment "${env}"`,
-      availableEnvs.length > 0 
-        ? `Available environments: ${availableEnvs.join(', ')}. Each environment needs a server with role: manager`
-        : 'Each environment needs a server with role: manager'
+      availableEnvs.length > 0
+        ? `Available environments: ${availableEnvs.join(', ')}`
+        : 'Each environment needs a server with role: manager',
     );
   }
 
   let { manager, managers, workers } = deployment;
 
-  // Multi-manager failover: find active manager
+  // Multi-manager failover
   if (managers.length > 1 && !options.noFailover) {
     const managerSpinner = createSpinner();
     managerSpinner.start(`Checking ${managers.length} managers for active leader...`);
-    
-    const activeResult = await findActiveManager(env, managers, { verbose: debug });
-    
+    const activeResult = await findActiveManager(env, managers, {
+      verbose: !!options.debug,
+    });
     if (!activeResult) {
       managerSpinner.fail('No reachable managers found');
       throw new ConnectionError(
         'All managers are unreachable. Cannot deploy.',
-        `Managers tried: ${managers.map(m => `${m.name} (${m.host})`).join(', ')}`
+        `Managers tried: ${managers.map((m) => `${m.name} (${m.host})`).join(', ')}`,
       );
     }
-    
     manager = activeResult.manager;
-    
     if (activeResult.failedManagers.length > 0) {
-      managerSpinner.warn(`Using ${manager.name} (${activeResult.status}). Unreachable: ${activeResult.failedManagers.join(', ')}`);
+      managerSpinner.warn(
+        `Using ${manager.name} (${activeResult.status}). Unreachable: ${activeResult.failedManagers.join(', ')}`,
+      );
     } else {
-      managerSpinner.succeed(`Using ${manager.name} (${activeResult.status === 'leader' ? 'leader' : 'active manager'})`);
-    }
-  }
-
-  // Validate manager has private key
-  const managerPrivateKey = getServerPrivateKey(env, manager.name);
-  if (!managerPrivateKey) {
-    throw new ConnectionError(
-      `No SSH private key found for manager "${manager.name}"`,
-      `Expected CI secret: ${env.toUpperCase()}_${manager.name.toUpperCase()}_CONNECTION\n  or: ${env.toUpperCase()}_${manager.name.toUpperCase()}_SSH_PRIVATE_KEY`
-    );
-  }
-
-  // Validate workers have private keys (for image distribution)
-  for (const worker of workers) {
-    const privateKey = getServerPrivateKey(env, worker.name);
-    if (!privateKey) {
-      throw new ConnectionError(
-        `No SSH private key found for worker "${worker.name}"`,
-        `Expected CI secret: ${env.toUpperCase()}_${worker.name.toUpperCase()}_CONNECTION\n  or: ${env.toUpperCase()}_${worker.name.toUpperCase()}_SSH_PRIVATE_KEY`
+      managerSpinner.succeed(
+        `Using ${manager.name} (${activeResult.status === 'leader' ? 'leader' : 'active manager'})`,
       );
     }
   }
 
-  // Check Docker is available
-  await checkDockerAvailable();
+  // --- Build connections ---
+  const managerConn = buildConnection(env, manager.name, manager.host, manager.port, manager.user);
 
-  // Determine version
-  let deployVersion: string;
+  const workerConns: Array<{ connection: SSHKeyConnection; name: string }> = [];
+  for (const w of workers) {
+    const conn = buildConnection(env, w.name, w.host, w.port, w.user);
+    workerConns.push({ connection: conn, name: w.name });
+  }
+
+  // Other manager connections for history sync
+  const otherManagerConns: SSHKeyConnection[] = [];
+  for (const m of managers) {
+    if (m.name === manager.name) continue;
+    try {
+      const conn = buildConnection(env, m.name, m.host, m.port, m.user);
+      otherManagerConns.push(conn);
+    } catch {
+      printWarning(`History sync: no SSH key for ${m.name}`);
+    }
+  }
+
+  // --- Determine version ---
   const branchName = getCurrentBranch();
+  let deployVersion: string;
 
   if (version) {
     deployVersion = version;
   } else {
-    // Auto-increment version using manager
-    const managerPassword = getServerPassword(env, manager.name);
-
-    const connectionString = Buffer.from(JSON.stringify({
-      host: manager.host,
-      port: manager.port,
-      user: manager.user,
-      privateKey: managerPrivateKey,
-      password: managerPassword,
-    })).toString('base64');
-
     const versionSpinner = createSpinner();
     versionSpinner.start('Fetching latest deployed version...');
+    const connectionString = Buffer.from(
+      JSON.stringify(managerConn),
+    ).toString('base64');
     const projectName = config.project_name || 'app';
-    const latestVersion = await getLatestVersion(connectionString, projectName, env, debug);
-
+    const latestVersion = await getLatestVersion(
+      connectionString,
+      projectName,
+      env,
+      !!options.debug,
+    );
     if (latestVersion) {
       deployVersion = incrementVersion(latestVersion);
       versionSpinner.succeed(`Latest version: ${latestVersion} → New version: ${deployVersion}`);
@@ -203,120 +240,28 @@ export async function runDeploy(env: string, version: string | undefined, option
     }
   }
 
-  // Display deployment info
+  const stackName = `${config.project_name}-${env}`;
+  const projectRoot = getProjectRoot();
+
+  // --- Display deployment info ---
   printInfo(`Version: ${deployVersion}`);
   printInfo(`Environment: ${env}`);
-  if (managers.length > 1) {
-    printInfo(`Manager: ${manager.name} (${manager.host}) [${managers.length} managers configured]`);
-  } else {
-    printInfo(`Manager: ${manager.name} (${manager.host})`);
-  }
+  printInfo(`Manager: ${manager.name} (${manager.host})`);
   if (workers.length > 0) {
-    printInfo(`Workers: ${workers.map(w => `${w.name} (${w.host})`).join(', ')}`);
+    printInfo(`Workers: ${workers.map((w) => `${w.name} (${w.host})`).join(', ')}`);
   }
   printInfo(`Branch: ${branchName}`);
   printInfo(`Targets: ${targetDesc}`);
-  if (options.services) {
-    printInfo(`Services: ${options.services}`);
-  }
+  if (options.services) printInfo(`Services: ${options.services}`);
   printBlank();
 
-  // Build workers JSON for Ansible (for image distribution)
-  const workersWithKeys = workers.map(w => ({
-    server: w,
-    privateKey: getServerPrivateKey(env, w.name) || '',
-  }));
-
-  // Build other managers for history replication (exclude current manager, skip those without keys)
-  const otherManagersWithKeys: Array<{ server: typeof managers[0]; privateKey: string }> = [];
-  const managersWithoutKeys: string[] = [];
-  for (const m of managers) {
-    if (m.name === manager.name) continue;
-    const key = getServerPrivateKey(env, m.name);
-    if (key) {
-      otherManagersWithKeys.push({ server: m, privateKey: key });
-    } else {
-      managersWithoutKeys.push(m.name);
-    }
-  }
-
-  // Warn about nodes excluded from history replication
-  const nodesWithoutKeys = [...managersWithoutKeys];
-  if (nodesWithoutKeys.length > 0) {
-    printWarning(`History sync: no SSH key for ${nodesWithoutKeys.join(', ')} — history won't replicate to these nodes`);
-    printDim(`  Add CI secrets to enable replication, or run 'dockflow history-sync ${env}' later`);
-  }
-
-  printDebug('Workers configuration built', { workerCount: workers.length });
-
-  // Build template context for Jinja2 (current, servers, cluster)
-  const templateContext = buildTemplateContext(env, manager.name);
-  if (!templateContext) {
-    throw new ConfigError(
-      `Failed to build template context for ${manager.name}`,
-      'This should not happen if deployment resolved successfully'
-    );
-  }
-
-  printDebug('Template context built', { 
-    currentServer: templateContext.current.name,
-    serversCount: Object.keys(templateContext.servers).length,
-    clusterSize: templateContext.cluster.size,
-  });
-
-  // Deploy via manager only (Swarm distributes workloads)
-  const projectRoot = getProjectRoot();
-  const dockerImage = getAnsibleDockerImage();
-
-  printDebug('Docker configuration', { projectRoot, dockerImage });
-
-  const managerPassword = getServerPassword(env, manager.name);
-  
-  // Build complete Ansible context (JSON)
-  const ansibleContext = buildDeployContext({
-    env,
-    version: deployVersion,
-    branchName,
-    deployment,
-    templateContext,
-    managerPrivateKey,
-    managerPassword,
-    workers: workersWithKeys,
-    otherManagers: otherManagersWithKeys,
-    config: config as unknown as Record<string, unknown>,
-    options: {
-      skipBuild: options.skipBuild,
-      skipDockerInstall: options.skipDockerInstall,
-      force: options.force,
-      deployApp,
-      forceAccessories,
-      skipAccessories,
-      services: options.services,
-    },
-  });
-
-  // Write context to host file (will be mounted into container)
-  const contextFilePath = getHostContextPath();
-  writeContextFile(ansibleContext, contextFilePath);
-  printDebug('Context file written', { path: contextFilePath });
-
-  // Build the Ansible command with skip tags
-  const skipTags = ['configure_host'];
-  if (!hasNginxConfig()) {
-    printDebug('No nginx configuration found, will skip nginx role');
-    skipTags.push('nginx');
-  }
-  const ansibleCommand = buildDeployAnsibleCommand({ skipTags });
-  printDebug('Ansible command', { command: ansibleCommand.join(' ') });
-
-  // Dry-run mode: display what would happen without executing
+  // --- Dry-run ---
   if (options.dryRun) {
     displayDeployDryRun({
       env,
       deployVersion,
       branchName,
       projectRoot,
-      dockerImage,
       manager,
       workers,
       deployApp,
@@ -325,27 +270,248 @@ export async function runDeploy(env: string, version: string | undefined, option
       skipBuild: options.skipBuild,
       force: options.force,
       services: options.services,
-      debug,
-      deployScript: ansibleCommand.join(' '),
+      debug: options.debug,
     });
     return;
   }
 
-  await runAnsibleCommand({
-    command: ansibleCommand,
-    actionName: 'deployment',
-    successMessage: `Deployment to ${env} completed successfully!`,
-    contextFilePath,
+  // --- Services ---
+  const swarmDeploy = new SwarmDeployService(managerConn);
+  const health = new HealthCheckService(managerConn);
+  const releases = new ReleaseService(managerConn);
+  const lock = new LockService(managerConn, stackName);
+  const audit = new AuditService(managerConn);
+  const metrics = new MetricsWriteService(managerConn);
+
+  const startTime = Date.now();
+  let deployFailed = false;
+  let auditMessage = `Deploy ${deployVersion} to ${env}`;
+  let metricsJson = '';
+
+  // --- Acquire lock ---
+  const lockResult = await lock.acquire({
+    version: deployVersion,
+    force: options.force,
+    message: `Deploy ${deployVersion}`,
   });
+  if (!lockResult.success) {
+    throw new DeployError(lockResult.error.message, ErrorCode.DEPLOY_LOCKED);
+  }
+
+  try {
+    // --- Render templates ---
+    const templateContext = buildTemplateContext(env, manager.name);
+    const renderCtx: ComposeRenderContext = {
+      env,
+      version: deployVersion,
+      branch: branchName,
+      project_name: config.project_name,
+      config,
+      servers: templateContext?.servers ?? {},
+      cluster: templateContext?.cluster ?? {},
+    };
+    await ComposeService.renderTemplates(projectRoot, renderCtx);
+
+    // --- Prepare compose ---
+    const composePath = getComposePath();
+    if (!composePath) {
+      throw new ConfigError(
+        'No docker-compose.yml found',
+        'Expected at .dockflow/docker/docker-compose.yml',
+      );
+    }
+
+    const compose = ComposeService.load(composePath);
+    ComposeService.updateImageTags(compose, config, env, deployVersion);
+    ComposeService.injectSwarmDefaults(compose);
+    if (config.proxy?.enabled) {
+      ComposeService.injectTraefikLabels(compose, config, stackName, env);
+    }
+
+    // --- Build ---
+    let builtImages: string[] = [];
+    if (!options.skipBuild && deployApp) {
+      await HookService.runLocal('pre-build', projectRoot, config);
+
+      if (config.options?.remote_build) {
+        const result = await BuildService.buildRemote(managerConn, {
+          projectRoot,
+          composePath,
+          projectName: config.project_name,
+          env,
+          branch: branchName,
+          servicesFilter: options.services,
+        });
+        builtImages = result.images;
+      } else {
+        const targets = await BuildService.getBuildTargets(composePath, options.services);
+        if (targets.length > 0) {
+          const result = await BuildService.buildAll(targets);
+          builtImages = result.images;
+
+          if (config.registry?.enabled && config.registry.url && config.registry.password) {
+            await DistributionService.registryLogin(managerConn, {
+              url: config.registry.url,
+              username: config.registry.username,
+              password: config.registry.password,
+            });
+            await DistributionService.pushImages(builtImages);
+          } else if (builtImages.length > 0) {
+            const distTargets = [
+              { connection: managerConn, name: 'manager' },
+              ...workerConns.map((w) => ({ connection: w.connection, name: w.name })),
+            ];
+            await DistributionService.distributeAll(builtImages, distTargets);
+          }
+        }
+      }
+
+      await HookService.runLocal('post-build', projectRoot, config);
+    }
+
+    // --- Create release ---
+    const performer = `${process.env.USER ?? 'ci'}@${os.hostname()}`;
+    await releases.createRelease(stackName, deployVersion, ComposeService.serialize(compose), {
+      project_name: config.project_name,
+      version: deployVersion,
+      env,
+      timestamp: new Date().toISOString(),
+      epoch: Math.floor(Date.now() / 1000),
+      performer,
+      branch: branchName,
+    });
+
+    // --- Deploy accessories ---
+    if (!skipAccessories) {
+      const accessoriesPath = join(projectRoot, '.dockflow', 'docker', 'accessories.yml');
+      if (existsSync(accessoriesPath)) {
+        const accessoriesCompose = ComposeService.load(accessoriesPath);
+        ComposeService.updateImageTags(accessoriesCompose, config, env, deployVersion);
+        ComposeService.injectAccessoriesDefaults(accessoriesCompose);
+        const externalNets = ComposeService.getExternalNetworks(accessoriesCompose);
+        const externalVols = ComposeService.getExternalVolumes(accessoriesCompose);
+        await swarmDeploy.createExternalNetworks(externalNets);
+        await swarmDeploy.createExternalVolumes(externalVols);
+        await swarmDeploy.deployAccessories(
+          stackName,
+          accessoriesPath,
+          ComposeService.serialize(accessoriesCompose),
+          { force: forceAccessories },
+        );
+      }
+    }
+
+    // --- Deploy app ---
+    if (deployApp) {
+      await HookService.runRemote('pre-deploy', managerConn, stackName, projectRoot, config);
+
+      const externalNetworks = ComposeService.getExternalNetworks(compose);
+      const externalVolumes = ComposeService.getExternalVolumes(compose);
+      await swarmDeploy.createExternalNetworks(externalNetworks);
+      await swarmDeploy.createExternalVolumes(externalVolumes);
+
+      await swarmDeploy.deployStack(stackName, ComposeService.serialize(compose));
+      await swarmDeploy.waitConvergence(stackName);
+
+      // Health checks
+      if (config.health_checks?.enabled !== false) {
+        const expectedImages: Record<string, string> = {};
+        for (const [svcName, svc] of Object.entries(compose.services)) {
+          const img = svc.image as string | undefined;
+          if (img) expectedImages[`${stackName}_${svcName}`] = img;
+        }
+        await health.checkSwarmHealth(stackName, expectedImages);
+
+        if (config.health_checks?.endpoints?.length) {
+          await health.checkHTTPEndpoints(config.health_checks);
+        }
+      }
+
+      await HookService.runRemote('post-deploy', managerConn, stackName, projectRoot, config);
+    }
+
+    // --- Cleanup old releases ---
+    await releases.cleanupOldReleases(stackName, config);
+
+    auditMessage = `Deployed ${deployVersion} to ${env} successfully`;
+  } catch (err) {
+    deployFailed = true;
+    auditMessage = `Deploy ${deployVersion} to ${env} failed: ${err instanceof Error ? err.message : String(err)}`;
+
+    // Remove failed release
+    await releases.removeRelease(stackName, deployVersion).catch(() => {});
+
+    // Rollback if configured
+    if (
+      err instanceof DeployError &&
+      config.health_checks?.on_failure === 'rollback'
+    ) {
+      try {
+        await releases.rollback(stackName, swarmDeploy);
+      } catch {
+        // Rollback itself throws — that's expected
+      }
+    }
+
+    throw err;
+  } finally {
+    const durationMs = Date.now() - startTime;
+    const status = deployFailed ? 'failed' : 'success';
+
+    // Audit (best-effort)
+    let auditLine = '';
+    try {
+      auditLine = await audit.writeEntry(stackName, status === 'success' ? 'deployed' : 'failed', auditMessage, deployVersion);
+    } catch (e) {
+      printWarning(`Audit write failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    // Metrics (best-effort)
+    try {
+      metricsJson = await metrics.writeDeployment({
+        stackName,
+        version: deployVersion,
+        env,
+        branch: branchName,
+        status: status as 'success' | 'failed',
+        durationMs,
+        performer: `${process.env.USER ?? 'ci'}@${os.hostname()}`,
+        buildSkipped: !!options.skipBuild,
+        accessoriesDeployed: !skipAccessories,
+        nodeCount: 1 + workers.length,
+      });
+    } catch (e) {
+      printWarning(`Metrics write failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    // History sync (best-effort)
+    const allOtherConns = [
+      ...otherManagerConns,
+      ...workerConns.map((w) => w.connection),
+    ];
+    await HistorySyncService.syncToAllNodes(
+      allOtherConns,
+      stackName,
+      auditLine,
+      metricsJson,
+    ).catch((e) =>
+      printWarning(`History sync failed: ${e instanceof Error ? e.message : String(e)}`),
+    );
+
+    // Release lock (always)
+    await lock.release().catch((e) =>
+      printWarning(`Lock release failed: ${e instanceof Error ? e.message : String(e)}`),
+    );
+  }
 
   const totalNodes = managers.length + workers.length;
+  printBlank();
   if (totalNodes > 1) {
-    printBlank();
-    if (managers.length > 1) {
-      printSuccess(`Deployment completed! Swarm cluster: ${managers.length} managers + ${workers.length} worker(s)`);
-    } else {
-      printSuccess(`Deployment completed! Swarm cluster: 1 manager + ${workers.length} worker(s)`);
-    }
+    printSuccess(
+      `Deployment completed! Swarm cluster: ${managers.length} manager(s) + ${workers.length} worker(s)`,
+    );
+  } else {
+    printSuccess('Deployment completed!');
   }
 }
 
@@ -359,14 +525,15 @@ export function registerDeployCommand(program: Command): void {
     .option('--services <services>', 'Comma-separated list of services to deploy')
     .option('--skip-build', 'Skip the build phase')
     .option('--force', 'Force deployment even if locked')
-    .option('--skip-docker-install', 'Skip Docker installation (use when Docker is pre-installed)')
     .option('--accessories', 'Deploy only accessories (databases, caches, etc.)')
     .option('--all', 'Deploy both application and accessories')
     .option('--skip-accessories', 'Skip accessories check entirely')
     .option('--no-failover', 'Disable multi-manager failover (use first manager only)')
     .option('--dry-run', 'Show what would be deployed without executing')
     .option('--debug', 'Enable debug output')
-    .action(withErrorHandler(async (env: string, version: string | undefined, options: DeployOptions) => {
-      await runDeploy(env, version, options);
-    }));
+    .action(
+      withErrorHandler(async (env: string, version: string | undefined, options: DeployOptions) => {
+        await runDeploy(env, version, options);
+      }),
+    );
 }

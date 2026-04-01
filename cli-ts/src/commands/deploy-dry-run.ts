@@ -4,14 +4,13 @@
  */
 
 import { colors, printWarning, printDim, printBlank, printRaw } from '../utils/output';
-import type { ResolvedServer, ResolvedDeployment } from '../types';
+import type { ResolvedServer } from '../types';
 
 interface DeployDryRunOptions {
   env: string;
   deployVersion: string;
   branchName: string;
   projectRoot: string;
-  dockerImage: string;
   manager: ResolvedServer;
   workers: ResolvedServer[];
   deployApp: boolean;
@@ -21,7 +20,6 @@ interface DeployDryRunOptions {
   force?: boolean;
   services?: string;
   debug?: boolean;
-  deployScript?: string;
 }
 
 /**
@@ -33,7 +31,6 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
     deployVersion,
     branchName,
     projectRoot,
-    dockerImage,
     manager,
     workers,
     deployApp,
@@ -43,7 +40,6 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
     force,
     services,
     debug,
-    deployScript,
   } = options;
 
   printWarning('═'.repeat(60));
@@ -58,7 +54,7 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
   printRaw(`  ${colors.bold('Version:')}         ${deployVersion}`);
   printRaw(`  ${colors.bold('Branch:')}          ${branchName}`);
   printRaw(`  ${colors.bold('Project Root:')}    ${projectRoot}`);
-  printRaw(`  ${colors.bold('Docker Image:')}    ${dockerImage}`);
+  printRaw(`  ${colors.bold('Engine:')}          TypeScript (direct SSH)`);
   printBlank();
 
   // Target Servers
@@ -106,18 +102,6 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
     printRaw('  (none)');
   }
   printBlank();
-
-  // Deploy Script (debug mode only)
-  if (debug && deployScript) {
-    printRaw(colors.info(colors.bold('Deploy Script (debug):')));
-    printDim('─'.repeat(40));
-    // Show script without sensitive data
-    const sanitizedScript = deployScript
-      .replace(/export SSH_PRIVATE_KEY='[^']*'/g, "export SSH_PRIVATE_KEY='********'")
-      .replace(/"privateKey":"[^"]*"/g, '"privateKey":"********"');
-    printDim(sanitizedScript);
-    printBlank();
-  }
 
   // Footer
   printWarning('═'.repeat(60));
