@@ -174,6 +174,14 @@ export function printNote(message: string, title?: string): void {
 }
 
 /**
+ * Create a clack taskLog for streaming subprocess output.
+ * Rolling window of `limit` lines, clears on success, keeps full log on error.
+ */
+export function createTaskLog(title: string, limit: number = 5) {
+  return clack.taskLog({ title, limit });
+}
+
+/**
  * Create a clack spinner with ora-compatible API
  * stop()    → success (◆)
  * cancel()  → warning (◼)

@@ -6,12 +6,11 @@
  * executes local or remote Docker builds, and handles .dockerignore.
  */
 
-import { existsSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import type { SSHKeyConnection } from '../types';
 import { sshExec } from '../utils/ssh';
 import { shellEscape } from '../utils/ssh';
-import { printDebug, printDim, printRaw, printSuccess, printWarning } from '../utils/output';
+import { printDebug, printDim, printRaw, printSuccess, printWarning, createTaskLog } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 
 export interface BuildTarget {
@@ -104,64 +103,57 @@ export class BuildService {
 
   /**
    * Build a single Docker image locally.
-   * Handles .dockerignore via tar piping if present.
+   * Streams output via clack taskLog (shows live, clears on success).
    */
   static async buildImage(target: BuildTarget): Promise<void> {
-    const dockerignorePath = join(target.context, '.dockerignore');
-    const hasDockerignore = existsSync(dockerignorePath);
-
-    let proc: ReturnType<typeof Bun.spawn>;
-
-    if (hasDockerignore) {
-      // Build via tar to respect .dockerignore
-      const tarArgs = [
-        'tar', '-chf', '-',
-        '--exclude-from', dockerignorePath,
-        '-C', target.context, '.',
-      ];
-      const tarProc = Bun.spawn(tarArgs, {
+    const proc = Bun.spawn(
+      ['docker', 'build', '--progress=plain', '-f', target.dockerfile, '-t', target.tag, target.context],
+      {
         stdout: 'pipe',
         stderr: 'pipe',
-      });
+      },
+    );
 
-      proc = Bun.spawn(
-        ['docker', 'build', '-f', target.dockerfile, '-t', target.tag, '-'],
-        {
-          stdin: tarProc.stdout,
-          stdout: 'pipe',
-          stderr: 'pipe',
-        },
-      );
+    const log = createTaskLog(`Building ${target.tag}`);
 
-      await tarProc.exited;
-    } else {
-      proc = Bun.spawn(
-        ['docker', 'build', '-f', target.dockerfile, '-t', target.tag, target.context],
-        {
-          stdout: 'pipe',
-          stderr: 'pipe',
-        },
-      );
+    async function streamToLog(stream: ReadableStream<Uint8Array> | null) {
+      if (!stream) return;
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            if (line.trim()) log.message(line.trimEnd());
+          }
+        }
+        if (buffer.trim()) log.message(buffer.trimEnd());
+      } finally {
+        reader.releaseLock();
+      }
     }
 
-    // Collect output
-    const stdoutText = (proc.stdout && typeof proc.stdout !== 'number')
-      ? await new Response(proc.stdout).text()
-      : '';
-    const stderrText = (proc.stderr && typeof proc.stderr !== 'number')
-      ? await new Response(proc.stderr).text()
-      : '';
+    await Promise.all([
+      streamToLog(proc.stdout as ReadableStream<Uint8Array> | null),
+      streamToLog(proc.stderr as ReadableStream<Uint8Array> | null),
+    ]);
 
     await proc.exited;
 
     if (proc.exitCode !== 0) {
-      if (stdoutText) printRaw(stdoutText);
-      if (stderrText) printRaw(stderrText);
+      log.error(`Build failed for ${target.tag} (exit ${proc.exitCode})`);
       throw new DeployError(
         `Docker build failed for ${target.tag} (exit ${proc.exitCode})`,
         ErrorCode.DEPLOY_FAILED,
       );
     }
+
+    log.success(`Built ${target.tag}`);
   }
 
   /**
@@ -175,11 +167,8 @@ export class BuildService {
     const startTime = Date.now();
 
     if (targets.length === 1) {
-      printDim(`Building ${targets[0].tag}...`);
       await BuildService.buildImage(targets[0]);
-      const durationMs = Date.now() - startTime;
-      printSuccess(`Built ${targets[0].tag} in ${(durationMs / 1000).toFixed(1)}s`);
-      return { images: [targets[0].tag], durationMs };
+      return { images: [targets[0].tag], durationMs: Date.now() - startTime };
     }
 
     // Parallel builds
@@ -187,10 +176,7 @@ export class BuildService {
 
     const results = await Promise.allSettled(
       targets.map(async (target) => {
-        const t0 = Date.now();
         await BuildService.buildImage(target);
-        const dur = ((Date.now() - t0) / 1000).toFixed(1);
-        printSuccess(`Built ${target.tag} in ${dur}s`);
         return target.tag;
       }),
     );
