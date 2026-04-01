@@ -15,8 +15,7 @@ build:
     DOCKFLOW_REPOSITORY_URL: https://github.com/Shawiizz/dockflow.git
     DOCKFLOW_FRAMEWORK_VERSION: 2.0.23
   before_script:
-    - apt-get update && apt-get install -y git python3-pip ansible npm
-    - npm i -g shawiizz-decomposerize
+    - apt-get update && apt-get install -y git python3-pip ansible
     - pip3 install pyyaml
   script:
     - |

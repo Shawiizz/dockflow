@@ -1,20 +1,17 @@
 /**
  * Build Service
  *
- * Replaces the Ansible roles `local-build` and `remote-build`.
- * Extracts build targets from docker-compose via decomposerize,
- * executes local or remote Docker builds, and handles .dockerignore.
- *
+ * Handles Docker image builds (local and remote).
  * Local builds use tar-stdin: the build context is assembled in memory
  * (with rendered template overrides) and piped to `docker build -`.
  * No temporary files are written to disk.
  */
 
-import { resolve, dirname, join, relative } from 'path';
+import { resolve, join, relative } from 'path';
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
+import { parse as parseYaml } from 'yaml';
 import type { SSHKeyConnection } from '../types';
 import { sshExec } from '../utils/ssh';
-import { shellEscape } from '../utils/ssh';
 import { printDebug, printDim, printRaw, printSuccess, printWarning, createTaskLog } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import { createTar, type TarEntry } from '../utils/tar';
@@ -36,45 +33,6 @@ export interface BuildTarget {
 export interface BuildResult {
   images: string[];
   durationMs: number;
-}
-
-/**
- * Parse a `docker build` command line into a BuildTarget.
- * Expected format: docker build -f <dockerfile> -t "<tag>" <context>
- */
-function parseBuildCommand(line: string, basePath: string): BuildTarget | null {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith('docker build')) return null;
-
-  let dockerfile = '';
-  let tag = '';
-  let context = '.';
-
-  const parts = trimmed.split(/\s+/);
-  for (let i = 0; i < parts.length; i++) {
-    if (parts[i] === '-f' && parts[i + 1]) {
-      dockerfile = parts[++i];
-    } else if (parts[i] === '-t' && parts[i + 1]) {
-      tag = parts[++i].replace(/^["']|["']$/g, '');
-    }
-  }
-
-  // Last non-flag argument is the context
-  const lastPart = parts[parts.length - 1];
-  if (lastPart && !lastPart.startsWith('-') && lastPart !== 'build') {
-    context = lastPart;
-  }
-
-  if (!dockerfile || !tag) return null;
-
-  const contextAbsolute = resolve(basePath, context);
-
-  return {
-    dockerfile,
-    dockerfileAbsPath: resolve(basePath, dockerfile),
-    context: contextAbsolute,
-    tag,
-  };
 }
 
 /**
@@ -195,42 +153,41 @@ export class BuildService {
   }
 
   /**
-   * Extract build targets from compose content using decomposerize via stdin.
-   * No temporary files are written.
+   * Extract build targets from a compose YAML string.
+   * Parses the YAML directly — no external dependency needed.
    */
-  static async getBuildTargets(
+  static getBuildTargets(
     composeContent: string,
     basePath: string,
     servicesFilter?: string,
-  ): Promise<BuildTarget[]> {
-    const args = ['--docker-build'];
-    if (servicesFilter) {
-      args.push(`--services=${servicesFilter}`);
-    }
-
-    const proc = Bun.spawn(['decomposerize', ...args], {
-      cwd: basePath,
-      stdin: new Response(composeContent).body!,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-
-    const stdout = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
-    await proc.exited;
-
-    if (proc.exitCode !== 0) {
-      throw new DeployError(
-        `decomposerize failed (exit ${proc.exitCode}): ${stderr.trim()}`,
-        ErrorCode.DEPLOY_FAILED,
-      );
-    }
+  ): BuildTarget[] {
+    const compose = parseYaml(composeContent) as Record<string, unknown>;
+    const services = (compose.services ?? {}) as Record<string, Record<string, unknown>>;
+    const filterSet = servicesFilter
+      ? new Set(servicesFilter.split(',').map(s => s.trim()))
+      : null;
 
     const targets: BuildTarget[] = [];
 
-    for (const line of stdout.trim().split('\n')) {
-      const target = parseBuildCommand(line, basePath);
-      if (target) targets.push(target);
+    for (const [name, svc] of Object.entries(services)) {
+      if (filterSet && !filterSet.has(name)) continue;
+
+      const build = svc.build;
+      if (!build || typeof build !== 'object') continue;
+
+      const buildObj = build as Record<string, unknown>;
+      const dockerfile = buildObj.dockerfile as string | undefined;
+      if (!dockerfile) continue;
+
+      const context = (buildObj.context as string) ?? '.';
+      const tag = (svc.image as string) ?? `${name}:latest`;
+
+      targets.push({
+        dockerfile,
+        dockerfileAbsPath: resolve(basePath, dockerfile),
+        context: resolve(basePath, context),
+        tag,
+      });
     }
 
     return targets;
@@ -405,7 +362,7 @@ export class BuildService {
       await sshExec(connection, `git -C ${tmpDir} checkout ${commitSha} 2>&1`);
 
       // 4. Get build targets from compose content via stdin
-      const targets = await BuildService.getBuildTargets(
+      const targets = BuildService.getBuildTargets(
         params.composeContent,
         params.composeDirPath,
         params.servicesFilter,

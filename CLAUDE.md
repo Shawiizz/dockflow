@@ -122,7 +122,7 @@ Always throw these typed errors from commands. The `withErrorHandler` wrapper di
 **Deploy services (replace former Ansible roles):**
 - `ComposeService` — template rendering (Nunjucks), YAML load/serialize, Swarm deploy config injection, Traefik label injection, image tag updates
 - `SwarmDeployService` — creates external networks/volumes, deploys stacks via `docker stack deploy -c -`, waits for convergence, deploys accessories with hash-based change detection
-- `BuildService` — local/remote Docker image builds. Uses `decomposerize` CLI to extract build targets from compose files
+- `BuildService` — local/remote Docker image builds. Parses compose YAML to extract build targets, assembles tar contexts in memory
 - `DistributionService` — image distribution to Swarm nodes (base64 chunked transfer over SSH), registry login/push
 - `HealthCheckService` — Swarm internal health checks (auto-rollback detection) + HTTP endpoint checks with retry
 - `ReleaseService` — release directory management, rollback, cleanup of old releases

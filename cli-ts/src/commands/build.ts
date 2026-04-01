@@ -103,7 +103,7 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
   }
 
   // Build images (targets resolved from rendered compose via stdin)
-  const targets = await BuildService.getBuildTargets(composeContent, composeDirPath, options.services);
+  const targets = BuildService.getBuildTargets(composeContent, composeDirPath, options.services);
   if (targets.length === 0) {
     printWarning('No build targets found in docker-compose.yml');
     return;
