@@ -79,12 +79,12 @@ export class LockService {
   /**
    * Acquire a deployment lock
    */
-  async acquire(options?: { message?: string; force?: boolean }): Promise<Result<LockData, Error>> {
+  async acquire(options?: { message?: string; force?: boolean; version?: string }): Promise<Result<LockData, Error>> {
     try {
-      // Check for existing lock
+      // Check for existing lock (allow override if stale or forced)
       if (!options?.force) {
         const current = await this.status();
-        if (current.success && current.data.locked) {
+        if (current.success && current.data.locked && !current.data.isStale) {
           return err(new Error(
             current.data.data
               ? `Already locked by ${current.data.data.performer} (${current.data.durationMinutes} min ago)`
@@ -98,7 +98,7 @@ export class LockService {
         performer: `${process.env.USER || 'cli'}@${process.env.HOSTNAME || 'local'}`,
         started_at: now.toISOString(),
         timestamp: Math.floor(now.getTime() / 1000),
-        version: 'manual-lock',
+        version: options?.version || 'manual-lock',
         stack: this.stackName,
         message: options?.message || 'Manual lock via CLI',
       };

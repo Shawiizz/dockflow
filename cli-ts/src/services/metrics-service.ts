@@ -186,6 +186,63 @@ export function calculateMetricsSummary(metrics: DeploymentMetric[]): MetricsSum
 }
 
 /**
+ * Class-based metrics writer for use in the new deploy engine.
+ * Wraps the connection so callers don't need to pass it each time.
+ */
+export class MetricsWriteService {
+  constructor(private readonly connection: SSHKeyConnection) {}
+
+  /**
+   * Record a deployment metric and return the raw JSON line
+   * (useful for history-sync replication to other nodes).
+   */
+  async writeDeployment(params: {
+    stackName: string;
+    version: string;
+    env: string;
+    branch: string;
+    status: 'success' | 'failed' | 'rolled_back';
+    durationMs: number;
+    performer: string;
+    services?: string[];
+    error?: string;
+    rollbackFrom?: string;
+    buildSkipped: boolean;
+    accessoriesDeployed: boolean;
+    nodeCount: number;
+  }): Promise<string> {
+    const entry: DeploymentMetric = {
+      id: generateDeploymentId(),
+      timestamp: new Date().toISOString(),
+      version: params.version,
+      environment: params.env,
+      branch: params.branch,
+      status: params.status,
+      duration_ms: params.durationMs,
+      performer: params.performer,
+      services: params.services,
+      error: params.error,
+      rollback_from: params.rollbackFrom,
+      build_skipped: params.buildSkipped,
+      accessories_deployed: params.accessoriesDeployed,
+      node_count: params.nodeCount,
+    };
+
+    const metricsDir = `${DOCKFLOW_METRICS_DIR}/${params.stackName}`;
+    const metricsPath = getMetricsPath(params.stackName);
+    const entryJson = JSON.stringify(entry);
+    const escapedJson = entryJson.replace(/'/g, "'\"'\"'");
+
+    await sshExec(this.connection, `
+      mkdir -p "${metricsDir}"
+      echo '${escapedJson}' >> "${metricsPath}"
+    `);
+
+    return entryJson;
+  }
+}
+
+/**
  * Clear old metrics (keep last N entries)
  */
 export async function pruneMetrics(

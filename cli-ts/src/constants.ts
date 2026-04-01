@@ -22,6 +22,7 @@ export const DOCKFLOW_LOCKS_DIR = '/var/lib/dockflow/locks';
 export const DOCKFLOW_AUDIT_DIR = '/var/lib/dockflow/audit';
 export const DOCKFLOW_METRICS_DIR = '/var/lib/dockflow/metrics';
 export const DOCKFLOW_BACKUPS_DIR = '/var/lib/dockflow/backups';
+export const DOCKFLOW_ACCESSORIES_DIR = '/var/lib/dockflow/accessories';
 
 /**
  * Docker configuration
