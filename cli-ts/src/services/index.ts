@@ -41,3 +41,12 @@ export * from './health-check-service';
 
 // Release lifecycle (create, rollback, cleanup)
 export * from './release-service';
+
+// Docker image builds (local + remote)
+export * from './build-service';
+
+// Image distribution to Swarm nodes + registry
+export * from './distribution-service';
+
+// Deploy hooks (pre/post build/deploy)
+export * from './hook-service';
