@@ -35,3 +35,9 @@ export * from './compose-service';
 
 // Swarm stack deployment, convergence, accessories
 export * from './swarm-deploy-service';
+
+// Health checks (Swarm internal + HTTP endpoints)
+export * from './health-check-service';
+
+// Release lifecycle (create, rollback, cleanup)
+export * from './release-service';
