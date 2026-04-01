@@ -9,7 +9,10 @@
 #   4. Setup Swarm cluster (dockflow setup swarm)
 #   5. Deploy with 2 replicas
 #   6. Verify replicas distributed across nodes
-#   7. Remote build test
+#   7. Traefik proxy verification
+#   8. Standalone build test (in-memory tar)
+#   9. Backup & restore test
+#  10. Remote build test
 # =============================================================================
 
 set -e
@@ -40,25 +43,28 @@ NODE_COUNT=$(check_swarm_ready) || exit 1
 log_success "Environment ready (Swarm with $NODE_COUNT nodes)"
 
 # =============================================================================
-# Step 5: Deploy with replicas (uses DOCKER connection strings - hostname:22)
+# Step 5: Deploy with replicas (uses host-accessible connection strings - localhost:port)
 # =============================================================================
 log_step "Step 5: Deploying application..."
 
 cd "$TEST_APP_DIR"
 
-# Get Docker connection strings (container to container communication)
-get_docker_connection_strings "$TEST_APP_DIR" || exit 1
+# Load connection strings: either from setup_machines() or from existing .env.dockflow
+if [[ -z "${MANAGER_CONNECTION:-}" && -f .env.dockflow ]]; then
+	source .env.dockflow
+	MANAGER_CONNECTION="${TEST_MAIN_SERVER_CONNECTION:-}"
+	WORKER_1_CONNECTION="${TEST_WORKER_1_CONNECTION:-}"
+fi
 
-# Update .env.dockflow with DOCKER connection strings (for deploy running in container)
+# Write WSL-accessible connection strings (localhost:2222/2223)
 cat >.env.dockflow <<EOF
-TEST_MAIN_SERVER_CONNECTION=$MANAGER_CONNECTION_DOCKER
-TEST_WORKER_1_CONNECTION=$WORKER_1_CONNECTION_DOCKER
+TEST_MAIN_SERVER_CONNECTION=$MANAGER_CONNECTION
+TEST_WORKER_1_CONNECTION=$WORKER_1_CONNECTION
 EOF
 
 set +e
 DOCKFLOW_DEV_PATH="$DOCKFLOW_ROOT" \
-	DOCKFLOW_DOCKER_NETWORK="docker_test-network" \
-	"$CLI_BIN" deploy "$TEST_ENV" "$TEST_VERSION" --force --skip-docker-install
+	"$CLI_BIN" deploy "$TEST_ENV" "$TEST_VERSION" --force
 DEPLOY_EXIT_CODE=$?
 set -e
 
@@ -162,9 +168,21 @@ fi
 log_success "HTTP routing works (Host: test.local → HTTP $HTTP_STATUS)"
 
 # =============================================================================
-# Step 8: Backup & Restore Test
+# Step 8: Standalone Build Test
 # =============================================================================
-log_step "Step 8: Running backup & restore test..."
+log_step "Step 8: Running standalone build test..."
+
+if bash "$SCRIPT_DIR/run-build-test.sh" --skip-setup; then
+	log_success "Standalone build test passed"
+else
+	log_error "Standalone build test failed"
+	exit 1
+fi
+
+# =============================================================================
+# Step 9: Backup & Restore Test
+# =============================================================================
+log_step "Step 9: Running backup & restore test..."
 
 if bash "$SCRIPT_DIR/run-backup-test.sh"; then
 	log_success "Backup & restore test passed"
@@ -174,11 +192,11 @@ else
 fi
 
 # =============================================================================
-# Step 9: Remote Build Test (runs by default, skip with --skip-remote-build)
+# Step 10: Remote Build Test (runs by default, skip with --skip-remote-build)
 # =============================================================================
 REMOTE_BUILD_PASSED=""
 if [[ "${1:-}" != "--skip-remote-build" ]]; then
-	log_step "Step 9: Running remote build test..."
+	log_step "Step 10: Running remote build test..."
 
 	# Pass --skip-setup flag since environment is already ready
 	if bash "$SCRIPT_DIR/run-remote-build-test.sh" --skip-setup; then
@@ -205,6 +223,7 @@ echo "  ✓ Swarm cluster initialized (2 nodes)"
 echo "  ✓ Application deployed (2 replicas)"
 echo "  ✓ Replicas distributed across nodes"
 echo "  ✓ Traefik proxy routing verified"
+echo "  ✓ Standalone build verified (in-memory tar)"
 echo "  ✓ Backup & restore verified (Redis)"
 if [[ -n "$REMOTE_BUILD_PASSED" ]]; then
 	echo "  ✓ Remote build test passed"

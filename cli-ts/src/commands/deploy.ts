@@ -343,7 +343,7 @@ export async function runDeploy(
     // --- Build ---
     let builtImages: string[] = [];
     if (!options.skipBuild && deployApp) {
-      await HookService.runLocal('pre-build', projectRoot, config);
+      await HookService.runLocal('pre-build', projectRoot, config, rendered);
 
       if (config.options?.remote_build) {
         const result = await BuildService.buildRemote(managerConn, {
@@ -384,7 +384,7 @@ export async function runDeploy(
         }
       }
 
-      await HookService.runLocal('post-build', projectRoot, config);
+      await HookService.runLocal('post-build', projectRoot, config, rendered);
     }
 
     // --- Create release ---
@@ -422,7 +422,7 @@ export async function runDeploy(
 
     // --- Deploy app ---
     if (deployApp) {
-      await HookService.runRemote('pre-deploy', managerConn, stackName, projectRoot, config);
+      await HookService.runRemote('pre-deploy', managerConn, stackName, projectRoot, config, rendered);
 
       const externalNetworks = ComposeService.getExternalNetworks(compose);
       const externalVolumes = ComposeService.getExternalVolumes(compose);
@@ -446,7 +446,7 @@ export async function runDeploy(
         }
       }
 
-      await HookService.runRemote('post-deploy', managerConn, stackName, projectRoot, config);
+      await HookService.runRemote('post-deploy', managerConn, stackName, projectRoot, config, rendered);
     }
 
     // --- Cleanup old releases ---

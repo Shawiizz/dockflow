@@ -187,14 +187,12 @@ log_info "Repository has $COMMIT_COUNT commit(s)"
 log_step "Step 3: Preparing connection strings..."
 
 # Connection strings are already loaded from test-app/.env.dockflow (source'd earlier)
-# Transform them for Docker network (container to container)
-MANAGER_CONN=$(transform_connection_for_docker "$TEST_MAIN_SERVER_CONNECTION" "dockflow-test-mgr")
-WORKER_CONN=$(transform_connection_for_docker "$TEST_WORKER_1_CONNECTION" "dockflow-test-w1")
+# Use WSL-accessible connection strings (localhost:2222/2223) since CLI runs on the host
 
 # Create .env.dockflow for test-app-remote
 cat >"$TEST_APP_DIR/.env.dockflow" <<EOF
-TEST_MAIN_SERVER_CONNECTION=$MANAGER_CONN
-TEST_WORKER_1_CONNECTION=$WORKER_CONN
+TEST_MAIN_SERVER_CONNECTION=$TEST_MAIN_SERVER_CONNECTION
+TEST_WORKER_1_CONNECTION=$TEST_WORKER_1_CONNECTION
 EOF
 
 log_success "Connection strings created"
@@ -212,8 +210,7 @@ git remote set-url origin "deploytest@localhost:$REPO_PATH"
 
 set +e
 DOCKFLOW_DEV_PATH="$DOCKFLOW_ROOT" \
-	DOCKFLOW_DOCKER_NETWORK="docker_test-network" \
-	"$CLI_BIN" deploy "$TEST_ENV" "$TEST_VERSION" --force --skip-docker-install 2>&1
+	"$CLI_BIN" deploy "$TEST_ENV" "$TEST_VERSION" --force 2>&1
 DEPLOY_EXIT_CODE=$?
 set -e
 

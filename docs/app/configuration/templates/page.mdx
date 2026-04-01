@@ -36,7 +36,7 @@ These files are rendered in-place. To output to a different location, use the ex
 # .dockflow/config.yml
 templates:
   - "scripts/init.sh"                    # Rendered in-place
-  - src: "config/app.yml.j2"             # Source → different destination
+  - src: "config/app.yml.njk"             # Source → different destination
     dest: "config/app.yml"
 ```
 
@@ -163,7 +163,7 @@ server:
   version: "{{ version }}"
 ```
 
-### Nginx reverse proxy (e.g. `nginx/myapp.conf.j2`)
+### Nginx reverse proxy (e.g. `nginx/myapp.conf.njk`)
 
 ```nginx
 server {
@@ -192,7 +192,7 @@ echo "Running in development mode"
 {% endif %}
 ```
 
-### PostgreSQL access control (e.g. `config/pg_hba.conf.j2`)
+### PostgreSQL access control (e.g. `config/pg_hba.conf.njk`)
 
 ```conf
 {% for name, srv in servers.items() %}

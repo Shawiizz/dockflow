@@ -12,14 +12,15 @@
  * do not block the deploy.
  */
 
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
+import { tmpdir } from 'os';
 import type { SSHKeyConnection } from '../types';
 import { sshExec } from '../utils/ssh';
-import { shellEscape } from '../utils/ssh';
 import { printDebug, printDim, printRaw, printWarning } from '../utils/output';
 import type { DockflowConfig } from '../utils/config';
-import { DOCKFLOW_STACKS_DIR } from '../constants';
+import { DOCKFLOW_HOOKS_DIR, DOCKFLOW_STACKS_DIR } from '../constants';
+import type { RenderedFiles } from './compose-service';
 
 export type HookPhase = 'pre-build' | 'post-build' | 'pre-deploy' | 'post-deploy';
 
@@ -29,7 +30,7 @@ export class HookService {
   /**
    * Run a local hook script (pre-build, post-build).
    *
-   * Hook path: {projectRoot}/.dockflow/hooks/{phase}.sh
+   * Hook path: {projectRoot}/{DOCKFLOW_HOOKS_DIR}/{phase}.sh
    * Silently returns if the file doesn't exist or hooks are disabled.
    * Non-zero exit → printWarning (non-fatal).
    */
@@ -37,11 +38,13 @@ export class HookService {
     phase: HookPhase,
     projectRoot: string,
     config: DockflowConfig,
+    rendered?: RenderedFiles,
   ): Promise<void> {
     if (config.hooks?.enabled === false) return;
 
-    const hookPath = join(projectRoot, '.dockflow', 'hooks', `${phase}.sh`);
-    if (!existsSync(hookPath)) {
+    const hookRelPath = `${DOCKFLOW_HOOKS_DIR}/${phase}.sh`;
+    const hookAbsPath = join(projectRoot, hookRelPath);
+    if (!existsSync(hookAbsPath)) {
       printDebug(`No ${phase} hook found`);
       return;
     }
@@ -50,8 +53,19 @@ export class HookService {
 
     printDim(`Running ${phase} hook...`);
 
+    // Use rendered content if available (templates resolved), otherwise raw file
+    const renderedContent = rendered?.get(hookRelPath.replace(/\\/g, '/'));
+    let scriptPath = hookAbsPath;
+    let tmpFile: string | undefined;
+
+    if (renderedContent) {
+      tmpFile = join(tmpdir(), `dockflow-hook-${phase}-${Date.now()}.sh`);
+      writeFileSync(tmpFile, renderedContent, { mode: 0o755 });
+      scriptPath = tmpFile;
+    }
+
     try {
-      const proc = Bun.spawn(['bash', hookPath], {
+      const proc = Bun.spawn(['bash', scriptPath], {
         cwd: projectRoot,
         env: { ...process.env },
         stdout: 'pipe',
@@ -90,6 +104,8 @@ export class HookService {
       }
     } catch (error) {
       printWarning(`${phase} hook failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      if (tmpFile) try { unlinkSync(tmpFile); } catch {}
     }
   }
 
@@ -109,11 +125,13 @@ export class HookService {
     stackName: string,
     projectRoot: string,
     config: DockflowConfig,
+    rendered?: RenderedFiles,
   ): Promise<void> {
     if (config.hooks?.enabled === false) return;
 
-    const hookPath = join(projectRoot, '.dockflow', 'hooks', `${phase}.sh`);
-    if (!existsSync(hookPath)) {
+    const hookRelPath = `${DOCKFLOW_HOOKS_DIR}/${phase}.sh`;
+    const hookAbsPath = join(projectRoot, hookRelPath);
+    if (!existsSync(hookAbsPath)) {
       printDebug(`No ${phase} hook found`);
       return;
     }
@@ -125,9 +143,9 @@ export class HookService {
     printDim(`Running remote ${phase} hook...`);
 
     try {
-      // Read hook content
-      const hookContent = readFileSync(hookPath, 'utf-8');
-      const escapedContent = shellEscape(hookContent);
+      // Use rendered content if available
+      const hookContent = rendered?.get(hookRelPath.replace(/\\/g, '/'))
+        ?? readFileSync(hookAbsPath, 'utf-8');
 
       // Upload
       await sshExec(

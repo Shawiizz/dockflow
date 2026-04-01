@@ -37,7 +37,9 @@ RUN mkdir -p /var/run/sshd && \
     sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && \
     sed -i 's/#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     sed -i 's/#PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config && \
-    sed -i 's/#Port 22/Port 22/' /etc/ssh/sshd_config
+    sed -i 's/#Port 22/Port 22/' /etc/ssh/sshd_config && \
+    echo "MaxSessions 50" >> /etc/ssh/sshd_config && \
+    echo "MaxStartups 50:30:100" >> /etc/ssh/sshd_config
 
 # Set root password
 RUN echo "root:${SSH_PASSWORD}" | chpasswd

@@ -330,11 +330,11 @@ Using Nunjucks templates to generate Nginx configuration per-server:
 project_name: "my-app"
 
 templates:
-  - src: "nginx/app.conf.j2"
+  - src: "nginx/app.conf.njk"
     dest: "nginx/app.conf"
 ```
 
-### nginx/app.conf.j2
+### nginx/app.conf.njk
 
 ```nginx
 server {

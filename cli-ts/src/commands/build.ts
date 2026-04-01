@@ -99,7 +99,7 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
 
   // Pre-build hook
   if (!options.skipHooks) {
-    await HookService.runLocal('pre-build', projectRoot, config);
+    await HookService.runLocal('pre-build', projectRoot, config, rendered);
   }
 
   // Build images (targets resolved from rendered compose via stdin)
@@ -118,7 +118,7 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
 
   // Post-build hook
   if (!options.skipHooks) {
-    await HookService.runLocal('post-build', projectRoot, config);
+    await HookService.runLocal('post-build', projectRoot, config, rendered);
   }
 
   // Push to registry if requested

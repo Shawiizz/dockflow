@@ -32,6 +32,8 @@ export const DEFAULT_SSH_PORT = 22;
 /**
  * File paths (relative to project root)
  */
+export const DOCKFLOW_LOCAL_DIR = '.dockflow';
+export const DOCKFLOW_HOOKS_DIR = '.dockflow/hooks';
 export const ENV_FILE_PATH = '.env.dockflow';
 
 /**
