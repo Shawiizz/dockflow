@@ -29,3 +29,6 @@ export * from './audit-service';
 
 // History sync across nodes
 export * from './history-sync-service';
+
+// Compose manipulation (template rendering, image tagging, deploy config injection)
+export * from './compose-service';
