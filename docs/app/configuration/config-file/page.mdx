@@ -146,7 +146,7 @@ endpoints:
 | Field | Description |
 |-------|-------------|
 | `name` | Descriptive label |
-| `url` | URL to check (supports Jinja2: `{{ app_external_port }}`) |
+| `url` | URL to check (supports template syntax: `{{ app_external_port }}`) |
 | `expected_status` | Expected HTTP status code |
 | `timeout` | Request timeout in seconds |
 | `retries` | Number of retry attempts |

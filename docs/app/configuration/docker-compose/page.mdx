@@ -33,7 +33,7 @@ Environment variables can come from multiple sources:
 
 - **`servers.yml`** — defined per-environment or per-server (see [Servers & Connections](/configuration/servers))
 - **CI secrets** — override `servers.yml` values
-- **Jinja2 templating** — all files in `.dockflow/` are automatically processed with Jinja2
+- **Nunjucks templating** — all files in `.dockflow/` are automatically rendered with Nunjucks
 
 ```yaml
 services:

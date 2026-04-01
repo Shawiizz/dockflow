@@ -27,7 +27,7 @@ export default function Page() {
 
           <p className="mt-5 text-lg text-neutral-500 dark:text-neutral-400 max-w-[560px] mx-auto leading-relaxed">
             A CLI that scaffolds, provisions, and deploys Docker applications to your own servers.
-            Powered by Docker Swarm and Ansible. No Kubernetes needed.
+            Powered by Docker Swarm. No Kubernetes needed.
           </p>
 
           <div className="flex justify-center gap-3 mt-8 flex-wrap">

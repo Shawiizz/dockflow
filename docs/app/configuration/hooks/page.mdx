@@ -30,16 +30,16 @@ Create shell scripts in `.dockflow/hooks/`:
 
 All hooks are optional. If a hook file doesn't exist, it is skipped.
 
-## Jinja2 Templating
+## Templating
 
-Hooks are rendered with Jinja2 before execution. You can use any Ansible variable:
+Hooks are rendered with [Nunjucks](https://mozilla.github.io/nunjucks/) before execution. You can use any template variable:
 
 ```bash
 #!/bin/bash
-echo "Deploying {{ project_name }} version {{ version }} to {{ env }}"
+echo "Deploying {{ config.project_name }} version {{ version }} to {{ env }}"
 
-# Access environment variables
-DATABASE_URL="{{ lookup('env', 'DATABASE_URL') }}"
+# Access server environment variables
+DATABASE_URL="{{ current.env.database_url }}"
 ```
 
 ## Examples
