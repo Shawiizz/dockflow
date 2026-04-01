@@ -50,3 +50,11 @@ export const STACK_REMOVAL_POLL_INTERVAL_MS = 2000;
 export const CONVERGENCE_TIMEOUT_S = 300;
 /** Default polling interval (s) for convergence checks */
 export const CONVERGENCE_INTERVAL_S = 5;
+
+/**
+ * Traefik defaults (mirrors ansible/roles/traefik/defaults/main.yml)
+ */
+export const TRAEFIK_STACK_NAME = 'traefik';
+export const TRAEFIK_NETWORK_NAME = 'traefik-public';
+export const TRAEFIK_CERTS_VOLUME = 'traefik-certs';
+export const TRAEFIK_IMAGE = 'traefik:v3.0';

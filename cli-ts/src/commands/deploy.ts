@@ -61,6 +61,7 @@ import { HistorySyncService } from '../services/history-sync-service';
 import { BuildService } from '../services/build-service';
 import { DistributionService } from '../services/distribution-service';
 import { HookService } from '../services/hook-service';
+import { TraefikService } from '../services/traefik-service';
 
 interface DeployOptions {
   services?: string;
@@ -428,6 +429,12 @@ export async function runDeploy(
 
     // --- Deploy app ---
     if (deployApp) {
+      // Ensure Traefik is running if proxy is enabled
+      if (config.proxy?.enabled) {
+        const traefik = new TraefikService(managerConn);
+        await traefik.ensureRunning(config.proxy);
+      }
+
       await HookService.runRemote('pre-deploy', managerConn, stackName, projectRoot, config, rendered);
 
       const externalNetworks = ComposeService.getExternalNetworks(compose);

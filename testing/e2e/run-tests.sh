@@ -42,6 +42,9 @@ CLI_BIN="$CLI_BIN_PATH"
 NODE_COUNT=$(check_swarm_ready) || exit 1
 log_success "Environment ready (Swarm with $NODE_COUNT nodes)"
 
+MANAGER_NODE="dockflow-test-manager"
+WORKER_NODE="dockflow-test-worker-1"
+
 # =============================================================================
 # Step 5: Deploy with replicas (uses host-accessible connection strings - localhost:port)
 # =============================================================================
@@ -85,8 +88,6 @@ log_step "Step 6: Running comprehensive deployment verification..."
 
 STACK_NAME="test-app-${TEST_ENV}"
 SERVICE_NAME="${STACK_NAME}_web"
-MANAGER_NODE="dockflow-test-manager"
-WORKER_NODE="dockflow-test-worker-1"
 
 # Wait for service to reach desired state first
 for ((i = 1; i <= 60; i++)); do
