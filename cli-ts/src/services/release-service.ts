@@ -149,6 +149,7 @@ export class ReleaseService {
       );
     }
 
+    const failed = releases[0];
     const previous = releases[1];
     const previousDir = this.releaseDir(stackName, previous.version);
 
@@ -176,6 +177,11 @@ export class ReleaseService {
       this.connection,
       `ln -sfn "${previousDir}" "${this.stackDir(stackName)}/current"`,
     );
+
+    // Clean up the failed release directory
+    await this.removeRelease(stackName, failed.version).catch(() => {
+      printWarning(`Could not remove failed release ${failed.version}`);
+    });
 
     throw new DeployError(
       `Rolled back to ${previous.version}`,
@@ -211,16 +217,32 @@ export class ReleaseService {
     const toKeep = releases.slice(0, keepN);
     const toRemove = releases.slice(keepN);
 
-    // Collect protected images (currently running + in kept releases)
+    // Collect protected images (currently running + in kept releases + other stacks)
     const protectedImages = new Set<string>();
 
-    // Running images
+    // Running images from THIS stack
     const runningResult = await sshExec(
       this.connection,
       `docker stack services ${stackName} --format '{{.Image}}' 2>/dev/null || echo ""`,
     );
     for (const img of runningResult.stdout.trim().split('\n').filter(Boolean)) {
       protectedImages.add(img);
+    }
+
+    // Running images from ALL other stacks (cross-project protection)
+    const allStacksResult = await sshExec(
+      this.connection,
+      `docker stack ls --format '{{.Name}}' 2>/dev/null || echo ""`,
+    );
+    for (const otherStack of allStacksResult.stdout.trim().split('\n').filter(Boolean)) {
+      if (otherStack === stackName) continue;
+      const otherImagesResult = await sshExec(
+        this.connection,
+        `docker stack services ${otherStack} --format '{{.Image}}' 2>/dev/null || echo ""`,
+      );
+      for (const img of otherImagesResult.stdout.trim().split('\n').filter(Boolean)) {
+        protectedImages.add(img);
+      }
     }
 
     // Images from kept releases

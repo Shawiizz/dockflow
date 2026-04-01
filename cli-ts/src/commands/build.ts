@@ -130,7 +130,12 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
       { stdin: new Response(config.registry.password).body!, stdout: 'pipe', stderr: 'pipe' },
     );
     await proc.exited;
-    await DistributionService.pushImages(result.images);
+    await DistributionService.pushImages(result.images, config.registry.additional_tags?.length ? {
+      tags: config.registry.additional_tags,
+      env,
+      version: 'latest',
+      branch: branchName,
+    } : undefined);
   }
 
   printBlank();

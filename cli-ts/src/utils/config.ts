@@ -26,6 +26,7 @@ export interface RegistryConfig {
   enabled?: boolean;
   namespace?: string;
   token?: string;
+  additional_tags?: string[];
 }
 
 export interface BuildOptions {

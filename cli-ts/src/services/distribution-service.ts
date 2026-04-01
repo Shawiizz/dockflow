@@ -10,7 +10,7 @@
  */
 
 import type { SSHKeyConnection } from '../types';
-import { sshExec } from '../utils/ssh';
+import { sshExec, sshExecWithInput } from '../utils/ssh';
 import { printDebug, printDim, printSuccess, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 
@@ -78,19 +78,7 @@ export class DistributionService {
 
     for (let attempt = 1; attempt <= TRANSFER_MAX_RETRIES + 1; attempt++) {
       try {
-        // Build the SSH connection args for the pipe command
-        const conn = target.connection;
-        const sshArgs = [
-          'ssh',
-          '-o', 'StrictHostKeyChecking=no',
-          '-o', 'UserKnownHostsFile=/dev/null',
-          '-p', String(conn.port),
-          '-i', '/dev/stdin',
-        ];
-
-        // Use a shell pipeline: docker save | gzip -1 | ssh ... "gunzip | docker load"
-        // Since we can't easily pipe the SSH key, use a single sshExec approach instead:
-        // Save locally, pipe through SSH exec stream
+        // Save image locally and compress
         const saveProc = Bun.spawn(['docker', 'save', image], {
           stdout: 'pipe',
           stderr: 'pipe',
@@ -102,8 +90,7 @@ export class DistributionService {
           stderr: 'pipe',
         });
 
-        // Read gzipped data into buffer, then send via sshExec
-        const gzipped = await new Response(gzipProc.stdout).arrayBuffer();
+        const gzipped = Buffer.from(await new Response(gzipProc.stdout).arrayBuffer());
         await gzipProc.exited;
         await saveProc.exited;
 
@@ -111,49 +98,17 @@ export class DistributionService {
           throw new Error(`docker save failed for ${image}`);
         }
 
-        // We need to transfer the gzipped data to the remote and load it.
-        // Use base64 encoding through SSH to avoid binary issues.
-        const b64 = Buffer.from(gzipped).toString('base64');
+        // Stream gzipped data directly through the SSH channel's stdin.
+        // The ssh2 library handles packet splitting and flow control.
+        // No base64 encoding, no temp files, no shell quoting issues.
+        const result = await sshExecWithInput(
+          target.connection,
+          'gunzip | docker load',
+          gzipped,
+        );
 
-        // Split into chunks for very large images to avoid argument length limits
-        const chunkSize = 500000; // ~500KB per chunk
-        const chunks = [];
-        for (let i = 0; i < b64.length; i += chunkSize) {
-          chunks.push(b64.substring(i, i + chunkSize));
-        }
-
-        if (chunks.length === 1) {
-          const result = await sshExec(
-            target.connection,
-            `echo "${b64}" | base64 -d | gunzip | docker load`,
-          );
-          if (result.exitCode !== 0) {
-            throw new Error(`docker load failed on ${target.name}: ${result.stderr.trim()}`);
-          }
-        } else {
-          // For large images, write chunks to a temp file on remote
-          const tmpFile = `/tmp/dockflow-img-${Date.now()}.gz`;
-          try {
-            // Initialize empty file
-            await sshExec(target.connection, `> "${tmpFile}"`);
-
-            for (const chunk of chunks) {
-              await sshExec(
-                target.connection,
-                `echo "${chunk}" | base64 -d >> "${tmpFile}"`,
-              );
-            }
-
-            const result = await sshExec(
-              target.connection,
-              `gunzip < "${tmpFile}" | docker load`,
-            );
-            if (result.exitCode !== 0) {
-              throw new Error(`docker load failed on ${target.name}: ${result.stderr.trim()}`);
-            }
-          } finally {
-            await sshExec(target.connection, `rm -f "${tmpFile}"`).catch(() => {});
-          }
+        if (result.exitCode !== 0) {
+          throw new Error(`docker load failed on ${target.name}: ${result.stderr.trim() || result.stdout.trim()}`);
         }
 
         printSuccess(`Transferred ${image} to ${target.name}`);
@@ -183,15 +138,14 @@ export class DistributionService {
 
     printDim(`Distributing ${images.length} image(s) to ${targets.length} node(s)...`);
 
-    // Transfer all images to all targets in parallel
-    const tasks: Promise<void>[] = [];
-    for (const image of images) {
-      for (const target of targets) {
-        tasks.push(DistributionService.transferImage(image, target));
+    // Transfer images to each target sequentially per target, targets in parallel
+    const targetTasks = targets.map(async (target) => {
+      for (const image of images) {
+        await DistributionService.transferImage(image, target);
       }
-    }
+    });
 
-    const results = await Promise.allSettled(tasks);
+    const results = await Promise.allSettled(targetTasks);
     const failed = results.filter((r) => r.status === 'rejected');
 
     if (failed.length > 0) {
@@ -234,8 +188,12 @@ export class DistributionService {
 
   /**
    * Push all built images to registry (runs locally).
+   * Optionally tags and pushes additional tags with variable substitution.
    */
-  static async pushImages(images: string[]): Promise<void> {
+  static async pushImages(
+    images: string[],
+    additionalTags?: { tags: string[]; env: string; version: string; branch: string },
+  ): Promise<void> {
     for (const image of images) {
       printDim(`Pushing ${image}...`);
 
@@ -255,6 +213,70 @@ export class DistributionService {
       }
 
       printSuccess(`Pushed ${image}`);
+
+      // Push additional tags if configured
+      if (additionalTags && additionalTags.tags.length > 0) {
+        const sha = await DistributionService.getGitSha();
+        const imageBase = image.split(':')[0];
+
+        for (const tagTemplate of additionalTags.tags) {
+          const tag = tagTemplate
+            .replace(/\{version\}/g, additionalTags.version)
+            .replace(/\{env\}/g, additionalTags.env)
+            .replace(/\{branch\}/g, DistributionService.sanitizeBranch(additionalTags.branch))
+            .replace(/\{sha\}/g, sha);
+
+          const taggedImage = `${imageBase}:${tag}`;
+
+          const tagProc = Bun.spawn(['docker', 'tag', image, taggedImage], {
+            stdout: 'pipe',
+            stderr: 'pipe',
+          });
+          await tagProc.exited;
+
+          if (tagProc.exitCode !== 0) {
+            printWarning(`Failed to tag ${taggedImage}`);
+            continue;
+          }
+
+          const pushProc = Bun.spawn(['docker', 'push', taggedImage], {
+            stdout: 'pipe',
+            stderr: 'pipe',
+          });
+          const pushStderr = await new Response(pushProc.stderr).text();
+          await pushProc.exited;
+
+          if (pushProc.exitCode !== 0) {
+            printWarning(`Failed to push additional tag ${taggedImage}: ${pushStderr.trim()}`);
+          } else {
+            printDim(`Pushed additional tag: ${taggedImage}`);
+          }
+        }
+      }
     }
+  }
+
+  /**
+   * Get the current git SHA (short form).
+   */
+  private static async getGitSha(): Promise<string> {
+    try {
+      const proc = Bun.spawn(['git', 'rev-parse', '--short', 'HEAD'], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      const stdout = await new Response(proc.stdout).text();
+      await proc.exited;
+      return stdout.trim() || 'unknown';
+    } catch {
+      return 'unknown';
+    }
+  }
+
+  /**
+   * Sanitize a git branch name for use in Docker tags.
+   */
+  private static sanitizeBranch(branch: string): string {
+    return branch.replace(/[^a-zA-Z0-9._-]/g, '-');
   }
 }

@@ -19,6 +19,9 @@ export const RegistryConfigSchema = z.object({
   enabled: z.boolean().optional().default(true).describe('Enable/disable registry push'),
   namespace: z.string().optional().describe('Image namespace/organization'),
   token: z.string().optional().describe('Registry token (alternative to password)'),
+  additional_tags: z.array(z.string()).optional().describe(
+    'Additional tags to push besides the version tag. Supports variables: {version}, {env}, {branch}, {sha}'
+  ),
 }).refine(
   (data) => {
     // Custom registry requires URL

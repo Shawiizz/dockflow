@@ -251,6 +251,72 @@ export async function executeInteractiveSSH(
 }
 
 /**
+ * Execute a command via SSH, piping binary data to its stdin.
+ * Used for streaming data (e.g., docker image tarballs) to remote commands.
+ * The ssh2 Channel handles SSH-level packet splitting and flow control.
+ */
+export async function sshExecWithInput(
+  conn: ConnectionInfo,
+  command: string,
+  input: Buffer,
+): Promise<SSHExecResult> {
+  const client = await connectClient(conn);
+
+  try {
+    return await new Promise<SSHExecResult>((resolve, reject) => {
+      client.exec(command, (err, stream) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        let stdout = '';
+        let stderr = '';
+
+        stream.on('data', (data: Buffer) => {
+          stdout += data.toString();
+        });
+
+        stream.stderr.on('data', (data: Buffer) => {
+          stderr += data.toString();
+        });
+
+        stream.on('close', (code: number) => {
+          resolve({
+            stdout,
+            stderr,
+            exitCode: code ?? 0,
+          });
+        });
+
+        // Write input data to the remote command's stdin with backpressure handling
+        const CHUNK = 64 * 1024;
+        let offset = 0;
+        const writeNext = () => {
+          while (offset < input.length) {
+            const end = Math.min(offset + CHUNK, input.length);
+            const slice = input.subarray(offset, end);
+            offset = end;
+            if (offset >= input.length) {
+              stream.end(slice);
+              return;
+            }
+            if (!stream.write(slice)) {
+              stream.once('drain', writeNext);
+              return;
+            }
+          }
+          stream.end();
+        };
+        writeNext();
+      });
+    });
+  } finally {
+    client.end();
+  }
+}
+
+/**
  * Test SSH connection
  */
 /**

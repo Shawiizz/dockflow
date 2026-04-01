@@ -373,7 +373,12 @@ export async function runDeploy(
               username: config.registry.username,
               password: config.registry.password,
             });
-            await DistributionService.pushImages(builtImages);
+            await DistributionService.pushImages(builtImages, config.registry.additional_tags?.length ? {
+              tags: config.registry.additional_tags,
+              env,
+              version: deployVersion,
+              branch: branchName,
+            } : undefined);
           } else if (builtImages.length > 0) {
             const distTargets = [
               { connection: managerConn, name: 'manager' },
@@ -405,7 +410,8 @@ export async function runDeploy(
       const accessoriesContent = rendered.get(accessoriesRelPath);
       if (accessoriesContent) {
         const accessoriesCompose = ComposeService.loadFromString(accessoriesContent);
-        ComposeService.updateImageTags(accessoriesCompose, config, env, deployVersion);
+        // Do NOT call updateImageTags on accessories — they use third-party images
+        // (Redis, Postgres, etc.) that must not be retagged with the app version.
         ComposeService.injectAccessoriesDefaults(accessoriesCompose);
         const externalNets = ComposeService.getExternalNetworks(accessoriesCompose);
         const externalVols = ComposeService.getExternalVolumes(accessoriesCompose);
