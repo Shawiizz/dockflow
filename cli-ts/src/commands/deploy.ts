@@ -357,7 +357,7 @@ export async function runDeploy(
         });
         builtImages = result.images;
       } else {
-        const targets = BuildService.getBuildTargets(composeContent, composeDirPath, options.services);
+        const targets = BuildService.getBuildTargets(ComposeService.serialize(compose), composeDirPath, options.services);
         if (targets.length > 0) {
           // Attach rendered overrides to each target
           for (const target of targets) {
