@@ -45,4 +45,6 @@ export interface SSHExecResult {
   stdout: string;
   stderr: string;
   exitCode: number;
+  /** Raw binary stdout — only populated when collectBinary is true */
+  binaryOutput?: Buffer;
 }

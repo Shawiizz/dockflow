@@ -381,7 +381,10 @@ export class BuildService {
 
       for (const target of targets) {
         // Rebase paths to remote tmpDir
-        const relDockerfile = target.dockerfile;
+        // Use dockerfileAbsPath relative to context (not the raw compose value)
+        // e.g. context=projectRoot, dockerfileAbsPath=.dockflow/docker/Dockerfile.web
+        //   → relDockerfile = ".dockflow/docker/Dockerfile.web"
+        const relDockerfile = relative(target.context, target.dockerfileAbsPath).replace(/\\/g, '/');
         const relContext = relative(params.projectRoot, target.context).replace(/\\/g, '/');
         const remoteContext = `${tmpDir}/${relContext}`;
 

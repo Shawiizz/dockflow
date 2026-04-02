@@ -2,8 +2,9 @@
 # =============================================================================
 # Dockflow E2E Test - Remote Build
 # =============================================================================
-# This test verifies that remote_build: true works correctly.
-# It creates a Git repository on the manager, pushes code, and deploys.
+# Tests that remote_build: true works correctly.
+# Copies test app files to the manager, creates a git repo there,
+# and deploys using the remote build flow (git clone + docker build on remote).
 #
 # Can run standalone (will setup VMs if needed) or after run-tests.sh
 # =============================================================================
@@ -18,6 +19,9 @@ PRIMARY_TEST_APP_DIR="$SCRIPT_DIR/test-app"
 
 TEST_ENV="test"
 TEST_VERSION="1.0.0-remote"
+MANAGER_NODE="dockflow-test-manager"
+WORKER_NODE="dockflow-test-worker-1"
+REMOTE_REPO_PATH="/home/deploytest/repos/test-app-remote"
 
 # Load common functions
 source "$SCRIPT_DIR/common.sh"
@@ -35,7 +39,7 @@ echo "==========================================${NC}"
 echo ""
 
 # =============================================================================
-# Pre-checks / Setup (auto-setup if needed, skip with --skip-setup)
+# Pre-checks / Setup
 # =============================================================================
 log_step "Checking environment..."
 
@@ -45,13 +49,11 @@ if [[ "${1:-}" == "--skip-setup" ]]; then
 	log_info "Skipping setup (--skip-setup flag)"
 fi
 
-# Try to setup or verify existing environment
 if check_vms_running 2>/dev/null && check_swarm_ready 2>/dev/null; then
 	log_success "VMs already running and Swarm ready"
 	CLI_BINARY=$(get_cli_binary)
 	CLI_BIN="$CLI_DIR/dist/$CLI_BINARY"
 
-	# Build CLI if not present
 	if [[ ! -f "$CLI_BIN" ]]; then
 		build_cli || exit 1
 		CLI_BIN="$CLI_BIN_PATH"
@@ -69,141 +71,66 @@ NODE_COUNT=$(check_swarm_ready) || exit 1
 log_success "Environment ready (Swarm with $NODE_COUNT nodes)"
 
 # =============================================================================
-# Step 1: Setup Git repository on manager
+# Step 1: Create git repo on manager via docker cp
 # =============================================================================
-log_step "Step 1: Setting up Git repository on manager..."
+log_step "Step 1: Creating git repo on manager..."
 
-REPO_NAME="test-app-remote"
-REPO_PATH="/home/deploytest/repos/${REPO_NAME}.git"
+# Clean any previous repo and ensure parent directory exists
+docker exec $MANAGER_NODE bash -c "rm -rf $REMOTE_REPO_PATH && mkdir -p $(dirname $REMOTE_REPO_PATH) && chown deploytest:deploytest $(dirname $REMOTE_REPO_PATH)"
 
-# Create bare Git repository on manager
-docker exec dockflow-test-manager bash -c "
-    # Create repos directory
-    mkdir -p /home/deploytest/repos
-    chown deploytest:deploytest /home/deploytest/repos
-    
-    # Remove old repo if exists
-    rm -rf $REPO_PATH
-    
-    # Create bare repository as deploytest user
-    sudo -u deploytest git init --bare $REPO_PATH
-    
-    # Configure git to allow push (run as deploytest)
-    sudo -u deploytest git -C $REPO_PATH config receive.denyCurrentBranch ignore
-    
-    # Setup SSH for deploytest user to clone from itself on localhost
-    # The CLI connects as deploytest, so git clone runs as deploytest
-    sudo -u deploytest bash -c '
-        mkdir -p ~/.ssh && chmod 700 ~/.ssh
-        if [[ ! -f ~/.ssh/id_rsa ]]; then
-            ssh-keygen -t rsa -b 2048 -f ~/.ssh/id_rsa -N "" -q
-        fi
-        cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
-        chmod 600 ~/.ssh/authorized_keys
-        cat > ~/.ssh/config <<SSHEOF
-Host localhost
-    StrictHostKeyChecking no
-    UserKnownHostsFile /dev/null
-    LogLevel ERROR
-SSHEOF
-        chmod 600 ~/.ssh/config
-    '
+# Copy test app files to the manager
+docker cp "$TEST_APP_DIR/." "$MANAGER_NODE:$REMOTE_REPO_PATH"
+
+# Init a git repo and commit (as deploytest user)
+docker exec $MANAGER_NODE bash -c "
+    chown -R deploytest:deploytest $REMOTE_REPO_PATH
+    cd $REMOTE_REPO_PATH
+    sudo -u deploytest git init
+    sudo -u deploytest git config user.email 'test@dockflow.local'
+    sudo -u deploytest git config user.name 'Dockflow E2E Test'
+    sudo -u deploytest git add -A
+    sudo -u deploytest git commit -m 'Initial commit for remote build test'
 "
-log_success "Bare Git repository created at $REPO_PATH"
+log_success "Git repo created at $REMOTE_REPO_PATH on manager"
 
 # =============================================================================
-# Step 2: Initialize local Git repo and push
+# Step 2: Prepare local git repo and connection strings
 # =============================================================================
-log_step "Step 2: Initializing local Git repo and pushing to manager..."
+log_step "Step 2: Preparing local repo and connection strings..."
 
 cd "$TEST_APP_DIR"
 
-# Clean any existing git
+# Init a local git repo with origin pointing to the manager's local path.
+# The CLI reads this URL and passes it to `git clone` on the remote server.
 rm -rf .git
-
-# Initialize git repo
-git init
+git init -q
 git config user.email "test@dockflow.local"
 git config user.name "Dockflow E2E Test"
 git add -A
-git commit -m "Initial commit for remote build test"
+git commit -q -m "init"
+git remote add origin "$REMOTE_REPO_PATH"
 
-# Get the deploytest user's SSH key from the connection string saved by run-tests.sh
-# The key is stored in the test-app/.env.dockflow file created during main test
+# Load connection strings from the main test's .env.dockflow
 TEST_APP_ENV="$SCRIPT_DIR/test-app/.env.dockflow"
 if [[ ! -f "$TEST_APP_ENV" ]]; then
 	log_error "test-app/.env.dockflow not found - run run-tests.sh first"
 	exit 1
 fi
-
-# Extract the connection string and decode the private key
 source "$TEST_APP_ENV"
-DEPLOY_KEY=$(echo "$TEST_MAIN_SERVER_CONNECTION" | base64 -d | jq -r '.privateKey')
 
-if [[ -z "$DEPLOY_KEY" || "$DEPLOY_KEY" == "null" ]]; then
-	log_error "Could not extract deploy user SSH key from connection string"
-	exit 1
-fi
-
-# Create temporary SSH key file
-TEMP_KEY=$(mktemp)
-echo "$DEPLOY_KEY" >"$TEMP_KEY"
-chmod 600 "$TEMP_KEY"
-
-# Push to manager using SSH
-# We need to use the external port (2222) from host
-GIT_SSH_COMMAND="ssh -i $TEMP_KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p $SSH_PORT_MANAGER" \
-	git remote add origin "deploytest@localhost:$REPO_PATH" 2>/dev/null ||
-	git remote set-url origin "deploytest@localhost:$REPO_PATH"
-
-# Git creates 'master' by default, push it
-set +e
-GIT_SSH_COMMAND="ssh -i $TEMP_KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p $SSH_PORT_MANAGER" \
-	git push -u origin master --force 2>&1
-PUSH_EXIT=$?
-set -e
-
-# Cleanup temp key
-rm -f "$TEMP_KEY"
-
-if [[ $PUSH_EXIT -ne 0 ]]; then
-	log_error "Failed to push to git repository"
-	exit 1
-fi
-
-log_success "Code pushed to manager Git repository"
-
-# Verify repo on manager
-COMMIT_COUNT=$(docker exec dockflow-test-manager bash -c "cd $REPO_PATH && git rev-list --count HEAD 2>/dev/null || echo 0")
-log_info "Repository has $COMMIT_COUNT commit(s)"
-
-# =============================================================================
-# Step 3: Create connection strings for deploy
-# =============================================================================
-log_step "Step 3: Preparing connection strings..."
-
-# Connection strings are already loaded from test-app/.env.dockflow (source'd earlier)
-# Use WSL-accessible connection strings (localhost:2222/2223) since CLI runs on the host
-
-# Create .env.dockflow for test-app-remote
 cat >"$TEST_APP_DIR/.env.dockflow" <<EOF
 TEST_MAIN_SERVER_CONNECTION=$TEST_MAIN_SERVER_CONNECTION
 TEST_WORKER_1_CONNECTION=$TEST_WORKER_1_CONNECTION
 EOF
 
-log_success "Connection strings created"
+log_success "Local repo and connection strings ready"
 
 # =============================================================================
-# Step 4: Deploy with remote build
+# Step 3: Deploy with remote build
 # =============================================================================
-log_step "Step 4: Deploying with remote_build: true..."
+log_step "Step 3: Deploying with remote_build: true..."
 
 cd "$TEST_APP_DIR"
-
-# Set the remote URL to the local path on the manager.
-# The CLI reads this URL and uses it in `git clone` on the remote server.
-# Since the repo lives on the manager itself, a local path clone is simplest and avoids SSH-to-self auth issues.
-git remote set-url origin "$REPO_PATH"
 
 set +e
 DOCKFLOW_DEV_PATH="$DOCKFLOW_ROOT" \
@@ -213,31 +140,24 @@ set -e
 
 if [[ $DEPLOY_EXIT_CODE -ne 0 ]]; then
 	log_error "Remote build deployment failed with exit code $DEPLOY_EXIT_CODE"
-
-	# Show some debug info
 	echo ""
 	log_info "Debug: Checking if image was built..."
-	docker exec dockflow-test-manager docker images | grep -E "test-remote|REPOSITORY" || true
-
+	docker exec $MANAGER_NODE docker images | grep -E "test-remote|REPOSITORY" || true
 	echo ""
 	log_info "Debug: Checking services..."
-	docker exec dockflow-test-manager docker service ls 2>/dev/null || true
-
+	docker exec $MANAGER_NODE docker service ls 2>/dev/null || true
 	exit 1
 fi
 log_success "Remote build deployment completed"
 
 # =============================================================================
-# Step 5: Comprehensive Deployment Verification
+# Step 4: Deployment verification
 # =============================================================================
-log_step "Step 5: Running comprehensive deployment verification..."
+log_step "Step 4: Running deployment verification..."
 
 STACK_NAME="test-app-remote-${TEST_ENV}"
 SERVICE_NAME="${STACK_NAME}_web"
-MANAGER_NODE="dockflow-test-manager"
-WORKER_NODE="dockflow-test-worker-1"
 
-# Wait for service to reach desired state first
 wait_for_service "$SERVICE_NAME" "1/1" 60 || exit 1
 
 # Verify the image was built on the remote server (not locally)
@@ -249,8 +169,6 @@ else
 	exit 1
 fi
 
-# Run comprehensive verification (single replica, check manager + worker for images)
-# For remote build with no registry, images should be distributed to workers
 if ! verify_deployment "$STACK_NAME" "$SERVICE_NAME" "1/1" "$MANAGER_NODE" "$WORKER_NODE"; then
 	log_error "Deployment verification failed!"
 	exit 1
@@ -263,7 +181,6 @@ log_success "All deployment verifications passed"
 # =============================================================================
 log_step "Cleanup..."
 
-# Remove the git repo from test app (keep it clean for re-runs)
 rm -rf "$TEST_APP_DIR/.git"
 rm -f "$TEST_APP_DIR/.env.dockflow"
 
@@ -278,8 +195,7 @@ echo "   REMOTE BUILD TEST PASSED ✓"
 echo "==========================================${NC}"
 echo ""
 echo "Summary:"
-echo "  ✓ Git repository created on manager"
-echo "  ✓ Code pushed to remote repository"
+echo "  ✓ Git repo created on manager (docker cp)"
 echo "  ✓ Deploy with remote_build: true succeeded"
 echo "  ✓ Image built on remote server"
 echo "  ✓ Service running correctly"

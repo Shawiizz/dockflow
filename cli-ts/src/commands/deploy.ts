@@ -349,7 +349,7 @@ export async function runDeploy(
       if (config.options?.remote_build) {
         const result = await BuildService.buildRemote(managerConn, {
           projectRoot,
-          composeContent,
+          composeContent: ComposeService.serialize(compose),
           composeDirPath,
           projectName: config.project_name,
           env,
@@ -357,6 +357,12 @@ export async function runDeploy(
           servicesFilter: options.services,
         });
         builtImages = result.images;
+
+        // Distribute images from manager to workers
+        if (builtImages.length > 0 && workerConns.length > 0) {
+          const workerTargets = workerConns.map((w) => ({ connection: w.connection, name: w.name }));
+          await DistributionService.distributeFromRemote(builtImages, managerConn, workerTargets);
+        }
       } else {
         const targets = BuildService.getBuildTargets(ComposeService.serialize(compose), composeDirPath, options.services);
         if (targets.length > 0) {

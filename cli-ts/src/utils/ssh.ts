@@ -46,7 +46,8 @@ function connectClient(conn: ConnectionInfo): Promise<SSHClient> {
  */
 export async function sshExec(
   conn: ConnectionInfo,
-  command: string
+  command: string,
+  options?: { collectBinary?: boolean },
 ): Promise<SSHExecResult> {
   const client = await connectClient(conn);
 
@@ -60,9 +61,14 @@ export async function sshExec(
 
         let stdout = '';
         let stderr = '';
+        const chunks: Buffer[] = options?.collectBinary ? [] : [];
 
         stream.on('data', (data: Buffer) => {
-          stdout += data.toString();
+          if (options?.collectBinary) {
+            chunks.push(data);
+          } else {
+            stdout += data.toString();
+          }
         });
 
         stream.stderr.on('data', (data: Buffer) => {
@@ -74,6 +80,7 @@ export async function sshExec(
             stdout,
             stderr,
             exitCode: code ?? 0,
+            binaryOutput: options?.collectBinary ? Buffer.concat(chunks) : undefined,
           });
         });
       });

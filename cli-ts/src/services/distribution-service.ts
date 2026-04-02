@@ -19,6 +19,13 @@ export interface DistributionTarget {
   name: string;
 }
 
+/** Strategy for obtaining image data: local docker or remote SSH host */
+interface ImageSource {
+  getImageId(image: string): Promise<string>;
+  getGzippedData(image: string): Promise<Buffer>;
+  label: string;
+}
+
 const TRANSFER_MAX_RETRIES = 2;
 
 export class DistributionService {
@@ -50,25 +57,19 @@ export class DistributionService {
   }
 
   /**
-   * Transfer a single image to a remote host via SSH pipe.
-   *
-   * docker save | gzip -1 | ssh ... "gunzip | docker load"
-   *
-   * Skips if remote already has the same image ID.
-   * Retries up to TRANSFER_MAX_RETRIES times on failure.
+   * Core transfer: get gzipped image data from source, load on target.
+   * Handles dedup check and retry logic.
    */
-  static async transferImage(
+  private static async transferWithSource(
     image: string,
     target: DistributionTarget,
+    source: ImageSource,
   ): Promise<void> {
     // Check if already up to date
-    const localId = await DistributionService.getLocalImageId(image);
-    if (localId) {
-      const remoteId = await DistributionService.getRemoteImageId(
-        target.connection,
-        image,
-      );
-      if (localId === remoteId) {
+    const sourceId = await source.getImageId(image);
+    if (sourceId) {
+      const targetId = await DistributionService.getRemoteImageId(target.connection, image);
+      if (sourceId === targetId) {
         printDim(`Already up to date on ${target.name}: ${image}`);
         return;
       }
@@ -78,29 +79,8 @@ export class DistributionService {
 
     for (let attempt = 1; attempt <= TRANSFER_MAX_RETRIES + 1; attempt++) {
       try {
-        // Save image locally and compress
-        const saveProc = Bun.spawn(['docker', 'save', image], {
-          stdout: 'pipe',
-          stderr: 'pipe',
-        });
+        const gzipped = await source.getGzippedData(image);
 
-        const gzipProc = Bun.spawn(['gzip', '-1'], {
-          stdin: saveProc.stdout,
-          stdout: 'pipe',
-          stderr: 'pipe',
-        });
-
-        const gzipped = Buffer.from(await new Response(gzipProc.stdout).arrayBuffer());
-        await gzipProc.exited;
-        await saveProc.exited;
-
-        if (saveProc.exitCode !== 0) {
-          throw new Error(`docker save failed for ${image}`);
-        }
-
-        // Stream gzipped data directly through the SSH channel's stdin.
-        // The ssh2 library handles packet splitting and flow control.
-        // No base64 encoding, no temp files, no shell quoting issues.
         const result = await sshExecWithInput(
           target.connection,
           'gunzip | docker load',
@@ -111,7 +91,7 @@ export class DistributionService {
           throw new Error(`docker load failed on ${target.name}: ${result.stderr.trim() || result.stdout.trim()}`);
         }
 
-        printSuccess(`Transferred ${image} to ${target.name}`);
+        printSuccess(`Transferred ${image} to ${target.name}${source.label ? ` (${source.label})` : ''}`);
         return;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
@@ -127,21 +107,87 @@ export class DistributionService {
     );
   }
 
+  /** Local source: docker save | gzip on the CLI machine */
+  private static localSource(): ImageSource {
+    return {
+      label: '',
+      getImageId: (image) => DistributionService.getLocalImageId(image),
+      getGzippedData: async (image) => {
+        const saveProc = Bun.spawn(['docker', 'save', image], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
+        const gzipProc = Bun.spawn(['gzip', '-1'], {
+          stdin: saveProc.stdout,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
+        const gzipped = Buffer.from(await new Response(gzipProc.stdout).arrayBuffer());
+        await gzipProc.exited;
+        await saveProc.exited;
+        if (saveProc.exitCode !== 0) {
+          throw new Error(`docker save failed for ${image}`);
+        }
+        return gzipped;
+      },
+    };
+  }
+
+  /** Remote source: docker save | gzip on a remote SSH host */
+  private static remoteSource(connection: SSHKeyConnection): ImageSource {
+    return {
+      label: 'from remote',
+      getImageId: (image) => DistributionService.getRemoteImageId(connection, image),
+      getGzippedData: async (image) => {
+        const result = await sshExec(
+          connection,
+          `docker save "${image}" | gzip -1`,
+          { collectBinary: true },
+        );
+        if (result.exitCode !== 0) {
+          throw new Error(`docker save failed on remote: ${result.stderr.trim()}`);
+        }
+        return result.binaryOutput!;
+      },
+    };
+  }
+
   /**
-   * Transfer all images to all targets in parallel.
+   * Transfer a single image from local Docker to a remote host.
    */
-  static async distributeAll(
+  static async transferImage(
+    image: string,
+    target: DistributionTarget,
+  ): Promise<void> {
+    return DistributionService.transferWithSource(image, target, DistributionService.localSource());
+  }
+
+  /**
+   * Transfer a single image from a remote source to another remote target.
+   */
+  static async transferImageFromRemote(
+    image: string,
+    source: SSHKeyConnection,
+    target: DistributionTarget,
+  ): Promise<void> {
+    return DistributionService.transferWithSource(image, target, DistributionService.remoteSource(source));
+  }
+
+  /**
+   * Distribute images to targets in parallel (targets in parallel, images sequential per target).
+   */
+  private static async distributeWithSource(
     images: string[],
     targets: DistributionTarget[],
+    source: ImageSource,
   ): Promise<void> {
     if (images.length === 0 || targets.length === 0) return;
 
-    printDim(`Distributing ${images.length} image(s) to ${targets.length} node(s)...`);
+    printDim(`Distributing ${images.length} image(s) to ${targets.length} node(s)${source.label ? ` (${source.label})` : ''}...`);
 
-    // Transfer images to each target sequentially per target, targets in parallel
     const targetTasks = targets.map(async (target) => {
       for (const image of images) {
-        await DistributionService.transferImage(image, target);
+        await DistributionService.transferWithSource(image, target, source);
       }
     });
 
@@ -157,6 +203,27 @@ export class DistributionService {
         ErrorCode.DEPLOY_FAILED,
       );
     }
+  }
+
+  /**
+   * Transfer all images from local Docker to all targets.
+   */
+  static async distributeAll(
+    images: string[],
+    targets: DistributionTarget[],
+  ): Promise<void> {
+    return DistributionService.distributeWithSource(images, targets, DistributionService.localSource());
+  }
+
+  /**
+   * Distribute images from a remote source (manager) to worker targets.
+   */
+  static async distributeFromRemote(
+    images: string[],
+    source: SSHKeyConnection,
+    targets: DistributionTarget[],
+  ): Promise<void> {
+    return DistributionService.distributeWithSource(images, targets, DistributionService.remoteSource(source));
   }
 
   /**
