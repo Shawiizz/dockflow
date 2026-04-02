@@ -1,6 +1,6 @@
 /**
  * Metrics Service
- * 
+ *
  * Collects and stores deployment metrics on the remote manager.
  * All data is stored in /var/lib/dockflow/metrics/<stack>/
  */
@@ -82,80 +82,34 @@ export function parseJsonlLines<T = unknown>(raw: string): T[] {
 }
 
 /**
- * Record a deployment metric on the remote server
- */
-export async function recordDeploymentMetric(
-  connection: SSHKeyConnection,
-  stackName: string,
-  metric: Omit<DeploymentMetric, 'id' | 'timestamp'>
-): Promise<void> {
-  const metricsPath = getMetricsPath(stackName);
-  const metricsDir = `${DOCKFLOW_METRICS_DIR}/${stackName}`;
-  
-  const entry: DeploymentMetric = {
-    id: generateDeploymentId(),
-    timestamp: new Date().toISOString(),
-    ...metric,
-  };
-
-  // Create directory and append metric as JSON line (JSONL format for easy appending)
-  const entryJson = JSON.stringify(entry);
-  const escapedJson = entryJson.replace(/'/g, "'\"'\"'");
-  
-  await sshExec(connection, `
-    mkdir -p "${metricsDir}"
-    echo '${escapedJson}' >> "${metricsPath}"
-  `);
-}
-
-/**
- * Fetch deployment metrics from the remote server
- */
-export async function fetchDeploymentMetrics(
-  connection: SSHKeyConnection,
-  stackName: string,
-  limit?: number
-): Promise<DeploymentMetric[]> {
-  const metricsPath = getMetricsPath(stackName);
-  
-  const cmd = limit 
-    ? `tail -n ${limit} "${metricsPath}" 2>/dev/null || echo ""`
-    : `cat "${metricsPath}" 2>/dev/null || echo ""`;
-  
-  const result = await sshExec(connection, cmd);
-  return parseJsonlLines<DeploymentMetric>(result.stdout);
-}
-
-/**
- * Calculate metrics summary from deployment data
+ * Calculate metrics summary from deployment data.
+ * Pure function — no SSH.
  */
 export function calculateMetricsSummary(metrics: DeploymentMetric[]): MetricsSummary {
   const now = Date.now();
   const day = 24 * 60 * 60 * 1000;
-  
+
   const successful = metrics.filter(m => m.status === 'success').length;
   const failed = metrics.filter(m => m.status === 'failed').length;
   const rolledBack = metrics.filter(m => m.status === 'rolled_back').length;
-  
+
   const successfulMetrics = metrics.filter(m => m.status === 'success');
   const avgDuration = successfulMetrics.length > 0
     ? successfulMetrics.reduce((acc, m) => acc + m.duration_ms, 0) / successfulMetrics.length
     : 0;
-  
-  // Count deployments by time period
-  const deploymentsLast24h = metrics.filter(m => 
+
+  const deploymentsLast24h = metrics.filter(m =>
     now - new Date(m.timestamp).getTime() < day
   ).length;
-  
-  const deploymentsLast7d = metrics.filter(m => 
+
+  const deploymentsLast7d = metrics.filter(m =>
     now - new Date(m.timestamp).getTime() < 7 * day
   ).length;
-  
-  const deploymentsLast30d = metrics.filter(m => 
+
+  const deploymentsLast30d = metrics.filter(m =>
     now - new Date(m.timestamp).getTime() < 30 * day
   ).length;
-  
-  // Count versions
+
   const versionCounts = new Map<string, number>();
   for (const m of metrics) {
     versionCounts.set(m.version, (versionCounts.get(m.version) || 0) + 1);
@@ -164,12 +118,11 @@ export function calculateMetricsSummary(metrics: DeploymentMetric[]): MetricsSum
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([version, count]) => ({ version, count }));
-  
-  // Sort by timestamp descending to get the last deployment
-  const sortedMetrics = [...metrics].sort((a, b) => 
+
+  const sortedMetrics = [...metrics].sort((a, b) =>
     new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   );
-  
+
   return {
     total_deployments: metrics.length,
     successful,
@@ -186,10 +139,9 @@ export function calculateMetricsSummary(metrics: DeploymentMetric[]): MetricsSum
 }
 
 /**
- * Class-based metrics writer for use in the new deploy engine.
- * Wraps the connection so callers don't need to pass it each time.
+ * Unified metrics service — read and write deployment metrics via SSH.
  */
-export class MetricsWriteService {
+export class MetricsService {
   constructor(private readonly connection: SSHKeyConnection) {}
 
   /**
@@ -240,33 +192,42 @@ export class MetricsWriteService {
 
     return entryJson;
   }
-}
 
-/**
- * Clear old metrics (keep last N entries)
- */
-export async function pruneMetrics(
-  connection: SSHKeyConnection,
-  stackName: string,
-  keepLast: number = 1000
-): Promise<number> {
-  const metricsPath = getMetricsPath(stackName);
-  
-  // Count current entries
-  const countResult = await sshExec(connection, `wc -l < "${metricsPath}" 2>/dev/null || echo "0"`);
-  const currentCount = parseInt(countResult.stdout.trim(), 10);
-  
-  if (currentCount <= keepLast) {
-    return 0;
+  /**
+   * Fetch deployment metrics from the remote server.
+   */
+  async fetch(stackName: string, limit?: number): Promise<DeploymentMetric[]> {
+    const metricsPath = getMetricsPath(stackName);
+
+    const cmd = limit
+      ? `tail -n ${limit} "${metricsPath}" 2>/dev/null || echo ""`
+      : `cat "${metricsPath}" 2>/dev/null || echo ""`;
+
+    const result = await sshExec(this.connection, cmd);
+    return parseJsonlLines<DeploymentMetric>(result.stdout);
   }
-  
-  const toRemove = currentCount - keepLast;
-  
-  // Keep only the last N entries
-  await sshExec(connection, `
-    tail -n ${keepLast} "${metricsPath}" > "${metricsPath}.tmp"
-    mv "${metricsPath}.tmp" "${metricsPath}"
-  `);
-  
-  return toRemove;
+
+  /**
+   * Clear old metrics, keeping only the last N entries.
+   * Returns the number of entries removed.
+   */
+  async prune(stackName: string, keepLast: number = 1000): Promise<number> {
+    const metricsPath = getMetricsPath(stackName);
+
+    const countResult = await sshExec(this.connection, `wc -l < "${metricsPath}" 2>/dev/null || echo "0"`);
+    const currentCount = parseInt(countResult.stdout.trim(), 10);
+
+    if (currentCount <= keepLast) {
+      return 0;
+    }
+
+    const toRemove = currentCount - keepLast;
+
+    await sshExec(this.connection, `
+      tail -n ${keepLast} "${metricsPath}" > "${metricsPath}.tmp"
+      mv "${metricsPath}.tmp" "${metricsPath}"
+    `);
+
+    return toRemove;
+  }
 }

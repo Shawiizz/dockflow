@@ -19,12 +19,11 @@ import {
 } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { withErrorHandler, DockerError } from '../../utils/errors';
-import { 
-  fetchDeploymentMetrics, 
-  calculateMetricsSummary, 
-  pruneMetrics,
+import {
+  MetricsService,
+  calculateMetricsSummary,
   type DeploymentMetric,
-  type MetricsSummary 
+  type MetricsSummary
 } from '../../services/metrics-service';
 
 /**
@@ -171,10 +170,12 @@ export function registerMetricsCommand(program: Command): void {
     }) => {
       const { stackName, connection } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName, prune: options.prune, history: options.history });
-      
+
+      const metricsService = new MetricsService(connection);
+
       // Prune mode
       if (options.prune) {
-        const removed = await pruneMetrics(connection, stackName, 1000);
+        const removed = await metricsService.prune(stackName, 1000);
         if (removed > 0) {
           printSuccess(`Removed ${removed} old metric entries`);
         } else {
@@ -184,7 +185,7 @@ export function registerMetricsCommand(program: Command): void {
       }
       
       const limit = options.history ? parseInt(options.lines || '20', 10) : 1000;
-      const metricsData = await fetchDeploymentMetrics(connection, stackName, limit);
+      const metricsData = await metricsService.fetch(stackName, limit);
       
       if (metricsData.length === 0) {
         printBlank();

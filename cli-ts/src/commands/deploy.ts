@@ -56,7 +56,7 @@ import { HealthCheckService } from '../services/health-check-service';
 import { ReleaseService } from '../services/release-service';
 import { LockService } from '../services/lock-service';
 import { AuditService } from '../services/audit-service';
-import { MetricsWriteService } from '../services/metrics-service';
+import { MetricsService } from '../services/metrics-service';
 import { HistorySyncService } from '../services/history-sync-service';
 import { BuildService } from '../services/build-service';
 import { DistributionService } from '../services/distribution-service';
@@ -283,7 +283,7 @@ export async function runDeploy(
   const releases = new ReleaseService(managerConn);
   const lock = new LockService(managerConn, stackName);
   const audit = new AuditService(managerConn);
-  const metrics = new MetricsWriteService(managerConn);
+  const metrics = new MetricsService(managerConn);
 
   const startTime = Date.now();
   let deployFailed = false;
