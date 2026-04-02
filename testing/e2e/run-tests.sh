@@ -120,13 +120,22 @@ log_success "All deployment verifications passed"
 # =============================================================================
 log_step "Step 7: Verifying Traefik proxy routing..."
 
-# 1. Traefik stack is running
-TRAEFIK_REPLICAS=$(docker exec $MANAGER_NODE docker service ls \
-	--filter "name=traefik_traefik" \
-	--format '{{.Replicas}}' 2>/dev/null || echo "0/0")
+# 1. Traefik stack is running (wait up to 60s for image pull + start)
+TRAEFIK_READY=false
+for i in $(seq 1 12); do
+	TRAEFIK_REPLICAS=$(docker exec $MANAGER_NODE docker service ls \
+		--filter "name=traefik_traefik" \
+		--format '{{.Replicas}}' 2>/dev/null || echo "0/0")
+	if [[ "$TRAEFIK_REPLICAS" == "1/1" ]]; then
+		TRAEFIK_READY=true
+		break
+	fi
+	log_info "Waiting for Traefik to start ($TRAEFIK_REPLICAS)..."
+	sleep 5
+done
 
-if [[ "$TRAEFIK_REPLICAS" != "1/1" ]]; then
-	log_error "Traefik service not running (replicas: $TRAEFIK_REPLICAS)"
+if [[ "$TRAEFIK_READY" != "true" ]]; then
+	log_error "Traefik service not running after 60s (replicas: $TRAEFIK_REPLICAS)"
 	docker exec $MANAGER_NODE docker service ps traefik_traefik 2>/dev/null || true
 	exit 1
 fi

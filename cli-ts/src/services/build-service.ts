@@ -346,10 +346,12 @@ export class BuildService {
       const authUrl = BuildService.injectGitAuth(repoUrl);
 
       // 3. Git clone on remote
+      // GIT_SSH_COMMAND disables host key checking so the remote can clone from
+      // any SSH-based repo (including itself in test/CI environments).
       printDim(`Cloning repo on remote (${params.branch})...`);
       const cloneResult = await sshExec(
         connection,
-        `git clone --branch ${params.branch} --single-branch ${authUrl} ${tmpDir} 2>&1`,
+        `GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone --branch ${params.branch} --single-branch ${authUrl} ${tmpDir} 2>&1`,
       );
       if (cloneResult.exitCode !== 0) {
         throw new DeployError(

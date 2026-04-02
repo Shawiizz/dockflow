@@ -91,27 +91,23 @@ docker exec dockflow-test-manager bash -c "
     # Configure git to allow push (run as deploytest)
     sudo -u deploytest git -C $REPO_PATH config receive.denyCurrentBranch ignore
     
-    # Setup SSH for root user to clone locally (for remote-build)
-    # The deploytest user's authorized_keys already has the key, we just need root to use it
-    mkdir -p /root/.ssh
-    chmod 700 /root/.ssh
-    
-    # Generate a key for root if it doesn't exist
-    if [[ ! -f /root/.ssh/id_rsa ]]; then
-        ssh-keygen -t rsa -b 2048 -f /root/.ssh/id_rsa -N '' -q
-    fi
-    
-    # Add root's public key to deploytest's authorized_keys
-    cat /root/.ssh/id_rsa.pub >> /home/deploytest/.ssh/authorized_keys
-    
-    # Configure SSH to not check host keys for localhost
-    cat > /root/.ssh/config <<SSHCONFIG
-Host localhost dockflow-test-mgr
+    # Setup SSH for deploytest user to clone from itself on localhost
+    # The CLI connects as deploytest, so git clone runs as deploytest
+    sudo -u deploytest bash -c '
+        mkdir -p ~/.ssh && chmod 700 ~/.ssh
+        if [[ ! -f ~/.ssh/id_rsa ]]; then
+            ssh-keygen -t rsa -b 2048 -f ~/.ssh/id_rsa -N "" -q
+        fi
+        cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+        chmod 600 ~/.ssh/authorized_keys
+        cat > ~/.ssh/config <<SSHEOF
+Host localhost
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
     LogLevel ERROR
-SSHCONFIG
-    chmod 600 /root/.ssh/config
+SSHEOF
+        chmod 600 ~/.ssh/config
+    '
 "
 log_success "Bare Git repository created at $REPO_PATH"
 
@@ -204,9 +200,10 @@ log_step "Step 4: Deploying with remote_build: true..."
 
 cd "$TEST_APP_DIR"
 
-# Configure git remote URL to use localhost since the manager clones from itself
-# This simulates a real scenario where the repo URL is accessible from the build server
-git remote set-url origin "deploytest@localhost:$REPO_PATH"
+# Set the remote URL to the local path on the manager.
+# The CLI reads this URL and uses it in `git clone` on the remote server.
+# Since the repo lives on the manager itself, a local path clone is simplest and avoids SSH-to-self auth issues.
+git remote set-url origin "$REPO_PATH"
 
 set +e
 DOCKFLOW_DEV_PATH="$DOCKFLOW_ROOT" \
