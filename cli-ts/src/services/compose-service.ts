@@ -11,11 +11,14 @@
  */
 
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
-import { join, relative } from 'path';
+import { join, relative, dirname } from 'path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import nunjucks from 'nunjucks';
 import type { DockflowConfig } from '../utils/config';
+import { getProjectRoot, getComposePath } from '../utils/config';
 import { printDebug } from '../utils/output';
+import { ConfigError } from '../utils/errors';
+import type { TemplateContext } from '../types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -43,6 +46,13 @@ export interface ParsedCompose {
   services: Record<string, Record<string, unknown>>;
   networks?: Record<string, unknown>;
   volumes?: Record<string, unknown>;
+}
+
+export interface RenderedComposeResult {
+  rendered: RenderedFiles;
+  composeContent: string;
+  composeDirPath: string;
+  projectRoot: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -209,20 +219,16 @@ export class ComposeService {
     let count = 0;
 
     for (const filePath of files) {
-      try {
-        const content = readFileSync(filePath, 'utf-8');
-        const renderedContent = njk.renderString(content, templateCtx);
+      const content = readFileSync(filePath, 'utf-8');
+      const renderedContent = njk.renderString(content, templateCtx);
 
-        let relPath = relative(projectRoot, filePath).replace(/\\/g, '/');
-        if (relPath.endsWith('.j2')) {
-          relPath = relPath.slice(0, -3);
-        }
-
-        rendered.set(relPath, renderedContent);
-        count++;
-      } catch (error) {
-        printDebug(`Template render skipped for ${relative(projectRoot, filePath)}: ${error instanceof Error ? error.message : String(error)}`);
+      let relPath = relative(projectRoot, filePath).replace(/\\/g, '/');
+      if (relPath.endsWith('.j2')) {
+        relPath = relPath.slice(0, -3);
       }
+
+      rendered.set(relPath, renderedContent);
+      count++;
     }
 
     printDebug(`Rendered ${count} file(s) in .dockflow/`);
@@ -246,11 +252,55 @@ export class ComposeService {
         rendered.set(relDest, renderedContent);
         printDebug(`Rendered custom template: ${src} → ${dest}`);
       } catch (error) {
-        printDebug(`Custom template render failed for ${src}: ${error instanceof Error ? error.message : String(error)}`);
+        throw new Error(`Custom template render failed for ${src}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
     return rendered;
+  }
+
+  /**
+   * Render templates and extract compose content in one call.
+   * Eliminates the duplicate render→findCompose→getDirPath boilerplate
+   * shared between deploy.ts and build.ts.
+   */
+  static renderAndResolveCompose(
+    ctx: ComposeRenderContext,
+    templateContext?: TemplateContext | null,
+  ): RenderedComposeResult {
+    const projectRoot = getProjectRoot();
+
+    const fullCtx: ComposeRenderContext = {
+      ...ctx,
+      current: templateContext?.current ?? {},
+      servers: templateContext?.servers ?? {},
+      cluster: templateContext?.cluster ?? {},
+    };
+    const rendered = ComposeService.renderTemplates(projectRoot, fullCtx);
+
+    const originalComposePath = getComposePath();
+    if (!originalComposePath) {
+      throw new ConfigError(
+        'No docker-compose.yml found',
+        'Expected at .dockflow/docker/docker-compose.yml',
+      );
+    }
+
+    const composeRelPath = relative(projectRoot, originalComposePath).replace(/\\/g, '/');
+    const composeContent = rendered.get(composeRelPath);
+    if (!composeContent) {
+      throw new ConfigError(
+        'Compose file not found in rendered templates',
+        `Expected key "${composeRelPath}" in rendered files map`,
+      );
+    }
+
+    return {
+      rendered,
+      composeContent,
+      composeDirPath: dirname(originalComposePath),
+      projectRoot,
+    };
   }
 
   /**
@@ -413,16 +463,21 @@ export class ComposeService {
         labelList = traefikLabels;
       }
 
-      // Update networks — preserve existing + add traefik-public
+      // Update networks — preserve existing format + add traefik-public
       const existingNets = svc.networks;
-      let newNets: string[];
+      let newNets: unknown;
 
       if (Array.isArray(existingNets)) {
+        // List form: ["app-net", "traefik-public"]
         const current = existingNets.map(String);
         newNets = [...new Set([...current, 'traefik-public'])];
       } else if (existingNets && typeof existingNets === 'object') {
-        const current = Object.keys(existingNets);
-        newNets = [...new Set([...current, 'traefik-public'])];
+        // Object form: { app-net: { aliases: [...] } } — preserve as object
+        const netObj = { ...(existingNets as Record<string, unknown>) };
+        if (!('traefik-public' in netObj)) {
+          netObj['traefik-public'] = null;
+        }
+        newNets = netObj;
       } else {
         // No networks defined — add default + traefik-public
         newNets = ['default', 'traefik-public'];

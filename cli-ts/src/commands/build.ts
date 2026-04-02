@@ -9,19 +9,18 @@
  * No temporary files are written to disk.
  */
 
-import { dirname, relative } from 'path';
+
 import type { Command } from 'commander';
 import { printInfo, printIntro, printDebug, printWarning, printDim, printBlank, printSuccess, setVerbose } from '../utils/output';
 import { loadSecrets } from '../utils/secrets';
 import { getCurrentBranch } from '../utils/git';
 import { withErrorHandler, ConfigError } from '../utils/errors';
-import { getProjectRoot, loadConfig, getComposePath } from '../utils/config';
+import { loadConfig } from '../utils/config';
 import { buildTemplateContext, getManagersForEnvironment } from '../utils/servers';
 import { BuildService } from '../services/build-service';
 import { HookService } from '../services/hook-service';
 import { DistributionService } from '../services/distribution-service';
 import { ComposeService } from '../services/compose-service';
-import type { ComposeRenderContext } from '../services/compose-service';
 
 interface BuildOptions {
   services?: string;
@@ -52,7 +51,6 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
   }
 
   const branchName = getCurrentBranch();
-  const projectRoot = getProjectRoot();
 
   // Display build info
   printInfo(`Project: ${config.project_name || 'app'}`);
@@ -62,40 +60,21 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
   if (options.skipHooks) printInfo(`Hooks: Skipped`);
   printBlank();
 
-  // Render templates in memory (no disk writes)
+  // Render templates and resolve compose content
   const managers = getManagersForEnvironment(env);
   const currentServerName = managers.length > 0 ? managers[0].name : undefined;
   const templateContext = currentServerName ? buildTemplateContext(env, currentServerName) : null;
 
-  const renderCtx: ComposeRenderContext = {
-    env,
-    version: 'build',
-    branch: branchName,
-    project_name: config.project_name,
-    config,
-    current: templateContext?.current ?? {},
-    servers: templateContext?.servers ?? {},
-    cluster: templateContext?.cluster ?? {},
-  };
-  const rendered = ComposeService.renderTemplates(projectRoot, renderCtx);
-
-  // Get compose content from rendered map
-  const originalComposePath = getComposePath();
-  if (!originalComposePath) {
-    throw new ConfigError(
-      'No docker-compose.yml found',
-      'Expected at .dockflow/docker/docker-compose.yml',
-    );
-  }
-  const composeRelPath = relative(projectRoot, originalComposePath).replace(/\\/g, '/');
-  const composeContent = rendered.get(composeRelPath);
-  if (!composeContent) {
-    throw new ConfigError(
-      'Compose file not found in rendered templates',
-      `Expected key "${composeRelPath}" in rendered files map`,
-    );
-  }
-  const composeDirPath = dirname(originalComposePath);
+  const { rendered, composeContent, composeDirPath, projectRoot } = ComposeService.renderAndResolveCompose(
+    {
+      env,
+      version: 'build',
+      branch: branchName,
+      project_name: config.project_name,
+      config,
+    },
+    templateContext,
+  );
 
   // Pre-build hook
   if (!options.skipHooks) {

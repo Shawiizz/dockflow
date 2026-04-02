@@ -8,13 +8,12 @@
  * Template rendering is entirely in-memory — no files are written to disk.
  */
 
-import os from 'os';
-import { dirname, relative } from 'path';
 import type { Command } from 'commander';
 import {
   getProjectRoot,
   loadConfig,
-  getComposePath,
+  getPerformer,
+  type DockflowConfig,
 } from '../utils/config';
 import {
   printSuccess,
@@ -23,7 +22,6 @@ import {
   printDebug,
   printBlank,
   printWarning,
-  printDim,
   setVerbose,
   createSpinner,
 } from '../utils/output';
@@ -49,8 +47,7 @@ import { displayDeployDryRun } from './deploy-dry-run';
 import type { SSHKeyConnection } from '../types';
 
 // Services
-import { ComposeService } from '../services/compose-service';
-import type { ComposeRenderContext } from '../services/compose-service';
+import { ComposeService, type ParsedCompose, type RenderedFiles } from '../services/compose-service';
 import { SwarmDeployService } from '../services/swarm-deploy-service';
 import { HealthCheckService } from '../services/health-check-service';
 import { ReleaseService } from '../services/release-service';
@@ -73,6 +70,39 @@ interface DeployOptions {
   skipAccessories?: boolean;
   noFailover?: boolean;
   dryRun?: boolean;
+}
+
+/**
+ * Shared context built during the setup phase and passed to each deploy phase.
+ */
+interface DeployContext {
+  env: string;
+  config: DockflowConfig;
+  stackName: string;
+  branchName: string;
+  deployVersion: string;
+  projectRoot: string;
+
+  managerConn: SSHKeyConnection;
+  workerConns: Array<{ connection: SSHKeyConnection; name: string }>;
+  otherManagerConns: SSHKeyConnection[];
+
+  deployApp: boolean;
+  forceAccessories: boolean;
+  skipAccessories: boolean;
+  options: Partial<DeployOptions>;
+
+  rendered: RenderedFiles;
+  composeContent: string;
+  composeDirPath: string;
+
+  // Services
+  swarmDeploy: SwarmDeployService;
+  health: HealthCheckService;
+  releases: ReleaseService;
+  lock: LockService;
+  audit: AuditService;
+  metrics: MetricsService;
 }
 
 /**
@@ -116,6 +146,202 @@ function buildConnection(
   return { host, port, user, privateKey, password: password || undefined };
 }
 
+// ---------------------------------------------------------------------------
+// Deploy phases
+// ---------------------------------------------------------------------------
+
+/**
+ * Phase: Build Docker images and distribute to Swarm nodes.
+ */
+async function buildAndDistribute(
+  ctx: DeployContext,
+  compose: ParsedCompose,
+): Promise<string[]> {
+  if (ctx.options.skipBuild || !ctx.deployApp) return [];
+
+  await HookService.runLocal('pre-build', ctx.projectRoot, ctx.config, ctx.rendered);
+
+  let builtImages: string[] = [];
+
+  if (ctx.config.options?.remote_build) {
+    const result = await BuildService.buildRemote(ctx.managerConn, {
+      projectRoot: ctx.projectRoot,
+      composeContent: ComposeService.serialize(compose),
+      composeDirPath: ctx.composeDirPath,
+      projectName: ctx.config.project_name,
+      env: ctx.env,
+      branch: ctx.branchName,
+      servicesFilter: ctx.options.services,
+    });
+    builtImages = result.images;
+
+    if (builtImages.length > 0 && ctx.workerConns.length > 0) {
+      const workerTargets = ctx.workerConns.map((w) => ({ connection: w.connection, name: w.name }));
+      await DistributionService.distributeFromRemote(builtImages, ctx.managerConn, workerTargets);
+    }
+  } else {
+    const targets = BuildService.getBuildTargets(
+      ComposeService.serialize(compose),
+      ctx.composeDirPath,
+      ctx.options.services,
+    );
+
+    if (targets.length > 0) {
+      for (const target of targets) {
+        target.renderedOverrides = BuildService.getOverridesForTarget(ctx.rendered, target, ctx.projectRoot);
+      }
+
+      const result = await BuildService.buildAll(targets);
+      builtImages = result.images;
+
+      if (ctx.config.registry?.enabled && ctx.config.registry.url && ctx.config.registry.password) {
+        await DistributionService.registryLogin(ctx.managerConn, {
+          url: ctx.config.registry.url,
+          username: ctx.config.registry.username,
+          password: ctx.config.registry.password,
+        });
+        await DistributionService.pushImages(builtImages, ctx.config.registry.additional_tags?.length ? {
+          tags: ctx.config.registry.additional_tags,
+          env: ctx.env,
+          version: ctx.deployVersion,
+          branch: ctx.branchName,
+        } : undefined);
+      } else if (builtImages.length > 0) {
+        const distTargets = [
+          { connection: ctx.managerConn, name: 'manager' },
+          ...ctx.workerConns.map((w) => ({ connection: w.connection, name: w.name })),
+        ];
+        await DistributionService.distributeAll(builtImages, distTargets);
+      }
+    }
+  }
+
+  await HookService.runLocal('post-build', ctx.projectRoot, ctx.config, ctx.rendered);
+  return builtImages;
+}
+
+/**
+ * Phase: Deploy accessories stack (databases, caches, etc.)
+ */
+async function deployAccessories(ctx: DeployContext): Promise<void> {
+  if (ctx.skipAccessories) return;
+
+  const accessoriesRelPath = '.dockflow/docker/accessories.yml';
+  const accessoriesContent = ctx.rendered.get(accessoriesRelPath);
+  if (!accessoriesContent) return;
+
+  const accessoriesCompose = ComposeService.loadFromString(accessoriesContent);
+  ComposeService.injectAccessoriesDefaults(accessoriesCompose);
+
+  const externalNets = ComposeService.getExternalNetworks(accessoriesCompose);
+  const externalVols = ComposeService.getExternalVolumes(accessoriesCompose);
+  await ctx.swarmDeploy.createExternalResources(externalNets, externalVols);
+
+  await ctx.swarmDeploy.deployAccessories(
+    ctx.stackName,
+    accessoriesRelPath,
+    ComposeService.serialize(accessoriesCompose),
+    { force: ctx.forceAccessories },
+  );
+}
+
+/**
+ * Phase: Deploy application stack with health checks.
+ */
+async function deployApp(ctx: DeployContext, compose: ParsedCompose): Promise<void> {
+  if (!ctx.deployApp) return;
+
+  // Ensure Traefik is running if proxy is enabled
+  if (ctx.config.proxy?.enabled) {
+    const traefik = new TraefikService(ctx.managerConn);
+    await traefik.ensureRunning(ctx.config.proxy);
+  }
+
+  await HookService.runRemote('pre-deploy', ctx.managerConn, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
+
+  const externalNetworks = ComposeService.getExternalNetworks(compose);
+  const externalVolumes = ComposeService.getExternalVolumes(compose);
+  await ctx.swarmDeploy.createExternalResources(externalNetworks, externalVolumes);
+
+  await ctx.swarmDeploy.deployStack(ctx.stackName, ComposeService.serialize(compose));
+  await ctx.swarmDeploy.waitConvergence(ctx.stackName);
+
+  // Health checks
+  if (ctx.config.health_checks?.enabled !== false) {
+    const expectedImages: Record<string, string> = {};
+    for (const [svcName, svc] of Object.entries(compose.services)) {
+      const img = svc.image as string | undefined;
+      if (img) expectedImages[`${ctx.stackName}_${svcName}`] = img;
+    }
+    await ctx.health.checkSwarmHealth(ctx.stackName, expectedImages, ctx.config.health_checks);
+
+    if (ctx.config.health_checks?.endpoints?.length) {
+      await ctx.health.checkHTTPEndpoints(ctx.config.health_checks);
+    }
+  }
+
+  await HookService.runRemote('post-deploy', ctx.managerConn, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
+}
+
+/**
+ * Phase: Record audit, metrics, and sync history to other nodes.
+ * Best-effort — never throws.
+ */
+async function recordHistory(
+  ctx: DeployContext,
+  status: 'success' | 'failed',
+  durationMs: number,
+  auditMessage: string,
+  workers: Array<{ host: string }>,
+): Promise<void> {
+  let auditLine = '';
+  try {
+    auditLine = await ctx.audit.writeEntry(
+      ctx.stackName,
+      status === 'success' ? 'deployed' : 'failed',
+      auditMessage,
+      ctx.deployVersion,
+    );
+  } catch (e) {
+    printWarning(`Audit write failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  let metricsJson = '';
+  try {
+    metricsJson = await ctx.metrics.writeDeployment({
+      stackName: ctx.stackName,
+      version: ctx.deployVersion,
+      env: ctx.env,
+      branch: ctx.branchName,
+      status,
+      durationMs,
+      performer: getPerformer(),
+      buildSkipped: !!ctx.options.skipBuild,
+      accessoriesDeployed: !ctx.skipAccessories,
+      nodeCount: 1 + workers.length,
+    });
+  } catch (e) {
+    printWarning(`Metrics write failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  const allOtherConns = [
+    ...ctx.otherManagerConns,
+    ...ctx.workerConns.map((w) => w.connection),
+  ];
+  await HistorySyncService.syncToAllNodes(
+    allOtherConns,
+    ctx.stackName,
+    auditLine,
+    metricsJson,
+  ).catch((e) =>
+    printWarning(`History sync failed: ${e instanceof Error ? e.message : String(e)}`),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main deploy orchestrator
+// ---------------------------------------------------------------------------
+
 /**
  * Run deployment — can be called directly or via CLI command
  */
@@ -129,7 +355,7 @@ export async function runDeploy(
   loadSecrets();
   printDebug('Secrets loaded from environment');
 
-  const { deployApp, forceAccessories, skipAccessories } = getDeploymentTargets(
+  const { deployApp: shouldDeployApp, forceAccessories, skipAccessories } = getDeploymentTargets(
     options as DeployOptions,
   );
   const accessoriesDesc = skipAccessories
@@ -202,7 +428,6 @@ export async function runDeploy(
     workerConns.push({ connection: conn, name: w.name });
   }
 
-  // Other manager connections for history sync
   const otherManagerConns: SSHKeyConnection[] = [];
   for (const m of managers) {
     if (m.name === manager.name) continue;
@@ -266,7 +491,7 @@ export async function runDeploy(
       projectRoot,
       manager,
       workers,
-      deployApp,
+      deployApp: shouldDeployApp,
       forceAccessories,
       skipAccessories,
       skipBuild: options.skipBuild,
@@ -277,18 +502,34 @@ export async function runDeploy(
     return;
   }
 
-  // --- Services ---
-  const swarmDeploy = new SwarmDeployService(managerConn);
-  const health = new HealthCheckService(managerConn);
-  const releases = new ReleaseService(managerConn);
-  const lock = new LockService(managerConn, stackName);
-  const audit = new AuditService(managerConn);
-  const metrics = new MetricsService(managerConn);
+  // --- Render templates ---
+  const templateContext = buildTemplateContext(env, manager.name);
+  const { rendered, composeContent, composeDirPath } = ComposeService.renderAndResolveCompose(
+    {
+      env,
+      version: deployVersion,
+      branch: branchName,
+      project_name: config.project_name,
+      config,
+    },
+    templateContext,
+  );
 
-  const startTime = Date.now();
-  let deployFailed = false;
-  let auditMessage = `Deploy ${deployVersion} to ${env}`;
-  let metricsJson = '';
+  // --- Build deploy context ---
+  const lock = new LockService(managerConn, stackName);
+
+  const ctx: DeployContext = {
+    env, config, stackName, branchName, deployVersion, projectRoot,
+    managerConn, workerConns, otherManagerConns,
+    deployApp: shouldDeployApp, forceAccessories, skipAccessories,
+    options, rendered, composeContent, composeDirPath,
+    swarmDeploy: new SwarmDeployService(managerConn),
+    health: new HealthCheckService(managerConn),
+    releases: new ReleaseService(managerConn),
+    lock,
+    audit: new AuditService(managerConn),
+    metrics: new MetricsService(managerConn),
+  };
 
   // --- Acquire lock ---
   const lockResult = await lock.acquire({
@@ -300,37 +541,9 @@ export async function runDeploy(
     throw new DeployError(lockResult.error.message, ErrorCode.DEPLOY_LOCKED);
   }
 
-  // --- Render templates in memory (no disk writes) ---
-  const templateContext = buildTemplateContext(env, manager.name);
-  const renderCtx: ComposeRenderContext = {
-    env,
-    version: deployVersion,
-    branch: branchName,
-    project_name: config.project_name,
-    config,
-    current: templateContext?.current ?? {},
-    servers: templateContext?.servers ?? {},
-    cluster: templateContext?.cluster ?? {},
-  };
-  const rendered = ComposeService.renderTemplates(projectRoot, renderCtx);
-
-  // --- Get compose content from rendered map ---
-  const originalComposePath = getComposePath();
-  if (!originalComposePath) {
-    throw new ConfigError(
-      'No docker-compose.yml found',
-      'Expected at .dockflow/docker/docker-compose.yml',
-    );
-  }
-  const composeRelPath = relative(projectRoot, originalComposePath).replace(/\\/g, '/');
-  const composeContent = rendered.get(composeRelPath);
-  if (!composeContent) {
-    throw new ConfigError(
-      'Compose file not found in rendered templates',
-      `Expected key "${composeRelPath}" in rendered files map`,
-    );
-  }
-  const composeDirPath = dirname(originalComposePath);
+  const startTime = Date.now();
+  let deployFailed = false;
+  let auditMessage = `Deploy ${deployVersion} to ${env}`;
 
   try {
     // --- Prepare compose ---
@@ -341,67 +554,12 @@ export async function runDeploy(
       ComposeService.injectTraefikLabels(compose, config, stackName, env);
     }
 
-    // --- Build ---
-    let builtImages: string[] = [];
-    if (!options.skipBuild && deployApp) {
-      await HookService.runLocal('pre-build', projectRoot, config, rendered);
-
-      if (config.options?.remote_build) {
-        const result = await BuildService.buildRemote(managerConn, {
-          projectRoot,
-          composeContent: ComposeService.serialize(compose),
-          composeDirPath,
-          projectName: config.project_name,
-          env,
-          branch: branchName,
-          servicesFilter: options.services,
-        });
-        builtImages = result.images;
-
-        // Distribute images from manager to workers
-        if (builtImages.length > 0 && workerConns.length > 0) {
-          const workerTargets = workerConns.map((w) => ({ connection: w.connection, name: w.name }));
-          await DistributionService.distributeFromRemote(builtImages, managerConn, workerTargets);
-        }
-      } else {
-        const targets = BuildService.getBuildTargets(ComposeService.serialize(compose), composeDirPath, options.services);
-        if (targets.length > 0) {
-          // Attach rendered overrides to each target
-          for (const target of targets) {
-            target.renderedOverrides = BuildService.getOverridesForTarget(rendered, target, projectRoot);
-          }
-
-          const result = await BuildService.buildAll(targets);
-          builtImages = result.images;
-
-          if (config.registry?.enabled && config.registry.url && config.registry.password) {
-            await DistributionService.registryLogin(managerConn, {
-              url: config.registry.url,
-              username: config.registry.username,
-              password: config.registry.password,
-            });
-            await DistributionService.pushImages(builtImages, config.registry.additional_tags?.length ? {
-              tags: config.registry.additional_tags,
-              env,
-              version: deployVersion,
-              branch: branchName,
-            } : undefined);
-          } else if (builtImages.length > 0) {
-            const distTargets = [
-              { connection: managerConn, name: 'manager' },
-              ...workerConns.map((w) => ({ connection: w.connection, name: w.name })),
-            ];
-            await DistributionService.distributeAll(builtImages, distTargets);
-          }
-        }
-      }
-
-      await HookService.runLocal('post-build', projectRoot, config, rendered);
-    }
+    // --- Build & distribute ---
+    await buildAndDistribute(ctx, compose);
 
     // --- Create release ---
-    const performer = `${process.env.USER ?? 'ci'}@${os.hostname()}`;
-    await releases.createRelease(stackName, deployVersion, ComposeService.serialize(compose), {
+    const performer = getPerformer();
+    await ctx.releases.createRelease(stackName, deployVersion, ComposeService.serialize(compose), {
       project_name: config.project_name,
       version: deployVersion,
       env,
@@ -412,80 +570,27 @@ export async function runDeploy(
     });
 
     // --- Deploy accessories ---
-    if (!skipAccessories) {
-      const accessoriesRelPath = '.dockflow/docker/accessories.yml';
-      const accessoriesContent = rendered.get(accessoriesRelPath);
-      if (accessoriesContent) {
-        const accessoriesCompose = ComposeService.loadFromString(accessoriesContent);
-        // Do NOT call updateImageTags on accessories — they use third-party images
-        // (Redis, Postgres, etc.) that must not be retagged with the app version.
-        ComposeService.injectAccessoriesDefaults(accessoriesCompose);
-        const externalNets = ComposeService.getExternalNetworks(accessoriesCompose);
-        const externalVols = ComposeService.getExternalVolumes(accessoriesCompose);
-        await swarmDeploy.createExternalNetworks(externalNets);
-        await swarmDeploy.createExternalVolumes(externalVols);
-        await swarmDeploy.deployAccessories(
-          stackName,
-          accessoriesRelPath,
-          ComposeService.serialize(accessoriesCompose),
-          { force: forceAccessories },
-        );
-      }
-    }
+    await deployAccessories(ctx);
 
     // --- Deploy app ---
-    if (deployApp) {
-      // Ensure Traefik is running if proxy is enabled
-      if (config.proxy?.enabled) {
-        const traefik = new TraefikService(managerConn);
-        await traefik.ensureRunning(config.proxy);
-      }
-
-      await HookService.runRemote('pre-deploy', managerConn, stackName, projectRoot, config, rendered);
-
-      const externalNetworks = ComposeService.getExternalNetworks(compose);
-      const externalVolumes = ComposeService.getExternalVolumes(compose);
-      await swarmDeploy.createExternalNetworks(externalNetworks);
-      await swarmDeploy.createExternalVolumes(externalVolumes);
-
-      await swarmDeploy.deployStack(stackName, ComposeService.serialize(compose));
-      await swarmDeploy.waitConvergence(stackName);
-
-      // Health checks
-      if (config.health_checks?.enabled !== false) {
-        const expectedImages: Record<string, string> = {};
-        for (const [svcName, svc] of Object.entries(compose.services)) {
-          const img = svc.image as string | undefined;
-          if (img) expectedImages[`${stackName}_${svcName}`] = img;
-        }
-        await health.checkSwarmHealth(stackName, expectedImages);
-
-        if (config.health_checks?.endpoints?.length) {
-          await health.checkHTTPEndpoints(config.health_checks);
-        }
-      }
-
-      await HookService.runRemote('post-deploy', managerConn, stackName, projectRoot, config, rendered);
-    }
+    await deployApp(ctx, compose);
 
     // --- Cleanup old releases ---
-    await releases.cleanupOldReleases(stackName, config);
+    await ctx.releases.cleanupOldReleases(stackName, config);
 
     auditMessage = `Deployed ${deployVersion} to ${env} successfully`;
   } catch (err) {
     deployFailed = true;
     auditMessage = `Deploy ${deployVersion} to ${env} failed: ${err instanceof Error ? err.message : String(err)}`;
 
-    // Remove failed release
-    await releases.removeRelease(stackName, deployVersion).catch(() => {});
+    await ctx.releases.removeRelease(stackName, deployVersion).catch(() => {});
 
-    // Rollback if configured
     if (
       err instanceof DeployError &&
       config.health_checks?.on_failure === 'rollback'
     ) {
       try {
-        const rolledBackTo = await releases.rollback(stackName, swarmDeploy);
+        const rolledBackTo = await ctx.releases.rollback(stackName, ctx.swarmDeploy);
         printWarning(`Rolled back to ${rolledBackTo}`);
       } catch (rollbackErr) {
         printWarning(`Rollback failed: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`);
@@ -497,47 +602,8 @@ export async function runDeploy(
     const durationMs = Date.now() - startTime;
     const status = deployFailed ? 'failed' : 'success';
 
-    // Audit (best-effort)
-    let auditLine = '';
-    try {
-      auditLine = await audit.writeEntry(stackName, status === 'success' ? 'deployed' : 'failed', auditMessage, deployVersion);
-    } catch (e) {
-      printWarning(`Audit write failed: ${e instanceof Error ? e.message : String(e)}`);
-    }
+    await recordHistory(ctx, status, durationMs, auditMessage, workers);
 
-    // Metrics (best-effort)
-    try {
-      metricsJson = await metrics.writeDeployment({
-        stackName,
-        version: deployVersion,
-        env,
-        branch: branchName,
-        status: status as 'success' | 'failed',
-        durationMs,
-        performer: `${process.env.USER ?? 'ci'}@${os.hostname()}`,
-        buildSkipped: !!options.skipBuild,
-        accessoriesDeployed: !skipAccessories,
-        nodeCount: 1 + workers.length,
-      });
-    } catch (e) {
-      printWarning(`Metrics write failed: ${e instanceof Error ? e.message : String(e)}`);
-    }
-
-    // History sync (best-effort)
-    const allOtherConns = [
-      ...otherManagerConns,
-      ...workerConns.map((w) => w.connection),
-    ];
-    await HistorySyncService.syncToAllNodes(
-      allOtherConns,
-      stackName,
-      auditLine,
-      metricsJson,
-    ).catch((e) =>
-      printWarning(`History sync failed: ${e instanceof Error ? e.message : String(e)}`),
-    );
-
-    // Release lock (always)
     await lock.release().catch((e) =>
       printWarning(`Lock release failed: ${e instanceof Error ? e.message : String(e)}`),
     );

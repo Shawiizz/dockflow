@@ -5,6 +5,7 @@
 
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname, parse as parsePath } from 'path';
+import os from 'os';
 import { parse as parseYaml } from 'yaml';
 import type { ServersConfig } from '../types';
 import { printError, printRaw } from './output';
@@ -49,6 +50,8 @@ export interface HealthCheckEndpoint {
 export interface HealthCheckConfig {
   enabled?: boolean;
   on_failure?: 'notify' | 'rollback' | 'fail' | 'ignore';
+  timeout?: number;
+  interval?: number;
   startup_delay?: number;
   wait_for_internal?: boolean;
   endpoints?: HealthCheckEndpoint[];
@@ -372,4 +375,14 @@ export function getComposePath(): string | null {
   if (existsSync(yamlPath)) return yamlPath;
 
   return null;
+}
+
+/**
+ * Get the performer string for audit/metrics entries.
+ * Format: "user@hostname" — consistent across all call sites.
+ */
+export function getPerformer(): string {
+  const user = process.env.USER ?? 'ci';
+  const hostname = os.hostname();
+  return `${user}@${hostname}`;
 }

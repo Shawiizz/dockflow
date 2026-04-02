@@ -84,6 +84,12 @@ export const HealthCheckConfigSchema = z.object({
   on_failure: z.enum(['notify', 'rollback', 'fail', 'ignore']).optional().default('notify').describe(
     'Action on health check failure: notify (log only), rollback (revert), fail (stop), ignore'
   ),
+  timeout: z.number().int().min(10).max(600).optional().describe(
+    'Swarm health check timeout in seconds (default: 120)'
+  ),
+  interval: z.number().int().min(1).max(60).optional().describe(
+    'Swarm health check poll interval in seconds (default: 5)'
+  ),
   startup_delay: z.number().int().min(0).max(300).optional().default(10).describe(
     'Seconds to wait before running health checks'
   ),

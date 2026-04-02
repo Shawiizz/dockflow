@@ -15,9 +15,7 @@ import { DOCKFLOW_AUDIT_DIR, DOCKFLOW_METRICS_DIR } from '../constants';
 export class HistorySyncService {
   /**
    * Sync a single audit + metrics entry to one remote node.
-   *
-   * Both writes are wrapped individually so a failure in one
-   * does not prevent the other from executing.
+   * Uses a single SSH call per node for both writes.
    */
   static async syncToNode(
     targetConnection: SSHKeyConnection,
@@ -29,26 +27,20 @@ export class HistorySyncService {
     const metricsDir = `${DOCKFLOW_METRICS_DIR}/${stackName}`;
     const metricsFile = `${metricsDir}/deployments.json`;
 
-    // Audit
-    try {
-      const escapedAudit = shellEscape(auditEntry);
-      await sshExec(
-        targetConnection,
-        `mkdir -p "${DOCKFLOW_AUDIT_DIR}" && echo '${escapedAudit}' >> "${auditFile}"`,
-      );
-    } catch (error) {
-      printWarning(`History sync (audit) failed for ${targetConnection.host}: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    const escapedAudit = shellEscape(auditEntry);
+    const escapedMetrics = shellEscape(metricsEntry);
 
-    // Metrics
+    // Single SSH call: create dirs + append both entries
+    // Each write is guarded so a failure in one doesn't block the other
     try {
-      const escapedMetrics = shellEscape(metricsEntry);
       await sshExec(
         targetConnection,
-        `mkdir -p "${metricsDir}" && echo '${escapedMetrics}' >> "${metricsFile}"`,
+        `mkdir -p "${DOCKFLOW_AUDIT_DIR}" "${metricsDir}" && ` +
+        `printf '%s\\n' '${escapedAudit}' >> "${auditFile}" && ` +
+        `printf '%s\\n' '${escapedMetrics}' >> "${metricsFile}"`,
       );
     } catch (error) {
-      printWarning(`History sync (metrics) failed for ${targetConnection.host}: ${error instanceof Error ? error.message : String(error)}`);
+      printWarning(`History sync failed for ${targetConnection.host}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

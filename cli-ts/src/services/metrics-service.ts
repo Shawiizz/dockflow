@@ -187,7 +187,7 @@ export class MetricsService {
 
     await sshExec(this.connection, `
       mkdir -p "${metricsDir}"
-      echo '${escapedJson}' >> "${metricsPath}"
+      printf '%s\n' '${escapedJson}' >> "${metricsPath}"
     `);
 
     return entryJson;

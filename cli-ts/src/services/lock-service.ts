@@ -10,6 +10,7 @@ import { sshExec, shellEscape } from '../utils/ssh';
 import { ok, err, type Result } from '../types';
 import { DOCKFLOW_LOCKS_DIR } from '../constants';
 import { LOCK_STALE_THRESHOLD_MINUTES } from '../constants';
+import { getPerformer } from '../utils/config';
 
 /**
  * Lock information stored in the lock file
@@ -87,7 +88,7 @@ export class LockService {
     try {
       const now = new Date();
       const lockData: LockData = {
-        performer: `${process.env.USER || 'cli'}@${process.env.HOSTNAME || 'local'}`,
+        performer: getPerformer(),
         started_at: now.toISOString(),
         timestamp: Math.floor(now.getTime() / 1000),
         version: options?.version || 'manual-lock',

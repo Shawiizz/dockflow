@@ -10,6 +10,7 @@ import type { SSHKeyConnection } from '../types';
 import { sshExec } from '../utils/ssh';
 import { shellEscape } from '../utils/ssh';
 import { DOCKFLOW_AUDIT_DIR } from '../constants';
+import { getPerformer } from '../utils/config';
 
 export class AuditService {
   constructor(private readonly connection: SSHKeyConnection) {}
@@ -29,7 +30,7 @@ export class AuditService {
     version: string,
   ): Promise<string> {
     const auditFile = `${DOCKFLOW_AUDIT_DIR}/${stackName}.log`;
-    const performer = `${process.env.USER || 'cli'}@${process.env.HOSTNAME || 'local'}`;
+    const performer = getPerformer();
     const timestamp = new Date().toISOString();
 
     const line = `${timestamp} | ${result} | ${version} | ${performer} | ${message}`;
@@ -37,7 +38,7 @@ export class AuditService {
 
     await sshExec(
       this.connection,
-      `mkdir -p "${DOCKFLOW_AUDIT_DIR}" && echo '${escapedLine}' >> "${auditFile}"`,
+      `mkdir -p "${DOCKFLOW_AUDIT_DIR}" && printf '%s\n' '${escapedLine}' >> "${auditFile}"`,
     );
 
     return line;
