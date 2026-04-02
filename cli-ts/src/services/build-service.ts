@@ -174,19 +174,30 @@ export class BuildService {
       if (filterSet && !filterSet.has(name)) continue;
 
       const build = svc.build;
-      if (!build || typeof build !== 'object') continue;
+      if (!build) continue;
 
-      const buildObj = build as Record<string, unknown>;
-      const dockerfile = buildObj.dockerfile as string | undefined;
-      if (!dockerfile) continue;
+      let dockerfile: string;
+      let context: string;
 
-      const context = (buildObj.context as string) ?? '.';
+      if (typeof build === 'string') {
+        // Short form: build: ./path → context is the path, Dockerfile is default
+        context = build;
+        dockerfile = 'Dockerfile';
+      } else if (typeof build === 'object') {
+        const buildObj = build as Record<string, unknown>;
+        dockerfile = (buildObj.dockerfile as string) ?? 'Dockerfile';
+        context = (buildObj.context as string) ?? '.';
+      } else {
+        continue;
+      }
+
       const tag = (svc.image as string) ?? `${name}:latest`;
+      const resolvedContext = resolve(basePath, context);
 
       targets.push({
         dockerfile,
-        dockerfileAbsPath: resolve(basePath, dockerfile),
-        context: resolve(basePath, context),
+        dockerfileAbsPath: resolve(resolvedContext, dockerfile),
+        context: resolvedContext,
         tag,
       });
     }

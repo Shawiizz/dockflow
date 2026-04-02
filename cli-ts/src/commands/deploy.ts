@@ -485,9 +485,10 @@ export async function runDeploy(
       config.health_checks?.on_failure === 'rollback'
     ) {
       try {
-        await releases.rollback(stackName, swarmDeploy);
-      } catch {
-        // Rollback itself throws — that's expected
+        const rolledBackTo = await releases.rollback(stackName, swarmDeploy);
+        printWarning(`Rolled back to ${rolledBackTo}`);
+      } catch (rollbackErr) {
+        printWarning(`Rollback failed: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`);
       }
     }
 

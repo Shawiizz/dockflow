@@ -77,22 +77,14 @@ export class LockService {
   }
 
   /**
-   * Acquire a deployment lock
+   * Acquire a deployment lock atomically.
+   *
+   * Uses bash `set -C` (noclobber) so the redirect `>` fails if the file
+   * already exists, preventing TOCTOU races between concurrent deploys.
+   * Stale or forced locks are removed first, then re-acquired atomically.
    */
   async acquire(options?: { message?: string; force?: boolean; version?: string }): Promise<Result<LockData, Error>> {
     try {
-      // Check for existing lock (allow override if stale or forced)
-      if (!options?.force) {
-        const current = await this.status();
-        if (current.success && current.data.locked && !current.data.isStale) {
-          return err(new Error(
-            current.data.data
-              ? `Already locked by ${current.data.data.performer} (${current.data.durationMinutes} min ago)`
-              : 'Lock file exists but could not be parsed'
-          ));
-        }
-      }
-
       const now = new Date();
       const lockData: LockData = {
         performer: `${process.env.USER || 'cli'}@${process.env.HOSTNAME || 'local'}`,
@@ -105,12 +97,48 @@ export class LockService {
 
       const lockContent = JSON.stringify(lockData, null, 2);
       const eLockContent = shellEscape(lockContent);
-      await sshExec(
+
+      if (options?.force) {
+        // Force: remove existing lock, then write
+        await sshExec(
+          this.connection,
+          `mkdir -p "${DOCKFLOW_LOCKS_DIR}" && rm -f "${this.lockFile}" && printf '%s' '${eLockContent}' > "${this.lockFile}"`,
+        );
+        return ok(lockData);
+      }
+
+      // Atomic acquire: noclobber makes `>` fail if file already exists
+      const result = await sshExec(
         this.connection,
-        `mkdir -p "${DOCKFLOW_LOCKS_DIR}" && printf '%s' '${eLockContent}' > "${this.lockFile}"`
+        `mkdir -p "${DOCKFLOW_LOCKS_DIR}" && (set -C; printf '%s' '${eLockContent}' > "${this.lockFile}") 2>/dev/null && echo "ACQUIRED" || echo "LOCKED"`,
       );
 
-      return ok(lockData);
+      if (result.stdout.trim() === 'ACQUIRED') {
+        return ok(lockData);
+      }
+
+      // File exists — check if stale
+      const current = await this.status();
+      if (current.success && current.data.locked && current.data.isStale) {
+        // Stale: remove and retry atomically
+        await sshExec(this.connection, `rm -f "${this.lockFile}"`);
+        const retryResult = await sshExec(
+          this.connection,
+          `(set -C; printf '%s' '${eLockContent}' > "${this.lockFile}") 2>/dev/null && echo "ACQUIRED" || echo "LOCKED"`,
+        );
+        if (retryResult.stdout.trim() === 'ACQUIRED') {
+          return ok(lockData);
+        }
+        // Another deploy won the race after we removed stale lock
+        return err(new Error('Lock was stale but another deploy acquired it first'));
+      }
+
+      // Active lock held by someone else
+      return err(new Error(
+        current.success && current.data.data
+          ? `Already locked by ${current.data.data.performer} (${current.data.durationMinutes} min ago)`
+          : 'Lock file exists but could not be parsed'
+      ));
     } catch (error) {
       return err(error instanceof Error ? error : new Error(String(error)));
     }

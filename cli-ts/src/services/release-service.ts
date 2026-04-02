@@ -134,12 +134,12 @@ export class ReleaseService {
    *
    * Reads the previous release's compose, deploys it via SwarmDeployService,
    * waits for convergence, then updates the `current` symlink.
-   * Always throws — a rollback is itself a deploy failure.
+   * Returns the version that was rolled back to.
    */
   async rollback(
     stackName: string,
     swarmDeployService: SwarmDeployService,
-  ): Promise<never> {
+  ): Promise<string> {
     const releases = await this.listReleases(stackName);
 
     if (releases.length < 2) {
@@ -183,10 +183,7 @@ export class ReleaseService {
       printWarning(`Could not remove failed release ${failed.version}`);
     });
 
-    throw new DeployError(
-      `Rolled back to ${previous.version}`,
-      ErrorCode.ROLLBACK_FAILED,
-    );
+    return previous.version;
   }
 
   /**
