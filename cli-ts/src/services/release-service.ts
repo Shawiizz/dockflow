@@ -91,36 +91,35 @@ export class ReleaseService {
 
   /**
    * List all releases sorted by epoch descending (newest first).
+   * Uses a single SSH call to read all metadata files at once.
    */
   async listReleases(stackName: string): Promise<ReleaseMetadata[]> {
     const dir = this.stackDir(stackName);
 
-    // List directories, excluding 'current' symlink
-    const lsResult = await sshExec(
+    // Single SSH call: list dirs, read all metadata.json files, separated by a marker
+    const result = await sshExec(
       this.connection,
-      `ls -1 "${dir}" 2>/dev/null | grep -v '^current$' || echo ""`,
+      `cd "${dir}" 2>/dev/null && for d in */; do ` +
+        `[ "$d" = "current/" ] && continue; ` +
+        `[ -f "$d/metadata.json" ] && printf '\\x1e' && cat "$d/metadata.json"; ` +
+      `done || echo ""`,
     );
 
-    const entries = lsResult.stdout.trim().split('\n').filter(Boolean);
-    if (entries.length === 0) return [];
+    const raw = result.stdout.trim();
+    if (!raw) return [];
 
     const releases: ReleaseMetadata[] = [];
 
-    for (const entry of entries) {
-      const metaResult = await sshExec(
-        this.connection,
-        `cat "${dir}/${entry}/metadata.json" 2>/dev/null || echo ""`,
-      );
-
-      const raw = metaResult.stdout.trim();
-      if (!raw) continue;
-
+    // Split on record separator (ASCII 0x1E)
+    const chunks = raw.split('\x1e').filter(Boolean);
+    for (const chunk of chunks) {
+      const trimmed = chunk.trim();
+      if (!trimmed) continue;
       try {
-        const meta = JSON.parse(raw) as ReleaseMetadata;
+        const meta = JSON.parse(trimmed) as ReleaseMetadata;
         releases.push(meta);
       } catch {
-        // Skip releases with corrupted metadata
-        printDebug(`Skipping release with bad metadata: ${entry}`);
+        printDebug(`Skipping release with bad metadata`);
       }
     }
 
@@ -198,6 +197,9 @@ export class ReleaseService {
   /**
    * Cleanup old releases keeping only the N most recent.
    * Also removes orphaned Docker images from deleted releases.
+   *
+   * Batches SSH calls: 1 for running images (all stacks), 1 for kept compose
+   * files, 1 for to-remove compose files, 1 for image cleanup, 1 for dir cleanup.
    */
   async cleanupOldReleases(
     stackName: string,
@@ -214,101 +216,68 @@ export class ReleaseService {
     const toKeep = releases.slice(0, keepN);
     const toRemove = releases.slice(keepN);
 
-    // Collect protected images (currently running + in kept releases + other stacks)
+    // 1. Collect ALL running images across all stacks in ONE SSH call
     const protectedImages = new Set<string>();
 
-    // Running images from THIS stack
     const runningResult = await sshExec(
       this.connection,
-      `docker stack services ${stackName} --format '{{.Image}}' 2>/dev/null || echo ""`,
+      `for stack in $(docker stack ls --format '{{.Name}}' 2>/dev/null); do ` +
+        `docker stack services "$stack" --format '{{.Image}}' 2>/dev/null; ` +
+      `done`,
     );
     for (const img of runningResult.stdout.trim().split('\n').filter(Boolean)) {
       protectedImages.add(img);
     }
 
-    // Running images from ALL other stacks (cross-project protection)
-    const allStacksResult = await sshExec(
+    // 2. Collect images from kept releases in ONE SSH call
+    const keptDirs = toKeep.map(r => `"${this.releaseDir(stackName, r.version)}/docker-compose.yml"`).join(' ');
+    const keptResult = await sshExec(
       this.connection,
-      `docker stack ls --format '{{.Name}}' 2>/dev/null || echo ""`,
+      `cat ${keptDirs} 2>/dev/null || echo ""`,
     );
-    for (const otherStack of allStacksResult.stdout.trim().split('\n').filter(Boolean)) {
-      if (otherStack === stackName) continue;
-      const otherImagesResult = await sshExec(
-        this.connection,
-        `docker stack services ${otherStack} --format '{{.Image}}' 2>/dev/null || echo ""`,
-      );
-      for (const img of otherImagesResult.stdout.trim().split('\n').filter(Boolean)) {
-        protectedImages.add(img);
+    const keptMatches = keptResult.stdout.match(/image:\s*['"]?([^\s'"]+)/g);
+    if (keptMatches) {
+      for (const m of keptMatches) {
+        protectedImages.add(m.replace(/image:\s*['"]?/, ''));
       }
     }
 
-    // Images from kept releases
-    for (const release of toKeep) {
-      const composeResult = await sshExec(
-        this.connection,
-        `cat "${this.releaseDir(stackName, release.version)}/docker-compose.yml" 2>/dev/null || echo ""`,
-      );
-      const raw = composeResult.stdout.trim();
-      if (!raw) continue;
-      // Extract image: lines from YAML (simple regex — avoids parsing on remote)
-      const imageMatches = raw.match(/image:\s*['"]?([^\s'"]+)/g);
-      if (imageMatches) {
-        for (const m of imageMatches) {
-          const img = m.replace(/image:\s*['"]?/, '');
-          protectedImages.add(img);
+    // 3. Collect images from to-remove releases in ONE SSH call
+    const removeDirs = toRemove.map(r => `"${this.releaseDir(stackName, r.version)}/docker-compose.yml"`).join(' ');
+    const removeResult = await sshExec(
+      this.connection,
+      `cat ${removeDirs} 2>/dev/null || echo ""`,
+    );
+    const orphanImages: string[] = [];
+    const removeMatches = removeResult.stdout.match(/image:\s*['"]?([^\s'"]+)/g);
+    if (removeMatches) {
+      for (const m of removeMatches) {
+        const img = m.replace(/image:\s*['"]?/, '');
+        if (!protectedImages.has(img) && !img.endsWith(':latest')) {
+          orphanImages.push(img);
         }
       }
     }
 
-    // Remove old releases and their orphaned images
-    for (const release of toRemove) {
-      const dir = this.releaseDir(stackName, release.version);
-
-      // Read images from the release's compose
-      const composeResult = await sshExec(
+    // 4. Batch cleanup orphaned images in ONE SSH call
+    if (orphanImages.length > 0) {
+      const uniqueOrphans = [...new Set(orphanImages)];
+      const quotedImages = uniqueOrphans.map(img => `'${shellEscape(img)}'`).join(' ');
+      // Remove containers using these images, then the images themselves
+      await sshExec(
         this.connection,
-        `cat "${dir}/docker-compose.yml" 2>/dev/null || echo ""`,
+        `for img in ${quotedImages}; do ` +
+          `ids=$(docker ps -a --filter "ancestor=$img" -q 2>/dev/null); ` +
+          `[ -n "$ids" ] && docker rm -f $ids 2>/dev/null; ` +
+          `docker rmi "$img" 2>/dev/null; ` +
+        `done; true`,
       );
-      const raw = composeResult.stdout.trim();
-
-      if (raw) {
-        const imageMatches = raw.match(/image:\s*['"]?([^\s'"]+)/g);
-        if (imageMatches) {
-          for (const m of imageMatches) {
-            const img = m.replace(/image:\s*['"]?/, '');
-
-            // Skip protected and :latest images
-            if (protectedImages.has(img) || img.endsWith(':latest')) continue;
-
-            // Remove containers using this image, then the image itself
-            try {
-              const containerResult = await sshExec(
-                this.connection,
-                `docker ps -a --filter ancestor=${img} -q 2>/dev/null || echo ""`,
-              );
-              const containerIds = containerResult.stdout.trim();
-              if (containerIds) {
-                await sshExec(
-                  this.connection,
-                  `docker rm -f ${containerIds} 2>/dev/null || true`,
-                );
-              }
-              await sshExec(
-                this.connection,
-                `docker rmi ${img} 2>/dev/null || true`,
-              );
-              printDebug(`Removed image: ${img}`);
-            } catch {
-              // Best-effort cleanup
-            }
-          }
-        }
-      }
-
-      // Remove the release directory
-      await sshExec(this.connection, `rm -rf "${dir}"`);
-      printDebug(`Cleaned up release: ${release.version}`);
+      printDebug(`Removed ${uniqueOrphans.length} orphaned image(s)`);
     }
+
+    // 5. Batch remove release directories in ONE SSH call
+    const rmDirs = toRemove.map(r => `"${this.releaseDir(stackName, r.version)}"`).join(' ');
+    await sshExec(this.connection, `rm -rf ${rmDirs}`);
 
     printInfo(`Cleaned up ${toRemove.length} old release(s)`);
   }

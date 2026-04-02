@@ -19,7 +19,7 @@ import {
 } from '../../utils/servers';
 import { normalizePrivateKey } from '../../utils/ssh-keys';
 import { DEFAULT_SSH_PORT } from '../../constants';
-import { getManagerConnection } from './_helpers';
+import { getManagerConnection, isValidDockerName } from './_helpers';
 
 /** Data attached to each WebSocket during upgrade */
 export interface WSData {
@@ -167,6 +167,12 @@ export const sshWebSocketHandlers = {
       const serviceName = ws.data.serviceName;
       const env = ws.data.env;
 
+      if (!serviceName || !isValidDockerName(serviceName)) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Invalid service name' }));
+        ws.close();
+        return;
+      }
+
       if (!env) {
         ws.send(JSON.stringify({ type: 'error', message: 'No environment specified' }));
         ws.close();
@@ -295,8 +301,8 @@ export const sshWebSocketHandlers = {
 
     // ── Shell mode: interactive SSH shell to a server ──
     const serverName = ws.data?.serverName;
-    if (!serverName) {
-      ws.send(JSON.stringify({ type: 'error', message: 'No server specified' }));
+    if (!serverName || !isValidDockerName(serverName)) {
+      ws.send(JSON.stringify({ type: 'error', message: 'Invalid server name' }));
       ws.close();
       return;
     }

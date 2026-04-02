@@ -14,7 +14,7 @@ import { loadConfig } from '../../utils/config';
 import { getAvailableEnvironments } from '../../utils/servers';
 import { sshExec } from '../../utils/ssh';
 import { parseDockerLogLines } from '../../services';
-import { getManagerConnection, resolveEnvironment } from './_helpers';
+import { getManagerConnection, resolveEnvironment, isValidDockerName } from './_helpers';
 import type {
   ServiceInfo,
   ServicesListResponse,
@@ -179,6 +179,7 @@ async function listServices(url: URL): Promise<Response> {
  * Restart a Docker service
  */
 async function restartService(serviceName: string, url: URL): Promise<Response> {
+  if (!isValidDockerName(serviceName)) return errorResponse('Invalid service name', 400);
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
 
@@ -202,6 +203,7 @@ async function restartService(serviceName: string, url: URL): Promise<Response> 
  * Stop a Docker service (scale to 0)
  */
 async function stopService(serviceName: string, url: URL): Promise<Response> {
+  if (!isValidDockerName(serviceName)) return errorResponse('Invalid service name', 400);
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
 
@@ -225,6 +227,7 @@ async function stopService(serviceName: string, url: URL): Promise<Response> {
  * Scale a Docker service
  */
 async function scaleService(serviceName: string, url: URL, req: Request): Promise<Response> {
+  if (!isValidDockerName(serviceName)) return errorResponse('Invalid service name', 400);
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
 
@@ -259,6 +262,7 @@ async function scaleService(serviceName: string, url: URL, req: Request): Promis
  * Rollback a Docker service
  */
 async function rollbackService(serviceName: string, url: URL): Promise<Response> {
+  if (!isValidDockerName(serviceName)) return errorResponse('Invalid service name', 400);
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
 
@@ -282,6 +286,7 @@ async function rollbackService(serviceName: string, url: URL): Promise<Response>
  * Get logs for a specific service
  */
 async function getServiceLogs(serviceName: string, url: URL): Promise<Response> {
+  if (!isValidDockerName(serviceName)) return errorResponse('Invalid service name', 400);
   const envFilter = url.searchParams.get('env');
   const lines = parseInt(url.searchParams.get('lines') || '100', 10);
 
@@ -301,7 +306,7 @@ async function getServiceLogs(serviceName: string, url: URL): Promise<Response> 
   }
 
   try {
-    const command = `docker service logs --tail ${lines} --timestamps --no-trunc ${serviceName} 2>&1`;
+    const command = `docker service logs --tail ${Math.min(Math.max(1, lines), 10000)} --timestamps --no-trunc ${serviceName} 2>&1`;
     const result = await sshExec(conn, command);
 
     const logEntries = parseDockerLogLines(result.stdout, serviceName);

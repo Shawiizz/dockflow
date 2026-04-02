@@ -10,7 +10,7 @@
 
 import { jsonResponse, errorResponse } from '../server';
 import { loadConfig, getAccessoriesStackName } from '../../utils/config';
-import { getManagerConnection, resolveEnvironment } from './_helpers';
+import { getManagerConnection, resolveEnvironment, isValidDockerName } from './_helpers';
 import { sshExec } from '../../utils/ssh';
 import { parseDockerLogLines } from '../../services';
 import type { AccessoryInfo, AccessoriesResponse } from '../types';
@@ -187,6 +187,7 @@ async function getAccessoriesStatus(url: URL): Promise<Response> {
  * Restart an accessory (docker service update --force)
  */
 async function restartAccessory(name: string, url: URL): Promise<Response> {
+  if (!isValidDockerName(name)) return errorResponse('Invalid accessory name', 400);
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
 
@@ -218,6 +219,7 @@ async function restartAccessory(name: string, url: URL): Promise<Response> {
  * Stop an accessory (docker service scale to 0)
  */
 async function stopAccessory(name: string, url: URL): Promise<Response> {
+  if (!isValidDockerName(name)) return errorResponse('Invalid accessory name', 400);
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
 
@@ -249,6 +251,7 @@ async function stopAccessory(name: string, url: URL): Promise<Response> {
  * Get logs for a specific accessory
  */
 async function getAccessoryLogs(name: string, url: URL): Promise<Response> {
+  if (!isValidDockerName(name)) return errorResponse('Invalid accessory name', 400);
   const envFilter = url.searchParams.get('env');
   const lines = parseInt(url.searchParams.get('lines') || '100', 10);
 
@@ -273,7 +276,7 @@ async function getAccessoryLogs(name: string, url: URL): Promise<Response> {
   }
 
   try {
-    const command = `docker service logs --tail ${lines} --timestamps ${accStackName}_${name} 2>&1`;
+    const command = `docker service logs --tail ${Math.min(Math.max(1, lines), 10000)} --timestamps ${accStackName}_${name} 2>&1`;
     const result = await sshExec(conn, command);
 
     const logEntries = parseDockerLogLines(result.stdout, name);

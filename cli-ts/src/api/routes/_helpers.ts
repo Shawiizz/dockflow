@@ -13,6 +13,22 @@ import { DEFAULT_SSH_PORT } from '../../constants';
 
 export { getAllNodeConnections };
 
+/**
+ * Docker name validation regex.
+ * Docker service/stack/container names: alphanumeric, underscores, hyphens, dots.
+ * Must start with alphanumeric.
+ */
+const DOCKER_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
+
+/**
+ * Validate a Docker resource name (service, stack, container, accessory).
+ * Returns true if the name is safe to interpolate into shell commands.
+ * Rejects empty strings and anything with shell metacharacters.
+ */
+export function isValidDockerName(name: string): boolean {
+  return name.length > 0 && name.length <= 256 && DOCKER_NAME_RE.test(name);
+}
+
 export interface ManagerConnection {
   host: string;
   port: number;
