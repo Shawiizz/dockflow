@@ -196,7 +196,7 @@ export const sshWebSocketHandlers = {
       client.on('ready', () => {
         // First find the container for the service
         client.exec(
-          `docker ps --filter "label=com.docker.swarm.service.name=${serviceName}" --format '{{.ID}}' | head -n1`,
+          `docker ps --filter label=com.docker.swarm.service.name=${serviceName} --format '{{.ID}}' | head -n1`,
           (err, stream) => {
             if (err) {
               ws.send(JSON.stringify({ type: 'error', message: `Failed to find container: ${err.message}` }));

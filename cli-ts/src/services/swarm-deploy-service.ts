@@ -122,7 +122,7 @@ export class SwarmDeployService {
 
       const check = await sshExec(
         this.connection,
-        `docker stack ls --format '{{.Name}}' | grep -w '^${stackName}$' || echo ""`,
+        `docker stack ls --format '{{.Name}}' | grep -xF '${stackName}' || echo ""`,
       );
 
       if (!check.stdout.trim()) {
@@ -186,7 +186,7 @@ export class SwarmDeployService {
     // 3. Verify stack exists
     const verify = await sshExec(
       this.connection,
-      `docker stack ls --format '{{.Name}}' | grep -w '^${stackName}$' || echo ""`,
+      `docker stack ls --format '{{.Name}}' | grep -xF '${stackName}' || echo ""`,
     );
 
     if (!verify.stdout.trim()) {

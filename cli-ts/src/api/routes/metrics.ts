@@ -66,7 +66,7 @@ async function getContainerStats(url: URL): Promise<Response> {
 
     // Filter by stack name if available
     if (conn.stackName) {
-      command += ` | grep '^${conn.stackName}'`;
+      command += ` | grep -F '${conn.stackName}'`;
       // grep may exit 1 if no matches, so ensure we get output either way
       command = `${command} || true`;
     }
@@ -128,7 +128,7 @@ async function getAuditLog(url: URL): Promise<Response> {
   const auditFile = `${DOCKFLOW_AUDIT_DIR}/${conn.stackName}.log`;
 
   try {
-    const command = `tail -n ${lines} ${auditFile} 2>/dev/null || echo ""`;
+    const command = `tail -n ${lines} "${auditFile}" 2>/dev/null || echo ""`;
     // Use fallback across all nodes since audit log is replicated
     const nodeConnections = getAllNodeConnections(env);
     const connections = nodeConnections.length > 0 ? nodeConnections : [conn];

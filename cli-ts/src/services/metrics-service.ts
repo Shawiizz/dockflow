@@ -5,7 +5,7 @@
  * All data is stored in /var/lib/dockflow/metrics/<stack>/
  */
 
-import { sshExec } from '../utils/ssh';
+import { sshExec, shellEscape } from '../utils/ssh';
 import { DOCKFLOW_METRICS_DIR } from '../constants';
 import type { SSHKeyConnection } from '../types';
 
@@ -183,12 +183,11 @@ export class MetricsService {
     const metricsDir = `${DOCKFLOW_METRICS_DIR}/${params.stackName}`;
     const metricsPath = getMetricsPath(params.stackName);
     const entryJson = JSON.stringify(entry);
-    const escapedJson = entryJson.replace(/'/g, "'\"'\"'");
+    const escapedJson = shellEscape(entryJson);
 
-    await sshExec(this.connection, `
-      mkdir -p "${metricsDir}"
-      printf '%s\n' '${escapedJson}' >> "${metricsPath}"
-    `);
+    await sshExec(this.connection,
+      `mkdir -p "${metricsDir}" && printf '%s\n' '${escapedJson}' >> "${metricsPath}"`,
+    );
 
     return entryJson;
   }
@@ -223,10 +222,9 @@ export class MetricsService {
 
     const toRemove = currentCount - keepLast;
 
-    await sshExec(this.connection, `
-      tail -n ${keepLast} "${metricsPath}" > "${metricsPath}.tmp"
-      mv "${metricsPath}.tmp" "${metricsPath}"
-    `);
+    await sshExec(this.connection,
+      `tail -n ${keepLast} "${metricsPath}" > "${metricsPath}.tmp" && mv "${metricsPath}.tmp" "${metricsPath}"`,
+    );
 
     return toRemove;
   }

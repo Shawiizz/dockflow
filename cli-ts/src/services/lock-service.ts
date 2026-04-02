@@ -100,7 +100,6 @@ export class LockService {
       const eLockContent = shellEscape(lockContent);
 
       if (options?.force) {
-        // Force: remove existing lock, then write
         await sshExec(
           this.connection,
           `mkdir -p "${DOCKFLOW_LOCKS_DIR}" && rm -f "${this.lockFile}" && printf '%s' '${eLockContent}' > "${this.lockFile}"`,
@@ -108,7 +107,6 @@ export class LockService {
         return ok(lockData);
       }
 
-      // Atomic acquire: noclobber makes `>` fail if file already exists
       const result = await sshExec(
         this.connection,
         `mkdir -p "${DOCKFLOW_LOCKS_DIR}" && (set -C; printf '%s' '${eLockContent}' > "${this.lockFile}") 2>/dev/null && echo "ACQUIRED" || echo "LOCKED"`,

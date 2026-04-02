@@ -6,7 +6,7 @@
  */
 
 import type { SSHKeyConnection } from '../types';
-import { sshExec, sshExecStream } from '../utils/ssh';
+import { sshExec, sshExecStream, shellEscape } from '../utils/ssh';
 import { createStackService } from './stack-service';
 
 /**
@@ -51,28 +51,28 @@ export class LogsService {
    */
   private buildLogsCommand(serviceName: string, options: LogOptions = {}): string {
     const parts = ['docker service logs'];
-    
+
     if (options.follow) {
       parts.push('-f');
     }
-    
+
     parts.push(`--tail ${options.tail ?? 100}`);
-    
+
     if (options.timestamps) {
       parts.push('--timestamps');
     }
-    
+
     if (options.since) {
       parts.push(`--since ${options.since}`);
     }
-    
+
     if (options.raw) {
       parts.push('--raw');
     }
-    
+
     parts.push(serviceName);
     parts.push('2>&1');
-    
+
     return parts.join(' ');
   }
 
@@ -164,7 +164,7 @@ export class LogsService {
     const grepFlag = options.caseSensitive ? '' : '-i';
 
     for (const service of services) {
-      const cmd = `docker service logs --tail ${options.tail ?? 500} ${service} 2>&1 | grep ${grepFlag} "${pattern}" || true`;
+      const cmd = `docker service logs --tail ${options.tail ?? 500} ${service} 2>&1 | grep ${grepFlag} -F '${shellEscape(pattern)}' || true`;
       const result = await sshExec(this.connection, cmd);
 
       if (result.stdout.trim()) {

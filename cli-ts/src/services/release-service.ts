@@ -82,7 +82,6 @@ export class ReleaseService {
   async listReleases(stackName: string): Promise<ReleaseMetadata[]> {
     const dir = this.stackDir(stackName);
 
-    // Single SSH call: list dirs, read all metadata.json files, separated by a marker
     const result = await sshExec(
       this.connection,
       `cd "${dir}" 2>/dev/null && for d in */; do ` +

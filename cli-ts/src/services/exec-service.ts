@@ -55,33 +55,33 @@ export class ExecService {
     options: ExecOptions = {}
   ): string {
     const parts = ['docker exec'];
-    
+
     if (options.interactive) {
       parts.push('-it');
     }
-    
+
     if (options.workdir) {
       parts.push(`-w ${options.workdir}`);
     }
-    
+
     if (options.user) {
       parts.push(`-u ${options.user}`);
     }
-    
+
     if (options.env) {
       for (const [key, value] of Object.entries(options.env)) {
         parts.push(`-e ${key}="${value}"`);
       }
     }
-    
+
     parts.push(containerId);
-    
+
     if (Array.isArray(command)) {
       parts.push(...command);
     } else {
       parts.push(command);
     }
-    
+
     return parts.join(' ');
   }
 
