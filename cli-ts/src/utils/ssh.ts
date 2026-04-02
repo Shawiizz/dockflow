@@ -9,7 +9,7 @@
  */
 
 import { Client as SSHClient } from 'ssh2';
-import type { ConnectConfig } from 'ssh2';
+import type { ClientChannel, ConnectConfig } from 'ssh2';
 import type { ConnectionInfo, SSHExecResult } from '../types';
 import { isKeyConnection } from '../types';
 import { normalizePrivateKey } from './ssh-keys';
@@ -501,6 +501,57 @@ export async function executeInteractiveSSH(
         client.end();
         resolve(code ?? 0);
       });
+    });
+  });
+}
+
+// ─── Raw channel access (for streaming) ──────────────────────
+
+export interface SSHChannelHandle {
+  /** The raw SSH channel — writable stdin, readable stdout */
+  stream: ClientChannel;
+  /** Resolves when the channel closes. stderr is collected. */
+  done: Promise<{ exitCode: number; stderr: string }>;
+}
+
+/**
+ * Open an SSH exec channel and return the raw stream for direct piping.
+ * Uses connection pooling. Caller owns the stream lifecycle.
+ * This allows streaming large data (e.g. docker save) without buffering.
+ */
+export async function sshExecChannel(
+  conn: ConnectionInfo,
+  command: string,
+): Promise<SSHChannelHandle> {
+  const client = await getPooledClient(conn);
+  return openChannelOnClient(client, command);
+}
+
+function openChannelOnClient(
+  client: SSHClient,
+  command: string,
+): Promise<SSHChannelHandle> {
+  return new Promise<SSHChannelHandle>((resolve, reject) => {
+    client.exec(command, (err, stream) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      let stderr = '';
+      stream.stderr.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      const done = new Promise<{ exitCode: number; stderr: string }>(
+        (resolveDone) => {
+          stream.on('close', (code: number) => {
+            resolveDone({ exitCode: code ?? 0, stderr });
+          });
+        },
+      );
+
+      resolve({ stream, done });
     });
   });
 }
