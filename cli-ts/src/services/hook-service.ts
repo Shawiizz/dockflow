@@ -16,7 +16,7 @@ import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import type { SSHKeyConnection } from '../types';
-import { sshExec } from '../utils/ssh';
+import { sshExec, shellEscape } from '../utils/ssh';
 import { printDebug, printDim, printRaw, printWarning } from '../utils/output';
 import type { DockflowConfig } from '../utils/config';
 import { DOCKFLOW_HOOKS_DIR, DOCKFLOW_STACKS_DIR } from '../constants';
@@ -148,9 +148,10 @@ export class HookService {
         ?? readFileSync(hookAbsPath, 'utf-8');
 
       // Upload
+      const escapedHook = shellEscape(hookContent);
       await sshExec(
         connection,
-        `cat > "${tmpPath}" << 'DOCKFLOW_HOOK_EOF'\n${hookContent}\nDOCKFLOW_HOOK_EOF`,
+        `printf '%s' '${escapedHook}' > "${tmpPath}"`,
       );
       await sshExec(connection, `chmod +x "${tmpPath}"`);
 

@@ -10,9 +10,10 @@
  */
 
 import type { SSHKeyConnection } from '../types';
-import { sshExec, sshExecWithInput } from '../utils/ssh';
+import { sshExec, sshExecWithInput, shellEscape } from '../utils/ssh';
 import { printDebug, printDim, printSuccess, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
+import { parseImageRef } from './compose-service';
 
 export interface DistributionTarget {
   connection: SSHKeyConnection;
@@ -236,10 +237,12 @@ export class DistributionService {
   ): Promise<void> {
     printDebug('Logging in to Docker registry...');
 
-    const userFlag = config.username ? `-u "${config.username}"` : '';
+    const ePassword = shellEscape(config.password);
+    const eUrl = shellEscape(config.url);
+    const userFlag = config.username ? `-u '${shellEscape(config.username)}'` : '';
     const result = await sshExec(
       connection,
-      `echo "${config.password}" | docker login "${config.url}" ${userFlag} --password-stdin 2>&1`,
+      `echo '${ePassword}' | docker login '${eUrl}' ${userFlag} --password-stdin 2>&1`,
     );
 
     if (result.exitCode !== 0) {
@@ -284,7 +287,7 @@ export class DistributionService {
       // Push additional tags if configured
       if (additionalTags && additionalTags.tags.length > 0) {
         const sha = await DistributionService.getGitSha();
-        const imageBase = image.split(':')[0];
+        const imageBase = parseImageRef(image).name;
 
         for (const tagTemplate of additionalTags.tags) {
           const tag = tagTemplate

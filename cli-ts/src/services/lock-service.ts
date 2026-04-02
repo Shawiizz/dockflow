@@ -6,7 +6,7 @@
  */
 
 import type { SSHKeyConnection } from '../types';
-import { sshExec } from '../utils/ssh';
+import { sshExec, shellEscape } from '../utils/ssh';
 import { ok, err, type Result } from '../types';
 import { DOCKFLOW_LOCKS_DIR } from '../constants';
 import { LOCK_STALE_THRESHOLD_MINUTES } from '../constants';
@@ -104,9 +104,10 @@ export class LockService {
       };
 
       const lockContent = JSON.stringify(lockData, null, 2);
+      const eLockContent = shellEscape(lockContent);
       await sshExec(
         this.connection,
-        `mkdir -p "${DOCKFLOW_LOCKS_DIR}" && cat > "${this.lockFile}" << 'EOF'\n${lockContent}\nEOF`
+        `mkdir -p "${DOCKFLOW_LOCKS_DIR}" && printf '%s' '${eLockContent}' > "${this.lockFile}"`
       );
 
       return ok(lockData);

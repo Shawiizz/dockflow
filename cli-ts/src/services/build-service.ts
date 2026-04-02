@@ -12,6 +12,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { parse as parseYaml } from 'yaml';
 import type { SSHKeyConnection } from '../types';
 import { sshExec } from '../utils/ssh';
+import { shellEscape } from '../utils/ssh';
 import { printDebug, printDim, printRaw, printSuccess, printWarning, createTaskLog } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import { createTar, type TarEntry } from '../utils/tar';
@@ -348,10 +349,14 @@ export class BuildService {
       // 3. Git clone on remote
       // GIT_SSH_COMMAND disables host key checking so the remote can clone from
       // any SSH-based repo (including itself in test/CI environments).
+      // All interpolated values are single-quote escaped to prevent shell injection.
       printDim(`Cloning repo on remote (${params.branch})...`);
+      const eBranch = shellEscape(params.branch);
+      const eAuthUrl = shellEscape(authUrl);
+      const eTmpDir = shellEscape(tmpDir);
       const cloneResult = await sshExec(
         connection,
-        `GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone --branch ${params.branch} --single-branch ${authUrl} ${tmpDir} 2>&1`,
+        `GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone --branch '${eBranch}' --single-branch '${eAuthUrl}' '${eTmpDir}' 2>&1`,
       );
       if (cloneResult.exitCode !== 0) {
         throw new DeployError(
@@ -361,7 +366,8 @@ export class BuildService {
       }
 
       // Checkout exact commit
-      await sshExec(connection, `git -C ${tmpDir} checkout ${commitSha} 2>&1`);
+      const eCommitSha = shellEscape(commitSha);
+      await sshExec(connection, `git -C '${eTmpDir}' checkout '${eCommitSha}' 2>&1`);
 
       // 4. Get build targets from compose content via stdin
       const targets = BuildService.getBuildTargets(
@@ -388,9 +394,13 @@ export class BuildService {
         const relContext = relative(params.projectRoot, target.context).replace(/\\/g, '/');
         const remoteContext = `${tmpDir}/${relContext}`;
 
+        const eDockerfile = shellEscape(`${remoteContext}/${relDockerfile}`);
+        const eTag = shellEscape(target.tag);
+        const eContext = shellEscape(remoteContext);
+
         const buildResult = await sshExec(
           connection,
-          `docker build -f "${remoteContext}/${relDockerfile}" -t "${target.tag}" "${remoteContext}" 2>&1`,
+          `docker build -f '${eDockerfile}' -t '${eTag}' '${eContext}' 2>&1`,
         );
 
         if (buildResult.exitCode !== 0) {
@@ -408,7 +418,7 @@ export class BuildService {
       return { images, durationMs: Date.now() - startTime };
     } finally {
       // Always cleanup
-      await sshExec(connection, `rm -rf "${tmpDir}"`).catch(() => {});
+      await sshExec(connection, `rm -rf '${shellEscape(tmpDir)}'`).catch(() => {});
     }
   }
 

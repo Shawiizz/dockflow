@@ -155,6 +155,25 @@ function hasRegistryDomain(image: string): boolean {
   return prefix.includes('.') || prefix.includes(':');
 }
 
+/**
+ * Split a Docker image reference into name and tag.
+ *
+ * The tag separator is the last colon AFTER the last slash.
+ * This correctly handles registry:port URLs:
+ *   "registry:5000/app:v1"  → { name: "registry:5000/app", tag: "v1" }
+ *   "myapp:latest"          → { name: "myapp", tag: "latest" }
+ *   "myapp"                 → { name: "myapp", tag: undefined }
+ *   "registry:5000/app"     → { name: "registry:5000/app", tag: undefined }
+ */
+export function parseImageRef(image: string): { name: string; tag: string | undefined } {
+  const lastSlash = image.lastIndexOf('/');
+  const tagSep = image.indexOf(':', lastSlash + 1);
+  if (tagSep === -1) {
+    return { name: image, tag: undefined };
+  }
+  return { name: image.substring(0, tagSep), tag: image.substring(tagSep + 1) };
+}
+
 // ---------------------------------------------------------------------------
 // ComposeService
 // ---------------------------------------------------------------------------
@@ -288,14 +307,14 @@ export class ComposeService {
 
       if (autoTag) {
         // Strip existing tag
-        const imageWithoutTag = originalImage.split(':')[0];
+        const imageWithoutTag = parseImageRef(originalImage).name;
         newImage = `${imageWithoutTag}-${env}:${version}`;
       } else {
         newImage = originalImage;
       }
 
       // Prefix with registry if enabled and image is not already from a registry
-      if (useRegistry && !hasRegistryDomain(newImage.split(':')[0])) {
+      if (useRegistry && !hasRegistryDomain(parseImageRef(newImage).name)) {
         newImage = `${registryPrefix}/${newImage}`;
       }
 

@@ -71,13 +71,13 @@ export class ReleaseService {
     // Write compose file
     await sshExec(
       this.connection,
-      `cat > "${dir}/docker-compose.yml" << 'DOCKFLOW_EOF'\n${composeYaml}\nDOCKFLOW_EOF`,
+      `printf '%s' '${escapedCompose}' > "${dir}/docker-compose.yml"`,
     );
 
     // Write metadata
     await sshExec(
       this.connection,
-      `echo '${escapedMeta}' > "${dir}/metadata.json"`,
+      `printf '%s' '${escapedMeta}' > "${dir}/metadata.json"`,
     );
 
     // Update symlink
