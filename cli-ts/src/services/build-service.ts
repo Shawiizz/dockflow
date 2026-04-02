@@ -358,24 +358,27 @@ export class BuildService {
       const commitSha = (await new Response(commitProc.stdout).text()).trim();
       await commitProc.exited;
 
-      // 2. Inject auth token into URL
-      const authUrl = BuildService.injectGitAuth(repoUrl);
+      // 2. Build git clone command with auth header (token never in URL or .git/config)
+      const authHeader = BuildService.getGitAuthHeader();
+      const eBranch = shellEscape(params.branch);
+      const eRepoUrl = shellEscape(repoUrl);
+      const eTmpDir = shellEscape(tmpDir);
+      const headerFlag = authHeader
+        ? `-c 'http.extraHeader=${shellEscape(authHeader)}'`
+        : '';
 
       // 3. Git clone on remote
-      // GIT_SSH_COMMAND disables host key checking so the remote can clone from
-      // any SSH-based repo (including itself in test/CI environments).
-      // All interpolated values are single-quote escaped to prevent shell injection.
       printDim(`Cloning repo on remote (${params.branch})...`);
-      const eBranch = shellEscape(params.branch);
-      const eAuthUrl = shellEscape(authUrl);
-      const eTmpDir = shellEscape(tmpDir);
       const cloneResult = await sshExec(
         connection,
-        `GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone --branch '${eBranch}' --single-branch '${eAuthUrl}' '${eTmpDir}' 2>&1`,
+        `GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git ${headerFlag} clone --branch '${eBranch}' --single-branch '${eRepoUrl}' '${eTmpDir}' 2>&1`,
       );
       if (cloneResult.exitCode !== 0) {
+        const output = (cloneResult.stderr.trim() || cloneResult.stdout.trim())
+          .replace(/Authorization: Bearer [^\s'"]*/gi, 'Authorization: ***')
+          .replace(/PRIVATE-TOKEN: [^\s'"]*/gi, 'PRIVATE-TOKEN: ***');
         throw new DeployError(
-          `Remote git clone failed: ${cloneResult.stderr.trim() || cloneResult.stdout.trim()}`,
+          `Remote git clone failed: ${output}`,
           ErrorCode.DEPLOY_FAILED,
         );
       }
@@ -438,35 +441,21 @@ export class BuildService {
   }
 
   /**
-   * Inject git auth token into a repository URL.
-   * Checks GITHUB_TOKEN, CI_JOB_TOKEN, GIT_TOKEN env vars.
+   * Build the git auth header for cloning via HTTP.
+   * Uses http.extraHeader so the token never appears in the URL or .git/config.
    */
-  private static injectGitAuth(repoUrl: string): string {
+  private static getGitAuthHeader(): string | null {
     const token =
       process.env.GITHUB_TOKEN ||
       process.env.CI_JOB_TOKEN ||
       process.env.GIT_TOKEN;
 
-    if (!token) return repoUrl;
+    if (!token) return null;
 
-    try {
-      const url = new URL(repoUrl);
-
-      if (process.env.GITHUB_TOKEN) {
-        url.username = 'x-access-token';
-        url.password = token;
-      } else if (process.env.CI_JOB_TOKEN) {
-        url.username = 'oauth2';
-        url.password = token;
-      } else {
-        url.username = 'token';
-        url.password = token;
-      }
-
-      return url.toString();
-    } catch {
-      // If URL parsing fails (e.g. SSH URL), return as-is
-      return repoUrl;
+    if (process.env.CI_JOB_TOKEN) {
+      return `PRIVATE-TOKEN: ${token}`;
     }
+    // GitHub (x-access-token), generic (Bearer) — all use Authorization header
+    return `Authorization: Bearer ${token}`;
   }
 }
