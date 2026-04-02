@@ -7,6 +7,7 @@
  */
 
 import { printError, printWarning, printInfo, printSuccess, printBlank, printRaw, colors } from './output';
+import { closeAllConnections } from './ssh';
 
 /**
  * CLI Error codes for different failure scenarios
@@ -206,6 +207,8 @@ export function withErrorHandler<T extends unknown[]>(
       await action(...args);
     } catch (error) {
       handleError(error);
+    } finally {
+      closeAllConnections();
     }
   };
 }
