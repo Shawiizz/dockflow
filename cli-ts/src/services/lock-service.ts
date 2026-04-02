@@ -150,10 +150,10 @@ export class LockService {
    */
   async release(): Promise<Result<void, Error>> {
     try {
-      await sshExec(this.connection, `rm -f "${this.lockFile}"`);
-
-      // Verify removal
-      const verifyResult = await sshExec(this.connection, `test -f "${this.lockFile}" && echo "EXISTS" || echo "REMOVED"`);
+      const verifyResult = await sshExec(
+        this.connection,
+        `rm -f "${this.lockFile}" && (test -f "${this.lockFile}" && echo "EXISTS" || echo "REMOVED")`,
+      );
       if (verifyResult.stdout.trim() === 'EXISTS') {
         return err(new Error('Lock file could not be removed. Check permissions on the server.'));
       }

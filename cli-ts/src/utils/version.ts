@@ -6,6 +6,7 @@
 import { printDebug } from './output';
 import { parseConnectionString } from './connection-parser';
 import { sshExec } from './ssh';
+import { DOCKFLOW_STACKS_DIR } from '../constants';
 
 /**
  * Increment version string
@@ -47,7 +48,8 @@ export function incrementVersion(version: string): string {
 }
 
 /**
- * Get the latest deployed version from the server via SSH
+ * Get the latest deployed version from the server via SSH.
+ * Reads metadata.json files from release dirs, picks the latest by timestamp.
  */
 export async function getLatestVersion(
   connectionString: string,
@@ -62,55 +64,31 @@ export async function getLatestVersion(
   }
   const conn = result.data;
 
-  // Stack name is project_name-env
   const stackName = `${projectName}-${env}`;
   if (debug) printDebug(`Looking for versions in stack: ${stackName}`);
-  if (debug) printDebug(`SSH connection: ${conn.user}@${conn.host}:${conn.port}`);
 
   try {
-    // SSH command to get latest version from metadata files
-    // Releases are stored directly in /var/lib/dockflow/stacks/{stack_name}/{version}/
-    const sshCmd = `
-      STACKS_DIR="/var/lib/dockflow/stacks/${stackName}"
-      echo "DEBUG: Checking $STACKS_DIR" >&2
-      if [ -d "$STACKS_DIR" ]; then
-        echo "DEBUG: Directory exists" >&2
-        ls -la "$STACKS_DIR" >&2
-        LATEST=""
-        LATEST_TS=""
-        for DIR in "$STACKS_DIR"/*/; do
-          echo "DEBUG: Checking $DIR" >&2
-          if [ -f "$DIR/metadata.json" ]; then
-            echo "DEBUG: Found metadata.json in $DIR" >&2
-            cat "$DIR/metadata.json" >&2
-            TS=$(cat "$DIR/metadata.json" | grep -o '"timestamp"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
-            VERSION=$(cat "$DIR/metadata.json" | grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
-            echo "DEBUG: Found TS=$TS VERSION=$VERSION" >&2
-            if [ -z "$LATEST_TS" ] || [ "$TS" \\> "$LATEST_TS" ]; then
-              LATEST_TS="$TS"
-              LATEST="$VERSION"
-            fi
-          fi
-        done
-        echo "$LATEST"
-      else
-        echo "DEBUG: Directory does not exist" >&2
-      fi
-    `;
-
-    const result = await sshExec(
+    const sshResult = await sshExec(
       { host: conn.host, port: conn.port, user: conn.user, privateKey: conn.privateKey },
-      sshCmd,
+      `STACKS_DIR="${DOCKFLOW_STACKS_DIR}/${stackName}"; ` +
+      `[ -d "$STACKS_DIR" ] || exit 0; ` +
+      `LATEST=""; LATEST_TS=""; ` +
+      `for DIR in "$STACKS_DIR"/*/; do ` +
+        `[ -f "$DIR/metadata.json" ] || continue; ` +
+        `TS=$(grep -o '"timestamp"[[:space:]]*:[[:space:]]*"[^"]*"' "$DIR/metadata.json" | cut -d'"' -f4); ` +
+        `VERSION=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$DIR/metadata.json" | cut -d'"' -f4); ` +
+        `if [ -z "$LATEST_TS" ] || [ "$TS" \\> "$LATEST_TS" ]; then LATEST_TS="$TS"; LATEST="$VERSION"; fi; ` +
+      `done; ` +
+      `echo "$LATEST"`,
     );
 
     if (debug) {
-      printDebug(`SSH exit code: ${result.exitCode}`);
-      printDebug(`SSH stdout: "${result.stdout}"`);
-      printDebug(`SSH stderr: ${result.stderr}`);
+      printDebug(`SSH exit code: ${sshResult.exitCode}`);
+      printDebug(`SSH stdout: "${sshResult.stdout}"`);
     }
 
-    if (result.exitCode === 0 && result.stdout) {
-      return result.stdout.trim() || null;
+    if (sshResult.exitCode === 0 && sshResult.stdout) {
+      return sshResult.stdout.trim() || null;
     }
     return null;
   } catch {

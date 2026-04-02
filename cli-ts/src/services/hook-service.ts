@@ -147,13 +147,12 @@ export class HookService {
       const hookContent = rendered?.get(hookRelPath.replace(/\\/g, '/'))
         ?? readFileSync(hookAbsPath, 'utf-8');
 
-      // Upload
+      // Upload + chmod in single SSH call
       const escapedHook = shellEscape(hookContent);
       await sshExec(
         connection,
-        `printf '%s' '${escapedHook}' > "${tmpPath}"`,
+        `printf '%s' '${escapedHook}' > "${tmpPath}" && chmod +x "${tmpPath}"`,
       );
-      await sshExec(connection, `chmod +x "${tmpPath}"`);
 
       // Execute with timeout
       const result = await sshExec(

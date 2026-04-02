@@ -593,6 +593,8 @@ export class BackupService {
     );
     const existingVolumes = volListResult.stdout.trim().split('\n').filter(Boolean);
 
+    const restoreTasks: { entry: typeof volumeEntries[number]; fullCommand: string }[] = [];
+
     for (const entry of volumeEntries) {
       const filePath = this.getDataFilePath(backupDir, backupId, 'volume', compression, entry.name);
       const mountType = entry.mountType || 'volume'; // backwards compat with old metadata
@@ -614,9 +616,22 @@ export class BackupService {
         ? `gunzip -c '${shellEscape(filePath)}' | ${restoreCmd}`
         : `cat '${shellEscape(filePath)}' | ${restoreCmd}`;
 
-      const result = await sshExec(nodeConn, fullCommand);
-      if (result.exitCode !== 0) {
-        return err(new Error(`Restore failed for ${mountType} ${entry.name}: ${result.stderr}`));
+      restoreTasks.push({ entry, fullCommand });
+    }
+
+    const restoreResults = await Promise.allSettled(
+      restoreTasks.map(({ fullCommand }) => sshExec(nodeConn, fullCommand)),
+    );
+
+    for (let i = 0; i < restoreResults.length; i++) {
+      const r = restoreResults[i];
+      const { entry } = restoreTasks[i];
+      const mountType = entry.mountType || 'volume';
+      if (r.status === 'rejected') {
+        return err(new Error(`Restore failed for ${mountType} ${entry.name}: ${r.reason?.message ?? 'unknown'}`));
+      }
+      if (r.value.exitCode !== 0) {
+        return err(new Error(`Restore failed for ${mountType} ${entry.name}: ${r.value.stderr}`));
       }
     }
 

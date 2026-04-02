@@ -7,6 +7,7 @@ import { sshExecWithFallback } from '../../utils/ssh-fallback';
 import { printSection, printNote, printDebug, colors, printBlank, printWarning, printDim, printJSON, printRaw } from '../../utils/output';
 import { validateEnv, getAllNodeConnections } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
+import { DOCKFLOW_AUDIT_DIR } from '../../constants';
 
 interface AuditEntry {
   timestamp: string;
@@ -57,7 +58,7 @@ export function registerHistoryCommand(program: Command): void {
       const { stackName, connection } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName, lines: options.lines, json: options.json });
 
-      const auditFile = `/var/lib/dockflow/audit/${stackName}.log`;
+      const auditFile = `${DOCKFLOW_AUDIT_DIR}/${stackName}.log`;
       const lines = options.all ? 1000 : parseInt(options.lines || '20', 10);
 
       // Use fallback across all nodes unless a specific server was requested

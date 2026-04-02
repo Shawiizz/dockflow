@@ -371,7 +371,7 @@ export class DistributionService {
     images: string[],
     additionalTags?: { tags: string[]; env: string; version: string; branch: string },
   ): Promise<void> {
-    for (const image of images) {
+    await Promise.all(images.map(async (image) => {
       printDim(`Pushing ${image}...`);
 
       const proc = Bun.spawn(['docker', 'push', image], {
@@ -395,7 +395,7 @@ export class DistributionService {
         const sha = await DistributionService.getGitSha();
         const imageBase = parseImageRef(image).name;
 
-        for (const tagTemplate of additionalTags.tags) {
+        await Promise.all(additionalTags.tags.map(async (tagTemplate) => {
           const tag = tagTemplate
             .replace(/\{version\}/g, additionalTags.version)
             .replace(/\{env\}/g, additionalTags.env)
@@ -412,7 +412,7 @@ export class DistributionService {
 
           if (tagProc.exitCode !== 0) {
             printWarning(`Failed to tag ${taggedImage}`);
-            continue;
+            return;
           }
 
           const pushProc = Bun.spawn(['docker', 'push', taggedImage], {
@@ -427,9 +427,9 @@ export class DistributionService {
           } else {
             printDim(`Pushed additional tag: ${taggedImage}`);
           }
-        }
+        }));
       }
-    }
+    }));
   }
 
   private static async getGitSha(): Promise<string> {

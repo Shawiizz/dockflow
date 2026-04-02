@@ -202,25 +202,26 @@ export class ReleaseService {
     const toKeep = releases.slice(0, keepN);
     const toRemove = releases.slice(keepN);
 
-    // 1. Collect ALL running images across all stacks in ONE SSH call
+    // 1-3. Collect running images, kept compose images, and to-remove compose images in parallel
     const protectedImages = new Set<string>();
+    const keptDirs = toKeep.map(r => `"${this.releaseDir(stackName, r.version)}/docker-compose.yml"`).join(' ');
+    const removeDirs = toRemove.map(r => `"${this.releaseDir(stackName, r.version)}/docker-compose.yml"`).join(' ');
 
-    const runningResult = await sshExec(
-      this.connection,
-      `for stack in $(docker stack ls --format '{{.Name}}' 2>/dev/null); do ` +
-        `docker stack services "$stack" --format '{{.Image}}' 2>/dev/null; ` +
-      `done`,
-    );
+    const [runningResult, keptResult, removeResult] = await Promise.all([
+      sshExec(
+        this.connection,
+        `for stack in $(docker stack ls --format '{{.Name}}' 2>/dev/null); do ` +
+          `docker stack services "$stack" --format '{{.Image}}' 2>/dev/null; ` +
+        `done`,
+      ),
+      sshExec(this.connection, `cat ${keptDirs} 2>/dev/null || echo ""`),
+      sshExec(this.connection, `cat ${removeDirs} 2>/dev/null || echo ""`),
+    ]);
+
     for (const img of runningResult.stdout.trim().split('\n').filter(Boolean)) {
       protectedImages.add(img);
     }
 
-    // 2. Collect images from kept releases in ONE SSH call
-    const keptDirs = toKeep.map(r => `"${this.releaseDir(stackName, r.version)}/docker-compose.yml"`).join(' ');
-    const keptResult = await sshExec(
-      this.connection,
-      `cat ${keptDirs} 2>/dev/null || echo ""`,
-    );
     const keptMatches = keptResult.stdout.match(/image:\s*['"]?([^\s'"]+)/g);
     if (keptMatches) {
       for (const m of keptMatches) {
@@ -228,12 +229,6 @@ export class ReleaseService {
       }
     }
 
-    // 3. Collect images from to-remove releases in ONE SSH call
-    const removeDirs = toRemove.map(r => `"${this.releaseDir(stackName, r.version)}/docker-compose.yml"`).join(' ');
-    const removeResult = await sshExec(
-      this.connection,
-      `cat ${removeDirs} 2>/dev/null || echo ""`,
-    );
     const orphanImages: string[] = [];
     const removeMatches = removeResult.stdout.match(/image:\s*['"]?([^\s'"]+)/g);
     if (removeMatches) {

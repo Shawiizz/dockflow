@@ -298,15 +298,23 @@ export class SwarmDeployService {
     const serviceNames = serviceLines.map((l) => l.split('\t')[0]).filter(Boolean);
     if (serviceNames.length === 0) return;
 
-    const results = await Promise.all(serviceNames.map(async (svc) => {
-      const inspectResult = await sshExec(
-        this.connection,
-        `docker service inspect ${svc} --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{end}}' 2>/dev/null || echo ""`,
-      );
-      return { svc, state: inspectResult.stdout.trim().toLowerCase() };
-    }));
+    // Single SSH call: inspect all services at once, output name\tstate pairs
+    const quoted = serviceNames.map((s) => `'${shellEscape(s)}'`).join(' ');
+    const result = await sshExec(
+      this.connection,
+      `for svc in ${quoted}; do ` +
+        `STATE=$(docker service inspect "$svc" --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{end}}' 2>/dev/null); ` +
+        `echo "$svc\t$STATE"; ` +
+      `done`,
+    );
 
-    const rolledBack = results.filter((r) =>
+    const lines = result.stdout.trim().split('\n').filter(Boolean);
+    const parsed = lines.map((l) => {
+      const [svc, state] = l.split('\t');
+      return { svc, state: (state || '').toLowerCase() };
+    });
+
+    const rolledBack = parsed.filter((r) =>
       r.state === 'rollback_started' || r.state === 'rollback_completed',
     );
     if (rolledBack.length > 0) {
@@ -317,7 +325,7 @@ export class SwarmDeployService {
       );
     }
 
-    const stuck = results.filter((r) =>
+    const stuck = parsed.filter((r) =>
       r.state === 'rollback_paused' || r.state === 'paused',
     );
     if (stuck.length > 0) {

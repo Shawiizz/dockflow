@@ -295,20 +295,16 @@ async function recordHistory(
   workers: Array<{ host: string }>,
 ): Promise<void> {
   let auditLine = '';
-  try {
-    auditLine = await ctx.audit.writeEntry(
+  let metricsJson = '';
+
+  const [auditResult, metricsResult] = await Promise.allSettled([
+    ctx.audit.writeEntry(
       ctx.stackName,
       status === 'success' ? 'deployed' : 'failed',
       auditMessage,
       ctx.deployVersion,
-    );
-  } catch (e) {
-    printWarning(`Audit write failed: ${e instanceof Error ? e.message : String(e)}`);
-  }
-
-  let metricsJson = '';
-  try {
-    metricsJson = await ctx.metrics.writeDeployment({
+    ),
+    ctx.metrics.writeDeployment({
       stackName: ctx.stackName,
       version: ctx.deployVersion,
       env: ctx.env,
@@ -319,9 +315,19 @@ async function recordHistory(
       buildSkipped: !!ctx.options.skipBuild,
       accessoriesDeployed: !ctx.skipAccessories,
       nodeCount: 1 + workers.length,
-    });
-  } catch (e) {
-    printWarning(`Metrics write failed: ${e instanceof Error ? e.message : String(e)}`);
+    }),
+  ]);
+
+  if (auditResult.status === 'fulfilled') {
+    auditLine = auditResult.value;
+  } else {
+    printWarning(`Audit write failed: ${auditResult.reason instanceof Error ? auditResult.reason.message : String(auditResult.reason)}`);
+  }
+
+  if (metricsResult.status === 'fulfilled') {
+    metricsJson = metricsResult.value;
+  } else {
+    printWarning(`Metrics write failed: ${metricsResult.reason instanceof Error ? metricsResult.reason.message : String(metricsResult.reason)}`);
   }
 
   const allOtherConns = [
@@ -557,20 +563,20 @@ export async function runDeploy(
     // --- Build & distribute ---
     await buildAndDistribute(ctx, compose);
 
-    // --- Create release ---
+    // --- Create release + Deploy accessories (independent, parallel) ---
     const performer = getPerformer();
-    await ctx.releases.createRelease(stackName, deployVersion, ComposeService.serialize(compose), {
-      project_name: config.project_name,
-      version: deployVersion,
-      env,
-      timestamp: new Date().toISOString(),
-      epoch: Math.floor(Date.now() / 1000),
-      performer,
-      branch: branchName,
-    });
-
-    // --- Deploy accessories ---
-    await deployAccessories(ctx);
+    await Promise.all([
+      ctx.releases.createRelease(stackName, deployVersion, ComposeService.serialize(compose), {
+        project_name: config.project_name,
+        version: deployVersion,
+        env,
+        timestamp: new Date().toISOString(),
+        epoch: Math.floor(Date.now() / 1000),
+        performer,
+        branch: branchName,
+      }),
+      deployAccessories(ctx),
+    ]);
 
     // --- Deploy app ---
     await deployApp(ctx, compose);

@@ -147,42 +147,44 @@ export class HealthCheckService {
     serviceName: string,
     expectedImage?: string,
   ): Promise<{ name: string; status: 'healthy' | 'unhealthy' | 'rolled_back' }> {
-    // Get running task image + container ID via Swarm task inspect (works from manager for all nodes)
-    const taskResult = await sshExec(
+    // Single SSH call: get task image, container ID, and container health in one shot
+    const result = await sshExec(
       this.connection,
       `TASK=$(docker service ps ${serviceName} --filter 'desired-state=running' --format '{{.ID}}' --no-trunc 2>/dev/null | head -1); ` +
-      `[ -z "$TASK" ] && echo "NO_TASK" || docker inspect "$TASK" --format '{{.Spec.ContainerSpec.Image}}\t{{.Status.ContainerStatus.ContainerID}}' 2>/dev/null || echo ""`,
+      `[ -z "$TASK" ] && echo "NO_TASK" && exit 0; ` +
+      `INFO=$(docker inspect "$TASK" --format '{{.Spec.ContainerSpec.Image}}\t{{.Status.ContainerStatus.ContainerID}}' 2>/dev/null) || { echo "NO_TASK"; exit 0; }; ` +
+      `CID=$(echo "$INFO" | cut -f2); ` +
+      `if [ -n "$CID" ]; then ` +
+        `HEALTH=$(docker inspect "$CID" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' 2>/dev/null || echo "none"); ` +
+        `echo "$INFO\t$HEALTH"; ` +
+      `else ` +
+        `echo "$INFO\tnone"; ` +
+      `fi`,
     );
 
-    const output = taskResult.stdout.trim();
+    const output = result.stdout.trim();
     if (!output || output === 'NO_TASK') {
       return { name: serviceName, status: 'unhealthy' };
     }
 
-    const [taskImage, containerId] = output.split('\t');
+    const parts = output.split('\t');
+    const taskImage = parts[0];
+    const containerId = parts[1];
+    const healthStatus = (parts[2] || 'none').toLowerCase();
 
     // Check if auto-rolled back (image mismatch from task spec)
     if (expectedImage && taskImage) {
-      // Strip @sha256 digest if present (Swarm resolves tags to digests)
       const cleanTaskImage = taskImage.split('@')[0];
       if (cleanTaskImage !== expectedImage) {
         return { name: serviceName, status: 'rolled_back' };
       }
     }
 
-    // If no container ID, service is still starting
     if (!containerId) {
       return { name: serviceName, status: 'unhealthy' };
     }
 
-    // Check container health status (only works if container is on this node)
-    const healthResult = await sshExec(
-      this.connection,
-      `docker inspect ${containerId} --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' 2>/dev/null || echo "none"`,
-    );
-    const status = healthResult.stdout.trim().toLowerCase();
-
-    if (status === 'healthy' || status === 'none') {
+    if (healthStatus === 'healthy' || healthStatus === 'none') {
       return { name: serviceName, status: 'healthy' };
     }
 

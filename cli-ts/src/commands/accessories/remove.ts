@@ -10,7 +10,7 @@ import { printInfo, printIntro, printOutro, printNote, printWarning, printError,
 import { validateEnv } from '../../utils/validation';
 import { validateAccessoriesStack, getShortServiceNames } from './utils';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
-import { STACK_REMOVAL_MAX_ATTEMPTS, STACK_REMOVAL_POLL_INTERVAL_MS } from '../../constants';
+import { STACK_REMOVAL_MAX_ATTEMPTS, STACK_REMOVAL_POLL_INTERVAL_MS, DOCKFLOW_ACCESSORIES_DIR } from '../../constants';
 
 /**
  * Register the accessories remove command
@@ -160,7 +160,7 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
         }
 
         // Clean up local files on remote
-        const accessoriesDir = `/var/lib/dockflow/accessories/${stackName}`;
+        const accessoriesDir = `${DOCKFLOW_ACCESSORIES_DIR}/${stackName}`;
         await sshExec(connection, `rm -rf ${accessoriesDir}`);
 
         printBlank();

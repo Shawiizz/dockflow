@@ -11,6 +11,7 @@ import { jsonResponse, errorResponse } from '../server';
 import { sshExec } from '../../utils/ssh';
 import { sshExecWithFallback } from '../../utils/ssh-fallback';
 import { getManagerConnection, getAllNodeConnections, resolveEnvironment } from './_helpers';
+import { DOCKFLOW_AUDIT_DIR } from '../../constants';
 import type {
   ContainerStatsEntry,
   ContainerStatsResponse,
@@ -104,7 +105,7 @@ async function getContainerStats(url: URL): Promise<Response> {
 
 // ─── Audit log ──────────────────────────────────────────────────────────────
 
-const AUDIT_DIR = '/var/lib/dockflow/audit';
+// (audit log below)
 
 /**
  * Read the deploy audit log from the remote server.
@@ -124,7 +125,7 @@ async function getAuditLog(url: URL): Promise<Response> {
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
   const lines = parseInt(url.searchParams.get('lines') || '100', 10);
-  const auditFile = `${AUDIT_DIR}/${conn.stackName}.log`;
+  const auditFile = `${DOCKFLOW_AUDIT_DIR}/${conn.stackName}.log`;
 
   try {
     const command = `tail -n ${lines} ${auditFile} 2>/dev/null || echo ""`;

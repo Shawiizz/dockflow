@@ -9,6 +9,7 @@
 import type { SSHKeyConnection } from '../types';
 import { sshExec, sshExecStream, shellEscape } from '../utils/ssh';
 import { ok, err, type Result } from '../types';
+import { DOCKFLOW_STACKS_DIR } from '../constants';
 
 /**
  * Service information from Docker Swarm
@@ -206,7 +207,7 @@ export class StackService {
       const escaped = shellEscape(this.stackName);
       const result = await sshExec(
         this.connection,
-        `cat '/var/lib/dockflow/stacks/${escaped}/current/metadata.json' 2>/dev/null`
+        `cat '${DOCKFLOW_STACKS_DIR}/${escaped}/current/metadata.json' 2>/dev/null`
       );
 
       if (result.exitCode !== 0 || !result.stdout.trim()) {

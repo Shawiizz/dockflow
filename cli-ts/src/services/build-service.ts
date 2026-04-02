@@ -358,20 +358,17 @@ export class BuildService {
       const commitSha = (await new Response(commitProc.stdout).text()).trim();
       await commitProc.exited;
 
-      // 2. Build git clone command with auth header (token never in URL or .git/config)
-      const authHeader = BuildService.getGitAuthHeader();
+      // 2. Build git clone command with auth via env vars (never visible in process args)
+      const authEnv = BuildService.buildGitAuthEnv();
       const eBranch = shellEscape(params.branch);
       const eRepoUrl = shellEscape(repoUrl);
       const eTmpDir = shellEscape(tmpDir);
-      const headerFlag = authHeader
-        ? `-c 'http.extraHeader=${shellEscape(authHeader)}'`
-        : '';
 
       // 3. Git clone on remote
       printDim(`Cloning repo on remote (${params.branch})...`);
       const cloneResult = await sshExec(
         connection,
-        `GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git ${headerFlag} clone --branch '${eBranch}' --single-branch '${eRepoUrl}' '${eTmpDir}' 2>&1`,
+        `${authEnv}GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone --branch '${eBranch}' --single-branch '${eRepoUrl}' '${eTmpDir}' 2>&1`,
       );
       if (cloneResult.exitCode !== 0) {
         const output = (cloneResult.stderr.trim() || cloneResult.stdout.trim())
@@ -446,21 +443,22 @@ export class BuildService {
   }
 
   /**
-   * Build the git auth header for cloning via HTTP.
-   * Uses http.extraHeader so the token never appears in the URL or .git/config.
+   * Build git auth env vars for cloning via HTTP.
+   * Uses GIT_CONFIG_* env vars so the token never appears in process args (invisible to `ps`).
    */
-  private static getGitAuthHeader(): string | null {
+  private static buildGitAuthEnv(): string {
     const token =
       process.env.GITHUB_TOKEN ||
       process.env.CI_JOB_TOKEN ||
       process.env.GIT_TOKEN;
 
-    if (!token) return null;
+    if (!token) return '';
 
-    if (process.env.CI_JOB_TOKEN) {
-      return `PRIVATE-TOKEN: ${token}`;
-    }
-    // GitHub (x-access-token), generic (Bearer) — all use Authorization header
-    return `Authorization: Bearer ${token}`;
+    const header = process.env.CI_JOB_TOKEN
+      ? `PRIVATE-TOKEN: ${token}`
+      : `Authorization: Bearer ${token}`;
+
+    const eHeader = shellEscape(header);
+    return `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0='http.extraHeader' GIT_CONFIG_VALUE_0='${eHeader}' `;
   }
 }

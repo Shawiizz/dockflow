@@ -30,13 +30,12 @@ export class HistorySyncService {
     const escapedAudit = shellEscape(auditEntry);
     const escapedMetrics = shellEscape(metricsEntry);
 
-    // Single SSH call: create dirs + append both entries
-    // Each write is guarded so a failure in one doesn't block the other
+    // Single SSH call: create dirs + append both entries independently
     try {
       await sshExec(
         targetConnection,
         `mkdir -p "${DOCKFLOW_AUDIT_DIR}" "${metricsDir}" && ` +
-        `printf '%s\\n' '${escapedAudit}' >> "${auditFile}" && ` +
+        `printf '%s\\n' '${escapedAudit}' >> "${auditFile}"; ` +
         `printf '%s\\n' '${escapedMetrics}' >> "${metricsFile}"`,
       );
     } catch (error) {
