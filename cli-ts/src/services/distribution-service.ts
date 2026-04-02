@@ -257,10 +257,10 @@ export class DistributionService {
 
     printDim(`Distributing ${images.length} image(s) to ${targets.length} node(s)...`);
 
-    for (const image of images) {
+    await Promise.all(images.map(async (image) => {
       const sourceId = await DistributionService.getLocalImageId(image);
       const needsUpdate = await DistributionService.filterTargetsNeedingImage(image, sourceId, targets);
-      if (needsUpdate.length === 0) continue;
+      if (needsUpdate.length === 0) return;
 
       await DistributionService.transferImageToTargets(
         image,
@@ -268,7 +268,7 @@ export class DistributionService {
         DistributionService.streamToTarget,
         '',
       );
-    }
+    }));
   }
 
   static async distributeFromRemote(
@@ -280,10 +280,10 @@ export class DistributionService {
 
     printDim(`Distributing ${images.length} image(s) to ${targets.length} node(s) (from remote)...`);
 
-    for (const image of images) {
+    await Promise.all(images.map(async (image) => {
       const sourceId = await DistributionService.getRemoteImageId(source, image);
       const needsUpdate = await DistributionService.filterTargetsNeedingImage(image, sourceId, targets);
-      if (needsUpdate.length === 0) continue;
+      if (needsUpdate.length === 0) return;
 
       await DistributionService.transferImageToTargets(
         image,
@@ -291,7 +291,7 @@ export class DistributionService {
         (img, target) => DistributionService.streamRemoteToTarget(img, source, target),
         ' (from remote)',
       );
-    }
+    }));
   }
 
   // ─── Single-target convenience ─────────────────────────────

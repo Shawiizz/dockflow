@@ -399,15 +399,10 @@ export class BuildService {
         return { images: [], durationMs: Date.now() - startTime };
       }
 
-      // 5. Execute builds on remote
+      // 5. Execute builds on remote (parallel)
       printDim(`Building ${targets.length} image(s) on remote...`);
-      const images: string[] = [];
 
-      for (const target of targets) {
-        // Rebase paths to remote tmpDir
-        // Use dockerfileAbsPath relative to context (not the raw compose value)
-        // e.g. context=projectRoot, dockerfileAbsPath=.dockflow/docker/Dockerfile.web
-        //   → relDockerfile = ".dockflow/docker/Dockerfile.web"
+      const buildTasks = targets.map(async (target) => {
         const relDockerfile = relative(target.context, target.dockerfileAbsPath).replace(/\\/g, '/');
         const relContext = relative(params.projectRoot, target.context).replace(/\\/g, '/');
         const remoteContext = `${tmpDir}/${relContext}`;
@@ -429,8 +424,18 @@ export class BuildService {
           );
         }
 
-        images.push(target.tag);
         printSuccess(`Built ${target.tag} (remote)`);
+        return target.tag;
+      });
+
+      const results = await Promise.allSettled(buildTasks);
+      const images: string[] = [];
+      for (const r of results) {
+        if (r.status === 'fulfilled') {
+          images.push(r.value);
+        } else {
+          throw r.reason;
+        }
       }
 
       return { images, durationMs: Date.now() - startTime };

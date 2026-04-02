@@ -272,30 +272,22 @@ export class StackService {
       };
     }
 
-    // Restart all services
+    // Restart all services in parallel via a single SSH call
     const services = await this.getFullServiceNames();
     if (services.length === 0) {
       return { success: false, message: 'No services found' };
     }
 
-    const results: string[] = [];
-    let allSuccess = true;
+    const updateCmds = services
+      .map((svc) => `docker service update --force '${shellEscape(svc)}'`)
+      .join(' & ');
+    const result = await sshExec(this.connection, `${updateCmds} & wait`);
 
-    for (const svc of services) {
-      const escaped = shellEscape(svc);
-      const result = await sshExec(this.connection, `docker service update --force '${escaped}'`);
-      if (result.exitCode !== 0) {
-        allSuccess = false;
-        results.push(`${svc}: failed - ${result.stderr}`);
-      } else {
-        results.push(`${svc}: restarted`);
-      }
-    }
-
+    const allSuccess = result.exitCode === 0;
     return {
       success: allSuccess,
       message: allSuccess ? `Restarted ${services.length} services` : 'Some services failed to restart',
-      output: results.join('\n'),
+      output: result.stdout,
     };
   }
 

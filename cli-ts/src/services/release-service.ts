@@ -62,28 +62,14 @@ export class ReleaseService {
     const dir = this.releaseDir(stackName, version);
     const escapedCompose = shellEscape(composeYaml);
     const escapedMeta = shellEscape(JSON.stringify(metadata, null, 2));
+    const stackDir = this.stackDir(stackName);
 
     await sshExec(
       this.connection,
-      `mkdir -p "${dir}"`,
-    );
-
-    // Write compose file
-    await sshExec(
-      this.connection,
-      `printf '%s' '${escapedCompose}' > "${dir}/docker-compose.yml"`,
-    );
-
-    // Write metadata
-    await sshExec(
-      this.connection,
-      `printf '%s' '${escapedMeta}' > "${dir}/metadata.json"`,
-    );
-
-    // Update symlink
-    await sshExec(
-      this.connection,
-      `ln -sfn "${dir}" "${this.stackDir(stackName)}/current"`,
+      `mkdir -p "${dir}" && ` +
+      `printf '%s' '${escapedCompose}' > "${dir}/docker-compose.yml" && ` +
+      `printf '%s' '${escapedMeta}' > "${dir}/metadata.json" && ` +
+      `ln -sfn "${dir}" "${stackDir}/current"`,
     );
 
     printDebug(`Release ${version} created at ${dir}`);
