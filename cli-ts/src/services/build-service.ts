@@ -396,10 +396,11 @@ export class BuildService {
         return { images: [], durationMs: Date.now() - startTime };
       }
 
-      // 5. Execute builds on remote (parallel)
+      // 5. Execute builds on remote (sequential — single SSH host)
       printDim(`Building ${targets.length} image(s) on remote...`);
+      const images: string[] = [];
 
-      const buildTasks = targets.map(async (target) => {
+      for (const target of targets) {
         const relDockerfile = relative(target.context, target.dockerfileAbsPath).replace(/\\/g, '/');
         const relContext = relative(params.projectRoot, target.context).replace(/\\/g, '/');
         const remoteContext = `${tmpDir}/${relContext}`;
@@ -422,17 +423,7 @@ export class BuildService {
         }
 
         printSuccess(`Built ${target.tag} (remote)`);
-        return target.tag;
-      });
-
-      const results = await Promise.allSettled(buildTasks);
-      const images: string[] = [];
-      for (const r of results) {
-        if (r.status === 'fulfilled') {
-          images.push(r.value);
-        } else {
-          throw r.reason;
-        }
+        images.push(target.tag);
       }
 
       return { images, durationMs: Date.now() - startTime };

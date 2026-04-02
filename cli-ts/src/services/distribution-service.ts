@@ -257,10 +257,11 @@ export class DistributionService {
 
     printDim(`Distributing ${images.length} image(s) to ${targets.length} node(s)...`);
 
-    await Promise.all(images.map(async (image) => {
+    // Images sequential (avoid N×M SSH channels), targets parallel per image
+    for (const image of images) {
       const sourceId = await DistributionService.getLocalImageId(image);
       const needsUpdate = await DistributionService.filterTargetsNeedingImage(image, sourceId, targets);
-      if (needsUpdate.length === 0) return;
+      if (needsUpdate.length === 0) continue;
 
       await DistributionService.transferImageToTargets(
         image,
@@ -268,7 +269,7 @@ export class DistributionService {
         DistributionService.streamToTarget,
         '',
       );
-    }));
+    }
   }
 
   static async distributeFromRemote(
@@ -280,10 +281,11 @@ export class DistributionService {
 
     printDim(`Distributing ${images.length} image(s) to ${targets.length} node(s) (from remote)...`);
 
-    await Promise.all(images.map(async (image) => {
+    // Images sequential (avoid N×M SSH channels), targets parallel per image
+    for (const image of images) {
       const sourceId = await DistributionService.getRemoteImageId(source, image);
       const needsUpdate = await DistributionService.filterTargetsNeedingImage(image, sourceId, targets);
-      if (needsUpdate.length === 0) return;
+      if (needsUpdate.length === 0) continue;
 
       await DistributionService.transferImageToTargets(
         image,
@@ -291,7 +293,7 @@ export class DistributionService {
         (img, target) => DistributionService.streamRemoteToTarget(img, source, target),
         ' (from remote)',
       );
-    }));
+    }
   }
 
   // ─── Single-target convenience ─────────────────────────────
@@ -371,7 +373,7 @@ export class DistributionService {
     images: string[],
     additionalTags?: { tags: string[]; env: string; version: string; branch: string },
   ): Promise<void> {
-    await Promise.all(images.map(async (image) => {
+    for (const image of images) {
       printDim(`Pushing ${image}...`);
 
       const proc = Bun.spawn(['docker', 'push', image], {
@@ -395,7 +397,7 @@ export class DistributionService {
         const sha = await DistributionService.getGitSha();
         const imageBase = parseImageRef(image).name;
 
-        await Promise.all(additionalTags.tags.map(async (tagTemplate) => {
+        for (const tagTemplate of additionalTags.tags) {
           const tag = tagTemplate
             .replace(/\{version\}/g, additionalTags.version)
             .replace(/\{env\}/g, additionalTags.env)
@@ -412,7 +414,7 @@ export class DistributionService {
 
           if (tagProc.exitCode !== 0) {
             printWarning(`Failed to tag ${taggedImage}`);
-            return;
+            continue;
           }
 
           const pushProc = Bun.spawn(['docker', 'push', taggedImage], {
@@ -427,9 +429,9 @@ export class DistributionService {
           } else {
             printDim(`Pushed additional tag: ${taggedImage}`);
           }
-        }));
+        }
       }
-    }));
+    }
   }
 
   private static async getGitSha(): Promise<string> {

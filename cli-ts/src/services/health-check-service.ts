@@ -155,7 +155,7 @@ export class HealthCheckService {
       `INFO=$(docker inspect "$TASK" --format '{{.Spec.ContainerSpec.Image}}\t{{.Status.ContainerStatus.ContainerID}}' 2>/dev/null) || { echo "NO_TASK"; exit 0; }; ` +
       `CID=$(echo "$INFO" | cut -f2); ` +
       `if [ -n "$CID" ]; then ` +
-        `HEALTH=$(docker inspect "$CID" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' 2>/dev/null || echo "none"); ` +
+        `HEALTH=$(docker inspect "$CID" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' 2>/dev/null) || HEALTH="none"; ` +
         `echo "$INFO\t$HEALTH"; ` +
       `else ` +
         `echo "$INFO\tnone"; ` +
@@ -170,7 +170,7 @@ export class HealthCheckService {
     const parts = output.split('\t');
     const taskImage = parts[0];
     const containerId = parts[1];
-    const healthStatus = (parts[2] || 'none').toLowerCase();
+    const healthStatus = (parts[2] || 'none').trim().toLowerCase();
 
     // Check if auto-rolled back (image mismatch from task spec)
     if (expectedImage && taskImage) {
