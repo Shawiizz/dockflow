@@ -193,10 +193,14 @@ export class BuildService {
 
       const tag = (svc.image as string) ?? `${name}:latest`;
       const resolvedContext = resolve(basePath, context);
+      // String form: Dockerfile lives in context. Object form: dockerfile is relative to basePath (compose dir).
+      const resolvedDockerfile = typeof build === 'string'
+        ? resolve(resolvedContext, dockerfile)
+        : resolve(basePath, dockerfile);
 
       targets.push({
         dockerfile,
-        dockerfileAbsPath: resolve(resolvedContext, dockerfile),
+        dockerfileAbsPath: resolvedDockerfile,
         context: resolvedContext,
         tag,
       });
