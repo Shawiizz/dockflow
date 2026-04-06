@@ -4,9 +4,9 @@
 
 import type { Command } from 'commander';
 import { sshShell, sshExecStream } from '../../utils/ssh';
-import { printInfo, printError, printBlank } from '../../utils/output';
+import { printInfo, printBlank } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
-import { ConnectionError, withErrorHandler } from '../../utils/errors';
+import { CLIError, ConnectionError, withErrorHandler } from '../../utils/errors';
 
 export function registerSshCommand(program: Command): void {
   program
@@ -25,8 +25,10 @@ export function registerSshCommand(program: Command): void {
         try {
           const result = await sshExecStream(connection, command);
           if (result.exitCode !== 0) {
-            printError(`Command exited with code ${result.exitCode}`);
-            process.exit(result.exitCode);
+            throw new CLIError(
+              `Command exited with code ${result.exitCode}`,
+              result.exitCode,
+            );
           }
         } catch (error) {
           throw new ConnectionError(`SSH command failed: ${error}`);

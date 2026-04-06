@@ -222,15 +222,20 @@ export function loadConfig(options: LoadConfigOptions = {}): DockflowConfig | nu
  * Load config with detailed result including validation errors
  */
 export function loadConfigWithErrors(options: LoadConfigOptions = {}): LoadResult<DockflowConfig> {
-  const { validate = true } = options;
-  const configPath = join(getProjectRoot(), '.dockflow', 'config.yml');
-  
-  if (!existsSync(configPath)) {
-    return { data: null };
+  const { validate = true, content: rawContent } = options;
+
+  let content: string;
+  if (rawContent !== undefined) {
+    content = rawContent;
+  } else {
+    const configPath = join(getProjectRoot(), '.dockflow', 'config.yml');
+    if (!existsSync(configPath)) {
+      return { data: null };
+    }
+    content = readFileSync(configPath, 'utf-8');
   }
-  
+
   try {
-    const content = readFileSync(configPath, 'utf-8');
     const parsed = parseYaml(content);
     
     if (validate) {
@@ -389,7 +394,7 @@ export function getComposePath(): string | null {
  * Format: "user@hostname" — consistent across all call sites.
  */
 export function getPerformer(): string {
-  const user = process.env.USER ?? 'ci';
+  const user = process.env.USER ?? process.env.USERNAME ?? 'ci';
   const hostname = os.hostname();
   return `${user}@${hostname}`;
 }

@@ -604,8 +604,8 @@ export async function runDeploy(
     ]);
 
     // --- Deploy app ---
-    stackDeployed = ctx.deployApp !== false;
     await deployApp(ctx, compose);
+    stackDeployed = ctx.deployApp !== false;
 
     // --- Cleanup old releases ---
     await ctx.releases.cleanupOldReleases(stackName, config);

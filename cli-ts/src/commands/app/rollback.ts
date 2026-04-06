@@ -43,9 +43,8 @@ export function registerRollbackCommand(program: Command): void {
             if (result.output) {
               printRaw(result.output);
             }
+            throw new DockerError('Rollback failed');
           }
-          
-          printSuccess('Rollback complete');
         }
       } catch (error) {
         spinner.fail(`Failed to rollback: ${error}`);

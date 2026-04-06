@@ -281,8 +281,8 @@ export class StackService {
 
     const updateCmds = services
       .map((svc) => `docker service update --force '${shellEscape(svc)}'`)
-      .join(' & ');
-    const result = await sshExec(this.connection, `${updateCmds} & wait`);
+      .join(' && ');
+    const result = await sshExec(this.connection, updateCmds);
 
     const allSuccess = result.exitCode === 0;
     return {
@@ -330,8 +330,8 @@ export class StackService {
       return { success: false, message: 'No services found' };
     }
 
-    const rollbackCmd = services.map(svc => `docker service rollback '${shellEscape(svc)}' 2>&1`).join(' & ');
-    const result = await sshExec(this.connection, `${rollbackCmd}; wait`);
+    const rollbackCmd = services.map(svc => `docker service rollback '${shellEscape(svc)}' 2>&1`).join(' && ');
+    const result = await sshExec(this.connection, rollbackCmd);
 
     return {
       success: result.exitCode === 0,

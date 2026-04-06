@@ -7,7 +7,7 @@
 
 import type { Command } from 'commander';
 import { printInfo } from '../../utils/output';
-import { validateEnv } from '../../utils/validation';
+import { validateEnv, getAllNodeConnections } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createExecService, createStackService } from '../../services';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
@@ -31,7 +31,7 @@ export function registerAccessoriesExecCommand(program: Command): void {
       const { connection } = validateEnv(env, options.server);
       const { stackName } = await requireAccessoriesStack(connection, env);
 
-      const execService = createExecService(connection, stackName);
+      const execService = createExecService(connection, stackName, getAllNodeConnections(env));
       const stackService = createStackService(connection, stackName);
       const cmd = command.length > 0 ? command.join(' ') : 'sh';
 
@@ -64,7 +64,10 @@ export function registerAccessoriesExecCommand(program: Command): void {
           process.stdout.write(result.data.stdout);
           if (result.data.stderr) process.stderr.write(result.data.stderr);
           if (result.data.exitCode !== 0) {
-            process.exit(result.data.exitCode);
+            throw new DockerError(
+              `Command exited with code ${result.data.exitCode}`,
+              { code: result.data.exitCode },
+            );
           }
         }
       } catch (error) {

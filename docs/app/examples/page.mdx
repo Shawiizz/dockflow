@@ -254,6 +254,7 @@ registry:
   type: ghcr
   url: ghcr.io
   namespace: myorg
+  username: "{{ current.env.registry_username }}"
   token: "{{ current.env.registry_token }}"
   additional_tags:
     - "latest"

@@ -173,7 +173,7 @@ export class SwarmDeployService {
 
     const result = await sshExec(
       this.connection,
-      `echo '${escapedYaml}' | docker stack deploy ${flags} -c - ${stackName}`,
+      `printf '%s' '${escapedYaml}' | docker stack deploy ${flags} -c - ${stackName}`,
     );
 
     if (result.exitCode !== 0) {
@@ -378,7 +378,7 @@ export class SwarmDeployService {
     const escapedPullYaml = shellEscape(accessoriesComposeYaml);
     await sshExec(
       this.connection,
-      `echo '${escapedPullYaml}' | docker compose -f - pull 2>/dev/null || true`,
+      `printf '%s' '${escapedPullYaml}' | docker compose -f - pull 2>/dev/null || true`,
     ).catch(() => {
       printDebug('Accessories image pull skipped (compose v2 not available or pull failed)');
     });

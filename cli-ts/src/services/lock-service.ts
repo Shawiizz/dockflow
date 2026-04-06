@@ -119,11 +119,10 @@ export class LockService {
       // File exists — check if stale
       const current = await this.status();
       if (current.success && current.data.locked && current.data.isStale) {
-        // Stale: remove and retry atomically
-        await sshExec(this.connection, `rm -f "${this.lockFile}"`);
+        // Stale: remove and re-acquire in a single SSH command to minimize race window
         const retryResult = await sshExec(
           this.connection,
-          `(set -C; printf '%s' '${eLockContent}' > "${this.lockFile}") 2>/dev/null && echo "ACQUIRED" || echo "LOCKED"`,
+          `rm -f "${this.lockFile}" && (set -C; printf '%s' '${eLockContent}' > "${this.lockFile}") 2>/dev/null && echo "ACQUIRED" || echo "LOCKED"`,
         );
         if (retryResult.stdout.trim() === 'ACQUIRED') {
           return ok(lockData);

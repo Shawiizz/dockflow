@@ -760,7 +760,8 @@ export class BackupService {
       : '';
     const envPart = execEnvFlags ? `${execEnvFlags} ` : '';
 
-    // Backup file and container are on the same node (nodeConn === containerConn for non-volume)
+    // Backup file and container are on the same node — backups are created
+    // via docker exec on the container's node, so the file is always local.
     const dockerExec = `docker exec -i ${envPart}'${shellEscape(containerId)}' sh -c '${shellEscape(restoreCommand)}'`;
     const fullCommand = backupCompression === 'gzip'
       ? `gunzip -c '${shellEscape(dataFile)}' | ${dockerExec}`

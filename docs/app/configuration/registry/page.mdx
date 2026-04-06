@@ -17,77 +17,83 @@ Add the following to `.dockflow/config.yml`:
   <Tabs.Tab>
     ```yaml
     registry:
+      type: ghcr
       enabled: true
       url: "ghcr.io"
       namespace: "your-org"
-      auth_method: "token"
-      username: "{{ github_actor }}"
-      token: "{{ github_token }}"
+      username: "{{ current.env.registry_username }}"
+      token: "{{ current.env.registry_token }}"
     ```
-    
+
     **CI/CD secrets required:**
-    - `GITHUB_TOKEN` (automatic in GitHub Actions)
-    - `GITHUB_ACTOR` (automatic in GitHub Actions)
+    - `REGISTRY_USERNAME` (GitHub actor)
+    - `REGISTRY_TOKEN` (GitHub token with `packages:write` scope)
   </Tabs.Tab>
-  
+
   <Tabs.Tab>
     ```yaml
     registry:
+      type: gitlab
       enabled: true
       url: "registry.gitlab.com"
       namespace: "your-group/your-project"
-      auth_method: "token"
       username: "gitlab-ci-token"
-      token: "{{ ci_job_token }}"
+      token: "{{ current.env.registry_token }}"
     ```
-    
+
     **CI/CD secrets required:**
-    - `CI_JOB_TOKEN` (automatic in GitLab CI)
+    - `REGISTRY_TOKEN` (`CI_JOB_TOKEN` is automatic in GitLab CI)
   </Tabs.Tab>
-  
+
   <Tabs.Tab>
     ```yaml
     registry:
+      type: dockerhub
       enabled: true
       url: "docker.io"
       namespace: "your-username"
-      auth_method: "basic"
-      username: "{{ docker_username }}"
-      password: "{{ docker_password }}"
-    ```
-    
-    **CI/CD secrets required:**
-    - `DOCKER_USERNAME`
-    - `DOCKER_PASSWORD`
-  </Tabs.Tab>
-  
-  <Tabs.Tab>
-    ```yaml
-    registry:
-      enabled: true
-      url: "registry.example.com"
-      namespace: "your-team"
-      auth_method: "basic"
       username: "{{ current.env.registry_username }}"
       password: "{{ current.env.registry_password }}"
     ```
-    
+
+    **CI/CD secrets required:**
+    - `REGISTRY_USERNAME`
+    - `REGISTRY_PASSWORD`
+  </Tabs.Tab>
+
+  <Tabs.Tab>
+    ```yaml
+    registry:
+      type: custom
+      enabled: true
+      url: "registry.example.com"
+      namespace: "your-team"
+      username: "{{ current.env.registry_username }}"
+      password: "{{ current.env.registry_password }}"
+    ```
+
     **CI/CD secrets required:**
     - `REGISTRY_USERNAME`
     - `REGISTRY_PASSWORD`
   </Tabs.Tab>
 </Tabs>
 
+<Callout type="info">
+  Registry credentials use Nunjucks template syntax. Values from `servers.yml` env vars or CI secrets are available as `current.env.variable_name` (lowercased).
+</Callout>
+
 ## Configuration Reference
 
-| Field | Description |
-|-------|-------------|
-| `enabled` | Set to `true` to push images to the registry |
-| `url` | Registry hostname |
-| `namespace` | Organization or username prefix for images |
-| `auth_method` | `token` or `basic` |
-| `username` | Registry username |
-| `password` / `token` | Credentials (use template syntax for secrets) |
+| Field | Type | Description | Default |
+|-------|------|-------------|---------|
+| `type` | `local` \| `dockerhub` \| `ghcr` \| `gitlab` \| `custom` | Registry type (required) | — |
+| `enabled` | `boolean` | Enable/disable registry push | `true` |
+| `url` | `string` | Registry hostname (required for `custom` type) | — |
+| `namespace` | `string` | Organization or username prefix for images | — |
+| `username` | `string` | Registry username | — |
+| `password` | `string` | Registry password (use template syntax for secrets) | — |
+| `token` | `string` | Registry token (alternative to password) | — |
+| `additional_tags` | `string[]` | Extra tags to push besides the version tag | — |
 
 ## Image Tagging
 
@@ -95,6 +101,7 @@ By default, images are tagged with the deployment version. You can add extra tag
 
 ```yaml
 registry:
+  type: ghcr
   enabled: true
   url: "ghcr.io"
   namespace: "your-org"

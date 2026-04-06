@@ -7,7 +7,7 @@
 
 import type { Command } from 'commander';
 import { printInfo, printDebug, printBlank } from '../../utils/output';
-import { validateEnv } from '../../utils/validation';
+import { validateEnv, getAllNodeConnections } from '../../utils/validation';
 import { createExecService, createStackService } from '../../services';
 import { DockerError, CLIError, withErrorHandler } from '../../utils/errors';
 
@@ -29,7 +29,7 @@ export function registerExecCommand(program: Command): void {
       const { stackName, connection } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName });
 
-      const execService = createExecService(connection, stackName);
+      const execService = createExecService(connection, stackName, getAllNodeConnections(env));
       const cmd = command.length > 0 ? command.join(' ') : undefined;
 
       try {

@@ -87,6 +87,6 @@ hooks:
   timeout: 300     # Timeout per hook in seconds (default: 300)
 ```
 
-<Callout type="info">
-  If a hook fails, the deployment continues with a warning. Hooks do not block deployments.
+<Callout type="warning">
+  If a hook fails, the deployment is aborted. Make sure your hook scripts are tested and handle errors gracefully.
 </Callout>

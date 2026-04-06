@@ -41,7 +41,8 @@ export class ExecService {
 
   constructor(
     private readonly connection: SSHKeyConnection,
-    private readonly stackName: string
+    private readonly stackName: string,
+    private readonly allConnections: SSHKeyConnection[] = [],
   ) {
     this.stackService = createStackService(connection, stackName);
   }
@@ -93,7 +94,7 @@ export class ExecService {
     command: string | string[],
     options: ExecOptions = {}
   ): Promise<Result<ExecResult, Error>> {
-    const found = await this.stackService.findContainerForService(serviceName);
+    const found = await this.stackService.findContainerForService(serviceName, this.allConnections);
 
     if (!found) {
       return err(new Error(`No running container found for service ${serviceName}`));
@@ -125,7 +126,7 @@ export class ExecService {
       onStderr?: (data: string) => void;
     }
   ): Promise<Result<number, Error>> {
-    const found = await this.stackService.findContainerForService(serviceName);
+    const found = await this.stackService.findContainerForService(serviceName, this.allConnections);
 
     if (!found) {
       return err(new Error(`No running container found for service ${serviceName}`));
@@ -148,7 +149,7 @@ export class ExecService {
     serviceName: string,
     shell: string = '/bin/sh'
   ): Promise<Result<void, Error>> {
-    const found = await this.stackService.findContainerForService(serviceName);
+    const found = await this.stackService.findContainerForService(serviceName, this.allConnections);
 
     if (!found) {
       return err(new Error(`No running container found for service ${serviceName}`));
@@ -168,7 +169,7 @@ export class ExecService {
    * Open a bash shell (falls back to sh if bash not available)
    */
   async bash(serviceName: string): Promise<Result<void, Error>> {
-    const found = await this.stackService.findContainerForService(serviceName);
+    const found = await this.stackService.findContainerForService(serviceName, this.allConnections);
 
     if (!found) {
       return err(new Error(`No running container found for service ${serviceName}`));
@@ -198,7 +199,7 @@ export class ExecService {
     localPath: string,
     containerPath: string
   ): Promise<Result<void, Error>> {
-    const found = await this.stackService.findContainerForService(serviceName);
+    const found = await this.stackService.findContainerForService(serviceName, this.allConnections);
 
     if (!found) {
       return err(new Error(`No running container found for service ${serviceName}`));
@@ -221,7 +222,7 @@ export class ExecService {
     containerPath: string,
     localPath: string
   ): Promise<Result<void, Error>> {
-    const found = await this.stackService.findContainerForService(serviceName);
+    const found = await this.stackService.findContainerForService(serviceName, this.allConnections);
 
     if (!found) {
       return err(new Error(`No running container found for service ${serviceName}`));
@@ -242,7 +243,8 @@ export class ExecService {
  */
 export function createExecService(
   connection: SSHKeyConnection,
-  stackName: string
+  stackName: string,
+  allConnections: SSHKeyConnection[] = [],
 ): ExecService {
-  return new ExecService(connection, stackName);
+  return new ExecService(connection, stackName, allConnections);
 }

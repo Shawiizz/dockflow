@@ -13,7 +13,7 @@ export const RegistryConfigSchema = z.object({
   type: z.enum(['local', 'dockerhub', 'ghcr', 'gitlab', 'custom']).describe(
     'Registry type: local (no push), dockerhub, ghcr, gitlab, or custom'
   ),
-  url: z.string().url().optional().describe('Registry URL (required for custom type)'),
+  url: z.string().optional().describe('Registry hostname or URL (required for custom type)'),
   username: z.string().optional().describe('Registry username'),
   password: z.string().optional().describe('Registry password (use CI secrets in production)'),
   enabled: z.boolean().optional().default(true).describe('Enable/disable registry push'),

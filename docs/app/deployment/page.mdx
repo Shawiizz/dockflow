@@ -2,7 +2,7 @@
 
 import { Callout, Steps, Tabs } from 'nextra/components'
 
-When you run `dockflow deploy`, Dockflow builds your Docker images, transfers them to your server, deploys the stack via Docker Swarm, and verifies that services are healthy. If health checks fail, it rolls back automatically.
+When you run `dockflow deploy`, Dockflow builds your Docker images, transfers them to your server, deploys the stack via Docker Swarm, and verifies that services are healthy. If health checks fail and `on_failure` is set to `rollback`, it rolls back automatically.
 
 ## Triggering a Deployment
 
