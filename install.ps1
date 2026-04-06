@@ -3,8 +3,8 @@
 
 $ErrorActionPreference = "Stop"
 
-# Version to install
-$Version = "2.0.23"
+# Version to install (override with DOCKFLOW_VERSION env var)
+$Version = if ($env:DOCKFLOW_VERSION) { $env:DOCKFLOW_VERSION } else { "2.0.23" }
 
 # Detect architecture
 $arch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }

@@ -225,10 +225,11 @@ E2E tests run from WSL. The `.env.dockflow` file uses `localhost:222x` port mapp
 ## CI/CD Workflows (`.github/workflows/`)
 
 - **build-cli.yml** — Triggered by version tags. Builds multi-platform binaries (linux-x64/arm64, macos-x64/arm64, windows-x64), creates GitHub Release, publishes to npm (`@dockflow-tools/cli`).
-- **deploy.yml** — Reusable workflow. Determines env from tag suffix (-staging → staging, else production). Installs CLI binary and runs `dockflow deploy`.
-- **deploy-docs.yml** — Documentation site deployment.
+- **deploy-docs.yml** — Documentation site deployment. Installs CLI and runs `dockflow deploy` directly.
 - **e2e-tests.yml** — Runs on push to main/develop and PRs. Executes `testing/e2e/run-tests.sh`.
 - **shell-lint.yml** — ShellCheck validation.
+
+CI/CD integration is handled entirely by the CLI itself — no reusable workflows or external templates needed. The CLI auto-detects environment and version from CI provider env vars (GitHub Actions, GitLab CI, Jenkins, Buildkite) when `dockflow deploy` or `dockflow build` are called without arguments. Users generate a standalone CI workflow via `dockflow init`.
 
 CI secrets format: `{ENV}_{SERVER}_{CONNECTION}` = base64-encoded `user@host:port|privateKey|password`.
 

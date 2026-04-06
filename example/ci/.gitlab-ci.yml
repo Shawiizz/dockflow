@@ -1,19 +1,49 @@
 stages:
-  # Build stage for continuous integration
   - build
-
-  # Deploy your application on tag or branch push
   - deploy
 
-# Note: Make sure your .deployment/config.yml has project_name set:
-# project_name: "my-app"
+# Configuration:
+# 1. Make sure your .dockflow/config.yml has project_name set:
+#    project_name: "my-app"
+#
+# 2. Define your .dockflow/servers.yml with servers
+#
+# 3. Add CI/CD variables for each server:
+#    - PRODUCTION_MAIN_SERVER_CONNECTION: base64-encoded connection string
+#
+#    Create connection string:
+#    echo -n "user@host:22|$(cat ~/.ssh/id_rsa)" | base64
 
-include:
-  # Continuous Integration (CI) template for building Docker images (not used for deployment)
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/2.0.23/.gitlab/workflows/build.yml'
+# CI: Build images on branch push
+build:
+  stage: build
+  image: node:22
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - apt-get update && apt-get install -y docker.io
+  script:
+    - npx @dockflow-tools/cli build
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - when: always
 
-  # Deploy your application on tag push
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/2.0.23/.gitlab/workflows/deploy.yml'
-
-  # Deploy your application on branch push (will deploy to production environment)
-  - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/2.0.23/.gitlab/workflows/deploy-branch.yml'
+# CD: Deploy on tag push (e.g., 1.0.0 → production, 1.0.0-staging → staging)
+deploy:
+  stage: deploy
+  image: node:22
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - apt-get update && apt-get install -y docker.io
+  script:
+    - npx @dockflow-tools/cli deploy
+  rules:
+    - if: $CI_COMMIT_TAG

@@ -3,8 +3,8 @@
 # Usage: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | bash
 set -e
 
-# Version to install
-VERSION="2.0.23"
+# Version to install (override with DOCKFLOW_VERSION env var)
+VERSION="${DOCKFLOW_VERSION:-2.0.23}"
 
 # Detect OS and architecture
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"

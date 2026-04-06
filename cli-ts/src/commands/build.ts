@@ -13,6 +13,7 @@
 import type { Command } from 'commander';
 import { printInfo, printIntro, printDebug, printWarning, printDim, printBlank, printSuccess, setVerbose } from '../utils/output';
 import { loadSecrets } from '../utils/secrets';
+import { detectCIEnvironment, parseTagForDeployment, resolveDeployParams } from '../utils/ci';
 import { getCurrentBranch } from '../utils/git';
 import { withErrorHandler, ConfigError } from '../utils/errors';
 import { loadConfig } from '../utils/config';
@@ -32,8 +33,27 @@ interface BuildOptions {
 /**
  * Run build — can be called directly or via CLI command
  */
-export async function runBuild(env: string, options: Partial<BuildOptions>): Promise<void> {
+export async function runBuild(env: string | undefined, options: Partial<BuildOptions>): Promise<void> {
   if (options.debug) setVerbose(true);
+
+  // Auto-detect env from CI environment when not provided
+  let ciVersion: string | undefined;
+  if (!env) {
+    const ci = detectCIEnvironment();
+    if (ci) {
+      const params = ci.isTag && ci.tag
+        ? parseTagForDeployment(ci.tag)
+        : resolveDeployParams(ci);
+      env = params.env;
+      ciVersion = params.version;
+      printInfo(`CI detected (${ci.provider}): building for ${env}`);
+    } else {
+      throw new ConfigError(
+        'Environment is required',
+        'Usage: dockflow build <env>\nIn CI, environment is auto-detected from git tag/branch.',
+      );
+    }
+  }
 
   loadSecrets();
   printDebug('Secrets loaded from environment');
@@ -70,7 +90,7 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
   const { rendered, composeContent, composeDirPath, projectRoot } = ComposeService.renderAndResolveCompose(
     {
       env,
-      version: 'build',
+      version: ciVersion ?? 'build',
       branch: branchName,
       project_name: config.project_name,
       config,
@@ -128,13 +148,13 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
  */
 export function registerBuildCommand(program: Command): void {
   program
-    .command('build <env>')
+    .command('build [env]')
     .description('Build Docker images locally without deploying')
     .option('--services <services>', 'Comma-separated list of services to build')
     .option('--push', 'Push images to registry after build')
     .option('--skip-hooks', 'Skip pre-build and post-build hooks')
     .option('--debug', 'Enable debug output')
-    .action(withErrorHandler(async (env: string, options: BuildOptions) => {
+    .action(withErrorHandler(async (env: string | undefined, options: BuildOptions) => {
       await runBuild(env, options);
     }));
 }

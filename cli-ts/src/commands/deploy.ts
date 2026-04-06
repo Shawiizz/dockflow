@@ -34,6 +34,7 @@ import {
   buildTemplateContext,
 } from '../utils/servers';
 import { loadSecrets } from '../utils/secrets';
+import { detectCIEnvironment, resolveDeployParams } from '../utils/ci';
 import { getCurrentBranch } from '../utils/git';
 import { getLatestVersion, incrementVersion } from '../utils/version';
 import {
@@ -352,11 +353,27 @@ async function recordHistory(
  * Run deployment — can be called directly or via CLI command
  */
 export async function runDeploy(
-  env: string,
+  env: string | undefined,
   version: string | undefined,
   options: Partial<DeployOptions>,
 ): Promise<void> {
   if (options.debug) setVerbose(true);
+
+  // Auto-detect env/version from CI environment when not provided
+  if (!env) {
+    const ci = detectCIEnvironment();
+    if (ci) {
+      const params = resolveDeployParams(ci);
+      env = params.env;
+      version = version ?? params.version;
+      printInfo(`CI detected (${ci.provider}): deploying to ${env} with version ${version}`);
+    } else {
+      throw new ConfigError(
+        'Environment is required',
+        'Usage: dockflow deploy <env> [version]\nIn CI, environment and version are auto-detected from git tag/branch.',
+      );
+    }
+  }
 
   loadSecrets();
 
@@ -635,7 +652,7 @@ export async function runDeploy(
  */
 export function registerDeployCommand(program: Command): void {
   program
-    .command('deploy <env> [version]')
+    .command('deploy [env] [version]')
     .description('Deploy application to specified environment (targets Swarm manager)')
     .option('--services <services>', 'Comma-separated list of services to deploy')
     .option('--skip-build', 'Skip the build phase')
@@ -647,7 +664,7 @@ export function registerDeployCommand(program: Command): void {
     .option('--dry-run', 'Show what would be deployed without executing')
     .option('--debug', 'Enable debug output')
     .action(
-      withErrorHandler(async (env: string, version: string | undefined, options: DeployOptions) => {
+      withErrorHandler(async (env: string | undefined, version: string | undefined, options: DeployOptions) => {
         await runDeploy(env, version, options);
       }),
     );

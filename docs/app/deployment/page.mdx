@@ -13,7 +13,7 @@ When you run `dockflow deploy`, Dockflow builds your Docker images, transfers th
     ```
   </Tabs.Tab>
   <Tabs.Tab>
-    Push a git tag to trigger a deployment:
+    Push a git tag to trigger a deployment. The CLI auto-detects the environment from the tag suffix:
 
     ```bash
     git tag 1.0.0              # → deploys to production
@@ -21,13 +21,13 @@ When you run `dockflow deploy`, Dockflow builds your Docker images, transfers th
     git push origin --tags
     ```
 
-    A tag without a suffix (e.g., `1.0.0`) deploys to `production`. A tag ending with `-<env>` (e.g., `1.0.0-staging`) deploys to that environment.
+    The tag name is used as the version. A tag without a suffix (e.g., `1.0.0`) deploys to `production`. A tag ending with `-<env>` (e.g., `1.0.0-staging`) deploys to that environment.
   </Tabs.Tab>
   <Tabs.Tab>
-    Push to a branch to deploy the latest commit:
+    Push to a branch to trigger a build or deploy. The CLI auto-detects the branch and generates a version from `<branch>-<commit-sha>`:
 
     ```bash
-    git push origin main
+    git push origin main       # → builds or deploys to production as main-abc12345
     ```
   </Tabs.Tab>
 </Tabs>

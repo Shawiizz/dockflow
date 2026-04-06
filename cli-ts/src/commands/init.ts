@@ -12,7 +12,7 @@ import { printSuccess, printInfo, printIntro, printOutro, printNote, printWarnin
 import { withErrorHandler } from '../utils/errors';
 import { DOCKFLOW_VERSION } from '../constants';
 
-// GitHub Actions workflow using Dockflow reusable workflows
+// GitHub Actions standalone workflow — CLI auto-detects env/version from CI
 const getGithubWorkflow = (version: string) => `name: CI/CD
 
 on:
@@ -22,77 +22,66 @@ on:
     tags:
       - '*'
 
-# Note: Make sure your .dockflow/config.yml has project_name set
-# and add your connection secrets (e.g., PRODUCTION_CONNECTION) to GitHub Secrets
-
 jobs:
-  # Build job - runs on every push to branches
+  # CI: Build images on branch push
   build:
     if: github.ref_type == 'branch'
-    uses: Shawiizz/dockflow/.github/workflows/build.yml@${version}
-    with:
-      free-disk-space: false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: npx @dockflow-tools/cli@${version} build
+        env:
+          DOCKFLOW_SECRETS: \${{ toJSON(secrets) }}
 
-  # Deploy on tag push (e.g., v1.0.0 or v1.0.0-staging)
-  deploy-tag:
+  # CD: Deploy on tag push (e.g., 1.0.0 → production, 1.0.0-staging → staging)
+  deploy:
     if: github.ref_type == 'tag'
-    uses: Shawiizz/dockflow/.github/workflows/deploy.yml@${version}
-    with:
-      tag: \${{ github.ref_name }}
-      free-disk-space: false
-    secrets: inherit
-
-  # Optional: Deploy on branch push (uncomment if needed)
-  # deploy-branch:
-  #   if: github.ref_type == 'branch'
-  #   uses: Shawiizz/dockflow/.github/workflows/deploy.yml@${version}
-  #   with:
-  #     version: \${{ github.ref_name }}-\${{ github.sha }}
-  #     free-disk-space: false
-  #   secrets: inherit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy
+        run: npx @dockflow-tools/cli@${version} deploy
+        env:
+          DOCKFLOW_SECRETS: \${{ toJSON(secrets) }}
 `;
 
-// GitLab CI using Dockflow CI image
+// GitLab CI standalone workflow — CLI auto-detects env/version from CI
 const GITLAB_CI = `stages:
   - build
   - deploy
 
-variables:
-  DOCKFLOW_VERSION: "${DOCKFLOW_VERSION}"
-
-# Build job - runs on every push
+# CI: Build images on branch push
 build:
   stage: build
-  image: docker:latest
-  services:
-    - docker:dind
-  script:
-    - echo "Build step (customize as needed)"
-  rules:
-    - if: $CI_COMMIT_BRANCH
-
-# Deploy on tag push
-deploy:
-  stage: deploy
-  image: ubuntu:22.04
+  image: node:22
   services:
     - docker:dind
   variables:
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - apt-get update && apt-get install -y docker.io
   script:
-    - |
-      # Install Dockflow CLI
-      apt-get update && apt-get install -y curl docker.io
-      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | bash
-      
-      # Determine environment from tag suffix (e.g., 1.0.0-staging -> staging)
-      VERSION="\${CI_COMMIT_TAG#v}"
-      ENV="\${CI_COMMIT_TAG##*-}"
-      [[ "$CI_COMMIT_TAG" == "$ENV" ]] && ENV="production"
-      
-      # Deploy using CLI
-      dockflow deploy "$ENV" "$VERSION"
+    - npx @dockflow-tools/cli build
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - when: always
+
+# CD: Deploy on tag push (e.g., 1.0.0 → production, 1.0.0-staging → staging)
+deploy:
+  stage: deploy
+  image: node:22
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - apt-get update && apt-get install -y docker.io
+  script:
+    - npx @dockflow-tools/cli deploy
   rules:
     - if: $CI_COMMIT_TAG
 `;
