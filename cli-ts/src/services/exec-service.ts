@@ -180,7 +180,14 @@ export class ExecService {
     );
 
     const shell = checkResult.stdout.trim() === 'not_found' ? '/bin/sh' : '/bin/bash';
-    return this.shell(serviceName, shell);
+    const dockerCmd = `docker exec -it ${found.containerId} ${shell}`;
+
+    try {
+      await executeInteractiveSSH(found.connection, dockerCmd);
+      return ok(undefined);
+    } catch (error) {
+      return err(error instanceof Error ? error : new Error(String(error)));
+    }
   }
 
   /**

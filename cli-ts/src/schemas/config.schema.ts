@@ -261,6 +261,17 @@ export const ProxyConfigSchema = z.object({
 const PROJECT_NAME_REGEX = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
 
 /**
+ * Accessory service configuration schema
+ */
+export const AccessoryConfigSchema = z.object({
+  image: z.string().optional(),
+  volumes: z.array(z.string()).optional(),
+  ports: z.array(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
+  deploy: z.record(z.string(), z.unknown()).optional(),
+});
+
+/**
  * Complete Dockflow configuration schema
  */
 export const DockflowConfigSchema = z.object({
@@ -272,11 +283,11 @@ export const DockflowConfigSchema = z.object({
       'Project name must contain only lowercase letters, numbers, and hyphens. Cannot start or end with a hyphen.'
     )
     .describe('Unique project identifier used for stack naming'),
-  
+
   registry: RegistryConfigSchema.optional().describe(
     'Docker registry configuration for image storage'
   ),
-  
+
   options: BuildOptionsSchema.optional().describe(
     'Build and deployment options'
   ),
@@ -288,7 +299,7 @@ export const DockflowConfigSchema = z.object({
   health_checks: HealthCheckConfigSchema.optional().describe(
     'Health check configuration for deployment verification'
   ),
-  
+
   hooks: HooksConfigSchema.optional().describe(
     'Lifecycle hooks for custom scripts'
   ),
@@ -303,6 +314,10 @@ export const DockflowConfigSchema = z.object({
 
   templates: z.array(TemplateFileSchema).optional().describe(
     'List of files to render with Jinja2 templating before deployment'
+  ),
+
+  accessories: z.record(z.string(), AccessoryConfigSchema).optional().describe(
+    'Accessory services (databases, caches, etc.) managed alongside the main stack'
   ),
 
   proxy: ProxyConfigSchema.optional().describe(

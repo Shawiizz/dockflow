@@ -13,7 +13,7 @@ import type { ClientChannel, ConnectConfig } from 'ssh2';
 import type { ConnectionInfo, SSHExecResult } from '../types';
 import { isKeyConnection } from '../types';
 import { normalizePrivateKey } from './ssh-keys';
-import { DEFAULT_SSH_PORT } from '../constants';
+import { DEFAULT_SSH_PORT, SSH_READY_TIMEOUT_MS, SSH_KEEPALIVE_INTERVAL_MS, SSH_KEEPALIVE_COUNT_MAX } from '../constants';
 import { printDebug } from './output';
 
 // ─── Pool types ───────────────────────────────────────────────
@@ -25,7 +25,6 @@ interface PoolEntry {
   state: PoolEntryState;
   /** Shared promise — all concurrent callers await the same handshake */
   readyPromise: Promise<SSHClient>;
-  activeChannels: number;
 }
 
 // ─── Pool state (module-level singleton) ──────────────────────
@@ -81,12 +80,12 @@ function buildConnectConfig(conn: ConnectionInfo, keepalive: boolean): ConnectCo
     port: conn.port || DEFAULT_SSH_PORT,
     username: conn.user,
     hostVerifier: () => true,
-    readyTimeout: 10000,
+    readyTimeout: SSH_READY_TIMEOUT_MS,
   };
 
   if (keepalive) {
-    config.keepaliveInterval = 15000;
-    config.keepaliveCountMax = 3;
+    config.keepaliveInterval = SSH_KEEPALIVE_INTERVAL_MS;
+    config.keepaliveCountMax = SSH_KEEPALIVE_COUNT_MAX;
   }
 
   if (isKeyConnection(conn)) {
@@ -146,11 +145,11 @@ async function getPooledClient(conn: ConnectionInfo): Promise<SSHClient> {
     });
   });
 
-  // Handle unexpected close (server drops connection)
+  // Handle unexpected close (server drops connection) — remove from pool immediately
   client.on('close', () => {
     const entry = pool.get(key);
     if (entry && entry.client === client) {
-      entry.state = 'closed';
+      pool.delete(key);
     }
   });
 
@@ -158,7 +157,6 @@ async function getPooledClient(conn: ConnectionInfo): Promise<SSHClient> {
     client,
     state: 'connecting',
     readyPromise,
-    activeChannels: 0,
   };
 
   pool.set(key, entry);
@@ -196,7 +194,7 @@ function execOnClient(
 
       let stdout = '';
       let stderr = '';
-      const chunks: Buffer[] = options?.collectBinary ? [] : [];
+      const chunks: Buffer[] = [];
 
       stream.on('data', (data: Buffer) => {
         if (options?.collectBinary) {

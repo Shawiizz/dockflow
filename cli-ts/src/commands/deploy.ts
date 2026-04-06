@@ -359,6 +359,19 @@ export async function runDeploy(
   if (options.debug) setVerbose(true);
 
   loadSecrets();
+
+  // --- Load config ---
+  const config = loadConfig();
+  if (!config) {
+    throw new ConfigError(
+      'No config.yml found',
+      'Run `dockflow init` to create a project configuration.',
+    );
+  }
+
+  // Wire config-based debug logs
+  if (config.options?.enable_debug_logs) setVerbose(true);
+
   printDebug('Secrets loaded from environment');
 
   const { deployApp: shouldDeployApp, forceAccessories, skipAccessories } = getDeploymentTargets(
@@ -375,15 +388,6 @@ export async function runDeploy(
 
   printIntro(`Deploying ${targetDesc} to ${env}`);
   printBlank();
-
-  // --- Load config ---
-  const config = loadConfig();
-  if (!config) {
-    throw new ConfigError(
-      'No config.yml found',
-      'Run `dockflow init` to create a project configuration.',
-    );
-  }
 
   // --- Resolve deployment ---
   const deployment = resolveDeploymentForEnvironment(env);

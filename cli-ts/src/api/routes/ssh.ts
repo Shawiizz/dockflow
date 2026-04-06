@@ -18,7 +18,7 @@ import {
   getServerPrivateKey,
 } from '../../utils/servers';
 import { normalizePrivateKey } from '../../utils/ssh-keys';
-import { DEFAULT_SSH_PORT } from '../../constants';
+import { DEFAULT_SSH_PORT, SSH_READY_TIMEOUT_MS, SSH_KEEPALIVE_INTERVAL_MS } from '../../constants';
 import { getManagerConnection, isValidDockerName } from './_helpers';
 
 /** Data attached to each WebSocket during upgrade */
@@ -292,8 +292,8 @@ export const sshWebSocketHandlers = {
         username: conn.user,
         privateKey: normalizePrivateKey(conn.privateKey),
         hostVerifier: () => true,
-        readyTimeout: 10000,
-        keepaliveInterval: 15000,
+        readyTimeout: SSH_READY_TIMEOUT_MS,
+        keepaliveInterval: SSH_KEEPALIVE_INTERVAL_MS,
       });
 
       return;

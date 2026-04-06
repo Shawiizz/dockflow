@@ -7,7 +7,7 @@
  */
 
 import type { SSHKeyConnection } from '../types';
-import { sshExec, sshExecStream, shellEscape } from '../utils/ssh';
+import { sshExec, shellEscape } from '../utils/ssh';
 import { ok, err, type Result } from '../types';
 import { DOCKFLOW_STACKS_DIR } from '../constants';
 

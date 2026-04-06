@@ -20,7 +20,7 @@ import {
  * Dockflow configuration schema
  */
 export interface RegistryConfig {
-  type: string;
+  type: 'local' | 'dockerhub' | 'ghcr' | 'gitlab' | 'custom';
   url?: string;
   username?: string;
   password?: string;
@@ -40,7 +40,7 @@ export interface HealthCheckEndpoint {
   url: string;
   name?: string;
   expected_status?: number;
-  method?: string;
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'HEAD' | 'OPTIONS';
   timeout?: number;
   validate_certs?: boolean;
   retries?: number;

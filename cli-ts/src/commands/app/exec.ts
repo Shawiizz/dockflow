@@ -9,7 +9,7 @@ import type { Command } from 'commander';
 import { printInfo, printDebug, printBlank } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createExecService, createStackService } from '../../services';
-import { DockerError, withErrorHandler } from '../../utils/errors';
+import { DockerError, CLIError, withErrorHandler } from '../../utils/errors';
 
 export function registerExecCommand(program: Command): void {
   program
@@ -65,7 +65,10 @@ export function registerExecCommand(program: Command): void {
           process.stdout.write(result.data.stdout);
           if (result.data.stderr) process.stderr.write(result.data.stderr);
           if (result.data.exitCode !== 0) {
-            process.exit(result.data.exitCode);
+            throw new CLIError(
+              `Command exited with code ${result.data.exitCode}`,
+              result.data.exitCode,
+            );
           }
         }
       } catch (error) {

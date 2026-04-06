@@ -50,6 +50,8 @@ export async function runBuild(env: string, options: Partial<BuildOptions>): Pro
     );
   }
 
+  if (config.options?.enable_debug_logs) setVerbose(true);
+
   const branchName = getCurrentBranch();
 
   // Display build info

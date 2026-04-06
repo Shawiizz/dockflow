@@ -52,6 +52,16 @@ export const CONVERGENCE_TIMEOUT_S = 300;
 export const CONVERGENCE_INTERVAL_S = 5;
 
 /**
+ * SSH connection defaults
+ */
+/** Timeout (ms) for SSH handshake */
+export const SSH_READY_TIMEOUT_MS = 10000;
+/** Interval (ms) between SSH keepalive packets */
+export const SSH_KEEPALIVE_INTERVAL_MS = 15000;
+/** Max missed keepalives before declaring connection dead */
+export const SSH_KEEPALIVE_COUNT_MAX = 3;
+
+/**
  * Traefik defaults (mirrors ansible/roles/traefik/defaults/main.yml)
  */
 export const TRAEFIK_STACK_NAME = 'traefik';

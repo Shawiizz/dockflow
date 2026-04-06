@@ -18,6 +18,7 @@ import type { DockflowConfig } from '../utils/config';
 import { getProjectRoot, getComposePath } from '../utils/config';
 import { printDebug } from '../utils/output';
 import { ConfigError } from '../utils/errors';
+import { TRAEFIK_NETWORK_NAME } from '../constants';
 import type { TemplateContext } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -470,17 +471,17 @@ export class ComposeService {
       if (Array.isArray(existingNets)) {
         // List form: ["app-net", "traefik-public"]
         const current = existingNets.map(String);
-        newNets = [...new Set([...current, 'traefik-public'])];
+        newNets = [...new Set([...current, TRAEFIK_NETWORK_NAME])];
       } else if (existingNets && typeof existingNets === 'object') {
         // Object form: { app-net: { aliases: [...] } } — preserve as object
         const netObj = { ...(existingNets as Record<string, unknown>) };
-        if (!('traefik-public' in netObj)) {
-          netObj['traefik-public'] = null;
+        if (!(TRAEFIK_NETWORK_NAME in netObj)) {
+          netObj[TRAEFIK_NETWORK_NAME] = null;
         }
         newNets = netObj;
       } else {
         // No networks defined — add default + traefik-public
-        newNets = ['default', 'traefik-public'];
+        newNets = ['default', TRAEFIK_NETWORK_NAME];
       }
 
       compose.services[svcName] = {
@@ -493,7 +494,7 @@ export class ComposeService {
     // Add traefik-public as external network at top level
     if (hasProxiedService) {
       const topNets = (compose.networks ?? {}) as Record<string, unknown>;
-      topNets['traefik-public'] = { external: true };
+      topNets[TRAEFIK_NETWORK_NAME] = { external: true };
       compose.networks = topNets;
       compose.raw.networks = topNets;
     }
