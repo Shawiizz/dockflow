@@ -3,6 +3,8 @@
  * Auto-detects CI provider, tag/branch, and resolves deploy parameters.
  */
 
+import { getCommitSha } from './git';
+
 export interface CIEnvironment {
   provider: 'github' | 'gitlab' | 'jenkins' | 'buildkite' | 'generic';
   isTag: boolean;
@@ -71,14 +73,16 @@ export function detectCIEnvironment(): CIEnvironment | null {
   }
 
   // Generic CI detection (CI=true but no known provider)
+  // Fall back to git commands for commit SHA so version is unique
   if (process.env.CI) {
+    const sha = getCommitSha();
     return {
       provider: 'generic',
       isTag: false,
       tag: null,
       branch: null,
-      commitSha: '',
-      shortSha: '',
+      commitSha: sha,
+      shortSha: sha.slice(0, 8),
     };
   }
 
@@ -93,13 +97,20 @@ export function detectCIEnvironment(): CIEnvironment | null {
  * - `1.0.0-staging` → env=staging, version=1.0.0-staging
  * - `v2.0.0-preview` → env=preview, version=2.0.0-preview
  * - `1.0.0-rc1` → env=production (rc1 looks like a pre-release, not an env)
+ * - `release/1.0.0` → env=production, version=1.0.0 (prefix stripped)
  *
  * The suffix is treated as an environment name only if it contains
  * at least one letter and is NOT a common pre-release pattern (rc, alpha, beta, dev + digits).
  */
 export function parseTagForDeployment(tag: string): { env: string; version: string } {
   // Strip leading 'v'
-  const version = tag.startsWith('v') ? tag.slice(1) : tag;
+  let version = tag.startsWith('v') ? tag.slice(1) : tag;
+
+  // Strip path prefix (e.g., release/1.0.0 → 1.0.0)
+  const slashIdx = version.lastIndexOf('/');
+  if (slashIdx !== -1) {
+    version = version.slice(slashIdx + 1);
+  }
 
   const lastDash = version.lastIndexOf('-');
   if (lastDash === -1) {
@@ -133,6 +144,6 @@ export function resolveDeployParams(ci: CIEnvironment): { env: string; version: 
 
   // Branch deploy
   const branch = ci.branch ?? 'main';
-  const version = ci.shortSha ? `${branch}-${ci.shortSha}` : branch;
+  const version = ci.shortSha ? `${branch}-${ci.shortSha}` : `${branch}-${Date.now()}`;
   return { env: 'production', version };
 }

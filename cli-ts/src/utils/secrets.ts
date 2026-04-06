@@ -7,7 +7,10 @@
  */
 
 import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
 import { ENV_FILE_PATH } from '../constants';
+import { getProjectRoot } from './config';
+import { detectCIEnvironment } from './ci';
 import { printWarning, printSuccess, printError, printBlank } from './output';
 
 /**
@@ -39,27 +42,26 @@ function parseDotenv(content: string): Record<string, string> {
 }
 
 /**
- * Check if we're running in CI environment
- */
-export function isCI(): boolean {
-  return !!(
-    process.env.CI ||
-    process.env.GITHUB_ACTIONS ||
-    process.env.GITLAB_CI ||
-    process.env.JENKINS_URL ||
-    process.env.BUILDKITE
-  );
-}
-
-/**
  * Load secrets into process.env from various sources
  * Priority: .env.dockflow > JSON file > DOCKFLOW_SECRETS env var
  */
 export function loadSecrets(): void {
   // 1. Check for .env.dockflow (local development or E2E tests)
-  if (existsSync(ENV_FILE_PATH)) {
+  // Try project root first, then CWD as fallback
+  let envFilePath = ENV_FILE_PATH;
+  try {
+    const projectRoot = getProjectRoot();
+    const rootEnvFile = join(projectRoot, ENV_FILE_PATH);
+    if (existsSync(rootEnvFile)) {
+      envFilePath = rootEnvFile;
+    }
+  } catch {
+    // No project root found, use CWD-relative path
+  }
+
+  if (existsSync(envFilePath)) {
     try {
-      const content = readFileSync(ENV_FILE_PATH, 'utf-8');
+      const content = readFileSync(envFilePath, 'utf-8');
       const secrets = parseDotenv(content);
       
       for (const [key, value] of Object.entries(secrets)) {
@@ -69,7 +71,7 @@ export function loadSecrets(): void {
       }
       
       // Warn in CI that this file should not be committed
-      if (isCI()) {
+      if (detectCIEnvironment()) {
         printBlank();
         printWarning('WARNING: .env.dockflow file detected in CI environment!');
         printWarning('This file should NOT be committed to your repository.');
@@ -77,17 +79,17 @@ export function loadSecrets(): void {
         printBlank();
       }
       
-      printSuccess(`Loaded secrets from ${ENV_FILE_PATH}`);
+      printSuccess(`Loaded secrets from ${envFilePath}`);
       return;
     } catch (error) {
-      printError(`Failed to load ${ENV_FILE_PATH}: ${error}`);
+      printError(`Failed to load ${envFilePath}: ${error}`);
     }
   }
   
-  // 2. Check for JSON secrets file (CI environment)
-  const secretsPath = process.env.DOCKFLOW_SECRETS_FILE || '/tmp/secrets.json';
-  
-  if (existsSync(secretsPath)) {
+  // 2. Check for JSON secrets file (explicit path only)
+  const secretsPath = process.env.DOCKFLOW_SECRETS_FILE;
+
+  if (secretsPath && existsSync(secretsPath)) {
     try {
       const content = readFileSync(secretsPath, 'utf-8');
       const secrets = JSON.parse(content);

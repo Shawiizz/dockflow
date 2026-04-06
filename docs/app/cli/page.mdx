@@ -82,7 +82,6 @@ Deploy the application to the specified environment. In CI, both `env` and `vers
 | `--services <list>` | Comma-separated list of services to deploy |
 | `--skip-build` | Skip the build phase |
 | `--force` | Force deployment even if locked |
-| `--skip-docker-install` | Skip Docker installation on target |
 | `--accessories` | Deploy only accessories (force redeploy) |
 | `--all` | Deploy app + force redeploy accessories |
 | `--skip-accessories` | Skip accessories check entirely |
@@ -522,7 +521,6 @@ dockflow accessories deploy <env> [version]
 
 | Option | Description |
 |--------|-------------|
-| `--skip-docker-install` | Skip Docker installation |
 | `--debug` | Enable debug output |
 
 ### List Accessories
@@ -647,10 +645,10 @@ dockflow setup --connection "eyJob3N0Ijoi..."
 ### Non-Interactive Setup
 
 ```bash
-dockflow setup auto
+dockflow setup --host <ip> --user <name> --password <pwd> --generate-key
 ```
 
-Configure a server without prompts (Linux only, must run on target host).
+Configure a server without prompts (Linux only, must run on target host). Pass flags directly instead of using the interactive wizard.
 
 | Option | Description |
 |--------|-------------|

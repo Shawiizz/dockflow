@@ -570,6 +570,7 @@ export async function runDeploy(
 
   const startTime = Date.now();
   let deployFailed = false;
+  let stackDeployed = false;
   let auditMessage = `Deploy ${deployVersion} to ${env}`;
 
   try {
@@ -600,6 +601,7 @@ export async function runDeploy(
     ]);
 
     // --- Deploy app ---
+    stackDeployed = ctx.deployApp !== false;
     await deployApp(ctx, compose);
 
     // --- Cleanup old releases ---
@@ -613,7 +615,7 @@ export async function runDeploy(
     await ctx.releases.removeRelease(stackName, deployVersion).catch(() => {});
 
     if (
-      err instanceof DeployError &&
+      stackDeployed &&
       config.health_checks?.on_failure === 'rollback'
     ) {
       try {

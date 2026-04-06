@@ -68,8 +68,8 @@ Add the following to `.dockflow/config.yml`:
       url: "registry.example.com"
       namespace: "your-team"
       auth_method: "basic"
-      username: "{{ registry_username }}"
-      password: "{{ registry_password }}"
+      username: "${REGISTRY_USERNAME}"
+      password: "${REGISTRY_PASSWORD}"
     ```
     
     **CI/CD secrets required:**

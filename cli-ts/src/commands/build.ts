@@ -130,7 +130,14 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
       ['docker', 'login', config.registry.url, '-u', config.registry.username || '', '--password-stdin'],
       { stdin: new Response(config.registry.password).body!, stdout: 'pipe', stderr: 'pipe' },
     );
-    await proc.exited;
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) {
+      const stderr = await new Response(proc.stderr).text();
+      throw new ConfigError(
+        `Docker registry login failed (exit ${exitCode})${stderr ? ': ' + stderr.trim() : ''}`,
+        'Check your registry credentials in config.yml (registry.username, registry.password).',
+      );
+    }
     await DistributionService.pushImages(result.images, config.registry.additional_tags?.length ? {
       tags: config.registry.additional_tags,
       env,

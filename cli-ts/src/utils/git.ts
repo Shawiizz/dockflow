@@ -13,13 +13,19 @@ import { getProjectRoot } from './config';
  * In CI, reads from provider env vars first to avoid detached HEAD.
  */
 export function getCurrentBranch(): string {
-  // GitHub Actions: GITHUB_REF_NAME is branch when GITHUB_REF_TYPE=branch
-  if (process.env.GITHUB_ACTIONS && process.env.GITHUB_REF_TYPE === 'branch' && process.env.GITHUB_REF_NAME) {
+  // GitHub Actions
+  if (process.env.GITHUB_ACTIONS && process.env.GITHUB_REF_NAME) {
+    // On tag triggers GITHUB_REF_TYPE=tag and git is in detached HEAD.
+    // Return the default branch name since there is no branch context.
+    if (process.env.GITHUB_REF_TYPE === 'tag') return process.env.GITHUB_EVENT_NAME === 'push' ? 'main' : (process.env.GITHUB_BASE_REF || 'main');
     return process.env.GITHUB_REF_NAME;
   }
-  // GitLab CI: CI_COMMIT_REF_NAME is branch when no CI_COMMIT_TAG
-  if (process.env.GITLAB_CI && !process.env.CI_COMMIT_TAG && process.env.CI_COMMIT_REF_NAME) {
-    return process.env.CI_COMMIT_REF_NAME;
+  // GitLab CI
+  if (process.env.GITLAB_CI) {
+    // On tag pipelines CI_COMMIT_TAG is set but CI_COMMIT_BRANCH is not.
+    // CI_COMMIT_REF_NAME equals the tag name — not useful as a branch.
+    if (process.env.CI_COMMIT_TAG) return process.env.CI_MERGE_REQUEST_TARGET_BRANCH_NAME || 'main';
+    if (process.env.CI_COMMIT_REF_NAME) return process.env.CI_COMMIT_REF_NAME;
   }
   // Jenkins
   if (process.env.BRANCH_NAME) {
@@ -36,7 +42,9 @@ export function getCurrentBranch(): string {
       cwd: getProjectRoot(),
     });
     if (result.status === 0 && result.stdout) {
-      return result.stdout.trim();
+      const branch = result.stdout.trim();
+      // Detached HEAD returns literal 'HEAD' — fall through to default
+      if (branch !== 'HEAD') return branch;
     }
   } catch {
     // Ignore errors

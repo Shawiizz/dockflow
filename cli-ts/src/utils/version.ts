@@ -17,6 +17,12 @@ import { DOCKFLOW_STACKS_DIR } from '../constants';
  *   main-abc123 -> main-abc123-2
  */
 export function incrementVersion(version: string): string {
+  // Branch-SHA pattern (e.g., main-abc12345, develop-f3a1b2c8) — append -2 counter
+  // Must be checked first to avoid the suffixMatch regex corrupting hex SHAs
+  if (/^.+-[0-9a-f]{6,}$/i.test(version)) {
+    return `${version}-2`;
+  }
+
   // Check if version ends with a number after a letter (e.g., beta2, rc3)
   const suffixMatch = version.match(/^(.+[a-zA-Z])(\d+)$/);
   if (suffixMatch) {

@@ -47,7 +47,7 @@ jobs:
 `;
 
 // GitLab CI standalone workflow — CLI auto-detects env/version from CI
-const GITLAB_CI = `stages:
+const getGitlabCI = (version: string) => `stages:
   - build
   - deploy
 
@@ -63,7 +63,7 @@ build:
   before_script:
     - apt-get update && apt-get install -y docker.io
   script:
-    - npx @dockflow-tools/cli build
+    - npx @dockflow-tools/cli@${version} build
   rules:
     - if: $CI_COMMIT_TAG
       when: never
@@ -81,7 +81,7 @@ deploy:
   before_script:
     - apt-get update && apt-get install -y docker.io
   script:
-    - npx @dockflow-tools/cli deploy
+    - npx @dockflow-tools/cli@${version} deploy
   rules:
     - if: $CI_COMMIT_TAG
 `;
@@ -93,9 +93,12 @@ project_name: "my-app"
 
 # Registry configuration (optional)
 # registry:
+#   enabled: true
 #   type: dockerhub  # dockerhub, ghcr, gitlab, custom
-#   username: "{{ registry_username }}"
-#   password: "{{ registry_password }}"
+#   url: "docker.io"
+#   namespace: "myorg"
+#   username: "\${REGISTRY_USERNAME}"
+#   password: "\${REGISTRY_PASSWORD}"
 
 # Build options
 options:
@@ -216,10 +219,8 @@ const ACCESSORIES_YML = `# Accessories - Stateful services (databases, caches, e
 # Deploy with: dockflow deploy <env> --accessories
 # Manage with: dockflow accessories list|logs|exec|restart|stop|remove <env>
 #
-# This file uses standard Docker Compose format with Jinja2 templating support.
+# This file uses standard Docker Compose format with Nunjucks templating support.
 # Environment variables can be accessed with {{ variable_name }}
-
-version: "3.8"
 
 services:
   # Example: PostgreSQL database
@@ -274,9 +275,7 @@ services:
 #   redis_data:
 `;
 
-const DOCKER_COMPOSE = `version: "3.8"
-
-services:
+const DOCKER_COMPOSE = `services:
   app:
     image: \${IMAGE_NAME:-myapp}:\${IMAGE_TAG:-latest}
     build:
@@ -419,7 +418,7 @@ export function registerInitCommand(program: Command): void {
         writeFileSync(join(workflowDir, 'ci.yml'), getGithubWorkflow(DOCKFLOW_VERSION));
         printSuccess('Created .github/workflows/ci.yml');
       } else if (ciPlatform === 'gitlab') {
-        writeFileSync(join(projectRoot, '.gitlab-ci.yml'), GITLAB_CI);
+        writeFileSync(join(projectRoot, '.gitlab-ci.yml'), getGitlabCI(DOCKFLOW_VERSION));
         printSuccess('Created .gitlab-ci.yml');
       }
 

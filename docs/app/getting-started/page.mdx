@@ -53,7 +53,7 @@ You need a Debian/Ubuntu server with SSH access (root or sudo user).
     For automated provisioning (Terraform, CI, etc.). Must be run **on the target server**:
 
     ```bash
-    dockflow setup auto \
+    dockflow setup \
       --host $(hostname -I | awk '{print $1}') \
       --user dockflow \
       --password "your-secure-password" \
@@ -62,7 +62,7 @@ You need a Debian/Ubuntu server with SSH access (root or sudo user).
       --portainer-password "portainer-admin-password"
     ```
 
-    See `dockflow setup auto --help` for all options.
+    See `dockflow setup --help` for all options.
   </Tabs.Tab>
 </Tabs>
 
@@ -80,21 +80,17 @@ This generates the following structure at the root of your project:
     <FileTree.File name="servers.yml" />
     <FileTree.Folder name="docker" defaultOpen>
       <FileTree.File name="docker-compose.yml" />
-      <FileTree.File name="Dockerfile.[service]" />
+      <FileTree.File name="accessories.yml" />
+      <FileTree.File name="Dockerfile" />
     </FileTree.Folder>
-    <FileTree.Folder name="hooks">
-      <FileTree.File name="pre-deploy.sh" />
-      <FileTree.File name="post-deploy.sh" />
-    </FileTree.Folder>
-    <FileTree.Folder name="templates">
-      <FileTree.File name="nginx" />
-    </FileTree.Folder>
+    <FileTree.Folder name="hooks" />
   </FileTree.Folder>
 </FileTree>
 
 - **`config.yml`** — Project name, build strategy, health checks ([reference](/configuration))
 - **`servers.yml`** — Servers and environment variables ([reference](/configuration/servers))
-- **`docker/`** — Docker Compose stack and Dockerfiles
+- **`docker/`** — Docker Compose stack, accessories, and Dockerfile
+- **`hooks/`** — Pre/post build and deploy hook scripts ([reference](/configuration#hooks))
 
 ## Deploy
 

@@ -26,13 +26,13 @@ registry:
   # token: uses a single token (for services like GitHub Container Registry)
   auth_method: "basic"
   
-  # Credentials (use environment variables for security)
+  # Credentials (use CI secrets — add REGISTRY_USERNAME, REGISTRY_PASSWORD to your CI/CD)
   # For basic auth:
-  username: "{{ registry_username }}"
-  password: "{{ registry_password }}"
-  
+  username: "${REGISTRY_USERNAME}"
+  password: "${REGISTRY_PASSWORD}"
+
   # For token auth (e.g., GitHub Personal Access Token):
-  token: "{{ registry_token }}"
+  token: "${REGISTRY_TOKEN}"
   
   # Additional tags to apply (besides the version tag)
   # Available variables: {version}, {env}, {branch}, {sha}
@@ -98,27 +98,25 @@ health_checks:
   on_failure: "rollback"
   
   # List of endpoints to check
-  # You can use Jinja2 templating with environment variables:
-  # - {{ lookup('env', 'VARIABLE_NAME') }}
-  # - {{ ansible_env.VARIABLE_NAME }}
+  # These URLs are called directly from the CLI machine — use the server's public IP or domain.
   endpoints:
-    # Example: Main application health endpoint with dynamic port
+    # Example: Main application health endpoint
     - name: "Main Application Health"
-      url: "http://localhost:{{ lookup('env', 'APP_EXTERNAL_PORT') }}/health"
+      url: "http://localhost:3000/health"
       expected_status: 200
       timeout: 30
       retries: 3
       retry_delay: 5
-    
+
     # Example: API status endpoint
     - name: "API Status"
-      url: "http://localhost:{{ lookup('env', 'APP_EXTERNAL_PORT') }}/api/status"
+      url: "http://localhost:3000/api/status"
       expected_status: 200
       timeout: 15
-    
+
     # Example: Database connectivity check
     - name: "Database Connection"
-      url: "http://localhost:{{ lookup('env', 'APP_EXTERNAL_PORT') }}/health/db"
+      url: "http://localhost:3000/health/db"
       expected_status: 200
       timeout: 20
       retries: 5

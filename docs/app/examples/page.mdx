@@ -38,6 +38,7 @@ defaults:
 servers:
   main_server:
     role: manager
+    tags: [production]
     env:
       APP_PORT: "3000"
 ```
@@ -108,7 +109,7 @@ health_checks:
   on_failure: rollback
   endpoints:
     - name: "API Health"
-      url: "http://localhost:{{ lookup('env', 'API_PORT') }}/health"
+      url: "http://localhost:3000/health"
       expected_status: 200
       timeout: 30
       retries: 3
@@ -123,6 +124,7 @@ defaults:
 servers:
   main_server:
     role: manager
+    tags: [production]
     env:
       FRONTEND_PORT: "80"
       API_PORT: "3000"
@@ -224,20 +226,20 @@ defaults:
 servers:
   manager_1:
     role: manager
-    tags: [primary]
+    tags: [production]
     env:
       APP_PORT: "3000"
       DOMAIN: "app.example.com"
 
   worker_1:
     role: worker
-    tags: [app]
+    tags: [production]
     env:
       APP_PORT: "3000"
 
   worker_2:
     role: worker
-    tags: [app]
+    tags: [production]
     env:
       APP_PORT: "3000"
 ```
@@ -252,7 +254,7 @@ registry:
   type: ghcr
   url: ghcr.io
   namespace: myorg
-  token: "{{ registry_token }}"
+  token: "${REGISTRY_TOKEN}"
   additional_tags:
     - "latest"
     - "{branch}-latest"
@@ -263,7 +265,7 @@ health_checks:
   on_failure: rollback
   endpoints:
     - name: "App Health"
-      url: "http://localhost:{{ lookup('env', 'APP_PORT') }}/health"
+      url: "http://localhost:3000/health"
       expected_status: 200
       retries: 5
 ```
