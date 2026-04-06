@@ -28,11 +28,11 @@ registry:
   
   # Credentials (use CI secrets — add REGISTRY_USERNAME, REGISTRY_PASSWORD to your CI/CD)
   # For basic auth:
-  username: "${REGISTRY_USERNAME}"
-  password: "${REGISTRY_PASSWORD}"
+  username: "{{ current.env.registry_username }}"
+  password: "{{ current.env.registry_password }}"
 
   # For token auth (e.g., GitHub Personal Access Token):
-  token: "${REGISTRY_TOKEN}"
+  token: "{{ current.env.registry_token }}"
   
   # Additional tags to apply (besides the version tag)
   # Available variables: {version}, {env}, {branch}, {sha}

@@ -164,6 +164,8 @@ export interface LoadConfigOptions {
   validate?: boolean;
   /** Suppress validation error output (default: false) */
   silent?: boolean;
+  /** Parse from string instead of reading from disk */
+  content?: string;
 }
 
 /**
@@ -180,15 +182,20 @@ export interface LoadResult<T> {
  * @returns Loaded config or null if not found/invalid
  */
 export function loadConfig(options: LoadConfigOptions = {}): DockflowConfig | null {
-  const { validate = true, silent = false } = options;
-  const configPath = join(getProjectRoot(), '.dockflow', 'config.yml');
-  
-  if (!existsSync(configPath)) {
-    return null;
+  const { validate = true, silent = false, content: rawContent } = options;
+
+  let content: string;
+  if (rawContent !== undefined) {
+    content = rawContent;
+  } else {
+    const configPath = join(getProjectRoot(), '.dockflow', 'config.yml');
+    if (!existsSync(configPath)) {
+      return null;
+    }
+    content = readFileSync(configPath, 'utf-8');
   }
-  
+
   try {
-    const content = readFileSync(configPath, 'utf-8');
     const parsed = parseYaml(content);
     
     if (validate) {

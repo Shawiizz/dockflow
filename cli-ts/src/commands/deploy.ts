@@ -378,7 +378,7 @@ export async function runDeploy(
   loadSecrets();
 
   // --- Load config ---
-  const config = loadConfig();
+  let config = loadConfig();
   if (!config) {
     throw new ConfigError(
       'No config.yml found',
@@ -541,6 +541,9 @@ export async function runDeploy(
     },
     templateContext,
   );
+
+  // Re-parse config from rendered templates (resolves {{ current.env.xxx }})
+  config = loadConfig({ content: rendered.get('.dockflow/config.yml'), silent: true }) ?? config;
 
   // --- Build deploy context ---
   const lock = new LockService(managerConn, stackName);

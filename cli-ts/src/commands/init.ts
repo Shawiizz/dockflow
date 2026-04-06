@@ -97,8 +97,8 @@ project_name: "my-app"
 #   type: dockerhub  # dockerhub, ghcr, gitlab, custom
 #   url: "docker.io"
 #   namespace: "myorg"
-#   username: "\${REGISTRY_USERNAME}"
-#   password: "\${REGISTRY_PASSWORD}"
+#   username: "{{ current.env.registry_username }}"
+#   password: "{{ current.env.registry_password }}"
 
 # Build options
 options:

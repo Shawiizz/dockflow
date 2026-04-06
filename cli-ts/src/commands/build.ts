@@ -62,7 +62,7 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
   printBlank();
 
   // Load config
-  const config = loadConfig();
+  let config = loadConfig();
   if (!config) {
     throw new ConfigError(
       'No config.yml found',
@@ -97,6 +97,9 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
     },
     templateContext,
   );
+
+  // Re-parse config from rendered templates (resolves {{ current.env.xxx }})
+  config = loadConfig({ content: rendered.get('.dockflow/config.yml'), silent: true }) ?? config;
 
   // Pre-build hook
   if (!options.skipHooks) {
