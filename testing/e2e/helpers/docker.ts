@@ -4,7 +4,7 @@
  */
 
 import { exec } from "./cluster";
-import { MANAGER_CONTAINER, WORKER_CONTAINER } from "./connection";
+import { MANAGER_CONTAINER } from "./connection";
 
 /**
  * Run a command inside a DinD container.
@@ -31,17 +31,6 @@ export async function getServiceReplicaStr(
     "--format",
     "{{.Replicas}}",
   ]);
-}
-
-/**
- * Get parsed replica counts for a service.
- */
-export async function getServiceReplicas(
-  serviceName: string
-): Promise<{ running: number; desired: number }> {
-  const str = await getServiceReplicaStr(serviceName);
-  const [running, desired] = str.split("/").map(Number);
-  return { running: running || 0, desired: desired || 0 };
 }
 
 /**

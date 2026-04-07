@@ -1,7 +1,6 @@
 /**
  * Preload script for E2E tests.
- * Ensures the DinD Swarm cluster is running before any test file executes.
- * Idempotent — skips setup if cluster is already up.
+ * Tears down any existing cluster, rebuilds CLI + containers, and waits for Swarm health.
  */
 
 import {
@@ -18,10 +17,8 @@ const TEST_APP_DIR = join(FIXTURES_DIR, "test-app");
 const TEST_APP_REMOTE_DIR = join(FIXTURES_DIR, "test-app-remote");
 
 async function ensureCluster() {
-  // Build CLI first (fast no-op if binary is up to date)
   await buildCLI();
 
-  // Always teardown + rebuild to ensure fresh images and clean state
   console.log("\n=== Resetting E2E cluster ===\n");
   await stopCluster();
   await startCluster();

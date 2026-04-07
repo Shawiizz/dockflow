@@ -20,6 +20,17 @@ export function isVerbose(): boolean {
   return verboseMode || process.env.VERBOSE === 'true' || process.env.DEBUG === 'true';
 }
 
+// === JSON mode (suppress all output except printJSON/printRaw) ===
+let jsonMode = false;
+
+export function setJsonMode(enabled: boolean): void {
+  jsonMode = enabled;
+}
+
+export function isJsonMode(): boolean {
+  return jsonMode;
+}
+
 // === Colors ===
 export const colors = {
   success: chalk.green,
@@ -33,24 +44,28 @@ export const colors = {
 
 // === User feedback ===
 export function printSuccess(message: string): void {
+  if (jsonMode) return;
   clack.log.success(message);
 }
 
 export function printError(message: string): void {
+  if (jsonMode) return;
   process.stderr.write(colors.error(`  ✘  ${message}`) + '\n');
 }
 
 export function printWarning(message: string): void {
+  if (jsonMode) return;
   clack.log.warn(message);
 }
 
 export function printInfo(message: string): void {
+  if (jsonMode) return;
   clack.log.info(message);
 }
 
 // === Debug output (verbose mode only) ===
 export function printDebug(message: string, context?: Record<string, unknown>): void {
-  if (!isVerbose()) return;
+  if (jsonMode || !isVerbose()) return;
   
   let output = colors.dim(`[debug] ${message}`);
   if (context && Object.keys(context).length > 0) {
@@ -64,6 +79,7 @@ export function printDebug(message: string, context?: Record<string, unknown>): 
 
 // === Sections & headers ===
 export function printSection(title: string): void {
+  if (jsonMode) return;
   clack.log.step(title);
 }
 
@@ -86,6 +102,7 @@ export function formatDuration(seconds: number): string {
  * Print a horizontal separator line
  */
 export function printSeparator(length: number = 50): void {
+  if (jsonMode) return;
   console.log(colors.dim('─'.repeat(length)));
 }
 
@@ -93,6 +110,7 @@ export function printSeparator(length: number = 50): void {
  * Print a dim/muted message
  */
 export function printDim(message: string): void {
+  if (jsonMode) return;
   console.log(colors.dim(message));
 }
 
@@ -100,6 +118,7 @@ export function printDim(message: string): void {
  * Print a key-value pair for table-like output
  */
 export function printTableRow(label: string, value: string, labelWidth: number = 20): void {
+  if (jsonMode) return;
   console.log(`  ${colors.bold(label.padEnd(labelWidth))} ${value}`);
 }
 
@@ -107,6 +126,7 @@ export function printTableRow(label: string, value: string, labelWidth: number =
  * Print a blank line
  */
 export function printBlank(): void {
+  if (jsonMode) return;
   console.log('');
 }
 
@@ -156,6 +176,7 @@ export function formatRelativeTime(timestamp: string): string {
  * Display a styled intro banner (clack-style)
  */
 export function printIntro(title: string): void {
+  if (jsonMode) return;
   clack.intro(colors.bold(title));
 }
 
@@ -163,6 +184,7 @@ export function printIntro(title: string): void {
  * Display a styled outro message
  */
 export function printOutro(message: string): void {
+  if (jsonMode) return;
   clack.outro(message);
 }
 
@@ -170,6 +192,7 @@ export function printOutro(message: string): void {
  * Display a boxed note section
  */
 export function printNote(message: string, title?: string): void {
+  if (jsonMode) return;
   clack.note(message, title);
 }
 

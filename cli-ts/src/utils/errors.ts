@@ -6,7 +6,7 @@
  * across all commands.
  */
 
-import { printError, printWarning, printInfo, printSuccess, printBlank, printRaw, colors } from './output';
+import { printError, printWarning, printInfo, printSuccess, printBlank, printRaw, printJSON, isJsonMode, colors } from './output';
 import { closeAllConnections } from './ssh';
 
 /**
@@ -170,9 +170,13 @@ export function handleError(error: unknown): never {
   const isUnexpected = !(error instanceof CLIError);
   const cliError = CLIError.from(error);
 
-  printBlank();
-  printRaw(formatError(cliError, isUnexpected));
-  printBlank();
+  if (isJsonMode()) {
+    printJSON({ error: cliError.message, code: cliError.code, suggestion: cliError.suggestion });
+  } else {
+    printBlank();
+    printRaw(formatError(cliError, isUnexpected));
+    printBlank();
+  }
 
   process.exit(cliError.code);
 }

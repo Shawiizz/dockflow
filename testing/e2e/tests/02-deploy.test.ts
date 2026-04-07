@@ -49,10 +49,8 @@ describe("deploy", () => {
   });
 
   test("HTTP routing via Traefik works", async () => {
-    // Wait for Traefik to be running first
     await waitForService("traefik_traefik", "1/1", { timeoutMs: 60_000 });
 
-    // Retry HTTP request — Traefik may need time to discover the backend
     let lastStatus = 0;
     const deadline = Date.now() + 30_000;
 

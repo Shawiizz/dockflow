@@ -28,7 +28,6 @@ describe("remote build", () => {
   });
 
   afterAll(() => {
-    // Clean up local git repo
     try {
       rmSync(join(TEST_APP_DIR, ".git"), { recursive: true, force: true });
     } catch {}
@@ -38,7 +37,6 @@ describe("remote build", () => {
   });
 
   test("create git repo on manager", async () => {
-    // Clean previous repo and create parent dir
     await exec([
       "docker",
       "exec",
@@ -48,7 +46,6 @@ describe("remote build", () => {
       `rm -rf ${REMOTE_REPO_PATH} && mkdir -p $(dirname ${REMOTE_REPO_PATH}) && chown ${DEPLOY_USER}:${DEPLOY_USER} $(dirname ${REMOTE_REPO_PATH})`,
     ]);
 
-    // Copy test app files to manager
     await exec([
       "docker",
       "cp",
@@ -76,7 +73,6 @@ describe("remote build", () => {
   }, 30_000);
 
   test("prepare local git repo with remote origin", async () => {
-    // Init local git repo pointing to remote path
     await exec(["git", "init", "-q", "-b", "main"], { cwd: TEST_APP_DIR });
     await exec(
       ["git", "config", "user.email", "test@dockflow.local"],

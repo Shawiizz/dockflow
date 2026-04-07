@@ -4,7 +4,8 @@
  */
 
 import { join } from "path";
-import { MANAGER_CONTAINER } from "./connection";
+import { MANAGER_CONTAINER, WORKER_CONTAINER } from "./connection";
+import { getCliBinaryName } from "./cli";
 
 const E2E_DIR = join(import.meta.dir, "..");
 const DOCKER_DIR = join(E2E_DIR, "docker");
@@ -42,21 +43,6 @@ export async function exec(
 }
 
 /**
- * Check if the test containers are running.
- */
-export async function isClusterRunning(): Promise<boolean> {
-  try {
-    const output = await exec(["docker", "ps", "--format", "{{.Names}}"]);
-    return (
-      output.includes("dockflow-test-manager") &&
-      output.includes("dockflow-test-worker-1")
-    );
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Start the Docker Compose cluster (build + up).
  */
 export async function startCluster(): Promise<void> {
@@ -68,7 +54,7 @@ export async function startCluster(): Promise<void> {
   console.log("[cluster] Containers started.");
 
   // Pre-load images that DinD can't pull (TLS/proxy issues)
-  await preloadImages([MANAGER_CONTAINER, "dockflow-test-worker-1"], [
+  await preloadImages([MANAGER_CONTAINER, WORKER_CONTAINER], [
     "redis:7-alpine",
     "traefik:v3.0",
     "nginx:alpine",
@@ -199,15 +185,4 @@ export async function buildCLI(): Promise<string> {
 
   console.log(`[cli] CLI built: ${binaryName}`);
   return binaryPath;
-}
-
-function getCliBinaryName(): string {
-  const platform = process.platform;
-  const arch = process.arch;
-
-  if (platform === "win32") return "dockflow-windows-x64.exe";
-  if (platform === "darwin" && arch === "arm64") return "dockflow-macos-arm64";
-  if (platform === "darwin") return "dockflow-macos-x64";
-  if (platform === "linux" && arch === "arm64") return "dockflow-linux-arm64";
-  return "dockflow-linux-x64";
 }

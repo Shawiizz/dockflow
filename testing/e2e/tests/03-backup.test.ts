@@ -17,8 +17,6 @@ describe("backup & restore", () => {
 
   beforeAll(async () => {
     writeDockflowEnv(TEST_APP_DIR);
-
-    // Ensure Redis is running (deployed by the deploy test)
     await waitForService(REDIS_SERVICE, "1/1", { timeoutMs: 30_000 });
     await waitForRedis();
   });
@@ -40,14 +38,7 @@ describe("backup & restore", () => {
     }
     expect(result.exitCode).toBe(0);
 
-    // Extract backup ID from output (format: YYYYMMDD-HHMMSS-xxxx)
-    // Log output to debug regex if it doesn't match
     const match = result.stdout.match(/(\d{8}-\d{6}-[a-f0-9]{4})/);
-    if (!match) {
-      console.error("[backup create] Could not extract backup ID from output:");
-      console.error("[backup create] STDOUT:", result.stdout);
-      console.error("[backup create] STDERR:", result.stderr);
-    }
     expect(match).toBeTruthy();
     backupId = match![1];
   }, 60_000);
@@ -60,39 +51,18 @@ describe("backup & restore", () => {
 
     expect(result.exitCode).toBe(0);
 
-    // Extract JSON array — try parsing from each '[' position
-    let backups: { id: string }[] | null = null;
-    let searchFrom = 0;
-    while (searchFrom < result.stdout.length) {
-      const start = result.stdout.indexOf("[", searchFrom);
-      if (start === -1) break;
-      try {
-        backups = JSON.parse(result.stdout.slice(start));
-        break;
-      } catch {
-        searchFrom = start + 1;
-      }
-    }
-
-    if (!backups) {
-      console.error("[backup list] Could not parse JSON from output:");
-      console.error("[backup list] STDOUT:", result.stdout);
-    }
-    expect(backups).toBeTruthy();
-
-    const found = backups!.some((b) => b.id === backupId);
+    const backups: { id: string }[] = JSON.parse(result.stdout);
+    const found = backups.some((b) => b.id === backupId);
     expect(found).toBe(true);
   });
 
   test("restore after data corruption", async () => {
-    // Corrupt data
     await redisExec(["SET", TEST_KEY, "CORRUPTED"]);
     await redisExec(["SET", "dockflow_e2e_extra", "should_vanish"]);
 
     const corrupted = await redisExec(["GET", TEST_KEY]);
     expect(corrupted.trim()).toBe("CORRUPTED");
 
-    // Restore
     const result = await runCLI(
       [
         "backup",
@@ -110,13 +80,11 @@ describe("backup & restore", () => {
   }, 60_000);
 
   test("data integrity after restore", async () => {
-    // Wait for Redis to come back after restore (container restart)
     await waitForRedis();
 
     const restored = await redisExec(["GET", TEST_KEY]);
     expect(restored.trim()).toBe(TEST_VALUE);
 
-    // Extra key injected after backup should be gone
     const extra = await redisExec(["EXISTS", "dockflow_e2e_extra"]);
     expect(extra.trim()).toBe("0");
   }, 30_000);

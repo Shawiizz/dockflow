@@ -10,7 +10,6 @@ const IMAGE_NAME = "test-web-app";
 
 describe("build", () => {
   afterAll(async () => {
-    // Clean up built image on host Docker
     try {
       await exec(["docker", "rmi", IMAGE_NAME]);
     } catch {}
@@ -32,7 +31,6 @@ describe("build", () => {
   }, 120_000);
 
   test("built image exists and is inspectable", async () => {
-    // Image is built on host Docker (not inside DinD)
     const output = await exec([
       "docker",
       "images",
@@ -52,7 +50,6 @@ describe("build", () => {
   });
 
   test("image serves expected content", async () => {
-    // Run container on host Docker
     const containerId = (
       await exec(["docker", "run", "-d", "--rm", IMAGE_NAME])
     ).trim();

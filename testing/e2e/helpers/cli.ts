@@ -21,7 +21,7 @@ export function getCliBinaryPath(): string {
   return join(cliDir, "dist", getCliBinaryName());
 }
 
-function getCliBinaryName(): string {
+export function getCliBinaryName(): string {
   const platform = process.platform;
   const arch = process.arch;
 
