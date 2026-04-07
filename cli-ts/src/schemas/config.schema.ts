@@ -324,9 +324,3 @@ export const DockflowConfigSchema = z.object({
     'Automatic HTTPS proxy configuration (Traefik + Let\'s Encrypt)'
   ),
 });
-
-/**
- * Type inference from schema
- */
-export type DockflowConfigInput = z.input<typeof DockflowConfigSchema>;
-export type DockflowConfigOutput = z.output<typeof DockflowConfigSchema>;

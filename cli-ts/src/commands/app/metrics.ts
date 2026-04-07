@@ -18,7 +18,7 @@ import {
   formatRelativeTime
 } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
-import { withErrorHandler, DockerError } from '../../utils/errors';
+import { withErrorHandler } from '../../utils/errors';
 import {
   MetricsService,
   calculateMetricsSummary,

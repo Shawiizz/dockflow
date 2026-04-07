@@ -13,7 +13,7 @@ import { parse as parseYaml } from 'yaml';
 import type { SSHKeyConnection } from '../types';
 import { sshExec } from '../utils/ssh';
 import { shellEscape } from '../utils/ssh';
-import { printDebug, printDim, printRaw, printSuccess, printWarning, createTaskLog } from '../utils/output';
+import { printDim, printRaw, printSuccess, printWarning, createTaskLog } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import { createTar, type TarEntry } from '../utils/tar';
 import { parseDockerignore } from '../utils/dockerignore';

@@ -10,10 +10,9 @@ import { parse as parseYaml } from 'yaml';
 import type { ServersConfig } from '../types';
 import { printError, printRaw } from './output';
 import {
-  validateConfig as validateConfigSchema, 
+  validateConfig as validateConfigSchema,
   validateServersConfig as validateServersSchema,
   formatValidationErrors,
-  type ValidationIssue 
 } from '../schemas';
 
 /**
@@ -169,14 +168,6 @@ export interface LoadConfigOptions {
 }
 
 /**
- * Load result with optional validation errors
- */
-export interface LoadResult<T> {
-  data: T | null;
-  errors?: ValidationIssue[];
-}
-
-/**
  * Load the deployment config from .dockflow/config.yml
  * @param options - Loading options (validate, silent)
  * @returns Loaded config or null if not found/invalid
@@ -219,43 +210,6 @@ export function loadConfig(options: LoadConfigOptions = {}): DockflowConfig | nu
 }
 
 /**
- * Load config with detailed result including validation errors
- */
-export function loadConfigWithErrors(options: LoadConfigOptions = {}): LoadResult<DockflowConfig> {
-  const { validate = true, content: rawContent } = options;
-
-  let content: string;
-  if (rawContent !== undefined) {
-    content = rawContent;
-  } else {
-    const configPath = join(getProjectRoot(), '.dockflow', 'config.yml');
-    if (!existsSync(configPath)) {
-      return { data: null };
-    }
-    content = readFileSync(configPath, 'utf-8');
-  }
-
-  try {
-    const parsed = parseYaml(content);
-    
-    if (validate) {
-      const result = validateConfigSchema(parsed);
-      if (!result.success) {
-        return { data: null, errors: result.error };
-      }
-      return { data: result.data as DockflowConfig };
-    }
-    
-    return { data: parsed as DockflowConfig };
-  } catch (error) {
-    return { 
-      data: null, 
-      errors: [{ path: 'root', message: `YAML parse error: ${error}`, code: 'parse_error' }] 
-    };
-  }
-}
-
-/**
  * Load the servers config from .dockflow/servers.yml
  * @param options - Loading options (validate, silent)
  * @returns Loaded config or null if not found/invalid
@@ -293,38 +247,6 @@ export function loadServersConfig(options: LoadConfigOptions = {}): ServersConfi
 }
 
 /**
- * Load servers config with detailed result including validation errors
- */
-export function loadServersConfigWithErrors(options: LoadConfigOptions = {}): LoadResult<ServersConfig> {
-  const { validate = true } = options;
-  const serversPath = join(getProjectRoot(), '.dockflow', 'servers.yml');
-  
-  if (!existsSync(serversPath)) {
-    return { data: null };
-  }
-  
-  try {
-    const content = readFileSync(serversPath, 'utf-8');
-    const parsed = parseYaml(content);
-    
-    if (validate) {
-      const result = validateServersSchema(parsed);
-      if (!result.success) {
-        return { data: null, errors: result.error };
-      }
-      return { data: result.data as ServersConfig };
-    }
-    
-    return { data: parsed as ServersConfig };
-  } catch (error) {
-    return { 
-      data: null, 
-      errors: [{ path: 'root', message: `YAML parse error: ${error}`, code: 'parse_error' }] 
-    };
-  }
-}
-
-/**
  * Check if servers.yml exists
  */
 export function hasServersConfig(): boolean {
@@ -347,22 +269,6 @@ export function getStackName(env: string): string | null {
   const projectName = getProjectName();
   if (!projectName) return null;
   return `${projectName}-${env}`;
-}
-
-/**
- * Check if Docker is available
- */
-export async function isDockerAvailable(): Promise<boolean> {
-  try {
-    const proc = Bun.spawn(['docker', 'info'], {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    await proc.exited;
-    return proc.exitCode === 0;
-  } catch {
-    return false;
-  }
 }
 
 /**

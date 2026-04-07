@@ -6,7 +6,7 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { printIntro, printSection, printSuccess, printError, printInfo, printWarning, printBlank, printRaw, colors } from '../../utils/output';
+import { printIntro, printSection, printSuccess, printInfo, printWarning, printBlank, printRaw, colors } from '../../utils/output';
 import { CLIError, ErrorCode } from '../../utils/errors';
 import { checkDependencies, displayDependencyStatus, installDependencies, detectPackageManager } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';

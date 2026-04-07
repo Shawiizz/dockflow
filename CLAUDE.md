@@ -64,8 +64,8 @@ pnpm build                     # Production build + LLM text generation + Pagefi
 ### E2E Tests (WSL/CI only)
 
 ```bash
-cd testing/e2e && bash run-tests.sh       # Full test suite (spins up Docker Swarm in containers)
-cd testing/e2e && bash teardown.sh         # Cleanup test VMs
+cd testing/e2e && bun test tests/          # Full test suite (spins up Docker Swarm in containers)
+cd testing/e2e && bun run teardown.ts      # Cleanup test VMs
 ```
 
 ### Version Management
@@ -73,7 +73,7 @@ cd testing/e2e && bash teardown.sh         # Cleanup test VMs
 ```bash
 node scripts/version-manager.js dev       # Bump dev version (e.g., 2.0.23 → 2.0.23-dev1)
 node scripts/version-manager.js release   # Release version (e.g., 2.0.23-dev1 → 2.0.24)
-node scripts/version-manager.js patch     # Bump patch version
+node scripts/version-manager.js downgrade # Downgrade version
 ```
 
 ## Architecture: SSH-Only Deployment
@@ -182,10 +182,6 @@ Ansible is only used for `dockflow setup` via `ansible/configure_host.yml`. Rema
 - `geerlingguy.docker` — multi-distro Docker install
 - `nginx` — reverse proxy setup
 - `portainer` — Portainer stack deployment
-- `traefik` — initial Traefik stack deploy
-- `services` — systemd unit deployment
-
-Defaults in `ansible/group_vars/all.yml` under `dockflow_defaults` and `dockflow_paths`.
 
 ### Remote Directory Permissions
 
@@ -218,7 +214,7 @@ Key values in `cli-ts/src/constants.ts`: `DOCKFLOW_VERSION` (from package.json),
 
 ## E2E Tests
 
-Tests run in Docker-in-Docker: a manager container (`dockflow-test-manager`) and a worker (`dockflow-test-worker-1`) form a real Swarm cluster. The full suite is in `testing/e2e/run-tests.sh` and covers deployment, Traefik routing, backup/restore, and remote builds.
+Tests run in Docker-in-Docker: a manager container (`dockflow-test-manager`) and a worker (`dockflow-test-worker-1`) form a real Swarm cluster. Tests are run via `bun test` (test files are in `testing/e2e/tests/`) and cover deployment, Traefik routing, backup/restore, and remote builds.
 
 E2E tests run from WSL. The `.env.dockflow` file uses `localhost:222x` port mappings to reach the Docker-in-Docker containers from the host.
 
@@ -226,7 +222,7 @@ E2E tests run from WSL. The `.env.dockflow` file uses `localhost:222x` port mapp
 
 - **build-cli.yml** — Triggered by version tags. Builds multi-platform binaries (linux-x64/arm64, macos-x64/arm64, windows-x64), creates GitHub Release, publishes to npm (`@dockflow-tools/cli`).
 - **deploy-docs.yml** — Documentation site deployment. Installs CLI and runs `dockflow deploy` directly.
-- **e2e-tests.yml** — Runs on push to main/develop and PRs. Executes `testing/e2e/run-tests.sh`.
+- **e2e-tests.yml** — Runs on push to main/develop and PRs. Executes `bun test tests/` in `testing/e2e/`.
 - **shell-lint.yml** — ShellCheck validation.
 
 CI/CD integration is handled entirely by the CLI itself — no reusable workflows or external templates needed. The CLI auto-detects environment and version from CI provider env vars (GitHub Actions, GitLab CI, Jenkins, Buildkite) when `dockflow deploy` or `dockflow build` are called without arguments. Users generate a standalone CI workflow via `dockflow init`.

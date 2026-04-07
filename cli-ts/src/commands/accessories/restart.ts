@@ -6,7 +6,7 @@
  */
 
 import type { Command } from 'commander';
-import { printSuccess, printIntro, printOutro, printDebug, printBlank, printRaw, createSpinner } from '../../utils/output';
+import { printIntro, printOutro, printDebug, printBlank, printRaw, createSpinner } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createStackService } from '../../services';

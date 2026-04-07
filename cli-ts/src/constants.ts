@@ -62,7 +62,7 @@ export const SSH_KEEPALIVE_INTERVAL_MS = 15000;
 export const SSH_KEEPALIVE_COUNT_MAX = 3;
 
 /**
- * Traefik defaults (mirrors ansible/roles/traefik/defaults/main.yml)
+ * Traefik defaults
  */
 export const TRAEFIK_STACK_NAME = 'traefik';
 export const TRAEFIK_NETWORK_NAME = 'traefik-public';

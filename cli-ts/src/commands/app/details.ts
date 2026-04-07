@@ -5,7 +5,7 @@
 
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
-import { printSection, printIntro, printNote, printDebug, printRaw, printWarning, printBlank } from '../../utils/output';
+import { printSection, printIntro, printNote, printDebug, printRaw, printWarning } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 

@@ -90,8 +90,8 @@ Docker Desktop must be running with WSL integration enabled.
 
 ```bash
 cd testing/e2e
-bash run-tests.sh    # full suite (~5-10 min)
-bash teardown.sh     # clean up containers afterwards
+bun test tests/      # full suite (~5-10 min)
+bun run teardown.ts  # clean up containers afterwards
 ```
 
 ### Test architecture
@@ -140,7 +140,7 @@ Quick checklist:
 1. **Command**: add in `cli-ts/src/commands/`, register in `cli-ts/src/index.ts`
 2. **Service logic**: put in `cli-ts/src/services/` if it involves Docker Swarm ops
 3. **Config field**: update both `cli-ts/src/schemas/config.schema.ts` (Zod) and `cli-ts/src/utils/config.ts` (interface)
-4. **New remote path**: add to directory creation loop in `ansible/deploy.yml` with `owner: "{{ ansible_user }}"`
+4. **New remote path**: add constants in `cli-ts/src/constants.ts` and ensure the deploy command creates them via `SwarmDeployService`
 5. **Ansible defaults**: centralize in `ansible/group_vars/all.yml`, never hardcode in roles
 6. **Typecheck**: `bun run typecheck` — zero errors
 7. **Documentation**: add or update a page in `docs/app/`

@@ -7,10 +7,10 @@
 
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
-import { printSection, printIntro, printInfo, printError, printSuccess, printWarning, printDebug, printBlank, printRaw, colors } from '../../utils/output';
+import { printSection, printIntro, printInfo, printError, printSuccess, printDebug, printBlank, printRaw, colors } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
-import { DockerError, withErrorHandler } from '../../utils/errors';
+import { withErrorHandler } from '../../utils/errors';
 
 interface DiagnosticIssue {
   severity: 'error' | 'warning' | 'info';
@@ -84,12 +84,6 @@ export function registerDiagnoseCommand(program: Command): void {
       printSection('Task Errors');
       const tasksResult = await stackService.getTasks();
       if (tasksResult.success) {
-        const failedTasks = tasksResult.data.filter(t => 
-          t.currentState.includes('Failed') || 
-          t.currentState.includes('Rejected') ||
-          t.error
-        );
-
         // Get recent task history (including shutdown/failed)
         const recentFailures = tasksResult.data
           .filter(t => t.error || t.currentState.includes('Failed'))

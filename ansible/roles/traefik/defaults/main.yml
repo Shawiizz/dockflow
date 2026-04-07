@@ -1,5 +1,0 @@
----
-traefik_stack_name: traefik
-traefik_network_name: traefik-public
-traefik_certs_volume: traefik-certs
-traefik_image: traefik:v3.0

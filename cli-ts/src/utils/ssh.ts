@@ -269,61 +269,6 @@ function execStreamOnClient(
   });
 }
 
-function execWithInputOnClient(
-  client: SSHClient,
-  command: string,
-  input: Buffer,
-): Promise<SSHExecResult> {
-  return new Promise<SSHExecResult>((resolve, reject) => {
-    client.exec(command, (err, stream) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-
-      let stdout = '';
-      let stderr = '';
-
-      stream.on('data', (data: Buffer) => {
-        stdout += data.toString();
-      });
-
-      stream.stderr.on('data', (data: Buffer) => {
-        stderr += data.toString();
-      });
-
-      stream.on('close', (code: number) => {
-        resolve({
-          stdout,
-          stderr,
-          exitCode: code ?? 0,
-        });
-      });
-
-      // Write input data with backpressure handling
-      const CHUNK = 64 * 1024;
-      let offset = 0;
-      const writeNext = () => {
-        while (offset < input.length) {
-          const end = Math.min(offset + CHUNK, input.length);
-          const slice = input.subarray(offset, end);
-          offset = end;
-          if (offset >= input.length) {
-            stream.end(slice);
-            return;
-          }
-          if (!stream.write(slice)) {
-            stream.once('drain', writeNext);
-            return;
-          }
-        }
-        stream.end();
-      };
-      writeNext();
-    });
-  });
-}
-
 // ─── Public API (signatures unchanged) ────────────────────────
 
 /**
@@ -370,29 +315,6 @@ export async function sshExecStream(
       evictClient(conn, client);
       const fresh = await getPooledClient(conn);
       return await execStreamOnClient(fresh, command, options);
-    }
-    throw err;
-  }
-}
-
-/**
- * Execute a command via SSH, piping binary data to its stdin.
- * Uses connection pooling.
- */
-export async function sshExecWithInput(
-  conn: ConnectionInfo,
-  command: string,
-  input: Buffer,
-): Promise<SSHExecResult> {
-  const client = await getPooledClient(conn);
-
-  try {
-    return await execWithInputOnClient(client, command, input);
-  } catch (err) {
-    if (isTransportError(err)) {
-      evictClient(conn, client);
-      const fresh = await getPooledClient(conn);
-      return await execWithInputOnClient(fresh, command, input);
     }
     throw err;
   }
@@ -574,14 +496,6 @@ export function closeAllConnections(): void {
   pool.clear();
 }
 
-/**
- * Reset pool state for testing.
- */
-export function _resetPoolForTesting(): void {
-  closeAllConnections();
-  exitHandlerRegistered = false;
-}
-
 // ─── Utilities ────────────────────────────────────────────────
 
 /**
@@ -589,19 +503,4 @@ export function _resetPoolForTesting(): void {
  */
 export function shellEscape(value: string): string {
   return value.replace(/'/g, "'\\''");
-}
-
-/**
- * Test SSH connection
- */
-export async function testConnection(conn: ConnectionInfo): Promise<boolean> {
-  try {
-    const result = await sshExecStream(conn, 'echo ok', {
-      onStdout: () => {},
-      onStderr: () => {},
-    });
-    return result.exitCode === 0 && result.stdout.trim() === 'ok';
-  } catch {
-    return false;
-  }
 }

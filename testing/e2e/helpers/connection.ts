@@ -14,14 +14,14 @@ const PRIVATE_KEY = readFileSync(
 
 export const DEPLOY_USER = "deploytest";
 
-export const MANAGER = {
+const MANAGER = {
   host: "localhost",
   port: 2222,
   user: DEPLOY_USER,
   privateKey: PRIVATE_KEY,
 } as const;
 
-export const WORKER = {
+const WORKER = {
   host: "localhost",
   port: 2223,
   user: DEPLOY_USER,
@@ -34,7 +34,7 @@ export const WORKER_CONTAINER = "dockflow-test-worker-1";
 /**
  * Encode a connection as base64 JSON (matches CLI's `generateConnectionString` format).
  */
-export function encodeConnection(conn: {
+function encodeConnection(conn: {
   host: string;
   port: number;
   user: string;

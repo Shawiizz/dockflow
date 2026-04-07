@@ -80,7 +80,6 @@ export class TraefikService {
 
   /**
    * Generate the Traefik docker-compose YAML from config.
-   * Mirrors ansible/roles/traefik/templates/traefik-stack.yml.j2.
    */
   static generateCompose(proxyConfig: ProxyConfig): string {
     const acme = proxyConfig.acme !== false;

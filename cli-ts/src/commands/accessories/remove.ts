@@ -8,7 +8,7 @@ import { sshExec } from '../../utils/ssh';
 import { confirmPrompt, dangerousConfirmPrompt } from '../../utils/prompts';
 import { printInfo, printIntro, printOutro, printNote, printWarning, printError, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
-import { validateAccessoriesStack, getShortServiceNames } from './utils';
+import { validateAccessoriesStack } from './utils';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
 import { STACK_REMOVAL_MAX_ATTEMPTS, STACK_REMOVAL_POLL_INTERVAL_MS, DOCKFLOW_ACCESSORIES_DIR } from '../../constants';
 
@@ -42,7 +42,6 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
       }
 
       const { stackName, services } = validation;
-      const shortNames = getShortServiceNames(services, stackName);
 
       // Show what will be removed
       if (services.length > 0) {

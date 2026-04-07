@@ -50,14 +50,6 @@ const structure: PageEntry[] = [
       { slug: 'proxy', title: 'Automatic HTTPS Proxy', path: 'configuration/proxy' },
     ],
   },
-  {
-    slug: 'deployment',
-    title: 'Deployment',
-    path: 'deployment',
-    children: [
-      { slug: 'swarm', title: 'Docker Swarm', path: 'deployment/swarm' },
-    ],
-  },
   { slug: 'cli', title: 'CLI Commands', path: 'cli' },
   { slug: 'advanced', title: 'Advanced Usage', path: 'advanced' },
   { slug: 'ai', title: 'AI Integration', path: 'ai' },

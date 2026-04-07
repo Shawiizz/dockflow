@@ -79,7 +79,6 @@ function parseServiceLs(output: string, stackName: string): ServiceInfo[] {
     const parts = line.split(/\s{2,}/);
     const id = parts[0] || '';
     const name = parts[1] || '';
-    const mode = parts[2] || '';
     const replicasStr = parts[3] || '0/0';
     const image = parts[4] || '';
     const portsStr = parts[5] || '';

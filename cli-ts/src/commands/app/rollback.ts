@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import { printSuccess, printDebug, printRaw, createSpinner } from '../../utils/output';
+import { printDebug, printRaw, createSpinner } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';

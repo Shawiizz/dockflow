@@ -5,7 +5,6 @@
 
 import * as clack from '@clack/prompts';
 import * as readline from 'readline';
-import { CLIError } from './errors';
 
 /**
  * Handle user cancellation (Ctrl+C) during a prompt
@@ -101,28 +100,6 @@ export async function selectPrompt<T>(opts: {
 
   handleCancel(value);
   return value as T;
-}
-
-/**
- * Multi-select prompt with arrow key navigation and space to toggle
- */
-export async function multiselectPrompt<T>(opts: {
-  message: string;
-  options: { value: T; label: string; hint?: string }[];
-  required?: boolean;
-}): Promise<T[]> {
-  if (!process.stdin.isTTY) {
-    return [];
-  }
-
-  const value = await clack.multiselect({
-    message: opts.message,
-    options: opts.options as any,
-    required: opts.required ?? false,
-  });
-
-  handleCancel(value);
-  return value as T[];
 }
 
 /**

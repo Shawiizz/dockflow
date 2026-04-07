@@ -150,11 +150,3 @@ export const ServersConfigSchema = z.object({
   },
   { message: 'Each environment tag must have at least one manager server' }
 );
-
-/**
- * Type inference from schema
- */
-export type ServerConfigInput = z.input<typeof ServerConfigSchema>;
-export type ServerConfigOutput = z.output<typeof ServerConfigSchema>;
-export type ServersConfigInput = z.input<typeof ServersConfigSchema>;
-export type ServersConfigOutput = z.output<typeof ServersConfigSchema>;

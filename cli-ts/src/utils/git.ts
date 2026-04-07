@@ -98,20 +98,3 @@ export function getCommitSha(): string {
   return 'unknown';
 }
 
-/**
- * Check if git repository has uncommitted changes
- */
-export function hasUncommittedChanges(): boolean {
-  try {
-    const result = spawnSync('git', ['status', '--porcelain'], {
-      encoding: 'utf-8',
-      cwd: getProjectRoot(),
-    });
-    if (result.status === 0) {
-      return result.stdout.trim().length > 0;
-    }
-  } catch {
-    // Ignore errors
-  }
-  return false;
-}

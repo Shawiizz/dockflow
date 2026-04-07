@@ -17,7 +17,7 @@ export * from './servers';
 // SSH and connection utilities
 export * from './ssh-keys';
 export * from './connection-parser';
-export { sshExec, sshExecStream, sshShell, executeInteractiveSSH, testConnection } from './ssh';
+export { sshExec, sshExecStream, sshShell, executeInteractiveSSH } from './ssh';
 
 // Secrets loading (for CI environments)
 export * from './secrets';

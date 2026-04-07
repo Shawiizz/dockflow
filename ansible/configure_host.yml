@@ -2,8 +2,6 @@
 - name: Configure host machine
   hosts: all
   become: yes
-  vars_files:
-    - roles/portainer/vars/vault.yml
 
   tasks:
     - name: Ensure /var/lib/dockflow exists

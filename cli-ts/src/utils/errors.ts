@@ -6,7 +6,7 @@
  * across all commands.
  */
 
-import { printSuccess, printBlank, colors } from './output';
+import { printBlank, colors } from './output';
 import { closeAllConnections } from './ssh';
 
 /**
@@ -211,42 +211,4 @@ export function withErrorHandler<T extends unknown[]>(
       closeAllConnections();
     }
   };
-}
-
-/**
- * Exit successfully with optional message
- */
-export function exitSuccess(message?: string): never {
-  if (message) {
-    printSuccess(message);
-  }
-  process.exit(0);
-}
-
-/**
- * Assert condition or throw CLIError
- */
-export function assertOrThrow(
-  condition: unknown,
-  message: string,
-  code: ErrorCode = ErrorCode.VALIDATION_FAILED,
-  suggestion?: string
-): asserts condition {
-  if (!condition) {
-    throw new CLIError(message, code, suggestion);
-  }
-}
-
-/**
- * Wrap Result type errors into CLIError
- */
-export function unwrapOrThrow<T>(
-  result: { success: true; data: T } | { success: false; error: Error },
-  code: ErrorCode = ErrorCode.UNKNOWN,
-  suggestion?: string
-): T {
-  if (result.success) {
-    return result.data;
-  }
-  throw new CLIError(result.error.message, code, suggestion, result.error);
 }
