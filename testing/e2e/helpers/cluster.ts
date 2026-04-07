@@ -25,11 +25,13 @@ export async function exec(
   const timeout = opts?.timeoutMs ?? 120_000;
   const timer = setTimeout(() => proc.kill(), timeout);
 
-  const exitCode = await proc.exited;
+  // Read stdout and stderr in parallel to avoid pipe deadlock
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
   clearTimeout(timer);
-
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
 
   if (exitCode !== 0) {
     throw new Error(
@@ -124,19 +126,27 @@ export async function waitForSwarm(
  */
 export async function buildCLI(): Promise<string> {
   const cliDir = join(E2E_DIR, "..", "..", "cli-ts");
-  const binaryName = process.platform === "win32" ? "dockflow-linux-x64" : getCliBinaryName();
+  const binaryName = getCliBinaryName();
   const binaryPath = join(cliDir, "dist", binaryName);
 
-  // Check if binary already exists
-  if (await Bun.file(binaryPath).exists()) {
-    console.log(`[cli] Using existing binary: ${binaryName}`);
-    return binaryPath;
+  // Rebuild if binary is missing or older than source
+  const binaryFile = Bun.file(binaryPath);
+  if (await binaryFile.exists()) {
+    const srcIndex = Bun.file(join(cliDir, "src", "index.ts"));
+    const binaryMtime = binaryFile.lastModified;
+    const srcMtime = srcIndex.lastModified;
+
+    if (binaryMtime >= srcMtime) {
+      console.log(`[cli] Using existing binary: ${binaryName}`);
+      return binaryPath;
+    }
+    console.log(`[cli] Binary is stale, rebuilding...`);
   }
 
   console.log("[cli] Building CLI binary...");
   await exec(["bun", "install", "--frozen-lockfile"], { cwd: cliDir });
 
-  const buildTarget = binaryName.replace("dockflow-", "");
+  const buildTarget = binaryName.replace("dockflow-", "").replace(/\.exe$/, "");
   await exec(["bun", "run", "build", buildTarget], {
     cwd: cliDir,
     timeoutMs: 120_000,
@@ -150,10 +160,9 @@ function getCliBinaryName(): string {
   const platform = process.platform;
   const arch = process.arch;
 
-  if (platform === "linux" && arch === "x64") return "dockflow-linux-x64";
-  if (platform === "linux" && arch === "arm64") return "dockflow-linux-arm64";
-  if (platform === "darwin" && arch === "x64") return "dockflow-macos-x64";
+  if (platform === "win32") return "dockflow-windows-x64.exe";
   if (platform === "darwin" && arch === "arm64") return "dockflow-macos-arm64";
-  // Default for CI (ubuntu-latest)
+  if (platform === "darwin") return "dockflow-macos-x64";
+  if (platform === "linux" && arch === "arm64") return "dockflow-linux-arm64";
   return "dockflow-linux-x64";
 }

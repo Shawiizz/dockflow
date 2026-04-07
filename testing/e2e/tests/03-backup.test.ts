@@ -34,10 +34,20 @@ describe("backup & restore", () => {
       cwd: TEST_APP_DIR,
     });
 
+    if (result.exitCode !== 0) {
+      console.error("[backup create] STDOUT:", result.stdout.slice(-2000));
+      console.error("[backup create] STDERR:", result.stderr.slice(-2000));
+    }
     expect(result.exitCode).toBe(0);
 
     // Extract backup ID from output (format: YYYYMMDD-HHMMSS-xxxx)
+    // Log output to debug regex if it doesn't match
     const match = result.stdout.match(/(\d{8}-\d{6}-[a-f0-9]{4})/);
+    if (!match) {
+      console.error("[backup create] Could not extract backup ID from output:");
+      console.error("[backup create] STDOUT:", result.stdout);
+      console.error("[backup create] STDERR:", result.stderr);
+    }
     expect(match).toBeTruthy();
     backupId = match![1];
   }, 60_000);

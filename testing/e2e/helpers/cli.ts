@@ -14,15 +14,22 @@ export interface CLIResult {
 }
 
 /**
- * Get the path to the CLI binary.
+ * Get the path to the CLI binary for the current platform.
  */
 export function getCliBinaryPath(): string {
   const cliDir = join(DOCKFLOW_ROOT, "cli-ts");
-  const binaryName =
-    process.platform === "linux" && process.arch === "arm64"
-      ? "dockflow-linux-arm64"
-      : "dockflow-linux-x64";
-  return join(cliDir, "dist", binaryName);
+  return join(cliDir, "dist", getCliBinaryName());
+}
+
+function getCliBinaryName(): string {
+  const platform = process.platform;
+  const arch = process.arch;
+
+  if (platform === "win32") return "dockflow-windows-x64.exe";
+  if (platform === "darwin" && arch === "arm64") return "dockflow-macos-arm64";
+  if (platform === "darwin") return "dockflow-macos-x64";
+  if (platform === "linux" && arch === "arm64") return "dockflow-linux-arm64";
+  return "dockflow-linux-x64";
 }
 
 /**
@@ -54,11 +61,13 @@ export async function runCLI(
     proc.kill();
   }, timeoutMs);
 
-  const exitCode = await proc.exited;
+  // Read stdout and stderr in parallel to avoid pipe deadlock
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
   clearTimeout(timer);
-
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
 
   return { exitCode, stdout, stderr };
 }

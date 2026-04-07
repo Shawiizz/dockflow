@@ -98,6 +98,10 @@ describe("remote build", () => {
       { cwd: TEST_APP_DIR }
     );
 
+    if (result.exitCode !== 0) {
+      console.error("[remote-build] STDOUT:", result.stdout.slice(-2000));
+      console.error("[remote-build] STDERR:", result.stderr.slice(-2000));
+    }
     expect(result.exitCode).toBe(0);
   }, 180_000);
 

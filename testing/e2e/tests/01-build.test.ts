@@ -10,7 +10,7 @@ const IMAGE_NAME = "test-web-app";
 
 describe("build", () => {
   afterAll(async () => {
-    // Clean up built image
+    // Clean up built image on host Docker
     try {
       await exec(["docker", "rmi", IMAGE_NAME]);
     } catch {}
@@ -24,10 +24,15 @@ describe("build", () => {
       { cwd: TEST_APP_DIR }
     );
 
+    if (result.exitCode !== 0) {
+      console.error("[build] STDOUT:", result.stdout.slice(-2000));
+      console.error("[build] STDERR:", result.stderr.slice(-2000));
+    }
     expect(result.exitCode).toBe(0);
   }, 120_000);
 
   test("built image exists and is inspectable", async () => {
+    // Image is built on host Docker (not inside DinD)
     const output = await exec([
       "docker",
       "images",
@@ -36,18 +41,18 @@ describe("build", () => {
     ]);
     expect(output).toContain(IMAGE_NAME);
 
-    const inspect = await exec([
+    const imageId = await exec([
       "docker",
       "inspect",
       "--format",
       "{{.Id}}",
       IMAGE_NAME,
     ]);
-    expect(inspect).toBeTruthy();
+    expect(imageId).toBeTruthy();
   });
 
   test("image serves expected content", async () => {
-    // Start container, verify content, stop
+    // Run container on host Docker
     const containerId = (
       await exec(["docker", "run", "-d", "--rm", IMAGE_NAME])
     ).trim();

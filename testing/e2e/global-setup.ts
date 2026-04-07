@@ -5,7 +5,7 @@
  */
 
 import {
-  isClusterRunning,
+  stopCluster,
   startCluster,
   waitForSwarm,
   buildCLI,
@@ -18,18 +18,15 @@ const TEST_APP_DIR = join(FIXTURES_DIR, "test-app");
 const TEST_APP_REMOTE_DIR = join(FIXTURES_DIR, "test-app-remote");
 
 async function ensureCluster() {
-  // Build CLI first (fast no-op if binary exists)
+  // Build CLI first (fast no-op if binary is up to date)
   await buildCLI();
 
-  if (await isClusterRunning()) {
-    // Verify Swarm is healthy (quick check)
-    await waitForSwarm(2);
-  } else {
-    console.log("\n=== Starting E2E cluster ===\n");
-    await startCluster();
-    await waitForSwarm(2);
-    console.log("\n=== E2E cluster ready ===\n");
-  }
+  // Always teardown + rebuild to ensure fresh images and clean state
+  console.log("\n=== Resetting E2E cluster ===\n");
+  await stopCluster();
+  await startCluster();
+  await waitForSwarm(2);
+  console.log("\n=== E2E cluster ready ===\n");
 
   // Write connection strings for both test apps
   writeDockflowEnv(TEST_APP_DIR);

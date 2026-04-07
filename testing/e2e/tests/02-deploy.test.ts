@@ -24,6 +24,10 @@ describe("deploy", () => {
       cwd: TEST_APP_DIR,
     });
 
+    if (result.exitCode !== 0) {
+      console.error("[deploy] STDOUT:", result.stdout.slice(-2000));
+      console.error("[deploy] STDERR:", result.stderr.slice(-2000));
+    }
     expect(result.exitCode).toBe(0);
   }, 180_000);
 

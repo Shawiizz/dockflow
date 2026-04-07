@@ -21,6 +21,7 @@ RUN apt-get update && \
         jq \
         rsync \
         netcat-openbsd \
+        gzip \
         docker.io \
     && rm -rf /var/lib/apt/lists/*
 
