@@ -4,7 +4,7 @@ Welcome! Contributions are appreciated. Open an issue or pull request to suggest
 
 ## Architecture Overview
 
-Dockflow uses a native CLI binary and a Docker image for CI/CD:
+Dockflow uses a native CLI binary for all operations:
 
 ```mermaid
 graph TB
@@ -15,30 +15,24 @@ graph TB
     end
     
     subgraph "CI/CD Pipeline"
-        CI[dockflow-ci:latest<br/>CI/CD Image]
-        CI -->|Contains| Tools[Docker + Ansible + NodeJS]
-        CI -->|Used by| GitLab[GitLab CI]
-        GitHub[GitHub Actions<br/>Uses native ubuntu-latest]
+        GitHub[GitHub Actions]
+        GitLab[GitLab CI]
     end
     
     subgraph "Deployment"
-        CI -->|Deploys to| Remote
         GitHub -->|Deploys to| Remote
+        GitLab -->|Deploys to| Remote
         Remote -->|Runs| App[Your Docker App]
     end
     
     style CLI fill:#2496ED
-    style CI fill:#FC6D26
     style GitHub fill:#2088FF
     style Remote fill:#EE0000
 ```
 
 | Component | Purpose | Description |
 |-----------|---------|-------------|
-| **dockflow CLI** | Machine setup & project initialization | Native binary (Linux, macOS, Windows) |
-| **dockflow-ci** | GitLab CI/CD deployments | Docker image with Ansible, NodeJS |
-
-> **Note:** GitHub Actions uses `ubuntu-latest` which already includes required tools.
+| **dockflow CLI** | Setup, build, deploy & management | Native binary (Linux, macOS, Windows) |
 
 ---
 
@@ -148,61 +142,34 @@ Download releases from the [Releases page](https://github.com/Shawiizz/dockflow/
 
 ---
 
-## Building CI Image
-
-```bash
-# Build
-docker build --no-cache -t shawiizz/dockflow-ci:X.Y.Z -f Dockerfile.ci .
-
-# Publish
-docker login
-docker tag shawiizz/dockflow-ci:X.Y.Z shawiizz/dockflow-ci:latest
-docker push shawiizz/dockflow-ci:X.Y.Z
-docker push shawiizz/dockflow-ci:latest
-```
-
----
-
 ## Version Management
 
 Automated scripts handle version updates across all files.
 
 ### Commands
 
-**Framework versions:**
+**Commands:**
 ```bash
 npm run version:dev        # Add/increment dev version (1.0.33 → 1.0.33-dev1)
 npm run version:release    # Create release (1.0.33-dev1 → 1.0.34)
 npm run version:downgrade  # Decrement version
 ```
 
-**CI image versions:**
-```bash
-npm run ci-image:dev        # Add/increment dev version
-npm run ci-image:release    # Create release version
-npm run ci-image:downgrade  # Decrement version
-```
-
 ### What Gets Updated
 
-| Type | Files Updated |
-|------|---------------|
-| **Framework** | `package.json`, CI/CD configs (`*.yml`), example files |
-| **CI Image** | `package.json` (ciImageVersion), Docker image references |
+| Files Updated |
+|---------------|
+| `package.json`, CI/CD configs (`*.yml`), example files |
 
 ---
 
 ## Creating New Releases
 
 ```bash
-# 1. Update versions
-npm run version:release      # Framework version
-npm run ci-image:release     # CI image version (if needed)
+# 1. Update version
+npm run version:release
 
-# 2. Build and publish Docker images (if needed)
-# See "Building Docker Images" section above
-
-# 3. Create and push Git tag
+# 2. Create and push Git tag
 git tag -a X.Y.Z -m "Version X.Y.Z"
 git push origin X.Y.Z
 ```

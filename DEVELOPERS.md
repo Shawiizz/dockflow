@@ -66,15 +66,9 @@ Open `http://localhost:4200`. The `--dev` flag (added automatically by `bun run 
 
 ## How Deploy Works (important for contributors)
 
-When you run `dockflow deploy`, the CLI does **not** SSH directly to servers. Instead it:
+When you run `dockflow deploy`, the CLI connects directly to servers via SSH (using the `ssh2` library). All deploy operations — template rendering, image building/distribution, stack deployment, health checks — happen in TypeScript over SSH. No Docker containers or Ansible are involved in the deploy flow.
 
-1. Builds an `AnsibleContext` JSON from your config + servers
-2. Launches a Docker container (`shawiizz/dockflow-ci:latest`) with the project and context mounted
-3. Ansible runs **inside that container** and SSHes to your servers from there
-
-This means Ansible connects from inside Docker — it resolves hostnames on the Docker network, not from your local machine.
-
-**Direct SSH** (backup, logs, exec, shell) works differently — the CLI SSHes straight from your machine using the `ssh2` library. The same `.env.dockflow` credentials are used, but the network context is different.
+Ansible is only used for `dockflow setup` (one-shot machine provisioning), where it runs inside a Docker container to configure hosts.
 
 This distinction matters when working on E2E tests. See the E2E section below.
 
@@ -109,11 +103,7 @@ Two Docker containers simulate a real Swarm cluster:
 | `dockflow-test-manager` | Swarm manager — SSH on `localhost:2222` |
 | `dockflow-test-worker-1` | Swarm worker — SSH on `localhost:2223` |
 
-### The network context problem
-
-The `.env.dockflow` in `testing/e2e/test-app/` contains **Docker-internal hostnames** (`dockflow-test-mgr`, `dockflow-test-w1`). These work for the deploy step (Ansible runs inside Docker on the same network), but not for direct CLI SSH from WSL.
-
-`run-backup-test.sh` handles this by temporarily rewriting `.env.dockflow` with `localhost:2222`/`localhost:2223` before invoking CLI commands, then restoring it on exit via `trap`. This is intentional — in production, real servers have hostnames reachable from both Docker and the user's machine.
+The `.env.dockflow` in test fixtures uses `localhost:222x` port mappings to reach the containers from the host.
 
 ### What's tested
 
