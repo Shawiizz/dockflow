@@ -7,7 +7,7 @@
 
 import { Command } from 'commander';
 import { version, name } from '../package.json';
-import { setVerbose, setJsonMode, printSuccess, printBlank, printInfo, printWarning, printRaw } from './utils/output';
+import { setVerbose, printSuccess, printBlank, printInfo, printWarning, printRaw } from './utils/output';
 
 // Commands
 import { registerAppCommands } from './commands/app';
@@ -30,14 +30,10 @@ program
   .version(version, '-v, --version', 'Show version information')
   .option('--no-color', 'Disable colored output')
   .option('--verbose', 'Enable verbose/debug output')
-  .option('-j, --json', 'Output in JSON format (suppress decorative output)')
   .hook('preAction', (_thisCommand, actionCommand) => {
     const opts = actionCommand.optsWithGlobals();
     if (opts.verbose) {
       setVerbose(true);
-    }
-    if (opts.json) {
-      setJsonMode(true);
     }
   });
 

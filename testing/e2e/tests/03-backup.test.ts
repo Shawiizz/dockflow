@@ -38,7 +38,7 @@ describe("backup & restore", () => {
     }
     expect(result.exitCode).toBe(0);
 
-    const match = result.stdout.match(/(\d{8}-\d{6}-[a-f0-9]{4})/);
+    const match = result.stderr.match(/(\d{8}-\d{6}-[a-f0-9]{4})/);
     expect(match).toBeTruthy();
     backupId = match![1];
   }, 60_000);

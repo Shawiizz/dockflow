@@ -1,10 +1,20 @@
 /**
  * Output formatting utilities
  * Unified output module for CLI feedback and debug logging
+ *
+ * Convention (Unix standard, same as gh/kubectl):
+ *   stdout → data only (printJSON, printRaw)
+ *   stderr → everything decorative (status, warnings, spinners, etc.)
+ *
+ * This separation alone keeps stdout clean for --json piping.
+ * No need for jsonMode guards — tools only read stdout.
  */
 
 import chalk from 'chalk';
 import * as clack from '@clack/prompts';
+
+// Shared clack option to route decorative output to stderr
+const STDERR_OPTS = { output: process.stderr } as const;
 
 // === Verbose mode ===
 let verboseMode = false;
@@ -20,17 +30,6 @@ export function isVerbose(): boolean {
   return verboseMode || process.env.VERBOSE === 'true' || process.env.DEBUG === 'true';
 }
 
-// === JSON mode (suppress all output except printJSON/printRaw) ===
-let jsonMode = false;
-
-export function setJsonMode(enabled: boolean): void {
-  jsonMode = enabled;
-}
-
-export function isJsonMode(): boolean {
-  return jsonMode;
-}
-
 // === Colors ===
 export const colors = {
   success: chalk.green,
@@ -42,31 +41,32 @@ export const colors = {
   primary: chalk.blue,
 };
 
-// === User feedback ===
+// Helper: write a line to stderr
+function stderrLine(text: string): void {
+  process.stderr.write(text + '\n');
+}
+
+// === User feedback (stderr) ===
 export function printSuccess(message: string): void {
-  if (jsonMode) return;
-  clack.log.success(message);
+  clack.log.success(message, STDERR_OPTS);
 }
 
 export function printError(message: string): void {
-  if (jsonMode) return;
-  process.stderr.write(colors.error(`  ✘  ${message}`) + '\n');
+  stderrLine(colors.error(`  ✘  ${message}`));
 }
 
 export function printWarning(message: string): void {
-  if (jsonMode) return;
-  clack.log.warn(message);
+  clack.log.warn(message, STDERR_OPTS);
 }
 
 export function printInfo(message: string): void {
-  if (jsonMode) return;
-  clack.log.info(message);
+  clack.log.info(message, STDERR_OPTS);
 }
 
-// === Debug output (verbose mode only) ===
+// === Debug output (verbose mode only, stderr) ===
 export function printDebug(message: string, context?: Record<string, unknown>): void {
-  if (jsonMode || !isVerbose()) return;
-  
+  if (!isVerbose()) return;
+
   let output = colors.dim(`[debug] ${message}`);
   if (context && Object.keys(context).length > 0) {
     const contextStr = Object.entries(context)
@@ -74,20 +74,16 @@ export function printDebug(message: string, context?: Record<string, unknown>): 
       .join(' ');
     output += colors.dim(` (${contextStr})`);
   }
-  console.log(output);
+  stderrLine(output);
 }
 
-// === Sections & headers ===
+// === Sections & headers (stderr) ===
 export function printSection(title: string): void {
-  if (jsonMode) return;
-  clack.log.step(title);
+  clack.log.step(title, STDERR_OPTS);
 }
 
 // === Formatters ===
 
-/**
- * Format duration in seconds to human readable
- */
 export function formatDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
@@ -96,57 +92,36 @@ export function formatDuration(seconds: number): string {
   return `${hours}h ${mins}m`;
 }
 
-// === Table & formatting helpers ===
+// === Table & formatting helpers (stderr) ===
 
-/**
- * Print a horizontal separator line
- */
 export function printSeparator(length: number = 50): void {
-  if (jsonMode) return;
-  console.log(colors.dim('─'.repeat(length)));
+  stderrLine(colors.dim('─'.repeat(length)));
 }
 
-/**
- * Print a dim/muted message
- */
 export function printDim(message: string): void {
-  if (jsonMode) return;
-  console.log(colors.dim(message));
+  stderrLine(colors.dim(message));
 }
 
-/**
- * Print a key-value pair for table-like output
- */
 export function printTableRow(label: string, value: string, labelWidth: number = 20): void {
-  if (jsonMode) return;
-  console.log(`  ${colors.bold(label.padEnd(labelWidth))} ${value}`);
+  stderrLine(`  ${colors.bold(label.padEnd(labelWidth))} ${value}`);
 }
 
-/**
- * Print a blank line
- */
 export function printBlank(): void {
-  if (jsonMode) return;
-  console.log('');
+  stderrLine('');
 }
 
-/**
- * Print JSON data (pretty-printed)
- */
+// === Data output (stdout — never suppressed) ===
+
 export function printJSON(data: unknown): void {
   console.log(JSON.stringify(data, null, 2));
 }
 
-/**
- * Print raw text (passthrough output)
- */
 export function printRaw(text: string): void {
   console.log(text);
 }
 
-/**
- * Format bytes into a human-readable string (e.g. "12.5 MB")
- */
+// === Value formatters ===
+
 export function formatBytes(bytes: number): string {
   if (bytes <= 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -154,9 +129,6 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
 }
 
-/**
- * Format an ISO timestamp as a human-readable relative time (e.g. "5m ago", "3d ago")
- */
 export function formatRelativeTime(timestamp: string): string {
   const diff = Date.now() - new Date(timestamp).getTime();
   const minutes = Math.floor(diff / 60000);
@@ -170,49 +142,26 @@ export function formatRelativeTime(timestamp: string): string {
   return new Date(timestamp).toLocaleDateString();
 }
 
-// === @clack visual helpers ===
+// === @clack visual helpers (stderr) ===
 
-/**
- * Display a styled intro banner (clack-style)
- */
 export function printIntro(title: string): void {
-  if (jsonMode) return;
-  clack.intro(colors.bold(title));
+  clack.intro(colors.bold(title), STDERR_OPTS);
 }
 
-/**
- * Display a styled outro message
- */
 export function printOutro(message: string): void {
-  if (jsonMode) return;
-  clack.outro(message);
+  clack.outro(message, STDERR_OPTS);
 }
 
-/**
- * Display a boxed note section
- */
 export function printNote(message: string, title?: string): void {
-  if (jsonMode) return;
-  clack.note(message, title);
+  clack.note(message, title, STDERR_OPTS);
 }
 
-/**
- * Create a clack taskLog for streaming subprocess output.
- * Rolling window of `limit` lines, clears on success, keeps full log on error.
- */
 export function createTaskLog(title: string, limit: number = 5) {
-  return clack.taskLog({ title, limit });
+  return clack.taskLog({ title, limit, output: process.stderr });
 }
 
-/**
- * Create a clack spinner with ora-compatible API
- * stop()    → success (◆)
- * cancel()  → warning (◼)
- * error()   → failure (✘)
- * message() → update mid-spin
- */
 export function createSpinner() {
-  const s = clack.spinner();
+  const s = clack.spinner({ output: process.stderr });
   return {
     start:   (msg: string)   => s.start(msg),
     succeed: (msg: string)   => s.stop(msg),
@@ -224,4 +173,3 @@ export function createSpinner() {
     set text(msg: string)    { s.message(msg); },
   };
 }
-
