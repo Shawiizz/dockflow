@@ -66,6 +66,65 @@ export async function startCluster(): Promise<void> {
     { cwd: DOCKER_DIR, timeoutMs: 300_000 }
   );
   console.log("[cluster] Containers started.");
+
+  // Pre-load images that DinD can't pull (TLS/proxy issues)
+  await preloadImages([MANAGER_CONTAINER, "dockflow-test-worker-1"], [
+    "redis:7-alpine",
+    "traefik:v3.0",
+    "nginx:alpine",
+  ]);
+}
+
+/**
+ * Transfer images from host Docker into DinD containers.
+ * Pulls missing images on host first, then pipes via docker save/load.
+ */
+async function preloadImages(
+  containers: string[],
+  images: string[]
+): Promise<void> {
+  for (const image of images) {
+    // Ensure image exists on host
+    const exists = await exec([
+      "docker", "images", "-q", image,
+    ]).catch(() => "");
+    if (!exists.trim()) {
+      console.log(`[cluster] Pulling ${image} on host...`);
+      await exec(["docker", "pull", image], { timeoutMs: 120_000 });
+    }
+
+    // Load into each DinD container via pipe
+    for (const container of containers) {
+      console.log(`[cluster] Loading ${image} into ${container}...`);
+
+      const save = Bun.spawn(["docker", "save", image], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const load = Bun.spawn(
+        ["docker", "exec", "-i", container, "docker", "load"],
+        {
+          stdin: save.stdout,
+          stdout: "pipe",
+          stderr: "pipe",
+        }
+      );
+
+      const [saveExit, loadExit] = await Promise.all([
+        save.exited,
+        load.exited,
+      ]);
+
+      if (saveExit !== 0) {
+        const stderr = await new Response(save.stderr).text();
+        throw new Error(`docker save failed for ${image}: ${stderr.trim()}`);
+      }
+      if (loadExit !== 0) {
+        const stderr = await new Response(load.stderr).text();
+        throw new Error(`docker load failed in ${container}: ${stderr.trim()}`);
+      }
+    }
+  }
 }
 
 /**
@@ -128,20 +187,6 @@ export async function buildCLI(): Promise<string> {
   const cliDir = join(E2E_DIR, "..", "..", "cli-ts");
   const binaryName = getCliBinaryName();
   const binaryPath = join(cliDir, "dist", binaryName);
-
-  // Rebuild if binary is missing or older than source
-  const binaryFile = Bun.file(binaryPath);
-  if (await binaryFile.exists()) {
-    const srcIndex = Bun.file(join(cliDir, "src", "index.ts"));
-    const binaryMtime = binaryFile.lastModified;
-    const srcMtime = srcIndex.lastModified;
-
-    if (binaryMtime >= srcMtime) {
-      console.log(`[cli] Using existing binary: ${binaryName}`);
-      return binaryPath;
-    }
-    console.log(`[cli] Binary is stale, rebuilding...`);
-  }
 
   console.log("[cli] Building CLI binary...");
   await exec(["bun", "install", "--frozen-lockfile"], { cwd: cliDir });

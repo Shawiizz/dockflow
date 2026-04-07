@@ -66,7 +66,7 @@ describe("remote build", () => {
       [
         `chown -R ${DEPLOY_USER}:${DEPLOY_USER} ${REMOTE_REPO_PATH}`,
         `cd ${REMOTE_REPO_PATH}`,
-        `sudo -u ${DEPLOY_USER} git init`,
+        `sudo -u ${DEPLOY_USER} git init -b main`,
         `sudo -u ${DEPLOY_USER} git config user.email 'test@dockflow.local'`,
         `sudo -u ${DEPLOY_USER} git config user.name 'E2E Test'`,
         `sudo -u ${DEPLOY_USER} git add -A`,
@@ -77,7 +77,7 @@ describe("remote build", () => {
 
   test("prepare local git repo with remote origin", async () => {
     // Init local git repo pointing to remote path
-    await exec(["git", "init", "-q"], { cwd: TEST_APP_DIR });
+    await exec(["git", "init", "-q", "-b", "main"], { cwd: TEST_APP_DIR });
     await exec(
       ["git", "config", "user.email", "test@dockflow.local"],
       { cwd: TEST_APP_DIR }

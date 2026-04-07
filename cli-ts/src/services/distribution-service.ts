@@ -7,6 +7,8 @@
  */
 
 import type { ClientChannel } from 'ssh2';
+import { createGzip } from 'node:zlib';
+import { Readable } from 'node:stream';
 import type { SSHKeyConnection } from '../types';
 import { sshExec, sshExecChannel, shellEscape } from '../utils/ssh';
 import { printDebug, printDim, printSuccess, printWarning } from '../utils/output';
@@ -123,20 +125,18 @@ export class DistributionService {
       stdout: 'pipe',
       stderr: 'pipe',
     });
-    const gzipProc = Bun.spawn(['gzip', '-1'], {
-      stdin: saveProc.stdout,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
 
-    const saveStderrP = new Response(saveProc.stderr).text();
+    // Compress with built-in zlib instead of external gzip binary (cross-platform)
+    const gzip = createGzip({ level: 1 });
+    Readable.fromWeb(saveProc.stdout as unknown as import('node:stream/web').ReadableStream).pipe(gzip);
 
-    await DistributionService.pipeToChannel(gzipProc.stdout, sink);
+    const gzipStream = Readable.toWeb(gzip) as unknown as ReadableStream<Uint8Array>;
+    await DistributionService.pipeToChannel(gzipStream, sink);
 
-    const [result] = await Promise.all([done, gzipProc.exited, saveProc.exited]);
+    const [result] = await Promise.all([done, saveProc.exited]);
 
     if (saveProc.exitCode !== 0) {
-      const stderr = await saveStderrP;
+      const stderr = await new Response(saveProc.stderr).text();
       throw new Error(`docker save failed for ${image}: ${stderr.trim()}`);
     }
     if (result.exitCode !== 0) {

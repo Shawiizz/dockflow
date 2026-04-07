@@ -60,14 +60,27 @@ describe("backup & restore", () => {
 
     expect(result.exitCode).toBe(0);
 
-    // The JSON may be preceded by CLI output — find the JSON array
-    const jsonStart = result.stdout.indexOf("[");
-    expect(jsonStart).toBeGreaterThanOrEqual(0);
+    // Extract JSON array — try parsing from each '[' position
+    let backups: { id: string }[] | null = null;
+    let searchFrom = 0;
+    while (searchFrom < result.stdout.length) {
+      const start = result.stdout.indexOf("[", searchFrom);
+      if (start === -1) break;
+      try {
+        backups = JSON.parse(result.stdout.slice(start));
+        break;
+      } catch {
+        searchFrom = start + 1;
+      }
+    }
 
-    const backups = JSON.parse(result.stdout.slice(jsonStart));
-    const found = backups.some(
-      (b: { id: string }) => b.id === backupId
-    );
+    if (!backups) {
+      console.error("[backup list] Could not parse JSON from output:");
+      console.error("[backup list] STDOUT:", result.stdout);
+    }
+    expect(backups).toBeTruthy();
+
+    const found = backups!.some((b) => b.id === backupId);
     expect(found).toBe(true);
   });
 
