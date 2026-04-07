@@ -71,6 +71,7 @@ interface DeployOptions {
   skipAccessories?: boolean;
   noFailover?: boolean;
   dryRun?: boolean;
+  branch?: string;
 }
 
 /**
@@ -467,7 +468,7 @@ export async function runDeploy(
   }
 
   // --- Determine version ---
-  const branchName = getCurrentBranch();
+  const branchName = options.branch || getCurrentBranch();
   let deployVersion: string;
 
   if (version) {
@@ -667,6 +668,7 @@ export function registerDeployCommand(program: Command): void {
     .option('--skip-accessories', 'Skip accessories check entirely')
     .option('--no-failover', 'Disable multi-manager failover (use first manager only)')
     .option('--dry-run', 'Show what would be deployed without executing')
+    .option('--branch <branch>', 'Override auto-detected git branch')
     .option('--debug', 'Enable debug output')
     .action(
       withErrorHandler(async (env: string | undefined, version: string | undefined, options: DeployOptions) => {

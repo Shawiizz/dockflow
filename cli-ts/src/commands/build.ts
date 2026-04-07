@@ -28,6 +28,7 @@ interface BuildOptions {
   debug?: boolean;
   push?: boolean;
   skipHooks?: boolean;
+  branch?: string;
 }
 
 /**
@@ -72,7 +73,7 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
 
   if (config.options?.enable_debug_logs) setVerbose(true);
 
-  const branchName = getCurrentBranch();
+  const branchName = options.branch || getCurrentBranch();
 
   // Display build info
   printInfo(`Project: ${config.project_name || 'app'}`);
@@ -163,6 +164,7 @@ export function registerBuildCommand(program: Command): void {
     .option('--services <services>', 'Comma-separated list of services to build')
     .option('--push', 'Push images to registry after build')
     .option('--skip-hooks', 'Skip pre-build and post-build hooks')
+    .option('--branch <branch>', 'Override auto-detected git branch')
     .option('--debug', 'Enable debug output')
     .action(withErrorHandler(async (env: string | undefined, options: BuildOptions) => {
       await runBuild(env, options);

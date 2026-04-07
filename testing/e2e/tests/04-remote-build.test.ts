@@ -90,7 +90,7 @@ describe("remote build", () => {
 
   test("deploy with remote_build: true", async () => {
     const result = await runCLI(
-      ["deploy", TEST_ENV, TEST_VERSION, "--force"],
+      ["deploy", TEST_ENV, TEST_VERSION, "--force", "--branch", "main"],
       { cwd: TEST_APP_DIR }
     );
 

@@ -87,6 +87,7 @@ Deploy the application to the specified environment. In CI, both `env` and `vers
 | `--skip-accessories` | Skip accessories check entirely |
 | `--no-failover` | Disable multi-manager failover (use first manager only) |
 | `--dry-run` | Show what would be deployed without executing |
+| `--branch <name>` | Override auto-detected git branch |
 | `--debug` | Enable debug output |
 
 <Callout type="info">
@@ -114,6 +115,7 @@ Build Docker images locally without deploying. In CI, the environment is auto-de
 | `--services <list>` | Comma-separated list of services to build |
 | `--push` | Push images to registry after build |
 | `--skip-hooks` | Skip pre-build and post-build hooks |
+| `--branch <name>` | Override auto-detected git branch |
 | `--debug` | Enable debug output |
 
 ```bash
