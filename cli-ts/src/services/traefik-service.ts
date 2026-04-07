@@ -90,6 +90,7 @@ export class TraefikService {
     const command: string[] = [
       '--providers.swarm=true',
       '--providers.swarm.exposedByDefault=false',
+      `--providers.swarm.network=${TRAEFIK_NETWORK_NAME}`,
       '--entrypoints.web.address=:80',
     ];
 

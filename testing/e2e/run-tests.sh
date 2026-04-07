@@ -159,6 +159,7 @@ TRAEFIK_HTTP_OK=""
 for ((i = 1; i <= 30; i++)); do
 	HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
 		-H "Host: test.local" \
+		--noproxy localhost \
 		--connect-timeout 2 \
 		--max-time 5 \
 		http://localhost:80/ 2>/dev/null || echo "000")
@@ -171,8 +172,10 @@ done
 
 if [[ -z "$TRAEFIK_HTTP_OK" ]]; then
 	log_error "Traefik HTTP routing failed (last status: $HTTP_STATUS)"
+	log_info "App service labels:"
+	docker exec $MANAGER_NODE docker service inspect "${SERVICE_NAME}" --format '{{json .Spec.Labels}}' 2>/dev/null || true
 	log_info "Traefik logs:"
-	docker exec $MANAGER_NODE docker service logs traefik_traefik --tail 20 2>/dev/null || true
+	docker exec $MANAGER_NODE docker service logs traefik_traefik --tail 20 2>&1 || true
 	exit 1
 fi
 log_success "HTTP routing works (Host: test.local → HTTP $HTTP_STATUS)"

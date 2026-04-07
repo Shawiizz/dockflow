@@ -437,6 +437,7 @@ export class ComposeService {
       // Build Traefik labels
       const traefikLabels: string[] = [
         'traefik.enable=true',
+        `traefik.docker.network=${TRAEFIK_NETWORK_NAME}`,
         `traefik.http.routers.${routerName}.rule=Host(\`${domain}\`)`,
         `traefik.http.routers.${routerName}.entrypoints=${entrypoint}`,
         `traefik.http.services.${routerName}.loadbalancer.server.port=${containerPort}`,
