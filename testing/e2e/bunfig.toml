@@ -1,0 +1,5 @@
+[test]
+preload = ["./global-setup.ts"]
+
+# E2E tests are slow — generous timeout
+timeout = 300000

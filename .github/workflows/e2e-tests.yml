@@ -14,7 +14,8 @@ jobs:
   e2e-tests:
     name: Run E2E Tests
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 30
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -24,9 +25,13 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Install CLI dependencies
+        run: |
+          cd cli-ts && bun install --frozen-lockfile
+
       - name: Run E2E Tests
         run: |
-          bash testing/e2e/run-tests.sh
+          cd testing/e2e && bun test tests/ --timeout 300000
 
       - name: Show cluster logs on failure
         if: failure()
@@ -35,10 +40,10 @@ jobs:
           docker ps -a
           echo ""
           echo "=== Manager Node Logs ==="
-          docker compose -f testing/e2e/docker/docker-compose.yml --env-file testing/e2e/.env logs test-vm-manager 2>/dev/null || true
+          docker compose -f testing/e2e/docker/docker-compose.yml logs test-vm-manager 2>/dev/null || true
           echo ""
           echo "=== Worker Node Logs ==="
-          docker compose -f testing/e2e/docker/docker-compose.yml --env-file testing/e2e/.env logs test-vm-worker-1 2>/dev/null || true
+          docker compose -f testing/e2e/docker/docker-compose.yml logs test-vm-worker-1 2>/dev/null || true
           echo ""
           echo "=== Swarm Node Status ==="
           docker exec dockflow-test-manager docker node ls 2>/dev/null || echo "Could not fetch node status"
@@ -52,4 +57,4 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          bash testing/e2e/teardown.sh 2>/dev/null || true
+          bun run testing/e2e/teardown.ts 2>/dev/null || true
