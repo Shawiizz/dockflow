@@ -5,10 +5,13 @@ log() {
 }
 
 # Start Docker daemon
-log "Starting Docker daemon..."
+# Use vfs storage driver to avoid overlay-on-overlay failures in DinD (CI runners).
+STORAGE_DRIVER="${DOCKER_STORAGE_DRIVER:-vfs}"
+log "Starting Docker daemon (storage-driver=$STORAGE_DRIVER)..."
 dockerd \
     --host=unix:///var/run/docker.sock \
     --host=tcp://0.0.0.0:2375 \
+    --storage-driver="$STORAGE_DRIVER" \
     --tls=false &
 
 # Wait for Docker daemon

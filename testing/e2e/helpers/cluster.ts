@@ -109,6 +109,14 @@ async function preloadImages(
         const stderr = await new Response(load.stderr).text();
         throw new Error(`docker load failed in ${container}: ${stderr.trim()}`);
       }
+
+      // Verify image is actually available inside the container
+      const verify = await exec([
+        "docker", "exec", container, "docker", "images", "-q", image,
+      ]).catch(() => "");
+      if (!verify.trim()) {
+        throw new Error(`Image ${image} not found in ${container} after docker load`);
+      }
     }
   }
 }

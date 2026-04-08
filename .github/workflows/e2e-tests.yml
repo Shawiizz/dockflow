@@ -39,6 +39,12 @@ jobs:
           echo "=== Docker Compose Status ==="
           docker ps -a
           echo ""
+          echo "=== Manager Docker Info ==="
+          docker exec dockflow-test-manager docker info 2>/dev/null | grep -E "Storage|Server Version" || true
+          echo ""
+          echo "=== Manager Images ==="
+          docker exec dockflow-test-manager docker images 2>/dev/null || true
+          echo ""
           echo "=== Manager Node Logs ==="
           docker compose -f testing/e2e/docker/docker-compose.yml logs test-vm-manager 2>/dev/null || true
           echo ""
@@ -50,6 +56,9 @@ jobs:
           echo ""
           echo "=== Swarm Services ==="
           docker exec dockflow-test-manager docker service ls 2>/dev/null || echo "Could not fetch services"
+          echo ""
+          echo "=== Swarm Service Tasks ==="
+          docker exec dockflow-test-manager docker service ps --no-trunc $(docker exec dockflow-test-manager docker service ls -q 2>/dev/null) 2>/dev/null || echo "Could not fetch service tasks"
           echo ""
           echo "=== Application Logs ==="
           docker exec dockflow-test-manager docker service logs test-app-test_web 2>&1 || echo "Could not fetch app logs"
