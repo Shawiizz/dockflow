@@ -43,7 +43,7 @@ export function registerVersionCommand(program: Command): void {
         printRaw(`Stack: ${colors.info(stackName)}`);
         printBlank();
         printRaw(colors.dim('  Version:     ') + colors.success(metadata.version));
-        printRaw(colors.dim('  Environment: ') + metadata.environment);
+        printRaw(colors.dim('  Environment: ') + metadata.env);
         printRaw(colors.dim('  Branch:      ') + (metadata.branch || 'N/A'));
         printRaw(colors.dim('  Deployed:    ') + metadata.timestamp);
         printBlank();
