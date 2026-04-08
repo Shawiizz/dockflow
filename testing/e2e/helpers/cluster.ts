@@ -56,7 +56,7 @@ export async function startCluster(): Promise<void> {
   // Pre-load images that DinD can't pull (TLS/proxy issues)
   await preloadImages([MANAGER_CONTAINER, WORKER_CONTAINER], [
     "redis:7-alpine",
-    "traefik:v3.0",
+    "traefik:v3.3",
     "nginx:alpine",
   ]);
 }

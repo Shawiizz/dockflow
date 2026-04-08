@@ -52,7 +52,7 @@ describe("deploy", () => {
     await waitForService("traefik_traefik", "1/1", { timeoutMs: 60_000 });
 
     let lastStatus = 0;
-    const deadline = Date.now() + 90_000;
+    const deadline = Date.now() + 30_000;
 
     while (Date.now() < deadline) {
       try {
@@ -71,5 +71,5 @@ describe("deploy", () => {
     }
 
     throw new Error(`Traefik HTTP routing failed (last status: ${lastStatus})`);
-  }, 180_000);
+  }, 120_000);
 });

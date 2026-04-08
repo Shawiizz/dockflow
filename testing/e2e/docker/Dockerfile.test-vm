@@ -1,6 +1,6 @@
 
 # Use Ubuntu as base for Docker-in-Docker support
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 # Build arguments
 ARG DEPLOY_USER=deploytest
