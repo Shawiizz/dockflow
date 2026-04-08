@@ -8,6 +8,8 @@ import { join, dirname, parse as parsePath } from 'path';
 import os from 'os';
 import { parse as parseYaml } from 'yaml';
 import type { ServersConfig } from '../types';
+import type { BackupDbType } from '../api/types';
+export type { BackupDbType };
 import { printError, printRaw } from './output';
 import {
   validateConfig as validateConfigSchema,
@@ -74,7 +76,6 @@ export interface LockConfig {
   stale_threshold_minutes?: number;
 }
 
-export type BackupDbType = 'postgres' | 'mysql' | 'mongodb' | 'redis' | 'raw' | 'volume';
 
 export interface BackupAccessoryConfig {
   type: BackupDbType;

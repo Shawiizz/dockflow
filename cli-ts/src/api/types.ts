@@ -451,8 +451,7 @@ export interface ValidationError {
 
 // ─── Backup ──────────────────────────────────────────────────────────────────
 
-import type { BackupDbType } from '../utils/config';
-export type { BackupDbType };
+export type BackupDbType = 'postgres' | 'mysql' | 'mongodb' | 'redis' | 'raw' | 'volume';
 
 export interface BackupEntry {
   id: string;
