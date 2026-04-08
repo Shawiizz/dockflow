@@ -130,6 +130,11 @@ export class OperationStateService {
               } catch { /* ignore parse errors */ }
             }
             readChunk();
+          }).catch((err: Error) => {
+            ctx.logs.update(l => [...l, `--- Connection lost: ${err.message} ---`]);
+            ctx.running.set(false);
+            ctx.success.set(false);
+            ctx.setReader(null);
           });
         };
         readChunk();

@@ -89,11 +89,7 @@
           <p-tag value="Running" severity="info" />
         }
       </div>
-      <div #outputContainer class="bg-[#0a0a0a] text-[#fafafa] font-mono text-[0.8125rem] p-4 max-h-[25rem] overflow-y-auto whitespace-pre-wrap break-all" role="log" aria-live="polite" aria-label="Deploy output">
-        @for (line of deployLogs(); track $index) {
-          <div>{{ line }}</div>
-        }
-      </div>
+      <app-terminal-output [lines]="deployLogs()" class="block max-h-[25rem]" />
     </div>
   }
 

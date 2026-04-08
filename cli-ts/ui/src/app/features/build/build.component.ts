@@ -1,4 +1,4 @@
-import { Component, inject, effect, viewChild, ElementRef } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { TagModule } from 'primeng/tag';
 import { InputTextModule } from 'primeng/inputtext';
@@ -7,11 +7,12 @@ import { ButtonModule } from 'primeng/button';
 import { EnvironmentService } from '@core/services/environment.service';
 import { OperationStateService } from '@core/services/operation-state.service';
 import { PageHeaderComponent } from '@shared/components/page-header/page-header.component';
+import { TerminalOutputComponent } from '@shared/components/terminal-output/terminal-output.component';
 
 @Component({
   selector: 'app-build',
   standalone: true,
-  imports: [FormsModule, TagModule, InputTextModule, CheckboxModule, ButtonModule, PageHeaderComponent],
+  imports: [FormsModule, TagModule, InputTextModule, CheckboxModule, ButtonModule, PageHeaderComponent, TerminalOutputComponent],
   templateUrl: './build.component.html',
   styleUrl: './build.component.scss',
 })
@@ -22,18 +23,6 @@ export class BuildComponent {
   building = this.opState.building;
   buildLogs = this.opState.buildLogs;
   buildSuccess = this.opState.buildSuccess;
-
-  private outputEl = viewChild<ElementRef>('outputContainer');
-
-  constructor() {
-    effect(() => {
-      this.buildLogs();
-      const el = this.outputEl()?.nativeElement;
-      if (el) {
-        requestAnimationFrame(() => el.scrollTop = el.scrollHeight);
-      }
-    });
-  }
 
   servicesFilter = '';
   push = false;

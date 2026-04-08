@@ -1,4 +1,4 @@
-import { Component, inject, signal, DestroyRef, effect, viewChild, ElementRef } from '@angular/core';
+import { Component, inject, signal, DestroyRef, effect } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SelectModule } from 'primeng/select';
@@ -16,12 +16,13 @@ import { DeployEntryComponent } from './components/deploy-entry/deploy-entry.com
 import { PageHeaderComponent } from '@shared/components/page-header/page-header.component';
 import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.component';
 import { ErrorBannerComponent } from '@shared/components/error-banner/error-banner.component';
+import { TerminalOutputComponent } from '@shared/components/terminal-output/terminal-output.component';
 import type { DeployHistoryEntry } from '@api-types';
 
 @Component({
   selector: 'app-deploy',
   standalone: true,
-  imports: [FormsModule, SelectModule, TagModule, TooltipModule, SkeletonModule, InputTextModule, CheckboxModule, ButtonModule, DeployEntryComponent, PageHeaderComponent, EmptyStateComponent, ErrorBannerComponent],
+  imports: [FormsModule, SelectModule, TagModule, TooltipModule, SkeletonModule, InputTextModule, CheckboxModule, ButtonModule, DeployEntryComponent, PageHeaderComponent, EmptyStateComponent, ErrorBannerComponent, TerminalOutputComponent],
   templateUrl: './deploy.component.html',
   styleUrl: './deploy.component.scss',
 })
@@ -43,8 +44,6 @@ export class DeployComponent {
   deployLogs = this.opState.deployLogs;
   deploySuccess = this.opState.deploySuccess;
 
-  private outputEl = viewChild<ElementRef>('outputContainer');
-
   version = '';
   skipBuild = false;
   force = false;
@@ -58,13 +57,6 @@ export class DeployComponent {
     effect(() => {
       const env = this.envService.selected();
       this.loadHistory(env || undefined);
-    });
-    effect(() => {
-      this.deployLogs();
-      const el = this.outputEl()?.nativeElement;
-      if (el) {
-        requestAnimationFrame(() => el.scrollTop = el.scrollHeight);
-      }
     });
   }
 
