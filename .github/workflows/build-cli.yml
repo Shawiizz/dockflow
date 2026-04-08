@@ -41,6 +41,19 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "📦 Building CLI version: $VERSION"
 
+      - name: Set version in package.json files
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          node -e "
+            const fs = require('fs');
+            for (const p of ['package.json', 'cli-ts/package.json', 'packages/cli/package.json']) {
+              const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
+              pkg.version = '$VERSION';
+              fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
+              console.log('✓ ' + p + ' → ' + '$VERSION');
+            }
+          "
+
       - name: Install CLI dependencies
         run: |
           cd cli-ts

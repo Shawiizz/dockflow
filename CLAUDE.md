@@ -68,13 +68,15 @@ cd testing/e2e && bun test tests/          # Full test suite (spins up Docker Sw
 cd testing/e2e && bun run teardown.ts      # Cleanup test VMs
 ```
 
-### Version Management
+### Releasing
+
+Releases are fully automated via CI. Push a git tag to trigger a build, GitHub Release, and npm publish:
 
 ```bash
-node scripts/version-manager.js dev       # Bump dev version (e.g., 2.0.23 → 2.0.23-dev1)
-node scripts/version-manager.js release   # Release version (e.g., 2.0.23-dev1 → 2.0.24)
-node scripts/version-manager.js downgrade # Downgrade version
+git tag 2.1.0 && git push origin 2.1.0
 ```
+
+The CI sets the version in all `package.json` files from the tag before building.
 
 ## Architecture: SSH-Only Deployment
 

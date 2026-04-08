@@ -4,7 +4,7 @@
 set -e
 
 # Version to install (override with DOCKFLOW_VERSION env var)
-VERSION="${DOCKFLOW_VERSION:-2.0.23}"
+VERSION="${DOCKFLOW_VERSION:-latest}"
 
 # Detect OS and architecture
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
