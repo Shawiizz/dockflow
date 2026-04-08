@@ -95,7 +95,7 @@ export function calculateMetricsSummary(metrics: DeploymentMetric[]): MetricsSum
 
   const successfulMetrics = metrics.filter(m => m.status === 'success');
   const avgDuration = successfulMetrics.length > 0
-    ? successfulMetrics.reduce((acc, m) => acc + m.duration_ms, 0) / successfulMetrics.length
+    ? successfulMetrics.reduce((acc, m) => acc + Number(m.duration_ms), 0) / successfulMetrics.length
     : 0;
 
   const deploymentsLast24h = metrics.filter(m =>

@@ -50,7 +50,7 @@ export interface TaskInfo {
  */
 export interface StackMetadata {
   version: string;
-  environment: string;
+  env: string;
   branch: string;
   timestamp: string;
   project_name: string;
