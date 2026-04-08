@@ -6,7 +6,7 @@
  */
 
 import { Command } from 'commander';
-import { version, name } from '../package.json';
+import { version } from '../package.json';
 import { setVerbose, printSuccess, printBlank, printInfo, printWarning, printRaw } from './utils/output';
 
 // Commands
@@ -50,24 +50,7 @@ registerSetupCommand(program);
 registerInitCommand(program);
 registerUICommand(program);
 
-// Add 'h' and 'help' commands
-program
-  .command('help [command]')
-  .alias('h')
-  .description('Display help for command')
-  .allowUnknownOption()
-  .action((cmd?: string) => {
-    if (cmd) {
-      const sub = program.commands.find(c => c.name() === cmd || c.aliases().includes(cmd));
-      if (sub) sub.help();
-      else program.help();
-    } else {
-      program.help();
-    }
-  });
-
-// Default action (no command) - show help or interactive mode
-program.action(async () => {
+function showHelp() {
   printSuccess('========================================================');
   printSuccess(`   Dockflow CLI v${version}`);
   printSuccess('========================================================');
@@ -108,6 +91,27 @@ program.action(async () => {
   printRaw('  dockflow backup list <env>          List available backups');
   printRaw('  dockflow backup restore <env> <svc> Restore from a backup');
   printRaw('  dockflow backup prune <env>         Clean up old backups');
+}
+
+// Add 'h' and 'help' commands
+program
+  .command('help [command]')
+  .alias('h')
+  .description('Display help for command')
+  .allowUnknownOption()
+  .action((cmd?: string) => {
+    if (cmd) {
+      const sub = program.commands.find(c => c.name() === cmd || c.aliases().includes(cmd));
+      if (sub) sub.help();
+      else showHelp();
+    } else {
+      showHelp();
+    }
+  });
+
+// Default action (no command) - show help
+program.action(() => {
+  showHelp();
 });
 
 // Error handling
