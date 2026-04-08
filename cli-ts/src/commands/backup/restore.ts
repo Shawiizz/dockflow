@@ -4,7 +4,7 @@
  */
 
 import type { Command } from 'commander';
-import { validateEnv } from '../../utils/validation';
+import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { dangerousConfirmPrompt } from '../../utils/prompts';
 import { printIntro, printOutro, printInfo, printWarning, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
 import { BackupError, ErrorCode, withErrorHandler } from '../../utils/errors';
@@ -19,7 +19,7 @@ export function registerBackupRestoreCommand(program: Command): void {
     .option('--from <id>', 'Backup ID or date prefix (default: latest)')
     .option('-y, --yes', 'Skip confirmation prompt')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withErrorHandler(async (
+    .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string,
       options: { from?: string; yes?: boolean; server?: string }
@@ -80,5 +80,5 @@ export function registerBackupRestoreCommand(program: Command): void {
       printOutro(backup.dbType === 'volume'
         ? `Volumes for ${service} restored from backup ${backup.id}`
         : `Database ${service} restored from backup ${backup.id}`);
-    }));
+    })));
 }

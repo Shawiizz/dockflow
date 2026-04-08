@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { sshShell, sshExecStream } from '../../utils/ssh';
 import { printInfo, printBlank } from '../../utils/output';
-import { validateEnv } from '../../utils/validation';
+import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { CLIError, ConnectionError, withErrorHandler } from '../../utils/errors';
 
 export function registerSshCommand(program: Command): void {
@@ -13,7 +13,7 @@ export function registerSshCommand(program: Command): void {
     .command('ssh <env> [command...]')
     .description('Open SSH session to server or execute a command')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withErrorHandler(async (env: string, commandParts: string[], options: { server?: string }) => {
+    .action(withErrorHandler(withResolvedEnv(async (env: string, commandParts: string[], options: { server?: string }) => {
       const { connection, serverName } = validateEnv(env, options.server);
       
       // If command is provided, execute it and return
@@ -45,5 +45,5 @@ export function registerSshCommand(program: Command): void {
       } catch (error) {
         throw new ConnectionError(`SSH connection failed: ${error}`);
       }
-    }));
+    })));
 }

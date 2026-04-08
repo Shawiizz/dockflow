@@ -4,7 +4,7 @@
  */
 
 import type { Command } from 'commander';
-import { validateEnv } from '../../utils/validation';
+import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { confirmPrompt } from '../../utils/prompts';
 import { loadConfig } from '../../utils/config';
 import { printIntro, printOutro, printInfo, printWarning, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
@@ -20,7 +20,7 @@ export function registerBackupPruneCommand(program: Command): void {
     .option('--keep <n>', 'Number of backups to keep per service (default: config retention_count or 10)')
     .option('-y, --yes', 'Skip confirmation prompt')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withErrorHandler(async (
+    .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string | undefined,
       options: { keep?: string; yes?: boolean; server?: string }
@@ -105,5 +105,5 @@ export function registerBackupPruneCommand(program: Command): void {
       spinner.succeed(`Pruned ${totalPruned} backup(s)`);
       printBlank();
       printOutro('Prune completed');
-    }));
+    })));
 }

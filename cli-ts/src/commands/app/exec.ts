@@ -7,7 +7,7 @@
 
 import type { Command } from 'commander';
 import { printInfo, printDebug, printBlank } from '../../utils/output';
-import { validateEnv, getAllNodeConnections } from '../../utils/validation';
+import { validateEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
 import { createExecService, createStackService } from '../../services';
 import { DockerError, CLIError, withErrorHandler } from '../../utils/errors';
 
@@ -20,7 +20,7 @@ export function registerExecCommand(program: Command): void {
     .option('-u, --user <user>', 'Run as specified user')
     .option('-w, --workdir <dir>', 'Working directory inside container')
     .option('--sh', 'Use sh instead of bash for interactive shell')
-    .action(withErrorHandler(async (env: string, service: string, command: string[], options: {
+    .action(withErrorHandler(withResolvedEnv(async (env: string, service: string, command: string[], options: {
       server?: string;
       user?: string;
       workdir?: string;
@@ -75,5 +75,5 @@ export function registerExecCommand(program: Command): void {
         if (error instanceof DockerError) throw error;
         throw new DockerError(`Failed to exec: ${error}`);
       }
-    }));
+    })));
 }

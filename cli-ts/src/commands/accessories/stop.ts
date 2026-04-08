@@ -8,7 +8,7 @@
 import type { Command } from 'commander';
 import { printInfo, printIntro, printOutro, printNote, printWarning, printBlank, createSpinner } from '../../utils/output';
 import { confirmPrompt } from '../../utils/prompts';
-import { validateEnv } from '../../utils/validation';
+import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createStackService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -22,7 +22,7 @@ export function registerAccessoriesStopCommand(program: Command): void {
     .description('Stop accessory services (scale to 0, can be restarted)')
     .option('-y, --yes', 'Skip confirmation prompt')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withErrorHandler(async (
+    .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string | undefined,
       options: { yes?: boolean; server?: string }
@@ -99,5 +99,5 @@ export function registerAccessoriesStopCommand(program: Command): void {
         if (error instanceof DockerError) throw error;
         throw new DockerError(`Failed to stop: ${error}`);
       }
-    }));
+    })));
 }

@@ -8,7 +8,7 @@
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
 import { printSection, printIntro, printInfo, printError, printSuccess, printDebug, printBlank, printRaw, colors } from '../../utils/output';
-import { validateEnv } from '../../utils/validation';
+import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { withErrorHandler } from '../../utils/errors';
 
@@ -25,7 +25,7 @@ export function registerDiagnoseCommand(program: Command): void {
     .description('Diagnose deployment issues and show why containers may not be starting')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .option('-v, --verbose', 'Show all diagnostic details')
-    .action(withErrorHandler(async (env: string, options: { server?: string; verbose?: boolean }) => {
+    .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string; verbose?: boolean }) => {
       const { stackName, connection, serverName } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName, serverName });
 
@@ -207,7 +207,7 @@ export function registerDiagnoseCommand(program: Command): void {
 
       // Print summary
       printDiagnosticSummary(issues);
-    }));
+    })));
 }
 
 /**

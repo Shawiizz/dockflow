@@ -7,7 +7,7 @@
 
 import type { Command } from 'commander';
 import { printInfo, printSection, printBlank } from '../../utils/output';
-import { validateEnv } from '../../utils/validation';
+import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createLogsService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -25,7 +25,7 @@ export function registerAccessoriesLogsCommand(program: Command): void {
     .option('--timestamps', 'Show timestamps')
     .option('--raw', 'Show raw output without pretty printing')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withErrorHandler(async (
+    .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string | undefined,
       options: { follow?: boolean; tail?: string; since?: string; timestamps?: boolean; raw?: boolean; server?: string }
@@ -60,5 +60,5 @@ export function registerAccessoriesLogsCommand(program: Command): void {
         if (error instanceof DockerError) throw error;
         throw new DockerError(`Failed to fetch logs: ${error}`);
       }
-    }));
+    })));
 }

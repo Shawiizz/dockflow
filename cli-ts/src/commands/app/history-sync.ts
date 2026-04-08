@@ -9,7 +9,7 @@
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
 import { printSuccess, printInfo, printBlank, printWarning, printDebug, createSpinner } from '../../utils/output';
-import { validateEnv, getAllNodeConnections } from '../../utils/validation';
+import { validateEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 import { DOCKFLOW_AUDIT_DIR, DOCKFLOW_METRICS_DIR } from '../../constants';
 import type { SSHKeyConnection } from '../../types';
@@ -100,7 +100,7 @@ export function registerHistorySyncCommand(program: Command): void {
     .command('history-sync <env>')
     .description('Sync deployment history across all cluster nodes')
     .option('--debug', 'Enable debug output')
-    .action(withErrorHandler(async (env: string, options: { debug?: boolean }) => {
+    .action(withErrorHandler(withResolvedEnv(async (env: string, options: { debug?: boolean }) => {
       const { stackName } = validateEnv(env);
       const connections = getAllNodeConnections(env);
 
@@ -189,5 +189,5 @@ export function registerHistorySyncCommand(program: Command): void {
 
       printBlank();
       printSuccess(`History sync complete for ${stackName}`);
-    }));
+    })));
 }

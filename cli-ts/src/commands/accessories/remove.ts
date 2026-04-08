@@ -7,7 +7,7 @@ import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
 import { confirmPrompt, dangerousConfirmPrompt } from '../../utils/prompts';
 import { printInfo, printIntro, printOutro, printNote, printWarning, printError, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
-import { validateEnv } from '../../utils/validation';
+import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { validateAccessoriesStack } from './utils';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
 import { STACK_REMOVAL_MAX_ATTEMPTS, STACK_REMOVAL_POLL_INTERVAL_MS, DOCKFLOW_ACCESSORIES_DIR } from '../../constants';
@@ -23,7 +23,7 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
     .option('-v, --volumes', 'Also remove associated volumes (DESTRUCTIVE)')
     .option('-y, --yes', 'Skip confirmation prompt')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withErrorHandler(async (
+    .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       options: { volumes?: boolean; yes?: boolean; server?: string }
     ) => {
@@ -176,5 +176,5 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
         if (error instanceof DockerError) throw error;
         throw new DockerError(`Failed to remove: ${error}`);
       }
-    }));
+    })));
 }

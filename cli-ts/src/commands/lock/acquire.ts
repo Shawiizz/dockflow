@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import { printWarning, printNote, printDim, printBlank, createSpinner } from '../../utils/output';
-import { validateEnv } from '../../utils/validation';
+import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { createLockService } from '../../services';
 import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
@@ -15,7 +15,7 @@ export function registerLockAcquireCommand(parent: Command): void {
     .option('-s, --server <name>', 'Target server (defaults to manager)')
     .option('-m, --message <message>', 'Lock message/reason')
     .option('--force', 'Force acquire even if already locked')
-    .action(withErrorHandler(async (env: string, options: { server?: string; message?: string; force?: boolean }) => {
+    .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string; message?: string; force?: boolean }) => {
       const { stackName, connection, config } = validateEnv(env, options.server);
       const lockService = createLockService(connection, stackName, config.lock?.stale_threshold_minutes);
       const spinner = createSpinner();
@@ -58,5 +58,5 @@ export function registerLockAcquireCommand(parent: Command): void {
       ];
       if (options.message) noteLines.push(`Reason: ${options.message}`);
       printNote(noteLines.join('\n'));
-    }));
+    })));
 }

@@ -51,6 +51,30 @@ interface ValidationError {
 }
 
 /**
+ * Resolve an environment name from a prefix.
+ * Returns the exact env if found, or the unique prefix match.
+ * Throws CLIError on ambiguous or no match.
+ */
+export function resolveEnvironmentPrefix(env: string): string {
+  const availableEnvs = getAvailableEnvironments();
+  if (availableEnvs.includes(env)) return env;
+
+  const matches = availableEnvs.filter(e => e.startsWith(env));
+  if (matches.length === 1) return matches[0];
+
+  if (matches.length > 1) {
+    throw new CLIError(
+      `Ambiguous environment prefix "${env}"`,
+      ErrorCode.NO_SERVERS_FOR_ENV,
+      `Matches: ${matches.join(', ')}`,
+    );
+  }
+
+  // No match — return as-is and let downstream validation handle the error
+  return env;
+}
+
+/**
  * Validate environment and return context or error
  * Does NOT exit process - caller decides what to do on failure
  * Uses the first server for the environment by default
@@ -69,16 +93,6 @@ export function validateEnvironment(env: string, serverName?: string): Environme
     };
   }
 
-  // Check project name
-  const stackName = getStackName(env);
-  if (!stackName) {
-    return {
-      type: ValidationErrorType.PROJECT_NAME_MISSING,
-      message: 'project_name not found in config.yml',
-      suggestion: 'Add project_name to your .dockflow/config.yml',
-    };
-  }
-
   // Check servers.yml exists
   if (!hasServersConfig()) {
     return {
@@ -88,33 +102,46 @@ export function validateEnvironment(env: string, serverName?: string): Environme
     };
   }
 
+  // Resolve prefix matching (pr → production)
+  const resolvedEnv = resolveEnvironmentPrefix(env);
+
+  // Check project name
+  const stackName = getStackName(resolvedEnv);
+  if (!stackName) {
+    return {
+      type: ValidationErrorType.PROJECT_NAME_MISSING,
+      message: 'project_name not found in config.yml',
+      suggestion: 'Add project_name to your .dockflow/config.yml',
+    };
+  }
+
   // Get servers for this environment
-  const servers = resolveServersForEnvironment(env);
+  const servers = resolveServersForEnvironment(resolvedEnv);
   if (servers.length === 0) {
-    const availableEnvs = getAvailableEnvironments();
+    const envs = getAvailableEnvironments();
     return {
       type: ValidationErrorType.NO_SERVERS_FOR_ENV,
       message: `No servers found with tag "${env}"`,
-      suggestion: availableEnvs.length > 0 
-        ? `Available environments: ${availableEnvs.join(', ')}`
+      suggestion: envs.length > 0
+        ? `Available environments: ${envs.join(', ')}`
         : 'Add servers with the appropriate tags to servers.yml',
     };
   }
 
   // Use specified server or first server
   const targetServerName = serverName || servers[0].name;
-  
+
   // Get full connection info (with private key)
-  const connection = getFullConnectionInfo(env, targetServerName);
+  const connection = getFullConnectionInfo(resolvedEnv, targetServerName);
   if (!connection) {
     return {
       type: ValidationErrorType.CONNECTION_NOT_FOUND,
       message: `No SSH credentials found for server "${targetServerName}"`,
-      suggestion: `Add CI secret: ${env.toUpperCase()}_${targetServerName.toUpperCase()}_CONNECTION\n  or: ${env.toUpperCase()}_${targetServerName.toUpperCase()}_SSH_PRIVATE_KEY`,
+      suggestion: `Add CI secret: ${resolvedEnv.toUpperCase()}_${targetServerName.toUpperCase()}_CONNECTION\n  or: ${resolvedEnv.toUpperCase()}_${targetServerName.toUpperCase()}_SSH_PRIVATE_KEY`,
     };
   }
 
-  return { config, stackName, connection, env, serverName: targetServerName };
+  return { config, stackName, connection, env: resolvedEnv, serverName: targetServerName };
 }
 
 /**
@@ -151,6 +178,19 @@ export function validateEnv(env: string, serverName?: string): EnvironmentContex
   }
 
   return result;
+}
+
+/**
+ * Wrapper that resolves an environment prefix before calling the handler.
+ * Composes with withErrorHandler:
+ *   .action(withErrorHandler(withResolvedEnv(async (env, service, options) => { ... })))
+ *
+ * Assumes the first argument is always the env string (Commander positional arg).
+ */
+export function withResolvedEnv<A extends unknown[]>(
+  fn: (env: string, ...args: A) => Promise<void>,
+): (env: string, ...args: A) => Promise<void> {
+  return (env: string, ...args: A) => fn(resolveEnvironmentPrefix(env), ...args);
 }
 
 // Re-export for CLI commands that need all node connections after validateEnv()

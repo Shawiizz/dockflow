@@ -7,7 +7,7 @@
 
 import type { Command } from 'commander';
 import { printInfo } from '../../utils/output';
-import { validateEnv, getAllNodeConnections } from '../../utils/validation';
+import { validateEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createExecService, createStackService } from '../../services';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
@@ -22,7 +22,7 @@ export function registerAccessoriesExecCommand(program: Command): void {
     .option('-u, --user <user>', 'Run command as specific user')
     .option('-w, --workdir <dir>', 'Working directory inside the container')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withErrorHandler(async (
+    .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string,
       command: string[],
@@ -74,5 +74,5 @@ export function registerAccessoriesExecCommand(program: Command): void {
         if (error instanceof DockerError) throw error;
         throw new DockerError(`Failed to exec: ${error}`);
       }
-    }));
+    })));
 }

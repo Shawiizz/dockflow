@@ -9,7 +9,7 @@ import { join } from 'path';
 import { getProjectRoot } from '../../utils/config';
 import { sshExec } from '../../utils/ssh';
 import { printInfo, printIntro, printSection, printBlank, printJSON, printDim, printRaw, colors } from '../../utils/output';
-import { validateEnv } from '../../utils/validation';
+import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { validateAccessoriesStack } from './utils';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 
@@ -77,7 +77,7 @@ export function registerAccessoriesListCommand(program: Command): void {
     .description('List running accessories and their status')
     .option('-j, --json', 'Output in JSON format')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withErrorHandler(async (env: string, options: { json?: boolean; server?: string }) => {
+    .action(withErrorHandler(withResolvedEnv(async (env: string, options: { json?: boolean; server?: string }) => {
       if (!options.json) {
         printIntro(`Accessories - ${env}`);
         printBlank();
@@ -163,5 +163,5 @@ export function registerAccessoriesListCommand(program: Command): void {
         if (error instanceof DockerError) throw error;
         throw new DockerError(`Failed to list accessories: ${error}`);
       }
-    }));
+    })));
 }

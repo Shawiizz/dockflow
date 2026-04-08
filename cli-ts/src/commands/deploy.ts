@@ -34,6 +34,7 @@ import {
   buildTemplateContext,
 } from '../utils/servers';
 import { loadSecrets } from '../utils/secrets';
+import { resolveEnvironmentPrefix } from '../utils/validation';
 import { detectCIEnvironment, resolveDeployParams } from '../utils/ci';
 import { getCurrentBranch } from '../utils/git';
 import { getLatestVersion, incrementVersion } from '../utils/version';
@@ -391,6 +392,9 @@ export async function runDeploy(
   if (config.options?.enable_debug_logs) setVerbose(true);
 
   printDebug('Secrets loaded from environment');
+
+  // Resolve environment prefix (pr → production)
+  env = resolveEnvironmentPrefix(env);
 
   const { deployApp: shouldDeployApp, forceAccessories, skipAccessories } = getDeploymentTargets(
     options as DeployOptions,

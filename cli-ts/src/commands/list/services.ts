@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
 import { printSection, printNote, printJSON, printBlank, printDim, printRaw, colors } from '../../utils/output';
-import { validateEnv } from '../../utils/validation';
+import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
 interface ServiceInfo {
@@ -33,7 +33,7 @@ export function registerListServicesCommand(parent: Command): void {
     .option('-s, --server <name>', 'Target server (defaults to manager)')
     .option('-t, --tasks', 'Show individual containers/tasks for each service')
     .option('-j, --json', 'Output as JSON')
-    .action(withErrorHandler(async (env: string, options: { server?: string; tasks?: boolean; json?: boolean }) => {
+    .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string; tasks?: boolean; json?: boolean }) => {
       const { stackName, connection } = validateEnv(env, options.server);
 
       try {
@@ -146,5 +146,5 @@ export function registerListServicesCommand(parent: Command): void {
         if (error instanceof DockerError) throw error;
         throw new DockerError(`Failed to list services: ${error}`);
       }
-    }));
+    })));
 }

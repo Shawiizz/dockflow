@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { sshExecWithFallback } from '../../utils/ssh-fallback';
 import { printSection, printNote, printDebug, colors, printBlank, printWarning, printDim, printJSON, printRaw } from '../../utils/output';
-import { validateEnv, getAllNodeConnections } from '../../utils/validation';
+import { validateEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 import { DOCKFLOW_AUDIT_DIR } from '../../constants';
 
@@ -54,7 +54,7 @@ export function registerHistoryCommand(program: Command): void {
     .option('-n, --lines <number>', 'Number of lines to show', '20')
     .option('--all', 'Show all entries')
     .option('-j, --json', 'Output as JSON')
-    .action(withErrorHandler(async (env: string, options: { server?: string; lines?: string; all?: boolean; json?: boolean }) => {
+    .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string; lines?: string; all?: boolean; json?: boolean }) => {
       const { stackName, connection } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName, lines: options.lines, json: options.json });
 
@@ -124,5 +124,5 @@ export function registerHistoryCommand(program: Command): void {
       } catch (error) {
         throw new DockerError(`Failed to fetch audit log: ${error}`);
       }
-    }));
+    })));
 }

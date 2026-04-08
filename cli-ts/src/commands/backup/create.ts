@@ -4,7 +4,7 @@
  */
 
 import type { Command } from 'commander';
-import { validateEnv } from '../../utils/validation';
+import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { printIntro, printOutro, printInfo, printBlank, printDim, createSpinner } from '../../utils/output';
 import { BackupError, withErrorHandler } from '../../utils/errors';
 import { createBackupService } from '../../services/backup-service';
@@ -17,7 +17,7 @@ export function registerBackupCreateCommand(program: Command): void {
     .command('create <env> <service>')
     .description('Create a backup of a service or accessory database')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withErrorHandler(async (
+    .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string,
       options: { server?: string }
@@ -46,5 +46,5 @@ export function registerBackupCreateCommand(program: Command): void {
       printInfo(`Duration: ${(result.data.durationMs / 1000).toFixed(1)}s`);
       printDim(`Path: ${DOCKFLOW_BACKUPS_DIR}/${stackName}/${service}/${result.data.id}.*`);
       printOutro('Backup complete');
-    }));
+    })));
 }

@@ -7,7 +7,7 @@
 
 import type { Command } from 'commander';
 import { printIntro, printOutro, printDebug, printBlank, printRaw, createSpinner } from '../../utils/output';
-import { validateEnv } from '../../utils/validation';
+import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createStackService } from '../../services';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -21,7 +21,7 @@ export function registerAccessoriesRestartCommand(program: Command): void {
     .description('Restart accessory services')
     .option('--force', 'Force restart even if service is updating')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withErrorHandler(async (
+    .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string | undefined,
       options: { force?: boolean; server?: string }
@@ -65,5 +65,5 @@ export function registerAccessoriesRestartCommand(program: Command): void {
         if (error instanceof DockerError) throw error;
         throw new DockerError(`Failed to restart: ${error}`);
       }
-    }));
+    })));
 }

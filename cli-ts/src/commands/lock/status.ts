@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import { printInfo, printSuccess, printWarning, printDim, printBlank, printRaw, colors } from '../../utils/output';
-import { validateEnv } from '../../utils/validation';
+import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { createLockService } from '../../services';
 import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
@@ -13,7 +13,7 @@ export function registerLockStatusCommand(parent: Command): void {
     .command('status <env>')
     .description('Show deployment lock status')
     .option('-s, --server <name>', 'Target server (defaults to manager)')
-    .action(withErrorHandler(async (env: string, options: { server?: string }) => {
+    .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string }) => {
       const { stackName, connection, config } = validateEnv(env, options.server);
       const lockService = createLockService(connection, stackName, config.lock?.stale_threshold_minutes);
 
@@ -56,5 +56,5 @@ export function registerLockStatusCommand(parent: Command): void {
         printDim('  A deployment is in progress. Wait for it to complete.');
         printDim('  To force release: dockflow lock release ' + env + ' --force');
       }
-    }));
+    })));
 }

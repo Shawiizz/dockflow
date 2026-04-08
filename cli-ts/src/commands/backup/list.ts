@@ -4,7 +4,7 @@
  */
 
 import type { Command } from 'commander';
-import { validateEnv } from '../../utils/validation';
+import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { printIntro, printInfo, printBlank, printJSON, printRaw, printDim, colors, formatRelativeTime } from '../../utils/output';
 import { withErrorHandler, BackupError } from '../../utils/errors';
 import { createBackupService, type BackupListEntry } from '../../services/backup-service';
@@ -18,7 +18,7 @@ export function registerBackupListCommand(program: Command): void {
     .description('List available backups')
     .option('-j, --json', 'Output in JSON format')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withErrorHandler(async (
+    .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string | undefined,
       options: { json?: boolean; server?: string }
@@ -67,5 +67,5 @@ export function registerBackupListCommand(program: Command): void {
 
       printBlank();
       printInfo(`${entries.length} backup(s) found`);
-    }));
+    })));
 }
