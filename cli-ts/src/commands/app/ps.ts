@@ -54,9 +54,12 @@ export function registerPsCommand(program: Command): void {
             printBlank();
           }
         } else {
-          // Show containers
-          const containersResult = await stackService.getContainers();
-          
+          // Show containers + service-level ports
+          const [containersResult, servicesResult] = await Promise.all([
+            stackService.getContainers(),
+            stackService.getServices(),
+          ]);
+
           if (!containersResult.success) {
             throw new DockerError(containersResult.error.message);
           }
@@ -66,18 +69,29 @@ export function registerPsCommand(program: Command): void {
             return;
           }
 
+          // Build a map of service short name → published ports (from Swarm services)
+          const servicePorts = new Map<string, string>();
+          if (servicesResult.success) {
+            for (const svc of servicesResult.data) {
+              if (svc.ports) servicePorts.set(svc.name, svc.ports);
+            }
+          }
+
           printSection('Containers');
           printBlank();
-          printDim('  ID            NAME                                STATUS              PORTS');
-          printDim('  ' + '─'.repeat(80));
-          
+          printDim('  ID            NAME                                STATUS                         PORTS');
+          printDim('  ' + '─'.repeat(95));
+
           for (const container of containersResult.data) {
             const statusColor = container.status.includes('Up') ? colors.success : colors.warning;
+            // Match container name to service ports (container name: stack_service.slot.id)
+            const shortName = container.name.replace(`${stackName}_`, '').replace(/\.\d+\..*$/, '');
+            const ports = container.ports || servicePorts.get(shortName) || '';
             printRaw(
               `  ${container.id.substring(0, 12).padEnd(14)}` +
               `${container.name.substring(0, 35).padEnd(36)}` +
-              `${statusColor(container.status.substring(0, 18).padEnd(20))}` +
-              `${container.ports || ''}`
+              `${statusColor(container.status.padEnd(31))}` +
+              `${ports}`
             );
           }
           printBlank();
