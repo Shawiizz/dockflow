@@ -2,7 +2,8 @@
   "/api": {
     "target": "http://localhost:4200",
     "secure": false,
-    "changeOrigin": true
+    "changeOrigin": true,
+    "timeout": 600000
   },
   "/ws": {
     "target": "ws://localhost:4200",

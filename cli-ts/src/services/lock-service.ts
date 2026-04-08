@@ -116,9 +116,21 @@ export class LockService {
         return ok(lockData);
       }
 
-      // File exists — check if stale
+      // Noclobber failed — check if it's an actual lock or a write permission issue
       const current = await this.status();
-      if (current.success && current.data.locked && current.data.isStale) {
+
+      if (!current.success) {
+        return err(current.error);
+      }
+
+      if (!current.data.locked) {
+        // No lock file exists but we still couldn't write — permission issue
+        return err(new Error(
+          `Cannot create lock file at ${this.lockFile}. Check directory permissions on the server.`,
+        ));
+      }
+
+      if (current.data.isStale) {
         // Stale: remove and re-acquire in a single SSH command to minimize race window
         const retryResult = await sshExec(
           this.connection,
@@ -133,7 +145,7 @@ export class LockService {
 
       // Active lock held by someone else
       return err(new Error(
-        current.success && current.data.data
+        current.data.data
           ? `Already locked by ${current.data.data.performer} (${current.data.durationMinutes} min ago)`
           : 'Lock file exists but could not be parsed'
       ));

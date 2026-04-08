@@ -94,6 +94,15 @@ function createSSEStream(proc: ReturnType<typeof Bun.spawn>, operationType: 'dep
     async start(controller) {
       const encoder = new TextEncoder();
 
+      // SSE keepalive: send a comment every 15s to prevent proxy/network timeouts
+      const heartbeat = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(': keepalive\n\n'));
+        } catch {
+          clearInterval(heartbeat);
+        }
+      }, 15_000);
+
       function sendEvent(event: string, data: unknown) {
         const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
         try {
@@ -160,6 +169,7 @@ function createSSEStream(proc: ReturnType<typeof Bun.spawn>, operationType: 'dep
       // Clear the global mutex
       currentOperation = null;
 
+      clearInterval(heartbeat);
       controller.close();
     },
 
