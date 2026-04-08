@@ -62,6 +62,18 @@ jobs:
           echo ""
           echo "=== Application Logs ==="
           docker exec dockflow-test-manager docker service logs test-app-test_web 2>&1 || echo "Could not fetch app logs"
+          echo ""
+          echo "=== Traefik Logs ==="
+          docker exec dockflow-test-manager docker service logs traefik_traefik 2>&1 || echo "Could not fetch Traefik logs"
+          echo ""
+          echo "=== Traefik Service Labels ==="
+          docker exec dockflow-test-manager docker service inspect traefik_traefik --format '{{json .Spec.Labels}}' 2>/dev/null | jq . || true
+          echo ""
+          echo "=== App Service Labels ==="
+          docker exec dockflow-test-manager docker service inspect test-app-test_web --format '{{json .Spec.Labels}}' 2>/dev/null | jq . || true
+          echo ""
+          echo "=== Overlay Networks ==="
+          docker exec dockflow-test-manager docker network ls --filter driver=overlay 2>/dev/null || true
 
       - name: Cleanup
         if: always()
