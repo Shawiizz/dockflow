@@ -11,7 +11,7 @@
 
 import type { SSHKeyConnection } from '../types';
 import { sshExec } from '../utils/ssh';
-import { printDebug, printDim, printWarning } from '../utils/output';
+import { printDebug, printDim, printWarning, createTimedSpinner } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import type { HealthCheckConfig } from '../utils/config';
 
@@ -52,7 +52,8 @@ export class HealthCheckService {
     const interval = intervalS * 1000;
     const deadline = Date.now() + timeout;
 
-    printDim(`Checking Swarm health (timeout: ${timeoutS}s)...`);
+    const spinner = createTimedSpinner();
+    spinner.start(`Checking Swarm health (timeout: ${timeoutS}s)...`);
 
     let lastResult: SwarmHealthResult | undefined;
 
@@ -62,6 +63,7 @@ export class HealthCheckService {
 
       // If any service was rolled back, fail immediately
       if (result.rolledBack.length > 0) {
+        spinner.fail(`Swarm auto-rolled back: ${result.rolledBack.join(', ')}`);
         throw new DeployError(
           `Swarm auto-rolled back services: ${result.rolledBack.join(', ')}`,
           ErrorCode.HEALTH_CHECK_FAILED,
@@ -71,16 +73,18 @@ export class HealthCheckService {
 
       // If no unhealthy services remain, we're done
       if (result.unhealthy.length === 0) {
-        printDebug(`All services healthy: ${result.healthy.join(', ')}`);
+        spinner.succeed(`All services healthy: ${result.healthy.join(', ')}`);
         return result;
       }
 
       printDebug(`Health: healthy=[${result.healthy.join(', ')}] unhealthy=[${result.unhealthy.join(', ')}]`);
+      spinner.update(`Checking Swarm health: ${result.unhealthy.length} unhealthy`);
       await sleep(interval);
     }
 
     // Timeout — use last known result to avoid an extra SSH round-trip
     if (lastResult && lastResult.unhealthy.length > 0) {
+      spinner.fail(`Health check timeout after ${timeoutS}s`);
       throw new DeployError(
         `Health check timeout after ${timeoutS}s. Unhealthy services: ${lastResult.unhealthy.join(', ')}`,
         ErrorCode.HEALTH_CHECK_FAILED,
@@ -88,6 +92,7 @@ export class HealthCheckService {
       );
     }
 
+    spinner.succeed('All services healthy');
     return lastResult ?? { healthy: [], unhealthy: [], rolledBack: [] };
   }
 

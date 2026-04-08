@@ -173,3 +173,20 @@ export function createSpinner() {
     set text(msg: string)    { s.message(msg); },
   };
 }
+
+/**
+ * Create a spinner with a built-in elapsed time indicator (e.g. "[5s]", "[1m 30s]").
+ * Uses @clack/prompts native `indicator: 'timer'` mode.
+ */
+export function createTimedSpinner() {
+  const s = clack.spinner({ output: process.stderr, indicator: 'timer' });
+  return {
+    start:   (msg: string)   => s.start(msg),
+    succeed: (msg: string)   => s.stop(msg),
+    fail:    (msg: string)   => s.error(msg),
+    warn:    (msg: string)   => s.cancel(msg),
+    info:    (msg: string)   => s.stop(msg),
+    stop:    (msg?: string)  => s.stop(msg),
+    update:  (msg: string)   => s.message(msg),
+  };
+}

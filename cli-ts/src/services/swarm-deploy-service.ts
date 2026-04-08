@@ -13,7 +13,7 @@ import { createHash } from 'crypto';
 import type { SSHKeyConnection } from '../types';
 import { sshExec } from '../utils/ssh';
 import { shellEscape } from '../utils/ssh';
-import { printDebug, printDim, printInfo, printWarning, printSuccess } from '../utils/output';
+import { printDebug, printDim, printInfo, printWarning, printSuccess, createTimedSpinner } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import {
   DOCKFLOW_ACCESSORIES_DIR,
@@ -214,10 +214,9 @@ export class SwarmDeployService {
     const interval = (options?.interval ?? CONVERGENCE_INTERVAL_S) * 1000;
     const ctx = options?.context ?? 'deployment';
     const deadline = Date.now() + timeout;
-    const progressIntervalMs = 30_000;
-    let lastProgressAt = Date.now();
 
-    printDim(`Waiting for ${ctx} convergence (timeout: ${timeout / 1000}s)...`);
+    const spinner = createTimedSpinner();
+    spinner.start(`Waiting for ${ctx} convergence (timeout: ${timeout / 1000}s)...`);
 
     let lastStatuses: string[] = [];
 
@@ -257,22 +256,20 @@ export class SwarmDeployService {
       lastStatuses = statuses;
 
       if (allConverged) {
-        printDebug(`All services converged: ${statuses.join(', ')}`);
+        spinner.succeed(`All services converged: ${statuses.join(', ')}`);
         return;
       }
 
       // Detect rollback/crash-loop states (parallel inspect)
-      await this.detectFailingServices(stackName, lines);
+      try {
+        await this.detectFailingServices(stackName, lines);
+      } catch (error) {
+        spinner.fail('Convergence failed');
+        throw error;
+      }
 
       printDebug(`Convergence: ${statuses.join(', ')}`);
-
-      // Progress indicator every 30s for non-verbose mode
-      const now = Date.now();
-      if (now - lastProgressAt >= progressIntervalMs) {
-        const elapsed = Math.round((now - (deadline - timeout)) / 1000);
-        printDim(`  Still waiting (${elapsed}s): ${statuses.join(', ')}`);
-        lastProgressAt = now;
-      }
+      spinner.update(`Waiting for ${ctx} convergence: ${statuses.join(', ')}`);
 
       await sleep(interval);
     }
@@ -282,6 +279,8 @@ export class SwarmDeployService {
       const match = s.match(/(\d+)\/(\d+)$/);
       return !match || match[1] !== match[2];
     });
+
+    spinner.fail(`Convergence timeout after ${timeout / 1000}s`);
 
     throw new DeployError(
       `${ctx} convergence timeout after ${timeout / 1000}s. Non-converged services: ${notConverged.join(', ')}`,

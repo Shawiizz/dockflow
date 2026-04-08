@@ -11,7 +11,7 @@ import { createGzip } from 'node:zlib';
 import { Readable } from 'node:stream';
 import type { SSHKeyConnection } from '../types';
 import { sshExec, sshExecChannel, shellEscape } from '../utils/ssh';
-import { printDebug, printDim, printSuccess, printWarning } from '../utils/output';
+import { printDebug, printDim, printSuccess, printWarning, createTimedSpinner } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import { parseImageRef } from './compose-service';
 
@@ -255,20 +255,29 @@ export class DistributionService {
   ): Promise<void> {
     if (images.length === 0 || targets.length === 0) return;
 
-    printDim(`Distributing ${images.length} image(s) to ${targets.length} node(s)...`);
+    const spinner = createTimedSpinner();
+    spinner.start(`Distributing ${images.length} image(s) to ${targets.length} node(s)...`);
 
-    // Images sequential (avoid N×M SSH channels), targets parallel per image
-    for (const image of images) {
-      const sourceId = await DistributionService.getLocalImageId(image);
-      const needsUpdate = await DistributionService.filterTargetsNeedingImage(image, sourceId, targets);
-      if (needsUpdate.length === 0) continue;
+    try {
+      // Images sequential (avoid N×M SSH channels), targets parallel per image
+      for (const image of images) {
+        spinner.update(`Distributing ${image}...`);
+        const sourceId = await DistributionService.getLocalImageId(image);
+        const needsUpdate = await DistributionService.filterTargetsNeedingImage(image, sourceId, targets);
+        if (needsUpdate.length === 0) continue;
 
-      await DistributionService.transferImageToTargets(
-        image,
-        needsUpdate,
-        DistributionService.streamToTarget,
-        '',
-      );
+        await DistributionService.transferImageToTargets(
+          image,
+          needsUpdate,
+          DistributionService.streamToTarget,
+          '',
+        );
+      }
+
+      spinner.succeed(`Distributed ${images.length} image(s) to ${targets.length} node(s)`);
+    } catch (error) {
+      spinner.fail('Image distribution failed');
+      throw error;
     }
   }
 
@@ -279,20 +288,29 @@ export class DistributionService {
   ): Promise<void> {
     if (images.length === 0 || targets.length === 0) return;
 
-    printDim(`Distributing ${images.length} image(s) to ${targets.length} node(s) (from remote)...`);
+    const spinner = createTimedSpinner();
+    spinner.start(`Distributing ${images.length} image(s) to ${targets.length} node(s) (from remote)...`);
 
-    // Images sequential (avoid N×M SSH channels), targets parallel per image
-    for (const image of images) {
-      const sourceId = await DistributionService.getRemoteImageId(source, image);
-      const needsUpdate = await DistributionService.filterTargetsNeedingImage(image, sourceId, targets);
-      if (needsUpdate.length === 0) continue;
+    try {
+      // Images sequential (avoid N×M SSH channels), targets parallel per image
+      for (const image of images) {
+        spinner.update(`Distributing ${image} (from remote)...`);
+        const sourceId = await DistributionService.getRemoteImageId(source, image);
+        const needsUpdate = await DistributionService.filterTargetsNeedingImage(image, sourceId, targets);
+        if (needsUpdate.length === 0) continue;
 
-      await DistributionService.transferImageToTargets(
-        image,
-        needsUpdate,
-        (img, target) => DistributionService.streamRemoteToTarget(img, source, target),
-        ' (from remote)',
-      );
+        await DistributionService.transferImageToTargets(
+          image,
+          needsUpdate,
+          (img, target) => DistributionService.streamRemoteToTarget(img, source, target),
+          ' (from remote)',
+        );
+      }
+
+      spinner.succeed(`Distributed ${images.length} image(s) to ${targets.length} node(s) (from remote)`);
+    } catch (error) {
+      spinner.fail('Image distribution failed');
+      throw error;
     }
   }
 
