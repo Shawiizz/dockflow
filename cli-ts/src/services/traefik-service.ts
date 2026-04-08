@@ -90,6 +90,7 @@ export class TraefikService {
       '--providers.swarm=true',
       '--providers.swarm.exposedByDefault=false',
       `--providers.swarm.network=${TRAEFIK_NETWORK_NAME}`,
+      '--providers.swarm.refreshSeconds=5',
       '--entrypoints.web.address=:80',
     ];
 
