@@ -6,22 +6,30 @@
 import type { Command } from 'commander';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { printIntro, printOutro, printInfo, printBlank, printDim, createSpinner } from '../../utils/output';
-import { BackupError, withErrorHandler } from '../../utils/errors';
+import { BackupError, ValidationError, withErrorHandler } from '../../utils/errors';
 import { createBackupService } from '../../services/backup-service';
-import { requireBackupConfig, resolveBackupStack } from './utils';
+import { requireBackupConfig, resolveBackupStack, getBackupServiceNames } from './utils';
 import { getAllNodeConnections } from '../../utils/servers';
 import { DOCKFLOW_BACKUPS_DIR } from '../../constants';
 
 export function registerBackupCreateCommand(program: Command): void {
   program
-    .command('create <env> <service>')
+    .command('create <env> [service]')
     .description('Create a backup of a service or accessory database')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(withResolvedEnv(async (
       env: string,
-      service: string,
+      service: string | undefined,
       options: { server?: string }
     ) => {
+      if (!service) {
+        const available = getBackupServiceNames();
+        const suggestion = available.length > 0
+          ? `Available services: ${available.join(', ')}`
+          : 'Add backup config in .dockflow/config.yml under backup.services or backup.accessories';
+        throw new ValidationError(`Missing required argument: service`, suggestion);
+      }
+
       printIntro(`Backup - ${service} (${env})`);
       printBlank();
 

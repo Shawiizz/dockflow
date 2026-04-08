@@ -82,6 +82,17 @@ export function getAllBackupStacks(env: string): { stackName: string; source: Ba
   return stacks;
 }
 
+/**
+ * Get all configured backup service names (from both services and accessories).
+ */
+export function getBackupServiceNames(): string[] {
+  const config = loadConfig();
+  const names: string[] = [];
+  if (config?.backup?.services) names.push(...Object.keys(config.backup.services));
+  if (config?.backup?.accessories) names.push(...Object.keys(config.backup.accessories));
+  return names;
+}
+
 // ─── Shared data-fetching helpers (used by both CLI commands and API routes) ──
 
 /** Backup entries grouped by service within a single stack */
