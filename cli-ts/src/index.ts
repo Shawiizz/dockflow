@@ -50,6 +50,22 @@ registerSetupCommand(program);
 registerInitCommand(program);
 registerUICommand(program);
 
+// Add 'h' and 'help' commands
+program
+  .command('help [command]')
+  .alias('h')
+  .description('Display help for command')
+  .allowUnknownOption()
+  .action((cmd?: string) => {
+    if (cmd) {
+      const sub = program.commands.find(c => c.name() === cmd || c.aliases().includes(cmd));
+      if (sub) sub.help();
+      else program.help();
+    } else {
+      program.help();
+    }
+  });
+
 // Default action (no command) - show help or interactive mode
 program.action(async () => {
   printSuccess('========================================================');
