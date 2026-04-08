@@ -147,4 +147,9 @@ jobs:
       - name: Publish to npm
         run: |
           cd packages/cli
-          npm publish --access public
+          VERSION="${{ needs.build.outputs.version }}"
+          if [[ "$VERSION" == *-* ]]; then
+            npm publish --access public --tag dev
+          else
+            npm publish --access public
+          fi
