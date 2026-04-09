@@ -40,7 +40,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     ports:
       - "6379:6379"
     volumes:
@@ -58,7 +58,7 @@ volumes:
 ```
 
 <Callout type="info">
-  Environment variables can be accessed using Jinja2 syntax: `{{ variable_name }}`
+  Environment variables can be accessed using template syntax: `{{ variable_name }}`
 </Callout>
 
 ## Automatic Swarm Configuration
@@ -236,5 +236,9 @@ networks:
 
 <Callout type="warning">
   Make sure to reference the correct network name: `{project}-{env}-accessories_default`
+</Callout>
+
+<Callout type="info">
+  **Protect your data**: Dockflow supports automated backup and restore for accessories. See [Backup & Restore](/configuration/backup) for details.
 </Callout>
 

@@ -9,7 +9,10 @@ on:
 
 jobs:
   deploy:
-    uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.19
-    with:
-      version: ${{ github.ref_name }}-${{ github.sha }}    
-    secrets: inherit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy docs
+        run: npx @dockflow-tools/cli deploy production ${{ github.ref_name }}-${{ github.sha }}
+        env:
+          DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}

@@ -14,7 +14,8 @@ jobs:
   e2e-tests:
     name: Run E2E Tests
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 30
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -24,9 +25,13 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Install CLI dependencies
+        run: |
+          cd cli && bun install --frozen-lockfile
+
       - name: Run E2E Tests
         run: |
-          bash testing/e2e/run-tests.sh
+          cd testing/e2e && bun test tests/ --timeout 300000
 
       - name: Show cluster logs on failure
         if: failure()
@@ -34,11 +39,17 @@ jobs:
           echo "=== Docker Compose Status ==="
           docker ps -a
           echo ""
+          echo "=== Manager Docker Info ==="
+          docker exec dockflow-test-manager docker info 2>/dev/null | grep -E "Storage|Server Version" || true
+          echo ""
+          echo "=== Manager Images ==="
+          docker exec dockflow-test-manager docker images 2>/dev/null || true
+          echo ""
           echo "=== Manager Node Logs ==="
-          docker compose -f testing/e2e/docker/docker-compose.yml --env-file testing/e2e/.env logs test-vm-manager 2>/dev/null || true
+          docker compose -f testing/e2e/docker/docker-compose.yml logs test-vm-manager 2>/dev/null || true
           echo ""
           echo "=== Worker Node Logs ==="
-          docker compose -f testing/e2e/docker/docker-compose.yml --env-file testing/e2e/.env logs test-vm-worker-1 2>/dev/null || true
+          docker compose -f testing/e2e/docker/docker-compose.yml logs test-vm-worker-1 2>/dev/null || true
           echo ""
           echo "=== Swarm Node Status ==="
           docker exec dockflow-test-manager docker node ls 2>/dev/null || echo "Could not fetch node status"
@@ -46,10 +57,25 @@ jobs:
           echo "=== Swarm Services ==="
           docker exec dockflow-test-manager docker service ls 2>/dev/null || echo "Could not fetch services"
           echo ""
+          echo "=== Swarm Service Tasks ==="
+          docker exec dockflow-test-manager docker service ps --no-trunc $(docker exec dockflow-test-manager docker service ls -q 2>/dev/null) 2>/dev/null || echo "Could not fetch service tasks"
+          echo ""
           echo "=== Application Logs ==="
           docker exec dockflow-test-manager docker service logs test-app-test_web 2>&1 || echo "Could not fetch app logs"
+          echo ""
+          echo "=== Traefik Logs ==="
+          docker exec dockflow-test-manager docker service logs traefik_traefik 2>&1 || echo "Could not fetch Traefik logs"
+          echo ""
+          echo "=== Traefik Service Labels ==="
+          docker exec dockflow-test-manager docker service inspect traefik_traefik --format '{{json .Spec.Labels}}' 2>/dev/null | jq . || true
+          echo ""
+          echo "=== App Service Labels ==="
+          docker exec dockflow-test-manager docker service inspect test-app-test_web --format '{{json .Spec.Labels}}' 2>/dev/null | jq . || true
+          echo ""
+          echo "=== Overlay Networks ==="
+          docker exec dockflow-test-manager docker network ls --filter driver=overlay 2>/dev/null || true
 
       - name: Cleanup
         if: always()
         run: |
-          bash testing/e2e/teardown.sh 2>/dev/null || true
+          bun run testing/e2e/teardown.ts 2>/dev/null || true

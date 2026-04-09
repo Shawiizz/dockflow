@@ -1,59 +1,60 @@
 services:
-  # Manager node - Swarm manager for E2E tests
   test-vm-manager:
     build:
-      context: .
-      dockerfile: Dockerfile.test-vm
-      args:
-        SSH_USER: ${SSH_USER}
-        SSH_PASSWORD: ${SSH_PASSWORD}
+      context: ..
+      dockerfile: docker/Dockerfile.test-vm
     container_name: dockflow-test-manager
     hostname: dockflow-test-mgr
     privileged: true
     environment:
-      - SSH_USER=${SSH_USER}
-      - SSH_PASSWORD=${SSH_PASSWORD}
+      - SWARM_ROLE=manager
     ports:
-      - "${SSH_PORT_MANAGER:-2222}:22"
-      - "${DOCKER_PORT:-2375}:2375"
+      - "2222:22"
+      - "2375:2375"
       - "8080:8080"
+      - "80:80"
     volumes:
-      - /tmp
+      - swarm-data:/swarm
+      - /etc/ssl/certs:/etc/ssl/certs:ro
     networks:
       - test-network
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "22"]
+      test: ["CMD", "bash", "/healthcheck.sh"]
       interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
 
-  # Worker node - Swarm worker for E2E tests
   test-vm-worker-1:
     build:
-      context: .
-      dockerfile: Dockerfile.test-vm
-      args:
-        SSH_USER: ${SSH_USER}
-        SSH_PASSWORD: ${SSH_PASSWORD}
+      context: ..
+      dockerfile: docker/Dockerfile.test-vm
     container_name: dockflow-test-worker-1
     hostname: dockflow-test-w1
     privileged: true
     environment:
-      - SSH_USER=${SSH_USER}
-      - SSH_PASSWORD=${SSH_PASSWORD}
+      - SWARM_ROLE=worker
+      - SWARM_MANAGER_HOST=dockflow-test-mgr
     ports:
-      - "${SSH_PORT_WORKER_1:-2223}:22"
+      - "2223:22"
     volumes:
-      - /tmp
+      - swarm-data:/swarm
+      - /etc/ssl/certs:/etc/ssl/certs:ro
     networks:
       - test-network
+    depends_on:
+      test-vm-manager:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "22"]
+      test: ["CMD", "bash", "/healthcheck.sh"]
       interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+volumes:
+  swarm-data:
+    driver: local
 
 networks:
   test-network:

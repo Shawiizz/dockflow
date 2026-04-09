@@ -30,16 +30,16 @@ Create shell scripts in `.dockflow/hooks/`:
 
 All hooks are optional. If a hook file doesn't exist, it is skipped.
 
-## Jinja2 Templating
+## Templating
 
-Hooks are rendered with Jinja2 before execution. You can use any Ansible variable:
+Hooks are rendered with [Nunjucks](https://mozilla.github.io/nunjucks/) before execution. You can use any template variable:
 
 ```bash
 #!/bin/bash
-echo "Deploying {{ project_name }} version {{ version }} to {{ env }}"
+echo "Deploying {{ config.project_name }} version {{ version }} to {{ env }}"
 
-# Access environment variables
-DATABASE_URL="{{ lookup('env', 'DATABASE_URL') }}"
+# Access server environment variables
+DATABASE_URL="{{ current.env.database_url }}"
 ```
 
 ## Examples
@@ -87,6 +87,6 @@ hooks:
   timeout: 300     # Timeout per hook in seconds (default: 300)
 ```
 
-<Callout type="info">
-  If a hook fails, the deployment continues with a warning. Hooks do not block deployments.
+<Callout type="warning">
+  If a hook fails, the deployment is aborted. Make sure your hook scripts are tested and handle errors gracefully.
 </Callout>

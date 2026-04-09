@@ -106,14 +106,14 @@ To maximize cache efficiency:
 
 ```dockerfile
 # Example: good cache utilization
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./    # Changes rarely
 RUN npm ci                                # Cached if lockfile unchanged
 COPY . .                                  # Changes often
 RUN npm run build
 
-FROM node:20-alpine
+FROM node:24-alpine
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
 CMD ["node", "dist/index.js"]

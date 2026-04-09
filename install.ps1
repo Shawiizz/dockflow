@@ -3,11 +3,22 @@
 
 $ErrorActionPreference = "Stop"
 
-# Version to install
-$Version = "2.0.23"
+# Version to install (override with DOCKFLOW_VERSION env var)
+$Version = if ($env:DOCKFLOW_VERSION) { $env:DOCKFLOW_VERSION } else { "latest" }
 
 # Detect architecture
 $arch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
+
+# Resolve latest version from GitHub if needed
+if ($Version -eq "latest") {
+    try {
+        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/Shawiizz/dockflow/releases/latest" -UseBasicParsing
+        $Version = $release.tag_name
+    } catch {
+        Write-Error "Failed to fetch latest version from GitHub: $_"
+        exit 1
+    }
+}
 
 # Build download URL
 $binaryName = "dockflow-windows-$arch.exe"
@@ -23,6 +34,7 @@ if (-not (Test-Path $installDir)) {
 }
 
 Write-Host "Downloading Dockflow CLI..."
+Write-Host "  Version: $Version"
 Write-Host "  Platform: windows-$arch"
 Write-Host "  URL: $downloadUrl"
 Write-Host ""

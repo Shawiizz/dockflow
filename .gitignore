@@ -24,15 +24,15 @@ dist/
 *.log
 
 # CLI builds
-cli-ts/dist/
+cli/dist/
 dockflow-*
 
 # Generated files
-cli-ts/src/ui-manifest.generated.ts
+cli/src/ui-manifest.generated.ts
 
 # UI builds
-cli-ts/ui/dist/
-cli-ts/ui/.angular/
+cli/ui/dist/
+cli/ui/.angular/
 
 # Caches
 .cache/
@@ -50,3 +50,4 @@ Thumbs.db
 coverage/
 tmpclaude*
 nul
+.claude

@@ -1,0 +1,37 @@
+/**
+ * Accessories Deploy Command
+ * Deploy accessories (databases, caches, etc.) to the environment
+ *
+ * This is a convenience wrapper around: dockflow deploy <env> --accessories
+ */
+
+import type { Command } from 'commander';
+import { printIntro, printInfo, printBlank } from '../../utils/output';
+import { withErrorHandler } from '../../utils/errors';
+
+/**
+ * Register the accessories deploy command
+ */
+export function registerAccessoriesDeployCommand(program: Command): void {
+  program
+    .command('deploy <env> [version]')
+    .description('Deploy accessories (databases, caches, etc.)')
+    .option('--debug', 'Enable debug output')
+    .action(withErrorHandler(async (
+      env: string,
+      version: string | undefined,
+      options: { debug?: boolean }
+    ) => {
+      printIntro(`Deploying Accessories to ${env}`);
+      printBlank();
+      printInfo('Redirecting to: dockflow deploy --accessories');
+      printBlank();
+
+      const { runDeploy } = await import('../deploy');
+
+      await runDeploy(env, version, {
+        accessories: true,
+        debug: options.debug,
+      });
+    }));
+}

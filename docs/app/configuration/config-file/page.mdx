@@ -11,6 +11,13 @@ The `config.yml` file defines your project identity, build options, health check
 
 project_name: "my-app"
 
+proxy:
+  enabled: true
+  email: admin@example.com
+  domains:
+    production: my-app.example.com
+    staging: staging.my-app.example.com
+
 options:
   image_auto_tag: true
   enable_debug_logs: false
@@ -103,7 +110,7 @@ Two layers of health verification:
 Enable or disable post-deployment health checks.
 
 ### `startup_delay`
-**Default:** `15` (seconds)
+**Default:** `10` (seconds)
 
 Time to wait after deployment before running external health checks.
 
@@ -139,10 +146,22 @@ endpoints:
 | Field | Description |
 |-------|-------------|
 | `name` | Descriptive label |
-| `url` | URL to check (supports Jinja2: `{{ app_external_port }}`) |
+| `url` | URL to check (supports template syntax: `{{ app_external_port }}`) |
 | `expected_status` | Expected HTTP status code |
 | `timeout` | Request timeout in seconds |
 | `retries` | Number of retry attempts |
+
+## Proxy
+
+Automatic HTTPS routing via Traefik + Let's Encrypt. See [Automatic HTTPS Proxy](/configuration/proxy) for the full reference.
+
+```yaml
+proxy:
+  enabled: true
+  email: admin@example.com
+  domains:
+    production: my-app.example.com
+```
 
 ## Deploy Lock
 

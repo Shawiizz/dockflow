@@ -1,0 +1,51 @@
+<div class="flex flex-col gap-6 animate-fade-in">
+  <!-- Page Header -->
+  <app-page-header title="Build" subtitle="Build Docker images for your services" />
+
+  <div class="flex flex-col gap-4 p-6 bg-bg-secondary border border-border-primary rounded-xl">
+    <div class="flex flex-wrap gap-4">
+      <div class="flex flex-col gap-1 min-w-[10rem]">
+        <label class="text-sm text-text-muted">Services filter</label>
+        <input type="text" pInputText [(ngModel)]="servicesFilter" placeholder="e.g. web,api" class="w-full">
+      </div>
+    </div>
+    <div class="flex flex-wrap gap-4">
+      <div class="flex items-center gap-2">
+        <p-checkbox [(ngModel)]="push" [binary]="true" inputId="push" />
+        <label for="push">Push to registry</label>
+      </div>
+    </div>
+    <div class="flex gap-2">
+      <p-button
+        [label]="building() ? 'Building...' : 'Build'"
+        icon="pi pi-hammer"
+        (onClick)="startBuild()"
+        [disabled]="building() || !envService.selectedOrUndefined()"
+      />
+      @if (building()) {
+        <p-button
+          label="Cancel"
+          icon="pi pi-times"
+          severity="danger"
+          (onClick)="cancelBuild()"
+        />
+      }
+    </div>
+  </div>
+
+  @if (buildLogs().length > 0) {
+    <div class="bg-bg-secondary border border-border-primary rounded-xl overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-border-primary">
+        <span class="text-sm font-medium text-text-primary">Output</span>
+        @if (buildSuccess() === true) {
+          <p-tag value="Success" severity="success" />
+        } @else if (buildSuccess() === false) {
+          <p-tag value="Failed" severity="danger" />
+        } @else if (building()) {
+          <p-tag value="Running" severity="info" />
+        }
+      </div>
+      <app-terminal-output [lines]="buildLogs()" class="block max-h-[30rem]" />
+    </div>
+  }
+</div>

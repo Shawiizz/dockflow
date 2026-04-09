@@ -1,0 +1,62 @@
+/**
+ * Lock acquire command - Manually acquire a deployment lock
+ */
+
+import type { Command } from 'commander';
+import { printWarning, printNote, printDim, printBlank, createSpinner } from '../../utils/output';
+import { validateEnv, withResolvedEnv } from '../../utils/validation';
+import { createLockService } from '../../services';
+import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
+
+export function registerLockAcquireCommand(parent: Command): void {
+  parent
+    .command('acquire <env>')
+    .description('Acquire a deployment lock (prevents other deployments)')
+    .option('-s, --server <name>', 'Target server (defaults to manager)')
+    .option('-m, --message <message>', 'Lock message/reason')
+    .option('--force', 'Force acquire even if already locked')
+    .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string; message?: string; force?: boolean }) => {
+      const { stackName, connection, config } = validateEnv(env, options.server);
+      const lockService = createLockService(connection, stackName, config.lock?.stale_threshold_minutes);
+      const spinner = createSpinner();
+
+      // Check for existing lock (show info if blocked)
+      if (!options.force) {
+        spinner.start('Checking for existing lock...');
+        const current = await lockService.status();
+
+        if (current.success && current.data.locked) {
+          spinner.stop();
+          printWarning('Deployment is already locked');
+          if (current.data.data) {
+            printDim(`  Holder:  ${current.data.data.performer}`);
+            printDim(`  Started: ${current.data.data.started_at}`);
+            printDim(`  Version: ${current.data.data.version}`);
+            printBlank();
+          }
+          throw new CLIError('Use --force to override the existing lock.', ErrorCode.DEPLOY_LOCKED);
+        }
+        spinner.stop();
+      }
+
+      // Acquire lock
+      spinner.start('Acquiring lock...');
+      const result = await lockService.acquire({
+        message: options.message,
+        force: options.force,
+      });
+
+      if (!result.success) {
+        spinner.fail('Failed to acquire lock');
+        throw new CLIError(result.error.message, ErrorCode.COMMAND_FAILED);
+      }
+
+      spinner.succeed(`Lock acquired for ${stackName}`);
+      const noteLines = [
+        'Deployments to this environment are now blocked.',
+        `Release with: dockflow lock release ${env}`,
+      ];
+      if (options.message) noteLines.push(`Reason: ${options.message}`);
+      printNote(noteLines.join('\n'));
+    })));
+}

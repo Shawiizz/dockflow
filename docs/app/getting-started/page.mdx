@@ -7,12 +7,29 @@ Dockflow deploys to a single server or a multi-node cluster — same workflow. A
 <Steps>
 ## Install the CLI
 
-<Tabs items={['npm (any OS)', 'Linux / macOS', 'Windows']}>
+<Tabs items={['npm (any OS)', 'npx (no install)', 'Linux / macOS', 'Windows']}>
   <Tabs.Tab>
     ```bash
     npm install -g @dockflow-tools/cli
     dockflow --version
     ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Run any command directly without installing:
+
+    ```bash
+    npx @dockflow-tools/cli <command>
+    ```
+
+    For example:
+
+    ```bash
+    npx @dockflow-tools/cli deploy production
+    ```
+
+    <Callout type="info">
+      Pin a specific version with `npx @dockflow-tools/cli@1.2.3 <command>`.
+    </Callout>
   </Tabs.Tab>
   <Tabs.Tab>
     ```bash
@@ -43,7 +60,7 @@ You need a Debian/Ubuntu server with SSH access (root or sudo user).
     If the CLI is installed **on your local machine**:
 
     ```bash
-    dockflow setup remote
+    dockflow setup root@your-server-ip
     ```
 
     The wizard handles everything: Docker installation, Swarm initialization, SSH keys, and deployment user creation.
@@ -53,7 +70,7 @@ You need a Debian/Ubuntu server with SSH access (root or sudo user).
     For automated provisioning (Terraform, CI, etc.). Must be run **on the target server**:
 
     ```bash
-    dockflow setup auto \
+    dockflow setup \
       --host $(hostname -I | awk '{print $1}') \
       --user dockflow \
       --password "your-secure-password" \
@@ -62,7 +79,7 @@ You need a Debian/Ubuntu server with SSH access (root or sudo user).
       --portainer-password "portainer-admin-password"
     ```
 
-    See `dockflow setup auto --help` for all options.
+    See `dockflow setup --help` for all options.
   </Tabs.Tab>
 </Tabs>
 
@@ -80,21 +97,17 @@ This generates the following structure at the root of your project:
     <FileTree.File name="servers.yml" />
     <FileTree.Folder name="docker" defaultOpen>
       <FileTree.File name="docker-compose.yml" />
-      <FileTree.File name="Dockerfile.[service]" />
+      <FileTree.File name="accessories.yml" />
+      <FileTree.File name="Dockerfile" />
     </FileTree.Folder>
-    <FileTree.Folder name="hooks">
-      <FileTree.File name="pre-deploy.sh" />
-      <FileTree.File name="post-deploy.sh" />
-    </FileTree.Folder>
-    <FileTree.Folder name="templates">
-      <FileTree.File name="nginx" />
-    </FileTree.Folder>
+    <FileTree.Folder name="hooks" />
   </FileTree.Folder>
 </FileTree>
 
 - **`config.yml`** — Project name, build strategy, health checks ([reference](/configuration))
 - **`servers.yml`** — Servers and environment variables ([reference](/configuration/servers))
-- **`docker/`** — Docker Compose stack and Dockerfiles
+- **`docker/`** — Docker Compose stack, accessories, and Dockerfile
+- **`hooks/`** — Pre/post build and deploy hook scripts ([reference](/configuration#hooks))
 
 ## Deploy
 
@@ -119,16 +132,14 @@ This generates the following structure at the root of your project:
   <Tabs.Tab>
     ### Workflow file
 
-    <Callout type="warning">
-      **GitHub organizations**: Fork [the Dockflow repo](https://github.com/Shawiizz/dockflow) and update the `uses` URL in your workflow file.
-    </Callout>
+    The CLI auto-detects the environment and version from your CI provider's variables (tag name, branch, commit SHA). No external workflow dependency needed.
 
     <Tabs items={['GitHub Actions', 'GitLab CI']}>
       <Tabs.Tab>
-        Create `.github/workflows/deploy.yml`:
+        Create `.github/workflows/ci.yml`:
 
         ```yaml copy
-        name: Github CI/CD
+        name: CI/CD
 
         on:
           push:
@@ -137,32 +148,31 @@ This generates the following structure at the root of your project:
             tags:
               - '*'
 
-        # Note: Make sure your .dockflow/config.yml has project_name set:
-        # project_name: "my-app"
-
         jobs:
+          # CI: Build images on branch push
           build:
             if: github.ref_type == 'branch'
-            uses: Shawiizz/dockflow/.github/workflows/build.yml@2.0.0
-            with:
-              free-disk-space: false
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@v4
+              - run: npx @dockflow-tools/cli build
+                env:
+                  DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
 
-          deploy-tag:
+          # CD: Deploy on tag push (1.0.0 → production, 1.0.0-staging → staging)
+          deploy:
             if: github.ref_type == 'tag'
-            uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.0
-            with:
-              tag: ${{ github.ref_name }}
-              free-disk-space: false
-            secrets: inherit
-
-          deploy-branch:
-            if: github.ref_type == 'branch'
-            uses: Shawiizz/dockflow/.github/workflows/deploy.yml@2.0.0
-            with:
-              version: ${{ github.ref_name }}-${{ github.sha }}
-              free-disk-space: false
-            secrets: inherit
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@v4
+              - run: npx @dockflow-tools/cli deploy
+                env:
+                  DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
         ```
+
+        <Callout type="info">
+          Pin a specific CLI version with `npx @dockflow-tools/cli@1.2.3`.
+        </Callout>
       </Tabs.Tab>
 
       <Tabs.Tab>
@@ -173,13 +183,39 @@ This generates the following structure at the root of your project:
           - build
           - deploy
 
-        # Note: Make sure your .dockflow/config.yml has project_name set:
-        # project_name: "my-app"
+        # CI: Build images on branch push
+        build:
+          stage: build
+          image: node:24
+          services:
+            - docker:dind
+          variables:
+            DOCKER_HOST: tcp://docker:2375
+            DOCKER_TLS_CERTDIR: ""
+          before_script:
+            - apt-get update && apt-get install -y docker.io
+          script:
+            - npx @dockflow-tools/cli build
+          rules:
+            - if: $CI_COMMIT_TAG
+              when: never
+            - when: always
 
-        include:
-          - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/2.0.0/.gitlab/workflows/build.yml'
-          - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/2.0.0/.gitlab/workflows/deploy.yml'
-          - remote: 'https://raw.githubusercontent.com/Shawiizz/dockflow/refs/tags/2.0.0/.gitlab/workflows/deploy-branch.yml'
+        # CD: Deploy on tag push (1.0.0 → production, 1.0.0-staging → staging)
+        deploy:
+          stage: deploy
+          image: node:24
+          services:
+            - docker:dind
+          variables:
+            DOCKER_HOST: tcp://docker:2375
+            DOCKER_TLS_CERTDIR: ""
+          before_script:
+            - apt-get update && apt-get install -y docker.io
+          script:
+            - npx @dockflow-tools/cli deploy
+          rules:
+            - if: $CI_COMMIT_TAG
         ```
       </Tabs.Tab>
     </Tabs>

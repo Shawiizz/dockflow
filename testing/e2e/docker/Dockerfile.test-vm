@@ -1,15 +1,15 @@
 
-# Use Ubuntu as base for apt/Ansible compatibility
-FROM ubuntu:22.04
+# Use Ubuntu as base for Docker-in-Docker support
+FROM ubuntu:24.04
 
 # Build arguments
-ARG SSH_USER=dockflow
-ARG SSH_PASSWORD=dockflow123
+ARG DEPLOY_USER=deploytest
+ARG DEPLOY_PASSWORD=dockflow123
 
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Update system and install required dependencies
+# Install minimal dependencies (no Ansible/Python - not needed for tests)
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
@@ -18,18 +18,11 @@ RUN apt-get update && \
         bash \
         curl \
         git \
-        python3 \
-        python3-pip \
-        python3-apt \
-        python3-debian \
         jq \
         rsync \
         netcat-openbsd \
-        nginx \
+        gzip \
         docker.io \
-        sshpass \
-        unzip \
-    && pip3 install --no-cache-dir pyyaml ansible docker \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure SSH
@@ -37,35 +30,39 @@ RUN mkdir -p /var/run/sshd && \
     sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && \
     sed -i 's/#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     sed -i 's/#PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config && \
-    sed -i 's/#Port 22/Port 22/' /etc/ssh/sshd_config
+    echo "MaxSessions 50" >> /etc/ssh/sshd_config && \
+    echo "MaxStartups 50:30:100" >> /etc/ssh/sshd_config
 
 # Set root password
-RUN echo "root:${SSH_PASSWORD}" | chpasswd
+RUN echo "root:${DEPLOY_PASSWORD}" | chpasswd
 
-# Create deploy user with sudo privileges (only if SSH_USER is not root)
-RUN if [ "${SSH_USER}" != "root" ]; then \
-        useradd -m -s /bin/bash ${SSH_USER} && \
-        echo "${SSH_USER}:${SSH_PASSWORD}" | chpasswd && \
-        echo "${SSH_USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
-        mkdir -p /home/${SSH_USER}/.ssh && \
-        chmod 700 /home/${SSH_USER}/.ssh && \
-        chown -R ${SSH_USER}:${SSH_USER} /home/${SSH_USER} && \
-        usermod -aG docker ${SSH_USER}; \
-    else \
-        mkdir -p /root/.ssh && \
-        chmod 700 /root/.ssh; \
-    fi
+# Create deploy user with sudo + docker privileges and pre-baked SSH key
+RUN useradd -m -s /bin/bash ${DEPLOY_USER} && \
+    echo "${DEPLOY_USER}:${DEPLOY_PASSWORD}" | chpasswd && \
+    echo "${DEPLOY_USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+    mkdir -p /home/${DEPLOY_USER}/.ssh && \
+    chmod 700 /home/${DEPLOY_USER}/.ssh && \
+    chown -R ${DEPLOY_USER}:${DEPLOY_USER} /home/${DEPLOY_USER} && \
+    usermod -aG docker ${DEPLOY_USER}
 
-# Copie les scripts
-COPY entrypoint.sh /entrypoint.sh
+# Copy the pre-generated public key into authorized_keys
+COPY fixtures/keys/id_ed25519.pub /home/${DEPLOY_USER}/.ssh/authorized_keys
+RUN chmod 600 /home/${DEPLOY_USER}/.ssh/authorized_keys && \
+    chown ${DEPLOY_USER}:${DEPLOY_USER} /home/${DEPLOY_USER}/.ssh/authorized_keys
+
+# Copy scripts
+COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-COPY healthcheck.sh /healthcheck.sh
+COPY docker/healthcheck.sh /healthcheck.sh
 RUN chmod +x /healthcheck.sh
 
-EXPOSE 22 2375 2376 80 443
+# Create dockflow runtime directory
+RUN mkdir -p /var/lib/dockflow && chmod 1777 /var/lib/dockflow
 
-HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
+EXPOSE 22 2375 80 443
+
+HEALTHCHECK --interval=5s --timeout=5s --start-period=30s --retries=10 \
     CMD /healthcheck.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

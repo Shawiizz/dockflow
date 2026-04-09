@@ -1,0 +1,131 @@
+<div class="flex flex-col gap-6 animate-fade-in">
+  <!-- Page Header -->
+  <app-page-header title="Deployments" subtitle="Deploy your project and view history">
+    <ng-container actions>
+      <p-button
+        [label]="showForm() ? 'Close' : 'New Deploy'"
+        [icon]="showForm() ? 'pi pi-times' : 'pi pi-plus'"
+        (onClick)="showForm.set(!showForm())"
+      />
+      <p-button
+        label="Refresh"
+        icon="pi pi-refresh"
+        severity="secondary"
+        [loading]="loading()"
+        (onClick)="refresh()"
+      />
+    </ng-container>
+  </app-page-header>
+
+  <!-- Deploy Form -->
+  @if (showForm()) {
+    <div class="flex flex-col gap-4 p-6 bg-bg-secondary border border-border-primary rounded-xl">
+      <h3 class="m-0 text-base">New Deployment</h3>
+      <div class="flex flex-wrap gap-4">
+        <div class="flex flex-col gap-1 min-w-[10rem]">
+          <label class="text-sm text-text-muted">Version</label>
+          <input type="text" pInputText [(ngModel)]="version" placeholder="latest" class="w-full">
+        </div>
+        <div class="flex flex-col gap-1 min-w-[10rem]">
+          <label class="text-sm text-text-muted">Services filter</label>
+          <input type="text" pInputText [(ngModel)]="servicesFilter" placeholder="e.g. web,api" class="w-full">
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-4">
+        <div class="flex items-center gap-2">
+          <p-checkbox [(ngModel)]="skipBuild" [binary]="true" inputId="skipBuild" />
+          <label for="skipBuild">Skip Build</label>
+        </div>
+        <div class="flex items-center gap-2">
+          <p-checkbox [(ngModel)]="force" [binary]="true" inputId="force" />
+          <label for="force">Force</label>
+        </div>
+        <div class="flex items-center gap-2">
+          <p-checkbox [(ngModel)]="deployAccessories" [binary]="true" inputId="accessories" />
+          <label for="accessories">Accessories</label>
+        </div>
+        <div class="flex items-center gap-2">
+          <p-checkbox [(ngModel)]="all" [binary]="true" inputId="all" />
+          <label for="all">All</label>
+        </div>
+        <div class="flex items-center gap-2">
+          <p-checkbox [(ngModel)]="skipAccessories" [binary]="true" inputId="skipAccessories" />
+          <label for="skipAccessories">Skip Accessories</label>
+        </div>
+        <div class="flex items-center gap-2">
+          <p-checkbox [(ngModel)]="dryRun" [binary]="true" inputId="dryRun" />
+          <label for="dryRun">Dry Run</label>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <p-button
+          [label]="deploying() ? 'Deploying...' : 'Deploy'"
+          icon="pi pi-upload"
+          (onClick)="startDeploy()"
+          [disabled]="deploying() || !envService.selectedOrUndefined()"
+        />
+        @if (deploying()) {
+          <p-button
+            label="Cancel"
+            icon="pi pi-times"
+            severity="danger"
+            (onClick)="cancelDeploy()"
+          />
+        }
+      </div>
+    </div>
+  }
+
+  <!-- Deploy Console Output -->
+  @if (deployLogs().length > 0) {
+    <div class="bg-bg-secondary border border-border-primary rounded-xl overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-border-primary">
+        <span class="text-sm font-medium text-text-primary">Output</span>
+        @if (deploySuccess() === true) {
+          <p-tag value="Success" severity="success" />
+        } @else if (deploySuccess() === false) {
+          <p-tag value="Failed" severity="danger" />
+        } @else if (deploying()) {
+          <p-tag value="Running" severity="info" />
+        }
+      </div>
+      <app-terminal-output [lines]="deployLogs()" class="block max-h-[25rem]" />
+    </div>
+  }
+
+  <!-- Error -->
+  @if (error()) {
+    <app-error-banner [message]="error()!" (retry)="refresh()" />
+  }
+
+  <!-- Loading -->
+  @if (loading()) {
+    <div class="flex flex-col gap-3">
+      @for (i of [1, 2, 3]; track i) {
+        <div class="flex gap-4 items-start p-4 bg-bg-secondary border border-border-primary rounded-xl">
+          <p-skeleton shape="circle" size="2rem" />
+          <div class="flex-1 flex flex-col gap-2">
+            <div class="flex items-center justify-between">
+              <p-skeleton width="40%" height="0.9375rem" />
+              <p-skeleton width="3.5rem" height="1.375rem" borderRadius="9999px" />
+            </div>
+            <div class="flex gap-4">
+              <p-skeleton width="4rem" height="0.625rem" />
+              <p-skeleton width="3rem" height="0.625rem" />
+              <p-skeleton width="3.5rem" height="0.625rem" />
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  } @else if (deployments().length === 0) {
+    <app-empty-state icon="pi pi-upload" title="No deployments yet" description="Deploy your project to start recording history." />
+  } @else {
+    <!-- Deployment History -->
+    <div class="flex flex-col gap-3">
+      @for (deploy of deployments(); track deploy.id) {
+        <app-deploy-entry [deploy]="deploy" />
+      }
+    </div>
+  }
+</div>

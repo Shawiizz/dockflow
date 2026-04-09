@@ -38,6 +38,7 @@ defaults:
 servers:
   main_server:
     role: manager
+    tags: [production]
     env:
       APP_PORT: "3000"
 ```
@@ -60,7 +61,7 @@ services:
 ### Dockerfile
 
 ```dockerfile
-FROM node:22-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -108,7 +109,7 @@ health_checks:
   on_failure: rollback
   endpoints:
     - name: "API Health"
-      url: "http://localhost:{{ lookup('env', 'API_PORT') }}/health"
+      url: "http://localhost:3000/health"
       expected_status: 200
       timeout: 30
       retries: 3
@@ -123,6 +124,7 @@ defaults:
 servers:
   main_server:
     role: manager
+    tags: [production]
     env:
       FRONTEND_PORT: "80"
       API_PORT: "3000"
@@ -187,7 +189,7 @@ services:
       - backend
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     networks:
       - backend
 
@@ -224,20 +226,20 @@ defaults:
 servers:
   manager_1:
     role: manager
-    tags: [primary]
+    tags: [production]
     env:
       APP_PORT: "3000"
       DOMAIN: "app.example.com"
 
   worker_1:
     role: worker
-    tags: [app]
+    tags: [production]
     env:
       APP_PORT: "3000"
 
   worker_2:
     role: worker
-    tags: [app]
+    tags: [production]
     env:
       APP_PORT: "3000"
 ```
@@ -252,7 +254,8 @@ registry:
   type: ghcr
   url: ghcr.io
   namespace: myorg
-  token: "{{ registry_token }}"
+  username: "{{ current.env.registry_username }}"
+  token: "{{ current.env.registry_token }}"
   additional_tags:
     - "latest"
     - "{branch}-latest"
@@ -263,7 +266,7 @@ health_checks:
   on_failure: rollback
   endpoints:
     - name: "App Health"
-      url: "http://localhost:{{ lookup('env', 'APP_PORT') }}/health"
+      url: "http://localhost:3000/health"
       expected_status: 200
       retries: 5
 ```
@@ -309,9 +312,9 @@ REGISTRY_TOKEN=ghp_xxxx
 
 ```bash
 # 1. Setup each server
-dockflow setup remote --host manager-ip --user root --key ~/.ssh/id_ed25519
-dockflow setup remote --host worker1-ip --user root --key ~/.ssh/id_ed25519
-dockflow setup remote --host worker2-ip --user root --key ~/.ssh/id_ed25519
+dockflow setup root@manager-ip -k ~/.ssh/id_ed25519
+dockflow setup root@worker1-ip -k ~/.ssh/id_ed25519
+dockflow setup root@worker2-ip -k ~/.ssh/id_ed25519
 
 # 2. Initialize Swarm cluster
 dockflow setup swarm production
@@ -322,7 +325,7 @@ dockflow deploy production 1.0.0
 
 ## Custom Templates
 
-Using Jinja2 templates to generate Nginx configuration per-server:
+Using Nunjucks templates to generate Nginx configuration per-server:
 
 ### config.yml
 
@@ -330,11 +333,11 @@ Using Jinja2 templates to generate Nginx configuration per-server:
 project_name: "my-app"
 
 templates:
-  - src: "nginx/app.conf.j2"
+  - src: "nginx/app.conf.njk"
     dest: "nginx/app.conf"
 ```
 
-### nginx/app.conf.j2
+### nginx/app.conf.njk
 
 ```nginx
 server {
@@ -351,6 +354,59 @@ server {
 ```
 
 See [Templates](/configuration/templates) for the full templating reference.
+
+## App with Automatic HTTPS
+
+A single service deployed with automatic HTTPS via Traefik. No Nginx config required.
+
+### config.yml
+
+```yaml
+project_name: "my-app"
+
+proxy:
+  enabled: true
+  email: admin@example.com
+  domains:
+    production: my-app.example.com
+    staging: staging.my-app.example.com
+
+health_checks:
+  enabled: true
+  on_failure: rollback
+  endpoints:
+    - name: "App"
+      url: "https://my-app.example.com/health"
+      expected_status: 200
+```
+
+### docker-compose.yml
+
+```yaml
+services:
+  app:
+    image: my-app
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: ${ENV}
+```
+
+Dockflow automatically injects the Traefik routing labels and connects the service to the `traefik-public` network. No manual label configuration needed.
+
+### Deploy
+
+```bash
+dockflow deploy production 1.0.0
+# → Traefik deployed on manager
+# → Certificate obtained from Let's Encrypt
+# → https://my-app.example.com is live
+```
+
+See [Automatic HTTPS Proxy](/configuration/proxy) for all options.
 
 ## Projects Using Dockflow
 

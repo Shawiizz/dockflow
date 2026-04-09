@@ -1,0 +1,21 @@
+project_name: "test-app"
+
+options:
+  enable_debug_logs: true
+
+stack_management:
+  keep_releases: 3
+  cleanup_on_failure: true
+
+proxy:
+  enabled: true
+  acme: false
+  domains:
+    test: "test.local"
+
+backup:
+  retention: 3
+  compression: gzip
+  accessories:
+    redis:
+      type: redis

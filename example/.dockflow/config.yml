@@ -10,29 +10,27 @@ options:
 # Docker Registry configuration (optional)
 # When configured, built images will be pushed to this registry
 registry:
-  # Enable or disable registry push (default: false)
+  # Registry type: local (no push), dockerhub, ghcr, gitlab, or custom
+  type: dockerhub
+
+  # Enable or disable registry push (default: true when registry block is present)
   enabled: false
-  
-  # Registry URL (e.g., docker.io, registry.gitlab.com, ghcr.io, your-registry.com)
-  # For Docker Hub, use docker.io
-  url: ""
-  
+
+  # Registry hostname (e.g., docker.io, registry.gitlab.com, ghcr.io)
+  url: "docker.io"
+
   # Registry namespace/organization (e.g., myorg, myusername)
   # Full image name will be: {url}/{namespace}/{image}:{tag}
   namespace: ""
-  
-  # Authentication method: "basic" or "token"
-  # basic: uses username/password
-  # token: uses a single token (for services like GitHub Container Registry)
-  auth_method: "basic"
-  
-  # Credentials (use environment variables for security)
+
+  # Credentials (use CI secrets — add REGISTRY_USERNAME, REGISTRY_PASSWORD to your CI/CD)
+  # Resolved via Nunjucks: secrets from servers.yml env or CI are available as {{ current.env.xxx }}
   # For basic auth:
-  username: "{{ registry_username }}"
-  password: "{{ registry_password }}"
-  
+  username: "{{ current.env.registry_username }}"
+  password: "{{ current.env.registry_password }}"
+
   # For token auth (e.g., GitHub Personal Access Token):
-  token: "{{ registry_token }}"
+  token: "{{ current.env.registry_token }}"
   
   # Additional tags to apply (besides the version tag)
   # Available variables: {version}, {env}, {branch}, {sha}
@@ -40,31 +38,6 @@ registry:
     - "latest"  # Always tag as latest
     # - "{env}"  # Tag with environment name
     # - "{branch}-latest"  # Tag with branch name
-
-# Docker Swarm configuration (optional)
-# When a 'deploy' section is present in docker-compose.yml, 
-# the framework will automatically use Swarm mode
-swarm:
-  # Prune old services after deployment (default: true)
-  prune_services: true
-  
-  # Wait for services to be running (default: true)
-  wait_for_services: true
-  wait_timeout: 300  # seconds
-  
-  # Update configuration
-  update_config:
-    # Update order: "stop-first" or "start-first"
-    order: "stop-first"
-    
-    # Failure action: "pause", "continue", or "rollback"
-    failure_action: "rollback"
-    
-    # Monitor duration after each task update
-    monitor: "30s"
-    
-    # Max failure ratio (0-1)
-    max_failure_ratio: 0.2
 
 # Stack management configuration (optional)
 # Manages releases and cleanup of old deployments
@@ -83,7 +56,7 @@ stack_management:
 
 # Health checks configuration (optional)
 health_checks:
-  # Enable or disable health checks (default: false)
+  # Enable or disable health checks (default: true)
   enabled: true
   
   # Time to wait after deployment before running health checks (in seconds)
@@ -98,27 +71,25 @@ health_checks:
   on_failure: "rollback"
   
   # List of endpoints to check
-  # You can use Jinja2 templating with environment variables:
-  # - {{ lookup('env', 'VARIABLE_NAME') }}
-  # - {{ ansible_env.VARIABLE_NAME }}
+  # These URLs are called directly from the CLI machine — use the server's public IP or domain.
   endpoints:
-    # Example: Main application health endpoint with dynamic port
+    # Example: Main application health endpoint
     - name: "Main Application Health"
-      url: "http://localhost:{{ lookup('env', 'APP_EXTERNAL_PORT') }}/health"
+      url: "http://localhost:3000/health"
       expected_status: 200
       timeout: 30
       retries: 3
       retry_delay: 5
-    
+
     # Example: API status endpoint
     - name: "API Status"
-      url: "http://localhost:{{ lookup('env', 'APP_EXTERNAL_PORT') }}/api/status"
+      url: "http://localhost:3000/api/status"
       expected_status: 200
       timeout: 15
-    
+
     # Example: Database connectivity check
     - name: "Database Connection"
-      url: "http://localhost:{{ lookup('env', 'APP_EXTERNAL_PORT') }}/health/db"
+      url: "http://localhost:3000/health/db"
       expected_status: 200
       timeout: 20
       retries: 5
