@@ -7,12 +7,29 @@ Dockflow deploys to a single server or a multi-node cluster — same workflow. A
 <Steps>
 ## Install the CLI
 
-<Tabs items={['npm (any OS)', 'Linux / macOS', 'Windows']}>
+<Tabs items={['npm (any OS)', 'npx (no install)', 'Linux / macOS', 'Windows']}>
   <Tabs.Tab>
     ```bash
     npm install -g @dockflow-tools/cli
     dockflow --version
     ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Run any command directly without installing:
+
+    ```bash
+    npx @dockflow-tools/cli <command>
+    ```
+
+    For example:
+
+    ```bash
+    npx @dockflow-tools/cli deploy production
+    ```
+
+    <Callout type="info">
+      Pin a specific version with `npx @dockflow-tools/cli@1.2.3 <command>`.
+    </Callout>
   </Tabs.Tab>
   <Tabs.Tab>
     ```bash
