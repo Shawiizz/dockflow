@@ -27,7 +27,7 @@ jobs:
 
       - name: Install CLI dependencies
         run: |
-          cd cli-ts && bun install --frozen-lockfile
+          cd cli && bun install --frozen-lockfile
 
       - name: Run E2E Tests
         run: |

@@ -17,7 +17,7 @@ export interface CLIResult {
  * Get the path to the CLI binary for the current platform.
  */
 function getCliBinaryPath(): string {
-  const cliDir = join(DOCKFLOW_ROOT, "cli-ts");
+  const cliDir = join(DOCKFLOW_ROOT, "cli");
   return join(cliDir, "dist", getCliBinaryName());
 }
 

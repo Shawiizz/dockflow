@@ -7,21 +7,21 @@
  * Also automatically adds --dev flag for deploy/build commands.
  * 
  * Usage from project directory:
- *   bun <path-to-dockflow>/cli-ts/scripts/dev.ts <command> [args]
+ *   bun <path-to-dockflow>/cli/scripts/dev.ts <command> [args]
  * 
  * Or set an alias:
- *   alias dockflow-dev='bun /path/to/dockflow/cli-ts/scripts/dev.ts'
+ *   alias dockflow-dev='bun /path/to/dockflow/cli/scripts/dev.ts'
  */
 
 import { spawn } from 'child_process';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-// Get the root of the dockflow project (parent of cli-ts)
+// Get the root of the dockflow project (parent of cli)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const cliTsDir = dirname(__dirname);
-const dockflowRoot = resolve(cliTsDir, '..');
+const cliDir = dirname(__dirname);
+const dockflowRoot = resolve(cliDir, '..');
 
 // Set the environment variable
 process.env.DOCKFLOW_DEV_PATH = dockflowRoot;
@@ -36,7 +36,7 @@ if ((command === 'deploy' || command === 'build' || command === 'ui') && !args.i
 }
 
 // Run the CLI with the same args - use current working directory
-const proc = spawn('bun', ['run', resolve(cliTsDir, 'src/index.ts'), ...args], {
+const proc = spawn('bun', ['run', resolve(cliDir, 'src/index.ts'), ...args], {
   stdio: 'inherit',
   env: process.env,
   shell: true

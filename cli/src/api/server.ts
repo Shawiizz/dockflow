@@ -33,7 +33,7 @@ async function loadEmbeddedAssets(): Promise<Map<string, string> | null> {
  */
 function getUIDistPath(): string {
   // Angular 21 with application builder outputs to dist/browser/browser
-  // When running from source: cli-ts/src/api -> cli-ts/ui/dist/browser/browser
+  // When running from source: cli/src/api -> cli/ui/dist/browser/browser
   const devPath = join(import.meta.dir, '../../ui/dist/browser/browser');
   
   if (existsSync(devPath)) return devPath;
@@ -285,7 +285,7 @@ function getNoUIHTML(): string {
     <div class="logo">🐳</div>
     <h1>Dockflow UI</h1>
     <p>The WebUI needs to be built first.</p>
-    <div class="code">cd cli-ts/ui && pnpm install && pnpm build</div>
+    <div class="code">cd cli/ui && pnpm install && pnpm build</div>
     <br>
     <div class="status">API Server Running</div>
   </div>

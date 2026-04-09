@@ -46,7 +46,7 @@ graph TB
 
 ## Building CLI Binaries
 
-The CLI is built as a native binary using Bun. See the `cli-ts/` directory for the TypeScript source.
+The CLI is built as a native binary using Bun. See the `cli/` directory for the TypeScript source.
 
 ### Prerequisites
 
@@ -55,7 +55,7 @@ The CLI is built as a native binary using Bun. See the `cli-ts/` directory for t
 ### Build Commands
 
 ```bash
-cd cli-ts
+cd cli
 
 # Install dependencies
 bun install
@@ -69,7 +69,7 @@ bun run build linux-x64
 
 ### Output
 
-Binaries are generated in `cli-ts/dist/`:
+Binaries are generated in `cli/dist/`:
 
 | Binary | Platform |
 |--------|----------|
@@ -84,8 +84,8 @@ Binaries are generated in `cli-ts/dist/`:
 Run the CLI without compilation:
 
 ```bash
-bun ./cli-ts/src/index.ts --help
-bun ./cli-ts/src/index.ts setup interactive
+bun ./cli/src/index.ts --help
+bun ./cli/src/index.ts setup interactive
 ```
 
 #### Testing deploy/build with local Dockflow
@@ -99,20 +99,20 @@ Use the dev script to test deployment with your local Dockflow changes. The scri
 cd /path/to/my-app
 
 # Run dockflow commands using the dev script
-bun /path/to/dockflow/cli-ts/scripts/dev.ts deploy production --force
-bun /path/to/dockflow/cli-ts/scripts/dev.ts build production
+bun /path/to/dockflow/cli/scripts/dev.ts deploy production --force
+bun /path/to/dockflow/cli/scripts/dev.ts build production
 ```
 
 **Recommended: Create an alias for convenience**
 
 ```bash
 # Bash/Linux/macOS - Add to ~/.bashrc or ~/.zshrc
-alias dockflow-dev='bun /path/to/dockflow/cli-ts/scripts/dev.ts'
+alias dockflow-dev='bun /path/to/dockflow/cli/scripts/dev.ts'
 ```
 
 ```powershell
 # PowerShell/Windows - Add to $PROFILE
-function dockflow-dev { bun C:\path\to\dockflow\cli-ts\scripts\dev.ts @args }
+function dockflow-dev { bun C:\path\to\dockflow\cli\scripts\dev.ts @args }
 ```
 
 Then use it like the regular CLI:

@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Dockflow is a CLI-first deployment framework for Docker Swarm. A single TypeScript binary handles building, deploying, and managing Docker Swarm stacks via direct SSH — no runtime dependencies beyond the binary itself. Ansible is only used for one-shot machine provisioning (`dockflow setup`).
 
 **Stack at a glance:**
-- `cli-ts/` — TypeScript CLI (Bun runtime) + embedded Angular WebUI — handles all deploy logic via ssh2
+- `cli/` — TypeScript CLI (Bun runtime) + embedded Angular WebUI — handles all deploy logic via ssh2
 - `ansible/` — Ansible roles for machine provisioning only (`configure_host.yml`)
 - `docs/` — Next.js 15 + Nextra documentation site
 - `packages/` — MCP server, npm CLI wrapper
@@ -16,8 +16,8 @@ Dockflow is a CLI-first deployment framework for Docker Swarm. A single TypeScri
 ## Repository Structure
 
 ```
-cli-ts/          # TypeScript CLI application (Bun)
-cli-ts/ui/       # Angular 21 WebUI (PrimeNG + Tailwind)
+cli/          # TypeScript CLI application (Bun)
+cli/ui/       # Angular 21 WebUI (PrimeNG + Tailwind)
 ansible/         # Ansible roles for machine provisioning (setup only)
 docs/            # Next.js 15 + Nextra documentation site
 packages/        # Additional packages (MCP server, npm CLI wrapper)
@@ -27,7 +27,7 @@ testing/e2e/     # End-to-end tests (run from WSL/CI only)
 
 ## Common Commands
 
-### CLI (`cli-ts/`)
+### CLI (`cli/`)
 
 ```bash
 bun install                    # Install dependencies
@@ -39,7 +39,7 @@ bun run build:windows          # Build Windows x64 binary only
 bun run ui:build               # Build Angular UI (cd ui && pnpm build)
 ```
 
-### WebUI (`cli-ts/ui/`)
+### WebUI (`cli/ui/`)
 
 ```bash
 pnpm install                   # Install dependencies
@@ -88,17 +88,17 @@ Ansible is only used for `dockflow setup` (one-shot machine provisioning via `co
 
 ### CLI Command Pattern
 
-Commands live in `cli-ts/src/commands/` and follow this structure:
+Commands live in `cli/src/commands/` and follow this structure:
 1. Export a `register<Name>Command(program: Command)` function
 2. Use Commander.js `.command()`, `.option()`, `.description()`, `.action(withErrorHandler(...))`
 3. Commands **throw errors** — never call `process.exit()` directly
 4. The `withErrorHandler()` wrapper (from `utils/errors.ts`) catches, formats, and exits
 
-Entry point `cli-ts/src/index.ts` registers all commands and sets up the `--verbose` flag via a global preAction hook.
+Entry point `cli/src/index.ts` registers all commands and sets up the `--verbose` flag via a global preAction hook.
 
 ### Error Handling Hierarchy
 
-Custom error classes in `cli-ts/src/utils/errors.ts`:
+Custom error classes in `cli/src/utils/errors.ts`:
 ```
 CLIError (base — has code, suggestion, cause)
   ├─ ConfigError      (codes 10-19)
@@ -112,7 +112,7 @@ Always throw these typed errors from commands. The `withErrorHandler` wrapper di
 
 ### Services Layer
 
-`cli-ts/src/services/` contains type-safe service classes for Docker Swarm operations:
+`cli/src/services/` contains type-safe service classes for Docker Swarm operations:
 
 **Read/monitoring services:**
 - `StackService` — stack lifecycle (getServices, exists, scale, etc.). Also holds `findContainerForService()` which searches all Swarm nodes in parallel via `Promise.any()`.
@@ -133,13 +133,13 @@ Always throw these typed errors from commands. The `withErrorHandler` wrapper di
 - `AuditService` — deployment audit log entries on remote manager
 - `HistorySyncService` — replicates audit/metrics to non-manager nodes
 
-Services use the `Result<T, E>` type pattern (`ok()` / `err()`) from `cli-ts/src/types/`.
+Services use the `Result<T, E>` type pattern (`ok()` / `err()`) from `cli/src/types/`.
 
 **Multi-node awareness:** Services that need to find or operate on containers (BackupService, ExecService) accept an `allConnections: SSHKeyConnection[]` parameter alongside the manager connection. This is required because in a multi-node Swarm, a container may run on any worker — not just the manager. Always pass `getAllNodeConnections(env)` when creating these services.
 
 ### Console Output
 
-All CLI output goes through `cli-ts/src/utils/output.ts` helpers. **Never use `console.log` directly.**
+All CLI output goes through `cli/src/utils/output.ts` helpers. **Never use `console.log` directly.**
 
 Key helpers: `printSuccess`, `printError`, `printWarning`, `printInfo`, `printDebug` (verbose-only), `printDim`, `printBlank`, `printJSON`, `printRaw`, `printHeader`, `printSection`, `printTableRow`.
 
@@ -149,14 +149,14 @@ Verbose mode controlled by `setVerbose()` / `isVerbose()`.
 
 ### Config System
 
-- **Zod schemas**: `cli-ts/src/schemas/config.schema.ts` — runtime validation of `.dockflow/config.yml`
-- **TypeScript interfaces**: `cli-ts/src/utils/config.ts` — `DockflowConfig`, `ServersConfig`, etc.
+- **Zod schemas**: `cli/src/schemas/config.schema.ts` — runtime validation of `.dockflow/config.yml`
+- **TypeScript interfaces**: `cli/src/utils/config.ts` — `DockflowConfig`, `ServersConfig`, etc.
 - **Both must stay in sync** when adding/changing config fields.
 - Config loading: `loadConfig()` finds the `.dockflow/` directory by walking up from CWD via `getProjectRoot()`.
 
 ### SSH Connections
 
-Typed with ssh2 `ConnectConfig` in `cli-ts/src/utils/ssh.ts`. Connection types in `cli-ts/src/types/connection.ts`:
+Typed with ssh2 `ConnectConfig` in `cli/src/utils/ssh.ts`. Connection types in `cli/src/types/connection.ts`:
 - `SSHKeyConnection` — host, port, user, privateKey
 - `SSHPasswordConnection` — host, port, user, password
 
@@ -176,7 +176,7 @@ The `dockflow deploy` command executes entirely in TypeScript via ssh2:
 8. Cleanup old releases, write audit/metrics, sync history to all nodes
 9. Release lock (always, even on failure)
 
-All steps are in `cli-ts/src/commands/deploy.ts` using the services layer.
+All steps are in `cli/src/commands/deploy.ts` using the services layer.
 
 ### Ansible (Setup Only)
 
@@ -189,13 +189,13 @@ Ansible is only used for `dockflow setup` via `ansible/configure_host.yml`. Rema
 
 All directories under `/var/lib/dockflow/` are created by the deploy command (via `SwarmDeployService`) with proper ownership so the deploy user can write to them directly via SSH without sudo. The `dockflow setup` command also creates the base `/var/lib/dockflow` directory.
 
-Directory constants are defined in `cli-ts/src/constants.ts` (`DOCKFLOW_STACKS_DIR`, `DOCKFLOW_LOCKS_DIR`, `DOCKFLOW_AUDIT_DIR`, `DOCKFLOW_METRICS_DIR`, `DOCKFLOW_BACKUPS_DIR`, `DOCKFLOW_ACCESSORIES_DIR`).
+Directory constants are defined in `cli/src/constants.ts` (`DOCKFLOW_STACKS_DIR`, `DOCKFLOW_LOCKS_DIR`, `DOCKFLOW_AUDIT_DIR`, `DOCKFLOW_METRICS_DIR`, `DOCKFLOW_BACKUPS_DIR`, `DOCKFLOW_ACCESSORIES_DIR`).
 
 ### API Server & WebUI
 
-`cli-ts/src/api/server.ts` — Bun HTTP server with WebSocket support. Serves the Angular UI (embedded in binary via `ui-manifest.generated`, or from `ui/dist/` in dev).
+`cli/src/api/server.ts` — Bun HTTP server with WebSocket support. Serves the Angular UI (embedded in binary via `ui-manifest.generated`, or from `ui/dist/` in dev).
 
-Routes in `cli-ts/src/api/routes/`:
+Routes in `cli/src/api/routes/`:
 - REST: `/api/servers`, `/api/services`, `/api/config`, `/api/deploy`, `/api/operations`, `/api/accessories`, `/api/backup`, etc.
 - WebSocket: `/ws/ssh/:serverName` (interactive SSH), `/ws/exec/:serviceName` (docker exec)
 
@@ -205,14 +205,14 @@ Response helpers: `jsonResponse()`, `errorResponse()` — both include CORS head
 
 ### WebUI Architecture
 
-Angular 21 standalone components with lazy-loaded routes in `cli-ts/ui/src/app/app.routes.ts`:
+Angular 21 standalone components with lazy-loaded routes in `cli/ui/src/app/app.routes.ts`:
 - 12 feature modules: dashboard, servers, services, logs, deploy, build, accessories, monitoring, resources, topology, settings
 - `settings` route has an `unsavedChangesGuard`
-- Shared components (sidebar, header) in `cli-ts/ui/src/app/shared/`
+- Shared components (sidebar, header) in `cli/ui/src/app/shared/`
 
 ### Constants
 
-Key values in `cli-ts/src/constants.ts`: `DOCKFLOW_VERSION` (from package.json), `DEFAULT_SSH_PORT` (22), `LOCK_STALE_THRESHOLD_MINUTES` (30), `CONVERGENCE_TIMEOUT_S` (300), `CONVERGENCE_INTERVAL_S` (5), directory paths (`DOCKFLOW_STACKS_DIR`, `DOCKFLOW_LOCKS_DIR`, etc.).
+Key values in `cli/src/constants.ts`: `DOCKFLOW_VERSION` (from package.json), `DEFAULT_SSH_PORT` (22), `LOCK_STALE_THRESHOLD_MINUTES` (30), `CONVERGENCE_TIMEOUT_S` (300), `CONVERGENCE_INTERVAL_S` (5), directory paths (`DOCKFLOW_STACKS_DIR`, `DOCKFLOW_LOCKS_DIR`, etc.).
 
 ## E2E Tests
 
@@ -233,13 +233,13 @@ CI secrets format: `{ENV}_{SERVER}_{CONNECTION}` = base64-encoded `user@host:por
 
 ## Development Rules
 
-- **Typecheck before committing**: Run `bun run typecheck` in `cli-ts/` — zero errors required.
+- **Typecheck before committing**: Run `bun run typecheck` in `cli/` — zero errors required.
 - **Use centralized output helpers**: Never add raw `console.log`/`console.error` in CLI commands or API routes.
 - **Config schema + interface parity**: Update both Zod schema and TypeScript interface when adding config fields.
 - **Error handling**: Throw typed `CLIError` subclasses from commands. Never catch-and-exit manually.
-- **Services for Docker ops**: Use the services layer (`cli-ts/src/services/`) for Docker Swarm interactions, not raw SSH commands in command handlers.
+- **Services for Docker ops**: Use the services layer (`cli/src/services/`) for Docker Swarm interactions, not raw SSH commands in command handlers.
 - **Multi-node services**: When creating `BackupService` or `ExecService`, always pass `getAllNodeConnections(env)` as the third argument so container lookups work on worker nodes too.
-- **New directory paths**: Add constants in `cli-ts/src/constants.ts` and ensure the deploy command creates them on the remote host.
+- **New directory paths**: Add constants in `cli/src/constants.ts` and ensure the deploy command creates them on the remote host.
 ## Self-Review Before Finishing
 
 After implementing any feature or fix, always ask:

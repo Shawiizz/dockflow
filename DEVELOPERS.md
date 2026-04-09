@@ -16,11 +16,11 @@
 
 ```bash
 # From the project root
-bun cli-ts/src/index.ts <command> [args]
+bun cli/src/index.ts <command> [args]
 
 # Examples
-bun cli-ts/src/index.ts deploy staging
-bun cli-ts/src/index.ts status production
+bun cli/src/index.ts deploy staging
+bun cli/src/index.ts status production
 ```
 
 ### Dev script (for deploy/build commands)
@@ -31,20 +31,20 @@ The `dev.ts` script sets `DOCKFLOW_DEV_PATH` so the CLI uses your local Ansible 
 cd /path/to/my-app
 
 # Run dockflow commands using local source
-bun /path/to/dockflow/cli-ts/scripts/dev.ts deploy production --force
+bun /path/to/dockflow/cli/scripts/dev.ts deploy production --force
 ```
 
 Recommended: create an alias:
 
 ```bash
 # ~/.bashrc or ~/.zshrc
-alias dockflow-dev='bun /path/to/dockflow/cli-ts/scripts/dev.ts'
+alias dockflow-dev='bun /path/to/dockflow/cli/scripts/dev.ts'
 ```
 
 ### Typechecking
 
 ```bash
-cd cli-ts
+cd cli
 bun run typecheck   # must pass with zero errors before committing
 ```
 
@@ -54,10 +54,10 @@ The UI proxies to the CLI's API server. You need two terminals:
 
 ```bash
 # Terminal 1 — Angular dev server
-cd cli-ts/ui && pnpm install && pnpm start   # port 4201
+cd cli/ui && pnpm install && pnpm start   # port 4201
 
 # Terminal 2 — CLI API server
-cd cli-ts && bun run dev ui                  # port 4200, proxies to 4201
+cd cli && bun run dev ui                  # port 4200, proxies to 4201
 ```
 
 Open `http://localhost:4200`. The `--dev` flag (added automatically by `bun run dev`) makes the API proxy non-`/api/` requests to the Angular server.
@@ -137,10 +137,10 @@ docker exec dockflow-test-manager docker stack ps test-app-test
 
 Quick checklist:
 
-1. **Command**: add in `cli-ts/src/commands/`, register in `cli-ts/src/index.ts`
-2. **Service logic**: put in `cli-ts/src/services/` if it involves Docker Swarm ops
-3. **Config field**: update both `cli-ts/src/schemas/config.schema.ts` (Zod) and `cli-ts/src/utils/config.ts` (interface)
-4. **New remote path**: add constants in `cli-ts/src/constants.ts` and ensure the deploy command creates them via `SwarmDeployService`
+1. **Command**: add in `cli/src/commands/`, register in `cli/src/index.ts`
+2. **Service logic**: put in `cli/src/services/` if it involves Docker Swarm ops
+3. **Config field**: update both `cli/src/schemas/config.schema.ts` (Zod) and `cli/src/utils/config.ts` (interface)
+4. **New remote path**: add constants in `cli/src/constants.ts` and ensure the deploy command creates them via `SwarmDeployService`
 5. **Ansible defaults**: centralize in `ansible/group_vars/all.yml`, never hardcode in roles
 6. **Typecheck**: `bun run typecheck` — zero errors
 7. **Documentation**: add or update a page in `docs/app/`

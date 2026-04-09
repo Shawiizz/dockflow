@@ -46,7 +46,7 @@ jobs:
           VERSION=${{ steps.version.outputs.version }}
           node -e "
             const fs = require('fs');
-            for (const p of ['package.json', 'cli-ts/package.json', 'packages/cli/package.json']) {
+            for (const p of ['package.json', 'cli/package.json', 'packages/cli/package.json']) {
               const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
               pkg.version = '$VERSION';
               fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
@@ -56,29 +56,29 @@ jobs:
 
       - name: Install CLI dependencies
         run: |
-          cd cli-ts
+          cd cli
           bun install
 
       - name: Install UI dependencies
         run: |
-          cd cli-ts/ui
+          cd cli/ui
           pnpm install --frozen-lockfile
 
       - name: Build UI
         run: |
-          cd cli-ts/ui
+          cd cli/ui
           pnpm build
 
       - name: Build all platforms
         run: |
-          cd cli-ts
+          cd cli
           bun run scripts/build.ts
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dockflow-binaries-${{ steps.version.outputs.version }}
-          path: cli-ts/dist/*
+          path: cli/dist/*
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
@@ -86,7 +86,7 @@ jobs:
         with:
           name: Dockflow ${{ steps.version.outputs.version }}
           tag_name: ${{ github.ref_name }}
-          files: cli-ts/dist/*
+          files: cli/dist/*
           generate_release_notes: true
           body: |
             ## Dockflow ${{ steps.version.outputs.version }}

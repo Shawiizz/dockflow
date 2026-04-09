@@ -139,7 +139,7 @@ export async function waitForSwarm(
  * Build the CLI binary. Returns the path to the binary.
  */
 export async function buildCLI(): Promise<string> {
-  const cliDir = join(E2E_DIR, "..", "..", "cli-ts");
+  const cliDir = join(E2E_DIR, "..", "..", "cli");
   const binaryName = getCliBinaryName();
   const binaryPath = join(cliDir, "dist", binaryName);
 
