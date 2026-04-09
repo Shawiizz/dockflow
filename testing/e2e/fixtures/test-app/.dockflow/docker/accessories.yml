@@ -4,7 +4,7 @@ services:
   # Simple Redis for testing accessories deployment
   # Pinned to manager so the backup CLI (running from WSL) can reach it via SSH.
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     ports:
       - "6379:6379"
     command: redis-server --save 60 1

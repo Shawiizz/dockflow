@@ -207,7 +207,7 @@ export async function redisExec(args: string[]): Promise<string> {
         "docker",
         "ps",
         "--filter",
-        "ancestor=redis:7-alpine",
+        "ancestor=redis:8-alpine",
         "--format",
         "{{.ID}}",
       ])

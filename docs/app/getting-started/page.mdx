@@ -169,7 +169,7 @@ This generates the following structure at the root of your project:
         # CI: Build images on branch push
         build:
           stage: build
-          image: node:22
+          image: node:24
           services:
             - docker:dind
           variables:
@@ -187,7 +187,7 @@ This generates the following structure at the root of your project:
         # CD: Deploy on tag push (1.0.0 → production, 1.0.0-staging → staging)
         deploy:
           stage: deploy
-          image: node:22
+          image: node:24
           services:
             - docker:dind
           variables:

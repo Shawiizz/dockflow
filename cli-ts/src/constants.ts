@@ -67,4 +67,4 @@ export const SSH_KEEPALIVE_COUNT_MAX = 3;
 export const TRAEFIK_STACK_NAME = 'traefik';
 export const TRAEFIK_NETWORK_NAME = 'traefik-public';
 export const TRAEFIK_CERTS_VOLUME = 'traefik-certs';
-export const TRAEFIK_IMAGE = 'traefik:v3.3';
+export const TRAEFIK_IMAGE = 'traefik:v3.6';

@@ -17,7 +17,7 @@ stages:
 # CI: Build images on branch push
 build:
   stage: build
-  image: node:22
+  image: node:24
   services:
     - docker:dind
   variables:
@@ -35,7 +35,7 @@ build:
 # CD: Deploy on tag push (e.g., 1.0.0 → production, 1.0.0-staging → staging)
 deploy:
   stage: deploy
-  image: node:22
+  image: node:24
   services:
     - docker:dind
   variables:

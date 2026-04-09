@@ -54,7 +54,7 @@ const getGitlabCI = (version: string) => `stages:
 # CI: Build images on branch push
 build:
   stage: build
-  image: node:22
+  image: node:24
   services:
     - docker:dind
   variables:
@@ -72,7 +72,7 @@ build:
 # CD: Deploy on tag push (e.g., 1.0.0 → production, 1.0.0-staging → staging)
 deploy:
   stage: deploy
-  image: node:22
+  image: node:24
   services:
     - docker:dind
   variables:
@@ -253,7 +253,7 @@ services:
 
   # Example: Redis cache
   # redis:
-  #   image: redis:7-alpine
+  #   image: redis:8-alpine
   #   ports:
   #     - "6379:6379"
   #   volumes:
@@ -311,7 +311,7 @@ const DOCKER_COMPOSE = `services:
 #     name: traefik-public
 `;
 
-const DOCKERFILE = `FROM node:20-alpine
+const DOCKERFILE = `FROM node:24-alpine
 
 WORKDIR /app
 

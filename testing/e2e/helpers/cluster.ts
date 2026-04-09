@@ -55,8 +55,8 @@ export async function startCluster(): Promise<void> {
 
   // Pre-pull images into DinD containers in parallel
   await preloadImages([MANAGER_CONTAINER, WORKER_CONTAINER], [
-    "redis:7-alpine",
-    "traefik:v3.3",
+    "redis:8-alpine",
+    "traefik:v3.6",
     "nginx:alpine",
   ]);
 }
