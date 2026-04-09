@@ -53,7 +53,7 @@ export async function startCluster(): Promise<void> {
   );
   console.log("[cluster] Containers started.");
 
-  // Pre-load images that DinD can't pull (TLS/proxy issues)
+  // Pre-pull images into DinD containers in parallel
   await preloadImages([MANAGER_CONTAINER, WORKER_CONTAINER], [
     "redis:7-alpine",
     "traefik:v3.3",
@@ -62,63 +62,24 @@ export async function startCluster(): Promise<void> {
 }
 
 /**
- * Transfer images from host Docker into DinD containers.
- * Pulls missing images on host first, then pipes via docker save/load.
+ * Pull images directly inside each DinD container, in parallel.
+ * Host SSL certs are mounted into the containers via docker-compose.yml
+ * so the inner Docker daemon can verify TLS certificates from proxies.
  */
 async function preloadImages(
   containers: string[],
   images: string[]
 ): Promise<void> {
-  for (const image of images) {
-    // Ensure image exists on host
-    const exists = await exec([
-      "docker", "images", "-q", image,
-    ]).catch(() => "");
-    if (!exists.trim()) {
-      console.log(`[cluster] Pulling ${image} on host...`);
-      await exec(["docker", "pull", image], { timeoutMs: 120_000 });
-    }
-
-    // Load into each DinD container via pipe
-    for (const container of containers) {
-      console.log(`[cluster] Loading ${image} into ${container}...`);
-
-      const save = Bun.spawn(["docker", "save", image], {
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      const load = Bun.spawn(
-        ["docker", "exec", "-i", container, "docker", "load"],
-        {
-          stdin: save.stdout,
-          stdout: "pipe",
-          stderr: "pipe",
-        }
-      );
-
-      const [saveExit, loadExit] = await Promise.all([
-        save.exited,
-        load.exited,
-      ]);
-
-      if (saveExit !== 0) {
-        const stderr = await new Response(save.stderr).text();
-        throw new Error(`docker save failed for ${image}: ${stderr.trim()}`);
-      }
-      if (loadExit !== 0) {
-        const stderr = await new Response(load.stderr).text();
-        throw new Error(`docker load failed in ${container}: ${stderr.trim()}`);
-      }
-
-      // Verify image is actually available inside the container
-      const verify = await exec([
-        "docker", "exec", container, "docker", "images", "-q", image,
-      ]).catch(() => "");
-      if (!verify.trim()) {
-        throw new Error(`Image ${image} not found in ${container} after docker load`);
-      }
-    }
-  }
+  await Promise.all(
+    containers.flatMap((container) =>
+      images.map((image) => {
+        console.log(`[cluster] Pulling ${image} in ${container}...`);
+        return exec(["docker", "exec", container, "docker", "pull", image], {
+          timeoutMs: 120_000,
+        });
+      })
+    )
+  );
 }
 
 /**

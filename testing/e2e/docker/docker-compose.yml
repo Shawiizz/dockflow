@@ -15,6 +15,7 @@ services:
       - "80:80"
     volumes:
       - swarm-data:/swarm
+      - /etc/ssl/certs:/etc/ssl/certs:ro
     networks:
       - test-network
     healthcheck:
@@ -38,6 +39,7 @@ services:
       - "2223:22"
     volumes:
       - swarm-data:/swarm
+      - /etc/ssl/certs:/etc/ssl/certs:ro
     networks:
       - test-network
     depends_on:
