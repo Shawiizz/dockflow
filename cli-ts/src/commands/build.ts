@@ -16,6 +16,7 @@ import { loadSecrets } from '../utils/secrets';
 import { detectCIEnvironment, parseTagForDeployment, resolveDeployParams } from '../utils/ci';
 import { getCurrentBranch } from '../utils/git';
 import { withErrorHandler, ConfigError } from '../utils/errors';
+import { resolveEnvironmentPrefix } from '../utils/validation';
 import { loadConfig } from '../utils/config';
 import { buildTemplateContext, getManagersForEnvironment } from '../utils/servers';
 import { BuildService } from '../services/build-service';
@@ -49,15 +50,15 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
       ciVersion = params.version;
       printInfo(`CI detected (${ci.provider}): building for ${env}`);
     } else {
-      throw new ConfigError(
-        'Environment is required',
-        'Usage: dockflow build <env>\nIn CI, environment is auto-detected from git tag/branch.',
-      );
+      env = 'build';
+      printWarning('No environment specified — using "build". Template variables like {{ env }} will be "build".');
     }
   }
 
   loadSecrets();
   printDebug('Secrets loaded from environment');
+
+  env = resolveEnvironmentPrefix(env);
 
   printIntro(`Building Docker images for ${env}`);
   printBlank();
@@ -85,6 +86,9 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
 
   // Render templates and resolve compose content
   const managers = getManagersForEnvironment(env);
+  if (managers.length === 0) {
+    printWarning(`Environment "${env}" not found in servers.yml — {{ current.env.* }} variables will be empty.`);
+  }
   const currentServerName = managers.length > 0 ? managers[0].name : undefined;
   const templateContext = currentServerName ? buildTemplateContext(env, currentServerName) : null;
 
