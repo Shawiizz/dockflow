@@ -51,3 +51,4 @@ coverage/
 tmpclaude*
 nul
 .claude
+docs/next-env.d.ts
