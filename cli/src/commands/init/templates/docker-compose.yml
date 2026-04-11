@@ -1,23 +1,16 @@
 # Docker Compose stack configuration
 # Full reference: https://dockflow.dev/configuration/docker-compose
 #
-# IMAGE_NAME and IMAGE_TAG are automatically injected by dockflow build/deploy.
+# Dockflow automatically injects Swarm defaults (update_config, rollback_config,
+# restart_policy). Override them here if needed. image tag is managed by dockflow.
 
 services:
   app:
-    image: ${IMAGE_NAME}:${IMAGE_TAG}
+    image: {{ project_name }}
     ports:
       - "3000:3000"
     deploy:
       replicas: 1
-      update_config:
-        parallelism: 1
-        delay: 10s
-        order: start-first
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 3
 
 # networks:
 #   default:

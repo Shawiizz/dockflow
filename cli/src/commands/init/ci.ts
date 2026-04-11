@@ -3,7 +3,7 @@ import { join } from 'path';
 import chalk from 'chalk';
 import { confirmPrompt, multiselectPrompt, selectPrompt } from '../../utils/prompts';
 import { printInfo, printSuccess, printWarning } from '../../utils/output';
-import { loadTemplate, render } from './templates';
+import { loadTemplate, renderCI } from './templates';
 
 export type CIPlatform = 'github' | 'gitlab';
 export type CIJob = 'build' | 'deploy';
@@ -33,7 +33,7 @@ async function setupGithub(projectRoot: string, jobs: CIJob[], version: string):
   if (!existsSync(workflowDir)) mkdirSync(workflowDir, { recursive: true });
 
   for (const job of jobs) {
-    const content = render(await loadTemplate(`github-${job}.yml`), { version });
+    const content = renderCI(await loadTemplate(`github-${job}.yml`), { version });
     await safeWriteFile(
       join(workflowDir, `dockflow-${job}.yml`),
       content,
@@ -46,7 +46,7 @@ async function setupGitlab(projectRoot: string, jobs: CIJob[], version: string):
   const stagesBlock = `stages:\n${jobs.map(j => `  - ${j}`).join('\n')}`;
   const jobBlocks = await Promise.all(
     jobs.map(job =>
-      loadTemplate(`gitlab-${job}.yml`).then(t => render(t, { version }).trimEnd()),
+      loadTemplate(`gitlab-${job}.yml`).then(t => renderCI(t, { version }).trimEnd()),
     ),
   );
 

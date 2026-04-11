@@ -11,6 +11,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Deploy
-        run: npx @dockflow-tools/cli@{{ version }} deploy
+        run: npx @dockflow-tools/cli@[[ version ]] deploy
         env:
           DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}

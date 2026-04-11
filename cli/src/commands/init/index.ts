@@ -64,7 +64,7 @@ export function registerInitCommand(program: Command): void {
         writeFileSync(join(dockflowDir, 'servers.yml'), render(await loadTemplate('servers.yml'), ctx), 'utf-8');
         printSuccess(chalk.cyan('.dockflow/servers.yml'));
 
-        writeFileSync(join(dockflowDir, 'docker', 'docker-compose.yml'), await loadTemplate('docker-compose.yml'), 'utf-8');
+        writeFileSync(join(dockflowDir, 'docker', 'docker-compose.yml'), render(await loadTemplate('docker-compose.yml'), ctx), 'utf-8');
         printSuccess(chalk.cyan('.dockflow/docker/docker-compose.yml'));
 
         const gitignorePath = join(projectRoot, '.gitignore');

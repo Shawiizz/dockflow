@@ -3,10 +3,6 @@
 
 project_name: "{{ project_name }}"
 
-options:
-  remote_build: false
-  image_auto_tag: true
-
 health_checks:
   enabled: true
   on_failure: notify
