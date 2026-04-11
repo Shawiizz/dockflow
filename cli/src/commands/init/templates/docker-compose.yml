@@ -1,0 +1,25 @@
+# Docker Compose stack configuration
+# Full reference: https://dockflow.dev/configuration/docker-compose
+#
+# IMAGE_NAME and IMAGE_TAG are automatically injected by dockflow build/deploy.
+
+services:
+  app:
+    image: ${IMAGE_NAME}:${IMAGE_TAG}
+    ports:
+      - "3000:3000"
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+# networks:
+#   default:
+#     external: true
+#     name: traefik-public

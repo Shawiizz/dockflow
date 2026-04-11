@@ -166,6 +166,30 @@ export async function multilinePrompt(opts: {
   });
 }
 
+/**
+ * Multi-select prompt with checkbox navigation
+ */
+export async function multiselectPrompt<T>(opts: {
+  message: string;
+  options: { value: T; label: string; hint?: string }[];
+  initialValues?: T[];
+  required?: boolean;
+}): Promise<T[]> {
+  if (!process.stdin.isTTY) {
+    return opts.initialValues ?? opts.options.map(o => o.value);
+  }
+
+  const value = await clack.multiselect<T>({
+    message: opts.message,
+    options: opts.options as any,
+    initialValues: opts.initialValues,
+    required: opts.required ?? false,
+  });
+
+  handleCancel(value);
+  return value as T[];
+}
+
 // Re-export @clack visual helpers
 export const intro = clack.intro;
 export const outro = clack.outro;

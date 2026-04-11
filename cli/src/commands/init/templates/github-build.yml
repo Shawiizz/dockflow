@@ -1,0 +1,16 @@
+name: Dockflow Build
+
+on:
+  push:
+    branches:
+      - '*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: npx @dockflow-tools/cli@{{ version }} build
+        env:
+          DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}

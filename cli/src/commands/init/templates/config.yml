@@ -1,0 +1,15 @@
+# Dockflow configuration
+# Full reference: https://dockflow.dev/configuration/config
+
+project_name: "{{ project_name }}"
+
+options:
+  remote_build: false
+  image_auto_tag: true
+
+health_checks:
+  enabled: true
+  on_failure: notify
+  # endpoints:
+  #   - url: "https://myapp.example.com/health"
+  #     expected_status: 200

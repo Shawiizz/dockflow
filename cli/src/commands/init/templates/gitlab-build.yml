@@ -1,0 +1,16 @@
+build:
+  stage: build
+  image: node:24
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq docker.io
+  script:
+    - npx @dockflow-tools/cli@{{ version }} build
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - when: always

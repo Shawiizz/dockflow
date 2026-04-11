@@ -1,0 +1,21 @@
+# Dockflow servers configuration
+# Full reference: https://dockflow.dev/configuration/servers
+
+servers:
+  main_server:
+    role: manager
+    # host: "1.2.3.4"   # or set via CI secret: PRODUCTION_MAIN_SERVER_CONNECTION
+    tags: [production]
+
+defaults:
+  user: dockflow
+  port: 22
+
+env:
+  all:
+    APP_NAME: "{{ project_name }}"
+
+  production: {}
+
+  # staging:
+  #   DOMAIN: "staging.example.com"
