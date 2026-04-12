@@ -256,6 +256,17 @@ export class SwarmDeployService {
       lastStatuses = statuses;
 
       if (allConverged) {
+        // Before declaring convergence, verify no service has an in-progress update.
+        // During a redeploy, old replicas may already match the desired count before
+        // the rolling update starts. We must wait for the update to finish.
+        const updating = await this.getUpdatingServices(lines);
+        if (updating.length > 0) {
+          printDebug(`Update in progress: ${updating.join(', ')}`);
+          spinner.update(`Waiting for ${ctx} convergence: update in progress`);
+          await sleep(interval);
+          continue;
+        }
+
         spinner.succeed(`All services converged: ${statuses.join(', ')}`);
         return;
       }
@@ -334,6 +345,33 @@ export class SwarmDeployService {
         'Try `dockflow deploy --force` to force a fresh deployment.',
       );
     }
+  }
+
+  /**
+   * Check if any services have an in-progress update (state = "updating").
+   * Returns the names of services that are still updating.
+   */
+  private async getUpdatingServices(serviceLines: string[]): Promise<string[]> {
+    const serviceNames = serviceLines.map((l) => l.split('\t')[0]).filter(Boolean);
+    if (serviceNames.length === 0) return [];
+
+    const quoted = serviceNames.map((s) => `'${shellEscape(s)}'`).join(' ');
+    const result = await sshExec(
+      this.connection,
+      `for svc in ${quoted}; do ` +
+        `STATE=$(docker service inspect "$svc" --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{end}}' 2>/dev/null); ` +
+        `echo "$svc\t$STATE"; ` +
+      `done`,
+    );
+
+    const lines = result.stdout.trim().split('\n').filter(Boolean);
+    return lines
+      .map((l) => {
+        const [svc, state] = l.split('\t');
+        return { svc, state: (state || '').toLowerCase() };
+      })
+      .filter((r) => r.state === 'updating')
+      .map((r) => r.svc);
   }
 
   /**

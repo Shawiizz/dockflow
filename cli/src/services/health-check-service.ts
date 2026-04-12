@@ -246,7 +246,7 @@ export class HealthCheckService {
     const retryDelay = (endpoint.retry_delay ?? 5) * 1000;
 
     const curlFlags = [
-      '-s', '-o', '/dev/null', '-w', '%{http_code}',
+      '-4', '-s', '-o', '/dev/null', '-w', '%{http_code}',
       '--max-time', String(timeoutS),
       '-X', method,
     ];

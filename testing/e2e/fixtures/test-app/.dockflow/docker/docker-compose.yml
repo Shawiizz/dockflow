@@ -5,7 +5,7 @@ services:
       context: ../..
       dockerfile: Dockerfile.web
     ports:
-      - "${WEB_PORT}:80"
+      - "{{ current.env.web_port }}:80"
     deploy:
       replicas: 2
       placement:
@@ -13,5 +13,6 @@ services:
       update_config:
         parallelism: 1
         delay: 5s
+        monitor: 5s
       restart_policy:
         condition: on-failure

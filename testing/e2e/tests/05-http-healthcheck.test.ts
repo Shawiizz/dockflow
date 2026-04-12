@@ -41,7 +41,7 @@ describe("remote HTTP health checks", () => {
     const status = await dockerExec(MANAGER_CONTAINER, [
       "sh",
       "-c",
-      "curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://localhost:8080/",
+      "curl -4 -s -o /dev/null -w '%{http_code}' --max-time 10 http://localhost:8080/",
     ]);
     expect(status.trim()).toBe("200");
   }, 30_000);
