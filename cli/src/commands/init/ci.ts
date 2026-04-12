@@ -5,7 +5,7 @@ import { confirmPrompt, multiselectPrompt, selectPrompt } from '../../utils/prom
 import { printInfo, printSuccess, printWarning } from '../../utils/output';
 import { loadTemplate, renderCI } from './templates';
 
-export type CIPlatform = 'github' | 'gitlab';
+export type CIPlatform = 'github' | 'gitlab' | 'bitbucket';
 export type CIJob = 'build' | 'deploy';
 
 async function safeWriteFile(
@@ -54,12 +54,33 @@ async function setupGitlab(projectRoot: string, jobs: CIJob[], version: string):
   await safeWriteFile(join(projectRoot, '.gitlab-ci.yml'), content, '.gitlab-ci.yml');
 }
 
+async function setupBitbucket(projectRoot: string, jobs: CIJob[], version: string): Promise<void> {
+  // Bitbucket uses a single bitbucket-pipelines.yml — merge selected job sections
+  const sections = await Promise.all(
+    jobs.map(job =>
+      loadTemplate(`bitbucket-${job}.yml`).then(t => renderCI(t, { version })),
+    ),
+  );
+
+  // Each template is a full YAML document; we extract the `pipelines:` block from each
+  // and merge them under a shared header. Only the first template contributes the header.
+  const [first, ...rest] = sections;
+  const header = first.split('pipelines:')[0];
+  const allPipelineBlocks = sections
+    .map(s => s.split('pipelines:')[1] ?? '')
+    .join('');
+
+  const content = `${header}pipelines:${allPipelineBlocks}`;
+  await safeWriteFile(join(projectRoot, 'bitbucket-pipelines.yml'), content, 'bitbucket-pipelines.yml');
+}
+
 export async function runCISetup(projectRoot: string, version: string): Promise<void> {
   const platform = await selectPrompt<CIPlatform>({
     message: 'CI/CD platform:',
     options: [
-      { value: 'github', label: 'GitHub Actions', hint: '.github/workflows/' },
-      { value: 'gitlab', label: 'GitLab CI', hint: '.gitlab-ci.yml' },
+      { value: 'github',    label: 'GitHub Actions',     hint: '.github/workflows/' },
+      { value: 'gitlab',    label: 'GitLab CI',          hint: '.gitlab-ci.yml' },
+      { value: 'bitbucket', label: 'Bitbucket Pipelines', hint: 'bitbucket-pipelines.yml' },
     ],
   });
 
@@ -75,7 +96,9 @@ export async function runCISetup(projectRoot: string, version: string): Promise<
 
   if (platform === 'github') {
     await setupGithub(projectRoot, jobs, version);
-  } else {
+  } else if (platform === 'gitlab') {
     await setupGitlab(projectRoot, jobs, version);
+  } else {
+    await setupBitbucket(projectRoot, jobs, version);
   }
 }

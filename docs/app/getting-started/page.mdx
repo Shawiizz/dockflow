@@ -134,34 +134,40 @@ This generates the following structure at the root of your project:
 
     The CLI auto-detects the environment and version from your CI provider's variables (tag name, branch, commit SHA). No external workflow dependency needed.
 
-    <Tabs items={['GitHub Actions', 'GitLab CI']}>
+    You can generate these files automatically with `dockflow init`.
+
+    <Tabs items={['GitHub Actions', 'GitLab CI', 'Bitbucket Pipelines']}>
       <Tabs.Tab>
-        Create `.github/workflows/ci.yml`:
+        Create `.github/workflows/dockflow-build.yml` and `.github/workflows/dockflow-deploy.yml`:
 
         ```yaml copy
-        name: CI/CD
+        # .github/workflows/dockflow-build.yml
+        name: Build
 
         on:
           push:
-            branches:
-              - '*'
-            tags:
-              - '*'
+            branches: ['*']
 
         jobs:
-          # CI: Build images on branch push
           build:
-            if: github.ref_type == 'branch'
             runs-on: ubuntu-latest
             steps:
               - uses: actions/checkout@v4
               - run: npx @dockflow-tools/cli build
                 env:
                   DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
+        ```
 
-          # CD: Deploy on tag push (1.0.0 → production, 1.0.0-staging → staging)
+        ```yaml copy
+        # .github/workflows/dockflow-deploy.yml
+        name: Deploy
+
+        on:
+          push:
+            tags: ['*']
+
+        jobs:
           deploy:
-            if: github.ref_type == 'tag'
             runs-on: ubuntu-latest
             steps:
               - uses: actions/checkout@v4
@@ -183,7 +189,7 @@ This generates the following structure at the root of your project:
           - build
           - deploy
 
-        # CI: Build images on branch push
+        # CI: Build images on branch push (needs Docker)
         build:
           stage: build
           image: node:24
@@ -193,7 +199,7 @@ This generates the following structure at the root of your project:
             DOCKER_HOST: tcp://docker:2375
             DOCKER_TLS_CERTDIR: ""
           before_script:
-            - apt-get update && apt-get install -y docker.io
+            - apt-get update -qq && apt-get install -y -qq docker.io
           script:
             - npx @dockflow-tools/cli build
           rules:
@@ -201,22 +207,51 @@ This generates the following structure at the root of your project:
               when: never
             - when: always
 
-        # CD: Deploy on tag push (1.0.0 → production, 1.0.0-staging → staging)
+        # CD: Deploy on tag push (SSH-only, no Docker needed)
         deploy:
           stage: deploy
           image: node:24
-          services:
-            - docker:dind
-          variables:
-            DOCKER_HOST: tcp://docker:2375
-            DOCKER_TLS_CERTDIR: ""
-          before_script:
-            - apt-get update && apt-get install -y docker.io
           script:
             - npx @dockflow-tools/cli deploy
           rules:
             - if: $CI_COMMIT_TAG
         ```
+      </Tabs.Tab>
+
+      <Tabs.Tab>
+        Create `bitbucket-pipelines.yml` at the root of your project:
+
+        ```yaml copy
+        image: node:24
+
+        definitions:
+          services:
+            docker:
+              image: docker:dind
+
+        pipelines:
+          # CI: Build images on branch push (needs Docker)
+          branches:
+            '*':
+              - step:
+                  name: Build
+                  services:
+                    - docker
+                  script:
+                    - npx @dockflow-tools/cli build
+
+          # CD: Deploy on tag push (SSH-only, no Docker needed)
+          tags:
+            '*':
+              - step:
+                  name: Deploy
+                  script:
+                    - npx @dockflow-tools/cli deploy
+        ```
+
+        <Callout type="info">
+          Bitbucket Pipelines reads secrets from **Repository variables** — go to Repository Settings → Repository variables to add them.
+        </Callout>
       </Tabs.Tab>
     </Tabs>
 
@@ -230,6 +265,11 @@ This generates the following structure at the root of your project:
         |-------------|-------------|---------|
         | `[ENV]_[SERVERNAME]_CONNECTION` | Connection string per server | `PRODUCTION_MAIN_SERVER_CONNECTION` |
         | `GIT_TOKEN` | Optional: for remote build strategy | GitHub/GitLab token |
+
+        Where to add secrets:
+        - **GitHub**: Settings → Secrets and variables → Actions
+        - **GitLab**: Settings → CI/CD → Variables
+        - **Bitbucket**: Repository Settings → Repository variables
 
         <Callout type="error">
           **Do not share connection strings** — they contain SSH private keys.

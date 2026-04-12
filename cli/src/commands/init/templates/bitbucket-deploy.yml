@@ -1,0 +1,9 @@
+image: node:24
+
+pipelines:
+  tags:
+    '*':
+      - step:
+          name: Deploy
+          script:
+            - npx @dockflow-tools/cli@[[ version ]] deploy

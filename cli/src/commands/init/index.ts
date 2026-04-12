@@ -44,10 +44,13 @@ export function registerInitCommand(program: Command): void {
           }
         }
 
-        const { name: projectName, source } = detectProjectName(projectRoot);
+        const { name: projectName, source, sanitized } = detectProjectName(projectRoot);
         printInfo(
           `Project name ${chalk.bold.cyan(projectName)} ${chalk.dim(`(from ${source})`)}`,
         );
+        if (sanitized) {
+          printWarning(`Name was sanitized to match schema constraints (lowercase, hyphens only)`);
+        }
 
         printBlank();
         printSection('Scaffolding project structure');

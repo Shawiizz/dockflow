@@ -19,6 +19,7 @@ import { registerHistoryCommand } from './history';
 import { registerHistorySyncCommand } from './history-sync';
 import { registerMetricsCommand } from './metrics';
 import { registerDiagnoseCommand } from './diagnose';
+import { registerStatusCommand } from './status';
 
 /**
  * Register all app commands
@@ -33,6 +34,7 @@ export function registerAppCommands(program: Command): void {
   registerHistorySyncCommand(program);
   registerMetricsCommand(program);
   registerDiagnoseCommand(program);
+  registerStatusCommand(program);
   
   // Action commands
   registerExecCommand(program);

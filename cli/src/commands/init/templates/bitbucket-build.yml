@@ -1,0 +1,16 @@
+image: node:24
+
+definitions:
+  services:
+    docker:
+      image: docker:dind
+
+pipelines:
+  branches:
+    '*':
+      - step:
+          name: Build
+          services:
+            - docker
+          script:
+            - npx @dockflow-tools/cli@[[ version ]] build

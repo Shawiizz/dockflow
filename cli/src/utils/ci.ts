@@ -6,7 +6,7 @@
 import { getCommitSha } from './git';
 
 export interface CIEnvironment {
-  provider: 'github' | 'gitlab' | 'jenkins' | 'buildkite' | 'generic';
+  provider: 'github' | 'gitlab' | 'jenkins' | 'buildkite' | 'bitbucket' | 'generic';
   isTag: boolean;
   tag: string | null;
   branch: string | null;
@@ -54,6 +54,19 @@ export function detectCIEnvironment(): CIEnvironment | null {
       isTag: !!tag,
       tag,
       branch: tag ? null : (process.env.BRANCH_NAME ?? null),
+      commitSha: sha,
+      shortSha: sha.slice(0, 8),
+    };
+  }
+
+  if (process.env.BITBUCKET_BUILD_NUMBER) {
+    const tag = process.env.BITBUCKET_TAG || null;
+    const sha = process.env.BITBUCKET_COMMIT ?? '';
+    return {
+      provider: 'bitbucket',
+      isTag: !!tag,
+      tag,
+      branch: tag ? null : (process.env.BITBUCKET_BRANCH ?? null),
       commitSha: sha,
       shortSha: sha.slice(0, 8),
     };
@@ -125,7 +138,7 @@ export function parseTagForDeployment(tag: string): { env: string; version: stri
   }
 
   // Common pre-release patterns → not an env
-  if (/^(rc|alpha|beta|dev|pre|canary)\d*$/i.test(suffix)) {
+  if (/^(rc|alpha|beta|dev|pre|canary|hotfix|fix|patch|nightly|snapshot)\d*$/i.test(suffix)) {
     return { env: 'production', version };
   }
 

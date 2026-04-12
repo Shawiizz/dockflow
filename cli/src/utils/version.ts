@@ -44,8 +44,8 @@ export function incrementVersion(version: string): string {
     return `${base}-${parseInt(num) + 1}`;
   }
 
-  // Check if version contains letters at the end without number (e.g., 1.0.0-beta)
-  if (/[a-zA-Z]$/.test(version)) {
+  // Pre-release label ending in letters with a dash separator (e.g., 1.0.0-beta)
+  if (/[a-zA-Z]$/.test(version) && /-[a-zA-Z]/.test(version)) {
     return `${version}2`;
   }
 
@@ -73,19 +73,37 @@ export async function getLatestVersion(
   const stackName = `${projectName}-${env}`;
   if (debug) printDebug(`Looking for versions in stack: ${stackName}`);
 
+  const cmd = `
+STACKS_DIR="${DOCKFLOW_STACKS_DIR}/${stackName}"
+[ -d "$STACKS_DIR" ] || exit 0
+latest_version=""
+latest_ts=""
+for meta in "$STACKS_DIR"/*/metadata.json; do
+  [ -f "$meta" ] || continue
+  data=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    print(d.get('timestamp', ''))
+    print(d.get('version', ''))
+except Exception:
+    pass
+" "$meta" 2>/dev/null)
+  ts=$(echo "$data" | sed -n '1p')
+  ver=$(echo "$data" | sed -n '2p')
+  [ -z "$ts" ] && continue
+  if [ -z "$latest_ts" ] || [ "$ts" \\> "$latest_ts" ]; then
+    latest_ts="$ts"
+    latest_version="$ver"
+  fi
+done
+echo "$latest_version"
+`.trim();
+
   try {
     const sshResult = await sshExec(
       { host: conn.host, port: conn.port, user: conn.user, privateKey: conn.privateKey },
-      `STACKS_DIR="${DOCKFLOW_STACKS_DIR}/${stackName}"; ` +
-      `[ -d "$STACKS_DIR" ] || exit 0; ` +
-      `LATEST=""; LATEST_TS=""; ` +
-      `for DIR in "$STACKS_DIR"/*/; do ` +
-        `[ -f "$DIR/metadata.json" ] || continue; ` +
-        `TS=$(grep -o '"timestamp"[[:space:]]*:[[:space:]]*"[^"]*"' "$DIR/metadata.json" | cut -d'"' -f4); ` +
-        `VERSION=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$DIR/metadata.json" | cut -d'"' -f4); ` +
-        `if [ -z "$LATEST_TS" ] || [ "$TS" \\> "$LATEST_TS" ]; then LATEST_TS="$TS"; LATEST="$VERSION"; fi; ` +
-      `done; ` +
-      `echo "$LATEST"`,
+      cmd,
     );
 
     if (debug) {

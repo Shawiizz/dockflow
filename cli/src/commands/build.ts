@@ -17,7 +17,11 @@ import { detectCIEnvironment, parseTagForDeployment, resolveDeployParams } from 
 import { getCurrentBranch } from '../utils/git';
 import { withErrorHandler, ConfigError } from '../utils/errors';
 import { resolveEnvironmentPrefix } from '../utils/validation';
-import { loadConfig } from '../utils/config';
+import { loadConfig, getProjectRoot } from '../utils/config';
+import { validateConfig as validateConfigSchema, validateServersConfig as validateServersSchema } from '../schemas';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
+import { parse as parseYaml } from 'yaml';
 import { buildTemplateContext, getManagersForEnvironment } from '../utils/servers';
 import { BuildService } from '../services/build-service';
 import { HookService } from '../services/hook-service';
@@ -35,8 +39,35 @@ interface BuildOptions {
 /**
  * Run build — can be called directly or via CLI command
  */
+function quickValidateConfig(): void {
+  const root = getProjectRoot();
+  const configPath = join(root, '.dockflow', 'config.yml');
+  const serversPath = join(root, '.dockflow', 'servers.yml');
+
+  if (!existsSync(configPath)) {
+    throw new ConfigError('No .dockflow/config.yml found', 'Run `dockflow init` to initialize the project.');
+  }
+  if (!existsSync(serversPath)) {
+    throw new ConfigError('No .dockflow/servers.yml found', 'Run `dockflow init` to initialize the project.');
+  }
+
+  const configResult = validateConfigSchema(parseYaml(readFileSync(configPath, 'utf-8')));
+  if (!configResult.success) {
+    const msg = configResult.error.map(e => `  ${e.path}: ${e.message}`).join('\n');
+    throw new ConfigError(`config.yml is invalid:\n${msg}`, 'Run `dockflow config validate` for details.');
+  }
+
+  const serversResult = validateServersSchema(parseYaml(readFileSync(serversPath, 'utf-8')));
+  if (!serversResult.success) {
+    const msg = serversResult.error.map(e => `  ${e.path}: ${e.message}`).join('\n');
+    throw new ConfigError(`servers.yml is invalid:\n${msg}`, 'Run `dockflow config validate` for details.');
+  }
+}
+
 export async function runBuild(env: string | undefined, options: Partial<BuildOptions>): Promise<void> {
   if (options.debug) setVerbose(true);
+
+  quickValidateConfig();
 
   // Auto-detect env from CI environment when not provided
   let ciVersion: string | undefined;

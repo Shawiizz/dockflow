@@ -4,7 +4,7 @@
 servers:
   main_server:
     role: manager
-    # host: "1.2.3.4"   # or set via CI secret: PRODUCTION_MAIN_SERVER_CONNECTION
+    # host: "1.2.3.4"   # or set via CI secret — see https://dockflow.dev/configuration/servers#ci-secrets
     tags: [production]
 
 defaults:
@@ -15,7 +15,8 @@ env:
   all:
     APP_NAME: "{{ project_name }}"
 
-  production: {}
+  production:
+    # DATABASE_URL: "postgres://..."
 
   # staging:
-  #   DOMAIN: "staging.example.com"
+  #   DATABASE_URL: "postgres://..."

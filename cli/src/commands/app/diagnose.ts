@@ -1,23 +1,75 @@
-/**
- * Diagnose command - Diagnose deployment issues
- * 
- * Analyzes stack status, failed tasks, and common problems
- * to help identify why containers aren't starting.
- */
-
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
-import { printSection, printIntro, printInfo, printError, printSuccess, printDebug, printBlank, printRaw, colors } from '../../utils/output';
+import {
+  printSection, printIntro, printInfo, printError,
+  printSuccess, printDebug, printBlank, printRaw, printWarning, colors,
+} from '../../utils/output';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { createStackService } from '../../services';
 import { withErrorHandler } from '../../utils/errors';
 
 interface DiagnosticIssue {
-  severity: 'error' | 'warning' | 'info';
+  severity: 'error' | 'warning';
   category: string;
   message: string;
   suggestion?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Error pattern table — ordered from most to least specific
+// ---------------------------------------------------------------------------
+
+const ERROR_PATTERNS: Array<{
+  pattern: RegExp;
+  suggestion: string | ((m: RegExpMatchArray) => string);
+}> = [
+  {
+    pattern: /bind source path does not exist:\s*(\S+)/i,
+    suggestion: (m: RegExpMatchArray) => `Create the directory on the server: mkdir -p ${m[1]}`,
+  },
+  {
+    pattern: /no such image|image not found/i,
+    suggestion: 'The Docker image may not have been pushed. Try redeploying.',
+  },
+  {
+    pattern: /port is already allocated|address already in use/i,
+    suggestion: 'Another service is using this port. Check running containers with: docker ps',
+  },
+  {
+    pattern: /\boom\b|out of memory/i,
+    suggestion: 'Container ran out of memory. Increase memory limits or reduce memory usage.',
+  },
+  {
+    pattern: /permission denied/i,
+    suggestion: 'Check file/directory permissions on mounted volumes.',
+  },
+  {
+    pattern: /no space left on device/i,
+    suggestion: 'Clean up disk space: dockflow prune <env> or docker system prune',
+  },
+  {
+    pattern: /exec format error/i,
+    suggestion: 'Image architecture mismatch. Rebuild for the correct platform (linux/amd64 or linux/arm64).',
+  },
+  {
+    pattern: /network .+ not found/i,
+    suggestion: 'Docker network may have been removed. Try redeploying the stack.',
+  },
+];
+
+function analyzeTaskError(error: string): string {
+  for (const { pattern, suggestion } of ERROR_PATTERNS) {
+    const match = error.match(pattern);
+    if (match) {
+      return typeof suggestion === 'function' ? suggestion(match) : suggestion;
+    }
+  }
+  return 'Check Docker logs for more details: docker service logs <service_name>';
+}
+
+// ---------------------------------------------------------------------------
+// Command
+// ---------------------------------------------------------------------------
 
 export function registerDiagnoseCommand(program: Command): void {
   program
@@ -35,7 +87,7 @@ export function registerDiagnoseCommand(program: Command): void {
       const issues: DiagnosticIssue[] = [];
       const stackService = createStackService(connection, stackName);
 
-      // 1. Check if stack exists
+      // ── Stack existence ──────────────────────────────────────────────────
       printSection('Stack Status');
       const stackExists = await stackService.exists();
       if (!stackExists) {
@@ -44,14 +96,14 @@ export function registerDiagnoseCommand(program: Command): void {
           severity: 'error',
           category: 'Stack',
           message: 'Stack not found',
-          suggestion: `Run 'dockflow deploy ${env}' to deploy the stack`
+          suggestion: `Run 'dockflow deploy ${env}' to deploy the stack`,
         });
         printDiagnosticSummary(issues);
         return;
       }
       printSuccess('Stack exists');
 
-      // 2. Get services and check replicas
+      // ── Service replicas ─────────────────────────────────────────────────
       printSection('Services');
       const servicesResult = await stackService.getServices();
       if (!servicesResult.success) {
@@ -61,50 +113,37 @@ export function registerDiagnoseCommand(program: Command): void {
           const [current, desired] = service.replicas.split('/').map(s => parseInt(s.trim()));
           if (current === 0 && desired > 0) {
             printRaw(`  ${colors.error('✗')} ${service.name}: ${colors.error(service.replicas)} replicas`);
-            issues.push({
-              severity: 'error',
-              category: 'Replicas',
-              message: `Service '${service.name}' has 0/${desired} replicas running`,
-              suggestion: 'Check task errors below for details'
-            });
+            issues.push({ severity: 'error', category: 'Replicas', message: `Service '${service.name}' has 0/${desired} replicas`, suggestion: 'Check task errors below' });
           } else if (current < desired) {
             printRaw(`  ${colors.warning('!')} ${service.name}: ${colors.warning(service.replicas)} replicas`);
-            issues.push({
-              severity: 'warning',
-              category: 'Replicas',
-              message: `Service '${service.name}' has only ${current}/${desired} replicas`,
-            });
+            issues.push({ severity: 'warning', category: 'Replicas', message: `Service '${service.name}' has ${current}/${desired} replicas` });
           } else {
             printRaw(`  ${colors.success('✓')} ${service.name}: ${colors.success(service.replicas)} replicas`);
           }
         }
       }
 
-      // 3. Get failed tasks
+      // ── Failed tasks ─────────────────────────────────────────────────────
       printSection('Task Errors');
       const tasksResult = await stackService.getTasks();
       if (tasksResult.success) {
-        // Get recent task history (including shutdown/failed)
-        const recentFailures = tasksResult.data
+        const failures = tasksResult.data
           .filter(t => t.error || t.currentState.includes('Failed'))
           .slice(0, 10);
 
-        if (recentFailures.length === 0) {
+        if (failures.length === 0) {
           printSuccess('No task errors found');
         } else {
-          for (const task of recentFailures) {
+          for (const task of failures) {
             printRaw(`  ${colors.error('✗')} ${task.name}`);
             printRaw(`    State: ${colors.warning(task.currentState)}`);
             if (task.error) {
               printRaw(`    Error: ${colors.error(task.error)}`);
-              
-              // Parse common errors
-              const errorAnalysis = analyzeTaskError(task.error);
               issues.push({
                 severity: 'error',
                 category: 'Task',
                 message: `${task.name}: ${task.error}`,
-                suggestion: errorAnalysis.suggestion
+                suggestion: analyzeTaskError(task.error),
               });
             }
             printBlank();
@@ -112,42 +151,37 @@ export function registerDiagnoseCommand(program: Command): void {
         }
       }
 
-      // 4. Check for pending/preparing tasks
+      // ── Pending tasks ────────────────────────────────────────────────────
       printSection('Pending Tasks');
       if (tasksResult.success) {
-        const pendingTasks = tasksResult.data.filter(t => 
-          t.currentState.includes('Pending') || 
+        const pending = tasksResult.data.filter(t =>
+          t.currentState.includes('Pending') ||
           t.currentState.includes('Preparing') ||
-          t.currentState.includes('Starting')
+          t.currentState.includes('Starting'),
         );
 
-        if (pendingTasks.length === 0) {
+        if (pending.length === 0) {
           printInfo('No pending tasks');
         } else {
-          for (const task of pendingTasks) {
+          for (const task of pending) {
             printRaw(`  ${colors.warning('○')} ${task.name}: ${task.currentState}`);
           }
-          if (pendingTasks.some(t => t.currentState.includes('Pending'))) {
-            issues.push({
-              severity: 'warning',
-              category: 'Scheduling',
-              message: 'Some tasks are pending',
-              suggestion: 'This may indicate resource constraints or scheduling issues'
-            });
+          if (pending.some(t => t.currentState.includes('Pending'))) {
+            issues.push({ severity: 'warning', category: 'Scheduling', message: 'Some tasks are pending', suggestion: 'May indicate resource constraints or scheduling issues' });
           }
         }
       }
 
-      // 5. Check Docker events for recent errors
+      // ── Recent Docker events (verbose only) ──────────────────────────────
       if (options.verbose) {
         printSection('Recent Docker Events');
         try {
-          const eventsResult = await sshExec(
+          const result = await sshExec(
             connection,
-            `docker events --since 5m --until 0s --filter "type=container" --filter "event=die" --filter "event=oom" --format '{{.Time}} {{.Actor.Attributes.name}} {{.Action}}' 2>/dev/null | tail -10`
+            `docker events --since 5m --until 0s --filter "type=container" --filter "event=die" --filter "event=oom" --format '{{.Time}} {{.Actor.Attributes.name}} {{.Action}}' 2>/dev/null | tail -10`,
           );
-          if (eventsResult.stdout.trim()) {
-            printRaw(eventsResult.stdout);
+          if (result.stdout.trim()) {
+            printRaw(result.stdout);
           } else {
             printInfo('No recent container deaths');
           }
@@ -156,159 +190,64 @@ export function registerDiagnoseCommand(program: Command): void {
         }
       }
 
-      // 6. Check disk space
+      // ── System resources ─────────────────────────────────────────────────
       printSection('System Resources');
+
       try {
-        const dfResult = await sshExec(connection, `df -h / | tail -1 | awk '{print $5}'`);
-        const diskUsage = parseInt(dfResult.stdout.trim().replace('%', ''));
-        if (diskUsage >= 90) {
-          printRaw(`  Disk usage: ${colors.error(dfResult.stdout.trim())}`);
-          issues.push({
-            severity: 'error',
-            category: 'System',
-            message: `Disk usage is at ${diskUsage}%`,
-            suggestion: `Run 'dockflow prune ${env}' to clean up unused Docker resources`
-          });
-        } else if (diskUsage >= 80) {
-          printRaw(`  Disk usage: ${colors.warning(dfResult.stdout.trim())}`);
-          issues.push({
-            severity: 'warning',
-            category: 'System',
-            message: `Disk usage is at ${diskUsage}%`,
-            suggestion: 'Consider cleaning up unused Docker resources'
-          });
+        const df = await sshExec(connection, `df -h / | tail -1 | awk '{print $5}'`);
+        const diskPct = parseInt(df.stdout.trim().replace('%', ''));
+        if (diskPct >= 90) {
+          printWarning(`Disk usage: ${colors.error(df.stdout.trim())}`);
+          issues.push({ severity: 'error', category: 'System', message: `Disk at ${diskPct}%`, suggestion: `Run 'dockflow prune ${env}'` });
+        } else if (diskPct >= 80) {
+          printWarning(`Disk usage: ${colors.warning(df.stdout.trim())}`);
+          issues.push({ severity: 'warning', category: 'System', message: `Disk at ${diskPct}%` });
         } else {
-          printRaw(`  Disk usage: ${colors.success(dfResult.stdout.trim())}`);
+          printInfo(`Disk usage: ${colors.success(df.stdout.trim())}`);
         }
       } catch {
         printInfo('Could not check disk space');
       }
 
-      // 7. Check memory
       try {
-        const memResult = await sshExec(connection, `free -m | awk 'NR==2{printf "%.0f", $3*100/$2}'`);
-        const memUsage = parseInt(memResult.stdout.trim());
-        if (memUsage >= 90) {
-          printRaw(`  Memory usage: ${colors.error(memUsage + '%')}`);
-          issues.push({
-            severity: 'warning',
-            category: 'System',
-            message: `Memory usage is at ${memUsage}%`,
-            suggestion: 'High memory usage may prevent containers from starting'
-          });
-        } else if (memUsage >= 80) {
-          printRaw(`  Memory usage: ${colors.warning(memUsage + '%')}`);
+        const mem = await sshExec(connection, `free -m | awk 'NR==2{printf "%.0f", $3*100/$2}'`);
+        const memPct = parseInt(mem.stdout.trim());
+        if (memPct >= 90) {
+          printError(`Memory usage: ${memPct}%`);
+          issues.push({ severity: 'warning', category: 'System', message: `Memory at ${memPct}%`, suggestion: 'High usage may prevent containers from starting' });
+        } else if (memPct >= 80) {
+          printWarning(`Memory usage: ${memPct}%`);
         } else {
-          printRaw(`  Memory usage: ${colors.success(memUsage + '%')}`);
+          printInfo(`Memory usage: ${memPct}%`);
         }
       } catch {
         printInfo('Could not check memory usage');
       }
 
-      // Print summary
       printDiagnosticSummary(issues);
     })));
 }
 
-/**
- * Analyze common task errors and provide suggestions
- */
-function analyzeTaskError(error: string): { type: string; suggestion: string } {
-  const errorLower = error.toLowerCase();
-
-  if (errorLower.includes('bind source path does not exist')) {
-    const pathMatch = error.match(/bind source path does not exist: ([^\s]+)/i);
-    const path = pathMatch ? pathMatch[1] : 'the specified path';
-    return {
-      type: 'volume_missing',
-      suggestion: `Create the directory on the server: mkdir -p ${path}`
-    };
-  }
-
-  if (errorLower.includes('no such image') || errorLower.includes('image not found')) {
-    return {
-      type: 'image_missing',
-      suggestion: 'The Docker image may not have been pushed. Try redeploying.'
-    };
-  }
-
-  if (errorLower.includes('port is already allocated') || errorLower.includes('address already in use')) {
-    return {
-      type: 'port_conflict',
-      suggestion: 'Another service is using this port. Check running containers with: docker ps'
-    };
-  }
-
-  if (errorLower.includes('oom') || errorLower.includes('out of memory')) {
-    return {
-      type: 'oom',
-      suggestion: 'Container ran out of memory. Increase memory limits or reduce memory usage.'
-    };
-  }
-
-  if (errorLower.includes('permission denied')) {
-    return {
-      type: 'permission',
-      suggestion: 'Check file/directory permissions on mounted volumes'
-    };
-  }
-
-  if (errorLower.includes('no space left on device')) {
-    return {
-      type: 'disk_full',
-      suggestion: `Clean up disk space: dockflow prune <env> or docker system prune`
-    };
-  }
-
-  if (errorLower.includes('exec format error')) {
-    return {
-      type: 'arch_mismatch',
-      suggestion: 'Image architecture does not match server. Rebuild for correct platform (linux/amd64 or linux/arm64)'
-    };
-  }
-
-  if (errorLower.includes('network') && errorLower.includes('not found')) {
-    return {
-      type: 'network_missing',
-      suggestion: 'Docker network may have been removed. Try redeploying the stack.'
-    };
-  }
-
-  return {
-    type: 'unknown',
-    suggestion: 'Check Docker logs for more details: docker service logs <service_name>'
-  };
-}
-
-/**
- * Print diagnostic summary with issues found
- */
 function printDiagnosticSummary(issues: DiagnosticIssue[]): void {
   printBlank();
-  printSection('Diagnostic Summary');
+  printSection('Summary');
 
-  const errors = issues.filter(i => i.severity === 'error');
+  const errors   = issues.filter(i => i.severity === 'error');
   const warnings = issues.filter(i => i.severity === 'warning');
 
   if (errors.length === 0 && warnings.length === 0) {
-    printSuccess('No issues detected. Stack appears healthy.');
+    printSuccess('No issues detected — stack appears healthy.');
     return;
   }
 
-  if (errors.length > 0) {
-    printRaw(`  ${colors.error('Errors:')} ${errors.length}`);
-    for (const issue of errors) {
-      printRaw(`    ${colors.error('•')} ${issue.message}`);
-      if (issue.suggestion) {
-        printRaw(`      ${colors.dim('→')} ${colors.info(issue.suggestion)}`);
-      }
-    }
-  }
-
-  if (warnings.length > 0) {
-    printRaw(`  ${colors.warning('Warnings:')} ${warnings.length}`);
-    for (const issue of warnings) {
-      printRaw(`    ${colors.warning('•')} ${issue.message}`);
+  for (const { label, list, color } of [
+    { label: 'Errors',   list: errors,   color: colors.error },
+    { label: 'Warnings', list: warnings, color: colors.warning },
+  ] as const) {
+    if (list.length === 0) continue;
+    printRaw(`  ${color(label)}: ${list.length}`);
+    for (const issue of list) {
+      printRaw(`    ${color('•')} ${issue.message}`);
       if (issue.suggestion) {
         printRaw(`      ${colors.dim('→')} ${colors.info(issue.suggestion)}`);
       }

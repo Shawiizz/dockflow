@@ -10,7 +10,7 @@ import { version } from '../package.json';
 import { setVerbose, printSuccess, printBlank, printInfo, printWarning, printRaw } from './utils/output';
 
 // Commands
-import { registerAppCommands } from './commands/app';
+import { registerAppCommands } from './commands/app/index';
 import { registerDeployCommand } from './commands/deploy';
 import { registerBuildCommand } from './commands/build';
 import { registerSetupCommand } from './commands/setup';
