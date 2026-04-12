@@ -316,6 +316,9 @@ export class HealthCheckService {
         const msg = reason instanceof Error ? reason.message : String(reason);
         failedEndpoints.push(endpoints[i].url);
         printWarning(`HTTP check failed: ${msg}`);
+        if (!endpoints[i].remote) {
+          printWarning(`Hint: this check ran on this machine, not on the remote server. Add \`remote: true\` to the endpoint to run it via SSH on the deployment target.`);
+        }
       }
     }
 
