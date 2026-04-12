@@ -13,6 +13,7 @@ export function registerDetailsCommand(program: Command): void {
   program
     .command('details <env>')
     .description('Show stack overview and resource usage')
+    .helpGroup('Inspect')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(async (env: string, options: { server?: string }) => {
       const { stackName, connection } = validateEnv(env, options.server);

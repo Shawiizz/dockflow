@@ -14,6 +14,7 @@ export function registerScaleCommand(program: Command): void {
   program
     .command('scale <env> <service> <replicas>')
     .description('Scale service to specified replicas')
+    .helpGroup('Operate')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(async (env: string, service: string, replicas: string, options: { server?: string }) => {
       const { stackName, connection } = validateEnv(env, options.server);

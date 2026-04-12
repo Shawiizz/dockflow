@@ -13,6 +13,7 @@ export function registerStopCommand(program: Command): void {
   program
     .command('stop <env>')
     .description('Stop and remove the stack')
+    .helpGroup('Operate')
     .option('-y, --yes', 'Skip confirmation')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(async (env: string, options: { yes?: boolean; server?: string }) => {

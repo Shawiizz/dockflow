@@ -13,7 +13,8 @@ export function registerBackupCommands(program: Command): void {
   const backup = program
     .command('backup')
     .alias('bak')
-    .description('Backup and restore accessory databases');
+    .description('Backup and restore accessory databases')
+    .helpGroup('Resources');
 
   registerBackupCreateCommand(backup);
   registerBackupListCommand(backup);

@@ -109,7 +109,8 @@ function validateConfigFiles(): ValidationResult {
 export function registerConfigCommand(program: Command): void {
   const configCmd = program
     .command('config')
-    .description('Display and validate project configuration');
+    .description('Display and validate project configuration')
+    .helpGroup('Other');
 
   // config show (default)
   configCmd

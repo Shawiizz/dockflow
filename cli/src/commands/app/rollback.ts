@@ -14,6 +14,7 @@ export function registerRollbackCommand(program: Command): void {
   program
     .command('rollback <env> [service]')
     .description('Rollback to previous version')
+    .helpGroup('Operate')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(async (env: string, service: string | undefined, options: { server?: string }) => {
       const { stackName, connection } = validateEnv(env, options.server);

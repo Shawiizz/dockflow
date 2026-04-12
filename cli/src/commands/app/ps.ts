@@ -14,6 +14,7 @@ export function registerPsCommand(program: Command): void {
   program
     .command('ps <env>')
     .description('List running containers')
+    .helpGroup('Inspect')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .option('--tasks', 'Show tasks instead of containers')
     .action(withErrorHandler(async (env: string, options: { server?: string; tasks?: boolean }) => {

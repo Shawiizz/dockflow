@@ -61,6 +61,7 @@ import { BuildService } from '../services/build-service';
 import { DistributionService } from '../services/distribution-service';
 import { HookService } from '../services/hook-service';
 import { TraefikService } from '../services/traefik-service';
+import { NotificationService } from '../services/notification-service';
 
 interface DeployOptions {
   services?: string;
@@ -641,6 +642,18 @@ export async function runDeploy(
 
     await recordHistory(ctx, status, durationMs, auditMessage, workers);
 
+    // Notify webhooks — best-effort, never blocks
+    await NotificationService.notify(config.notifications?.webhooks, {
+      project: config.project_name,
+      env,
+      version: deployVersion,
+      branch: branchName,
+      performer: getPerformer(),
+      status,
+      duration_ms: durationMs,
+      message: auditMessage,
+    });
+
     await lock.release().catch((e) =>
       printWarning(`Lock release failed: ${e instanceof Error ? e.message : String(e)}`),
     );
@@ -664,6 +677,7 @@ export function registerDeployCommand(program: Command): void {
   program
     .command('deploy [env] [version]')
     .description('Deploy application to specified environment (targets Swarm manager)')
+    .helpGroup('Deploy')
     .option('--services <services>', 'Comma-separated list of services to deploy')
     .option('--skip-build', 'Skip the build phase')
     .option('--force', 'Force deployment even if locked')

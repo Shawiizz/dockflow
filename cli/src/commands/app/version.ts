@@ -14,6 +14,7 @@ export function registerVersionCommand(program: Command): void {
   program
     .command('version <env>')
     .description('Show app version currently deployed')
+    .helpGroup('Inspect')
     .option('-s, --server <name>', 'Target server (defaults to manager)')
     .option('-j, --json', 'Output as JSON')
     .action(withErrorHandler(async (env: string, options: { server?: string; json?: boolean }) => {

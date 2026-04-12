@@ -82,6 +82,7 @@ export function registerUICommand(program: Command): void {
   program
     .command('ui')
     .description('Launch the Dockflow WebUI dashboard')
+    .helpGroup('Other')
     .option('-p, --port <port>', 'Port to listen on', '4200')
     .option('--no-open', 'Do not open browser automatically')
     .action(withErrorHandler(async (options: UIOptions) => {

@@ -14,7 +14,8 @@ import { registerLockStatusCommand } from './status';
 export function registerLockCommands(program: Command): void {
   const lock = program
     .command('lock')
-    .description('Manage deployment locks');
+    .description('Manage deployment locks')
+    .helpGroup('Resources');
 
   registerLockAcquireCommand(lock);
   registerLockReleaseCommand(lock);

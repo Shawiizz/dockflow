@@ -22,7 +22,8 @@ export function registerAccessoriesCommands(program: Command): void {
   const accessories = program
     .command('accessories')
     .alias('acc')
-    .description('Manage stateful services (databases, caches, etc.)');
+    .description('Manage stateful services (databases, caches, etc.)')
+    .helpGroup('Resources');
 
   registerAccessoriesDeployCommand(accessories);
   registerAccessoriesListCommand(accessories);

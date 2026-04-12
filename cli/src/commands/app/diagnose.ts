@@ -75,6 +75,7 @@ export function registerDiagnoseCommand(program: Command): void {
   program
     .command('diagnose <env>')
     .description('Diagnose deployment issues and show why containers may not be starting')
+    .helpGroup('Inspect')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .option('-v, --verbose', 'Show all diagnostic details')
     .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string; verbose?: boolean }) => {

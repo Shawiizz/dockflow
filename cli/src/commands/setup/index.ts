@@ -38,6 +38,7 @@ export function registerSetupCommand(program: Command): void {
   const setup = program
     .command('setup [target]')
     .description('Setup host machine for deployment (use user@host for remote setup)')
+    .helpGroup('Setup')
     // Remote options
     .option('-k, --key <path>', 'Path to SSH private key (remote)')
     .option('--connection <string>', 'Dockflow connection string (remote)')

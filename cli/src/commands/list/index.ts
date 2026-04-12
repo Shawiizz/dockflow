@@ -13,7 +13,8 @@ import { registerListImagesCommand } from './images';
 export function registerListCommands(program: Command): void {
   const listCmd = program
     .command('list')
-    .description('List project resources');
+    .description('List project resources')
+    .helpGroup('Inspect');
 
   registerListEnvCommand(listCmd);
   registerListServicesCommand(listCmd);

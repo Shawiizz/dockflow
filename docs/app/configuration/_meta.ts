@@ -9,5 +9,6 @@ export default {
   hooks: 'Hooks',
   templates: 'Templates',
   'multi-host': 'Multi-Node Deployment',
-  proxy: 'Automatic HTTPS Proxy'
+  proxy: 'Automatic HTTPS Proxy',
+  notifications: 'Notifications'
 }

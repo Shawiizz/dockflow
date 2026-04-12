@@ -120,6 +120,18 @@ export interface AccessoryConfig {
   deploy?: Record<string, unknown>;
 }
 
+export interface WebhookConfig {
+  url: string;
+  on?: Array<'success' | 'failure' | 'always'>;
+  secret?: string;
+  headers?: Record<string, string>;
+  timeout?: number;
+}
+
+export interface NotificationsConfig {
+  webhooks?: WebhookConfig[];
+}
+
 export interface DockflowConfig {
   project_name: string;
   registry?: RegistryConfig;
@@ -132,6 +144,7 @@ export interface DockflowConfig {
   templates?: (string | TemplateFileConfig)[];
   accessories?: Record<string, AccessoryConfig>;
   proxy?: ProxyConfig;
+  notifications?: NotificationsConfig;
 }
 
 /**

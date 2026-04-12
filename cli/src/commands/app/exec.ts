@@ -16,6 +16,7 @@ export function registerExecCommand(program: Command): void {
     .command('exec <env> <service> [command...]')
     .aliases(['bash', 'shell'])
     .description('Execute a command in a container (default: interactive shell)')
+    .helpGroup('Operate')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .option('-u, --user <user>', 'Run as specified user')
     .option('-w, --workdir <dir>', 'Working directory inside container')

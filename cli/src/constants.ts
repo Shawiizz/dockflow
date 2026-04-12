@@ -62,6 +62,14 @@ export const SSH_KEEPALIVE_INTERVAL_MS = 15000;
 export const SSH_KEEPALIVE_COUNT_MAX = 3;
 
 /**
+ * SSH connection retry settings
+ */
+/** Number of connection attempts before giving up */
+export const SSH_CONNECT_RETRIES = 3;
+/** Base delay (ms) before first retry — doubles on each attempt (exponential backoff) */
+export const SSH_CONNECT_RETRY_BASE_DELAY_MS = 1000;
+
+/**
  * Traefik defaults
  */
 export const TRAEFIK_STACK_NAME = 'traefik';

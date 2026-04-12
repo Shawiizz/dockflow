@@ -50,6 +50,7 @@ export function registerHistoryCommand(program: Command): void {
     .command('history <env>')
     .alias('audit')
     .description('Show deployment history')
+    .helpGroup('Inspect')
     .option('-s, --server <name>', 'Target server (defaults to manager)')
     .option('-n, --lines <number>', 'Number of lines to show', '20')
     .option('--all', 'Show all entries')

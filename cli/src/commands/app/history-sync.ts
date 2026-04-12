@@ -99,6 +99,7 @@ export function registerHistorySyncCommand(program: Command): void {
   program
     .command('history-sync <env>')
     .description('Sync deployment history across all cluster nodes')
+    .helpGroup('Inspect')
     .option('--debug', 'Enable debug output')
     .action(withErrorHandler(withResolvedEnv(async (env: string, options: { debug?: boolean }) => {
       const { stackName } = validateEnv(env);

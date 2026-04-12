@@ -196,6 +196,7 @@ export function registerBuildCommand(program: Command): void {
   program
     .command('build [env]')
     .description('Build Docker images locally without deploying')
+    .helpGroup('Deploy')
     .option('--services <services>', 'Comma-separated list of services to build')
     .option('--push', 'Push images to registry after build')
     .option('--skip-hooks', 'Skip pre-build and post-build hooks')

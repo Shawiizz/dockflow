@@ -48,6 +48,7 @@ const structure: PageEntry[] = [
       { slug: 'multi-host', title: 'Multi-Host Deployment', path: 'configuration/multi-host' },
       { slug: 'config-file', title: 'Configuration File', path: 'configuration/config-file' },
       { slug: 'proxy', title: 'Automatic HTTPS Proxy', path: 'configuration/proxy' },
+      { slug: 'notifications', title: 'Notifications', path: 'configuration/notifications' },
     ],
   },
   { slug: 'cli', title: 'CLI Commands', path: 'cli' },

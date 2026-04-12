@@ -255,6 +255,36 @@ export const ProxyConfigSchema = z.object({
 );
 
 /**
+ * Webhook notification configuration schema
+ */
+export const WebhookConfigSchema = z.object({
+  url: z.string().url().describe(
+    'Webhook URL to POST to after deployment'
+  ),
+  on: z.array(z.enum(['success', 'failure', 'always'])).optional().default(['always']).describe(
+    'When to fire: "success", "failure", or "always" (default)'
+  ),
+  secret: z.string().optional().describe(
+    'Optional HMAC-SHA256 secret — adds X-Dockflow-Signature header to the request'
+  ),
+  headers: z.record(z.string(), z.string()).optional().describe(
+    'Additional HTTP headers to send with the request'
+  ),
+  timeout: z.number().int().min(1).max(60).optional().default(10).describe(
+    'Request timeout in seconds (default: 10)'
+  ),
+});
+
+/**
+ * Notifications configuration schema
+ */
+export const NotificationsConfigSchema = z.object({
+  webhooks: z.array(WebhookConfigSchema).optional().default([]).describe(
+    'List of webhook endpoints to notify after each deployment'
+  ),
+});
+
+/**
  * Project name validation pattern
  * Must be lowercase alphanumeric with hyphens, no leading/trailing hyphens
  */
@@ -322,5 +352,9 @@ export const DockflowConfigSchema = z.object({
 
   proxy: ProxyConfigSchema.optional().describe(
     'Automatic HTTPS proxy configuration (Traefik + Let\'s Encrypt)'
+  ),
+
+  notifications: NotificationsConfigSchema.optional().describe(
+    'Post-deployment notification webhooks'
   ),
 });

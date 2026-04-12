@@ -156,6 +156,7 @@ export function registerMetricsCommand(program: Command): void {
   const metrics = program
     .command('metrics <env>')
     .description('Show deployment metrics and statistics')
+    .helpGroup('Inspect')
     .option('-s, --server <name>', 'Target server (defaults to manager)')
     .option('--history', 'Show deployment history')
     .option('-n, --lines <number>', 'Number of history entries to show', '20')

@@ -84,6 +84,7 @@ export function registerStatusCommand(program: Command): void {
   program
     .command('status')
     .description('Show deployment status across all environments')
+    .helpGroup('Inspect')
     .action(withErrorHandler(withSecrets(async () => {
       printIntro(chalk.bold('Deployment Status'));
       printBlank();

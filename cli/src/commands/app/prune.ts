@@ -13,6 +13,7 @@ export function registerPruneCommand(program: Command): void {
   program
     .command('prune <env>')
     .description('Remove unused Docker resources (images, containers, volumes, networks)')
+    .helpGroup('Operate')
     .option('-a, --all', 'Remove all unused images, not just dangling ones')
     .option('--images', 'Prune images only')
     .option('--containers', 'Prune containers only')

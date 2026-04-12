@@ -12,6 +12,7 @@ export function registerSshCommand(program: Command): void {
   program
     .command('ssh <env> [command...]')
     .description('Open SSH session to server or execute a command')
+    .helpGroup('Operate')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(withResolvedEnv(async (env: string, commandParts: string[], options: { server?: string }) => {
       const { connection, serverName } = validateEnv(env, options.server);

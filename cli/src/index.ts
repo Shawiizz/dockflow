@@ -7,7 +7,7 @@
 
 import { Command } from 'commander';
 import { version } from '../package.json';
-import { setVerbose, printSuccess, printBlank, printInfo, printWarning, printRaw } from './utils/output';
+import { setVerbose, printSuccess, printBlank, printWarning, printRaw, colors } from './utils/output';
 
 // Commands
 import { registerAppCommands } from './commands/app/index';
@@ -21,6 +21,8 @@ import { registerLockCommands } from './commands/lock';
 import { registerListCommands } from './commands/list';
 import { registerConfigCommand } from './commands/config';
 import { registerUICommand } from './commands/ui';
+import { registerValidateCommand } from './commands/validate';
+import { registerCompletionCommand } from './commands/completion';
 
 const program = new Command();
 
@@ -49,59 +51,59 @@ registerBuildCommand(program);
 registerSetupCommand(program);
 registerInitCommand(program);
 registerUICommand(program);
+registerValidateCommand(program);
+registerCompletionCommand(program);
 
-function showHelp() {
+// Ordered group display sequence — groups are declared in each command file via .helpGroup()
+const GROUP_ORDER = ['Setup', 'Deploy', 'Inspect', 'Operate', 'Resources', 'Other'];
+
+// ─── Dynamic help ──────────────────────────────────────────────────────────────
+
+function showHelp(): void {
   printSuccess('========================================================');
   printSuccess(`   Dockflow CLI v${version}`);
   printSuccess('========================================================');
   printBlank();
-  printInfo('Run with --help to see available commands');
+  printRaw(colors.dim('  Run `dockflow <command> --help` for command-specific options.'));
   printBlank();
-  printWarning('Quick start:');
-  printRaw('  dockflow init                   Initialize project structure');
-  printRaw('  dockflow setup                  Setup Docker Swarm on server');
-  printRaw('  dockflow build                  Build Docker images locally');
-  printRaw('  dockflow deploy <env>           Deploy to environment');
-  printBlank();
-  printWarning('Info & Listing:');
-  printRaw('  dockflow list env               List available environments');
-  printRaw('  dockflow list svc <env>         List services (-t for tasks)');
-  printRaw('  dockflow list images <env>      List Docker images');
-  printRaw('  dockflow version <env>          Show deployed version');
-  printRaw('  dockflow logs <env>             View service logs');
-  printRaw('  dockflow audit <env>            Show deployment history');
-  printBlank();
-  printWarning('Operations:');
-  printRaw('  dockflow bash <env> <svc>       Open shell in container');
-  printRaw('  dockflow exec <env> <svc> <cmd> Execute command in container');
-  printRaw('  dockflow scale <env> <svc> <n>  Scale service replicas');
-  printRaw('  dockflow rollback <env>         Rollback to previous version');
-  printRaw('  dockflow restart <env>          Restart services');
-  printBlank();
-  printWarning('Deployment locks:');
-  printRaw('  dockflow lock status <env>      Check lock status');
-  printRaw('  dockflow lock acquire <env>     Block deployments');
-  printRaw('  dockflow lock release <env>     Allow deployments');
-  printBlank();
-  printWarning('Accessories (databases, caches...):');
-  printRaw('  dockflow accessories <cmd>      Manage stateful services');
-  printBlank();
-  printWarning('Backup & Restore:');
-  printRaw('  dockflow backup create <env> <svc>  Backup an accessory database');
-  printRaw('  dockflow backup list <env>          List available backups');
-  printRaw('  dockflow backup restore <env> <svc> Restore from a backup');
-  printRaw('  dockflow backup prune <env>         Clean up old backups');
+
+  // Group commands from the live Commander tree
+  const grouped = new Map<string, Command[]>();
+  for (const cmd of program.commands) {
+    if (cmd.name() === 'help') continue;
+    // _helpGroupHeading is set by helpGroup() — fall back to 'Other'
+    const group = (cmd as unknown as { _helpGroupHeading?: string })._helpGroupHeading ?? 'Other';
+    if (!grouped.has(group)) grouped.set(group, []);
+    grouped.get(group)!.push(cmd);
+  }
+
+  const COL = 28;
+  for (const group of GROUP_ORDER) {
+    const cmds = grouped.get(group);
+    if (!cmds || cmds.length === 0) continue;
+
+    printWarning(`${group}:`);
+    for (const cmd of cmds) {
+      const name = `dockflow ${cmd.name()}`;
+      const desc = cmd.description();
+      const subCount = cmd.commands.filter((c) => c.name() !== 'help').length;
+      const suffix = subCount > 0 ? colors.dim(` [${subCount} subcommands]`) : '';
+      printRaw(`  ${colors.bold(name.padEnd(COL))} ${desc}${suffix}`);
+    }
+    printBlank();
+  }
 }
 
-// Add 'h' and 'help' commands
+// ─── Help & default action ─────────────────────────────────────────────────────
+
 program
   .command('help [command]')
   .alias('h')
-  .description('Display help for command')
+  .description('Display help for a command')
   .allowUnknownOption()
   .action((cmd?: string) => {
     if (cmd) {
-      const sub = program.commands.find(c => c.name() === cmd || c.aliases().includes(cmd));
+      const sub = program.commands.find((c) => c.name() === cmd || c.aliases().includes(cmd));
       if (sub) sub.help();
       else showHelp();
     } else {
@@ -109,13 +111,10 @@ program
     }
   });
 
-// Default action (no command) - show help
 program.action(() => {
   showHelp();
 });
 
-// Error handling
 program.showHelpAfterError('(add --help for additional information)');
 
-// Parse arguments
 program.parse(process.argv);

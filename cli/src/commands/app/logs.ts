@@ -14,6 +14,7 @@ export function registerLogsCommand(program: Command): void {
   program
     .command('logs <env> [service]')
     .description('Show logs for services')
+    .helpGroup('Inspect')
     .option('-f, --follow', 'Follow log output')
     .option('-n, --tail <lines>', 'Number of lines to show', '100')
     .option('-T, --timestamps', 'Show timestamps')

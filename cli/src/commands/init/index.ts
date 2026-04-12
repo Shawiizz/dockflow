@@ -24,6 +24,7 @@ export function registerInitCommand(program: Command): void {
   program
     .command('init')
     .description('Initialize .dockflow project structure')
+    .helpGroup('Setup')
     .action(
       withErrorHandler(async () => {
         printIntro(chalk.bold('Dockflow Init'));
