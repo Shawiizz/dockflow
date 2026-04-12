@@ -151,9 +151,6 @@ export function isValidationError(result: EnvironmentContext | ValidationError):
   return 'type' in result && 'message' in result;
 }
 
-/**
- * Convert old ValidationError to new CLIError
- */
 function toCliError(error: ValidationError): CLIError {
   const codeMap: Record<ValidationErrorType, ErrorCode> = {
     [ValidationErrorType.CONFIG_NOT_FOUND]: ErrorCode.CONFIG_NOT_FOUND,

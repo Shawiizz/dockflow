@@ -101,14 +101,8 @@ export class ConnectionError extends CLIError {
 }
 
 export class DockerError extends CLIError {
-  constructor(message: string, options?: { code?: ErrorCode; suggestion?: string } | ErrorCode) {
-    if (typeof options === 'number') {
-      // Legacy: second param is ErrorCode
-      super(message, options, undefined);
-    } else {
-      // New: second param is options object
-      super(message, options?.code ?? ErrorCode.DOCKER_NOT_AVAILABLE, options?.suggestion);
-    }
+  constructor(message: string, options?: { code?: ErrorCode; suggestion?: string }) {
+    super(message, options?.code ?? ErrorCode.DOCKER_NOT_AVAILABLE, options?.suggestion);
     this.name = 'DockerError';
   }
 }

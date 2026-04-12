@@ -254,8 +254,7 @@ export class BackupService {
 
   /**
    * Resolve the node connection for a backup entry by matching nodeHost/nodePort.
-   * Falls back to the manager connection if no match found (backwards compat with
-   * old backups that don't have nodeHost/nodePort in metadata).
+   * Falls back to the manager connection if no match found.
    */
   private resolveNodeConnection(entry: { nodeHost?: string; nodePort?: number }): SSHKeyConnection {
     if (!entry.nodeHost) return this.connection;
@@ -597,7 +596,7 @@ export class BackupService {
 
     for (const entry of volumeEntries) {
       const filePath = this.getDataFilePath(backupDir, backupId, 'volume', compression, entry.name);
-      const mountType = entry.mountType || 'volume'; // backwards compat with old metadata
+      const mountType = entry.mountType ?? 'volume';
 
       let restoreCmd: string;
       if (mountType === 'bind' && entry.sourcePath) {

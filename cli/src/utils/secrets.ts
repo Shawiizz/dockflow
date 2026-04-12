@@ -4,12 +4,6 @@
  * - .env.dockflow file (for local development)
  * - JSON file (for CI environments)
  * - DOCKFLOW_SECRETS environment variable (JSON string)
- *
- * withSecrets() wraps a Commander action to load secrets before execution.
- * Use it for commands that need CI/local secrets but don't use withResolvedEnv.
- *
- * Usage:
- *   .action(withErrorHandler(withSecrets(async () => { ... })))
  */
 
 import { existsSync, readFileSync } from 'fs';
@@ -132,23 +126,6 @@ export function loadSecrets(): void {
     }
   }
   
-  // 4. Check for GITHUB_SECRETS (GitHub Actions, legacy)
-  const githubSecrets = process.env.GITHUB_SECRETS;
-  if (githubSecrets) {
-    try {
-      const secrets = JSON.parse(githubSecrets);
-      
-      for (const [key, value] of Object.entries(secrets)) {
-        if (typeof value === 'string' && value.trim() !== '') {
-          process.env[key] = value;
-        }
-      }
-      
-      printSuccess('Loaded secrets from GITHUB_SECRETS');
-    } catch (error) {
-      printError(`Failed to parse GITHUB_SECRETS: ${error}`);
-    }
-  }
 }
 
 /**

@@ -1,6 +1,5 @@
 /**
- * Interactive prompts utilities for setup commands
- * Retro-compatible wrappers around the centralized @clack/prompts module
+ * Interactive prompts for setup commands
  */
 
 import {
@@ -42,7 +41,7 @@ export async function confirm(question: string, defaultYes = true): Promise<bool
 
 /**
  * Interactive menu selection with arrow keys
- * Returns the selected index (0-based) for backward compatibility
+ * Returns the selected index (0-based)
  */
 export async function selectMenu(title: string, options: string[]): Promise<number> {
   return selectPrompt<number>({
