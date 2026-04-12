@@ -37,7 +37,8 @@ health_checks:
   wait_for_internal: true
   endpoints:
     - name: "Main Application"
-      url: "http://localhost:{{ app_external_port }}/health"
+      url: "http://localhost:{{ current.env.app_port }}/health"
+      remote: true
       expected_status: 200
       timeout: 30
       retries: 3
@@ -102,7 +103,7 @@ Remove Docker images from failed deployments immediately.
 Two layers of health verification:
 
 1. **Swarm internal** — Docker monitors container healthchecks defined in `docker-compose.yml` and rolls back automatically on failure.
-2. **Dockflow external** — HTTP endpoint checks from the host, configured below.
+2. **Dockflow external** — HTTP endpoint checks after convergence, configurable below. Checks run locally by default; set `remote: true` to run them via SSH on the manager node instead.
 
 ### `enabled`
 **Default:** `true`
@@ -136,20 +137,33 @@ List of HTTP endpoints to check after deployment:
 
 ```yaml
 endpoints:
-  - name: "API"
-    url: "http://localhost:3000/health"
+  # Local check — the CLI machine must be able to reach this URL
+  - name: "Public API"
+    url: "https://api.example.com/health"
     expected_status: 200
     timeout: 30
     retries: 3
+
+  # Remote check — curl runs on the manager via SSH
+  - name: "Internal service"
+    url: "http://localhost:{{ app_port }}/health"
+    remote: true
+    expected_status: 200
+    retries: 5
+    retry_delay: 3
 ```
 
-| Field | Description |
-|-------|-------------|
-| `name` | Descriptive label |
-| `url` | URL to check (supports template syntax: `{{ app_external_port }}`) |
-| `expected_status` | Expected HTTP status code |
-| `timeout` | Request timeout in seconds |
-| `retries` | Number of retry attempts |
+| Field | Type | Description | Default |
+|-------|------|-------------|---------|
+| `url` | string | URL to check. Supports template syntax (`{{ var }}`). | — |
+| `name` | string | Descriptive label shown in logs. | — |
+| `remote` | boolean | Run the check via SSH curl on the manager node instead of locally. Use this for `localhost` ports or services not exposed to the internet. | `false` |
+| `expected_status` | number | Expected HTTP status code. | `200` |
+| `method` | string | HTTP method (`GET`, `POST`, `HEAD`, …). | `GET` |
+| `timeout` | number | Request timeout in seconds. | `30` |
+| `retries` | number | Number of retry attempts. | `3` |
+| `retry_delay` | number | Delay between retries in seconds. | `5` |
+| `validate_certs` | boolean | Validate SSL certificates. Set to `false` for self-signed certs. | `true` |
 
 ## Proxy
 

@@ -72,6 +72,9 @@ export const HealthCheckEndpointSchema = z.object({
   retry_delay: z.number().int().min(1).max(60).optional().default(5).describe(
     'Delay between retries in seconds'
   ),
+  remote: z.boolean().optional().default(false).describe(
+    'Run the check via SSH curl on the remote server instead of locally — useful for non-public endpoints (e.g. localhost ports, internal services)'
+  ),
 });
 
 /**

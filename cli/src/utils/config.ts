@@ -46,6 +46,7 @@ export interface HealthCheckEndpoint {
   validate_certs?: boolean;
   retries?: number;
   retry_delay?: number;
+  remote?: boolean;
 }
 
 export interface HealthCheckConfig {

@@ -13,6 +13,17 @@ proxy:
   domains:
     test: "test.local"
 
+health_checks:
+  startup_delay: 5
+  on_failure: fail
+  endpoints:
+    - url: "http://localhost:{{ current.env.web_port }}"
+      name: "web service"
+      remote: true
+      expected_status: 200
+      retries: 5
+      retry_delay: 3
+
 backup:
   retention: 3
   compression: gzip
