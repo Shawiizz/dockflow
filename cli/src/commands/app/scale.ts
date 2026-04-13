@@ -1,13 +1,13 @@
 /**
  * Scale command - Scale service replicas
- * 
- * Uses StackService to handle service scaling.
+ *
+ * Uses the OrchestratorService abstraction to support both Swarm and k3s.
  */
 
 import type { Command } from 'commander';
 import { printDebug, createSpinner } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
-import { createStackService } from '../../services';
+import { createOrchestrator } from '../../services/orchestrator/factory';
 import { CLIError, DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
 export function registerScaleCommand(program: Command): void {
@@ -17,29 +17,27 @@ export function registerScaleCommand(program: Command): void {
     .helpGroup('Operate')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(async (env: string, service: string, replicas: string, options: { server?: string }) => {
-      const { stackName, connection } = validateEnv(env, options.server);
+      const { config, stackName, connection } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName });
-      
+
       const replicaCount = parseInt(replicas, 10);
       if (isNaN(replicaCount) || replicaCount < 0) {
         throw new CLIError('Replicas must be a non-negative number', ErrorCode.INVALID_ARGUMENT);
       }
 
-      const stackService = createStackService(connection, stackName);
+      const orchType = config.orchestrator ?? 'swarm';
+      const orchestrator = createOrchestrator(orchType, connection);
       const spinner = createSpinner();
       spinner.start(`Scaling ${stackName}_${service} to ${replicaCount} replicas...`);
 
       try {
-        const result = await stackService.scale(service, replicaCount);
-        
-        if (result.success) {
-          spinner.succeed(result.message || 'Done');
-        } else {
-          spinner.fail(result.message || 'Scale failed');
-          throw new DockerError(result.message || 'Failed to scale service');
-        }
+        await orchestrator.scaleService(stackName, service, replicaCount);
+        spinner.succeed('Done');
       } catch (error) {
-        if (error instanceof CLIError) throw error;
+        if (error instanceof CLIError) {
+          spinner.fail(error.message);
+          throw error;
+        }
         spinner.fail(`Failed to scale: ${error}`);
         throw new DockerError(`${error}`);
       }

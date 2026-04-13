@@ -12,10 +12,13 @@
 
   roles:
     - role: geerlingguy.docker
-      when: not (skip_docker_install | default(false) | bool)
+      when: >
+        not (skip_docker_install | default(false) | bool) and
+        (orchestrator | default('swarm')) == 'swarm'
     - role: nginx
       tags:
         - nginx
     - role: portainer
       tags:
         - portainer
+      when: (orchestrator | default('swarm')) == 'swarm'

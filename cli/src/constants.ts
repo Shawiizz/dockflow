@@ -76,3 +76,18 @@ export const TRAEFIK_STACK_NAME = 'traefik';
 export const TRAEFIK_NETWORK_NAME = 'traefik-public';
 export const TRAEFIK_CERTS_VOLUME = 'traefik-certs';
 export const TRAEFIK_IMAGE = 'traefik:v3.6';
+
+/**
+ * k3s orchestrator constants
+ */
+export const K3S_API_PORT = 6443;
+export const K3S_KUBECONFIG_PATH = '/etc/rancher/k3s/k3s.yaml';
+export const K3S_DOCKFLOW_KUBECONFIG = '/var/lib/dockflow/k3s.yaml';
+export const K3S_TOKEN_PATH = '/var/lib/rancher/k3s/server/node-token';
+export const K3S_NAMESPACE_PREFIX = 'dockflow';
+export const K3S_TRAEFIK_NAMESPACE = 'kube-system';
+export const K3S_PORTS = [
+  { port: 6443,  protocol: 'tcp', description: 'Kubernetes API server' },
+  { port: 10250, protocol: 'tcp', description: 'Kubelet metrics' },
+  { port: 8472,  protocol: 'udp', description: 'Flannel VXLAN overlay' },
+];

@@ -21,6 +21,7 @@ import { runInteractiveSetup } from './interactive';
 import { runNonInteractiveSetup } from './non-interactive';
 import { runRemoteSetup, promptRemoteConnection } from './remote';
 import { runSetupSwarm } from './swarm';
+import { runSetupK3s } from './k3s';
 import { CLIError, ConfigError, ErrorCode, withErrorHandler } from '../../utils/errors';
 import type { SetupOptions, ConnectionOptions, RemoteSetupOptions } from './types';
 
@@ -135,6 +136,14 @@ export function registerSetupCommand(program: Command): void {
     .description('Initialize Docker Swarm cluster for an environment')
     .action(withErrorHandler(async (env: string) => {
       await runSetupSwarm(env);
+    }));
+
+  // k3s cluster setup
+  setup
+    .command('k3s <env>')
+    .description('Initialize k3s cluster for an environment')
+    .action(withErrorHandler(async (env: string) => {
+      await runSetupK3s(env);
     }));
 
   // Check dependencies
