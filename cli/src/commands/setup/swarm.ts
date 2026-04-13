@@ -13,13 +13,14 @@
 import { printIntro, printOutro, printNote, printError, printInfo, printWarning, printBlank, printRaw, createSpinner } from '../../utils/output';
 import { hasServersConfig } from '../../utils/config';
 import { CLIError, ConnectionError, ErrorCode } from '../../utils/errors';
-import { 
-  resolveDeploymentForEnvironment, 
+import {
+  resolveDeploymentForEnvironment,
   getServerPrivateKey,
   getAvailableEnvironments
 } from '../../utils/servers';
 import { sshExec } from '../../utils/ssh';
 import { loadSecrets } from '../../utils/secrets';
+import { openPorts } from './firewall';
 import type { SSHKeyConnection, ResolvedServer } from '../../types';
 
 /**
@@ -49,42 +50,10 @@ function buildConnection(env: string, server: ResolvedServer): SSHKeyConnection 
 }
 
 /**
- * Open firewall ports for Swarm
+ * Open firewall ports for Swarm (delegates to shared helper)
  */
 async function openSwarmPorts(connection: SSHKeyConnection, serverName: string): Promise<boolean> {
-  const spinner = createSpinner();
-  spinner.start(`Opening Swarm ports on ${serverName}...`);
-  
-  try {
-    // Check which firewall is available
-    const ufwCheck = await sshExec(connection, 'which ufw 2>/dev/null');
-    const firewallCmdCheck = await sshExec(connection, 'which firewall-cmd 2>/dev/null');
-    
-    if (ufwCheck.stdout.trim()) {
-      // UFW (Ubuntu/Debian)
-      for (const { port, protocol } of SWARM_PORTS) {
-        await sshExec(connection, `sudo ufw allow ${port}/${protocol} 2>/dev/null || true`);
-      }
-      await sshExec(connection, 'sudo ufw reload 2>/dev/null || true');
-    } else if (firewallCmdCheck.stdout.trim()) {
-      // firewalld (RHEL/CentOS)
-      for (const { port, protocol } of SWARM_PORTS) {
-        await sshExec(connection, `sudo firewall-cmd --permanent --add-port=${port}/${protocol} 2>/dev/null || true`);
-      }
-      await sshExec(connection, 'sudo firewall-cmd --reload 2>/dev/null || true');
-    } else {
-      // Try iptables as fallback
-      for (const { port, protocol } of SWARM_PORTS) {
-        await sshExec(connection, `sudo iptables -I INPUT -p ${protocol} --dport ${port} -j ACCEPT 2>/dev/null || true`);
-      }
-    }
-    
-    spinner.succeed(`Swarm ports opened on ${serverName}`);
-    return true;
-  } catch (error) {
-    spinner.warn(`Could not open ports on ${serverName} (may already be open or no firewall)`);
-    return true; // Continue anyway
-  }
+  return openPorts(connection, serverName, SWARM_PORTS);
 }
 
 /**
