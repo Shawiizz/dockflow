@@ -151,6 +151,13 @@ export class K8sManifestService {
       container.ports = ports.map((p) => ({ containerPort: p.containerPort }));
     }
 
+    // Health checks (compose healthcheck → livenessProbe + readinessProbe)
+    const probe = K8sManifestService.convertHealthcheck(config);
+    if (probe) {
+      container.livenessProbe = probe;
+      container.readinessProbe = probe;
+    }
+
     // Volume mounts & pod volumes
     const { volumeMounts, podVolumes } = K8sManifestService.convertVolumes(volumes, composeVolumes);
     if (volumeMounts.length > 0) {
@@ -409,6 +416,77 @@ export class K8sManifestService {
     }
 
     return nodeSelector;
+  }
+
+  /**
+   * Convert Docker Compose healthcheck to a K8s probe.
+   * Supports CMD/CMD-SHELL test formats and maps interval/timeout/retries/start_period.
+   */
+  private static convertHealthcheck(
+    config: Record<string, unknown>,
+  ): Record<string, unknown> | null {
+    const healthcheck = config.healthcheck as Record<string, unknown> | undefined;
+    if (!healthcheck) return null;
+
+    const test = healthcheck.test as string | string[] | undefined;
+    if (!test) return null;
+
+    const probe: Record<string, unknown> = {};
+
+    // Parse the test command
+    if (typeof test === 'string') {
+      // Shell string format: "curl -f http://localhost/health"
+      probe.exec = { command: ['/bin/sh', '-c', test] };
+    } else if (Array.isArray(test)) {
+      if (test[0] === 'CMD') {
+        probe.exec = { command: test.slice(1) };
+      } else if (test[0] === 'CMD-SHELL') {
+        probe.exec = { command: ['/bin/sh', '-c', test.slice(1).join(' ')] };
+      } else if (test[0] === 'NONE') {
+        return null;
+      } else {
+        // Bare command array
+        probe.exec = { command: test };
+      }
+    }
+
+    // Map timing fields (compose uses duration strings like "30s", K8s uses seconds)
+    if (healthcheck.interval) {
+      probe.periodSeconds = K8sManifestService.parseDuration(healthcheck.interval as string);
+    }
+    if (healthcheck.timeout) {
+      probe.timeoutSeconds = K8sManifestService.parseDuration(healthcheck.timeout as string);
+    }
+    if (healthcheck.retries) {
+      probe.failureThreshold = healthcheck.retries as number;
+    }
+    if (healthcheck.start_period) {
+      probe.initialDelaySeconds = K8sManifestService.parseDuration(healthcheck.start_period as string);
+    }
+
+    return probe;
+  }
+
+  /**
+   * Parse a Docker Compose duration string (e.g. "30s", "1m30s", "5m") to seconds.
+   */
+  private static parseDuration(duration: string | number): number {
+    if (typeof duration === 'number') return duration;
+
+    let total = 0;
+    const minutes = duration.match(/(\d+)m/);
+    const seconds = duration.match(/(\d+)s/);
+
+    if (minutes) total += parseInt(minutes[1], 10) * 60;
+    if (seconds) total += parseInt(seconds[1], 10);
+
+    // Bare number without unit → assume seconds
+    if (!minutes && !seconds) {
+      const n = parseInt(duration, 10);
+      if (!isNaN(n)) return n;
+    }
+
+    return total || 30; // fallback
   }
 
   /**
