@@ -144,23 +144,27 @@ export class K3sOrchestratorService implements OrchestratorService {
     const ns = this.ns(stackName);
     const r = await sshExec(
       this.conn,
-      `${this.kube} get deployments -n ${ns} ` +
-        `-o jsonpath='{range .items[*]}{.metadata.name}\\t{.spec.template.spec.containers[0].image}\\t{.status.readyReplicas}/{.spec.replicas}\\n{end}' 2>/dev/null || echo ""`,
+      `${this.kube} get deployments -n ${ns} -o json 2>/dev/null || echo '{"items":[]}'`,
     );
 
-    return r.stdout
-      .trim()
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => {
-        const [name, image, replicas] = line.split('\t');
-        return {
-          name: name || '',
-          image: image || '',
-          replicas: replicas || '0/0',
-          ports: '',
-        };
-      });
+    try {
+      const data = JSON.parse(r.stdout.trim()) as {
+        items: Array<{
+          metadata: { name: string };
+          spec: { replicas?: number; template: { spec: { containers: Array<{ image: string }> } } };
+          status: { readyReplicas?: number };
+        }>;
+      };
+
+      return data.items.map((item) => ({
+        name: item.metadata.name,
+        image: item.spec.template.spec.containers[0]?.image || '',
+        replicas: `${item.status.readyReplicas ?? 0}/${item.spec.replicas ?? 0}`,
+        ports: '',
+      }));
+    } catch {
+      return [];
+    }
   }
 
   async scaleService(
