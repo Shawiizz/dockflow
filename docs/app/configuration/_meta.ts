@@ -4,6 +4,7 @@ export default {
   'docker-compose': 'Docker Compose',
   'build-strategy': 'Build Strategy',
   registry: 'Docker Registry',
+  'container-engine': 'Container Engine',
   accessories: 'Accessories',
   backup: 'Backup & Restore',
   hooks: 'Hooks',

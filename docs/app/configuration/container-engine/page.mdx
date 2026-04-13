@@ -1,0 +1,63 @@
+# Container Engine
+
+import { Callout } from 'nextra/components'
+
+Dockflow supports **Docker** (default) and **Podman** as container engines for building and distributing images.
+
+## Configuration
+
+```yaml
+# .dockflow/config.yml
+container_engine: podman
+```
+
+| Field | Type | Description | Default |
+|---|---|---|---|
+| `container_engine` | `"docker"` \| `"podman"` | Engine used for building and pushing images | Auto-detected |
+
+<Callout type="info">
+  When omitted, Dockflow auto-detects the engine on the remote server. If `podman` is found, it's used automatically — otherwise it falls back to `docker`.
+</Callout>
+
+## How It Works
+
+The `container_engine` setting controls **build** and **distribution** operations:
+
+- **Build**: `docker build` or `podman build` (local and remote)
+- **Save/Load**: `docker save | docker load` or `podman save | podman load`
+- **Registry**: `docker login/push` or `podman login/push`
+
+Podman is CLI-compatible with Docker for these operations, so your `docker-compose.yml` and Dockerfiles work as-is.
+
+### k3s and containerd
+
+When using `orchestrator: k3s`, images are always imported via `k3s ctr images import` (containerd) regardless of the build engine. You can build with Docker or Podman locally, and Dockflow handles the transfer to containerd on the k3s node.
+
+```
+# With Docker + k3s:
+docker save myapp:1.0 | ssh node "sudo k3s ctr images import -"
+
+# With Podman + k3s:
+podman save myapp:1.0 | ssh node "sudo k3s ctr images import -"
+```
+
+## When to Use Podman
+
+- Rootless builds (no Docker daemon required)
+- Environments where Docker is not installed or not allowed
+- OCI-native workflows
+
+<Callout type="warning">
+  Podman support applies to the build/distribution pipeline only. The orchestrator (`swarm` or `k3s`) is configured separately via the [`orchestrator`](/configuration/orchestrator) field.
+</Callout>
+
+## Example
+
+```yaml
+# .dockflow/config.yml
+project_name: "my-app"
+orchestrator: k3s
+container_engine: podman
+
+# Build with Podman, deploy to k3s via containerd
+```

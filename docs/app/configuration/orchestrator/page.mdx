@@ -74,6 +74,7 @@ Your existing `docker-compose.yml` works as-is with both backends. Dockflow hand
 | `deploy.placement` | Swarm constraints | `nodeSelector` |
 | Traefik labels | Swarm labels | IngressRoute CRDs |
 | Ports | Published ports | ClusterIP service ports |
+| `healthcheck` | Native Docker health checks | `livenessProbe` + `readinessProbe` |
 
 ## Example
 

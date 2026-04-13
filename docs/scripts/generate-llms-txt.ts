@@ -43,6 +43,7 @@ const structure: PageEntry[] = [
       { slug: 'accessories', title: 'Accessories (Databases, Caches)', path: 'configuration/accessories' },
       { slug: 'build-strategy', title: 'Build Strategy', path: 'configuration/build-strategy' },
       { slug: 'registry', title: 'Docker Registry', path: 'configuration/registry' },
+      { slug: 'container-engine', title: 'Container Engine', path: 'configuration/container-engine' },
       { slug: 'templates', title: 'Templates', path: 'configuration/templates' },
       { slug: 'hooks', title: 'Hooks', path: 'configuration/hooks' },
       { slug: 'multi-host', title: 'Multi-Host Deployment', path: 'configuration/multi-host' },
@@ -126,7 +127,7 @@ function generateIndex(): string {
   const lines: string[] = [
     '# Dockflow',
     '',
-    '> A powerful deployment framework that simplifies Docker deployments to remote servers using Docker Swarm.',
+    '> A deployment framework for Docker Swarm and k3s (Kubernetes). Single binary, SSH-only, no runtime dependencies.',
     '',
   ];
 
@@ -165,7 +166,7 @@ function generateFull(): string {
   const sections: string[] = [
     '# Dockflow - Complete Documentation',
     '',
-    '> A powerful deployment framework that simplifies Docker deployments to remote servers using Docker Swarm.',
+    '> A deployment framework for Docker Swarm and k3s (Kubernetes). Single binary, SSH-only, no runtime dependencies.',
     '',
   ];
 

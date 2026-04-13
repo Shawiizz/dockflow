@@ -2,7 +2,7 @@
 
 import { Callout, Steps, Tabs } from 'nextra/components'
 
-When you run `dockflow deploy`, Dockflow builds your Docker images, transfers them to your server, deploys the stack via Docker Swarm, and verifies that services are healthy. If health checks fail and `on_failure` is set to `rollback`, it rolls back automatically.
+When you run `dockflow deploy`, Dockflow builds your images, transfers them to your server, deploys the stack, and verifies that services are healthy. The process adapts automatically based on your [`orchestrator`](/configuration/orchestrator) setting (Swarm or k3s).
 
 ## Triggering a Deployment
 
@@ -39,21 +39,49 @@ The environment name must match a server tag in your [`servers.yml`](/configurat
 <Steps>
 ### Image Transfer
 
-Dockflow transfers your Docker images to the server via SSH:
+Dockflow transfers your images to the server via SSH. The method depends on your orchestrator and [container engine](/configuration/container-engine):
 
+<Tabs items={['Swarm (Docker)', 'Swarm (Podman)', 'k3s']}>
+  <Tabs.Tab>
 ```
 docker save image:tag | gzip -1 | ssh user@host "gunzip | docker load"
 ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```
+podman save image:tag | gzip -1 | ssh user@host "gunzip | podman load"
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```
+docker save image:tag | gzip -1 | ssh user@host "gunzip | sudo k3s ctr images import -"
+```
+k3s always uses containerd for image import, regardless of the build engine.
+  </Tabs.Tab>
+</Tabs>
 
-No external registry required. For multi-node clusters, images are streamed to each node via SSH by default. You can optionally configure a [Docker registry](/configuration/registry) for faster transfers.
+No external registry required. For multi-node Swarm clusters, images are streamed to each node. You can optionally configure a [Docker registry](/configuration/registry) for faster transfers.
 
 ### Stack Deployment
 
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
 Your application is deployed as a Swarm stack:
 
 ```
 docker stack deploy -c docker-compose.yml my-app-production
 ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+Dockflow converts your `docker-compose.yml` into native Kubernetes manifests and applies them:
+
+```
+kubectl apply -f - (Deployments, Services, PVCs, IngressRoutes)
+```
+
+Each compose service becomes a Deployment + ClusterIP Service inside a `dockflow-{project}-{env}` namespace.
+  </Tabs.Tab>
+</Tabs>
 
 Each deployment creates a new release directory on the server.
 
@@ -61,7 +89,7 @@ Each deployment creates a new release directory on the server.
 
 After deployment, Dockflow verifies:
 
-1. Swarm reports all services as healthy
+1. **Internal checks**: Swarm reports services as healthy / k3s pods reach Running state (no CrashLoopBackOff)
 2. The correct image version is running
 3. External health check endpoints respond (if [configured](/configuration/config-file#health-checks))
 
@@ -94,7 +122,7 @@ The `current` symlink points to the active release. By default, Dockflow keeps t
 
 ## Health Checks
 
-### Swarm Health Checks
+### Container Health Checks
 
 Define health checks in your `docker-compose.yml`:
 
@@ -110,7 +138,8 @@ services:
       start_period: 30s
 ```
 
-Swarm monitors these checks and triggers automatic rollback if containers become unhealthy.
+- **Swarm**: Docker monitors these checks natively and triggers automatic rollback if containers become unhealthy.
+- **k3s**: Dockflow converts them to Kubernetes `livenessProbe` and `readinessProbe` automatically. No manual K8s YAML needed.
 
 ### External Health Checks
 
@@ -133,7 +162,11 @@ See [Health Checks configuration](/configuration/config-file#health-checks) for 
 
 ## Rolling Updates
 
-Dockflow injects safe defaults for zero-downtime deployments. These are **only applied** if not already defined in your `docker-compose.yml`.
+<Callout type="info">
+  Rolling update settings apply to **Swarm only**. For k3s, Kubernetes handles rolling updates via its own Deployment strategy (default: `RollingUpdate` with 25% maxSurge / 25% maxUnavailable).
+</Callout>
+
+Dockflow injects safe defaults for zero-downtime Swarm deployments. These are **only applied** if not already defined in your `docker-compose.yml`.
 
 ### Default Settings
 
@@ -179,6 +212,8 @@ For zero-downtime deployments, use `start-first` with at least 2 replicas.
 
 ## Manual Operations
 
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
 ```bash
 # View stack status
 docker stack services my-app-production
@@ -195,28 +230,67 @@ docker service rollback my-app-production_app
 # Remove stack
 docker stack rm my-app-production
 ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```bash
+# View deployments
+kubectl get deployments -n dockflow-my-app-production
+
+# View pods
+kubectl get pods -n dockflow-my-app-production
+
+# View service logs
+kubectl logs -n dockflow-my-app-production -l app=web
+
+# Scale a deployment
+kubectl scale deployment/web --replicas=3 -n dockflow-my-app-production
+
+# Rollback
+kubectl rollout undo deployment/web -n dockflow-my-app-production
+
+# Remove everything
+kubectl delete namespace dockflow-my-app-production
+```
+  </Tabs.Tab>
+</Tabs>
 
 ## Troubleshooting
 
 ### Deployment Stuck
 
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
 ```bash
 docker service ps my-app-production_app --no-trunc
 ```
 
 Look for error messages in the task output.
+  </Tabs.Tab>
+  <Tabs.Tab>
+```bash
+kubectl describe pods -n dockflow-my-app-production
+kubectl get events -n dockflow-my-app-production --sort-by='.lastTimestamp'
+```
+
+Look for `CrashLoopBackOff`, `ImagePullBackOff`, or `Pending` states.
+  </Tabs.Tab>
+</Tabs>
 
 ### Rollback Loop
 
 If services keep rolling back, the issue is usually in your container health check. Verify the health check command works:
 
 ```bash
+# Swarm
 docker exec <container_id> curl -f http://localhost:3000/health
+
+# k3s
+kubectl exec -n dockflow-my-app-production <pod_name> -- curl -f http://localhost:3000/health
 ```
 
 ### Images Not Found
 
-If Swarm cannot find images after a rollback, cleanup may have removed them. Redeploy:
+If the orchestrator cannot find images after a rollback, cleanup may have removed them. Redeploy:
 
 ```bash
 dockflow deploy production 1.0.3
