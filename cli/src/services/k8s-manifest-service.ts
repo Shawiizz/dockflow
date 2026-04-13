@@ -79,7 +79,7 @@ export class K8sManifestService {
 
     return resources
       .map((r) => stringify(r, { lineWidth: 0 }))
-      .join('---\n');
+      .join('\n---\n');
   }
 
   private static createNamespace(namespace: string, stackName: string): K8sResource {
@@ -239,7 +239,9 @@ export class K8sManifestService {
     };
 
     const spec: Record<string, unknown> = {
-      entryPoints: [traefikLabels.entrypoints ?? 'websecure'],
+      entryPoints: traefikLabels.entrypoints
+        ? traefikLabels.entrypoints.split(',').map((ep) => ep.trim())
+        : ['websecure'],
       routes: [route],
     };
 
