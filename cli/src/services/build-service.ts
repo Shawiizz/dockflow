@@ -31,6 +31,8 @@ export interface BuildTarget {
   renderedOverrides?: Map<string, string>;
   /** Target platform for cross-compilation (e.g. 'linux/arm64') */
   platform?: string;
+  /** Container engine to use for building ('docker' or 'podman') */
+  engine?: 'docker' | 'podman';
 }
 
 export interface BuildResult {
@@ -219,8 +221,9 @@ export class BuildService {
    */
   static async buildImage(target: BuildTarget): Promise<void> {
     const tar = await buildContextTar(target);
+    const cmd = target.engine || 'docker';
 
-    const args = ['docker', 'build', '--progress=plain'];
+    const args = [cmd, 'build', '--progress=plain'];
     if (target.platform) {
       args.push('--platform', target.platform);
     }
@@ -267,7 +270,7 @@ export class BuildService {
     if (proc.exitCode !== 0) {
       log.error(`Build failed for ${target.tag} (exit ${proc.exitCode})`);
       throw new DeployError(
-        `Docker build failed for ${target.tag} (exit ${proc.exitCode})`,
+        `Build failed for ${target.tag} (exit ${proc.exitCode})`,
         ErrorCode.DEPLOY_FAILED,
       );
     }
@@ -340,6 +343,7 @@ export class BuildService {
       env: string;
       branch: string;
       servicesFilter?: string;
+      engine?: 'docker' | 'podman';
     },
   ): Promise<BuildResult> {
     const startTime = Date.now();
@@ -402,6 +406,13 @@ export class BuildService {
         return { images: [], durationMs: Date.now() - startTime };
       }
 
+      // Set engine on all targets
+      if (params.engine) {
+        for (const target of targets) {
+          target.engine = params.engine;
+        }
+      }
+
       // 5. Execute builds on remote (sequential — single SSH host)
       printDim(`Building ${targets.length} image(s) on remote...`);
       const images: string[] = [];
@@ -415,9 +426,11 @@ export class BuildService {
         const eTag = shellEscape(target.tag);
         const eContext = shellEscape(remoteContext);
 
+        const remoteEngine = target.engine || 'docker';
+
         const buildResult = await sshExec(
           connection,
-          `docker build -f '${eDockerfile}' -t '${eTag}' '${eContext}' 2>&1`,
+          `${remoteEngine} build -f '${eDockerfile}' -t '${eTag}' '${eContext}' 2>&1`,
         );
 
         if (buildResult.exitCode !== 0) {

@@ -15,7 +15,7 @@ import { printDebug, printDim, printSuccess, printWarning, createTimedSpinner } 
 import { DeployError, ErrorCode } from '../utils/errors';
 import { parseImageRef } from './compose-service';
 
-export type ContainerRuntime = 'docker' | 'containerd';
+export type ContainerRuntime = 'docker' | 'containerd' | 'podman';
 
 export interface DistributionTarget {
   connection: SSHKeyConnection;
@@ -26,23 +26,20 @@ const TRANSFER_MAX_RETRIES = 2;
 
 /** Returns the shell command to import a gzipped image tar on the remote. */
 function importCommand(runtime: ContainerRuntime): string {
-  return runtime === 'containerd'
-    ? 'gunzip | sudo k3s ctr images import -'
-    : 'gunzip | docker load';
+  if (runtime === 'containerd') return 'gunzip | sudo k3s ctr images import -';
+  return `gunzip | ${runtime} load`;
 }
 
 /** Returns the shell command to save an image on a remote host. */
 function saveCommand(image: string, runtime: ContainerRuntime): string {
-  return runtime === 'containerd'
-    ? `sudo k3s ctr images export - '${shellEscape(image)}' | gzip -1`
-    : `docker save '${shellEscape(image)}' | gzip -1`;
+  if (runtime === 'containerd') return `sudo k3s ctr images export - '${shellEscape(image)}' | gzip -1`;
+  return `${runtime} save '${shellEscape(image)}' | gzip -1`;
 }
 
 /** Check if a remote host has a specific image. */
 function imageIdCommand(image: string, runtime: ContainerRuntime): string {
-  return runtime === 'containerd'
-    ? `sudo k3s ctr images ls -q 2>/dev/null | grep -F '${shellEscape(image)}' | head -1`
-    : `docker images --no-trunc -q '${shellEscape(image)}' 2>/dev/null | head -1`;
+  if (runtime === 'containerd') return `sudo k3s ctr images ls -q 2>/dev/null | grep -F '${shellEscape(image)}' | head -1`;
+  return `${runtime} images --no-trunc -q '${shellEscape(image)}' 2>/dev/null | head -1`;
 }
 
 export class DistributionService {
@@ -55,9 +52,9 @@ export class DistributionService {
     return result.stdout.trim();
   }
 
-  static async getLocalImageId(image: string): Promise<string> {
+  static async getLocalImageId(image: string, engine: 'docker' | 'podman' = 'docker'): Promise<string> {
     const proc = Bun.spawn(
-      ['docker', 'images', '--no-trunc', '-q', image],
+      [engine, 'images', '--no-trunc', '-q', image],
       { stdout: 'pipe', stderr: 'pipe' },
     );
     const stdout = await new Response(proc.stdout).text();
@@ -129,7 +126,7 @@ export class DistributionService {
 
   // ─── Streaming transfer ─────────────────────────────────────
 
-  /** Stream an image from local Docker to a single remote target. */
+  /** Stream an image from local Docker/Podman to a single remote target. */
   private static async streamToTarget(
     image: string,
     target: DistributionTarget,
@@ -143,7 +140,8 @@ export class DistributionService {
     // Drain remote stdout to prevent SSH window deadlock
     sink.resume();
 
-    const saveProc = Bun.spawn(['docker', 'save', image], {
+    const localEngine = runtime === 'containerd' ? 'docker' : runtime;
+    const saveProc = Bun.spawn([localEngine, 'save', image], {
       stdout: 'pipe',
       stderr: 'pipe',
     });
@@ -392,15 +390,16 @@ export class DistributionService {
   static async registryLogin(
     connection: SSHKeyConnection,
     config: { url: string; username?: string; password: string },
+    engine: 'docker' | 'podman' = 'docker',
   ): Promise<void> {
-    printDebug('Logging in to Docker registry...');
+    printDebug('Logging in to container registry...');
 
     const ePassword = shellEscape(config.password);
     const eUrl = shellEscape(config.url);
     const userFlag = config.username ? `-u '${shellEscape(config.username)}'` : '';
     const result = await sshExec(
       connection,
-      `echo '${ePassword}' | docker login '${eUrl}' ${userFlag} --password-stdin 2>&1`,
+      `echo '${ePassword}' | ${engine} login '${eUrl}' ${userFlag} --password-stdin 2>&1`,
     );
 
     if (result.exitCode !== 0) {
@@ -418,11 +417,12 @@ export class DistributionService {
   static async pushImages(
     images: string[],
     additionalTags?: { tags: string[]; env: string; version: string; branch: string },
+    engine: 'docker' | 'podman' = 'docker',
   ): Promise<void> {
     for (const image of images) {
       printDim(`Pushing ${image}...`);
 
-      const proc = Bun.spawn(['docker', 'push', image], {
+      const proc = Bun.spawn([engine, 'push', image], {
         stdout: 'pipe',
         stderr: 'pipe',
       });
@@ -432,7 +432,7 @@ export class DistributionService {
 
       if (proc.exitCode !== 0) {
         throw new DeployError(
-          `docker push failed for ${image}: ${stderr.trim()}`,
+          `${engine} push failed for ${image}: ${stderr.trim()}`,
           ErrorCode.DEPLOY_FAILED,
         );
       }
@@ -452,7 +452,7 @@ export class DistributionService {
 
           const taggedImage = `${imageBase}:${tag}`;
 
-          const tagProc = Bun.spawn(['docker', 'tag', image, taggedImage], {
+          const tagProc = Bun.spawn([engine, 'tag', image, taggedImage], {
             stdout: 'pipe',
             stderr: 'pipe',
           });
@@ -463,7 +463,7 @@ export class DistributionService {
             continue;
           }
 
-          const pushProc = Bun.spawn(['docker', 'push', taggedImage], {
+          const pushProc = Bun.spawn([engine, 'push', taggedImage], {
             stdout: 'pipe',
             stderr: 'pipe',
           });
