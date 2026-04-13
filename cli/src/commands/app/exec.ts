@@ -2,13 +2,13 @@
  * Exec command - Execute commands in containers
  *
  * Also serves as: bash, shell (aliases)
- * Uses ExecService to handle command execution.
+ * Uses ExecBackend abstraction to support both Swarm and k3s.
  */
 
 import type { Command } from 'commander';
 import { printInfo, printDebug, printBlank } from '../../utils/output';
 import { validateEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
-import { createExecService, createStackService } from '../../services';
+import { createExecBackend, createOrchestrator } from '../../services/orchestrator/factory';
 import { DockerError, CLIError, withErrorHandler } from '../../utils/errors';
 
 export function registerExecCommand(program: Command): void {
@@ -27,34 +27,37 @@ export function registerExecCommand(program: Command): void {
       workdir?: string;
       sh?: boolean;
     }) => {
-      const { stackName, connection } = validateEnv(env, options.server);
+      const { config, stackName, connection } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName });
 
-      const execService = createExecService(connection, stackName, getAllNodeConnections(env));
+      const orchType = config.orchestrator ?? 'swarm';
+      const execBackend = createExecBackend(orchType, connection, getAllNodeConnections(env));
       const cmd = command.length > 0 ? command.join(' ') : undefined;
 
       try {
         // Interactive shell (no command, or explicit bash/sh)
         if (!cmd || cmd === 'bash' || cmd === 'sh') {
-          const shellPath = (options.sh || cmd === 'sh') ? '/bin/sh' : '/bin/bash';
-          printInfo(`Connecting to ${stackName}_${service}...`);
+          printInfo(`Connecting to ${service}...`);
           printBlank();
 
-          const result = await execService.shell(service, shellPath);
+          // Explicit sh or --sh flag → use sh directly; otherwise auto-detect bash/sh
+          const result = (options.sh || cmd === 'sh')
+            ? await execBackend.shell(stackName, service, '/bin/sh')
+            : await execBackend.bash(stackName, service);
 
           if (!result.success) {
-            const stackService = createStackService(connection, stackName);
-            const services = await stackService.getServiceNames();
+            const orchestrator = createOrchestrator(orchType, connection);
+            const services = await orchestrator.getServices(stackName);
             const suggestion = services.length > 0
-              ? `Available services: ${services.join(', ')}`
+              ? `Available services: ${services.map(s => s.name).join(', ')}`
               : undefined;
             throw new DockerError(result.error.message, { suggestion });
           }
         } else {
           // Execute non-interactive command
-          printInfo(`Executing in ${stackName}_${service}...`);
+          printInfo(`Executing in ${service}...`);
 
-          const result = await execService.exec(service, cmd, {
+          const result = await execBackend.exec(stackName, service, cmd, {
             user: options.user,
             workdir: options.workdir,
           });
@@ -73,7 +76,7 @@ export function registerExecCommand(program: Command): void {
           }
         }
       } catch (error) {
-        if (error instanceof DockerError) throw error;
+        if (error instanceof DockerError || error instanceof CLIError) throw error;
         throw new DockerError(`Failed to exec: ${error}`);
       }
     })));
