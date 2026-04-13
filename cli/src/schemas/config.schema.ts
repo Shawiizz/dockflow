@@ -317,6 +317,11 @@ export const DockflowConfigSchema = z.object({
     )
     .describe('Unique project identifier used for stack naming'),
 
+  orchestrator: z.enum(['swarm', 'k3s'])
+    .optional()
+    .default('swarm')
+    .describe('Orchestration backend: "swarm" (Docker Swarm, default) or "k3s" (lightweight Kubernetes)'),
+
   registry: RegistryConfigSchema.optional().describe(
     'Docker registry configuration for image storage'
   ),
