@@ -17,15 +17,16 @@ services:
       - /run
       - /var/run
     volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
       - /etc/ssl/certs:/etc/ssl/certs:ro
     networks:
       - k3s-network
     healthcheck:
       test: ["CMD", "bash", "/healthcheck.sh"]
-      interval: 5s
-      timeout: 5s
+      interval: 10s
+      timeout: 10s
       retries: 30
-      start_period: 45s
+      start_period: 90s
 
 networks:
   k3s-network:

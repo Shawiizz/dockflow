@@ -169,14 +169,13 @@ export async function startK3sCluster(): Promise<void> {
   console.log("[k3s] Starting k3s test container...");
   await exec(
     ["docker", "compose", "-p", "dockflow-k3s", "-f", "docker-compose.k3s.yml", "up", "-d", "--build", "--wait"],
-    { cwd: DOCKER_DIR, timeoutMs: 300_000 },
-  );
+    { cwd: DOCKER_DIR, timeoutMs: 420_000 },  );
   console.log("[k3s] Container started.");
 
-  // Pre-pull nginx:alpine inside the k3s container (via containerd)
+  // Pre-load nginx:alpine into k3s containerd
   console.log("[k3s] Pulling nginx:alpine into containerd...");
   await exec(
-    ["docker", "exec", K3S_MANAGER_CONTAINER, "k3s", "ctr", "images", "pull", "docker.io/library/nginx:alpine"],
+    ["docker", "exec", K3S_MANAGER_CONTAINER, "k3s", "ctr", "-n", "k8s.io", "images", "pull", "docker.io/library/nginx:alpine"],
     { timeoutMs: 120_000 },
   );
 }

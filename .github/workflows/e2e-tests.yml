@@ -75,6 +75,21 @@ jobs:
           echo "=== Overlay Networks ==="
           docker exec dockflow-test-manager docker network ls --filter driver=overlay 2>/dev/null || true
 
+      - name: Show k3s logs on failure
+        if: failure()
+        run: |
+          echo "=== k3s Container Status ==="
+          docker inspect dockflow-test-k3s --format '{{.State.Status}} (health: {{.State.Health.Status}})' 2>/dev/null || echo "Container not found"
+          echo ""
+          echo "=== k3s Container Logs ==="
+          docker logs dockflow-test-k3s 2>&1 | tail -80 || true
+          echo ""
+          echo "=== k3s Node Status ==="
+          docker exec dockflow-test-k3s kubectl --kubeconfig /var/lib/dockflow/k3s.yaml get nodes -o wide 2>/dev/null || echo "Could not fetch k3s nodes"
+          echo ""
+          echo "=== k3s Pods (all namespaces) ==="
+          docker exec dockflow-test-k3s kubectl --kubeconfig /var/lib/dockflow/k3s.yaml get pods -A 2>/dev/null || echo "Could not fetch pods"
+
       - name: Cleanup
         if: always()
         run: |

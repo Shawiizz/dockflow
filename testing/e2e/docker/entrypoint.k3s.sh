@@ -18,13 +18,13 @@ if [ "${K3S_ROLE}" = "server" ]; then
         --kube-apiserver-arg="--anonymous-auth=true" &
 
     # Wait for k3s to be ready
-    for i in {1..60}; do
+    for i in {1..120}; do
         if [ -f "$KUBECONFIG_SRC" ] && k3s kubectl get nodes >/dev/null 2>&1; then
             log "k3s server is ready."
             break
         fi
-        if [ $i -eq 60 ]; then
-            log "ERROR: k3s server failed to start within 60 seconds."
+        if [ $i -eq 120 ]; then
+            log "ERROR: k3s server failed to start within 120 seconds."
             exit 1
         fi
         sleep 1

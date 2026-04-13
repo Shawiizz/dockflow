@@ -26,19 +26,19 @@ const TRANSFER_MAX_RETRIES = 2;
 
 /** Returns the shell command to import a gzipped image tar on the remote. */
 function importCommand(runtime: ContainerRuntime): string {
-  if (runtime === 'containerd') return 'gunzip | sudo k3s ctr images import -';
+  if (runtime === 'containerd') return 'gunzip | sudo k3s ctr -n k8s.io images import -';
   return `gunzip | ${runtime} load`;
 }
 
 /** Returns the shell command to save an image on a remote host. */
 function saveCommand(image: string, runtime: ContainerRuntime): string {
-  if (runtime === 'containerd') return `sudo k3s ctr images export - '${shellEscape(image)}' | gzip -1`;
+  if (runtime === 'containerd') return `sudo k3s ctr -n k8s.io images export - '${shellEscape(image)}' | gzip -1`;
   return `${runtime} save '${shellEscape(image)}' | gzip -1`;
 }
 
 /** Check if a remote host has a specific image. */
 function imageIdCommand(image: string, runtime: ContainerRuntime): string {
-  if (runtime === 'containerd') return `sudo k3s ctr images ls -q 2>/dev/null | grep -F '${shellEscape(image)}' | head -1`;
+  if (runtime === 'containerd') return `sudo k3s ctr -n k8s.io images ls -q 2>/dev/null | grep -F '${shellEscape(image)}' | head -1`;
   return `${runtime} images --no-trunc -q '${shellEscape(image)}' 2>/dev/null | head -1`;
 }
 

@@ -31,14 +31,14 @@ Podman is CLI-compatible with Docker for these operations, so your `docker-compo
 
 ### k3s and containerd
 
-When using `orchestrator: k3s`, images are always imported via `k3s ctr images import` (containerd) regardless of the build engine. You can build with Docker or Podman locally, and Dockflow handles the transfer to containerd on the k3s node.
+When using `orchestrator: k3s`, images are always imported via `k3s ctr -n k8s.io images import` (containerd) regardless of the build engine. You can build with Docker or Podman locally, and Dockflow handles the transfer to containerd on the k3s node.
 
 ```
 # With Docker + k3s:
-docker save myapp:1.0 | ssh node "sudo k3s ctr images import -"
+docker save myapp:1.0 | ssh node "sudo k3s ctr -n k8s.io images import -"
 
 # With Podman + k3s:
-podman save myapp:1.0 | ssh node "sudo k3s ctr images import -"
+podman save myapp:1.0 | ssh node "sudo k3s ctr -n k8s.io images import -"
 ```
 
 ## When to Use Podman

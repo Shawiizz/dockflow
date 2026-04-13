@@ -7,6 +7,7 @@ import {
   getDeploymentReplicas,
   isDeploymentStable,
   namespaceExists,
+  dumpK3sDebug,
 } from "../helpers/k8s";
 import { join } from "path";
 
@@ -23,9 +24,11 @@ describe("k3s deploy", () => {
     await startK3sCluster();
     await waitForK3s();
     writeK3sDockflowEnv(TEST_APP_DIR);
-  }, 300_000);
+  }, 480_000);
 
   afterAll(async () => {
+    // Dump debug info before teardown (useful for CI failures)
+    try { await dumpK3sDebug(NAMESPACE); } catch { /* ignore */ }
     cleanDockflowEnv(TEST_APP_DIR);
     await stopK3sCluster();
   }, 60_000);
@@ -38,6 +41,7 @@ describe("k3s deploy", () => {
     if (result.exitCode !== 0) {
       console.error("[k3s-deploy] STDOUT:", result.stdout.slice(-2000));
       console.error("[k3s-deploy] STDERR:", result.stderr.slice(-2000));
+      await dumpK3sDebug(NAMESPACE);
     }
     expect(result.exitCode).toBe(0);
   }, 180_000);

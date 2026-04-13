@@ -54,7 +54,7 @@ podman save image:tag | gzip -1 | ssh user@host "gunzip | podman load"
   </Tabs.Tab>
   <Tabs.Tab>
 ```
-docker save image:tag | gzip -1 | ssh user@host "gunzip | sudo k3s ctr images import -"
+docker save image:tag | gzip -1 | ssh user@host "gunzip | sudo k3s ctr -n k8s.io images import -"
 ```
 k3s always uses containerd for image import, regardless of the build engine.
   </Tabs.Tab>

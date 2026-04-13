@@ -108,6 +108,35 @@ export async function isDeploymentStable(
 }
 
 /**
+ * Dump debug information for k3s cluster diagnostics.
+ */
+export async function dumpK3sDebug(ns: string): Promise<void> {
+  const run = async (label: string, args: string[]) => {
+    try {
+      const out = await kubectlExec(args);
+      console.log(`[k3s-debug] ${label}:\n${out}`);
+    } catch (e: any) {
+      console.log(`[k3s-debug] ${label}: FAILED - ${e.message?.slice(0, 200)}`);
+    }
+  };
+
+  // Check images in containerd
+  try {
+    const images = await exec([
+      "docker", "exec", K3S_MANAGER_CONTAINER,
+      "k3s", "ctr", "-n", "k8s.io", "images", "ls",
+    ]);
+    console.log(`[k3s-debug] containerd images (k8s.io):\n${images}`);
+  } catch (e: any) {
+    console.log(`[k3s-debug] containerd images: FAILED - ${e.message?.slice(0, 200)}`);
+  }
+
+  await run("pods", ["get", "pods", "-n", ns, "-o", "wide"]);
+  await run("pod events", ["get", "events", "-n", ns, "--sort-by=.lastTimestamp"]);
+  await run("describe pods", ["describe", "pods", "-n", ns]);
+}
+
+/**
  * Check if a namespace exists.
  */
 export async function namespaceExists(ns: string): Promise<boolean> {
