@@ -57,7 +57,8 @@ export function registerSetupCommand(program: Command): void {
     .option('--portainer-password <password>', 'Portainer admin password (local)')
     .option('--portainer-domain <domain>', 'Portainer domain name (local)')
     .option('-y, --yes', 'Skip confirmations (local)')
-    .action(withErrorHandler(async (target: string | undefined, options: SetupOptions & { key?: string; connection?: string }) => {
+    .option('--dev', 'Build and upload local CLI binary instead of downloading from GitHub (development)')
+    .action(withErrorHandler(async (target: string | undefined, options: SetupOptions & { key?: string; connection?: string; dev?: boolean }) => {
       let remoteOpts: RemoteSetupOptions | null = null;
 
       if (options.connection) {
@@ -70,6 +71,7 @@ export function registerSetupCommand(program: Command): void {
           user: conn.user,
           privateKey: conn.privateKey,
           password: conn.password,
+          dev: options.dev,
         };
       } else if (target) {
         // user@host[:port] mode
@@ -96,6 +98,7 @@ export function registerSetupCommand(program: Command): void {
           user: parsed.user,
           password: options.password,
           privateKey,
+          dev: options.dev,
         };
       }
 
@@ -106,6 +109,15 @@ export function registerSetupCommand(program: Command): void {
           remoteOpts = await promptRemoteConnection(remoteOpts);
           if (!remoteOpts) { process.exit(0); }
         }
+        // Forward local flags to the remote setup command
+        const forwardFlags: string[] = [];
+        if (options.skipDockerInstall) forwardFlags.push('--skip-docker-install');
+        if (options.portainer) forwardFlags.push('--portainer');
+        if (options.portainerPort) forwardFlags.push(`--portainer-port ${options.portainerPort}`);
+        if (options.portainerPassword) forwardFlags.push(`--portainer-password ${options.portainerPassword}`);
+        if (options.yes) forwardFlags.push('--yes');
+        if (forwardFlags.length > 0) remoteOpts.forwardFlags = forwardFlags;
+
         await runRemoteSetup(remoteOpts);
         process.exit(0);
       }
@@ -119,14 +131,14 @@ export function registerSetupCommand(program: Command): void {
         );
       }
 
-      // Detect non-interactive mode: any local-specific flag provided
-      const hasLocalFlags = options.host || options.user || options.sshKey || options.generateKey
-        || options.skipDockerInstall || options.portainer;
+      // Detect non-interactive mode: connection/identity flags provided
+      // Config flags (--skip-docker-install, --portainer) don't trigger non-interactive mode
+      const hasLocalFlags = options.host || options.user || options.sshKey || options.generateKey || options.yes;
 
       if (hasLocalFlags) {
         await runNonInteractiveSetup(options);
       } else {
-        await runInteractiveSetup();
+        await runInteractiveSetup(options);
       }
     }));
 

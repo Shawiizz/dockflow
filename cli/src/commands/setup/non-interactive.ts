@@ -134,7 +134,14 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
     }
   }
 
-  await installAnsibleRoles(DOCKFLOW_DIR);
+  const rolesOk = await installAnsibleRoles(DOCKFLOW_DIR);
+  if (!rolesOk) {
+    throw new CLIError(
+      'Cannot proceed without required Ansible roles',
+      ErrorCode.CONFIG_NOT_FOUND,
+      'Try running: ansible-galaxy role install geerlingguy.docker'
+    );
+  }
 
   const config: HostConfig = {
     publicHost,

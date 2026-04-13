@@ -41,6 +41,9 @@ export interface RemoteSetupOptions {
   password?: string;
   privateKey?: string;
   privateKeyPath?: string;
+  dev?: boolean;
+  /** Flags to forward to the remote `dockflow setup` command */
+  forwardFlags?: string[];
 }
 
 export interface Dependency {

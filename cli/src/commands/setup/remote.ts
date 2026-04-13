@@ -3,10 +3,15 @@
  */
 
 import * as fs from 'fs';
+import { join, resolve } from 'path';
+import { Client as SSHClient } from 'ssh2';
 import { printIntro, printOutro, printSection, printError, printInfo, printBlank, printDim, createSpinner } from '../../utils/output';
-import { sshExec, sshExecStream } from '../../utils/ssh';
+import { sshExec, executeInteractiveSSH } from '../../utils/ssh';
 import type { ConnectionInfo } from '../../types';
+import { isKeyConnection } from '../../types';
+import { normalizePrivateKey } from '../../utils/ssh-keys';
 import { DOCKFLOW_RELEASE_URL } from './constants';
+import { DEFAULT_SSH_PORT } from '../../constants';
 import { prompt, promptPassword, selectMenu, promptMultiline } from './prompts';
 import { parseConnectionString } from './connection';
 import type { RemoteSetupOptions } from './types';
@@ -17,11 +22,103 @@ import type { RemoteSetupOptions } from './types';
 async function detectRemoteArch(conn: ConnectionInfo): Promise<'x64' | 'arm64'> {
   const result = await sshExec(conn, 'uname -m');
   const arch = result.stdout.trim();
-  
+
   if (arch === 'aarch64' || arch === 'arm64') {
     return 'arm64';
   }
   return 'x64';
+}
+
+/**
+ * Build the CLI binary locally for the target architecture.
+ * Returns the path to the built binary.
+ */
+async function buildLocalBinary(arch: 'x64' | 'arm64'): Promise<string> {
+  const cliDir = resolve(join(import.meta.dir, '..', '..', '..'));
+  const target = `bun-linux-${arch}`;
+  const outfile = join(cliDir, 'dist', `dockflow-linux-${arch}`);
+
+  const proc = Bun.spawn(['bun', 'build', 'src/index.ts', '--compile', `--target=${target}`, `--outfile=${outfile}`], {
+    cwd: cliDir,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) {
+    const stderr = await new Response(proc.stderr).text();
+    throw new Error(`Build failed (exit ${exitCode}): ${stderr}`);
+  }
+
+  return outfile;
+}
+
+/**
+ * Upload a local file to a remote host via SFTP (binary stream, no base64 overhead).
+ * Creates a dedicated SSH connection for the transfer.
+ */
+async function uploadFile(
+  conn: ConnectionInfo,
+  localPath: string,
+  remotePath: string,
+  onProgress?: (percent: number) => void,
+): Promise<void> {
+  const fileSize = fs.statSync(localPath).size;
+
+  const client = new SSHClient();
+  const config: Record<string, unknown> = {
+    host: conn.host,
+    port: conn.port || DEFAULT_SSH_PORT,
+    username: conn.user,
+    hostVerifier: () => true,
+    readyTimeout: 30_000,
+  };
+
+  if (isKeyConnection(conn)) {
+    config.privateKey = normalizePrivateKey(conn.privateKey);
+    if (conn.password) config.passphrase = conn.password;
+  } else {
+    config.password = conn.password;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    client.on('ready', () => {
+      client.sftp((err, sftp) => {
+        if (err) { client.end(); reject(err); return; }
+
+        const readStream = fs.createReadStream(localPath);
+        const writeStream = sftp.createWriteStream(remotePath, { mode: 0o755 });
+        let transferred = 0;
+
+        readStream.on('data', (chunk: Buffer) => {
+          transferred += chunk.length;
+          if (onProgress) {
+            onProgress(Math.round((transferred / fileSize) * 100));
+          }
+        });
+
+        writeStream.on('close', () => {
+          client.end();
+          resolve();
+        });
+
+        writeStream.on('error', (e: Error) => {
+          client.end();
+          reject(e);
+        });
+
+        readStream.on('error', (e: Error) => {
+          client.end();
+          reject(e);
+        });
+
+        readStream.pipe(writeStream);
+      });
+    });
+
+    client.on('error', reject);
+    client.connect(config as never);
+  });
 }
 
 /**
@@ -36,6 +133,7 @@ export async function promptRemoteConnection(prefilled?: RemoteSetupOptions): Pr
   let host: string;
   let port: number;
   let user: string;
+  const devMode = prefilled?.dev;
 
   if (prefilled) {
     // Already have host/user from CLI target — just need auth
@@ -71,6 +169,7 @@ export async function promptRemoteConnection(prefilled?: RemoteSetupOptions): Pr
         user: conn.user,
         privateKey: conn.privateKey,
         password: conn.password,
+        dev: devMode,
       };
     }
 
@@ -118,7 +217,7 @@ export async function promptRemoteConnection(prefilled?: RemoteSetupOptions): Pr
     }
   }
 
-  return { host, port, user, password, privateKey, privateKeyPath };
+  return { host, port, user, password, privateKey, privateKeyPath, dev: devMode };
 }
 
 /**
@@ -128,6 +227,9 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   printIntro('Remote Setup');
   printBlank();
   printInfo(`Target: ${opts.user}@${opts.host}:${opts.port}`);
+  if (opts.dev) {
+    printInfo('Mode: dev (build & upload local binary)');
+  }
   printBlank();
 
   const testSpinner = createSpinner();
@@ -171,35 +273,75 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
 
   testSpinner.succeed('SSH connection successful');
 
-  const archSpinner = createSpinner();
-  archSpinner.start('Detecting server architecture...');
-  const arch = await detectRemoteArch(conn);
-  archSpinner.succeed(`Server architecture: ${arch}`);
-
-  const binaryName = `dockflow-linux-${arch}`;
-  const downloadUrl = `${DOCKFLOW_RELEASE_URL}/${binaryName}`;
   const remotePath = '/tmp/dockflow';
 
-  const downloadSpinner = createSpinner();
-  downloadSpinner.start('Downloading Dockflow CLI to remote server...');
+  if (opts.dev) {
+    // Dev mode: build locally and upload
+    const archSpinner = createSpinner();
+    archSpinner.start('Detecting server architecture...');
+    const arch = await detectRemoteArch(conn);
+    archSpinner.succeed(`Server architecture: ${arch}`);
 
-  const downloadCmd = `curl -fsSL "${downloadUrl}" -o ${remotePath} && chmod +x ${remotePath}`;
-  const downloadResult = await sshExec(conn, downloadCmd);
+    const buildSpinner = createSpinner();
+    buildSpinner.start(`Building CLI binary (linux-${arch})...`);
+    try {
+      const binaryPath = await buildLocalBinary(arch);
+      const size = fs.statSync(binaryPath).size;
+      buildSpinner.succeed(`Binary built (${(size / 1024 / 1024).toFixed(1)} MB)`);
 
-  if (downloadResult.exitCode !== 0) {
-    downloadSpinner.fail('Failed to download Dockflow CLI');
-    printError(downloadResult.stderr || 'Download failed');
-    return;
+      // Check if remote already has the same binary (hash comparison)
+      const localHash = new Bun.CryptoHasher('sha256').update(fs.readFileSync(binaryPath)).digest('hex');
+      const remoteHashResult = await sshExec(conn, `sha256sum ${remotePath} 2>/dev/null | cut -d' ' -f1`);
+      const remoteHash = remoteHashResult.stdout.trim();
+
+      if (localHash === remoteHash) {
+        printInfo('Binary unchanged, skipping upload');
+      } else {
+        const uploadSpinner = createSpinner();
+        uploadSpinner.start('Uploading binary to remote server... 0%');
+        await uploadFile(conn, binaryPath, remotePath, (pct) => {
+          uploadSpinner.text = `Uploading binary to remote server... ${pct}%`;
+        });
+        uploadSpinner.succeed('Binary uploaded');
+      }
+    } catch (err) {
+      buildSpinner.fail(`Build/upload failed: ${err}`);
+      return;
+    }
+  } else {
+    // Release mode: download from GitHub
+    const archSpinner = createSpinner();
+    archSpinner.start('Detecting server architecture...');
+    const arch = await detectRemoteArch(conn);
+    archSpinner.succeed(`Server architecture: ${arch}`);
+
+    const binaryName = `dockflow-linux-${arch}`;
+    const downloadUrl = `${DOCKFLOW_RELEASE_URL}/${binaryName}`;
+
+    const downloadSpinner = createSpinner();
+    downloadSpinner.start('Downloading Dockflow CLI to remote server...');
+
+    const downloadCmd = `curl -fsSL "${downloadUrl}" -o ${remotePath} && chmod +x ${remotePath}`;
+    const downloadResult = await sshExec(conn, downloadCmd);
+
+    if (downloadResult.exitCode !== 0) {
+      downloadSpinner.fail('Failed to download Dockflow CLI');
+      printError(downloadResult.stderr || 'Download failed');
+      return;
+    }
+
+    downloadSpinner.succeed('Dockflow CLI downloaded');
   }
-
-  downloadSpinner.succeed('Dockflow CLI downloaded');
 
   printBlank();
   printSection('Running setup on remote server');
   printDim('─'.repeat(60));
   printBlank();
 
-  await sshExecStream(conn, `${remotePath} setup`);
+  const remoteCmd = opts.forwardFlags?.length
+    ? `sudo ${remotePath} setup ${opts.forwardFlags.join(' ')}`
+    : `sudo ${remotePath} setup`;
+  await executeInteractiveSSH(conn, remoteCmd);
 
   printBlank();
   printDim('─'.repeat(60));

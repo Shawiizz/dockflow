@@ -501,6 +501,60 @@ export async function executeInteractiveSSH(
   });
 }
 
+/**
+ * Execute a command via SSH with a PTY but without raw stdin mode.
+ * The PTY ensures the remote process sees a terminal (colours, prompts),
+ * while cooked-mode stdin lets the local terminal handle line editing,
+ * Ctrl+C, etc. — which prevents issues with sub-processes like Ansible.
+ *
+ * NOT pooled — dedicated connection.
+ */
+export async function executePtySSH(
+  conn: ConnectionInfo,
+  command: string,
+): Promise<number> {
+  const client = await connectDedicatedClient(conn);
+
+  return new Promise((resolve, reject) => {
+    const ptyOptions = {
+      term: process.env.TERM || 'xterm-256color',
+      rows: process.stdout.rows || 24,
+      cols: process.stdout.columns || 80,
+    };
+
+    client.exec(command, { pty: ptyOptions }, (err, stream) => {
+      if (err) {
+        client.end();
+        reject(err);
+        return;
+      }
+
+      // Pipe stdin in normal (cooked) mode — no setRawMode
+      process.stdin.resume();
+      process.stdin.pipe(stream);
+      stream.pipe(process.stdout);
+      stream.stderr.pipe(process.stderr);
+
+      const onResize = () => {
+        stream.setWindow(
+          process.stdout.rows || 24,
+          process.stdout.columns || 80,
+          0, 0,
+        );
+      };
+      process.stdout.on('resize', onResize);
+
+      stream.on('close', (code: number) => {
+        process.stdin.unpipe(stream);
+        process.stdin.pause();
+        process.stdout.removeListener('resize', onResize);
+        client.end();
+        resolve(code ?? 0);
+      });
+    });
+  });
+}
+
 // ─── Raw channel access (for streaming) ──────────────────────
 
 export interface SSHChannelHandle {
