@@ -1,0 +1,109 @@
+# Orchestrator
+
+import { Callout, Steps, Tabs } from 'nextra/components'
+
+Selects the orchestration backend used for deployments. Dockflow supports Docker Swarm (default) and k3s (lightweight Kubernetes) as deployment targets — same config, same commands, different runtime.
+
+## Minimal Configuration
+
+```yaml
+# .dockflow/config.yml
+orchestrator: k3s
+```
+
+That's it. All Dockflow commands (`deploy`, `logs`, `scale`, `rollback`, `setup`) adapt automatically to the selected backend.
+
+<Callout type="info">
+  When omitted, `orchestrator` defaults to `swarm`. Existing projects continue to work without any changes.
+</Callout>
+
+## All Options
+
+| Field | Type | Description | Default |
+|---|---|---|---|
+| `orchestrator` | `"swarm"` \| `"k3s"` | Orchestration backend for deployments | `"swarm"` |
+
+### `swarm` (Docker Swarm)
+
+- Uses `docker stack deploy` and Docker Swarm services
+- Traefik deployed as a Swarm service with overlay networking
+- Requires Docker installed on all nodes (`dockflow setup` handles this)
+
+### `k3s` (Lightweight Kubernetes)
+
+- Uses `kubectl apply` with auto-generated Kubernetes manifests
+- Traefik is embedded in k3s — no separate deployment needed
+- Compose files are automatically converted to Kubernetes Deployments, Services, and IngressRoutes
+
+## How It Works
+
+<Steps>
+### Provisioning
+
+Run `dockflow setup swarm <env>` or `dockflow setup k3s <env>` depending on your chosen backend. For Swarm, this installs Docker and initializes the cluster. For k3s, it installs k3s on the manager and joins workers via the node token.
+
+### Deployment
+
+`dockflow deploy <env>` reads the `orchestrator` field from your config. For Swarm, it deploys using `docker stack deploy`. For k3s, it converts your `docker-compose.yml` into Kubernetes manifests (Deployments, Services, PVCs) and applies them with `kubectl apply`.
+
+### Traefik auto-configuration
+
+Both backends support automatic HTTPS via Traefik when `proxy.enabled: true`. For Swarm, Traefik is deployed as a service. For k3s, Dockflow configures the built-in Traefik instance via `HelmChartConfig` — Let's Encrypt certificates work identically in both cases.
+</Steps>
+
+## k3s Prerequisites
+
+- **RAM**: minimum 512 MB per node (1 GB recommended)
+- **Ports**: 6443 (API server), 10250 (Kubelet), 8472/UDP (Flannel VXLAN)
+- **OS**: Any Linux distribution supported by k3s (Debian, Ubuntu, RHEL, etc.)
+
+<Callout type="warning">
+  k3s adds ~50–100 MB of baseline RAM usage compared to Docker Swarm. On memory-constrained nodes (512 MB), this leaves less headroom for your application containers.
+</Callout>
+
+## Compose Compatibility
+
+Your existing `docker-compose.yml` works as-is with both backends. Dockflow handles the translation:
+
+| Compose concept | Swarm | k3s |
+|---|---|---|
+| Services | Swarm services | Kubernetes Deployments + ClusterIP Services |
+| Named volumes | Docker volumes | PersistentVolumeClaims |
+| Bind mounts | Bind mounts | hostPath volumes |
+| `deploy.replicas` | Swarm replicas | `spec.replicas` |
+| `deploy.placement` | Swarm constraints | `nodeSelector` |
+| Traefik labels | Swarm labels | IngressRoute CRDs |
+| Ports | Published ports | ClusterIP service ports |
+
+## Example
+
+<Tabs items={['Swarm (default)', 'k3s']}>
+  <Tabs.Tab>
+```yaml
+# .dockflow/config.yml
+project_name: "my-app"
+# orchestrator: swarm  (default, can be omitted)
+
+proxy:
+  enabled: true
+  email: admin@example.com
+  domains:
+    production: my-app.example.com
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```yaml
+# .dockflow/config.yml
+project_name: "my-app"
+orchestrator: k3s
+
+proxy:
+  enabled: true
+  email: admin@example.com
+  domains:
+    production: my-app.example.com
+```
+  </Tabs.Tab>
+</Tabs>
+
+Both configurations use the same `docker-compose.yml` and `servers.yml` — the only difference is the `orchestrator` field.

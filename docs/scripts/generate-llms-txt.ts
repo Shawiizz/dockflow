@@ -49,6 +49,7 @@ const structure: PageEntry[] = [
       { slug: 'config-file', title: 'Configuration File', path: 'configuration/config-file' },
       { slug: 'proxy', title: 'Automatic HTTPS Proxy', path: 'configuration/proxy' },
       { slug: 'notifications', title: 'Notifications', path: 'configuration/notifications' },
+      { slug: 'orchestrator', title: 'Orchestrator', path: 'configuration/orchestrator' },
     ],
   },
   { slug: 'cli', title: 'CLI Commands', path: 'cli' },

@@ -3,3 +3,6 @@
 # For NOPASSWD servers, no password is needed
 ansible_become: yes
 ansible_become_method: sudo
+
+# Orchestration backend: "swarm" (Docker Swarm) or "k3s" (lightweight Kubernetes)
+orchestrator: "swarm"
