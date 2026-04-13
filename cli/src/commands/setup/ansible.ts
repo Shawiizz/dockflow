@@ -50,10 +50,18 @@ export async function ensureDockflowRepo(): Promise<string> {
       }
     } else {
       spinner.text = 'Cloning Dockflow framework...';
-      
-      const parentDir = path.dirname(DOCKFLOW_DIR);
-      if (!fs.existsSync(parentDir)) {
-        fs.mkdirSync(parentDir, { recursive: true });
+
+      // Ensure parent directory exists and is writable by current user
+      // /opt/ requires sudo to create subdirectories
+      if (!fs.existsSync(DOCKFLOW_DIR)) {
+        spawnSync('sudo', ['mkdir', '-p', DOCKFLOW_DIR], {
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
+        spawnSync('sudo', ['chown', '-R', `${process.env.USER || 'root'}:${process.env.USER || 'root'}`, DOCKFLOW_DIR], {
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
       }
 
       const cloneResult = spawnSync('git', ['clone', DOCKFLOW_REPO, DOCKFLOW_DIR], {
@@ -88,7 +96,7 @@ export async function installAnsibleRoles(cwd: string): Promise<boolean> {
   spinner.start('Installing Ansible roles...');
 
   return new Promise((resolve) => {
-    const proc = spawn('ansible-galaxy', ['role', 'install', 'geerlingguy.docker'], {
+    const proc = spawn('ansible-galaxy', ['role', 'install', 'geerlingguy.docker,7.4.1', '--force'], {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: cwd
     });
@@ -101,8 +109,16 @@ export async function installAnsibleRoles(cwd: string): Promise<boolean> {
         spinner.succeed('Ansible roles installed');
         resolve(true);
       } else {
-        spinner.warn('Could not install Ansible roles (may already exist)');
-        resolve(true);
+        // Check if role already exists locally
+        const roleExists = fs.existsSync(path.join(cwd, 'roles', 'geerlingguy.docker'))
+          || fs.existsSync(path.join(process.env.HOME || '/root', '.ansible', 'roles', 'geerlingguy.docker'));
+        if (roleExists) {
+          spinner.warn('Could not update Ansible roles (using existing version)');
+          resolve(true);
+        } else {
+          spinner.fail(`Failed to install Ansible roles: ${stderr.trim()}`);
+          resolve(false);
+        }
       }
     });
 
@@ -188,7 +204,12 @@ export async function runAnsiblePlaybook(config: HostConfig, ansibleDir: string)
         ANSIBLE_HOST_KEY_CHECKING: 'False',
         ANSIBLE_CONFIG: path.join(path.dirname(ansibleDir!), 'ansible.cfg'),
         // Force unbuffered output for Python/Ansible
-        PYTHONUNBUFFERED: '1'
+        PYTHONUNBUFFERED: '1',
+        // Disable colour/interactive features to avoid PTY buffering issues
+        ANSIBLE_NOCOLOR: '1',
+        ANSIBLE_FORCE_COLOR: '0',
+        // Reduce fact gathering to speed up execution
+        ANSIBLE_GATHERING: 'smart',
       }
     });
 

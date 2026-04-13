@@ -21,7 +21,7 @@ import type { HostConfig } from './types';
 /**
  * Run interactive setup wizard
  */
-export async function runInteractiveSetup(): Promise<void> {
+export async function runInteractiveSetup(options?: { skipDockerInstall?: boolean; portainer?: boolean; portainerPort?: string; portainerPassword?: string }): Promise<void> {
   printIntro('Machine Setup Wizard');
   printBlank();
 
@@ -282,7 +282,14 @@ export async function runInteractiveSetup(): Promise<void> {
   }
 
   printBlank();
-  await installAnsibleRoles(DOCKFLOW_DIR);
+  const rolesOk = await installAnsibleRoles(DOCKFLOW_DIR);
+  if (!rolesOk) {
+    throw new CLIError(
+      'Cannot proceed without required Ansible roles',
+      ErrorCode.CONFIG_NOT_FOUND,
+      'Try running: ansible-galaxy role install geerlingguy.docker'
+    );
+  }
 
   printBlank();
   const config: HostConfig = {
@@ -291,7 +298,7 @@ export async function runInteractiveSetup(): Promise<void> {
     deployUser,
     deployPassword,
     privateKeyPath,
-    skipDockerInstall: false,
+    skipDockerInstall: options?.skipDockerInstall || false,
     portainer: portainerConfig
   };
 

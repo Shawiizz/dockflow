@@ -29,6 +29,8 @@ export interface BuildTarget {
   tag: string;
   /** Rendered template overrides: relative path (within context) → content */
   renderedOverrides?: Map<string, string>;
+  /** Target platform for cross-compilation (e.g. 'linux/arm64') */
+  platform?: string;
 }
 
 export interface BuildResult {
@@ -218,9 +220,13 @@ export class BuildService {
   static async buildImage(target: BuildTarget): Promise<void> {
     const tar = await buildContextTar(target);
 
-    const proc = Bun.spawn(
-      ['docker', 'build', '--progress=plain', '-f', target.dockerfile, '-t', target.tag, '-'],
-      {
+    const args = ['docker', 'build', '--progress=plain'];
+    if (target.platform) {
+      args.push('--platform', target.platform);
+    }
+    args.push('-f', target.dockerfile, '-t', target.tag, '-');
+
+    const proc = Bun.spawn(args, {
         stdin: new Blob([new Uint8Array(tar)]).stream(),
         stdout: 'pipe',
         stderr: 'pipe',

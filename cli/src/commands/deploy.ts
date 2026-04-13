@@ -38,6 +38,7 @@ import { resolveEnvironmentPrefix } from '../utils/validation';
 import { detectCIEnvironment, resolveDeployParams } from '../utils/ci';
 import { getCurrentBranch } from '../utils/git';
 import { getLatestVersion, incrementVersion } from '../utils/version';
+import { sshExec } from '../utils/ssh';
 import {
   ConfigError,
   ConnectionError,
@@ -60,7 +61,7 @@ import { AuditService } from '../services/audit-service';
 import { MetricsService } from '../services/metrics-service';
 import { HistorySyncService } from '../services/history-sync-service';
 import { BuildService } from '../services/build-service';
-import { DistributionService } from '../services/distribution-service';
+import { DistributionService, type ContainerRuntime } from '../services/distribution-service';
 import { HookService } from '../services/hook-service';
 import { TraefikService } from '../services/traefik-service';
 import { K3sTraefikService } from '../services/k3s-traefik-service';
@@ -170,6 +171,7 @@ async function buildAndDistribute(
 
   await HookService.runLocal('pre-build', ctx.projectRoot, ctx.config, ctx.rendered);
 
+  const runtime: ContainerRuntime = ctx.config.orchestrator === 'k3s' ? 'containerd' : 'docker';
   let builtImages: string[] = [];
 
   if (ctx.config.options?.remote_build) {
@@ -186,7 +188,7 @@ async function buildAndDistribute(
 
     if (builtImages.length > 0 && ctx.workerConns.length > 0) {
       const workerTargets = ctx.workerConns.map((w) => ({ connection: w.connection, name: w.name }));
-      await DistributionService.distributeFromRemote(builtImages, ctx.managerConn, workerTargets);
+      await DistributionService.distributeFromRemote(builtImages, ctx.managerConn, workerTargets, runtime);
     }
   } else {
     const targets = BuildService.getBuildTargets(
@@ -196,8 +198,14 @@ async function buildAndDistribute(
     );
 
     if (targets.length > 0) {
+      // Detect remote arch for cross-compilation if needed
+      const archResult = await sshExec(ctx.managerConn, 'uname -m');
+      const remoteArch = archResult.stdout.trim();
+      const platform = (remoteArch === 'aarch64' || remoteArch === 'arm64') ? 'linux/arm64' : 'linux/amd64';
+
       for (const target of targets) {
         target.renderedOverrides = BuildService.getOverridesForTarget(ctx.rendered, target, ctx.projectRoot);
+        target.platform = platform;
       }
 
       const result = await BuildService.buildAll(targets);
@@ -220,7 +228,7 @@ async function buildAndDistribute(
           { connection: ctx.managerConn, name: 'manager' },
           ...ctx.workerConns.map((w) => ({ connection: w.connection, name: w.name })),
         ];
-        await DistributionService.distributeAll(builtImages, distTargets);
+        await DistributionService.distributeAll(builtImages, distTargets, runtime);
       }
     }
   }

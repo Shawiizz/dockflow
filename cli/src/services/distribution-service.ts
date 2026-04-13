@@ -1,8 +1,8 @@
 /**
  * Distribution Service
  *
- * Streams Docker images to Swarm nodes via SSH pipe
- * (docker save | gzip → gunzip | docker load), without buffering in memory.
+ * Streams Docker images to nodes via SSH pipe.
+ * Supports both Docker (docker save/load) and containerd (k3s ctr import) runtimes.
  * Also handles registry push and authentication.
  */
 
@@ -15,6 +15,8 @@ import { printDebug, printDim, printSuccess, printWarning, createTimedSpinner } 
 import { DeployError, ErrorCode } from '../utils/errors';
 import { parseImageRef } from './compose-service';
 
+export type ContainerRuntime = 'docker' | 'containerd';
+
 export interface DistributionTarget {
   connection: SSHKeyConnection;
   name: string;
@@ -22,15 +24,34 @@ export interface DistributionTarget {
 
 const TRANSFER_MAX_RETRIES = 2;
 
+/** Returns the shell command to import a gzipped image tar on the remote. */
+function importCommand(runtime: ContainerRuntime): string {
+  return runtime === 'containerd'
+    ? 'gunzip | sudo k3s ctr images import -'
+    : 'gunzip | docker load';
+}
+
+/** Returns the shell command to save an image on a remote host. */
+function saveCommand(image: string, runtime: ContainerRuntime): string {
+  return runtime === 'containerd'
+    ? `sudo k3s ctr images export - '${shellEscape(image)}' | gzip -1`
+    : `docker save '${shellEscape(image)}' | gzip -1`;
+}
+
+/** Check if a remote host has a specific image. */
+function imageIdCommand(image: string, runtime: ContainerRuntime): string {
+  return runtime === 'containerd'
+    ? `sudo k3s ctr images ls -q 2>/dev/null | grep -F '${shellEscape(image)}' | head -1`
+    : `docker images --no-trunc -q '${shellEscape(image)}' 2>/dev/null | head -1`;
+}
+
 export class DistributionService {
   static async getRemoteImageId(
     connection: SSHKeyConnection,
     image: string,
+    runtime: ContainerRuntime = 'docker',
   ): Promise<string> {
-    const result = await sshExec(
-      connection,
-      `docker images --no-trunc -q '${shellEscape(image)}' 2>/dev/null | head -1`,
-    );
+    const result = await sshExec(connection, imageIdCommand(image, runtime));
     return result.stdout.trim();
   }
 
@@ -112,10 +133,11 @@ export class DistributionService {
   private static async streamToTarget(
     image: string,
     target: DistributionTarget,
+    runtime: ContainerRuntime = 'docker',
   ): Promise<void> {
     const { stream: sink, done } = await sshExecChannel(
       target.connection,
-      'gunzip | docker load',
+      importCommand(runtime),
     );
 
     // Drain remote stdout to prevent SSH window deadlock
@@ -151,17 +173,18 @@ export class DistributionService {
     image: string,
     source: SSHKeyConnection,
     target: DistributionTarget,
+    runtime: ContainerRuntime = 'docker',
   ): Promise<void> {
     const { stream: sink, done: sinkDone } = await sshExecChannel(
       target.connection,
-      'gunzip | docker load',
+      importCommand(runtime),
     );
     // Drain remote stdout to prevent SSH window deadlock
     sink.resume();
 
     const { stream: src, done: srcDone } = await sshExecChannel(
       source,
-      `docker save '${shellEscape(image)}' | gzip -1`,
+      saveCommand(image, runtime),
     );
 
     await DistributionService.pipeChannels(src, sink);
@@ -183,12 +206,13 @@ export class DistributionService {
     image: string,
     sourceId: string,
     targets: DistributionTarget[],
+    runtime: ContainerRuntime = 'docker',
   ): Promise<DistributionTarget[]> {
     if (!sourceId) return targets;
 
     const checks = await Promise.all(
       targets.map(async (t) => {
-        const targetId = await DistributionService.getRemoteImageId(t.connection, image);
+        const targetId = await DistributionService.getRemoteImageId(t.connection, image, runtime);
         return { target: t, needsUpdate: targetId !== sourceId };
       }),
     );
@@ -252,6 +276,7 @@ export class DistributionService {
   static async distributeAll(
     images: string[],
     targets: DistributionTarget[],
+    runtime: ContainerRuntime = 'docker',
   ): Promise<void> {
     if (images.length === 0 || targets.length === 0) return;
 
@@ -263,13 +288,13 @@ export class DistributionService {
       for (const image of images) {
         spinner.update(`Distributing ${image}...`);
         const sourceId = await DistributionService.getLocalImageId(image);
-        const needsUpdate = await DistributionService.filterTargetsNeedingImage(image, sourceId, targets);
+        const needsUpdate = await DistributionService.filterTargetsNeedingImage(image, sourceId, targets, runtime);
         if (needsUpdate.length === 0) continue;
 
         await DistributionService.transferImageToTargets(
           image,
           needsUpdate,
-          DistributionService.streamToTarget,
+          (img, t) => DistributionService.streamToTarget(img, t, runtime),
           '',
         );
       }
@@ -285,6 +310,7 @@ export class DistributionService {
     images: string[],
     source: SSHKeyConnection,
     targets: DistributionTarget[],
+    runtime: ContainerRuntime = 'docker',
   ): Promise<void> {
     if (images.length === 0 || targets.length === 0) return;
 
@@ -295,14 +321,14 @@ export class DistributionService {
       // Images sequential (avoid N×M SSH channels), targets parallel per image
       for (const image of images) {
         spinner.update(`Distributing ${image} (from remote)...`);
-        const sourceId = await DistributionService.getRemoteImageId(source, image);
-        const needsUpdate = await DistributionService.filterTargetsNeedingImage(image, sourceId, targets);
+        const sourceId = await DistributionService.getRemoteImageId(source, image, runtime);
+        const needsUpdate = await DistributionService.filterTargetsNeedingImage(image, sourceId, targets, runtime);
         if (needsUpdate.length === 0) continue;
 
         await DistributionService.transferImageToTargets(
           image,
           needsUpdate,
-          (img, target) => DistributionService.streamRemoteToTarget(img, source, target),
+          (img, t) => DistributionService.streamRemoteToTarget(img, source, t, runtime),
           ' (from remote)',
         );
       }
@@ -319,10 +345,11 @@ export class DistributionService {
   static async transferImage(
     image: string,
     target: DistributionTarget,
+    runtime: ContainerRuntime = 'docker',
   ): Promise<void> {
     const sourceId = await DistributionService.getLocalImageId(image);
     if (sourceId) {
-      const targetId = await DistributionService.getRemoteImageId(target.connection, image);
+      const targetId = await DistributionService.getRemoteImageId(target.connection, image, runtime);
       if (sourceId === targetId) {
         printDim(`Already up to date on ${target.name}: ${image}`);
         return;
@@ -332,7 +359,7 @@ export class DistributionService {
     await DistributionService.transferImageToTargets(
       image,
       [target],
-      DistributionService.streamToTarget,
+      (img, t) => DistributionService.streamToTarget(img, t, runtime),
       '',
     );
   }
@@ -341,10 +368,11 @@ export class DistributionService {
     image: string,
     source: SSHKeyConnection,
     target: DistributionTarget,
+    runtime: ContainerRuntime = 'docker',
   ): Promise<void> {
-    const sourceId = await DistributionService.getRemoteImageId(source, image);
+    const sourceId = await DistributionService.getRemoteImageId(source, image, runtime);
     if (sourceId) {
-      const targetId = await DistributionService.getRemoteImageId(target.connection, image);
+      const targetId = await DistributionService.getRemoteImageId(target.connection, image, runtime);
       if (sourceId === targetId) {
         printDim(`Already up to date on ${target.name}: ${image}`);
         return;
@@ -354,7 +382,7 @@ export class DistributionService {
     await DistributionService.transferImageToTargets(
       image,
       [target],
-      (img, t) => DistributionService.streamRemoteToTarget(img, source, t),
+      (img, t) => DistributionService.streamRemoteToTarget(img, source, t, runtime),
       ' (from remote)',
     );
   }

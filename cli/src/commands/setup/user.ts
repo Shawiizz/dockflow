@@ -19,7 +19,8 @@ export function createDeployUser(username: string, password: string, publicKey: 
     stdio: ['pipe', 'pipe', 'pipe']
   });
 
-  if (result.status !== 0 && !result.stderr.includes('already exists')) {
+  const userAlreadyExists = result.status !== 0 && result.stderr.includes('already exists');
+  if (result.status !== 0 && !userAlreadyExists) {
     spinner.fail(`Failed to create user: ${result.stderr}`);
     return false;
   }
@@ -57,12 +58,13 @@ export function createDeployUser(username: string, password: string, publicKey: 
   const userSSHDir = `${userHome}/.ssh`;
 
   spawnSync('sudo', ['mkdir', '-p', userSSHDir], { encoding: 'utf-8' });
-  spawnSync('sudo', ['sh', '-c', `echo "${publicKey}" > ${userSSHDir}/authorized_keys`], { encoding: 'utf-8' });
+  // Always ensure the provided key is in authorized_keys (append if not already present, then deduplicate)
+  spawnSync('sudo', ['sh', '-c', `touch ${userSSHDir}/authorized_keys && grep -qF "${publicKey}" ${userSSHDir}/authorized_keys || echo "${publicKey}" >> ${userSSHDir}/authorized_keys`], { encoding: 'utf-8' });
   spawnSync('sudo', ['chown', '-R', `${username}:${username}`, userSSHDir], { encoding: 'utf-8' });
   spawnSync('sudo', ['chmod', '700', userSSHDir], { encoding: 'utf-8' });
   spawnSync('sudo', ['chmod', '600', `${userSSHDir}/authorized_keys`], { encoding: 'utf-8' });
 
-  const sudoersContent = `${username} ALL=(ALL) NOPASSWD: /usr/bin/docker, /usr/bin/docker-compose, /usr/bin/systemctl`;
+  const sudoersContent = `${username} ALL=(ALL) NOPASSWD: ALL`;
   spawnSync('sudo', ['sh', '-c', `echo "${sudoersContent}" > /etc/sudoers.d/${username}`], { encoding: 'utf-8' });
   spawnSync('sudo', ['chmod', '440', `/etc/sudoers.d/${username}`], { encoding: 'utf-8' });
 

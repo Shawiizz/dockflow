@@ -136,6 +136,7 @@ export class K8sManifestService {
     const container: Record<string, unknown> = {
       name: serviceName,
       image,
+      imagePullPolicy: 'Never',
     };
 
     // Environment variables
