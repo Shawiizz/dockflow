@@ -1,5 +1,8 @@
 /**
  * User management utilities
+ *
+ * Note: These functions expect to run as root (the remote setup binary
+ * is launched with `sudo`), so no individual `sudo` calls are needed.
  */
 
 import { spawnSync } from 'child_process';
@@ -14,7 +17,7 @@ export function createDeployUser(username: string, password: string, publicKey: 
   const spinner = createSpinner();
   spinner.start(`Creating user ${username}...`);
 
-  let result = spawnSync('sudo', ['useradd', '-m', '-s', '/bin/bash', username], {
+  let result = spawnSync('useradd', ['-m', '-s', '/bin/bash', username], {
     encoding: 'utf-8',
     stdio: ['pipe', 'pipe', 'pipe']
   });
@@ -25,7 +28,7 @@ export function createDeployUser(username: string, password: string, publicKey: 
     return false;
   }
 
-  const chpasswd = spawnSync('sudo', ['chpasswd'], {
+  const chpasswd = spawnSync('chpasswd', [], {
     input: `${username}:${password}`,
     encoding: 'utf-8',
     stdio: ['pipe', 'pipe', 'pipe']
@@ -36,20 +39,20 @@ export function createDeployUser(username: string, password: string, publicKey: 
     return false;
   }
 
-  result = spawnSync('sudo', ['usermod', '-aG', 'sudo', username], {
+  result = spawnSync('usermod', ['-aG', 'sudo', username], {
     encoding: 'utf-8',
     stdio: ['pipe', 'pipe', 'pipe']
   });
 
   if (result.status !== 0) {
-    result = spawnSync('sudo', ['usermod', '-aG', 'wheel', username], {
+    result = spawnSync('usermod', ['-aG', 'wheel', username], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe']
     });
   }
 
   // Add user to docker group (if docker is installed)
-  spawnSync('sudo', ['usermod', '-aG', 'docker', username], {
+  spawnSync('usermod', ['-aG', 'docker', username], {
     encoding: 'utf-8',
     stdio: ['pipe', 'pipe', 'pipe']
   });
@@ -57,16 +60,16 @@ export function createDeployUser(username: string, password: string, publicKey: 
   const userHome = `/home/${username}`;
   const userSSHDir = `${userHome}/.ssh`;
 
-  spawnSync('sudo', ['mkdir', '-p', userSSHDir], { encoding: 'utf-8' });
-  // Always ensure the provided key is in authorized_keys (append if not already present, then deduplicate)
-  spawnSync('sudo', ['sh', '-c', `touch ${userSSHDir}/authorized_keys && grep -qF "${publicKey}" ${userSSHDir}/authorized_keys || echo "${publicKey}" >> ${userSSHDir}/authorized_keys`], { encoding: 'utf-8' });
-  spawnSync('sudo', ['chown', '-R', `${username}:${username}`, userSSHDir], { encoding: 'utf-8' });
-  spawnSync('sudo', ['chmod', '700', userSSHDir], { encoding: 'utf-8' });
-  spawnSync('sudo', ['chmod', '600', `${userSSHDir}/authorized_keys`], { encoding: 'utf-8' });
+  spawnSync('mkdir', ['-p', userSSHDir], { encoding: 'utf-8' });
+  // Always ensure the provided key is in authorized_keys (append if not already present)
+  spawnSync('sh', ['-c', `touch ${userSSHDir}/authorized_keys && grep -qF "${publicKey}" ${userSSHDir}/authorized_keys || echo "${publicKey}" >> ${userSSHDir}/authorized_keys`], { encoding: 'utf-8' });
+  spawnSync('chown', ['-R', `${username}:${username}`, userSSHDir], { encoding: 'utf-8' });
+  spawnSync('chmod', ['700', userSSHDir], { encoding: 'utf-8' });
+  spawnSync('chmod', ['600', `${userSSHDir}/authorized_keys`], { encoding: 'utf-8' });
 
   const sudoersContent = `${username} ALL=(ALL) NOPASSWD: ALL`;
-  spawnSync('sudo', ['sh', '-c', `echo "${sudoersContent}" > /etc/sudoers.d/${username}`], { encoding: 'utf-8' });
-  spawnSync('sudo', ['chmod', '440', `/etc/sudoers.d/${username}`], { encoding: 'utf-8' });
+  spawnSync('sh', ['-c', `echo "${sudoersContent}" > /etc/sudoers.d/${username}`], { encoding: 'utf-8' });
+  spawnSync('chmod', ['440', `/etc/sudoers.d/${username}`], { encoding: 'utf-8' });
 
   spinner.succeed(`User ${username} created successfully`);
   return true;
@@ -80,20 +83,10 @@ export async function validateUserPassword(username: string, password: string): 
     return false;
   }
 
-  const isRoot = process.getuid?.() === 0;
-
-  let result;
-  if (isRoot) {
-    result = spawnSync('sudo', ['-u', username, 'bash', '-c', `echo '${password}' | /bin/su --command true - '${username}'`], {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-  } else {
-    result = spawnSync('bash', ['-c', `echo '${password}' | /bin/su --command true - '${username}'`], {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-  }
+  const result = spawnSync('bash', ['-c', `echo '${password}' | /bin/su --command true - '${username}'`], {
+    encoding: 'utf-8',
+    stdio: ['pipe', 'pipe', 'pipe']
+  });
 
   return result.status === 0;
 }
@@ -107,7 +100,7 @@ export async function promptAndValidateUserPassword(username: string): Promise<s
 
   while (attempts < maxAttempts) {
     const password = await promptPassword(`Password for user ${username}`);
-    
+
     if (!password) {
       printWarning('Password cannot be empty');
       attempts++;
