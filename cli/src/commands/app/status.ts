@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import chalk from 'chalk';
 import { getAvailableEnvironments, getManagersForEnvironment, getFullConnectionInfo } from '../../utils/servers';
 import { createStackService } from '../../services';
+import { createOrchestrator } from '../../services/orchestrator/factory';
 import { withSecrets } from '../../utils/secrets';
 import { withErrorHandler } from '../../utils/errors';
 import { printIntro, printBlank, printRaw, printSection, printWarning, colors } from '../../utils/output';
@@ -33,10 +34,12 @@ async function getEnvStatus(env: string): Promise<EnvStatus> {
 
     const stackName = `${config.project_name}-${env}`;
     const stackService = createStackService(connection, stackName);
+    const orchType = config.orchestrator ?? 'swarm';
+    const orchestrator = createOrchestrator(orchType, connection);
 
     const [metaResult, servicesResult] = await Promise.allSettled([
       stackService.getMetadata(),
-      stackService.getServices(),
+      orchestrator.getServices(stackName),
     ]);
 
     const meta = metaResult.status === 'fulfilled' && metaResult.value.success
@@ -44,8 +47,8 @@ async function getEnvStatus(env: string): Promise<EnvStatus> {
       : null;
 
     let services: { running: number; desired: number } | null = null;
-    if (servicesResult.status === 'fulfilled' && servicesResult.value.success) {
-      const svcs = servicesResult.value.data;
+    if (servicesResult.status === 'fulfilled') {
+      const svcs = servicesResult.value;
       const running = svcs.reduce((sum, s) => {
         const [cur] = s.replicas.split('/').map(Number);
         return sum + (cur || 0);
