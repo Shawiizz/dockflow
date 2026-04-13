@@ -161,6 +161,22 @@ function buildConnection(
 // ---------------------------------------------------------------------------
 
 /**
+ * Detect which container engine (docker or podman) is available on the remote.
+ * If a config override is set, use it directly.
+ */
+async function detectContainerEngine(
+  conn: SSHKeyConnection,
+  configEngine?: 'docker' | 'podman',
+): Promise<'docker' | 'podman'> {
+  if (configEngine) return configEngine;
+
+  const podman = await sshExec(conn, 'which podman 2>/dev/null');
+  if (podman.exitCode === 0) return 'podman';
+
+  return 'docker';
+}
+
+/**
  * Phase: Build Docker images and distribute to nodes.
  */
 async function buildAndDistribute(
@@ -171,7 +187,9 @@ async function buildAndDistribute(
 
   await HookService.runLocal('pre-build', ctx.projectRoot, ctx.config, ctx.rendered);
 
-  const runtime: ContainerRuntime = ctx.config.orchestrator === 'k3s' ? 'containerd' : 'docker';
+  // Determine container engine (podman vs docker) — auto-detect or config override
+  const engine = await detectContainerEngine(ctx.managerConn, ctx.config.container_engine);
+  const runtime: ContainerRuntime = ctx.config.orchestrator === 'k3s' ? 'containerd' : engine;
   let builtImages: string[] = [];
 
   if (ctx.config.options?.remote_build) {
@@ -183,6 +201,7 @@ async function buildAndDistribute(
       env: ctx.env,
       branch: ctx.branchName,
       servicesFilter: ctx.options.services,
+      engine,
     });
     builtImages = result.images;
 
@@ -206,6 +225,7 @@ async function buildAndDistribute(
       for (const target of targets) {
         target.renderedOverrides = BuildService.getOverridesForTarget(ctx.rendered, target, ctx.projectRoot);
         target.platform = platform;
+        target.engine = engine;
       }
 
       const result = await BuildService.buildAll(targets);
@@ -216,13 +236,13 @@ async function buildAndDistribute(
           url: ctx.config.registry.url,
           username: ctx.config.registry.username,
           password: ctx.config.registry.password,
-        });
+        }, engine);
         await DistributionService.pushImages(builtImages, ctx.config.registry.additional_tags?.length ? {
           tags: ctx.config.registry.additional_tags,
           env: ctx.env,
           version: ctx.deployVersion,
           branch: ctx.branchName,
-        } : undefined);
+        } : undefined, engine);
       } else if (builtImages.length > 0) {
         const distTargets = [
           { connection: ctx.managerConn, name: 'manager' },

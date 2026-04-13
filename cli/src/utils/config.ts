@@ -136,6 +136,7 @@ export interface NotificationsConfig {
 export interface DockflowConfig {
   project_name: string;
   orchestrator?: 'swarm' | 'k3s';
+  container_engine?: 'docker' | 'podman';
   registry?: RegistryConfig;
   options?: BuildOptions;
   stack_management?: StackManagementConfig;

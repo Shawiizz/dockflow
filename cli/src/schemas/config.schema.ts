@@ -322,6 +322,10 @@ export const DockflowConfigSchema = z.object({
     .default('swarm')
     .describe('Orchestration backend: "swarm" (Docker Swarm, default) or "k3s" (lightweight Kubernetes)'),
 
+  container_engine: z.enum(['docker', 'podman'])
+    .optional()
+    .describe('Container engine for building & distributing images. Auto-detected on the remote if not set.'),
+
   registry: RegistryConfigSchema.optional().describe(
     'Docker registry configuration for image storage'
   ),
