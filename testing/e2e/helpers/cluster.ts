@@ -52,7 +52,7 @@ export async function exec(
 export async function startCluster(): Promise<void> {
   console.log("[cluster] Starting test containers...");
   await exec(
-    ["docker", "compose", "up", "-d", "--build", "--wait"],
+    ["docker", "compose", "-p", "dockflow-swarm", "up", "-d", "--build", "--wait"],
     { cwd: DOCKER_DIR, timeoutMs: 300_000 }
   );
   console.log("[cluster] Containers started.");
@@ -93,7 +93,7 @@ export async function stopCluster(): Promise<void> {
   console.log("[cluster] Tearing down...");
   try {
     await exec(
-      ["docker", "compose", "down", "-v", "--remove-orphans"],
+      ["docker", "compose", "-p", "dockflow-swarm", "down", "-v", "--remove-orphans"],
       { cwd: DOCKER_DIR, timeoutMs: 60_000 }
     );
   } catch (e) {
@@ -168,7 +168,7 @@ export async function buildCLI(): Promise<string> {
 export async function startK3sCluster(): Promise<void> {
   console.log("[k3s] Starting k3s test container...");
   await exec(
-    ["docker", "compose", "-f", "docker-compose.k3s.yml", "up", "-d", "--build", "--wait"],
+    ["docker", "compose", "-p", "dockflow-k3s", "-f", "docker-compose.k3s.yml", "up", "-d", "--build", "--wait"],
     { cwd: DOCKER_DIR, timeoutMs: 300_000 },
   );
   console.log("[k3s] Container started.");
@@ -188,7 +188,7 @@ export async function stopK3sCluster(): Promise<void> {
   console.log("[k3s] Tearing down...");
   try {
     await exec(
-      ["docker", "compose", "-f", "docker-compose.k3s.yml", "down", "-v", "--remove-orphans"],
+      ["docker", "compose", "-p", "dockflow-k3s", "-f", "docker-compose.k3s.yml", "down", "-v", "--remove-orphans"],
       { cwd: DOCKER_DIR, timeoutMs: 60_000 },
     );
   } catch (e) {
