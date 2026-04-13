@@ -35,6 +35,7 @@ export interface OrchestratorService {
     name: string,
     content: string,
     accessoryPath: string,
+    options?: { force?: boolean },
   ): Promise<Result<{ deployed: boolean }, DeployError>>;
 
   waitConvergence(

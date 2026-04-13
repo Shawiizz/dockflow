@@ -45,9 +45,10 @@ export class SwarmOrchestratorService implements OrchestratorService {
     name: string,
     content: string,
     accessoryPath: string,
+    options?: { force?: boolean },
   ): Promise<Result<{ deployed: boolean }, DeployError>> {
     try {
-      await this.inner.deployAccessories(name, accessoryPath, content);
+      await this.inner.deployAccessories(name, accessoryPath, content, options);
       return ok({ deployed: true });
     } catch (e) {
       return err(this.toDeployError(e));

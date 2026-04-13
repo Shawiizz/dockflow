@@ -14,6 +14,7 @@ import { sshExec } from '../utils/ssh';
 import { printDebug, printDim, printWarning, createTimedSpinner } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import type { HealthCheckConfig, HealthCheckEndpoint } from '../utils/config';
+import type { HealthBackend, InternalHealthResult } from './orchestrator/health-interface';
 
 // Defaults — overridable via config.health_checks.timeout / .interval
 const DEFAULT_HEALTHCHECK_TIMEOUT_S = 120;
@@ -30,7 +31,36 @@ export interface SwarmHealthResult {
 }
 
 export class HealthCheckService {
-  constructor(private readonly connection: SSHKeyConnection) {}
+  private readonly healthBackend?: HealthBackend;
+
+  constructor(
+    private readonly connection: SSHKeyConnection,
+    healthBackend?: HealthBackend,
+  ) {
+    this.healthBackend = healthBackend;
+  }
+
+  /**
+   * Orchestrator-agnostic internal health check.
+   * Delegates to the injected HealthBackend (Swarm or k3s).
+   * Throws DeployError if no backend is configured.
+   */
+  async checkInternalHealth(
+    stackName: string,
+    config?: HealthCheckConfig,
+  ): Promise<InternalHealthResult> {
+    if (!this.healthBackend) {
+      throw new DeployError(
+        'No health backend configured',
+        ErrorCode.HEALTH_CHECK_FAILED,
+      );
+    }
+
+    const timeoutS = config?.timeout ?? DEFAULT_HEALTHCHECK_TIMEOUT_S;
+    const intervalS = config?.interval ?? DEFAULT_HEALTHCHECK_INTERVAL_S;
+
+    return this.healthBackend.checkInternalHealth(stackName, timeoutS, intervalS);
+  }
 
   /**
    * Check internal Swarm container health for all services in a stack.

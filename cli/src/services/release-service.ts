@@ -23,7 +23,7 @@ import { shellEscape } from '../utils/ssh';
 import { printDebug, printInfo, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import { DOCKFLOW_STACKS_DIR } from '../constants';
-import type { SwarmDeployService } from './swarm-deploy-service';
+import type { OrchestratorService } from './orchestrator/interface';
 import type { DockflowConfig } from '../utils/config';
 
 const DEFAULT_KEEP_RELEASES = 3;
@@ -116,13 +116,13 @@ export class ReleaseService {
   /**
    * Rollback to the previous release.
    *
-   * Reads the previous release's compose, deploys it via SwarmDeployService,
+   * Reads the previous release's compose, deploys it via OrchestratorService,
    * waits for convergence, then updates the `current` symlink.
    * Returns the version that was rolled back to.
    */
   async rollback(
     stackName: string,
-    swarmDeployService: SwarmDeployService,
+    orchestrator: OrchestratorService,
   ): Promise<string> {
     const releases = await this.listReleases(stackName);
 
@@ -152,9 +152,22 @@ export class ReleaseService {
       );
     }
 
-    // Deploy old compose
-    await swarmDeployService.deployStack(stackName, composeResult.stdout);
-    await swarmDeployService.waitConvergence(stackName, { context: 'rollback' });
+    // Deploy old compose via orchestrator
+    const deployResult = await orchestrator.deployStack(stackName, composeResult.stdout, previousDir);
+    if (!deployResult.success) {
+      throw new DeployError(
+        deployResult.error.message,
+        ErrorCode.ROLLBACK_FAILED,
+      );
+    }
+
+    const convergence = await orchestrator.waitConvergence(stackName, 300, 5);
+    if (!convergence.converged) {
+      throw new DeployError(
+        'Rollback did not converge',
+        ErrorCode.ROLLBACK_FAILED,
+      );
+    }
 
     // Update symlink
     await sshExec(

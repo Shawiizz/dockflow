@@ -1,7 +1,7 @@
 /**
  * Deploy command
  *
- * Deploys the application to a Docker Swarm cluster using direct SSH.
+ * Deploys the application to a cluster using direct SSH.
  * No Ansible or Docker container needed — all operations go through
  * the ssh2 library from the CLI process.
  *
@@ -50,7 +50,9 @@ import type { SSHKeyConnection } from '../types';
 
 // Services
 import { ComposeService, type ParsedCompose, type RenderedFiles } from '../services/compose-service';
-import { SwarmDeployService } from '../services/swarm-deploy-service';
+import { createOrchestrator, createHealthBackend } from '../services/orchestrator/factory';
+import type { OrchestratorService } from '../services/orchestrator/interface';
+import type { HealthBackend } from '../services/orchestrator/health-interface';
 import { HealthCheckService } from '../services/health-check-service';
 import { ReleaseService } from '../services/release-service';
 import { LockService } from '../services/lock-service';
@@ -61,7 +63,10 @@ import { BuildService } from '../services/build-service';
 import { DistributionService } from '../services/distribution-service';
 import { HookService } from '../services/hook-service';
 import { TraefikService } from '../services/traefik-service';
+import { K3sTraefikService } from '../services/k3s-traefik-service';
+import { K8sManifestService } from '../services/k8s-manifest-service';
 import { NotificationService } from '../services/notification-service';
+import { CONVERGENCE_TIMEOUT_S, CONVERGENCE_INTERVAL_S } from '../constants';
 
 interface DeployOptions {
   services?: string;
@@ -101,8 +106,8 @@ interface DeployContext {
   composeDirPath: string;
 
   // Services
-  swarmDeploy: SwarmDeployService;
-  health: HealthCheckService;
+  orchestrator: OrchestratorService;
+  healthBackend: HealthBackend;
   releases: ReleaseService;
   lock: LockService;
   audit: AuditService;
@@ -155,7 +160,7 @@ function buildConnection(
 // ---------------------------------------------------------------------------
 
 /**
- * Phase: Build Docker images and distribute to Swarm nodes.
+ * Phase: Build Docker images and distribute to nodes.
  */
 async function buildAndDistribute(
   ctx: DeployContext,
@@ -237,16 +242,22 @@ async function deployAccessories(ctx: DeployContext): Promise<void> {
   const accessoriesCompose = ComposeService.loadFromString(accessoriesContent);
   ComposeService.injectAccessoriesDefaults(accessoriesCompose);
 
-  const externalNets = ComposeService.getExternalNetworks(accessoriesCompose);
-  const externalVols = ComposeService.getExternalVolumes(accessoriesCompose);
-  await ctx.swarmDeploy.createExternalResources(externalNets, externalVols);
+  await ctx.orchestrator.prepareInfrastructure(ctx.stackName, ComposeService.serialize(accessoriesCompose));
 
-  await ctx.swarmDeploy.deployAccessories(
+  const accessoriesYaml = ctx.config.orchestrator === 'k3s'
+    ? K8sManifestService.composeToManifests(ctx.stackName, accessoriesCompose)
+    : ComposeService.serialize(accessoriesCompose);
+
+  const result = await ctx.orchestrator.deployAccessory(
     ctx.stackName,
+    accessoriesYaml,
     accessoriesRelPath,
-    ComposeService.serialize(accessoriesCompose),
     { force: ctx.forceAccessories },
   );
+
+  if (!result.success) {
+    throw result.error;
+  }
 }
 
 /**
@@ -257,30 +268,61 @@ async function deployApp(ctx: DeployContext, compose: ParsedCompose): Promise<vo
 
   // Ensure Traefik is running if proxy is enabled
   if (ctx.config.proxy?.enabled) {
-    const traefik = new TraefikService(ctx.managerConn);
+    const traefik = ctx.config.orchestrator === 'k3s'
+      ? new K3sTraefikService(ctx.managerConn)
+      : new TraefikService(ctx.managerConn);
     await traefik.ensureRunning(ctx.config.proxy);
   }
 
   await HookService.runRemote('pre-deploy', ctx.managerConn, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
 
-  const externalNetworks = ComposeService.getExternalNetworks(compose);
-  const externalVolumes = ComposeService.getExternalVolumes(compose);
-  await ctx.swarmDeploy.createExternalResources(externalNetworks, externalVolumes);
+  // Prepare infrastructure (external networks/volumes for Swarm, no-op for k3s)
+  await ctx.orchestrator.prepareInfrastructure(ctx.stackName, ComposeService.serialize(compose));
 
-  await ctx.swarmDeploy.deployStack(ctx.stackName, ComposeService.serialize(compose));
-  await ctx.swarmDeploy.waitConvergence(ctx.stackName);
+  // Convert to K8s manifests if using k3s, otherwise use compose YAML
+  const deployContent = ctx.config.orchestrator === 'k3s'
+    ? K8sManifestService.composeToManifests(ctx.stackName, compose, ctx.config.proxy)
+    : ComposeService.serialize(compose);
+
+  const deployResult = await ctx.orchestrator.deployStack(ctx.stackName, deployContent, '');
+  if (!deployResult.success) {
+    throw deployResult.error;
+  }
+
+  const convergence = await ctx.orchestrator.waitConvergence(
+    ctx.stackName,
+    CONVERGENCE_TIMEOUT_S,
+    CONVERGENCE_INTERVAL_S,
+  );
+  if (!convergence.converged) {
+    if (convergence.rolledBack) {
+      throw new DeployError(
+        'Orchestrator auto-rolled back the deployment',
+        ErrorCode.HEALTH_CHECK_FAILED,
+        'Check service logs to understand why the new version failed.',
+      );
+    }
+    throw new DeployError(
+      'Service convergence timed out',
+      ErrorCode.DEPLOY_FAILED,
+      'Check service logs with `dockflow logs <service>` for details.',
+    );
+  }
 
   // Health checks
   if (ctx.config.health_checks?.enabled !== false) {
-    const expectedImages: Record<string, string> = {};
-    for (const [svcName, svc] of Object.entries(compose.services)) {
-      const img = svc.image as string | undefined;
-      if (img) expectedImages[`${ctx.stackName}_${svcName}`] = img;
+    const health = new HealthCheckService(ctx.managerConn, ctx.healthBackend);
+    const internalResult = await health.checkInternalHealth(ctx.stackName, ctx.config.health_checks);
+    if (!internalResult.healthy) {
+      throw new DeployError(
+        internalResult.message || `Health check failed${internalResult.failedService ? `: ${internalResult.failedService}` : ''}`,
+        ErrorCode.HEALTH_CHECK_FAILED,
+        'Check service logs with `dockflow logs <service>` for details.',
+      );
     }
-    await ctx.health.checkSwarmHealth(ctx.stackName, expectedImages, ctx.config.health_checks);
 
     if (ctx.config.health_checks?.endpoints?.length) {
-      await ctx.health.checkHTTPEndpoints(ctx.config.health_checks);
+      await health.checkHTTPEndpoints(ctx.config.health_checks);
     }
   }
 
@@ -553,14 +595,15 @@ export async function runDeploy(
 
   // --- Build deploy context ---
   const lock = new LockService(managerConn, stackName);
+  const orchType = config.orchestrator ?? 'swarm';
 
   const ctx: DeployContext = {
     env, config, stackName, branchName, deployVersion, projectRoot,
     managerConn, workerConns, otherManagerConns,
     deployApp: shouldDeployApp, forceAccessories, skipAccessories,
     options, rendered, composeContent, composeDirPath,
-    swarmDeploy: new SwarmDeployService(managerConn),
-    health: new HealthCheckService(managerConn),
+    orchestrator: createOrchestrator(orchType, managerConn),
+    healthBackend: createHealthBackend(orchType, managerConn),
     releases: new ReleaseService(managerConn),
     lock,
     audit: new AuditService(managerConn),
@@ -586,7 +629,9 @@ export async function runDeploy(
     // --- Prepare compose ---
     const compose = ComposeService.loadFromString(composeContent);
     ComposeService.updateImageTags(compose, config, env, deployVersion);
-    ComposeService.injectSwarmDefaults(compose);
+    if (config.orchestrator !== 'k3s') {
+      ComposeService.injectSwarmDefaults(compose);
+    }
     if (config.proxy?.enabled) {
       ComposeService.injectTraefikLabels(compose, config, stackName, env);
     }
@@ -628,7 +673,7 @@ export async function runDeploy(
       config.health_checks?.on_failure === 'rollback'
     ) {
       try {
-        const rolledBackTo = await ctx.releases.rollback(stackName, ctx.swarmDeploy);
+        const rolledBackTo = await ctx.releases.rollback(stackName, ctx.orchestrator);
         printWarning(`Rolled back to ${rolledBackTo}`);
       } catch (rollbackErr) {
         printWarning(`Rollback failed: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`);
@@ -663,7 +708,7 @@ export async function runDeploy(
   printBlank();
   if (totalNodes > 1) {
     printSuccess(
-      `Deployment completed! Swarm cluster: ${managers.length} manager(s) + ${workers.length} worker(s)`,
+      `Deployment completed! Cluster: ${managers.length} manager(s) + ${workers.length} worker(s)`,
     );
   } else {
     printSuccess('Deployment completed!');
@@ -676,7 +721,7 @@ export async function runDeploy(
 export function registerDeployCommand(program: Command): void {
   program
     .command('deploy [env] [version]')
-    .description('Deploy application to specified environment (targets Swarm manager)')
+    .description('Deploy application to specified environment')
     .helpGroup('Deploy')
     .option('--services <services>', 'Comma-separated list of services to deploy')
     .option('--skip-build', 'Skip the build phase')

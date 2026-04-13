@@ -68,6 +68,7 @@ export class K3sOrchestratorService implements OrchestratorService {
     name: string,
     content: string,
     _accessoryPath: string,
+    _options?: { force?: boolean },
   ): Promise<Result<{ deployed: boolean }, DeployError>> {
     // Apply the accessory manifest; kubectl apply is idempotent
     const encoded = Buffer.from(content).toString('base64');
