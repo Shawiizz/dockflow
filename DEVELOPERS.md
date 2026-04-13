@@ -90,30 +90,29 @@ Docker Desktop must be running with WSL integration enabled.
 
 ```bash
 cd testing/e2e
-bun test tests/      # full suite (~5-10 min)
-bun run teardown.ts  # clean up containers afterwards
+bun test tests/                       # full suite: Swarm + k3s (~5-10 min)
+bun test tests/02-deploy.test.ts      # single Swarm test
+bun test tests/10-k3s-deploy.test.ts  # k3s tests only
+bun run teardown.ts                   # clean up containers afterwards
 ```
 
 ### Test architecture
 
-Two Docker containers simulate a real Swarm cluster:
+Two Docker containers simulate a real Swarm cluster, and a separate container runs a single-node k3s cluster:
 
 | Container | Role |
 |-----------|------|
 | `dockflow-test-manager` | Swarm manager — SSH on `localhost:2222` |
 | `dockflow-test-worker-1` | Swarm worker — SSH on `localhost:2223` |
+| `dockflow-test-k3s` | k3s single-node — SSH on `localhost:2224` |
 
 The `.env.dockflow` in test fixtures uses `localhost:222x` port mappings to reach the containers from the host.
 
 ### What's tested
 
-- Machine setup (Docker install, deploy user, SSH keys)
-- Swarm cluster init (manager + worker)
-- Application deployment (2 replicas, distributed across nodes)
-- Health checks and HTTP accessibility
-- Traefik reverse proxy routing (HTTP-only mode, no ACME)
-- Backup and restore cycle (Redis accessory)
-- Remote build
+**Swarm tests** (`01-05`): build, deploy (2 replicas, distributed), health checks, Traefik routing, backup/restore (Redis), remote build.
+
+**k3s tests** (`10`): deploy to k3s, namespace creation, deployment replicas, logs, exec, scale up/down.
 
 ### Debug commands
 

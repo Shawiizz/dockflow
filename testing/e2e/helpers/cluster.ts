@@ -4,7 +4,11 @@
  */
 
 import { join } from "path";
-import { MANAGER_CONTAINER, WORKER_CONTAINER } from "./connection";
+import {
+  MANAGER_CONTAINER,
+  WORKER_CONTAINER,
+  K3S_MANAGER_CONTAINER,
+} from "./connection";
 import { getCliBinaryName } from "./cli";
 
 const E2E_DIR = join(import.meta.dir, "..");
@@ -154,4 +158,73 @@ export async function buildCLI(): Promise<string> {
 
   console.log(`[cli] CLI built: ${binaryName}`);
   return binaryPath;
+}
+
+// ─── k3s cluster management ────────────────────────────────────────
+
+/**
+ * Start the k3s test cluster (single node).
+ */
+export async function startK3sCluster(): Promise<void> {
+  console.log("[k3s] Starting k3s test container...");
+  await exec(
+    ["docker", "compose", "-f", "docker-compose.k3s.yml", "up", "-d", "--build", "--wait"],
+    { cwd: DOCKER_DIR, timeoutMs: 300_000 },
+  );
+  console.log("[k3s] Container started.");
+
+  // Pre-pull nginx:alpine inside the k3s container (via containerd)
+  console.log("[k3s] Pulling nginx:alpine into containerd...");
+  await exec(
+    ["docker", "exec", K3S_MANAGER_CONTAINER, "k3s", "ctr", "images", "pull", "docker.io/library/nginx:alpine"],
+    { timeoutMs: 120_000 },
+  );
+}
+
+/**
+ * Stop and remove the k3s cluster.
+ */
+export async function stopK3sCluster(): Promise<void> {
+  console.log("[k3s] Tearing down...");
+  try {
+    await exec(
+      ["docker", "compose", "-f", "docker-compose.k3s.yml", "down", "-v", "--remove-orphans"],
+      { cwd: DOCKER_DIR, timeoutMs: 60_000 },
+    );
+  } catch (e) {
+    console.error("[k3s] Teardown warning:", e);
+  }
+}
+
+/**
+ * Wait for k3s node to be Ready.
+ */
+export async function waitForK3s(timeoutMs = 120_000): Promise<void> {
+  console.log("[k3s] Waiting for node Ready...");
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    try {
+      const output = await exec([
+        "docker", "exec", K3S_MANAGER_CONTAINER,
+        "kubectl", "--kubeconfig", "/var/lib/dockflow/k3s.yaml",
+        "get", "nodes", "-o", "json",
+      ]);
+      const data = JSON.parse(output);
+      const ready = data.items?.some((node: any) =>
+        node.status?.conditions?.some(
+          (c: any) => c.type === "Ready" && c.status === "True",
+        ),
+      );
+      if (ready) {
+        console.log("[k3s] Node is Ready.");
+        return;
+      }
+    } catch {
+      // k3s not ready yet
+    }
+    await Bun.sleep(3000);
+  }
+
+  throw new Error(`k3s node did not become Ready within ${timeoutMs}ms`);
 }

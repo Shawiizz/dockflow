@@ -1,0 +1,78 @@
+# Ubuntu 24.04 + k3s + SSH for E2E testing
+FROM ubuntu:24.04
+
+ARG DEPLOY_USER=deploytest
+ARG DEPLOY_PASSWORD=dockflow123
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install dependencies (no docker.io — k3s uses containerd)
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+        openssh-server \
+        sudo \
+        bash \
+        curl \
+        ca-certificates \
+        git \
+        jq \
+        rsync \
+        netcat-openbsd \
+        gzip \
+        iptables \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install k3s binary directly (installer needs systemd, so we download manually)
+ARG K3S_VERSION=v1.32.4%2Bk3s1
+RUN ARCH=$(uname -m) && \
+    SUFFIX="" && \
+    if [ "$ARCH" = "aarch64" ]; then SUFFIX="-arm64"; fi && \
+    curl -fL "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s${SUFFIX}" \
+      -o /usr/local/bin/k3s && \
+    chmod +x /usr/local/bin/k3s && \
+    k3s --version
+
+# Configure SSH
+RUN mkdir -p /var/run/sshd && \
+    sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config && \
+    echo "MaxSessions 50" >> /etc/ssh/sshd_config && \
+    echo "MaxStartups 50:30:100" >> /etc/ssh/sshd_config
+
+# Set root password
+RUN echo "root:${DEPLOY_PASSWORD}" | chpasswd
+
+# Create deploy user with sudo privileges and pre-baked SSH key
+RUN useradd -m -s /bin/bash ${DEPLOY_USER} && \
+    echo "${DEPLOY_USER}:${DEPLOY_PASSWORD}" | chpasswd && \
+    echo "${DEPLOY_USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+    mkdir -p /home/${DEPLOY_USER}/.ssh && \
+    chmod 700 /home/${DEPLOY_USER}/.ssh && \
+    chown -R ${DEPLOY_USER}:${DEPLOY_USER} /home/${DEPLOY_USER}
+
+# Copy the pre-generated public key into authorized_keys
+COPY fixtures/keys/id_ed25519.pub /home/${DEPLOY_USER}/.ssh/authorized_keys
+RUN chmod 600 /home/${DEPLOY_USER}/.ssh/authorized_keys && \
+    chown ${DEPLOY_USER}:${DEPLOY_USER} /home/${DEPLOY_USER}/.ssh/authorized_keys
+
+# Copy scripts
+COPY docker/entrypoint.k3s.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+COPY docker/healthcheck.k3s.sh /healthcheck.sh
+RUN chmod +x /healthcheck.sh
+
+# Create dockflow runtime directory
+RUN mkdir -p /var/lib/dockflow && chmod 1777 /var/lib/dockflow
+
+# kubectl symlink for convenience (k3s bundles it)
+RUN ln -sf /usr/local/bin/k3s /usr/local/bin/kubectl 2>/dev/null || true
+
+EXPOSE 22 6443 80 443
+
+HEALTHCHECK --interval=5s --timeout=5s --start-period=45s --retries=20 \
+    CMD /healthcheck.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

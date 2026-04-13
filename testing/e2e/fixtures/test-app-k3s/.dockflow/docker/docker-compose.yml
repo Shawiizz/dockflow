@@ -1,0 +1,12 @@
+services:
+  web:
+    image: test-k3s-web-app
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    ports:
+      - "8081:80"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure

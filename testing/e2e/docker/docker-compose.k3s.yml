@@ -1,0 +1,32 @@
+services:
+  k3s-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.k3s-vm
+    container_name: dockflow-test-k3s
+    hostname: dockflow-test-k3s
+    privileged: true
+    environment:
+      - K3S_ROLE=server
+      - K3S_TOKEN=dockflow-e2e-token
+    ports:
+      - "2224:22"
+      - "6443:6443"
+      - "8081:80"
+    tmpfs:
+      - /run
+      - /var/run
+    volumes:
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+    networks:
+      - k3s-network
+    healthcheck:
+      test: ["CMD", "bash", "/healthcheck.sh"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 45s
+
+networks:
+  k3s-network:
+    driver: bridge
