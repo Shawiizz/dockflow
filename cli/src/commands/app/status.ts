@@ -85,16 +85,22 @@ function formatTimestamp(iso: string): string {
 
 export function registerStatusCommand(program: Command): void {
   program
-    .command('status')
-    .description('Show deployment status across all environments')
+    .command('status [env]')
+    .description('Show deployment status (all environments, or a specific one)')
     .helpGroup('Inspect')
-    .action(withErrorHandler(withSecrets(async () => {
+    .action(withErrorHandler(withSecrets(async (env?: string) => {
       printIntro(chalk.bold('Deployment Status'));
       printBlank();
 
-      const envs = getAvailableEnvironments();
-      if (envs.length === 0) {
+      const allEnvs = getAvailableEnvironments();
+      if (allEnvs.length === 0) {
         printWarning('No environments configured in servers.yml');
+        return;
+      }
+
+      const envs = env ? allEnvs.filter(e => e === env) : allEnvs;
+      if (envs.length === 0) {
+        printWarning(`Environment "${env}" not found. Available: ${allEnvs.join(', ')}`);
         return;
       }
 
