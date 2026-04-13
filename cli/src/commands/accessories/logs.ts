@@ -2,14 +2,14 @@
  * Accessories Logs Command
  * View logs for accessory services
  *
- * Uses LogsService (shared with app commands)
+ * Uses LogsBackend abstraction to support both Swarm and k3s.
  */
 
 import type { Command } from 'commander';
-import { printInfo, printSection, printBlank } from '../../utils/output';
+import { printInfo, printSection, printBlank, printRaw } from '../../utils/output';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
-import { createLogsService } from '../../services';
+import { createLogsBackend, createOrchestrator } from '../../services/orchestrator/factory';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 
 /**
@@ -30,31 +30,60 @@ export function registerAccessoriesLogsCommand(program: Command): void {
       service: string | undefined,
       options: { follow?: boolean; tail?: string; since?: string; timestamps?: boolean; raw?: boolean; server?: string }
     ) => {
-      const { connection } = validateEnv(env, options.server);
+      const { config, connection } = validateEnv(env, options.server);
       const { stackName } = await requireAccessoriesStack(connection, env);
 
-      const logsService = createLogsService(connection, stackName);
+      const orchType = config.orchestrator ?? 'swarm';
+      const logsBackend = createLogsBackend(orchType, connection);
       const logOptions = {
         tail: parseInt(options.tail || '100', 10),
-        follow: options.follow,
+        follow: options.follow ?? false,
         timestamps: options.timestamps,
         since: options.since,
-        raw: options.raw,
       };
 
       try {
         if (service) {
           printInfo(`Logs for ${service}:`);
           printBlank();
-          await logsService.streamServiceLogs(service, logOptions);
+          await logsBackend.streamLogs(
+            stackName,
+            service,
+            logOptions,
+            (line) => printRaw(line),
+            (err) => { throw err; },
+          );
         } else {
-          await logsService.streamAllLogs(logOptions, (serviceName) => {
-            if (!options.follow) {
-              printSection(serviceName);
-            } else {
-              printInfo(`Following logs for ${serviceName} (specify a service name to follow a different one)`);
+          // Get service list from orchestrator then stream each
+          const orchestrator = createOrchestrator(orchType, connection);
+          const services = await orchestrator.getServices(stackName);
+
+          if (services.length === 0) {
+            throw new DockerError('No accessory services found');
+          }
+
+          if (options.follow) {
+            const svc = services[0];
+            printInfo(`Following logs for ${svc.name} (specify a service name to follow a different one)`);
+            await logsBackend.streamLogs(
+              stackName,
+              svc.name,
+              logOptions,
+              (line) => printRaw(line),
+              (err) => { throw err; },
+            );
+          } else {
+            for (const svc of services) {
+              printSection(svc.name);
+              await logsBackend.streamLogs(
+                stackName,
+                svc.name,
+                logOptions,
+                (line) => printRaw(line),
+                (err) => { throw err; },
+              );
             }
-          });
+          }
         }
       } catch (error) {
         if (error instanceof DockerError) throw error;
