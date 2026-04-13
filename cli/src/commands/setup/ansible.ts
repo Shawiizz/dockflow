@@ -51,17 +51,9 @@ export async function ensureDockflowRepo(): Promise<string> {
     } else {
       spinner.text = 'Cloning Dockflow framework...';
 
-      // Ensure parent directory exists and is writable by current user
-      // /opt/ requires sudo to create subdirectories
+      // Ensure parent directory exists
       if (!fs.existsSync(DOCKFLOW_DIR)) {
-        spawnSync('sudo', ['mkdir', '-p', DOCKFLOW_DIR], {
-          encoding: 'utf-8',
-          stdio: ['pipe', 'pipe', 'pipe']
-        });
-        spawnSync('sudo', ['chown', '-R', `${process.env.USER || 'root'}:${process.env.USER || 'root'}`, DOCKFLOW_DIR], {
-          encoding: 'utf-8',
-          stdio: ['pipe', 'pipe', 'pipe']
-        });
+        fs.mkdirSync(DOCKFLOW_DIR, { recursive: true });
       }
 
       const cloneResult = spawnSync('git', ['clone', DOCKFLOW_REPO, DOCKFLOW_DIR], {
