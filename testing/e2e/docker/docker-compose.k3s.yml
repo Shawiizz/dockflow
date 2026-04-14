@@ -6,6 +6,7 @@ services:
     container_name: dockflow-test-k3s
     hostname: dockflow-test-k3s
     privileged: true
+    cgroup: host
     environment:
       - K3S_ROLE=server
       - K3S_TOKEN=dockflow-e2e-token
