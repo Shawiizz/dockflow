@@ -271,37 +271,54 @@ export class DistributionService {
 
   // ─── Public API ─────────────────────────────────────────────
 
+  /**
+   * Core distribution logic — images sequential, targets parallel per image.
+   */
+  private static async distributeImages(
+    images: string[],
+    targets: DistributionTarget[],
+    runtime: ContainerRuntime,
+    source: SSHKeyConnection | 'local',
+  ): Promise<void> {
+    if (images.length === 0 || targets.length === 0) return;
+
+    const isRemote = source !== 'local';
+    const label = isRemote ? ' (from remote)' : '';
+
+    const spinner = createTimedSpinner();
+    spinner.start(`Distributing ${images.length} image(s) to ${targets.length} node(s)${label}...`);
+
+    try {
+      for (const image of images) {
+        spinner.update(`Distributing ${image}${label}...`);
+
+        const sourceId = isRemote
+          ? await DistributionService.getRemoteImageId(source, image, runtime)
+          : await DistributionService.getLocalImageId(image);
+
+        const needsUpdate = await DistributionService.filterTargetsNeedingImage(image, sourceId, targets, runtime);
+        if (needsUpdate.length === 0) continue;
+
+        const streamFn = isRemote
+          ? (img: string, t: DistributionTarget) => DistributionService.streamRemoteToTarget(img, source, t, runtime)
+          : (img: string, t: DistributionTarget) => DistributionService.streamToTarget(img, t, runtime);
+
+        await DistributionService.transferImageToTargets(image, needsUpdate, streamFn, label);
+      }
+
+      spinner.succeed(`Distributed ${images.length} image(s) to ${targets.length} node(s)${label}`);
+    } catch (error) {
+      spinner.fail('Image distribution failed');
+      throw error;
+    }
+  }
+
   static async distributeAll(
     images: string[],
     targets: DistributionTarget[],
     runtime: ContainerRuntime = 'docker',
   ): Promise<void> {
-    if (images.length === 0 || targets.length === 0) return;
-
-    const spinner = createTimedSpinner();
-    spinner.start(`Distributing ${images.length} image(s) to ${targets.length} node(s)...`);
-
-    try {
-      // Images sequential (avoid N×M SSH channels), targets parallel per image
-      for (const image of images) {
-        spinner.update(`Distributing ${image}...`);
-        const sourceId = await DistributionService.getLocalImageId(image);
-        const needsUpdate = await DistributionService.filterTargetsNeedingImage(image, sourceId, targets, runtime);
-        if (needsUpdate.length === 0) continue;
-
-        await DistributionService.transferImageToTargets(
-          image,
-          needsUpdate,
-          (img, t) => DistributionService.streamToTarget(img, t, runtime),
-          '',
-        );
-      }
-
-      spinner.succeed(`Distributed ${images.length} image(s) to ${targets.length} node(s)`);
-    } catch (error) {
-      spinner.fail('Image distribution failed');
-      throw error;
-    }
+    return DistributionService.distributeImages(images, targets, runtime, 'local');
   }
 
   static async distributeFromRemote(
@@ -310,32 +327,7 @@ export class DistributionService {
     targets: DistributionTarget[],
     runtime: ContainerRuntime = 'docker',
   ): Promise<void> {
-    if (images.length === 0 || targets.length === 0) return;
-
-    const spinner = createTimedSpinner();
-    spinner.start(`Distributing ${images.length} image(s) to ${targets.length} node(s) (from remote)...`);
-
-    try {
-      // Images sequential (avoid N×M SSH channels), targets parallel per image
-      for (const image of images) {
-        spinner.update(`Distributing ${image} (from remote)...`);
-        const sourceId = await DistributionService.getRemoteImageId(source, image, runtime);
-        const needsUpdate = await DistributionService.filterTargetsNeedingImage(image, sourceId, targets, runtime);
-        if (needsUpdate.length === 0) continue;
-
-        await DistributionService.transferImageToTargets(
-          image,
-          needsUpdate,
-          (img, t) => DistributionService.streamRemoteToTarget(img, source, t, runtime),
-          ' (from remote)',
-        );
-      }
-
-      spinner.succeed(`Distributed ${images.length} image(s) to ${targets.length} node(s) (from remote)`);
-    } catch (error) {
-      spinner.fail('Image distribution failed');
-      throw error;
-    }
+    return DistributionService.distributeImages(images, targets, runtime, source);
   }
 
   // ─── Single-target convenience ─────────────────────────────
@@ -413,71 +405,85 @@ export class DistributionService {
     printDebug('Registry login successful');
   }
 
+  /** Push a single image and its additional tags. */
+  private static async pushSingleImage(
+    image: string,
+    engine: 'docker' | 'podman',
+    additionalTags?: { tags: string[]; env: string; version: string; branch: string; sha: string },
+  ): Promise<void> {
+    printDim(`Pushing ${image}...`);
+
+    const proc = Bun.spawn([engine, 'push', image], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+
+    const stderr = await new Response(proc.stderr).text();
+    await proc.exited;
+
+    if (proc.exitCode !== 0) {
+      throw new DeployError(
+        `${engine} push failed for ${image}: ${stderr.trim()}`,
+        ErrorCode.DEPLOY_FAILED,
+      );
+    }
+
+    printSuccess(`Pushed ${image}`);
+
+    if (additionalTags && additionalTags.tags.length > 0) {
+      const imageBase = parseImageRef(image).name;
+
+      // Tag + push additional tags in parallel (they share the same layers)
+      await Promise.all(additionalTags.tags.map(async (tagTemplate) => {
+        const tag = tagTemplate
+          .replace(/\{version\}/g, additionalTags.version)
+          .replace(/\{env\}/g, additionalTags.env)
+          .replace(/\{branch\}/g, DistributionService.sanitizeBranch(additionalTags.branch))
+          .replace(/\{sha\}/g, additionalTags.sha);
+
+        const taggedImage = `${imageBase}:${tag}`;
+
+        const tagProc = Bun.spawn([engine, 'tag', image, taggedImage], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
+        await tagProc.exited;
+
+        if (tagProc.exitCode !== 0) {
+          printWarning(`Failed to tag ${taggedImage}`);
+          return;
+        }
+
+        const pushProc = Bun.spawn([engine, 'push', taggedImage], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
+        const pushStderr = await new Response(pushProc.stderr).text();
+        await pushProc.exited;
+
+        if (pushProc.exitCode !== 0) {
+          printWarning(`Failed to push additional tag ${taggedImage}: ${pushStderr.trim()}`);
+        } else {
+          printDim(`Pushed additional tag: ${taggedImage}`);
+        }
+      }));
+    }
+  }
+
   /** Push all built images to registry, with optional additional tags. */
   static async pushImages(
     images: string[],
     additionalTags?: { tags: string[]; env: string; version: string; branch: string },
     engine: 'docker' | 'podman' = 'docker',
   ): Promise<void> {
-    for (const image of images) {
-      printDim(`Pushing ${image}...`);
+    // Resolve git sha once (shared across all images)
+    const sha = additionalTags ? await DistributionService.getGitSha() : '';
+    const tagsWithSha = additionalTags ? { ...additionalTags, sha } : undefined;
 
-      const proc = Bun.spawn([engine, 'push', image], {
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
-
-      const stderr = await new Response(proc.stderr).text();
-      await proc.exited;
-
-      if (proc.exitCode !== 0) {
-        throw new DeployError(
-          `${engine} push failed for ${image}: ${stderr.trim()}`,
-          ErrorCode.DEPLOY_FAILED,
-        );
-      }
-
-      printSuccess(`Pushed ${image}`);
-
-      if (additionalTags && additionalTags.tags.length > 0) {
-        const sha = await DistributionService.getGitSha();
-        const imageBase = parseImageRef(image).name;
-
-        for (const tagTemplate of additionalTags.tags) {
-          const tag = tagTemplate
-            .replace(/\{version\}/g, additionalTags.version)
-            .replace(/\{env\}/g, additionalTags.env)
-            .replace(/\{branch\}/g, DistributionService.sanitizeBranch(additionalTags.branch))
-            .replace(/\{sha\}/g, sha);
-
-          const taggedImage = `${imageBase}:${tag}`;
-
-          const tagProc = Bun.spawn([engine, 'tag', image, taggedImage], {
-            stdout: 'pipe',
-            stderr: 'pipe',
-          });
-          await tagProc.exited;
-
-          if (tagProc.exitCode !== 0) {
-            printWarning(`Failed to tag ${taggedImage}`);
-            continue;
-          }
-
-          const pushProc = Bun.spawn([engine, 'push', taggedImage], {
-            stdout: 'pipe',
-            stderr: 'pipe',
-          });
-          const pushStderr = await new Response(pushProc.stderr).text();
-          await pushProc.exited;
-
-          if (pushProc.exitCode !== 0) {
-            printWarning(`Failed to push additional tag ${taggedImage}: ${pushStderr.trim()}`);
-          } else {
-            printDim(`Pushed additional tag: ${taggedImage}`);
-          }
-        }
-      }
-    }
+    // Push all images in parallel — they share registry layers so pushes overlap efficiently
+    await Promise.all(
+      images.map((image) => DistributionService.pushSingleImage(image, engine, tagsWithSha)),
+    );
   }
 
   private static async getGitSha(): Promise<string> {

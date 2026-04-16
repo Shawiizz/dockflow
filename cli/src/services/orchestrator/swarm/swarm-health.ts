@@ -108,37 +108,32 @@ export class SwarmHealthBackend implements HealthBackend {
   private async checkServiceHealth(
     serviceName: string,
   ): Promise<{ name: string; status: 'healthy' | 'unhealthy' | 'rolled_back' }> {
+    // Use task-level inspection only — works regardless of which node
+    // the container runs on (docker inspect on a container ID only works
+    // on the node where the container is running).
     const result = await sshExec(
       this.connection,
-      `TASK=$(docker service ps ${serviceName} --filter 'desired-state=running' --format '{{.ID}}' --no-trunc 2>/dev/null | head -1); ` +
-      `[ -z "$TASK" ] && echo "NO_TASK" && exit 0; ` +
-      `INFO=$(docker inspect "$TASK" --format '{{.Spec.ContainerSpec.Image}}\t{{.Status.ContainerStatus.ContainerID}}' 2>/dev/null) || { echo "NO_TASK"; exit 0; }; ` +
-      `CID=$(echo "$INFO" | cut -f2); ` +
-      `if [ -n "$CID" ]; then ` +
-        `HEALTH=$(docker inspect "$CID" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' 2>/dev/null) || HEALTH="none"; ` +
-        `echo "$INFO\t$HEALTH"; ` +
-      `else ` +
-        `echo "$INFO\tnone"; ` +
-      `fi`,
+      `docker service inspect ${serviceName} --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{end}}' 2>/dev/null; ` +
+      `echo "---"; ` +
+      `docker service ps ${serviceName} --filter 'desired-state=running' --format '{{.CurrentState}}' --no-trunc 2>/dev/null`,
     );
 
     const output = result.stdout.trim();
-    if (!output || output === 'NO_TASK') {
+    const [updateState, , ...taskLines] = output.split('---');
+    const trimmedUpdateState = (updateState || '').trim().toLowerCase();
+
+    // Detect rollback
+    if (trimmedUpdateState === 'rollback_started' || trimmedUpdateState === 'rollback_completed') {
+      return { name: serviceName, status: 'rolled_back' };
+    }
+
+    // Check task states — all running tasks must be in "Running" state
+    const tasks = (taskLines.join('').trim()).split('\n').filter(Boolean);
+    if (tasks.length === 0) {
       return { name: serviceName, status: 'unhealthy' };
     }
 
-    const parts = output.split('\t');
-    const containerId = parts[1];
-    const healthStatus = (parts[2] || 'none').trim().toLowerCase();
-
-    if (!containerId) {
-      return { name: serviceName, status: 'unhealthy' };
-    }
-
-    if (healthStatus === 'healthy' || healthStatus === 'none') {
-      return { name: serviceName, status: 'healthy' };
-    }
-
-    return { name: serviceName, status: 'unhealthy' };
+    const allRunning = tasks.every((t) => t.trim().toLowerCase().startsWith('running'));
+    return { name: serviceName, status: allRunning ? 'healthy' : 'unhealthy' };
   }
 }

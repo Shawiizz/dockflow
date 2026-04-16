@@ -309,7 +309,9 @@ async function deployApp(ctx: DeployContext, compose: ParsedCompose): Promise<vo
 
   // Convert to K8s manifests if using k3s, otherwise use compose YAML
   const deployContent = ctx.config.orchestrator === 'k3s'
-    ? K8sManifestService.composeToManifests(ctx.stackName, compose, ctx.config.proxy)
+    ? K8sManifestService.composeToManifests(ctx.stackName, compose, ctx.config.proxy, {
+        useRegistry: ctx.config.registry?.enabled === true,
+      })
     : ComposeService.serialize(compose);
 
   const deployResult = await ctx.orchestrator.deployStack(ctx.stackName, deployContent, '');

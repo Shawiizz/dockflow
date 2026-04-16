@@ -13,7 +13,7 @@ import {
 } from '../utils/config';
 import { getAvailableEnvironments, getServerNamesForEnvironment } from '../utils/servers';
 import { printSection, printError, printSuccess, printWarning, printDim, printSeparator, printBlank, printJSON, printRaw, colors } from '../utils/output';
-import { withErrorHandler } from '../utils/errors';
+import { withErrorHandler, ValidationError } from '../utils/errors';
 import {
   validateConfig as validateConfigSchema,
   validateServersConfig as validateServersSchema,
@@ -232,7 +232,9 @@ export function registerConfigCommand(program: Command): void {
           warnings: result.warnings,
           schemaErrors: result.schemaErrors
         });
-        process.exit(result.valid ? 0 : 1);
+        if (!result.valid) {
+          throw new ValidationError('Configuration validation failed');
+        }
         return;
       }
 
@@ -307,7 +309,9 @@ export function registerConfigCommand(program: Command): void {
       }
       printBlank();
 
-      process.exit(result.valid ? 0 : 1);
+      if (!result.valid) {
+        throw new ValidationError('Configuration has validation errors');
+      }
     }));
 
   // config path

@@ -11,8 +11,7 @@
 
 import { createHash } from 'crypto';
 import type { SSHKeyConnection } from '../types';
-import { sshExec } from '../utils/ssh';
-import { shellEscape } from '../utils/ssh';
+import { sshExec, sshExecChannel } from '../utils/ssh';
 import { printDebug, printDim, printInfo, printWarning, printSuccess, createTimedSpinner } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import {
@@ -22,10 +21,6 @@ import {
   CONVERGENCE_TIMEOUT_S,
   CONVERGENCE_INTERVAL_S,
 } from '../constants';
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 export class SwarmDeployService {
   constructor(private readonly connection: SSHKeyConnection) {}
@@ -118,7 +113,7 @@ export class SwarmDeployService {
     }
 
     for (let i = 0; i < STACK_REMOVAL_MAX_ATTEMPTS; i++) {
-      await sleep(STACK_REMOVAL_POLL_INTERVAL_MS);
+      await Bun.sleep(STACK_REMOVAL_POLL_INTERVAL_MS);
 
       const check = await sshExec(
         this.connection,
@@ -158,10 +153,10 @@ export class SwarmDeployService {
     if (stuck.length > 0) {
       printWarning(`Stuck services detected: ${stuck.join(', ')}`);
       await this.forceRemoveStack(stackName);
-      await sleep(3000);
+      await Bun.sleep(3000);
     }
 
-    // 2. Deploy via stdin
+    // 2. Deploy via temp file (avoids shell escaping issues and ARG_MAX limits)
     const flags = [
       prune ? '--prune' : '',
       registryAuth ? '--with-registry-auth' : '',
@@ -169,18 +164,37 @@ export class SwarmDeployService {
       .filter(Boolean)
       .join(' ');
 
-    const escapedYaml = shellEscape(composeYaml);
+    const tmpFile = `/tmp/dockflow-${stackName}-${Date.now()}.yml`;
 
-    const result = await sshExec(
-      this.connection,
-      `printf '%s' '${escapedYaml}' | docker stack deploy ${flags} -c - ${stackName}`,
-    );
-
-    if (result.exitCode !== 0) {
-      throw new DeployError(
-        `docker stack deploy failed (exit ${result.exitCode}): ${result.stderr.trim()}`,
-        ErrorCode.DEPLOY_FAILED,
+    try {
+      // Write YAML via stdin — no shell escaping needed
+      const { stream: writeStream, done: writeDone } = await sshExecChannel(
+        this.connection,
+        `cat > '${tmpFile}'`,
       );
+      writeStream.end(composeYaml);
+      const writeResult = await writeDone;
+      if (writeResult.exitCode !== 0) {
+        throw new DeployError(
+          `Failed to write compose file: ${writeResult.stderr.trim()}`,
+          ErrorCode.DEPLOY_FAILED,
+        );
+      }
+
+      // Deploy from file
+      const result = await sshExec(
+        this.connection,
+        `docker stack deploy ${flags} -c '${tmpFile}' ${stackName}`,
+      );
+
+      if (result.exitCode !== 0) {
+        throw new DeployError(
+          `docker stack deploy failed (exit ${result.exitCode}): ${result.stderr.trim()}`,
+          ErrorCode.DEPLOY_FAILED,
+        );
+      }
+    } finally {
+      await sshExec(this.connection, `rm -f '${tmpFile}'`).catch(() => {});
     }
 
     // 3. Verify stack exists
@@ -228,7 +242,7 @@ export class SwarmDeployService {
 
       const lines = result.stdout.trim().split('\n').filter(Boolean);
       if (lines.length === 0) {
-        await sleep(interval);
+        await Bun.sleep(interval);
         continue;
       }
 
@@ -255,15 +269,18 @@ export class SwarmDeployService {
 
       lastStatuses = statuses;
 
+      // Single SSH call to get all update states (used for both convergence check and failure detection)
+      const updateStates = await this.getServiceUpdateStates(lines);
+
       if (allConverged) {
         // Before declaring convergence, verify no service has an in-progress update.
         // During a redeploy, old replicas may already match the desired count before
         // the rolling update starts. We must wait for the update to finish.
-        const updating = await this.getUpdatingServices(lines);
+        const updating = this.getUpdatingFromStates(updateStates);
         if (updating.length > 0) {
           printDebug(`Update in progress: ${updating.join(', ')}`);
           spinner.update(`Waiting for ${ctx} convergence: update in progress`);
-          await sleep(interval);
+          await Bun.sleep(interval);
           continue;
         }
 
@@ -271,9 +288,9 @@ export class SwarmDeployService {
         return;
       }
 
-      // Detect rollback/crash-loop states (parallel inspect)
+      // Detect rollback/crash-loop states from the same inspection data
       try {
-        await this.detectFailingServices(stackName, lines);
+        this.detectFailingFromStates(updateStates);
       } catch (error) {
         spinner.fail('Convergence failed');
         throw error;
@@ -282,7 +299,7 @@ export class SwarmDeployService {
       printDebug(`Convergence: ${statuses.join(', ')}`);
       spinner.update(`Waiting for ${ctx} convergence: ${statuses.join(', ')}`);
 
-      await sleep(interval);
+      await Bun.sleep(interval);
     }
 
     // Timeout — use last known statuses
@@ -301,15 +318,14 @@ export class SwarmDeployService {
   }
 
   /**
-   * Detect services in rollback or crash-loop states during convergence.
-   * Inspects UpdateStatus in parallel and throws immediately on detection.
+   * Fetch the UpdateStatus.State for all services in a single SSH call.
+   * Returns a Map of service name → state (lowercase).
    */
-  private async detectFailingServices(stackName: string, serviceLines: string[]): Promise<void> {
+  private async getServiceUpdateStates(serviceLines: string[]): Promise<Map<string, string>> {
     const serviceNames = serviceLines.map((l) => l.split('\t')[0]).filter(Boolean);
-    if (serviceNames.length === 0) return;
+    if (serviceNames.length === 0) return new Map();
 
-    // Single SSH call: inspect all services at once, output name\tstate pairs
-    const quoted = serviceNames.map((s) => `'${shellEscape(s)}'`).join(' ');
+    const quoted = serviceNames.map((s) => `'${s}'`).join(' ');
     const result = await sshExec(
       this.connection,
       `for svc in ${quoted}; do ` +
@@ -318,29 +334,41 @@ export class SwarmDeployService {
       `done`,
     );
 
-    const lines = result.stdout.trim().split('\n').filter(Boolean);
-    const parsed = lines.map((l) => {
-      const [svc, state] = l.split('\t');
-      return { svc, state: (state || '').toLowerCase() };
-    });
+    const states = new Map<string, string>();
+    for (const line of result.stdout.trim().split('\n').filter(Boolean)) {
+      const [svc, state] = line.split('\t');
+      states.set(svc, (state || '').toLowerCase());
+    }
+    return states;
+  }
 
-    const rolledBack = parsed.filter((r) =>
-      r.state === 'rollback_started' || r.state === 'rollback_completed',
-    );
+  /**
+   * Detect services in rollback or crash-loop states during convergence.
+   * Throws immediately on detection.
+   */
+  private detectFailingFromStates(states: Map<string, string>): void {
+    const rolledBack: string[] = [];
+    const stuck: string[] = [];
+
+    for (const [svc, state] of states) {
+      if (state === 'rollback_started' || state === 'rollback_completed') {
+        rolledBack.push(svc);
+      } else if (state === 'rollback_paused' || state === 'paused') {
+        stuck.push(svc);
+      }
+    }
+
     if (rolledBack.length > 0) {
       throw new DeployError(
-        `Swarm auto-rolled back services: ${rolledBack.map((r) => r.svc).join(', ')}`,
+        `Swarm auto-rolled back services: ${rolledBack.join(', ')}`,
         ErrorCode.DEPLOY_FAILED,
         'The new version failed Swarm health checks. Check service logs for details.',
       );
     }
 
-    const stuck = parsed.filter((r) =>
-      r.state === 'rollback_paused' || r.state === 'paused',
-    );
     if (stuck.length > 0) {
       throw new DeployError(
-        `Services stuck in ${stuck[0].state}: ${stuck.map((r) => r.svc).join(', ')}`,
+        `Services stuck in ${[...states.entries()].find(([s]) => stuck.includes(s))?.[1]}: ${stuck.join(', ')}`,
         ErrorCode.DEPLOY_FAILED,
         'Try `dockflow deploy --force` to force a fresh deployment.',
       );
@@ -348,30 +376,12 @@ export class SwarmDeployService {
   }
 
   /**
-   * Check if any services have an in-progress update (state = "updating").
-   * Returns the names of services that are still updating.
+   * Return service names that have an in-progress update (state = "updating").
    */
-  private async getUpdatingServices(serviceLines: string[]): Promise<string[]> {
-    const serviceNames = serviceLines.map((l) => l.split('\t')[0]).filter(Boolean);
-    if (serviceNames.length === 0) return [];
-
-    const quoted = serviceNames.map((s) => `'${shellEscape(s)}'`).join(' ');
-    const result = await sshExec(
-      this.connection,
-      `for svc in ${quoted}; do ` +
-        `STATE=$(docker service inspect "$svc" --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{end}}' 2>/dev/null); ` +
-        `echo "$svc\t$STATE"; ` +
-      `done`,
-    );
-
-    const lines = result.stdout.trim().split('\n').filter(Boolean);
-    return lines
-      .map((l) => {
-        const [svc, state] = l.split('\t');
-        return { svc, state: (state || '').toLowerCase() };
-      })
-      .filter((r) => r.state === 'updating')
-      .map((r) => r.svc);
+  private getUpdatingFromStates(states: Map<string, string>): string[] {
+    return [...states.entries()]
+      .filter(([, state]) => state === 'updating')
+      .map(([svc]) => svc);
   }
 
   /**
@@ -411,14 +421,24 @@ export class SwarmDeployService {
 
     printInfo('Deploying accessories...');
 
-    // 3. Pull images (best-effort)
-    const escapedPullYaml = shellEscape(accessoriesComposeYaml);
-    await sshExec(
-      this.connection,
-      `printf '%s' '${escapedPullYaml}' | docker compose -f - pull 2>/dev/null || true`,
-    ).catch(() => {
+    // 3. Pull images (best-effort) via temp file
+    const pullTmpFile = `/tmp/dockflow-pull-${stackName}-${Date.now()}.yml`;
+    try {
+      const { stream: pullStream, done: pullDone } = await sshExecChannel(
+        this.connection,
+        `cat > '${pullTmpFile}'`,
+      );
+      pullStream.end(accessoriesComposeYaml);
+      await pullDone;
+      await sshExec(
+        this.connection,
+        `docker compose -f '${pullTmpFile}' pull 2>/dev/null || true`,
+      );
+    } catch {
       printDebug('Accessories image pull skipped (compose v2 not available or pull failed)');
-    });
+    } finally {
+      await sshExec(this.connection, `rm -f '${pullTmpFile}'`).catch(() => {});
+    }
 
     // 4. Deploy
     await this.deployStack(accessoriesStackName, accessoriesComposeYaml, {

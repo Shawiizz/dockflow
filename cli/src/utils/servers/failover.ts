@@ -7,7 +7,7 @@
  */
 
 import { sshExec } from '../ssh';
-import { colors, printError, printSuccess } from '../output';
+import { colors, printError, printSuccess, printWarning } from '../output';
 import type { SSHKeyConnection, ResolvedServer } from '../../types';
 import { getFullConnectionInfo } from './resolver';
 
@@ -91,7 +91,7 @@ export async function findActiveManager(
     const connection = getFullConnectionInfo(env, manager.name);
     if (!connection) {
       if (verbose) {
-        console.log(`  ${colors.warning('⚠')} ${manager.name}: No SSH key configured`);
+        printWarning(`${manager.name}: No SSH key configured`);
       }
       failedManagers.push(`${manager.name} (no SSH key)`);
       continue;

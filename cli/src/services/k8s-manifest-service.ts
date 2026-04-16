@@ -35,24 +35,30 @@ export class K8sManifestService {
     stackName: string,
     compose: ParsedCompose,
     proxyConfig?: ProxyConfig,
+    options?: { useRegistry?: boolean },
   ): string {
     const namespace = `${K3S_NAMESPACE_PREFIX}-${stackName}`;
     const resources: K8sResource[] = [];
+    const useRegistry = options?.useRegistry ?? false;
 
     // Namespace
     resources.push(K8sManifestService.createNamespace(namespace, stackName));
 
     // PVCs for named volumes
     if (compose.volumes) {
-      for (const volumeName of Object.keys(compose.volumes)) {
-        resources.push(K8sManifestService.createPVC(volumeName, namespace, stackName));
+      for (const [volumeName, volumeConfig] of Object.entries(compose.volumes)) {
+        const volCfg = (volumeConfig ?? {}) as Record<string, unknown>;
+        // Support custom size via x-dockflow compose extension
+        const extensions = (volCfg['x-dockflow'] ?? {}) as Record<string, unknown>;
+        const size = (extensions.size as string) ?? '1Gi';
+        resources.push(K8sManifestService.createPVC(volumeName, namespace, stackName, size));
       }
     }
 
     // Per-service resources
     for (const [serviceName, serviceConfig] of Object.entries(compose.services)) {
       const config = serviceConfig as Record<string, unknown>;
-      const deployment = K8sManifestService.createDeployment(serviceName, config, namespace, stackName, compose.volumes);
+      const deployment = K8sManifestService.createDeployment(serviceName, config, namespace, stackName, compose.volumes, useRegistry);
       resources.push(deployment);
 
       const ports = K8sManifestService.extractPorts(config);
@@ -97,7 +103,7 @@ export class K8sManifestService {
     };
   }
 
-  private static createPVC(name: string, namespace: string, stackName: string): K8sResource {
+  private static createPVC(name: string, namespace: string, stackName: string, size: string = '1Gi'): K8sResource {
     return {
       apiVersion: 'v1',
       kind: 'PersistentVolumeClaim',
@@ -113,7 +119,7 @@ export class K8sManifestService {
         accessModes: ['ReadWriteOnce'],
         resources: {
           requests: {
-            storage: '1Gi',
+            storage: size,
           },
         },
       },
@@ -126,6 +132,7 @@ export class K8sManifestService {
     namespace: string,
     stackName: string,
     composeVolumes?: Record<string, unknown>,
+    useRegistry?: boolean,
   ): K8sResource {
     const deploy = (config.deploy ?? {}) as Record<string, unknown>;
     const replicas = (deploy.replicas as number) ?? 1;
@@ -136,7 +143,8 @@ export class K8sManifestService {
     const container: Record<string, unknown> = {
       name: serviceName,
       image,
-      imagePullPolicy: 'Never',
+      // 'Never' for direct image import (k3s ctr), 'IfNotPresent' for registry workflow
+      imagePullPolicy: useRegistry ? 'IfNotPresent' : 'Never',
     };
 
     // Environment variables
@@ -151,11 +159,19 @@ export class K8sManifestService {
       container.ports = ports.map((p) => ({ containerPort: p.containerPort }));
     }
 
-    // Health checks (compose healthcheck → livenessProbe + readinessProbe)
+    // Health checks — liveness and readiness serve different purposes:
+    // - livenessProbe: restarts the container if it fails (use compose healthcheck directly)
+    // - readinessProbe: removes from service while starting (add extra initial delay)
     const probe = K8sManifestService.convertHealthcheck(config);
     if (probe) {
       container.livenessProbe = probe;
-      container.readinessProbe = probe;
+      // Readiness probe: same check but with a shorter initial delay
+      // to avoid serving traffic before the app is ready
+      const readinessProbe = { ...probe };
+      if (!readinessProbe.initialDelaySeconds) {
+        readinessProbe.initialDelaySeconds = 5;
+      }
+      container.readinessProbe = readinessProbe;
     }
 
     // Volume mounts & pod volumes
@@ -259,7 +275,7 @@ export class K8sManifestService {
     }
 
     return {
-      apiVersion: 'traefik.containo.us/v1alpha1',
+      apiVersion: 'traefik.io/v1alpha1',
       kind: 'IngressRoute',
       metadata: {
         name: serviceName,
@@ -468,20 +484,28 @@ export class K8sManifestService {
   }
 
   /**
-   * Parse a Docker Compose duration string (e.g. "30s", "1m30s", "5m") to seconds.
+   * Parse a Docker Compose duration string to seconds.
+   * Supports: "30s", "1m30s", "5m", "1h", "1h30m", "500ms", "2m30s"
+   * Bare numbers without units are treated as seconds.
    */
   private static parseDuration(duration: string | number): number {
     if (typeof duration === 'number') return duration;
 
     let total = 0;
-    const minutes = duration.match(/(\d+)m/);
-    const seconds = duration.match(/(\d+)s/);
+    let matched = false;
 
-    if (minutes) total += parseInt(minutes[1], 10) * 60;
-    if (seconds) total += parseInt(seconds[1], 10);
+    const hours = duration.match(/(\d+)h/);
+    const minutes = duration.match(/(\d+)m(?!s)/); // 'm' but not 'ms'
+    const seconds = duration.match(/(\d+)s(?!$)|(\d+)s$/); // 's' (not part of 'ms')
+    const millis = duration.match(/(\d+)ms/);
+
+    if (hours) { total += parseInt(hours[1], 10) * 3600; matched = true; }
+    if (minutes) { total += parseInt(minutes[1], 10) * 60; matched = true; }
+    if (seconds) { total += parseInt((seconds[1] || seconds[2]), 10); matched = true; }
+    if (millis) { total += Math.ceil(parseInt(millis[1], 10) / 1000); matched = true; }
 
     // Bare number without unit → assume seconds
-    if (!minutes && !seconds) {
+    if (!matched) {
       const n = parseInt(duration, 10);
       if (!isNaN(n)) return n;
     }

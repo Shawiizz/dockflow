@@ -17,10 +17,6 @@ import type { HealthBackend, InternalHealthResult } from './orchestrator/health-
 const DEFAULT_HEALTHCHECK_TIMEOUT_S = 120;
 const DEFAULT_HEALTHCHECK_INTERVAL_S = 5;
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export class HealthCheckService {
   private readonly healthBackend?: HealthBackend;
 
@@ -84,7 +80,7 @@ export class HealthCheckService {
 
       if (attempt < retries) {
         printDebug(`HTTP check ${endpoint.url} attempt ${attempt}/${retries} failed: ${lastError}`);
-        await sleep(retryDelay);
+        await Bun.sleep(retryDelay);
       }
     }
 
@@ -131,7 +127,7 @@ export class HealthCheckService {
 
       if (attempt < retries) {
         printDebug(`HTTP check (remote) ${endpoint.url} attempt ${attempt}/${retries} failed: ${lastError}`);
-        await sleep(retryDelay);
+        await Bun.sleep(retryDelay);
       }
     }
 
@@ -154,7 +150,7 @@ export class HealthCheckService {
     const startupDelay = config.startup_delay ?? 0;
     if (startupDelay > 0) {
       printDim(`Waiting ${startupDelay}s before HTTP health checks...`);
-      await sleep(startupDelay * 1000);
+      await Bun.sleep(startupDelay * 1000);
     }
 
     // Check all endpoints concurrently
@@ -190,9 +186,12 @@ export class HealthCheckService {
           ErrorCode.HEALTH_CHECK_FAILED,
         );
       case 'rollback':
+        // Note: this service only signals the failure — the caller (deploy.ts)
+        // is responsible for performing the actual rollback based on config.health_checks.on_failure.
         throw new DeployError(
-          `HTTP health checks failed (triggering rollback): ${failedEndpoints.join(', ')}`,
+          `HTTP health checks failed: ${failedEndpoints.join(', ')}`,
           ErrorCode.HEALTH_CHECK_FAILED,
+          'The deploy command will attempt a rollback (on_failure: rollback).',
         );
       case 'notify':
         printWarning(`HTTP health checks failed (non-fatal): ${failedEndpoints.join(', ')}`);

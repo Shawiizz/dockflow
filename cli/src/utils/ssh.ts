@@ -46,10 +46,6 @@ function ensureExitHandler(): void {
   process.on('SIGTERM', () => { cleanup(); process.exit(143); });
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /**
  * Returns true for errors that are worth retrying (transient network issues).
  * Auth failures (wrong key/password) are NOT retryable.
@@ -166,7 +162,7 @@ async function connectWithRetry(
         printDebug(
           `SSH connection to ${conn.host} failed (attempt ${attempt}/${retries}), retrying in ${delay}ms: ${err instanceof Error ? err.message : String(err)}`,
         );
-        await sleep(delay);
+        await Bun.sleep(delay);
       } else {
         break;
       }

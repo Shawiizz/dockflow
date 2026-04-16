@@ -16,7 +16,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import nunjucks from 'nunjucks';
 import type { DockflowConfig } from '../utils/config';
 import { getProjectRoot, getComposePath } from '../utils/config';
-import { printDebug } from '../utils/output';
+import { printDebug, printWarning } from '../utils/output';
 import { ConfigError } from '../utils/errors';
 import { TRAEFIK_NETWORK_NAME } from '../constants';
 import type { TemplateContext } from '../types';
@@ -431,6 +431,9 @@ export class ComposeService {
       if (!ports || ports.length === 0) continue;
 
       hasProxiedService = true;
+      if (ports.length > 1) {
+        printWarning(`Service "${svcName}" exposes ${ports.length} ports — only the first (${ports[0]}) will be routed via Traefik`);
+      }
       const containerPort = parseContainerPort(ports[0]);
       const routerName = `${stackName}-${svcName}`;
 
