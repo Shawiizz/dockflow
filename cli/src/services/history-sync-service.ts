@@ -7,8 +7,7 @@
  */
 
 import type { SSHKeyConnection } from '../types';
-import { sshExec } from '../utils/ssh';
-import { shellEscape } from '../utils/ssh';
+import { sshExec, sshExecChannel } from '../utils/ssh';
 import { printWarning, printDebug } from '../utils/output';
 import { DOCKFLOW_AUDIT_DIR, DOCKFLOW_METRICS_DIR } from '../constants';
 
@@ -27,17 +26,20 @@ export class HistorySyncService {
     const metricsDir = `${DOCKFLOW_METRICS_DIR}/${stackName}`;
     const metricsFile = `${metricsDir}/deployments.json`;
 
-    const escapedAudit = shellEscape(auditEntry);
-    const escapedMetrics = shellEscape(metricsEntry);
-
-    // Single SSH call: create dirs + append both entries independently
+    // Create dirs, then write both entries via stdin
     try {
-      await sshExec(
-        targetConnection,
-        `mkdir -p "${DOCKFLOW_AUDIT_DIR}" "${metricsDir}" && ` +
-        `printf '%s\\n' '${escapedAudit}' >> "${auditFile}"; ` +
-        `printf '%s\\n' '${escapedMetrics}' >> "${metricsFile}"`,
-      );
+      await sshExec(targetConnection, `mkdir -p "${DOCKFLOW_AUDIT_DIR}" "${metricsDir}"`);
+
+      // Write both entries in parallel
+      const [auditHandle, metricsHandle] = await Promise.all([
+        sshExecChannel(targetConnection, `cat >> "${auditFile}"`),
+        sshExecChannel(targetConnection, `cat >> "${metricsFile}"`),
+      ]);
+
+      auditHandle.stream.end(auditEntry + '\n');
+      metricsHandle.stream.end(metricsEntry + '\n');
+
+      await Promise.all([auditHandle.done, metricsHandle.done]);
     } catch (error) {
       printWarning(`History sync failed for ${targetConnection.host}: ${error instanceof Error ? error.message : String(error)}`);
     }

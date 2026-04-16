@@ -7,8 +7,7 @@
  */
 
 import type { SSHKeyConnection } from '../types';
-import { sshExec } from '../utils/ssh';
-import { shellEscape } from '../utils/ssh';
+import { sshExec, sshExecChannel } from '../utils/ssh';
 import { DOCKFLOW_AUDIT_DIR } from '../constants';
 import { getPerformer } from '../utils/config';
 
@@ -34,12 +33,11 @@ export class AuditService {
     const timestamp = new Date().toISOString();
 
     const line = `${timestamp} | ${result} | ${version} | ${performer} | ${message}`;
-    const escapedLine = shellEscape(line);
 
-    await sshExec(
-      this.connection,
-      `mkdir -p "${DOCKFLOW_AUDIT_DIR}" && printf '%s\n' '${escapedLine}' >> "${auditFile}"`,
-    );
+    await sshExec(this.connection, `mkdir -p "${DOCKFLOW_AUDIT_DIR}"`);
+    const { stream, done } = await sshExecChannel(this.connection, `cat >> "${auditFile}"`);
+    stream.end(line + '\n');
+    await done;
 
     return line;
   }

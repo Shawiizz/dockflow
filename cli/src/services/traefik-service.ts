@@ -11,8 +11,7 @@
 
 import type { SSHKeyConnection } from '../types';
 import type { ProxyConfig } from '../utils/config';
-import { sshExec } from '../utils/ssh';
-import { shellEscape } from '../utils/ssh';
+import { sshExec, sshExecChannel } from '../utils/ssh';
 import { printDebug, printDim, printSuccess } from '../utils/output';
 import {
   TRAEFIK_STACK_NAME,
@@ -52,16 +51,25 @@ export class TraefikService {
       );
     }
 
-    // Generate and deploy stack
+    // Generate and deploy stack via temp file
     const composeYaml = TraefikService.generateCompose(proxyConfig);
-    const escaped = shellEscape(composeYaml);
-    const result = await sshExec(
-      this.connection,
-      `echo '${escaped}' | docker stack deploy --prune --resolve-image changed -c - ${TRAEFIK_STACK_NAME}`,
-    );
+    const tmpFile = `/tmp/dockflow-traefik-${Date.now()}.yml`;
 
-    if (result.exitCode !== 0) {
-      throw new Error(`Traefik deployment failed: ${result.stderr.trim() || result.stdout.trim()}`);
+    try {
+      const { stream, done } = await sshExecChannel(this.connection, `cat > '${tmpFile}'`);
+      stream.end(composeYaml);
+      await done;
+
+      const result = await sshExec(
+        this.connection,
+        `docker stack deploy --prune --resolve-image changed -c '${tmpFile}' ${TRAEFIK_STACK_NAME}`,
+      );
+
+      if (result.exitCode !== 0) {
+        throw new Error(`Traefik deployment failed: ${result.stderr.trim() || result.stdout.trim()}`);
+      }
+    } finally {
+      await sshExec(this.connection, `rm -f '${tmpFile}'`).catch(() => {});
     }
 
     printSuccess('Traefik reverse proxy deployed');

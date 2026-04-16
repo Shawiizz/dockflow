@@ -6,7 +6,7 @@
  */
 
 import type { SSHKeyConnection } from '../types';
-import { sshExec, shellEscape } from '../utils/ssh';
+import { sshExec, sshExecChannel } from '../utils/ssh';
 import { ok, err, type Result } from '../types';
 import { DOCKFLOW_LOCKS_DIR } from '../constants';
 import { LOCK_STALE_THRESHOLD_MINUTES } from '../constants';
@@ -97,19 +97,24 @@ export class LockService {
       };
 
       const lockContent = JSON.stringify(lockData, null, 2);
-      const eLockContent = shellEscape(lockContent);
 
       if (options?.force) {
-        await sshExec(
-          this.connection,
-          `mkdir -p "${DOCKFLOW_LOCKS_DIR}" && rm -f "${this.lockFile}" && printf '%s' '${eLockContent}' > "${this.lockFile}"`,
-        );
+        await sshExec(this.connection, `mkdir -p "${DOCKFLOW_LOCKS_DIR}" && rm -f "${this.lockFile}"`);
+        const { stream, done } = await sshExecChannel(this.connection, `cat > "${this.lockFile}"`);
+        stream.end(lockContent);
+        await done;
         return ok(lockData);
       }
 
+      // Use noclobber (set -C) for atomic acquire — write lock via temp file + mv to avoid shell escaping
+      const tmpLock = `${this.lockFile}.tmp.${Date.now()}`;
+      const { stream: ws, done: wsDone } = await sshExecChannel(this.connection, `cat > "${tmpLock}"`);
+      ws.end(lockContent);
+      await wsDone;
+
       const result = await sshExec(
         this.connection,
-        `mkdir -p "${DOCKFLOW_LOCKS_DIR}" && (set -C; printf '%s' '${eLockContent}' > "${this.lockFile}") 2>/dev/null && echo "ACQUIRED" || echo "LOCKED"`,
+        `mkdir -p "${DOCKFLOW_LOCKS_DIR}" && (set -C; cp "${tmpLock}" "${this.lockFile}") 2>/dev/null && echo "ACQUIRED" || echo "LOCKED"; rm -f "${tmpLock}"`,
       );
 
       if (result.stdout.trim() === 'ACQUIRED') {
@@ -131,10 +136,15 @@ export class LockService {
       }
 
       if (current.data.isStale) {
-        // Stale: remove and re-acquire in a single SSH command to minimize race window
+        // Stale: remove and re-acquire — reuse the temp file written above
+        const tmpRetry = `${this.lockFile}.tmp.${Date.now()}`;
+        const { stream: rs, done: rsDone } = await sshExecChannel(this.connection, `cat > "${tmpRetry}"`);
+        rs.end(lockContent);
+        await rsDone;
+
         const retryResult = await sshExec(
           this.connection,
-          `rm -f "${this.lockFile}" && (set -C; printf '%s' '${eLockContent}' > "${this.lockFile}") 2>/dev/null && echo "ACQUIRED" || echo "LOCKED"`,
+          `rm -f "${this.lockFile}" && (set -C; cp "${tmpRetry}" "${this.lockFile}") 2>/dev/null && echo "ACQUIRED" || echo "LOCKED"; rm -f "${tmpRetry}"`,
         );
         if (retryResult.stdout.trim() === 'ACQUIRED') {
           return ok(lockData);

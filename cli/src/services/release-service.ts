@@ -18,8 +18,7 @@
  */
 
 import type { SSHKeyConnection } from '../types';
-import { sshExec } from '../utils/ssh';
-import { shellEscape } from '../utils/ssh';
+import { sshExec, sshExecChannel } from '../utils/ssh';
 import { printDebug, printInfo, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import { DOCKFLOW_STACKS_DIR } from '../constants';
@@ -60,17 +59,21 @@ export class ReleaseService {
     metadata: ReleaseMetadata,
   ): Promise<void> {
     const dir = this.releaseDir(stackName, version);
-    const escapedCompose = shellEscape(composeYaml);
-    const escapedMeta = shellEscape(JSON.stringify(metadata, null, 2));
+    const metaJson = JSON.stringify(metadata, null, 2);
     const stackDir = this.stackDir(stackName);
 
-    await sshExec(
-      this.connection,
-      `mkdir -p "${dir}" && ` +
-      `printf '%s' '${escapedCompose}' > "${dir}/docker-compose.yml" && ` +
-      `printf '%s' '${escapedMeta}' > "${dir}/metadata.json" && ` +
-      `ln -sfn "${dir}" "${stackDir}/current"`,
-    );
+    await sshExec(this.connection, `mkdir -p "${dir}"`);
+
+    // Write compose and metadata via stdin (no shell escaping needed)
+    const [composeHandle, metaHandle] = await Promise.all([
+      sshExecChannel(this.connection, `cat > "${dir}/docker-compose.yml"`),
+      sshExecChannel(this.connection, `cat > "${dir}/metadata.json"`),
+    ]);
+    composeHandle.stream.end(composeYaml);
+    metaHandle.stream.end(metaJson);
+    await Promise.all([composeHandle.done, metaHandle.done]);
+
+    await sshExec(this.connection, `ln -sfn "${dir}" "${stackDir}/current"`);
 
     printDebug(`Release ${version} created at ${dir}`);
   }
@@ -255,7 +258,7 @@ export class ReleaseService {
     // 4. Batch cleanup orphaned images in ONE SSH call
     if (orphanImages.length > 0) {
       const uniqueOrphans = [...new Set(orphanImages)];
-      const quotedImages = uniqueOrphans.map(img => `'${shellEscape(img)}'`).join(' ');
+      const quotedImages = uniqueOrphans.map(img => `'${img}'`).join(' ');
       // Remove containers using these images, then the images themselves
       await sshExec(
         this.connection,
