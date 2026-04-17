@@ -8,6 +8,7 @@
 import { sshExec, sshExecChannel } from '../utils/ssh';
 import { DOCKFLOW_METRICS_DIR } from '../constants';
 import type { SSHKeyConnection } from '../types';
+import { printDebug } from '../utils/output';
 
 /**
  * Deployment metrics entry
@@ -74,8 +75,8 @@ export function parseJsonlLines<T = unknown>(raw: string): T[] {
     if (!line.trim()) continue;
     try {
       results.push(JSON.parse(line));
-    } catch {
-      // Skip malformed lines
+    } catch (parseErr) {
+      printDebug(`Skipping malformed metrics line: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`);
     }
   }
   return results;

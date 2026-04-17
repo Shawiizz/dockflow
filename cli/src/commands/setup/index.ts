@@ -107,7 +107,7 @@ export function registerSetupCommand(program: Command): void {
         // If no auth method provided, fall back to interactive prompt
         if (!remoteOpts.privateKey && !remoteOpts.password) {
           remoteOpts = await promptRemoteConnection(remoteOpts);
-          if (!remoteOpts) { process.exit(0); }
+          if (!remoteOpts) return;
         }
         // Forward local flags to the remote setup command
         const forwardFlags: string[] = [];
@@ -119,7 +119,7 @@ export function registerSetupCommand(program: Command): void {
         if (forwardFlags.length > 0) remoteOpts.forwardFlags = forwardFlags;
 
         await runRemoteSetup(remoteOpts);
-        process.exit(0);
+        return;
       }
 
       // Local setup (no target)

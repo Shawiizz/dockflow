@@ -102,7 +102,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
       printWarning(`User '${deployUser}' already exists on this system.`);
       const continueAnyway = await confirm('Continue with this user anyway?', true);
       if (!continueAnyway) {
-        process.exit(0);
+        return;
       }
       needsUserSetup = false;
     } else {

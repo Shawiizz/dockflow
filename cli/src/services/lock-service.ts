@@ -11,6 +11,7 @@ import { ok, err, type Result } from '../types';
 import { DOCKFLOW_LOCKS_DIR } from '../constants';
 import { LOCK_STALE_THRESHOLD_MINUTES } from '../constants';
 import { getPerformer } from '../utils/config';
+import { printDebug } from '../utils/output';
 
 /**
  * Lock information stored in the lock file
@@ -69,7 +70,8 @@ export class LockService {
         const isStale = durationMinutes > this.staleThresholdMinutes;
 
         return ok({ locked: true, data, durationMinutes, isStale });
-      } catch {
+      } catch (parseErr) {
+        printDebug(`Lock metadata parse failed: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`);
         return ok({ locked: true, isStale: true });
       }
     } catch (error) {

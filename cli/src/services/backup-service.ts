@@ -690,8 +690,8 @@ export class BackupService {
             nodeHost: meta.nodeHost ?? this.connection.host,
             nodePort: meta.nodePort ?? this.connection.port,
           });
-        } catch {
-          // Skip malformed metadata
+        } catch (parseErr) {
+          printDebug(`Skipping malformed backup metadata: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`);
         }
       }
     }

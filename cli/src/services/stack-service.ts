@@ -10,6 +10,7 @@ import type { SSHKeyConnection } from '../types';
 import { sshExec } from '../utils/ssh';
 import { ok, err, type Result } from '../types';
 import { DOCKFLOW_STACKS_DIR } from '../constants';
+import { printDebug } from '../utils/output';
 
 /**
  * Service information from Docker Swarm
@@ -247,7 +248,8 @@ export class StackService {
 
     try {
       return await Promise.any(attempts);
-    } catch {
+    } catch (findErr) {
+      printDebug(`Container not found on any node: ${findErr instanceof Error ? findErr.message : String(findErr)}`);
       return null;
     }
   }
