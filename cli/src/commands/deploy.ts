@@ -48,7 +48,7 @@ import { displayDeployDryRun } from './deploy-dry-run';
 import type { SSHKeyConnection } from '../types';
 
 import { ComposeService } from '../services/compose-service';
-import { createOrchestrator, createHealthBackend } from '../services/orchestrator/factory';
+import { createOrchestrator, createHealthBackend, createTraefikBackend } from '../services/orchestrator/factory';
 import { ReleaseService } from '../services/release-service';
 import { LockService } from '../services/lock-service';
 import { AuditService } from '../services/audit-service';
@@ -221,6 +221,7 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
     deployApp: shouldDeployApp, forceAccessories, skipAccessories,
     options, rendered, composeContent, composeDirPath,
     orchestrator: createOrchestrator(orchType, managerConn),
+    traefikBackend: config.proxy?.enabled ? createTraefikBackend(orchType, managerConn) : undefined,
     healthBackend: createHealthBackend(orchType, managerConn),
     releases: new ReleaseService(managerConn),
     lock: new LockService(managerConn, stackName),
@@ -251,8 +252,6 @@ async function execute(
   try {
     const compose = ComposeService.loadFromString(ctx.composeContent);
     ComposeService.updateImageTags(compose, ctx.config, ctx.env, ctx.deployVersion);
-    if (ctx.config.orchestrator !== 'k3s') ComposeService.injectSwarmDefaults(compose);
-    if (ctx.config.proxy?.enabled) ComposeService.injectTraefikLabels(compose, ctx.config, ctx.stackName, ctx.env);
 
     await buildAndDistribute(ctx, compose);
 

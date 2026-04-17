@@ -8,10 +8,7 @@
 import {
   getPerformer,
 } from '../utils/config';
-import {
-  printDebug,
-  printWarning,
-} from '../utils/output';
+import { printWarning } from '../utils/output';
 import { sshExec } from '../utils/ssh';
 import {
   DeployError,
@@ -25,9 +22,6 @@ import { HistorySyncService } from '../services/history-sync-service';
 import { BuildService } from '../services/build-service';
 import { DistributionService, type ContainerRuntime } from '../services/distribution-service';
 import { HookService } from '../services/hook-service';
-import { TraefikService } from '../services/traefik-service';
-import { K3sTraefikService } from '../services/k3s-traefik-service';
-import { K8sManifestService } from '../services/k8s-manifest-service';
 import { CONVERGENCE_TIMEOUT_S, CONVERGENCE_INTERVAL_S } from '../constants';
 import type { DeployContext } from './deploy-context';
 
@@ -51,17 +45,16 @@ export async function detectContainerEngine(
 export async function buildAndDistribute(
   ctx: DeployContext,
   compose: ParsedCompose,
-): Promise<string[]> {
-  if (ctx.options.skipBuild || !ctx.deployApp) return [];
+): Promise<void> {
+  if (ctx.options.skipBuild || !ctx.deployApp) return;
 
   await HookService.runLocal('pre-build', ctx.projectRoot, ctx.config, ctx.rendered);
 
   const engine = await detectContainerEngine(ctx.managerConn, ctx.config.container_engine);
   const runtime: ContainerRuntime = ctx.config.orchestrator === 'k3s' ? 'containerd' : engine;
-  let builtImages: string[] = [];
 
   if (ctx.config.options?.remote_build) {
-    const result = await BuildService.buildRemote(ctx.managerConn, {
+    const { images } = await BuildService.buildRemote(ctx.managerConn, {
       projectRoot: ctx.projectRoot,
       composeContent: ComposeService.serialize(compose),
       composeDirPath: ctx.composeDirPath,
@@ -71,11 +64,10 @@ export async function buildAndDistribute(
       servicesFilter: ctx.options.services,
       engine,
     });
-    builtImages = result.images;
 
-    if (builtImages.length > 0 && ctx.workerConns.length > 0) {
+    if (images.length > 0 && ctx.workerConns.length > 0) {
       const workerTargets = ctx.workerConns.map((w) => ({ connection: w.connection, name: w.name }));
-      await DistributionService.distributeFromRemote(builtImages, ctx.managerConn, workerTargets, runtime);
+      await DistributionService.distributeFromRemote(images, ctx.managerConn, workerTargets, runtime);
     }
   } else {
     const targets = BuildService.getBuildTargets(
@@ -95,8 +87,7 @@ export async function buildAndDistribute(
         target.engine = engine;
       }
 
-      const result = await BuildService.buildAll(targets);
-      builtImages = result.images;
+      const { images } = await BuildService.buildAll(targets);
 
       if (ctx.config.registry?.enabled && ctx.config.registry.url && ctx.config.registry.password) {
         await DistributionService.registryLogin(ctx.managerConn, {
@@ -104,24 +95,23 @@ export async function buildAndDistribute(
           username: ctx.config.registry.username,
           password: ctx.config.registry.password,
         }, engine);
-        await DistributionService.pushImages(builtImages, ctx.config.registry.additional_tags?.length ? {
+        await DistributionService.pushImages(images, ctx.config.registry.additional_tags?.length ? {
           tags: ctx.config.registry.additional_tags,
           env: ctx.env,
           version: ctx.deployVersion,
           branch: ctx.branchName,
         } : undefined, engine);
-      } else if (builtImages.length > 0) {
+      } else if (images.length > 0) {
         const distTargets = [
           { connection: ctx.managerConn, name: 'manager' },
           ...ctx.workerConns.map((w) => ({ connection: w.connection, name: w.name })),
         ];
-        await DistributionService.distributeAll(builtImages, distTargets, runtime);
+        await DistributionService.distributeAll(images, distTargets, runtime);
       }
     }
   }
 
   await HookService.runLocal('post-build', ctx.projectRoot, ctx.config, ctx.rendered);
-  return builtImages;
 }
 
 // ---------------------------------------------------------------------------
@@ -138,15 +128,19 @@ export async function deployAccessories(ctx: DeployContext): Promise<void> {
   const accessoriesCompose = ComposeService.loadFromString(accessoriesContent);
   ComposeService.injectAccessoriesDefaults(accessoriesCompose);
 
-  await ctx.orchestrator.prepareInfrastructure(ctx.stackName, ComposeService.serialize(accessoriesCompose));
+  await ctx.orchestrator.prepareInfrastructure(ctx.stackName, accessoriesCompose);
 
-  const accessoriesYaml = ctx.config.orchestrator === 'k3s'
-    ? K8sManifestService.composeToManifests(ctx.stackName, accessoriesCompose)
-    : ComposeService.serialize(accessoriesCompose);
+  const accessoriesDeployContent = ctx.orchestrator.prepareDeployContent(
+    ctx.stackName,
+    accessoriesCompose,
+    ctx.config,
+    ctx.env,
+    { skipDefaults: true },
+  );
 
   const result = await ctx.orchestrator.deployAccessory(
     ctx.stackName,
-    accessoriesYaml,
+    accessoriesDeployContent,
     accessoriesRelPath,
     { force: ctx.forceAccessories },
   );
@@ -163,22 +157,15 @@ export async function deployAccessories(ctx: DeployContext): Promise<void> {
 export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Promise<void> {
   if (!ctx.deployApp) return;
 
-  if (ctx.config.proxy?.enabled) {
-    const traefik = ctx.config.orchestrator === 'k3s'
-      ? new K3sTraefikService(ctx.managerConn)
-      : new TraefikService(ctx.managerConn);
-    await traefik.ensureRunning(ctx.config.proxy);
+  if (ctx.traefikBackend) {
+    await ctx.traefikBackend.ensureRunning(ctx.config.proxy!);
   }
 
   await HookService.runRemote('pre-deploy', ctx.managerConn, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
 
-  await ctx.orchestrator.prepareInfrastructure(ctx.stackName, ComposeService.serialize(compose));
+  await ctx.orchestrator.prepareInfrastructure(ctx.stackName, compose);
 
-  const deployContent = ctx.config.orchestrator === 'k3s'
-    ? K8sManifestService.composeToManifests(ctx.stackName, compose, ctx.config.proxy, {
-        useRegistry: ctx.config.registry?.enabled === true,
-      })
-    : ComposeService.serialize(compose);
+  const deployContent = ctx.orchestrator.prepareDeployContent(ctx.stackName, compose, ctx.config, ctx.env);
 
   const deployResult = await ctx.orchestrator.deployStack(ctx.stackName, deployContent, '');
   if (!deployResult.success) {

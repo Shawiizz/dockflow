@@ -13,7 +13,8 @@ import { DeployError, ErrorCode } from '../../../utils/errors';
 import { sshExec } from '../../../utils/ssh';
 import { SwarmDeployService } from '../../swarm-deploy-service';
 import { createStackService } from '../../stack-service';
-import { ComposeService } from '../../compose-service';
+import { ComposeService, type ParsedCompose } from '../../compose-service';
+import type { DockflowConfig } from '../../../utils/config';
 import type {
   OrchestratorService,
   StackInfo,
@@ -26,6 +27,22 @@ export class SwarmOrchestratorService implements OrchestratorService {
 
   constructor(private readonly conn: SSHKeyConnection) {
     this.inner = new SwarmDeployService(conn);
+  }
+
+  prepareDeployContent(
+    stackName: string,
+    compose: ParsedCompose,
+    config: DockflowConfig,
+    env: string,
+    options?: { skipDefaults?: boolean },
+  ): string {
+    if (!options?.skipDefaults) {
+      ComposeService.injectSwarmDefaults(compose);
+    }
+    if (config.proxy?.enabled) {
+      ComposeService.injectTraefikLabels(compose, config, stackName, env);
+    }
+    return ComposeService.serialize(compose);
   }
 
   async deployStack(
@@ -131,8 +148,7 @@ export class SwarmOrchestratorService implements OrchestratorService {
     }
   }
 
-  async prepareInfrastructure(_stackName: string, content: string): Promise<void> {
-    const compose = ComposeService.loadFromString(content);
+  async prepareInfrastructure(_stackName: string, compose: ParsedCompose): Promise<void> {
     const networks = ComposeService.getExternalNetworks(compose);
     const volumes = ComposeService.getExternalVolumes(compose);
     await this.inner.createExternalResources(networks, volumes);

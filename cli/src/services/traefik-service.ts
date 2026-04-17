@@ -20,7 +20,9 @@ import {
   TRAEFIK_IMAGE,
 } from '../constants';
 
-export class TraefikService {
+import type { TraefikBackend } from './orchestrator/interface';
+
+export class TraefikService implements TraefikBackend {
   constructor(private readonly connection: SSHKeyConnection) {}
 
   /**

@@ -10,6 +10,9 @@ import { ok, err, type Result } from '../../../types/result';
 import { DeployError, ErrorCode } from '../../../utils/errors';
 import { sshExec } from '../../../utils/ssh';
 import { K3S_DOCKFLOW_KUBECONFIG, K3S_NAMESPACE_PREFIX } from '../../../constants';
+import { K8sManifestService } from '../../k8s-manifest-service';
+import { ComposeService, type ParsedCompose } from '../../compose-service';
+import type { DockflowConfig } from '../../../utils/config';
 import type {
   OrchestratorService,
   StackInfo,
@@ -21,6 +24,22 @@ export class K3sOrchestratorService implements OrchestratorService {
   private readonly kube = `kubectl --kubeconfig ${K3S_DOCKFLOW_KUBECONFIG}`;
 
   constructor(private readonly conn: SSHKeyConnection) {}
+
+  prepareDeployContent(
+    stackName: string,
+    compose: ParsedCompose,
+    config: DockflowConfig,
+    env: string,
+    _options?: { skipDefaults?: boolean },
+  ): string {
+    // Inject Traefik labels into compose so K8sManifestService can convert them to IngressRoute
+    if (config.proxy?.enabled) {
+      ComposeService.injectTraefikLabels(compose, config, stackName, env);
+    }
+    return K8sManifestService.composeToManifests(stackName, compose, config.proxy, {
+      useRegistry: config.registry?.enabled === true,
+    });
+  }
 
   private ns(stack: string): string {
     return `${K3S_NAMESPACE_PREFIX}-${stack}`;
@@ -199,7 +218,7 @@ export class K3sOrchestratorService implements OrchestratorService {
     }
   }
 
-  async prepareInfrastructure(_stackName: string, _content: string): Promise<void> {
+  async prepareInfrastructure(_stackName: string, _compose: ParsedCompose): Promise<void> {
     // k3s: namespaces and PVCs are created via kubectl apply — nothing to do here
   }
 }

@@ -1,5 +1,5 @@
 import type { SSHKeyConnection } from '../../types';
-import type { OrchestratorService } from './interface';
+import type { OrchestratorService, TraefikBackend } from './interface';
 import type { HealthBackend } from './health-interface';
 import type { LogsBackend } from './logs-interface';
 import type { ExecBackend } from './exec-interface';
@@ -11,6 +11,8 @@ import { K3sOrchestratorService } from './k3s/k3s-orchestrator';
 import { K3sHealthBackend } from './k3s/k3s-health';
 import { K3sLogsBackend } from './k3s/k3s-logs';
 import { K3sExecBackend } from './k3s/k3s-exec';
+import { TraefikService } from '../traefik-service';
+import { K3sTraefikService } from '../k3s-traefik-service';
 
 export type OrchestratorType = 'swarm' | 'k3s';
 
@@ -49,4 +51,13 @@ export function createExecBackend(
   return type === 'k3s'
     ? new K3sExecBackend(conn)
     : new SwarmExecBackend(conn, allConnections || [conn]);
+}
+
+export function createTraefikBackend(
+  type: OrchestratorType,
+  conn: SSHKeyConnection,
+): TraefikBackend {
+  return type === 'k3s'
+    ? new K3sTraefikService(conn)
+    : new TraefikService(conn);
 }

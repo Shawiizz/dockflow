@@ -10,7 +10,9 @@ import { stringify } from 'yaml';
  * k3s ships Traefik as a Helm chart in kube-system — this service configures
  * Let's Encrypt via HelmChartConfig when proxy.acme is enabled.
  */
-export class K3sTraefikService {
+import type { TraefikBackend } from './orchestrator/interface';
+
+export class K3sTraefikService implements TraefikBackend {
   private readonly kube: string;
 
   constructor(private readonly connection: SSHKeyConnection) {

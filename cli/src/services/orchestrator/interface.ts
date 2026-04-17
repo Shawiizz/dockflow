@@ -1,5 +1,7 @@
 import type { Result } from '../../types/result';
 import type { DeployError } from '../../utils/errors';
+import type { ParsedCompose } from '../compose-service';
+import type { DockflowConfig, ProxyConfig } from '../../utils/config';
 
 export interface StackInfo {
   name: string;
@@ -25,6 +27,21 @@ export interface ConvergenceResult {
  * Le deploy command ne connaît que cette interface — jamais les implémentations concrètes.
  */
 export interface OrchestratorService {
+  /**
+   * Prepare the compose content for deployment:
+   * - Swarm: inject deploy defaults, inject Traefik labels, serialize to YAML
+   * - K3s: convert to Kubernetes manifests
+   *
+   * Called by deploy phases instead of manually checking orchestrator type.
+   */
+  prepareDeployContent(
+    stackName: string,
+    compose: ParsedCompose,
+    config: DockflowConfig,
+    env: string,
+    options?: { skipDefaults?: boolean },
+  ): string;
+
   deployStack(
     stackName: string,
     content: string,
@@ -54,5 +71,13 @@ export interface OrchestratorService {
 
   rollbackService(stackName: string, service: string): Promise<void>;
 
-  prepareInfrastructure(stackName: string, content: string): Promise<void>;
+  prepareInfrastructure(stackName: string, compose: ParsedCompose): Promise<void>;
+}
+
+/**
+ * Backend for managing the reverse proxy (Traefik).
+ * Swarm and K3s have different Traefik deployment strategies.
+ */
+export interface TraefikBackend {
+  ensureRunning(proxyConfig: ProxyConfig): Promise<void>;
 }
