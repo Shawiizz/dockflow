@@ -1,20 +1,16 @@
 /**
  * Accessories Restart Command
  * Restart accessory services by forcing an update
- *
- * Uses StackService (shared with app commands)
  */
 
 import type { Command } from 'commander';
-import { printIntro, printOutro, printDebug, printBlank, printRaw, createSpinner } from '../../utils/output';
+import { printIntro, printOutro, printDebug, printBlank, createSpinner } from '../../utils/output';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
-import { createStackService } from '../../services';
-import { DockerError, withErrorHandler } from '../../utils/errors';
+import { createOrchestrator } from '../../services/orchestrator/factory';
+import { loadConfig } from '../../utils/config';
+import { DockerError, withErrorHandler, ConfigError } from '../../utils/errors';
 
-/**
- * Register the accessories restart command
- */
 export function registerAccessoriesRestartCommand(program: Command): void {
   program
     .command('restart <env> [service]')
@@ -31,7 +27,10 @@ export function registerAccessoriesRestartCommand(program: Command): void {
 
       const { connection } = validateEnv(env, options.server);
       const { stackName } = await requireAccessoriesStack(connection, env);
-      const stackService = createStackService(connection, stackName);
+
+      const config = loadConfig();
+      if (!config) throw new ConfigError('No dockflow config found');
+      const orchestrator = createOrchestrator(config.orchestrator ?? 'swarm', connection);
 
       printDebug('Connection validated', { stackName });
       const spinner = createSpinner();
@@ -39,31 +38,18 @@ export function registerAccessoriesRestartCommand(program: Command): void {
       try {
         if (service) {
           spinner.start(`Restarting ${service}...`);
-          const result = await stackService.restart(service);
-
-          if (result.success) {
-            spinner.succeed(`Accessory '${service}' restarted`);
-          } else {
-            spinner.fail('Restart failed');
-            throw new DockerError(result.message || 'Failed to restart service');
-          }
+          await orchestrator.restart(stackName, service);
+          spinner.succeed(`Accessory '${service}' restarted`);
         } else {
           spinner.start('Restarting all accessories...');
-          const result = await stackService.restart();
-
-          if (result.success) {
-            spinner.succeed(result.message || 'Done');
-            printOutro('Restart complete');
-          } else {
-            spinner.warn(result.message || 'Restart failed');
-            if (result.output) {
-              printRaw(result.output);
-            }
-          }
+          await orchestrator.restart(stackName);
+          spinner.succeed('All accessories restarted');
+          printOutro('Restart complete');
         }
       } catch (error) {
         if (error instanceof DockerError) throw error;
-        throw new DockerError(`Failed to restart: ${error}`);
+        const msg = error instanceof Error ? error.message : String(error);
+        throw new DockerError(`Failed to restart: ${msg}`);
       }
     })));
 }

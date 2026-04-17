@@ -1,13 +1,12 @@
 /**
  * Version command - Show deployed app version
- * 
- * Uses StackService to retrieve deployment metadata.
  */
 
 import type { Command } from 'commander';
 import { validateEnv } from '../../utils/validation';
-import { createStackService } from '../../services';
-import { DockerError, withErrorHandler } from '../../utils/errors';
+import { createOrchestrator } from '../../services/orchestrator/factory';
+import { loadConfig } from '../../utils/config';
+import { DockerError, withErrorHandler, ConfigError } from '../../utils/errors';
 import { colors, printJSON, printBlank, printDim, printRaw } from '../../utils/output';
 
 export function registerVersionCommand(program: Command): void {
@@ -20,45 +19,37 @@ export function registerVersionCommand(program: Command): void {
     .action(withErrorHandler(async (env: string, options: { server?: string; json?: boolean }) => {
       const { stackName, connection } = validateEnv(env, options.server);
 
-      const stackService = createStackService(connection, stackName);
+      const config = loadConfig();
+      if (!config) throw new ConfigError('No dockflow config found');
+      const orchestrator = createOrchestrator(config.orchestrator ?? 'swarm', connection);
 
-      try {
-        // Get deployment metadata
-        const metadataResult = await stackService.getMetadata();
-        
-        if (!metadataResult.success) {
-          throw new DockerError(`No deployment found for ${stackName}`);
+      const metadata = await orchestrator.getMetadata(stackName);
+      if (!metadata) {
+        throw new DockerError(`No deployment found for ${stackName}`);
+      }
+
+      if (options.json) {
+        printJSON(metadata);
+        return;
+      }
+
+      const services = await orchestrator.getServices(stackName);
+
+      printBlank();
+      printRaw(`Stack: ${colors.info(stackName)}`);
+      printBlank();
+      printRaw(colors.dim('  Version:     ') + colors.success(metadata.version));
+      printRaw(colors.dim('  Environment: ') + metadata.env);
+      printRaw(colors.dim('  Branch:      ') + (metadata.branch || 'N/A'));
+      printRaw(colors.dim('  Deployed:    ') + metadata.timestamp);
+      printBlank();
+
+      if (services.length > 0) {
+        printDim('Running images:');
+        for (const service of services) {
+          printRaw(colors.dim('  ') + `${service.name}: ${service.image}`);
         }
-
-        const metadata = metadataResult.data;
-
-        if (options.json) {
-          printJSON(metadata);
-          return;
-        }
-
-        // Get running images
-        const servicesResult = await stackService.getServices();
-
         printBlank();
-        printRaw(`Stack: ${colors.info(stackName)}`);
-        printBlank();
-        printRaw(colors.dim('  Version:     ') + colors.success(metadata.version));
-        printRaw(colors.dim('  Environment: ') + metadata.env);
-        printRaw(colors.dim('  Branch:      ') + (metadata.branch || 'N/A'));
-        printRaw(colors.dim('  Deployed:    ') + metadata.timestamp);
-        printBlank();
-
-        if (servicesResult.success && servicesResult.data.length > 0) {
-          printDim('Running images:');
-          for (const service of servicesResult.data) {
-            printRaw(colors.dim('  ') + `${service.name}: ${service.image}`);
-          }
-          printBlank();
-        }
-      } catch (error) {
-        if (error instanceof DockerError) throw error;
-        throw new DockerError(`Failed to get version: ${error}`);
       }
     }));
 }

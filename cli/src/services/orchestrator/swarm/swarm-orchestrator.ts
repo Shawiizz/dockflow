@@ -1,10 +1,8 @@
 /**
  * Swarm orchestrator backend.
  *
- * Thin wrapper that implements OrchestratorService by delegating to the
- * existing Swarm services (SwarmDeployService, StackService, ComposeService).
- * No business logic lives here — every method forwards to a pre-existing
- * implementation.
+ * Implements OrchestratorService for Docker Swarm. Delegates stack deploy
+ * lifecycle to SwarmDeployService; all other operations are direct SSH calls.
  */
 
 import type { SSHKeyConnection } from '../../../types';
@@ -12,15 +10,33 @@ import { ok, err, type Result } from '../../../types/result';
 import { DeployError, ErrorCode } from '../../../utils/errors';
 import { sshExec } from '../../../utils/ssh';
 import { SwarmDeployService } from '../../swarm-deploy-service';
-import { createStackService } from '../../stack-service';
 import { ComposeService, type ParsedCompose } from '../../compose-service';
+import { DOCKFLOW_STACKS_DIR } from '../../../constants';
 import type { DockflowConfig } from '../../../utils/config';
 import type {
   OrchestratorService,
   StackInfo,
   ServiceInfo,
   ConvergenceResult,
+  StackMetadata,
 } from '../interface';
+
+export interface SwarmContainerInfo {
+  id: string;
+  name: string;
+  status: string;
+  ports: string;
+}
+
+export interface SwarmTaskInfo {
+  id: string;
+  name: string;
+  image: string;
+  node: string;
+  desiredState: string;
+  currentState: string;
+  error: string;
+}
 
 export class SwarmOrchestratorService implements OrchestratorService {
   private readonly inner: SwarmDeployService;
@@ -111,15 +127,21 @@ export class SwarmOrchestratorService implements OrchestratorService {
   }
 
   async getServices(stackName: string): Promise<ServiceInfo[]> {
-    const stack = createStackService(this.conn, stackName);
-    const result = await stack.getServices();
-    if (!result.success) return [];
-    return result.data.map((s) => ({
-      name: s.name,
-      image: s.image,
-      replicas: s.replicas,
-      ports: s.ports,
-    }));
+    const result = await sshExec(
+      this.conn,
+      `docker stack services ${stackName} --format '{{.Name}}|{{.Image}}|{{.Replicas}}|{{.Ports}}' 2>/dev/null`,
+    );
+    if (result.exitCode !== 0) return [];
+
+    return result.stdout
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const [fullName, image, replicas, ports] = line.split('|');
+        const name = fullName.replace(`${stackName}_`, '');
+        return { name, image, replicas, ports };
+      });
   }
 
   async scaleService(
@@ -127,22 +149,22 @@ export class SwarmOrchestratorService implements OrchestratorService {
     service: string,
     replicas: number,
   ): Promise<void> {
-    const stack = createStackService(this.conn, stackName);
-    const result = await stack.scale(service, replicas);
-    if (!result.success) {
+    const fullName = `${stackName}_${service}`;
+    const result = await sshExec(this.conn, `docker service scale ${fullName}=${replicas}`);
+    if (result.exitCode !== 0) {
       throw new DeployError(
-        result.message ?? `Failed to scale ${service}`,
+        result.stderr || `Failed to scale ${service}`,
         ErrorCode.DEPLOY_FAILED,
       );
     }
   }
 
   async rollbackService(stackName: string, service: string): Promise<void> {
-    const stack = createStackService(this.conn, stackName);
-    const result = await stack.rollback(service);
-    if (!result.success) {
+    const fullName = `${stackName}_${service}`;
+    const result = await sshExec(this.conn, `docker service rollback ${fullName}`);
+    if (result.exitCode !== 0) {
       throw new DeployError(
-        result.message ?? `Failed to rollback ${service}`,
+        result.stderr || `Failed to rollback ${service}`,
         ErrorCode.DEPLOY_FAILED,
       );
     }
@@ -152,6 +174,92 @@ export class SwarmOrchestratorService implements OrchestratorService {
     const networks = ComposeService.getExternalNetworks(compose);
     const volumes = ComposeService.getExternalVolumes(compose);
     await this.inner.createExternalResources(networks, volumes);
+  }
+
+  async stackExists(stackName: string): Promise<boolean> {
+    const result = await sshExec(
+      this.conn,
+      `docker stack ls --format '{{.Name}}' | grep -Fxq '${stackName}' && echo exists || echo not_found`,
+    );
+    return result.stdout.trim() === 'exists';
+  }
+
+  async restart(stackName: string, service?: string): Promise<void> {
+    if (service) {
+      const fullName = `${stackName}_${service}`;
+      const r = await sshExec(this.conn, `docker service update --force ${fullName}`);
+      if (r.exitCode !== 0) {
+        throw new DeployError(r.stderr || `Failed to restart ${service}`, ErrorCode.DEPLOY_FAILED);
+      }
+      return;
+    }
+
+    const services = await this.getServices(stackName);
+    if (services.length === 0) {
+      throw new DeployError('No services found', ErrorCode.STACK_NOT_FOUND);
+    }
+
+    const cmd = services
+      .map((s) => `docker service update --force ${stackName}_${s.name}`)
+      .join(' && ');
+    const r = await sshExec(this.conn, cmd);
+    if (r.exitCode !== 0) {
+      throw new DeployError(r.stderr || 'Some services failed to restart', ErrorCode.DEPLOY_FAILED);
+    }
+  }
+
+  async getMetadata(stackName: string): Promise<StackMetadata | null> {
+    const result = await sshExec(
+      this.conn,
+      `cat '${DOCKFLOW_STACKS_DIR}/${stackName}/current/metadata.json' 2>/dev/null`,
+    );
+    if (result.exitCode !== 0 || !result.stdout.trim()) return null;
+    try {
+      return JSON.parse(result.stdout.trim()) as StackMetadata;
+    } catch {
+      return null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Swarm-only inspection methods (not on OrchestratorService interface).
+  // Used by `dockflow ps` and `dockflow diagnose` — commands that surface
+  // Swarm-native concepts (containers on nodes, task scheduling) that don't
+  // translate to k3s.
+  // ---------------------------------------------------------------------------
+
+  async getContainers(stackName: string): Promise<SwarmContainerInfo[]> {
+    const result = await sshExec(
+      this.conn,
+      `docker ps --filter 'label=com.docker.stack.namespace=${stackName}' --format '{{.ID}}|{{.Names}}|{{.Status}}|{{.Ports}}'`,
+    );
+    if (result.exitCode !== 0) return [];
+
+    return result.stdout
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const [id, name, status, ports] = line.split('|');
+        return { id, name, status, ports };
+      });
+  }
+
+  async getTasks(stackName: string): Promise<SwarmTaskInfo[]> {
+    const result = await sshExec(
+      this.conn,
+      `docker stack ps ${stackName} --format '{{.ID}}|{{.Name}}|{{.Image}}|{{.Node}}|{{.DesiredState}}|{{.CurrentState}}|{{.Error}}' --no-trunc 2>/dev/null`,
+    );
+    if (result.exitCode !== 0) return [];
+
+    return result.stdout
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const [id, name, image, node, desiredState, currentState, error] = line.split('|');
+        return { id, name, image, node, desiredState, currentState, error };
+      });
   }
 
   private toDeployError(e: unknown): DeployError {

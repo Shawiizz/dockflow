@@ -9,7 +9,11 @@ import type { SSHKeyConnection } from '../../../types';
 import { ok, err, type Result } from '../../../types/result';
 import { DeployError, ErrorCode } from '../../../utils/errors';
 import { sshExec } from '../../../utils/ssh';
-import { K3S_DOCKFLOW_KUBECONFIG, K3S_NAMESPACE_PREFIX } from '../../../constants';
+import {
+  DOCKFLOW_STACKS_DIR,
+  K3S_DOCKFLOW_KUBECONFIG,
+  K3S_NAMESPACE_PREFIX,
+} from '../../../constants';
 import { K8sManifestService } from '../../k8s-manifest-service';
 import { ComposeService, type ParsedCompose } from '../../compose-service';
 import type { DockflowConfig } from '../../../utils/config';
@@ -18,6 +22,7 @@ import type {
   StackInfo,
   ServiceInfo,
   ConvergenceResult,
+  StackMetadata,
 } from '../interface';
 
 export class K3sOrchestratorService implements OrchestratorService {
@@ -220,5 +225,52 @@ export class K3sOrchestratorService implements OrchestratorService {
 
   async prepareInfrastructure(_stackName: string, _compose: ParsedCompose): Promise<void> {
     // k3s: namespaces and PVCs are created via kubectl apply — nothing to do here
+  }
+
+  async stackExists(stackName: string): Promise<boolean> {
+    const r = await sshExec(
+      this.conn,
+      `${this.kube} get namespace ${this.ns(stackName)} --no-headers 2>/dev/null | wc -l`,
+    );
+    return r.exitCode === 0 && parseInt(r.stdout.trim(), 10) > 0;
+  }
+
+  async restart(stackName: string, service?: string): Promise<void> {
+    const ns = this.ns(stackName);
+
+    if (service) {
+      const r = await sshExec(
+        this.conn,
+        `${this.kube} rollout restart deployment/${service} -n ${ns}`,
+      );
+      if (r.exitCode !== 0) {
+        throw new DeployError(
+          r.stderr || `Failed to restart ${service}`,
+          ErrorCode.DEPLOY_FAILED,
+        );
+      }
+      return;
+    }
+
+    const r = await sshExec(this.conn, `${this.kube} rollout restart deployment -n ${ns}`);
+    if (r.exitCode !== 0) {
+      throw new DeployError(
+        r.stderr || 'Failed to restart stack',
+        ErrorCode.DEPLOY_FAILED,
+      );
+    }
+  }
+
+  async getMetadata(stackName: string): Promise<StackMetadata | null> {
+    const result = await sshExec(
+      this.conn,
+      `cat '${DOCKFLOW_STACKS_DIR}/${stackName}/current/metadata.json' 2>/dev/null`,
+    );
+    if (result.exitCode !== 0 || !result.stdout.trim()) return null;
+    try {
+      return JSON.parse(result.stdout.trim()) as StackMetadata;
+    } catch {
+      return null;
+    }
   }
 }

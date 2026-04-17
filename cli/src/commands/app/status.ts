@@ -1,7 +1,6 @@
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import { getAvailableEnvironments, getManagersForEnvironment, getFullConnectionInfo } from '../../utils/servers';
-import { createStackService } from '../../services';
 import { createOrchestrator } from '../../services/orchestrator/factory';
 import { withSecrets } from '../../utils/secrets';
 import { withErrorHandler } from '../../utils/errors';
@@ -33,18 +32,15 @@ async function getEnvStatus(env: string): Promise<EnvStatus> {
     if (!config) return { env, version: null, deployedAt: null, services: null, error: 'config.yml not found' };
 
     const stackName = `${config.project_name}-${env}`;
-    const stackService = createStackService(connection, stackName);
     const orchType = config.orchestrator ?? 'swarm';
     const orchestrator = createOrchestrator(orchType, connection);
 
     const [metaResult, servicesResult] = await Promise.allSettled([
-      stackService.getMetadata(),
+      orchestrator.getMetadata(stackName),
       orchestrator.getServices(stackName),
     ]);
 
-    const meta = metaResult.status === 'fulfilled' && metaResult.value.success
-      ? metaResult.value.data
-      : null;
+    const meta = metaResult.status === 'fulfilled' ? metaResult.value : null;
 
     let services: { running: number; desired: number } | null = null;
     if (servicesResult.status === 'fulfilled') {

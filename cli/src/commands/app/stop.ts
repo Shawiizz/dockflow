@@ -6,8 +6,9 @@ import type { Command } from 'commander';
 import { printWarning, printInfo, printDebug, createSpinner } from '../../utils/output';
 import { confirmPrompt } from '../../utils/prompts';
 import { validateEnv } from '../../utils/validation';
-import { createStackService } from '../../services';
-import { DockerError, withErrorHandler } from '../../utils/errors';
+import { createOrchestrator } from '../../services/orchestrator/factory';
+import { loadConfig } from '../../utils/config';
+import { DockerError, withErrorHandler, ConfigError } from '../../utils/errors';
 
 export function registerStopCommand(program: Command): void {
   program
@@ -34,22 +35,21 @@ export function registerStopCommand(program: Command): void {
         }
       }
 
-      const stackService = createStackService(connection, stackName);
+      const config = loadConfig();
+      if (!config) throw new ConfigError('No dockflow config found');
+      const orchestrator = createOrchestrator(config.orchestrator ?? 'swarm', connection);
+
       const spinner = createSpinner();
       spinner.start(`Stopping stack ${stackName}...`);
 
       try {
-        const result = await stackService.remove();
-        if (result.success) {
-          spinner.succeed(`Stack ${stackName} stopped`);
-        } else {
-          spinner.fail(`Failed to stop: ${result.message}`);
-          throw new DockerError(result.message || 'Failed to remove stack');
-        }
+        await orchestrator.removeStack(stackName);
+        spinner.succeed(`Stack ${stackName} stopped`);
       } catch (error) {
         if (error instanceof DockerError) throw error;
-        spinner.fail(`Failed to stop: ${error}`);
-        throw new DockerError(`${error}`);
+        const msg = error instanceof Error ? error.message : String(error);
+        spinner.fail(`Failed to stop: ${msg}`);
+        throw new DockerError(msg);
       }
     }));
 }

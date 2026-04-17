@@ -9,6 +9,7 @@ import type { SSHKeyConnection } from '../../../types';
 import { ok, err, type Result } from '../../../types/result';
 import { sshExec, sshExecStream, executeInteractiveSSH, shellEscape } from '../../../utils/ssh';
 import type { ExecBackend, ExecOptions, ExecResult } from '../exec-interface';
+import { findSwarmContainer } from './swarm-utils';
 
 export class SwarmExecBackend implements ExecBackend {
   constructor(
@@ -16,39 +17,8 @@ export class SwarmExecBackend implements ExecBackend {
     private readonly allConnections: SSHKeyConnection[],
   ) {}
 
-  /**
-   * Find a running container for a service by searching all Swarm nodes in parallel.
-   */
-  private async findContainer(
-    stackName: string,
-    serviceName: string,
-  ): Promise<{ containerId: string; connection: SSHKeyConnection } | null> {
-    const fullName = serviceName.includes('_') ? serviceName : `${stackName}_${serviceName}`;
-    const cmd = `docker ps --filter 'label=com.docker.swarm.service.name=${fullName}' --format '{{.ID}}' | head -n1`;
-
-    // Deduplicate connections (manager first)
-    const seen = new Set<string>();
-    const conns: SSHKeyConnection[] = [];
-    for (const c of [this.conn, ...this.allConnections]) {
-      const key = `${c.host}:${c.port}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        conns.push(c);
-      }
-    }
-
-    const promises = conns.map(async (connection) => {
-      const result = await sshExec(connection, cmd);
-      const containerId = result.stdout.trim();
-      if (containerId) return { containerId, connection };
-      throw new Error('not found');
-    });
-
-    try {
-      return await Promise.any(promises);
-    } catch {
-      return null;
-    }
+  private findContainer(stackName: string, serviceName: string) {
+    return findSwarmContainer(stackName, serviceName, this.conn, this.allConnections);
   }
 
   private buildExecCommand(

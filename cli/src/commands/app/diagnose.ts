@@ -5,8 +5,9 @@ import {
   printSuccess, printDebug, printBlank, printRaw, printWarning, colors,
 } from '../../utils/output';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
-import { createStackService } from '../../services';
-import { withErrorHandler } from '../../utils/errors';
+import { SwarmOrchestratorService } from '../../services/orchestrator/swarm/swarm-orchestrator';
+import { loadConfig } from '../../utils/config';
+import { withErrorHandler, DockerError, ConfigError } from '../../utils/errors';
 
 interface DiagnosticIssue {
   severity: 'error' | 'warning';
@@ -82,15 +83,23 @@ export function registerDiagnoseCommand(program: Command): void {
       const { stackName, connection, serverName } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName, serverName });
 
+      const config = loadConfig();
+      if (!config) throw new ConfigError('No dockflow config found');
+      if ((config.orchestrator ?? 'swarm') !== 'swarm') {
+        throw new DockerError(
+          '`dockflow diagnose` is Swarm-only. For k3s, use `kubectl describe pods` or `kubectl get events`.',
+        );
+      }
+
       printIntro(`Diagnosing: ${stackName}`);
       printBlank();
 
       const issues: DiagnosticIssue[] = [];
-      const stackService = createStackService(connection, stackName);
+      const orchestrator = new SwarmOrchestratorService(connection);
 
       // ── Stack existence ──────────────────────────────────────────────────
       printSection('Stack Status');
-      const stackExists = await stackService.exists();
+      const stackExists = await orchestrator.stackExists(stackName);
       if (!stackExists) {
         printError('Stack does not exist');
         issues.push({
@@ -106,70 +115,62 @@ export function registerDiagnoseCommand(program: Command): void {
 
       // ── Service replicas ─────────────────────────────────────────────────
       printSection('Services');
-      const servicesResult = await stackService.getServices();
-      if (!servicesResult.success) {
-        printError(`Failed to get services: ${servicesResult.error.message}`);
-      } else {
-        for (const service of servicesResult.data) {
-          const [current, desired] = service.replicas.split('/').map(s => parseInt(s.trim()));
-          if (current === 0 && desired > 0) {
-            printRaw(`  ${colors.error('✗')} ${service.name}: ${colors.error(service.replicas)} replicas`);
-            issues.push({ severity: 'error', category: 'Replicas', message: `Service '${service.name}' has 0/${desired} replicas`, suggestion: 'Check task errors below' });
-          } else if (current < desired) {
-            printRaw(`  ${colors.warning('!')} ${service.name}: ${colors.warning(service.replicas)} replicas`);
-            issues.push({ severity: 'warning', category: 'Replicas', message: `Service '${service.name}' has ${current}/${desired} replicas` });
-          } else {
-            printRaw(`  ${colors.success('✓')} ${service.name}: ${colors.success(service.replicas)} replicas`);
-          }
+      const services = await orchestrator.getServices(stackName);
+      for (const service of services) {
+        const [current, desired] = service.replicas.split('/').map(s => parseInt(s.trim()));
+        if (current === 0 && desired > 0) {
+          printRaw(`  ${colors.error('✗')} ${service.name}: ${colors.error(service.replicas)} replicas`);
+          issues.push({ severity: 'error', category: 'Replicas', message: `Service '${service.name}' has 0/${desired} replicas`, suggestion: 'Check task errors below' });
+        } else if (current < desired) {
+          printRaw(`  ${colors.warning('!')} ${service.name}: ${colors.warning(service.replicas)} replicas`);
+          issues.push({ severity: 'warning', category: 'Replicas', message: `Service '${service.name}' has ${current}/${desired} replicas` });
+        } else {
+          printRaw(`  ${colors.success('✓')} ${service.name}: ${colors.success(service.replicas)} replicas`);
         }
       }
 
       // ── Failed tasks ─────────────────────────────────────────────────────
       printSection('Task Errors');
-      const tasksResult = await stackService.getTasks();
-      if (tasksResult.success) {
-        const failures = tasksResult.data
-          .filter(t => t.error || t.currentState.includes('Failed'))
-          .slice(0, 10);
+      const tasks = await orchestrator.getTasks(stackName);
+      const failures = tasks
+        .filter(t => t.error || t.currentState.includes('Failed'))
+        .slice(0, 10);
 
-        if (failures.length === 0) {
-          printSuccess('No task errors found');
-        } else {
-          for (const task of failures) {
-            printRaw(`  ${colors.error('✗')} ${task.name}`);
-            printRaw(`    State: ${colors.warning(task.currentState)}`);
-            if (task.error) {
-              printRaw(`    Error: ${colors.error(task.error)}`);
-              issues.push({
-                severity: 'error',
-                category: 'Task',
-                message: `${task.name}: ${task.error}`,
-                suggestion: analyzeTaskError(task.error),
-              });
-            }
-            printBlank();
+      if (failures.length === 0) {
+        printSuccess('No task errors found');
+      } else {
+        for (const task of failures) {
+          printRaw(`  ${colors.error('✗')} ${task.name}`);
+          printRaw(`    State: ${colors.warning(task.currentState)}`);
+          if (task.error) {
+            printRaw(`    Error: ${colors.error(task.error)}`);
+            issues.push({
+              severity: 'error',
+              category: 'Task',
+              message: `${task.name}: ${task.error}`,
+              suggestion: analyzeTaskError(task.error),
+            });
           }
+          printBlank();
         }
       }
 
       // ── Pending tasks ────────────────────────────────────────────────────
       printSection('Pending Tasks');
-      if (tasksResult.success) {
-        const pending = tasksResult.data.filter(t =>
-          t.currentState.includes('Pending') ||
-          t.currentState.includes('Preparing') ||
-          t.currentState.includes('Starting'),
-        );
+      const pending = tasks.filter(t =>
+        t.currentState.includes('Pending') ||
+        t.currentState.includes('Preparing') ||
+        t.currentState.includes('Starting'),
+      );
 
-        if (pending.length === 0) {
-          printInfo('No pending tasks');
-        } else {
-          for (const task of pending) {
-            printRaw(`  ${colors.warning('○')} ${task.name}: ${task.currentState}`);
-          }
-          if (pending.some(t => t.currentState.includes('Pending'))) {
-            issues.push({ severity: 'warning', category: 'Scheduling', message: 'Some tasks are pending', suggestion: 'May indicate resource constraints or scheduling issues' });
-          }
+      if (pending.length === 0) {
+        printInfo('No pending tasks');
+      } else {
+        for (const task of pending) {
+          printRaw(`  ${colors.warning('○')} ${task.name}: ${task.currentState}`);
+        }
+        if (pending.some(t => t.currentState.includes('Pending'))) {
+          issues.push({ severity: 'warning', category: 'Scheduling', message: 'Some tasks are pending', suggestion: 'May indicate resource constraints or scheduling issues' });
         }
       }
 

@@ -1,14 +1,13 @@
 /**
  * Restart command - Restart services
- * 
- * Uses StackService to handle service restarts.
  */
 
 import type { Command } from 'commander';
-import { printSuccess, printDebug, printRaw, createSpinner } from '../../utils/output';
+import { printSuccess, printDebug, createSpinner } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
-import { createStackService } from '../../services';
-import { DockerError, withErrorHandler } from '../../utils/errors';
+import { createOrchestrator } from '../../services/orchestrator/factory';
+import { loadConfig } from '../../utils/config';
+import { DockerError, withErrorHandler, ConfigError } from '../../utils/errors';
 
 export function registerRestartCommand(program: Command): void {
   program
@@ -19,39 +18,29 @@ export function registerRestartCommand(program: Command): void {
     .action(withErrorHandler(async (env: string, service: string | undefined, options: { server?: string }) => {
       const { stackName, connection } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName });
-      
-      const stackService = createStackService(connection, stackName);
+
+      const config = loadConfig();
+      if (!config) throw new ConfigError('No dockflow config found');
+      const orchestrator = createOrchestrator(config.orchestrator ?? 'swarm', connection);
+
       const spinner = createSpinner();
 
       try {
         if (service) {
-          spinner.start(`Restarting ${stackName}_${service}...`);
-          const result = await stackService.restart(service);
-          
-          if (result.success) {
-            spinner.succeed(result.message || 'Done');
-          } else {
-            spinner.fail(result.message || 'Restart failed');
-            throw new DockerError(result.message || 'Failed to restart service');
-          }
+          spinner.start(`Restarting ${service}...`);
+          await orchestrator.restart(stackName, service);
+          spinner.succeed(`Restarted ${service}`);
         } else {
           spinner.start('Restarting all services...');
-          const result = await stackService.restart();
-
-          if (result.success) {
-            spinner.succeed(result.message || 'Done');
-            printSuccess('All services restarted');
-          } else {
-            spinner.warn(result.message || 'Restart failed');
-            if (result.output) {
-              printRaw(result.output);
-            }
-          }
+          await orchestrator.restart(stackName);
+          spinner.succeed('All services restarted');
+          printSuccess('All services restarted');
         }
       } catch (error) {
         if (error instanceof DockerError) throw error;
-        spinner.fail(`Failed to restart: ${error}`);
-        throw new DockerError(`${error}`);
+        const msg = error instanceof Error ? error.message : String(error);
+        spinner.fail(`Failed to restart: ${msg}`);
+        throw new DockerError(msg);
       }
     }));
 }

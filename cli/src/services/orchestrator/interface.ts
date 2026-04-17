@@ -21,6 +21,14 @@ export interface ConvergenceResult {
   timedOut: boolean;
 }
 
+export interface StackMetadata {
+  version: string;
+  env: string;
+  branch: string;
+  timestamp: string;
+  project_name: string;
+}
+
 /**
  * Contrat que tout backend d'orchestration doit implémenter.
  * SwarmOrchestratorService et K3sOrchestratorService implémentent cette interface.
@@ -72,6 +80,19 @@ export interface OrchestratorService {
   rollbackService(stackName: string, service: string): Promise<void>;
 
   prepareInfrastructure(stackName: string, compose: ParsedCompose): Promise<void>;
+
+  /** Whether the stack is currently deployed on the cluster. */
+  stackExists(stackName: string): Promise<boolean>;
+
+  /**
+   * Force a restart of one service, or every service in the stack.
+   * - Swarm: `docker service update --force`
+   * - k3s:   `kubectl rollout restart deployment/...`
+   */
+  restart(stackName: string, service?: string): Promise<void>;
+
+  /** Read the deployment metadata file written by the release service. */
+  getMetadata(stackName: string): Promise<StackMetadata | null>;
 }
 
 /**

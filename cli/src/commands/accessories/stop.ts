@@ -1,8 +1,6 @@
 /**
  * Accessories Stop Command
  * Stop accessory services by scaling to 0 replicas
- *
- * Uses StackService (shared with app commands)
  */
 
 import type { Command } from 'commander';
@@ -10,12 +8,10 @@ import { printInfo, printIntro, printOutro, printNote, printWarning, printBlank,
 import { confirmPrompt } from '../../utils/prompts';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
-import { createStackService } from '../../services';
-import { DockerError, withErrorHandler } from '../../utils/errors';
+import { createOrchestrator } from '../../services/orchestrator/factory';
+import { loadConfig } from '../../utils/config';
+import { DockerError, withErrorHandler, ConfigError } from '../../utils/errors';
 
-/**
- * Register the accessories stop command
- */
 export function registerAccessoriesStopCommand(program: Command): void {
   program
     .command('stop <env> [service]')
@@ -32,16 +28,18 @@ export function registerAccessoriesStopCommand(program: Command): void {
 
       const { connection } = validateEnv(env, options.server);
       const { stackName } = await requireAccessoriesStack(connection, env);
-      const stackService = createStackService(connection, stackName);
 
-      const serviceNames = await stackService.getServiceNames();
-      if (serviceNames.length === 0) {
+      const config = loadConfig();
+      if (!config) throw new ConfigError('No dockflow config found');
+      const orchestrator = createOrchestrator(config.orchestrator ?? 'swarm', connection);
+
+      const services = await orchestrator.getServices(stackName);
+      if (services.length === 0) {
         throw new DockerError('No accessories services found');
       }
 
       const targetDesc = service ? `accessory '${service}'` : 'all accessories';
 
-      // Confirmation
       if (!options.yes) {
         printWarning(`This will stop ${targetDesc} (scale to 0 replicas)`);
         printInfo('Data in volumes will be preserved');
@@ -62,22 +60,19 @@ export function registerAccessoriesStopCommand(program: Command): void {
         if (service) {
           const spinner = createSpinner();
           spinner.start(`Stopping ${service}...`);
-          const result = await stackService.scale(service, 0);
-
-          if (result.success) {
-            spinner.succeed(`Accessory '${service}' stopped`);
-          } else {
-            spinner.fail('Stop failed');
-            throw new DockerError(result.message || 'Failed to stop service');
-          }
+          await orchestrator.scaleService(stackName, service, 0);
+          spinner.succeed(`Accessory '${service}' stopped`);
         } else {
           const spinner = createSpinner();
           spinner.start('Scaling all services to 0...');
           let allSuccess = true;
 
-          for (const svc of serviceNames) {
-            const result = await stackService.scale(svc, 0);
-            if (!result.success) allSuccess = false;
+          for (const svc of services) {
+            try {
+              await orchestrator.scaleService(stackName, svc.name, 0);
+            } catch {
+              allSuccess = false;
+            }
           }
 
           if (allSuccess) {
@@ -97,7 +92,8 @@ export function registerAccessoriesStopCommand(program: Command): void {
 
       } catch (error) {
         if (error instanceof DockerError) throw error;
-        throw new DockerError(`Failed to stop: ${error}`);
+        const msg = error instanceof Error ? error.message : String(error);
+        throw new DockerError(`Failed to stop: ${msg}`);
       }
     })));
 }

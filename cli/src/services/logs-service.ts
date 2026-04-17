@@ -7,7 +7,7 @@
 
 import type { SSHKeyConnection } from '../types';
 import { sshExec, sshExecStream, shellEscape } from '../utils/ssh';
-import { createStackService } from './stack-service';
+import { SwarmOrchestratorService } from './orchestrator/swarm/swarm-orchestrator';
 
 /**
  * Log retrieval options
@@ -37,13 +37,18 @@ export interface LogEntry {
  * Logs Service - manages log operations for stacks
  */
 export class LogsService {
-  private readonly stackService;
+  private readonly orchestrator: SwarmOrchestratorService;
 
   constructor(
     private readonly connection: SSHKeyConnection,
     private readonly stackName: string
   ) {
-    this.stackService = createStackService(connection, stackName);
+    this.orchestrator = new SwarmOrchestratorService(connection);
+  }
+
+  private async getFullServiceNames(): Promise<string[]> {
+    const services = await this.orchestrator.getServices(this.stackName);
+    return services.map((s) => `${this.stackName}_${s.name}`);
   }
 
   /**
@@ -118,7 +123,7 @@ export class LogsService {
     options: LogOptions = {},
     onServiceStart?: (serviceName: string) => void
   ): Promise<void> {
-    const services = await this.stackService.getFullServiceNames();
+    const services = await this.getFullServiceNames();
     
     if (services.length === 0) {
       throw new Error(`No services found for stack ${this.stackName}`);
@@ -141,7 +146,7 @@ export class LogsService {
    * Get logs for all services (non-streaming)
    */
   async getAllLogs(options: LogOptions = {}): Promise<LogEntry[]> {
-    const services = await this.stackService.getFullServiceNames();
+    const services = await this.getFullServiceNames();
     const entries: LogEntry[] = [];
 
     for (const service of services) {
@@ -159,7 +164,7 @@ export class LogsService {
     pattern: string,
     options: { tail?: number; caseSensitive?: boolean } = {}
   ): Promise<LogEntry[]> {
-    const services = await this.stackService.getFullServiceNames();
+    const services = await this.getFullServiceNames();
     const entries: LogEntry[] = [];
     const grepFlag = options.caseSensitive ? '' : '-i';
 

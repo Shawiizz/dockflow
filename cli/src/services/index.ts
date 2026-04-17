@@ -1,19 +1,13 @@
 /**
  * Services barrel export
  *
- * Service layer for Docker Swarm operations.
- * These services encapsulate SSH commands and provide
- * a clean API for CLI commands.
+ * Service layer for deploy/operate flows. Stack lifecycle and exec
+ * are handled through the orchestrator layer
+ * (`services/orchestrator/*`) — not re-exported here.
  */
-
-// Stack management
-export * from './stack-service';
 
 // Logs handling
 export * from './logs-service';
-
-// Command execution in containers
-export * from './exec-service';
 
 // Deployment metrics
 export * from './metrics-service';

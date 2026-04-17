@@ -15,7 +15,8 @@ import type { BackupDbType, BackupAccessoryConfig } from '../utils/config';
 import { ok, err, type Result } from '../types';
 import { sshExec, shellEscape } from '../utils/ssh';
 import { formatBytes, printDebug } from '../utils/output';
-import { createStackService } from './stack-service';
+import { findSwarmContainer } from './orchestrator/swarm/swarm-utils';
+import { SwarmOrchestratorService } from './orchestrator/swarm/swarm-orchestrator';
 import { DOCKFLOW_BACKUPS_DIR } from '../constants';
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -215,7 +216,7 @@ function sanitizePathName(mountPath: string): string {
 // ─── Service ──────────────────────────────────────────────────────────────
 
 export class BackupService {
-  private readonly stackService;
+  private readonly orchestrator: SwarmOrchestratorService;
 
   constructor(
     /** Manager connection — used for Swarm operations (service restart) */
@@ -224,7 +225,11 @@ export class BackupService {
     /** All node connections — used to find containers and run backup/restore on any node */
     private readonly allConnections: SSHKeyConnection[] = []
   ) {
-    this.stackService = createStackService(connection, stackName);
+    this.orchestrator = new SwarmOrchestratorService(connection);
+  }
+
+  private findContainer(service: string) {
+    return findSwarmContainer(this.stackName, service, this.connection, this.allConnections);
   }
 
   private getBackupDir(service: string): string {
@@ -310,7 +315,7 @@ export class BackupService {
     config: BackupAccessoryConfig,
     compression: 'gzip' | 'none' = 'gzip'
   ): Promise<Result<BackupMetadata, Error>> {
-    const found = await this.stackService.findContainerForService(service, this.allConnections);
+    const found = await this.findContainer(service);
     if (!found) {
       return err(new Error(`No running container found for service ${service}`));
     }
@@ -734,7 +739,7 @@ export class BackupService {
       return this.restoreVolumes(service, backupId, backupCompression, nodeConn);
     }
 
-    const found = await this.stackService.findContainerForService(service, this.allConnections);
+    const found = await this.findContainer(service);
     if (!found) {
       return err(new Error(`No running container found for service ${service}`));
     }
@@ -783,9 +788,10 @@ export class BackupService {
     // policy is disabled or exhausted — non-fatal if it fails.
     if (strategy?.requiresServiceRestart) {
       await new Promise(resolve => setTimeout(resolve, 3000));
-      const restartResult = await this.stackService.restart(service);
-      if (!restartResult.success) {
-        printDebug(`Service update after restore failed (non-fatal): ${restartResult.message}`);
+      try {
+        await this.orchestrator.restart(this.stackName, service);
+      } catch (e) {
+        printDebug(`Service update after restore failed (non-fatal): ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
