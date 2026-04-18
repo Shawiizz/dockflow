@@ -1,13 +1,13 @@
 /**
  * Logs command - View service logs
  *
- * Uses the LogsBackend abstraction to support both Swarm and k3s.
+ * Uses the ContainerBackend abstraction to support both Swarm and k3s.
  */
 
 import type { Command } from 'commander';
 import { printInfo, printSection, printDebug, printBlank, printRaw } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
-import { createLogsBackend, createOrchestrator } from '../../services/orchestrator/factory';
+import { createContainerBackend, createStackBackend } from '../../services/orchestrator/factory';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 
 export function registerLogsCommand(program: Command): void {
@@ -34,7 +34,7 @@ export function registerLogsCommand(program: Command): void {
       printBlank();
 
       const orchType = config.orchestrator ?? 'swarm';
-      const logsBackend = createLogsBackend(orchType, connection);
+      const logsBackend = createContainerBackend(orchType, connection);
       const logOptions = {
         tail: parseInt(options.tail || '100', 10),
         follow: options.follow ?? false,
@@ -54,7 +54,7 @@ export function registerLogsCommand(program: Command): void {
           );
         } else {
           // Logs for all services — get service list from orchestrator
-          const orchestrator = createOrchestrator(orchType, connection);
+          const orchestrator = createStackBackend(orchType, connection);
           const services = await orchestrator.getServices(stackName);
 
           if (services.length === 0) {

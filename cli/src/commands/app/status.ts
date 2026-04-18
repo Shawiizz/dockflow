@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import { getAvailableEnvironments, getManagersForEnvironment, getFullConnectionInfo } from '../../utils/servers';
-import { createOrchestrator } from '../../services/orchestrator/factory';
+import { createStackBackend } from '../../services/orchestrator/factory';
 import { withSecrets } from '../../utils/secrets';
 import { withErrorHandler } from '../../utils/errors';
 import { printIntro, printBlank, printRaw, printSection, printWarning, colors } from '../../utils/output';
@@ -33,7 +33,7 @@ async function getEnvStatus(env: string): Promise<EnvStatus> {
 
     const stackName = `${config.project_name}-${env}`;
     const orchType = config.orchestrator ?? 'swarm';
-    const orchestrator = createOrchestrator(orchType, connection);
+    const orchestrator = createStackBackend(orchType, connection);
 
     const [metaResult, servicesResult] = await Promise.allSettled([
       orchestrator.getMetadata(stackName),

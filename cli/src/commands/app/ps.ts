@@ -8,7 +8,7 @@
 import type { Command } from 'commander';
 import { printInfo, printSection, printDebug, colors, printBlank, printDim, printRaw } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
-import { SwarmOrchestratorService } from '../../services/orchestrator/swarm/swarm-orchestrator';
+import { SwarmStackBackend } from '../../services/orchestrator/swarm/swarm-stack';
 import { loadConfig } from '../../utils/config';
 import { DockerError, withErrorHandler, ConfigError } from '../../utils/errors';
 
@@ -31,7 +31,7 @@ export function registerPsCommand(program: Command): void {
         );
       }
 
-      const orchestrator = new SwarmOrchestratorService(connection);
+      const orchestrator = new SwarmStackBackend(connection);
 
       printInfo(`Stack: ${stackName}`);
       printBlank();

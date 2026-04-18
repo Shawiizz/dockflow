@@ -13,7 +13,7 @@ import { jsonResponse, errorResponse } from '../server';
 import { loadConfig } from '../../utils/config';
 import { getAvailableEnvironments } from '../../utils/servers';
 import { sshExec } from '../../utils/ssh';
-import { parseDockerLogLines } from '../../services';
+import { parseDockerLogLines } from '../../utils/docker-logs';
 import { getManagerConnection, resolveEnvironment, isValidDockerName } from './_helpers';
 import type {
   ServiceInfo,

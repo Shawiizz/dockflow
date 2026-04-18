@@ -128,22 +128,15 @@ export async function deployAccessories(ctx: DeployContext): Promise<void> {
   const accessoriesCompose = ComposeService.loadFromString(accessoriesContent);
   ComposeService.injectAccessoriesDefaults(accessoriesCompose);
 
-  await ctx.orchestrator.prepareInfrastructure(ctx.stackName, accessoriesCompose);
-
-  const accessoriesDeployContent = ctx.orchestrator.prepareDeployContent(
-    ctx.stackName,
-    accessoriesCompose,
-    ctx.config,
-    ctx.env,
-    { skipDefaults: true },
-  );
-
-  const result = await ctx.orchestrator.deployAccessory(
-    ctx.stackName,
-    accessoriesDeployContent,
-    accessoriesRelPath,
-    { force: ctx.forceAccessories },
-  );
+  const result = await ctx.orchestrator.deployAccessory({
+    stackName: ctx.stackName,
+    env: ctx.env,
+    compose: accessoriesCompose,
+    accessoryPath: accessoriesRelPath,
+    force: ctx.forceAccessories,
+    proxy: ctx.config.proxy,
+    useRegistry: ctx.config.registry?.enabled,
+  });
 
   if (!result.success) {
     throw result.error;
@@ -163,11 +156,13 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
 
   await HookService.runRemote('pre-deploy', ctx.managerConn, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
 
-  await ctx.orchestrator.prepareInfrastructure(ctx.stackName, compose);
-
-  const deployContent = ctx.orchestrator.prepareDeployContent(ctx.stackName, compose, ctx.config, ctx.env);
-
-  const deployResult = await ctx.orchestrator.deployStack(ctx.stackName, deployContent, '');
+  const deployResult = await ctx.orchestrator.deploy({
+    stackName: ctx.stackName,
+    env: ctx.env,
+    compose,
+    proxy: ctx.config.proxy,
+    useRegistry: ctx.config.registry?.enabled,
+  });
   if (!deployResult.success) {
     throw deployResult.error;
   }
@@ -193,7 +188,7 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
   }
 
   if (ctx.config.health_checks?.enabled !== false) {
-    const health = new HealthCheckService(ctx.managerConn, ctx.healthBackend);
+    const health = new HealthCheckService(ctx.managerConn, ctx.orchestrator);
     const internalResult = await health.checkInternalHealth(ctx.stackName, ctx.config.health_checks);
     if (!internalResult.healthy) {
       throw new DeployError(

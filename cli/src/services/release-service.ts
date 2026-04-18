@@ -22,7 +22,7 @@ import { sshExec, sshExecChannel } from '../utils/ssh';
 import { printDebug, printInfo, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import { DOCKFLOW_STACKS_DIR } from '../constants';
-import type { OrchestratorService } from './orchestrator/interface';
+import type { StackBackend } from './orchestrator/interfaces';
 import type { DockflowConfig } from '../utils/config';
 
 const DEFAULT_KEEP_RELEASES = 3;
@@ -119,13 +119,13 @@ export class ReleaseService {
   /**
    * Rollback to the previous release.
    *
-   * Reads the previous release's compose, deploys it via OrchestratorService,
+   * Reads the previous release's compose, re-applies it via StackBackend,
    * waits for convergence, then updates the `current` symlink.
    * Returns the version that was rolled back to.
    */
   async rollback(
     stackName: string,
-    orchestrator: OrchestratorService,
+    orchestrator: StackBackend,
   ): Promise<string> {
     const releases = await this.listReleases(stackName);
 
@@ -155,8 +155,8 @@ export class ReleaseService {
       );
     }
 
-    // Deploy old compose via orchestrator
-    const deployResult = await orchestrator.deployStack(stackName, composeResult.stdout, previousDir);
+    // Re-apply the old compose via the orchestrator
+    const deployResult = await orchestrator.redeploy(stackName, composeResult.stdout);
     if (!deployResult.success) {
       throw new DeployError(
         deployResult.error.message,

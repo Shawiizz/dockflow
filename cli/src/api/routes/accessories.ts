@@ -12,7 +12,7 @@ import { jsonResponse, errorResponse } from '../server';
 import { loadConfig, getAccessoriesStackName } from '../../utils/config';
 import { getManagerConnection, resolveEnvironment, isValidDockerName } from './_helpers';
 import { sshExec } from '../../utils/ssh';
-import { parseDockerLogLines } from '../../services';
+import { parseDockerLogLines } from '../../utils/docker-logs';
 import type { AccessoryInfo, AccessoriesResponse } from '../types';
 import type { AccessoryStatusInfo, AccessoriesStatusResponse, AccessoryActionResponse, LogsResponse } from '../types';
 

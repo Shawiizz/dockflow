@@ -6,9 +6,6 @@
  * (`services/orchestrator/*`) — not re-exported here.
  */
 
-// Logs handling
-export * from './logs-service';
-
 // Deployment metrics
 export * from './metrics-service';
 
@@ -27,10 +24,7 @@ export * from './history-sync-service';
 // Compose manipulation (template rendering, image tagging, deploy config injection)
 export * from './compose-service';
 
-// Swarm stack deployment, convergence, accessories
-export * from './swarm-deploy-service';
-
-// Health checks (Swarm internal + HTTP endpoints)
+// Health checks (internal via StackBackend + HTTP endpoints)
 export * from './health-check-service';
 
 // Release lifecycle (create, rollback, cleanup)

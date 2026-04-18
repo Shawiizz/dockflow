@@ -48,7 +48,7 @@ import { displayDeployDryRun } from './deploy-dry-run';
 import type { SSHKeyConnection } from '../types';
 
 import { ComposeService } from '../services/compose-service';
-import { createOrchestrator, createHealthBackend, createTraefikBackend } from '../services/orchestrator/factory';
+import { createStackBackend, createTraefikBackend } from '../services/orchestrator/factory';
 import { ReleaseService } from '../services/release-service';
 import { LockService } from '../services/lock-service';
 import { AuditService } from '../services/audit-service';
@@ -220,9 +220,8 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
     managerConn, workerConns, otherManagerConns,
     deployApp: shouldDeployApp, forceAccessories, skipAccessories,
     options, rendered, composeContent, composeDirPath,
-    orchestrator: createOrchestrator(orchType, managerConn),
+    orchestrator: createStackBackend(orchType, managerConn),
     traefikBackend: config.proxy?.enabled ? createTraefikBackend(orchType, managerConn) : undefined,
-    healthBackend: createHealthBackend(orchType, managerConn),
     releases: new ReleaseService(managerConn),
     lock: new LockService(managerConn, stackName),
     audit: new AuditService(managerConn),

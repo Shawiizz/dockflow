@@ -5,7 +5,7 @@ import {
   printSuccess, printDebug, printBlank, printRaw, printWarning, colors,
 } from '../../utils/output';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
-import { SwarmOrchestratorService } from '../../services/orchestrator/swarm/swarm-orchestrator';
+import { SwarmStackBackend } from '../../services/orchestrator/swarm/swarm-stack';
 import { loadConfig } from '../../utils/config';
 import { withErrorHandler, DockerError, ConfigError } from '../../utils/errors';
 
@@ -95,7 +95,7 @@ export function registerDiagnoseCommand(program: Command): void {
       printBlank();
 
       const issues: DiagnosticIssue[] = [];
-      const orchestrator = new SwarmOrchestratorService(connection);
+      const orchestrator = new SwarmStackBackend(connection);
 
       // ── Stack existence ──────────────────────────────────────────────────
       printSection('Stack Status');

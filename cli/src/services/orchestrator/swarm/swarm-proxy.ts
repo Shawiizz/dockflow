@@ -9,20 +9,20 @@
  * ensure it exists (idempotent).
  */
 
-import type { SSHKeyConnection } from '../types';
-import type { ProxyConfig } from '../utils/config';
-import { sshExec, sshExecChannel } from '../utils/ssh';
-import { printDebug, printDim, printSuccess } from '../utils/output';
+import type { SSHKeyConnection } from '../../../types';
+import type { ProxyConfig } from '../../../utils/config';
+import { sshExec, sshExecChannel } from '../../../utils/ssh';
+import { printDebug, printDim, printSuccess } from '../../../utils/output';
 import {
   TRAEFIK_STACK_NAME,
   TRAEFIK_NETWORK_NAME,
   TRAEFIK_CERTS_VOLUME,
   TRAEFIK_IMAGE,
-} from '../constants';
+} from '../../../constants';
 
-import type { TraefikBackend } from './orchestrator/interface';
+import type { TraefikBackend } from '../interfaces';
 
-export class TraefikService implements TraefikBackend {
+export class SwarmTraefikBackend implements TraefikBackend {
   constructor(private readonly connection: SSHKeyConnection) {}
 
   /**
@@ -54,7 +54,7 @@ export class TraefikService implements TraefikBackend {
     }
 
     // Generate and deploy stack via temp file
-    const composeYaml = TraefikService.generateCompose(proxyConfig);
+    const composeYaml = SwarmTraefikBackend.generateCompose(proxyConfig);
     const tmpFile = `/tmp/dockflow-traefik-${Date.now()}.yml`;
 
     try {

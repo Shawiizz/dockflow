@@ -8,7 +8,7 @@ import { printInfo, printIntro, printOutro, printNote, printWarning, printBlank,
 import { confirmPrompt } from '../../utils/prompts';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
-import { createOrchestrator } from '../../services/orchestrator/factory';
+import { createStackBackend } from '../../services/orchestrator/factory';
 import { loadConfig } from '../../utils/config';
 import { DockerError, withErrorHandler, ConfigError } from '../../utils/errors';
 
@@ -31,7 +31,7 @@ export function registerAccessoriesStopCommand(program: Command): void {
 
       const config = loadConfig();
       if (!config) throw new ConfigError('No dockflow config found');
-      const orchestrator = createOrchestrator(config.orchestrator ?? 'swarm', connection);
+      const orchestrator = createStackBackend(config.orchestrator ?? 'swarm', connection);
 
       const services = await orchestrator.getServices(stackName);
       if (services.length === 0) {

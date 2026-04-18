@@ -1,28 +1,28 @@
 /**
- * Swarm Deploy Service
+ * Swarm deploy internals.
  *
- * Replaces the Ansible roles `docker-swarm`, `accessories`,
- * `_shared/wait-convergence`, and `_shared/create-resources`.
+ * Private helper for SwarmStackBackend. Handles the mechanics of
+ * `docker stack deploy`: external resource creation, stuck-service
+ * recovery, convergence polling, and hash-based accessories detection.
  *
- * Handles external resource creation, stack deployment via
- * `docker stack deploy`, stuck-service recovery, convergence
- * polling, and hash-based accessories change detection.
+ * Not re-exported through services/index.ts — use SwarmStackBackend
+ * (via createStackBackend) instead.
  */
 
 import { createHash } from 'crypto';
-import type { SSHKeyConnection } from '../types';
-import { sshExec, sshExecChannel } from '../utils/ssh';
-import { printDebug, printDim, printInfo, printWarning, printSuccess, createTimedSpinner } from '../utils/output';
-import { DeployError, ErrorCode } from '../utils/errors';
+import type { SSHKeyConnection } from '../../../types';
+import { sshExec, sshExecChannel } from '../../../utils/ssh';
+import { printDebug, printDim, printInfo, printWarning, printSuccess, createTimedSpinner } from '../../../utils/output';
+import { DeployError, ErrorCode } from '../../../utils/errors';
 import {
   DOCKFLOW_ACCESSORIES_DIR,
   STACK_REMOVAL_MAX_ATTEMPTS,
   STACK_REMOVAL_POLL_INTERVAL_MS,
   CONVERGENCE_TIMEOUT_S,
   CONVERGENCE_INTERVAL_S,
-} from '../constants';
+} from '../../../constants';
 
-export class SwarmDeployService {
+export class SwarmDeployInternal {
   constructor(private readonly connection: SSHKeyConnection) {}
 
   /**

@@ -1,17 +1,23 @@
 /**
- * Swarm exec backend.
+ * Swarm container backend.
  *
- * Finds containers via `docker ps` label filter across all Swarm nodes,
- * then runs `docker exec` / `docker cp` on the node where the container lives.
+ * Implements ContainerBackend for Docker Swarm: locates the container for a
+ * given service across all Swarm nodes, then runs `docker exec`/`docker cp`
+ * on the right node. Log streaming uses `docker service logs`.
  */
 
 import type { SSHKeyConnection } from '../../../types';
 import { ok, err, type Result } from '../../../types/result';
 import { sshExec, sshExecStream, executeInteractiveSSH, shellEscape } from '../../../utils/ssh';
-import type { ExecBackend, ExecOptions, ExecResult } from '../exec-interface';
+import type {
+  ContainerBackend,
+  ExecOptions,
+  ExecResult,
+  LogsOptions,
+} from '../interfaces';
 import { findSwarmContainer } from './swarm-utils';
 
-export class SwarmExecBackend implements ExecBackend {
+export class SwarmContainerBackend implements ContainerBackend {
   constructor(
     private readonly conn: SSHKeyConnection,
     private readonly allConnections: SSHKeyConnection[],
@@ -102,10 +108,7 @@ export class SwarmExecBackend implements ExecBackend {
     }
   }
 
-  async bash(
-    stackName: string,
-    serviceName: string,
-  ): Promise<Result<void, Error>> {
+  async bash(stackName: string, serviceName: string): Promise<Result<void, Error>> {
     const found = await this.findContainer(stackName, serviceName);
     if (!found) return err(new Error(`No running container found for service ${serviceName}`));
 
@@ -146,5 +149,38 @@ export class SwarmExecBackend implements ExecBackend {
     const result = await sshExec(found.connection, `docker cp ${found.containerId}:'${shellEscape(containerPath)}' '${shellEscape(localPath)}'`);
     if (result.exitCode !== 0) return err(new Error(`Failed to copy file: ${result.stderr}`));
     return ok(undefined);
+  }
+
+  async streamLogs(
+    stackName: string,
+    serviceName: string,
+    options: LogsOptions,
+    onData: (line: string) => void,
+    onError: (err: Error) => void,
+  ): Promise<void> {
+    const fullName = serviceName.includes('_') ? serviceName : `${stackName}_${serviceName}`;
+
+    const parts = ['docker service logs'];
+    if (options.follow) parts.push('-f');
+    parts.push(`--tail ${options.tail ?? 100}`);
+    if (options.timestamps) parts.push('--timestamps');
+    if (options.since) parts.push(`--since ${options.since}`);
+    parts.push(fullName);
+    parts.push('2>&1');
+
+    const emitLines = (data: string) => {
+      for (const line of data.split('\n')) {
+        if (line.length > 0) onData(line);
+      }
+    };
+
+    try {
+      await sshExecStream(this.conn, parts.join(' '), {
+        onStdout: emitLines,
+        onStderr: emitLines,
+      });
+    } catch (e) {
+      onError(e instanceof Error ? e : new Error(String(e)));
+    }
   }
 }

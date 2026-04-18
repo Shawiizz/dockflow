@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import { validateEnv } from '../../utils/validation';
-import { createOrchestrator } from '../../services/orchestrator/factory';
+import { createStackBackend } from '../../services/orchestrator/factory';
 import { loadConfig } from '../../utils/config';
 import { DockerError, withErrorHandler, ConfigError } from '../../utils/errors';
 import { colors, printJSON, printBlank, printDim, printRaw } from '../../utils/output';
@@ -21,7 +21,7 @@ export function registerVersionCommand(program: Command): void {
 
       const config = loadConfig();
       if (!config) throw new ConfigError('No dockflow config found');
-      const orchestrator = createOrchestrator(config.orchestrator ?? 'swarm', connection);
+      const orchestrator = createStackBackend(config.orchestrator ?? 'swarm', connection);
 
       const metadata = await orchestrator.getMetadata(stackName);
       if (!metadata) {

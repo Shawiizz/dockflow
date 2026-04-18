@@ -1,16 +1,22 @@
 /**
- * k3s exec backend.
+ * k3s container backend.
  *
- * Finds pods via kubectl label selector, then runs kubectl exec / kubectl cp.
+ * Implements ContainerBackend via `kubectl exec` / `kubectl cp` / `kubectl logs`.
+ * Pods are resolved via the `app=<serviceName>` label written by K8sManifestService.
  */
 
 import type { SSHKeyConnection } from '../../../types';
 import { ok, err, type Result } from '../../../types/result';
 import { sshExec, sshExecStream, executeInteractiveSSH, shellEscape } from '../../../utils/ssh';
 import { K3S_DOCKFLOW_KUBECONFIG, K3S_NAMESPACE_PREFIX } from '../../../constants';
-import type { ExecBackend, ExecOptions, ExecResult } from '../exec-interface';
+import type {
+  ContainerBackend,
+  ExecOptions,
+  ExecResult,
+  LogsOptions,
+} from '../interfaces';
 
-export class K3sExecBackend implements ExecBackend {
+export class K3sContainerBackend implements ContainerBackend {
   private readonly kube = `kubectl --kubeconfig ${K3S_DOCKFLOW_KUBECONFIG}`;
 
   constructor(private readonly conn: SSHKeyConnection) {}
@@ -19,9 +25,6 @@ export class K3sExecBackend implements ExecBackend {
     return `${K3S_NAMESPACE_PREFIX}-${stackName}`;
   }
 
-  /**
-   * Find the first running pod for a service via label selector.
-   */
   private async findPod(stackName: string, serviceName: string): Promise<string | null> {
     const ns = this.ns(stackName);
     const result = await sshExec(
@@ -92,16 +95,12 @@ export class K3sExecBackend implements ExecBackend {
     }
   }
 
-  async bash(
-    stackName: string,
-    serviceName: string,
-  ): Promise<Result<void, Error>> {
+  async bash(stackName: string, serviceName: string): Promise<Result<void, Error>> {
     const pod = await this.findPod(stackName, serviceName);
     if (!pod) return err(new Error(`No running pod found for service ${serviceName}`));
 
     const ns = this.ns(stackName);
 
-    // Check if bash is available
     const check = await sshExec(this.conn, `${this.kube} exec -n ${ns} ${pod} -- which bash 2>/dev/null || echo "not_found"`);
     const shellPath = check.stdout.trim() === 'not_found' ? '/bin/sh' : '/bin/bash';
 
@@ -151,6 +150,45 @@ export class K3sExecBackend implements ExecBackend {
     return ok(undefined);
   }
 
+  async streamLogs(
+    stackName: string,
+    serviceName: string,
+    options: LogsOptions,
+    onData: (line: string) => void,
+    onError: (err: Error) => void,
+  ): Promise<void> {
+    const ns = this.ns(stackName);
+    const flags = [
+      options.follow ? '-f' : '',
+      options.tail != null ? `--tail=${options.tail}` : '',
+      options.since ? `--since=${options.since}` : '',
+      options.timestamps ? '--timestamps' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    try {
+      await sshExecStream(
+        this.conn,
+        `${this.kube} logs -n ${ns} -l app=${serviceName} ${flags}`,
+        {
+          onStdout: (data) => {
+            for (const line of data.split('\n')) {
+              if (line.length > 0) onData(line);
+            }
+          },
+          onStderr: (data) => {
+            for (const line of data.split('\n')) {
+              if (line.length > 0) onError(new Error(line));
+            }
+          },
+        },
+      );
+    } catch (e) {
+      onError(e instanceof Error ? e : new Error(String(e)));
+    }
+  }
+
   private buildExecCommand(
     ns: string,
     pod: string,
@@ -162,7 +200,6 @@ export class K3sExecBackend implements ExecBackend {
     if (options.interactive) parts.push('-it');
     parts.push('-n', ns, pod, '--');
 
-    // kubectl exec doesn't support -w/-u natively — wrap in sh -c if needed
     if (options.workdir || options.user || options.env) {
       const envParts: string[] = [];
       if (options.env) {

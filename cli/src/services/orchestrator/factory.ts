@@ -1,56 +1,39 @@
+/**
+ * Backend factories.
+ *
+ * Each factory returns the concrete backend for the chosen orchestrator.
+ * Consumers (commands, services) only ever see the interface — switching
+ * orchestrators is a single config field flip.
+ */
+
 import type { SSHKeyConnection } from '../../types';
-import type { OrchestratorService, TraefikBackend } from './interface';
-import type { HealthBackend } from './health-interface';
-import type { LogsBackend } from './logs-interface';
-import type { ExecBackend } from './exec-interface';
-import { SwarmOrchestratorService } from './swarm/swarm-orchestrator';
-import { SwarmHealthBackend } from './swarm/swarm-health';
-import { SwarmLogsBackend } from './swarm/swarm-logs';
-import { SwarmExecBackend } from './swarm/swarm-exec';
-import { K3sOrchestratorService } from './k3s/k3s-orchestrator';
-import { K3sHealthBackend } from './k3s/k3s-health';
-import { K3sLogsBackend } from './k3s/k3s-logs';
-import { K3sExecBackend } from './k3s/k3s-exec';
-import { TraefikService } from '../traefik-service';
-import { K3sTraefikService } from '../k3s-traefik-service';
+import type { StackBackend, ContainerBackend, TraefikBackend } from './interfaces';
+import { SwarmStackBackend } from './swarm/swarm-stack';
+import { SwarmContainerBackend } from './swarm/swarm-container';
+import { SwarmTraefikBackend } from './swarm/swarm-traefik';
+import { K3sStackBackend } from './k3s/k3s-stack';
+import { K3sContainerBackend } from './k3s/k3s-container';
+import { K3sTraefikBackend } from './k3s/k3s-traefik';
 
 export type OrchestratorType = 'swarm' | 'k3s';
 
-export function createOrchestrator(
+export function createStackBackend(
   type: OrchestratorType,
   conn: SSHKeyConnection,
-): OrchestratorService {
+): StackBackend {
   return type === 'k3s'
-    ? new K3sOrchestratorService(conn)
-    : new SwarmOrchestratorService(conn);
+    ? new K3sStackBackend(conn)
+    : new SwarmStackBackend(conn);
 }
 
-export function createHealthBackend(
-  type: OrchestratorType,
-  conn: SSHKeyConnection,
-): HealthBackend {
-  return type === 'k3s'
-    ? new K3sHealthBackend(conn)
-    : new SwarmHealthBackend(conn);
-}
-
-export function createLogsBackend(
-  type: OrchestratorType,
-  conn: SSHKeyConnection,
-): LogsBackend {
-  return type === 'k3s'
-    ? new K3sLogsBackend(conn)
-    : new SwarmLogsBackend(conn);
-}
-
-export function createExecBackend(
+export function createContainerBackend(
   type: OrchestratorType,
   conn: SSHKeyConnection,
   allConnections?: SSHKeyConnection[],
-): ExecBackend {
+): ContainerBackend {
   return type === 'k3s'
-    ? new K3sExecBackend(conn)
-    : new SwarmExecBackend(conn, allConnections || [conn]);
+    ? new K3sContainerBackend(conn)
+    : new SwarmContainerBackend(conn, allConnections || [conn]);
 }
 
 export function createTraefikBackend(
@@ -58,6 +41,6 @@ export function createTraefikBackend(
   conn: SSHKeyConnection,
 ): TraefikBackend {
   return type === 'k3s'
-    ? new K3sTraefikService(conn)
-    : new TraefikService(conn);
+    ? new K3sTraefikBackend(conn)
+    : new SwarmTraefikBackend(conn);
 }

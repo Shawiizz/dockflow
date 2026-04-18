@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { printSuccess, printDebug, createSpinner } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
-import { createOrchestrator } from '../../services/orchestrator/factory';
+import { createStackBackend } from '../../services/orchestrator/factory';
 import { loadConfig } from '../../utils/config';
 import { DockerError, withErrorHandler, ConfigError } from '../../utils/errors';
 
@@ -21,7 +21,7 @@ export function registerRestartCommand(program: Command): void {
 
       const config = loadConfig();
       if (!config) throw new ConfigError('No dockflow config found');
-      const orchestrator = createOrchestrator(config.orchestrator ?? 'swarm', connection);
+      const orchestrator = createStackBackend(config.orchestrator ?? 'swarm', connection);
 
       const spinner = createSpinner();
 

@@ -2,7 +2,7 @@
  * Health Check Service
  *
  * Orchestrator-agnostic health checking. Internal health checks (Swarm tasks
- * or K8s pods) are delegated to the injected HealthBackend. HTTP endpoint
+ * or K8s pods) are delegated to the injected StackBackend. HTTP endpoint
  * checks run concurrently via Promise.allSettled.
  */
 
@@ -11,42 +11,30 @@ import { sshExec } from '../utils/ssh';
 import { printDebug, printDim, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import type { HealthCheckConfig, HealthCheckEndpoint } from '../utils/config';
-import type { HealthBackend, InternalHealthResult } from './orchestrator/health-interface';
+import type { StackBackend, InternalHealthResult } from './orchestrator/interfaces';
 
 // Defaults — overridable via config.health_checks.timeout / .interval
 const DEFAULT_HEALTHCHECK_TIMEOUT_S = 120;
 const DEFAULT_HEALTHCHECK_INTERVAL_S = 5;
 
 export class HealthCheckService {
-  private readonly healthBackend?: HealthBackend;
-
   constructor(
     private readonly connection: SSHKeyConnection,
-    healthBackend?: HealthBackend,
-  ) {
-    this.healthBackend = healthBackend;
-  }
+    private readonly stackBackend: StackBackend,
+  ) {}
 
   /**
    * Orchestrator-agnostic internal health check.
-   * Delegates to the injected HealthBackend (Swarm or k3s).
-   * Throws DeployError if no backend is configured.
+   * Delegates to the injected StackBackend (Swarm or k3s).
    */
   async checkInternalHealth(
     stackName: string,
     config?: HealthCheckConfig,
   ): Promise<InternalHealthResult> {
-    if (!this.healthBackend) {
-      throw new DeployError(
-        'No health backend configured',
-        ErrorCode.HEALTH_CHECK_FAILED,
-      );
-    }
-
     const timeoutS = config?.timeout ?? DEFAULT_HEALTHCHECK_TIMEOUT_S;
     const intervalS = config?.interval ?? DEFAULT_HEALTHCHECK_INTERVAL_S;
 
-    return this.healthBackend.checkInternalHealth(stackName, timeoutS, intervalS);
+    return this.stackBackend.checkInternalHealth(stackName, timeoutS, intervalS);
   }
 
   /**

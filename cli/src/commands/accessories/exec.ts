@@ -2,14 +2,14 @@
  * Accessories Exec Command
  * Execute commands in accessory containers
  *
- * Uses ExecBackend abstraction to support both Swarm and k3s.
+ * Uses ContainerBackend abstraction to support both Swarm and k3s.
  */
 
 import type { Command } from 'commander';
 import { printInfo } from '../../utils/output';
 import { validateEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
-import { createExecBackend, createOrchestrator } from '../../services/orchestrator/factory';
+import { createContainerBackend, createStackBackend } from '../../services/orchestrator/factory';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
 /**
@@ -32,7 +32,7 @@ export function registerAccessoriesExecCommand(program: Command): void {
       const { stackName } = await requireAccessoriesStack(connection, env);
 
       const orchType = config.orchestrator ?? 'swarm';
-      const execBackend = createExecBackend(orchType, connection, getAllNodeConnections(env));
+      const execBackend = createContainerBackend(orchType, connection, getAllNodeConnections(env));
       const cmd = command.length > 0 ? command.join(' ') : 'sh';
 
       printInfo(`Connecting to ${service}...`);
@@ -41,7 +41,7 @@ export function registerAccessoriesExecCommand(program: Command): void {
         if (cmd === 'bash' || cmd === 'sh' || cmd.includes('/bin/sh') || cmd.includes('/bin/bash')) {
           const result = await execBackend.shell(stackName, service, cmd.includes('bash') ? '/bin/bash' : '/bin/sh');
           if (!result.success) {
-            const orchestrator = createOrchestrator(orchType, connection);
+            const orchestrator = createStackBackend(orchType, connection);
             const services = await orchestrator.getServices(stackName);
             const suggestion = services.length > 0
               ? `Available accessories: ${services.map(s => s.name).join(', ')}`
@@ -55,7 +55,7 @@ export function registerAccessoriesExecCommand(program: Command): void {
           });
 
           if (!result.success) {
-            const orchestrator = createOrchestrator(orchType, connection);
+            const orchestrator = createStackBackend(orchType, connection);
             const services = await orchestrator.getServices(stackName);
             const suggestion = services.length > 0
               ? `Available accessories: ${services.map(s => s.name).join(', ')}`

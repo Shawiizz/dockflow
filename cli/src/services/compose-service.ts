@@ -14,7 +14,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { join, relative, dirname } from 'path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import nunjucks from 'nunjucks';
-import type { DockflowConfig } from '../utils/config';
+import type { DockflowConfig, ProxyConfig } from '../utils/config';
 import { getProjectRoot, getComposePath } from '../utils/config';
 import { printDebug, printWarning } from '../utils/output';
 import { ConfigError } from '../utils/errors';
@@ -413,16 +413,16 @@ export class ComposeService {
    */
   static injectTraefikLabels(
     compose: ParsedCompose,
-    config: DockflowConfig,
+    proxy: ProxyConfig,
     stackName: string,
     env: string,
   ): void {
-    if (!config.proxy?.enabled) return;
+    if (!proxy.enabled) return;
 
-    const domain = config.proxy.domains?.[env];
+    const domain = proxy.domains?.[env];
     if (!domain) return;
 
-    const acme = config.proxy.acme !== false; // default true
+    const acme = proxy.acme !== false; // default true
     const entrypoint = acme ? 'websecure' : 'web';
     let hasProxiedService = false;
 

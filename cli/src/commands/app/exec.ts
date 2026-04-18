@@ -2,13 +2,13 @@
  * Exec command - Execute commands in containers
  *
  * Also serves as: bash, shell (aliases)
- * Uses ExecBackend abstraction to support both Swarm and k3s.
+ * Uses ContainerBackend abstraction to support both Swarm and k3s.
  */
 
 import type { Command } from 'commander';
 import { printInfo, printDebug, printBlank } from '../../utils/output';
 import { validateEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
-import { createExecBackend, createOrchestrator } from '../../services/orchestrator/factory';
+import { createContainerBackend, createStackBackend } from '../../services/orchestrator/factory';
 import { DockerError, CLIError, withErrorHandler } from '../../utils/errors';
 
 export function registerExecCommand(program: Command): void {
@@ -31,7 +31,7 @@ export function registerExecCommand(program: Command): void {
       printDebug('Connection validated', { stackName });
 
       const orchType = config.orchestrator ?? 'swarm';
-      const execBackend = createExecBackend(orchType, connection, getAllNodeConnections(env));
+      const execBackend = createContainerBackend(orchType, connection, getAllNodeConnections(env));
       const cmd = command.length > 0 ? command.join(' ') : undefined;
 
       try {
@@ -46,7 +46,7 @@ export function registerExecCommand(program: Command): void {
             : await execBackend.bash(stackName, service);
 
           if (!result.success) {
-            const orchestrator = createOrchestrator(orchType, connection);
+            const orchestrator = createStackBackend(orchType, connection);
             const services = await orchestrator.getServices(stackName);
             const suggestion = services.length > 0
               ? `Available services: ${services.map(s => s.name).join(', ')}`

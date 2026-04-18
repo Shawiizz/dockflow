@@ -6,7 +6,7 @@ import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
 import { printSection, printNote, printJSON, printBlank, printDim, printRaw, colors } from '../../utils/output';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
-import { createOrchestrator } from '../../services/orchestrator/factory';
+import { createStackBackend } from '../../services/orchestrator/factory';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
 interface TaskInfo {
@@ -30,7 +30,7 @@ export function registerListServicesCommand(parent: Command): void {
 
       try {
         const orchType = config.orchestrator ?? 'swarm';
-        const orchestrator = createOrchestrator(orchType, connection);
+        const orchestrator = createStackBackend(orchType, connection);
         const services = await orchestrator.getServices(stackName);
 
         if (services.length === 0) {

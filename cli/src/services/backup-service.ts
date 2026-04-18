@@ -16,7 +16,7 @@ import { ok, err, type Result } from '../types';
 import { sshExec, shellEscape } from '../utils/ssh';
 import { formatBytes, printDebug } from '../utils/output';
 import { findSwarmContainer } from './orchestrator/swarm/swarm-utils';
-import { SwarmOrchestratorService } from './orchestrator/swarm/swarm-orchestrator';
+import { SwarmStackBackend } from './orchestrator/swarm/swarm-stack';
 import { DOCKFLOW_BACKUPS_DIR } from '../constants';
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -216,7 +216,7 @@ function sanitizePathName(mountPath: string): string {
 // ─── Service ──────────────────────────────────────────────────────────────
 
 export class BackupService {
-  private readonly orchestrator: SwarmOrchestratorService;
+  private readonly orchestrator: SwarmStackBackend;
 
   constructor(
     /** Manager connection — used for Swarm operations (service restart) */
@@ -225,7 +225,7 @@ export class BackupService {
     /** All node connections — used to find containers and run backup/restore on any node */
     private readonly allConnections: SSHKeyConnection[] = []
   ) {
-    this.orchestrator = new SwarmOrchestratorService(connection);
+    this.orchestrator = new SwarmStackBackend(connection);
   }
 
   private findContainer(service: string) {

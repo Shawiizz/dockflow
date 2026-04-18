@@ -1,13 +1,13 @@
 /**
  * Scale command - Scale service replicas
  *
- * Uses the OrchestratorService abstraction to support both Swarm and k3s.
+ * Uses the StackBackend abstraction to support both Swarm and k3s.
  */
 
 import type { Command } from 'commander';
 import { printDebug, createSpinner } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
-import { createOrchestrator } from '../../services/orchestrator/factory';
+import { createStackBackend } from '../../services/orchestrator/factory';
 import { CLIError, DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
 export function registerScaleCommand(program: Command): void {
@@ -26,7 +26,7 @@ export function registerScaleCommand(program: Command): void {
       }
 
       const orchType = config.orchestrator ?? 'swarm';
-      const orchestrator = createOrchestrator(orchType, connection);
+      const orchestrator = createStackBackend(orchType, connection);
       const spinner = createSpinner();
       spinner.start(`Scaling ${stackName}_${service} to ${replicaCount} replicas...`);
 

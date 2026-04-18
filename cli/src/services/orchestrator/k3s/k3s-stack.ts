@@ -1,8 +1,8 @@
 /**
- * k3s orchestrator backend.
+ * k3s stack backend.
  *
- * Implements OrchestratorService via SSH + kubectl commands.
- * All operations target the k3s cluster through the dockflow kubeconfig.
+ * Implements StackBackend via SSH + kubectl. All operations target the k3s
+ * cluster through the dockflow kubeconfig installed by `dockflow setup`.
  */
 
 import type { SSHKeyConnection } from '../../../types';
@@ -15,61 +15,88 @@ import {
   K3S_NAMESPACE_PREFIX,
 } from '../../../constants';
 import { K8sManifestService } from '../../k8s-manifest-service';
-import { ComposeService, type ParsedCompose } from '../../compose-service';
-import type { DockflowConfig } from '../../../utils/config';
+import { ComposeService } from '../../compose-service';
 import type {
-  OrchestratorService,
+  StackBackend,
   StackInfo,
   ServiceInfo,
   ConvergenceResult,
   StackMetadata,
-} from '../interface';
+  StackDeployInput,
+  AccessoryDeployInput,
+  InternalHealthResult,
+} from '../interfaces';
 
-export class K3sOrchestratorService implements OrchestratorService {
+export class K3sStackBackend implements StackBackend {
   private readonly kube = `kubectl --kubeconfig ${K3S_DOCKFLOW_KUBECONFIG}`;
 
   constructor(private readonly conn: SSHKeyConnection) {}
-
-  prepareDeployContent(
-    stackName: string,
-    compose: ParsedCompose,
-    config: DockflowConfig,
-    env: string,
-    _options?: { skipDefaults?: boolean },
-  ): string {
-    // Inject Traefik labels into compose so K8sManifestService can convert them to IngressRoute
-    if (config.proxy?.enabled) {
-      ComposeService.injectTraefikLabels(compose, config, stackName, env);
-    }
-    return K8sManifestService.composeToManifests(stackName, compose, config.proxy, {
-      useRegistry: config.registry?.enabled === true,
-    });
-  }
 
   private ns(stack: string): string {
     return `${K3S_NAMESPACE_PREFIX}-${stack}`;
   }
 
-  async deployStack(
-    stackName: string,
-    manifests: string,
-    _releasePath: string,
-  ): Promise<Result<void, DeployError>> {
+  async deploy(input: StackDeployInput): Promise<Result<void, DeployError>> {
+    try {
+      // Inject Traefik labels so K8sManifestService can convert them to IngressRoute
+      if (input.proxy?.enabled) {
+        ComposeService.injectTraefikLabels(input.compose, input.proxy, input.stackName, input.env);
+      }
+      const manifests = K8sManifestService.composeToManifests(
+        input.stackName,
+        input.compose,
+        input.proxy,
+        { useRegistry: input.useRegistry === true },
+      );
+      return await this.applyManifests(input.stackName, manifests);
+    } catch (e) {
+      return err(toDeployError(e));
+    }
+  }
+
+  async deployAccessory(input: AccessoryDeployInput): Promise<Result<{ deployed: boolean }, DeployError>> {
+    try {
+      const manifests = K8sManifestService.composeToManifests(
+        input.stackName,
+        input.compose,
+        input.proxy,
+        { useRegistry: input.useRegistry === true },
+      );
+      const encoded = Buffer.from(manifests).toString('base64');
+      const result = await sshExec(
+        this.conn,
+        `echo '${encoded}' | base64 -d | ${this.kube} apply -f -`,
+      );
+      if (result.exitCode !== 0) {
+        return err(
+          new DeployError(
+            `Failed to deploy accessories: ${result.stderr || result.stdout}`,
+            ErrorCode.DEPLOY_FAILED,
+          ),
+        );
+      }
+      return ok({ deployed: true });
+    } catch (e) {
+      return err(toDeployError(e));
+    }
+  }
+
+  async redeploy(stackName: string, rawContent: string): Promise<Result<void, DeployError>> {
+    return this.applyManifests(stackName, rawContent);
+  }
+
+  private async applyManifests(stackName: string, manifests: string): Promise<Result<void, DeployError>> {
     const ns = this.ns(stackName);
 
-    // Ensure namespace exists
     await sshExec(
       this.conn,
       `${this.kube} create namespace ${ns} --dry-run=client -o yaml | ${this.kube} apply -f -`,
     );
-
-    // Label the namespace as dockflow-managed
     await sshExec(
       this.conn,
       `${this.kube} label namespace ${ns} app.kubernetes.io/managed-by=dockflow --overwrite`,
     );
 
-    // Apply manifests via stdin
     const encoded = Buffer.from(manifests).toString('base64');
     const result = await sshExec(
       this.conn,
@@ -88,31 +115,6 @@ export class K3sOrchestratorService implements OrchestratorService {
     return ok(undefined);
   }
 
-  async deployAccessory(
-    name: string,
-    content: string,
-    _accessoryPath: string,
-    _options?: { force?: boolean },
-  ): Promise<Result<{ deployed: boolean }, DeployError>> {
-    // Apply the accessory manifest; kubectl apply is idempotent
-    const encoded = Buffer.from(content).toString('base64');
-    const result = await sshExec(
-      this.conn,
-      `echo '${encoded}' | base64 -d | ${this.kube} apply -f -`,
-    );
-
-    if (result.exitCode !== 0) {
-      return err(
-        new DeployError(
-          `Failed to deploy accessory ${name}: ${result.stderr || result.stdout}`,
-          ErrorCode.DEPLOY_FAILED,
-        ),
-      );
-    }
-
-    return ok({ deployed: true });
-  }
-
   async waitConvergence(
     stackName: string,
     timeoutSeconds: number,
@@ -120,7 +122,6 @@ export class K3sOrchestratorService implements OrchestratorService {
   ): Promise<ConvergenceResult> {
     const ns = this.ns(stackName);
 
-    // Get list of deployments
     const deps = await sshExec(
       this.conn,
       `${this.kube} get deployments -n ${ns} -o jsonpath='{.items[*].metadata.name}'`,
@@ -140,6 +141,54 @@ export class K3sOrchestratorService implements OrchestratorService {
     }
 
     return { converged: true, rolledBack: false, timedOut: false };
+  }
+
+  async checkInternalHealth(
+    stackName: string,
+    timeoutSeconds: number,
+    intervalSeconds: number,
+  ): Promise<InternalHealthResult> {
+    const ns = this.ns(stackName);
+    const deadline = Date.now() + timeoutSeconds * 1000;
+
+    while (Date.now() < deadline) {
+      // CrashLoopBackOff → immediate failure
+      const crash = await sshExec(
+        this.conn,
+        `${this.kube} get pods -n ${ns} -o jsonpath=` +
+          `'{.items[?(@.status.containerStatuses[0].state.waiting.reason=="CrashLoopBackOff")].metadata.name}' 2>/dev/null`,
+      );
+
+      const crashedPods = crash.stdout.trim().replace(/^'|'$/g, '');
+      if (crashedPods) {
+        return {
+          healthy: false,
+          rolledBack: false,
+          failedService: crashedPods.split(' ')[0],
+          message: `CrashLoopBackOff detected: ${crashedPods}`,
+        };
+      }
+
+      // Check for pods not yet Running
+      const notReady = await sshExec(
+        this.conn,
+        `${this.kube} get pods -n ${ns} --field-selector=status.phase!=Running,status.phase!=Succeeded ` +
+          `-o jsonpath='{.items[*].metadata.name}' 2>/dev/null`,
+      );
+
+      const notReadyPods = notReady.stdout.trim().replace(/^'|'$/g, '');
+      if (!notReadyPods) {
+        return { healthy: true, rolledBack: false };
+      }
+
+      await Bun.sleep(intervalSeconds * 1000);
+    }
+
+    return {
+      healthy: false,
+      rolledBack: false,
+      message: 'Timeout waiting for pods to be Ready',
+    };
   }
 
   async removeStack(stackName: string): Promise<void> {
@@ -191,11 +240,7 @@ export class K3sOrchestratorService implements OrchestratorService {
     }
   }
 
-  async scaleService(
-    stackName: string,
-    service: string,
-    replicas: number,
-  ): Promise<void> {
+  async scaleService(stackName: string, service: string, replicas: number): Promise<void> {
     const r = await sshExec(
       this.conn,
       `${this.kube} scale deployment/${service} --replicas=${replicas} -n ${this.ns(stackName)}`,
@@ -221,10 +266,6 @@ export class K3sOrchestratorService implements OrchestratorService {
         ErrorCode.DEPLOY_FAILED,
       );
     }
-  }
-
-  async prepareInfrastructure(_stackName: string, _compose: ParsedCompose): Promise<void> {
-    // k3s: namespaces and PVCs are created via kubectl apply — nothing to do here
   }
 
   async stackExists(stackName: string): Promise<boolean> {
@@ -273,4 +314,10 @@ export class K3sOrchestratorService implements OrchestratorService {
       return null;
     }
   }
+}
+
+function toDeployError(e: unknown): DeployError {
+  if (e instanceof DeployError) return e;
+  const msg = e instanceof Error ? e.message : String(e);
+  return new DeployError(msg, ErrorCode.DEPLOY_FAILED);
 }

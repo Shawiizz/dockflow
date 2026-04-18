@@ -5,8 +5,7 @@
 import type { DockflowConfig } from '../utils/config';
 import type { SSHKeyConnection } from '../types';
 import type { RenderedFiles } from '../services/compose-service';
-import type { OrchestratorService, TraefikBackend } from '../services/orchestrator/interface';
-import type { HealthBackend } from '../services/orchestrator/health-interface';
+import type { StackBackend, TraefikBackend } from '../services/orchestrator/interfaces';
 import type { ReleaseService } from '../services/release-service';
 import type { LockService } from '../services/lock-service';
 import type { AuditService } from '../services/audit-service';
@@ -46,9 +45,8 @@ export interface DeployContext {
   composeContent: string;
   composeDirPath: string;
 
-  orchestrator: OrchestratorService;
+  orchestrator: StackBackend;
   traefikBackend?: TraefikBackend;
-  healthBackend: HealthBackend;
   releases: ReleaseService;
   lock: LockService;
   audit: AuditService;
