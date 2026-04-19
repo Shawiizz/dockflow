@@ -1,9 +1,9 @@
 /**
- * Health Check Service
+ * HealthCheck — orchestrator-agnostic health checking.
  *
- * Orchestrator-agnostic health checking. Internal health checks (Swarm tasks
- * or K8s pods) are delegated to the injected StackBackend. HTTP endpoint
- * checks run concurrently via Promise.allSettled.
+ * Internal health checks (Swarm tasks or K8s pods) are delegated to the
+ * injected StackBackend. HTTP endpoint checks run concurrently via
+ * Promise.allSettled.
  */
 
 import type { SSHKeyConnection } from '../types';
@@ -17,7 +17,7 @@ import type { StackBackend, InternalHealthResult } from './orchestrator/interfac
 const DEFAULT_HEALTHCHECK_TIMEOUT_S = 120;
 const DEFAULT_HEALTHCHECK_INTERVAL_S = 5;
 
-export class HealthCheckService {
+export class HealthCheck {
   constructor(
     private readonly connection: SSHKeyConnection,
     private readonly stackBackend: StackBackend,

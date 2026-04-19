@@ -1,7 +1,6 @@
 /**
- * Metrics Service
+ * Metrics — collects and stores deployment metrics on the remote manager.
  *
- * Collects and stores deployment metrics on the remote manager.
  * All data is stored in /var/lib/dockflow/metrics/<stack>/
  */
 
@@ -140,9 +139,9 @@ export function calculateMetricsSummary(metrics: DeploymentMetric[]): MetricsSum
 }
 
 /**
- * Unified metrics service — read and write deployment metrics via SSH.
+ * Read and write deployment metrics via SSH.
  */
-export class MetricsService {
+export class Metrics {
   constructor(private readonly connection: SSHKeyConnection) {}
 
   /**

@@ -47,13 +47,13 @@ import {
 import { displayDeployDryRun } from './deploy-dry-run';
 import type { SSHKeyConnection } from '../types';
 
-import { ComposeService } from '../services/compose-service';
-import { createStackBackend, createTraefikBackend } from '../services/orchestrator/factory';
-import { ReleaseService } from '../services/release-service';
-import { LockService } from '../services/lock-service';
-import { AuditService } from '../services/audit-service';
-import { MetricsService } from '../services/metrics-service';
-import { NotificationService } from '../services/notification-service';
+import * as Compose from '../services/compose';
+import { createStackBackend, createProxyBackend } from '../services/orchestrator/factory';
+import { Release } from '../services/release';
+import { Lock } from '../services/lock';
+import { Audit } from '../services/audit';
+import { Metrics } from '../services/metrics';
+import * as Notification from '../services/notification';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
 import { buildAndDistribute, deployAccessories, deployApp, recordHistory } from './deploy-phases';
@@ -207,7 +207,7 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
 
   // Render templates
   const templateContext = buildTemplateContext(env, manager.name);
-  const { rendered, composeContent, composeDirPath } = ComposeService.renderAndResolveCompose(
+  const { rendered, composeContent, composeDirPath } = Compose.renderAndResolveCompose(
     { env, version: deployVersion, branch: branchName, project_name: config.project_name, config },
     templateContext,
   );
@@ -221,11 +221,11 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
     deployApp: shouldDeployApp, forceAccessories, skipAccessories,
     options, rendered, composeContent, composeDirPath,
     orchestrator: createStackBackend(orchType, managerConn),
-    traefikBackend: config.proxy?.enabled ? createTraefikBackend(orchType, managerConn) : undefined,
-    releases: new ReleaseService(managerConn),
-    lock: new LockService(managerConn, stackName),
-    audit: new AuditService(managerConn),
-    metrics: new MetricsService(managerConn),
+    proxyBackend: config.proxy?.enabled ? createProxyBackend(orchType, managerConn) : undefined,
+    releases: new Release(managerConn),
+    lock: new Lock(managerConn, stackName),
+    audit: new Audit(managerConn),
+    metrics: new Metrics(managerConn),
   };
 
   return { ctx, managers, workers };
@@ -249,13 +249,13 @@ async function execute(
   let auditMessage = `Deploy ${ctx.deployVersion} to ${ctx.env}`;
 
   try {
-    const compose = ComposeService.loadFromString(ctx.composeContent);
-    ComposeService.updateImageTags(compose, ctx.config, ctx.env, ctx.deployVersion);
+    const compose = Compose.loadFromString(ctx.composeContent);
+    Compose.updateImageTags(compose, ctx.config, ctx.env, ctx.deployVersion);
 
     await buildAndDistribute(ctx, compose);
 
     await Promise.all([
-      ctx.releases.createRelease(ctx.stackName, ctx.deployVersion, ComposeService.serialize(compose), {
+      ctx.releases.createRelease(ctx.stackName, ctx.deployVersion, Compose.serialize(compose), {
         project_name: ctx.config.project_name, version: ctx.deployVersion, env: ctx.env,
         timestamp: new Date().toISOString(), epoch: Math.floor(Date.now() / 1000),
         performer: getPerformer(), branch: ctx.branchName,
@@ -283,7 +283,7 @@ async function execute(
     const status = deployFailed ? 'failed' : 'success';
 
     await recordHistory(ctx, status, durationMs, auditMessage, workers);
-    await NotificationService.notify(ctx.config.notifications?.webhooks, {
+    await Notification.notify(ctx.config.notifications?.webhooks, {
       project: ctx.config.project_name, env: ctx.env, version: ctx.deployVersion,
       branch: ctx.branchName, performer: getPerformer(), status, duration_ms: durationMs, message: auditMessage,
     });

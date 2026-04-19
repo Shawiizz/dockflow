@@ -7,34 +7,34 @@
  */
 
 // Deployment metrics
-export * from './metrics-service';
+export * from './metrics';
 
 // Deployment locks
-export * from './lock-service';
+export * from './lock';
 
 // Backup & restore
-export * from './backup-service';
+export * from './backup';
 
 // Audit logging
-export * from './audit-service';
+export * from './audit';
 
 // History sync across nodes
-export * from './history-sync-service';
+export * from './history-sync';
 
 // Compose manipulation (template rendering, image tagging, deploy config injection)
-export * from './compose-service';
+export * from './compose';
 
 // Health checks (internal via StackBackend + HTTP endpoints)
-export * from './health-check-service';
+export * from './health-check';
 
 // Release lifecycle (create, rollback, cleanup)
-export * from './release-service';
+export * from './release';
 
 // Docker image builds (local + remote)
-export * from './build-service';
+export * from './build';
 
 // Image distribution to Swarm nodes + registry
-export * from './distribution-service';
+export * from './distribution';
 
 // Deploy hooks (pre/post build/deploy)
-export * from './hook-service';
+export * from './hook';

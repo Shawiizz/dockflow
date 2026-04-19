@@ -9,7 +9,7 @@ import { confirmPrompt } from '../../utils/prompts';
 import { loadConfig } from '../../utils/config';
 import { printIntro, printOutro, printInfo, printWarning, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
 import { BackupError, withErrorHandler } from '../../utils/errors';
-import { createBackupService } from '../../services/backup-service';
+import { createBackup } from '../../services/backup';
 import { requireBackupConfig, resolveBackupStack, listGroupedFromAllStacks, type StackGroupedEntries } from './utils';
 import { getAllNodeConnections } from '../../utils/servers';
 
@@ -41,7 +41,7 @@ export function registerBackupPruneCommand(program: Command): void {
       if (service) {
         const { source } = requireBackupConfig(service);
         const stackName = resolveBackupStack(env, source);
-        const backupService = createBackupService(connection, stackName, getAllNodeConnections(env));
+        const backupService = createBackup(connection, stackName, getAllNodeConnections(env));
         const result = await backupService.list(service);
         if (!result.success) throw new BackupError(result.error.message);
         stackData.push({ backupService, byService: { [service]: result.data } });

@@ -8,7 +8,7 @@
 
 import type { Result } from '../../types/result';
 import type { DeployError } from '../../utils/errors';
-import type { ParsedCompose } from '../compose-service';
+import type { ParsedCompose } from '../compose';
 import type { ProxyConfig } from '../../utils/config';
 
 // ---------------------------------------------------------------------------
@@ -201,9 +201,9 @@ export interface ContainerBackend {
 }
 
 // ---------------------------------------------------------------------------
-// TraefikBackend — reverse-proxy lifecycle
+// ProxyBackend — reverse-proxy installer (Traefik on Swarm or k3s)
 // ---------------------------------------------------------------------------
 
-export interface TraefikBackend {
+export interface ProxyBackend {
   ensureRunning(proxyConfig: ProxyConfig): Promise<void>;
 }

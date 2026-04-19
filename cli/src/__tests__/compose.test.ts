@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { parseImageRef } from '../services/compose-service';
+import { parseImageRef } from '../services/compose';
 
 describe('parseImageRef', () => {
   it('name only', () => {

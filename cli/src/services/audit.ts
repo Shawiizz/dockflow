@@ -1,7 +1,6 @@
 /**
- * Audit Service
+ * Audit — appends structured audit log entries on the remote manager.
  *
- * Appends structured audit log entries on the remote manager.
  * Each stack has its own log file at /var/lib/dockflow/audit/{stack}.log.
  * Lines are pipe-delimited: timestamp | result | version | performer | message
  */
@@ -11,7 +10,7 @@ import { sshExec, sshExecChannel } from '../utils/ssh';
 import { DOCKFLOW_AUDIT_DIR } from '../constants';
 import { getPerformer } from '../utils/config';
 
-export class AuditService {
+export class Audit {
   constructor(private readonly connection: SSHKeyConnection) {}
 
   /**

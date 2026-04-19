@@ -1,12 +1,12 @@
 /**
- * Swarm deploy internals.
+ * Low-level Swarm stack operations.
  *
- * Private helper for SwarmStackBackend. Handles the mechanics of
- * `docker stack deploy`: external resource creation, stuck-service
- * recovery, convergence polling, and hash-based accessories detection.
+ * Helper for SwarmStackBackend — owns the mechanics of `docker stack deploy`:
+ * external resource creation, stuck-service recovery, convergence polling,
+ * hash-based accessories change detection.
  *
- * Not re-exported through services/index.ts — use SwarmStackBackend
- * (via createStackBackend) instead.
+ * Not exported through services/index.ts — consumers should use
+ * SwarmStackBackend (via createStackBackend) instead.
  */
 
 import { createHash } from 'crypto';
@@ -22,7 +22,7 @@ import {
   CONVERGENCE_INTERVAL_S,
 } from '../../../constants';
 
-export class SwarmDeployInternal {
+export class SwarmStackOps {
   constructor(private readonly connection: SSHKeyConnection) {}
 
   /**

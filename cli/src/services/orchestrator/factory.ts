@@ -7,13 +7,13 @@
  */
 
 import type { SSHKeyConnection } from '../../types';
-import type { StackBackend, ContainerBackend, TraefikBackend } from './interfaces';
+import type { StackBackend, ContainerBackend, ProxyBackend } from './interfaces';
 import { SwarmStackBackend } from './swarm/swarm-stack';
 import { SwarmContainerBackend } from './swarm/swarm-container';
-import { SwarmTraefikBackend } from './swarm/swarm-traefik';
+import { SwarmProxyBackend } from './swarm/swarm-proxy';
 import { K3sStackBackend } from './k3s/k3s-stack';
 import { K3sContainerBackend } from './k3s/k3s-container';
-import { K3sTraefikBackend } from './k3s/k3s-traefik';
+import { K3sProxyBackend } from './k3s/k3s-proxy';
 
 export type OrchestratorType = 'swarm' | 'k3s';
 
@@ -36,11 +36,11 @@ export function createContainerBackend(
     : new SwarmContainerBackend(conn, allConnections || [conn]);
 }
 
-export function createTraefikBackend(
+export function createProxyBackend(
   type: OrchestratorType,
   conn: SSHKeyConnection,
-): TraefikBackend {
+): ProxyBackend {
   return type === 'k3s'
-    ? new K3sTraefikBackend(conn)
-    : new SwarmTraefikBackend(conn);
+    ? new K3sProxyBackend(conn)
+    : new SwarmProxyBackend(conn);
 }

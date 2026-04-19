@@ -132,14 +132,110 @@ docker exec dockflow-test-manager docker stack ps test-app-test
 
 ---
 
+## Services Layer — Naming Convention
+
+`cli/src/services/` uses a three-tier naming system. The suffix (or lack of one) tells you the shape of the export:
+
+### 1. `*Backend` — polymorphic interfaces
+
+Used only under `cli/src/services/orchestrator/` for things that have more than one implementation (Swarm + k3s).
+
+```ts
+// Interface
+export interface StackBackend {
+  deploy(input: StackDeployInput): Promise<Result<void, DeployError>>;
+  // ...
+}
+
+// Implementations
+export class SwarmStackBackend implements StackBackend { /* ... */ }
+export class K3sStackBackend implements StackBackend { /* ... */ }
+
+// Consumed via factory
+const backend = createStackBackend('swarm', managerConn);
+```
+
+Current backends: `StackBackend`, `ContainerBackend`, `HealthBackend`, `ProxyBackend`.
+
+### 2. Plain noun — stateful classes
+
+One class per file, named after the singular noun. Wraps a connection or holds state across multiple calls.
+
+```ts
+// cli/src/services/lock.ts
+export class Lock {
+  constructor(private conn: SSHKeyConnection, private stackName: string) {}
+  async acquire(opts: AcquireOptions): Promise<Result<void, LockError>> { /* ... */ }
+  async release(): Promise<Result<void, LockError>> { /* ... */ }
+  async status(): Promise<Result<LockStatus, LockError>> { /* ... */ }
+}
+
+// Factory for config-resolved defaults
+export function createLock(
+  conn: SSHKeyConnection,
+  stackName: string,
+  staleThresholdMinutes?: number,
+): Lock { /* ... */ }
+```
+
+Current stateful classes: `Audit`, `Lock`, `Release`, `Metrics`, `Backup`, `HealthCheck`.
+
+Callers:
+```ts
+import { createLock } from '../services/lock';
+const lock = createLock(conn, stackName, config.lock?.stale_threshold_minutes);
+```
+
+### 3. Module — stateless free functions
+
+No class. The file is a namespace of top-level `export function` declarations, imported via `import * as`.
+
+```ts
+// cli/src/services/compose.ts
+export function renderTemplates(...) { /* ... */ }
+export function updateImageTags(...) { /* ... */ }
+export function injectTraefikLabels(...) { /* ... */ }
+// internal helpers stay non-exported
+function deepMerge(...) { /* ... */ }
+```
+
+Callers:
+```ts
+import * as Compose from '../services/compose';
+Compose.updateImageTags(parsed, { web: 'app:1.2.3' });
+```
+
+Current modules: `compose.ts`, `build.ts`, `distribution.ts`, `hook.ts`, `notification.ts`, `history-sync.ts`, `k8s-manifest.ts`.
+
+### Why no more `*Service`?
+
+The suffix was ambiguous — it was attached to interfaces, to stateful classes, and to bags of static helpers without distinction. Each of the three forms above answers a different question for the reader:
+
+- `*Backend` → "this has multiple implementations, look for a factory"
+- plain noun → "this is a class, you instantiate it, it holds state"
+- module → "this is just functions, import the namespace"
+
+**Never introduce a new `*Service` class.** If you're tempted to, the shape you actually want is one of the three above.
+
+### Picking the right shape
+
+| Situation | Shape |
+|---|---|
+| Multiple implementations behind a common interface | `*Backend` |
+| Wraps an SSH connection or other resource, called 2+ times | Stateful class |
+| Pure, stateless transformations or side effects | Module of functions |
+| "I have some helper functions" | Module of functions — never a class with `static` methods |
+
+---
+
 ## Adding a New Feature
 
 Quick checklist:
 
 1. **Command**: add in `cli/src/commands/`, register in `cli/src/index.ts`
-2. **Service logic**: put in `cli/src/services/` if it involves Docker Swarm ops
+2. **Service logic**: put in `cli/src/services/`. Pick the right shape (see *Services Layer — Naming Convention* above)
 3. **Config field**: update both `cli/src/schemas/config.schema.ts` (Zod) and `cli/src/utils/config.ts` (interface)
-4. **New remote path**: add constants in `cli/src/constants.ts` and ensure the deploy command creates them via `SwarmDeployService`
+4. **New remote path**: add constants in `cli/src/constants.ts` and ensure the deploy command creates them via the `StackBackend` implementations
 5. **Ansible defaults**: centralize in `ansible/group_vars/all.yml`, never hardcode in roles
 6. **Typecheck**: `bun run typecheck` — zero errors
 7. **Documentation**: add or update a page in `docs/app/`

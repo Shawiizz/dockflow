@@ -1,7 +1,7 @@
 /**
- * Backup Service
+ * Backup — manages backup and restore operations for accessory databases
+ * and Docker volumes.
  *
- * Manages backup and restore operations for accessory databases and Docker volumes.
  * Uses SSH + docker exec to run dump/restore commands inside containers,
  * and docker run with temporary Alpine containers for volume backups.
  *
@@ -213,9 +213,9 @@ function sanitizePathName(mountPath: string): string {
   return mountPath.replace(/^\/+/, '').replace(/\//g, '-') || 'root';
 }
 
-// ─── Service ──────────────────────────────────────────────────────────────
+// ─── Backup ───────────────────────────────────────────────────────────────
 
-export class BackupService {
+export class Backup {
   private readonly orchestrator: SwarmStackBackend;
 
   constructor(
@@ -880,10 +880,10 @@ export class BackupService {
 /**
  * Factory function
  */
-export function createBackupService(
+export function createBackup(
   connection: SSHKeyConnection,
   stackName: string,
   allConnections: SSHKeyConnection[] = []
-): BackupService {
-  return new BackupService(connection, stackName, allConnections);
+): Backup {
+  return new Backup(connection, stackName, allConnections);
 }

@@ -8,7 +8,7 @@ import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { dangerousConfirmPrompt } from '../../utils/prompts';
 import { printIntro, printOutro, printInfo, printWarning, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
 import { BackupError, ErrorCode, ValidationError, withErrorHandler } from '../../utils/errors';
-import { createBackupService } from '../../services/backup-service';
+import { createBackup } from '../../services/backup';
 import { requireBackupConfig, resolveBackupStack, getBackupServiceNames } from './utils';
 import { getAllNodeConnections } from '../../utils/servers';
 
@@ -38,7 +38,7 @@ export function registerBackupRestoreCommand(program: Command): void {
       const { connection } = validateEnv(env, options.server);
       const { backupConfig, source } = requireBackupConfig(service);
       const stackName = resolveBackupStack(env, source);
-      const backupService = createBackupService(connection, stackName, getAllNodeConnections(env));
+      const backupService = createBackup(connection, stackName, getAllNodeConnections(env));
 
       // Resolve which backup to restore
       const resolveResult = await backupService.resolveBackup(service, options.from);

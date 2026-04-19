@@ -2,7 +2,7 @@
  * k3s container backend.
  *
  * Implements ContainerBackend via `kubectl exec` / `kubectl cp` / `kubectl logs`.
- * Pods are resolved via the `app=<serviceName>` label written by K8sManifestService.
+ * Pods are resolved via the `app=<serviceName>` label written by the K8sManifest module.
  */
 
 import type { SSHKeyConnection } from '../../../types';

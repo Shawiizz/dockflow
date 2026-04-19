@@ -16,12 +16,14 @@ import {
 } from '../utils/errors';
 import type { SSHKeyConnection } from '../types';
 
-import { ComposeService, type ParsedCompose } from '../services/compose-service';
-import { HealthCheckService } from '../services/health-check-service';
-import { HistorySyncService } from '../services/history-sync-service';
-import { BuildService } from '../services/build-service';
-import { DistributionService, type ContainerRuntime } from '../services/distribution-service';
-import { HookService } from '../services/hook-service';
+import * as Compose from '../services/compose';
+import type { ParsedCompose } from '../services/compose';
+import { HealthCheck } from '../services/health-check';
+import * as HistorySync from '../services/history-sync';
+import * as Build from '../services/build';
+import * as Distribution from '../services/distribution';
+import type { ContainerRuntime } from '../services/distribution';
+import * as Hook from '../services/hook';
 import { CONVERGENCE_TIMEOUT_S, CONVERGENCE_INTERVAL_S } from '../constants';
 import type { DeployContext } from './deploy-context';
 
@@ -48,15 +50,15 @@ export async function buildAndDistribute(
 ): Promise<void> {
   if (ctx.options.skipBuild || !ctx.deployApp) return;
 
-  await HookService.runLocal('pre-build', ctx.projectRoot, ctx.config, ctx.rendered);
+  await Hook.runLocal('pre-build', ctx.projectRoot, ctx.config, ctx.rendered);
 
   const engine = await detectContainerEngine(ctx.managerConn, ctx.config.container_engine);
   const runtime: ContainerRuntime = ctx.config.orchestrator === 'k3s' ? 'containerd' : engine;
 
   if (ctx.config.options?.remote_build) {
-    const { images } = await BuildService.buildRemote(ctx.managerConn, {
+    const { images } = await Build.buildRemote(ctx.managerConn, {
       projectRoot: ctx.projectRoot,
-      composeContent: ComposeService.serialize(compose),
+      composeContent: Compose.serialize(compose),
       composeDirPath: ctx.composeDirPath,
       projectName: ctx.config.project_name,
       env: ctx.env,
@@ -67,11 +69,11 @@ export async function buildAndDistribute(
 
     if (images.length > 0 && ctx.workerConns.length > 0) {
       const workerTargets = ctx.workerConns.map((w) => ({ connection: w.connection, name: w.name }));
-      await DistributionService.distributeFromRemote(images, ctx.managerConn, workerTargets, runtime);
+      await Distribution.distributeFromRemote(images, ctx.managerConn, workerTargets, runtime);
     }
   } else {
-    const targets = BuildService.getBuildTargets(
-      ComposeService.serialize(compose),
+    const targets = Build.getBuildTargets(
+      Compose.serialize(compose),
       ctx.composeDirPath,
       ctx.options.services,
     );
@@ -82,20 +84,20 @@ export async function buildAndDistribute(
       const platform = (remoteArch === 'aarch64' || remoteArch === 'arm64') ? 'linux/arm64' : 'linux/amd64';
 
       for (const target of targets) {
-        target.renderedOverrides = BuildService.getOverridesForTarget(ctx.rendered, target, ctx.projectRoot);
+        target.renderedOverrides = Build.getOverridesForTarget(ctx.rendered, target, ctx.projectRoot);
         target.platform = platform;
         target.engine = engine;
       }
 
-      const { images } = await BuildService.buildAll(targets);
+      const { images } = await Build.buildAll(targets);
 
       if (ctx.config.registry?.enabled && ctx.config.registry.url && ctx.config.registry.password) {
-        await DistributionService.registryLogin(ctx.managerConn, {
+        await Distribution.registryLogin(ctx.managerConn, {
           url: ctx.config.registry.url,
           username: ctx.config.registry.username,
           password: ctx.config.registry.password,
         }, engine);
-        await DistributionService.pushImages(images, ctx.config.registry.additional_tags?.length ? {
+        await Distribution.pushImages(images, ctx.config.registry.additional_tags?.length ? {
           tags: ctx.config.registry.additional_tags,
           env: ctx.env,
           version: ctx.deployVersion,
@@ -106,12 +108,12 @@ export async function buildAndDistribute(
           { connection: ctx.managerConn, name: 'manager' },
           ...ctx.workerConns.map((w) => ({ connection: w.connection, name: w.name })),
         ];
-        await DistributionService.distributeAll(images, distTargets, runtime);
+        await Distribution.distributeAll(images, distTargets, runtime);
       }
     }
   }
 
-  await HookService.runLocal('post-build', ctx.projectRoot, ctx.config, ctx.rendered);
+  await Hook.runLocal('post-build', ctx.projectRoot, ctx.config, ctx.rendered);
 }
 
 // ---------------------------------------------------------------------------
@@ -125,8 +127,8 @@ export async function deployAccessories(ctx: DeployContext): Promise<void> {
   const accessoriesContent = ctx.rendered.get(accessoriesRelPath);
   if (!accessoriesContent) return;
 
-  const accessoriesCompose = ComposeService.loadFromString(accessoriesContent);
-  ComposeService.injectAccessoriesDefaults(accessoriesCompose);
+  const accessoriesCompose = Compose.loadFromString(accessoriesContent);
+  Compose.injectAccessoriesDefaults(accessoriesCompose);
 
   const result = await ctx.orchestrator.deployAccessory({
     stackName: ctx.stackName,
@@ -150,11 +152,11 @@ export async function deployAccessories(ctx: DeployContext): Promise<void> {
 export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Promise<void> {
   if (!ctx.deployApp) return;
 
-  if (ctx.traefikBackend) {
-    await ctx.traefikBackend.ensureRunning(ctx.config.proxy!);
+  if (ctx.proxyBackend) {
+    await ctx.proxyBackend.ensureRunning(ctx.config.proxy!);
   }
 
-  await HookService.runRemote('pre-deploy', ctx.managerConn, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
+  await Hook.runRemote('pre-deploy', ctx.managerConn, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
 
   const deployResult = await ctx.orchestrator.deploy({
     stackName: ctx.stackName,
@@ -188,7 +190,7 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
   }
 
   if (ctx.config.health_checks?.enabled !== false) {
-    const health = new HealthCheckService(ctx.managerConn, ctx.orchestrator);
+    const health = new HealthCheck(ctx.managerConn, ctx.orchestrator);
     const internalResult = await health.checkInternalHealth(ctx.stackName, ctx.config.health_checks);
     if (!internalResult.healthy) {
       throw new DeployError(
@@ -203,7 +205,7 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
     }
   }
 
-  await HookService.runRemote('post-deploy', ctx.managerConn, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
+  await Hook.runRemote('post-deploy', ctx.managerConn, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
 }
 
 // ---------------------------------------------------------------------------
@@ -257,7 +259,7 @@ export async function recordHistory(
     ...ctx.otherManagerConns,
     ...ctx.workerConns.map((w) => w.connection),
   ];
-  await HistorySyncService.syncToAllNodes(
+  await HistorySync.syncToAllNodes(
     allOtherConns,
     ctx.stackName,
     auditLine,

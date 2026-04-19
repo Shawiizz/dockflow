@@ -1,10 +1,7 @@
 /**
- * Traefik Service
+ * Swarm proxy backend.
  *
- * Deploys and manages the Traefik reverse proxy stack on Docker Swarm.
- * Replaces the Ansible role `traefik`.
- *
- * Traefik is deployed as a Swarm stack when `config.proxy.enabled` is true.
+ * Deploys Traefik as a Swarm stack when `config.proxy.enabled` is true.
  * The stack is deployed once and left running — subsequent deploys only
  * ensure it exists (idempotent).
  */
@@ -20,9 +17,9 @@ import {
   TRAEFIK_IMAGE,
 } from '../../../constants';
 
-import type { TraefikBackend } from '../interfaces';
+import type { ProxyBackend } from '../interfaces';
 
-export class SwarmTraefikBackend implements TraefikBackend {
+export class SwarmProxyBackend implements ProxyBackend {
   constructor(private readonly connection: SSHKeyConnection) {}
 
   /**
@@ -54,7 +51,7 @@ export class SwarmTraefikBackend implements TraefikBackend {
     }
 
     // Generate and deploy stack via temp file
-    const composeYaml = SwarmTraefikBackend.generateCompose(proxyConfig);
+    const composeYaml = SwarmProxyBackend.generateCompose(proxyConfig);
     const tmpFile = `/tmp/dockflow-traefik-${Date.now()}.yml`;
 
     try {

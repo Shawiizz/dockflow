@@ -4,12 +4,12 @@
 
 import type { DockflowConfig } from '../utils/config';
 import type { SSHKeyConnection } from '../types';
-import type { RenderedFiles } from '../services/compose-service';
-import type { StackBackend, TraefikBackend } from '../services/orchestrator/interfaces';
-import type { ReleaseService } from '../services/release-service';
-import type { LockService } from '../services/lock-service';
-import type { AuditService } from '../services/audit-service';
-import type { MetricsService } from '../services/metrics-service';
+import type { RenderedFiles } from '../services/compose';
+import type { StackBackend, ProxyBackend } from '../services/orchestrator/interfaces';
+import type { Release } from '../services/release';
+import type { Lock } from '../services/lock';
+import type { Audit } from '../services/audit';
+import type { Metrics } from '../services/metrics';
 
 export interface DeployOptions {
   services?: string;
@@ -46,9 +46,9 @@ export interface DeployContext {
   composeDirPath: string;
 
   orchestrator: StackBackend;
-  traefikBackend?: TraefikBackend;
-  releases: ReleaseService;
-  lock: LockService;
-  audit: AuditService;
-  metrics: MetricsService;
+  proxyBackend?: ProxyBackend;
+  releases: Release;
+  lock: Lock;
+  audit: Audit;
+  metrics: Metrics;
 }

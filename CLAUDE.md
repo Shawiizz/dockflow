@@ -113,61 +113,61 @@ Always throw these typed errors from commands. The `withErrorHandler` wrapper di
 
 ### Services Layer
 
-`cli/src/services/` contains type-safe service classes:
+`cli/src/services/` follows a strict three-tier naming convention. The suffix communicates the shape of the export, not just its category:
+
+| Shape | Suffix | Examples | Import style |
+|---|---|---|---|
+| Polymorphic abstraction (multiple impls) | `*Backend` | `StackBackend`, `ExecBackend`, `LogsBackend`, `HealthBackend`, `ProxyBackend`, `ContainerBackend` | `new SwarmStackBackend(conn)` via factory |
+| Stateful class (wraps a connection / holds state) | no suffix | `Audit`, `Lock`, `Release`, `Metrics`, `Backup`, `HealthCheck` | `new Lock(conn, stackName)` |
+| Pure module (stateless free functions) | no class | `compose.ts`, `build.ts`, `distribution.ts`, `hook.ts`, `notification.ts`, `history-sync.ts`, `k8s-manifest.ts` | `import * as Compose from '../services/compose'` |
+
+**Rules:**
+- Never append `Service` to anything new. The word is too vague — if the class wraps state, drop the suffix; if it's just functions, make it a module.
+- `*Backend` is reserved for interfaces with more than one implementation, and lives only under `services/orchestrator/`.
+- Stateful class files are named after the singular noun (e.g. `lock.ts` exports `class Lock` + `createLock()` factory).
+- Module files export top-level `export function` declarations and are imported with `import * as Xxx from '...'`.
 
 **Orchestrator abstraction** (`cli/src/services/orchestrator/`):
 
 The orchestrator layer abstracts Swarm vs k3s behind common interfaces. Config field `orchestrator: 'swarm' | 'k3s'` (default: `swarm`) selects the backend. Factory functions in `cli/src/services/orchestrator/factory.ts` create the right implementation:
 
-- `OrchestratorService` — stack lifecycle: deploy, remove, getServices, scale, rollback, list stacks
-  - `SwarmOrchestrator` — uses `docker stack deploy`, `docker service` commands
-  - `K3sOrchestrator` — uses `kubectl apply`, manages namespaces (`dockflow-{stackName}`)
-- `ExecBackend` — exec/shell/copy in containers
-  - `SwarmExecBackend` — finds containers via `docker ps` across all nodes with `Promise.any()`
-  - `K3sExecBackend` — finds pods via `kubectl get pods`, uses `kubectl exec`/`kubectl cp`
-- `LogsBackend` — log streaming
-  - `SwarmLogsBackend` — `docker service logs`
-  - `K3sLogsBackend` — `kubectl logs`
+- `StackBackend` — stack lifecycle: deploy, remove, getServices, scale, rollback, list stacks
+  - `SwarmStackBackend` — uses `docker stack deploy`, `docker service` commands
+  - `K3sStackBackend` — uses `kubectl apply`, manages namespaces (`dockflow-{stackName}`)
+- `ContainerBackend` — exec/shell/copy/logs in containers
+  - `SwarmContainerBackend` — finds containers via `docker ps` across all nodes with `Promise.any()`
+  - `K3sContainerBackend` — finds pods via `kubectl get pods`, uses `kubectl exec`/`kubectl cp`
 - `HealthBackend` — internal health checks
   - `SwarmHealthBackend` — inspects tasks via `docker service ps` + UpdateStatus
   - `K3sHealthBackend` — checks pod status, detects CrashLoopBackOff
+- `ProxyBackend` — Traefik / ingress management
 
-**K8s manifest generation** (`cli/src/services/k8s-manifest-service.ts`):
+**Stateful classes** (`cli/src/services/*.ts`, no Service suffix):
+- `Metrics` (`metrics.ts`) — deployment metrics read/write, connection-bound
+- `Lock` (`lock.ts`) — deployment lock management (acquire/release with stale detection)
+- `Backup` (`backup.ts`) — backup/restore for accessories, holds manager + worker connections
+- `Audit` (`audit.ts`) — deployment audit log entries on remote manager
+- `Release` (`release.ts`) — release directory management, rollback, cleanup of old releases
+- `HealthCheck` (`health-check.ts`) — HTTP endpoint checks with retry (uses HealthBackend internally)
 
-`K8sManifestService.composeToManifests()` converts a parsed Docker Compose file into native Kubernetes manifests (no external tools like Kompose). Mapping:
-- Compose service → Deployment + ClusterIP Service
-- Named volumes → PersistentVolumeClaim
-- Traefik Docker labels → IngressRoute CRD
-- Placement constraints → nodeSelector
-- Healthcheck → livenessProbe + readinessProbe
-- Environment vars, ports, replicas mapped directly
+Each stateful class exposes a matching factory (`createLock`, `createBackup`, …) where construction needs defaults from config.
+
+**Pure modules** (`cli/src/services/*.ts`, imported via `import * as`):
+- `compose.ts` — template rendering (Nunjucks), YAML load/serialize, Swarm/accessory deploy config injection, Traefik label injection, image tag updates
+- `build.ts` — local/remote Docker/Podman image builds (parses compose YAML, assembles tar contexts in memory)
+- `distribution.ts` — image distribution (SSH pipe for Docker/Podman, `k3s ctr images import` for containerd), registry login/push
+- `hook.ts` — pre/post build/deploy hooks (local via `Bun.spawn`, remote via SSH)
+- `notification.ts` — HMAC-signed HTTP webhooks on deploy events
+- `history-sync.ts` — replicates audit/metrics to non-manager nodes
+- `k8s-manifest.ts` — Docker Compose → native Kubernetes manifests (Deployment + Service + PVC + IngressRoute, nodeSelector, probes)
 
 **Container engine support:**
 
-Config field `container_engine: 'docker' | 'podman'` (auto-detected if not set). Affects `BuildService` (build command) and `DistributionService` (save/load/push). The runtime type is `ContainerRuntime = 'docker' | 'containerd' | 'podman'` — k3s always uses `containerd` for image import regardless of the build engine.
+Config field `container_engine: 'docker' | 'podman'` (auto-detected if not set). Affects the `build` module (build command) and `distribution` module (save/load/push). The runtime type is `ContainerRuntime = 'docker' | 'containerd' | 'podman'` — k3s always uses `containerd` for image import regardless of the build engine.
 
-**Read/monitoring services:**
-- `StackService` — legacy Swarm stack operations (being replaced by OrchestratorService)
-- `ExecService` — legacy exec (being replaced by ExecBackend)
-- `LogsService` — legacy log streaming (being replaced by LogsBackend)
-- `MetricsService` — container stats (read) + `MetricsWriteService` (write deployment metrics)
-- `BackupService` — backup/restore for accessories
+Services and modules use the `Result<T, E>` type pattern (`ok()` / `err()`) from `cli/src/types/`.
 
-**Deploy services:**
-- `ComposeService` — template rendering (Nunjucks), YAML load/serialize, Swarm deploy config injection, Traefik label injection, image tag updates
-- `SwarmDeployService` — creates external networks/volumes, deploys stacks via `docker stack deploy -c -`, waits for convergence, deploys accessories with hash-based change detection
-- `BuildService` — local/remote Docker/Podman image builds. Parses compose YAML to extract build targets, assembles tar contexts in memory
-- `DistributionService` — image distribution (base64 chunked transfer over SSH for Docker/Podman, `k3s ctr images import` for containerd), registry login/push
-- `HealthCheckService` — orchestrator-agnostic HTTP endpoint checks with retry (uses HealthBackend for internal checks)
-- `ReleaseService` — release directory management, rollback, cleanup of old releases
-- `HookService` — pre/post build/deploy hooks (local via Bun.spawn, remote via SSH)
-- `LockService` — deployment lock management (acquire/release with stale detection)
-- `AuditService` — deployment audit log entries on remote manager
-- `HistorySyncService` — replicates audit/metrics to non-manager nodes
-
-Services use the `Result<T, E>` type pattern (`ok()` / `err()`) from `cli/src/types/`.
-
-**Multi-node awareness:** Services that need to find or operate on containers (BackupService, ExecService) accept an `allConnections: SSHKeyConnection[]` parameter alongside the manager connection. This is required because in a multi-node Swarm, a container may run on any worker — not just the manager. Always pass `getAllNodeConnections(env)` when creating these services.
+**Multi-node awareness:** Classes that need to find or operate on containers (`Backup`, `SwarmContainerBackend`) accept an `allConnections: SSHKeyConnection[]` parameter alongside the manager connection. This is required because in a multi-node Swarm, a container may run on any worker — not just the manager. Always pass `getAllNodeConnections(env)` when creating these.
 
 ### Console Output
 
@@ -208,7 +208,7 @@ The `dockflow deploy` command executes entirely in TypeScript via ssh2:
 6. Create release directory on manager, upload compose file
 7. Deploy:
    - **Swarm**: `docker stack deploy -c -` (accessories first with hash-based change detection)
-   - **k3s**: `K8sManifestService.composeToManifests()` → `kubectl apply -f -`
+   - **k3s**: `K8sManifest.composeToManifests()` → `kubectl apply -f -`
 8. Health checks: internal (orchestrator-specific backend) + HTTP endpoint checks
 9. Cleanup old releases, write audit/metrics, sync history to all nodes
 10. Release lock (always, even on failure)
@@ -224,7 +224,7 @@ Ansible is only used for `dockflow setup` via `ansible/configure_host.yml`. Rema
 
 ### Remote Directory Permissions
 
-All directories under `/var/lib/dockflow/` are created by the deploy command (via `SwarmDeployService`) with proper ownership so the deploy user can write to them directly via SSH without sudo. The `dockflow setup` command also creates the base `/var/lib/dockflow` directory.
+All directories under `/var/lib/dockflow/` are created by the deploy command (via the `StackBackend` implementations) with proper ownership so the deploy user can write to them directly via SSH without sudo. The `dockflow setup` command also creates the base `/var/lib/dockflow` directory.
 
 Directory constants are defined in `cli/src/constants.ts` (`DOCKFLOW_STACKS_DIR`, `DOCKFLOW_LOCKS_DIR`, `DOCKFLOW_AUDIT_DIR`, `DOCKFLOW_METRICS_DIR`, `DOCKFLOW_BACKUPS_DIR`, `DOCKFLOW_ACCESSORIES_DIR`).
 
@@ -280,9 +280,10 @@ CI secrets format: `{ENV}_{SERVER}_{CONNECTION}` = base64-encoded `user@host:por
 - **Use centralized output helpers**: Never add raw `console.log`/`console.error` in CLI commands or API routes.
 - **Config schema + interface parity**: Update both Zod schema and TypeScript interface when adding config fields.
 - **Error handling**: Throw typed `CLIError` subclasses from commands. Never catch-and-exit manually.
-- **Services for Docker ops**: Use the services layer (`cli/src/services/`) for Docker Swarm interactions, not raw SSH commands in command handlers.
-- **Orchestrator abstraction**: New commands that interact with stacks/containers must use the orchestrator interfaces (`OrchestratorService`, `ExecBackend`, `LogsBackend`, `HealthBackend`) via the factory functions in `cli/src/services/orchestrator/factory.ts`. Never hardcode Swarm-specific or k3s-specific logic in command handlers.
-- **Multi-node services**: When creating `BackupService` or `SwarmExecBackend`, always pass `getAllNodeConnections(env)` so container lookups work on worker nodes too.
+- **Services for container ops**: Use the services layer (`cli/src/services/`) for orchestrator/container interactions, not raw SSH commands in command handlers.
+- **Orchestrator abstraction**: New commands that interact with stacks/containers must use the backend interfaces (`StackBackend`, `ContainerBackend`, `HealthBackend`, `ProxyBackend`) via the factory functions in `cli/src/services/orchestrator/factory.ts`. Never hardcode Swarm-specific or k3s-specific logic in command handlers.
+- **Service naming**: Follow the three-tier convention (see *Services Layer*). `*Backend` for polymorphic interfaces, plain nouns for stateful classes, module imports for stateless functions. Never introduce a new `*Service` class.
+- **Multi-node services**: When creating `Backup` or `SwarmContainerBackend`, always pass `getAllNodeConnections(env)` so container lookups work on worker nodes too.
 - **New directory paths**: Add constants in `cli/src/constants.ts` and ensure the deploy command creates them on the remote host.
 ## Self-Review Before Finishing
 

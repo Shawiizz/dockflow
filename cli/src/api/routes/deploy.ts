@@ -8,7 +8,7 @@ import { jsonResponse, errorResponse } from '../server';
 import { sshExecWithFallback } from '../../utils/ssh-fallback';
 import { printDebug } from '../../utils/output';
 import { getManagerConnection, getAllNodeConnections, resolveEnvironment } from './_helpers';
-import { parseJsonlLines } from '../../services/metrics-service';
+import { parseJsonlLines } from '../../services/metrics';
 import { DOCKFLOW_METRICS_DIR } from '../../constants';
 import type { DeployHistoryEntry, DeployHistoryResponse } from '../types';
 

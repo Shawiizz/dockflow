@@ -2,8 +2,8 @@
  * Swarm stack backend.
  *
  * Implements StackBackend for Docker Swarm. Deploy mechanics live in the
- * internal helper (SwarmDeployInternal); inspection, health, and lifecycle
- * commands are direct SSH calls.
+ * helper (SwarmStackOps); inspection, health, and lifecycle commands are
+ * direct SSH calls.
  */
 
 import type { SSHKeyConnection } from '../../../types';
@@ -11,8 +11,8 @@ import { ok, err, type Result } from '../../../types/result';
 import { DeployError, ErrorCode } from '../../../utils/errors';
 import { sshExec } from '../../../utils/ssh';
 import { printDebug, createTimedSpinner } from '../../../utils/output';
-import { SwarmDeployInternal } from './swarm-deploy-internal';
-import { ComposeService } from '../../compose-service';
+import { SwarmStackOps } from './swarm-stack-ops';
+import * as Compose from '../../compose';
 import { DOCKFLOW_STACKS_DIR } from '../../../constants';
 import type {
   StackBackend,
@@ -43,28 +43,28 @@ export interface SwarmTaskInfo {
 }
 
 export class SwarmStackBackend implements StackBackend {
-  private readonly inner: SwarmDeployInternal;
+  private readonly ops: SwarmStackOps;
 
   constructor(private readonly conn: SSHKeyConnection) {
-    this.inner = new SwarmDeployInternal(conn);
+    this.ops = new SwarmStackOps(conn);
   }
 
   async deploy(input: StackDeployInput): Promise<Result<void, DeployError>> {
     try {
       // 1. Create external networks + volumes
-      const networks = ComposeService.getExternalNetworks(input.compose);
-      const volumes = ComposeService.getExternalVolumes(input.compose);
-      await this.inner.createExternalResources(networks, volumes);
+      const networks = Compose.getExternalNetworks(input.compose);
+      const volumes = Compose.getExternalVolumes(input.compose);
+      await this.ops.createExternalResources(networks, volumes);
 
       // 2. Render compose: inject Swarm deploy defaults + optional Traefik labels
-      ComposeService.injectSwarmDefaults(input.compose);
+      Compose.injectSwarmDefaults(input.compose);
       if (input.proxy?.enabled) {
-        ComposeService.injectTraefikLabels(input.compose, input.proxy, input.stackName, input.env);
+        Compose.injectTraefikLabels(input.compose, input.proxy, input.stackName, input.env);
       }
-      const content = ComposeService.serialize(input.compose);
+      const content = Compose.serialize(input.compose);
 
       // 3. Apply
-      await this.inner.deployStack(input.stackName, content);
+      await this.ops.deployStack(input.stackName, content);
       return ok(undefined);
     } catch (e) {
       return err(toDeployError(e));
@@ -74,8 +74,8 @@ export class SwarmStackBackend implements StackBackend {
   async deployAccessory(input: AccessoryDeployInput): Promise<Result<{ deployed: boolean }, DeployError>> {
     try {
       // Accessories already have injectAccessoriesDefaults applied by caller.
-      const content = ComposeService.serialize(input.compose);
-      await this.inner.deployAccessories(input.stackName, input.accessoryPath, content, { force: input.force });
+      const content = Compose.serialize(input.compose);
+      await this.ops.deployAccessories(input.stackName, input.accessoryPath, content, { force: input.force });
       return ok({ deployed: true });
     } catch (e) {
       return err(toDeployError(e));
@@ -84,7 +84,7 @@ export class SwarmStackBackend implements StackBackend {
 
   async redeploy(stackName: string, rawContent: string): Promise<Result<void, DeployError>> {
     try {
-      await this.inner.deployStack(stackName, rawContent);
+      await this.ops.deployStack(stackName, rawContent);
       return ok(undefined);
     } catch (e) {
       return err(toDeployError(e));
@@ -97,7 +97,7 @@ export class SwarmStackBackend implements StackBackend {
     intervalSeconds: number,
   ): Promise<ConvergenceResult> {
     try {
-      await this.inner.waitConvergence(stackName, {
+      await this.ops.waitConvergence(stackName, {
         timeout: timeoutSeconds,
         interval: intervalSeconds,
       });
@@ -228,7 +228,7 @@ export class SwarmStackBackend implements StackBackend {
   }
 
   async removeStack(stackName: string): Promise<void> {
-    await this.inner.forceRemoveStack(stackName);
+    await this.ops.forceRemoveStack(stackName);
   }
 
   async listStacks(): Promise<StackInfo[]> {

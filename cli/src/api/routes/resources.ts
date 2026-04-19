@@ -10,7 +10,7 @@
 
 import { jsonResponse, errorResponse } from '../server';
 import { sshExec } from '../../utils/ssh';
-import { createLockService } from '../../services';
+import { createLock } from '../../services';
 import { loadConfig } from '../../utils/config';
 import { getManagerConnection, resolveEnvironment } from './_helpers';
 import type {
@@ -177,7 +177,7 @@ async function getDiskUsage(url: URL): Promise<Response> {
   }
 }
 
-// ─── Lock implementations (using LockService) ──────────────────────────────
+// ─── Lock implementations (using Lock service) ─────────────────────────────
 
 /**
  * Get the current lock status for an environment
@@ -188,7 +188,7 @@ async function getLockStatus(env: string): Promise<Response> {
 
   try {
     const staleThreshold = loadConfig({ silent: true })?.lock?.stale_threshold_minutes;
-    const lockService = createLockService(conn, conn.stackName, staleThreshold);
+    const lockService = createLock(conn, conn.stackName, staleThreshold);
     const result = await lockService.status();
 
     if (!result.success) {
@@ -232,7 +232,7 @@ async function acquireLock(env: string, req: Request): Promise<Response> {
 
   try {
     const staleThreshold = loadConfig({ silent: true })?.lock?.stale_threshold_minutes;
-    const lockService = createLockService(conn, conn.stackName, staleThreshold);
+    const lockService = createLock(conn, conn.stackName, staleThreshold);
     const result = await lockService.acquire({ message: body.message || 'Locked via WebUI' });
 
     if (!result.success) {
@@ -260,7 +260,7 @@ async function releaseLock(env: string): Promise<Response> {
 
   try {
     const staleThreshold = loadConfig({ silent: true })?.lock?.stale_threshold_minutes;
-    const lockService = createLockService(conn, conn.stackName, staleThreshold);
+    const lockService = createLock(conn, conn.stackName, staleThreshold);
     const result = await lockService.release();
 
     return jsonResponse({

@@ -4,14 +4,16 @@ import { K3S_DOCKFLOW_KUBECONFIG, K3S_TRAEFIK_NAMESPACE } from '../../../constan
 import { sshExec } from '../../../utils/ssh';
 import { printDebug, printInfo, printSuccess } from '../../../utils/output';
 import { stringify } from 'yaml';
-import type { TraefikBackend } from '../interfaces';
+import type { ProxyBackend } from '../interfaces';
 
 /**
- * Manages the Traefik instance embedded in k3s.
- * k3s ships Traefik as a Helm chart in kube-system — this service configures
- * Let's Encrypt via HelmChartConfig when proxy.acme is enabled.
+ * k3s proxy backend.
+ *
+ * Configures the Traefik instance embedded in k3s. k3s ships Traefik as a
+ * Helm chart in kube-system — this backend applies a HelmChartConfig for
+ * Let's Encrypt when proxy.acme is enabled.
  */
-export class K3sTraefikBackend implements TraefikBackend {
+export class K3sProxyBackend implements ProxyBackend {
   private readonly kube: string;
 
   constructor(private readonly connection: SSHKeyConnection) {
@@ -70,7 +72,7 @@ export class K3sTraefikBackend implements TraefikBackend {
   private async applyAcmeConfig(email: string): Promise<void> {
     printDebug('Applying Traefik ACME configuration via HelmChartConfig...');
 
-    const helmChartConfig = K3sTraefikBackend.generateHelmChartConfig(email);
+    const helmChartConfig = K3sProxyBackend.generateHelmChartConfig(email);
     const escaped = helmChartConfig.replace(/'/g, "'\\''");
 
     const result = await sshExec(this.connection,

@@ -10,7 +10,7 @@
 import { jsonResponse, errorResponse } from '../server';
 import { loadConfig, getStackName, getAccessoriesStackName, type BackupAccessoryConfig } from '../../utils/config';
 import { getManagerConnection, resolveEnvironment, getAllNodeConnections } from './_helpers';
-import { createBackupService, type BackupService, type BackupBaseEntry } from '../../services/backup-service';
+import { createBackup, type Backup, type BackupBaseEntry } from '../../services/backup';
 import { requireBackupConfig, listFromAllStacks, listGroupedFromAllStacks, type BackupSource } from '../../commands/backup/utils';
 import type { SSHKeyConnection } from '../../types';
 import type { BackupEntry, BackupListResponse, BackupActionResponse, BackupPruneResponse } from '../types';
@@ -21,7 +21,7 @@ interface BackupContext {
   env: string;
   conn: SSHKeyConnection;
   stackName: string;
-  backupService: BackupService;
+  backupService: Backup;
   backupConfig: BackupAccessoryConfig;
   compression: 'gzip' | 'none';
 }
@@ -47,7 +47,7 @@ function resolveBackupContextForService(env: string, conn: SSHKeyConnection, ser
 
   return {
     env, conn, stackName,
-    backupService: createBackupService(conn, stackName, getAllNodeConnections(env)),
+    backupService: createBackup(conn, stackName, getAllNodeConnections(env)),
     backupConfig: cfg.backupConfig,
     compression: cfg.compression,
   };
@@ -89,7 +89,7 @@ export async function handleBackupRoutes(req: Request): Promise<Response> {
   }
 
   if (pathname === '/api/backup/create' && method === 'POST') {
-    return createBackup(url);
+    return handleCreateBackup(url);
   }
 
   if (pathname === '/api/backup/restore' && method === 'POST') {
@@ -135,7 +135,7 @@ async function listBackups(url: URL): Promise<Response> {
 /**
  * POST /api/backup/create?env=&service=
  */
-async function createBackup(url: URL): Promise<Response> {
+async function handleCreateBackup(url: URL): Promise<Response> {
   const base = resolveEnvAndConnection(url);
   if (base instanceof Response) return base;
 

@@ -1,9 +1,7 @@
 /**
- * Release Service
+ * Release — manages versioned release directories on the remote manager.
  *
- * Replaces the Ansible roles `rollback` and `stack-management`.
- * Manages versioned release directories on the remote manager,
- * handles rollback to previous releases, and cleans up old releases
+ * Handles rollback to previous releases and cleans up old releases
  * along with their orphaned Docker images.
  *
  * Remote directory structure:
@@ -37,7 +35,7 @@ export interface ReleaseMetadata {
   branch: string;
 }
 
-export class ReleaseService {
+export class Release {
   constructor(private readonly connection: SSHKeyConnection) {}
 
   private stackDir(stackName: string): string {

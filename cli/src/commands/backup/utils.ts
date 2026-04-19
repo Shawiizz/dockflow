@@ -5,7 +5,7 @@
 import { loadConfig, getStackName, getAccessoriesStackName, type BackupAccessoryConfig } from '../../utils/config';
 import { BackupError, ErrorCode } from '../../utils/errors';
 import type { SSHKeyConnection } from '../../types';
-import { createBackupService, type BackupService, type BackupListEntry } from '../../services/backup-service';
+import { createBackup, type Backup, type BackupListEntry } from '../../services/backup';
 import { getAllNodeConnections } from '../../utils/servers';
 
 export type BackupSource = 'services' | 'accessories';
@@ -97,7 +97,7 @@ export function getBackupServiceNames(): string[] {
 
 /** Backup entries grouped by service within a single stack */
 export interface StackGroupedEntries {
-  backupService: BackupService;
+  backupService: Backup;
   byService: Record<string, BackupListEntry[]>;
 }
 
@@ -114,7 +114,7 @@ export async function listFromAllStacks(
   const allConnections = getAllNodeConnections(env);
 
   for (const { stackName } of stacks) {
-    const backupService = createBackupService(connection, stackName, allConnections);
+    const backupService = createBackup(connection, stackName, allConnections);
     const result = await backupService.list();
     if (result.success) entries.push(...result.data);
   }
@@ -136,7 +136,7 @@ export async function listGroupedFromAllStacks(
   const allConnections = getAllNodeConnections(env);
 
   for (const { stackName } of stacks) {
-    const backupService = createBackupService(connection, stackName, allConnections);
+    const backupService = createBackup(connection, stackName, allConnections);
     const listResult = await backupService.list();
     if (!listResult.success) continue;
 

@@ -20,11 +20,11 @@ import {
 import { validateEnv } from '../../utils/validation';
 import { withErrorHandler } from '../../utils/errors';
 import {
-  MetricsService,
+  Metrics,
   calculateMetricsSummary,
   type DeploymentMetric,
   type MetricsSummary
-} from '../../services/metrics-service';
+} from '../../services/metrics';
 
 /**
  * Format duration in human-readable form
@@ -172,7 +172,7 @@ export function registerMetricsCommand(program: Command): void {
       const { stackName, connection } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName, prune: options.prune, history: options.history });
 
-      const metricsService = new MetricsService(connection);
+      const metricsService = new Metrics(connection);
 
       // Prune mode
       if (options.prune) {

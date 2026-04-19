@@ -1,7 +1,6 @@
 /**
- * Lock Service
+ * Lock — manages deployment locks on remote servers via SSH.
  *
- * Manages deployment locks on remote servers via SSH.
  * Used by both CLI lock commands and API lock routes.
  */
 
@@ -36,9 +35,9 @@ export interface LockStatus {
 }
 
 /**
- * Lock Service - manages deployment locks for a stack
+ * Lock — manages deployment locks for a single stack on a remote server.
  */
-export class LockService {
+export class Lock {
   private readonly lockFile: string;
   private readonly staleThresholdMinutes: number;
 
@@ -187,12 +186,12 @@ export class LockService {
 }
 
 /**
- * Factory function to create a LockService
+ * Factory function to create a Lock instance
  */
-export function createLockService(
+export function createLock(
   connection: SSHKeyConnection,
   stackName: string,
   staleThresholdMinutes?: number,
-): LockService {
-  return new LockService(connection, stackName, staleThresholdMinutes);
+): Lock {
+  return new Lock(connection, stackName, staleThresholdMinutes);
 }

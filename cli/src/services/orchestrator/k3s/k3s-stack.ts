@@ -14,8 +14,8 @@ import {
   K3S_DOCKFLOW_KUBECONFIG,
   K3S_NAMESPACE_PREFIX,
 } from '../../../constants';
-import { K8sManifestService } from '../../k8s-manifest-service';
-import { ComposeService } from '../../compose-service';
+import * as K8sManifest from '../../k8s-manifest';
+import * as Compose from '../../compose';
 import type {
   StackBackend,
   StackInfo,
@@ -38,11 +38,11 @@ export class K3sStackBackend implements StackBackend {
 
   async deploy(input: StackDeployInput): Promise<Result<void, DeployError>> {
     try {
-      // Inject Traefik labels so K8sManifestService can convert them to IngressRoute
+      // Inject Traefik labels so K8sManifest can convert them to IngressRoute
       if (input.proxy?.enabled) {
-        ComposeService.injectTraefikLabels(input.compose, input.proxy, input.stackName, input.env);
+        Compose.injectTraefikLabels(input.compose, input.proxy, input.stackName, input.env);
       }
-      const manifests = K8sManifestService.composeToManifests(
+      const manifests = K8sManifest.composeToManifests(
         input.stackName,
         input.compose,
         input.proxy,
@@ -56,7 +56,7 @@ export class K3sStackBackend implements StackBackend {
 
   async deployAccessory(input: AccessoryDeployInput): Promise<Result<{ deployed: boolean }, DeployError>> {
     try {
-      const manifests = K8sManifestService.composeToManifests(
+      const manifests = K8sManifest.composeToManifests(
         input.stackName,
         input.compose,
         input.proxy,

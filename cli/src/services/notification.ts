@@ -1,5 +1,5 @@
 /**
- * Notification Service
+ * Notification — webhook module.
  *
  * Fires HTTP webhooks after deployment events (success / failure).
  * Non-fatal — a webhook failure logs a warning but never blocks the deploy.
@@ -99,24 +99,22 @@ async function sendWebhook(webhook: WebhookConfig, payload: DeployEventPayload):
   }
 }
 
-export class NotificationService {
-  /**
-   * Send all configured webhooks for a deployment event.
-   * Best-effort — never throws.
-   */
-  static async notify(
-    webhooks: WebhookConfig[] | undefined,
-    payload: DeployEventPayload,
-  ): Promise<void> {
-    if (!webhooks || webhooks.length === 0) return;
+/**
+ * Send all configured webhooks for a deployment event.
+ * Best-effort — never throws.
+ */
+export async function notify(
+  webhooks: WebhookConfig[] | undefined,
+  payload: DeployEventPayload,
+): Promise<void> {
+  if (!webhooks || webhooks.length === 0) return;
 
-    const eligible = webhooks.filter((w) => shouldFire(w, payload.status));
-    if (eligible.length === 0) return;
+  const eligible = webhooks.filter((w) => shouldFire(w, payload.status));
+  if (eligible.length === 0) return;
 
-    printDebug(`Sending ${eligible.length} webhook(s) for deploy.${payload.status}`);
+  printDebug(`Sending ${eligible.length} webhook(s) for deploy.${payload.status}`);
 
-    await Promise.allSettled(
-      eligible.map((w) => sendWebhook(w, payload)),
-    );
-  }
+  await Promise.allSettled(
+    eligible.map((w) => sendWebhook(w, payload)),
+  );
 }
