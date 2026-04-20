@@ -591,9 +591,16 @@ function openChannelOnClient(
 
       const done = new Promise<{ exitCode: number; stderr: string }>(
         (resolveDone) => {
-          stream.on('close', (code: number) => {
+          // Bun's ssh2 streams may not emit 'close' after stream.end(),
+          // but 'exit' always fires. Use whichever comes first.
+          let resolved = false;
+          const finish = (code: number) => {
+            if (resolved) return;
+            resolved = true;
             resolveDone({ exitCode: code ?? 0, stderr });
-          });
+          };
+          stream.on('exit', finish);
+          stream.on('close', finish);
         },
       );
 

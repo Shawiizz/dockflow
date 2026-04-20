@@ -203,22 +203,22 @@ export class SwarmStackBackend implements StackBackend {
   private async checkServiceHealth(
     serviceName: string,
   ): Promise<{ name: string; status: 'healthy' | 'unhealthy' | 'rolled_back' }> {
-    const result = await sshExec(
+    // Check for rollback
+    const inspectResult = await sshExec(
       this.conn,
-      `docker service inspect ${serviceName} --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{end}}' 2>/dev/null; ` +
-      `echo "---"; ` +
-      `docker service ps ${serviceName} --filter 'desired-state=running' --format '{{.CurrentState}}' --no-trunc 2>/dev/null`,
+      `docker service inspect ${serviceName} --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{end}}' 2>/dev/null`,
     );
-
-    const output = result.stdout.trim();
-    const [updateState, , ...taskLines] = output.split('---');
-    const trimmedUpdateState = (updateState || '').trim().toLowerCase();
-
-    if (trimmedUpdateState === 'rollback_started' || trimmedUpdateState === 'rollback_completed') {
+    const updateState = inspectResult.stdout.trim().toLowerCase();
+    if (updateState === 'rollback_started' || updateState === 'rollback_completed') {
       return { name: serviceName, status: 'rolled_back' };
     }
 
-    const tasks = (taskLines.join('').trim()).split('\n').filter(Boolean);
+    // Check task states
+    const psResult = await sshExec(
+      this.conn,
+      `docker service ps ${serviceName} --filter 'desired-state=running' --format '{{.CurrentState}}' --no-trunc 2>/dev/null`,
+    );
+    const tasks = psResult.stdout.trim().split('\n').filter(Boolean);
     if (tasks.length === 0) {
       return { name: serviceName, status: 'unhealthy' };
     }
