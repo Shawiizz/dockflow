@@ -18,6 +18,21 @@ services:
       - {{ current.env.app_port }}:3000
 ```
 
+## Nginx Templates
+
+Files placed in `.dockflow/templates/nginx/` are treated as nginx configurations and automatically deployed to `/etc/nginx/sites-enabled/` on the server after each successful deployment. The filename is used as-is (no extension stripping).
+
+```
+.dockflow/templates/nginx/
+└── myapp.example.com.conf.j2   →   /etc/nginx/sites-enabled/myapp.example.com.conf
+```
+
+After uploading, Dockflow runs `nginx -t` to validate the configuration. If the test fails, the previous configuration is automatically restored and a warning is logged. On success, nginx is reloaded with `nginx -s reload`.
+
+<Callout type="warning">
+Nginx templates are currently deployed to the **active manager node only**. In a multi-manager setup where all managers are publicly exposed, each manager would need its nginx config updated independently. A smarter multi-node nginx deployment mechanism may be introduced in the future.
+</Callout>
+
 ## Custom Templates
 
 For files **outside** `.dockflow/`, declare them in `.dockflow/config.yml`. Paths are relative to the project root:

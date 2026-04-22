@@ -38,3 +38,6 @@ export * from './distribution';
 
 // Deploy hooks (pre/post build/deploy)
 export * from './hook';
+
+// Nginx template deployment
+export * from './nginx';

@@ -23,6 +23,7 @@ export const DOCKFLOW_AUDIT_DIR = '/var/lib/dockflow/audit';
 export const DOCKFLOW_METRICS_DIR = '/var/lib/dockflow/metrics';
 export const DOCKFLOW_BACKUPS_DIR = '/var/lib/dockflow/backups';
 export const DOCKFLOW_ACCESSORIES_DIR = '/var/lib/dockflow/accessories';
+export const NGINX_SITES_ENABLED = '/etc/nginx/sites-enabled';
 
 /**
  * Default values
@@ -34,6 +35,7 @@ export const DEFAULT_SSH_PORT = 22;
  */
 export const DOCKFLOW_LOCAL_DIR = '.dockflow';
 export const DOCKFLOW_HOOKS_DIR = '.dockflow/hooks';
+export const DOCKFLOW_NGINX_TEMPLATES_DIR = '.dockflow/templates/nginx';
 export const ENV_FILE_PATH = '.env.dockflow';
 
 /**

@@ -24,6 +24,7 @@ import * as Build from '../services/build';
 import * as Distribution from '../services/distribution';
 import type { ContainerRuntime } from '../services/distribution';
 import * as Hook from '../services/hook';
+import * as Nginx from '../services/nginx';
 import { CONVERGENCE_TIMEOUT_S, CONVERGENCE_INTERVAL_S } from '../constants';
 import type { DeployContext } from './deploy-context';
 
@@ -204,6 +205,8 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
       await health.checkHTTPEndpoints(ctx.config.health_checks);
     }
   }
+
+  await Nginx.deployNginxTemplates(ctx.managerConn, ctx.rendered);
 
   await Hook.runRemote('post-deploy', ctx.managerConn, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
 }

@@ -10,32 +10,6 @@
     path: /etc/nginx/sites-enabled/default
     state: absent
 
-- name: List enabled Nginx config templates (*.conf.j2 only)
-  find:
-    paths: "{{ root_path }}/.dockflow/templates/nginx"
-    patterns: "*.conf.j2"
-    recurse: false
-  register: nginx_config_files
-  delegate_to: localhost
-  tags:
-    - deploy
-
-- name: Backup Nginx sites-enabled directory
-  ansible.builtin.copy:
-    src: /etc/nginx/sites-enabled/
-    dest: /tmp/nginx-sites-enabled-backup/
-    remote_src: yes
-
-- name: Copy custom Nginx configs
-  template:
-    src: "{{ item.path }}"
-    dest: "/etc/nginx/sites-enabled/{{ item.path | basename | regex_replace('\\.conf\\.j2$', '') }}"
-  loop: "{{ nginx_config_files.files }}"
-  when: nginx_config_files.matched > 0
-  register: nginx_config_copy
-  tags:
-    - deploy
-
 - name: Copy Nginx portainer config
   template:
     src: portainer.conf.j2
@@ -51,26 +25,6 @@
   changed_when: false
   failed_when: false
 
-- name: Remove sites-enabled directory if test failed
-  ansible.builtin.file:
-    path: /etc/nginx/sites-enabled
-    state: absent
-  when: nginx_config_test.rc != 0
-
-- name: Recreate sites-enabled directory if test failed
-  ansible.builtin.file:
-    path: /etc/nginx/sites-enabled
-    state: directory
-    mode: '0755'
-  when: nginx_config_test.rc != 0
-
-- name: Rollback Nginx configuration if test failed
-  ansible.builtin.copy:
-    src: /tmp/nginx-sites-enabled-backup/
-    dest: /etc/nginx/sites-enabled/
-    remote_src: yes
-  when: nginx_config_test.rc != 0
-
 - name: Fail if Nginx config test failed
   ansible.builtin.fail:
     msg: "Nginx configuration test failed: {{ nginx_config_test.stderr }}"
@@ -79,7 +33,7 @@
 - name: Trigger Nginx restart if configs were changed and test passed
   ansible.builtin.debug:
     msg: "Configuration test passed, triggering restart"
-  changed_when: (nginx_config_copy is defined and nginx_config_copy.changed) or (nginx_portainer_config is defined and nginx_portainer_config.changed)
+  changed_when: nginx_portainer_config is defined and nginx_portainer_config.changed
   notify:
     - Restart Nginx
   when: nginx_config_test.rc == 0
