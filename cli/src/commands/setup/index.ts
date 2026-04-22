@@ -52,6 +52,7 @@ export function registerSetupCommand(program: Command): void {
     .option('--ssh-key <path>', 'Path to existing SSH private key (local)')
     .option('--generate-key', 'Generate new SSH key (local)')
     .option('--skip-docker-install', 'Skip Docker installation (local)')
+    .option('--nginx', 'Install Nginx (local)')
     .option('--portainer', 'Install Portainer (local)')
     .option('--portainer-port <port>', 'Portainer HTTP port (local)', '9000')
     .option('--portainer-password <password>', 'Portainer admin password (local)')
@@ -112,6 +113,7 @@ export function registerSetupCommand(program: Command): void {
         // Forward local flags to the remote setup command
         const forwardFlags: string[] = [];
         if (options.skipDockerInstall) forwardFlags.push('--skip-docker-install');
+        if (options.nginx) forwardFlags.push('--nginx');
         if (options.portainer) forwardFlags.push('--portainer');
         if (options.portainerPort) forwardFlags.push(`--portainer-port ${options.portainerPort}`);
         if (options.portainerPassword) forwardFlags.push(`--portainer-password ${options.portainerPassword}`);

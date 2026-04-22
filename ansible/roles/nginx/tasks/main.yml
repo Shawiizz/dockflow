@@ -4,11 +4,15 @@
     name: nginx
     state: present
     update_cache: yes
+  tags:
+    - nginx
 
 - name: Remove default nginx configuration
   file:
     path: /etc/nginx/sites-enabled/default
     state: absent
+  tags:
+    - nginx
 
 - name: Copy Nginx portainer config
   template:
@@ -24,11 +28,15 @@
   register: nginx_config_test
   changed_when: false
   failed_when: false
+  tags:
+    - nginx
 
 - name: Fail if Nginx config test failed
   ansible.builtin.fail:
     msg: "Nginx configuration test failed: {{ nginx_config_test.stderr }}"
   when: nginx_config_test.rc != 0
+  tags:
+    - nginx
 
 - name: Trigger Nginx restart if configs were changed and test passed
   ansible.builtin.debug:
@@ -37,9 +45,13 @@
   notify:
     - Restart Nginx
   when: nginx_config_test.rc == 0
+  tags:
+    - nginx
 
 - name: Ensure Nginx is enabled and running
   ansible.builtin.service:
     name: nginx
     enabled: yes
     state: started
+  tags:
+    - nginx

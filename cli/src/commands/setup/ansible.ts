@@ -149,8 +149,11 @@ export async function runAnsiblePlaybook(config: HostConfig, ansibleDir: string)
   printInfo(`Using Ansible directory: ${ansibleDir}`);
 
   const skipTags = ['deploy'];
+  if (!config.installNginx) {
+    skipTags.push('nginx');
+  }
   if (!config.portainer.install) {
-    skipTags.push('portainer', 'nginx');
+    skipTags.push('portainer');
   }
 
   const extraVars: string[] = [

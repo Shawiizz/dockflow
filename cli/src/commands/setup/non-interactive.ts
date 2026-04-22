@@ -111,6 +111,7 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
   printRaw(`${colors.info('Deployment User:')} ${deployUser}`);
   printRaw(`${colors.info('Create New User:')} ${needsUserSetup ? 'Yes' : 'No'}`);
   printRaw(`${colors.info('Skip Docker Install:')} ${options.skipDockerInstall ? 'Yes' : 'No'}`);
+  printRaw(`${colors.info('Install Nginx:')} ${options.nginx ? 'Yes' : 'No'}`);
   printRaw(`${colors.info('Install Portainer:')} ${options.portainer ? 'Yes' : 'No'}`);
   printBlank();
 
@@ -150,6 +151,7 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
     deployPassword,
     privateKeyPath,
     skipDockerInstall: options.skipDockerInstall || false,
+    installNginx: options.nginx || false,
     portainer: {
       install: options.portainer || false,
       port: parseInt(options.portainerPort || '9000', 10),

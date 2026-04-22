@@ -10,6 +10,7 @@ export interface SetupOptions {
   sshKey?: string;
   generateKey?: boolean;
   skipDockerInstall?: boolean;
+  nginx?: boolean;
   portainer?: boolean;
   portainerPort?: string;
   portainerPassword?: string;
@@ -24,6 +25,7 @@ export interface HostConfig {
   deployPassword?: string;
   privateKeyPath: string;
   skipDockerInstall: boolean;
+  installNginx: boolean;
   portainer: PortainerConfig;
 }
 

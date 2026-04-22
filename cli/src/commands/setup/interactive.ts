@@ -219,6 +219,11 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
   printBlank();
   printSection('Optional Services');
 
+  let installNginx = false;
+  if (await confirm('Install Nginx (reverse proxy)?', true)) {
+    installNginx = true;
+  }
+
   let portainerConfig = {
     install: false,
     port: 9000,
@@ -245,6 +250,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
   printRaw(`${colors.info('SSH Port:')} ${sshPort}`);
   printRaw(`${colors.info('Deployment User:')} ${deployUser}`);
   printRaw(`${colors.info('Create New User:')} ${needsUserSetup ? 'Yes' : 'No'}`);
+  printRaw(`${colors.info('Install Nginx:')} ${installNginx ? 'Yes' : 'No'}`);
   printRaw(`${colors.info('Install Portainer:')} ${portainerConfig.install ? 'Yes' : 'No'}`);
   if (portainerConfig.install) {
     printRaw(`${colors.info('Portainer Port:')} ${portainerConfig.port}`);
@@ -299,6 +305,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
     deployPassword,
     privateKeyPath,
     skipDockerInstall: options?.skipDockerInstall || false,
+    installNginx,
     portainer: portainerConfig
   };
 
