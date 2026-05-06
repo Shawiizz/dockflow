@@ -1,0 +1,57 @@
+name: Publish MCP Server
+
+on:
+  push:
+    tags:
+      - 'mcp-[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 1.0.2)'
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Extract version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            # Strip "mcp-" prefix from tag (mcp-1.0.2 → 1.0.2)
+            VERSION="${GITHUB_REF_NAME#mcp-}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Publishing MCP server v$VERSION"
+
+      - name: Install dependencies
+        run: cd packages/mcp-server && npm install
+
+      - name: Build
+        run: cd packages/mcp-server && npm run build
+
+      - name: Set version
+        run: cd packages/mcp-server && npm version ${{ steps.version.outputs.version }} --no-git-tag-version --allow-same-version
+
+      - name: Publish
+        run: |
+          cd packages/mcp-server
+          VERSION="${{ steps.version.outputs.version }}"
+          if [[ "$VERSION" == *-* ]]; then
+            npm publish --access public --tag dev --provenance
+          else
+            npm publish --access public --provenance
+          fi
