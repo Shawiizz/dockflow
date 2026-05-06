@@ -7,6 +7,8 @@ import { z } from 'zod';
 import { colors } from '../utils/output';
 import { DockflowConfigSchema } from './config.schema';
 import { ServersConfigSchema } from './servers.schema';
+import { RootConfigSchema } from './root-config.schema';
+import type { RootConfig } from './root-config.schema';
 import type { Result } from '../types';
 import { ok, err } from '../types';
 
@@ -86,6 +88,19 @@ export function validateConfig(data: unknown): Result<z.output<typeof DockflowCo
  */
 export function validateServersConfig(data: unknown): Result<z.output<typeof ServersConfigSchema>, ValidationIssue[]> {
   const result = ServersConfigSchema.safeParse(data);
+
+  if (result.success) {
+    return ok(result.data);
+  }
+
+  return err(transformZodErrors(result.error));
+}
+
+/**
+ * Validate dockflow.yml content (merged config + servers)
+ */
+export function validateRootConfig(data: unknown): Result<RootConfig, ValidationIssue[]> {
+  const result = RootConfigSchema.safeParse(data);
 
   if (result.success) {
     return ok(result.data);

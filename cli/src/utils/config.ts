@@ -14,8 +14,10 @@ import { printError, printRaw } from './output';
 import {
   validateConfig as validateConfigSchema,
   validateServersConfig as validateServersSchema,
+  validateRootConfig,
   formatValidationErrors,
 } from '../schemas';
+import type { RootConfig } from '../schemas';
 
 /**
  * Dockflow configuration schema
@@ -151,25 +153,60 @@ export interface DockflowConfig {
 }
 
 /**
- * Get the project root directory (where .dockflow folder is).
- * Traverses up from cwd until a .dockflow/ directory is found.
+ * Get the project root directory.
+ * Traverses up from cwd looking for dockflow.yml or .dockflow/.
  * Falls back to cwd if none is found (e.g. before `dockflow init`).
  */
 export function getProjectRoot(): string {
   let dir = process.cwd();
   const { root } = parsePath(dir);
   while (dir !== root) {
-    if (existsSync(join(dir, '.dockflow'))) {
+    if (existsSync(join(dir, 'dockflow.yml')) || existsSync(join(dir, '.dockflow'))) {
       return dir;
     }
     dir = dirname(dir);
   }
-  // Check root itself
-  if (existsSync(join(root, '.dockflow'))) {
+  if (existsSync(join(root, 'dockflow.yml')) || existsSync(join(root, '.dockflow'))) {
     return root;
   }
-  // Fallback to cwd (before init, or no .dockflow/ exists yet)
   return process.cwd();
+}
+
+// undefined = not yet loaded, null = absent/invalid, RootConfig = loaded and valid
+let _rootConfigCache: RootConfig | null | undefined = undefined;
+
+/**
+ * Load and cache dockflow.yml if present.
+ * Returns null when dockflow.yml does not exist or fails validation.
+ */
+function loadRootConfig(projectRoot: string): RootConfig | null {
+  if (_rootConfigCache !== undefined) return _rootConfigCache;
+
+  const rootConfigPath = join(projectRoot, 'dockflow.yml');
+  if (!existsSync(rootConfigPath)) {
+    return (_rootConfigCache = null);
+  }
+
+  try {
+    const content = readFileSync(rootConfigPath, 'utf-8');
+    const parsed = parseYaml(content);
+    const result = validateRootConfig(parsed);
+    if (!result.success) {
+      printRaw(formatValidationErrors(result.error, 'dockflow.yml'));
+      return (_rootConfigCache = null);
+    }
+    return (_rootConfigCache = result.data);
+  } catch (error) {
+    printError(`Error reading dockflow.yml: ${error}`);
+    return (_rootConfigCache = null);
+  }
+}
+
+/**
+ * Returns true when the project uses dockflow.yml (rootless layout).
+ */
+export function hasDockflowYml(): boolean {
+  return existsSync(join(getProjectRoot(), 'dockflow.yml'));
 }
 
 /**
@@ -185,12 +222,23 @@ export interface LoadConfigOptions {
 }
 
 /**
- * Load the deployment config from .dockflow/config.yml
+ * Load the deployment config from dockflow.yml (rootless) or .dockflow/config.yml
  * @param options - Loading options (validate, silent)
  * @returns Loaded config or null if not found/invalid
  */
 export function loadConfig(options: LoadConfigOptions = {}): DockflowConfig | null {
   const { validate = true, silent = false, content: rawContent } = options;
+
+  // When content is provided directly (e.g. dockflow config validate), skip file detection
+  if (rawContent === undefined) {
+    const projectRoot = getProjectRoot();
+    const rootConfig = loadRootConfig(projectRoot);
+    if (rootConfig) {
+      // Extract the config portion (strip servers fields)
+      const { servers: _s, defaults: _d, env: _e, ...configPart } = rootConfig;
+      return configPart as DockflowConfig;
+    }
+  }
 
   let content: string;
   if (rawContent !== undefined) {
@@ -205,7 +253,7 @@ export function loadConfig(options: LoadConfigOptions = {}): DockflowConfig | nu
 
   try {
     const parsed = parseYaml(content);
-    
+
     if (validate) {
       const result = validateConfigSchema(parsed);
       if (!result.success) {
@@ -227,22 +275,32 @@ export function loadConfig(options: LoadConfigOptions = {}): DockflowConfig | nu
 }
 
 /**
- * Load the servers config from .dockflow/servers.yml
+ * Load the servers config from dockflow.yml (rootless) or .dockflow/servers.yml
  * @param options - Loading options (validate, silent)
  * @returns Loaded config or null if not found/invalid
  */
 export function loadServersConfig(options: LoadConfigOptions = {}): ServersConfig | null {
   const { validate = true, silent = false } = options;
-  const serversPath = join(getProjectRoot(), '.dockflow', 'servers.yml');
-  
+
+  const projectRoot = getProjectRoot();
+  const rootConfig = loadRootConfig(projectRoot);
+  if (rootConfig) {
+    return {
+      servers: rootConfig.servers,
+      defaults: rootConfig.defaults,
+      env: rootConfig.env,
+    } as ServersConfig;
+  }
+
+  const serversPath = join(projectRoot, '.dockflow', 'servers.yml');
   if (!existsSync(serversPath)) {
     return null;
   }
-  
+
   try {
     const content = readFileSync(serversPath, 'utf-8');
     const parsed = parseYaml(content);
-    
+
     if (validate) {
       const result = validateServersSchema(parsed);
       if (!result.success) {
@@ -264,11 +322,12 @@ export function loadServersConfig(options: LoadConfigOptions = {}): ServersConfi
 }
 
 /**
- * Check if servers.yml exists
+ * Check if servers config is available (either via dockflow.yml or servers.yml)
  */
 export function hasServersConfig(): boolean {
-  const serversPath = join(getProjectRoot(), '.dockflow', 'servers.yml');
-  return existsSync(serversPath);
+  const projectRoot = getProjectRoot();
+  if (existsSync(join(projectRoot, 'dockflow.yml'))) return true;
+  return existsSync(join(projectRoot, '.dockflow', 'servers.yml'));
 }
 
 /**
@@ -298,11 +357,20 @@ export function getAccessoriesStackName(env: string): string | null {
 }
 
 /**
- * Get the path to the docker-compose file (.yml or .yaml)
- * Returns null if neither exists
+ * Get the path to the docker-compose file (.yml or .yaml).
+ * In rootless mode (dockflow.yml present), looks at the project root.
+ * Otherwise looks in .dockflow/docker/.
+ * Returns null if neither exists.
  */
 export function getComposePath(): string | null {
   const root = getProjectRoot();
+
+  if (existsSync(join(root, 'dockflow.yml'))) {
+    if (existsSync(join(root, 'docker-compose.yml'))) return join(root, 'docker-compose.yml');
+    if (existsSync(join(root, 'docker-compose.yaml'))) return join(root, 'docker-compose.yaml');
+    return null;
+  }
+
   const ymlPath = join(root, '.dockflow', 'docker', 'docker-compose.yml');
   if (existsSync(ymlPath)) return ymlPath;
 

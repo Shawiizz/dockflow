@@ -97,9 +97,9 @@ export const EnvByTagSchema = z.record(
 ).optional().describe('Environment variables grouped by tag');
 
 /**
- * Complete servers.yml configuration schema
+ * Base servers schema (without manager refine) — used for merging into RootConfigSchema
  */
-export const ServersConfigSchema = z.object({
+export const ServersBaseSchema = z.object({
   servers: z.record(
     z.string()
       .min(1, 'Server name cannot be empty')
@@ -115,38 +115,35 @@ export const ServersConfigSchema = z.object({
       { message: 'At least one server must be defined' }
     )
     .describe('Server definitions keyed by server name'),
-  
+
   defaults: ServerDefaultsSchema.optional().describe(
     'Default SSH settings for all servers'
   ),
-  
+
   env: EnvByTagSchema.describe(
     'Environment variables by tag (all, production, staging, etc.)'
   ),
-}).refine(
-  (config) => {
-    // Ensure at least one manager exists for each unique tag
-    const tagManagers: Record<string, boolean> = {};
-    
-    for (const [, server] of Object.entries(config.servers)) {
-      const role = server.role ?? 'manager';
-      if (role === 'manager') {
-        for (const tag of server.tags) {
-          tagManagers[tag] = true;
-        }
-      }
+});
+
+export function validateManagerPerTag(config: { servers: Record<string, { role?: string; tags: string[] }> }): boolean {
+  const tagManagers: Record<string, boolean> = {};
+  for (const server of Object.values(config.servers)) {
+    if ((server.role ?? 'manager') === 'manager') {
+      for (const tag of server.tags) tagManagers[tag] = true;
     }
-    
-    // Check all tags have at least one manager
-    for (const [, server] of Object.entries(config.servers)) {
-      for (const tag of server.tags) {
-        if (!tagManagers[tag]) {
-          return false;
-        }
-      }
+  }
+  for (const server of Object.values(config.servers)) {
+    for (const tag of server.tags) {
+      if (!tagManagers[tag]) return false;
     }
-    
-    return true;
-  },
+  }
+  return true;
+}
+
+/**
+ * Complete servers.yml configuration schema
+ */
+export const ServersConfigSchema = ServersBaseSchema.refine(
+  validateManagerPerTag,
   { message: 'Each environment tag must have at least one manager server' }
 );
