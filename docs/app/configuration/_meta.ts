@@ -1,4 +1,5 @@
 export default {
+  'dockflow-yml': 'dockflow.yml',
   'config-file': 'Project Configuration',
   servers: 'Servers & Connections',
   'docker-compose': 'Docker Compose',

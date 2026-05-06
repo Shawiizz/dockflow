@@ -38,6 +38,7 @@ const structure: PageEntry[] = [
     title: 'Configuration',
     path: 'configuration',
     children: [
+      { slug: 'dockflow-yml', title: 'dockflow.yml (simplified layout)', path: 'configuration/dockflow-yml' },
       { slug: 'servers', title: 'Servers Configuration', path: 'configuration/servers' },
       { slug: 'docker-compose', title: 'Docker Compose', path: 'configuration/docker-compose' },
       { slug: 'accessories', title: 'Accessories (Databases, Caches)', path: 'configuration/accessories' },

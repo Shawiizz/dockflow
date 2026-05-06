@@ -26,6 +26,7 @@ dist/
 # CLI builds
 cli/dist/
 dockflow-*
+!docs/app/configuration/dockflow-yml/
 
 # Generated files
 cli/src/ui-manifest.generated.ts

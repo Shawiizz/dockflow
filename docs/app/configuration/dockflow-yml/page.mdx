@@ -1,0 +1,178 @@
+---
+description: Simplified single-file configuration for small projects — no .dockflow/ directory needed.
+---
+
+import { Callout, Steps, Tabs } from 'nextra/components'
+
+# dockflow.yml
+
+`dockflow.yml` is a single-file alternative to the standard `.dockflow/` layout. Instead of maintaining separate `config.yml` and `servers.yml` files inside a dedicated directory, you place one `dockflow.yml` at the project root alongside your `docker-compose.yml`.
+
+<Callout type="info">
+  This layout is designed for simple projects with a single server. For multi-environment setups, advanced templates, or shared server configs across repos, the standard `.dockflow/` layout gives you more control.
+</Callout>
+
+## Minimal example
+
+```yaml
+# dockflow.yml
+project_name: my-app
+
+servers:
+  main:
+    host: 1.2.3.4
+    tags: [production]
+
+defaults:
+  user: deploy
+```
+
+```yaml
+# docker-compose.yml (at project root)
+services:
+  app:
+    image: my-app
+    build: .
+    ports:
+      - "3000:3000"
+```
+
+That's the entire configuration. No `.dockflow/` directory, no subdirectories.
+
+## Project layout
+
+```
+my-project/
+├── dockflow.yml         ← replaces .dockflow/config.yml + .dockflow/servers.yml
+├── docker-compose.yml   ← replaces .dockflow/docker/docker-compose.yml
+├── Dockerfile
+└── src/
+```
+
+## All options
+
+`dockflow.yml` accepts every field from both `config.yml` and `servers.yml` — they share no overlapping keys, so the merge is flat.
+
+**From `config.yml`:**
+
+| Field | Type | Description | Default |
+|---|---|---|---|
+| `project_name` | string | Unique project identifier (DNS-safe, required) | — |
+| `orchestrator` | `swarm` \| `k3s` | Deployment backend | `swarm` |
+| `container_engine` | `docker` \| `podman` | Build engine (auto-detected if unset) | auto |
+| `registry` | object | Docker registry config | — |
+| `options` | object | `remote_build`, `image_auto_tag`, `enable_debug_logs` | — |
+| `stack_management` | object | `keep_releases`, `cleanup_on_failure` | — |
+| `health_checks` | object | Endpoint checks, timeouts, on-failure behavior | — |
+| `hooks` | object | `pre-build`, `post-build`, `pre-deploy`, `post-deploy` scripts | — |
+| `lock` | object | `stale_threshold_minutes` | — |
+| `backup` | object | Backup config for accessories and services | — |
+| `templates` | array | Nunjucks template files to render before deploy | — |
+| `accessories` | object | Inline accessory service definitions | — |
+| `proxy` | object | Traefik + Let's Encrypt configuration | — |
+| `notifications` | object | Webhook notifications on deploy events | — |
+
+**From `servers.yml`:**
+
+| Field | Type | Description | Default |
+|---|---|---|---|
+| `servers` | object | Server definitions keyed by name (required) | — |
+| `servers.<name>.host` | string | Server hostname or IP | — |
+| `servers.<name>.role` | `manager` \| `worker` | Swarm role | `manager` |
+| `servers.<name>.tags` | string[] | Environment tags, e.g. `[production]` (required) | — |
+| `servers.<name>.user` | string | SSH user (overrides `defaults.user`) | — |
+| `servers.<name>.port` | number | SSH port (overrides `defaults.port`) | — |
+| `servers.<name>.env` | object | Server-specific environment variables | — |
+| `defaults.user` | string | Default SSH user for all servers | `dockflow` |
+| `defaults.port` | number | Default SSH port for all servers | `22` |
+| `env` | object | Environment variables by tag (`all`, `production`, etc.) | — |
+
+See [Servers & Connections](/configuration/servers) and [Project Configuration](/configuration/config-file) for full documentation of each field.
+
+## How it works
+
+<Steps>
+### Dockflow detects dockflow.yml
+
+When you run any `dockflow` command, it traverses up from the current directory looking for `dockflow.yml` or `.dockflow/`. If `dockflow.yml` is found first, rootless mode is activated.
+
+### Config and servers are split internally
+
+The file is parsed once and cached. The config fields are routed to the same logic that reads `.dockflow/config.yml`, and the server fields to the same logic that reads `.dockflow/servers.yml`. No code in the deploy pipeline changes.
+
+### docker-compose.yml is read from the project root
+
+Instead of `.dockflow/docker/docker-compose.yml`, Dockflow looks for `docker-compose.yml` (or `.yaml`) at the project root. Build context paths in the compose file are relative to the project root, which is the standard Docker Compose behavior.
+</Steps>
+
+## Caveats
+
+<Callout type="warning">
+  If both `dockflow.yml` and `.dockflow/` exist in the same directory, `dockflow.yml` takes priority.
+</Callout>
+
+- **Templates**: the `templates` field resolves paths relative to the project root (same as the standard layout).
+- **Accessories**: a separate `accessories.yml` file is not supported in rootless mode — define accessories inline under the `accessories` key in `dockflow.yml`.
+- **CI secrets**: the `{ENV}_{SERVER}_CONNECTION` format works identically — host overrides apply regardless of the layout.
+
+## Full example
+
+<Tabs items={['dockflow.yml', 'docker-compose.yml']}>
+  <Tabs.Tab>
+```yaml
+# dockflow.yml
+project_name: my-app
+
+servers:
+  web:
+    host: 1.2.3.4
+    tags: [production]
+
+defaults:
+  user: deploy
+  port: 22
+
+env:
+  production:
+    APP_ENV: production
+
+proxy:
+  enabled: true
+  email: you@example.com
+  domains:
+    production: my-app.example.com
+
+health_checks:
+  enabled: true
+  endpoints:
+    - url: https://my-app.example.com
+      retries: 5
+
+stack_management:
+  keep_releases: 3
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```yaml
+# docker-compose.yml
+services:
+  app:
+    image: my-app
+    build: .
+    ports:
+      - "3000:3000"
+    labels:
+      - "traefik.enable=true"
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+```
+  </Tabs.Tab>
+</Tabs>
+
+## See also
+
+- [Project Configuration](/configuration/config-file) — all `config.yml` fields in detail
+- [Servers & Connections](/configuration/servers) — all `servers.yml` fields in detail
+- [Docker Compose](/configuration/docker-compose) — compose file structure and Dockflow-specific behavior
