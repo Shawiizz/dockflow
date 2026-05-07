@@ -6,7 +6,7 @@
 import type { Command } from 'commander';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { getProjectRoot } from '../../utils/config';
+import { getProjectRoot, hasDockflowYml } from '../../utils/config';
 import { sshExec } from '../../utils/ssh';
 import { printInfo, printIntro, printSection, printBlank, printJSON, printDim, printRaw, colors } from '../../utils/output';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
@@ -63,8 +63,12 @@ function formatReplicas(replicas: string): string {
  * Check if accessories.yml exists locally
  */
 function hasAccessoriesFile(): boolean {
-  const accessoriesPath = join(getProjectRoot(), '.dockflow', 'docker', 'accessories.yml');
-  return existsSync(accessoriesPath);
+  const root = getProjectRoot();
+  if (hasDockflowYml()) {
+    if (existsSync(join(root, 'accessories.yml'))) return true;
+    if (existsSync(join(root, 'accessories.yaml'))) return true;
+  }
+  return existsSync(join(root, '.dockflow', 'docker', 'accessories.yml'));
 }
 
 /**

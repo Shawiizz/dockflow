@@ -14,7 +14,7 @@ import { join, relative, dirname } from 'path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import nunjucks from 'nunjucks';
 import type { DockflowConfig, ProxyConfig } from '../utils/config';
-import { getProjectRoot, getComposePath } from '../utils/config';
+import { getProjectRoot, getComposePath, hasDockflowYml } from '../utils/config';
 import { printDebug, printWarning } from '../utils/output';
 import { ConfigError } from '../utils/errors';
 import { TRAEFIK_NETWORK_NAME } from '../constants';
@@ -231,6 +231,23 @@ export function renderTemplates(
   }
 
   printDebug(`Rendered ${count} file(s) in .dockflow/`);
+
+  if (hasDockflowYml()) {
+    for (const name of ['docker-compose.yml', 'docker-compose.yaml']) {
+      const p = join(projectRoot, name);
+      if (existsSync(p)) {
+        rendered.set(name, njk.renderString(readFileSync(p, 'utf-8'), templateCtx));
+        break;
+      }
+    }
+    for (const name of ['accessories.yml', 'accessories.yaml']) {
+      const p = join(projectRoot, name);
+      if (existsSync(p)) {
+        rendered.set(name, njk.renderString(readFileSync(p, 'utf-8'), templateCtx));
+        break;
+      }
+    }
+  }
 
   const templates = ctx.config.templates ?? [];
   for (const tmpl of templates) {

@@ -94,7 +94,7 @@ See [Servers & Connections](/configuration/servers) and [Project Configuration](
 <Steps>
 ### Dockflow detects dockflow.yml
 
-When you run any `dockflow` command, it traverses up from the current directory looking for `dockflow.yml` or `.dockflow/`. If `dockflow.yml` is found first, rootless mode is activated.
+When you run any `dockflow` command, it traverses up from the current directory looking for `dockflow.yml` or `.dockflow/`. If `dockflow.yml` is found first, the flat layout is activated.
 
 ### Config and servers are split internally
 
@@ -112,7 +112,7 @@ Instead of `.dockflow/docker/docker-compose.yml`, Dockflow looks for `docker-com
 </Callout>
 
 - **Templates**: the `templates` field resolves paths relative to the project root (same as the standard layout).
-- **Accessories**: a separate `accessories.yml` file is not supported in rootless mode — define accessories inline under the `accessories` key in `dockflow.yml`.
+- **Accessories**: place `accessories.yml` at the project root alongside `dockflow.yml`. If not found there, Dockflow falls back to `.dockflow/docker/accessories.yml`. You can also define accessories inline under the `accessories` key in `dockflow.yml`.
 - **CI secrets**: the `{ENV}_{SERVER}_CONNECTION` format works identically — host overrides apply regardless of the layout.
 
 ## Full example

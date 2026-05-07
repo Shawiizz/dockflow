@@ -9,7 +9,8 @@ import { parse as parseYaml } from 'yaml';
 import {
   loadConfig,
   loadServersConfig,
-  getProjectRoot
+  getProjectRoot,
+  hasDockflowYml
 } from '../utils/config';
 import { getAvailableEnvironments, getServerNamesForEnvironment } from '../utils/servers';
 import { printSection, printError, printSuccess, printWarning, printDim, printSeparator, printBlank, printJSON, printRaw, colors } from '../utils/output';
@@ -198,7 +199,15 @@ export function registerConfigCommand(program: Command): void {
       printBlank();
       
       const root = getProjectRoot();
-      const files = [
+      const flatLayout = hasDockflowYml();
+      const accRoot = existsSync(join(root, 'accessories.yml')) ? join(root, 'accessories.yml')
+        : existsSync(join(root, 'accessories.yaml')) ? join(root, 'accessories.yaml')
+        : join(root, '.dockflow', 'accessories.yml');
+      const files = flatLayout ? [
+        { name: 'dockflow.yml', path: join(root, 'dockflow.yml') },
+        { name: 'docker-compose.yml', path: join(root, 'docker-compose.yml') },
+        { name: 'accessories.yml', path: accRoot },
+      ] : [
         { name: 'config.yml', path: join(root, '.dockflow', 'config.yml') },
         { name: 'servers.yml', path: join(root, '.dockflow', 'servers.yml') },
         { name: 'docker-compose.yml', path: join(root, '.dockflow', 'docker', 'docker-compose.yml') },

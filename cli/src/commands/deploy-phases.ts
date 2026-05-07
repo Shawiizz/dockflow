@@ -124,7 +124,9 @@ export async function buildAndDistribute(
 export async function deployAccessories(ctx: DeployContext): Promise<void> {
   if (ctx.skipAccessories) return;
 
-  const accessoriesRelPath = '.dockflow/docker/accessories.yml';
+  const accessoriesRelPath = ctx.rendered.has('accessories.yml')
+    ? 'accessories.yml'
+    : '.dockflow/docker/accessories.yml';
   const accessoriesContent = ctx.rendered.get(accessoriesRelPath);
   if (!accessoriesContent) return;
 

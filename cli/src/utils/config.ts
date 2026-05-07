@@ -203,7 +203,7 @@ function loadRootConfig(projectRoot: string): RootConfig | null {
 }
 
 /**
- * Returns true when the project uses dockflow.yml (rootless layout).
+ * Returns true when the project uses dockflow.yml (flat layout layout).
  */
 export function hasDockflowYml(): boolean {
   return existsSync(join(getProjectRoot(), 'dockflow.yml'));
@@ -222,7 +222,7 @@ export interface LoadConfigOptions {
 }
 
 /**
- * Load the deployment config from dockflow.yml (rootless) or .dockflow/config.yml
+ * Load the deployment config from dockflow.yml (flat layout) or .dockflow/config.yml
  * @param options - Loading options (validate, silent)
  * @returns Loaded config or null if not found/invalid
  */
@@ -275,7 +275,7 @@ export function loadConfig(options: LoadConfigOptions = {}): DockflowConfig | nu
 }
 
 /**
- * Load the servers config from dockflow.yml (rootless) or .dockflow/servers.yml
+ * Load the servers config from dockflow.yml (flat layout) or .dockflow/servers.yml
  * @param options - Loading options (validate, silent)
  * @returns Loaded config or null if not found/invalid
  */
@@ -358,7 +358,7 @@ export function getAccessoriesStackName(env: string): string | null {
 
 /**
  * Get the path to the docker-compose file (.yml or .yaml).
- * In rootless mode (dockflow.yml present), looks at the project root.
+ * In flat layout mode (dockflow.yml present), looks at the project root.
  * Otherwise looks in .dockflow/docker/.
  * Returns null if neither exists.
  */
