@@ -219,6 +219,7 @@ export async function buildImage(target: BuildTarget): Promise<void> {
   });
 
   const log = createTaskLog(`Building ${target.tag}`);
+  const allLines: string[] = [];
 
   async function streamToLog(stream: ReadableStream<Uint8Array> | null) {
     if (!stream) return;
@@ -233,10 +234,16 @@ export async function buildImage(target: BuildTarget): Promise<void> {
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
         for (const line of lines) {
-          if (line.trim()) log.message(line.trimEnd());
+          if (line.trim()) {
+            allLines.push(line.trimEnd());
+            log.message(line.trimEnd());
+          }
         }
       }
-      if (buffer.trim()) log.message(buffer.trimEnd());
+      if (buffer.trim()) {
+        allLines.push(buffer.trimEnd());
+        log.message(buffer.trimEnd());
+      }
     } finally {
       reader.releaseLock();
     }
@@ -251,6 +258,7 @@ export async function buildImage(target: BuildTarget): Promise<void> {
 
   if (proc.exitCode !== 0) {
     log.error(`Build failed for ${target.tag} (exit ${proc.exitCode})`);
+    printRaw('\n' + allLines.join('\n') + '\n');
     throw new DeployError(
       `Build failed for ${target.tag} (exit ${proc.exitCode})`,
       ErrorCode.DEPLOY_FAILED,
