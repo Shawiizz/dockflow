@@ -241,3 +241,35 @@ Quick checklist:
 7. **Documentation**: add or update a page in `docs/app/`
 
 See `CLAUDE.md` for detailed patterns and rules.
+
+---
+
+## Releasing
+
+### CLI (`@dockflow-tools/cli`)
+
+Push a semver tag. CI builds multi-platform binaries, creates a GitHub Release, and publishes to npm automatically:
+
+```bash
+git tag 2.1.0 && git push origin 2.1.0
+```
+
+The tag format is `MAJOR.MINOR.PATCH` (no prefix). Pre-release tags (e.g. `2.1.0-beta.1`) are published to the `dev` npm tag.
+
+### MCP Server (`@dockflow-tools/mcp`)
+
+Push a tag prefixed with `mcp-`:
+
+```bash
+git tag mcp-1.2.0 && git push origin mcp-1.2.0
+```
+
+The `mcp-` prefix is stripped to get the npm version (`mcp-1.2.0` → `1.2.0`). Pre-release tags (e.g. `mcp-1.2.0-beta.1`) are published to the `dev` npm tag.
+
+Publishing uses npm Provenance via OIDC (no `NPM_TOKEN` needed). The npm package must have a Trusted Publisher configured at npmjs.org pointing to:
+
+| Field | Value |
+|---|---|
+| Repository | `Shawiizz/dockflow` |
+| Workflow | `publish-mcp.yml` |
+| Environment | _(leave blank)_ |
