@@ -21,6 +21,10 @@
     "documentation"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Shawiizz/dockflow"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "yaml": "^2.7.1",
