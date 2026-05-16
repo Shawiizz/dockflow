@@ -148,7 +148,7 @@ server.registerTool('validate_config', {
 });
 
 server.registerTool('read_project_config', {
-  description: 'Read the Dockflow configuration files from the current project. Returns the layout type (rootless dockflow.yml or standard .dockflow/) and the content of all config files found.',
+  description: 'Read the Dockflow configuration files from the current project. Returns the layout type (flat dockflow.yml or standard .dockflow/) and the content of all config files found.',
 }, async () => {
   const result = readProjectConfig(process.cwd());
   return { content: [{ type: 'text', text: formatProjectConfig(result) }] };

@@ -2,17 +2,17 @@ import { existsSync, readFileSync } from 'fs';
 import { join, dirname, parse as parsePath } from 'path';
 
 export interface ProjectConfigResult {
-  layout: 'rootless' | 'standard' | 'none';
+  layout: 'flat' | 'standard' | 'none';
   root: string;
   files: { path: string; content: string }[];
 }
 
-function findProjectRoot(startDir: string): { root: string; layout: 'rootless' | 'standard' | 'none' } {
+function findProjectRoot(startDir: string): { root: string; layout: 'flat' | 'standard' | 'none' } {
   let dir = startDir;
   const { root } = parsePath(dir);
 
   while (true) {
-    if (existsSync(join(dir, 'dockflow.yml'))) return { root: dir, layout: 'rootless' };
+    if (existsSync(join(dir, 'dockflow.yml'))) return { root: dir, layout: 'flat' };
     if (existsSync(join(dir, '.dockflow'))) return { root: dir, layout: 'standard' };
     if (dir === root) break;
     dir = dirname(dir);
@@ -35,7 +35,7 @@ export function readProjectConfig(cwd: string): ProjectConfigResult {
 
   const files: { path: string; content: string }[] = [];
 
-  if (layout === 'rootless') {
+  if (layout === 'flat') {
     const f = readIfExists(join(root, 'dockflow.yml'));
     if (f) files.push({ path: 'dockflow.yml', content: f.content });
 

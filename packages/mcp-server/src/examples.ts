@@ -13,8 +13,8 @@ export interface Example {
 export const EXAMPLES: Example[] = [
   {
     id: 'simple',
-    title: 'Simple app (rootless layout)',
-    description: 'Single service, single server. Uses dockflow.yml at the project root — no .dockflow/ directory needed. Ideal for getting started quickly.',
+    title: 'Simple app (flat layout)',
+    description: 'Single service, single server. Uses dockflow.yml at the project root — no .dockflow/ directory needed. Ideal for getting started quickly. SSH credentials go in .env.dockflow (never committed) or as CI/CD secrets.',
     files: [
       {
         path: 'dockflow.yml',
@@ -28,6 +28,13 @@ servers:
 defaults:
   user: deploy
   port: 22`,
+      },
+      {
+        path: '.env.dockflow',
+        content: `# SSH credentials — add to .gitignore, never commit this file
+# Format: base64(user@host:port|privateKey)  or  base64(user@host:port||password)
+# Generate with: dockflow encode
+PRODUCTION_MAIN_CONNECTION=base64encodedstring`,
       },
       {
         path: 'docker-compose.yml',
@@ -47,7 +54,7 @@ defaults:
   {
     id: 'standard',
     title: 'Standard layout (.dockflow/ directory)',
-    description: 'The default layout with separate config.yml, servers.yml, and docker-compose.yml under .dockflow/. Suited for larger projects with multiple environments or shared server configs.',
+    description: 'The default layout with separate config.yml, servers.yml, and docker-compose.yml under .dockflow/. Suited for larger projects with multiple environments or shared server configs. SSH credentials go in .env.dockflow or as CI/CD secrets.',
     files: [
       {
         path: '.dockflow/config.yml',
@@ -72,6 +79,13 @@ stack_management:
 defaults:
   user: deploy
   port: 22`,
+      },
+      {
+        path: '.env.dockflow',
+        content: `# SSH credentials — add to .gitignore, never commit this file
+# Format: base64(user@host:port|privateKey)  or  base64(user@host:port||password)
+# Generate with: dockflow encode
+PRODUCTION_MAIN_CONNECTION=base64encodedstring`,
       },
       {
         path: '.dockflow/docker/docker-compose.yml',
