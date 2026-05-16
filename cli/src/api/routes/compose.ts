@@ -27,7 +27,7 @@ async function getCompose(): Promise<Response> {
     return jsonResponse({
       exists: false,
       compose: null,
-      message: 'No docker-compose.yml found in .dockflow/docker/',
+      message: 'No docker-compose.yml found',
     });
   }
 
@@ -49,7 +49,7 @@ async function updateCompose(req: Request): Promise<Response> {
     const composePath = getComposePath();
 
     if (!composePath) {
-      return errorResponse('No docker-compose.yml found in .dockflow/docker/', 404);
+      return errorResponse('No docker-compose.yml found', 404);
     }
 
     if (!body.services || typeof body.services !== 'object') {

@@ -6,7 +6,7 @@
  */
 
 import { jsonResponse, errorResponse } from '../server';
-import { loadConfig, loadServersConfig, getProjectRoot } from '../../utils/config';
+import { loadConfig, loadServersConfig, getProjectRoot, hasDockflowYml, getComposePath } from '../../utils/config';
 import { getAvailableEnvironments } from '../../utils/servers';
 import { existsSync } from 'fs';
 import { join, basename } from 'path';
@@ -37,17 +37,15 @@ export async function handleProjectRoutes(req: Request): Promise<Response> {
  */
 async function getProjectInfo(): Promise<Response> {
   const projectRoot = getProjectRoot();
-  const dockflowDir = join(projectRoot, '.dockflow');
-  
-  const hasDockflow = existsSync(dockflowDir);
+
   const config = loadConfig({ silent: true });
   const serversConfig = loadServersConfig();
   const environments = getAvailableEnvironments();
-  
-  // Check for various config files
-  const hasConfig = existsSync(join(dockflowDir, 'config.yml'));
-  const hasServers = existsSync(join(dockflowDir, 'servers.yml'));
-  const hasDocker = existsSync(join(dockflowDir, 'docker'));
+
+  const hasDockflow = hasDockflowYml() || existsSync(join(projectRoot, '.dockflow'));
+  const hasConfig = config !== null;
+  const hasServers = serversConfig !== null;
+  const hasDocker = getComposePath() !== null;
   const hasEnvFile = existsSync(join(projectRoot, '.env.dockflow'));
   
   return jsonResponse({

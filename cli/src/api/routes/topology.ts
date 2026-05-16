@@ -133,7 +133,7 @@ async function updateTopology(req: Request): Promise<Response> {
 
     const composePath = getComposePath();
     if (!composePath) {
-      return errorResponse('No docker-compose.yml found in .dockflow/docker/', 404);
+      return errorResponse('No docker-compose.yml found', 404);
     }
 
     // Read the current compose file
