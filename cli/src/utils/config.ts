@@ -366,9 +366,9 @@ export function getComposePath(): string | null {
   const root = getProjectRoot();
 
   if (existsSync(join(root, 'dockflow.yml'))) {
+    // Flat layout: root first, then .dockflow/docker/ as fallback (mixed layout support)
     if (existsSync(join(root, 'docker-compose.yml'))) return join(root, 'docker-compose.yml');
     if (existsSync(join(root, 'docker-compose.yaml'))) return join(root, 'docker-compose.yaml');
-    return null;
   }
 
   const ymlPath = join(root, '.dockflow', 'docker', 'docker-compose.yml');

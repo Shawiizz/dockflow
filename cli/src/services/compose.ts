@@ -297,7 +297,7 @@ export function renderAndResolveCompose(
   if (!originalComposePath) {
     throw new ConfigError(
       'No docker-compose.yml found',
-      'Expected at .dockflow/docker/docker-compose.yml',
+      'Expected at docker-compose.yml or .dockflow/docker/docker-compose.yml',
     );
   }
 
