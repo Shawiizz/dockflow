@@ -24,24 +24,24 @@ export async function deployNginxTemplates(
 
   printInfo(`Deploying ${entries.length} nginx template(s)...`);
 
-  await sshExec(conn, `cp -r ${NGINX_SITES_ENABLED} /tmp/nginx-sites-enabled-backup 2>/dev/null || true`);
+  await sshExec(conn, `sudo cp -r ${NGINX_SITES_ENABLED} /tmp/nginx-sites-enabled-backup 2>/dev/null || true`);
 
   for (const [key, content] of entries) {
     const dest = `${NGINX_SITES_ENABLED}/${basename(key)}`;
-    const handle = await sshExecChannel(conn, `cat > "${dest}"`);
+    const handle = await sshExecChannel(conn, `sudo tee "${dest}" > /dev/null`);
     handle.stream.end(content);
     await handle.done;
   }
 
-  const test = await sshExec(conn, 'nginx -t 2>&1');
+  const test = await sshExec(conn, 'sudo nginx -t 2>&1');
   if (test.exitCode !== 0) {
     await sshExec(conn,
-      `rm -rf ${NGINX_SITES_ENABLED} && cp -r /tmp/nginx-sites-enabled-backup ${NGINX_SITES_ENABLED} 2>/dev/null || true`,
+      `sudo rm -rf ${NGINX_SITES_ENABLED} && sudo cp -r /tmp/nginx-sites-enabled-backup ${NGINX_SITES_ENABLED} 2>/dev/null || true`,
     );
     printWarning(`Nginx config test failed, rolled back:\n${test.stdout || test.stderr}`);
     return;
   }
 
-  await sshExec(conn, 'nginx -s reload');
+  await sshExec(conn, 'sudo nginx -s reload');
   printInfo('Nginx reloaded successfully.');
 }
