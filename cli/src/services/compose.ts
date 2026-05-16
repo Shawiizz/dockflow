@@ -14,7 +14,7 @@ import { join, relative, dirname } from 'path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import nunjucks from 'nunjucks';
 import type { DockflowConfig, ProxyConfig } from '../utils/config';
-import { getProjectRoot, getComposePath, hasDockflowYml } from '../utils/config';
+import { getProjectRoot, getComposePath, getLayout } from '../utils/config';
 import { printDebug, printWarning } from '../utils/output';
 import { ConfigError } from '../utils/errors';
 import { TRAEFIK_NETWORK_NAME } from '../constants';
@@ -232,19 +232,15 @@ export function renderTemplates(
 
   printDebug(`Rendered ${count} file(s) in .dockflow/`);
 
-  if (hasDockflowYml()) {
-    for (const name of ['docker-compose.yml', 'docker-compose.yaml']) {
-      const p = join(projectRoot, name);
-      if (existsSync(p)) {
-        rendered.set(name, njk.renderString(readFileSync(p, 'utf-8'), templateCtx));
-        break;
-      }
-    }
-    for (const name of ['accessories.yml', 'accessories.yaml']) {
-      const p = join(projectRoot, name);
-      if (existsSync(p)) {
-        rendered.set(name, njk.renderString(readFileSync(p, 'utf-8'), templateCtx));
-        break;
+  // In flat layout, root-level compose and accessories are not inside .dockflow/ so
+  // they aren't picked up by the walk above — render them explicitly here.
+  const layout = getLayout();
+  if (layout.type === 'flat') {
+    for (const absPath of [layout.composePath, layout.accessoriesPath]) {
+      if (!absPath) continue;
+      const relPath = relative(projectRoot, absPath).replace(/\\/g, '/');
+      if (!relPath.startsWith('.dockflow/')) {
+        rendered.set(relPath, njk.renderString(readFileSync(absPath, 'utf-8'), templateCtx));
       }
     }
   }

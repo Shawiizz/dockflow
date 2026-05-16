@@ -9,9 +9,7 @@ import { parse as parseYaml } from 'yaml';
 import {
   loadConfig,
   loadServersConfig,
-  getProjectRoot,
-  hasDockflowYml,
-  getComposePath,
+  getLayout,
 } from '../utils/config';
 import { getAvailableEnvironments, getServerNamesForEnvironment } from '../utils/servers';
 import { printSection, printError, printSuccess, printWarning, printDim, printSeparator, printBlank, printJSON, printRaw, colors } from '../utils/output';
@@ -40,13 +38,12 @@ function validateConfigFiles(): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
   const schemaErrors: { config?: ValidationIssue[]; servers?: ValidationIssue[] } = {};
-  const root = getProjectRoot();
-  const flat = hasDockflowYml();
+  const layout = getLayout();
+  const { type: flat, root, configPath, serversPath } = layout;
 
-  if (flat) {
-    const dockflowPath = join(root, 'dockflow.yml');
+  if (flat === 'flat') {
     try {
-      const parsed = parseYaml(readFileSync(dockflowPath, 'utf-8'));
+      const parsed = parseYaml(readFileSync(configPath, 'utf-8'));
 
       const configResult = validateConfigSchema(parsed);
       if (!configResult.success) {
@@ -68,13 +65,11 @@ function validateConfigFiles(): ValidationResult {
       errors.push(`dockflow.yml parse error: ${e}`);
     }
   } else {
-    const deploymentDir = join(root, '.dockflow');
-    if (!existsSync(deploymentDir)) {
+    if (!existsSync(join(root, '.dockflow'))) {
       errors.push('.dockflow directory not found');
       return { valid: false, errors, warnings };
     }
 
-    const configPath = join(deploymentDir, 'config.yml');
     if (!existsSync(configPath)) {
       errors.push('config.yml not found');
     } else {
@@ -95,7 +90,6 @@ function validateConfigFiles(): ValidationResult {
       }
     }
 
-    const serversPath = join(deploymentDir, 'servers.yml');
     if (!existsSync(serversPath)) {
       errors.push('servers.yml not found');
     } else {
@@ -112,7 +106,7 @@ function validateConfigFiles(): ValidationResult {
     }
   }
 
-  if (!getComposePath()) {
+  if (!layout.composePath) {
     warnings.push('docker-compose.yml not found (required for deployment)');
   }
 
@@ -210,21 +204,16 @@ export function registerConfigCommand(program: Command): void {
       printSection('Configuration Files');
       printBlank();
       
-      const root = getProjectRoot();
-      const flatLayout = hasDockflowYml();
-      const composePath = getComposePath();
-      const accRootPath = existsSync(join(root, 'accessories.yml')) ? join(root, 'accessories.yml')
-        : existsSync(join(root, 'accessories.yaml')) ? join(root, 'accessories.yaml')
-        : join(root, '.dockflow', 'docker', 'accessories.yml');
-      const files = flatLayout ? [
-        { name: 'dockflow.yml', path: join(root, 'dockflow.yml') },
+      const { type: layoutType, root, configPath, serversPath, composePath, accessoriesPath } = getLayout();
+      const files = layoutType === 'flat' ? [
+        { name: 'dockflow.yml', path: configPath },
         { name: 'docker-compose.yml', path: composePath ?? join(root, 'docker-compose.yml') },
-        { name: 'accessories.yml', path: accRootPath },
+        { name: 'accessories.yml', path: accessoriesPath ?? join(root, 'accessories.yml') },
       ] : [
-        { name: 'config.yml', path: join(root, '.dockflow', 'config.yml') },
-        { name: 'servers.yml', path: join(root, '.dockflow', 'servers.yml') },
+        { name: 'config.yml', path: configPath },
+        { name: 'servers.yml', path: serversPath },
         { name: 'docker-compose.yml', path: composePath ?? join(root, '.dockflow', 'docker', 'docker-compose.yml') },
-        { name: 'accessories.yml', path: join(root, '.dockflow', 'docker', 'accessories.yml') },
+        { name: 'accessories.yml', path: accessoriesPath ?? join(root, '.dockflow', 'docker', 'accessories.yml') },
       ];
 
       for (const file of files) {
@@ -264,11 +253,11 @@ export function registerConfigCommand(program: Command): void {
       printSection('Configuration Validation');
       printBlank();
 
-      const flat = hasDockflowYml();
+      const { type: layoutType } = getLayout();
 
       // Show schema errors in detail
       if (result.schemaErrors?.config && result.schemaErrors.config.length > 0) {
-        printError(`  ${flat ? 'dockflow.yml' : 'config.yml'} schema errors:`);
+        printError(`  ${layoutType === 'flat' ? 'dockflow.yml' : 'config.yml'} schema errors:`);
         printBlank();
         for (const error of result.schemaErrors.config) {
           printRaw(`    ${colors.error('✗')} ${colors.warning(error.path)}`);
@@ -282,7 +271,7 @@ export function registerConfigCommand(program: Command): void {
       }
 
       if (result.schemaErrors?.servers && result.schemaErrors.servers.length > 0) {
-        printError(`  ${flat ? 'dockflow.yml' : 'servers.yml'} servers schema errors:`);
+        printError(`  ${layoutType === 'flat' ? 'dockflow.yml' : 'servers.yml'} servers schema errors:`);
         printBlank();
         for (const error of result.schemaErrors.servers) {
           printRaw(`    ${colors.error('✗')} ${colors.warning(error.path)}`);
@@ -343,7 +332,7 @@ export function registerConfigCommand(program: Command): void {
     .command('path')
     .description('Show configuration directory path')
     .action(withErrorHandler(async () => {
-      const root = getProjectRoot();
-      printRaw(hasDockflowYml() ? join(root, 'dockflow.yml') : join(root, '.dockflow'));
+      const { type, root, configPath } = getLayout();
+      printRaw(type === 'flat' ? configPath : join(root, '.dockflow'));
     }));
 }

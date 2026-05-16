@@ -17,7 +17,7 @@ import { detectCIEnvironment, parseTagForDeployment, resolveDeployParams } from 
 import { getCurrentBranch } from '../utils/git';
 import { withErrorHandler, ConfigError } from '../utils/errors';
 import { resolveEnvironmentPrefix } from '../utils/validation';
-import { loadConfig, getProjectRoot, hasDockflowYml } from '../utils/config';
+import { loadConfig, getProjectRoot, getLayout } from '../utils/config';
 import { validateConfig as validateConfigSchema, validateServersConfig as validateServersSchema } from '../schemas';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
@@ -40,18 +40,17 @@ interface BuildOptions {
  * Run build — can be called directly or via CLI command
  */
 function quickValidateConfig(): void {
-  const root = getProjectRoot();
+  const layout = getLayout();
 
-  if (hasDockflowYml()) {
-    // Flat layout: dockflow.yml is the single source — loadConfig/loadServersConfig handle validation
-    if (!existsSync(join(root, 'dockflow.yml'))) {
+  if (layout.type === 'flat') {
+    if (!existsSync(layout.configPath)) {
       throw new ConfigError('No dockflow.yml found', 'Run `dockflow init` to initialize the project.');
     }
     return;
   }
 
-  const configPath = join(root, '.dockflow', 'config.yml');
-  const serversPath = join(root, '.dockflow', 'servers.yml');
+  const configPath = layout.configPath;
+  const serversPath = layout.serversPath;
 
   if (!existsSync(configPath)) {
     throw new ConfigError('No .dockflow/config.yml found', 'Run `dockflow init` to initialize the project.');

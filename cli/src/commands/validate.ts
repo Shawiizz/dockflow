@@ -16,11 +16,10 @@ import type { Command } from 'commander';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import {
-  getProjectRoot,
   loadConfig,
   loadServersConfig,
   getComposePath,
-  hasDockflowYml,
+  getLayout,
 } from '../utils/config';
 import {
   printSuccess,
@@ -45,8 +44,9 @@ interface ValidateOptions {
 async function runValidate(options: ValidateOptions): Promise<void> {
   loadSecrets();
 
-  const projectRoot = getProjectRoot();
-  const dockflowDir = join(projectRoot, '.dockflow');
+  const layout = getLayout();
+  const { type: layoutType, root: projectRoot, configPath, serversPath } = layout;
+  const flat = layoutType === 'flat';
 
   printSection('Validating Dockflow configuration');
   printBlank();
@@ -55,9 +55,7 @@ async function runValidate(options: ValidateOptions): Promise<void> {
 
   // ── 1. Project directory ────────────────────────────────────────────────────
 
-  const flatLayout = hasDockflowYml();
-
-  if (!flatLayout && !existsSync(dockflowDir)) {
+  if (!flat && !existsSync(join(projectRoot, '.dockflow'))) {
     printError('No dockflow.yml or .dockflow/ directory found');
     printWarning(`Expected dockflow.yml at: ${projectRoot}`);
     printWarning("Run 'dockflow init' to create a project configuration.");
@@ -67,26 +65,22 @@ async function runValidate(options: ValidateOptions): Promise<void> {
     );
   }
 
-  printInfo(`Project root: ${projectRoot} (${flatLayout ? 'flat layout' : 'standard layout'})`);
+  printInfo(`Project root: ${projectRoot} (${flat ? 'flat layout' : 'standard layout'})`);
   printBlank();
 
   // ── 2. config / dockflow.yml ────────────────────────────────────────────────
 
-  printSection(flatLayout ? 'dockflow.yml' : 'config.yml');
-
-  const configPath = flatLayout
-    ? join(projectRoot, 'dockflow.yml')
-    : join(dockflowDir, 'config.yml');
+  printSection(flat ? 'dockflow.yml' : 'config.yml');
 
   if (!existsSync(configPath)) {
-    printError(`${flatLayout ? 'dockflow.yml' : 'config.yml'} not found`);
+    printError(`${flat ? 'dockflow.yml' : 'config.yml'} not found`);
     hasErrors = true;
   } else {
     const config = loadConfig({ validate: true, silent: false });
     if (!config) {
       hasErrors = true;
     } else {
-      printSuccess(`${flatLayout ? 'dockflow.yml' : 'config.yml'} — OK (project: ${colors.bold(config.project_name)})`);
+      printSuccess(`${flat ? 'dockflow.yml' : 'config.yml'} — OK (project: ${colors.bold(config.project_name)})`);
 
       const features: string[] = [];
       if (config.registry) features.push(`registry (${config.registry.type})`);
@@ -111,10 +105,9 @@ async function runValidate(options: ValidateOptions): Promise<void> {
 
   // ── 3. servers ──────────────────────────────────────────────────────────────
 
-  printSection(flatLayout ? 'servers (from dockflow.yml)' : 'servers.yml');
+  printSection(flat ? 'servers (from dockflow.yml)' : 'servers.yml');
 
-  const serversPath = join(dockflowDir, 'servers.yml');
-  if (!flatLayout && !existsSync(serversPath)) {
+  if (!flat && !existsSync(serversPath)) {
     printError('servers.yml not found');
     hasErrors = true;
   } else {
@@ -136,7 +129,7 @@ async function runValidate(options: ValidateOptions): Promise<void> {
         }
       }
       const envNames = Object.keys(tagMap);
-      printSuccess(`servers.yml — OK (${envNames.length} environment(s): ${envNames.join(', ')})`);
+      printSuccess(`${flat ? 'dockflow.yml' : 'servers.yml'} — OK (${envNames.length} environment(s): ${envNames.join(', ')})`);
 
       // If --env specified, check that env exists
       if (options.env) {

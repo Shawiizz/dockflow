@@ -7,7 +7,9 @@
 
 import {
   getPerformer,
+  getLayout,
 } from '../utils/config';
+import { relative } from 'path';
 import { printWarning } from '../utils/output';
 import { sshExec } from '../utils/ssh';
 import {
@@ -124,8 +126,9 @@ export async function buildAndDistribute(
 export async function deployAccessories(ctx: DeployContext): Promise<void> {
   if (ctx.skipAccessories) return;
 
-  const accessoriesRelPath = ctx.rendered.has('accessories.yml')
-    ? 'accessories.yml'
+  const layout = getLayout();
+  const accessoriesRelPath = layout.accessoriesPath
+    ? relative(layout.root, layout.accessoriesPath).replace(/\\/g, '/')
     : '.dockflow/docker/accessories.yml';
   const accessoriesContent = ctx.rendered.get(accessoriesRelPath);
   if (!accessoriesContent) return;

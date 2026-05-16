@@ -172,6 +172,74 @@ export function getProjectRoot(): string {
   return process.cwd();
 }
 
+/**
+ * Fully resolved layout description — single source of truth for all file paths.
+ * Computed once per process from the filesystem; never construct paths elsewhere.
+ */
+export interface ProjectLayout {
+  /** 'flat'  → dockflow.yml at root; 'standard' → .dockflow/ directory */
+  type: 'flat' | 'standard';
+  root: string;
+  /** Absolute path to the config source (dockflow.yml or .dockflow/config.yml) */
+  configPath: string;
+  /** Absolute path to the servers source (dockflow.yml or .dockflow/servers.yml) */
+  serversPath: string;
+  /** Absolute path to docker-compose file, or null if absent */
+  composePath: string | null;
+  /** Absolute path to accessories.yml file, or null if absent */
+  accessoriesPath: string | null;
+}
+
+let _layoutCache: ProjectLayout | undefined;
+
+/**
+ * Resolve and cache the project layout.
+ * All layout-aware code should call this instead of hasDockflowYml() + manual joins.
+ */
+export function getLayout(): ProjectLayout {
+  if (_layoutCache) return _layoutCache;
+
+  const root = getProjectRoot();
+  const flat = existsSync(join(root, 'dockflow.yml'));
+
+  const composePath = (() => {
+    if (flat) {
+      if (existsSync(join(root, 'docker-compose.yml'))) return join(root, 'docker-compose.yml');
+      if (existsSync(join(root, 'docker-compose.yaml'))) return join(root, 'docker-compose.yaml');
+    }
+    if (existsSync(join(root, '.dockflow', 'docker', 'docker-compose.yml'))) return join(root, '.dockflow', 'docker', 'docker-compose.yml');
+    if (existsSync(join(root, '.dockflow', 'docker', 'docker-compose.yaml'))) return join(root, '.dockflow', 'docker', 'docker-compose.yaml');
+    return null;
+  })();
+
+  const accessoriesPath = (() => {
+    if (flat) {
+      if (existsSync(join(root, 'accessories.yml'))) return join(root, 'accessories.yml');
+      if (existsSync(join(root, 'accessories.yaml'))) return join(root, 'accessories.yaml');
+    }
+    if (existsSync(join(root, '.dockflow', 'docker', 'accessories.yml'))) return join(root, '.dockflow', 'docker', 'accessories.yml');
+    return null;
+  })();
+
+  return (_layoutCache = flat
+    ? {
+        type: 'flat',
+        root,
+        configPath: join(root, 'dockflow.yml'),
+        serversPath: join(root, 'dockflow.yml'),
+        composePath,
+        accessoriesPath,
+      }
+    : {
+        type: 'standard',
+        root,
+        configPath: join(root, '.dockflow', 'config.yml'),
+        serversPath: join(root, '.dockflow', 'servers.yml'),
+        composePath,
+        accessoriesPath,
+      });
+}
+
 // undefined = not yet loaded, null = absent/invalid, RootConfig = loaded and valid
 let _rootConfigCache: RootConfig | null | undefined = undefined;
 
@@ -202,11 +270,14 @@ function loadRootConfig(projectRoot: string): RootConfig | null {
   }
 }
 
-/**
- * Returns true when the project uses dockflow.yml (flat layout layout).
- */
+/** Returns true when the project uses the flat layout (dockflow.yml at root). */
 export function hasDockflowYml(): boolean {
-  return existsSync(join(getProjectRoot(), 'dockflow.yml'));
+  return getLayout().type === 'flat';
+}
+
+/** Returns the absolute path to accessories.yml, or null if absent. */
+export function getAccessoriesPath(): string | null {
+  return getLayout().accessoriesPath;
 }
 
 /**
@@ -231,24 +302,23 @@ export function loadConfig(options: LoadConfigOptions = {}): DockflowConfig | nu
 
   // When content is provided directly (e.g. dockflow config validate), skip file detection
   if (rawContent === undefined) {
-    const projectRoot = getProjectRoot();
-    const rootConfig = loadRootConfig(projectRoot);
-    if (rootConfig) {
-      // Extract the config portion (strip servers fields)
-      const { servers: _s, defaults: _d, env: _e, ...configPart } = rootConfig;
-      return configPart as DockflowConfig;
+    const layout = getLayout();
+    if (layout.type === 'flat') {
+      const rootConfig = loadRootConfig(layout.root);
+      if (rootConfig) {
+        const { servers: _s, defaults: _d, env: _e, ...configPart } = rootConfig;
+        return configPart as DockflowConfig;
+      }
+      return null;
     }
+    if (!existsSync(layout.configPath)) return null;
   }
 
   let content: string;
   if (rawContent !== undefined) {
     content = rawContent;
   } else {
-    const configPath = join(getProjectRoot(), '.dockflow', 'config.yml');
-    if (!existsSync(configPath)) {
-      return null;
-    }
-    content = readFileSync(configPath, 'utf-8');
+    content = readFileSync(getLayout().configPath, 'utf-8');
   }
 
   try {
@@ -282,23 +352,19 @@ export function loadConfig(options: LoadConfigOptions = {}): DockflowConfig | nu
 export function loadServersConfig(options: LoadConfigOptions = {}): ServersConfig | null {
   const { validate = true, silent = false } = options;
 
-  const projectRoot = getProjectRoot();
-  const rootConfig = loadRootConfig(projectRoot);
-  if (rootConfig) {
-    return {
-      servers: rootConfig.servers,
-      defaults: rootConfig.defaults,
-      env: rootConfig.env,
-    } as ServersConfig;
-  }
-
-  const serversPath = join(projectRoot, '.dockflow', 'servers.yml');
-  if (!existsSync(serversPath)) {
+  const layout = getLayout();
+  if (layout.type === 'flat') {
+    const rootConfig = loadRootConfig(layout.root);
+    if (rootConfig) {
+      return { servers: rootConfig.servers, defaults: rootConfig.defaults, env: rootConfig.env } as ServersConfig;
+    }
     return null;
   }
 
+  if (!existsSync(layout.serversPath)) return null;
+
   try {
-    const content = readFileSync(serversPath, 'utf-8');
+    const content = readFileSync(layout.serversPath, 'utf-8');
     const parsed = parseYaml(content);
 
     if (validate) {
@@ -325,9 +391,8 @@ export function loadServersConfig(options: LoadConfigOptions = {}): ServersConfi
  * Check if servers config is available (either via dockflow.yml or servers.yml)
  */
 export function hasServersConfig(): boolean {
-  const projectRoot = getProjectRoot();
-  if (existsSync(join(projectRoot, 'dockflow.yml'))) return true;
-  return existsSync(join(projectRoot, '.dockflow', 'servers.yml'));
+  const layout = getLayout();
+  return layout.type === 'flat' || existsSync(layout.serversPath);
 }
 
 /**
@@ -362,22 +427,9 @@ export function getAccessoriesStackName(env: string): string | null {
  * Otherwise looks in .dockflow/docker/.
  * Returns null if neither exists.
  */
+/** Returns the absolute path to docker-compose.yml, or null if absent. */
 export function getComposePath(): string | null {
-  const root = getProjectRoot();
-
-  if (existsSync(join(root, 'dockflow.yml'))) {
-    // Flat layout: root first, then .dockflow/docker/ as fallback (mixed layout support)
-    if (existsSync(join(root, 'docker-compose.yml'))) return join(root, 'docker-compose.yml');
-    if (existsSync(join(root, 'docker-compose.yaml'))) return join(root, 'docker-compose.yaml');
-  }
-
-  const ymlPath = join(root, '.dockflow', 'docker', 'docker-compose.yml');
-  if (existsSync(ymlPath)) return ymlPath;
-
-  const yamlPath = join(root, '.dockflow', 'docker', 'docker-compose.yaml');
-  if (existsSync(yamlPath)) return yamlPath;
-
-  return null;
+  return getLayout().composePath;
 }
 
 /**
@@ -401,32 +453,23 @@ const CONFIG_KEYS = [
  * Write the deployment config. In flat layout, merges with existing server fields in dockflow.yml.
  */
 export function writeConfig(data: unknown): void {
-  const root = getProjectRoot();
-  if (hasDockflowYml()) {
-    const dockflowPath = join(root, 'dockflow.yml');
-    const existing = parseYaml(readFileSync(dockflowPath, 'utf-8')) as Record<string, unknown>;
-    const serverFields = Object.fromEntries(
-      SERVER_KEYS.filter(k => k in existing).map(k => [k, existing[k]]),
-    );
-    writeFileSync(dockflowPath, stringifyYaml({ ...(data as object), ...serverFields }, { indent: 2 }), 'utf-8');
+  const layout = getLayout();
+  if (layout.type === 'flat') {
+    const existing = parseYaml(readFileSync(layout.configPath, 'utf-8')) as Record<string, unknown>;
+    const serverFields = Object.fromEntries(SERVER_KEYS.filter(k => k in existing).map(k => [k, existing[k]]));
+    writeFileSync(layout.configPath, stringifyYaml({ ...(data as object), ...serverFields }, { indent: 2 }), 'utf-8');
   } else {
-    writeFileSync(join(root, '.dockflow', 'config.yml'), stringifyYaml(data, { indent: 2 }), 'utf-8');
+    writeFileSync(layout.configPath, stringifyYaml(data, { indent: 2 }), 'utf-8');
   }
 }
 
-/**
- * Write the servers config. In flat layout, merges with existing config fields in dockflow.yml.
- */
 export function writeServersConfig(data: unknown): void {
-  const root = getProjectRoot();
-  if (hasDockflowYml()) {
-    const dockflowPath = join(root, 'dockflow.yml');
-    const existing = parseYaml(readFileSync(dockflowPath, 'utf-8')) as Record<string, unknown>;
-    const configFields = Object.fromEntries(
-      CONFIG_KEYS.filter(k => k in existing).map(k => [k, existing[k]]),
-    );
-    writeFileSync(dockflowPath, stringifyYaml({ ...configFields, ...(data as object) }, { indent: 2 }), 'utf-8');
+  const layout = getLayout();
+  if (layout.type === 'flat') {
+    const existing = parseYaml(readFileSync(layout.serversPath, 'utf-8')) as Record<string, unknown>;
+    const configFields = Object.fromEntries(CONFIG_KEYS.filter(k => k in existing).map(k => [k, existing[k]]));
+    writeFileSync(layout.serversPath, stringifyYaml({ ...configFields, ...(data as object) }, { indent: 2 }), 'utf-8');
   } else {
-    writeFileSync(join(root, '.dockflow', 'servers.yml'), stringifyYaml(data, { indent: 2 }), 'utf-8');
+    writeFileSync(layout.serversPath, stringifyYaml(data, { indent: 2 }), 'utf-8');
   }
 }

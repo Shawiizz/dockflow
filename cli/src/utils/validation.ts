@@ -5,7 +5,7 @@
  * returning typed errors instead of exiting the process.
  */
 
-import { loadConfig, getStackName, hasServersConfig, hasDockflowYml, type DockflowConfig } from './config';
+import { loadConfig, getStackName, hasServersConfig, getLayout, type DockflowConfig } from './config';
 import {
   resolveServersForEnvironment,
   getFullConnectionInfo,
@@ -84,11 +84,14 @@ export function validateEnvironment(env: string, serverName?: string): Environme
   loadSecrets();
 
   // Check config exists
+  const layout = getLayout();
+  const flat = layout.type === 'flat';
+
   const config = loadConfig();
   if (!config) {
     return {
       type: ValidationErrorType.CONFIG_NOT_FOUND,
-      message: hasDockflowYml() ? 'dockflow.yml is invalid or missing' : '.dockflow/config.yml not found',
+      message: flat ? 'dockflow.yml is invalid or missing' : '.dockflow/config.yml not found',
       suggestion: 'Run "dockflow init" to create project structure',
     };
   }
@@ -97,8 +100,8 @@ export function validateEnvironment(env: string, serverName?: string): Environme
   if (!hasServersConfig()) {
     return {
       type: ValidationErrorType.SERVERS_NOT_FOUND,
-      message: hasDockflowYml() ? 'No servers defined in dockflow.yml' : '.dockflow/servers.yml not found',
-      suggestion: hasDockflowYml() ? 'Add a servers block to dockflow.yml' : 'Create .dockflow/servers.yml to define your deployment servers',
+      message: flat ? 'No servers defined in dockflow.yml' : '.dockflow/servers.yml not found',
+      suggestion: flat ? 'Add a servers block to dockflow.yml' : 'Create .dockflow/servers.yml to define your deployment servers',
     };
   }
 
@@ -111,7 +114,7 @@ export function validateEnvironment(env: string, serverName?: string): Environme
     return {
       type: ValidationErrorType.PROJECT_NAME_MISSING,
       message: 'project_name not set',
-      suggestion: hasDockflowYml() ? 'Add project_name to your dockflow.yml' : 'Add project_name to your .dockflow/config.yml',
+      suggestion: flat ? 'Add project_name to your dockflow.yml' : 'Add project_name to your .dockflow/config.yml',
     };
   }
 
