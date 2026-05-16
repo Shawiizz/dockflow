@@ -6,10 +6,10 @@
  */
 
 import { jsonResponse, errorResponse } from '../server';
-import { loadConfig, loadServersConfig, getProjectRoot } from '../../utils/config';
+import { loadConfig, loadServersConfig, getProjectRoot, writeConfig, writeServersConfig } from '../../utils/config';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { parse as parseYaml } from 'yaml';
 
 /**
  * Handle /api/config/* routes
@@ -80,39 +80,21 @@ async function getConfig(): Promise<Response> {
 async function updateConfig(req: Request): Promise<Response> {
   try {
     const body = await req.json();
-    const configPath = join(getProjectRoot(), '.dockflow', 'config.yml');
-    
-    if (!existsSync(configPath)) {
-      return errorResponse('No config.yml found', 404);
-    }
-    
-    // Validate the new config
+
     const { validateConfig } = await import('../../schemas');
     const result = validateConfig(body);
-    
     if (!result.success) {
       return jsonResponse({
         success: false,
-        errors: result.error.map((e: { path: string; message: string }) => ({
-          path: e.path,
-          message: e.message,
-        })),
+        errors: result.error.map((e: { path: string; message: string }) => ({ path: e.path, message: e.message })),
       }, 400);
     }
-    
-    // Write the updated config
-    const yamlContent = stringifyYaml(body, { indent: 2 });
-    writeFileSync(configPath, yamlContent, 'utf-8');
-    
-    return jsonResponse({
-      success: true,
-      config: body,
-    });
+
+    writeConfig(body);
+
+    return jsonResponse({ success: true, config: body });
   } catch (error) {
-    return errorResponse(
-      error instanceof Error ? error.message : 'Failed to update config',
-      500
-    );
+    return errorResponse(error instanceof Error ? error.message : 'Failed to update config', 500);
   }
 }
 
@@ -142,29 +124,17 @@ async function getServersConfig(): Promise<Response> {
 async function updateServersConfig(req: Request): Promise<Response> {
   try {
     const body = await req.json();
-    const serversPath = join(getProjectRoot(), '.dockflow', 'servers.yml');
-    
-    if (!existsSync(serversPath)) {
-      return errorResponse('No servers.yml found', 404);
-    }
-    
-    // Validate the new config
+
     const { validateServersConfig } = await import('../../schemas');
     const result = validateServersConfig(body);
-    
     if (!result.success) {
       return jsonResponse({
         success: false,
-        errors: result.error.map((e: { path: string; message: string }) => ({
-          path: e.path,
-          message: e.message,
-        })),
+        errors: result.error.map((e: { path: string; message: string }) => ({ path: e.path, message: e.message })),
       }, 400);
     }
-    
-    // Write the updated config
-    const yamlContent = stringifyYaml(body, { indent: 2 });
-    writeFileSync(serversPath, yamlContent, 'utf-8');
+
+    writeServersConfig(body);
     
     return jsonResponse({
       success: true,

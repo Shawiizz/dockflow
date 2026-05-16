@@ -3,10 +3,10 @@
  * Handles reading config.yml and servers.yml with schema validation
  */
 
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname, parse as parsePath } from 'path';
 import os from 'os';
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { ServersConfig } from '../types';
 import type { BackupDbType } from '../api/types';
 export type { BackupDbType };
@@ -388,4 +388,45 @@ export function getPerformer(): string {
   const user = process.env.USER ?? process.env.USERNAME ?? 'ci';
   const hostname = os.hostname();
   return `${user}@${hostname}`;
+}
+
+const SERVER_KEYS = ['servers', 'defaults', 'env'] as const;
+const CONFIG_KEYS = [
+  'project_name', 'orchestrator', 'container_engine', 'registry', 'proxy',
+  'health_checks', 'stack_management', 'hooks', 'lock', 'notifications', 'backup',
+  'templates', 'accessories', 'options',
+] as const;
+
+/**
+ * Write the deployment config. In flat layout, merges with existing server fields in dockflow.yml.
+ */
+export function writeConfig(data: unknown): void {
+  const root = getProjectRoot();
+  if (hasDockflowYml()) {
+    const dockflowPath = join(root, 'dockflow.yml');
+    const existing = parseYaml(readFileSync(dockflowPath, 'utf-8')) as Record<string, unknown>;
+    const serverFields = Object.fromEntries(
+      SERVER_KEYS.filter(k => k in existing).map(k => [k, existing[k]]),
+    );
+    writeFileSync(dockflowPath, stringifyYaml({ ...(data as object), ...serverFields }, { indent: 2 }), 'utf-8');
+  } else {
+    writeFileSync(join(root, '.dockflow', 'config.yml'), stringifyYaml(data, { indent: 2 }), 'utf-8');
+  }
+}
+
+/**
+ * Write the servers config. In flat layout, merges with existing config fields in dockflow.yml.
+ */
+export function writeServersConfig(data: unknown): void {
+  const root = getProjectRoot();
+  if (hasDockflowYml()) {
+    const dockflowPath = join(root, 'dockflow.yml');
+    const existing = parseYaml(readFileSync(dockflowPath, 'utf-8')) as Record<string, unknown>;
+    const configFields = Object.fromEntries(
+      CONFIG_KEYS.filter(k => k in existing).map(k => [k, existing[k]]),
+    );
+    writeFileSync(dockflowPath, stringifyYaml({ ...configFields, ...(data as object) }, { indent: 2 }), 'utf-8');
+  } else {
+    writeFileSync(join(root, '.dockflow', 'servers.yml'), stringifyYaml(data, { indent: 2 }), 'utf-8');
+  }
 }

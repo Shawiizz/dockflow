@@ -5,7 +5,7 @@
  * returning typed errors instead of exiting the process.
  */
 
-import { loadConfig, getStackName, hasServersConfig, type DockflowConfig } from './config';
+import { loadConfig, getStackName, hasServersConfig, hasDockflowYml, type DockflowConfig } from './config';
 import {
   resolveServersForEnvironment,
   getFullConnectionInfo,
@@ -88,17 +88,17 @@ export function validateEnvironment(env: string, serverName?: string): Environme
   if (!config) {
     return {
       type: ValidationErrorType.CONFIG_NOT_FOUND,
-      message: '.dockflow/config.yml not found',
+      message: hasDockflowYml() ? 'dockflow.yml is invalid or missing' : '.dockflow/config.yml not found',
       suggestion: 'Run "dockflow init" to create project structure',
     };
   }
 
-  // Check servers.yml exists
+  // Check servers config exists
   if (!hasServersConfig()) {
     return {
       type: ValidationErrorType.SERVERS_NOT_FOUND,
-      message: '.dockflow/servers.yml not found',
-      suggestion: 'Create servers.yml to define your deployment servers',
+      message: hasDockflowYml() ? 'No servers defined in dockflow.yml' : '.dockflow/servers.yml not found',
+      suggestion: hasDockflowYml() ? 'Add a servers block to dockflow.yml' : 'Create .dockflow/servers.yml to define your deployment servers',
     };
   }
 
@@ -110,8 +110,8 @@ export function validateEnvironment(env: string, serverName?: string): Environme
   if (!stackName) {
     return {
       type: ValidationErrorType.PROJECT_NAME_MISSING,
-      message: 'project_name not found in config.yml',
-      suggestion: 'Add project_name to your .dockflow/config.yml',
+      message: 'project_name not set',
+      suggestion: hasDockflowYml() ? 'Add project_name to your dockflow.yml' : 'Add project_name to your .dockflow/config.yml',
     };
   }
 

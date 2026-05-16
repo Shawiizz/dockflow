@@ -20,6 +20,7 @@ import {
   loadConfig,
   loadServersConfig,
   getComposePath,
+  hasDockflowYml,
 } from '../utils/config';
 import {
   printSuccess,
@@ -54,36 +55,39 @@ async function runValidate(options: ValidateOptions): Promise<void> {
 
   // ── 1. Project directory ────────────────────────────────────────────────────
 
-  if (!existsSync(dockflowDir)) {
-    printError('.dockflow/ directory not found');
-    printWarning(`Expected at: ${dockflowDir}`);
+  const flatLayout = hasDockflowYml();
+
+  if (!flatLayout && !existsSync(dockflowDir)) {
+    printError('No dockflow.yml or .dockflow/ directory found');
+    printWarning(`Expected dockflow.yml at: ${projectRoot}`);
     printWarning("Run 'dockflow init' to create a project configuration.");
     throw new ValidationError(
-      'No .dockflow/ directory found',
+      'No Dockflow configuration found',
       "Run 'dockflow init' to initialize this project.",
     );
   }
 
-  printInfo(`Project root: ${projectRoot}`);
+  printInfo(`Project root: ${projectRoot} (${flatLayout ? 'flat layout' : 'standard layout'})`);
   printBlank();
 
-  // ── 2. config.yml ───────────────────────────────────────────────────────────
+  // ── 2. config / dockflow.yml ────────────────────────────────────────────────
 
-  printSection('config.yml');
+  printSection(flatLayout ? 'dockflow.yml' : 'config.yml');
 
-  const configPath = join(dockflowDir, 'config.yml');
+  const configPath = flatLayout
+    ? join(projectRoot, 'dockflow.yml')
+    : join(dockflowDir, 'config.yml');
+
   if (!existsSync(configPath)) {
-    printError('config.yml not found');
+    printError(`${flatLayout ? 'dockflow.yml' : 'config.yml'} not found`);
     hasErrors = true;
   } else {
     const config = loadConfig({ validate: true, silent: false });
     if (!config) {
-      // loadConfig already printed the validation errors
       hasErrors = true;
     } else {
-      printSuccess(`config.yml — OK (project: ${colors.bold(config.project_name)})`);
+      printSuccess(`${flatLayout ? 'dockflow.yml' : 'config.yml'} — OK (project: ${colors.bold(config.project_name)})`);
 
-      // Report what's configured
       const features: string[] = [];
       if (config.registry) features.push(`registry (${config.registry.type})`);
       if (config.proxy?.enabled) features.push('proxy (Traefik)');
@@ -105,12 +109,12 @@ async function runValidate(options: ValidateOptions): Promise<void> {
 
   printBlank();
 
-  // ── 3. servers.yml ──────────────────────────────────────────────────────────
+  // ── 3. servers ──────────────────────────────────────────────────────────────
 
-  printSection('servers.yml');
+  printSection(flatLayout ? 'servers (from dockflow.yml)' : 'servers.yml');
 
   const serversPath = join(dockflowDir, 'servers.yml');
-  if (!existsSync(serversPath)) {
+  if (!flatLayout && !existsSync(serversPath)) {
     printError('servers.yml not found');
     hasErrors = true;
   } else {

@@ -243,7 +243,7 @@ export async function runSetupK3s(env: string): Promise<void> {
   // Check servers.yml exists
   if (!hasServersConfig()) {
     throw new CLIError(
-      '.dockflow/servers.yml not found. Create a servers.yml file to define your cluster.',
+      'No servers configuration found. Create dockflow.yml or .dockflow/servers.yml to define your cluster.',
       ErrorCode.CONFIG_NOT_FOUND,
     );
   }

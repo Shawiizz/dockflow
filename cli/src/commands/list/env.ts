@@ -89,7 +89,7 @@ export function registerListEnvCommand(parent: Command): void {
 
       if (environments.length === 0) {
         printError('No environments found');
-        printDim('Create .dockflow/servers.yml to define your environments');
+        printDim('Create dockflow.yml or .dockflow/servers.yml to define your environments');
         printBlank();
         printDim('Example:');
         printDim('  defaults:');
