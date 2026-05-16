@@ -31,6 +31,7 @@ export interface ConvergenceResult {
   converged: boolean;
   rolledBack: boolean;
   timedOut: boolean;
+  errorDetail?: string;
 }
 
 export interface StackMetadata {

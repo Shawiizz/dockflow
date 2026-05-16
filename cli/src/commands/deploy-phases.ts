@@ -183,13 +183,13 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
   if (!convergence.converged) {
     if (convergence.rolledBack) {
       throw new DeployError(
-        'Orchestrator auto-rolled back the deployment',
+        convergence.errorDetail ?? 'Orchestrator auto-rolled back the deployment',
         ErrorCode.HEALTH_CHECK_FAILED,
         'Check service logs to understand why the new version failed.',
       );
     }
     throw new DeployError(
-      'Service convergence timed out',
+      convergence.errorDetail ?? 'Service convergence timed out',
       ErrorCode.DEPLOY_FAILED,
       'Check service logs with `dockflow logs <service>` for details.',
     );

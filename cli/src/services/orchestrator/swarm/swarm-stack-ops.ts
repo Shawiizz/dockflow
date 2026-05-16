@@ -293,6 +293,16 @@ export class SwarmStackOps {
         this.detectFailingFromStates(updateStates);
       } catch (error) {
         spinner.fail('Convergence failed');
+        if (error instanceof DeployError) {
+          const taskErrors = await this.getFailedTaskErrors(stackName).catch(() => '');
+          if (taskErrors) {
+            throw new DeployError(
+              `${error.message}\n\nFailed tasks:\n${taskErrors}`,
+              error.code,
+              error.suggestion,
+            );
+          }
+        }
         throw error;
       }
 
@@ -373,6 +383,28 @@ export class SwarmStackOps {
         'Try `dockflow deploy --force` to force a fresh deployment.',
       );
     }
+  }
+
+  /**
+   * Fetch error messages from recently failed tasks in a stack.
+   * Used to enrich rollback error messages with the actual failure reason.
+   */
+  private async getFailedTaskErrors(stackName: string): Promise<string> {
+    const result = await sshExec(
+      this.connection,
+      `docker stack ps ${stackName} --no-trunc --filter 'desired-state=shutdown' --format '{{.Name}}|{{.Error}}' 2>/dev/null || echo ""`,
+    );
+    const lines = result.stdout.trim().split('\n').filter(Boolean);
+    const errors = lines
+      .map((line) => {
+        const pipe = line.indexOf('|');
+        if (pipe === -1) return null;
+        const name = line.slice(0, pipe).trim();
+        const error = line.slice(pipe + 1).trim();
+        return error ? `  ${name}: ${error}` : null;
+      })
+      .filter((l): l is string => l !== null);
+    return errors.join('\n');
   }
 
   /**

@@ -106,7 +106,7 @@ export class SwarmStackBackend implements StackBackend {
       const msg = e instanceof Error ? e.message : String(e);
       const rolledBack = /rolled back|rollback/i.test(msg);
       const timedOut = /timeout/i.test(msg);
-      return { converged: false, rolledBack, timedOut };
+      return { converged: false, rolledBack, timedOut, errorDetail: msg };
     }
   }
 
