@@ -234,6 +234,7 @@ export function registerSetupCommand(program: Command): void {
         deployUser: user,
         privateKeyPath: keyPath,
         skipDockerInstall: false,
+        installNginx: false,
         portainer: { install: false, port: 9000 }
       }, privateKey);
     }));

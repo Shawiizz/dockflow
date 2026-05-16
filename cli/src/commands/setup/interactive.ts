@@ -210,6 +210,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
       deployPassword,
       privateKeyPath,
       skipDockerInstall: false,
+      installNginx: false,
       portainer: { install: false, port: 9000 }
     }, privateKey);
     
