@@ -92,7 +92,6 @@ export function resolveServersForEnvironment(environment: string): ResolvedServe
     if (!connection) {
       printWarning(`Server "${serverName}" has no host configured and no CI secret found.`);
       printWarning(`  Expected CI secret: ${environment.toUpperCase()}_${serverNameToEnvKey(serverName)}_CONNECTION`);
-      printWarning(`  If this repo is in a GitHub organization, fork the dockflow repository to your organization.`);
       printWarning(`  See: https://dockflow.shawiizz.dev/getting-started#copy-ci-config-file`);
       continue;
     }
