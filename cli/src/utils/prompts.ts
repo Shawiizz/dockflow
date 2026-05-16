@@ -31,7 +31,7 @@ export async function textPrompt(opts: {
 
   const value = await clack.text({
     message: opts.message,
-    placeholder: opts.placeholder,
+    placeholder: opts.placeholder ?? opts.defaultValue,
     defaultValue: opts.defaultValue,
     validate: opts.validate as ((value: string | undefined) => string | Error | undefined) | undefined,
   });
