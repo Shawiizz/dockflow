@@ -9,9 +9,11 @@ import {
   getPerformer,
   getLayout,
 } from '../utils/config';
-import { relative } from 'path';
-import { printWarning } from '../utils/output';
-import { sshExec } from '../utils/ssh';
+import { readFileSync, existsSync, statSync } from 'fs';
+import { resolve, join, relative, dirname, basename } from 'path';
+import { walkDir } from '../utils/fs';
+import { printDim, printWarning } from '../utils/output';
+import { sshExec, sshExecChannel } from '../utils/ssh';
 import {
   DeployError,
   ErrorCode,
@@ -41,6 +43,58 @@ export async function detectContainerEngine(
   if (configEngine) return configEngine;
   const podman = await sshExec(conn, 'which podman 2>/dev/null');
   return podman.exitCode === 0 ? 'podman' : 'docker';
+}
+
+// ---------------------------------------------------------------------------
+// Phase: Upload files to remote server
+// ---------------------------------------------------------------------------
+
+export async function uploadFiles(ctx: DeployContext): Promise<void> {
+  const uploads = ctx.config.upload;
+  if (!uploads || uploads.length === 0) return;
+
+  const allConns = [ctx.managerConn, ...ctx.workerConns.map(w => w.connection)];
+
+  for (const upload of uploads) {
+    const srcAbs = resolve(ctx.projectRoot, upload.src);
+
+    if (!existsSync(srcAbs)) {
+      printWarning(`upload: source not found, skipping: ${upload.src}`);
+      continue;
+    }
+
+    const isDir = statSync(srcAbs).isDirectory();
+    const files = isDir ? walkDir(srcAbs) : [srcAbs];
+    const baseDir = isDir ? srcAbs : dirname(srcAbs);
+    const destBase = upload.dest.replace(/\/$/, '');
+
+    for (const file of files) {
+      const relPath = relative(baseDir, file).replace(/\\/g, '/');
+      // For a single file: if dest ends with '/', treat it as a directory → append filename
+      const destPath = isDir
+        ? `${destBase}/${relPath}`
+        : upload.dest.endsWith('/')
+          ? `${destBase}/${basename(file)}`
+          : upload.dest;
+
+      const fileContent = readFileSync(file);
+
+      await Promise.all(allConns.map(async conn => {
+        await sshExec(conn, `mkdir -p '${dirname(destPath)}'`);
+        const { stream, done } = await sshExecChannel(conn, `cat > '${destPath}'`);
+        stream.end(fileContent);
+        const result = await done;
+        if (result.exitCode !== 0) {
+          throw new DeployError(
+            `upload: failed to transfer ${upload.src} → ${destPath}: ${result.stderr.trim()}`,
+            ErrorCode.DEPLOY_FAILED,
+          );
+        }
+      }));
+
+      printDim(`upload: ${upload.src}${isDir ? '/' + relPath : ''} → ${destPath}`);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

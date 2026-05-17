@@ -135,6 +135,11 @@ export interface NotificationsConfig {
   webhooks?: WebhookConfig[];
 }
 
+export interface UploadItem {
+  src: string;
+  dest: string;
+}
+
 export interface DockflowConfig {
   project_name: string;
   orchestrator?: 'swarm' | 'k3s';
@@ -150,6 +155,7 @@ export interface DockflowConfig {
   accessories?: Record<string, AccessoryConfig>;
   proxy?: ProxyConfig;
   notifications?: NotificationsConfig;
+  upload?: UploadItem[];
 }
 
 /**

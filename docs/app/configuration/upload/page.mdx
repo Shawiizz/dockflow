@@ -1,0 +1,114 @@
+# File Uploads
+
+import { Callout, FileTree, Steps } from 'nextra/components'
+
+Transfer local files or directories to your servers before each deployment. Useful for configuration files that services reference via bind mounts.
+
+## Minimal example
+
+```yaml
+# .dockflow/config.yml
+upload:
+  - src: .dockflow/docker/mosquitto/
+    dest: /opt/dockflow/mqtt/
+```
+
+Then reference the absolute path in your compose file:
+
+```yaml
+# docker-compose.yml
+services:
+  mqtt:
+    volumes:
+      - /opt/dockflow/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf
+```
+
+## Options
+
+| Field | Type | Description | Required |
+|-------|------|-------------|---------|
+| `src` | `string` | Local path relative to the project root (file or directory) | Yes |
+| `dest` | `string` | Absolute destination path on the remote server | Yes |
+
+`dest` must start with `/`. If `src` is a directory, `dest` is used as the destination directory and the relative structure is preserved.
+
+## How it works
+
+<Steps>
+### Resolve paths
+Each `src` is resolved relative to your project root. If the source does not exist, a warning is printed and the entry is skipped.
+
+### Collect files
+If `src` is a directory, all files are collected recursively. If it is a file, only that file is transferred.
+
+### Transfer to all nodes
+Files are transferred to the manager **and all worker nodes** in parallel, so bind mounts work regardless of which node runs the container.
+
+### Deploy
+The stack is deployed after all transfers complete.
+</Steps>
+
+## Single file vs directory
+
+```yaml
+upload:
+  # Single file → transferred to exact dest path
+  - src: .dockflow/docker/nginx/nginx.conf
+    dest: /opt/dockflow/nginx/nginx.conf
+
+  # Directory → dest is the target directory, structure preserved
+  - src: .dockflow/docker/mosquitto/
+    dest: /opt/dockflow/mqtt/
+    # result: /opt/dockflow/mqtt/mosquitto.conf
+    #         /opt/dockflow/mqtt/certs/ca.crt
+    #         etc.
+```
+
+If `dest` ends with `/` for a single file, the filename is preserved:
+
+```yaml
+upload:
+  - src: .dockflow/docker/mosquitto.conf
+    dest: /opt/dockflow/mqtt/   # → /opt/dockflow/mqtt/mosquitto.conf
+```
+
+<Callout type="warning">
+  Files are uploaded on every deployment, even if unchanged. Avoid putting large files in `upload` — bake them into the Docker image instead.
+</Callout>
+
+<Callout type="info">
+  File permissions are not preserved (files are created with the server's default umask). If a service requires specific permissions (e.g., `640` for `mosquitto_passwd`), add a `post-deploy` hook that runs `chmod`.
+</Callout>
+
+## Full example
+
+```yaml
+# .dockflow/config.yml
+project_name: my-app
+
+upload:
+  - src: .dockflow/docker/mosquitto/
+    dest: /opt/dockflow/mqtt/
+  - src: .dockflow/docker/prometheus.yml
+    dest: /opt/dockflow/monitoring/prometheus.yml
+```
+
+```yaml
+# docker-compose.yml
+services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    volumes:
+      - /opt/dockflow/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - /opt/dockflow/mqtt/passwd:/mosquitto/config/passwd
+
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - /opt/dockflow/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+```
+
+## See also
+
+- [Templates](/configuration/templates) — use `{{ current.env.xxx }}` inside transferred files via Nunjucks rendering
+- [Hooks](/configuration/hooks) — run `chmod` or other post-transfer commands with a `post-deploy` hook

@@ -46,6 +46,7 @@ const structure: PageEntry[] = [
       { slug: 'registry', title: 'Docker Registry', path: 'configuration/registry' },
       { slug: 'container-engine', title: 'Container Engine', path: 'configuration/container-engine' },
       { slug: 'templates', title: 'Templates', path: 'configuration/templates' },
+      { slug: 'upload', title: 'File Uploads', path: 'configuration/upload' },
       { slug: 'hooks', title: 'Hooks', path: 'configuration/hooks' },
       { slug: 'multi-host', title: 'Multi-Host Deployment', path: 'configuration/multi-host' },
       { slug: 'config-file', title: 'Configuration File', path: 'configuration/config-file' },

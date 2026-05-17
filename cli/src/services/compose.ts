@@ -9,8 +9,9 @@
  * written to disk. Returns a Map<relativePath, renderedContent>.
  */
 
-import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { join, relative, dirname } from 'path';
+import { walkDir } from '../utils/fs';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import nunjucks from 'nunjucks';
 import type { DockflowConfig, ProxyConfig } from '../utils/config';
@@ -84,23 +85,6 @@ const DEFAULT_RESTART_POLICY: Record<string, unknown> = {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
-/** Recursively walk a directory and return all file paths. */
-function walkDir(dir: string): string[] {
-  const results: string[] = [];
-  if (!existsSync(dir)) return results;
-
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    const stat = statSync(full);
-    if (stat.isDirectory()) {
-      results.push(...walkDir(full));
-    } else {
-      results.push(full);
-    }
-  }
-  return results;
-}
 
 /**
  * Deep merge `source` into `target`.

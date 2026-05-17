@@ -294,6 +294,17 @@ export const NotificationsConfigSchema = z.object({
 const PROJECT_NAME_REGEX = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
 
 /**
+ * Extras — files/directories to transfer to the remote server before deploying.
+ * Useful for config files referenced as bind mounts in docker-compose volumes.
+ */
+export const UploadItemSchema = z.object({
+  src: z.string().describe('Local path relative to project root (file or directory)'),
+  dest: z.string()
+    .refine(v => v.startsWith('/'), { message: 'dest must be an absolute path (starting with /)' })
+    .describe('Absolute destination path on the remote server'),
+});
+
+/**
  * Accessory service configuration schema
  */
 export const AccessoryConfigSchema = z.object({
@@ -368,5 +379,10 @@ export const DockflowConfigSchema = z.object({
 
   notifications: NotificationsConfigSchema.optional().describe(
     'Post-deployment notification webhooks'
+  ),
+
+  upload: z.array(UploadItemSchema).optional().describe(
+    'Files or directories to transfer to the remote server before deploying. ' +
+    'Useful for config files referenced as bind mounts in docker-compose volumes.'
   ),
 });

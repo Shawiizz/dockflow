@@ -32,6 +32,8 @@ export interface BuildTarget {
   platform?: string;
   /** Container engine to use for building ('docker' or 'podman') */
   engine?: 'docker' | 'podman';
+  /** Build-time variables passed via --build-arg (values already resolved from secrets) */
+  args?: Record<string, string>;
 }
 
 export interface BuildResult {
@@ -188,11 +190,29 @@ export function getBuildTargets(
       ? resolve(resolvedContext, dockerfile)
       : resolve(basePath, dockerfile);
 
+    // Extract build args — supports both object ({ KEY: value }) and array (["KEY=value"]) formats
+    let args: Record<string, string> | undefined;
+    if (typeof build === 'object' && !Array.isArray(build)) {
+      const rawArgs = (build as Record<string, unknown>).args;
+      if (rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs)) {
+        args = Object.fromEntries(
+          Object.entries(rawArgs as Record<string, unknown>).map(([k, v]) => [k, String(v ?? '')]),
+        );
+      } else if (Array.isArray(rawArgs)) {
+        args = {};
+        for (const item of rawArgs as string[]) {
+          const eq = item.indexOf('=');
+          if (eq !== -1) args[item.slice(0, eq)] = item.slice(eq + 1);
+        }
+      }
+    }
+
     targets.push({
       dockerfile,
       dockerfileAbsPath: resolvedDockerfile,
       context: resolvedContext,
       tag,
+      ...(args ? { args } : {}),
     });
   }
 
@@ -209,6 +229,11 @@ export async function buildImage(target: BuildTarget): Promise<void> {
   const args = [cmd, 'build', '--progress=plain'];
   if (target.platform) {
     args.push('--platform', target.platform);
+  }
+  if (target.args) {
+    for (const [key, value] of Object.entries(target.args)) {
+      args.push('--build-arg', `${key}=${value}`);
+    }
   }
   args.push('-f', target.dockerfile, '-t', target.tag, '-');
 
@@ -430,9 +455,13 @@ export async function buildRemote(
 
       const remoteEngine = target.engine || 'docker';
 
+      const buildArgStr = target.args
+        ? Object.entries(target.args).map(([k, v]) => `--build-arg '${shellEscape(`${k}=${v}`)}'`).join(' ')
+        : '';
+
       const buildResult = await sshExec(
         connection,
-        `${remoteEngine} build -f '${eDockerfile}' -t '${eTag}' '${eContext}' 2>&1`,
+        `${remoteEngine} build${buildArgStr ? ` ${buildArgStr}` : ''} -f '${eDockerfile}' -t '${eTag}' '${eContext}' 2>&1`,
       );
 
       if (buildResult.exitCode !== 0) {

@@ -8,6 +8,7 @@ export default {
   'container-engine': 'Container Engine',
   accessories: 'Accessories',
   backup: 'Backup & Restore',
+  upload: 'File Uploads',
   hooks: 'Hooks',
   templates: 'Templates',
   'multi-host': 'Multi-Node Deployment',

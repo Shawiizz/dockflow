@@ -56,7 +56,7 @@ import { Metrics } from '../services/metrics';
 import * as Notification from '../services/notification';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
-import { buildAndDistribute, deployAccessories, deployApp, recordHistory } from './deploy-phases';
+import { buildAndDistribute, uploadFiles, deployAccessories, deployApp, recordHistory } from './deploy-phases';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -267,6 +267,8 @@ async function execute(
     Compose.updateImageTags(compose, ctx.config, ctx.env, ctx.deployVersion, ctx.options.services);
 
     await buildAndDistribute(ctx, compose);
+
+    await uploadFiles(ctx);
 
     await Promise.all([
       ctx.releases.createRelease(ctx.stackName, ctx.deployVersion, Compose.serialize(compose), {

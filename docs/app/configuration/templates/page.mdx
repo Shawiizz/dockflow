@@ -107,6 +107,23 @@ All servers in the current environment, keyed by name. Each server has the same 
 | `{{ cluster.managers }}` | List of manager IPs | `['192.168.1.10']` |
 | `{{ cluster.workers }}` | List of worker IPs | `['192.168.1.11', '192.168.1.12']` |
 
+### Docker build args
+
+Template variables also work inside `build.args` in your `docker-compose.yml`. Since the compose file is rendered before the build runs, the values are already resolved when `docker build` executes:
+
+```yaml
+services:
+  api:
+    build:
+      args:
+        SENTRY_DSN: "{{ current.env.sentry_dsn }}"
+        APP_VERSION: "{{ version }}"
+```
+
+<Callout type="warning">
+  Build args are visible in `docker history`. Use them for non-sensitive config (URLs, versions, feature flags). For secrets that must not appear in image layers, inject them at **runtime** via `environment:` instead.
+</Callout>
+
 ## Template Syntax
 
 ### Conditionals
