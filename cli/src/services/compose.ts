@@ -371,6 +371,7 @@ export function updateImageTags(
   config: DockflowConfig,
   env: string,
   version: string,
+  servicesFilter?: string,
 ): void {
   const autoTag = config.options?.image_auto_tag !== false;
   const useRegistry = config.registry?.enabled === true;
@@ -379,10 +380,14 @@ export function updateImageTags(
   const registryPrefix = registryNs
     ? `${registryUrl}/${registryNs}`
     : registryUrl;
+  const filterSet = servicesFilter
+    ? new Set(servicesFilter.split(',').map(s => s.trim()))
+    : null;
 
   for (const [name, svc] of Object.entries(compose.services)) {
     const originalImage = svc.image as string | undefined;
     if (!originalImage) continue;
+    if (filterSet && !filterSet.has(name)) continue;
 
     let newImage: string;
 

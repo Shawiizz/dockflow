@@ -250,7 +250,21 @@ async function execute(
 
   try {
     const compose = Compose.loadFromString(ctx.composeContent);
-    Compose.updateImageTags(compose, ctx.config, ctx.env, ctx.deployVersion);
+
+    if (ctx.options.services) {
+      const filterSet = new Set(ctx.options.services.split(',').map((s: string) => s.trim()));
+      const composeServiceNames = Object.keys(compose.services);
+      const unknown = [...filterSet].filter(s => !composeServiceNames.includes(s));
+      if (unknown.length > 0) {
+        throw new DeployError(
+          `Unknown service(s): ${unknown.join(', ')}. Available: ${composeServiceNames.join(', ')}`,
+          ErrorCode.VALIDATION_FAILED,
+          'Use the exact service names defined in your docker-compose file.',
+        );
+      }
+    }
+
+    Compose.updateImageTags(compose, ctx.config, ctx.env, ctx.deployVersion, ctx.options.services);
 
     await buildAndDistribute(ctx, compose);
 
