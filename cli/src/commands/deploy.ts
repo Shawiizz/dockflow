@@ -56,7 +56,8 @@ import { Metrics } from '../services/metrics';
 import * as Notification from '../services/notification';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
-import { buildAndDistribute, uploadFiles, deployAccessories, deployApp, recordHistory } from './deploy-phases';
+import { buildAndDistribute, uploadFiles, rollbackUploads, commitUploads, deployAccessories, deployApp, recordHistory } from './deploy-phases';
+import type { UploadRollbackPlan } from './deploy-phases';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -246,6 +247,7 @@ async function execute(
   const startTime = Date.now();
   let deployFailed = false;
   let stackDeployed = false;
+  let uploadPlan: UploadRollbackPlan | null = null;
   let auditMessage = `Deploy ${ctx.deployVersion} to ${ctx.env}`;
 
   try {
@@ -268,7 +270,7 @@ async function execute(
 
     await buildAndDistribute(ctx, compose);
 
-    await uploadFiles(ctx);
+    uploadPlan = await uploadFiles(ctx);
 
     await Promise.all([
       ctx.releases.createRelease(ctx.stackName, ctx.deployVersion, Compose.serialize(compose), {
@@ -282,12 +284,19 @@ async function execute(
     await deployApp(ctx, compose);
     stackDeployed = ctx.deployApp !== false;
 
-    await ctx.releases.cleanupOldReleases(ctx.stackName, ctx.config);
+    await Promise.all([
+      ctx.releases.cleanupOldReleases(ctx.stackName, ctx.config),
+      commitUploads(uploadPlan).catch((e) => printWarning(`Upload commit failed: ${e instanceof Error ? e.message : String(e)}`)),
+    ]);
     auditMessage = `Deployed ${ctx.deployVersion} to ${ctx.env} successfully`;
   } catch (err) {
     deployFailed = true;
     auditMessage = `Deploy ${ctx.deployVersion} to ${ctx.env} failed: ${err instanceof Error ? err.message : String(err)}`;
     await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion).catch(() => {});
+
+    if (uploadPlan) {
+      await rollbackUploads(uploadPlan).catch((e) => printWarning(`Upload rollback failed: ${e instanceof Error ? e.message : String(e)}`));
+    }
 
     if (stackDeployed && ctx.config.health_checks?.on_failure === 'rollback') {
       try { printWarning(`Rolled back to ${await ctx.releases.rollback(ctx.stackName, ctx.orchestrator)}`); }

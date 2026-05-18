@@ -23,6 +23,7 @@ export const DOCKFLOW_AUDIT_DIR = '/var/lib/dockflow/audit';
 export const DOCKFLOW_METRICS_DIR = '/var/lib/dockflow/metrics';
 export const DOCKFLOW_BACKUPS_DIR = '/var/lib/dockflow/backups';
 export const DOCKFLOW_ACCESSORIES_DIR = '/var/lib/dockflow/accessories';
+export const DOCKFLOW_UPLOAD_BACKUPS_DIR = '/var/lib/dockflow/upload-backups';
 export const NGINX_SITES_ENABLED = '/etc/nginx/sites-enabled';
 
 /**

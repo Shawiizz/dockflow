@@ -29,7 +29,7 @@ import * as Distribution from '../services/distribution';
 import type { ContainerRuntime } from '../services/distribution';
 import * as Hook from '../services/hook';
 import * as Nginx from '../services/nginx';
-import { CONVERGENCE_TIMEOUT_S, CONVERGENCE_INTERVAL_S } from '../constants';
+import { CONVERGENCE_TIMEOUT_S, CONVERGENCE_INTERVAL_S, DOCKFLOW_UPLOAD_BACKUPS_DIR } from '../constants';
 import type { DeployContext } from './deploy-context';
 
 // ---------------------------------------------------------------------------
@@ -49,11 +49,28 @@ export async function detectContainerEngine(
 // Phase: Upload files to remote server
 // ---------------------------------------------------------------------------
 
-export async function uploadFiles(ctx: DeployContext): Promise<void> {
-  const uploads = ctx.config.upload;
-  if (!uploads || uploads.length === 0) return;
+export interface HostUploadState {
+  conn: SSHKeyConnection;
+  backedUp: string[];
+  created: string[];
+}
 
+export interface UploadRollbackPlan {
+  hosts: HostUploadState[];
+  backupBaseDir: string;
+}
+
+export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPlan> {
+  const uploads = ctx.config.upload;
   const allConns = [ctx.managerConn, ...ctx.workerConns.map(w => w.connection)];
+  const backupBaseDir = `${DOCKFLOW_UPLOAD_BACKUPS_DIR}/${ctx.stackName}/${ctx.deployVersion}`;
+
+  const plan: UploadRollbackPlan = {
+    hosts: allConns.map(conn => ({ conn, backedUp: [], created: [] })),
+    backupBaseDir,
+  };
+
+  if (!uploads || uploads.length === 0) return plan;
 
   for (const upload of uploads) {
     const srcAbs = resolve(ctx.projectRoot, upload.src);
@@ -70,23 +87,40 @@ export async function uploadFiles(ctx: DeployContext): Promise<void> {
 
     for (const file of files) {
       const relPath = relative(baseDir, file).replace(/\\/g, '/');
-      // For a single file: if dest ends with '/', treat it as a directory → append filename
       const destPath = isDir
         ? `${destBase}/${relPath}`
         : upload.dest.endsWith('/')
           ? `${destBase}/${basename(file)}`
           : upload.dest;
 
+      // destPath stripped of leading slash to use as relative path under backupBaseDir
+      const destRelative = destPath.replace(/^\//, '');
+      const backupPath = `${backupBaseDir}/${destRelative}`;
       const fileContent = readFileSync(file);
 
-      await Promise.all(allConns.map(async conn => {
+      await Promise.all(plan.hosts.map(async hostState => {
+        const { conn } = hostState;
+
+        // Backup existing file before overwriting
+        await sshExec(conn, `mkdir -p '${dirname(backupPath)}'`);
+        const backupResult = await sshExec(conn,
+          `if test -f '${destPath}'; then cp '${destPath}' '${backupPath}' && echo existed; else echo missing; fi`,
+        );
+        if (backupResult.stdout.trim() === 'existed') {
+          hostState.backedUp.push(destPath);
+        } else {
+          hostState.created.push(destPath);
+        }
+
+        // Upload new file
         await sshExec(conn, `mkdir -p '${dirname(destPath)}'`);
         const { stream, done } = await sshExecChannel(conn, `cat > '${destPath}'`);
         stream.end(fileContent);
         const result = await done;
         if (result.exitCode !== 0) {
+          const detail = (result.stderr.trim() || result.stdout.trim()) || `exit code ${result.exitCode}`;
           throw new DeployError(
-            `upload: failed to transfer ${upload.src} → ${destPath}: ${result.stderr.trim()}`,
+            `upload: failed to transfer ${upload.src} → ${destPath}: ${detail}`,
             ErrorCode.DEPLOY_FAILED,
           );
         }
@@ -95,6 +129,28 @@ export async function uploadFiles(ctx: DeployContext): Promise<void> {
       printDim(`upload: ${upload.src}${isDir ? '/' + relPath : ''} → ${destPath}`);
     }
   }
+
+  return plan;
+}
+
+export async function rollbackUploads(plan: UploadRollbackPlan): Promise<void> {
+  await Promise.all(plan.hosts.map(async ({ conn, backedUp, created }) => {
+    for (const destPath of backedUp) {
+      const destRelative = destPath.replace(/^\//, '');
+      const backupPath = `${plan.backupBaseDir}/${destRelative}`;
+      await sshExec(conn, `mv '${backupPath}' '${destPath}'`);
+    }
+    for (const destPath of created) {
+      await sshExec(conn, `rm -f '${destPath}'`);
+    }
+    await sshExec(conn, `rm -rf '${plan.backupBaseDir}'`);
+  }));
+}
+
+export async function commitUploads(plan: UploadRollbackPlan): Promise<void> {
+  await Promise.all(plan.hosts.map(({ conn }) =>
+    sshExec(conn, `rm -rf '${plan.backupBaseDir}'`),
+  ));
 }
 
 // ---------------------------------------------------------------------------

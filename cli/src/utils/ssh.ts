@@ -556,8 +556,8 @@ export async function executePtySSH(
 export interface SSHChannelHandle {
   /** The raw SSH channel — writable stdin, readable stdout */
   stream: ClientChannel;
-  /** Resolves when the channel closes. stderr is collected. */
-  done: Promise<{ exitCode: number; stderr: string }>;
+  /** Resolves when the channel closes. stdout and stderr are collected. */
+  done: Promise<{ exitCode: number; stdout: string; stderr: string }>;
 }
 
 /**
@@ -584,12 +584,16 @@ function openChannelOnClient(
         return;
       }
 
+      let stdout = '';
       let stderr = '';
+      stream.on('data', (data: Buffer) => {
+        stdout += data.toString();
+      });
       stream.stderr.on('data', (data: Buffer) => {
         stderr += data.toString();
       });
 
-      const done = new Promise<{ exitCode: number; stderr: string }>(
+      const done = new Promise<{ exitCode: number; stdout: string; stderr: string }>(
         (resolveDone) => {
           // Bun's ssh2 streams may not emit 'close' after stream.end(),
           // but 'exit' always fires. Use whichever comes first.
@@ -597,7 +601,7 @@ function openChannelOnClient(
           const finish = (code: number) => {
             if (resolved) return;
             resolved = true;
-            resolveDone({ exitCode: code ?? 0, stderr });
+            resolveDone({ exitCode: code ?? 0, stdout, stderr });
           };
           stream.on('exit', finish);
           stream.on('close', finish);
