@@ -45,7 +45,7 @@ import {
   withErrorHandler,
 } from '../utils/errors';
 import { displayDeployDryRun } from './deploy-dry-run';
-import type { SSHKeyConnection } from '../types';
+import type { ClusterNode, SSHKeyConnection } from '../types';
 
 import * as Compose from '../services/compose';
 import { createStackBackend, createProxyBackend } from '../services/orchestrator/factory';
@@ -151,17 +151,22 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
     }
   }
 
-  // Build SSH connections
-  const managerConn = buildConnection(env, manager.name, manager.host, manager.port, manager.user);
-
-  const workerConns = workers.map((w) => ({ connection: buildConnection(env, w.name, w.host, w.port, w.user), name: w.name }));
-
-  const otherManagerConns: SSHKeyConnection[] = [];
+  // Build cluster
+  const managerNode: ClusterNode = {
+    connection: buildConnection(env, manager.name, manager.host, manager.port, manager.user),
+    name: manager.name,
+  };
+  const workerNodes: ClusterNode[] = workers.map((w) => ({
+    connection: buildConnection(env, w.name, w.host, w.port, w.user),
+    name: w.name,
+  }));
+  const otherManagerNodes: ClusterNode[] = [];
   for (const m of managers) {
     if (m.name === manager.name) continue;
-    try { otherManagerConns.push(buildConnection(env, m.name, m.host, m.port, m.user)); }
+    try { otherManagerNodes.push({ connection: buildConnection(env, m.name, m.host, m.port, m.user), name: m.name }); }
     catch { printWarning(`History sync: no SSH key for ${m.name}`); }
   }
+  const cluster = { manager: managerNode, workers: workerNodes, otherManagers: otherManagerNodes };
 
   // Version resolution
   const branchName = options.branch || getCurrentBranch();
@@ -172,7 +177,7 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   } else {
     const versionSpinner = createSpinner();
     versionSpinner.start('Fetching latest deployed version...');
-    const connectionString = Buffer.from(JSON.stringify(managerConn)).toString('base64');
+    const connectionString = Buffer.from(JSON.stringify(cluster.manager.connection)).toString('base64');
     const latestVersion = await getLatestVersion(connectionString, config.project_name || 'app', env, !!options.debug);
     if (latestVersion) {
       deployVersion = incrementVersion(latestVersion);
@@ -216,9 +221,10 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
 
   // Build context
   const orchType = config.orchestrator ?? 'swarm';
+  const managerConn = cluster.manager.connection;
   const ctx: DeployContext = {
     env, config, stackName, branchName, deployVersion, projectRoot,
-    managerConn, workerConns, otherManagerConns,
+    cluster,
     deployApp: shouldDeployApp, forceAccessories, skipAccessories,
     options, rendered, composeContent, composeDirPath,
     orchestrator: createStackBackend(orchType, managerConn),
@@ -229,18 +235,14 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
     metrics: new Metrics(managerConn),
   };
 
-  return { ctx, managers, workers };
+  return { ctx };
 }
 
 // ---------------------------------------------------------------------------
 // Execute — lock, phases, rollback, audit, unlock
 // ---------------------------------------------------------------------------
 
-async function execute(
-  ctx: DeployContext,
-  managers: Array<{ name: string; host: string; port: number; user: string }>,
-  workers: Array<{ name: string; host: string; port: number; user: string }>,
-): Promise<void> {
+async function execute(ctx: DeployContext): Promise<void> {
   const lockResult = await ctx.lock.acquire({ version: ctx.deployVersion, force: ctx.options.force, message: `Deploy ${ctx.deployVersion}` });
   if (!lockResult.success) throw new DeployError(lockResult.error.message, ErrorCode.DEPLOY_LOCKED);
 
@@ -307,7 +309,7 @@ async function execute(
     const durationMs = Date.now() - startTime;
     const status = deployFailed ? 'failed' : 'success';
 
-    await recordHistory(ctx, status, durationMs, auditMessage, workers);
+    await recordHistory(ctx, status, durationMs, auditMessage);
     await Notification.notify(ctx.config.notifications?.webhooks, {
       project: ctx.config.project_name, env: ctx.env, version: ctx.deployVersion,
       branch: ctx.branchName, performer: getPerformer(), status, duration_ms: durationMs, message: auditMessage,
@@ -315,10 +317,12 @@ async function execute(
     await ctx.lock.release().catch((e) => printWarning(`Lock release failed: ${e instanceof Error ? e.message : String(e)}`));
   }
 
-  const totalNodes = managers.length + workers.length;
+  const managerCount = 1 + ctx.cluster.otherManagers.length;
+  const workerCount = ctx.cluster.workers.length;
+  const totalNodes = managerCount + workerCount;
   printBlank();
   printSuccess(totalNodes > 1
-    ? `Deployment completed! Cluster: ${managers.length} manager(s) + ${workers.length} worker(s)`
+    ? `Deployment completed! Cluster: ${managerCount} manager(s) + ${workerCount} worker(s)`
     : 'Deployment completed!');
 }
 
@@ -330,7 +334,7 @@ export async function runDeploy(env: string | undefined, version: string | undef
   if (options.debug) setVerbose(true);
   const setup = await resolveSetup(env, version, options);
   if (!setup) return;
-  await execute(setup.ctx, setup.managers, setup.workers);
+  await execute(setup.ctx);
 }
 
 export function registerDeployCommand(program: Command): void {

@@ -3,7 +3,7 @@
  */
 
 import type { DockflowConfig } from '../utils/config';
-import type { SSHKeyConnection } from '../types';
+import type { ClusterConnection } from '../types';
 import type { RenderedFiles } from '../services/compose';
 import type { StackBackend, ProxyBackend } from '../services/orchestrator/interfaces';
 import type { Release } from '../services/release';
@@ -32,9 +32,7 @@ export interface DeployContext {
   deployVersion: string;
   projectRoot: string;
 
-  managerConn: SSHKeyConnection;
-  workerConns: Array<{ connection: SSHKeyConnection; name: string }>;
-  otherManagerConns: SSHKeyConnection[];
+  cluster: ClusterConnection;
 
   deployApp: boolean;
   forceAccessories: boolean;

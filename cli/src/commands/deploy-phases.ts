@@ -18,7 +18,7 @@ import {
   DeployError,
   ErrorCode,
 } from '../utils/errors';
-import type { SSHKeyConnection } from '../types';
+import type { SSHKeyConnection, ClusterConnection, ClusterNode } from '../types';
 
 import * as Compose from '../services/compose';
 import type { ParsedCompose } from '../services/compose';
@@ -31,6 +31,20 @@ import * as Hook from '../services/hook';
 import * as Nginx from '../services/nginx';
 import { CONVERGENCE_TIMEOUT_S, CONVERGENCE_INTERVAL_S, DOCKFLOW_UPLOAD_BACKUPS_DIR } from '../constants';
 import type { DeployContext } from './deploy-context';
+
+// ---------------------------------------------------------------------------
+// Cluster helpers — deploy-specific traversal of ClusterConnection
+// ---------------------------------------------------------------------------
+
+/** Nodes that receive builds, uploads, and deployments (manager + workers). */
+function activeNodes(cluster: ClusterConnection): ClusterNode[] {
+  return [cluster.manager, ...cluster.workers];
+}
+
+/** Connections that receive history-sync writes (all nodes except the primary manager). */
+function historySyncConns(cluster: ClusterConnection): SSHKeyConnection[] {
+  return [...cluster.otherManagers, ...cluster.workers].map(n => n.connection);
+}
 
 // ---------------------------------------------------------------------------
 // Container engine detection
@@ -62,11 +76,10 @@ export interface UploadRollbackPlan {
 
 export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPlan> {
   const uploads = ctx.config.upload;
-  const allConns = [ctx.managerConn, ...ctx.workerConns.map(w => w.connection)];
   const backupBaseDir = `${DOCKFLOW_UPLOAD_BACKUPS_DIR}/${ctx.stackName}/${ctx.deployVersion}`;
 
   const plan: UploadRollbackPlan = {
-    hosts: allConns.map(conn => ({ conn, backedUp: [], created: [] })),
+    hosts: activeNodes(ctx.cluster).map(n => ({ conn: n.connection, backedUp: [], created: [] })),
     backupBaseDir,
   };
 
@@ -165,11 +178,11 @@ export async function buildAndDistribute(
 
   await Hook.runLocal('pre-build', ctx.projectRoot, ctx.config, ctx.rendered);
 
-  const engine = await detectContainerEngine(ctx.managerConn, ctx.config.container_engine);
+  const engine = await detectContainerEngine(ctx.cluster.manager.connection, ctx.config.container_engine);
   const runtime: ContainerRuntime = ctx.config.orchestrator === 'k3s' ? 'containerd' : engine;
 
   if (ctx.config.options?.remote_build) {
-    const { images } = await Build.buildRemote(ctx.managerConn, {
+    const { images } = await Build.buildRemote(ctx.cluster.manager.connection, {
       projectRoot: ctx.projectRoot,
       composeContent: Compose.serialize(compose),
       composeDirPath: ctx.composeDirPath,
@@ -180,9 +193,8 @@ export async function buildAndDistribute(
       engine,
     });
 
-    if (images.length > 0 && ctx.workerConns.length > 0) {
-      const workerTargets = ctx.workerConns.map((w) => ({ connection: w.connection, name: w.name }));
-      await Distribution.distributeFromRemote(images, ctx.managerConn, workerTargets, runtime);
+    if (images.length > 0 && ctx.cluster.workers.length > 0) {
+      await Distribution.distributeFromRemote(images, ctx.cluster.manager.connection, ctx.cluster.workers, runtime);
     }
   } else {
     const targets = Build.getBuildTargets(
@@ -192,7 +204,7 @@ export async function buildAndDistribute(
     );
 
     if (targets.length > 0) {
-      const archResult = await sshExec(ctx.managerConn, 'uname -m');
+      const archResult = await sshExec(ctx.cluster.manager.connection, 'uname -m');
       const remoteArch = archResult.stdout.trim();
       const platform = (remoteArch === 'aarch64' || remoteArch === 'arm64') ? 'linux/arm64' : 'linux/amd64';
 
@@ -205,7 +217,7 @@ export async function buildAndDistribute(
       const { images } = await Build.buildAll(targets);
 
       if (ctx.config.registry?.enabled && ctx.config.registry.url && ctx.config.registry.password) {
-        await Distribution.registryLogin(ctx.managerConn, {
+        await Distribution.registryLogin(ctx.cluster.manager.connection, {
           url: ctx.config.registry.url,
           username: ctx.config.registry.username,
           password: ctx.config.registry.password,
@@ -217,11 +229,7 @@ export async function buildAndDistribute(
           branch: ctx.branchName,
         } : undefined, engine);
       } else if (images.length > 0) {
-        const distTargets = [
-          { connection: ctx.managerConn, name: 'manager' },
-          ...ctx.workerConns.map((w) => ({ connection: w.connection, name: w.name })),
-        ];
-        await Distribution.distributeAll(images, distTargets, runtime);
+        await Distribution.distributeAll(images, activeNodes(ctx.cluster), runtime);
       }
     }
   }
@@ -272,7 +280,7 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
     await ctx.proxyBackend.ensureRunning(ctx.config.proxy!);
   }
 
-  await Hook.runRemote('pre-deploy', ctx.managerConn, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
+  await Hook.runRemote('pre-deploy', ctx.cluster.manager.connection, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
 
   const deployResult = await ctx.orchestrator.deploy({
     stackName: ctx.stackName,
@@ -306,7 +314,7 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
   }
 
   if (ctx.config.health_checks?.enabled !== false) {
-    const health = new HealthCheck(ctx.managerConn, ctx.orchestrator);
+    const health = new HealthCheck(ctx.cluster.manager.connection, ctx.orchestrator);
     const internalResult = await health.checkInternalHealth(ctx.stackName, ctx.config.health_checks);
     if (!internalResult.healthy) {
       throw new DeployError(
@@ -321,9 +329,9 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
     }
   }
 
-  await Nginx.deployNginxTemplates(ctx.managerConn, ctx.rendered);
+  await Nginx.deployNginxTemplates(ctx.cluster.manager.connection, ctx.rendered);
 
-  await Hook.runRemote('post-deploy', ctx.managerConn, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
+  await Hook.runRemote('post-deploy', ctx.cluster.manager.connection, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
 }
 
 // ---------------------------------------------------------------------------
@@ -335,7 +343,6 @@ export async function recordHistory(
   status: 'success' | 'failed',
   durationMs: number,
   auditMessage: string,
-  workers: Array<{ host: string }>,
 ): Promise<void> {
   let auditLine = '';
   let metricsJson = '';
@@ -357,7 +364,7 @@ export async function recordHistory(
       performer: getPerformer(),
       buildSkipped: !!ctx.options.skipBuild,
       accessoriesDeployed: !ctx.skipAccessories,
-      nodeCount: 1 + workers.length,
+      nodeCount: activeNodes(ctx.cluster).length,
     }),
   ]);
 
@@ -373,12 +380,8 @@ export async function recordHistory(
     printWarning(`Metrics write failed: ${metricsResult.reason instanceof Error ? metricsResult.reason.message : String(metricsResult.reason)}`);
   }
 
-  const allOtherConns = [
-    ...ctx.otherManagerConns,
-    ...ctx.workerConns.map((w) => w.connection),
-  ];
   await HistorySync.syncToAllNodes(
-    allOtherConns,
+    historySyncConns(ctx.cluster),
     ctx.stackName,
     auditLine,
     metricsJson,

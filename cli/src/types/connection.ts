@@ -38,6 +38,20 @@ export function isKeyConnection(conn: ConnectionInfo): conn is SSHKeyConnection 
   return 'privateKey' in conn;
 }
 
+/** A named cluster node: SSH connection + display name. */
+export interface ClusterNode {
+  connection: SSHKeyConnection;
+  name: string;
+}
+
+/** Full SSH topology of a deployment target. */
+export interface ClusterConnection {
+  manager: ClusterNode;
+  workers: ClusterNode[];
+  /** Swarm managers other than the active leader. */
+  otherManagers: ClusterNode[];
+}
+
 /**
  * SSH command execution result
  */
