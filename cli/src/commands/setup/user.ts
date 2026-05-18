@@ -6,6 +6,7 @@
  */
 
 import { spawnSync } from 'child_process';
+import { writeFileSync } from 'fs';
 import { printWarning, printSuccess, printInfo, createSpinner } from '../../utils/output';
 import { CLIError, ErrorCode } from '../../utils/errors';
 import { promptPassword } from './prompts';
@@ -39,23 +40,24 @@ export function createDeployUser(username: string, password: string, publicKey: 
     return false;
   }
 
-  result = spawnSync('usermod', ['-aG', 'sudo', username], {
-    encoding: 'utf-8',
-    stdio: ['pipe', 'pipe', 'pipe']
-  });
-
-  if (result.status !== 0) {
-    result = spawnSync('usermod', ['-aG', 'wheel', username], {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-  }
-
   // Add user to docker group (if docker is installed)
   spawnSync('usermod', ['-aG', 'docker', username], {
     encoding: 'utf-8',
     stdio: ['pipe', 'pipe', 'pipe']
   });
+
+  // Add user to nginx group + grant group write on sites-enabled (if nginx is installed)
+  const nginxBin = spawnSync('which', ['nginx'], { encoding: 'utf-8', stdio: 'pipe' }).stdout.trim();
+  if (nginxBin) {
+    const hasNginxGroup = spawnSync('getent', ['group', 'nginx'], { encoding: 'utf-8', stdio: 'pipe' }).status === 0;
+    const nginxGroup = hasNginxGroup ? 'nginx' : 'www-data';
+    spawnSync('usermod', ['-aG', nginxGroup, username], { encoding: 'utf-8', stdio: 'pipe' });
+    const sitesEnabled = '/etc/nginx/sites-enabled';
+    if (spawnSync('test', ['-d', sitesEnabled], { encoding: 'utf-8', stdio: 'pipe' }).status === 0) {
+      spawnSync('chgrp', ['-R', nginxGroup, sitesEnabled], { encoding: 'utf-8', stdio: 'pipe' });
+      spawnSync('chmod', ['-R', 'g+rwX', sitesEnabled], { encoding: 'utf-8', stdio: 'pipe' });
+    }
+  }
 
   const userHome = `/home/${username}`;
   const userSSHDir = `${userHome}/.ssh`;
@@ -67,9 +69,18 @@ export function createDeployUser(username: string, password: string, publicKey: 
   spawnSync('chmod', ['700', userSSHDir], { encoding: 'utf-8' });
   spawnSync('chmod', ['600', `${userSSHDir}/authorized_keys`], { encoding: 'utf-8' });
 
-  const sudoersContent = `${username} ALL=(ALL) NOPASSWD: ALL`;
-  spawnSync('sh', ['-c', `echo "${sudoersContent}" > /etc/sudoers.d/${username}`], { encoding: 'utf-8' });
-  spawnSync('chmod', ['440', `/etc/sudoers.d/${username}`], { encoding: 'utf-8' });
+  // Minimal sudoers: only the specific binaries dockflow needs at deploy time
+  const sudoersRules: string[] = [];
+  if (nginxBin) {
+    sudoersRules.push(`${username} ALL=(ALL) NOPASSWD: ${nginxBin} -t, ${nginxBin} -s reload`);
+  }
+  const k3sBin = spawnSync('which', ['k3s'], { encoding: 'utf-8', stdio: 'pipe' }).stdout.trim();
+  if (k3sBin) {
+    sudoersRules.push(`${username} ALL=(ALL) NOPASSWD: ${k3sBin} ctr *`);
+  }
+  if (sudoersRules.length > 0) {
+    writeFileSync(`/etc/sudoers.d/${username}`, sudoersRules.join('\n') + '\n', { mode: 0o440 });
+  }
 
   spinner.succeed(`User ${username} created successfully`);
   return true;

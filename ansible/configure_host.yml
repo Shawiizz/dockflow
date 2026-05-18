@@ -10,13 +10,6 @@
         state: directory
         mode: '1777'
 
-    - name: Ensure deploy user has passwordless sudo
-      copy:
-        content: "{{ ansible_user }} ALL=(ALL) NOPASSWD: ALL\n"
-        dest: "/etc/sudoers.d/dockflow-{{ ansible_user }}"
-        mode: '0440'
-        validate: 'visudo -cf %s'
-
   roles:
     - role: geerlingguy.docker
       when: >

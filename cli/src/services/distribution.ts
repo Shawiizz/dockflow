@@ -24,6 +24,20 @@ export interface DistributionTarget {
 
 const TRANSFER_MAX_RETRIES = 2;
 
+function k3sPermissionSuggestion(nodeName: string, deployUser: string): string {
+  return (
+    `The deploy user needs restricted sudo for k3s on ${nodeName}.\n` +
+    `Run once on the server:\n` +
+    `  K3S=$(which k3s)\n` +
+    `  echo "${deployUser} ALL=(ALL) NOPASSWD: $K3S ctr *" | sudo tee /etc/sudoers.d/dockflow-k3s\n` +
+    `  sudo chmod 440 /etc/sudoers.d/dockflow-k3s`
+  );
+}
+
+function isPermissionError(stderr: string): boolean {
+  return stderr.includes('is not allowed') || stderr.includes('not in the sudoers') || stderr.includes('command not found');
+}
+
 function importCommand(runtime: ContainerRuntime): string {
   if (runtime === 'containerd') return 'gunzip | sudo k3s ctr -n k8s.io images import -';
   return `gunzip | ${runtime} load`;
@@ -147,7 +161,11 @@ async function streamToTarget(
     throw new Error(`docker save failed for ${image}: ${stderr.trim()}`);
   }
   if (result.exitCode !== 0) {
-    throw new Error(`docker load failed on ${target.name}: ${result.stderr.trim()}`);
+    const detail = result.stderr.trim();
+    if (isPermissionError(detail)) {
+      throw new DeployError(`k3s image import failed on ${target.name}: ${detail}`, ErrorCode.DEPLOY_FAILED, k3sPermissionSuggestion(target.name, target.connection.user));
+    }
+    throw new Error(`image import failed on ${target.name}: ${detail}`);
   }
 }
 
@@ -173,10 +191,18 @@ async function streamRemoteToTarget(
   const [srcResult, sinkResult] = await Promise.all([srcDone, sinkDone]);
 
   if (srcResult.exitCode !== 0) {
-    throw new Error(`docker save failed on remote: ${srcResult.stderr.trim()}`);
+    const detail = srcResult.stderr.trim();
+    if (isPermissionError(detail)) {
+      throw new DeployError(`k3s image export failed on source: ${detail}`, ErrorCode.DEPLOY_FAILED, k3sPermissionSuggestion('source node', source.user));
+    }
+    throw new Error(`image export failed on remote: ${detail}`);
   }
   if (sinkResult.exitCode !== 0) {
-    throw new Error(`docker load failed on ${target.name}: ${sinkResult.stderr.trim()}`);
+    const detail = sinkResult.stderr.trim();
+    if (isPermissionError(detail)) {
+      throw new DeployError(`k3s image import failed on ${target.name}: ${detail}`, ErrorCode.DEPLOY_FAILED, k3sPermissionSuggestion(target.name, target.connection.user));
+    }
+    throw new Error(`image import failed on ${target.name}: ${detail}`);
   }
 }
 
