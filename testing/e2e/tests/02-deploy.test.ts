@@ -35,11 +35,12 @@ describe("deploy", () => {
     await waitForService(SERVICE_NAME, "2/2", { timeoutMs: 90_000 });
   }, 120_000);
 
-  test("deployment is healthy (no failures, distributed, stable)", async () => {
+  test("deployment is healthy (no failures, stable)", async () => {
     await verifyDeployment({
       stackName: STACK_NAME,
       serviceName: SERVICE_NAME,
       expectedReplicas: "2/2",
+      checkDistribution: false,
     });
   }, 30_000);
 

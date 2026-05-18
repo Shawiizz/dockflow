@@ -11,6 +11,7 @@ import {
 } from "./helpers/cluster";
 import { writeDockflowEnv } from "./helpers/connection";
 import { runCLI } from "./helpers/cli";
+import { verifyDeployment } from "./helpers/docker";
 import { join } from "path";
 
 const FIXTURES_DIR = join(import.meta.dir, "fixtures");
@@ -41,6 +42,12 @@ async function ensureCluster() {
   if (result.exitCode !== 0) {
     throw new Error(`Pre-deploy failed:\n${result.stderr.slice(-3000)}`);
   }
+  await verifyDeployment({
+    stackName: "test-app-test",
+    serviceName: "test-app-test_web",
+    expectedReplicas: "2/2",
+    checkDistribution: true,
+  });
   console.log("[setup] Pre-deploy complete.");
 }
 
