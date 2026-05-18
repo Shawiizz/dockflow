@@ -109,15 +109,10 @@ async function setupKubeconfig(
   spinner.start('Setting up kubeconfig...');
 
   try {
-    await sshExec(connection, `sudo cp ${K3S_KUBECONFIG_PATH} ${K3S_DOCKFLOW_KUBECONFIG}`);
-    await sshExec(
-      connection,
-      `sudo sed -i 's/127.0.0.1/${managerHost}/g' ${K3S_DOCKFLOW_KUBECONFIG}`,
-    );
-    await sshExec(
-      connection,
-      `sudo chown ${connection.user}:${connection.user} ${K3S_DOCKFLOW_KUBECONFIG}`,
-    );
+    // K3S_KUBECONFIG_PATH is 644 (--write-kubeconfig-mode=644 at install time),
+    // so cp without sudo works and the copy is automatically owned by the current user.
+    await sshExec(connection, `mkdir -p "$(dirname ${K3S_DOCKFLOW_KUBECONFIG})" && cp ${K3S_KUBECONFIG_PATH} ${K3S_DOCKFLOW_KUBECONFIG}`);
+    await sshExec(connection, `sed -i 's/127.0.0.1/${managerHost}/g' ${K3S_DOCKFLOW_KUBECONFIG}`);
 
     spinner.succeed('Kubeconfig ready');
     return true;

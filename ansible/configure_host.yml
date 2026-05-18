@@ -8,7 +8,9 @@
       file:
         path: /var/lib/dockflow
         state: directory
-        mode: '1777'
+        owner: "{{ deploy_user | default('dockflow') }}"
+        group: "{{ deploy_user | default('dockflow') }}"
+        mode: '0750'
 
   roles:
     - role: geerlingguy.docker

@@ -10,7 +10,7 @@ import { CLIError, ErrorCode } from '../../utils/errors';
 import { checkDependencies, installDependencies, detectPackageManager } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
 import { generateSSHKey, addToAuthorizedKeys } from './ssh-keys';
-import { createDeployUser } from './user';
+import { createDeployUser, configureServiceAccess } from './user';
 import { displayConnectionInfo } from './connection';
 import { ensureDockflowRepo, installAnsibleRoles, runAnsiblePlaybook } from './ansible';
 import { DOCKFLOW_DIR } from './constants';
@@ -164,6 +164,10 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
   const success = await runAnsiblePlaybook(config, ansibleDir);
 
   if (success) {
+    // nginx and k3s may have been installed by Ansible — reconfigure service
+    // access now that the binaries are available.
+    configureServiceAccess(deployUser);
+
     printBlank();
     printSection('Setup Complete');
     printSuccess('The machine has been successfully configured!');

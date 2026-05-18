@@ -12,7 +12,7 @@ import { checkDependencies, displayDependencyStatus, installDependencies, detect
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
 import { prompt, promptPassword, confirm, selectMenu } from './prompts';
 import { generateSSHKey, addToAuthorizedKeys, listSSHKeys } from './ssh-keys';
-import { createDeployUser, promptAndValidateUserPassword } from './user';
+import { createDeployUser, promptAndValidateUserPassword, configureServiceAccess } from './user';
 import { displayConnectionInfo } from './connection';
 import { ensureDockflowRepo, installAnsibleRoles, runAnsiblePlaybook } from './ansible';
 import { DOCKFLOW_DIR } from './constants';
@@ -313,6 +313,10 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
   const success = await runAnsiblePlaybook(config, ansibleDir);
 
   if (success) {
+    // nginx and k3s may have been installed by Ansible — reconfigure service
+    // access now that the binaries are available.
+    configureServiceAccess(deployUser);
+
     printBlank();
     printSection('Setup Complete');
     printBlank();

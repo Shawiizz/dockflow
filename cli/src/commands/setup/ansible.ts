@@ -158,7 +158,8 @@ export async function runAnsiblePlaybook(config: HostConfig, ansibleDir: string)
 
   const extraVars: string[] = [
     `ansible_python_interpreter=/usr/bin/python3`,
-    `skip_docker_install=${config.skipDockerInstall}`
+    `skip_docker_install=${config.skipDockerInstall}`,
+    `deploy_user=${config.deployUser}`
   ];
 
   if (config.deployPassword) {

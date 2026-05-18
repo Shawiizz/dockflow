@@ -11,8 +11,41 @@ import { printWarning, printSuccess, printInfo, createSpinner } from '../../util
 import { CLIError, ErrorCode } from '../../utils/errors';
 import { promptPassword } from './prompts';
 
+const K3S_TOKEN_PATH = '/var/lib/rancher/k3s/server/node-token';
+const NGINX_SITES_ENABLED = '/etc/nginx/sites-enabled';
+
 /**
- * Create deployment user with sudo privileges
+ * Configure nginx group access and deploy-time sudoers for a deploy user.
+ *
+ * Safe to call multiple times — writes are idempotent.
+ * Must be called AFTER nginx/k3s are installed, so call it again post-Ansible
+ * if those services were installed during setup.
+ */
+export function configureServiceAccess(username: string): void {
+  const sudoersRules: string[] = [];
+
+  // nginx: group-write on sites-enabled + restricted sudo for test/reload only
+  const nginxBin = spawnSync('which', ['nginx'], { encoding: 'utf-8', stdio: 'pipe' }).stdout.trim();
+  if (nginxBin && spawnSync('test', ['-d', NGINX_SITES_ENABLED], { encoding: 'utf-8', stdio: 'pipe' }).status === 0) {
+    const nginxGroup = spawnSync('stat', ['-c', '%G', NGINX_SITES_ENABLED], { encoding: 'utf-8', stdio: 'pipe' }).stdout.trim() || 'www-data';
+    spawnSync('usermod', ['-aG', nginxGroup, username], { encoding: 'utf-8', stdio: 'pipe' });
+    spawnSync('chgrp', ['-R', nginxGroup, NGINX_SITES_ENABLED], { encoding: 'utf-8', stdio: 'pipe' });
+    spawnSync('chmod', ['-R', 'g+rwX', NGINX_SITES_ENABLED], { encoding: 'utf-8', stdio: 'pipe' });
+    sudoersRules.push(`${username} ALL=(ALL) NOPASSWD: ${nginxBin} -t, ${nginxBin} -s reload`);
+  }
+
+  // k3s: deploy-time image operations (import/export/ls) + one-time token read.
+  // Fallback to /usr/local/bin/k3s — the k3s installer always uses that path.
+  const k3sBin = spawnSync('which', ['k3s'], { encoding: 'utf-8', stdio: 'pipe' }).stdout.trim() || '/usr/local/bin/k3s';
+  sudoersRules.push(`${username} ALL=(ALL) NOPASSWD: ${k3sBin} ctr -n k8s.io images *`);
+  const catBin = spawnSync('which', ['cat'], { encoding: 'utf-8', stdio: 'pipe' }).stdout.trim() || '/bin/cat';
+  sudoersRules.push(`${username} ALL=(ALL) NOPASSWD: ${catBin} ${K3S_TOKEN_PATH}`);
+
+  writeFileSync(`/etc/sudoers.d/${username}`, sudoersRules.join('\n') + '\n', { mode: 0o440 });
+}
+
+/**
+ * Create deployment user with docker group access and service permissions.
  */
 export function createDeployUser(username: string, password: string, publicKey: string): boolean {
   const spinner = createSpinner();
@@ -46,41 +79,19 @@ export function createDeployUser(username: string, password: string, publicKey: 
     stdio: ['pipe', 'pipe', 'pipe']
   });
 
-  // Add user to nginx group + grant group write on sites-enabled (if nginx is installed)
-  const nginxBin = spawnSync('which', ['nginx'], { encoding: 'utf-8', stdio: 'pipe' }).stdout.trim();
-  if (nginxBin) {
-    const hasNginxGroup = spawnSync('getent', ['group', 'nginx'], { encoding: 'utf-8', stdio: 'pipe' }).status === 0;
-    const nginxGroup = hasNginxGroup ? 'nginx' : 'www-data';
-    spawnSync('usermod', ['-aG', nginxGroup, username], { encoding: 'utf-8', stdio: 'pipe' });
-    const sitesEnabled = '/etc/nginx/sites-enabled';
-    if (spawnSync('test', ['-d', sitesEnabled], { encoding: 'utf-8', stdio: 'pipe' }).status === 0) {
-      spawnSync('chgrp', ['-R', nginxGroup, sitesEnabled], { encoding: 'utf-8', stdio: 'pipe' });
-      spawnSync('chmod', ['-R', 'g+rwX', sitesEnabled], { encoding: 'utf-8', stdio: 'pipe' });
-    }
-  }
-
   const userHome = `/home/${username}`;
   const userSSHDir = `${userHome}/.ssh`;
 
   spawnSync('mkdir', ['-p', userSSHDir], { encoding: 'utf-8' });
-  // Always ensure the provided key is in authorized_keys (append if not already present)
   spawnSync('sh', ['-c', `touch ${userSSHDir}/authorized_keys && grep -qF "${publicKey}" ${userSSHDir}/authorized_keys || echo "${publicKey}" >> ${userSSHDir}/authorized_keys`], { encoding: 'utf-8' });
   spawnSync('chown', ['-R', `${username}:${username}`, userSSHDir], { encoding: 'utf-8' });
   spawnSync('chmod', ['700', userSSHDir], { encoding: 'utf-8' });
   spawnSync('chmod', ['600', `${userSSHDir}/authorized_keys`], { encoding: 'utf-8' });
 
-  // Minimal sudoers: only the specific binaries dockflow needs at deploy time
-  const sudoersRules: string[] = [];
-  if (nginxBin) {
-    sudoersRules.push(`${username} ALL=(ALL) NOPASSWD: ${nginxBin} -t, ${nginxBin} -s reload`);
-  }
-  const k3sBin = spawnSync('which', ['k3s'], { encoding: 'utf-8', stdio: 'pipe' }).stdout.trim();
-  if (k3sBin) {
-    sudoersRules.push(`${username} ALL=(ALL) NOPASSWD: ${k3sBin} ctr *`);
-  }
-  if (sudoersRules.length > 0) {
-    writeFileSync(`/etc/sudoers.d/${username}`, sudoersRules.join('\n') + '\n', { mode: 0o440 });
-  }
+  // Configure service access — best-effort at user creation time.
+  // configureServiceAccess() must be called again post-Ansible if nginx/k3s
+  // are installed after this point.
+  configureServiceAccess(username);
 
   spinner.succeed(`User ${username} created successfully`);
   return true;
