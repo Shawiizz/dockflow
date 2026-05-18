@@ -11,9 +11,7 @@ services:
       - K3S_ROLE=server
       - K3S_TOKEN=dockflow-e2e-token
     ports:
-      - "2224:22"
-      - "6443:6443"
-      - "8081:80"
+      - "32224:22"
     tmpfs:
       - /run
       - /var/run

@@ -9,10 +9,8 @@ services:
     environment:
       - SWARM_ROLE=manager
     ports:
-      - "2222:22"
-      - "2375:2375"
-      - "8080:8080"
-      - "80:80"
+      - "32222:22"
+      - "38080:80"
     volumes:
       - swarm-data:/swarm
       - /etc/ssl/certs:/etc/ssl/certs:ro
@@ -36,7 +34,7 @@ services:
       - SWARM_ROLE=worker
       - SWARM_MANAGER_HOST=dockflow-test-mgr
     ports:
-      - "2223:22"
+      - "32223:22"
     volumes:
       - swarm-data:/swarm
       - /etc/ssl/certs:/etc/ssl/certs:ro

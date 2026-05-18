@@ -56,7 +56,7 @@ describe("deploy", () => {
 
     while (Date.now() < deadline) {
       try {
-        const res = await fetch("http://localhost:80/", {
+        const res = await fetch("http://localhost:38080/", {
           headers: { Host: "test.local" },
           signal: AbortSignal.timeout(5000),
         });

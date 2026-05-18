@@ -16,14 +16,14 @@ export const DEPLOY_USER = "deploytest";
 
 const MANAGER = {
   host: "localhost",
-  port: 2222,
+  port: 32222,
   user: DEPLOY_USER,
   privateKey: PRIVATE_KEY,
 } as const;
 
 const WORKER = {
   host: "localhost",
-  port: 2223,
+  port: 32223,
   user: DEPLOY_USER,
   privateKey: PRIVATE_KEY,
 } as const;
@@ -34,7 +34,7 @@ export const WORKER_CONTAINER = "dockflow-test-worker-1";
 // k3s test cluster
 const K3S_MANAGER = {
   host: "localhost",
-  port: 2224,
+  port: 32224,
   user: DEPLOY_USER,
   privateKey: PRIVATE_KEY,
 } as const;
