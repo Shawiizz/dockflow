@@ -303,6 +303,8 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
     ? ctx.options.only.split(',').map((s: string) => s.trim())
     : undefined;
 
+  const deployStartedAt = new Date();
+
   const deployResult = await ctx.orchestrator.deploy({
     stackName: ctx.stackName,
     env: ctx.env,
@@ -337,7 +339,7 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
 
   if (ctx.config.health_checks?.enabled !== false) {
     const health = new HealthCheck(ctx.cluster.manager.connection, ctx.orchestrator);
-    const internalResult = await health.checkInternalHealth(ctx.stackName, ctx.config.health_checks, servicesFilter);
+    const internalResult = await health.checkInternalHealth(ctx.stackName, ctx.config.health_checks, servicesFilter, deployStartedAt);
     if (!internalResult.healthy) {
       throw new DeployError(
         internalResult.message || `Health check failed${internalResult.failedService ? `: ${internalResult.failedService}` : ''}`,

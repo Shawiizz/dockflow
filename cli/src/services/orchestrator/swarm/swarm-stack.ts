@@ -122,6 +122,7 @@ export class SwarmStackBackend implements StackBackend {
     timeoutSeconds: number,
     intervalSeconds: number,
     servicesFilter?: string[],
+    deployStartedAt?: Date,
   ): Promise<InternalHealthResult> {
     const timeout = timeoutSeconds * 1000;
     const interval = intervalSeconds * 1000;
@@ -133,7 +134,7 @@ export class SwarmStackBackend implements StackBackend {
     let lastUnhealthy: string[] = [];
 
     while (Date.now() < deadline) {
-      const result = await this.pollHealth(stackName, servicesFilter);
+      const result = await this.pollHealth(stackName, servicesFilter, deployStartedAt);
 
       if (result.rolledBack.length > 0) {
         spinner.fail(`Swarm auto-rolled back: ${result.rolledBack.join(', ')}`);
@@ -173,6 +174,7 @@ export class SwarmStackBackend implements StackBackend {
   private async pollHealth(
     stackName: string,
     servicesFilter?: string[],
+    deployStartedAt?: Date,
   ): Promise<{ healthy: string[]; unhealthy: string[]; rolledBack: string[] }> {
     const listResult = await sshExec(
       this.conn,
@@ -189,7 +191,7 @@ export class SwarmStackBackend implements StackBackend {
     }
 
     const results = await Promise.all(
-      serviceNames.map((serviceName) => this.checkServiceHealth(serviceName)),
+      serviceNames.map((serviceName) => this.checkServiceHealth(serviceName, deployStartedAt)),
     );
 
     const healthy: string[] = [];
@@ -215,15 +217,35 @@ export class SwarmStackBackend implements StackBackend {
 
   private async checkServiceHealth(
     serviceName: string,
+    deployStartedAt?: Date,
   ): Promise<{ name: string; status: 'healthy' | 'unhealthy' | 'rolled_back' }> {
-    // Check for rollback
+    // Check for rollback — fetch both state and completion timestamp in one call
     const inspectResult = await sshExec(
       this.conn,
-      `docker service inspect ${serviceName} --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{end}}' 2>/dev/null`,
+      `docker service inspect ${serviceName} --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}|{{.UpdateStatus.CompletedAt}}{{end}}' 2>/dev/null`,
     );
-    const updateState = inspectResult.stdout.trim().toLowerCase();
-    if (updateState === 'rollback_started' || updateState === 'rollback_completed') {
-      return { name: serviceName, status: 'rolled_back' };
+    const raw = inspectResult.stdout.trim();
+    if (raw) {
+      const [state, completedAtStr] = raw.split('|');
+      const updateState = state.trim().toLowerCase();
+
+      if (updateState === 'rollback_started') {
+        // Actively rolling back right now — always a failure
+        return { name: serviceName, status: 'rolled_back' };
+      }
+
+      if (updateState === 'rollback_completed') {
+        // Only flag if the rollback finished after this deploy started.
+        // A stale rollback_completed from a previous deploy means the service
+        // is running fine on the rolled-back image — not our problem.
+        if (!deployStartedAt) {
+          return { name: serviceName, status: 'rolled_back' };
+        }
+        const completedAt = completedAtStr?.trim() ? new Date(completedAtStr.trim()) : null;
+        if (!completedAt || isNaN(completedAt.getTime()) || completedAt >= deployStartedAt) {
+          return { name: serviceName, status: 'rolled_back' };
+        }
+      }
     }
 
     // Check task states

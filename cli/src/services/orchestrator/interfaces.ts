@@ -115,6 +115,7 @@ export interface StackBackend {
     timeoutSeconds: number,
     intervalSeconds: number,
     servicesFilter?: string[],
+    deployStartedAt?: Date,
   ): Promise<InternalHealthResult>;
 
   removeStack(stackName: string): Promise<void>;
