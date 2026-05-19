@@ -131,7 +131,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
           throw new DeployError(
             `upload: cannot create ${dirname(destPath)} on ${conn.host}: ${mkdirResult.stderr.trim() || `exit ${mkdirResult.exitCode}`}`,
             ErrorCode.DEPLOY_FAILED,
-            `The deploy user must own the destination directory. Run once on the server:\n  sudo mkdir -p '${dirname(destPath)}' && sudo chown $(whoami): '${dirname(destPath)}'`,
+            `The deploy user must own the destination directory. Run once on the server:\n  sudo mkdir -p '${dirname(destPath)}' && sudo chown ${conn.user}: '${dirname(destPath)}'`,
           );
         }
         const { stream, done } = await sshExecChannel(conn, `cat > '${destPath}'`);
