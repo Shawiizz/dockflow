@@ -23,6 +23,7 @@ RUN apt-get update && \
         netcat-openbsd \
         gzip \
         docker.io \
+        nginx \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure SSH
@@ -36,14 +37,18 @@ RUN mkdir -p /var/run/sshd && \
 # Set root password
 RUN echo "root:${DEPLOY_PASSWORD}" | chpasswd
 
-# Create deploy user with sudo + docker privileges and pre-baked SSH key
+# Create deploy user with sudo + docker + nginx privileges and pre-baked SSH key
 RUN useradd -m -s /bin/bash ${DEPLOY_USER} && \
     echo "${DEPLOY_USER}:${DEPLOY_PASSWORD}" | chpasswd && \
     echo "${DEPLOY_USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
     mkdir -p /home/${DEPLOY_USER}/.ssh && \
     chmod 700 /home/${DEPLOY_USER}/.ssh && \
     chown -R ${DEPLOY_USER}:${DEPLOY_USER} /home/${DEPLOY_USER} && \
-    usermod -aG docker ${DEPLOY_USER}
+    usermod -aG docker ${DEPLOY_USER} && \
+    usermod -aG www-data ${DEPLOY_USER} && \
+    mkdir -p /etc/nginx/sites-enabled && \
+    chgrp -R www-data /etc/nginx/sites-enabled && \
+    chmod -R g+rwX /etc/nginx/sites-enabled
 
 # Copy the pre-generated public key into authorized_keys
 COPY fixtures/keys/id_ed25519.pub /home/${DEPLOY_USER}/.ssh/authorized_keys
