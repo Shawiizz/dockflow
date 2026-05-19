@@ -550,6 +550,20 @@ export function injectTraefikLabels(
 // ---------------------------------------------------------------------------
 
 /**
+ * Return a shallow copy of compose containing only the specified services.
+ * Networks and volumes are kept intact so external resource creation still works.
+ */
+export function filterServices(compose: ParsedCompose, filter: string[]): ParsedCompose {
+  const filterSet = new Set(filter);
+  return {
+    ...compose,
+    services: Object.fromEntries(
+      Object.entries(compose.services).filter(([name]) => filterSet.has(name)),
+    ),
+  };
+}
+
+/**
  * Extract all external network names from a compose object.
  */
 export function getExternalNetworks(compose: ParsedCompose): string[] {

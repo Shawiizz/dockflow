@@ -61,6 +61,11 @@ export interface StackDeployInput {
   proxy?: ProxyConfig;
   /** True when deploying via a remote registry (affects manifest generation on k3s). */
   useRegistry?: boolean;
+  /**
+   * When set, only these service names are deployed. Other services in the compose
+   * are left untouched (no prune). Used by --services flag.
+   */
+  servicesFilter?: string[];
 }
 
 export interface AccessoryDeployInput {
@@ -109,6 +114,7 @@ export interface StackBackend {
     stackName: string,
     timeoutSeconds: number,
     intervalSeconds: number,
+    servicesFilter?: string[],
   ): Promise<InternalHealthResult>;
 
   removeStack(stackName: string): Promise<void>;

@@ -30,11 +30,12 @@ export class HealthCheck {
   async checkInternalHealth(
     stackName: string,
     config?: HealthCheckConfig,
+    servicesFilter?: string[],
   ): Promise<InternalHealthResult> {
     const timeoutS = config?.timeout ?? DEFAULT_HEALTHCHECK_TIMEOUT_S;
     const intervalS = config?.interval ?? DEFAULT_HEALTHCHECK_INTERVAL_S;
 
-    return this.stackBackend.checkInternalHealth(stackName, timeoutS, intervalS);
+    return this.stackBackend.checkInternalHealth(stackName, timeoutS, intervalS, servicesFilter);
   }
 
   /**

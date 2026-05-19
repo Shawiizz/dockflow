@@ -51,20 +51,27 @@ export class SwarmStackBackend implements StackBackend {
 
   async deploy(input: StackDeployInput): Promise<Result<void, DeployError>> {
     try {
-      // 1. Create external networks + volumes
+      // 1. Create external networks + volumes (always from the full compose)
       const networks = Compose.getExternalNetworks(input.compose);
       const volumes = Compose.getExternalVolumes(input.compose);
       await this.ops.createExternalResources(networks, volumes);
 
-      // 2. Render compose: inject Swarm deploy defaults + optional Traefik labels
-      Compose.injectSwarmDefaults(input.compose);
-      if (input.proxy?.enabled) {
-        Compose.injectTraefikLabels(input.compose, input.proxy, input.stackName, input.env);
-      }
-      const content = Compose.serialize(input.compose);
+      // 2. When --services filter is set, only deploy those services.
+      //    Prune is disabled so other running services are left untouched.
+      const targeted = input.servicesFilter?.length
+        ? Compose.filterServices(input.compose, input.servicesFilter)
+        : input.compose;
+      const prune = !input.servicesFilter?.length;
 
-      // 3. Apply
-      await this.ops.deployStack(input.stackName, content);
+      // 3. Render compose: inject Swarm deploy defaults + optional Traefik labels
+      Compose.injectSwarmDefaults(targeted);
+      if (input.proxy?.enabled) {
+        Compose.injectTraefikLabels(targeted, input.proxy, input.stackName, input.env);
+      }
+      const content = Compose.serialize(targeted);
+
+      // 4. Apply
+      await this.ops.deployStack(input.stackName, content, { prune, withRegistryAuth: true });
       return ok(undefined);
     } catch (e) {
       return err(toDeployError(e));
@@ -114,6 +121,7 @@ export class SwarmStackBackend implements StackBackend {
     stackName: string,
     timeoutSeconds: number,
     intervalSeconds: number,
+    servicesFilter?: string[],
   ): Promise<InternalHealthResult> {
     const timeout = timeoutSeconds * 1000;
     const interval = intervalSeconds * 1000;
@@ -125,7 +133,7 @@ export class SwarmStackBackend implements StackBackend {
     let lastUnhealthy: string[] = [];
 
     while (Date.now() < deadline) {
-      const result = await this.pollHealth(stackName);
+      const result = await this.pollHealth(stackName, servicesFilter);
 
       if (result.rolledBack.length > 0) {
         spinner.fail(`Swarm auto-rolled back: ${result.rolledBack.join(', ')}`);
@@ -164,13 +172,18 @@ export class SwarmStackBackend implements StackBackend {
 
   private async pollHealth(
     stackName: string,
+    servicesFilter?: string[],
   ): Promise<{ healthy: string[]; unhealthy: string[]; rolledBack: string[] }> {
     const listResult = await sshExec(
       this.conn,
       `docker stack services ${stackName} --format '{{.Name}}' 2>/dev/null || echo ""`,
     );
 
-    const serviceNames = listResult.stdout.trim().split('\n').filter(Boolean);
+    let serviceNames = listResult.stdout.trim().split('\n').filter(Boolean);
+    if (servicesFilter?.length) {
+      const filterSet = new Set(servicesFilter.map(s => `${stackName}_${s}`));
+      serviceNames = serviceNames.filter(s => filterSet.has(s));
+    }
     if (serviceNames.length === 0) {
       return { healthy: [], unhealthy: [], rolledBack: [] };
     }

@@ -299,12 +299,17 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
 
   await Hook.runRemote('pre-deploy', ctx.cluster.manager.connection, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
 
+  const servicesFilter = ctx.options.services
+    ? ctx.options.services.split(',').map((s: string) => s.trim())
+    : undefined;
+
   const deployResult = await ctx.orchestrator.deploy({
     stackName: ctx.stackName,
     env: ctx.env,
     compose,
     proxy: ctx.config.proxy,
     useRegistry: ctx.config.registry?.enabled,
+    servicesFilter,
   });
   if (!deployResult.success) {
     throw deployResult.error;
@@ -332,7 +337,7 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
 
   if (ctx.config.health_checks?.enabled !== false) {
     const health = new HealthCheck(ctx.cluster.manager.connection, ctx.orchestrator);
-    const internalResult = await health.checkInternalHealth(ctx.stackName, ctx.config.health_checks);
+    const internalResult = await health.checkInternalHealth(ctx.stackName, ctx.config.health_checks, servicesFilter);
     if (!internalResult.healthy) {
       throw new DeployError(
         internalResult.message || `Health check failed${internalResult.failedService ? `: ${internalResult.failedService}` : ''}`,

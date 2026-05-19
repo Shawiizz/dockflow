@@ -147,6 +147,7 @@ export class K3sStackBackend implements StackBackend {
     stackName: string,
     timeoutSeconds: number,
     intervalSeconds: number,
+    _servicesFilter?: string[],
   ): Promise<InternalHealthResult> {
     const ns = this.ns(stackName);
     const deadline = Date.now() + timeoutSeconds * 1000;
