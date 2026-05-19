@@ -29,8 +29,8 @@ function k3sPermissionSuggestion(nodeName: string, deployUser: string): string {
     `The deploy user needs restricted sudo for k3s on ${nodeName}.\n` +
     `Run once on the server:\n` +
     `  K3S=$(which k3s)\n` +
-    `  echo "${deployUser} ALL=(ALL) NOPASSWD: $K3S ctr -n k8s.io images *" | sudo tee /etc/sudoers.d/dockflow-k3s\n` +
-    `  sudo chmod 440 /etc/sudoers.d/dockflow-k3s`
+    `  echo "${deployUser} ALL=(ALL) NOPASSWD: $K3S ctr -n k8s.io images *" > /etc/sudoers.d/dockflow-k3s\n` +
+    `  chmod 440 /etc/sudoers.d/dockflow-k3s`
   );
 }
 

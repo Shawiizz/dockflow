@@ -131,7 +131,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
           throw new DeployError(
             `upload: cannot create ${dirname(destPath)} on ${conn.host}: ${mkdirResult.stderr.trim() || `exit ${mkdirResult.exitCode}`}`,
             ErrorCode.DEPLOY_FAILED,
-            `The deploy user must own the destination directory. Run once on the server:\n  sudo mkdir -p '${dirname(destPath)}' && sudo chown ${conn.user}: '${dirname(destPath)}'`,
+            `The deploy user must own the destination directory. Run once on the server as root:\n  mkdir -p '${dirname(destPath)}' && chown ${conn.user}: '${dirname(destPath)}'`,
           );
         }
         const { stream, done } = await sshExecChannel(conn, `cat > '${destPath}'`);
@@ -142,8 +142,8 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
           throw new DeployError(
             `upload: failed to transfer ${upload.src} → ${destPath} on ${conn.host}: ${detail}`,
             ErrorCode.DEPLOY_FAILED,
-            `Ensure ${conn.user} has write access to ${dirname(destPath)} on ${conn.host}:\n` +
-            `  sudo mkdir -p '${dirname(destPath)}' && sudo chown ${conn.user}: '${dirname(destPath)}'`,
+            `Ensure ${conn.user} has write access to ${dirname(destPath)} on ${conn.host}. Run once as root:\n` +
+            `  mkdir -p '${dirname(destPath)}' && chown ${conn.user}: '${dirname(destPath)}'`,
           );
         }
       }));

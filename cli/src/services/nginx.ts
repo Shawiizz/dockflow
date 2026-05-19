@@ -56,15 +56,17 @@ export async function deployNginxTemplates(
     if (result.exitCode !== 0) {
       await rollback(conn, entries.map(([k]) => `${NGINX_SITES_ENABLED}/${basename(k)}`), previouslyExisted);
       const detail = result.stderr.trim() || `exit ${result.exitCode}`;
+      const statResult = await sshExec(conn, `stat -c '%G' '${NGINX_SITES_ENABLED}' 2>/dev/null`);
+      const nginxGroup = statResult.stdout.trim() || 'www-data';
       throw new DeployError(
         `Nginx template write failed on ${conn.host}: ${detail}`,
         ErrorCode.DEPLOY_FAILED,
         `The deploy user needs group-write access to ${NGINX_SITES_ENABLED}.\n` +
-        `Run once on the server (use "nginx" or "www-data" depending on your distro):\n` +
-        `  sudo usermod -aG <nginx-group> ${conn.user}\n` +
-        `  sudo chgrp -R <nginx-group> ${NGINX_SITES_ENABLED}\n` +
-        `  sudo chmod -R g+rwX ${NGINX_SITES_ENABLED}\n` +
-        `  Then reconnect SSH for the group change to take effect.`,
+        `Run once on the server as root:\n` +
+        `  usermod -aG ${nginxGroup} ${conn.user}\n` +
+        `  chgrp -R ${nginxGroup} ${NGINX_SITES_ENABLED}\n` +
+        `  chmod -R g+rwX ${NGINX_SITES_ENABLED}\n` +
+        `  Then re-run dockflow deploy — each deploy opens a fresh SSH connection that picks up the new group.`,
       );
     }
   }
@@ -80,8 +82,8 @@ export async function deployNginxTemplates(
         ErrorCode.DEPLOY_FAILED,
         `The deploy user needs restricted sudo for nginx. Run once on the server:\n` +
         `  NGINX=$(which nginx)\n` +
-        `  echo "${conn.user} ALL=(ALL) NOPASSWD: $NGINX -t, $NGINX -s reload" | sudo tee /etc/sudoers.d/dockflow-nginx\n` +
-        `  sudo chmod 440 /etc/sudoers.d/dockflow-nginx`,
+        `  echo "${conn.user} ALL=(ALL) NOPASSWD: $NGINX -t, $NGINX -s reload" > /etc/sudoers.d/dockflow-nginx\n` +
+        `  chmod 440 /etc/sudoers.d/dockflow-nginx`,
       );
     }
     printWarning(`Nginx config test failed, rolled back:\n${detail}`);
@@ -98,8 +100,8 @@ export async function deployNginxTemplates(
         ErrorCode.DEPLOY_FAILED,
         `The deploy user needs restricted sudo for nginx. Run once on the server:\n` +
         `  NGINX=$(which nginx)\n` +
-        `  echo "${conn.user} ALL=(ALL) NOPASSWD: $NGINX -t, $NGINX -s reload" | sudo tee /etc/sudoers.d/dockflow-nginx\n` +
-        `  sudo chmod 440 /etc/sudoers.d/dockflow-nginx`,
+        `  echo "${conn.user} ALL=(ALL) NOPASSWD: $NGINX -t, $NGINX -s reload" > /etc/sudoers.d/dockflow-nginx\n` +
+        `  chmod 440 /etc/sudoers.d/dockflow-nginx`,
       );
     }
     printWarning(`Nginx reload failed: ${detail}`);
