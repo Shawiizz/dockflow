@@ -22,6 +22,7 @@ import {
   printBlank,
   printWarning,
   setVerbose,
+  isVerbose,
   createSpinner,
 } from '../utils/output';
 import {
@@ -194,8 +195,8 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   // Display info
   printInfo(`Version: ${deployVersion}`);
   printInfo(`Environment: ${env}`);
-  printInfo(`Manager: ${manager.name} (${manager.host})`);
-  if (workers.length > 0) printInfo(`Workers: ${workers.map((w) => `${w.name} (${w.host})`).join(', ')}`);
+  printInfo(`Manager: ${isVerbose() ? `${manager.name} (${manager.host})` : manager.name}`);
+  if (workers.length > 0) printInfo(`Workers: ${workers.map((w) => isVerbose() ? `${w.name} (${w.host})` : w.name).join(', ')}`);
   printInfo(`Branch: ${branchName}`);
   printInfo(`Targets: ${targetDesc}`);
   if (options.only) printInfo(`Only: ${options.only}`);
@@ -218,6 +219,21 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
     templateContext,
   );
   config = loadConfig({ content: rendered.get('.dockflow/config.yml'), silent: true }) ?? config;
+
+  // Validate --only service names before acquiring the lock
+  if (options.only) {
+    const compose = Compose.loadFromString(composeContent);
+    const available = Object.keys(compose.services);
+    const filterSet = options.only.split(',').map((s) => s.trim());
+    const unknown = filterSet.filter(s => !available.includes(s));
+    if (unknown.length > 0) {
+      throw new DeployError(
+        `Unknown service(s): ${unknown.join(', ')}. Available: ${available.join(', ')}`,
+        ErrorCode.VALIDATION_FAILED,
+        'Use the exact service names defined in your docker-compose file.',
+      );
+    }
+  }
 
   // Build context
   const orchType = config.orchestrator ?? 'swarm';
@@ -254,19 +270,6 @@ async function execute(ctx: DeployContext): Promise<void> {
 
   try {
     const compose = Compose.loadFromString(ctx.composeContent);
-
-    if (ctx.options.only) {
-      const filterSet = new Set(ctx.options.only.split(',').map((s: string) => s.trim()));
-      const composeServiceNames = Object.keys(compose.services);
-      const unknown = [...filterSet].filter(s => !composeServiceNames.includes(s));
-      if (unknown.length > 0) {
-        throw new DeployError(
-          `Unknown service(s): ${unknown.join(', ')}. Available: ${composeServiceNames.join(', ')}`,
-          ErrorCode.VALIDATION_FAILED,
-          'Use the exact service names defined in your docker-compose file.',
-        );
-      }
-    }
 
     Compose.updateImageTags(compose, ctx.config, ctx.env, ctx.deployVersion, ctx.options.only);
 
