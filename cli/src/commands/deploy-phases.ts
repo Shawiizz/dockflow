@@ -85,7 +85,15 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
 
   if (!uploads || uploads.length === 0) return plan;
 
+  const serviceFilter = ctx.options.services
+    ? new Set(ctx.options.services.split(',').map((s: string) => s.trim()))
+    : null;
+
   for (const upload of uploads) {
+    if (serviceFilter && upload.service) {
+      const uploadServices = Array.isArray(upload.service) ? upload.service : [upload.service];
+      if (!uploadServices.some(s => serviceFilter.has(s))) continue;
+    }
     const srcAbs = resolve(ctx.projectRoot, upload.src);
 
     if (!existsSync(srcAbs)) {

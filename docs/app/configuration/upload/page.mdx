@@ -29,6 +29,7 @@ services:
 |-------|------|-------------|---------|
 | `src` | `string` | Local path relative to the project root (file or directory) | Yes |
 | `dest` | `string` | Absolute destination path on the remote server | Yes |
+| `service` | `string \| string[]` | Service(s) this upload belongs to. When deploying with `--services`, only uploads matching a targeted service are transferred. Uploads without this field are always transferred. | No |
 
 `dest` must start with `/`. If `src` is a directory, `dest` is used as the destination directory and the relative structure is preserved.
 
@@ -80,6 +81,24 @@ upload:
   File permissions are not preserved (files are created with the server's default umask). If a service requires specific permissions (e.g., `640` for `mosquitto_passwd`), add a `post-deploy` hook that runs `chmod`.
 </Callout>
 
+## Scoping uploads to a service
+
+When using `--services` to deploy a single service, uploads without a `service` field still run. Use the `service` field to restrict an upload to specific services:
+
+```yaml
+upload:
+  - src: .dockflow/docker/mosquitto/
+    dest: /opt/dockflow/mqtt/
+    service: mqtt                    # only transferred when deploying the mqtt service
+
+  - src: .dockflow/docker/prometheus.yml
+    dest: /opt/dockflow/monitoring/prometheus.yml
+    service: [prometheus, grafana]   # transferred when either service is targeted
+
+  - src: .dockflow/shared.conf
+    dest: /opt/dockflow/shared.conf  # no service field → always transferred
+```
+
 ## Full example
 
 ```yaml
@@ -89,8 +108,10 @@ project_name: my-app
 upload:
   - src: .dockflow/docker/mosquitto/
     dest: /opt/dockflow/mqtt/
+    service: mqtt
   - src: .dockflow/docker/prometheus.yml
     dest: /opt/dockflow/monitoring/prometheus.yml
+    service: prometheus
 ```
 
 ```yaml

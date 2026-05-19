@@ -302,6 +302,8 @@ export const UploadItemSchema = z.object({
   dest: z.string()
     .refine(v => v.startsWith('/'), { message: 'dest must be an absolute path (starting with /)' })
     .describe('Absolute destination path on the remote server'),
+  service: z.union([z.string(), z.array(z.string())]).optional()
+    .describe('Service(s) this upload belongs to. When --services is used, only uploads matching a targeted service are transferred.'),
 });
 
 /**

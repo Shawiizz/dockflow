@@ -138,6 +138,7 @@ export interface NotificationsConfig {
 export interface UploadItem {
   src: string;
   dest: string;
+  service?: string | string[];
 }
 
 export interface DockflowConfig {
