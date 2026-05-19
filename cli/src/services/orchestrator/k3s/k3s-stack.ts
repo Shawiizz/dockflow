@@ -119,6 +119,7 @@ export class K3sStackBackend implements StackBackend {
     stackName: string,
     timeoutSeconds: number,
     _intervalSeconds: number,
+    _servicesFilter?: string[],
   ): Promise<ConvergenceResult> {
     const ns = this.ns(stackName);
 

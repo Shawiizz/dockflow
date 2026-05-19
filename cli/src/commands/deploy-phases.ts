@@ -321,6 +321,7 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
     ctx.stackName,
     CONVERGENCE_TIMEOUT_S,
     CONVERGENCE_INTERVAL_S,
+    servicesFilter,
   );
   if (!convergence.converged) {
     if (convergence.rolledBack) {

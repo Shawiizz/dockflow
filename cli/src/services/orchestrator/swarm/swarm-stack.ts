@@ -102,11 +102,13 @@ export class SwarmStackBackend implements StackBackend {
     stackName: string,
     timeoutSeconds: number,
     intervalSeconds: number,
+    servicesFilter?: string[],
   ): Promise<ConvergenceResult> {
     try {
       await this.ops.waitConvergence(stackName, {
         timeout: timeoutSeconds,
         interval: intervalSeconds,
+        servicesFilter,
       });
       return { converged: true, rolledBack: false, timedOut: false };
     } catch (e) {

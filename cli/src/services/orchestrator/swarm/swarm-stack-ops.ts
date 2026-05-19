@@ -222,12 +222,16 @@ export class SwarmStackOps {
    */
   async waitConvergence(
     stackName: string,
-    options?: { timeout?: number; interval?: number; context?: string },
+    options?: { timeout?: number; interval?: number; context?: string; servicesFilter?: string[] },
   ): Promise<void> {
     const timeout = (options?.timeout ?? CONVERGENCE_TIMEOUT_S) * 1000;
     const interval = (options?.interval ?? CONVERGENCE_INTERVAL_S) * 1000;
     const ctx = options?.context ?? 'deployment';
     const deadline = Date.now() + timeout;
+
+    const filterSet = options?.servicesFilter?.length
+      ? new Set(options.servicesFilter.map(s => `${stackName}_${s}`))
+      : null;
 
     const spinner = createTimedSpinner();
     spinner.start(`Waiting for ${ctx} convergence (timeout: ${timeout / 1000}s)...`);
@@ -240,7 +244,8 @@ export class SwarmStackOps {
         `docker stack services ${stackName} --format '{{.Name}}\t{{.Replicas}}' 2>/dev/null || echo ""`,
       );
 
-      const lines = result.stdout.trim().split('\n').filter(Boolean);
+      let lines = result.stdout.trim().split('\n').filter(Boolean);
+      if (filterSet) lines = lines.filter(l => filterSet.has(l.split('\t')[0]));
       if (lines.length === 0) {
         await Bun.sleep(interval);
         continue;

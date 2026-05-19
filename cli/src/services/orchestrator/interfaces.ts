@@ -107,6 +107,7 @@ export interface StackBackend {
     stackName: string,
     timeoutSeconds: number,
     intervalSeconds: number,
+    servicesFilter?: string[],
   ): Promise<ConvergenceResult>;
 
   /** Internal cluster-level health check (tasks/pods in desired state). */
