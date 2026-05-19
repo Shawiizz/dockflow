@@ -266,6 +266,7 @@ async function execute(ctx: DeployContext): Promise<void> {
   let deployFailed = false;
   let stackDeployed = false;
   let uploadPlan: UploadRollbackPlan | null = null;
+  let previousSymlink: string | null = null;
   let auditMessage = `Deploy ${ctx.deployVersion} to ${ctx.env}`;
 
   try {
@@ -277,14 +278,29 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     uploadPlan = await uploadFiles(ctx);
 
-    await Promise.all([
-      ctx.releases.createRelease(ctx.stackName, ctx.deployVersion, Compose.serialize(compose), {
+    // When --only targets specific services, build the release from the local
+    // compose (preserves new services and config changes) but borrow image tags
+    // from the server release for non-targeted services so the release reflects
+    // what is actually running for those services.
+    // Falls back to the local compose as-is if no release exists yet.
+    let releaseCompose = compose;
+    if (ctx.options.only) {
+      const currentContent = await ctx.releases.getCurrentComposeContent(ctx.stackName);
+      if (currentContent) {
+        const filter = ctx.options.only.split(',').map((s: string) => s.trim());
+        releaseCompose = Compose.syncNonTargetedImageTags(compose, Compose.loadFromString(currentContent), filter);
+      }
+    }
+
+    const [releaseResult] = await Promise.all([
+      ctx.releases.createRelease(ctx.stackName, ctx.deployVersion, Compose.serialize(releaseCompose), {
         project_name: ctx.config.project_name, version: ctx.deployVersion, env: ctx.env,
         timestamp: new Date().toISOString(), epoch: Math.floor(Date.now() / 1000),
         performer: getPerformer(), branch: ctx.branchName,
       }),
       deployAccessories(ctx),
     ]);
+    previousSymlink = releaseResult.previousSymlink;
 
     await deployApp(ctx, compose);
     stackDeployed = ctx.deployApp !== false;
@@ -297,7 +313,7 @@ async function execute(ctx: DeployContext): Promise<void> {
   } catch (err) {
     deployFailed = true;
     auditMessage = `Deploy ${ctx.deployVersion} to ${ctx.env} failed: ${err instanceof Error ? err.message : String(err)}`;
-    await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion).catch(() => {});
+    await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
 
     if (uploadPlan) {
       await rollbackUploads(uploadPlan).catch((e) => printWarning(`Upload rollback failed: ${e instanceof Error ? e.message : String(e)}`));

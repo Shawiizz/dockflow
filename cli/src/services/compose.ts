@@ -564,6 +564,34 @@ export function filterServices(compose: ParsedCompose, filter: string[]): Parsed
 }
 
 /**
+ * Build a release compose for a partial deploy (--only).
+ *
+ * Starts from the local compose (preserves new services, config changes), then
+ * for services NOT being deployed that also exist in the server release, replaces
+ * their image tag with the one from the server so the release reflects what is
+ * actually running for those services.
+ *
+ * Services only in local  (new, not yet on server) → keep local image tag.
+ * Services only in server (removed locally)        → absent from release (correct).
+ */
+export function syncNonTargetedImageTags(
+  local: ParsedCompose,
+  server: ParsedCompose,
+  targetedServices: string[],
+): ParsedCompose {
+  const targeted = new Set(targetedServices);
+  const services = { ...local.services };
+
+  for (const [name, svc] of Object.entries(services)) {
+    if (targeted.has(name)) continue;
+    const serverImage = server.services[name]?.image as string | undefined;
+    if (serverImage) services[name] = { ...svc, image: serverImage };
+  }
+
+  return { ...local, services };
+}
+
+/**
  * Extract all external network names from a compose object.
  */
 export function getExternalNetworks(compose: ParsedCompose): string[] {

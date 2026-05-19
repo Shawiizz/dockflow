@@ -55,10 +55,14 @@ export class Release {
     version: string,
     composeYaml: string,
     metadata: ReleaseMetadata,
-  ): Promise<void> {
+  ): Promise<{ previousSymlink: string | null }> {
     const dir = this.releaseDir(stackName, version);
     const metaJson = JSON.stringify(metadata, null, 2);
     const stackDir = this.stackDir(stackName);
+
+    // Read previous symlink target before overwriting — used to restore on failure
+    const prevResult = await sshExec(this.connection, `readlink "${stackDir}/current" 2>/dev/null || echo ""`);
+    const previousSymlink = prevResult.stdout.trim() || null;
 
     await sshExec(this.connection, `mkdir -p "${dir}"`);
 
@@ -74,6 +78,19 @@ export class Release {
     await sshExec(this.connection, `ln -sfn "${dir}" "${stackDir}/current"`);
 
     printDebug(`Release ${version} created at ${dir}`);
+    return { previousSymlink };
+  }
+
+  /**
+   * Read the compose file from the current release symlink.
+   * Returns null if no release exists yet.
+   */
+  async getCurrentComposeContent(stackName: string): Promise<string | null> {
+    const result = await sshExec(
+      this.connection,
+      `cat "${this.stackDir(stackName)}/current/docker-compose.yml" 2>/dev/null`,
+    );
+    return result.exitCode === 0 && result.stdout.trim() ? result.stdout : null;
   }
 
   /**
@@ -186,10 +203,28 @@ export class Release {
 
   /**
    * Remove a single release directory.
+   * If restoreTo is provided and the `current` symlink points to this version,
+   * restores it to the given target (or removes the symlink if restoreTo is null).
    */
-  async removeRelease(stackName: string, version: string): Promise<void> {
+  async removeRelease(stackName: string, version: string, restoreTo?: string | null): Promise<void> {
     const dir = this.releaseDir(stackName, version);
-    await sshExec(this.connection, `rm -rf "${dir}"`);
+    const stackDir = this.stackDir(stackName);
+
+    if (restoreTo !== undefined) {
+      await sshExec(
+        this.connection,
+        `currentTarget=$(readlink "${stackDir}/current" 2>/dev/null); ` +
+        `rm -rf "${dir}"; ` +
+        `if [ "$currentTarget" = "${dir}" ]; then ` +
+        (restoreTo
+          ? `ln -sfn "${restoreTo}" "${stackDir}/current"; `
+          : `rm -f "${stackDir}/current"; `) +
+        `fi`,
+      );
+    } else {
+      await sshExec(this.connection, `rm -rf "${dir}"`);
+    }
+
     printDebug(`Removed release ${version}`);
   }
 
