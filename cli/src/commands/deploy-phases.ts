@@ -148,7 +148,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
         }
       }));
 
-      printDim(`upload: ${upload.src}${isDir ? '/' + relPath : ''} → ${destPath}`);
+      printDim(`upload: ${upload.src.replace(/\/$/, '')}${isDir ? '/' + relPath : ''} → ${destPath}`);
     }
   }
 
