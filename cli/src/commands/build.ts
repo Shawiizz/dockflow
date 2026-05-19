@@ -29,7 +29,7 @@ import * as Distribution from '../services/distribution';
 import * as Compose from '../services/compose';
 
 interface BuildOptions {
-  services?: string;
+  only?: string;
   debug?: boolean;
   push?: boolean;
   skipHooks?: boolean;
@@ -119,7 +119,7 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
   printInfo(`Project: ${config.project_name || 'app'}`);
   printInfo(`Environment: ${env}`);
   printInfo(`Branch: ${branchName}`);
-  if (options.services) printInfo(`Services: ${options.services}`);
+  if (options.only) printInfo(`Services: ${options.only}`);
   if (options.skipHooks) printInfo(`Hooks: Skipped`);
   printBlank();
 
@@ -151,7 +151,7 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
   }
 
   // Build images (targets resolved from rendered compose via stdin)
-  const targets = Build.getBuildTargets(composeContent, composeDirPath, options.services);
+  const targets = Build.getBuildTargets(composeContent, composeDirPath, options.only);
   if (targets.length === 0) {
     printWarning('No build targets found in docker-compose.yml');
     return;
@@ -205,7 +205,7 @@ export function registerBuildCommand(program: Command): void {
     .command('build [env]')
     .description('Build Docker images locally without deploying')
     .helpGroup('Deploy')
-    .option('--services <services>', 'Comma-separated list of services to build')
+    .option('--only <services>', 'Comma-separated list of services to build')
     .option('--push', 'Push images to registry after build')
     .option('--skip-hooks', 'Skip pre-build and post-build hooks')
     .option('--branch <branch>', 'Override auto-detected git branch')

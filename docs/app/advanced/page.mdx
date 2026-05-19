@@ -30,8 +30,8 @@ The `dockflow deploy --force` flag overrides locks when needed.
 Deploy specific services without affecting others:
 
 ```bash
-dockflow deploy production --services backend
-dockflow deploy production --services frontend,worker
+dockflow deploy production --only backend
+dockflow deploy production --only frontend,worker
 ```
 
 Skip the build phase to redeploy with existing images:

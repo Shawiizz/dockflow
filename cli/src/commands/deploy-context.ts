@@ -12,7 +12,7 @@ import type { Audit } from '../services/audit';
 import type { Metrics } from '../services/metrics';
 
 export interface DeployOptions {
-  services?: string;
+  only?: string;
   skipBuild?: boolean;
   force?: boolean;
   debug?: boolean;

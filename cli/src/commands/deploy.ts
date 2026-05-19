@@ -198,7 +198,7 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   if (workers.length > 0) printInfo(`Workers: ${workers.map((w) => `${w.name} (${w.host})`).join(', ')}`);
   printInfo(`Branch: ${branchName}`);
   printInfo(`Targets: ${targetDesc}`);
-  if (options.services) printInfo(`Services: ${options.services}`);
+  if (options.only) printInfo(`Only: ${options.only}`);
   printBlank();
 
   // Dry-run exit
@@ -206,7 +206,7 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
     displayDeployDryRun({
       env, deployVersion, branchName, projectRoot, manager, workers,
       deployApp: shouldDeployApp, forceAccessories, skipAccessories,
-      skipBuild: options.skipBuild, force: options.force, services: options.services, debug: options.debug,
+      skipBuild: options.skipBuild, force: options.force, only: options.only, debug: options.debug,
     });
     return null;
   }
@@ -255,8 +255,8 @@ async function execute(ctx: DeployContext): Promise<void> {
   try {
     const compose = Compose.loadFromString(ctx.composeContent);
 
-    if (ctx.options.services) {
-      const filterSet = new Set(ctx.options.services.split(',').map((s: string) => s.trim()));
+    if (ctx.options.only) {
+      const filterSet = new Set(ctx.options.only.split(',').map((s: string) => s.trim()));
       const composeServiceNames = Object.keys(compose.services);
       const unknown = [...filterSet].filter(s => !composeServiceNames.includes(s));
       if (unknown.length > 0) {
@@ -268,7 +268,7 @@ async function execute(ctx: DeployContext): Promise<void> {
       }
     }
 
-    Compose.updateImageTags(compose, ctx.config, ctx.env, ctx.deployVersion, ctx.options.services);
+    Compose.updateImageTags(compose, ctx.config, ctx.env, ctx.deployVersion, ctx.options.only);
 
     await buildAndDistribute(ctx, compose);
 
@@ -342,7 +342,7 @@ export function registerDeployCommand(program: Command): void {
     .command('deploy [env] [version]')
     .description('Deploy application to specified environment')
     .helpGroup('Deploy')
-    .option('--services <services>', 'Comma-separated list of services to deploy')
+    .option('--only <services>', 'Comma-separated list of services to deploy')
     .option('--skip-build', 'Skip the build phase')
     .option('--force', 'Force deployment even if locked')
     .option('--accessories', 'Deploy only accessories (databases, caches, etc.)')

@@ -85,8 +85,8 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
 
   if (!uploads || uploads.length === 0) return plan;
 
-  const serviceFilter = ctx.options.services
-    ? new Set(ctx.options.services.split(',').map((s: string) => s.trim()))
+  const serviceFilter = ctx.options.only
+    ? new Set(ctx.options.only.split(',').map((s: string) => s.trim()))
     : null;
 
   for (const upload of uploads) {
@@ -206,7 +206,7 @@ export async function buildAndDistribute(
       projectName: ctx.config.project_name,
       env: ctx.env,
       branch: ctx.branchName,
-      servicesFilter: ctx.options.services,
+      servicesFilter: ctx.options.only,
       engine,
     });
 
@@ -217,7 +217,7 @@ export async function buildAndDistribute(
     const targets = Build.getBuildTargets(
       Compose.serialize(compose),
       ctx.composeDirPath,
-      ctx.options.services,
+      ctx.options.only,
     );
 
     if (targets.length > 0) {
@@ -299,8 +299,8 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
 
   await Hook.runRemote('pre-deploy', ctx.cluster.manager.connection, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
 
-  const servicesFilter = ctx.options.services
-    ? ctx.options.services.split(',').map((s: string) => s.trim())
+  const servicesFilter = ctx.options.only
+    ? ctx.options.only.split(',').map((s: string) => s.trim())
     : undefined;
 
   const deployResult = await ctx.orchestrator.deploy({

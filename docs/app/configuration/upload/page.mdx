@@ -29,7 +29,7 @@ services:
 |-------|------|-------------|---------|
 | `src` | `string` | Local path relative to the project root (file or directory) | Yes |
 | `dest` | `string` | Absolute destination path on the remote server | Yes |
-| `service` | `string \| string[]` | Service(s) this upload belongs to. When deploying with `--services`, only uploads matching a targeted service are transferred. Uploads without this field are always transferred. | No |
+| `service` | `string \| string[]` | Service(s) this upload belongs to. When deploying with `--only`, only uploads matching a targeted service are transferred. Uploads without this field are always transferred. | No |
 
 `dest` must start with `/`. If `src` is a directory, `dest` is used as the destination directory and the relative structure is preserved.
 
@@ -83,7 +83,7 @@ upload:
 
 ## Scoping uploads to a service
 
-When using `--services` to deploy a single service, uploads without a `service` field still run. Use the `service` field to restrict an upload to specific services:
+When using `--only` to deploy a single service, uploads without a `service` field still run. Use the `service` field to restrict an upload to specific services:
 
 ```yaml
 upload:

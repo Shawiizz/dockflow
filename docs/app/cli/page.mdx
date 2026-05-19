@@ -83,7 +83,7 @@ Deploy the application to the specified environment. In CI, both `env` and `vers
 
 | Option | Description |
 |--------|-------------|
-| `--services <list>` | Comma-separated list of services to deploy |
+| `--only <list>` | Comma-separated list of services to deploy |
 | `--skip-build` | Skip the build phase |
 | `--force` | Force deployment even if locked |
 | `--accessories` | Deploy only accessories (force redeploy) |
@@ -116,7 +116,7 @@ Build Docker images locally without deploying. In CI, the environment is auto-de
 
 | Option | Description |
 |--------|-------------|
-| `--services <list>` | Comma-separated list of services to build |
+| `--only <list>` | Comma-separated list of services to build |
 | `--push` | Push images to registry after build |
 | `--skip-hooks` | Skip pre-build and post-build hooks |
 | `--branch <name>` | Override auto-detected git branch |
@@ -124,7 +124,7 @@ Build Docker images locally without deploying. In CI, the environment is auto-de
 
 ```bash
 dockflow build production                 # Build all services
-dockflow build production --services app  # Build specific service
+dockflow build production --only app      # Build specific service
 dockflow build production --push          # Build and push to registry
 ```
 

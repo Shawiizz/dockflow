@@ -18,7 +18,7 @@ interface DeployDryRunOptions {
   skipAccessories: boolean;
   skipBuild?: boolean;
   force?: boolean;
-  services?: string;
+  only?: string;
   debug?: boolean;
 }
 
@@ -38,7 +38,7 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
     skipAccessories,
     skipBuild,
     force,
-    services,
+    only,
     debug,
   } = options;
 
@@ -79,8 +79,8 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
   printRaw(`  ${colors.bold('Accessories:')}     ${skipAccessories ? 'skipped' : (forceAccessories ? 'forced' : 'auto-detect')}`);
   printRaw(`  ${colors.bold('Skip Build:')}      ${skipBuild || false}`);
   printRaw(`  ${colors.bold('Force Deploy:')}    ${force || false}`);
-  if (services) {
-    printRaw(`  ${colors.bold('Services:')}        ${services}`);
+  if (only) {
+    printRaw(`  ${colors.bold('Only:')}            ${only}`);
   }
   printBlank();
 
