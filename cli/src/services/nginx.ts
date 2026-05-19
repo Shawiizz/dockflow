@@ -56,8 +56,8 @@ export async function deployNginxTemplates(
     if (result.exitCode !== 0) {
       await rollback(conn, entries.map(([k]) => `${NGINX_SITES_ENABLED}/${basename(k)}`), previouslyExisted);
       const detail = result.stderr.trim() || `exit ${result.exitCode}`;
-      const statResult = await sshExec(conn, `stat -c '%G' '${NGINX_SITES_ENABLED}' 2>/dev/null`);
-      const nginxGroup = statResult.stdout.trim() || 'www-data';
+      const groupResult = await sshExec(conn, `nginx -T 2>/dev/null | awk '/^user[[:space:]]/{gsub(";","",$2); print $2; exit}'`);
+      const nginxGroup = groupResult.stdout.trim() || (await sshExec(conn, `getent group nginx >/dev/null 2>&1 && echo nginx || echo www-data`)).stdout.trim() || 'www-data';
       throw new DeployError(
         `Nginx template write failed on ${conn.host}: ${detail}`,
         ErrorCode.DEPLOY_FAILED,

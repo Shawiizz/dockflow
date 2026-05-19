@@ -27,7 +27,8 @@ export function configureServiceAccess(username: string): void {
   // nginx: group-write on sites-enabled + restricted sudo for test/reload only
   const nginxBin = spawnSync('which', ['nginx'], { encoding: 'utf-8', stdio: 'pipe' }).stdout.trim();
   if (nginxBin && spawnSync('test', ['-d', NGINX_SITES_ENABLED], { encoding: 'utf-8', stdio: 'pipe' }).status === 0) {
-    const nginxGroup = spawnSync('stat', ['-c', '%G', NGINX_SITES_ENABLED], { encoding: 'utf-8', stdio: 'pipe' }).stdout.trim() || 'www-data';
+    const nginxUser = spawnSync('sh', ['-c', "nginx -T 2>/dev/null | awk '/^user[[:space:]]/{gsub(\";\",\"\",$2); print $2; exit}'"], { encoding: 'utf-8', stdio: 'pipe' }).stdout.trim();
+    const nginxGroup = nginxUser || (spawnSync('getent', ['group', 'nginx'], { encoding: 'utf-8', stdio: 'pipe' }).status === 0 ? 'nginx' : 'www-data');
     spawnSync('usermod', ['-aG', nginxGroup, username], { encoding: 'utf-8', stdio: 'pipe' });
     spawnSync('chgrp', ['-R', nginxGroup, NGINX_SITES_ENABLED], { encoding: 'utf-8', stdio: 'pipe' });
     spawnSync('chmod', ['-R', 'g+rwX', NGINX_SITES_ENABLED], { encoding: 'utf-8', stdio: 'pipe' });
