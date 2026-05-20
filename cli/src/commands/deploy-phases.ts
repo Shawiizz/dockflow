@@ -10,7 +10,7 @@ import {
   getLayout,
 } from '../utils/config';
 import { readFileSync, existsSync, statSync } from 'fs';
-import { resolve, join, relative, dirname, basename } from 'path';
+import { resolve, relative, dirname, basename } from 'path';
 import { walkDir } from '../utils/fs';
 import { printDim, printWarning } from '../utils/output';
 import { sshExec, sshExecChannel } from '../utils/ssh';
@@ -28,7 +28,6 @@ import * as Build from '../services/build';
 import * as Distribution from '../services/distribution';
 import type { ContainerRuntime } from '../services/distribution';
 import * as Hook from '../services/hook';
-import * as Nginx from '../services/nginx';
 import { CONVERGENCE_TIMEOUT_S, CONVERGENCE_INTERVAL_S, DOCKFLOW_UPLOAD_BACKUPS_DIR } from '../constants';
 import type { DeployContext } from './deploy-context';
 
@@ -374,9 +373,6 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
 
   }
 
-  await Nginx.deployNginxTemplates(ctx.cluster.manager.connection, ctx.rendered);
-
-  await Hook.runRemote('post-deploy', ctx.cluster.manager.connection, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
 }
 
 export async function runHTTPHealthChecks(ctx: DeployContext): Promise<void> {

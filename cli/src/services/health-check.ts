@@ -69,7 +69,7 @@ export class HealthCheck {
       }
 
       if (attempt < retries) {
-        printDebug(`HTTP check ${endpoint.url} attempt ${attempt}/${retries} failed: ${lastError}`);
+        printWarning(`HTTP check ${endpoint.url} attempt ${attempt}/${retries} failed: ${lastError}. Retrying in ${retryDelay / 1000}s...`);
         await Bun.sleep(retryDelay);
       }
     }
@@ -116,7 +116,7 @@ export class HealthCheck {
       }
 
       if (attempt < retries) {
-        printDebug(`HTTP check (remote) ${endpoint.url} attempt ${attempt}/${retries} failed: ${lastError}`);
+        printWarning(`HTTP check (remote) ${endpoint.url} attempt ${attempt}/${retries} failed: ${lastError}. Retrying in ${retryDelay / 1000}s...`);
         await Bun.sleep(retryDelay);
       }
     }

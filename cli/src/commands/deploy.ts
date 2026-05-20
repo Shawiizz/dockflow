@@ -55,6 +55,8 @@ import { Lock } from '../services/lock';
 import { Audit } from '../services/audit';
 import { Metrics } from '../services/metrics';
 import * as Notification from '../services/notification';
+import * as Nginx from '../services/nginx';
+import * as Hook from '../services/hook';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
 import { buildAndDistribute, uploadFiles, rollbackUploads, commitUploads, deployAccessories, deployApp, runHTTPHealthChecks, recordHistory } from './deploy-phases';
@@ -307,6 +309,9 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     await runHTTPHealthChecks(ctx);
 
+    await Nginx.deployNginxTemplates(ctx.cluster.manager.connection, ctx.rendered);
+    await Hook.runRemote('post-deploy', ctx.cluster.manager.connection, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
+
     await Promise.all([
       ctx.releases.cleanupOldReleases(ctx.stackName, ctx.config),
       commitUploads(uploadPlan).catch((e) => printWarning(`Upload commit failed: ${e instanceof Error ? e.message : String(e)}`)),
@@ -315,15 +320,20 @@ async function execute(ctx: DeployContext): Promise<void> {
   } catch (err) {
     deployFailed = true;
     auditMessage = `Deploy ${ctx.deployVersion} to ${ctx.env} failed: ${err instanceof Error ? err.message : String(err)}`;
-    await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
 
     if (uploadPlan) {
       await rollbackUploads(uploadPlan).catch((e) => printWarning(`Upload rollback failed: ${e instanceof Error ? e.message : String(e)}`));
     }
 
     if (stackDeployed && ctx.config.health_checks?.on_failure === 'rollback') {
+      // rollback() handles its own cleanup — calling removeRelease first would delete 1.0.41 before rollback can list it.
       try { printWarning(`Rolled back to ${await ctx.releases.rollback(ctx.stackName, ctx.orchestrator)}`); }
-      catch (e) { printWarning(`Rollback failed: ${e instanceof Error ? e.message : String(e)}`); }
+      catch (e) {
+        printWarning(`Rollback failed: ${e instanceof Error ? e.message : String(e)}`);
+        await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
+      }
+    } else {
+      await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
     }
     throw err;
   } finally {
