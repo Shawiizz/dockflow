@@ -71,7 +71,7 @@ This behavior can be disabled with `image_auto_tag: false` in [config.yml](/conf
 
 ## Deploy Configuration
 
-The `deploy` section controls how Docker Swarm manages your services. Dockflow injects sensible defaults, so you only need to specify what you want to override.
+The `deploy` section controls how the orchestrator manages your services. Dockflow injects sensible defaults for Swarm — on k3s these settings are translated to Kubernetes resource equivalents. You only need to specify what you want to override.
 
 ### Default Values
 
@@ -129,7 +129,7 @@ services:
 
 ## Health Checks
 
-Docker health checks let Swarm verify that containers are actually working:
+Docker health checks let the orchestrator verify that containers are actually working:
 
 ```yaml
 services:
@@ -162,7 +162,7 @@ volumes:
 ```
 
 <Callout type="info">
-  Volumes and networks are automatically prefixed with the stack name by Docker Swarm (e.g., `myapp-production_app-data`). No manual prefixing needed.
+  On Swarm, volumes and networks are automatically prefixed with the stack name (e.g., `myapp-production_app-data`). On k3s, resources are scoped to the `dockflow-{stackName}` namespace.
 </Callout>
 
 ## Networks
@@ -260,8 +260,8 @@ networks:
 Dockflow ensures complete isolation between environments (production, staging, etc.) through:
 
 1. **Image names** — automatically tagged with environment and version (`my-app-production:1.0.0`)
-2. **Stack names** — each environment gets its own Swarm stack
-3. **Networks and volumes** — automatically prefixed with the stack name by Docker Swarm
+2. **Stack names** — each environment gets its own isolated stack or namespace
+3. **Networks and volumes** — scoped per stack (Swarm prefix, k3s namespace)
 
 ---
 

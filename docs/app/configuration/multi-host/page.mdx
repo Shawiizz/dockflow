@@ -2,7 +2,11 @@
 
 import { Callout } from 'nextra/components'
 
-Deploy your application across multiple servers using Docker Swarm with managers and workers.
+Deploy your application across multiple servers. Multi-node clusters are supported for **Docker Swarm**. k3s deployments currently target a single node via dockflow.
+
+<Callout type="info">
+  The orchestrator is selected with `orchestrator: swarm | k3s` in `config.yml`. See [Orchestrator](/configuration/orchestrator) for details.
+</Callout>
 
 ## Swarm Architecture
 
@@ -42,7 +46,7 @@ PRODUCTION_WORKER2_CONNECTION=eyJob3N0Ijoi...
 ```
 
 <Callout type="info">
-  Workers automatically join the Swarm cluster. You only deploy to the manager — Swarm distributes workloads automatically.
+  Workers automatically join the Swarm cluster during `dockflow setup swarm`. You only deploy to the manager — Swarm distributes workloads automatically.
 </Callout>
 
 ## Multi-Manager for High Availability
@@ -83,7 +87,7 @@ servers:
 When deploying with multiple managers, Dockflow automatically:
 
 1. Checks each manager's status via SSH
-2. Finds the Swarm leader (or any reachable manager)
+2. Finds the active Swarm leader (or any reachable manager)
 3. Falls back to the next available manager if one is down
 
 ```bash
@@ -105,12 +109,12 @@ Example output with failover:
 ## How Deployment Works
 
 1. **Deploy targets the manager** — Dockflow connects only to the active manager
-2. **Swarm distributes workloads** — Containers are scheduled across all nodes
+2. **Swarm schedules workloads** — Containers are distributed across all nodes automatically
 3. **Images are transferred to workers** — Via SSH streaming or [registry](/configuration/registry)
 
 ```bash
 dockflow deploy production
-# ✓ Deployment completed! Swarm cluster: 3 managers + 2 worker(s)
+# ✓ Deployment completed! Swarm cluster: 3 managers, 2 worker(s)
 ```
 
 ## Server-Specific Environment Variables

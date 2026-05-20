@@ -18,9 +18,9 @@
 
 ---
 
-A deployment framework for Docker applications, leveraging Swarm for orchestration.
+A CLI-first deployment framework for Docker applications. Supports Docker Swarm and k3s (Kubernetes) as orchestrators.
 
-Dockflow automates the deployment of containerized applications to remote servers using Docker Swarm. It handles image building, transfer, stack deployment, health monitoring, and automatic rollback.
+Dockflow automates the deployment of containerized applications to remote servers via direct SSH — no runtime dependencies beyond the binary itself. It handles image building, transfer, stack deployment, health monitoring, and automatic rollback.
 
 ## Documentation
 

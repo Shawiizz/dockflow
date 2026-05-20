@@ -19,7 +19,7 @@ Images are built in your CI/CD pipeline and transferred to the server via SSH. N
 **How it works:**
 1. Dockflow parses `docker-compose.yml` to extract build commands
 2. Images are built locally (in parallel if multiple services)
-3. Images are streamed to all Swarm nodes via SSH:
+3. Images are streamed to all cluster nodes via SSH:
    ```
    docker save IMAGE | gzip -1 | ssh user@host "gunzip | docker load"
    ```
@@ -32,12 +32,12 @@ This is the simplest strategy and works for both single-node deployments and mul
 
 ## Registry Build
 
-For larger multi-node Swarm clusters, use a Docker registry so all nodes can pull images independently. This avoids streaming large images over SSH to each node individually.
+For larger multi-node clusters, use a Docker registry so all nodes can pull images independently. This avoids streaming large images over SSH to each node individually.
 
 **How it works:**
 1. Images are built locally (same as default)
 2. Images are pushed to your configured registry
-3. During `docker stack deploy`, each Swarm node pulls the image from the registry
+3. During deployment, each node pulls the image from the registry
 
 See [Docker Registry](/configuration/registry) for full configuration (GHCR, GitLab, Docker Hub, self-hosted).
 
@@ -79,7 +79,7 @@ For private repositories, add a `GIT_TOKEN` secret to your CI/CD environment. Do
 | **Setup complexity** | None | Registry config needed | Git access on server |
 | **Network usage** | SSH stream per node | Single push, nodes pull | Git clone only |
 | **Build cache** | Full local cache | Full local cache | Pruned between deploys |
-| **Multi-node** | Streaming to each node | Native Swarm pull | Streaming to workers |
+| **Multi-node** | Streaming to each node | Registry pull per node | Streaming to workers |
 | **CI resources** | Needs Docker on runner | Needs Docker on runner | Minimal CI resources |
 | **Private repos** | N/A | N/A | Needs `GIT_TOKEN` |
 

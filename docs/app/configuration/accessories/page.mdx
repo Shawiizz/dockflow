@@ -10,7 +10,7 @@ Accessories are **stateful services** (databases, caches, message queues, etc.) 
   **Problem**: If you put your database in the main `docker-compose.yml`, it gets restarted on every deployment. This can cause data corruption or downtime.
 </Callout>
 
-**Solution**: Accessories are deployed as a separate Docker Swarm stack. Your app can be deployed 100 times without touching the database.
+**Solution**: Accessories are deployed as a separate stack (Swarm) or namespace (k3s). Your app can be deployed 100 times without touching the database.
 
 ```
 myapp-production              ← Main app (redeployed often)
@@ -61,9 +61,9 @@ volumes:
   Environment variables can be accessed using template syntax: `{{ variable_name }}`
 </Callout>
 
-## Automatic Swarm Configuration
+## Automatic Deploy Configuration
 
-Dockflow automatically injects a minimal Swarm configuration for each accessory service:
+Dockflow automatically injects a minimal deploy configuration for each accessory service:
 
 ```yaml
 deploy:

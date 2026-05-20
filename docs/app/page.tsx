@@ -27,7 +27,7 @@ export default function Page() {
 
           <p className="mt-5 text-lg text-neutral-500 dark:text-neutral-400 max-w-[560px] mx-auto leading-relaxed">
             A CLI that scaffolds, provisions, and deploys Docker applications to your own servers.
-            Powered by Docker Swarm. No Kubernetes needed.
+            Supports Docker Swarm and k3s. No cloud vendor lock-in.
           </p>
 
           <div className="flex justify-center gap-3 mt-8 flex-wrap">
@@ -84,7 +84,7 @@ export default function Page() {
           Skip the complexity
         </h2>
         <p className="text-neutral-500 dark:text-neutral-400 text-center text-[15px] mt-3 mb-12">
-          Server provisioning, Swarm orchestration, rollbacks — handled for you.
+          Server provisioning, orchestration, rollbacks — handled for you.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -94,7 +94,7 @@ export default function Page() {
               Without Dockflow
             </div>
             {[
-              "Install Docker & init Swarm by hand",
+              "Install Docker & set up the orchestrator by hand",
               "Manage SSH keys and user accounts",
               "Write bash deploy scripts",
               "Transfer images to servers manually",
@@ -115,7 +115,7 @@ export default function Page() {
             </div>
             {[
               ["dockflow init", "Scaffolds config, Compose & Dockerfile"],
-              ["dockflow setup", "Installs Docker, creates user, inits Swarm"],
+              ["dockflow setup", "Installs Docker, creates user, sets up Swarm or k3s"],
               ["Connection strings", "Generated automatically after setup"],
               ["dockflow deploy", "Builds, transfers & deploys via SSH"],
               ["Health checks", "Auto rollback on failure"],
@@ -147,7 +147,7 @@ export default function Page() {
           <FeatureCard
             icon={<IconTerminal />}
             title="One command deploy"
-            desc="dockflow deploy builds your image, transfers it to the server, and updates your Docker Swarm stack — in a single command."
+            desc="dockflow deploy builds your image, transfers it to the server, and deploys your stack via SSH — whether you run Docker Swarm or k3s."
             large
           />
           <FeatureCard
@@ -160,7 +160,7 @@ export default function Page() {
         {/* Row 2: 4 small */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <FeatureCard icon={<IconRollback />} title="Auto rollback" desc="Configurable health checks on deploy. Roll back on failure, notify, or ignore." />
-          <FeatureCard icon={<IconServer />} title="Single node to cluster" desc="Start on one server. Add workers and scale to multi-node Swarm when ready." />
+          <FeatureCard icon={<IconServer />} title="Single node to cluster" desc="Start on one server. Scale to a multi-node Swarm cluster or deploy on k3s when ready." />
           <FeatureCard icon={<IconGitBranch />} title="CI/CD workflows" desc="Ships with ready-made GitHub Actions and GitLab CI pipelines. Push a tag, trigger a deploy." />
           <FeatureCard icon={<IconMonitor />} title="Web dashboard" desc="Monitor services, stream logs, and trigger deploys from the built-in web UI." />
         </div>

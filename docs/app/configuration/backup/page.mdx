@@ -162,7 +162,7 @@ backup:
 
 ### Redis
 
-Triggers `BGSAVE` and copies the RDB dump file. Restore writes the new dump file, issues `SHUTDOWN NOSAVE` to prevent Redis from overwriting it, then explicitly restarts the Swarm service via `docker service update --force`.
+Triggers `BGSAVE` and copies the RDB dump file. Restore writes the new dump file, issues `SHUTDOWN NOSAVE` to prevent Redis from overwriting it, then restarts the service (`docker service update --force` on Swarm, `kubectl rollout restart` on k3s).
 
 ```yaml
 backup:
