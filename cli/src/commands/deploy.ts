@@ -57,7 +57,7 @@ import { Metrics } from '../services/metrics';
 import * as Notification from '../services/notification';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
-import { buildAndDistribute, uploadFiles, rollbackUploads, commitUploads, deployAccessories, deployApp, recordHistory } from './deploy-phases';
+import { buildAndDistribute, uploadFiles, rollbackUploads, commitUploads, deployAccessories, deployApp, runHTTPHealthChecks, recordHistory } from './deploy-phases';
 import type { UploadRollbackPlan } from './deploy-phases';
 
 // ---------------------------------------------------------------------------
@@ -304,6 +304,8 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     await deployApp(ctx, compose);
     stackDeployed = ctx.deployApp !== false;
+
+    await runHTTPHealthChecks(ctx);
 
     await Promise.all([
       ctx.releases.cleanupOldReleases(ctx.stackName, ctx.config),

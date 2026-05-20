@@ -372,14 +372,17 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
       );
     }
 
-    if (ctx.config.health_checks?.endpoints?.length) {
-      await health.checkHTTPEndpoints(ctx.config.health_checks);
-    }
   }
 
   await Nginx.deployNginxTemplates(ctx.cluster.manager.connection, ctx.rendered);
 
   await Hook.runRemote('post-deploy', ctx.cluster.manager.connection, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
+}
+
+export async function runHTTPHealthChecks(ctx: DeployContext): Promise<void> {
+  if (!ctx.deployApp || !ctx.config.health_checks?.endpoints?.length) return;
+  const health = new HealthCheck(ctx.cluster.manager.connection, ctx.orchestrator);
+  await health.checkHTTPEndpoints(ctx.config.health_checks);
 }
 
 // ---------------------------------------------------------------------------
