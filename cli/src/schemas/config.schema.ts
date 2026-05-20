@@ -304,6 +304,10 @@ export const UploadItemSchema = z.object({
     .describe('Absolute destination path on the remote server'),
   service: z.union([z.string(), z.array(z.string())]).optional()
     .describe('Service(s) this upload belongs to. When --services is used, only uploads matching a targeted service are transferred.'),
+  permissions: z.string().optional()
+    .describe('File permissions to apply after upload, in octal notation (e.g. "640", "755").'),
+  owner: z.string().optional()
+    .describe('File owner to apply after upload, in "user" or "user:group" format (e.g. "mosquitto", "www-data:www-data").'),
 });
 
 /**

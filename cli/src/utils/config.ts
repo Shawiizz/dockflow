@@ -139,6 +139,8 @@ export interface UploadItem {
   src: string;
   dest: string;
   service?: string | string[];
+  permissions?: string;
+  owner?: string;
 }
 
 export interface DockflowConfig {

@@ -154,6 +154,29 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
             `  mkdir -p '${dirname(destPath)}' && chown ${conn.user}: '${dirname(destPath)}'`,
           );
         }
+
+        if (upload.permissions) {
+          const chmodResult = await sshExec(conn, `chmod ${upload.permissions} '${destPath}'`);
+          if (chmodResult.exitCode !== 0) {
+            throw new DeployError(
+              `upload: chmod ${upload.permissions} failed on ${destPath} (${conn.host}): ${chmodResult.stderr.trim() || `exit ${chmodResult.exitCode}`}`,
+              ErrorCode.DEPLOY_FAILED,
+            );
+          }
+        }
+        if (upload.owner) {
+          const chownResult = await sshExec(conn, `chown ${upload.owner} '${destPath}'`);
+          if (chownResult.exitCode !== 0) {
+            throw new DeployError(
+              `upload: chown ${upload.owner} failed on ${destPath} (${conn.host}): ${chownResult.stderr.trim() || `exit ${chownResult.exitCode}`}`,
+              ErrorCode.DEPLOY_FAILED,
+              `The deploy user needs sudo rights for chown. Either run once on the server as root:\n` +
+              `  chown ${upload.owner} '${destPath}'\n` +
+              `Or grant the deploy user the right permanently:\n` +
+              `  echo '${conn.user} ALL=(ALL) NOPASSWD: /bin/chown * ${dirname(destPath)}/*' >> /etc/sudoers.d/dockflow`,
+            );
+          }
+        }
       }));
 
       printDim(`upload: ${upload.src.replace(/\/$/, '')}${isDir ? '/' + relPath : ''} → ${destPath}`);

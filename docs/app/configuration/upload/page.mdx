@@ -30,6 +30,8 @@ services:
 | `src` | `string` | Local path relative to the project root (file or directory) | Yes |
 | `dest` | `string` | Absolute destination path on the remote server | Yes |
 | `service` | `string \| string[]` | Service(s) this upload belongs to. When deploying with `--only`, only uploads matching a targeted service are transferred. Uploads without this field are always transferred. | No |
+| `permissions` | `string` | File permissions applied after upload, in octal notation (e.g. `"640"`, `"755"`). | No |
+| `owner` | `string` | File owner applied after upload, in `"user"` or `"user:group"` format (e.g. `"mosquitto"`, `"www-data:www-data"`). Requires the deploy user to have `sudo` or sufficient privileges. | No |
 
 `dest` must start with `/`. If `src` is a directory, `dest` is used as the destination directory and the relative structure is preserved.
 
@@ -78,7 +80,26 @@ upload:
 </Callout>
 
 <Callout type="info">
-  File permissions are not preserved (files are created with the server's default umask). If a service requires specific permissions (e.g., `640` for `mosquitto_passwd`), add a `post-deploy` hook that runs `chmod`.
+  Files are created with the server's default umask. Use `permissions` and `owner` to enforce specific access control after upload.
+</Callout>
+
+```yaml
+upload:
+  - src: .dockflow/docker/mosquitto/passwd
+    dest: /opt/dockflow/mqtt/passwd
+    permissions: "640"
+    owner: "mosquitto:mosquitto"
+```
+
+<Callout type="warning">
+  `owner` requires the deploy user to have `sudo` rights for `chown`. Without it, the deployment will fail with a clear message showing the exact command to run manually or the sudoers rule to add.
+
+  To grant the right permanently on the server:
+  ```bash
+  echo 'dockflow ALL=(ALL) NOPASSWD: /bin/chown * /opt/dockflow/*' >> /etc/sudoers.d/dockflow
+  ```
+
+  Restrict the path to the directories you actually use to limit the privilege surface.
 </Callout>
 
 ## Scoping uploads to a service
