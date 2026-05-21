@@ -29,6 +29,8 @@ import * as Distribution from '../services/distribution';
 import type { ContainerRuntime } from '../services/distribution';
 import * as Hook from '../services/hook';
 import { CONVERGENCE_TIMEOUT_S, CONVERGENCE_INTERVAL_S, DOCKFLOW_UPLOAD_BACKUPS_DIR } from '../constants';
+import type { StackBackend } from '../services/orchestrator/interfaces';
+import type { HealthCheckConfig } from '../utils/config';
 import type { DeployContext } from './deploy-context';
 
 // ---------------------------------------------------------------------------
@@ -379,6 +381,31 @@ export async function runHTTPHealthChecks(ctx: DeployContext): Promise<void> {
   if (!ctx.deployApp || !ctx.config.health_checks?.endpoints?.length) return;
   const health = new HealthCheck(ctx.cluster.manager.connection, ctx.orchestrator);
   await health.checkHTTPEndpoints(ctx.config.health_checks);
+}
+
+/**
+ * Run health checks after a rollback. Always best-effort — failures are
+ * printed as warnings, never thrown, because there is nothing left to roll back to.
+ */
+export async function runPostRollbackHealthChecks(
+  connection: SSHKeyConnection,
+  orchestrator: StackBackend,
+  stackName: string,
+  healthConfig: HealthCheckConfig | undefined,
+): Promise<void> {
+  if (healthConfig?.enabled === false) return;
+
+  const health = new HealthCheck(connection, orchestrator);
+
+  const result = await health.checkInternalHealth(stackName, healthConfig).catch(() => null);
+  if (result && !result.healthy) {
+    printWarning(`Rolled-back version is unhealthy: ${result.message ?? result.failedService ?? 'check logs'}`);
+  }
+
+  if (healthConfig?.endpoints?.length) {
+    // Force on_failure to 'notify' — rolling back a rollback is not an option.
+    await health.checkHTTPEndpoints({ ...healthConfig, on_failure: 'notify' });
+  }
 }
 
 // ---------------------------------------------------------------------------

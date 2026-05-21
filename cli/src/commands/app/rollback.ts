@@ -14,6 +14,7 @@ import { Audit } from '../../services/audit';
 import { Metrics } from '../../services/metrics';
 import * as Notification from '../../services/notification';
 import { withErrorHandler } from '../../utils/errors';
+import { runPostRollbackHealthChecks } from '../deploy-phases';
 
 export function registerRollbackCommand(program: Command): void {
   program
@@ -50,6 +51,7 @@ export function registerRollbackCommand(program: Command): void {
         const releases = new Release(connection);
         const rolledBackTo = await releases.rollback(stackName, orchestrator);
         spinner.succeed(`Rolled back to ${rolledBackTo}`);
+        await runPostRollbackHealthChecks(connection, orchestrator, stackName, config.health_checks);
 
         const durationMs = Date.now() - startTime;
         const message = `Rolled back ${stackName} to ${rolledBackTo}`;
