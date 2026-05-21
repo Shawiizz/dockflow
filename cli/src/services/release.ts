@@ -73,7 +73,19 @@ export class Release {
     ]);
     composeHandle.stream.end(composeYaml);
     metaHandle.stream.end(metaJson);
-    await Promise.all([composeHandle.done, metaHandle.done]);
+    const [composeResult, metaResult] = await Promise.all([composeHandle.done, metaHandle.done]);
+    if (composeResult.exitCode !== 0) {
+      throw new DeployError(
+        `Failed to write release compose for ${version}: ${composeResult.stderr.trim() || `exit ${composeResult.exitCode}`}`,
+        ErrorCode.DEPLOY_FAILED,
+      );
+    }
+    if (metaResult.exitCode !== 0) {
+      throw new DeployError(
+        `Failed to write release metadata for ${version}: ${metaResult.stderr.trim() || `exit ${metaResult.exitCode}`}`,
+        ErrorCode.DEPLOY_FAILED,
+      );
+    }
 
     await sshExec(this.connection, `ln -sfn "${dir}" "${stackDir}/current"`);
 
@@ -132,73 +144,74 @@ export class Release {
   }
 
   /**
-   * Rollback to the previous release.
-   *
-   * Reads the previous release's compose, re-applies it via StackBackend,
-   * waits for convergence, then updates the `current` symlink.
-   * Returns the version that was rolled back to.
+   * Rollback to the previous release. Returns the version rolled back to.
+   * When `previousReleasePath` is supplied the target is used directly;
+   * otherwise releases are listed and the most recent non-failed one is used.
    */
   async rollback(
     stackName: string,
     orchestrator: StackBackend,
+    failedVersion?: string | null,
+    previousReleasePath?: string | null,
   ): Promise<string> {
-    const releases = await this.listReleases(stackName);
+    let previousDir: string;
+    let previousVersion: string;
+    let failedDir: string | undefined;
 
-    if (releases.length < 2) {
-      throw new DeployError(
-        'No previous release available for rollback',
-        ErrorCode.ROLLBACK_FAILED,
-      );
+    if (previousReleasePath) {
+      // Fast path: we already know where the previous release lives.
+      previousDir = previousReleasePath;
+      previousVersion = previousReleasePath.split('/').pop() ?? previousReleasePath;
+      failedDir = failedVersion ? this.releaseDir(stackName, failedVersion) : undefined;
+    } else {
+      // Fallback: discover via listReleases.
+      const releases = await this.listReleases(stackName);
+      const candidates = failedVersion
+        ? releases.filter(r => r.version !== failedVersion)
+        : releases.slice(1);
+
+      if (candidates.length < 1) {
+        throw new DeployError(
+          'No previous release available for rollback',
+          ErrorCode.ROLLBACK_FAILED,
+        );
+      }
+
+      const previous = candidates[0];
+      previousDir = this.releaseDir(stackName, previous.version);
+      previousVersion = previous.version;
+      failedDir = failedVersion ? this.releaseDir(stackName, failedVersion) : undefined;
     }
 
-    const failed = releases[0];
-    const previous = releases[1];
-    const previousDir = this.releaseDir(stackName, previous.version);
+    printInfo(`Rolling back to ${previousVersion}...`);
 
-    printInfo(`Rolling back to ${previous.version}...`);
-
-    // Read previous compose
-    const composeResult = await sshExec(
-      this.connection,
-      `cat "${previousDir}/docker-compose.yml"`,
-    );
-
+    const composeResult = await sshExec(this.connection, `cat "${previousDir}/docker-compose.yml"`);
     if (composeResult.exitCode !== 0 || !composeResult.stdout.trim()) {
       throw new DeployError(
-        `Could not read compose for rollback version ${previous.version}`,
+        `Could not read compose for rollback at ${previousDir}`,
         ErrorCode.ROLLBACK_FAILED,
       );
     }
 
-    // Re-apply the old compose via the orchestrator
     const deployResult = await orchestrator.redeploy(stackName, composeResult.stdout);
     if (!deployResult.success) {
-      throw new DeployError(
-        deployResult.error.message,
-        ErrorCode.ROLLBACK_FAILED,
-      );
+      throw new DeployError(deployResult.error.message, ErrorCode.ROLLBACK_FAILED);
     }
 
     const convergence = await orchestrator.waitConvergence(stackName, 300, 5);
     if (!convergence.converged) {
-      throw new DeployError(
-        'Rollback did not converge',
-        ErrorCode.ROLLBACK_FAILED,
-      );
+      throw new DeployError('Rollback did not converge', ErrorCode.ROLLBACK_FAILED);
     }
 
-    // Update symlink
-    await sshExec(
-      this.connection,
-      `ln -sfn "${previousDir}" "${this.stackDir(stackName)}/current"`,
-    );
+    await sshExec(this.connection, `ln -sfn "${previousDir}" "${this.stackDir(stackName)}/current"`);
 
-    // Clean up the failed release directory
-    await this.removeRelease(stackName, failed.version).catch(() => {
-      printWarning(`Could not remove failed release ${failed.version}`);
-    });
+    if (failedDir) {
+      await sshExec(this.connection, `rm -rf "${failedDir}"`).catch(() => {
+        printWarning(`Could not remove failed release directory ${failedDir}`);
+      });
+    }
 
-    return previous.version;
+    return previousVersion;
   }
 
   /**

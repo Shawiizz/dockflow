@@ -326,8 +326,8 @@ async function execute(ctx: DeployContext): Promise<void> {
     }
 
     if (stackDeployed && ctx.config.health_checks?.on_failure === 'rollback') {
-      // rollback() handles its own cleanup — calling removeRelease first would delete 1.0.41 before rollback can list it.
-      try { printWarning(`Rolled back to ${await ctx.releases.rollback(ctx.stackName, ctx.orchestrator)}`); }
+      // rollback() handles its own cleanup — calling removeRelease first would delete the failed release before rollback can list it.
+      try { printWarning(`Rolled back to ${await ctx.releases.rollback(ctx.stackName, ctx.orchestrator, ctx.deployVersion, previousSymlink)}`); }
       catch (e) {
         printWarning(`Rollback failed: ${e instanceof Error ? e.message : String(e)}`);
         await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
