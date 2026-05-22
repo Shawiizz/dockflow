@@ -96,7 +96,7 @@ Number of previous releases to retain on the server. Enables quick rollback and 
 ### `cleanup_on_failure`
 **Default:** `true`
 
-Remove Docker images from failed deployments immediately.
+Remove images built for a failed deployment from all cluster nodes immediately after failure. Has no effect when a registry is used — images pushed to a registry are not deleted.
 
 ## Health Checks
 

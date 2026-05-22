@@ -211,19 +211,27 @@ export async function commitUploads(plan: UploadRollbackPlan): Promise<void> {
 // Phase: Build & distribute
 // ---------------------------------------------------------------------------
 
+export interface BuildResult {
+  images: string[];
+  engine: 'docker' | 'podman';
+  usedRegistry: boolean;
+}
+
 export async function buildAndDistribute(
   ctx: DeployContext,
   compose: ParsedCompose,
-): Promise<void> {
-  if (ctx.options.skipBuild || !ctx.deployApp) return;
+): Promise<BuildResult | null> {
+  if (ctx.options.skipBuild || !ctx.deployApp) return null;
 
   await Hook.runLocal('pre-build', ctx.projectRoot, ctx.config, ctx.rendered);
 
   const engine = await detectContainerEngine(ctx.cluster.manager.connection, ctx.config.container_engine);
   const runtime: ContainerRuntime = ctx.config.orchestrator === 'k3s' ? 'containerd' : engine;
+  let images: string[] = [];
+  let usedRegistry = false;
 
   if (ctx.config.options?.remote_build) {
-    const { images } = await Build.buildRemote(ctx.cluster.manager.connection, {
+    ({ images } = await Build.buildRemote(ctx.cluster.manager.connection, {
       projectRoot: ctx.projectRoot,
       composeContent: Compose.serialize(compose),
       composeDirPath: ctx.composeDirPath,
@@ -232,7 +240,7 @@ export async function buildAndDistribute(
       branch: ctx.branchName,
       servicesFilter: ctx.options.only,
       engine,
-    });
+    }));
 
     if (images.length > 0 && ctx.cluster.workers.length > 0) {
       await Distribution.distributeFromRemote(images, ctx.cluster.manager.connection, ctx.cluster.workers, runtime);
@@ -255,9 +263,10 @@ export async function buildAndDistribute(
         target.engine = engine;
       }
 
-      const { images } = await Build.buildAll(targets);
+      ({ images } = await Build.buildAll(targets));
 
       if (ctx.config.registry?.enabled && ctx.config.registry.url && ctx.config.registry.password) {
+        usedRegistry = true;
         await Distribution.registryLogin(ctx.cluster.manager.connection, {
           url: ctx.config.registry.url,
           username: ctx.config.registry.username,
@@ -276,6 +285,7 @@ export async function buildAndDistribute(
   }
 
   await Hook.runLocal('post-build', ctx.projectRoot, ctx.config, ctx.rendered);
+  return { images, engine, usedRegistry };
 }
 
 // ---------------------------------------------------------------------------
@@ -406,6 +416,27 @@ export async function runPostRollbackHealthChecks(
     // Force on_failure to 'notify' — rolling back a rollback is not an option.
     await health.checkHTTPEndpoints({ ...healthConfig, on_failure: 'notify' });
   }
+}
+
+/**
+ * Remove images from all cluster nodes after a failed deployment.
+ * Skipped when a registry was used — images live in the registry, not just on nodes.
+ * Best-effort: Docker/Podman refuse to remove in-use images, so this is inherently safe.
+ */
+export async function cleanupFailedImages(
+  buildResult: BuildResult,
+  nodes: ClusterNode[],
+): Promise<void> {
+  if (buildResult.usedRegistry || buildResult.images.length === 0) return;
+
+  const quotedImages = buildResult.images.map(img => `'${img}'`).join(' ');
+  const engine = buildResult.engine;
+
+  await Promise.allSettled(
+    nodes.map(node =>
+      sshExec(node.connection, `${engine} rmi ${quotedImages} 2>/dev/null || true`),
+    ),
+  );
 }
 
 // ---------------------------------------------------------------------------

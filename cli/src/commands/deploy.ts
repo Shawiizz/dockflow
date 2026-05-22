@@ -59,7 +59,8 @@ import * as Nginx from '../services/nginx';
 import * as Hook from '../services/hook';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
-import { buildAndDistribute, uploadFiles, rollbackUploads, commitUploads, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, recordHistory } from './deploy-phases';
+import { buildAndDistribute, uploadFiles, rollbackUploads, commitUploads, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
+import type { BuildResult } from './deploy-phases';
 import type { UploadRollbackPlan } from './deploy-phases';
 
 // ---------------------------------------------------------------------------
@@ -269,6 +270,7 @@ async function execute(ctx: DeployContext): Promise<void> {
   let stackDeployed = false;
   let uploadPlan: UploadRollbackPlan | null = null;
   let previousSymlink: string | null = null;
+  let buildResult: BuildResult | null = null;
   let auditMessage = `Deploy ${ctx.deployVersion} to ${ctx.env}`;
 
   try {
@@ -276,7 +278,7 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     Compose.updateImageTags(compose, ctx.config, ctx.env, ctx.deployVersion, ctx.options.only);
 
-    await buildAndDistribute(ctx, compose);
+    buildResult = await buildAndDistribute(ctx, compose);
 
     uploadPlan = await uploadFiles(ctx);
 
@@ -323,6 +325,10 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     if (uploadPlan) {
       await rollbackUploads(uploadPlan).catch((e) => printWarning(`Upload rollback failed: ${e instanceof Error ? e.message : String(e)}`));
+    }
+
+    if (buildResult && ctx.config.stack_management?.cleanup_on_failure !== false) {
+      await cleanupFailedImages(buildResult, [ctx.cluster.manager, ...ctx.cluster.workers]).catch(() => {});
     }
 
     let rolledBackTo: string | null = null;
