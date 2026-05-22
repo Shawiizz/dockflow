@@ -96,6 +96,7 @@ async function runWithConcurrency(tasks: Array<() => Promise<void>>, limit: numb
 async function streamDirToHost(
   srcDir: string,
   excludePatterns: string[],
+  name: string,
   conn: SSHKeyConnection,
   destBase: string,
   compress: boolean,
@@ -109,7 +110,7 @@ async function streamDirToHost(
   const result = await done;
   if (result.exitCode !== 0) {
     throw new DeployError(
-      `upload: tar extraction failed at ${destBase} on ${conn.host}: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
+      `upload: tar extraction failed at ${destBase} on ${name}: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
       ErrorCode.DEPLOY_FAILED,
     );
   }
@@ -155,7 +156,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
 
       // Step 1: backup existing remote dir + ensure dest exists (all hosts in parallel)
       await Promise.all(plan.hosts.map(async hostState => {
-        const { conn } = hostState;
+        const { name, conn } = hostState;
         const backupPath = `${backupBaseDir}/${destBase.replace(/^\//, '')}.tar.gz`;
 
         await sshExec(conn, `mkdir -p '${dirname(backupPath)}'`);
@@ -173,7 +174,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
         const mkdirResult = await sshExec(conn, `mkdir -p '${destBase}'`);
         if (mkdirResult.exitCode !== 0) {
           throw new DeployError(
-            `upload: cannot create ${destBase} on ${conn.host}: ${mkdirResult.stderr.trim() || `exit ${mkdirResult.exitCode}`}`,
+            `upload: cannot create ${destBase} on ${name}: ${mkdirResult.stderr.trim() || `exit ${mkdirResult.exitCode}`}`,
             ErrorCode.DEPLOY_FAILED,
             `The deploy user must own the destination directory. Run once on the server as root:\n  mkdir -p '${destBase}' && chown ${conn.user}: '${destBase}'`,
           );
@@ -195,7 +196,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
         const spinner = createSpinner();
         spinner.start(`upload: ${upload.src}/ -> ${name}:${destBase}/${compressFlag}`);
         let lastTick = 0;
-        await streamDirToHost(srcAbs, excludePatterns, conn, destBase, compress,
+        await streamDirToHost(srcAbs, excludePatterns, name, conn, destBase, compress,
           (bytesProcessed) => {
             const now = Date.now();
             if (now - lastTick < 250) return;
@@ -212,7 +213,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
         // Multiple hosts: stream independently to each host in parallel — no RAM buffer
         printDim(`upload: ${upload.src}/ -> ${destBase}/${compressFlag} [${plan.hosts.length} hosts]`);
         await Promise.all(plan.hosts.map(async ({ name, conn }) => {
-          await streamDirToHost(srcAbs, excludePatterns, conn, destBase, compress);
+          await streamDirToHost(srcAbs, excludePatterns, name, conn, destBase, compress);
           printDim(`  upload: -> ${name}:${destBase}/ done`);
           if (upload.permissions) await sshExec(conn, `chmod -R ${upload.permissions} '${destBase}'`);
           if (upload.owner) await sshExec(conn, `chown -R ${upload.owner} '${destBase}'`);
@@ -235,7 +236,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
       ));
 
       const tasks = plan.hosts.map(hostState => async () => {
-        const { conn } = hostState;
+        const { name, conn } = hostState;
 
         const backupResult = await sshExec(conn,
           `if test -f '${destPath}'; then cp '${destPath}' '${backupPath}' && echo existed; else echo missing; fi`,
@@ -252,20 +253,20 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
         if (result.exitCode !== 0) {
           const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
           throw new DeployError(
-            `upload: failed to transfer ${upload.src} to ${conn.host}: ${detail}`,
+            `upload: failed to transfer ${upload.src} to ${name}: ${detail}`,
             ErrorCode.DEPLOY_FAILED,
-            `Ensure ${conn.user} has write access to ${dirname(destPath)} on ${conn.host}. Run once as root:\n  mkdir -p '${dirname(destPath)}' && chown ${conn.user}: '${dirname(destPath)}'`,
+            `Ensure ${conn.user} has write access to ${dirname(destPath)} on ${name}. Run once as root:\n  mkdir -p '${dirname(destPath)}' && chown ${conn.user}: '${dirname(destPath)}'`,
           );
         }
 
         if (upload.permissions) {
           const r = await sshExec(conn, `chmod ${upload.permissions} '${destPath}'`);
-          if (r.exitCode !== 0) throw new DeployError(`upload: chmod failed on ${destPath} (${conn.host})`, ErrorCode.DEPLOY_FAILED);
+          if (r.exitCode !== 0) throw new DeployError(`upload: chmod failed on ${destPath} (${name})`, ErrorCode.DEPLOY_FAILED);
         }
         if (upload.owner) {
           const r = await sshExec(conn, `chown ${upload.owner} '${destPath}'`);
           if (r.exitCode !== 0) throw new DeployError(
-            `upload: chown failed on ${destPath} (${conn.host})`,
+            `upload: chown failed on ${destPath} (${name})`,
             ErrorCode.DEPLOY_FAILED,
             `Grant chown rights:\n  echo '${conn.user} ALL=(ALL) NOPASSWD: /bin/chown * ${dirname(destPath)}/*' >> /etc/sudoers.d/dockflow`,
           );
