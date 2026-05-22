@@ -9,7 +9,7 @@ import type { Command } from 'commander';
 import { printInfo, printDebug, printBlank } from '../../utils/output';
 import { validateEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
 import { createContainerBackend, createStackBackend } from '../../services/orchestrator/factory';
-import { DockerError, CLIError, withErrorHandler } from '../../utils/errors';
+import { DockerError, CLIError, withServicesRequired } from '../../utils/errors';
 
 export function registerExecCommand(program: Command): void {
   program
@@ -21,7 +21,7 @@ export function registerExecCommand(program: Command): void {
     .option('-u, --user <user>', 'Run as specified user')
     .option('-w, --workdir <dir>', 'Working directory inside container')
     .option('--sh', 'Use sh instead of bash for interactive shell')
-    .action(withErrorHandler(withResolvedEnv(async (env: string, service: string, command: string[], options: {
+    .action(withServicesRequired(withResolvedEnv(async (env: string, service: string, command: string[], options: {
       server?: string;
       user?: string;
       workdir?: string;

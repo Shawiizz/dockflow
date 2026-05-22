@@ -275,10 +275,13 @@ export function renderAndResolveCompose(
 
   const originalComposePath = getComposePath();
   if (!originalComposePath) {
-    throw new ConfigError(
-      'No docker-compose.yml found',
-      'Expected at docker-compose.yml or .dockflow/docker/docker-compose.yml',
-    );
+    printWarning('No docker-compose.yml found — skipping Docker build and deploy. Expected at .dockflow/docker/docker-compose.yml');
+    return {
+      rendered,
+      composeContent: 'services: {}\n',
+      composeDirPath: join(projectRoot, '.dockflow', 'docker'),
+      projectRoot,
+    };
   }
 
   const composeRelPath = relative(projectRoot, originalComposePath).replace(/\\/g, '/');
@@ -625,6 +628,10 @@ export function getExternalVolumes(compose: ParsedCompose): string[] {
  * Extract all image tags referenced in services.
  * Returns a deduplicated list.
  */
+export function hasServices(compose: ParsedCompose): boolean {
+  return Object.keys(compose.services).length > 0;
+}
+
 export function getImages(compose: ParsedCompose): string[] {
   const images = new Set<string>();
   for (const svc of Object.values(compose.services)) {

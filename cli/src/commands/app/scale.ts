@@ -8,7 +8,7 @@ import type { Command } from 'commander';
 import { printDebug, createSpinner } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
-import { CLIError, DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
+import { CLIError, DockerError, ErrorCode, withServicesRequired } from '../../utils/errors';
 
 export function registerScaleCommand(program: Command): void {
   program
@@ -16,7 +16,7 @@ export function registerScaleCommand(program: Command): void {
     .description('Scale service to specified replicas')
     .helpGroup('Operate')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withErrorHandler(async (env: string, service: string, replicas: string, options: { server?: string }) => {
+    .action(withServicesRequired(async (env: string, service: string, replicas: string, options: { server?: string }) => {
       const { config, stackName, connection } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName });
 

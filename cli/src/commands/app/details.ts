@@ -7,7 +7,7 @@ import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
 import { printSection, printIntro, printNote, printDebug, printRaw, printWarning } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
-import { DockerError, withErrorHandler } from '../../utils/errors';
+import { DockerError, withServicesRequired } from '../../utils/errors';
 
 export function registerDetailsCommand(program: Command): void {
   program
@@ -15,7 +15,7 @@ export function registerDetailsCommand(program: Command): void {
     .description('Show stack overview and resource usage')
     .helpGroup('Inspect')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withErrorHandler(async (env: string, options: { server?: string }) => {
+    .action(withServicesRequired(async (env: string, options: { server?: string }) => {
       const { stackName, connection } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName });
       

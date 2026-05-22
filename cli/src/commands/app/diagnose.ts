@@ -7,7 +7,7 @@ import {
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { SwarmStackBackend } from '../../services/orchestrator/swarm/swarm-stack';
 import { loadConfig } from '../../utils/config';
-import { withErrorHandler, DockerError, ConfigError } from '../../utils/errors';
+import { withServicesRequired, DockerError, ConfigError } from '../../utils/errors';
 
 interface DiagnosticIssue {
   severity: 'error' | 'warning';
@@ -79,7 +79,7 @@ export function registerDiagnoseCommand(program: Command): void {
     .helpGroup('Inspect')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .option('-v, --verbose', 'Show all diagnostic details')
-    .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string; verbose?: boolean }) => {
+    .action(withServicesRequired(withResolvedEnv(async (env: string, options: { server?: string; verbose?: boolean }) => {
       const { stackName, connection, serverName } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName, serverName });
 

@@ -10,7 +10,7 @@ import { printInfo, printSection, printDebug, colors, printBlank, printDim, prin
 import { validateEnv } from '../../utils/validation';
 import { SwarmStackBackend } from '../../services/orchestrator/swarm/swarm-stack';
 import { loadConfig } from '../../utils/config';
-import { DockerError, withErrorHandler, ConfigError } from '../../utils/errors';
+import { DockerError, withServicesRequired, ConfigError } from '../../utils/errors';
 
 export function registerPsCommand(program: Command): void {
   program
@@ -19,7 +19,7 @@ export function registerPsCommand(program: Command): void {
     .helpGroup('Inspect')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .option('--tasks', 'Show tasks instead of containers')
-    .action(withErrorHandler(async (env: string, options: { server?: string; tasks?: boolean }) => {
+    .action(withServicesRequired(async (env: string, options: { server?: string; tasks?: boolean }) => {
       const { stackName, connection } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName, tasks: options.tasks });
 

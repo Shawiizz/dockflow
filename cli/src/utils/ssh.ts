@@ -623,7 +623,7 @@ export function closeAllConnections(): void {
   for (const [, entry] of pool) {
     try {
       if (entry.state !== 'closed') {
-        entry.client.end();
+        entry.client.destroy();
       }
     } catch {
       // Client may already be dead

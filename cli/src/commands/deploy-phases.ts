@@ -11,8 +11,10 @@ import {
 } from '../utils/config';
 import { readFileSync, existsSync, statSync } from 'fs';
 import { resolve, relative, dirname, basename } from 'path';
+import { pipeline } from 'stream/promises';
+import { printDim, printWarning, formatBytes, createSpinner } from '../utils/output';
 import { walkDir } from '../utils/fs';
-import { printDim, printWarning } from '../utils/output';
+import { packDirToTarGz, buildExcludeFilter } from '../utils/tar';
 import { sshExec, sshExecChannel } from '../utils/ssh';
 import {
   DeployError,
@@ -65,9 +67,12 @@ export async function detectContainerEngine(
 // ---------------------------------------------------------------------------
 
 export interface HostUploadState {
+  name: string;
   conn: SSHKeyConnection;
-  backedUp: string[];
-  created: string[];
+  backedUp: string[];                                       // individual files backed up
+  created: string[];                                        // individual files created (no prior backup)
+  backedUpDirs: Array<{ dest: string; backup: string }>;   // dirs backed up as tar.gz
+  createdDirs: string[];                                    // dirs created from scratch
 }
 
 export interface UploadRollbackPlan {
@@ -75,12 +80,50 @@ export interface UploadRollbackPlan {
   backupBaseDir: string;
 }
 
+const UPLOAD_CONCURRENCY = 8;
+
+/** Work-stealing concurrency pool — N workers drain a shared task queue. */
+async function runWithConcurrency(tasks: Array<() => Promise<void>>, limit: number): Promise<void> {
+  let i = 0;
+  const worker = async () => {
+    let idx: number;
+    while ((idx = i++) < tasks.length) await tasks[idx]();
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+}
+
+/** Stream a packDirToTarGz stream into an SSH channel. */
+async function streamDirToHost(
+  srcDir: string,
+  excludePatterns: string[],
+  conn: SSHKeyConnection,
+  destBase: string,
+  compress: boolean,
+  onProgress?: (bytesProcessed: number) => void,
+  onExtracting?: () => void,
+): Promise<void> {
+  const extractCmd = compress ? `tar xzf - -C '${destBase}'` : `tar xf - -C '${destBase}'`;
+  const { stream, done } = await sshExecChannel(conn, extractCmd);
+  await pipeline(packDirToTarGz(srcDir, excludePatterns, onProgress, compress), stream as unknown as NodeJS.WritableStream);
+  onExtracting?.();
+  const result = await done;
+  if (result.exitCode !== 0) {
+    throw new DeployError(
+      `upload: tar extraction failed at ${destBase} on ${conn.host}: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
+      ErrorCode.DEPLOY_FAILED,
+    );
+  }
+}
+
+
 export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPlan> {
   const uploads = ctx.config.upload;
   const backupBaseDir = `${DOCKFLOW_UPLOAD_BACKUPS_DIR}/${ctx.stackName}/${ctx.deployVersion}`;
 
   const plan: UploadRollbackPlan = {
-    hosts: activeNodes(ctx.cluster).map(n => ({ conn: n.connection, backedUp: [], created: [] })),
+    hosts: activeNodes(ctx.cluster).map(n => ({
+      name: n.name, conn: n.connection, backedUp: [], created: [], backedUpDirs: [], createdDirs: [],
+    })),
     backupBaseDir,
   };
 
@@ -95,48 +138,105 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
       const uploadServices = Array.isArray(upload.service) ? upload.service : [upload.service];
       if (!uploadServices.some(s => serviceFilter.has(s))) continue;
     }
-    const srcAbs = resolve(ctx.projectRoot, upload.src);
 
+    const srcAbs = resolve(ctx.projectRoot, upload.src);
     if (!existsSync(srcAbs)) {
       printWarning(`upload: source not found, skipping: ${upload.src}`);
       continue;
     }
 
-    const isDir = statSync(srcAbs).isDirectory();
-    const allFiles = isDir ? walkDir(srcAbs) : [srcAbs];
-    const baseDir = isDir ? srcAbs : dirname(srcAbs);
     const destBase = upload.dest.replace(/\/$/, '');
 
-    const excludeGlobs = (upload.exclude ?? []).map(p =>
-      p.includes('*') || p.includes('?') || p.includes('[') ? new Bun.Glob(p) : null,
-    );
-    const files = allFiles.filter(file => {
-      if (!upload.exclude?.length) return true;
-      const rel = relative(baseDir, file).replace(/\\/g, '/');
-      return !upload.exclude.some((pattern, i) => {
-        const glob = excludeGlobs[i];
-        return glob ? glob.match(rel) : rel === pattern || rel.startsWith(pattern + '/');
-      });
-    });
+    if (statSync(srcAbs).isDirectory()) {
+      // -----------------------------------------------------------------------
+      // Directory upload
+      // -----------------------------------------------------------------------
+      const excludePatterns = upload.exclude ?? [];
 
-    for (const file of files) {
-      const relPath = relative(baseDir, file).replace(/\\/g, '/');
-      const destPath = isDir
-        ? `${destBase}/${relPath}`
-        : upload.dest.endsWith('/')
-          ? `${destBase}/${basename(file)}`
-          : upload.dest;
-
-      // destPath stripped of leading slash to use as relative path under backupBaseDir
-      const destRelative = destPath.replace(/^\//, '');
-      const backupPath = `${backupBaseDir}/${destRelative}`;
-      const fileContent = readFileSync(file);
-
+      // Step 1: backup existing remote dir + ensure dest exists (all hosts in parallel)
       await Promise.all(plan.hosts.map(async hostState => {
         const { conn } = hostState;
+        const backupPath = `${backupBaseDir}/${destBase.replace(/^\//, '')}.tar.gz`;
 
-        // Backup existing file before overwriting
         await sshExec(conn, `mkdir -p '${dirname(backupPath)}'`);
+        const backupResult = await sshExec(conn,
+          `if [ -d '${destBase}' ] && [ -n "$(ls -A '${destBase}' 2>/dev/null)" ]; then ` +
+          `tar czf '${backupPath}' -C '${destBase}' . 2>/dev/null && echo backed_up; ` +
+          `else echo missing; fi`,
+        );
+        if (backupResult.stdout.trim() === 'backed_up') {
+          hostState.backedUpDirs.push({ dest: destBase, backup: backupPath });
+        } else {
+          hostState.createdDirs.push(destBase);
+        }
+
+        const mkdirResult = await sshExec(conn, `mkdir -p '${destBase}'`);
+        if (mkdirResult.exitCode !== 0) {
+          throw new DeployError(
+            `upload: cannot create ${destBase} on ${conn.host}: ${mkdirResult.stderr.trim() || `exit ${mkdirResult.exitCode}`}`,
+            ErrorCode.DEPLOY_FAILED,
+            `The deploy user must own the destination directory. Run once on the server as root:\n  mkdir -p '${destBase}' && chown ${conn.user}: '${destBase}'`,
+          );
+        }
+      }));
+
+      // Step 2: transfer
+      const compress = upload.compress !== false;
+      const compressFlag = compress ? '' : ' [no compression]';
+
+      if (plan.hosts.length === 1) {
+        // Single host: stream directly into SSH — no RAM buffer
+        const { name, conn } = plan.hosts[0];
+        const isExcluded = buildExcludeFilter(excludePatterns);
+        const totalBytes = walkDir(srcAbs)
+          .filter(f => !isExcluded(relative(srcAbs, f).replace(/\\/g, '/')))
+          .reduce((sum, f) => sum + statSync(f).size, 0);
+        const totalStr = formatBytes(totalBytes);
+        const spinner = createSpinner();
+        spinner.start(`upload: ${upload.src}/ -> ${name}:${destBase}/${compressFlag}`);
+        let lastTick = 0;
+        await streamDirToHost(srcAbs, excludePatterns, conn, destBase, compress,
+          (bytesProcessed) => {
+            const now = Date.now();
+            if (now - lastTick < 250) return;
+            lastTick = now;
+            const pct = Math.min(99, Math.round(bytesProcessed / totalBytes * 100));
+            spinner.update(`upload: ${upload.src}/ -> ${name}:${destBase}/ ${formatBytes(bytesProcessed)} / ${totalStr} (${pct}%)`);
+          },
+          () => spinner.update(`upload: unpacking on ${name}...`),
+        );
+        spinner.succeed(`upload: ${upload.src}/ -> ${name}:${destBase}/ done`);
+        if (upload.permissions) await sshExec(conn, `chmod -R ${upload.permissions} '${destBase}'`);
+        if (upload.owner) await sshExec(conn, `chown -R ${upload.owner} '${destBase}'`);
+      } else {
+        // Multiple hosts: stream independently to each host in parallel — no RAM buffer
+        printDim(`upload: ${upload.src}/ -> ${destBase}/${compressFlag} [${plan.hosts.length} hosts]`);
+        await Promise.all(plan.hosts.map(async ({ name, conn }) => {
+          await streamDirToHost(srcAbs, excludePatterns, conn, destBase, compress);
+          printDim(`  upload: -> ${name}:${destBase}/ done`);
+          if (upload.permissions) await sshExec(conn, `chmod -R ${upload.permissions} '${destBase}'`);
+          if (upload.owner) await sshExec(conn, `chown -R ${upload.owner} '${destBase}'`);
+        }));
+      }
+    } else {
+      // -----------------------------------------------------------------------
+      // Single file: parallel across hosts, batched mkdir
+      // -----------------------------------------------------------------------
+      const destPath = upload.dest.endsWith('/')
+        ? `${destBase}/${basename(srcAbs)}`
+        : upload.dest;
+      const destRelative = destPath.replace(/^\//, '');
+      const backupPath = `${backupBaseDir}/${destRelative}`;
+      const fileContent = readFileSync(srcAbs);
+
+      // Ensure destination and backup dirs exist on all hosts in one call each
+      await Promise.all(plan.hosts.map(({ conn }) =>
+        sshExec(conn, `mkdir -p '${dirname(destPath)}' '${dirname(backupPath)}'`),
+      ));
+
+      const tasks = plan.hosts.map(hostState => async () => {
+        const { conn } = hostState;
+
         const backupResult = await sshExec(conn,
           `if test -f '${destPath}'; then cp '${destPath}' '${backupPath}' && echo existed; else echo missing; fi`,
         );
@@ -146,53 +246,34 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
           hostState.created.push(destPath);
         }
 
-        // Upload new file
-        const mkdirResult = await sshExec(conn, `mkdir -p '${dirname(destPath)}'`);
-        if (mkdirResult.exitCode !== 0) {
-          throw new DeployError(
-            `upload: cannot create ${dirname(destPath)} on ${conn.host}: ${mkdirResult.stderr.trim() || `exit ${mkdirResult.exitCode}`}`,
-            ErrorCode.DEPLOY_FAILED,
-            `The deploy user must own the destination directory. Run once on the server as root:\n  mkdir -p '${dirname(destPath)}' && chown ${conn.user}: '${dirname(destPath)}'`,
-          );
-        }
         const { stream, done } = await sshExecChannel(conn, `cat > '${destPath}'`);
         stream.end(fileContent);
         const result = await done;
         if (result.exitCode !== 0) {
-          const detail = (result.stderr.trim() || result.stdout.trim()) || `exit code ${result.exitCode}`;
+          const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
           throw new DeployError(
-            `upload: failed to transfer ${upload.src} → ${destPath} on ${conn.host}: ${detail}`,
+            `upload: failed to transfer ${upload.src} to ${conn.host}: ${detail}`,
             ErrorCode.DEPLOY_FAILED,
-            `Ensure ${conn.user} has write access to ${dirname(destPath)} on ${conn.host}. Run once as root:\n` +
-            `  mkdir -p '${dirname(destPath)}' && chown ${conn.user}: '${dirname(destPath)}'`,
+            `Ensure ${conn.user} has write access to ${dirname(destPath)} on ${conn.host}. Run once as root:\n  mkdir -p '${dirname(destPath)}' && chown ${conn.user}: '${dirname(destPath)}'`,
           );
         }
 
         if (upload.permissions) {
-          const chmodResult = await sshExec(conn, `chmod ${upload.permissions} '${destPath}'`);
-          if (chmodResult.exitCode !== 0) {
-            throw new DeployError(
-              `upload: chmod ${upload.permissions} failed on ${destPath} (${conn.host}): ${chmodResult.stderr.trim() || `exit ${chmodResult.exitCode}`}`,
-              ErrorCode.DEPLOY_FAILED,
-            );
-          }
+          const r = await sshExec(conn, `chmod ${upload.permissions} '${destPath}'`);
+          if (r.exitCode !== 0) throw new DeployError(`upload: chmod failed on ${destPath} (${conn.host})`, ErrorCode.DEPLOY_FAILED);
         }
         if (upload.owner) {
-          const chownResult = await sshExec(conn, `chown ${upload.owner} '${destPath}'`);
-          if (chownResult.exitCode !== 0) {
-            throw new DeployError(
-              `upload: chown ${upload.owner} failed on ${destPath} (${conn.host}): ${chownResult.stderr.trim() || `exit ${chownResult.exitCode}`}`,
-              ErrorCode.DEPLOY_FAILED,
-              `The deploy user needs sudo rights for chown. Either run once on the server as root:\n` +
-              `  chown ${upload.owner} '${destPath}'\n` +
-              `Or grant the deploy user the right permanently:\n` +
-              `  echo '${conn.user} ALL=(ALL) NOPASSWD: /bin/chown * ${dirname(destPath)}/*' >> /etc/sudoers.d/dockflow`,
-            );
-          }
+          const r = await sshExec(conn, `chown ${upload.owner} '${destPath}'`);
+          if (r.exitCode !== 0) throw new DeployError(
+            `upload: chown failed on ${destPath} (${conn.host})`,
+            ErrorCode.DEPLOY_FAILED,
+            `Grant chown rights:\n  echo '${conn.user} ALL=(ALL) NOPASSWD: /bin/chown * ${dirname(destPath)}/*' >> /etc/sudoers.d/dockflow`,
+          );
         }
-      }));
+      });
 
-      printDim(`upload: ${upload.src.replace(/\/$/, '')}${isDir ? '/' + relPath : ''} → ${destPath}`);
+      await runWithConcurrency(tasks, UPLOAD_CONCURRENCY);
+      printDim(`upload: ${upload.src} -> ${destPath}`);
     }
   }
 
@@ -200,14 +281,19 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
 }
 
 export async function rollbackUploads(plan: UploadRollbackPlan): Promise<void> {
-  await Promise.all(plan.hosts.map(async ({ conn, backedUp, created }) => {
+  await Promise.all(plan.hosts.map(async ({ conn, backedUp, created, backedUpDirs, createdDirs }) => {
     for (const destPath of backedUp) {
-      const destRelative = destPath.replace(/^\//, '');
-      const backupPath = `${plan.backupBaseDir}/${destRelative}`;
+      const backupPath = `${plan.backupBaseDir}/${destPath.replace(/^\//, '')}`;
       await sshExec(conn, `mv '${backupPath}' '${destPath}'`);
     }
     for (const destPath of created) {
       await sshExec(conn, `rm -f '${destPath}'`);
+    }
+    for (const { dest, backup } of backedUpDirs) {
+      await sshExec(conn, `rm -rf '${dest}' && mkdir -p '${dest}' && tar xzf '${backup}' -C '${dest}'`);
+    }
+    for (const dest of createdDirs) {
+      await sshExec(conn, `rm -rf '${dest}'`);
     }
     await sshExec(conn, `rm -rf '${plan.backupBaseDir}'`);
   }));
@@ -234,6 +320,7 @@ export async function buildAndDistribute(
   compose: ParsedCompose,
 ): Promise<BuildResult | null> {
   if (ctx.options.skipBuild || !ctx.deployApp) return null;
+  if (!Compose.hasServices(compose)) return null;
 
   await Hook.runLocal('pre-build', ctx.projectRoot, ctx.config, ctx.rendered);
 
@@ -338,6 +425,7 @@ export async function deployAccessories(ctx: DeployContext): Promise<void> {
 
 export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Promise<void> {
   if (!ctx.deployApp) return;
+  if (!Compose.hasServices(compose)) return;
 
   if (ctx.proxyBackend) {
     await ctx.proxyBackend.ensureRunning(ctx.config.proxy!);

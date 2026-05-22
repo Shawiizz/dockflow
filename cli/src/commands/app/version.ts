@@ -6,7 +6,7 @@ import type { Command } from 'commander';
 import { validateEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { loadConfig } from '../../utils/config';
-import { DockerError, withErrorHandler, ConfigError } from '../../utils/errors';
+import { DockerError, withServicesRequired, ConfigError } from '../../utils/errors';
 import { colors, printJSON, printBlank, printDim, printRaw } from '../../utils/output';
 
 export function registerVersionCommand(program: Command): void {
@@ -16,7 +16,7 @@ export function registerVersionCommand(program: Command): void {
     .helpGroup('Inspect')
     .option('-s, --server <name>', 'Target server (defaults to manager)')
     .option('-j, --json', 'Output as JSON')
-    .action(withErrorHandler(async (env: string, options: { server?: string; json?: boolean }) => {
+    .action(withServicesRequired(async (env: string, options: { server?: string; json?: boolean }) => {
       const { stackName, connection } = validateEnv(env, options.server);
 
       const config = loadConfig();

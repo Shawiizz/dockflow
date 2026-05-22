@@ -8,7 +8,7 @@ import type { Command } from 'commander';
 import { printInfo, printSection, printDebug, printBlank, printRaw } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createContainerBackend, createStackBackend } from '../../services/orchestrator/factory';
-import { DockerError, withErrorHandler } from '../../utils/errors';
+import { DockerError, withServicesRequired } from '../../utils/errors';
 
 export function registerLogsCommand(program: Command): void {
   program
@@ -20,7 +20,7 @@ export function registerLogsCommand(program: Command): void {
     .option('-T, --timestamps', 'Show timestamps')
     .option('--since <time>', 'Show logs since timestamp (e.g., "1h", "2024-01-01")')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withErrorHandler(async (env: string, service: string | undefined, options: {
+    .action(withServicesRequired(async (env: string, service: string | undefined, options: {
       follow?: boolean;
       tail?: string;
       timestamps?: boolean;

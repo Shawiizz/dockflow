@@ -6,7 +6,7 @@ import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
 import { printIntro, printOutro, printInfo, printSection, printWarning, printDebug, printBlank, printRaw, createSpinner } from '../../utils/output';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
-import { DockerError, withErrorHandler } from '../../utils/errors';
+import { DockerError, withServicesRequired } from '../../utils/errors';
 import { confirmPrompt } from '../../utils/prompts';
 
 export function registerPruneCommand(program: Command): void {
@@ -21,7 +21,7 @@ export function registerPruneCommand(program: Command): void {
     .option('--networks', 'Prune networks only')
     .option('-y, --yes', 'Skip confirmation')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withErrorHandler(withResolvedEnv(async (env: string, options: {
+    .action(withServicesRequired(withResolvedEnv(async (env: string, options: {
       all?: boolean;
       images?: boolean;
       containers?: boolean;

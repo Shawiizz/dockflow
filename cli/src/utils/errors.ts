@@ -8,6 +8,7 @@
 
 import { printBlank, colors } from './output';
 import { closeAllConnections } from './ssh';
+import { getComposePath } from './config';
 
 /**
  * CLI Error codes for different failure scenarios
@@ -205,4 +206,20 @@ export function withErrorHandler<T extends unknown[]>(
       closeAllConnections();
     }
   };
+}
+
+/** Wraps withErrorHandler and blocks execution when no docker-compose.yml is found. */
+export function withServicesRequired<T extends unknown[]>(
+  action: CommandAction<T>
+): CommandAction<T> {
+  return withErrorHandler(async (...args: T): Promise<void> => {
+    if (!getComposePath()) {
+      throw new DeployError(
+        'This command requires Docker services (no docker-compose.yml found)',
+        ErrorCode.VALIDATION_FAILED,
+        'This project has no Docker services configured.',
+      );
+    }
+    await action(...args);
+  });
 }

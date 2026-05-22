@@ -309,7 +309,7 @@ async function execute(ctx: DeployContext): Promise<void> {
     previousSymlink = releaseResult.previousSymlink;
 
     await deployApp(ctx, compose);
-    stackDeployed = ctx.deployApp !== false;
+    stackDeployed = ctx.deployApp !== false && Compose.hasServices(compose);
 
     await runHTTPHealthChecks(ctx);
 

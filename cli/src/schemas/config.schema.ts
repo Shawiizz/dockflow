@@ -300,8 +300,8 @@ const PROJECT_NAME_REGEX = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
 export const UploadItemSchema = z.object({
   src: z.string().describe('Local path relative to project root (file or directory)'),
   dest: z.string()
-    .refine(v => v.startsWith('/'), { message: 'dest must be an absolute path (starting with /)' })
-    .describe('Absolute destination path on the remote server'),
+    .refine(v => v.startsWith('/') || v.includes('{{'), { message: 'dest must be an absolute path (starting with /)' })
+    .describe('Absolute destination path on the remote server (Nunjucks templates allowed)'),
   service: z.union([z.string(), z.array(z.string())]).optional()
     .describe('Service(s) this upload belongs to. When --services is used, only uploads matching a targeted service are transferred.'),
   permissions: z.string().optional()
@@ -310,6 +310,8 @@ export const UploadItemSchema = z.object({
     .describe('File owner to apply after upload, in "user" or "user:group" format (e.g. "mosquitto", "www-data:www-data").'),
   exclude: z.array(z.string()).optional()
     .describe('Glob patterns or directory/file names to skip during upload (e.g. ".git", "*.md", "node_modules").'),
+  compress: z.boolean().optional()
+    .describe('Compress the archive during transfer (default: true). Set to false for repos of already-compressed files (JARs, ZIPs) to reduce CPU overhead.'),
 });
 
 /**

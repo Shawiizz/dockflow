@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import { getPerformer } from '../../utils/config';
+import { getPerformer, getComposePath } from '../../utils/config';
 import { createSpinner } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
@@ -13,7 +13,7 @@ import { Release } from '../../services/release';
 import { Audit } from '../../services/audit';
 import { Metrics } from '../../services/metrics';
 import * as Notification from '../../services/notification';
-import { withErrorHandler } from '../../utils/errors';
+import { withErrorHandler, DeployError, ErrorCode } from '../../utils/errors';
 import { runPostRollbackHealthChecks } from '../deploy-phases';
 
 export function registerRollbackCommand(program: Command): void {
@@ -24,6 +24,14 @@ export function registerRollbackCommand(program: Command): void {
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(async (env: string, service: string | undefined, options: { server?: string }) => {
       const { config, stackName, connection } = validateEnv(env, options.server);
+
+      if (!getComposePath()) {
+        throw new DeployError(
+          'Rollback is not supported for upload-only projects (no docker-compose.yml)',
+          ErrorCode.ROLLBACK_FAILED,
+          'To restore a previous version, re-deploy from the corresponding git commit.',
+        );
+      }
 
       const orchType = config.orchestrator ?? 'swarm';
       const orchestrator = createStackBackend(orchType, connection);

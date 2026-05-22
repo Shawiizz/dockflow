@@ -142,6 +142,7 @@ export interface UploadItem {
   permissions?: string;
   owner?: string;
   exclude?: string[];
+  compress?: boolean;
 }
 
 export interface DockflowConfig {

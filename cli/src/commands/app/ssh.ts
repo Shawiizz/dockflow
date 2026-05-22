@@ -6,7 +6,7 @@ import type { Command } from 'commander';
 import { sshShell, sshExecStream } from '../../utils/ssh';
 import { printInfo, printBlank } from '../../utils/output';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
-import { CLIError, ConnectionError, withErrorHandler } from '../../utils/errors';
+import { CLIError, ConnectionError, withServicesRequired } from '../../utils/errors';
 
 export function registerSshCommand(program: Command): void {
   program
@@ -14,7 +14,7 @@ export function registerSshCommand(program: Command): void {
     .description('Open SSH session to server or execute a command')
     .helpGroup('Operate')
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withErrorHandler(withResolvedEnv(async (env: string, commandParts: string[], options: { server?: string }) => {
+    .action(withServicesRequired(withResolvedEnv(async (env: string, commandParts: string[], options: { server?: string }) => {
       const { connection, serverName } = validateEnv(env, options.server);
       
       // If command is provided, execute it and return

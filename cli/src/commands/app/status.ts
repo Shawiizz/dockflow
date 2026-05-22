@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import { getAvailableEnvironments, getManagersForEnvironment, getFullConnectionInfo } from '../../utils/servers';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { withSecrets } from '../../utils/secrets';
-import { withErrorHandler } from '../../utils/errors';
+import { withServicesRequired } from '../../utils/errors';
 import { printIntro, printBlank, printRaw, printSection, printWarning, colors } from '../../utils/output';
 
 interface EnvStatus {
@@ -84,7 +84,7 @@ export function registerStatusCommand(program: Command): void {
     .command('status [env]')
     .description('Show deployment status (all environments, or a specific one)')
     .helpGroup('Inspect')
-    .action(withErrorHandler(withSecrets(async (env?: string) => {
+    .action(withServicesRequired(withSecrets(async (env?: string) => {
       printIntro(chalk.bold('Deployment Status'));
       printBlank();
 
