@@ -280,6 +280,8 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     buildResult = await buildAndDistribute(ctx, compose);
 
+    await Hook.runRemote('pre-deploy', ctx.cluster.manager.connection, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
+
     uploadPlan = await uploadFiles(ctx);
 
     // When --only targets specific services, build the release from the local

@@ -331,8 +331,6 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
     await ctx.proxyBackend.ensureRunning(ctx.config.proxy!);
   }
 
-  await Hook.runRemote('pre-deploy', ctx.cluster.manager.connection, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
-
   const servicesFilter = ctx.options.only
     ? ctx.options.only.split(',').map((s: string) => s.trim())
     : undefined;
