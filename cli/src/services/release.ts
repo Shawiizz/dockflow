@@ -64,7 +64,14 @@ export class Release {
     const prevResult = await sshExec(this.connection, `readlink "${stackDir}/current" 2>/dev/null || echo ""`);
     const previousSymlink = prevResult.stdout.trim() || null;
 
-    await sshExec(this.connection, `mkdir -p "${dir}"`);
+    const mkdirResult = await sshExec(this.connection, `mkdir -p "${dir}"`);
+    if (mkdirResult.exitCode !== 0) {
+      throw new DeployError(
+        `Failed to create release directory ${dir}: ${mkdirResult.stderr.trim() || `exit ${mkdirResult.exitCode}`}`,
+        ErrorCode.DEPLOY_FAILED,
+        `Ensure the deploy user has write access to ${stackDir}. Run once as root:\n  mkdir -p '${stackDir}' && chown ${this.connection.user}: '${stackDir}'`,
+      );
+    }
 
     // Write compose and metadata via stdin (no shell escaping needed)
     const [composeHandle, metaHandle] = await Promise.all([
