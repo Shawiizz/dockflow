@@ -308,6 +308,8 @@ export const UploadItemSchema = z.object({
     .describe('File permissions to apply after upload, in octal notation (e.g. "640", "755").'),
   owner: z.string().optional()
     .describe('File owner to apply after upload, in "user" or "user:group" format (e.g. "mosquitto", "www-data:www-data").'),
+  exclude: z.array(z.string()).optional()
+    .describe('Glob patterns or directory/file names to skip during upload (e.g. ".git", "*.md", "node_modules").'),
 });
 
 /**

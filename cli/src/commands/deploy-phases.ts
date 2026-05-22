@@ -103,9 +103,21 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
     }
 
     const isDir = statSync(srcAbs).isDirectory();
-    const files = isDir ? walkDir(srcAbs) : [srcAbs];
+    const allFiles = isDir ? walkDir(srcAbs) : [srcAbs];
     const baseDir = isDir ? srcAbs : dirname(srcAbs);
     const destBase = upload.dest.replace(/\/$/, '');
+
+    const excludeGlobs = (upload.exclude ?? []).map(p =>
+      p.includes('*') || p.includes('?') || p.includes('[') ? new Bun.Glob(p) : null,
+    );
+    const files = allFiles.filter(file => {
+      if (!upload.exclude?.length) return true;
+      const rel = relative(baseDir, file).replace(/\\/g, '/');
+      return !upload.exclude.some((pattern, i) => {
+        const glob = excludeGlobs[i];
+        return glob ? glob.match(rel) : rel === pattern || rel.startsWith(pattern + '/');
+      });
+    });
 
     for (const file of files) {
       const relPath = relative(baseDir, file).replace(/\\/g, '/');
