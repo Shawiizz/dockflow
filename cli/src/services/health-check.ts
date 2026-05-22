@@ -2,13 +2,13 @@
  * HealthCheck — orchestrator-agnostic health checking.
  *
  * Internal health checks (Swarm tasks or K8s pods) are delegated to the
- * injected StackBackend. HTTP endpoint checks run concurrently via
- * Promise.allSettled.
+ * injected StackBackend. HTTP endpoint checks run sequentially with a
+ * per-endpoint spinner that updates in place on each retry.
  */
 
 import type { SSHKeyConnection } from '../types';
 import { sshExec } from '../utils/ssh';
-import { printDebug, printDim, printWarning } from '../utils/output';
+import { printDebug, printDim, printWarning, createSpinner } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import type { HealthCheckConfig, HealthCheckEndpoint } from '../utils/config';
 import type { StackBackend, InternalHealthResult } from './orchestrator/interfaces';
@@ -39,10 +39,10 @@ export class HealthCheck {
     return this.stackBackend.checkInternalHealth(stackName, timeoutS, intervalS, servicesFilter, deployStartedAt);
   }
 
-  /**
-   * Perform a single HTTP health check locally via fetch.
-   */
-  private async checkHTTPLocal(endpoint: HealthCheckEndpoint): Promise<void> {
+  private async checkHTTPLocal(
+    endpoint: HealthCheckEndpoint,
+    onRetry?: (attempt: number, total: number) => void,
+  ): Promise<void> {
     const method = endpoint.method ?? 'GET';
     const expectedStatus = endpoint.expected_status ?? 200;
     const timeoutMs = (endpoint.timeout ?? 30) * 1000;
@@ -69,7 +69,7 @@ export class HealthCheck {
       }
 
       if (attempt < retries) {
-        printWarning(`HTTP check ${endpoint.url} attempt ${attempt}/${retries} failed: ${lastError}. Retrying in ${retryDelay / 1000}s...`);
+        onRetry?.(attempt, retries);
         await Bun.sleep(retryDelay);
       }
     }
@@ -77,11 +77,10 @@ export class HealthCheck {
     throw new Error(`${method} ${endpoint.url} — ${lastError}`);
   }
 
-  /**
-   * Perform a single HTTP health check remotely via SSH curl.
-   * Runs on the manager node — suitable for localhost/internal endpoints.
-   */
-  private async checkHTTPRemote(endpoint: HealthCheckEndpoint): Promise<void> {
+  private async checkHTTPRemote(
+    endpoint: HealthCheckEndpoint,
+    onRetry?: (attempt: number, total: number) => void,
+  ): Promise<void> {
     const method = endpoint.method ?? 'GET';
     const expectedStatus = endpoint.expected_status ?? 200;
     const timeoutS = endpoint.timeout ?? 30;
@@ -116,7 +115,7 @@ export class HealthCheck {
       }
 
       if (attempt < retries) {
-        printWarning(`HTTP check (remote) ${endpoint.url} attempt ${attempt}/${retries} failed: ${lastError}. Retrying in ${retryDelay / 1000}s...`);
+        onRetry?.(attempt, retries);
         await Bun.sleep(retryDelay);
       }
     }
@@ -124,43 +123,39 @@ export class HealthCheck {
     throw new Error(`${method} ${endpoint.url} — ${lastError}`);
   }
 
-  /**
-   * Perform HTTP health checks against external endpoints.
-   * All endpoints are checked concurrently via Promise.allSettled.
-   * Endpoints with `remote: true` run via SSH curl on the manager node.
-   *
-   * Returns list of failed endpoint URLs (empty = all passed).
-   * Throws DeployError if `on_failure` is 'fail' or 'rollback'.
-   */
   async checkHTTPEndpoints(config: HealthCheckConfig): Promise<string[]> {
     const endpoints = config.endpoints ?? [];
     if (endpoints.length === 0) return [];
 
-    // Wait startup delay
     const startupDelay = config.startup_delay ?? 0;
     if (startupDelay > 0) {
       printDim(`Waiting ${startupDelay}s before HTTP health checks...`);
       await Bun.sleep(startupDelay * 1000);
     }
 
-    // Check all endpoints concurrently
-    const results = await Promise.allSettled(
-      endpoints.map((endpoint) =>
-        endpoint.remote
-          ? this.checkHTTPRemote(endpoint)
-          : this.checkHTTPLocal(endpoint),
-      ),
-    );
-
     const failedEndpoints: string[] = [];
-    for (let i = 0; i < results.length; i++) {
-      if (results[i].status === 'rejected') {
-        const reason = (results[i] as PromiseRejectedResult).reason;
-        const msg = reason instanceof Error ? reason.message : String(reason);
-        failedEndpoints.push(endpoints[i].url);
-        printWarning(`HTTP check failed: ${msg}`);
-        if (!endpoints[i].remote) {
-          printWarning(`Hint: this check ran on this machine, not on the remote server. Add \`remote: true\` to the endpoint to run it via SSH on the deployment target.`);
+
+    for (const endpoint of endpoints) {
+      const spinner = createSpinner();
+      spinner.start(`HTTP check ${endpoint.url}`);
+
+      const onRetry = (attempt: number, total: number) => {
+        spinner.update(`HTTP check ${endpoint.url} [${attempt}/${total}]`);
+      };
+
+      try {
+        if (endpoint.remote) {
+          await this.checkHTTPRemote(endpoint, onRetry);
+        } else {
+          await this.checkHTTPLocal(endpoint, onRetry);
+        }
+        spinner.succeed(`HTTP check passed: ${endpoint.url}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        failedEndpoints.push(endpoint.url);
+        spinner.fail(`HTTP check failed: ${msg}`);
+        if (!endpoint.remote) {
+          printWarning('Hint: this check ran on this machine, not on the remote server. Add `remote: true` to run it via SSH on the deployment target.');
         }
       }
     }
@@ -176,8 +171,7 @@ export class HealthCheck {
           ErrorCode.HEALTH_CHECK_FAILED,
         );
       case 'rollback':
-        // Note: this service only signals the failure — the caller (deploy.ts)
-        // is responsible for performing the actual rollback based on config.health_checks.on_failure.
+        // This service only signals the failure — deploy.ts performs the actual rollback.
         throw new DeployError(
           `HTTP health checks failed: ${failedEndpoints.join(', ')}`,
           ErrorCode.HEALTH_CHECK_FAILED,

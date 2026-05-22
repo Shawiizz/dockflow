@@ -325,10 +325,11 @@ async function execute(ctx: DeployContext): Promise<void> {
       await rollbackUploads(uploadPlan).catch((e) => printWarning(`Upload rollback failed: ${e instanceof Error ? e.message : String(e)}`));
     }
 
+    let rolledBackTo: string | null = null;
     if (stackDeployed && ctx.config.health_checks?.on_failure === 'rollback') {
       // rollback() handles its own cleanup — calling removeRelease first would delete the failed release before rollback can list it.
       try {
-        const rolledBackTo = await ctx.releases.rollback(ctx.stackName, ctx.orchestrator, ctx.deployVersion, previousSymlink);
+        rolledBackTo = await ctx.releases.rollback(ctx.stackName, ctx.orchestrator, ctx.deployVersion, previousSymlink);
         printWarning(`Rolled back to ${rolledBackTo}`);
         await runPostRollbackHealthChecks(ctx.cluster.manager.connection, ctx.orchestrator, ctx.stackName, ctx.config.health_checks);
       }
@@ -338,6 +339,13 @@ async function execute(ctx: DeployContext): Promise<void> {
       }
     } else {
       await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
+    }
+
+    if (rolledBackTo) {
+      throw new DeployError(
+        `Deployment failed and was rolled back to ${rolledBackTo}`,
+        ErrorCode.DEPLOY_FAILED,
+      );
     }
     throw err;
   } finally {
