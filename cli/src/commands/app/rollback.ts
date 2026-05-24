@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import { getPerformer, getComposePath } from '../../utils/config';
+import { getPerformer } from '../../utils/config';
 import { createSpinner } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
@@ -25,9 +25,9 @@ export function registerRollbackCommand(program: Command): void {
     .action(withErrorHandler(async (env: string, service: string | undefined, options: { server?: string }) => {
       const { config, stackName, connection } = validateEnv(env, options.server);
 
-      if (!getComposePath()) {
+      if (config.no_services) {
         throw new DeployError(
-          'Rollback is not supported for upload-only projects (no docker-compose.yml)',
+          'Rollback is not supported for upload-only projects',
           ErrorCode.ROLLBACK_FAILED,
           'To restore a previous version, re-deploy from the corresponding git commit.',
         );

@@ -231,9 +231,14 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
       const fileContent = readFileSync(srcAbs);
 
       // Ensure destination and backup dirs exist on all hosts in one call each
-      await Promise.all(plan.hosts.map(({ conn }) =>
-        sshExec(conn, `mkdir -p '${dirname(destPath)}' '${dirname(backupPath)}'`),
-      ));
+      await Promise.all(plan.hosts.map(async ({ name, conn }) => {
+        const r = await sshExec(conn, `mkdir -p '${dirname(destPath)}' '${dirname(backupPath)}'`);
+        if (r.exitCode !== 0) throw new DeployError(
+          `upload: cannot create ${dirname(destPath)} on ${name}: ${r.stderr.trim() || `exit ${r.exitCode}`}`,
+          ErrorCode.DEPLOY_FAILED,
+          `The deploy user must own the destination directory. Run once on the server as root:\n  mkdir -p '${dirname(destPath)}' && chown ${conn.user}: '${dirname(destPath)}'`,
+        );
+      }));
 
       const tasks = plan.hosts.map(hostState => async () => {
         const { name, conn } = hostState;
@@ -253,7 +258,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
         if (result.exitCode !== 0) {
           const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
           throw new DeployError(
-            `upload: failed to transfer ${upload.src} to ${name}: ${detail}`,
+            `upload: failed to transfer ${upload.src} → ${destPath} on ${name}: ${detail}`,
             ErrorCode.DEPLOY_FAILED,
             `Ensure ${conn.user} has write access to ${dirname(destPath)} on ${name}. Run once as root:\n  mkdir -p '${dirname(destPath)}' && chown ${conn.user}: '${dirname(destPath)}'`,
           );
@@ -261,14 +266,20 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
 
         if (upload.permissions) {
           const r = await sshExec(conn, `chmod ${upload.permissions} '${destPath}'`);
-          if (r.exitCode !== 0) throw new DeployError(`upload: chmod failed on ${destPath} (${name})`, ErrorCode.DEPLOY_FAILED);
+          if (r.exitCode !== 0) throw new DeployError(
+            `upload: chmod ${upload.permissions} failed on ${destPath} (${name}): ${r.stderr.trim() || `exit ${r.exitCode}`}`,
+            ErrorCode.DEPLOY_FAILED,
+          );
         }
         if (upload.owner) {
           const r = await sshExec(conn, `chown ${upload.owner} '${destPath}'`);
           if (r.exitCode !== 0) throw new DeployError(
-            `upload: chown failed on ${destPath} (${name})`,
+            `upload: chown ${upload.owner} failed on ${destPath} (${name}): ${r.stderr.trim() || `exit ${r.exitCode}`}`,
             ErrorCode.DEPLOY_FAILED,
-            `Grant chown rights:\n  echo '${conn.user} ALL=(ALL) NOPASSWD: /bin/chown * ${dirname(destPath)}/*' >> /etc/sudoers.d/dockflow`,
+            `The deploy user needs sudo rights for chown. Either run once on the server as root:\n` +
+            `  chown ${upload.owner} '${destPath}'\n` +
+            `Or grant the deploy user the right permanently:\n` +
+            `  echo '${conn.user} ALL=(ALL) NOPASSWD: /bin/chown * ${dirname(destPath)}/*' >> /etc/sudoers.d/dockflow`,
           );
         }
       });

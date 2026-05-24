@@ -262,6 +262,7 @@ export function renderTemplates(
 export function renderAndResolveCompose(
   ctx: ComposeRenderContext,
   templateContext?: TemplateContext | null,
+  options: { uploadOnly?: boolean } = {},
 ): RenderedComposeResult {
   const projectRoot = getProjectRoot();
 
@@ -275,13 +276,18 @@ export function renderAndResolveCompose(
 
   const originalComposePath = getComposePath();
   if (!originalComposePath) {
-    printWarning('No docker-compose.yml found — skipping Docker build and deploy. Expected at .dockflow/docker/docker-compose.yml');
-    return {
-      rendered,
-      composeContent: 'services: {}\n',
-      composeDirPath: join(projectRoot, '.dockflow', 'docker'),
-      projectRoot,
-    };
+    if (options.uploadOnly) {
+      return {
+        rendered,
+        composeContent: 'services: {}\n',
+        composeDirPath: join(projectRoot, '.dockflow', 'docker'),
+        projectRoot,
+      };
+    }
+    throw new ConfigError(
+      'No docker-compose.yml found',
+      'Expected at docker-compose.yml or .dockflow/docker/docker-compose.yml',
+    );
   }
 
   const composeRelPath = relative(projectRoot, originalComposePath).replace(/\\/g, '/');

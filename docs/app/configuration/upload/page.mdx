@@ -32,6 +32,8 @@ services:
 | `service` | `string \| string[]` | Service(s) this upload belongs to. When deploying with `--only`, only uploads matching a targeted service are transferred. Uploads without this field are always transferred. | No |
 | `permissions` | `string` | File permissions applied after upload, in octal notation (e.g. `"640"`, `"755"`). | No |
 | `owner` | `string` | File owner applied after upload, in `"user"` or `"user:group"` format (e.g. `"mosquitto"`, `"www-data:www-data"`). Requires the deploy user to have `sudo` or sufficient privileges. | No |
+| `exclude` | `string[]` | Glob patterns or paths to skip during directory upload (e.g. `".git"`, `"*.md"`, `"node_modules"`). Ignored for single-file uploads. | No |
+| `compress` | `boolean` | Compress the archive during transfer (default: `true`). Set to `false` for directories full of already-compressed files (JARs, ZIPs, images) to reduce CPU overhead without affecting transfer size. | No |
 
 `dest` must start with `/`. If `src` is a directory, `dest` is used as the destination directory and the relative structure is preserved.
 
@@ -149,6 +151,29 @@ services:
     volumes:
       - /opt/dockflow/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
 ```
+
+## Upload-only projects
+
+Some projects have no Docker services — they only transfer files to a server. Use `no_services: true` to declare this explicitly:
+
+```yaml
+# .dockflow/config.yml
+project_name: my-project
+no_services: true
+
+upload:
+  - src: ./dist/
+    dest: /var/www/my-project/
+```
+
+With `no_services: true`:
+- Docker build and compose deploy are skipped entirely
+- Commands that require a running stack (`dockflow app logs`, `dockflow app status`, `rollback`, etc.) return a clear error instead of failing silently
+- Pre/post-deploy hooks still run
+
+<Callout type="warning">
+  Without `no_services: true`, a missing `docker-compose.yml` is treated as a configuration error and the deployment fails. Only set this flag when the project genuinely has no Docker services — not as a workaround for a misconfigured compose path.
+</Callout>
 
 ## See also
 

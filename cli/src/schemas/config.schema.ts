@@ -395,4 +395,10 @@ export const DockflowConfigSchema = z.object({
     'Files or directories to transfer to the remote server before deploying. ' +
     'Useful for config files referenced as bind mounts in docker-compose volumes.'
   ),
+
+  no_services: z.boolean().optional().describe(
+    'Set to true for projects with no Docker services (upload-only deployments). ' +
+    'Skips Docker build, compose deploy, and all service commands. ' +
+    'Without this flag, a missing docker-compose.yml is treated as a configuration error.'
+  ),
 });

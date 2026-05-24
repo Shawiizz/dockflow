@@ -161,6 +161,7 @@ export interface DockflowConfig {
   proxy?: ProxyConfig;
   notifications?: NotificationsConfig;
   upload?: UploadItem[];
+  no_services?: boolean;
 }
 
 /**

@@ -220,11 +220,12 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   const { rendered, composeContent, composeDirPath } = Compose.renderAndResolveCompose(
     { env, version: deployVersion, branch: branchName, project_name: config.project_name, config },
     templateContext,
+    { uploadOnly: config.no_services },
   );
   config = loadConfig({ content: rendered.get('.dockflow/config.yml'), silent: true }) ?? config;
 
-  // Validate --only service names before acquiring the lock
-  if (options.only) {
+  // Validate --only service names before acquiring the lock (skip for no_services — no Docker services)
+  if (options.only && !config.no_services) {
     const compose = Compose.loadFromString(composeContent);
     const available = Object.keys(compose.services);
     const filterSet = options.only.split(',').map((s) => s.trim());
