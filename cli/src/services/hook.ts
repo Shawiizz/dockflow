@@ -17,6 +17,7 @@ import { tmpdir } from 'os';
 import type { SSHKeyConnection } from '../types';
 import { sshExec, shellEscape } from '../utils/ssh';
 import { printDebug, printDim, printRaw, printWarning } from '../utils/output';
+import { DeployError, ErrorCode } from '../utils/errors';
 import type { DockflowConfig } from '../utils/config';
 import { DOCKFLOW_HOOKS_DIR, DOCKFLOW_STACKS_DIR } from '../constants';
 import type { RenderedFiles } from './compose';
@@ -92,11 +93,19 @@ export async function runLocal(
     clearTimeout(timer);
 
     if (proc.exitCode !== 0) {
+      if (config.hooks?.fatal) {
+        throw new DeployError(
+          `${phase} hook exited with code ${proc.exitCode}`,
+          ErrorCode.DEPLOY_FAILED,
+          `Fix the hook script at .dockflow/hooks/${phase}.sh or set hooks.fatal: false to treat hook failures as warnings.`,
+        );
+      }
       printWarning(`${phase} hook exited with code ${proc.exitCode}`);
     } else {
       printDebug(`${phase} hook completed`);
     }
   } catch (error) {
+    if (error instanceof DeployError) throw error;
     printWarning(`${phase} hook failed: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
     if (tmpFile) try { unlinkSync(tmpFile); } catch {}
@@ -150,11 +159,19 @@ export async function runRemote(
     }
 
     if (result.exitCode !== 0) {
+      if (config.hooks?.fatal) {
+        throw new DeployError(
+          `Remote ${phase} hook exited with code ${result.exitCode}`,
+          ErrorCode.DEPLOY_FAILED,
+          `Fix the hook script at .dockflow/hooks/${phase}.sh or set hooks.fatal: false to treat hook failures as warnings.`,
+        );
+      }
       printWarning(`Remote ${phase} hook exited with code ${result.exitCode}`);
     } else {
       printDebug(`Remote ${phase} hook completed`);
     }
   } catch (error) {
+    if (error instanceof DeployError) throw error;
     printWarning(`Remote ${phase} hook failed: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
     await sshExec(connection, `rm -f "${tmpPath}"`).catch(() => {});

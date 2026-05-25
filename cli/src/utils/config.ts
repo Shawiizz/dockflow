@@ -64,6 +64,7 @@ export interface HealthCheckConfig {
 export interface HooksConfig {
   enabled?: boolean;
   timeout?: number;
+  fatal?: boolean;
   'pre-build'?: string;
   'post-build'?: string;
   'pre-deploy'?: string;

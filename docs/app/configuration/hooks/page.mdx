@@ -85,8 +85,17 @@ Hooks are enabled by default. Configure in `.dockflow/config.yml`:
 hooks:
   enabled: true    # Enable/disable all hooks (default: true)
   timeout: 300     # Timeout per hook in seconds (default: 300)
+  fatal: false     # Abort deploy on hook failure (default: false)
 ```
 
+| Field | Type | Description | Default |
+|-------|------|-------------|---------|
+| `enabled` | boolean | Enable or disable all hooks | `true` |
+| `timeout` | number | Max execution time per hook, in seconds | `300` |
+| `fatal` | boolean | Abort the deploy when a hook exits with a non-zero code | `false` |
+
+By default, hook failures print a warning and let the deploy continue. Set `fatal: true` to treat a non-zero exit code as a deploy error — useful for hooks that run critical operations like database migrations.
+
 <Callout type="warning">
-  If a hook fails, the deployment is aborted. Make sure your hook scripts are tested and handle errors gracefully.
+  With `fatal: false` (the default), a failing hook does **not** abort the deploy. If your hook runs a critical operation (e.g. a migration), set `fatal: true`.
 </Callout>

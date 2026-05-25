@@ -126,6 +126,9 @@ export const HooksConfigSchema = z.object({
   timeout: z.number().int().min(1).max(3600).optional().default(300).describe(
     'Maximum execution time for hooks in seconds'
   ),
+  fatal: z.boolean().optional().default(false).describe(
+    'Abort the deploy when a hook exits with a non-zero code (default: false — warnings only)'
+  ),
   'pre-build': z.string().optional().describe(
     'Script to run before building images'
   ),
