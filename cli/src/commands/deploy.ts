@@ -312,9 +312,9 @@ async function execute(ctx: DeployContext): Promise<void> {
     await deployApp(ctx, compose);
     stackDeployed = ctx.deployApp !== false && Compose.hasServices(compose);
 
-    await runHTTPHealthChecks(ctx);
-
     await Nginx.deployNginxTemplates(ctx.cluster.manager.connection, ctx.rendered);
+
+    await runHTTPHealthChecks(ctx);
     await Hook.runRemote('post-deploy', ctx.cluster.manager.connection, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
 
     await Promise.all([
