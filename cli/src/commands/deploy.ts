@@ -275,7 +275,7 @@ async function execute(ctx: DeployContext): Promise<void> {
   let auditMessage = `Deploy ${ctx.deployVersion} to ${ctx.env}`;
 
   try {
-    const compose = Compose.loadFromString(ctx.composeContent);
+    let compose = Compose.loadFromString(ctx.composeContent);
 
     Compose.updateImageTags(compose, ctx.config, ctx.env, ctx.deployVersion, ctx.options.only);
 
@@ -285,22 +285,20 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     uploadPlan = await uploadFiles(ctx);
 
-    // When --only targets specific services, build the release from the local
-    // compose (preserves new services and config changes) but borrow image tags
-    // from the server release for non-targeted services so the release reflects
-    // what is actually running for those services.
+    // When --only targets specific services, borrow image tags from the server
+    // release for non-targeted services so both the deploy and the release file
+    // reflect what is actually running for those services.
     // Falls back to the local compose as-is if no release exists yet.
-    let releaseCompose = compose;
     if (ctx.options.only) {
       const currentContent = await ctx.releases.getCurrentComposeContent(ctx.stackName);
       if (currentContent) {
         const filter = ctx.options.only.split(',').map((s: string) => s.trim());
-        releaseCompose = Compose.syncNonTargetedImageTags(compose, Compose.loadFromString(currentContent), filter);
+        compose = Compose.syncNonTargetedImageTags(compose, Compose.loadFromString(currentContent), filter);
       }
     }
 
     const [releaseResult] = await Promise.all([
-      ctx.releases.createRelease(ctx.stackName, ctx.deployVersion, Compose.serialize(releaseCompose), {
+      ctx.releases.createRelease(ctx.stackName, ctx.deployVersion, Compose.serialize(compose), {
         project_name: ctx.config.project_name, version: ctx.deployVersion, env: ctx.env,
         timestamp: new Date().toISOString(), epoch: Math.floor(Date.now() / 1000),
         performer: getPerformer(), branch: ctx.branchName,
