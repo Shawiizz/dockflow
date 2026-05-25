@@ -86,8 +86,11 @@ export async function deployNginxTemplates(
         `  chmod 440 /etc/sudoers.d/dockflow-nginx`,
       );
     }
-    printWarning(`Nginx config test failed, rolled back:\n${detail}`);
-    return;
+    throw new DeployError(
+      `Nginx config test failed on ${conn.host}, rolled back:\n${detail}`,
+      ErrorCode.DEPLOY_FAILED,
+      `Fix the nginx config error above and re-deploy.`,
+    );
   }
 
   // Reload — needs restricted sudo (nginx -s reload only)
@@ -104,7 +107,12 @@ export async function deployNginxTemplates(
         `  chmod 440 /etc/sudoers.d/dockflow-nginx`,
       );
     }
-    printWarning(`Nginx reload failed: ${detail}`);
+    await rollback(conn, entries.map(([k]) => `${NGINX_SITES_ENABLED}/${basename(k)}`), previouslyExisted);
+    throw new DeployError(
+      `Nginx reload failed on ${conn.host}, rolled back: ${detail}`,
+      ErrorCode.DEPLOY_FAILED,
+      `Check nginx logs on the server: sudo journalctl -u nginx --no-pager -n 50`,
+    );
   }
 
   await sshExec(conn, `rm -rf '${NGINX_BACKUP_DIR}'`);
