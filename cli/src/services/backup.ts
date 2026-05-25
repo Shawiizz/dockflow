@@ -13,7 +13,7 @@
 import type { SSHKeyConnection } from '../types';
 import type { BackupDbType, BackupAccessoryConfig } from '../utils/config';
 import { ok, err, type Result } from '../types';
-import { sshExec, shellEscape } from '../utils/ssh';
+import { sshExec, sshExecChannel, shellEscape } from '../utils/ssh';
 import { formatBytes, printDebug } from '../utils/output';
 import { findSwarmContainer } from './orchestrator/swarm/swarm-utils';
 import { SwarmStackBackend } from './orchestrator/swarm/swarm-stack';
@@ -167,7 +167,7 @@ const DB_STRATEGIES: Record<Exclude<BackupDbType, 'raw' | 'volume'>, DbStrategy>
     buildDumpCommand() {
       // Trigger BGSAVE and wait for it to complete by polling LASTSAVE.
       // The BGSAVE/LASTSAVE output is redirected to /dev/null — only the raw RDB bytes are emitted.
-      return 'BEFORE=$(redis-cli LASTSAVE) && redis-cli BGSAVE > /dev/null && for i in $(seq 1 30); do AFTER=$(redis-cli LASTSAVE); [ "$AFTER" != "$BEFORE" ] && break; sleep 1; done && cat /data/dump.rdb';
+      return 'BEFORE=$(redis-cli LASTSAVE) && OUT=$(redis-cli BGSAVE) && echo "$OUT" | grep -q "Background saving started" || { echo "BGSAVE failed: $OUT" >&2; exit 1; } && for i in $(seq 1 30); do AFTER=$(redis-cli LASTSAVE); [ "$AFTER" != "$BEFORE" ] && break; sleep 1; done && cat /data/dump.rdb';
     },
     buildRestoreCommand() {
       // Write the RDB file, then SHUTDOWN NOSAVE so Redis doesn't overwrite it
@@ -392,10 +392,9 @@ export class Backup {
       nodePort: nodeConn.port,
     };
 
-    await sshExec(
-      nodeConn,
-      `cat > '${shellEscape(metaPath)}' << 'DOCKFLOW_EOF'\n${JSON.stringify(metadata, null, 2)}\nDOCKFLOW_EOF`
-    );
+    const { stream, done } = await sshExecChannel(nodeConn, `cat > '${shellEscape(metaPath)}'`);
+    stream.end(JSON.stringify(metadata, null, 2));
+    await done;
 
     return ok(metadata);
   }
@@ -554,10 +553,9 @@ export class Backup {
     // Extended metadata includes per-volume/bind details
     const extendedMeta = { ...metadata, volumes: volumeEntries };
     const metaPath = `${backupDir}/${backupId}.meta.json`;
-    await sshExec(
-      nodeConn,
-      `cat > '${shellEscape(metaPath)}' << 'DOCKFLOW_EOF'\n${JSON.stringify(extendedMeta, null, 2)}\nDOCKFLOW_EOF`
-    );
+    const { stream, done } = await sshExecChannel(nodeConn, `cat > '${shellEscape(metaPath)}'`);
+    stream.end(JSON.stringify(extendedMeta, null, 2));
+    await done;
 
     return ok(metadata);
   }
@@ -607,7 +605,7 @@ export class Backup {
       if (mountType === 'bind' && entry.sourcePath) {
         // Bind mount: clear target and extract directly on the host
         const src = shellEscape(entry.sourcePath);
-        restoreCmd = `rm -rf '${src}'/* '${src}'/..?* '${src}'/.[!.]* 2>/dev/null; tar xf - -C '${src}'`;
+        restoreCmd = `find '${src}' -mindepth 1 -delete && tar xf - -C '${src}'`;
       } else {
         // Named volume: extract via temporary alpine container
         const fullVolumeName = existingVolumes.find(
