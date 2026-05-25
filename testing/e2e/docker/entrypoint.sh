@@ -55,6 +55,10 @@ elif [ "${SWARM_ROLE}" = "worker" ]; then
     log "Swarm worker joined."
 fi
 
+# Start nginx
+log "Starting nginx..."
+nginx
+
 # Start SSH server (foreground)
 log "Starting SSH server..."
 exec /usr/sbin/sshd -D -e
