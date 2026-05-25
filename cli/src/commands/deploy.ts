@@ -343,7 +343,10 @@ async function execute(ctx: DeployContext): Promise<void> {
         await runPostRollbackHealthChecks(ctx.cluster.manager.connection, ctx.orchestrator, ctx.stackName, ctx.config.health_checks);
       }
       catch (e) {
-        printWarning(`Rollback failed: ${e instanceof Error ? e.message : String(e)}`);
+        printWarning(
+          `Rollback failed: ${e instanceof Error ? e.message : String(e)}\n` +
+          `The cluster may be in an inconsistent state. Run 'dockflow status' to check what is running.`
+        );
         await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
       }
     } else {
