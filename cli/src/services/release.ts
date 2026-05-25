@@ -141,7 +141,7 @@ export class Release {
         const meta = JSON.parse(trimmed) as ReleaseMetadata;
         releases.push(meta);
       } catch {
-        printDebug(`Skipping release with bad metadata`);
+        printWarning(`Skipping release with corrupted metadata — run 'dockflow releases' to identify orphaned directories`);
       }
     }
 
@@ -213,7 +213,7 @@ export class Release {
     await sshExec(this.connection, `ln -sfn "${previousDir}" "${this.stackDir(stackName)}/current"`);
 
     if (failedDir) {
-      await sshExec(this.connection, `rm -rf "${failedDir}"`).catch(() => {
+      await sshExec(this.connection, `timeout 30 rm -rf "${failedDir}"`).catch(() => {
         printWarning(`Could not remove failed release directory ${failedDir}`);
       });
     }
@@ -234,7 +234,7 @@ export class Release {
       await sshExec(
         this.connection,
         `currentTarget=$(readlink "${stackDir}/current" 2>/dev/null); ` +
-        `rm -rf "${dir}"; ` +
+        `timeout 30 rm -rf "${dir}"; ` +
         `if [ "$currentTarget" = "${dir}" ]; then ` +
         (restoreTo
           ? `ln -sfn "${restoreTo}" "${stackDir}/current"; `
@@ -242,7 +242,7 @@ export class Release {
         `fi`,
       );
     } else {
-      await sshExec(this.connection, `rm -rf "${dir}"`);
+      await sshExec(this.connection, `timeout 30 rm -rf "${dir}"`);
     }
 
     printDebug(`Removed release ${version}`);
@@ -318,7 +318,7 @@ export class Release {
         `for img in ${quotedImages}; do ` +
           `ids=$(docker ps -a --filter "ancestor=$img" -q 2>/dev/null); ` +
           `[ -n "$ids" ] && docker rm -f $ids 2>/dev/null; ` +
-          `docker rmi "$img" 2>/dev/null; ` +
+          `timeout 60 docker rmi "$img" 2>/dev/null; ` +
         `done; true`,
       );
       printDebug(`Removed ${uniqueOrphans.length} orphaned image(s)`);
@@ -326,7 +326,7 @@ export class Release {
 
     // 5. Batch remove release directories in ONE SSH call
     const rmDirs = toRemove.map(r => `"${this.releaseDir(stackName, r.version)}"`).join(' ');
-    await sshExec(this.connection, `rm -rf ${rmDirs}`);
+    await sshExec(this.connection, `timeout 60 rm -rf ${rmDirs}`);
 
     printInfo(`Cleaned up ${toRemove.length} old release(s)`);
   }
