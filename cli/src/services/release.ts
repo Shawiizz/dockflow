@@ -121,10 +121,9 @@ export class Release {
 
     const result = await sshExec(
       this.connection,
-      `cd "${dir}" 2>/dev/null && for d in */; do ` +
-        `[ "$d" = "current/" ] && continue; ` +
+      `cd "${dir}" 2>/dev/null && for d in [0-9]*/; do ` +
         `[ -f "$d/metadata.json" ] && printf '\\x1e' && cat "$d/metadata.json"; ` +
-      `done || echo ""`,
+      `done || true`,
     );
 
     const raw = result.stdout.trim();
@@ -132,16 +131,13 @@ export class Release {
 
     const releases: ReleaseMetadata[] = [];
 
-    // Split on record separator (ASCII 0x1E)
-    const chunks = raw.split('\x1e').filter(Boolean);
-    for (const chunk of chunks) {
+    for (const chunk of raw.split('\x1e').filter(Boolean)) {
       const trimmed = chunk.trim();
       if (!trimmed) continue;
       try {
-        const meta = JSON.parse(trimmed) as ReleaseMetadata;
-        releases.push(meta);
+        releases.push(JSON.parse(trimmed) as ReleaseMetadata);
       } catch {
-        printWarning(`Skipping release with corrupted metadata — run 'dockflow releases' to identify orphaned directories`);
+        printWarning(`Skipping release directory with corrupted metadata in ${dir}`);
       }
     }
 
