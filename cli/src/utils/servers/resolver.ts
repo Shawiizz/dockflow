@@ -6,6 +6,12 @@
  */
 
 import { loadServersConfig } from '../config';
+
+let _config: ServersConfig | null | undefined;
+function getConfig(): ServersConfig | null {
+  if (_config === undefined) _config = loadServersConfig();
+  return _config;
+}
 import { parseConnectionString } from '../connection-parser';
 import { printWarning } from '../output';
 import type { 
@@ -69,7 +75,7 @@ function resolveConnection(
  * Resolve all servers for a given environment/tag
  */
 export function resolveServersForEnvironment(environment: string): ResolvedServer[] {
-  const config = loadServersConfig();
+  const config = getConfig();
   if (!config) {
     return [];
   }
@@ -117,7 +123,7 @@ export function resolveServersForEnvironment(environment: string): ResolvedServe
  * Resolve a specific server by name
  */
 export function resolveServerByName(serverName: string, environment: string): ResolvedServer | null {
-  const config = loadServersConfig();
+  const config = getConfig();
   if (!config) {
     return null;
   }
@@ -199,7 +205,7 @@ export function resolveDeploymentForEnvironment(environment: string): ResolvedDe
  * Get list of all available environments (tags) from servers.yml
  */
 export function getAvailableEnvironments(): string[] {
-  const config = loadServersConfig();
+  const config = getConfig();
   if (!config) {
     return [];
   }
@@ -218,7 +224,7 @@ export function getAvailableEnvironments(): string[] {
  * Get server names for a specific environment
  */
 export function getServerNamesForEnvironment(environment: string): string[] {
-  const config = loadServersConfig();
+  const config = getConfig();
   if (!config) {
     return [];
   }
@@ -281,7 +287,7 @@ export function getAllNodeConnections(environment: string): SSHKeyConnection[] {
  * Uses the first server with the matching tag to get the env vars
  */
 export function getEnvVarsForEnvironment(environment: string): EnvVars {
-  const config = loadServersConfig();
+  const config = getConfig();
   if (!config) {
     return {};
   }
