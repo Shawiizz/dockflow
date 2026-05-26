@@ -83,11 +83,8 @@ async function buildContextTar(target: BuildTarget): Promise<Buffer> {
   const entries: TarEntry[] = [];
 
   const dockerignorePath = join(contextDir, '.dockerignore');
-  let shouldInclude: (path: string) => boolean = () => true;
-  if (existsSync(dockerignorePath)) {
-    const ignoreContent = readFileSync(dockerignorePath, 'utf-8');
-    shouldInclude = parseDockerignore(ignoreContent);
-  }
+  const ignoreContent = existsSync(dockerignorePath) ? readFileSync(dockerignorePath, 'utf-8') : '';
+  const shouldInclude = parseDockerignore(ignoreContent);
 
   const overrides = target.renderedOverrides;
   const addedOverrides = new Set<string>();
