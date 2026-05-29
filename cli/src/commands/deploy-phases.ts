@@ -290,7 +290,9 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
         : upload.dest;
       const destRelative = destPath.replace(/^\//, '');
       const backupPath = `${backupBaseDir}/${destRelative}`;
-      const fileContent = readFileSync(srcAbs);
+      const srcRel = relative(ctx.projectRoot, srcAbs).replace(/\\/g, '/');
+      const renderedText = ctx.rendered.get(srcRel);
+      const fileContent = renderedText !== undefined ? Buffer.from(renderedText) : readFileSync(srcAbs);
 
       // Ensure destination and backup dirs exist on all hosts in one call each
       await Promise.all(plan.hosts.map(async ({ name, conn }) => {
