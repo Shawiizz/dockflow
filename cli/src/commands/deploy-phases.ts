@@ -348,7 +348,7 @@ export async function buildAndDistribute(
   if (ctx.options.skipBuild || !ctx.deployApp) return null;
   if (!Compose.hasServices(compose)) return null;
 
-  await Hook.runLocal('pre-build', ctx.projectRoot, ctx.config, ctx.rendered);
+  await Hook.runHook('pre-build', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
 
   const engine = await detectContainerEngine(ctx.cluster.manager.connection, ctx.config.container_engine);
   const runtime: ContainerRuntime = ctx.config.orchestrator === 'k3s' ? 'containerd' : engine;
@@ -409,7 +409,7 @@ export async function buildAndDistribute(
     }
   }
 
-  await Hook.runLocal('post-build', ctx.projectRoot, ctx.config, ctx.rendered);
+  await Hook.runHook('post-build', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
   return { images, engine, usedRegistry };
 }
 

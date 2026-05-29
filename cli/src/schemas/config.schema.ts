@@ -129,17 +129,17 @@ export const HooksConfigSchema = z.object({
   fatal: z.boolean().optional().default(false).describe(
     'Abort the deploy when a hook exits with a non-zero code (default: false — warnings only)'
   ),
-  'pre-build': z.string().optional().describe(
-    'Script to run before building images'
+  'pre-build': z.union([z.string(), z.array(z.string())]).optional().describe(
+    'Inline command(s) to run before building images'
   ),
-  'post-build': z.string().optional().describe(
-    'Script to run after building images'
+  'post-build': z.union([z.string(), z.array(z.string())]).optional().describe(
+    'Inline command(s) to run after building images'
   ),
-  'pre-deploy': z.string().optional().describe(
-    'Script to run before deploying stack'
+  'pre-deploy': z.union([z.string(), z.array(z.string())]).optional().describe(
+    'Inline command(s) to run before deploying stack'
   ),
-  'post-deploy': z.string().optional().describe(
-    'Script to run after successful deployment'
+  'post-deploy': z.union([z.string(), z.array(z.string())]).optional().describe(
+    'Inline command(s) to run after successful deployment'
   ),
 });
 

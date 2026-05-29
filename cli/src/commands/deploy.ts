@@ -281,7 +281,7 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     buildResult = await buildAndDistribute(ctx, compose);
 
-    await Hook.runRemote('pre-deploy', ctx.cluster.manager.connection, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
+    await Hook.runHook('pre-deploy', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
 
     uploadPlan = await uploadFiles(ctx);
 
@@ -313,7 +313,7 @@ async function execute(ctx: DeployContext): Promise<void> {
     await Nginx.deployNginxTemplates(ctx.cluster.manager.connection, ctx.rendered);
 
     await runHTTPHealthChecks(ctx);
-    await Hook.runRemote('post-deploy', ctx.cluster.manager.connection, ctx.stackName, ctx.projectRoot, ctx.config, ctx.rendered);
+    await Hook.runHook('post-deploy', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
 
     await Promise.all([
       ctx.releases.cleanupOldReleases(ctx.stackName, ctx.config),

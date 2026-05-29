@@ -4,16 +4,20 @@ import { Callout, FileTree } from 'nextra/components'
 
 Hooks allow you to run custom scripts at specific points during deployment.
 
-## Available Hooks
+## Available hooks
 
 | Hook | Location | Timing |
 |------|----------|--------|
-| `pre-build` | CI runner | Before Docker images are built |
-| `post-build` | CI runner | After Docker images are built |
+| `pre-build` | Local (CI runner) | Before Docker images are built |
+| `post-build` | Local (CI runner) | After Docker images are built |
 | `pre-deploy` | Server | Before Swarm stack deployment |
 | `post-deploy` | Server | After successful deployment |
 
-## Setup
+<Callout type="info">
+  When [`remote_build: true`](/configuration/build-strategy) is set, `pre-build` and `post-build` hooks run on the server instead of locally — where the build is actually happening.
+</Callout>
+
+## File-based hooks
 
 Create shell scripts in `.dockflow/hooks/`:
 
@@ -29,6 +33,22 @@ Create shell scripts in `.dockflow/hooks/`:
 </FileTree>
 
 All hooks are optional. If a hook file doesn't exist, it is skipped.
+
+## Inline hooks
+
+For simple commands, define them directly in `.dockflow/config.yml` instead of creating a separate script:
+
+```yaml
+# .dockflow/config.yml
+hooks:
+  post-deploy: systemctl reload nginx
+
+  pre-build:
+    - echo "Building {{ config.project_name }} {{ version }}"
+    - docker pull base-image:latest
+```
+
+When both a file and inline commands are defined for the same phase, the file runs first, then the inline commands.
 
 ## Templating
 
@@ -47,30 +67,41 @@ DATABASE_URL="{{ current.env.database_url }}"
 ### Pre-build: Generate assets
 
 ```bash
+# .dockflow/hooks/pre-build.sh
 #!/bin/bash
-echo "Generating static assets..."
 npm run build:assets
 ```
 
 ### Post-build: Security scan
 
 ```bash
+# .dockflow/hooks/post-build.sh
 #!/bin/bash
-echo "Running security scan..."
 docker scan {{ project_name }}:{{ version }} || true
 ```
 
 ### Pre-deploy: Database backup
 
 ```bash
+# .dockflow/hooks/pre-deploy.sh
 #!/bin/bash
-echo "Creating database backup before deployment..."
 pg_dump $DATABASE_URL > /backups/pre-deploy-{{ version }}.sql
+```
+
+### Post-deploy: Reload a systemd service
+
+```yaml
+# .dockflow/config.yml
+hooks:
+  post-deploy:
+    - systemctl daemon-reload
+    - systemctl restart rclone-s3.service
 ```
 
 ### Post-deploy: Notify team
 
 ```bash
+# .dockflow/hooks/post-deploy.sh
 #!/bin/bash
 curl -X POST "https://hooks.slack.com/services/xxx" \
   -H "Content-Type: application/json" \
@@ -79,13 +110,17 @@ curl -X POST "https://hooks.slack.com/services/xxx" \
 
 ## Configuration
 
-Hooks are enabled by default. Configure in `.dockflow/config.yml`:
-
 ```yaml
+# .dockflow/config.yml
 hooks:
   enabled: true    # Enable/disable all hooks (default: true)
   timeout: 300     # Timeout per hook in seconds (default: 300)
   fatal: false     # Abort deploy on hook failure (default: false)
+
+  pre-build: echo "starting build"
+  post-deploy:
+    - systemctl daemon-reload
+    - systemctl restart myservice
 ```
 
 | Field | Type | Description | Default |
@@ -93,6 +128,10 @@ hooks:
 | `enabled` | boolean | Enable or disable all hooks | `true` |
 | `timeout` | number | Max execution time per hook, in seconds | `300` |
 | `fatal` | boolean | Abort the deploy when a hook exits with a non-zero code | `false` |
+| `pre-build` | string \| string[] | Inline command(s) for the pre-build phase | — |
+| `post-build` | string \| string[] | Inline command(s) for the post-build phase | — |
+| `pre-deploy` | string \| string[] | Inline command(s) for the pre-deploy phase | — |
+| `post-deploy` | string \| string[] | Inline command(s) for the post-deploy phase | — |
 
 By default, hook failures print a warning and let the deploy continue. Set `fatal: true` to treat a non-zero exit code as a deploy error — useful for hooks that run critical operations like database migrations.
 

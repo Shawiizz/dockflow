@@ -65,10 +65,10 @@ export interface HooksConfig {
   enabled?: boolean;
   timeout?: number;
   fatal?: boolean;
-  'pre-build'?: string;
-  'post-build'?: string;
-  'pre-deploy'?: string;
-  'post-deploy'?: string;
+  'pre-build'?: string | string[];
+  'post-build'?: string | string[];
+  'pre-deploy'?: string | string[];
+  'post-deploy'?: string | string[];
 }
 
 export interface StackManagementConfig {
