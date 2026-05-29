@@ -59,7 +59,7 @@ import * as Nginx from '../services/nginx';
 import * as Hook from '../services/hook';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
-import { buildAndDistribute, uploadFiles, rollbackUploads, commitUploads, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
+import { buildAndDistribute, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
 import type { BuildResult } from './deploy-phases';
 import type { UploadRollbackPlan } from './deploy-phases';
 
@@ -278,6 +278,8 @@ async function execute(ctx: DeployContext): Promise<void> {
     let compose = Compose.loadFromString(ctx.composeContent);
 
     Compose.updateImageTags(compose, ctx.config, ctx.env, ctx.deployVersion, ctx.options.only);
+
+    await checkUploadPermissions(ctx);
 
     buildResult = await buildAndDistribute(ctx, compose);
 

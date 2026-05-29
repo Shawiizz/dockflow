@@ -15,7 +15,7 @@ import { pipeline } from 'stream/promises';
 import { printDim, printWarning, formatBytes, createSpinner } from '../utils/output';
 import { walkDir } from '../utils/fs';
 import { packDirToTarGz, buildExcludeFilter } from '../utils/tar';
-import { sshExec, sshExecChannel } from '../utils/ssh';
+import { sshExec, sshExecChannel, shellEscape } from '../utils/ssh';
 import {
   DeployError,
   ErrorCode,
@@ -117,8 +117,77 @@ async function streamDirToHost(
 }
 
 
-export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPlan> {
+function filterUploadsByService(ctx: DeployContext): NonNullable<typeof ctx.config.upload> {
   const uploads = ctx.config.upload;
+  if (!uploads || uploads.length === 0) return [];
+  if (!ctx.options.only) return uploads;
+  const serviceFilter = new Set(ctx.options.only.split(',').map((s: string) => s.trim()));
+  return uploads.filter(u => {
+    if (!u.service) return true;
+    const services = Array.isArray(u.service) ? u.service : [u.service];
+    return services.some(s => serviceFilter.has(s));
+  });
+}
+
+/**
+ * Pre-flight permission check for upload destinations.
+ * Runs before the build so permission errors surface immediately.
+ * Verifies in a single SSH call per node that every destination
+ * (or its nearest existing parent directory) is writable by the deploy user.
+ */
+export async function checkUploadPermissions(ctx: DeployContext): Promise<void> {
+  const filtered = filterUploadsByService(ctx);
+  if (filtered.length === 0) return;
+
+  // Shell function that walks up to the first existing ancestor and checks writability.
+  // Loop terminates at '/' which always exists as a directory.
+  const checkFn =
+    'check_path() {\n' +
+    '  local dest="$1" label="$2"\n' +
+    '  if [ -e "$dest" ]; then\n' +
+    '    [ -w "$dest" ] || ERRORS="${ERRORS}$label: not writable: $dest\\n"\n' +
+    '  else\n' +
+    '    local p="$dest"\n' +
+    '    while [ ! -d "$p" ]; do p=$(dirname "$p"); done\n' +
+    '    [ -w "$p" ] || ERRORS="${ERRORS}$label: cannot create $dest (nearest existing parent: $p)\\n"\n' +
+    '  fi\n' +
+    '}';
+
+  const checks = filtered
+    .map(u => `check_path ${shellEscape(u.dest)} ${shellEscape(u.src)}`)
+    .join('\n');
+
+  const script =
+    'ERRORS=""\n' +
+    checkFn + '\n' +
+    checks + '\n' +
+    '[ -z "$ERRORS" ] || { printf "%b" "$ERRORS"; exit 1; }';
+
+  const nodes = activeNodes(ctx.cluster);
+  const failures: string[] = [];
+
+  await Promise.all(nodes.map(async node => {
+    const result = await sshExec(node.connection, script);
+    if (result.exitCode !== 0) {
+      const detail = (result.stdout.trim() || result.stderr.trim())
+        .split('\n').map(l => `    ${l}`).join('\n');
+      failures.push(`  ${node.name}:\n${detail}`);
+    }
+  }));
+
+  if (failures.length > 0) {
+    const user = ctx.cluster.manager.connection.user;
+    const destList = filtered.map(u => `  chown -R ${user}: ${u.dest.replace(/\/$/, '')}`).join('\n');
+    throw new DeployError(
+      `Upload permission check failed:\n${failures.join('\n')}`,
+      ErrorCode.DEPLOY_FAILED,
+      `Ensure the deploy user has write access to all upload destinations.\n` +
+      `Run once on each failing server as root:\n${destList}`,
+    );
+  }
+}
+
+export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPlan> {
   const backupBaseDir = `${DOCKFLOW_UPLOAD_BACKUPS_DIR}/${ctx.stackName}/${ctx.deployVersion}`;
 
   const plan: UploadRollbackPlan = {
@@ -128,17 +197,10 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
     backupBaseDir,
   };
 
-  if (!uploads || uploads.length === 0) return plan;
+  const filtered = filterUploadsByService(ctx);
+  if (filtered.length === 0) return plan;
 
-  const serviceFilter = ctx.options.only
-    ? new Set(ctx.options.only.split(',').map((s: string) => s.trim()))
-    : null;
-
-  for (const upload of uploads) {
-    if (serviceFilter && upload.service) {
-      const uploadServices = Array.isArray(upload.service) ? upload.service : [upload.service];
-      if (!uploadServices.some(s => serviceFilter.has(s))) continue;
-    }
+  for (const upload of filtered) {
 
     const srcAbs = resolve(ctx.projectRoot, upload.src);
     if (!existsSync(srcAbs)) {
