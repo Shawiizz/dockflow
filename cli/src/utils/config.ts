@@ -161,7 +161,7 @@ export interface DockflowConfig {
   accessories?: Record<string, AccessoryConfig>;
   proxy?: ProxyConfig;
   notifications?: NotificationsConfig;
-  upload?: UploadItem[];
+  uploads?: UploadItem[];
   no_services?: boolean;
 }
 

@@ -117,8 +117,8 @@ async function streamDirToHost(
 }
 
 
-function filterUploadsByService(ctx: DeployContext): NonNullable<typeof ctx.config.upload> {
-  const uploads = ctx.config.upload;
+function filterUploadsByService(ctx: DeployContext): NonNullable<typeof ctx.config.uploads> {
+  const uploads = ctx.config.uploads;
   if (!uploads || uploads.length === 0) return [];
   if (!ctx.options.only) return uploads;
   const serviceFilter = new Set(ctx.options.only.split(',').map((s: string) => s.trim()));
@@ -165,6 +165,7 @@ export async function checkUploadPermissions(ctx: DeployContext): Promise<void> 
 
   const nodes = activeNodes(ctx.cluster);
   const failures: string[] = [];
+  printDim(`Checking upload permissions on ${nodes.length} node(s)...`);
 
   await Promise.all(nodes.map(async node => {
     const result = await sshExec(node.connection, script);

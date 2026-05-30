@@ -394,7 +394,7 @@ export const DockflowConfigSchema = z.object({
     'Post-deployment notification webhooks'
   ),
 
-  upload: z.array(UploadItemSchema).optional().describe(
+  uploads: z.array(UploadItemSchema).optional().describe(
     'Files or directories to transfer to the remote server before deploying. ' +
     'Useful for config files referenced as bind mounts in docker-compose volumes.'
   ),
