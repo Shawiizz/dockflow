@@ -368,7 +368,7 @@ export async function rollbackUploads(plan: UploadRollbackPlan): Promise<void> {
   await Promise.all(plan.hosts.map(async ({ conn, backedUp, created, backedUpDirs, createdDirs }) => {
     for (const destPath of backedUp) {
       const backupPath = `${plan.backupBaseDir}/${destPath.replace(/^\//, '')}`;
-      const r = await sshExec(conn, `mv '${backupPath}' '${destPath}'`);
+      const r = await sshExec(conn, `cp '${backupPath}' '${destPath}' && rm -f '${backupPath}'`);
       if (r.exitCode !== 0) throw new DeployError(
         `upload rollback: failed to restore '${destPath}': ${r.stderr.trim() || `exit ${r.exitCode}`}`,
         ErrorCode.DEPLOY_FAILED,
