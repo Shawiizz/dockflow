@@ -112,17 +112,15 @@ export class Release {
     return result.exitCode === 0 && result.stdout.trim() ? result.stdout : null;
   }
 
-  /**
-   * List all releases sorted by epoch descending (newest first).
-   * Uses a single SSH call to read all metadata files at once.
-   */
+  /** List all releases sorted by epoch descending (newest first). */
   async listReleases(stackName: string): Promise<ReleaseMetadata[]> {
     const dir = this.stackDir(stackName);
 
     const result = await sshExec(
       this.connection,
-      `cd "${dir}" 2>/dev/null && for d in [0-9]*/; do ` +
-        `[ -f "$d/metadata.json" ] && printf '\\x1e' && cat "$d/metadata.json"; ` +
+      `cd "${dir}" 2>/dev/null && for d in */; do ` +
+        `[ -L "\${d%/}" ] && continue; ` +
+        `[ -f "$d/metadata.json" ] && tr -d '\\n' < "$d/metadata.json" && echo; ` +
       `done || true`,
     );
 
@@ -131,8 +129,8 @@ export class Release {
 
     const releases: ReleaseMetadata[] = [];
 
-    for (const chunk of raw.split('\x1e').filter(Boolean)) {
-      const trimmed = chunk.trim();
+    for (const line of raw.split('\n')) {
+      const trimmed = line.trim();
       if (!trimmed) continue;
       try {
         releases.push(JSON.parse(trimmed) as ReleaseMetadata);
@@ -141,7 +139,6 @@ export class Release {
       }
     }
 
-    // Sort newest first
     releases.sort((a, b) => b.epoch - a.epoch);
     return releases;
   }

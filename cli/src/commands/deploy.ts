@@ -354,7 +354,7 @@ async function execute(ctx: DeployContext): Promise<void> {
     }
 
     let rolledBackTo: string | null = null;
-    if (stackDeployed && ctx.config.health_checks?.on_failure === 'rollback') {
+    if (stackDeployed && ctx.config.health_checks?.on_failure === 'rollback' && previousSymlink) {
       // rollback() handles its own cleanup — calling removeRelease first would delete the failed release before rollback can list it.
       try {
         rolledBackTo = await ctx.releases.rollback(ctx.stackName, ctx.orchestrator, ctx.deployVersion, previousSymlink);
