@@ -178,7 +178,14 @@ export async function checkUploadPermissions(ctx: DeployContext): Promise<void> 
 
   if (failures.length > 0) {
     const user = ctx.cluster.manager.connection.user;
-    const destList = filtered.map(u => `  chown -R ${user}: ${u.dest.replace(/\/$/, '')}`).join('\n');
+    const destList = filtered.map(u => {
+      const dest = u.dest.replace(/\/$/, '');
+      const srcAbs = resolve(ctx.projectRoot, u.src);
+      const isDir = existsSync(srcAbs) && statSync(srcAbs).isDirectory();
+      return isDir
+        ? `  mkdir -p '${dest}' && chown -R ${user}: '${dest}'`
+        : `  touch '${dest}' && chown ${user}: '${dest}'`;
+    }).join('\n');
     throw new DeployError(
       `Upload permission check failed:\n${failures.join('\n')}`,
       ErrorCode.DEPLOY_FAILED,
