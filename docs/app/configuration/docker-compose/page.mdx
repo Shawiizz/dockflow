@@ -185,7 +185,26 @@ networks:
   backend:
 ```
 
-Dockflow automatically creates external networks and volumes before deploying the stack.
+### External networks (Swarm only)
+
+When a network is marked `external: true`, Dockflow automatically creates it on the Swarm manager before deploying if it doesn't already exist:
+
+```yaml
+services:
+  app:
+    networks:
+      - shared-net
+
+networks:
+  shared-net:
+    external: true
+```
+
+This is useful when multiple independent stacks need to communicate over a shared overlay network. Dockflow creates the network with `--driver overlay --attachable` so any stack can attach to it.
+
+<Callout type="info">
+  For communication between an app stack and its accessories stack within the same project, you don't need an external network. Use the Swarm DNS name directly: `{{ project_name }}-{{ env }}-accessories_servicename`.
+</Callout>
 
 ## Placement Constraints
 

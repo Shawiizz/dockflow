@@ -10,8 +10,8 @@ Hooks allow you to run custom scripts at specific points during deployment.
 |------|----------|--------|
 | `pre-build` | Local (CI runner) | Before Docker images are built |
 | `post-build` | Local (CI runner) | After Docker images are built |
-| `pre-deploy` | Server | Before Swarm stack deployment |
-| `post-deploy` | Server | After successful deployment |
+| `pre-deploy` | Server | After file uploads, before stack deployment |
+| `post-deploy` | Server | After successful deployment and health checks |
 
 <Callout type="info">
   When [`remote_build: true`](/configuration/build-strategy) is set, `pre-build` and `post-build` hooks run on the server instead of locally — where the build is actually happening.

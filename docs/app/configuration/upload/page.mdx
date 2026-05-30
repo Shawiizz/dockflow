@@ -8,7 +8,7 @@ Transfer local files or directories to your servers before each deployment. Usef
 
 ```yaml
 # .dockflow/config.yml
-upload:
+uploads:
   - src: .dockflow/docker/mosquitto/
     dest: /opt/dockflow/mqtt/
 ```
@@ -40,23 +40,40 @@ services:
 ## How it works
 
 <Steps>
-### Resolve paths
-Each `src` is resolved relative to your project root. If the source does not exist, a warning is printed and the entry is skipped.
+### Permission check
+Before building, dockflow verifies that the deploy user has write access to all upload destinations on every node. If a destination doesn't exist yet, its nearest existing parent directory is checked instead. The deploy fails immediately with a clear fix command if any permission is missing.
 
-### Collect files
-If `src` is a directory, all files are collected recursively. If it is a file, only that file is transferred.
+### Build
+Docker images are built while the permission check is happening.
 
 ### Transfer to all nodes
-Files are transferred to the manager **and all worker nodes** in parallel, so bind mounts work regardless of which node runs the container.
+Files are transferred to the manager **and all worker nodes** in parallel after the build, so bind mounts work regardless of which node runs the container.
+
+### Pre-deploy hook
+The `pre-deploy` hook runs after uploads complete — meaning it can reference the uploaded files directly (e.g. `systemctl daemon-reload` after uploading a systemd unit).
 
 ### Deploy
-The stack is deployed after all transfers complete.
+The stack is deployed after all transfers and the pre-deploy hook complete.
 </Steps>
+
+## Nunjucks rendering
+
+Files inside `.dockflow/` are automatically rendered through [Nunjucks](https://mozilla.github.io/nunjucks/) before being uploaded. This means you can use any template variable in your uploaded files:
+
+```bash
+# .dockflow/services/myapp.service
+[Service]
+Environment="DB_HOST={{ current.env.db_host }}"
+Environment="DB_PASSWORD={{ current.env.db_password }}"
+ExecStart=/usr/bin/myapp
+```
+
+Files outside `.dockflow/` are transferred as-is without rendering.
 
 ## Single file vs directory
 
 ```yaml
-upload:
+uploads:
   # Single file → transferred to exact dest path
   - src: .dockflow/docker/nginx/nginx.conf
     dest: /opt/dockflow/nginx/nginx.conf
@@ -72,13 +89,13 @@ upload:
 If `dest` ends with `/` for a single file, the filename is preserved:
 
 ```yaml
-upload:
+uploads:
   - src: .dockflow/docker/mosquitto.conf
     dest: /opt/dockflow/mqtt/   # → /opt/dockflow/mqtt/mosquitto.conf
 ```
 
 <Callout type="warning">
-  Files are uploaded on every deployment, even if unchanged. Avoid putting large files in `upload` — bake them into the Docker image instead.
+  Files are uploaded on every deployment, even if unchanged. Avoid putting large files in `uploads` — bake them into the Docker image instead.
 </Callout>
 
 <Callout type="info">
@@ -86,7 +103,7 @@ upload:
 </Callout>
 
 ```yaml
-upload:
+uploads:
   - src: .dockflow/docker/mosquitto/passwd
     dest: /opt/dockflow/mqtt/passwd
     permissions: "640"
@@ -104,12 +121,30 @@ upload:
   Restrict the path to the directories you actually use to limit the privilege surface.
 </Callout>
 
+## Permission setup
+
+Before the first deployment, the deploy user must have write access to each destination. Dockflow detects this automatically and prints the exact commands to run:
+
+```
+Upload permission check failed:
+  main_server:
+    .dockflow/services/myapp.service: cannot create /etc/systemd/system/myapp.service (nearest existing parent: /etc/systemd/system)
+→ Run once on each failing server as root:
+  touch '/etc/systemd/system/myapp.service' && chown dockflow: '/etc/systemd/system/myapp.service'
+```
+
+For directories:
+
+```
+  mkdir -p '/opt/dockflow/mqtt' && chown -R dockflow: '/opt/dockflow/mqtt'
+```
+
 ## Scoping uploads to a service
 
 When using `--only` to deploy a single service, uploads without a `service` field still run. Use the `service` field to restrict an upload to specific services:
 
 ```yaml
-upload:
+uploads:
   - src: .dockflow/docker/mosquitto/
     dest: /opt/dockflow/mqtt/
     service: mqtt                    # only transferred when deploying the mqtt service
@@ -128,7 +163,7 @@ upload:
 # .dockflow/config.yml
 project_name: my-app
 
-upload:
+uploads:
   - src: .dockflow/docker/mosquitto/
     dest: /opt/dockflow/mqtt/
     service: mqtt
@@ -161,7 +196,7 @@ Some projects have no Docker services — they only transfer files to a server. 
 project_name: my-project
 no_services: true
 
-upload:
+uploads:
   - src: ./dist/
     dest: /var/www/my-project/
 ```
@@ -177,5 +212,5 @@ With `no_services: true`:
 
 ## See also
 
-- [Templates](/configuration/templates) — use `{{ current.env.xxx }}` inside transferred files via Nunjucks rendering
-- [Hooks](/configuration/hooks) — run `chmod` or other post-transfer commands with a `post-deploy` hook
+- [Hooks](/configuration/hooks) — use `pre-deploy` to reload services after upload (e.g. `systemctl daemon-reload`)
+- [Templates](/configuration/templates) — full reference for available template variables

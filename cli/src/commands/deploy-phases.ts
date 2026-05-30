@@ -486,6 +486,53 @@ export async function buildAndDistribute(
 }
 
 // ---------------------------------------------------------------------------
+// Phase: External networks
+// ---------------------------------------------------------------------------
+
+function collectExternalNetworks(compose: ReturnType<typeof Compose.loadFromString>): string[] {
+  const nets = compose.networks ?? {};
+  return Object.entries(nets)
+    .filter(([, cfg]) => (cfg as Record<string, unknown>)?.external === true)
+    .map(([name]) => name);
+}
+
+export async function ensureExternalNetworks(ctx: DeployContext): Promise<void> {
+  // Overlay network management is Swarm-only — k3s uses Kubernetes networking
+  if (ctx.config.orchestrator === 'k3s') return;
+
+  const mainCompose = Compose.loadFromString(ctx.composeContent);
+  const networks = new Set(collectExternalNetworks(mainCompose));
+
+  const layout = getLayout();
+  const accessoriesRelPath = layout.accessoriesPath
+    ? relative(layout.root, layout.accessoriesPath).replace(/\\/g, '/')
+    : '.dockflow/docker/accessories.yml';
+  const accessoriesContent = ctx.rendered.get(accessoriesRelPath);
+  if (accessoriesContent) {
+    for (const n of collectExternalNetworks(Compose.loadFromString(accessoriesContent))) networks.add(n);
+  }
+
+  if (networks.size === 0) return;
+
+  const listResult = await sshExec(ctx.cluster.manager.connection, `docker network ls --format '{{.Name}}'`);
+  if (listResult.exitCode !== 0) throw new DeployError(
+    `Failed to list Docker networks: ${listResult.stderr.trim() || `exit ${listResult.exitCode}`}`,
+    ErrorCode.DEPLOY_FAILED,
+  );
+  const existing = new Set(listResult.stdout.trim().split('\n').map(l => l.trim()).filter(Boolean));
+
+  for (const name of networks) {
+    if (existing.has(name)) continue;
+    printDim(`Creating overlay network: ${name}`);
+    const r = await sshExec(ctx.cluster.manager.connection, `docker network create --driver overlay --attachable ${shellEscape(name)}`);
+    if (r.exitCode !== 0) throw new DeployError(
+      `Failed to create overlay network '${name}': ${r.stderr.trim() || `exit ${r.exitCode}`}`,
+      ErrorCode.DEPLOY_FAILED,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Phase: Accessories
 // ---------------------------------------------------------------------------
 

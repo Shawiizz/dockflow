@@ -59,7 +59,7 @@ import * as Nginx from '../services/nginx';
 import * as Hook from '../services/hook';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
-import { buildAndDistribute, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
+import { buildAndDistribute, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
 import type { BuildResult } from './deploy-phases';
 import type { UploadRollbackPlan } from './deploy-phases';
 
@@ -314,6 +314,8 @@ async function execute(ctx: DeployContext): Promise<void> {
         compose = Compose.syncNonTargetedImageTags(compose, Compose.loadFromString(currentContent), filter);
       }
     }
+
+    await ensureExternalNetworks(ctx);
 
     const [releaseResult] = await Promise.all([
       ctx.releases.createRelease(ctx.stackName, ctx.deployVersion, Compose.serialize(compose), {
