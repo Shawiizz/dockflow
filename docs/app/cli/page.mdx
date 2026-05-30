@@ -191,22 +191,30 @@ These commands interact with deployed services via SSH. Most accept `-s, --serve
 dockflow logs <env> [service]
 ```
 
-View logs from running services.
+View logs from running services. On Swarm, only **currently running task replicas** are streamed by default — terminated and crashed replicas are excluded to avoid interleaved noise from past failures. Use `--all-tasks` to include them, or `--pick` to select one specific replica interactively.
 
 | Option | Description |
 |--------|-------------|
 | `-f, --follow` | Follow log output |
 | `-n, --tail <lines>` | Number of lines to show (default: 100) |
-| `-t, --timestamps` | Show timestamps |
+| `-T, --timestamps` | Show timestamps |
 | `--since <time>` | Show logs since timestamp (e.g., `1h`, `2024-01-01`) |
 | `-s, --server <name>` | Target server |
+| `-a, --all-tasks` | Include logs from terminated/historical task replicas (Swarm only) |
+| `--pick` | Interactively pick which task replica to follow (Swarm only) |
 
 ```bash
-dockflow logs production              # All services
-dockflow logs production app -f       # Follow specific service
-dockflow logs production app -n 500   # Last 500 lines
-dockflow logs production --since 1h   # Last hour
+dockflow logs production                 # All services, running replicas only
+dockflow logs production app -f          # Follow specific service
+dockflow logs production app -n 500      # Last 500 lines
+dockflow logs production --since 1h      # Last hour
+dockflow logs production app --all-tasks # Include crashed/old replicas
+dockflow logs production app --pick      # Pick a replica from a list
 ```
+
+<Callout type="info">
+The `--pick` picker lists every task (running + history) with its current state, replica index, node, and any error message — useful for inspecting why a specific replica crashed.
+</Callout>
 
 ### Exec
 

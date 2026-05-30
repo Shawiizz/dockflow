@@ -3,7 +3,7 @@
  *
  * Implements ContainerBackend for Docker Swarm: locates the container for a
  * given service across all Swarm nodes, then runs `docker exec`/`docker cp`
- * on the right node. Log streaming uses `docker service logs`.
+ * on the right node.
  */
 
 import type { SSHKeyConnection } from '../../../types';
@@ -15,7 +15,7 @@ import type {
   ExecResult,
   LogsOptions,
 } from '../interfaces';
-import { findSwarmContainer } from './swarm-utils';
+import { findSwarmContainer, findContainerForTask, listSwarmTasks } from './swarm-utils';
 
 export class SwarmContainerBackend implements ContainerBackend {
   constructor(
@@ -158,27 +158,64 @@ export class SwarmContainerBackend implements ContainerBackend {
     onData: (line: string) => void,
     onError: (err: Error) => void,
   ): Promise<void> {
-    const fullName = serviceName.includes('_') ? serviceName : `${stackName}_${serviceName}`;
+    const allConns = [this.conn, ...this.allConnections];
 
-    const parts = ['docker service logs'];
+    if (options.taskId) {
+      const found = await findContainerForTask(options.taskId, allConns);
+      if (!found) {
+        onError(new Error(`Task ${options.taskId} not found on any node`));
+        return;
+      }
+      await this.runLogStream(found.connection, 'docker logs', found.containerId, options, onData, onError);
+      return;
+    }
+
+    if (options.allTasks) {
+      const fullName = serviceName.includes('_') ? serviceName : `${stackName}_${serviceName}`;
+      await this.runLogStream(this.conn, 'docker service logs', fullName, options, onData, onError);
+      return;
+    }
+
+    const tasks = await listSwarmTasks(stackName, serviceName, this.conn);
+    const running = tasks.filter(t => t.desiredState === 'Running');
+    if (running.length === 0) {
+      onError(new Error(
+        `No running tasks for service ${serviceName}. ` +
+        `Use --all-tasks to see logs from terminated replicas.`
+      ));
+      return;
+    }
+
+    await Promise.all(running.map(async (task) => {
+      const found = await findContainerForTask(task.id, allConns);
+      if (!found) return;
+      await this.runLogStream(found.connection, 'docker logs', found.containerId, options, onData, onError);
+    }));
+  }
+
+  private async runLogStream(
+    connection: SSHKeyConnection,
+    baseCommand: string,
+    target: string,
+    options: LogsOptions,
+    onData: (line: string) => void,
+    onError: (err: Error) => void,
+  ): Promise<void> {
+    const parts = [baseCommand];
     if (options.follow) parts.push('-f');
     parts.push(`--tail ${options.tail ?? 100}`);
     if (options.timestamps) parts.push('--timestamps');
     if (options.since) parts.push(`--since ${options.since}`);
-    parts.push(fullName);
-    parts.push('2>&1');
+    parts.push(target, '2>&1');
 
-    const emitLines = (data: string) => {
+    const emit = (data: string) => {
       for (const line of data.split('\n')) {
         if (line.length > 0) onData(line);
       }
     };
 
     try {
-      await sshExecStream(this.conn, parts.join(' '), {
-        onStdout: emitLines,
-        onStderr: emitLines,
-      });
+      await sshExecStream(connection, parts.join(' '), { onStdout: emit, onStderr: emit });
     } catch (e) {
       onError(e instanceof Error ? e : new Error(String(e)));
     }

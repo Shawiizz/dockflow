@@ -160,6 +160,10 @@ export interface LogsOptions {
   tail?: number;
   since?: string;
   timestamps?: boolean;
+  /** Stream a specific task/replica only (Swarm task ID or k8s pod name). */
+  taskId?: string;
+  /** Include logs from terminated/historical task replicas (Swarm only). */
+  allTasks?: boolean;
 }
 
 export interface ContainerBackend {
