@@ -46,7 +46,9 @@ export function registerLogsCommand(program: Command): void {
       let taskId: string | undefined;
       if (options.pick) {
         if (orchType !== 'swarm') throw new DockerError('--pick is only supported on Swarm');
-        if (!service) throw new DockerError('--pick requires a service name');
+        if (!service) {
+          service = await pickService(orchType, connection, stackName);
+        }
         taskId = await pickSwarmTask(stackName, service, connection);
       }
 
@@ -104,6 +106,17 @@ export function registerLogsCommand(program: Command): void {
         throw new DockerError(`Failed to fetch logs: ${error}`);
       }
     }));
+}
+
+async function pickService(orchType: 'swarm' | 'k3s', connection: SSHKeyConnection, stackName: string): Promise<string> {
+  const services = await createStackBackend(orchType, connection).getServices(stackName);
+  if (services.length === 0) throw new DockerError(`No services found for stack ${stackName}`);
+  if (services.length === 1) return services[0].name;
+
+  return selectPrompt({
+    message: 'Pick a service:',
+    options: services.map(s => ({ value: s.name, label: s.name })),
+  });
 }
 
 async function pickSwarmTask(stackName: string, service: string, connection: SSHKeyConnection): Promise<string> {
