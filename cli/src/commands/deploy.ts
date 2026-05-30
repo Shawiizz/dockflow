@@ -273,6 +273,22 @@ async function execute(ctx: DeployContext): Promise<void> {
   let previousSymlink: string | null = null;
   let buildResult: BuildResult | null = null;
   let auditMessage = `Deploy ${ctx.deployVersion} to ${ctx.env}`;
+  let releaseCreated = false;
+  let interrupted = false;
+
+  const handleSignal = () => {
+    if (interrupted) return;
+    interrupted = true;
+    printWarning(`\nDeploy interrupted — cleaning up before exit...`);
+    (async () => {
+      if (uploadPlan) await rollbackUploads(uploadPlan).catch(() => {});
+      if (releaseCreated) await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
+      await ctx.lock.release().catch(() => {});
+    })().finally(() => process.exit(130));
+  };
+
+  process.once('SIGINT', handleSignal);
+  process.once('SIGTERM', handleSignal);
 
   try {
     let compose = Compose.loadFromString(ctx.composeContent);
@@ -308,6 +324,7 @@ async function execute(ctx: DeployContext): Promise<void> {
       deployAccessories(ctx),
     ]);
     previousSymlink = releaseResult.previousSymlink;
+    releaseCreated = true;
 
     await deployApp(ctx, compose);
     stackDeployed = ctx.deployApp !== false && Compose.hasServices(compose);
@@ -361,6 +378,8 @@ async function execute(ctx: DeployContext): Promise<void> {
     }
     throw err;
   } finally {
+    process.off('SIGINT', handleSignal);
+    process.off('SIGTERM', handleSignal);
     const durationMs = Date.now() - startTime;
     const status = deployFailed ? 'failed' : 'success';
 
