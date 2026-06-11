@@ -7,7 +7,7 @@
 
 import type { Command } from 'commander';
 import { printInfo, printSection, printBlank, printRaw } from '../../utils/output';
-import { validateEnv, withResolvedEnv } from '../../utils/validation';
+import { validateEnv, withResolvedEnv, getAllNodeConnections } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createContainerBackend, createStackBackend } from '../../services/orchestrator/factory';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -34,7 +34,9 @@ export function registerAccessoriesLogsCommand(program: Command): void {
       const { stackName } = await requireAccessoriesStack(connection, env);
 
       const orchType = config.orchestrator ?? 'swarm';
-      const logsBackend = createContainerBackend(orchType, connection);
+      // All node connections are required: in a multi-node Swarm the
+      // accessory containers may run on any worker, not just the manager.
+      const logsBackend = createContainerBackend(orchType, connection, getAllNodeConnections(env));
       const logOptions = {
         tail: parseInt(options.tail || '100', 10),
         follow: options.follow ?? false,

@@ -8,7 +8,7 @@ import type { Command } from 'commander';
 import type { SSHKeyConnection } from '../../types';
 import { printInfo, printSection, printDebug, printBlank, printRaw } from '../../utils/output';
 import { selectPrompt } from '../../utils/prompts';
-import { validateEnv } from '../../utils/validation';
+import { validateEnv, getAllNodeConnections } from '../../utils/validation';
 import { createContainerBackend, createStackBackend } from '../../services/orchestrator/factory';
 import { listSwarmTasks } from '../../services/orchestrator/swarm/swarm-utils';
 import { DockerError, withServicesRequired } from '../../utils/errors';
@@ -41,7 +41,10 @@ export function registerLogsCommand(program: Command): void {
       printBlank();
 
       const orchType = config.orchestrator ?? 'swarm';
-      const logsBackend = createContainerBackend(orchType, connection);
+      // All node connections are required: in a multi-node Swarm the service
+      // tasks may all run on workers — with only the manager connection the
+      // per-task container lookup silently finds nothing.
+      const logsBackend = createContainerBackend(orchType, connection, getAllNodeConnections(env));
 
       let taskId: string | undefined;
       if (options.pick) {
