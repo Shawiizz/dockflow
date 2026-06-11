@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
-import { join, sep } from 'path';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { join, } from 'path';
 import { tmpdir } from 'os';
 import { detectProjectName } from '../commands/init/detect';
 

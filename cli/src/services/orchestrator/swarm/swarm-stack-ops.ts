@@ -12,7 +12,7 @@
 import { createHash } from 'crypto';
 import type { SSHKeyConnection } from '../../../types';
 import { sshExec, sshExecChannel } from '../../../utils/ssh';
-import { printDebug, printDim, printInfo, printWarning, printSuccess, createTimedSpinner } from '../../../utils/output';
+import { printDebug, printInfo, printWarning, printSuccess, createTimedSpinner } from '../../../utils/output';
 import { DeployError, ErrorCode } from '../../../utils/errors';
 import {
   DOCKFLOW_ACCESSORIES_DIR,

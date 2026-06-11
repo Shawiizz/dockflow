@@ -116,7 +116,7 @@ export class SwarmProxyBackend implements ProxyBackend {
     }
 
     // Ports
-    const ports: object[] = [
+    const ports: Array<{ target: number; published: number; protocol: string; mode: string }> = [
       { target: 80, published: 80, protocol: 'tcp', mode: 'host' },
     ];
     if (acme) {
@@ -152,7 +152,7 @@ export class SwarmProxyBackend implements ProxyBackend {
     // Using string template for precise control over output format
     const commandYaml = command.map((c) => `      - "${c}"`).join('\n');
     const portsYaml = ports
-      .map((p: any) => `      - target: ${p.target}\n        published: ${p.published}\n        protocol: ${p.protocol}\n        mode: ${p.mode}`)
+      .map((p) => `      - target: ${p.target}\n        published: ${p.published}\n        protocol: ${p.protocol}\n        mode: ${p.mode}`)
       .join('\n');
     const volumesYaml = volumes.map((v) => `      - ${v}`).join('\n');
     const labelsYaml = labels.map((l) => `        - "${l}"`).join('\n');

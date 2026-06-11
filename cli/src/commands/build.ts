@@ -17,10 +17,9 @@ import { detectCIEnvironment, parseTagForDeployment, resolveDeployParams } from 
 import { getCurrentBranch } from '../utils/git';
 import { withErrorHandler, ConfigError } from '../utils/errors';
 import { resolveEnvironmentPrefix } from '../utils/validation';
-import { loadConfig, getProjectRoot, getLayout } from '../utils/config';
+import { loadConfig, getLayout } from '../utils/config';
 import { validateConfig as validateConfigSchema, validateServersConfig as validateServersSchema } from '../schemas';
 import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
 import { parse as parseYaml } from 'yaml';
 import { buildTemplateContext, getManagersForEnvironment } from '../utils/servers';
 import * as Build from '../services/build';

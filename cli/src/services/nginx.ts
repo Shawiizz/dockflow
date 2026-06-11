@@ -14,7 +14,7 @@
 import { basename } from 'path';
 import type { SSHKeyConnection } from '../types';
 import { sshExec, sshExecChannel } from '../utils/ssh';
-import { printInfo, printWarning } from '../utils/output';
+import { printInfo, } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import { NGINX_SITES_ENABLED, DOCKFLOW_NGINX_TEMPLATES_DIR } from '../constants';
 import type { RenderedFiles } from './compose';

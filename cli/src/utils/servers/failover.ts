@@ -7,7 +7,7 @@
  */
 
 import { sshExec } from '../ssh';
-import { colors, printError, printSuccess, printWarning } from '../output';
+import { printError, printSuccess, printWarning } from '../output';
 import type { SSHKeyConnection, ResolvedServer } from '../../types';
 import { getFullConnectionInfo } from './resolver';
 

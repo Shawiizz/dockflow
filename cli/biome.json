@@ -1,0 +1,40 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
+  "files": {
+    "includes": ["src/**"]
+  },
+  "formatter": {
+    "enabled": false
+  },
+  "assist": {
+    "enabled": false
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": false,
+      "suspicious": {
+        "noConsole": "error",
+        "noExplicitAny": "error",
+        "noDoubleEquals": "error",
+        "noFallthroughSwitchClause": "error"
+      },
+      "correctness": {
+        "noUnusedImports": "error",
+        "noUnreachable": "error"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["src/utils/output.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    }
+  ]
+}

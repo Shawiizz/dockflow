@@ -4,6 +4,7 @@
  */
 
 import * as clack from '@clack/prompts';
+import type { Option } from '@clack/prompts';
 import * as readline from 'readline';
 
 /**
@@ -94,7 +95,7 @@ export async function selectPrompt<T>(opts: {
 
   const value = await clack.select({
     message: opts.message,
-    options: opts.options as any,
+    options: opts.options as Option<T>[],
     initialValue: opts.initialValue,
   });
 
@@ -181,7 +182,7 @@ export async function multiselectPrompt<T>(opts: {
 
   const value = await clack.multiselect<T>({
     message: opts.message,
-    options: opts.options as any,
+    options: opts.options as Option<T>[],
     initialValues: opts.initialValues,
     required: opts.required ?? false,
   });

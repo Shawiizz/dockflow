@@ -9,6 +9,7 @@ import { sshExecWithFallback } from '../../utils/ssh-fallback';
 import { printDebug } from '../../utils/output';
 import { getManagerConnection, getAllNodeConnections, resolveEnvironment } from './_helpers';
 import { parseJsonlLines } from '../../services/metrics';
+import type { DeploymentMetric } from '../../services/metrics';
 import { DOCKFLOW_METRICS_DIR } from '../../constants';
 import type { DeployHistoryEntry, DeployHistoryResponse } from '../types';
 
@@ -67,8 +68,7 @@ async function getDeployHistory(url: URL): Promise<Response> {
     const connections = nodeConnections.length > 0 ? nodeConnections : [conn];
     const result = await sshExecWithFallback(connections, cmd);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const metrics = parseJsonlLines<any>(result.stdout);
+    const metrics = parseJsonlLines<Partial<DeploymentMetric>>(result.stdout);
     if (metrics.length === 0) {
       return jsonResponse({ deployments: [], total: 0 } satisfies DeployHistoryResponse);
     }
@@ -111,7 +111,7 @@ async function getDeployHistory(url: URL): Promise<Response> {
 /**
  * Map metric status to deploy UI status
  */
-function mapMetricStatus(status: string): 'success' | 'failed' | 'pending' | 'running' {
+function mapMetricStatus(status: string | undefined): 'success' | 'failed' | 'pending' | 'running' {
   switch (status) {
     case 'success':
       return 'success';
