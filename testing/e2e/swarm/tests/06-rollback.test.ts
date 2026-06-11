@@ -138,4 +138,93 @@ describe("automatic rollback on failed health check", () => {
     ]);
     expect(out.trim()).toBe("gone");
   });
+
+  // -------------------------------------------------------------------------
+  // Manual rollback (dockflow rollback) and release retention — continues the
+  // scenario on the same stack: after the auto-rollback the stack runs V1 and
+  // only the v1 release dir remains.
+  // -------------------------------------------------------------------------
+
+  describe("manual rollback & release retention", () => {
+    const V3 = "3.0.0-rb";
+
+    /** List release directories (excluding the `current` symlink). */
+    async function listReleaseDirs(): Promise<string[]> {
+      const out = await dockerExec(MANAGER_CONTAINER, [
+        "sh",
+        "-c",
+        `ls -1 '${RELEASES_DIR}' 2>/dev/null`,
+      ]);
+      return out.split("\n").map(l => l.trim()).filter(l => l && l !== "current").sort();
+    }
+
+    test("a healthy v3 deploys on top of v1", async () => {
+      // Re-point the app at the health-checked port (the compose still has the
+      // broken 8086 patch from the v2 test). The index still carries the V2
+      // marker, so v3 visibly serves different content than v1.
+      const composePath = join(fixture.dir, ".dockflow", "docker", "docker-compose.yml");
+      const compose = await Bun.file(composePath).text();
+      const patched = compose.replace('"8086:80"', `"${WEB_PORT}:80"`);
+      expect(patched).not.toBe(compose);
+      await Bun.write(composePath, patched);
+
+      const result = await runCLI(["deploy", TEST_ENV, V3, "--force"], {
+        cwd: fixture.dir,
+      });
+
+      if (result.exitCode !== 0) {
+        console.error("[rollback v3] STDOUT:", result.stdout.slice(-2000));
+        console.error("[rollback v3] STDERR:", result.stderr.slice(-2000));
+      }
+      expect(result.exitCode).toBe(0);
+      await waitForContent(WEB_PORT, "ROLLBACK_TEST_V2");
+      expect(await listReleaseDirs()).toEqual([V1, V3]);
+    }, 240_000);
+
+    test("dockflow rollback returns to v1", async () => {
+      const result = await runCLI(["rollback", TEST_ENV], { cwd: fixture.dir });
+
+      if (result.exitCode !== 0) {
+        console.error("[manual-rollback] STDOUT:", result.stdout.slice(-2000));
+        console.error("[manual-rollback] STDERR:", result.stderr.slice(-2000));
+      }
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout + result.stderr).toContain(V1);
+
+      await waitForContent(WEB_PORT, "ROLLBACK_TEST_V1");
+
+      const target = await dockerExec(MANAGER_CONTAINER, [
+        "sh",
+        "-c",
+        `readlink '${RELEASES_DIR}/current'`,
+      ]);
+      expect(target.trim()).toBe(`${RELEASES_DIR}/${V1}`);
+
+      // Manual rollback (no failed version) keeps the v3 release available
+      expect(await listReleaseDirs()).toEqual([V1, V3]);
+    }, 240_000);
+
+    test("keep_releases retention removes the oldest releases", async () => {
+      // Three more healthy deploys on top of [v1, v3]; keep_releases: 3 must
+      // leave only the three newest release dirs and update the symlink.
+      for (const version of ["4.0.0-rb", "5.0.0-rb", "6.0.0-rb"]) {
+        const result = await runCLI(["deploy", TEST_ENV, version, "--force"], {
+          cwd: fixture.dir,
+        });
+        if (result.exitCode !== 0) {
+          console.error(`[retention ${version}] STDERR:`, result.stderr.slice(-2000));
+        }
+        expect(result.exitCode).toBe(0);
+      }
+
+      expect(await listReleaseDirs()).toEqual(["4.0.0-rb", "5.0.0-rb", "6.0.0-rb"]);
+
+      const target = await dockerExec(MANAGER_CONTAINER, [
+        "sh",
+        "-c",
+        `readlink '${RELEASES_DIR}/current'`,
+      ]);
+      expect(target.trim()).toBe(`${RELEASES_DIR}/6.0.0-rb`);
+    }, 600_000);
+  });
 });

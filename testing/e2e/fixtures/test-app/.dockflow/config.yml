@@ -25,7 +25,7 @@ health_checks:
       retry_delay: 3
 
 backup:
-  retention: 3
+  retention_count: 3
   compression: gzip
   accessories:
     redis:

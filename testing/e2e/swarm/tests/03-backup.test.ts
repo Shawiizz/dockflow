@@ -78,7 +78,9 @@ describe("backup & restore", () => {
   }, 60_000);
 
   test("data integrity after restore", async () => {
-    await waitForRedis();
+    // The restore kills the Redis container; Swarm + the CLI's forced service
+    // update bring it back — allow more than the default 30s for the replace.
+    await waitForRedis(60_000);
 
     const restored = await redisExec(["GET", TEST_KEY]);
     expect(restored.trim()).toBe(TEST_VALUE);
@@ -86,4 +88,48 @@ describe("backup & restore", () => {
     const extra = await redisExec(["EXISTS", "dockflow_e2e_extra"]);
     expect(extra.trim()).toBe("0");
   }, 30_000);
+
+  describe("prune", () => {
+    test("create additional backups beyond the retention count", async () => {
+      // One backup already exists from the create test — add three more so
+      // the total (4) exceeds the fixture's retention_count: 3.
+      for (let i = 0; i < 3; i++) {
+        const result = await runCLI(
+          ["backup", "create", TEST_ENV, "redis", "--json"],
+          { cwd: sharedAppDir() },
+        );
+        expect(result.exitCode).toBe(0);
+      }
+
+      const list = await runCLI(
+        ["backup", "list", TEST_ENV, "redis", "--json"],
+        { cwd: sharedAppDir() },
+      );
+      expect(list.exitCode).toBe(0);
+      const backups: { id: string }[] = JSON.parse(list.stdout);
+      expect(backups.length).toBeGreaterThanOrEqual(4);
+    }, 180_000);
+
+    test("prune keeps retention_count backups and drops the oldest", async () => {
+      const result = await runCLI(
+        ["backup", "prune", TEST_ENV, "redis", "--yes"],
+        { cwd: sharedAppDir() },
+      );
+
+      if (result.exitCode !== 0) {
+        console.error("[backup prune] STDOUT:", result.stdout.slice(-2000));
+        console.error("[backup prune] STDERR:", result.stderr.slice(-2000));
+      }
+      expect(result.exitCode).toBe(0);
+
+      const list = await runCLI(
+        ["backup", "list", TEST_ENV, "redis", "--json"],
+        { cwd: sharedAppDir() },
+      );
+      const backups: { id: string }[] = JSON.parse(list.stdout);
+      expect(backups).toHaveLength(3);
+      // The backup created at the start of this file is the oldest — gone
+      expect(backups.some((b) => b.id === backupId)).toBe(false);
+    }, 60_000);
+  });
 });
