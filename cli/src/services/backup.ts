@@ -197,6 +197,21 @@ export class Backup {
       return err(new Error(`Backup failed: ${result.stderr}`));
     }
 
+    // The remote pipeline exit code is gzip's, not the dump command's — if the
+    // docker exec side fails (e.g. BGSAVE error), the pipeline still exits 0
+    // and produces a valid-but-empty archive. Verify the decompressed content
+    // is non-empty before trusting the backup.
+    const emptyCheckCmd = compression === 'gzip'
+      ? `gunzip -c '${shellEscape(filePath)}' 2>/dev/null | head -c 1 | wc -c`
+      : `head -c 1 '${shellEscape(filePath)}' | wc -c`;
+    const emptyCheck = await sshExec(nodeConn, emptyCheckCmd);
+    if (emptyCheck.stdout.trim() === '0') {
+      await sshExec(nodeConn, `rm -f '${shellEscape(filePath)}'`);
+      return err(new Error(
+        `Backup produced no data: the dump command emitted an empty stream${result.stderr.trim() ? ` (${result.stderr.trim()})` : ''}`,
+      ));
+    }
+
     const durationMs = Date.now() - startTime;
 
     // Get file size

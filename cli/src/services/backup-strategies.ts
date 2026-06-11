@@ -134,14 +134,18 @@ export const DB_STRATEGIES: Record<Exclude<BackupDbType, 'raw' | 'volume'>, DbSt
     envMapping: {},
     buildDumpCommand() {
       // Trigger BGSAVE and wait for it to complete by polling LASTSAVE.
+      // A save already in flight is fine too — it started after the data was
+      // written, and LASTSAVE changes when it lands.
       // The BGSAVE/LASTSAVE output is redirected to /dev/null — only the raw RDB bytes are emitted.
-      return 'BEFORE=$(redis-cli LASTSAVE) && OUT=$(redis-cli BGSAVE) && echo "$OUT" | grep -q "Background saving started" || { echo "BGSAVE failed: $OUT" >&2; exit 1; } && for i in $(seq 1 30); do AFTER=$(redis-cli LASTSAVE); [ "$AFTER" != "$BEFORE" ] && break; sleep 1; done && cat /data/dump.rdb';
+      return 'BEFORE=$(redis-cli LASTSAVE) && OUT=$(redis-cli BGSAVE) && echo "$OUT" | grep -qE "Background saving (started|scheduled)|already in progress" || { echo "BGSAVE failed: $OUT" >&2; exit 1; } && for i in $(seq 1 30); do AFTER=$(redis-cli LASTSAVE); [ "$AFTER" != "$BEFORE" ] && break; sleep 1; done && cat /data/dump.rdb';
     },
     buildRestoreCommand() {
-      // Write the RDB file, then SHUTDOWN NOSAVE so Redis doesn't overwrite it
-      // with in-memory data during shutdown. The service restart is handled
+      // Stage the RDB in a temp file and refuse to install an empty stream —
+      // overwriting dump.rdb with nothing would leave Redis crash-looping.
+      // Then SHUTDOWN NOSAVE so Redis doesn't overwrite the file with
+      // in-memory data during shutdown. The service restart is handled
       // explicitly by the restore() method via `docker service update --force`.
-      return 'cat > /data/dump.rdb && redis-cli SHUTDOWN NOSAVE || true';
+      return 'cat > /data/dump.rdb.tmp; if ! [ -s /data/dump.rdb.tmp ]; then rm -f /data/dump.rdb.tmp; echo "restore: received an empty backup stream" >&2; exit 1; fi; mv /data/dump.rdb.tmp /data/dump.rdb && redis-cli SHUTDOWN NOSAVE || true';
     },
     buildExecEnv() {
       return {};

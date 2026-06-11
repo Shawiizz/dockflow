@@ -74,14 +74,24 @@ describe('DB_STRATEGIES.redis', () => {
     const cmd = DB_STRATEGIES.redis.buildDumpCommand({});
     expect(cmd).toContain('BGSAVE');
     expect(cmd).toContain('LASTSAVE');
-    expect(cmd).toContain('Background saving started');
     expect(cmd).toContain('cat /data/dump.rdb');
   });
 
-  it('restore writes the RDB then shuts down without saving', () => {
+  it('dump tolerates a background save already in flight', () => {
+    const cmd = DB_STRATEGIES.redis.buildDumpCommand({});
+    expect(cmd).toContain('Background saving (started|scheduled)');
+    expect(cmd).toContain('already in progress');
+  });
+
+  it('restore stages to a temp file and refuses an empty stream', () => {
     const cmd = DB_STRATEGIES.redis.buildRestoreCommand({});
-    expect(cmd).toContain('cat > /data/dump.rdb');
+    expect(cmd).toContain('cat > /data/dump.rdb.tmp');
+    expect(cmd).toContain('[ -s /data/dump.rdb.tmp ]');
+    expect(cmd).toContain('exit 1');
+    expect(cmd).toContain('mv /data/dump.rdb.tmp /data/dump.rdb');
     expect(cmd).toContain('SHUTDOWN NOSAVE');
+    // The empty-stream failure must reach stderr so restore() detects it
+    expect(cmd).toContain('>&2');
   });
 
   it('redis requires a service restart after restore', () => {
