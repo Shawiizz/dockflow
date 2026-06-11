@@ -258,7 +258,7 @@ Key values in `cli/src/constants.ts`: `DOCKFLOW_VERSION` (from package.json), `D
 
 Two independent suites under `testing/e2e/`, one per orchestrator, each with its own `bunfig.toml` preload (see `testing/e2e/README.md` for conventions):
 
-**Swarm suite** (`swarm/tests/01-06`): Docker-in-Docker with a manager (`dockflow-test-manager`, SSH port 32222) and worker (`dockflow-test-worker-1`, port 32223), compose project `dockflow-swarm`. Covers build, deploy, Traefik routing, backup/restore, remote build, HTTP health checks, and automatic rollback on failed health checks (dedicated `test-app-rb` stack). The preload resets the cluster and pre-deploys the shared test-app.
+**Swarm suite** (`swarm/tests/01-07`): Docker-in-Docker with a manager (`dockflow-test-manager`, SSH port 32222) and worker (`dockflow-test-worker-1`, port 32223), compose project `dockflow-swarm`. Covers build, deploy, Traefik routing, backup/restore, remote build, HTTP health checks, automatic rollback on failed health checks (dedicated `test-app-rb` stack), and uploads with rollback on failed deploys (dedicated `test-app-up` stack). The preload resets the cluster and pre-deploys the shared test-app.
 
 **k3s suite** (`k3s/tests/10`): k3s-in-Docker single node (`dockflow-test-k3s`, port 32224), compose project `dockflow-k3s`. Covers deploy, namespace creation, replicas, logs, exec, scale. The test file owns the cluster lifecycle.
 

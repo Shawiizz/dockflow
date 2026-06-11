@@ -7,7 +7,7 @@ lifecycle and can run in isolation (CI runs them as parallel jobs).
 e2e/
   swarm/        # 2-node Docker-in-Docker Swarm (compose project: dockflow-swarm)
     bunfig.toml #   preload: setup.ts (build CLI, reset cluster, pre-deploy test-app)
-    tests/      #   01-build … 06-rollback
+    tests/      #   01-build … 07-uploads
   k3s/          # single-node k3s-in-Docker (compose project: dockflow-k3s)
     bunfig.toml #   preload: setup.ts (build CLI only — tests own the cluster lifecycle)
     tests/      #   10-k3s-deploy

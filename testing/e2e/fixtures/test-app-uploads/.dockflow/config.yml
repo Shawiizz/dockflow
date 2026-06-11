@@ -1,0 +1,22 @@
+project_name: "test-app-up"
+
+stack_management:
+  keep_releases: 3
+  cleanup_on_failure: true
+
+uploads:
+  - src: uploads/app.conf
+    dest: /home/deploytest/test-app-up/app.conf
+  - src: uploads/assets
+    dest: /home/deploytest/test-app-up/assets
+
+health_checks:
+  startup_delay: 3
+  on_failure: fail
+  endpoints:
+    - url: "http://localhost:{{ current.env.web_port }}"
+      name: "web service"
+      remote: true
+      expected_status: 200
+      retries: 2
+      retry_delay: 2
