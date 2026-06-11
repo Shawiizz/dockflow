@@ -21,6 +21,7 @@ import { DOCKFLOW_BACKUPS_DIR } from '../constants';
 import {
   DB_STRATEGIES,
   buildExecEnvFlags,
+  buildEmptyCheckCommand,
   parseContainerEnv,
   parseContainerMounts,
   buildDataFilePath,
@@ -96,6 +97,20 @@ export class Backup {
     volumeName?: string
   ): string {
     return buildDataFilePath(backupDir, id, dbType, compression, volumeName);
+  }
+
+  /**
+   * True when the (decompressed) backup content is empty. Remote pipelines
+   * exit with the last command's status, so a failed dump/tar can still
+   * produce a valid-but-empty archive — callers must reject those.
+   */
+  private async isArchiveEmpty(
+    conn: SSHKeyConnection,
+    filePath: string,
+    compression: 'gzip' | 'none',
+  ): Promise<boolean> {
+    const result = await sshExec(conn, buildEmptyCheckCommand(filePath, compression));
+    return result.stdout.trim() === '0';
   }
 
   /**
@@ -197,15 +212,7 @@ export class Backup {
       return err(new Error(`Backup failed: ${result.stderr}`));
     }
 
-    // The remote pipeline exit code is gzip's, not the dump command's — if the
-    // docker exec side fails (e.g. BGSAVE error), the pipeline still exits 0
-    // and produces a valid-but-empty archive. Verify the decompressed content
-    // is non-empty before trusting the backup.
-    const emptyCheckCmd = compression === 'gzip'
-      ? `gunzip -c '${shellEscape(filePath)}' 2>/dev/null | head -c 1 | wc -c`
-      : `head -c 1 '${shellEscape(filePath)}' | wc -c`;
-    const emptyCheck = await sshExec(nodeConn, emptyCheckCmd);
-    if (emptyCheck.stdout.trim() === '0') {
+    if (await this.isArchiveEmpty(nodeConn, filePath, compression)) {
       await sshExec(nodeConn, `rm -f '${shellEscape(filePath)}'`);
       return err(new Error(
         `Backup produced no data: the dump command emitted an empty stream${result.stderr.trim() ? ` (${result.stderr.trim()})` : ''}`,
@@ -308,6 +315,12 @@ export class Backup {
         return { ok: false as const, mount, error: result.stderr };
       }
 
+      // Same pipeline pitfall as db dumps: a failed tar still exits through
+      // gzip with status 0. A legitimate tar is never empty (trailer blocks).
+      if (await this.isArchiveEmpty(nodeConn, filePath, compression)) {
+        return { ok: false as const, mount, error: `archive is empty — the tar pipeline produced no data${result.stderr.trim() ? ` (${result.stderr.trim()})` : ''}` };
+      }
+
       const sizeCmd = `stat -c %s '${shellEscape(filePath)}' 2>/dev/null || echo 0`;
       const sizeResult = await sshExec(nodeConn, sizeCmd);
       const sizeBytes = parseInt(sizeResult.stdout.trim(), 10) || 0;
@@ -397,6 +410,14 @@ export class Backup {
     for (const entry of volumeEntries) {
       const filePath = this.getDataFilePath(backupDir, backupId, 'volume', compression, entry.name);
       const mountType = entry.mountType ?? 'volume';
+
+      // The restore commands wipe the target before extracting — make sure
+      // the source archive actually has content before destroying anything.
+      if (await this.isArchiveEmpty(nodeConn, filePath, compression)) {
+        return err(new Error(
+          `Backup file for ${mountType} ${entry.name} is empty or unreadable — refusing to restore`,
+        ));
+      }
 
       let restoreCmd: string;
       if (mountType === 'bind' && entry.sourcePath) {
@@ -541,6 +562,13 @@ export class Backup {
     const { containerId, connection: containerConn } = found;
 
     const dataFile = this.getDataFilePath(backupDir, backupId, dbType, backupCompression);
+
+    // Refuse to stream an empty/corrupt backup into the database — for
+    // postgres/mysql an empty stream would be a silent no-op "success",
+    // and file-overwriting restores (redis) would destroy the live data.
+    if (await this.isArchiveEmpty(nodeConn, dataFile, backupCompression)) {
+      return err(new Error(`Backup ${backupId} is empty or unreadable — refusing to restore`));
+    }
 
     // Get credentials from the container's node
     const creds = await this.getContainerCredentials(containerId, dbType, containerConn);

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   DB_STRATEGIES,
   buildExecEnvFlags,
+  buildEmptyCheckCommand,
   sanitizePathName,
   parseContainerEnv,
   parseContainerMounts,
@@ -192,6 +193,24 @@ describe('parseContainerMounts', () => {
   it('empty output → empty list, malformed JSON throws', () => {
     expect(parseContainerMounts('', 'demo')).toEqual([]);
     expect(() => parseContainerMounts('{broken', 'demo')).toThrow();
+  });
+});
+
+describe('buildEmptyCheckCommand', () => {
+  it('gzip archives are decompressed before the byte count', () => {
+    const cmd = buildEmptyCheckCommand('/b/x.sql.gz', 'gzip');
+    expect(cmd).toContain("gunzip -c '/b/x.sql.gz'");
+    expect(cmd).toContain('head -c 1 | wc -c');
+  });
+
+  it('uncompressed files are read directly', () => {
+    const cmd = buildEmptyCheckCommand('/b/x.sql', 'none');
+    expect(cmd).toContain("head -c 1 '/b/x.sql'");
+    expect(cmd).not.toContain('gunzip');
+  });
+
+  it('paths with single quotes are escaped', () => {
+    expect(buildEmptyCheckCommand("/b/it's.gz", 'gzip')).toContain("'/b/it'\\''s.gz'");
   });
 });
 

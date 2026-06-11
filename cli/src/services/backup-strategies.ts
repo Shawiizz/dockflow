@@ -179,6 +179,21 @@ export function sanitizePathName(mountPath: string): string {
 }
 
 /**
+ * Command that prints how many bytes ("0" or "1") the first byte of the
+ * (decompressed) backup content holds — "0" means the archive is empty.
+ *
+ * Needed because remote dump/tar pipelines exit with the LAST command's
+ * status (gzip/cat), so an upstream failure silently yields a valid-but-empty
+ * archive. Every backup is checked after writing and every restore source
+ * before streaming.
+ */
+export function buildEmptyCheckCommand(filePath: string, compression: 'gzip' | 'none'): string {
+  return compression === 'gzip'
+    ? `gunzip -c '${shellEscape(filePath)}' 2>/dev/null | head -c 1 | wc -c`
+    : `head -c 1 '${shellEscape(filePath)}' 2>/dev/null | wc -c`;
+}
+
+/**
  * Parse `docker inspect --format '{{json .Config.Env}}'` output into credentials
  * using a strategy's env mapping. Throws on malformed JSON (caller decides how
  * to report). Empty output yields empty credentials.
