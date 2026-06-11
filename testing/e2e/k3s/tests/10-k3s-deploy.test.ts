@@ -1,8 +1,10 @@
 ﻿import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { runCLI } from "../../helpers/cli";
-import { startK3sCluster, stopK3sCluster, waitForK3s } from "../../helpers/cluster";
+import { exec, startK3sCluster, stopK3sCluster, waitForK3s } from "../../helpers/cluster";
+import { K3S_MANAGER_CONTAINER } from "../../helpers/connection";
 import { makeFixture, type Fixture } from "../../helpers/fixtures";
 import {
+  kubectlExec,
   waitForDeployment,
   getDeploymentReplicas,
   isDeploymentStable,
@@ -58,6 +60,34 @@ describe("k3s deploy", () => {
     const stable = await isDeploymentStable(NAMESPACE, "web");
     expect(stable).toBe(true);
   }, 15_000);
+
+  test("ingressroute is generated from proxy config", async () => {
+    const out = await kubectlExec([
+      "get", "ingressroute", "web", "-n", NAMESPACE, "-o", "json",
+    ]);
+    const ingress = JSON.parse(out);
+    const route = ingress.spec.routes[0];
+    expect(route.match).toContain("k3s.test.local");
+    expect(route.services[0].name).toBe("web");
+    // acme: false → plain web entrypoint, no TLS resolver
+    expect(ingress.spec.entryPoints).toEqual(["web"]);
+  }, 30_000);
+
+  test("traefik routes HTTP to the app", async () => {
+    // The k3s-bundled Traefik exposes its web entrypoint on the node's port
+    // 80 via svclb. Poll: Traefik may still be rolling out on a fresh cluster.
+    const deadline = Date.now() + 120_000;
+    let last = "";
+    while (Date.now() < deadline) {
+      last = await exec([
+        "docker", "exec", K3S_MANAGER_CONTAINER, "sh", "-c",
+        "curl -4 -s --max-time 5 -H 'Host: k3s.test.local' http://localhost:80/ || true",
+      ]);
+      if (last.includes("Deployment Successful")) return;
+      await Bun.sleep(3000);
+    }
+    throw new Error(`Traefik never routed to the app (last response: ${last.slice(0, 300)})`);
+  }, 150_000);
 
   test("logs work", async () => {
     const result = await runCLI(["logs", TEST_ENV, "web", "-n", "5"], {

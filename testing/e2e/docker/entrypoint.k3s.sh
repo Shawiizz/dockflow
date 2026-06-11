@@ -10,10 +10,11 @@ KUBECONFIG_DST="/var/lib/dockflow/k3s.yaml"
 
 if [ "${K3S_ROLE}" = "server" ]; then
     log "Starting k3s server..."
+    # Traefik stays enabled: the e2e suite asserts IngressRoute generation
+    # and HTTP routing through the k3s-bundled Traefik.
     k3s server \
         --token "$K3S_TOKEN" \
         --write-kubeconfig-mode 644 \
-        --disable traefik \
         --snapshotter native \
         --kube-apiserver-arg="--anonymous-auth=true" &
 
