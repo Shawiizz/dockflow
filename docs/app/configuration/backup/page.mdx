@@ -92,6 +92,13 @@ dockflow backup create production postgres
 # Duration: 3.2s
 ```
 
+Use `--json` to get the backup metadata (`id`, `size`, `durationMs`, …) as JSON on stdout — useful for scripting:
+
+```bash
+dockflow backup create production postgres --json
+# {"id":"20260309-143052-a3f1","service":"postgres","sizeBytes":13107200,...}
+```
+
 ### List Backups
 
 ```bash

@@ -10,12 +10,14 @@
  * `http://localhost:8080` is reachable from within the manager container.
  */
 
-import { describe, test, expect, beforeAll } from "bun:test";
+import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { runCLI } from "../helpers/cli";
 import { writeDockflowEnv } from "../helpers/connection";
 import { dockerExec } from "../helpers/docker";
 import { MANAGER_CONTAINER } from "../helpers/connection";
 import { join } from "path";
+import { cpSync, mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
 
 const TEST_APP_DIR = join(import.meta.dir, "..", "fixtures", "test-app");
 const TEST_ENV = "test";
@@ -60,75 +62,59 @@ describe("remote HTTP health checks", () => {
     }
 
     expect(result.exitCode).toBe(0);
-  }, 300_000);
-
-  test("deploy output confirms HTTP health check passed", async () => {
-    // Re-run to capture output — the previous test already proved exit 0,
-    // here we assert the expected log line is present.
-    const result = await runCLI(
-      ["deploy", TEST_ENV, TEST_VERSION, "--force"],
-      { cwd: TEST_APP_DIR },
-    );
-
-    expect(result.exitCode).toBe(0);
-    // The service emits this warning prefix on any HTTP check failure;
-    // its absence means all checks passed.
+    // The CLI emits this prefix when any HTTP check fails; combined with
+    // exit 0 above, its absence confirms the check ran and passed.
     expect(result.stdout + result.stderr).not.toContain("HTTP check failed");
   }, 300_000);
 
-  test("deploy fails when remote endpoint returns wrong status", async () => {
-    // Point the check at a port that is not listening on the manager.
-    // We do this by overriding the env variable used in the URL template
-    // via a temporary servers.yml override — simulated by deploying with
-    // an inline config string via the CLI's --config flag if available,
-    // or by checking that a known-bad URL produces exit code 53.
-    //
-    // Since the CLI does not expose a --config override, we verify the
-    // error path indirectly: the production config uses `on_failure: fail`
-    // and a mismatched port must produce exit 53 (HEALTH_CHECK_FAILED).
-    //
-    // This test is skipped if the platform cannot simulate a bad endpoint.
-    const PORT_UNUSED = "19999"; // Assumed unused on the test VM
-    const badUrl = `http://localhost:${PORT_UNUSED}/`;
+  describe("failing endpoint", () => {
+    // The negative test deploys from a throwaway copy of the fixture so the
+    // shared fixture in the repo is never mutated — even if the test process
+    // is killed mid-run (timeout), nothing leaks into the working tree.
+    let badAppDir = "";
 
-    // Confirm the port is not listening (curl exits non-zero = connection refused)
-    const curlCheck = await dockerExec(MANAGER_CONTAINER, [
-      "sh",
-      "-c",
-      `curl -s -o /dev/null -w '%{http_code}' --max-time 3 ${badUrl} || echo "CONN_REFUSED"`,
-    ]);
-    if (!curlCheck.includes("CONN_REFUSED") && curlCheck.trim() === "200") {
-      // Port is actually in use — skip the negative test
-      console.warn(`Port ${PORT_UNUSED} appears to be in use, skipping failure test`);
-      return;
-    }
+    afterAll(() => {
+      if (badAppDir) rmSync(badAppDir, { recursive: true, force: true });
+    });
 
-    // Build a patched config that points at the bad port
-    const patchedConfigPath = join(
-      TEST_APP_DIR,
-      ".dockflow",
-      "config.yml",
-    );
-    const originalConfig = await Bun.file(patchedConfigPath).text();
-    const patchedConfig = originalConfig.replace(
-      /url:\s*"http:\/\/localhost:.*?"/,
-      `url: "http://localhost:${PORT_UNUSED}/"`,
-    );
+    test("deploy fails when remote endpoint returns wrong status", async () => {
+      const PORT_UNUSED = "19999";
+      const badUrl = `http://localhost:${PORT_UNUSED}/`;
 
-    await Bun.write(patchedConfigPath, patchedConfig);
+      // Confirm the port is not listening on the manager (otherwise the
+      // negative test would be meaningless) — skip if it unexpectedly is.
+      const curlCheck = await dockerExec(MANAGER_CONTAINER, [
+        "sh",
+        "-c",
+        `curl -s -o /dev/null -w '%{http_code}' --max-time 3 ${badUrl} || echo "CONN_REFUSED"`,
+      ]);
+      if (!curlCheck.includes("CONN_REFUSED") && curlCheck.trim() === "200") {
+        console.warn(`Port ${PORT_UNUSED} appears to be in use, skipping failure test`);
+        return;
+      }
 
-    try {
+      // Copy the fixture to a temp dir and point its health check at the dead port.
+      badAppDir = mkdtempSync(join(tmpdir(), "dockflow-e2e-badhc-"));
+      cpSync(TEST_APP_DIR, badAppDir, { recursive: true });
+      writeDockflowEnv(badAppDir);
+
+      const configPath = join(badAppDir, ".dockflow", "config.yml");
+      const original = await Bun.file(configPath).text();
+      const patched = original.replace(
+        /url:\s*"http:\/\/localhost:.*?"/,
+        `url: "http://localhost:${PORT_UNUSED}/"`,
+      );
+      expect(patched).not.toBe(original); // the pattern must have matched
+      await Bun.write(configPath, patched);
+
       const result = await runCLI(
         ["deploy", TEST_ENV, "1.0.2-e2e-badhc", "--force"],
-        { cwd: TEST_APP_DIR },
+        { cwd: badAppDir },
       );
 
       // Exit code 53 = HEALTH_CHECK_FAILED
       expect(result.exitCode).toBe(53);
       expect(result.stdout + result.stderr).toContain("HTTP health checks failed");
-    } finally {
-      // Always restore the original config
-      await Bun.write(patchedConfigPath, originalConfig);
-    }
-  }, 300_000);
+    }, 300_000);
+  });
 });

@@ -57,7 +57,9 @@ export async function runCLI(
     },
   });
 
+  let timedOut = false;
   const timer = setTimeout(() => {
+    timedOut = true;
     proc.kill();
   }, timeoutMs);
 
@@ -68,6 +70,14 @@ export async function runCLI(
     proc.exited,
   ]);
   clearTimeout(timer);
+
+  if (timedOut) {
+    return {
+      exitCode,
+      stdout,
+      stderr: `${stderr}\n[runCLI] command killed after ${timeoutMs}ms timeout: dockflow ${args.join(" ")}`,
+    };
+  }
 
   return { exitCode, stdout, stderr };
 }

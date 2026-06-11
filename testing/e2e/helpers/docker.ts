@@ -100,7 +100,9 @@ export async function getTaskNodes(
 }
 
 /**
- * Check if any tasks in a stack are rejected or failed.
+ * Check if any tasks that SHOULD be running are rejected or failed.
+ * Filters on desired-state=running so historical tasks from previous
+ * (possibly intentionally failed) deploys don't produce false positives.
  */
 export async function hasFailedTasks(stackName: string): Promise<boolean> {
   try {
@@ -109,6 +111,8 @@ export async function hasFailedTasks(stackName: string): Promise<boolean> {
       "stack",
       "ps",
       stackName,
+      "--filter",
+      "desired-state=running",
       "--format",
       "{{.CurrentState}}",
     ]);

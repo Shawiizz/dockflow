@@ -18,8 +18,23 @@ const FIXTURES_DIR = join(import.meta.dir, "fixtures");
 const TEST_APP_DIR = join(FIXTURES_DIR, "test-app");
 const TEST_APP_REMOTE_DIR = join(FIXTURES_DIR, "test-app-remote");
 
+/**
+ * True when every test file passed on the command line targets k3s.
+ * In that case the Swarm cluster setup (build + 2-node DinD + pre-deploy)
+ * is skipped entirely — the k3s suite manages its own cluster lifecycle.
+ */
+function isK3sOnlyRun(): boolean {
+  const fileArgs = process.argv.slice(2).filter((a) => a.includes(".test."));
+  return fileArgs.length > 0 && fileArgs.every((a) => a.toLowerCase().includes("k3s"));
+}
+
 async function ensureCluster() {
   await buildCLI();
+
+  if (isK3sOnlyRun()) {
+    console.log("\n=== k3s-only run — skipping Swarm cluster setup ===\n");
+    return;
+  }
 
   console.log("\n=== Resetting E2E cluster ===\n");
   await stopCluster();

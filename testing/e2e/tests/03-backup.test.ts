@@ -28,7 +28,7 @@ describe("backup & restore", () => {
   });
 
   test("create backup", async () => {
-    const result = await runCLI(["backup", "create", TEST_ENV, "redis"], {
+    const result = await runCLI(["backup", "create", TEST_ENV, "redis", "--json"], {
       cwd: TEST_APP_DIR,
     });
 
@@ -38,9 +38,10 @@ describe("backup & restore", () => {
     }
     expect(result.exitCode).toBe(0);
 
-    const match = result.stderr.match(/(\d{8}-\d{6}-[a-f0-9]{4})/);
-    expect(match).toBeTruthy();
-    backupId = match![1];
+    const metadata: { id: string; service: string; sizeBytes: number } = JSON.parse(result.stdout);
+    expect(metadata.service).toBe("redis");
+    expect(metadata.sizeBytes).toBeGreaterThan(0);
+    backupId = metadata.id;
   }, 60_000);
 
   test("backup appears in list", async () => {

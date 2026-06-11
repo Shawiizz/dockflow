@@ -28,7 +28,11 @@ export async function exec(
   });
 
   const timeout = opts?.timeoutMs ?? 120_000;
-  const timer = setTimeout(() => proc.kill(), timeout);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    proc.kill();
+  }, timeout);
 
   // Read stdout and stderr in parallel to avoid pipe deadlock
   const [stdout, stderr, exitCode] = await Promise.all([
@@ -38,6 +42,11 @@ export async function exec(
   ]);
   clearTimeout(timer);
 
+  if (timedOut) {
+    throw new Error(
+      `Command timed out after ${timeout}ms: ${cmd.join(" ")}\nstderr: ${stderr}\nstdout: ${stdout}`
+    );
+  }
   if (exitCode !== 0) {
     throw new Error(
       `Command failed (exit ${exitCode}): ${cmd.join(" ")}\nstderr: ${stderr}\nstdout: ${stdout}`
