@@ -18,6 +18,17 @@ import { formatBytes, printDebug } from '../utils/output';
 import { findSwarmContainer } from './orchestrator/swarm/swarm-utils';
 import { SwarmStackBackend } from './orchestrator/swarm/swarm-stack';
 import { DOCKFLOW_BACKUPS_DIR } from '../constants';
+import {
+  DB_STRATEGIES,
+  buildExecEnvFlags,
+  parseContainerEnv,
+  parseContainerMounts,
+  buildDataFilePath,
+  buildBackupDir,
+  selectBackupsToPrune,
+  findBackupMatch,
+} from './backup-strategies';
+import type { ContainerCredentials, MountInfo } from './backup-strategies';
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -44,145 +55,6 @@ export interface BackupListEntry extends BackupBaseEntry {
   filePath: string;
 }
 
-interface ContainerCredentials {
-  user?: string;
-  password?: string;
-  database?: string;
-}
-
-interface MountInfo {
-  /** 'volume' for named Docker volumes, 'bind' for host-mounted paths */
-  mountType: 'volume' | 'bind';
-  /** Short name used in backup filenames */
-  name: string;
-  /** Container mount destination */
-  destination: string;
-  /** For volumes: the Docker volume name. For binds: the host source path. */
-  source: string;
-}
-
-// ─── Database Strategies ──────────────────────────────────────────────────
-
-interface DbStrategy {
-  envMapping: Record<string, keyof ContainerCredentials>;
-  buildDumpCommand(creds: ContainerCredentials, options?: string): string;
-  buildRestoreCommand(creds: ContainerCredentials, options?: string): string;
-  /** Env vars to inject via `docker exec -e` (e.g. for password passing) */
-  buildExecEnv(creds: ContainerCredentials): Record<string, string>;
-  fileExtension: string;
-  /** When true, the restore command kills the container process (e.g. Redis SHUTDOWN NOSAVE)
-   *  and requires an explicit Swarm service restart to guarantee the container comes back. */
-  requiresServiceRestart?: boolean;
-}
-
-const DB_STRATEGIES: Record<Exclude<BackupDbType, 'raw' | 'volume'>, DbStrategy> = {
-  postgres: {
-    envMapping: {
-      POSTGRES_USER: 'user',
-      POSTGRES_PASSWORD: 'password',
-      POSTGRES_DB: 'database',
-    },
-    buildDumpCommand(creds, options) {
-      const parts = ['pg_dump', '-U', creds.user || 'postgres'];
-      if (options) parts.push(options);
-      parts.push(creds.database || 'postgres');
-      return parts.join(' ');
-    },
-    buildRestoreCommand(creds, options) {
-      const parts = ['psql', '-U', creds.user || 'postgres'];
-      if (options) parts.push(options);
-      parts.push(creds.database || 'postgres');
-      return parts.join(' ');
-    },
-    buildExecEnv(creds): Record<string, string> {
-      return creds.password ? { PGPASSWORD: creds.password } : {};
-    },
-    fileExtension: 'sql',
-  },
-
-  mysql: {
-    envMapping: {
-      MYSQL_USER: 'user',
-      MYSQL_ROOT_PASSWORD: 'password',
-      MYSQL_PASSWORD: 'password',
-      MYSQL_DATABASE: 'database',
-    },
-    buildDumpCommand(creds, options) {
-      const user = creds.user || 'root';
-      const parts = ['mysqldump', `-u${user}`];
-      if (options) parts.push(options);
-      parts.push(creds.database || '--all-databases');
-      return parts.join(' ');
-    },
-    buildRestoreCommand(creds, options) {
-      const user = creds.user || 'root';
-      const parts = ['mysql', `-u${user}`];
-      if (options) parts.push(options);
-      if (creds.database) parts.push(creds.database);
-      return parts.join(' ');
-    },
-    buildExecEnv(creds): Record<string, string> {
-      return creds.password ? { MYSQL_PWD: creds.password } : {};
-    },
-    fileExtension: 'sql',
-  },
-
-  // Note: MongoDB does not support password passing via env vars like PGPASSWORD/MYSQL_PWD.
-  // The password is passed as a command-line argument, which is visible in the container's
-  // process list. This is the standard approach for mongodump/mongorestore.
-  mongodb: {
-    envMapping: {
-      MONGO_INITDB_ROOT_USERNAME: 'user',
-      MONGO_INITDB_ROOT_PASSWORD: 'password',
-      MONGO_INITDB_DATABASE: 'database',
-    },
-    buildDumpCommand(creds, options) {
-      const parts = ['mongodump', '--archive'];
-      if (creds.user) {
-        parts.push(`--username="${creds.user}"`, `--authenticationDatabase=admin`);
-      }
-      if (creds.password) parts.push(`--password="${creds.password}"`);
-      if (creds.database) parts.push(`--db="${creds.database}"`);
-      if (options) parts.push(options);
-      return parts.join(' ');
-    },
-    buildRestoreCommand(creds, options) {
-      const parts = ['mongorestore', '--archive'];
-      if (creds.user) {
-        parts.push(`--username="${creds.user}"`, `--authenticationDatabase=admin`);
-      }
-      if (creds.password) parts.push(`--password="${creds.password}"`);
-      if (creds.database) parts.push(`--db="${creds.database}"`);
-      if (options) parts.push(options);
-      return parts.join(' ');
-    },
-    buildExecEnv() {
-      return {};
-    },
-    fileExtension: 'archive',
-  },
-
-  redis: {
-    envMapping: {},
-    buildDumpCommand() {
-      // Trigger BGSAVE and wait for it to complete by polling LASTSAVE.
-      // The BGSAVE/LASTSAVE output is redirected to /dev/null — only the raw RDB bytes are emitted.
-      return 'BEFORE=$(redis-cli LASTSAVE) && OUT=$(redis-cli BGSAVE) && echo "$OUT" | grep -q "Background saving started" || { echo "BGSAVE failed: $OUT" >&2; exit 1; } && for i in $(seq 1 30); do AFTER=$(redis-cli LASTSAVE); [ "$AFTER" != "$BEFORE" ] && break; sleep 1; done && cat /data/dump.rdb';
-    },
-    buildRestoreCommand() {
-      // Write the RDB file, then SHUTDOWN NOSAVE so Redis doesn't overwrite it
-      // with in-memory data during shutdown. The service restart is handled
-      // explicitly by the restore() method via `docker service update --force`.
-      return 'cat > /data/dump.rdb && redis-cli SHUTDOWN NOSAVE || true';
-    },
-    buildExecEnv() {
-      return {};
-    },
-    fileExtension: 'rdb',
-    requiresServiceRestart: true,
-  },
-};
-
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 function generateBackupId(): string {
@@ -190,27 +62,6 @@ function generateBackupId(): string {
   const pad = (n: number) => n.toString().padStart(2, '0');
   const suffix = Math.random().toString(16).slice(2, 6);
   return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}-${suffix}`;
-}
-
-/**
- * Build docker exec env flags from a key-value map.
- * SAFETY: Keys are NOT shell-escaped — callers must only pass hardcoded keys
- * (e.g. PGPASSWORD, MYSQL_PWD) via DbStrategy.buildExecEnv(). Never pass user input as keys.
- */
-function buildExecEnvFlags(env: Record<string, string>): string {
-  return Object.entries(env)
-    .map(([k, v]) => {
-      if (!/^[A-Z_][A-Z0-9_]*$/i.test(k)) {
-        throw new Error(`Invalid env key: ${k}`);
-      }
-      return `-e ${k}='${shellEscape(v)}'`;
-    })
-    .join(' ');
-}
-
-/** Convert a mount destination path to a safe filename component */
-function sanitizePathName(mountPath: string): string {
-  return mountPath.replace(/^\/+/, '').replace(/\//g, '-') || 'root';
 }
 
 // ─── Backup ───────────────────────────────────────────────────────────────
@@ -233,7 +84,7 @@ export class Backup {
   }
 
   private getBackupDir(service: string): string {
-    return `${DOCKFLOW_BACKUPS_DIR}/${this.stackName}/${service}`;
+    return buildBackupDir(this.stackName, service);
   }
 
   /** Derive the data file path from metadata */
@@ -244,17 +95,7 @@ export class Backup {
     compression: 'gzip' | 'none',
     volumeName?: string
   ): string {
-    let ext: string;
-    if (dbType === 'volume') {
-      ext = 'tar';
-    } else if (dbType === 'raw') {
-      ext = 'bin';
-    } else {
-      ext = DB_STRATEGIES[dbType]?.fileExtension || 'bin';
-    }
-    const suffix = compression === 'gzip' ? '.gz' : '';
-    const volPart = volumeName ? `.${volumeName}` : '';
-    return `${backupDir}/${id}${volPart}.${ext}${suffix}`;
+    return buildDataFilePath(backupDir, id, dbType, compression, volumeName);
   }
 
   /**
@@ -284,26 +125,12 @@ export class Backup {
       `docker inspect --format '{{json .Config.Env}}' '${shellEscape(containerId)}'`
     );
 
-    const creds: ContainerCredentials = {};
-    if (!result.stdout.trim()) return creds;
-
     try {
-      const envVars: string[] = JSON.parse(result.stdout.trim());
-      for (const envVar of envVars) {
-        const eqIndex = envVar.indexOf('=');
-        if (eqIndex === -1) continue;
-        const key = envVar.substring(0, eqIndex);
-        const value = envVar.substring(eqIndex + 1);
-        const credKey = strategy.envMapping[key];
-        if (credKey && value) {
-          creds[credKey] = value;
-        }
-      }
+      return parseContainerEnv(result.stdout, strategy.envMapping);
     } catch (e) {
       printDebug(`Failed to parse container env for ${containerId}: ${e}`);
+      return {};
     }
-
-    return creds;
   }
 
   /**
@@ -401,12 +228,6 @@ export class Backup {
 
   // ─── Volume Backup ───────────────────────────────────────────────────────
 
-  /** Strip the stack name prefix from a Docker volume name for cleaner filenames */
-  private shortVolumeName(volumeName: string): string {
-    const prefix = `${this.stackName}_`;
-    return volumeName.startsWith(prefix) ? volumeName.slice(prefix.length) : volumeName;
-  }
-
   /** Discover named Docker volumes and read-write bind mounts on a container */
   private async getContainerMounts(
     containerId: string,
@@ -419,47 +240,8 @@ export class Backup {
       `docker inspect --format '{{json .Mounts}}' '${shellEscape(containerId)}'`
     );
 
-    if (!result.stdout.trim()) return [];
-
     try {
-      const mounts: Array<{
-        Type: string;
-        Name?: string;
-        Source: string;
-        Destination: string;
-        RW?: boolean;
-      }> = JSON.parse(result.stdout.trim());
-
-      let infos: MountInfo[] = [];
-
-      for (const m of mounts) {
-        if (m.Type === 'volume' && m.Name) {
-          infos.push({
-            mountType: 'volume',
-            name: this.shortVolumeName(m.Name),
-            destination: m.Destination,
-            source: m.Name,
-          });
-        } else if (m.Type === 'bind' && m.RW !== false && includeBindMounts) {
-          infos.push({
-            mountType: 'bind',
-            name: sanitizePathName(m.Destination),
-            destination: m.Destination,
-            source: m.Source,
-          });
-        }
-      }
-
-      if (excludePatterns && excludePatterns.length > 0) {
-        infos = infos.filter(info => {
-          return !excludePatterns.some(pattern => {
-            const regex = new RegExp('^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
-            return regex.test(info.name) || regex.test(info.source) || regex.test(info.destination);
-          });
-        });
-      }
-
-      return infos;
+      return parseContainerMounts(result.stdout, this.stackName, excludePatterns, includeBindMounts);
     } catch (e) {
       printDebug(`Failed to parse container mounts for ${containerId}: ${e}`);
       return [];
@@ -808,21 +590,18 @@ export class Backup {
   ): Promise<Result<number, Error>> {
     let entries: BackupListEntry[];
     if (prefetchedEntries) {
-      // Defensive sort: ensure newest-first regardless of caller
-      entries = [...prefetchedEntries].sort((a, b) =>
-        b.timestamp.localeCompare(a.timestamp)
-      );
+      entries = prefetchedEntries;
     } else {
       const listResult = await this.list(service);
       if (!listResult.success) return err(listResult.error);
       entries = listResult.data;
     }
-    if (entries.length <= retentionCount) {
+
+    // Defensive sort newest-first, keep the most recent retentionCount
+    const toRemove = selectBackupsToPrune(entries, retentionCount);
+    if (toRemove.length === 0) {
       return ok(0);
     }
-
-    // Entries are already sorted newest-first; remove from retentionCount onwards
-    const toRemove = entries.slice(retentionCount);
 
     // Group by node to batch rm calls per node
     const byNode = new Map<string, { conn: SSHKeyConnection; paths: string[] }>();
@@ -862,11 +641,7 @@ export class Backup {
       return err(new Error(`No backups found for service ${service}`));
     }
 
-    if (!idOrLatest) {
-      return ok(entries[0]);
-    }
-
-    const match = entries.find(e => e.id === idOrLatest || e.id.startsWith(idOrLatest));
+    const match = findBackupMatch(entries, idOrLatest);
     if (!match) {
       return err(new Error(`No backup matching "${idOrLatest}" found for service ${service}`));
     }
