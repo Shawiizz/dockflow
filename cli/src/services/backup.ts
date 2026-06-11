@@ -21,7 +21,7 @@ import { DOCKFLOW_BACKUPS_DIR } from '../constants';
 import {
   DB_STRATEGIES,
   buildExecEnvFlags,
-  buildEmptyCheckCommand,
+  buildArchiveCheckCommand,
   parseContainerEnv,
   parseContainerMounts,
   buildDataFilePath,
@@ -100,17 +100,22 @@ export class Backup {
   }
 
   /**
-   * True when the (decompressed) backup content is empty. Remote pipelines
-   * exit with the last command's status, so a failed dump/tar can still
-   * produce a valid-but-empty archive — callers must reject those.
+   * Verify a backup archive: returns null when it is valid and non-empty,
+   * or a human-readable problem description otherwise. Remote pipelines exit
+   * with the last command's status, so a failed dump/tar can still produce a
+   * valid-but-empty archive, and a container dying mid-dump a truncated one.
    */
-  private async isArchiveEmpty(
+  private async checkArchive(
     conn: SSHKeyConnection,
     filePath: string,
     compression: 'gzip' | 'none',
-  ): Promise<boolean> {
-    const result = await sshExec(conn, buildEmptyCheckCommand(filePath, compression));
-    return result.stdout.trim() === '0';
+  ): Promise<string | null> {
+    const result = await sshExec(conn, buildArchiveCheckCommand(filePath, compression));
+    const verdict = result.stdout.trim();
+    if (verdict === 'OK') return null;
+    if (verdict === 'EMPTY') return 'the archive is empty';
+    if (verdict === 'CORRUPT') return 'the archive is corrupt, truncated or missing';
+    return `archive check failed (${verdict || `exit ${result.exitCode}`})`;
   }
 
   /**
@@ -212,10 +217,11 @@ export class Backup {
       return err(new Error(`Backup failed: ${result.stderr}`));
     }
 
-    if (await this.isArchiveEmpty(nodeConn, filePath, compression)) {
+    const archiveIssue = await this.checkArchive(nodeConn, filePath, compression);
+    if (archiveIssue) {
       await sshExec(nodeConn, `rm -f '${shellEscape(filePath)}'`);
       return err(new Error(
-        `Backup produced no data: the dump command emitted an empty stream${result.stderr.trim() ? ` (${result.stderr.trim()})` : ''}`,
+        `Backup verification failed: ${archiveIssue}${result.stderr.trim() ? ` (dump stderr: ${result.stderr.trim()})` : ''}`,
       ));
     }
 
@@ -317,8 +323,9 @@ export class Backup {
 
       // Same pipeline pitfall as db dumps: a failed tar still exits through
       // gzip with status 0. A legitimate tar is never empty (trailer blocks).
-      if (await this.isArchiveEmpty(nodeConn, filePath, compression)) {
-        return { ok: false as const, mount, error: `archive is empty — the tar pipeline produced no data${result.stderr.trim() ? ` (${result.stderr.trim()})` : ''}` };
+      const archiveIssue = await this.checkArchive(nodeConn, filePath, compression);
+      if (archiveIssue) {
+        return { ok: false as const, mount, error: `${archiveIssue}${result.stderr.trim() ? ` (${result.stderr.trim()})` : ''}` };
       }
 
       const sizeCmd = `stat -c %s '${shellEscape(filePath)}' 2>/dev/null || echo 0`;
@@ -412,10 +419,11 @@ export class Backup {
       const mountType = entry.mountType ?? 'volume';
 
       // The restore commands wipe the target before extracting — make sure
-      // the source archive actually has content before destroying anything.
-      if (await this.isArchiveEmpty(nodeConn, filePath, compression)) {
+      // the source archive is sound before destroying anything.
+      const archiveIssue = await this.checkArchive(nodeConn, filePath, compression);
+      if (archiveIssue) {
         return err(new Error(
-          `Backup file for ${mountType} ${entry.name} is empty or unreadable — refusing to restore`,
+          `Backup file for ${mountType} ${entry.name} cannot be restored: ${archiveIssue}`,
         ));
       }
 
@@ -566,8 +574,9 @@ export class Backup {
     // Refuse to stream an empty/corrupt backup into the database — for
     // postgres/mysql an empty stream would be a silent no-op "success",
     // and file-overwriting restores (redis) would destroy the live data.
-    if (await this.isArchiveEmpty(nodeConn, dataFile, backupCompression)) {
-      return err(new Error(`Backup ${backupId} is empty or unreadable — refusing to restore`));
+    const archiveIssue = await this.checkArchive(nodeConn, dataFile, backupCompression);
+    if (archiveIssue) {
+      return err(new Error(`Backup ${backupId} cannot be restored: ${archiveIssue}`));
     }
 
     // Get credentials from the container's node

@@ -179,18 +179,32 @@ export function sanitizePathName(mountPath: string): string {
 }
 
 /**
- * Command that prints how many bytes ("0" or "1") the first byte of the
- * (decompressed) backup content holds — "0" means the archive is empty.
+ * Command that prints a single verdict about a backup archive:
+ *   OK       — readable, integrity-checked (gzip CRC) and non-empty
+ *   EMPTY    — valid but holds zero bytes of content
+ *   CORRUPT  — missing, unreadable, or truncated (gzip CRC mismatch)
  *
  * Needed because remote dump/tar pipelines exit with the LAST command's
  * status (gzip/cat), so an upstream failure silently yields a valid-but-empty
- * archive. Every backup is checked after writing and every restore source
- * before streaming.
+ * archive — and a container dying mid-dump yields a truncated one. Every
+ * backup is checked after writing and every restore source before streaming.
+ * For uncompressed archives there is no integrity data, so only existence
+ * and non-emptiness can be verified.
  */
-export function buildEmptyCheckCommand(filePath: string, compression: 'gzip' | 'none'): string {
-  return compression === 'gzip'
-    ? `gunzip -c '${shellEscape(filePath)}' 2>/dev/null | head -c 1 | wc -c`
-    : `head -c 1 '${shellEscape(filePath)}' 2>/dev/null | wc -c`;
+export function buildArchiveCheckCommand(filePath: string, compression: 'gzip' | 'none'): string {
+  const f = shellEscape(filePath);
+  if (compression === 'gzip') {
+    return (
+      `if ! gunzip -t '${f}' 2>/dev/null; then echo CORRUPT; ` +
+      `elif [ "$(gunzip -c '${f}' 2>/dev/null | head -c 1 | wc -c)" -eq 0 ]; then echo EMPTY; ` +
+      `else echo OK; fi`
+    );
+  }
+  return (
+    `if [ ! -f '${f}' ]; then echo CORRUPT; ` +
+    `elif [ "$(head -c 1 '${f}' 2>/dev/null | wc -c)" -eq 0 ]; then echo EMPTY; ` +
+    `else echo OK; fi`
+  );
 }
 
 /**

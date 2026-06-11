@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   DB_STRATEGIES,
   buildExecEnvFlags,
-  buildEmptyCheckCommand,
+  buildArchiveCheckCommand,
   sanitizePathName,
   parseContainerEnv,
   parseContainerMounts,
@@ -196,21 +196,33 @@ describe('parseContainerMounts', () => {
   });
 });
 
-describe('buildEmptyCheckCommand', () => {
-  it('gzip archives are decompressed before the byte count', () => {
-    const cmd = buildEmptyCheckCommand('/b/x.sql.gz', 'gzip');
-    expect(cmd).toContain("gunzip -c '/b/x.sql.gz'");
-    expect(cmd).toContain('head -c 1 | wc -c');
+describe('buildArchiveCheckCommand', () => {
+  it('gzip archives get a CRC integrity test plus a non-empty check', () => {
+    const cmd = buildArchiveCheckCommand('/b/x.sql.gz', 'gzip');
+    expect(cmd).toContain("gunzip -t '/b/x.sql.gz'");      // truncation/corruption
+    expect(cmd).toContain("gunzip -c '/b/x.sql.gz'");      // emptiness
+    expect(cmd).toContain('echo CORRUPT');
+    expect(cmd).toContain('echo EMPTY');
+    expect(cmd).toContain('echo OK');
   });
 
-  it('uncompressed files are read directly', () => {
-    const cmd = buildEmptyCheckCommand('/b/x.sql', 'none');
+  it('uncompressed files only get existence and non-empty checks', () => {
+    const cmd = buildArchiveCheckCommand('/b/x.sql', 'none');
+    expect(cmd).toContain("[ ! -f '/b/x.sql' ]");
     expect(cmd).toContain("head -c 1 '/b/x.sql'");
     expect(cmd).not.toContain('gunzip');
   });
 
   it('paths with single quotes are escaped', () => {
-    expect(buildEmptyCheckCommand("/b/it's.gz", 'gzip')).toContain("'/b/it'\\''s.gz'");
+    expect(buildArchiveCheckCommand("/b/it's.gz", 'gzip')).toContain("'/b/it'\\''s.gz'");
+  });
+
+  it('the three verdicts are mutually exclusive shell branches', () => {
+    const cmd = buildArchiveCheckCommand('/b/x.gz', 'gzip');
+    expect(cmd.match(/echo (OK|EMPTY|CORRUPT)/g)).toHaveLength(3);
+    expect(cmd).toContain('if ');
+    expect(cmd).toContain('elif ');
+    expect(cmd).toContain('else ');
   });
 });
 
