@@ -1,0 +1,16 @@
+project_name: "test-app-rb"
+
+stack_management:
+  keep_releases: 3
+  cleanup_on_failure: true
+
+health_checks:
+  startup_delay: 3
+  on_failure: rollback
+  endpoints:
+    - url: "http://localhost:{{ current.env.web_port }}"
+      name: "web service"
+      remote: true
+      expected_status: 200
+      retries: 3
+      retry_delay: 2

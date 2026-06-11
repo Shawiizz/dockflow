@@ -1,0 +1,16 @@
+services:
+  web:
+    image: test-rb-web-app
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    ports:
+      - "{{ current.env.web_port }}:80"
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 2s
+        monitor: 5s
+      restart_policy:
+        condition: on-failure
