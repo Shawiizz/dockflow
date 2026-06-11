@@ -53,6 +53,7 @@ async function isPortAvailable(port: number): Promise<boolean> {
   try {
     const server = Bun.serve({
       port,
+      hostname: '127.0.0.1',
       fetch() {
         return new Response('test');
       },

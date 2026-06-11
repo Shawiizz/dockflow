@@ -83,7 +83,10 @@ export async function startWebServer(port: number): Promise<void> {
   
   Bun.serve({
     port,
-    
+    // The API is unauthenticated (deploy routes + SSH/exec WebSockets), so it
+    // must never listen on anything other than the loopback interface.
+    hostname: '127.0.0.1',
+
     async fetch(req, server) {
       const url = new URL(req.url);
       const pathname = url.pathname;
