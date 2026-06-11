@@ -1,0 +1,42 @@
+name: CLI Checks
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  checks:
+    name: Typecheck, Lint & Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install CLI dependencies
+        run: |
+          cd cli && bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: |
+          cd cli && bun run typecheck
+
+      - name: Lint
+        run: |
+          cd cli && bun run lint
+
+      - name: Unit tests
+        run: |
+          cd cli && bun test src/

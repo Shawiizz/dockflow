@@ -59,6 +59,21 @@ jobs:
           cd cli
           bun install
 
+      - name: Typecheck
+        run: |
+          cd cli
+          bun run typecheck
+
+      - name: Lint
+        run: |
+          cd cli
+          bun run lint
+
+      - name: Unit tests
+        run: |
+          cd cli
+          bun test src/
+
       - name: Install UI dependencies
         run: |
           cd cli/ui

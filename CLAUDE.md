@@ -32,6 +32,9 @@ testing/e2e/     # End-to-end tests (run from WSL/CI only)
 ```bash
 bun install                    # Install dependencies
 bun run typecheck              # TypeScript validation (tsc --noEmit)
+bun run lint                   # Biome lint (no console.*, no any, no unused imports)
+bun run lint:fix               # Biome lint with auto-fix
+bun test src/                  # Unit tests
 bun run dev <command> [args]   # Run CLI locally in dev mode
 bun run build                  # Build all platform binaries
 bun run build:linux            # Build Linux x64 binary only
@@ -265,7 +268,8 @@ E2E tests run from WSL/CI. The `.env.dockflow` in test fixtures uses `localhost:
 
 ## CI/CD Workflows (`.github/workflows/`)
 
-- **build-cli.yml** — Triggered by version tags. Builds multi-platform binaries (linux-x64/arm64, macos-x64/arm64, windows-x64), creates GitHub Release, publishes to npm (`@dockflow-tools/cli`).
+- **publish-cli.yml** — Triggered by version tags. Runs typecheck + lint + unit tests, then builds multi-platform binaries (linux-x64/arm64, macos-x64/arm64, windows-x64), creates GitHub Release, publishes to npm (`@dockflow-tools/cli`).
+- **cli-checks.yml** — Runs on push to main/develop and PRs. Typecheck (`tsc --noEmit`), Biome lint, and unit tests (`bun test src/`) in `cli/`.
 - **deploy-docs.yml** — Documentation site deployment. Installs CLI and runs `dockflow deploy` directly.
 - **e2e-tests.yml** — Runs on push to main/develop and PRs. Executes `bun test tests/` in `testing/e2e/`.
 - **shell-lint.yml** — ShellCheck validation.
@@ -277,6 +281,7 @@ CI secrets format: `{ENV}_{SERVER}_{CONNECTION}` = base64-encoded `user@host:por
 ## Development Rules
 
 - **Typecheck before committing**: Run `bun run typecheck` in `cli/` — zero errors required.
+- **Lint before committing**: Run `bun run lint` in `cli/`. Biome enforces: no `console.*` outside `utils/output.ts`, no `any`, no unused imports (config in `cli/biome.json`).
 - **Use centralized output helpers**: Never add raw `console.log`/`console.error` in CLI commands or API routes.
 - **Config schema + interface parity**: Update both Zod schema and TypeScript interface when adding config fields.
 - **Error handling**: Throw typed `CLIError` subclasses from commands. Never catch-and-exit manually.
