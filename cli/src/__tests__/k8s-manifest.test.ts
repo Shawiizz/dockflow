@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { parseAllDocuments } from 'yaml';
 import { composeToManifests } from '../services/k8s-manifest';
-import { loadFromString } from '../services/compose';
+import { loadFromString, injectTraefikLabels } from '../services/compose';
 import type { ProxyConfig } from '../utils/config';
 
 interface Manifest {
@@ -279,6 +279,42 @@ services:
   it('no rule label → no IngressRoute', () => {
     const manifests = toManifests('services:\n  web:\n    image: w\n    ports:\n      - "80"\n');
     expect(find(manifests, 'IngressRoute')).toBeUndefined();
+  });
+
+  it('Swarm-style deploy.labels also produce an IngressRoute', () => {
+    // injectTraefikLabels (used by the k3s backend) writes labels under
+    // deploy.labels — the manifest generator must read them from there too.
+    const manifests = toManifests(`
+services:
+  web:
+    image: w
+    ports:
+      - "80"
+    deploy:
+      labels:
+        - "traefik.http.routers.web.rule=Host(\`deploy.example.com\`)"
+`);
+    const ingress = find(manifests, 'IngressRoute', 'web')!;
+    expect(ingress).toBeDefined();
+    const routes = ingress.spec.routes as Array<Record<string, unknown>>;
+    expect(routes[0].match).toBe('Host(`deploy.example.com`)');
+  });
+
+  it('full k3s proxy path: injectTraefikLabels then composeToManifests yields an IngressRoute', () => {
+    // Mirrors K3sStackBackend.deploy: labels injected from proxy config,
+    // then manifests generated from the same compose.
+    const compose = loadFromString('services:\n  web:\n    image: w\n    ports:\n      - "8081:80"\n');
+    const proxy = { enabled: true, acme: false, domains: { test: 'k3s.test.local' } } as ProxyConfig;
+    injectTraefikLabels(compose, proxy, 'demo', 'test');
+
+    const out = composeToManifests('demo', compose, proxy);
+    const manifests = parseAllDocuments(out).map(d => d.toJS() as Manifest);
+    const ingress = find(manifests, 'IngressRoute', 'web')!;
+    expect(ingress).toBeDefined();
+    const routes = ingress.spec.routes as Array<Record<string, unknown>>;
+    expect(routes[0].match).toBe('Host(`k3s.test.local`)');
+    expect(routes[0].services).toEqual([{ name: 'web', port: 80 }]);
+    expect(ingress.spec.entryPoints).toEqual(['web']); // acme off
   });
 });
 

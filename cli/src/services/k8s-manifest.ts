@@ -494,25 +494,35 @@ function parseDuration(duration: string | number): number {
  * Extract Traefik Docker labels from a compose service and convert to structured data.
  * Looks for: traefik.http.routers.{name}.rule, .tls, .entrypoints
  *            traefik.http.services.{name}.loadbalancer.server.port
+ *
+ * Labels are read from both the service top level (container labels) and
+ * deploy.labels (Swarm service labels — where injectTraefikLabels and most
+ * Swarm-style compose files put them). deploy.labels wins on conflicts.
  */
 function extractTraefikLabels(
   _serviceName: string,
   config: Record<string, unknown>,
 ): TraefikLabels {
-  const labels = config.labels as Record<string, string> | string[] | undefined;
-  if (!labels) return {};
+  const deploy = config.deploy as Record<string, unknown> | undefined;
+  const labelSources = [config.labels, deploy?.labels] as Array<
+    Record<string, string> | string[] | undefined
+  >;
 
   const labelMap: Record<string, string> = {};
-  if (Array.isArray(labels)) {
-    for (const label of labels) {
-      const eqIdx = label.indexOf('=');
-      if (eqIdx !== -1) {
-        labelMap[label.slice(0, eqIdx)] = label.slice(eqIdx + 1);
+  for (const labels of labelSources) {
+    if (!labels) continue;
+    if (Array.isArray(labels)) {
+      for (const label of labels) {
+        const eqIdx = String(label).indexOf('=');
+        if (eqIdx !== -1) {
+          labelMap[String(label).slice(0, eqIdx)] = String(label).slice(eqIdx + 1);
+        }
       }
+    } else {
+      Object.assign(labelMap, labels);
     }
-  } else {
-    Object.assign(labelMap, labels);
   }
+  if (Object.keys(labelMap).length === 0) return {};
 
   const result: TraefikLabels = {};
 
