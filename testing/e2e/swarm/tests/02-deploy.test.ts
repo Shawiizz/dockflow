@@ -1,27 +1,21 @@
-import { describe, test, expect, beforeAll } from "bun:test";
-import { runCLI } from "../helpers/cli";
+import { describe, test, expect } from "bun:test";
+import { runCLI } from "../../helpers/cli";
 import {
   waitForService,
   getServiceLabels,
   verifyDeployment,
-} from "../helpers/docker";
-import { writeDockflowEnv } from "../helpers/connection";
-import { join } from "path";
+} from "../../helpers/docker";
+import { sharedAppDir } from "../../helpers/fixtures";
 
-const TEST_APP_DIR = join(import.meta.dir, "..", "fixtures", "test-app");
 const TEST_ENV = "test";
 const TEST_VERSION = "1.0.0-e2e";
 const STACK_NAME = `test-app-${TEST_ENV}`;
 const SERVICE_NAME = `${STACK_NAME}_web`;
 
 describe("deploy", () => {
-  beforeAll(async () => {
-    writeDockflowEnv(TEST_APP_DIR);
-  });
-
   test("deploys app successfully", async () => {
     const result = await runCLI(["deploy", TEST_ENV, TEST_VERSION, "--force"], {
-      cwd: TEST_APP_DIR,
+      cwd: sharedAppDir(),
     });
 
     if (result.exitCode !== 0) {

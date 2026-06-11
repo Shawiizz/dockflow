@@ -36,16 +36,16 @@ export function getCliBinaryName(): string {
  * Run a dockflow CLI command and capture output.
  *
  * @param args - CLI arguments (e.g. ["deploy", "test", "1.0.0"])
- * @param opts.cwd - Working directory (defaults to fixtures/test-app)
+ * @param opts.cwd - Working directory (a fixture dir from makeFixture/sharedAppDir)
  * @param opts.timeoutMs - Timeout in milliseconds (defaults to 300s)
  */
 export async function runCLI(
   args: string[],
-  opts?: { cwd?: string; timeoutMs?: number }
+  opts: { cwd: string; timeoutMs?: number }
 ): Promise<CLIResult> {
   const binary = getCliBinaryPath();
-  const cwd = opts?.cwd ?? join(E2E_DIR, "fixtures", "test-app");
-  const timeoutMs = opts?.timeoutMs ?? 300_000;
+  const cwd = opts.cwd;
+  const timeoutMs = opts.timeoutMs ?? 300_000;
 
   const proc = Bun.spawn([binary, ...args], {
     cwd,

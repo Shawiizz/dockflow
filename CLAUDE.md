@@ -22,7 +22,7 @@ ansible/         # Ansible roles for machine provisioning (setup only)
 docs/            # Next.js 15 + Nextra documentation site
 packages/        # Additional packages (MCP server, npm CLI wrapper)
 scripts/         # Build & version management scripts
-testing/e2e/     # End-to-end tests (run from WSL/CI only)
+testing/e2e/     # End-to-end tests (two suites: swarm/ and k3s/)
 ```
 
 ## Common Commands
@@ -64,12 +64,12 @@ pnpm build                     # Production build + LLM text generation + Pagefi
 ./scripts/lint-shell.sh        # ShellCheck on all .sh files
 ```
 
-### E2E Tests (WSL/CI only)
+### E2E Tests (Linux/WSL/Windows, requires Docker)
 
 ```bash
-cd testing/e2e && bun test tests/                       # Full suite: Swarm + k3s
-cd testing/e2e && bun test tests/10-k3s-deploy.test.ts  # k3s tests only
-cd testing/e2e && bun run teardown.ts                   # Cleanup all test containers
+cd testing/e2e/swarm && bun test tests/   # Swarm suite (DinD, 2 nodes)
+cd testing/e2e/k3s && bun test tests/     # k3s suite (k3s-in-Docker)
+bun run testing/e2e/teardown.ts           # Cleanup all test containers
 ```
 
 ### Releasing
@@ -256,22 +256,22 @@ Key values in `cli/src/constants.ts`: `DOCKFLOW_VERSION` (from package.json), `D
 
 ## E2E Tests
 
-Tests use isolated Docker Compose projects (`-p dockflow-swarm` / `-p dockflow-k3s`):
+Two independent suites under `testing/e2e/`, one per orchestrator, each with its own `bunfig.toml` preload (see `testing/e2e/README.md` for conventions):
 
-**Swarm tests** (`01-05`): Docker-in-Docker with a manager (`dockflow-test-manager`, port 2222) and worker (`dockflow-test-worker-1`, port 2223). Cover build, deploy, Traefik routing, backup/restore, remote build, HTTP health checks.
+**Swarm suite** (`swarm/tests/01-05`): Docker-in-Docker with a manager (`dockflow-test-manager`, SSH port 32222) and worker (`dockflow-test-worker-1`, port 32223), compose project `dockflow-swarm`. Covers build, deploy, Traefik routing, backup/restore, remote build, HTTP health checks. The preload resets the cluster and pre-deploys the shared test-app.
 
-**k3s tests** (`10`): k3s-in-Docker single node (`dockflow-test-k3s`, port 2224). Cover deploy, namespace creation, replicas, logs, exec, scale.
+**k3s suite** (`k3s/tests/10`): k3s-in-Docker single node (`dockflow-test-k3s`, port 32224), compose project `dockflow-k3s`. Covers deploy, namespace creation, replicas, logs, exec, scale. The test file owns the cluster lifecycle.
 
-Test helpers: `testing/e2e/helpers/docker.ts` (Swarm assertions), `testing/e2e/helpers/k8s.ts` (kubectl assertions), `testing/e2e/helpers/cluster.ts` (cluster lifecycle for both).
+Test helpers: `helpers/fixtures.ts` (temp-dir fixture copies — fixture templates in `fixtures/` are read-only, tests never write into the repo tree), `helpers/docker.ts` (Swarm assertions), `helpers/k8s.ts` (kubectl assertions), `helpers/cluster.ts` (cluster lifecycle for both).
 
-E2E tests run from WSL/CI. The `.env.dockflow` in test fixtures uses `localhost:222x` port mappings.
+E2E tests run on Linux, WSL and Windows (Docker required). CI runs both suites as parallel matrix jobs.
 
 ## CI/CD Workflows (`.github/workflows/`)
 
 - **publish-cli.yml** — Triggered by version tags. Runs typecheck + lint + unit tests, then builds multi-platform binaries (linux-x64/arm64, macos-x64/arm64, windows-x64), creates GitHub Release, publishes to npm (`@dockflow-tools/cli`).
 - **cli-checks.yml** — Runs on push to main/develop and PRs. Typecheck (`tsc --noEmit`), Biome lint, and unit tests (`bun test src/`) in `cli/`.
 - **deploy-docs.yml** — Documentation site deployment. Installs CLI and runs `dockflow deploy` directly.
-- **e2e-tests.yml** — Runs on push to main/develop and PRs. Executes `bun test tests/` in `testing/e2e/`.
+- **e2e-tests.yml** — Runs on push to main/develop and PRs. Matrix of two parallel jobs (swarm, k3s), each running `bun test tests/` in `testing/e2e/<suite>/`.
 - **shell-lint.yml** — ShellCheck validation.
 
 CI/CD integration is handled entirely by the CLI itself — no reusable workflows or external templates needed. The CLI auto-detects environment and version from CI provider env vars (GitHub Actions, GitLab CI, Jenkins, Buildkite) when `dockflow deploy` or `dockflow build` are called without arguments. Users generate a standalone CI workflow via `dockflow init`.

@@ -1,21 +1,14 @@
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { runCLI } from "../helpers/cli";
-import { exec } from "../helpers/cluster";
+﻿import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { runCLI } from "../../helpers/cli";
+import { exec } from "../../helpers/cluster";
 import {
   waitForService,
   isImageOnNode,
   verifyDeployment,
-} from "../helpers/docker";
-import {
-  MANAGER_CONTAINER,
-  DEPLOY_USER,
-  writeDockflowEnv,
-} from "../helpers/connection";
-import { join } from "path";
-import { rmSync } from "fs";
+} from "../../helpers/docker";
+import { MANAGER_CONTAINER, DEPLOY_USER } from "../../helpers/connection";
+import { makeFixture, type Fixture } from "../../helpers/fixtures";
 
-const FIXTURES_DIR = join(import.meta.dir, "..", "fixtures");
-const TEST_APP_DIR = join(FIXTURES_DIR, "test-app-remote");
 const TEST_ENV = "test";
 const TEST_VERSION = "1.0.0-remote";
 const STACK_NAME = `test-app-remote-${TEST_ENV}`;
@@ -23,17 +16,16 @@ const SERVICE_NAME = `${STACK_NAME}_web`;
 const REMOTE_REPO_PATH = `/home/${DEPLOY_USER}/repos/test-app-remote`;
 
 describe("remote build", () => {
-  beforeAll(async () => {
-    writeDockflowEnv(TEST_APP_DIR);
+  // The local git repo is created inside a throwaway fixture copy - the
+  // fixture template in the repo tree is never touched.
+  let fixture: Fixture;
+
+  beforeAll(() => {
+    fixture = makeFixture("test-app-remote");
   });
 
   afterAll(() => {
-    try {
-      rmSync(join(TEST_APP_DIR, ".git"), { recursive: true, force: true });
-    } catch {}
-    try {
-      rmSync(join(TEST_APP_DIR, ".env.dockflow"));
-    } catch {}
+    fixture?.cleanup();
   });
 
   test("create git repo on manager", async () => {
@@ -49,7 +41,7 @@ describe("remote build", () => {
     await exec([
       "docker",
       "cp",
-      `${TEST_APP_DIR}/.`,
+      `${fixture.dir}/.`,
       `${MANAGER_CONTAINER}:${REMOTE_REPO_PATH}`,
     ]);
 
@@ -73,25 +65,25 @@ describe("remote build", () => {
   }, 30_000);
 
   test("prepare local git repo with remote origin", async () => {
-    await exec(["git", "init", "-q", "-b", "main"], { cwd: TEST_APP_DIR });
+    await exec(["git", "init", "-q", "-b", "main"], { cwd: fixture.dir });
     await exec(
       ["git", "config", "user.email", "test@dockflow.local"],
-      { cwd: TEST_APP_DIR }
+      { cwd: fixture.dir }
     );
     await exec(["git", "config", "user.name", "E2E Test"], {
-      cwd: TEST_APP_DIR,
+      cwd: fixture.dir,
     });
-    await exec(["git", "add", "-A"], { cwd: TEST_APP_DIR });
-    await exec(["git", "commit", "-q", "-m", "init"], { cwd: TEST_APP_DIR });
+    await exec(["git", "add", "-A"], { cwd: fixture.dir });
+    await exec(["git", "commit", "-q", "-m", "init"], { cwd: fixture.dir });
     await exec(["git", "remote", "add", "origin", REMOTE_REPO_PATH], {
-      cwd: TEST_APP_DIR,
+      cwd: fixture.dir,
     });
   });
 
   test("deploy with remote_build: true", async () => {
     const result = await runCLI(
       ["deploy", TEST_ENV, TEST_VERSION, "--force", "--branch", "main"],
-      { cwd: TEST_APP_DIR }
+      { cwd: fixture.dir }
     );
 
     if (result.exitCode !== 0) {

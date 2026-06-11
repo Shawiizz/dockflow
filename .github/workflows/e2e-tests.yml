@@ -11,10 +11,14 @@ on:
       - develop
 
 jobs:
-  e2e-tests:
-    name: Run E2E Tests
+  e2e:
+    name: E2E (${{ matrix.suite }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [swarm, k3s]
 
     steps:
       - name: Checkout code
@@ -29,12 +33,12 @@ jobs:
         run: |
           cd cli && bun install --frozen-lockfile
 
-      - name: Run E2E Tests
+      - name: Run E2E Tests (${{ matrix.suite }})
         run: |
-          cd testing/e2e && bun test tests/ --timeout 300000
+          cd testing/e2e/${{ matrix.suite }} && bun test tests/ --timeout 300000
 
-      - name: Show cluster logs on failure
-        if: failure()
+      - name: Show Swarm cluster logs on failure
+        if: failure() && matrix.suite == 'swarm'
         run: |
           echo "=== Docker Compose Status ==="
           docker ps -a
@@ -76,7 +80,7 @@ jobs:
           docker exec dockflow-test-manager docker network ls --filter driver=overlay 2>/dev/null || true
 
       - name: Show k3s logs on failure
-        if: failure()
+        if: failure() && matrix.suite == 'k3s'
         run: |
           echo "=== k3s Container Status ==="
           docker inspect dockflow-test-k3s --format '{{.State.Status}} (health: {{.State.Health.Status}})' 2>/dev/null || echo "Container not found"

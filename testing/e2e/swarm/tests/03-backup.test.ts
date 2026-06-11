@@ -1,10 +1,8 @@
-import { describe, test, expect, beforeAll } from "bun:test";
-import { runCLI } from "../helpers/cli";
-import { redisExec, waitForRedis, waitForService } from "../helpers/docker";
-import { writeDockflowEnv } from "../helpers/connection";
-import { join } from "path";
+﻿import { describe, test, expect, beforeAll } from "bun:test";
+import { runCLI } from "../../helpers/cli";
+import { redisExec, waitForRedis, waitForService } from "../../helpers/docker";
+import { sharedAppDir } from "../../helpers/fixtures";
 
-const TEST_APP_DIR = join(import.meta.dir, "..", "fixtures", "test-app");
 const TEST_ENV = "test";
 const ACCESSORIES_STACK = `test-app-${TEST_ENV}-accessories`;
 const REDIS_SERVICE = `${ACCESSORIES_STACK}_redis`;
@@ -16,7 +14,6 @@ describe("backup & restore", () => {
   let backupId = "";
 
   beforeAll(async () => {
-    writeDockflowEnv(TEST_APP_DIR);
     await waitForService(REDIS_SERVICE, "1/1", { timeoutMs: 30_000 });
     await waitForRedis();
   });
@@ -29,7 +26,7 @@ describe("backup & restore", () => {
 
   test("create backup", async () => {
     const result = await runCLI(["backup", "create", TEST_ENV, "redis", "--json"], {
-      cwd: TEST_APP_DIR,
+      cwd: sharedAppDir(),
     });
 
     if (result.exitCode !== 0) {
@@ -47,7 +44,7 @@ describe("backup & restore", () => {
   test("backup appears in list", async () => {
     const result = await runCLI(
       ["backup", "list", TEST_ENV, "redis", "--json"],
-      { cwd: TEST_APP_DIR }
+      { cwd: sharedAppDir() }
     );
 
     expect(result.exitCode).toBe(0);
@@ -74,7 +71,7 @@ describe("backup & restore", () => {
         backupId,
         "--yes",
       ],
-      { cwd: TEST_APP_DIR }
+      { cwd: sharedAppDir() }
     );
 
     expect(result.exitCode).toBe(0);

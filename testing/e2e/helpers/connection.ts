@@ -3,7 +3,7 @@
  * Uses a pre-generated keypair baked into the Docker image — no runtime extraction.
  */
 
-import { readFileSync, writeFileSync, unlinkSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 
 const FIXTURES_DIR = join(import.meta.dir, "..", "fixtures");
@@ -63,17 +63,6 @@ export function writeDockflowEnv(appDir: string): void {
     `TEST_WORKER_1_CONNECTION=${encodeConnection(WORKER)}`,
   ].join("\n");
   writeFileSync(join(appDir, ".env.dockflow"), content + "\n");
-}
-
-/**
- * Clean up .env.dockflow after tests.
- */
-export function cleanDockflowEnv(appDir: string): void {
-  try {
-    unlinkSync(join(appDir, ".env.dockflow"));
-  } catch {
-    // Ignore if already absent
-  }
 }
 
 /**

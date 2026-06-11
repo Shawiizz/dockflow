@@ -1,41 +1,41 @@
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { runCLI } from "../helpers/cli";
-import { startK3sCluster, stopK3sCluster, waitForK3s } from "../helpers/cluster";
-import { writeK3sDockflowEnv, cleanDockflowEnv } from "../helpers/connection";
+﻿import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { runCLI } from "../../helpers/cli";
+import { startK3sCluster, stopK3sCluster, waitForK3s } from "../../helpers/cluster";
+import { makeFixture, type Fixture } from "../../helpers/fixtures";
 import {
   waitForDeployment,
   getDeploymentReplicas,
   isDeploymentStable,
   namespaceExists,
   dumpK3sDebug,
-} from "../helpers/k8s";
-import { join } from "path";
+} from "../../helpers/k8s";
 
-const TEST_APP_DIR = join(import.meta.dir, "..", "fixtures", "test-app-k3s");
 const TEST_ENV = "test";
 const TEST_VERSION = "1.0.0-k3s";
 const STACK_NAME = `test-app-k3s-${TEST_ENV}`;
 const NAMESPACE = `dockflow-${STACK_NAME}`;
 
 describe("k3s deploy", () => {
+  let fixture: Fixture;
+
   beforeAll(async () => {
     // Ensure clean state
     await stopK3sCluster();
     await startK3sCluster();
     await waitForK3s();
-    writeK3sDockflowEnv(TEST_APP_DIR);
+    fixture = makeFixture("test-app-k3s", { cluster: "k3s" });
   }, 480_000);
 
   afterAll(async () => {
     // Dump debug info before teardown (useful for CI failures)
     try { await dumpK3sDebug(NAMESPACE); } catch { /* ignore */ }
-    cleanDockflowEnv(TEST_APP_DIR);
+    fixture?.cleanup();
     await stopK3sCluster();
   }, 60_000);
 
   test("deploys to k3s successfully", async () => {
     const result = await runCLI(["deploy", TEST_ENV, TEST_VERSION, "--force"], {
-      cwd: TEST_APP_DIR,
+      cwd: fixture.dir,
     });
 
     if (result.exitCode !== 0) {
@@ -61,7 +61,7 @@ describe("k3s deploy", () => {
 
   test("logs work", async () => {
     const result = await runCLI(["logs", TEST_ENV, "web", "-n", "5"], {
-      cwd: TEST_APP_DIR,
+      cwd: fixture.dir,
     });
 
     if (result.exitCode !== 0) {
@@ -74,7 +74,7 @@ describe("k3s deploy", () => {
   test("exec works", async () => {
     const result = await runCLI(
       ["exec", TEST_ENV, "web", "--", "echo", "hello-k3s"],
-      { cwd: TEST_APP_DIR },
+      { cwd: fixture.dir },
     );
 
     if (result.exitCode !== 0) {
@@ -87,7 +87,7 @@ describe("k3s deploy", () => {
 
   test("scale up to 2 replicas", async () => {
     const result = await runCLI(["scale", TEST_ENV, "web", "2"], {
-      cwd: TEST_APP_DIR,
+      cwd: fixture.dir,
     });
 
     if (result.exitCode !== 0) {
@@ -103,7 +103,7 @@ describe("k3s deploy", () => {
 
   test("scale back to 1 replica", async () => {
     const result = await runCLI(["scale", TEST_ENV, "web", "1"], {
-      cwd: TEST_APP_DIR,
+      cwd: fixture.dir,
     });
     expect(result.exitCode).toBe(0);
 

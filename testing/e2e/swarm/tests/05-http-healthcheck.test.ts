@@ -10,23 +10,17 @@
  * `http://localhost:8080` is reachable from within the manager container.
  */
 
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { runCLI } from "../helpers/cli";
-import { writeDockflowEnv } from "../helpers/connection";
-import { dockerExec } from "../helpers/docker";
-import { MANAGER_CONTAINER } from "../helpers/connection";
+import { describe, test, expect, afterAll } from "bun:test";
+import { runCLI } from "../../helpers/cli";
+import { dockerExec } from "../../helpers/docker";
+import { MANAGER_CONTAINER } from "../../helpers/connection";
+import { makeFixture, sharedAppDir, type Fixture } from "../../helpers/fixtures";
 import { join } from "path";
-import { cpSync, mkdtempSync, rmSync } from "fs";
-import { tmpdir } from "os";
 
-const TEST_APP_DIR = join(import.meta.dir, "..", "fixtures", "test-app");
 const TEST_ENV = "test";
 const TEST_VERSION = "1.0.1-e2e-healthcheck";
 
 describe("remote HTTP health checks", () => {
-  beforeAll(async () => {
-    writeDockflowEnv(TEST_APP_DIR);
-  });
 
   test("curl is available on the manager node", async () => {
     const output = await dockerExec(MANAGER_CONTAINER, [
@@ -53,7 +47,7 @@ describe("remote HTTP health checks", () => {
     // This redeploy exercises the full remote check path: SSH curl on the manager.
     const result = await runCLI(
       ["deploy", TEST_ENV, TEST_VERSION, "--force"],
-      { cwd: TEST_APP_DIR },
+      { cwd: sharedAppDir() },
     );
 
     if (result.exitCode !== 0) {
@@ -68,13 +62,13 @@ describe("remote HTTP health checks", () => {
   }, 300_000);
 
   describe("failing endpoint", () => {
-    // The negative test deploys from a throwaway copy of the fixture so the
-    // shared fixture in the repo is never mutated — even if the test process
-    // is killed mid-run (timeout), nothing leaks into the working tree.
-    let badAppDir = "";
+    // The negative test deploys from a throwaway fixture copy — the fixture
+    // template in the repo is never mutated, even if the test process is
+    // killed mid-run (timeout).
+    let badApp: Fixture | undefined;
 
     afterAll(() => {
-      if (badAppDir) rmSync(badAppDir, { recursive: true, force: true });
+      badApp?.cleanup();
     });
 
     test("deploy fails when remote endpoint returns wrong status", async () => {
@@ -93,12 +87,9 @@ describe("remote HTTP health checks", () => {
         return;
       }
 
-      // Copy the fixture to a temp dir and point its health check at the dead port.
-      badAppDir = mkdtempSync(join(tmpdir(), "dockflow-e2e-badhc-"));
-      cpSync(TEST_APP_DIR, badAppDir, { recursive: true });
-      writeDockflowEnv(badAppDir);
-
-      const configPath = join(badAppDir, ".dockflow", "config.yml");
+      // Point the throwaway fixture's health check at the dead port.
+      badApp = makeFixture("test-app");
+      const configPath = join(badApp.dir, ".dockflow", "config.yml");
       const original = await Bun.file(configPath).text();
       const patched = original.replace(
         /url:\s*"http:\/\/localhost:.*?"/,
@@ -109,7 +100,7 @@ describe("remote HTTP health checks", () => {
 
       const result = await runCLI(
         ["deploy", TEST_ENV, "1.0.2-e2e-badhc", "--force"],
-        { cwd: badAppDir },
+        { cwd: badApp.dir },
       );
 
       // Exit code 53 = HEALTH_CHECK_FAILED

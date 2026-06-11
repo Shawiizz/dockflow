@@ -1,10 +1,8 @@
-import { describe, test, expect, afterAll } from "bun:test";
-import { runCLI } from "../helpers/cli";
-import { exec } from "../helpers/cluster";
-import { writeDockflowEnv } from "../helpers/connection";
-import { join } from "path";
+﻿import { describe, test, expect, afterAll } from "bun:test";
+import { runCLI } from "../../helpers/cli";
+import { exec } from "../../helpers/cluster";
+import { sharedAppDir } from "../../helpers/fixtures";
 
-const TEST_APP_DIR = join(import.meta.dir, "..", "fixtures", "test-app");
 const TEST_ENV = "test";
 const IMAGE_NAME = "test-web-app";
 
@@ -16,11 +14,9 @@ describe("build", () => {
   });
 
   test("standalone build creates a valid image", async () => {
-    writeDockflowEnv(TEST_APP_DIR);
-
     const result = await runCLI(
       ["build", TEST_ENV, "--skip-hooks", "--debug"],
-      { cwd: TEST_APP_DIR }
+      { cwd: sharedAppDir() }
     );
 
     if (result.exitCode !== 0) {
@@ -72,7 +68,7 @@ describe("build", () => {
 
   test("rebuild is idempotent", async () => {
     const result = await runCLI(["build", TEST_ENV, "--skip-hooks"], {
-      cwd: TEST_APP_DIR,
+      cwd: sharedAppDir(),
     });
     expect(result.exitCode).toBe(0);
   }, 120_000);
