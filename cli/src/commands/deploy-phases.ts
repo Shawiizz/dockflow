@@ -32,7 +32,7 @@ import type { ContainerRuntime } from '../services/distribution';
 import * as Hook from '../services/hook';
 import { CONVERGENCE_TIMEOUT_S, CONVERGENCE_INTERVAL_S, DOCKFLOW_UPLOAD_BACKUPS_DIR } from '../constants';
 import type { StackBackend } from '../services/orchestrator/interfaces';
-import type { HealthCheckConfig } from '../utils/config';
+import type { HealthCheckConfig, UploadItem } from '../utils/config';
 import type { DeployContext } from './deploy-context';
 
 // ---------------------------------------------------------------------------
@@ -83,13 +83,48 @@ export interface UploadRollbackPlan {
 const UPLOAD_CONCURRENCY = 8;
 
 /** Work-stealing concurrency pool — N workers drain a shared task queue. */
-async function runWithConcurrency(tasks: Array<() => Promise<void>>, limit: number): Promise<void> {
+export async function runWithConcurrency(tasks: Array<() => Promise<void>>, limit: number): Promise<void> {
   let i = 0;
   const worker = async () => {
     let idx: number;
     while ((idx = i++) < tasks.length) await tasks[idx]();
   };
   await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+}
+
+// ---------------------------------------------------------------------------
+// Upload path helpers — pure, shared by uploadFiles and rollbackUploads so the
+// backup paths written during upload always match the ones read on rollback.
+// ---------------------------------------------------------------------------
+
+/** Final destination for a single-file upload: trailing-slash dests get the source basename. */
+export function resolveFileDestPath(dest: string, srcBasename: string): string {
+  return dest.endsWith('/') ? `${dest.replace(/\/$/, '')}/${srcBasename}` : dest;
+}
+
+/** Backup location of a single file inside the per-deploy backup dir. */
+export function fileBackupPath(backupBaseDir: string, destPath: string): string {
+  return `${backupBaseDir}/${destPath.replace(/^\//, '')}`;
+}
+
+/** Backup archive location for a directory upload. */
+export function dirBackupPath(backupBaseDir: string, destBase: string): string {
+  return `${backupBaseDir}/${destBase.replace(/^\//, '')}.tar.gz`;
+}
+
+/**
+ * Keep only the uploads relevant to a partial deploy (--only): uploads without
+ * a service always apply; others apply when one of their services is targeted.
+ */
+export function filterUploads(uploads: UploadItem[] | undefined, only?: string): UploadItem[] {
+  if (!uploads || uploads.length === 0) return [];
+  if (!only) return uploads;
+  const serviceFilter = new Set(only.split(',').map((s: string) => s.trim()));
+  return uploads.filter(u => {
+    if (!u.service) return true;
+    const services = Array.isArray(u.service) ? u.service : [u.service];
+    return services.some(s => serviceFilter.has(s));
+  });
 }
 
 /** Stream a packDirToTarGz stream into an SSH channel. */
@@ -117,16 +152,8 @@ async function streamDirToHost(
 }
 
 
-function filterUploadsByService(ctx: DeployContext): NonNullable<typeof ctx.config.uploads> {
-  const uploads = ctx.config.uploads;
-  if (!uploads || uploads.length === 0) return [];
-  if (!ctx.options.only) return uploads;
-  const serviceFilter = new Set(ctx.options.only.split(',').map((s: string) => s.trim()));
-  return uploads.filter(u => {
-    if (!u.service) return true;
-    const services = Array.isArray(u.service) ? u.service : [u.service];
-    return services.some(s => serviceFilter.has(s));
-  });
+function filterUploadsByService(ctx: DeployContext): UploadItem[] {
+  return filterUploads(ctx.config.uploads, ctx.options.only);
 }
 
 /**
@@ -227,7 +254,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
       // Step 1: backup existing remote dir + ensure dest exists (all hosts in parallel)
       await Promise.all(plan.hosts.map(async hostState => {
         const { name, conn } = hostState;
-        const backupPath = `${backupBaseDir}/${destBase.replace(/^\//, '')}.tar.gz`;
+        const backupPath = dirBackupPath(backupBaseDir, destBase);
 
         await sshExec(conn, `mkdir -p '${dirname(backupPath)}'`);
         const backupResult = await sshExec(conn,
@@ -293,11 +320,8 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
       // -----------------------------------------------------------------------
       // Single file: parallel across hosts, batched mkdir
       // -----------------------------------------------------------------------
-      const destPath = upload.dest.endsWith('/')
-        ? `${destBase}/${basename(srcAbs)}`
-        : upload.dest;
-      const destRelative = destPath.replace(/^\//, '');
-      const backupPath = `${backupBaseDir}/${destRelative}`;
+      const destPath = resolveFileDestPath(upload.dest, basename(srcAbs));
+      const backupPath = fileBackupPath(backupBaseDir, destPath);
       const srcRel = relative(ctx.projectRoot, srcAbs).replace(/\\/g, '/');
       const renderedText = ctx.rendered.get(srcRel);
       const fileContent = renderedText !== undefined ? Buffer.from(renderedText) : readFileSync(srcAbs);
@@ -367,7 +391,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
 export async function rollbackUploads(plan: UploadRollbackPlan): Promise<void> {
   await Promise.all(plan.hosts.map(async ({ conn, backedUp, created, backedUpDirs, createdDirs }) => {
     for (const destPath of backedUp) {
-      const backupPath = `${plan.backupBaseDir}/${destPath.replace(/^\//, '')}`;
+      const backupPath = fileBackupPath(plan.backupBaseDir, destPath);
       const r = await sshExec(conn, `cp '${backupPath}' '${destPath}' && rm -f '${backupPath}'`);
       if (r.exitCode !== 0) throw new DeployError(
         `upload rollback: failed to restore '${destPath}': ${r.stderr.trim() || `exit ${r.exitCode}`}`,
