@@ -35,6 +35,79 @@ export interface ReleaseMetadata {
   branch: string;
 }
 
+// ---------------------------------------------------------------------------
+// Pure helpers — release logic without SSH, unit-tested in __tests__/release.test.ts
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse the output of the release listing command (one metadata JSON per line)
+ * into ReleaseMetadata entries sorted by epoch descending (newest first).
+ * Calls `onCorrupted` for each line that fails to parse.
+ */
+export function parseReleaseList(stdout: string, onCorrupted?: () => void): ReleaseMetadata[] {
+  const raw = stdout.trim();
+  if (!raw) return [];
+
+  const releases: ReleaseMetadata[] = [];
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      releases.push(JSON.parse(trimmed) as ReleaseMetadata);
+    } catch {
+      onCorrupted?.();
+    }
+  }
+
+  releases.sort((a, b) => b.epoch - a.epoch);
+  return releases;
+}
+
+/**
+ * Pick the release to roll back to. When the failed version is known, any other
+ * release qualifies; otherwise skip the most recent (it's the one being replaced).
+ */
+export function selectRollbackCandidate(
+  releases: ReleaseMetadata[],
+  failedVersion?: string | null,
+): ReleaseMetadata | null {
+  const candidates = failedVersion
+    ? releases.filter(r => r.version !== failedVersion)
+    : releases.slice(1);
+  return candidates[0] ?? null;
+}
+
+/** Extract image references from compose YAML text (regex-based, tolerant of quotes). */
+export function extractComposeImages(yamlText: string): string[] {
+  const matches = yamlText.match(/image:\s*['"]?([^\s'"]+)/g);
+  if (!matches) return [];
+  return matches.map(m => m.replace(/image:\s*['"]?/, ''));
+}
+
+/**
+ * Compute which images from removed releases can be deleted: anything not used
+ * by a running stack, not referenced by a kept release, and not tagged :latest.
+ * Returns a deduplicated list.
+ */
+export function computeOrphanImages(
+  runningImagesOutput: string,
+  keptComposeYaml: string,
+  removedComposeYaml: string,
+): string[] {
+  const protectedImages = new Set(runningImagesOutput.trim().split('\n').filter(Boolean));
+  for (const img of extractComposeImages(keptComposeYaml)) {
+    protectedImages.add(img);
+  }
+
+  const orphans: string[] = [];
+  for (const img of extractComposeImages(removedComposeYaml)) {
+    if (!protectedImages.has(img) && !img.endsWith(':latest')) {
+      orphans.push(img);
+    }
+  }
+  return [...new Set(orphans)];
+}
+
 export class Release {
   constructor(private readonly connection: SSHKeyConnection) {}
 
@@ -124,23 +197,9 @@ export class Release {
       `done || true`,
     );
 
-    const raw = result.stdout.trim();
-    if (!raw) return [];
-
-    const releases: ReleaseMetadata[] = [];
-
-    for (const line of raw.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      try {
-        releases.push(JSON.parse(trimmed) as ReleaseMetadata);
-      } catch {
-        printWarning(`Skipping release directory with corrupted metadata in ${dir}`);
-      }
-    }
-
-    releases.sort((a, b) => b.epoch - a.epoch);
-    return releases;
+    return parseReleaseList(result.stdout, () =>
+      printWarning(`Skipping release directory with corrupted metadata in ${dir}`),
+    );
   }
 
   /**
@@ -166,18 +225,15 @@ export class Release {
     } else {
       // Fallback: discover via listReleases.
       const releases = await this.listReleases(stackName);
-      const candidates = failedVersion
-        ? releases.filter(r => r.version !== failedVersion)
-        : releases.slice(1);
+      const previous = selectRollbackCandidate(releases, failedVersion);
 
-      if (candidates.length < 1) {
+      if (!previous) {
         throw new DeployError(
           'No previous release available for rollback',
           ErrorCode.ROLLBACK_FAILED,
         );
       }
 
-      const previous = candidates[0];
       previousDir = this.releaseDir(stackName, previous.version);
       previousVersion = previous.version;
       failedDir = failedVersion ? this.releaseDir(stackName, failedVersion) : undefined;
@@ -264,7 +320,6 @@ export class Release {
     const toRemove = releases.slice(keepN);
 
     // 1-3. Collect running images, kept compose images, and to-remove compose images in parallel
-    const protectedImages = new Set<string>();
     const keptDirs = toKeep.map(r => `"${this.releaseDir(stackName, r.version)}/docker-compose.yml"`).join(' ');
     const removeDirs = toRemove.map(r => `"${this.releaseDir(stackName, r.version)}/docker-compose.yml"`).join(' ');
 
@@ -279,32 +334,11 @@ export class Release {
       sshExec(this.connection, `cat ${removeDirs} 2>/dev/null || echo ""`),
     ]);
 
-    for (const img of runningResult.stdout.trim().split('\n').filter(Boolean)) {
-      protectedImages.add(img);
-    }
-
-    const keptMatches = keptResult.stdout.match(/image:\s*['"]?([^\s'"]+)/g);
-    if (keptMatches) {
-      for (const m of keptMatches) {
-        protectedImages.add(m.replace(/image:\s*['"]?/, ''));
-      }
-    }
-
-    const orphanImages: string[] = [];
-    const removeMatches = removeResult.stdout.match(/image:\s*['"]?([^\s'"]+)/g);
-    if (removeMatches) {
-      for (const m of removeMatches) {
-        const img = m.replace(/image:\s*['"]?/, '');
-        if (!protectedImages.has(img) && !img.endsWith(':latest')) {
-          orphanImages.push(img);
-        }
-      }
-    }
+    const orphanImages = computeOrphanImages(runningResult.stdout, keptResult.stdout, removeResult.stdout);
 
     // 4. Batch cleanup orphaned images in ONE SSH call
     if (orphanImages.length > 0) {
-      const uniqueOrphans = [...new Set(orphanImages)];
-      const quotedImages = uniqueOrphans.map(img => `'${img}'`).join(' ');
+      const quotedImages = orphanImages.map(img => `'${img}'`).join(' ');
       // Remove containers using these images, then the images themselves
       await sshExec(
         this.connection,
@@ -314,7 +348,7 @@ export class Release {
           `timeout 60 docker rmi "$img" 2>/dev/null; ` +
         `done; true`,
       );
-      printDebug(`Removed ${uniqueOrphans.length} orphaned image(s)`);
+      printDebug(`Removed ${orphanImages.length} orphaned image(s)`);
     }
 
     // 5. Batch remove release directories in ONE SSH call
