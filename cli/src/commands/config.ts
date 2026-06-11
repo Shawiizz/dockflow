@@ -17,9 +17,20 @@ import { withErrorHandler, ValidationError } from '../utils/errors';
 import {
   validateConfig as validateConfigSchema,
   validateServersConfig as validateServersSchema,
+  findUnknownConfigKeys,
+  findUnknownServersKeys,
+  findUnknownRootKeys,
   getSuggestion,
+  type UnknownKey,
   type ValidationIssue
 } from '../schemas';
+
+/** Format unknown-key findings as warning strings (typos are silently ignored by Zod). */
+function unknownKeyWarnings(fileName: string, unknownKeys: UnknownKey[]): string[] {
+  return unknownKeys.map(({ path, suggestion }) =>
+    `${fileName}: unknown key "${path}" is ignored${suggestion ? ` — did you mean "${suggestion}"?` : ''}`,
+  );
+}
 
 interface ValidationResult {
   valid: boolean;
@@ -61,6 +72,10 @@ function validateConfigFiles(): ValidationResult {
         schemaErrors.servers = serversResult.error;
         errors.push(`dockflow.yml has ${serversResult.error.length} servers validation error(s)`);
       }
+
+      if (configResult.success && serversResult.success) {
+        warnings.push(...unknownKeyWarnings('dockflow.yml', findUnknownRootKeys(parsed)));
+      }
     } catch (e) {
       errors.push(`dockflow.yml parse error: ${e}`);
     }
@@ -84,6 +99,7 @@ function validateConfigFiles(): ValidationResult {
           if (config.health_checks?.enabled && (!config.health_checks.endpoints || config.health_checks.endpoints.length === 0)) {
             warnings.push('Health checks enabled but no endpoints defined');
           }
+          warnings.push(...unknownKeyWarnings('config.yml', findUnknownConfigKeys(parsed)));
         }
       } catch (e) {
         errors.push(`config.yml parse error: ${e}`);
@@ -99,6 +115,8 @@ function validateConfigFiles(): ValidationResult {
         if (!result.success) {
           schemaErrors.servers = result.error;
           errors.push(`servers.yml has ${result.error.length} validation error(s)`);
+        } else {
+          warnings.push(...unknownKeyWarnings('servers.yml', findUnknownServersKeys(parsed)));
         }
       } catch (e) {
         errors.push(`servers.yml parse error: ${e}`);

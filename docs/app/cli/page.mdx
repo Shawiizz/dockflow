@@ -156,6 +156,8 @@ Display and validate project configuration.
 | `validate` (alias: `check`) | Validate configuration files against schemas |
 | `path` | Show configuration directory path |
 
+Validation also warns about unknown keys: a key the schema does not declare is silently ignored at runtime (typos never fail a deploy), so `validate` flags each one with a "did you mean" suggestion when a close match exists — e.g. `backup.retention` → `Did you mean "retention_count"?`.
+
 | Option | Applies to | Description |
 |--------|-----------|-------------|
 | `--json` | show, validate | Output as JSON |

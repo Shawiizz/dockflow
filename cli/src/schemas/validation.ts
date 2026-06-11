@@ -109,6 +109,134 @@ export function validateRootConfig(data: unknown): Result<RootConfig, Validation
   return err(transformZodErrors(result.error));
 }
 
+// ---------------------------------------------------------------------------
+// Unknown key detection
+//
+// Zod strips unknown keys silently, so a typo like `retention:` instead of
+// `retention_count:` passes validation and the setting is ignored. These
+// helpers walk the schema alongside the raw YAML data and report keys the
+// schema does not declare, with a "did you mean" suggestion when a close
+// match exists.
+// ---------------------------------------------------------------------------
+
+export interface UnknownKey {
+  path: string;
+  suggestion?: string;
+}
+
+/** Peel optional/nullable/default wrappers to reach the underlying schema. */
+function unwrapSchema(schema: z.ZodType): z.ZodType {
+  let current: z.ZodType = schema;
+  while (
+    current instanceof z.ZodOptional ||
+    current instanceof z.ZodNullable ||
+    current instanceof z.ZodDefault
+  ) {
+    current = current.unwrap() as z.ZodType;
+  }
+  return current;
+}
+
+/** Levenshtein distance — small inputs only (config key names). */
+function editDistance(a: string, b: string): number {
+  const dp: number[] = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = dp[0];
+    dp[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = dp[j];
+      dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = tmp;
+    }
+  }
+  return dp[b.length];
+}
+
+function closestKey(key: string, candidates: string[]): string | undefined {
+  // Prefix relationship first: `retention` → `retention_count`,
+  // `destination` → `dest`. Require 3+ shared chars to avoid noise.
+  let bestPrefix: string | undefined;
+  let bestPrefixDistance = Number.POSITIVE_INFINITY;
+  for (const candidate of candidates) {
+    if (Math.min(key.length, candidate.length) < 3) continue;
+    if (!candidate.startsWith(key) && !key.startsWith(candidate)) continue;
+    const distance = editDistance(key, candidate);
+    if (distance < bestPrefixDistance) {
+      bestPrefixDistance = distance;
+      bestPrefix = candidate;
+    }
+  }
+  if (bestPrefix) return bestPrefix;
+
+  let best: string | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const candidate of candidates) {
+    const distance = editDistance(key, candidate);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = candidate;
+    }
+  }
+  // Only suggest near-misses — a completely different word is not a typo
+  return bestDistance <= Math.max(2, Math.floor(key.length / 3)) ? best : undefined;
+}
+
+/**
+ * Recursively collect keys present in `data` that the schema does not declare.
+ * Records accept arbitrary keys (only their values are walked), and unions are
+ * skipped entirely — a missed warning beats a false positive.
+ */
+export function findUnknownKeys(schema: z.ZodType, data: unknown, basePath = ''): UnknownKey[] {
+  const resolved = unwrapSchema(schema);
+
+  if (resolved instanceof z.ZodObject) {
+    if (typeof data !== 'object' || data === null || Array.isArray(data)) return [];
+    const shape = resolved.shape as Record<string, z.ZodType>;
+    const knownKeys = Object.keys(shape);
+    const unknown: UnknownKey[] = [];
+    for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+      const path = basePath ? `${basePath}.${key}` : key;
+      if (key in shape) {
+        unknown.push(...findUnknownKeys(shape[key], value, path));
+      } else {
+        unknown.push({ path, suggestion: closestKey(key, knownKeys) });
+      }
+    }
+    return unknown;
+  }
+
+  if (resolved instanceof z.ZodArray) {
+    if (!Array.isArray(data)) return [];
+    const element = resolved.element as z.ZodType;
+    return data.flatMap((item, i) => findUnknownKeys(element, item, `${basePath}[${i}]`));
+  }
+
+  if (resolved instanceof z.ZodRecord) {
+    if (typeof data !== 'object' || data === null || Array.isArray(data)) return [];
+    const valueType = resolved.valueType as z.ZodType;
+    return Object.entries(data as Record<string, unknown>).flatMap(([key, value]) =>
+      findUnknownKeys(valueType, value, basePath ? `${basePath}.${key}` : key),
+    );
+  }
+
+  return [];
+}
+
+/** Unknown keys in config.yml content */
+export function findUnknownConfigKeys(data: unknown): UnknownKey[] {
+  return findUnknownKeys(DockflowConfigSchema, data);
+}
+
+/** Unknown keys in servers.yml content */
+export function findUnknownServersKeys(data: unknown): UnknownKey[] {
+  return findUnknownKeys(ServersConfigSchema, data);
+}
+
+/** Unknown keys in dockflow.yml (flat layout) content */
+export function findUnknownRootKeys(data: unknown): UnknownKey[] {
+  return findUnknownKeys(RootConfigSchema, data);
+}
+
 /**
  * Get human-readable suggestions for common errors
  */

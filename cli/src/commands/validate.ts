@@ -13,8 +13,9 @@
  */
 
 import type { Command } from 'commander';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { parse as parseYaml } from 'yaml';
 import {
   loadConfig,
   loadServersConfig,
@@ -33,6 +34,31 @@ import {
 } from '../utils/output';
 import { loadSecrets } from '../utils/secrets';
 import { ValidationError, withErrorHandler } from '../utils/errors';
+import {
+  findUnknownConfigKeys,
+  findUnknownServersKeys,
+  findUnknownRootKeys,
+  type UnknownKey,
+} from '../schemas';
+
+/**
+ * Warn about keys the schema does not declare (Zod strips them silently, so a
+ * typo means the setting is ignored without any error).
+ */
+function warnUnknownKeys(filePath: string, finder: (data: unknown) => UnknownKey[]): void {
+  let raw: unknown;
+  try {
+    raw = parseYaml(readFileSync(filePath, 'utf-8'));
+  } catch {
+    return; // unreadable/invalid YAML is already reported by the schema validation
+  }
+
+  for (const { path, suggestion } of finder(raw)) {
+    printWarning(
+      `Unknown key "${path}" — it is ignored.${suggestion ? ` Did you mean "${suggestion}"?` : ''}`,
+    );
+  }
+}
 
 interface ValidateOptions {
   env?: string;
@@ -81,6 +107,7 @@ async function runValidate(options: ValidateOptions): Promise<void> {
       hasErrors = true;
     } else {
       printSuccess(`${flat ? 'dockflow.yml' : 'config.yml'} — OK (project: ${colors.bold(config.project_name)})`);
+      warnUnknownKeys(configPath, flat ? findUnknownRootKeys : findUnknownConfigKeys);
 
       const features: string[] = [];
       if (config.registry) features.push(`registry (${config.registry.type})`);
@@ -130,6 +157,10 @@ async function runValidate(options: ValidateOptions): Promise<void> {
       }
       const envNames = Object.keys(tagMap);
       printSuccess(`${flat ? 'dockflow.yml' : 'servers.yml'} — OK (${envNames.length} environment(s): ${envNames.join(', ')})`);
+      // Flat layout: dockflow.yml was already checked above (root schema covers servers)
+      if (!flat) {
+        warnUnknownKeys(serversPath, findUnknownServersKeys);
+      }
 
       // If --env specified, check that env exists
       if (options.env) {
