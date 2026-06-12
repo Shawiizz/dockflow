@@ -17,6 +17,10 @@ Hooks allow you to run custom scripts at specific points during deployment.
   When [`remote_build: true`](/configuration/build-strategy) is set, `pre-build` and `post-build` hooks run on the server instead of locally — where the build is actually happening.
 </Callout>
 
+<Callout type="info">
+  Local hooks run through bash. On Windows, dockflow automatically uses Git Bash when installed (the System32 WSL `bash.exe` stub is never used) — install [Git for Windows](https://git-scm.com/download/win) to run local hooks.
+</Callout>
+
 ## File-based hooks
 
 Create shell scripts in `.dockflow/hooks/`:

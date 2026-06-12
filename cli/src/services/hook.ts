@@ -35,6 +35,60 @@ function normalizeCommands(commands: string | string[]): string[] {
   return Array.isArray(commands) ? commands : [commands];
 }
 
+// ─── Local bash resolution ────────────────────────────────────
+//
+// Local hooks run through bash. On Windows, plain `bash` in PATH usually
+// resolves to the System32 WSL stub, which fails with a cryptic
+// "execvpe(/bin/bash) failed" when no WSL distro is configured — so Git Bash
+// is preferred, and the stub is never used.
+
+/** Candidate Git Bash locations on Windows, most common first. */
+export function windowsBashCandidates(env: Record<string, string | undefined> = process.env): string[] {
+  const candidates: string[] = [];
+  for (const base of [env.ProgramFiles, env['ProgramFiles(x86)']]) {
+    if (base) {
+      candidates.push(join(base, 'Git', 'bin', 'bash.exe'));
+      candidates.push(join(base, 'Git', 'usr', 'bin', 'bash.exe'));
+    }
+  }
+  if (env.LOCALAPPDATA) {
+    candidates.push(join(env.LOCALAPPDATA, 'Programs', 'Git', 'bin', 'bash.exe'));
+  }
+  return candidates;
+}
+
+/** True for the System32 WSL stub (unusable without a configured distro). */
+export function isWslStubPath(bashPath: string): boolean {
+  return /\\system32\\bash\.exe$/i.test(bashPath);
+}
+
+let cachedLocalBash: string | null | undefined;
+
+/**
+ * Resolve the bash executable used for local hooks.
+ * Returns null when no usable bash exists on this machine.
+ */
+function resolveLocalBash(): string | null {
+  if (cachedLocalBash !== undefined) return cachedLocalBash;
+
+  if (process.platform !== 'win32') {
+    cachedLocalBash = 'bash';
+    return cachedLocalBash;
+  }
+
+  const gitBash = windowsBashCandidates().find((p) => existsSync(p));
+  if (gitBash) {
+    cachedLocalBash = gitBash;
+    return cachedLocalBash;
+  }
+
+  // Any other bash in PATH (MSYS2, Cygwin, scoop…) is fine — only the WSL
+  // stub is rejected.
+  const fromPath = Bun.which('bash');
+  cachedLocalBash = fromPath && !isWslStubPath(fromPath) ? fromPath : null;
+  return cachedLocalBash;
+}
+
 async function execLocal(
   args: string[],
   cwd: string,
@@ -147,6 +201,23 @@ export async function runHook(
     return;
   }
 
+  let localBash = '';
+  if (!runRemotely) {
+    const resolved = resolveLocalBash();
+    if (!resolved) {
+      const message = `${phase} hook skipped: no usable bash found for local hooks`;
+      const suggestion = process.platform === 'win32'
+        ? 'Install Git for Windows (Git Bash) — the System32 WSL stub cannot run hooks without a WSL distro.'
+        : 'Install bash to run local hooks.';
+      if (fatal) {
+        throw new DeployError(message, ErrorCode.DEPLOY_FAILED, suggestion);
+      }
+      printWarning(`${message} — ${suggestion}`);
+      return;
+    }
+    localBash = resolved;
+  }
+
   printDim(`Running ${phase} hook...`);
 
   const stackDir = remote ? `${DOCKFLOW_STACKS_DIR}/${remote.stackName}/current` : '';
@@ -177,7 +248,7 @@ export async function runHook(
         scriptPath = tmpFile;
       }
       try {
-        await execLocal(['bash', scriptPath], projectRoot, timeoutS * 1000, fatal, phase);
+        await execLocal([localBash, scriptPath], projectRoot, timeoutS * 1000, fatal, phase);
       } catch (error) {
         if (error instanceof DeployError) throw error;
         printWarning(`${phase} hook failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -207,7 +278,7 @@ export async function runHook(
     } else {
       for (const cmd of commands) {
         try {
-          await execLocal(['bash', '-c', cmd], projectRoot, timeoutS * 1000, fatal, phase);
+          await execLocal([localBash, '-c', cmd], projectRoot, timeoutS * 1000, fatal, phase);
         } catch (error) {
           if (error instanceof DeployError) throw error;
           printWarning(`${phase} hook failed: ${error instanceof Error ? error.message : String(error)}`);

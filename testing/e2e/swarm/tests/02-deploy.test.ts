@@ -33,16 +33,9 @@ describe("deploy", () => {
   test("hooks ran at all four phases with rendered templates", async () => {
     // The fixture hooks each echo a HOOK_TEST line with Nunjucks variables —
     // their presence in the deploy output proves the hook executed AND that
-    // template rendering worked (build hooks run locally, deploy hooks on
-    // the server with output relayed over SSH).
-    //
-    // Build hooks run locally and need a real bash: on Windows dev machines
-    // the System32 WSL stub shadows Git Bash and local hooks fail (non-fatal)
-    // — so the local phases are only asserted where bash works (CI is Linux).
-    const phases = process.platform === "win32"
-      ? ["pre-deploy", "post-deploy"]
-      : ["pre-build", "post-build", "pre-deploy", "post-deploy"];
-    for (const phase of phases) {
+    // template rendering worked (build hooks run locally through the resolved
+    // bash — Git Bash on Windows — deploy hooks on the server over SSH).
+    for (const phase of ["pre-build", "post-build", "pre-deploy", "post-deploy"]) {
       expect(deployOutput).toContain(
         `HOOK_TEST: ${phase} executed for test-app version ${TEST_VERSION}`,
       );
