@@ -9,6 +9,10 @@ KUBECONFIG_SRC="/etc/rancher/k3s/k3s.yaml"
 KUBECONFIG_DST="/var/lib/dockflow/k3s.yaml"
 
 if [ "${K3S_ROLE}" = "server" ]; then
+    # Let remote health checks reach the test app through Traefik by domain:
+    # curl http://k3s.test.local on this node hits Traefik's web entrypoint.
+    echo "127.0.0.1 k3s.test.local" >> /etc/hosts
+
     log "Starting k3s server..."
     # Traefik stays enabled: the e2e suite asserts IngressRoute generation
     # and HTTP routing through the k3s-bundled Traefik.

@@ -13,3 +13,17 @@ proxy:
   acme: false
   domains:
     test: "k3s.test.local"
+
+# The remote check curls through the k3s-bundled Traefik (the test node
+# resolves k3s.test.local to itself — see entrypoint.k3s.sh). Generous
+# retries: on a fresh cluster Traefik may still be rolling out.
+health_checks:
+  startup_delay: 5
+  on_failure: fail
+  endpoints:
+    - url: "http://k3s.test.local"
+      name: "web via ingress"
+      remote: true
+      expected_status: 200
+      retries: 8
+      retry_delay: 5

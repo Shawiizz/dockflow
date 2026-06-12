@@ -260,7 +260,7 @@ Two independent suites under `testing/e2e/`, one per orchestrator, each with its
 
 **Swarm suite** (`swarm/tests/01-09`): Docker-in-Docker with a manager (`dockflow-test-manager`, SSH port 32222) and worker (`dockflow-test-worker-1`, port 32223), compose project `dockflow-swarm`. Covers build, deploy, Traefik routing, backup/restore, remote build, HTTP health checks, automatic rollback on failed health checks (dedicated `test-app-rb` stack), uploads with rollback on failed deploys (dedicated `test-app-up` stack), exec/logs, and registry distribution (anonymous `registry:2` inside the manager at `localhost:35000`, dedicated `test-app-reg` stack pinned to the manager). The preload resets the cluster and pre-deploys the shared test-app.
 
-**k3s suite** (`k3s/tests/10`): k3s-in-Docker single node (`dockflow-test-k3s`, port 32224, Traefik enabled), compose project `dockflow-k3s`. Covers deploy, namespace creation, replicas, logs, exec, scale, IngressRoute generation and Traefik HTTP routing. The test file owns the cluster lifecycle.
+**k3s suite** (`k3s/tests/10`): k3s-in-Docker single node (`dockflow-test-k3s`, port 32224, Traefik enabled), compose project `dockflow-k3s`. Covers deploy, namespace creation, replicas, logs, exec, scale, IngressRoute generation, Traefik HTTP routing, and remote HTTP health checks through the ingress. The test file owns the cluster lifecycle.
 
 Test helpers: `helpers/fixtures.ts` (temp-dir fixture copies — fixture templates in `fixtures/` are read-only, tests never write into the repo tree), `helpers/docker.ts` (Swarm assertions), `helpers/k8s.ts` (kubectl assertions), `helpers/cluster.ts` (cluster lifecycle for both).
 

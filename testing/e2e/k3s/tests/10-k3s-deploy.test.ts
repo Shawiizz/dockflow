@@ -35,7 +35,7 @@ describe("k3s deploy", () => {
     await stopK3sCluster();
   }, 60_000);
 
-  test("deploys to k3s successfully", async () => {
+  test("deploys to k3s successfully (incl. remote HTTP health check)", async () => {
     const result = await runCLI(["deploy", TEST_ENV, TEST_VERSION, "--force"], {
       cwd: fixture.dir,
     });
@@ -46,7 +46,11 @@ describe("k3s deploy", () => {
       await dumpK3sDebug(NAMESPACE);
     }
     expect(result.exitCode).toBe(0);
-  }, 180_000);
+    // The fixture has a remote endpoint check (on_failure: fail) curling
+    // through the bundled Traefik — exit 0 plus the absence of this prefix
+    // proves the HTTP health check path ran and passed on k3s.
+    expect(result.stdout + result.stderr).not.toContain("HTTP check failed");
+  }, 240_000);
 
   test("namespace is created", async () => {
     expect(await namespaceExists(NAMESPACE)).toBe(true);
