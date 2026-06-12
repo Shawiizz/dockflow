@@ -11,10 +11,13 @@ e2e/
   k3s/          # single-node k3s-in-Docker (compose project: dockflow-k3s)
     bunfig.toml #   preload: setup.ts (build CLI only — tests own the cluster lifecycle)
     tests/      #   10-k3s-deploy
+  setup/        # host provisioning on a clean ubuntu container
+    bunfig.toml #   preload: setup.ts (cross-compile the Linux binary)
+    tests/      #   20-setup (get.docker.com, deploy user, idempotent re-run)
   helpers/      # shared: CLI runner, cluster lifecycle, fixtures, assertions
   fixtures/     # READ-ONLY templates — never written to by tests
   docker/       # images + compose files for the test clusters
-  teardown.ts   # stops both clusters
+  teardown.ts   # stops all test containers
 ```
 
 ## Running
@@ -22,6 +25,7 @@ e2e/
 ```bash
 cd testing/e2e/swarm && bun test tests/    # Swarm suite
 cd testing/e2e/k3s   && bun test tests/    # k3s suite
+cd testing/e2e/setup && bun test tests/    # setup/provisioning suite
 bun run testing/e2e/teardown.ts            # stop all test containers
 ```
 

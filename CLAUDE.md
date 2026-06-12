@@ -67,6 +67,7 @@ pnpm build                     # Production build + LLM text generation + Pagefi
 ```bash
 cd testing/e2e/swarm && bun test tests/   # Swarm suite (DinD, 2 nodes)
 cd testing/e2e/k3s && bun test tests/     # k3s suite (k3s-in-Docker)
+cd testing/e2e/setup && bun test tests/   # Setup/provisioning suite (clean ubuntu container)
 bun run testing/e2e/teardown.ts           # Cleanup all test containers
 ```
 
@@ -261,6 +262,8 @@ Two independent suites under `testing/e2e/`, one per orchestrator, each with its
 
 **k3s suite** (`k3s/tests/10`): k3s-in-Docker single node (`dockflow-test-k3s`, port 32224, Traefik enabled), compose project `dockflow-k3s`. Covers deploy, namespace creation, replicas, logs, exec, scale, IngressRoute generation, Traefik HTTP routing, and remote HTTP health checks through the ingress. The test file owns the cluster lifecycle.
 
+**Setup suite** (`setup/tests/20`): host provisioning on a clean `ubuntu:24.04` container (`dockflow-test-setup`). Runs the cross-compiled Linux binary inside it: non-interactive `dockflow setup`, Docker install via get.docker.com, deploy user + docker group, `/var/lib/dockflow` permissions, no-Ansible/no-clone lightness check, and an idempotent re-run.
+
 Test helpers: `helpers/fixtures.ts` (temp-dir fixture copies — fixture templates in `fixtures/` are read-only, tests never write into the repo tree), `helpers/docker.ts` (Swarm assertions), `helpers/k8s.ts` (kubectl assertions), `helpers/cluster.ts` (cluster lifecycle for both).
 
 E2E tests run on Linux, WSL and Windows (Docker required). CI runs both suites as parallel matrix jobs.
@@ -270,7 +273,7 @@ E2E tests run on Linux, WSL and Windows (Docker required). CI runs both suites a
 - **publish-cli.yml** — Triggered by version tags. Runs typecheck + lint + unit tests, then builds multi-platform binaries (linux-x64/arm64, macos-x64/arm64, windows-x64), creates GitHub Release, publishes to npm (`@dockflow-tools/cli`).
 - **cli-checks.yml** — Runs on push to main/develop and PRs. Typecheck (`tsc --noEmit`), Biome lint, and unit tests (`bun test src/`) in `cli/`.
 - **deploy-docs.yml** — Documentation site deployment. Installs CLI and runs `dockflow deploy` directly.
-- **e2e-tests.yml** — Runs on push to main/develop and PRs. Matrix of two parallel jobs (swarm, k3s), each running `bun test tests/` in `testing/e2e/<suite>/`.
+- **e2e-tests.yml** — Runs on push to main/develop and PRs. Matrix of three parallel jobs (swarm, k3s, setup), each running `bun test tests/` in `testing/e2e/<suite>/`.
 - **shell-lint.yml** — ShellCheck validation.
 
 CI/CD integration is handled entirely by the CLI itself — no reusable workflows or external templates needed. The CLI auto-detects environment and version from CI provider env vars (GitHub Actions, GitLab CI, Jenkins, Buildkite) when `dockflow deploy` or `dockflow build` are called without arguments. Users generate a standalone CI workflow via `dockflow init`.

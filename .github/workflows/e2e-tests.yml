@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [swarm, k3s]
+        suite: [swarm, k3s, setup]
 
     steps:
       - name: Checkout code
@@ -78,6 +78,15 @@ jobs:
           echo ""
           echo "=== Overlay Networks ==="
           docker exec dockflow-test-manager docker network ls --filter driver=overlay 2>/dev/null || true
+
+      - name: Show setup container state on failure
+        if: failure() && matrix.suite == 'setup'
+        run: |
+          echo "=== Container Status ==="
+          docker ps -a --filter name=dockflow-test-setup
+          echo ""
+          echo "=== Provisioned State ==="
+          docker exec dockflow-test-setup sh -c 'command -v docker && docker --version; ls -ld /var/lib/dockflow; id deploytest' 2>&1 || echo "Container not inspectable"
 
       - name: Show k3s logs on failure
         if: failure() && matrix.suite == 'k3s'

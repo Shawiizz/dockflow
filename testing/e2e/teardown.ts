@@ -6,9 +6,11 @@
  * Usage: bun run testing/e2e/teardown.ts
  */
 
-import { stopCluster, stopK3sCluster } from "./helpers/cluster";
+import { exec, stopCluster, stopK3sCluster } from "./helpers/cluster";
 
 await stopCluster();
 await stopK3sCluster();
+// Setup-suite container (plain docker run, not compose-managed)
+await exec(["docker", "rm", "-f", "dockflow-test-setup"]).catch(() => {});
 
 console.log("Teardown complete.");

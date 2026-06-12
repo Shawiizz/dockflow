@@ -1,0 +1,5 @@
+[test]
+preload = ["./setup.ts"]
+
+# Setup provisions a clean container (apt + get.docker.com) — generous timeout
+timeout = 600000
