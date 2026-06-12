@@ -11,6 +11,9 @@ services:
     ports:
       - "32222:22"
       - "38080:80"
+      # e2e registry (runs inside this DinD node, published in cascade so
+      # `localhost:35000` works from both the host and the inner daemon)
+      - "35000:35000"
     volumes:
       - swarm-data:/swarm
       - /etc/ssl/certs:/etc/ssl/certs:ro

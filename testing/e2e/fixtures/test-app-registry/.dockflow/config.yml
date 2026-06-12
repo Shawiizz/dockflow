@@ -1,0 +1,13 @@
+project_name: "test-app-reg"
+
+stack_management:
+  keep_releases: 3
+  cleanup_on_failure: true
+
+registry:
+  type: custom
+  url: "localhost:35000"
+  username: e2e
+  password: e2e-dummy
+  additional_tags:
+    - "{env}-latest"

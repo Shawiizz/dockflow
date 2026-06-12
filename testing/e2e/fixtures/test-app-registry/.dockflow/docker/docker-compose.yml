@@ -1,0 +1,17 @@
+services:
+  web:
+    image: test-reg-web-app
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    ports:
+      - "{{ current.env.web_port }}:80"
+    deploy:
+      replicas: 1
+      # Pinned to the manager: the e2e registry lives there and is only
+      # reachable as localhost:35000 from that node.
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure

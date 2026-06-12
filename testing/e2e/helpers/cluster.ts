@@ -72,6 +72,31 @@ export async function startCluster(): Promise<void> {
     "traefik:v3.6",
     "nginx:alpine",
   ]);
+
+  await startRegistry();
+}
+
+/**
+ * Start an anonymous Docker registry inside the manager DinD node.
+ *
+ * It publishes port 35000 inside the manager, and docker-compose.yml maps
+ * 35000:35000 to the host — so the SAME image name `localhost:35000/...`
+ * resolves to this registry from the host (CLI push) and from the manager's
+ * inner daemon (service pull). Loopback registries are exempt from TLS
+ * requirements, so no insecure-registries daemon config is needed anywhere.
+ * The worker cannot reach it — registry-mode fixtures pin services to the
+ * manager, which also lets tests assert the SSH distribution was skipped.
+ */
+async function startRegistry(): Promise<void> {
+  console.log("[cluster] Starting e2e registry on the manager (localhost:35000)...");
+  await exec(
+    ["docker", "exec", MANAGER_CONTAINER, "docker", "pull", "registry:2"],
+    { timeoutMs: 120_000 },
+  );
+  await exec([
+    "docker", "exec", MANAGER_CONTAINER, "sh", "-c",
+    "docker rm -f e2e-registry 2>/dev/null; docker run -d --name e2e-registry --restart unless-stopped -p 35000:5000 registry:2",
+  ]);
 }
 
 /**

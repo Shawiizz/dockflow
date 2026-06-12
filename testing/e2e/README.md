@@ -7,7 +7,7 @@ lifecycle and can run in isolation (CI runs them as parallel jobs).
 e2e/
   swarm/        # 2-node Docker-in-Docker Swarm (compose project: dockflow-swarm)
     bunfig.toml #   preload: setup.ts (build CLI, reset cluster, pre-deploy test-app)
-    tests/      #   01-build … 08-exec-logs
+    tests/      #   01-build … 09-registry
   k3s/          # single-node k3s-in-Docker (compose project: dockflow-k3s)
     bunfig.toml #   preload: setup.ts (build CLI only — tests own the cluster lifecycle)
     tests/      #   10-k3s-deploy
@@ -46,5 +46,13 @@ routes, service names), its own `project_name`. See the failing-endpoint
 test in `05-http-healthcheck.test.ts` for the pattern.
 
 **Ports are statically allocated** (`helpers/connection.ts`): Swarm manager
-:32222, worker :32223, k3s :32224, Traefik HTTP :38080. The two clusters use
-separate compose projects and networks and can run simultaneously.
+:32222, worker :32223, k3s :32224, Traefik HTTP :38080, e2e registry :35000.
+The two clusters use separate compose projects and networks and can run
+simultaneously.
+
+**The e2e registry** (`registry:2`, anonymous) runs inside the manager DinD
+node with its port published in cascade, so the single image name
+`localhost:35000/...` resolves from the host (CLI push) and from the
+manager's inner daemon (service pull) — loopback registries are TLS-exempt,
+no daemon configuration needed. Registry-mode fixtures must pin their
+services to the manager.
