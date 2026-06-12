@@ -674,7 +674,9 @@ Configure a server without prompts (Linux only, must run on target host). Pass f
 | `--password <password>` | Password for new user or sudo |
 | `--ssh-key <path>` | Path to existing SSH private key |
 | `--generate-key` | Generate new SSH key |
+| `--deploy-password <pw>` | Password for the deploy user created remotely (remote, with `--user`) |
 | `--skip-docker-install` | Skip Docker installation |
+| `--orchestrator <type>` | `swarm` (default) or `k3s` — k3s skips the Docker install |
 | `--portainer` | Install Portainer |
 | `--portainer-port <port>` | Portainer HTTP port (default: 9000) |
 | `--portainer-password <pw>` | Portainer admin password |
@@ -726,6 +728,7 @@ Display connection string for an existing deployment user.
 - `.dockflow/config.yml` with `project_name`
 
 **For setup commands (on target Linux host):**
+- Root access (local setup must run as root; remote setup escalates automatically)
 - SSH (`ssh`, `ssh-keygen`)
 - curl (downloads the Docker install script)
 

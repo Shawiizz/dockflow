@@ -5,14 +5,12 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { printIntro, printSection, printSuccess, printInfo, printWarning, printBlank, printRaw, colors } from '../../utils/output';
+import { printIntro, printSection, printSuccess, printBlank, printRaw, colors } from '../../utils/output';
 import { CLIError, ErrorCode } from '../../utils/errors';
-import { checkDependencies, installDependencies, detectPackageManager } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
-import { generateSSHKey, addToAuthorizedKeys } from './ssh-keys';
-import { createDeployUser, configureServiceAccess } from './user';
-import { displayConnectionInfo } from './connection';
-import { provisionHost } from './provision';
+import { generateSSHKey, addToAuthorizedKeys } from './key-files';
+import { createDeployUser, } from './user';
+import { ensureSetupDependencies, completeSetup } from './flow';
 import type { SetupOptions, HostConfig } from './types';
 
 /**
@@ -22,38 +20,7 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
   printIntro('Machine Setup (Non-Interactive)');
   printBlank();
 
-  const deps = checkDependencies();
-  if (!deps.ok) {
-    printInfo('Missing required dependencies, attempting automatic installation...');
-    deps.missing.forEach(m => printWarning(`  - ${m}`));
-    printBlank();
-    
-    const pm = detectPackageManager();
-    if (pm) {
-      const success = installDependencies(deps.missingDeps);
-      if (!success) {
-        throw new CLIError(
-          'Failed to install dependencies automatically',
-          ErrorCode.COMMAND_FAILED
-        );
-      }
-      printBlank();
-
-      // Re-check dependencies
-      const recheck = checkDependencies();
-      if (!recheck.ok) {
-        throw new CLIError(
-          `Some dependencies are still missing: ${recheck.missing.join(', ')}`,
-          ErrorCode.VALIDATION_FAILED
-        );
-      }
-    } else {
-      throw new CLIError(
-        `Could not detect package manager. Please install dependencies manually: ${deps.missing.join(', ')}`,
-        ErrorCode.COMMAND_FAILED
-      );
-    }
-  }
+  await ensureSetupDependencies();
 
   const publicHost = options.host || detectPublicIP();
   const sshPort = parseInt(options.port || detectSSHPort().toString(), 10);
@@ -131,6 +98,7 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
     deployPassword,
     privateKeyPath,
     skipDockerInstall: options.skipDockerInstall || false,
+    orchestrator: options.orchestrator || 'swarm',
     installNginx: options.nginx || false,
     portainer: {
       install: options.portainer || false,
@@ -141,16 +109,5 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
   };
 
   printBlank();
-  provisionHost(config);
-
-  // nginx may have just been installed — reconfigure service access now that
-  // the binaries are available.
-  configureServiceAccess(deployUser);
-
-  printBlank();
-  printSection('Setup Complete');
-  printSuccess('The machine has been successfully configured!');
-
-  const privateKey = fs.readFileSync(privateKeyPath, 'utf-8');
-  displayConnectionInfo(config, privateKey);
+  completeSetup(config);
 }

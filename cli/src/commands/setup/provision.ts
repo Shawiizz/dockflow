@@ -3,9 +3,10 @@
  * playbook: Docker install, /var/lib/dockflow, nginx, Portainer.
  *
  * Runs locally on the target Linux host (local setup mode — the remote setup
- * flow ships the binary and re-executes it on the server). Privileged
- * commands go through sudo, like the rest of the setup flow. Every step is
- * idempotent: it checks the current state before changing anything.
+ * flow ships the binary and re-executes it on the server). Setup enforces
+ * root before provisioning starts, so commands run directly (no sudo binary
+ * required). Every step is idempotent: it checks the current state before
+ * changing anything.
  */
 
 import { spawnSync } from 'child_process';
@@ -70,9 +71,14 @@ interface RunResult {
   stderr: string;
 }
 
-/** Run a command via sudo, streaming output to the console. */
-function sudoRun(args: string[], opts?: { quiet?: boolean; input?: string }): RunResult {
-  const result = spawnSync('sudo', args, {
+/**
+ * Run a privileged command, streaming output to the console unless quiet.
+ * Setup enforces root before provisioning starts (see setup/index.ts), so no
+ * sudo prefix is needed — which also keeps minimal systems without a sudo
+ * binary working.
+ */
+function run(args: string[], opts?: { quiet?: boolean; input?: string }): RunResult {
+  const result = spawnSync(args[0], args.slice(1), {
     encoding: 'utf-8',
     stdio: opts?.quiet || opts?.input !== undefined
       ? ['pipe', 'pipe', 'pipe']
@@ -92,7 +98,7 @@ function sudoRun(args: string[], opts?: { quiet?: boolean; input?: string }): Ru
 
 /** Create /var/lib/dockflow owned by the deploy user (mode 0750). */
 function ensureDockflowDir(deployUser: string): void {
-  const result = sudoRun([
+  const result = run([
     'sh', '-c',
     `mkdir -p '${DOCKFLOW_BASE_DIR}' && chown '${deployUser}:${deployUser}' '${DOCKFLOW_BASE_DIR}' && chmod 0750 '${DOCKFLOW_BASE_DIR}'`,
   ], { quiet: true });
@@ -132,7 +138,7 @@ function installDocker(): void {
     );
   }
 
-  const install = sudoRun(['sh', '-c', `${downloader} | sh`]);
+  const install = run(['sh', '-c', `${downloader} | sh`]);
   if (!install.ok || !commandExists('docker')) {
     throw new CLIError(
       'Docker installation failed',
@@ -143,7 +149,7 @@ function installDocker(): void {
 
   // Enable + start the daemon (best effort — non-systemd hosts manage it themselves)
   if (commandExists('systemctl')) {
-    const enable = sudoRun(['systemctl', 'enable', '--now', 'docker'], { quiet: true });
+    const enable = run(['systemctl', 'enable', '--now', 'docker'], { quiet: true });
     if (!enable.ok) {
       printWarning(`Could not enable the Docker service: ${enable.stderr.trim()}`);
     }
@@ -176,7 +182,7 @@ function installNginx(config: HostConfig): void {
       zypper: ['zypper', 'install', '-y', nginxPackageFor(pm)],
       apk: ['apk', 'add', nginxPackageFor(pm)],
     };
-    const install = sudoRun(installCmds[pm]);
+    const install = run(installCmds[pm]);
     if (!install.ok || !commandExists('nginx')) {
       throw new CLIError('nginx installation failed', ErrorCode.COMMAND_FAILED);
     }
@@ -186,7 +192,7 @@ function installNginx(config: HostConfig): void {
 
   // Debian-style layout: drop the default site so dockflow vhosts take over
   if (fs.existsSync('/etc/nginx/sites-enabled/default')) {
-    sudoRun(['rm', '-f', '/etc/nginx/sites-enabled/default'], { quiet: true });
+    run(['rm', '-f', '/etc/nginx/sites-enabled/default'], { quiet: true });
   }
 
   // Portainer vhost (only when Portainer is installed with a domain)
@@ -197,15 +203,15 @@ function installNginx(config: HostConfig): void {
     const vhostPath = `${vhostDir}/portainer${vhostDir.endsWith('conf.d') ? '.conf' : ''}`;
     const vhost = buildPortainerVhost(config.portainer.domain, config.portainer.port);
 
-    const write = sudoRun(['sh', '-c', `cat > '${vhostPath}'`], { quiet: true, input: vhost });
+    const write = run(['sh', '-c', `cat > '${vhostPath}'`], { quiet: true, input: vhost });
     if (!write.ok) {
       throw new CLIError(`Failed to write ${vhostPath}: ${write.stderr.trim()}`, ErrorCode.COMMAND_FAILED);
     }
-    printSuccess(`Portainer vhost written (${config.portainer.domain} → :${config.portainer.port})`);
+    printSuccess(`Portainer vhost written (${config.portainer.domain} â†’ :${config.portainer.port})`);
   }
 
   // Validate config before (re)starting
-  const test = sudoRun(['nginx', '-t'], { quiet: true });
+  const test = run(['nginx', '-t'], { quiet: true });
   if (!test.ok) {
     throw new CLIError(
       `nginx configuration test failed:\n${test.stderr.trim() || test.stdout.trim()}`,
@@ -214,11 +220,11 @@ function installNginx(config: HostConfig): void {
   }
 
   if (commandExists('systemctl')) {
-    const enable = sudoRun(['systemctl', 'enable', '--now', 'nginx'], { quiet: true });
+    const enable = run(['systemctl', 'enable', '--now', 'nginx'], { quiet: true });
     if (!enable.ok) {
       printWarning(`Could not enable nginx: ${enable.stderr.trim()}`);
     }
-    sudoRun(['systemctl', 'reload', 'nginx'], { quiet: true });
+    run(['systemctl', 'reload', 'nginx'], { quiet: true });
   }
 
   printSuccess('nginx configured');
@@ -240,14 +246,22 @@ function installPortainer(config: HostConfig): void {
 
   printInfo('Setting up Portainer...');
 
-  const volume = sudoRun(['docker', 'volume', 'create', 'portainer_data'], { quiet: true });
+  // Portainer only applies --admin-password on a fresh data volume — warn on
+  // re-runs with an existing one, or the new password is silently ignored.
+  if (run(['docker', 'volume', 'inspect', 'portainer_data'], { quiet: true }).ok) {
+    printWarning(
+      'portainer_data volume already exists — the admin password only applies on first initialization and will NOT be changed.',
+    );
+  }
+
+  const volume = run(['docker', 'volume', 'create', 'portainer_data'], { quiet: true });
   if (!volume.ok) {
     throw new CLIError(`Failed to create portainer_data volume: ${volume.stderr.trim()}`, ErrorCode.COMMAND_FAILED);
   }
 
   // Hash the admin password with bcrypt inside a throwaway httpd container.
   // -i reads the password from stdin so it never appears in process args.
-  const hashRun = sudoRun(
+  const hashRun = run(
     ['docker', 'run', '--rm', '-i', 'httpd:2.4-alpine', 'htpasswd', '-niB', 'admin'],
     { quiet: true, input: `${password}\n` },
   );
@@ -260,9 +274,9 @@ function installPortainer(config: HostConfig): void {
   }
 
   // Recreate the container (parity with the previous behavior)
-  sudoRun(['docker', 'rm', '-f', 'portainer'], { quiet: true });
+  run(['docker', 'rm', '-f', 'portainer'], { quiet: true });
 
-  const run = sudoRun([
+  const startResult = run([
     'docker', 'run', '-d',
     '--name', 'portainer',
     '--restart', 'always',
@@ -275,8 +289,8 @@ function installPortainer(config: HostConfig): void {
     `--admin-password=${hash}`,
   ], { quiet: true });
 
-  if (!run.ok) {
-    throw new CLIError(`Failed to start Portainer: ${run.stderr.trim()}`, ErrorCode.COMMAND_FAILED);
+  if (!startResult.ok) {
+    throw new CLIError(`Failed to start Portainer: ${startResult.stderr.trim()}`, ErrorCode.COMMAND_FAILED);
   }
 
   printSuccess(`Portainer running on port ${port}`);
@@ -294,8 +308,17 @@ export function provisionHost(config: HostConfig): void {
   printSection('Provisioning host');
   printBlank();
 
+  if (config.orchestrator === 'k3s' && config.portainer.install) {
+    throw new CLIError(
+      'Portainer requires Docker and is not supported with --orchestrator k3s',
+      ErrorCode.INVALID_ARGUMENT,
+    );
+  }
+
   if (config.skipDockerInstall) {
     printDim('Docker install skipped (--skip-docker-install)');
+  } else if (config.orchestrator === 'k3s') {
+    printDim('Docker install skipped: k3s uses containerd (run `dockflow setup k3s <env>` afterwards to install the cluster)');
   } else {
     installDocker();
   }

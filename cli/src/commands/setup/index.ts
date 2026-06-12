@@ -15,11 +15,12 @@ import { printIntro, printSuccess, printWarning, printInfo, printBlank, printRaw
 import { isLinux, displayDependencyStatus } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
 import { prompt } from './prompts';
-import { listSSHKeys } from './ssh-keys';
+import { listSSHKeys } from './key-files';
 import { displayConnectionInfo, parseConnectionString } from './connection';
 import { runInteractiveSetup } from './interactive';
 import { runNonInteractiveSetup } from './non-interactive';
 import { runRemoteSetup, promptRemoteConnection } from './remote';
+import { buildForwardFlags } from './forward';
 import { runSetupSwarm } from './swarm';
 import { runSetupK3s } from './k3s';
 import { CLIError, ConfigError, ErrorCode, withErrorHandler } from '../../utils/errors';
@@ -51,7 +52,9 @@ export function registerSetupCommand(program: Command): void {
     .option('--user <user>', 'Deployment username (local, creates new user if different from current)')
     .option('--ssh-key <path>', 'Path to existing SSH private key (local)')
     .option('--generate-key', 'Generate new SSH key (local)')
+    .option('--deploy-password <password>', 'Password for the deploy user created on the remote host (remote, with --user)')
     .option('--skip-docker-install', 'Skip Docker installation (local)')
+    .option('--orchestrator <type>', 'Target orchestrator: swarm or k3s (k3s skips the Docker install)', 'swarm')
     .option('--nginx', 'Install Nginx (local)')
     .option('--portainer', 'Install Portainer (local)')
     .option('--portainer-port <port>', 'Portainer HTTP port (local)', '9000')
@@ -59,7 +62,15 @@ export function registerSetupCommand(program: Command): void {
     .option('--portainer-domain <domain>', 'Portainer domain name (local)')
     .option('-y, --yes', 'Skip confirmations (local)')
     .option('--dev', 'Build and upload local CLI binary instead of downloading from GitHub (development)')
-    .action(withErrorHandler(async (target: string | undefined, options: SetupOptions & { key?: string; connection?: string; dev?: boolean }) => {
+    .action(withErrorHandler(async (target: string | undefined, options: SetupOptions & { key?: string; connection?: string; dev?: boolean; deployPassword?: string }) => {
+      if (options.orchestrator && options.orchestrator !== 'swarm' && options.orchestrator !== 'k3s') {
+        throw new CLIError(
+          `Invalid orchestrator: "${options.orchestrator}"`,
+          ErrorCode.INVALID_ARGUMENT,
+          'Supported values: swarm, k3s',
+        );
+      }
+
       let remoteOpts: RemoteSetupOptions | null = null;
 
       if (options.connection) {
@@ -110,15 +121,19 @@ export function registerSetupCommand(program: Command): void {
           remoteOpts = await promptRemoteConnection(remoteOpts);
           if (!remoteOpts) return;
         }
-        // Forward local flags to the remote setup command
-        const forwardFlags: string[] = [];
-        if (options.skipDockerInstall) forwardFlags.push('--skip-docker-install');
-        if (options.nginx) forwardFlags.push('--nginx');
-        if (options.portainer) forwardFlags.push('--portainer');
-        if (options.portainerPort) forwardFlags.push(`--portainer-port ${options.portainerPort}`);
-        if (options.portainerPassword) forwardFlags.push(`--portainer-password ${options.portainerPassword}`);
-        if (options.yes) forwardFlags.push('--yes');
-        if (forwardFlags.length > 0) remoteOpts.forwardFlags = forwardFlags;
+
+        if (options.user && !options.deployPassword) {
+          throw new CLIError(
+            '--user requires --deploy-password in remote mode',
+            ErrorCode.INVALID_ARGUMENT,
+            'The password is used to create the deploy user on the server.',
+          );
+        }
+
+        remoteOpts.forwardFlags = buildForwardFlags(
+          { ...options, deployPassword: options.deployPassword },
+          { host: remoteOpts.host, port: remoteOpts.port },
+        );
 
         await runRemoteSetup(remoteOpts);
         return;
@@ -130,6 +145,16 @@ export function registerSetupCommand(program: Command): void {
           'This command must be run directly on a Linux host.',
           ErrorCode.INVALID_ARGUMENT,
           'Use "dockflow setup user@host" to setup a remote Linux server via SSH.'
+        );
+      }
+
+      // Provisioning needs root: useradd, package installs, get.docker.com.
+      // (Deploys never need root — only setup does.)
+      if (typeof process.getuid === 'function' && process.getuid() !== 0) {
+        throw new CLIError(
+          'dockflow setup must run as root on the local machine.',
+          ErrorCode.INVALID_ARGUMENT,
+          'Re-run with: sudo dockflow setup ...',
         );
       }
 
@@ -234,6 +259,7 @@ export function registerSetupCommand(program: Command): void {
         deployUser: user,
         privateKeyPath: keyPath,
         skipDockerInstall: false,
+        orchestrator: 'swarm',
         installNginx: false,
         portainer: { install: false, port: 9000 }
       }, privateKey);

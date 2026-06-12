@@ -11,7 +11,8 @@ import type { ConnectionInfo } from '../../types';
 import { isKeyConnection } from '../../types';
 import { normalizePrivateKey } from '../../utils/ssh-keys';
 import { DOCKFLOW_RELEASE_URL } from './constants';
-import { DEFAULT_SSH_PORT } from '../../constants';
+import { DEFAULT_SSH_PORT, DOCKFLOW_VERSION } from '../../constants';
+import { buildBinaryDownloadUrl } from './forward';
 import { prompt, promptPassword, selectMenu, promptMultiline } from './prompts';
 import { parseConnectionString } from './connection';
 import type { RemoteSetupOptions } from './types';
@@ -315,8 +316,10 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
     const arch = await detectRemoteArch(conn);
     archSpinner.succeed(`Server architecture: ${arch}`);
 
+    // Pinned to this CLI's version so the binary provisioning the server is
+    // the same one the operator runs (dev builds fall back to latest).
     const binaryName = `dockflow-linux-${arch}`;
-    const downloadUrl = `${DOCKFLOW_RELEASE_URL}/${binaryName}`;
+    const downloadUrl = buildBinaryDownloadUrl(DOCKFLOW_RELEASE_URL, DOCKFLOW_VERSION, binaryName);
 
     const downloadSpinner = createSpinner();
     downloadSpinner.start('Downloading Dockflow CLI to remote server...');
@@ -338,9 +341,12 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   printDim('─'.repeat(60));
   printBlank();
 
+  // root runs the binary directly (sudo may not even exist on minimal
+  // systems); other users escalate through sudo.
+  const sudoPrefix = opts.user === 'root' ? '' : 'sudo ';
   const remoteCmd = opts.forwardFlags?.length
-    ? `sudo ${remotePath} setup ${opts.forwardFlags.join(' ')}`
-    : `sudo ${remotePath} setup`;
+    ? `${sudoPrefix}${remotePath} setup ${opts.forwardFlags.join(' ')}`
+    : `${sudoPrefix}${remotePath} setup`;
   await executeInteractiveSSH(conn, remoteCmd);
 
   printBlank();

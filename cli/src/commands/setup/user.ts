@@ -24,11 +24,19 @@ const NGINX_SITES_ENABLED = '/etc/nginx/sites-enabled';
 export function configureServiceAccess(username: string): void {
   const sudoersRules: string[] = [];
 
+  /** Run a privileged config command; failures must be visible, not silent. */
+  const tryRun = (label: string, cmd: string, args: string[]): void => {
+    const result = spawnSync(cmd, args, { encoding: 'utf-8', stdio: 'pipe' });
+    if (result.status !== 0) {
+      printWarning(`Service access: ${label} failed: ${result.stderr.trim() || `exit ${result.status}`}`);
+    }
+  };
+
   // docker: group membership for socket access. The group only exists once
   // Docker is installed, which happens AFTER user creation — this re-run
   // post-provisioning is what actually grants the access.
   if (spawnSync('getent', ['group', 'docker'], { encoding: 'utf-8', stdio: 'pipe' }).status === 0) {
-    spawnSync('usermod', ['-aG', 'docker', username], { encoding: 'utf-8', stdio: 'pipe' });
+    tryRun('docker group membership', 'usermod', ['-aG', 'docker', username]);
   }
 
   // nginx: group-write on sites-enabled + restricted sudo for test/reload only
@@ -36,9 +44,9 @@ export function configureServiceAccess(username: string): void {
   if (nginxBin && spawnSync('test', ['-d', NGINX_SITES_ENABLED], { encoding: 'utf-8', stdio: 'pipe' }).status === 0) {
     const nginxUser = spawnSync('sh', ['-c', "nginx -T 2>/dev/null | awk '/^user[[:space:]]/{gsub(\";\",\"\",$2); print $2; exit}'"], { encoding: 'utf-8', stdio: 'pipe' }).stdout.trim();
     const nginxGroup = nginxUser || (spawnSync('getent', ['group', 'nginx'], { encoding: 'utf-8', stdio: 'pipe' }).status === 0 ? 'nginx' : 'www-data');
-    spawnSync('usermod', ['-aG', nginxGroup, username], { encoding: 'utf-8', stdio: 'pipe' });
-    spawnSync('chgrp', ['-R', nginxGroup, NGINX_SITES_ENABLED], { encoding: 'utf-8', stdio: 'pipe' });
-    spawnSync('chmod', ['-R', 'g+rwX', NGINX_SITES_ENABLED], { encoding: 'utf-8', stdio: 'pipe' });
+    tryRun('nginx group membership', 'usermod', ['-aG', nginxGroup, username]);
+    tryRun('sites-enabled group ownership', 'chgrp', ['-R', nginxGroup, NGINX_SITES_ENABLED]);
+    tryRun('sites-enabled group permissions', 'chmod', ['-R', 'g+rwX', NGINX_SITES_ENABLED]);
     sudoersRules.push(`${username} ALL=(ALL) NOPASSWD: ${nginxBin} -t, ${nginxBin} -s reload`);
   }
 
@@ -49,7 +57,13 @@ export function configureServiceAccess(username: string): void {
   const catBin = spawnSync('which', ['cat'], { encoding: 'utf-8', stdio: 'pipe' }).stdout.trim() || '/bin/cat';
   sudoersRules.push(`${username} ALL=(ALL) NOPASSWD: ${catBin} ${K3S_TOKEN_PATH}`);
 
-  writeFileSync(`/etc/sudoers.d/${username}`, sudoersRules.join('\n') + '\n', { mode: 0o440 });
+  try {
+    writeFileSync(`/etc/sudoers.d/${username}`, sudoersRules.join('\n') + '\n', { mode: 0o440 });
+  } catch (error) {
+    printWarning(
+      `Service access: could not write /etc/sudoers.d/${username}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 /**
@@ -70,15 +84,21 @@ export function createDeployUser(username: string, password: string, publicKey: 
     return false;
   }
 
-  const chpasswd = spawnSync('chpasswd', [], {
-    input: `${username}:${password}`,
-    encoding: 'utf-8',
-    stdio: ['pipe', 'pipe', 'pipe']
-  });
+  // Only set the password on a freshly created user — re-running setup must
+  // never silently reset an existing user's password.
+  if (userAlreadyExists) {
+    printWarning(`User ${username} already exists — password left unchanged`);
+  } else {
+    const chpasswd = spawnSync('chpasswd', [], {
+      input: `${username}:${password}`,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
 
-  if (chpasswd.status !== 0) {
-    spinner.fail(`Failed to set password: ${chpasswd.stderr}`);
-    return false;
+    if (chpasswd.status !== 0) {
+      spinner.fail(`Failed to set password: ${chpasswd.stderr}`);
+      return false;
+    }
   }
 
   // Add user to docker group (if docker is installed)

@@ -8,63 +8,24 @@ import * as os from 'os';
 import * as path from 'path';
 import { printIntro, printSection, printSuccess, printInfo, printWarning, printBlank, printRaw, colors } from '../../utils/output';
 import { CLIError, ErrorCode } from '../../utils/errors';
-import { checkDependencies, displayDependencyStatus, installDependencies, detectPackageManager } from './dependencies';
+import { displayDependencyStatus, } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
 import { prompt, promptPassword, confirm, selectMenu } from './prompts';
-import { generateSSHKey, addToAuthorizedKeys, listSSHKeys } from './ssh-keys';
-import { createDeployUser, promptAndValidateUserPassword, configureServiceAccess } from './user';
+import { generateSSHKey, addToAuthorizedKeys, authorizeKeyForUser, listSSHKeys } from './key-files';
+import { createDeployUser, promptAndValidateUserPassword, } from './user';
 import { displayConnectionInfo } from './connection';
-import { provisionHost } from './provision';
-import type { HostConfig } from './types';
+import { ensureSetupDependencies, completeSetup } from './flow';
+import type { HostConfig, SetupOrchestrator } from './types';
 
 /**
  * Run interactive setup wizard
  */
-export async function runInteractiveSetup(options?: { skipDockerInstall?: boolean; portainer?: boolean; portainerPort?: string; portainerPassword?: string }): Promise<void> {
+export async function runInteractiveSetup(options?: { skipDockerInstall?: boolean; orchestrator?: SetupOrchestrator; portainer?: boolean; portainerPort?: string; portainerPassword?: string }): Promise<void> {
   printIntro('Machine Setup Wizard');
   printBlank();
 
-  const deps = displayDependencyStatus();
-  if (!deps.ok) {
-    printWarning('Missing required dependencies:');
-    deps.missing.forEach(m => printWarning(`  - ${m}`));
-    printBlank();
-
-    const pm = detectPackageManager();
-    if (pm) {
-      const shouldInstall = await confirm('Install missing dependencies automatically?', true);
-      if (shouldInstall) {
-        printBlank();
-        const success = installDependencies(deps.missingDeps);
-        if (!success) {
-          throw new CLIError(
-            'Failed to install dependencies. Please install them manually and try again.',
-            ErrorCode.COMMAND_FAILED
-          );
-        }
-        printBlank();
-        
-        // Re-check dependencies
-        const recheck = checkDependencies();
-        if (!recheck.ok) {
-          throw new CLIError(
-            `Some dependencies are still missing: ${recheck.missing.join(', ')}`,
-            ErrorCode.VALIDATION_FAILED
-          );
-        }
-      } else {
-        throw new CLIError(
-          'Please install the missing dependencies and try again.',
-          ErrorCode.VALIDATION_FAILED
-        );
-      }
-    } else {
-      throw new CLIError(
-        `Could not detect package manager. Please install dependencies manually: ${deps.missing.join(', ')}`,
-        ErrorCode.COMMAND_FAILED
-      );
-    }
-  }
+  displayDependencyStatus();
+  await ensureSetupDependencies(() => confirm('Install missing dependencies automatically?', true));
 
   printSuccess('All dependencies satisfied');
   printBlank();
@@ -121,6 +82,19 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
         `Failed to generate SSH key: ${keyResult.error}`,
         ErrorCode.COMMAND_FAILED
       );
+    }
+
+    // Existing user: createDeployUser won't run, so the new key must be
+    // authorized here or the emitted connection string would not work.
+    if (!needsUserSetup) {
+      if (authorizeKeyForUser(`${keyPath}.pub`, deployUser)) {
+        printSuccess(`Key authorized for existing user ${deployUser}`);
+      } else {
+        throw new CLIError(
+          `Failed to authorize the new key for ${deployUser}`,
+          ErrorCode.COMMAND_FAILED
+        );
+      }
     }
   } else if (userChoice === 1) {
     deployUser = await prompt('Existing username', currentUser);
@@ -209,6 +183,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
       deployPassword,
       privateKeyPath,
       skipDockerInstall: false,
+      orchestrator: 'swarm',
       installNginx: false,
       portainer: { install: false, port: 9000 }
     }, privateKey);
@@ -284,21 +259,10 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
     deployPassword,
     privateKeyPath,
     skipDockerInstall: options?.skipDockerInstall || false,
+    orchestrator: options?.orchestrator || 'swarm',
     installNginx,
     portainer: portainerConfig
   };
 
-  provisionHost(config);
-
-  // nginx may have just been installed — reconfigure service access now that
-  // the binaries are available.
-  configureServiceAccess(deployUser);
-
-  printBlank();
-  printSection('Setup Complete');
-  printBlank();
-  printSuccess('The machine has been successfully configured!');
-
-  const privateKey = fs.readFileSync(privateKeyPath, 'utf-8');
-  displayConnectionInfo(config, privateKey);
+  completeSetup(config);
 }

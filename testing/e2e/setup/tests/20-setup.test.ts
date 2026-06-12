@@ -4,9 +4,9 @@
  * non-interactive setup, then asserts the provisioned state and that a
  * second run is idempotent.
  *
- * The container deliberately starts minimal (only sudo pre-installed, as on
- * any real server): the dependency auto-install path (openssh-client, curl)
- * is part of what's being tested.
+ * The container deliberately starts fully minimal (no sudo — setup runs as
+ * root and uses no sudo binary): the dependency auto-install path
+ * (openssh-client, curl) is part of what's being tested.
  */
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
@@ -45,11 +45,7 @@ describe("dockflow setup (host provisioning)", () => {
     await exec(["docker", "rm", "-f", CONTAINER]).catch(() => {});
     await exec(["docker", "run", "-d", "--name", CONTAINER, "ubuntu:24.04", "sleep", "infinity"]);
     await exec(["docker", "cp", BINARY, `${CONTAINER}:/usr/local/bin/dockflow`]);
-    // Real servers have sudo; the minimal ubuntu image does not.
-    await inContainer(
-      ["sh", "-c", "chmod +x /usr/local/bin/dockflow && apt-get update -qq && apt-get install -y -qq sudo"],
-      180_000,
-    );
+    await inContainer(["chmod", "+x", "/usr/local/bin/dockflow"]);
   }, 300_000);
 
   afterAll(async () => {

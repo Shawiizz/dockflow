@@ -1,11 +1,13 @@
 /**
- * SSH Key management utilities
+ * SSH key FILE management for setup (generation, authorized_keys, listing).
+ * Key *string* normalization/validation lives in utils/ssh-keys.ts.
  */
 
 import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { printWarning } from '../../utils/output';
 import type { SSHKeyResult } from './types';
 
 /**
@@ -79,6 +81,28 @@ export function addToAuthorizedKeys(pubKeyPath: string, user?: string): boolean 
   }
 
   fs.appendFileSync(authKeysPath, `${pubKey}\n`, { mode: 0o600 });
+  return true;
+}
+
+/**
+ * Authorize a public key for a specific user: appends it to the user's
+ * authorized_keys and fixes ownership/permissions (the setup runs as root,
+ * so files it creates under the user's home must be chowned back).
+ */
+export function authorizeKeyForUser(pubKeyPath: string, username: string): boolean {
+  const added = addToAuthorizedKeys(pubKeyPath, username === 'root' ? undefined : username);
+  if (!added) return false;
+
+  if (username !== 'root') {
+    const sshDir = `/home/${username}/.ssh`;
+    const chown = spawnSync('chown', ['-R', `${username}:${username}`, sshDir], { encoding: 'utf-8', stdio: 'pipe' });
+    if (chown.status !== 0) {
+      printWarning(`Could not chown ${sshDir} to ${username}: ${chown.stderr.trim()}`);
+      return false;
+    }
+    spawnSync('chmod', ['700', sshDir], { encoding: 'utf-8', stdio: 'pipe' });
+    spawnSync('chmod', ['600', `${sshDir}/authorized_keys`], { encoding: 'utf-8', stdio: 'pipe' });
+  }
   return true;
 }
 

@@ -2,6 +2,8 @@
  * Types and interfaces for setup commands
  */
 
+export type SetupOrchestrator = 'swarm' | 'k3s';
+
 export interface SetupOptions {
   host?: string;
   port?: string;
@@ -10,6 +12,7 @@ export interface SetupOptions {
   sshKey?: string;
   generateKey?: boolean;
   skipDockerInstall?: boolean;
+  orchestrator?: SetupOrchestrator;
   nginx?: boolean;
   portainer?: boolean;
   portainerPort?: string;
@@ -25,6 +28,7 @@ export interface HostConfig {
   deployPassword?: string;
   privateKeyPath: string;
   skipDockerInstall: boolean;
+  orchestrator: SetupOrchestrator;
   installNginx: boolean;
   portainer: PortainerConfig;
 }

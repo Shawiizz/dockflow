@@ -115,9 +115,11 @@ export function installDependencies(deps: Dependency[]): boolean {
   printInfo(`Installing: ${packages.join(', ')}`);
   printBlank();
 
-  // Update package cache
+  // Setup runs as root (enforced before provisioning) — no sudo needed,
+  // which also keeps minimal systems without a sudo binary working.
   printInfo('Updating package cache...');
-  const updateResult = spawnSync('sudo', cmds.update.split(' '), {
+  const updateParts = cmds.update.split(' ');
+  const updateResult = spawnSync(updateParts[0], updateParts.slice(1), {
     encoding: 'utf-8',
     stdio: 'inherit'
   });
@@ -128,8 +130,8 @@ export function installDependencies(deps: Dependency[]): boolean {
 
   // Install packages
   printInfo('Installing packages...');
-  const installArgs = [...cmds.install.split(' '), ...packages];
-  const installResult = spawnSync('sudo', installArgs, {
+  const installParts = cmds.install.split(' ');
+  const installResult = spawnSync(installParts[0], [...installParts.slice(1), ...packages], {
     encoding: 'utf-8',
     stdio: 'inherit'
   });

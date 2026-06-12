@@ -219,11 +219,13 @@ All steps are in `cli/src/commands/deploy.ts` using the services layer.
 
 ### Host Provisioning (`commands/setup/provision.ts`)
 
-`dockflow setup` provisions hosts in pure TypeScript (no Ansible, no repo clone on the server). Steps, all idempotent:
-- Docker install via the official `get.docker.com` script (multi-distro), skippable with `--skip-docker-install`
+`dockflow setup` provisions hosts in pure TypeScript (no Ansible, no repo clone on the server). Local setup requires root (no sudo binary needed — commands run directly). Steps, all idempotent:
+- Docker install via the official `get.docker.com` script (multi-distro), skippable with `--skip-docker-install` (and skipped with `--orchestrator k3s` — k3s uses containerd)
 - `/var/lib/dockflow` creation owned by the deploy user
 - Optional nginx install (package-manager aware) + Portainer vhost
-- Optional Portainer container (bcrypt admin password hashed via a throwaway `httpd` container, password passed on stdin — never in argv)
+- Optional Portainer container (bcrypt admin password hashed via a throwaway `httpd` container, password passed on stdin — never in argv; the password only applies on first initialization)
+
+Remote setup (`setup user@host`) ships the version-pinned binary and forwards flags — including `--user`/`--deploy-password` to create the deploy user non-interactively. Forwarded values are shell-quoted (`buildForwardFlags` in `setup/forward.ts`).
 
 ### Remote Directory Permissions
 
