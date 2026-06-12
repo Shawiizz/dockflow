@@ -122,10 +122,9 @@ export class Backup {
    * Resolve the node connection for a backup entry by matching nodeHost/nodePort.
    * Falls back to the manager connection if no match found.
    */
-  private resolveNodeConnection(entry: { nodeHost?: string; nodePort?: number }): SSHKeyConnection {
-    if (!entry.nodeHost) return this.connection;
+  private resolveNodeConnection(entry: { nodeHost: string; nodePort: number }): SSHKeyConnection {
     const all = [this.connection, ...this.allConnections];
-    return all.find(c => c.host === entry.nodeHost && c.port === (entry.nodePort ?? 22))
+    return all.find(c => c.host === entry.nodeHost && c.port === entry.nodePort)
       ?? this.connection;
   }
 
@@ -393,7 +392,7 @@ export class Backup {
       return err(new Error(`Backup ${backupId} not found`));
     }
 
-    let meta: BackupMetadata & { volumes?: { name: string; sizeBytes: number; mountType?: 'volume' | 'bind'; sourcePath?: string }[] };
+    let meta: BackupMetadata & { volumes?: { name: string; sizeBytes: number; mountType: 'volume' | 'bind'; sourcePath: string }[] };
     try {
       meta = JSON.parse(metaResult.stdout.trim());
     } catch {
@@ -416,7 +415,13 @@ export class Backup {
 
     for (const entry of volumeEntries) {
       const filePath = this.getDataFilePath(backupDir, backupId, 'volume', compression, entry.name);
-      const mountType = entry.mountType ?? 'volume';
+      const { mountType } = entry;
+
+      if (!mountType || (mountType === 'bind' && !entry.sourcePath)) {
+        return err(new Error(
+          `Backup metadata for ${backupId} is missing mount information for "${entry.name}" — refusing to restore`,
+        ));
+      }
 
       // The restore commands wipe the target before extracting — make sure
       // the source archive is sound before destroying anything.
@@ -428,7 +433,7 @@ export class Backup {
       }
 
       let restoreCmd: string;
-      if (mountType === 'bind' && entry.sourcePath) {
+      if (mountType === 'bind') {
         // Bind mount: clear target and extract directly on the host
         const src = shellEscape(entry.sourcePath);
         restoreCmd = `find '${src}' -mindepth 1 -delete && tar xf - -C '${src}'`;
@@ -454,7 +459,7 @@ export class Backup {
     for (let i = 0; i < restoreResults.length; i++) {
       const r = restoreResults[i];
       const { entry } = restoreTasks[i];
-      const mountType = entry.mountType || 'volume';
+      const { mountType } = entry;
       if (r.status === 'rejected') {
         return err(new Error(`Restore failed for ${mountType} ${entry.name}: ${r.reason?.message ?? 'unknown'}`));
       }
@@ -501,6 +506,11 @@ export class Backup {
           if (seenIds.has(meta.id)) continue;
           seenIds.add(meta.id);
 
+          if (!meta.nodeHost || !meta.nodePort) {
+            printDebug(`Skipping backup ${meta.id}: metadata has no node information`);
+            continue;
+          }
+
           const dir = this.getBackupDir(meta.service);
           const volumeName = meta.dbType === 'volume' && meta.volumes?.length
             ? meta.volumes[0].name
@@ -516,8 +526,8 @@ export class Backup {
             sizeBytes: meta.sizeBytes,
             compression: meta.compression,
             filePath: dataFile,
-            nodeHost: meta.nodeHost ?? this.connection.host,
-            nodePort: meta.nodePort ?? this.connection.port,
+            nodeHost: meta.nodeHost,
+            nodePort: meta.nodePort,
           });
         } catch (parseErr) {
           printDebug(`Skipping malformed backup metadata: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`);

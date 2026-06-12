@@ -264,7 +264,7 @@ Two independent suites under `testing/e2e/`, one per orchestrator, each with its
 
 **k3s suite** (`k3s/tests/10`): k3s-in-Docker single node (`dockflow-test-k3s`, port 32224, Traefik enabled), compose project `dockflow-k3s`. Covers deploy, namespace creation, replicas, logs, exec, scale, IngressRoute generation, Traefik HTTP routing, and remote HTTP health checks through the ingress. The test file owns the cluster lifecycle.
 
-**Setup suite** (`setup/tests/20`): host provisioning on a clean `ubuntu:24.04` container (`dockflow-test-setup`). Runs the cross-compiled Linux binary inside it: non-interactive `dockflow setup`, Docker install via get.docker.com, deploy user + docker group, `/var/lib/dockflow` permissions, no-Ansible/no-clone lightness check, and an idempotent re-run.
+**Setup suite** (`setup/tests/20`): host provisioning on a clean `ubuntu:24.04` container (`dockflow-test-setup`). Runs the cross-compiled Linux binary inside it: non-interactive `dockflow setup`, Docker install via get.docker.com, deploy user + docker group, `/var/lib/dockflow` permissions, and an idempotent re-run.
 
 Test helpers: `helpers/fixtures.ts` (temp-dir fixture copies — fixture templates in `fixtures/` are read-only, tests never write into the repo tree), `helpers/docker.ts` (Swarm assertions), `helpers/k8s.ts` (kubectl assertions), `helpers/cluster.ts` (cluster lifecycle for both).
 

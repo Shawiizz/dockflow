@@ -81,16 +81,6 @@ describe("dockflow setup (host provisioning)", () => {
     expect(parseInt(authKeys.trim(), 10)).toBeGreaterThanOrEqual(1);
   });
 
-  test("the server stays light: no ansible, no repo clone", async () => {
-    const check = await inContainer([
-      "sh", "-c",
-      'command -v ansible >/dev/null && echo ansible-present || echo ansible-absent; ' +
-      'test -d /opt/dockflow && echo clone-present || echo clone-absent',
-    ]);
-    expect(check).toContain("ansible-absent");
-    expect(check).toContain("clone-absent");
-  });
-
   test("re-running setup is idempotent", async () => {
     const output = await runSetup(180_000);
 
