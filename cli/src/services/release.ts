@@ -167,7 +167,16 @@ export class Release {
       );
     }
 
-    await sshExec(this.connection, `ln -sfn "${dir}" "${stackDir}/current"`);
+    // The `current` symlink is what rollback and partial deploys resolve —
+    // a silent failure here leaves the stack state pointing at the old release.
+    const linkResult = await sshExec(this.connection, `ln -sfn "${dir}" "${stackDir}/current"`);
+    if (linkResult.exitCode !== 0) {
+      throw new DeployError(
+        `Failed to update the current release symlink: ${linkResult.stderr.trim() || `exit ${linkResult.exitCode}`}`,
+        ErrorCode.DEPLOY_FAILED,
+        `Ensure the deploy user can write to ${stackDir}.`,
+      );
+    }
 
     printDebug(`Release ${version} created at ${dir}`);
     return { previousSymlink };
@@ -259,7 +268,13 @@ export class Release {
       throw new DeployError('Rollback did not converge', ErrorCode.ROLLBACK_FAILED);
     }
 
-    await sshExec(this.connection, `ln -sfn "${previousDir}" "${this.stackDir(stackName)}/current"`);
+    const linkResult = await sshExec(this.connection, `ln -sfn "${previousDir}" "${this.stackDir(stackName)}/current"`);
+    if (linkResult.exitCode !== 0) {
+      throw new DeployError(
+        `Rollback deployed ${previousVersion} but failed to update the current release symlink: ${linkResult.stderr.trim() || `exit ${linkResult.exitCode}`}`,
+        ErrorCode.ROLLBACK_FAILED,
+      );
+    }
 
     if (failedDir) {
       await sshExec(this.connection, `timeout 30 rm -rf "${failedDir}"`).catch(() => {

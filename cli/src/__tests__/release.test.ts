@@ -21,6 +21,13 @@ mock.module('../utils/ssh', () => ({
     executedCommands.push(cmd);
     return sshResponses(cmd) ?? okResult();
   },
+  sshExecChannel: async (_conn: unknown, cmd: string) => {
+    executedCommands.push(cmd);
+    return {
+      stream: { end: (_data?: unknown) => {} },
+      done: Promise.resolve(sshResponses(cmd) ?? okResult()),
+    };
+  },
 }));
 
 const { Release, parseReleaseList, selectRollbackCandidate, extractComposeImages, computeOrphanImages } =
@@ -270,6 +277,41 @@ describe('Release.rollback', () => {
     await expect(release.rollback('demo', backend as never, '2.0.0')).rejects.toThrow(
       'Rollback did not converge',
     );
+  });
+});
+
+describe('Release.createRelease', () => {
+  it('fails loudly when the current symlink cannot be updated', async () => {
+    const release = new Release(conn);
+    sshResponses = (cmd) => {
+      if (cmd.includes('ln -sfn')) return { stdout: '', stderr: 'permission denied', exitCode: 1 };
+      return okResult();
+    };
+
+    await expect(
+      release.createRelease('demo', '1.0.0', 'services: {}\n', meta('1.0.0', 100)),
+    ).rejects.toThrow('current release symlink');
+  });
+});
+
+describe('Release.rollback — symlink failure', () => {
+  it('redeploy succeeded but symlink update failed → loud rollback error', async () => {
+    const release = new Release(conn);
+    const { backend, calls } = makeFakeBackend();
+    sshResponses = (cmd) => {
+      if (cmd.includes('for d in */')) {
+        return okResult(JSON.stringify(meta('2.0.0', 200)) + '\n' + JSON.stringify(meta('1.0.0', 100)));
+      }
+      if (cmd.startsWith('cat ')) return okResult('services: {}\n');
+      if (cmd.includes('ln -sfn')) return { stdout: '', stderr: 'read-only file system', exitCode: 1 };
+      return okResult();
+    };
+
+    await expect(release.rollback('demo', backend as never, '2.0.0')).rejects.toThrow(
+      'failed to update the current release symlink',
+    );
+    // The redeploy itself did happen — only the bookkeeping failed
+    expect(calls.redeploy).toHaveLength(1);
   });
 });
 

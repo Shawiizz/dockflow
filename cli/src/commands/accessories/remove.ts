@@ -149,12 +149,27 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
           if (volumes.length > 0) {
             const volSpinner = createSpinner();
             volSpinner.start('Removing volumes...');
-            
+
+            // Volume removal can fail right after stack rm (containers still
+            // draining hold the volume) — report failures instead of claiming
+            // the data was destroyed when it wasn't.
+            const failed: string[] = [];
             for (const vol of volumes) {
-              await sshExec(connection, `docker volume rm ${vol}`);
+              const rmResult = await sshExec(connection, `docker volume rm ${vol}`);
+              if (rmResult.exitCode !== 0) {
+                failed.push(`${vol}: ${rmResult.stderr.trim() || `exit ${rmResult.exitCode}`}`);
+              }
             }
-            
-            volSpinner.succeed(`Removed ${volumes.length} volume(s)`);
+
+            if (failed.length > 0) {
+              volSpinner.fail(`Removed ${volumes.length - failed.length}/${volumes.length} volume(s)`);
+              for (const failure of failed) {
+                printWarning(`Volume not removed — ${failure}`);
+              }
+              printWarning('Retry in a few seconds once the containers are gone: docker volume rm <name>');
+            } else {
+              volSpinner.succeed(`Removed ${volumes.length} volume(s)`);
+            }
           }
         }
 

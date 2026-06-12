@@ -187,7 +187,12 @@ export class Metrics {
     await sshExec(this.connection, `mkdir -p "${metricsDir}"`);
     const { stream, done } = await sshExecChannel(this.connection, `cat >> "${metricsPath}"`);
     stream.end(entryJson + '\n');
-    await done;
+    const writeResult = await done;
+    if (writeResult.exitCode !== 0) {
+      // Throw so the caller's best-effort net surfaces a warning instead of
+      // silently losing the deployment history entry.
+      throw new Error(`Failed to write metrics entry: ${writeResult.stderr.trim() || `exit ${writeResult.exitCode}`}`);
+    }
 
     return entryJson;
   }

@@ -36,7 +36,12 @@ export class Audit {
     await sshExec(this.connection, `mkdir -p "${DOCKFLOW_AUDIT_DIR}"`);
     const { stream, done } = await sshExecChannel(this.connection, `cat >> "${auditFile}"`);
     stream.end(line + '\n');
-    await done;
+    const writeResult = await done;
+    if (writeResult.exitCode !== 0) {
+      // Throw so the caller's best-effort net surfaces a warning instead of
+      // silently losing the audit entry.
+      throw new Error(`Failed to write audit entry: ${writeResult.stderr.trim() || `exit ${writeResult.exitCode}`}`);
+    }
 
     return line;
   }

@@ -38,13 +38,25 @@ export async function deployNginxTemplates(
 
   await sshExec(conn, `rm -rf '${NGINX_BACKUP_DIR}' && mkdir -p '${NGINX_BACKUP_DIR}'`);
 
-  // Backup files that already exist (so rollback can restore them precisely)
+  // Backup files that already exist (so rollback can restore them precisely).
+  // Existence and copy are checked separately: if the copy of an existing file
+  // fails, treating it as "did not exist" would make rollback DELETE it.
   const previouslyExisted = new Set<string>();
   for (const [key] of entries) {
     const dest = `${NGINX_SITES_ENABLED}/${basename(key)}`;
     const backup = `${NGINX_BACKUP_DIR}/${basename(key)}`;
-    const r = await sshExec(conn, `[ -f '${dest}' ] && cp '${dest}' '${backup}' && echo existed || true`);
-    if (r.stdout.trim() === 'existed') previouslyExisted.add(dest);
+    const exists = await sshExec(conn, `[ -f '${dest}' ] && echo yes || echo no`);
+    if (exists.stdout.trim() !== 'yes') continue;
+
+    const cp = await sshExec(conn, `cp '${dest}' '${backup}'`);
+    if (cp.exitCode !== 0) {
+      throw new DeployError(
+        `Failed to back up existing nginx config ${dest}: ${cp.stderr.trim() || `exit ${cp.exitCode}`}`,
+        ErrorCode.DEPLOY_FAILED,
+        'Aborting before touching the live config — fix the permission/disk issue and re-deploy.',
+      );
+    }
+    previouslyExisted.add(dest);
   }
 
   // Write new configs — no sudo: deploy user has group-write on sites-enabled

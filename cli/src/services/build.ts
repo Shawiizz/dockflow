@@ -397,6 +397,13 @@ export async function buildRemote(
     });
     const commitSha = (await new Response(commitProc.stdout).text()).trim();
     await commitProc.exited;
+    if (commitProc.exitCode !== 0 || !commitSha) {
+      throw new DeployError(
+        'Could not resolve the local git commit (git rev-parse HEAD failed)',
+        ErrorCode.DEPLOY_FAILED,
+        'Remote build deploys the current commit — run it from a git checkout.',
+      );
+    }
 
     const authEnv = buildGitAuthEnv();
     const eBranch = shellEscape(params.branch);
@@ -418,8 +425,17 @@ export async function buildRemote(
       );
     }
 
+    // The checkout MUST succeed: building whatever the branch HEAD happens to
+    // be would silently deploy different code than the version claims.
     const eCommitSha = shellEscape(commitSha);
-    await sshExec(connection, `git -C '${eTmpDir}' checkout '${eCommitSha}' 2>&1`);
+    const checkoutResult = await sshExec(connection, `git -C '${eTmpDir}' checkout '${eCommitSha}' 2>&1`);
+    if (checkoutResult.exitCode !== 0) {
+      throw new DeployError(
+        `Remote checkout of commit ${commitSha.slice(0, 12)} failed: ${checkoutResult.stdout.trim() || checkoutResult.stderr.trim()}`,
+        ErrorCode.DEPLOY_FAILED,
+        'The local commit is not on the remote — push your changes before deploying with remote_build.',
+      );
+    }
 
     const targets = getBuildTargets(
       params.composeContent,

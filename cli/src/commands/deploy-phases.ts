@@ -412,7 +412,16 @@ export async function rollbackUploads(plan: UploadRollbackPlan): Promise<void> {
           ErrorCode.DEPLOY_FAILED,
         );
       }
-      await sshExec(conn, `rm -rf '${dest}' && mv '${tmp}' '${dest}'`);
+      // The swap is the destructive step of the restore — if it fails the
+      // destination may be gone, so it must never fail silently.
+      const swap = await sshExec(conn, `rm -rf '${dest}' && mv '${tmp}' '${dest}'`);
+      if (swap.exitCode !== 0) {
+        throw new DeployError(
+          `upload rollback: failed to restore '${dest}': ${swap.stderr.trim() || `exit ${swap.exitCode}`}\n` +
+          `The extracted backup is still available at '${tmp}' on the server.`,
+          ErrorCode.DEPLOY_FAILED,
+        );
+      }
     }
     for (const dest of createdDirs) {
       await sshExec(conn, `rm -rf '${dest}'`);

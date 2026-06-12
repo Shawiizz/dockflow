@@ -28,43 +28,12 @@ describe("remote build", () => {
     fixture?.cleanup();
   });
 
-  test("create git repo on manager", async () => {
-    await exec([
-      "docker",
-      "exec",
-      MANAGER_CONTAINER,
-      "bash",
-      "-c",
-      `rm -rf ${REMOTE_REPO_PATH} && mkdir -p $(dirname ${REMOTE_REPO_PATH}) && chown ${DEPLOY_USER}:${DEPLOY_USER} $(dirname ${REMOTE_REPO_PATH})`,
-    ]);
-
-    await exec([
-      "docker",
-      "cp",
-      `${fixture.dir}/.`,
-      `${MANAGER_CONTAINER}:${REMOTE_REPO_PATH}`,
-    ]);
-
-    // Init git repo as deploy user
-    await exec([
-      "docker",
-      "exec",
-      MANAGER_CONTAINER,
-      "bash",
-      "-c",
-      [
-        `chown -R ${DEPLOY_USER}:${DEPLOY_USER} ${REMOTE_REPO_PATH}`,
-        `cd ${REMOTE_REPO_PATH}`,
-        `sudo -u ${DEPLOY_USER} git init -b main`,
-        `sudo -u ${DEPLOY_USER} git config user.email 'test@dockflow.local'`,
-        `sudo -u ${DEPLOY_USER} git config user.name 'E2E Test'`,
-        `sudo -u ${DEPLOY_USER} git add -A`,
-        `sudo -u ${DEPLOY_USER} git commit -m 'init'`,
-      ].join(" && "),
-    ]);
-  }, 30_000);
-
-  test("prepare local git repo with remote origin", async () => {
+  test("prepare git repo (local + identical mirror on the manager)", async () => {
+    // The CLI resolves the LOCAL commit sha and checks it out after cloning
+    // the origin ON the server — so the manager-side repo must share the
+    // local history. Commit locally first, then copy the repo (.git included)
+    // to the manager. Two independent `git init` would produce different
+    // shas and the deploy would (rightly) refuse to build.
     await exec(["git", "init", "-q", "-b", "main"], { cwd: fixture.dir });
     await exec(
       ["git", "config", "user.email", "test@dockflow.local"],
@@ -78,7 +47,32 @@ describe("remote build", () => {
     await exec(["git", "remote", "add", "origin", REMOTE_REPO_PATH], {
       cwd: fixture.dir,
     });
-  });
+
+    await exec([
+      "docker",
+      "exec",
+      MANAGER_CONTAINER,
+      "bash",
+      "-c",
+      `rm -rf ${REMOTE_REPO_PATH} && mkdir -p ${REMOTE_REPO_PATH} && chown -R ${DEPLOY_USER}:${DEPLOY_USER} $(dirname ${REMOTE_REPO_PATH})`,
+    ]);
+
+    await exec([
+      "docker",
+      "cp",
+      `${fixture.dir}/.`,
+      `${MANAGER_CONTAINER}:${REMOTE_REPO_PATH}`,
+    ]);
+
+    await exec([
+      "docker",
+      "exec",
+      MANAGER_CONTAINER,
+      "bash",
+      "-c",
+      `chown -R ${DEPLOY_USER}:${DEPLOY_USER} ${REMOTE_REPO_PATH}`,
+    ]);
+  }, 30_000);
 
   test("deploy with remote_build: true", async () => {
     const result = await runCLI(
