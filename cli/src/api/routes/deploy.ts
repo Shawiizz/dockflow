@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Deploy API Routes
  *
  * GET /api/deploy/history - Get deployment history from remote manager
@@ -56,7 +56,7 @@ async function getDeployHistory(url: URL): Promise<Response> {
     return errorResponse('Project name not found in config — cannot resolve metrics path', 500);
   }
 
-  // Stack name on remote is "<project_name>-<environment>" (see ansible/deploy.yml)
+  // Stack name on remote is "<project_name>-<environment>"
   const fullStackName = `${conn.stackName}-${env}`;
   const metricsPath = `${DOCKFLOW_METRICS_DIR}/${fullStackName}/deployments.json`;
 

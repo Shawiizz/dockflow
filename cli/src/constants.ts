@@ -10,13 +10,11 @@ export const DOCKFLOW_VERSION = rootPackageJson.version;
 /**
  * GitHub repository URLs
  */
-export const DOCKFLOW_REPO = 'https://github.com/Shawiizz/dockflow.git';
 export const DOCKFLOW_RELEASE_URL = 'https://github.com/Shawiizz/dockflow/releases/latest/download';
 
 /**
  * Directory paths
  */
-export const DOCKFLOW_DIR = '/opt/dockflow';
 export const DOCKFLOW_STACKS_DIR = '/var/lib/dockflow/stacks';
 export const DOCKFLOW_LOCKS_DIR = '/var/lib/dockflow/locks';
 export const DOCKFLOW_AUDIT_DIR = '/var/lib/dockflow/audit';

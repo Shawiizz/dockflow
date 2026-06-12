@@ -1,7 +1,7 @@
-/**
+﻿/**
  * Template context builder for Jinja2 rendering
  * 
- * Builds the complete context object that Ansible/Jinja2 uses:
+ * Builds the complete context object available to Nunjucks templates:
  * - {{ current }} - The current server being deployed to
  * - {{ servers }} - All servers in the environment
  * - {{ cluster }} - Cluster metadata (size, managers, workers)

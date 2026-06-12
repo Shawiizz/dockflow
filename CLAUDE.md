@@ -4,11 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Dockflow is a CLI-first deployment framework supporting **Docker Swarm** and **k3s** (Kubernetes). A single TypeScript binary handles building, deploying, and managing stacks via direct SSH — no runtime dependencies beyond the binary itself. Ansible is only used for one-shot machine provisioning (`dockflow setup`).
+Dockflow is a CLI-first deployment framework supporting **Docker Swarm** and **k3s** (Kubernetes). A single TypeScript binary handles building, deploying, managing stacks AND one-shot machine provisioning (`dockflow setup`) via direct SSH — no runtime dependencies beyond the binary itself.
 
 **Stack at a glance:**
 - `cli/` — TypeScript CLI (Bun runtime) + embedded Angular WebUI — handles all deploy logic via ssh2
-- `ansible/` — Ansible roles for machine provisioning only (`configure_host.yml`)
 - `docs/` — Next.js 15 + Nextra documentation site
 - `packages/` — MCP server, npm CLI wrapper
 - `testing/e2e/` — End-to-end tests for both Swarm (Docker-in-Docker) and k3s (k3s-in-Docker)
@@ -18,7 +17,6 @@ Dockflow is a CLI-first deployment framework supporting **Docker Swarm** and **k
 ```
 cli/          # TypeScript CLI application (Bun)
 cli/ui/       # Angular 21 WebUI (PrimeNG + Tailwind)
-ansible/         # Ansible roles for machine provisioning (setup only)
 docs/            # Next.js 15 + Nextra documentation site
 packages/        # Additional packages (MCP server, npm CLI wrapper)
 scripts/         # Build & version management scripts
@@ -86,7 +84,7 @@ The CI sets the version in all `package.json` files from the tag before building
 
 All CLI operations (deploy, build, backup, logs, exec, shell, status) connect directly to remote nodes via the `ssh2` library. Connection credentials come from `.env.dockflow` (or CI secrets). There is **one SSH context** — the CLI's machine must be able to reach all target hosts.
 
-Ansible is only used for `dockflow setup` (one-shot machine provisioning via `configure_host.yml`). It runs inside a Docker container for that command only.
+`dockflow setup user@host` provisions machines by shipping the Linux binary to the server and re-executing it there (`commands/setup/remote.ts`); provisioning itself is pure TypeScript (`commands/setup/provision.ts`).
 
 ## Key Architecture Patterns
 
@@ -218,12 +216,13 @@ The `dockflow deploy` command executes entirely in TypeScript via ssh2:
 
 All steps are in `cli/src/commands/deploy.ts` using the services layer.
 
-### Ansible (Setup Only)
+### Host Provisioning (`commands/setup/provision.ts`)
 
-Ansible is only used for `dockflow setup` via `ansible/configure_host.yml`. Remaining roles:
-- `geerlingguy.docker` — multi-distro Docker install
-- `nginx` — reverse proxy setup
-- `portainer` — Portainer stack deployment
+`dockflow setup` provisions hosts in pure TypeScript (no Ansible, no repo clone on the server). Steps, all idempotent:
+- Docker install via the official `get.docker.com` script (multi-distro), skippable with `--skip-docker-install`
+- `/var/lib/dockflow` creation owned by the deploy user
+- Optional nginx install (package-manager aware) + Portainer vhost
+- Optional Portainer container (bcrypt admin password hashed via a throwaway `httpd` container, password passed on stdin — never in argv)
 
 ### Remote Directory Permissions
 

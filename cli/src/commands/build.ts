@@ -2,7 +2,7 @@
  * Build command
  *
  * Builds Docker images locally without deploying to a Swarm cluster.
- * Uses the Build and Hook modules directly — no Ansible container needed.
+ * Uses the Build and Hook modules directly.
  *
  * Template rendering is entirely in-memory. Docker build contexts are
  * assembled as tar archives and piped to `docker build -` via stdin.

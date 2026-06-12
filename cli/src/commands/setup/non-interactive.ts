@@ -12,8 +12,7 @@ import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
 import { generateSSHKey, addToAuthorizedKeys } from './ssh-keys';
 import { createDeployUser, configureServiceAccess } from './user';
 import { displayConnectionInfo } from './connection';
-import { ensureDockflowRepo, installAnsibleRoles, runAnsiblePlaybook } from './ansible';
-import { DOCKFLOW_DIR } from './constants';
+import { provisionHost } from './provision';
 import type { SetupOptions, HostConfig } from './types';
 
 /**
@@ -115,16 +114,6 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
   printRaw(`${colors.info('Install Portainer:')} ${options.portainer ? 'Yes' : 'No'}`);
   printBlank();
 
-  let ansibleDir: string;
-  try {
-    ansibleDir = await ensureDockflowRepo();
-  } catch (error) {
-    throw new CLIError(
-      'Cannot proceed without the Dockflow framework',
-      ErrorCode.CONFIG_NOT_FOUND
-    );
-  }
-
   if (needsUserSetup && deployPassword) {
     const pubKey = fs.readFileSync(`${privateKeyPath}.pub`, 'utf-8').trim();
     if (!createDeployUser(deployUser, deployPassword, pubKey)) {
@@ -133,15 +122,6 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
         ErrorCode.COMMAND_FAILED
       );
     }
-  }
-
-  const rolesOk = await installAnsibleRoles(DOCKFLOW_DIR);
-  if (!rolesOk) {
-    throw new CLIError(
-      'Cannot proceed without required Ansible roles',
-      ErrorCode.CONFIG_NOT_FOUND,
-      'Try running: ansible-galaxy role install geerlingguy.docker'
-    );
   }
 
   const config: HostConfig = {
@@ -161,23 +141,16 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
   };
 
   printBlank();
-  const success = await runAnsiblePlaybook(config, ansibleDir);
+  provisionHost(config);
 
-  if (success) {
-    // nginx and k3s may have been installed by Ansible — reconfigure service
-    // access now that the binaries are available.
-    configureServiceAccess(deployUser);
+  // nginx may have just been installed — reconfigure service access now that
+  // the binaries are available.
+  configureServiceAccess(deployUser);
 
-    printBlank();
-    printSection('Setup Complete');
-    printSuccess('The machine has been successfully configured!');
+  printBlank();
+  printSection('Setup Complete');
+  printSuccess('The machine has been successfully configured!');
 
-    const privateKey = fs.readFileSync(privateKeyPath, 'utf-8');
-    displayConnectionInfo(config, privateKey);
-  } else {
-    throw new CLIError(
-      'Setup failed',
-      ErrorCode.COMMAND_FAILED
-    );
-  }
+  const privateKey = fs.readFileSync(privateKeyPath, 'utf-8');
+  displayConnectionInfo(config, privateKey);
 }

@@ -5,42 +5,12 @@
 import type { Dependency } from './types';
 
 // Re-export from centralized constants
-export { 
-  DOCKFLOW_REPO, 
-  DOCKFLOW_DIR, 
-  DOCKFLOW_RELEASE_URL 
-} from '../../constants';
+export { DOCKFLOW_RELEASE_URL } from '../../constants';
 
 export const REQUIRED_DEPENDENCIES: Dependency[] = [
-  { 
-    name: 'ansible', 
-    command: 'ansible --version', 
-    description: 'Ansible automation tool',
-    packages: {
-      apt: ['ansible'],
-      yum: ['ansible'],
-      dnf: ['ansible'],
-      pacman: ['ansible'],
-      zypper: ['ansible'],
-      apk: ['ansible']
-    }
-  },
-  { 
-    name: 'ansible-playbook', 
-    command: 'ansible-playbook --version', 
-    description: 'Ansible playbook runner',
-    packages: {
-      apt: ['ansible'],
-      yum: ['ansible'],
-      dnf: ['ansible'],
-      pacman: ['ansible'],
-      zypper: ['ansible'],
-      apk: ['ansible']
-    }
-  },
-  { 
-    name: 'ssh', 
-    command: 'ssh -V', 
+  {
+    name: 'ssh',
+    command: 'ssh -V',
     description: 'OpenSSH client',
     packages: {
       apt: ['openssh-client'],
@@ -51,9 +21,9 @@ export const REQUIRED_DEPENDENCIES: Dependency[] = [
       apk: ['openssh-client']
     }
   },
-  { 
-    name: 'ssh-keygen', 
-    command: 'ssh-keygen -V', 
+  {
+    name: 'ssh-keygen',
+    command: 'ssh-keygen -V',
     description: 'SSH key generator',
     packages: {
       apt: ['openssh-client'],
@@ -64,10 +34,26 @@ export const REQUIRED_DEPENDENCIES: Dependency[] = [
       apk: ['openssh-client']
     }
   },
-  { 
-    name: 'git', 
-    command: 'git --version', 
-    description: 'Git version control',
+  {
+    name: 'curl',
+    command: 'curl --version',
+    description: 'curl (downloads the Docker install script)',
+    packages: {
+      apt: ['curl'],
+      yum: ['curl'],
+      dnf: ['curl'],
+      pacman: ['curl'],
+      zypper: ['curl'],
+      apk: ['curl']
+    }
+  },
+];
+
+export const OPTIONAL_DEPENDENCIES: Dependency[] = [
+  {
+    name: 'git',
+    command: 'git --version',
+    description: 'Git (required on the server for remote_build)',
     packages: {
       apt: ['git'],
       yum: ['git'],
@@ -75,22 +61,6 @@ export const REQUIRED_DEPENDENCIES: Dependency[] = [
       pacman: ['git'],
       zypper: ['git'],
       apk: ['git']
-    }
-  },
-];
-
-export const OPTIONAL_DEPENDENCIES: Dependency[] = [
-  { 
-    name: 'ansible-galaxy', 
-    command: 'ansible-galaxy --version', 
-    description: 'Ansible Galaxy (for roles)',
-    packages: {
-      apt: ['ansible'],
-      yum: ['ansible'],
-      dnf: ['ansible'],
-      pacman: ['ansible'],
-      zypper: ['ansible'],
-      apk: ['ansible']
     }
   },
 ];
