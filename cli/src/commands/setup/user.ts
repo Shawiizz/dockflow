@@ -18,11 +18,18 @@ const NGINX_SITES_ENABLED = '/etc/nginx/sites-enabled';
  * Configure nginx group access and deploy-time sudoers for a deploy user.
  *
  * Safe to call multiple times — writes are idempotent.
- * Must be called AFTER nginx/k3s are installed, so call it again post-Ansible
- * if those services were installed during setup.
+ * Must be called AFTER nginx/k3s are installed, so call it again
+ * post-provisioning if those services were installed during setup.
  */
 export function configureServiceAccess(username: string): void {
   const sudoersRules: string[] = [];
+
+  // docker: group membership for socket access. The group only exists once
+  // Docker is installed, which happens AFTER user creation — this re-run
+  // post-provisioning is what actually grants the access.
+  if (spawnSync('getent', ['group', 'docker'], { encoding: 'utf-8', stdio: 'pipe' }).status === 0) {
+    spawnSync('usermod', ['-aG', 'docker', username], { encoding: 'utf-8', stdio: 'pipe' });
+  }
 
   // nginx: group-write on sites-enabled + restricted sudo for test/reload only
   const nginxBin = spawnSync('which', ['nginx'], { encoding: 'utf-8', stdio: 'pipe' }).stdout.trim();
@@ -90,8 +97,8 @@ export function createDeployUser(username: string, password: string, publicKey: 
   spawnSync('chmod', ['600', `${userSSHDir}/authorized_keys`], { encoding: 'utf-8' });
 
   // Configure service access — best-effort at user creation time.
-  // configureServiceAccess() must be called again post-Ansible if nginx/k3s
-  // are installed after this point.
+  // configureServiceAccess() must be called again post-provisioning if
+  // nginx/k3s are installed after this point.
   configureServiceAccess(username);
 
   spinner.succeed(`User ${username} created successfully`);
