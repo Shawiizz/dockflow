@@ -9,7 +9,7 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'fs';
 import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkStringify from 'remark-stringify';
@@ -24,8 +24,6 @@ const DOCS_DIR = join(__dirname, '..', 'app');
 const PUBLIC_DIR = join(__dirname, '..', 'public');
 const BASE_URL = 'https://{{ current.env.docs_domain_name }}';
 
-// ── Structure definition matching _meta.ts files ────────────────────────────
-
 interface PageEntry {
   slug: string;
   title: string;
@@ -33,53 +31,87 @@ interface PageEntry {
   children?: PageEntry[];
 }
 
-// Order and titles mirror the nav defined in the app/**/_meta.tsx files.
-// assertComplete() (below) fails the build if a page.mdx exists that is not
-// registered here, so this list can never silently drift out of sync again.
-const structure: PageEntry[] = [
-  {
-    slug: 'getting-started',
-    title: 'Getting Started',
-    path: 'getting-started',
-  },
-  {
-    slug: 'configuration',
-    title: 'Configuration',
-    path: 'configuration',
-    children: [
-      { slug: 'dockflow-yml', title: 'dockflow.yml (simplified layout)', path: 'configuration/dockflow-yml' },
-      { slug: 'config-file', title: 'Project Configuration', path: 'configuration/config-file' },
-      { slug: 'servers', title: 'Servers & Connections', path: 'configuration/servers' },
-      { slug: 'docker-compose', title: 'Docker Compose', path: 'configuration/docker-compose' },
-      { slug: 'build-strategy', title: 'Build Strategy', path: 'configuration/build-strategy' },
-      { slug: 'registry', title: 'Docker Registry', path: 'configuration/registry' },
-      { slug: 'container-engine', title: 'Container Engine', path: 'configuration/container-engine' },
-      { slug: 'accessories', title: 'Accessories (Databases, Caches)', path: 'configuration/accessories' },
-      { slug: 'backup', title: 'Backup & Restore', path: 'configuration/backup' },
-      { slug: 'upload', title: 'File Uploads', path: 'configuration/upload' },
-      { slug: 'hooks', title: 'Hooks', path: 'configuration/hooks' },
-      { slug: 'templates', title: 'Templates', path: 'configuration/templates' },
-      { slug: 'multi-host', title: 'Multi-Node Deployment', path: 'configuration/multi-host' },
-      { slug: 'proxy', title: 'Automatic HTTPS Proxy', path: 'configuration/proxy' },
-      { slug: 'notifications', title: 'Notifications', path: 'configuration/notifications' },
-      { slug: 'orchestrator', title: 'Orchestrator', path: 'configuration/orchestrator' },
-    ],
-  },
-  { slug: 'deployment', title: 'Deployment', path: 'deployment' },
-  { slug: 'ui', title: 'Web Dashboard', path: 'ui' },
-  { slug: 'cli', title: 'CLI Commands', path: 'cli' },
-  { slug: 'advanced', title: 'Advanced Usage', path: 'advanced' },
-  { slug: 'examples', title: 'Examples', path: 'examples' },
-  { slug: 'ai', title: 'AI Integration', path: 'ai' },
-];
+// ── Structure auto-discovery ────────────────────────────────────────────────
+//
+// The nav order and titles live in the app/**/_meta.{ts,tsx} files — the same
+// source of truth the rendered site uses. We import those modules and derive
+// the page tree from them, so the llms files can never drift from the nav (no
+// hand-maintained list to forget). A directory is a section only when it has
+// child sub-pages; a lone `index` key (e.g. deployment/_meta.ts) is just a
+// label for the page itself, not a section.
+
+/** Locate a dir's meta module (.tsx for JSX titles, .ts otherwise). */
+function findMeta(dir: string): string | null {
+  for (const ext of ['tsx', 'ts']) {
+    const p = join(dir, `_meta.${ext}`);
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
+
+async function loadMeta(dir: string): Promise<Record<string, unknown> | null> {
+  const metaPath = findMeta(dir);
+  if (!metaPath) return null;
+  const mod = await import(pathToFileURL(metaPath).href);
+  return (mod.default ?? {}) as Record<string, unknown>;
+}
+
+/** Flatten a meta title that may be a string or a JSX/React element. */
+function reactText(node: unknown): string {
+  if (typeof node === 'string') return node;
+  if (Array.isArray(node)) return node.map(reactText).join('');
+  if (node && typeof node === 'object') {
+    const props = (node as { props?: { children?: unknown } }).props;
+    if (props && 'children' in props) return reactText(props.children);
+  }
+  return '';
+}
+
+/** Resolve a meta entry's display title, or null when it should be skipped. */
+function metaTitle(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    const v = value as Record<string, unknown>;
+    if (v.display === 'hidden') return null; // e.g. the hidden home page
+    if ('title' in v) return reactText(v.title).trim() || null;
+  }
+  return null;
+}
+
+const hasPage = (relPath: string): boolean => existsSync(join(DOCS_DIR, relPath, 'page.mdx'));
+
+/** Build the page tree from the _meta nav files (ordered, titled, nested). */
+async function buildStructure(): Promise<PageEntry[]> {
+  const rootMeta = await loadMeta(DOCS_DIR);
+  if (!rootMeta) throw new Error('app/_meta.{ts,tsx} not found');
+
+  const result: PageEntry[] = [];
+  for (const [slug, value] of Object.entries(rootMeta)) {
+    const title = metaTitle(value);
+    if (!title || !hasPage(slug)) continue;
+
+    const childMeta = await loadMeta(join(DOCS_DIR, slug));
+    const children: PageEntry[] = [];
+    for (const [childSlug, childValue] of Object.entries(childMeta ?? {})) {
+      if (childSlug === 'index') continue; // the section's own page, not a child
+      const childTitle = metaTitle(childValue);
+      const childPath = `${slug}/${childSlug}`;
+      if (childTitle && hasPage(childPath)) {
+        children.push({ slug: childSlug, title: childTitle, path: childPath });
+      }
+    }
+
+    result.push(children.length > 0 ? { slug, title, path: slug, children } : { slug, title, path: slug });
+  }
+  return result;
+}
 
 /**
- * Fail loudly if a documentation page exists on disk but is not registered in
- * `structure` — otherwise it would be silently absent from llms.txt /
- * llms-full.txt (which is exactly the bug this guard prevents recurring).
+ * Fail loudly if a page.mdx exists on disk but is not reachable through the
+ * _meta nav (so it would be silently absent from llms.txt / llms-full.txt).
  * The hidden home page (app/page.mdx) is intentionally excluded.
  */
-function assertComplete(): void {
+function assertComplete(structure: PageEntry[]): void {
   const registered = new Set<string>();
   for (const entry of structure) {
     registered.add(entry.path);
@@ -102,8 +134,8 @@ function assertComplete(): void {
   const missing = found.filter((p) => !registered.has(p));
   if (missing.length > 0) {
     throw new Error(
-      `Documentation pages missing from the llms structure: ${missing.join(', ')}.\n` +
-      `Add them to scripts/generate-llms-txt.ts so they appear in llms.txt and llms-full.txt.`,
+      `Documentation pages not reachable through the _meta nav: ${missing.join(', ')}.\n` +
+      `Add them to the relevant app/**/_meta.{ts,tsx} so they appear in the site nav and the llms files.`,
     );
   }
 }
@@ -250,7 +282,7 @@ function getDescription(content: string): string {
 
 // ── Generate llms.txt ───────────────────────────────────────────────────────
 
-function generateIndex(): string {
+function generateIndex(structure: PageEntry[]): string {
   const lines: string[] = [
     '# Dockflow',
     '',
@@ -289,7 +321,7 @@ function generateIndex(): string {
 
 // ── Generate llms-full.txt ──────────────────────────────────────────────────
 
-function generateFull(): string {
+function generateFull(structure: PageEntry[]): string {
   const sections: string[] = [
     '# Dockflow - Complete Documentation',
     '',
@@ -319,14 +351,25 @@ function generateFull(): string {
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────
+// Wrapped in an async function (not top-level await) so tsx can run this file
+// under its CJS transform. Errors (e.g. the assertComplete guard) exit non-zero
+// to fail the docs build.
 
-assertComplete();
-const index = generateIndex();
-const full = generateFull();
+async function main(): Promise<void> {
+  const structure = await buildStructure();
+  assertComplete(structure);
+  const index = generateIndex(structure);
+  const full = generateFull(structure);
 
-mkdirSync(PUBLIC_DIR, { recursive: true });
-writeFileSync(join(PUBLIC_DIR, 'llms.txt'), index, 'utf-8');
-writeFileSync(join(PUBLIC_DIR, 'llms-full.txt'), full, 'utf-8');
+  mkdirSync(PUBLIC_DIR, { recursive: true });
+  writeFileSync(join(PUBLIC_DIR, 'llms.txt'), index, 'utf-8');
+  writeFileSync(join(PUBLIC_DIR, 'llms-full.txt'), full, 'utf-8');
 
-console.log(`Generated llms.txt (${index.length} bytes)`);
-console.log(`Generated llms-full.txt (${full.length} bytes)`);
+  console.log(`Generated llms.txt (${index.length} bytes)`);
+  console.log(`Generated llms-full.txt (${full.length} bytes)`);
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+});
