@@ -135,6 +135,12 @@ export const HooksConfigSchema = z.object({
   'post-build': z.union([z.string(), z.array(z.string())]).optional().describe(
     'Inline command(s) to run after building images'
   ),
+  'pre-upload': z.union([z.string(), z.array(z.string())]).optional().describe(
+    'Inline command(s) to run on the server before files are uploaded'
+  ),
+  'post-upload': z.union([z.string(), z.array(z.string())]).optional().describe(
+    'Inline command(s) to run on the server after files are uploaded'
+  ),
   'pre-deploy': z.union([z.string(), z.array(z.string())]).optional().describe(
     'Inline command(s) to run before deploying stack'
   ),

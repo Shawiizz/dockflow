@@ -67,6 +67,8 @@ export interface HooksConfig {
   fatal?: boolean;
   'pre-build'?: string | string[];
   'post-build'?: string | string[];
+  'pre-upload'?: string | string[];
+  'post-upload'?: string | string[];
   'pre-deploy'?: string | string[];
   'post-deploy'?: string | string[];
 }

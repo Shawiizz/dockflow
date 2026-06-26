@@ -299,7 +299,11 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     buildResult = await buildAndDistribute(ctx, compose);
 
+    await Hook.runHook('pre-upload', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
+
     uploadPlan = await uploadFiles(ctx);
+
+    await Hook.runHook('post-upload', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
 
     await Hook.runHook('pre-deploy', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
 

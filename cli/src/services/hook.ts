@@ -1,11 +1,13 @@
 /**
  * Hook — deploy phase hook module.
  *
- * Runs user-defined commands at four deploy phases:
- *   - pre-build  (local, or remote when remote_build: true)
- *   - post-build (local, or remote when remote_build: true)
- *   - pre-deploy (remote)
- *   - post-deploy (remote)
+ * Runs user-defined commands at six deploy phases:
+ *   - pre-build    (local, or remote when remote_build: true)
+ *   - post-build   (local, or remote when remote_build: true)
+ *   - pre-upload   (remote, before files are uploaded to the server)
+ *   - post-upload  (remote, after files are uploaded to the server)
+ *   - pre-deploy   (remote, before stack deployment)
+ *   - post-deploy  (remote, after successful deployment and health checks)
  *
  * Hooks are non-fatal by default — failures log warnings but
  * do not block the deploy.
@@ -22,7 +24,7 @@ import type { DockflowConfig } from '../utils/config';
 import { DOCKFLOW_HOOKS_DIR, DOCKFLOW_STACKS_DIR } from '../constants';
 import type { RenderedFiles } from './compose';
 
-export type HookPhase = 'pre-build' | 'post-build' | 'pre-deploy' | 'post-deploy';
+export type HookPhase = 'pre-build' | 'post-build' | 'pre-upload' | 'post-upload' | 'pre-deploy' | 'post-deploy';
 
 export interface HookRemoteContext {
   connection: SSHKeyConnection;
@@ -169,7 +171,8 @@ async function execRemote(
  *
  * Build phases (pre-build, post-build) run locally by default.
  * When remote_build: true they run on the server — pass `remote` to enable this.
- * Deploy phases (pre-deploy, post-deploy) always run on the server; `remote` is required.
+ * Upload and deploy phases (pre-upload, post-upload, pre-deploy, post-deploy) always
+ * run on the server; `remote` is required.
  */
 export async function runHook(
   phase: HookPhase,

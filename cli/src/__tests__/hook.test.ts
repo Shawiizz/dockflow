@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { join } from 'path';
-import { windowsBashCandidates, isWslStubPath } from '../services/hook';
+import { windowsBashCandidates, isWslStubPath, type HookPhase } from '../services/hook';
 
 describe('windowsBashCandidates', () => {
   it('derives Git Bash locations from ProgramFiles variables', () => {
@@ -37,5 +37,14 @@ describe('isWslStubPath', () => {
     expect(isWslStubPath('C:\\Program Files\\Git\\bin\\bash.exe')).toBe(false);
     expect(isWslStubPath('C:\\msys64\\usr\\bin\\bash.exe')).toBe(false);
     expect(isWslStubPath('/usr/bin/bash')).toBe(false);
+  });
+});
+
+describe('HookPhase type', () => {
+  it('covers all six deploy phases', () => {
+    const phases: HookPhase[] = ['pre-build', 'post-build', 'pre-upload', 'post-upload', 'pre-deploy', 'post-deploy'];
+    expect(phases).toHaveLength(6);
+    expect(phases).toContain('pre-upload');
+    expect(phases).toContain('post-upload');
   });
 });

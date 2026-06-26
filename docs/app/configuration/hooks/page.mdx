@@ -10,6 +10,8 @@ Hooks allow you to run custom scripts at specific points during deployment.
 |------|----------|--------|
 | `pre-build` | Local (CI runner) | Before Docker images are built |
 | `post-build` | Local (CI runner) | After Docker images are built |
+| `pre-upload` | Server | Before files from `uploads` entries are copied to the server |
+| `post-upload` | Server | After files are uploaded, before stack deployment |
 | `pre-deploy` | Server | After file uploads, before stack deployment |
 | `post-deploy` | Server | After successful deployment and health checks |
 
@@ -30,6 +32,8 @@ Create shell scripts in `.dockflow/hooks/`:
     <FileTree.Folder name="hooks" defaultOpen>
       <FileTree.File name="pre-build.sh" />
       <FileTree.File name="post-build.sh" />
+      <FileTree.File name="pre-upload.sh" />
+      <FileTree.File name="post-upload.sh" />
       <FileTree.File name="pre-deploy.sh" />
       <FileTree.File name="post-deploy.sh" />
     </FileTree.Folder>
@@ -84,6 +88,22 @@ npm run build:assets
 docker scan {{ project_name }}:{{ version }} || true
 ```
 
+### Pre-upload: Stop a service before files arrive
+
+```bash
+# .dockflow/hooks/pre-upload.sh
+#!/bin/bash
+systemctl stop myapp || true
+```
+
+### Post-upload: Run a migration on uploaded files
+
+```bash
+# .dockflow/hooks/post-upload.sh
+#!/bin/bash
+cd /var/www/myapp && php artisan migrate --force
+```
+
 ### Pre-deploy: Database backup
 
 ```bash
@@ -134,6 +154,8 @@ hooks:
 | `fatal` | boolean | Abort the deploy when a hook exits with a non-zero code | `false` |
 | `pre-build` | string \| string[] | Inline command(s) for the pre-build phase | — |
 | `post-build` | string \| string[] | Inline command(s) for the post-build phase | — |
+| `pre-upload` | string \| string[] | Inline command(s) to run on the server before files are uploaded | — |
+| `post-upload` | string \| string[] | Inline command(s) to run on the server after files are uploaded | — |
 | `pre-deploy` | string \| string[] | Inline command(s) for the pre-deploy phase | — |
 | `post-deploy` | string \| string[] | Inline command(s) for the post-deploy phase | — |
 
