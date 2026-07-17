@@ -13,6 +13,7 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 import { handleApiRoutes } from './routes/index';
 import { sshWebSocketHandlers, parseSSHServerName, parseExecServiceName } from './routes/ssh';
+import { isSameOriginRequest } from './origin';
 
 /**
  * Try to load embedded UI assets (only available in compiled binary)
@@ -42,23 +43,16 @@ function getUIDistPath(): string {
 }
 
 /**
- * CORS headers for API responses
- */
-export const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
-
-/**
- * Create a JSON response with CORS headers
+ * Create a JSON response.
+ *
+ * The API is same-origin only (see origin.ts), so no CORS headers are sent —
+ * cross-origin requests are rejected before reaching any handler.
  */
 export function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
-      ...corsHeaders,
     },
   });
 }
@@ -90,12 +84,13 @@ export async function startWebServer(port: number): Promise<void> {
     async fetch(req, server) {
       const url = new URL(req.url);
       const pathname = url.pathname;
-      
-      // Handle CORS preflight
-      if (req.method === 'OPTIONS') {
-        return new Response(null, { headers: corsHeaders });
+
+      // Reject cross-site requests: a malicious page in the user's browser
+      // could otherwise drive deployments or open an SSH shell to production.
+      if (!isSameOriginRequest(req)) {
+        return new Response('Forbidden: cross-origin requests are not allowed', { status: 403 });
       }
-      
+
       // API routes
       if (pathname.startsWith('/api/')) {
         return handleApiRoutes(req);

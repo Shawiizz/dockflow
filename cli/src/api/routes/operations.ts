@@ -11,7 +11,7 @@
  */
 
 import { join } from 'path';
-import { jsonResponse, errorResponse, corsHeaders } from '../server';
+import { jsonResponse, errorResponse } from '../server';
 import type {
   DeployOperationRequest,
   BuildOperationRequest,
@@ -189,7 +189,6 @@ function createSSEStream(proc: ReturnType<typeof Bun.spawn>, operationType: 'dep
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
-      ...corsHeaders,
     },
   });
 }
