@@ -111,7 +111,7 @@ async function getDeployHistory(url: URL): Promise<Response> {
 /**
  * Map metric status to deploy UI status
  */
-function mapMetricStatus(status: string | undefined): 'success' | 'failed' | 'pending' | 'running' {
+export function mapMetricStatus(status: string | undefined): 'success' | 'failed' | 'pending' | 'running' {
   switch (status) {
     case 'success':
       return 'success';

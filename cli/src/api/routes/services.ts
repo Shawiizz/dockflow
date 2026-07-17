@@ -71,7 +71,7 @@ export async function handleServicesRoutes(req: Request): Promise<Response> {
 /**
  * Parse `docker service ls` output into ServiceInfo objects
  */
-function parseServiceLs(output: string, stackName: string): ServiceInfo[] {
+export function parseServiceLs(output: string, stackName: string): ServiceInfo[] {
   const lines = output.trim().split('\n');
   if (lines.length <= 1) return []; // header only
 
