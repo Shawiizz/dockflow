@@ -59,6 +59,17 @@ export function getManagerConnection(env: string): ManagerConnection | null {
 }
 
 /**
+ * Parse an integer query parameter, clamped to [min, max]. Returns `fallback`
+ * when the value is missing or not a number, so a bogus `?lines=abc` can never
+ * reach a shell command as e.g. `--tail NaN`.
+ */
+export function parseIntParam(raw: string | null, fallback: number, min = 1, max = 100_000): number {
+  const parsed = parseInt(raw ?? '', 10);
+  if (Number.isNaN(parsed)) return fallback;
+  return Math.min(Math.max(parsed, min), max);
+}
+
+/**
  * Resolve the default environment (from query param or first available)
  */
 export function resolveEnvironment(envFilter: string | null): string | null {

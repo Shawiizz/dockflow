@@ -10,7 +10,7 @@
 import { jsonResponse, errorResponse } from '../server';
 import { sshExec } from '../../utils/ssh';
 import { sshExecWithFallback } from '../../utils/ssh-fallback';
-import { getManagerConnection, getAllNodeConnections, resolveEnvironment } from './_helpers';
+import { getManagerConnection, getAllNodeConnections, resolveEnvironment, parseIntParam } from './_helpers';
 import { DOCKFLOW_AUDIT_DIR } from '../../constants';
 import type {
   ContainerStatsEntry,
@@ -124,7 +124,7 @@ async function getAuditLog(url: URL): Promise<Response> {
   const conn = getManagerConnection(env);
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
-  const lines = parseInt(url.searchParams.get('lines') || '100', 10);
+  const lines = parseIntParam(url.searchParams.get('lines'), 100, 1, 10000);
   const auditFile = `${DOCKFLOW_AUDIT_DIR}/${conn.stackName}.log`;
 
   try {

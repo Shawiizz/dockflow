@@ -9,7 +9,7 @@
  * 2. Source mode: serves from ui/dist/browser/browser on disk
  */
 
-import { join } from 'path';
+import { join, resolve, sep } from 'path';
 import { existsSync } from 'fs';
 import { handleApiRoutes } from './routes/index';
 import { sshWebSocketHandlers, parseSSHServerName, parseExecServiceName } from './routes/ssh';
@@ -35,11 +35,7 @@ async function loadEmbeddedAssets(): Promise<Map<string, string> | null> {
 function getUIDistPath(): string {
   // Angular 21 with application builder outputs to dist/browser/browser
   // When running from source: cli/src/api -> cli/ui/dist/browser/browser
-  const devPath = join(import.meta.dir, '../../ui/dist/browser/browser');
-  
-  if (existsSync(devPath)) return devPath;
-  
-  return devPath; // Default to dev path, will show fallback if not built
+  return join(import.meta.dir, '../../ui/dist/browser/browser');
 }
 
 /**
@@ -146,19 +142,22 @@ export async function startWebServer(port: number): Promise<void> {
       
       // Serve from disk (source/dev mode with built UI)
       if (hasDiskUI) {
-        let filePath = join(uiDistPath, pathname === '/' ? 'index.html' : pathname);
-        let file = Bun.file(filePath);
-        
-        if (await file.exists()) {
-          return new Response(file, {
-            headers: { 'Content-Type': getMimeType(filePath) },
-          });
+        // Resolve within the dist dir and reject anything that escapes it,
+        // so a crafted path (e.g. /../../etc/passwd) cannot read outside.
+        const requested = resolve(uiDistPath, `.${pathname === '/' ? '/index.html' : pathname}`);
+        if (requested === uiDistPath || requested.startsWith(uiDistPath + sep)) {
+          const file = Bun.file(requested);
+          if (await file.exists()) {
+            return new Response(file, {
+              headers: { 'Content-Type': getMimeType(requested) },
+            });
+          }
         }
-        
+
         // SPA fallback
         const indexFilePath = join(uiDistPath, 'index.html');
         const indexFile = Bun.file(indexFilePath);
-        
+
         if (await indexFile.exists()) {
           return new Response(indexFile, {
             headers: { 'Content-Type': 'text/html' },

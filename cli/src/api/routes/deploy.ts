@@ -7,7 +7,7 @@
 import { jsonResponse, errorResponse } from '../server';
 import { sshExecWithFallback } from '../../utils/ssh-fallback';
 import { printDebug } from '../../utils/output';
-import { getManagerConnection, getAllNodeConnections, resolveEnvironment } from './_helpers';
+import { getManagerConnection, getAllNodeConnections, resolveEnvironment, parseIntParam } from './_helpers';
 import { parseJsonlLines } from '../../services/metrics';
 import type { DeploymentMetric } from '../../services/metrics';
 import { DOCKFLOW_METRICS_DIR } from '../../constants';
@@ -40,7 +40,7 @@ export async function handleDeployRoutes(req: Request): Promise<Response> {
  */
 async function getDeployHistory(url: URL): Promise<Response> {
   const envFilter = url.searchParams.get('env');
-  const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+  const limit = parseIntParam(url.searchParams.get('limit'), 50, 1, 1000);
 
   const env = resolveEnvironment(envFilter);
   if (!env) {

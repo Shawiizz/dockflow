@@ -10,7 +10,7 @@
 
 import { jsonResponse, errorResponse } from '../server';
 import { loadConfig, getAccessoriesStackName } from '../../utils/config';
-import { getManagerConnection, resolveEnvironment, isValidDockerName } from './_helpers';
+import { getManagerConnection, resolveEnvironment, isValidDockerName, parseIntParam } from './_helpers';
 import { sshExec } from '../../utils/ssh';
 import { parseDockerLogLines } from '../../utils/docker-logs';
 import type { AccessoryInfo, AccessoriesResponse } from '../types';
@@ -253,7 +253,7 @@ async function stopAccessory(name: string, url: URL): Promise<Response> {
 async function getAccessoryLogs(name: string, url: URL): Promise<Response> {
   if (!isValidDockerName(name)) return errorResponse('Invalid accessory name', 400);
   const envFilter = url.searchParams.get('env');
-  const lines = parseInt(url.searchParams.get('lines') || '100', 10);
+  const lines = parseIntParam(url.searchParams.get('lines'), 100, 1, 10000);
 
   const config = loadConfig({ silent: true });
   if (!config) {
@@ -276,7 +276,7 @@ async function getAccessoryLogs(name: string, url: URL): Promise<Response> {
   }
 
   try {
-    const command = `docker service logs --tail ${Math.min(Math.max(1, lines), 10000)} --timestamps ${accStackName}_${name} 2>&1`;
+    const command = `docker service logs --tail ${lines} --timestamps ${accStackName}_${name} 2>&1`;
     const result = await sshExec(conn, command);
 
     const logEntries = parseDockerLogLines(result.stdout, name);

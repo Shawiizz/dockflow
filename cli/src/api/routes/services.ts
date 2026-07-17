@@ -14,7 +14,7 @@ import { loadConfig } from '../../utils/config';
 import { getAvailableEnvironments } from '../../utils/servers';
 import { sshExec } from '../../utils/ssh';
 import { parseDockerLogLines } from '../../utils/docker-logs';
-import { getManagerConnection, resolveEnvironment, isValidDockerName } from './_helpers';
+import { getManagerConnection, resolveEnvironment, isValidDockerName, parseIntParam } from './_helpers';
 import type {
   ServiceInfo,
   ServicesListResponse,
@@ -287,7 +287,7 @@ async function rollbackService(serviceName: string, url: URL): Promise<Response>
 async function getServiceLogs(serviceName: string, url: URL): Promise<Response> {
   if (!isValidDockerName(serviceName)) return errorResponse('Invalid service name', 400);
   const envFilter = url.searchParams.get('env');
-  const lines = parseInt(url.searchParams.get('lines') || '100', 10);
+  const lines = parseIntParam(url.searchParams.get('lines'), 100, 1, 10000);
 
   const config = loadConfig({ silent: true });
   if (!config) {
@@ -305,7 +305,7 @@ async function getServiceLogs(serviceName: string, url: URL): Promise<Response> 
   }
 
   try {
-    const command = `docker service logs --tail ${Math.min(Math.max(1, lines), 10000)} --timestamps --no-trunc ${serviceName} 2>&1`;
+    const command = `docker service logs --tail ${lines} --timestamps --no-trunc ${serviceName} 2>&1`;
     const result = await sshExec(conn, command);
 
     const logEntries = parseDockerLogLines(result.stdout, serviceName);

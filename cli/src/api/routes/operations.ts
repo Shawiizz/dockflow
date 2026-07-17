@@ -199,13 +199,6 @@ function createSSEStream(proc: ReturnType<typeof Bun.spawn>, operationType: 'dep
  * Start a deploy operation and stream output as SSE
  */
 async function startDeployOperation(req: Request): Promise<Response> {
-  if (currentOperation) {
-    return errorResponse(
-      `An operation is already running: ${currentOperation.type} (${currentOperation.environment}, started ${currentOperation.startedAt})`,
-      409,
-    );
-  }
-
   let body: DeployOperationRequest;
   try {
     body = await req.json();
@@ -215,6 +208,16 @@ async function startDeployOperation(req: Request): Promise<Response> {
 
   if (!body.environment) {
     return errorResponse('Missing required field: environment', 400);
+  }
+
+  // Reserve the operation slot atomically: there is no `await` between this
+  // check and the assignment below, so two concurrent requests cannot both
+  // pass the guard and spawn duplicate processes.
+  if (currentOperation) {
+    return errorResponse(
+      `An operation is already running: ${currentOperation.type} (${currentOperation.environment}, started ${currentOperation.startedAt})`,
+      409,
+    );
   }
 
   // Build the CLI command arguments
@@ -250,13 +253,6 @@ async function startDeployOperation(req: Request): Promise<Response> {
  * Start a build operation and stream output as SSE
  */
 async function startBuildOperation(req: Request): Promise<Response> {
-  if (currentOperation) {
-    return errorResponse(
-      `An operation is already running: ${currentOperation.type} (${currentOperation.environment}, started ${currentOperation.startedAt})`,
-      409,
-    );
-  }
-
   let body: BuildOperationRequest;
   try {
     body = await req.json();
@@ -266,6 +262,15 @@ async function startBuildOperation(req: Request): Promise<Response> {
 
   if (!body.environment) {
     return errorResponse('Missing required field: environment', 400);
+  }
+
+  // Reserve the operation slot atomically (see startDeployOperation): no
+  // `await` between this check and the assignment below.
+  if (currentOperation) {
+    return errorResponse(
+      `An operation is already running: ${currentOperation.type} (${currentOperation.environment}, started ${currentOperation.startedAt})`,
+      409,
+    );
   }
 
   // Build the CLI command arguments
