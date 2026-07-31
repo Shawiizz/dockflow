@@ -2,7 +2,7 @@ services:
   docs:
     image: dockflow-docs
     build:
-      context: ../../docs
+      context: ../..
       dockerfile: Dockerfile.docs
     environment:
       ENV: ${ENV}

@@ -3,8 +3,10 @@
   "version": "0.0.1",
   "description": "Documentation for Dockflow",
   "scripts": {
+    "predev": "node scripts/build-ui-demo.mjs --if-missing",
     "dev": "next dev --webpack",
-    "build": "next build --webpack && npx tsx scripts/generate-llms-txt.ts && pagefind --site .next/server/app --output-path public/_pagefind",
+    "build": "node scripts/build-ui-demo.mjs && next build --webpack && npx tsx scripts/generate-llms-txt.ts",
+    "build:ui-demo": "node scripts/build-ui-demo.mjs",
     "postbuild": "pagefind --site .next/server/app --output-path public/_pagefind",
     "generate:llms": "npx tsx scripts/generate-llms-txt.ts",
     "start": "next start"

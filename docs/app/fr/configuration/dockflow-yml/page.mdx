@@ -1,0 +1,178 @@
+---
+description: Configuration mono-fichier simplifiée pour les petits projets — pas besoin de répertoire .dockflow/.
+---
+
+import { Callout, Steps, Tabs } from 'nextra/components'
+
+# dockflow.yml
+
+`dockflow.yml` est une alternative mono-fichier au layout standard `.dockflow/`. Plutôt que de maintenir des fichiers `config.yml` et `servers.yml` séparés dans un répertoire dédié, vous placez un seul `dockflow.yml` à la racine du projet, à côté de votre `docker-compose.yml`.
+
+<Callout type="info">
+  Ce layout est conçu pour les projets simples avec un seul serveur. Pour les configurations multi-environnements, les templates avancés, ou les configurations serveur partagées entre dépôts, le layout standard `.dockflow/` vous donne plus de contrôle.
+</Callout>
+
+## Exemple minimal
+
+```yaml
+# dockflow.yml
+project_name: my-app
+
+servers:
+  main:
+    host: 1.2.3.4
+    tags: [production]
+
+defaults:
+  user: deploy
+```
+
+```yaml
+# docker-compose.yml (à la racine du projet)
+services:
+  app:
+    image: my-app
+    build: .
+    ports:
+      - "3000:3000"
+```
+
+C'est toute la configuration. Pas de répertoire `.dockflow/`, pas de sous-répertoires.
+
+## Structure du projet
+
+```
+my-project/
+├── dockflow.yml         ← remplace .dockflow/config.yml + .dockflow/servers.yml
+├── docker-compose.yml   ← remplace .dockflow/docker/docker-compose.yml
+├── Dockerfile
+└── src/
+```
+
+## Toutes les options
+
+`dockflow.yml` accepte tous les champs de `config.yml` et de `servers.yml` — ils ne partagent aucune clé en commun, donc la fusion est plate.
+
+**Depuis `config.yml` :**
+
+| Champ | Type | Description | Défaut |
+|---|---|---|---|
+| `project_name` | string | Identifiant unique du projet (compatible DNS, requis) | — |
+| `orchestrator` | `swarm` \| `k3s` | Backend de déploiement | `swarm` |
+| `container_engine` | `docker` \| `podman` | Moteur de build (auto-détecté si non défini) | auto |
+| `registry` | object | Config du registre Docker | — |
+| `options` | object | `remote_build`, `image_auto_tag`, `enable_debug_logs` | — |
+| `stack_management` | object | `keep_releases`, `cleanup_on_failure` | — |
+| `health_checks` | object | Vérifications d'endpoint, timeouts, comportement en cas d'échec | — |
+| `hooks` | object | Scripts `pre-build`, `post-build`, `pre-deploy`, `post-deploy` | — |
+| `lock` | object | `stale_threshold_minutes` | — |
+| `backup` | object | Config de sauvegarde pour accessoires et services | — |
+| `templates` | array | Fichiers de template Nunjucks à rendre avant le déploiement | — |
+| `accessories` | object | Définitions inline des services accessoires | — |
+| `proxy` | object | Configuration Traefik + Let's Encrypt | — |
+| `notifications` | object | Notifications webhook sur les événements de déploiement | — |
+
+**Depuis `servers.yml` :**
+
+| Champ | Type | Description | Défaut |
+|---|---|---|---|
+| `servers` | object | Définitions des serveurs indexées par nom (requis) | — |
+| `servers.<name>.host` | string | Nom d'hôte ou IP du serveur | — |
+| `servers.<name>.role` | `manager` \| `worker` | Rôle Swarm | `manager` |
+| `servers.<name>.tags` | string[] | Tags d'environnement, ex. `[production]` (requis) | — |
+| `servers.<name>.user` | string | Utilisateur SSH (surcharge `defaults.user`) | — |
+| `servers.<name>.port` | number | Port SSH (surcharge `defaults.port`) | — |
+| `servers.<name>.env` | object | Variables d'environnement spécifiques au serveur | — |
+| `defaults.user` | string | Utilisateur SSH par défaut pour tous les serveurs | `dockflow` |
+| `defaults.port` | number | Port SSH par défaut pour tous les serveurs | `22` |
+| `env` | object | Variables d'environnement par tag (`all`, `production`, etc.) | — |
+
+Voir [Serveurs & Connexions](/fr/configuration/servers) et [Configuration du projet](/fr/configuration/config-file) pour la documentation complète de chaque champ.
+
+## Fonctionnement
+
+<Steps>
+### Dockflow détecte dockflow.yml
+
+Quand vous lancez une commande `dockflow`, elle remonte depuis le répertoire courant à la recherche de `dockflow.yml` ou `.dockflow/`. Si `dockflow.yml` est trouvé en premier, le layout plat est activé.
+
+### Config et serveurs sont séparés en interne
+
+Le fichier est parsé une fois et mis en cache. Les champs de config sont routés vers la même logique qui lit `.dockflow/config.yml`, et les champs serveur vers la même logique qui lit `.dockflow/servers.yml`. Aucun code du pipeline de déploiement ne change.
+
+### docker-compose.yml est lu depuis la racine du projet
+
+Au lieu de `.dockflow/docker/docker-compose.yml`, Dockflow cherche `docker-compose.yml` (ou `.yaml`) à la racine du projet. Les chemins de contexte de build dans le fichier compose sont relatifs à la racine du projet, ce qui est le comportement standard de Docker Compose.
+</Steps>
+
+## Points d'attention
+
+<Callout type="warning">
+  Si `dockflow.yml` et `.dockflow/` existent tous les deux dans le même répertoire, `dockflow.yml` est prioritaire.
+</Callout>
+
+- **Templates** : le champ `templates` résout les chemins relatifs à la racine du projet (comme le layout standard).
+- **Accessoires** : placez `accessories.yml` à la racine du projet, à côté de `dockflow.yml`. S'il n'est pas trouvé là, Dockflow se rabat sur `.dockflow/docker/accessories.yml`. Vous pouvez aussi définir les accessoires inline sous la clé `accessories` dans `dockflow.yml`.
+- **Secrets CI** : le format `{ENV}_{SERVER}_CONNECTION` fonctionne à l'identique — les surcharges de host s'appliquent quel que soit le layout.
+
+## Exemple complet
+
+<Tabs items={['dockflow.yml', 'docker-compose.yml']}>
+  <Tabs.Tab>
+```yaml
+# dockflow.yml
+project_name: my-app
+
+servers:
+  web:
+    host: 1.2.3.4
+    tags: [production]
+
+defaults:
+  user: deploy
+  port: 22
+
+env:
+  production:
+    APP_ENV: production
+
+proxy:
+  enabled: true
+  email: you@example.com
+  domains:
+    production: my-app.example.com
+
+health_checks:
+  enabled: true
+  endpoints:
+    - url: https://my-app.example.com
+      retries: 5
+
+stack_management:
+  keep_releases: 3
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```yaml
+# docker-compose.yml
+services:
+  app:
+    image: my-app
+    build: .
+    ports:
+      - "3000:3000"
+    labels:
+      - "traefik.enable=true"
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+```
+  </Tabs.Tab>
+</Tabs>
+
+## Voir aussi
+
+- [Configuration du projet](/fr/configuration/config-file) — tous les champs `config.yml` en détail
+- [Serveurs & Connexions](/fr/configuration/servers) — tous les champs `servers.yml` en détail
+- [Docker Compose](/fr/configuration/docker-compose) — structure du fichier compose et comportement spécifique à Dockflow

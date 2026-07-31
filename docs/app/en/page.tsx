@@ -71,7 +71,7 @@ export default function Page() {
       </section>
 
       {/* ── Local UI showcase ── */}
-      <section className="max-w-[1100px] mx-auto px-6 py-20 text-center">
+      <section className="max-w-[1280px] mx-auto px-6 py-20 text-center">
         <div className="inline-block px-3.5 py-[5px] rounded-full border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-500 dark:text-neutral-400 mb-6 bg-neutral-100/60 dark:bg-neutral-900/60">
           Local UI &middot; started from the CLI
         </div>
@@ -89,10 +89,12 @@ export default function Page() {
             <span className="w-2.5 h-2.5 rounded-full bg-green-500 mr-1.5" />
             <span className="flex-1 text-center text-xs text-neutral-600">Dashboard</span>
           </div>
-          <img
-            src="/ui-preview.png"
-            alt="Dockflow UI Dashboard"
-            className="w-full block"
+          <iframe
+            src="/ui-demo"
+            title="Dockflow UI live demo"
+            loading="lazy"
+            className="w-full block bg-neutral-950"
+            style={{ height: 640, border: "none" }}
           />
         </div>
       </section>
