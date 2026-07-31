@@ -1,0 +1,301 @@
+# Déploiement
+
+import { Callout, Steps, Tabs } from 'nextra/components'
+
+Quand vous lancez `dockflow deploy`, Dockflow construit vos images, les transfère vers votre serveur, déploie la stack, et vérifie que les services sont en bonne santé. Le processus s'adapte automatiquement selon votre paramètre [`orchestrator`](/fr/configuration/orchestrator) (Swarm ou k3s).
+
+## Déclencher un déploiement
+
+<Tabs items={['CLI', 'Tag (CI/CD)', 'Branche (CI/CD)']}>
+  <Tabs.Tab>
+    ```bash
+    dockflow deploy production 1.0.0
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Poussez un tag git pour déclencher un déploiement. Le CLI détecte automatiquement l'environnement à partir du suffixe du tag :
+
+    ```bash
+    git tag 1.0.0              # → déploie sur production
+    git tag 1.0.0-staging      # → déploie sur staging
+    git push origin --tags
+    ```
+
+    Le nom du tag est utilisé comme version. Un tag sans suffixe (ex. `1.0.0`) déploie sur `production`. Un tag se terminant par `-<env>` (ex. `1.0.0-staging`) déploie sur cet environnement.
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Poussez sur une branche pour déclencher un build ou un déploiement. Le CLI détecte automatiquement la branche et génère une version sous la forme `<branch>-<commit-sha>` :
+
+    ```bash
+    git push origin main       # → build ou déploie sur production sous main-abc12345
+    ```
+  </Tabs.Tab>
+</Tabs>
+
+Le nom de l'environnement doit correspondre à un tag de serveur dans votre [`servers.yml`](/fr/configuration/servers).
+
+## Processus de déploiement
+
+<Steps>
+### Transfert des images
+
+Dockflow transfère vos images vers le serveur via SSH. La méthode dépend de votre orchestrateur et de votre [moteur de conteneurs](/fr/configuration/container-engine) :
+
+<Tabs items={['Swarm (Docker)', 'Swarm (Podman)', 'k3s']}>
+  <Tabs.Tab>
+```
+docker save image:tag | gzip -1 | ssh user@host "gunzip | docker load"
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```
+podman save image:tag | gzip -1 | ssh user@host "gunzip | podman load"
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```
+docker save image:tag | gzip -1 | ssh user@host "gunzip | sudo k3s ctr -n k8s.io images import -"
+```
+k3s utilise toujours containerd pour l'import d'images, quel que soit le moteur de build.
+  </Tabs.Tab>
+</Tabs>
+
+Aucun registre externe requis. Pour les clusters Swarm multi-nœuds, les images sont streamées vers chaque nœud. Vous pouvez optionnellement configurer un [registre Docker](/fr/configuration/registry) pour des transferts plus rapides.
+
+### Déploiement de la stack
+
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
+Votre application est déployée comme une stack Swarm :
+
+```
+docker stack deploy -c docker-compose.yml my-app-production
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+Dockflow convertit votre `docker-compose.yml` en manifests Kubernetes natifs et les applique :
+
+```
+kubectl apply -f - (Deployments, Services, PVCs, IngressRoutes)
+```
+
+Chaque service compose devient un Deployment + Service ClusterIP à l'intérieur d'un namespace `dockflow-{project}-{env}`.
+  </Tabs.Tab>
+</Tabs>
+
+Chaque déploiement crée un nouveau répertoire de release sur le serveur.
+
+### Vérification de la santé
+
+Après le déploiement, Dockflow vérifie :
+
+1. **Vérifications internes** : Swarm rapporte les services comme sains / les pods k3s atteignent l'état Running (pas de CrashLoopBackOff)
+2. La bonne version de l'image est en cours d'exécution
+3. Les endpoints de health check externes répondent (si [configurés](/fr/configuration/config-file#health-checks))
+
+### Rollback en cas d'échec
+
+Si les health checks échouent, Dockflow :
+
+1. Détecte le rollback via le statut Swarm
+2. Attend que la version précédente se stabilise
+3. Nettoie la release échouée
+4. Rapporte le déploiement comme échoué
+</Steps>
+
+## Gestion des releases
+
+Dockflow organise les releases sur votre serveur :
+
+```
+/var/lib/dockflow/stacks/my-app-production/
+├── 1.0.0/
+│   └── docker-compose.yml
+├── 1.0.1/
+│   └── docker-compose.yml
+├── 1.0.2/
+│   └── docker-compose.yml
+└── current -> 1.0.2/
+```
+
+Le symlink `current` pointe vers la release active. Par défaut, Dockflow conserve les 3 dernières releases (configurable via [`keep_releases`](/fr/configuration/config-file#keep_releases)).
+
+## Health Checks
+
+### Health checks de conteneur
+
+Définissez des health checks dans votre `docker-compose.yml` :
+
+```yaml
+services:
+  app:
+    image: my-app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+```
+
+- **Swarm** : Docker surveille ces vérifications nativement et déclenche un rollback automatique si les conteneurs deviennent malsains.
+- **k3s** : Dockflow les convertit automatiquement en `livenessProbe` et `readinessProbe` Kubernetes. Aucun YAML K8s manuel nécessaire.
+
+### Health checks externes
+
+Configurez des vérifications HTTP additionnelles dans `.dockflow/config.yml` :
+
+```yaml
+health_checks:
+  enabled: true
+  startup_delay: 15
+  on_failure: rollback
+  endpoints:
+    - name: "API"
+      url: "http://localhost:3000/health"
+      expected_status: 200
+      timeout: 30
+      retries: 3
+```
+
+Voir [configuration des Health Checks](/fr/configuration/config-file#health-checks) pour toutes les options.
+
+## Mises à jour progressives
+
+<Callout type="info">
+  Les paramètres de mise à jour progressive s'appliquent **uniquement à Swarm**. Pour k3s, Kubernetes gère les mises à jour progressives via sa propre stratégie de Deployment (défaut : `RollingUpdate` avec 25% maxSurge / 25% maxUnavailable).
+</Callout>
+
+Dockflow injecte des valeurs par défaut sûres pour des déploiements Swarm sans interruption. Elles ne sont **appliquées que** si non déjà définies dans votre `docker-compose.yml`.
+
+### Paramètres par défaut
+
+| Paramètre | Update | Rollback |
+|---------|--------|----------|
+| `parallelism` | 1 | 1 |
+| `delay` | 10s | 5s |
+| `failure_action` | rollback | — |
+| `monitor` | 30s | 15s |
+| `order` | start-first | start-first |
+| `max_failure_ratio` | 0 | — |
+
+<Callout type="info">
+Les valeurs de votre `docker-compose.yml` ont toujours la priorité. Dockflow ne complète que les champs manquants.
+</Callout>
+
+### Personnalisation
+
+Surchargez n'importe quel paramètre dans votre `docker-compose.yml` :
+
+```yaml
+services:
+  app:
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 2
+        delay: 5s
+        failure_action: pause
+        monitor: 60s
+        order: stop-first
+      rollback_config:
+        parallelism: 2
+        delay: 3s
+```
+
+### Ordre de mise à jour
+
+- **`start-first`** (défaut) : Le nouveau conteneur démarre avant que l'ancien s'arrête. Zéro interruption, mais nécessite brièvement des ressources supplémentaires.
+- **`stop-first`** : L'ancien conteneur s'arrête avant que le nouveau démarre. Moins de ressources mais cause une brève interruption.
+
+Pour des déploiements sans interruption, utilisez `start-first` avec au moins 2 replicas.
+
+## Opérations manuelles
+
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
+```bash
+# Voir le statut de la stack
+docker stack services my-app-production
+
+# Voir les logs du service
+docker service logs my-app-production_app
+
+# Forcer le redéploiement
+docker service update --force my-app-production_app
+
+# Rollback manuel
+docker service rollback my-app-production_app
+
+# Supprimer la stack
+docker stack rm my-app-production
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```bash
+# Voir les deployments
+kubectl get deployments -n dockflow-my-app-production
+
+# Voir les pods
+kubectl get pods -n dockflow-my-app-production
+
+# Voir les logs du service
+kubectl logs -n dockflow-my-app-production -l app=web
+
+# Scaler un deployment
+kubectl scale deployment/web --replicas=3 -n dockflow-my-app-production
+
+# Rollback
+kubectl rollout undo deployment/web -n dockflow-my-app-production
+
+# Tout supprimer
+kubectl delete namespace dockflow-my-app-production
+```
+  </Tabs.Tab>
+</Tabs>
+
+## Dépannage
+
+### Déploiement bloqué
+
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
+```bash
+docker service ps my-app-production_app --no-trunc
+```
+
+Cherchez les messages d'erreur dans la sortie de la tâche.
+  </Tabs.Tab>
+  <Tabs.Tab>
+```bash
+kubectl describe pods -n dockflow-my-app-production
+kubectl get events -n dockflow-my-app-production --sort-by='.lastTimestamp'
+```
+
+Cherchez les états `CrashLoopBackOff`, `ImagePullBackOff`, ou `Pending`.
+  </Tabs.Tab>
+</Tabs>
+
+### Boucle de rollback
+
+Si les services n'arrêtent pas de rollback, le problème vient généralement du health check de votre conteneur. Vérifiez que la commande de health check fonctionne :
+
+```bash
+# Swarm
+docker exec <container_id> curl -f http://localhost:3000/health
+
+# k3s
+kubectl exec -n dockflow-my-app-production <pod_name> -- curl -f http://localhost:3000/health
+```
+
+### Images introuvables
+
+Si l'orchestrateur ne trouve pas les images après un rollback, le nettoyage les a peut-être supprimées. Redéployez :
+
+```bash
+dockflow deploy production 1.0.3
+```
+
+---
+
+**Suivant :** [Référence CLI](/fr/cli) — toutes les commandes et options disponibles.

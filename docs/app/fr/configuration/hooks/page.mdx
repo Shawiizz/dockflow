@@ -1,0 +1,166 @@
+# Hooks
+
+import { Callout, FileTree } from 'nextra/components'
+
+Les hooks vous permettent d'exécuter des scripts personnalisés à des moments précis du déploiement.
+
+## Hooks disponibles
+
+| Hook | Emplacement | Moment |
+|------|----------|--------|
+| `pre-build` | Local (runner CI) | Avant la construction des images Docker |
+| `post-build` | Local (runner CI) | Après la construction des images Docker |
+| `pre-upload` | Serveur | Avant que les fichiers des entrées `uploads` soient copiés sur le serveur |
+| `post-upload` | Serveur | Après l'envoi des fichiers, avant le déploiement de la stack |
+| `pre-deploy` | Serveur | Après l'envoi des fichiers, avant le déploiement de la stack |
+| `post-deploy` | Serveur | Après un déploiement réussi et les health checks |
+
+<Callout type="info">
+  Quand [`remote_build: true`](/fr/configuration/build-strategy) est activé, les hooks `pre-build` et `post-build` s'exécutent sur le serveur au lieu de localement — là où le build a réellement lieu.
+</Callout>
+
+<Callout type="info">
+  Les hooks locaux s'exécutent via bash. Sur Windows, dockflow utilise automatiquement Git Bash quand il est installé (le stub `bash.exe` du WSL System32 n'est jamais utilisé) — installez [Git pour Windows](https://git-scm.com/download/win) pour exécuter les hooks locaux.
+</Callout>
+
+## Hooks basés sur des fichiers
+
+Créez des scripts shell dans `.dockflow/hooks/` :
+
+<FileTree>
+  <FileTree.Folder name=".dockflow" defaultOpen>
+    <FileTree.Folder name="hooks" defaultOpen>
+      <FileTree.File name="pre-build.sh" />
+      <FileTree.File name="post-build.sh" />
+      <FileTree.File name="pre-upload.sh" />
+      <FileTree.File name="post-upload.sh" />
+      <FileTree.File name="pre-deploy.sh" />
+      <FileTree.File name="post-deploy.sh" />
+    </FileTree.Folder>
+  </FileTree.Folder>
+</FileTree>
+
+Tous les hooks sont optionnels. Si un fichier de hook n'existe pas, il est simplement ignoré.
+
+## Hooks inline
+
+Pour des commandes simples, définissez-les directement dans `.dockflow/config.yml` plutôt que de créer un script séparé :
+
+```yaml
+# .dockflow/config.yml
+hooks:
+  post-deploy: systemctl reload nginx
+
+  pre-build:
+    - echo "Building {{ config.project_name }} {{ version }}"
+    - docker pull base-image:latest
+```
+
+Quand un fichier et des commandes inline sont définis pour la même phase, le fichier s'exécute d'abord, puis les commandes inline.
+
+## Templating
+
+Les hooks sont rendus avec [Nunjucks](https://mozilla.github.io/nunjucks/) avant exécution. Vous pouvez utiliser n'importe quelle variable de template :
+
+```bash
+#!/bin/bash
+echo "Deploying {{ config.project_name }} version {{ version }} to {{ env }}"
+
+# Accès aux variables d'environnement du serveur
+DATABASE_URL="{{ current.env.database_url }}"
+```
+
+## Exemples
+
+### Pre-build : générer des assets
+
+```bash
+# .dockflow/hooks/pre-build.sh
+#!/bin/bash
+npm run build:assets
+```
+
+### Post-build : scan de sécurité
+
+```bash
+# .dockflow/hooks/post-build.sh
+#!/bin/bash
+docker scan {{ project_name }}:{{ version }} || true
+```
+
+### Pre-upload : arrêter un service avant l'arrivée des fichiers
+
+```bash
+# .dockflow/hooks/pre-upload.sh
+#!/bin/bash
+systemctl stop myapp || true
+```
+
+### Post-upload : lancer une migration sur les fichiers envoyés
+
+```bash
+# .dockflow/hooks/post-upload.sh
+#!/bin/bash
+cd /var/www/myapp && php artisan migrate --force
+```
+
+### Pre-deploy : sauvegarde de base de données
+
+```bash
+# .dockflow/hooks/pre-deploy.sh
+#!/bin/bash
+pg_dump $DATABASE_URL > /backups/pre-deploy-{{ version }}.sql
+```
+
+### Post-deploy : recharger un service systemd
+
+```yaml
+# .dockflow/config.yml
+hooks:
+  post-deploy:
+    - systemctl daemon-reload
+    - systemctl restart rclone-s3.service
+```
+
+### Post-deploy : notifier l'équipe
+
+```bash
+# .dockflow/hooks/post-deploy.sh
+#!/bin/bash
+curl -X POST "https://hooks.slack.com/services/xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Deployed {{ project_name }} {{ version }} to {{ env }}"}'
+```
+
+## Configuration
+
+```yaml
+# .dockflow/config.yml
+hooks:
+  enabled: true    # Active/désactive tous les hooks (défaut: true)
+  timeout: 300     # Timeout par hook en secondes (défaut: 300)
+  fatal: false     # Abandonner le déploiement en cas d'échec d'un hook (défaut: false)
+
+  pre-build: echo "starting build"
+  post-deploy:
+    - systemctl daemon-reload
+    - systemctl restart myservice
+```
+
+| Champ | Type | Description | Défaut |
+|-------|------|-------------|---------|
+| `enabled` | boolean | Active ou désactive tous les hooks | `true` |
+| `timeout` | number | Temps d'exécution max par hook, en secondes | `300` |
+| `fatal` | boolean | Abandonne le déploiement quand un hook sort avec un code non nul | `false` |
+| `pre-build` | string \| string[] | Commande(s) inline pour la phase pre-build | — |
+| `post-build` | string \| string[] | Commande(s) inline pour la phase post-build | — |
+| `pre-upload` | string \| string[] | Commande(s) inline à exécuter sur le serveur avant l'envoi des fichiers | — |
+| `post-upload` | string \| string[] | Commande(s) inline à exécuter sur le serveur après l'envoi des fichiers | — |
+| `pre-deploy` | string \| string[] | Commande(s) inline pour la phase pre-deploy | — |
+| `post-deploy` | string \| string[] | Commande(s) inline pour la phase post-deploy | — |
+
+Par défaut, les échecs de hook affichent un avertissement et laissent le déploiement continuer. Définissez `fatal: true` pour traiter un code de sortie non nul comme une erreur de déploiement — utile pour les hooks qui exécutent des opérations critiques comme des migrations de base de données.
+
+<Callout type="warning">
+  Avec `fatal: false` (par défaut), un hook en échec n'abandonne **pas** le déploiement. Si votre hook exécute une opération critique (ex : une migration), définissez `fatal: true`.
+</Callout>

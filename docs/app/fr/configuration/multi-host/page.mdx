@@ -1,0 +1,139 @@
+# Déploiement multi-nœuds
+
+import { Callout } from 'nextra/components'
+
+Déployez votre application sur plusieurs serveurs. Les clusters multi-nœuds sont supportés pour **Docker Swarm**. Les déploiements k3s ciblent actuellement un seul nœud via dockflow.
+
+<Callout type="info">
+  L'orchestrateur se sélectionne avec `orchestrator: swarm | k3s` dans `config.yml`. Voir [Orchestrateur](/fr/configuration/orchestrator) pour les détails.
+</Callout>
+
+## Architecture Swarm
+
+- **Managers** : Reçoivent les déploiements et orchestrent le cluster
+- **Workers** : Font tourner les conteneurs distribués par les managers
+- **Multi-manager** : Pour la haute disponibilité (tolère les pannes de manager)
+
+## Configuration de base
+
+```yaml
+# .dockflow/servers.yml
+
+servers:
+  manager:
+    role: manager
+    tags: [production]
+
+  worker1:
+    role: worker
+    tags: [production]
+
+  worker2:
+    role: worker
+    tags: [production]
+
+defaults:
+  user: dockflow
+  port: 22
+```
+
+Chaque serveur a besoin d'une chaîne de connexion dans vos secrets :
+
+```bash
+PRODUCTION_MANAGER_CONNECTION=eyJob3N0Ijoi...
+PRODUCTION_WORKER1_CONNECTION=eyJob3N0Ijoi...
+PRODUCTION_WORKER2_CONNECTION=eyJob3N0Ijoi...
+```
+
+<Callout type="info">
+  Les workers rejoignent automatiquement le cluster Swarm pendant `dockflow setup swarm`. Vous ne déployez que vers le manager — Swarm distribue automatiquement les charges de travail.
+</Callout>
+
+## Multi-manager pour la haute disponibilité
+
+Pour les environnements de production, configurez plusieurs managers pour le failover :
+
+```yaml
+servers:
+  manager1:
+    role: manager
+    tags: [production]
+
+  manager2:
+    role: manager
+    tags: [production]
+
+  manager3:
+    role: manager
+    tags: [production]
+
+  worker1:
+    role: worker
+    tags: [production]
+
+  worker2:
+    role: worker
+    tags: [production]
+```
+
+<Callout type="warning">
+  Pour le consensus Raft, utilisez un **nombre impair** de managers :
+  - 3 managers = tolère 1 panne
+  - 5 managers = tolère 2 pannes
+</Callout>
+
+## Failover automatique
+
+Lors d'un déploiement avec plusieurs managers, Dockflow automatiquement :
+
+1. Vérifie le statut de chaque manager via SSH
+2. Trouve le leader Swarm actif (ou n'importe quel manager accessible)
+3. Bascule sur le prochain manager disponible si l'un d'eux est hors service
+
+```bash
+# Dockflow trouve le leader actif automatiquement
+dockflow deploy production
+
+# Désactiver le failover (utiliser uniquement le premier manager)
+dockflow deploy production --no-failover
+```
+
+Exemple de sortie avec failover :
+```
+⠋ Vérification de 3 managers pour trouver le leader actif...
+  Vérification de manager1... ✗ injoignable
+  Vérification de manager2... ✓ LEADER
+⚠ Utilisation de manager2 (leader). Injoignable : manager1 (injoignable)
+```
+
+## Fonctionnement du déploiement
+
+1. **Le déploiement cible le manager** — Dockflow se connecte uniquement au manager actif
+2. **Swarm planifie les charges de travail** — Les conteneurs sont distribués automatiquement sur tous les nœuds
+3. **Les images sont transférées vers les workers** — Via streaming SSH ou [registre](/fr/configuration/registry)
+
+```bash
+dockflow deploy production
+# ✓ Déploiement terminé ! Cluster Swarm : 3 managers, 2 worker(s)
+```
+
+## Variables d'environnement par serveur
+
+Surchargez les variables pour des serveurs spécifiques :
+
+```yaml
+servers:
+  manager1:
+    role: manager
+    tags: [production]
+    env:
+      NODE_ID: "manager-1"
+      PROMETHEUS_ENABLED: "true"
+
+  worker1:
+    role: worker
+    tags: [production]
+    env:
+      NODE_ID: "worker-1"
+      GPU_ENABLED: "true"
+```

@@ -1,0 +1,168 @@
+# Interface Web
+
+import { Callout, Steps } from 'nextra/components'
+
+Dockflow inclut un dashboard web intégré pour gérer les déploiements, surveiller les services, et interagir avec votre infrastructure depuis le navigateur.
+
+## Démarrage
+
+<Steps>
+## Lancer le dashboard
+
+```bash
+dockflow ui
+```
+
+Cela démarre un serveur local et ouvre le dashboard dans votre navigateur par défaut.
+
+| Option | Description |
+|--------|-------------|
+| `-p, --port <port>` | Port personnalisé (défaut : `4200`) |
+| `--no-open` | Ne pas ouvrir le navigateur automatiquement |
+
+## Sélectionner votre environnement
+
+Utilisez le sélecteur d'environnement en haut à droite pour basculer entre les environnements (ex : `production`, `staging`). Toutes les pages réagissent à cette sélection.
+
+</Steps>
+
+<Callout type="info">
+  Le dashboard tourne localement et se connecte à vos serveurs via SSH en utilisant les identifiants de votre `servers.yml`. Il n'y a pas de couche d'authentification — il est conçu pour un usage local ou sur un réseau de confiance.
+</Callout>
+
+## Pages
+
+### Dashboard
+
+La page d'accueil affiche une vue d'ensemble de votre cluster :
+
+- **Cartes de statistiques** : Total des serveurs, comptes en ligne/hors ligne, environnements
+- **Cartes serveur** : Chaque serveur affiche son nom, son host, son rôle (manager/worker), ses tags d'environnement, et son statut en direct
+- **Actions rapides** : Vérifier le statut d'un serveur, ouvrir une session terminal SSH
+
+Si aucun projet n'est détecté, un écran de bienvenue vous guide à travers l'initialisation.
+
+### Serveurs
+
+Une vue tableau détaillée de tous les serveurs avec des colonnes pour le nom, le host, le statut, le rôle, l'environnement, et le statut Swarm. Supporte la pagination et les vérifications de statut par serveur.
+
+Cliquez sur l'icône terminal de n'importe quel serveur en ligne pour ouvrir une session SSH interactive.
+
+### Services
+
+Affiche tous les services Docker sous forme de cartes montrant le nom, l'état, l'image, la progression des replicas, et les ports.
+
+Actions disponibles par service :
+
+| Action | Description |
+|--------|-------------|
+| **Start** | Passer un service arrêté à 1 replica |
+| **Restart** | Redémarrer le service (avec confirmation) |
+| **Stop** | Passer à 0 replica (avec confirmation) |
+| **Scale** | Définir un nombre de replicas spécifique (0–20) |
+| **Rollback** | Revenir à la version précédente (avec confirmation) |
+| **Terminal** | Ouvrir une session exec dans un conteneur en cours d'exécution |
+| **Logs** | Aller à la page Logs filtrée sur ce service |
+
+Une barre de recherche filtre les services par nom. Après chaque action, l'interface interroge le serveur jusqu'à ce que l'état du service soit mis à jour.
+
+### Accessoires
+
+Grille de conteneurs accessoires (bases de données, caches, etc.) montrant le nom, l'image, le statut, les replicas, les ports, les volumes, et les variables d'environnement.
+
+Actions : Restart, Stop, Voir les logs (dans une boîte de dialogue).
+
+### Logs
+
+Visualiseur de logs en temps réel pour n'importe quel service.
+
+- **Sélecteur de service** : Choisissez quel service suivre
+- **Lignes** : Choisissez combien de lignes récupérer (50/100/200/500)
+- **Auto-scroll** : Garde la vue épinglée sur la sortie la plus récente
+- **Auto-refresh** : Interroge les nouveaux logs toutes les 5 secondes (en pause quand l'onglet du navigateur est masqué)
+
+### Deploy
+
+Déclenchez et surveillez des déploiements depuis le navigateur.
+
+**Options du formulaire de déploiement :**
+
+| Option | Description |
+|--------|-------------|
+| Version | Chaîne de version pour ce déploiement |
+| Services | Liste séparée par des virgules pour un déploiement sélectif |
+| Skip Build | Sauter la phase de build de l'image |
+| Force | Passer outre les verrous de déploiement |
+| Accessories | Déployer uniquement les accessoires |
+| All | Déployer l'app + les accessoires |
+| Skip Accessories | Sauter entièrement les accessoires |
+| Dry Run | Prévisualiser sans exécuter |
+
+Le panneau console diffuse la sortie du déploiement en temps réel. En dessous, une timeline montre les déploiements passés avec statut, version, durée, et auteur.
+
+### Build
+
+Déclenchez des builds d'images avec push optionnel vers un registre. La console diffuse la sortie du build en temps réel, comme la page Deploy.
+
+### Topology
+
+Une carte visuelle interactive de l'architecture de votre cluster.
+
+- Les **cartes de service** (gauche) se connectent aux **cartes de serveur** (droite) via des courbes de Bézier
+- **Glissez les cartes** pour réorganiser la disposition (les positions sont sauvegardées localement)
+- **Glissez depuis un port de service** vers un serveur pour créer une contrainte de placement
+- **Cliquez sur une connexion** pour la supprimer
+- **Save** réécrit les contraintes de placement dans votre `docker-compose.yml`
+
+<Callout type="info">
+  Les lignes en pointillé représentent des connexions implicites (assignées par Swarm). Les lignes bleues pleines sont des contraintes de placement explicites que vous définissez.
+</Callout>
+
+### Monitoring
+
+Deux onglets pour l'observabilité :
+
+**Container Stats** — Tableau d'utilisation des ressources en temps réel (CPU %, mémoire, I/O réseau, I/O disque) avec auto-refresh toutes les 10 secondes.
+
+**Audit Log** — Tableau d'historique de déploiement avec des tags d'action colorés (deployed, rollback, scale, stop), version, auteur, et message.
+
+### Resources
+
+Trois outils de maintenance du cluster :
+
+**Prune** — Supprime les conteneurs, images, volumes, et/ou réseaux inutilisés. Sélectionnez des cibles et lancez le nettoyage. Affiche l'espace récupéré par cible.
+
+<Callout type="warning">
+  Le prune des volumes supprime définitivement les données. L'interface affiche un avertissement quand des volumes sont sélectionnés.
+</Callout>
+
+**Deploy Lock** — Consultez et gérez le verrou de déploiement. Affiche le statut du verrou (verrouillé/déverrouillé/périmé), l'auteur, et la durée. Acquérez ou libérez des verrous manuellement.
+
+**Disk Usage** — Sortie brute de `docker system df` montrant la consommation disque Docker.
+
+### Settings
+
+Modifiez votre configuration Dockflow directement depuis le navigateur avec un aperçu YAML en direct.
+
+**Onglet Config** — Modifiez les champs de `config.yml` organisés en sections repliables : nom du projet, registre, options, gestion de stack, health checks, hooks, et templates.
+
+**Onglet Servers** — Modifiez `servers.yml` : paramètres SSH par défaut, liste des serveurs (nom, rôle, host, utilisateur, port, tags, variables d'environnement), et variables d'environnement par tag.
+
+Les changements se sauvegardent automatiquement après 800ms d'inactivité. Un garde-fou de navigation vous avertit des changements non sauvegardés.
+
+## Terminal SSH
+
+Le terminal intégré utilise [xterm.js](https://xtermjs.org/) et se connecte via WebSocket à vos serveurs.
+
+Il fonctionne selon deux modes :
+
+| Mode | Déclencheur | Chemin WebSocket |
+|------|---------|---------------|
+| **SSH** | Bouton terminal sur une carte serveur | `/ws/ssh/:serverName` |
+| **Exec** | Bouton terminal sur une carte service | `/ws/exec/:serviceName` |
+
+Le terminal supporte le redimensionnement, les URLs cliquables, et affiche un indicateur de statut de connexion.
+
+---
+
+Suivant : [Référence CLI](/fr/cli)

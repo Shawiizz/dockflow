@@ -1,0 +1,235 @@
+# Templates
+
+import { Callout } from 'nextra/components'
+
+Dockflow rend les fichiers avec le templating [Nunjucks](https://mozilla.github.io/nunjucks/) avant le déploiement, en injectant des valeurs spécifiques à l'environnement dans votre configuration.
+
+## Rendu automatique
+
+Tous les fichiers à l'intérieur de `.dockflow/` sont **automatiquement rendus** avec Nunjucks pendant le déploiement. Aucune configuration nécessaire.
+
+```yaml
+# .dockflow/docker/docker-compose.yml — rendu automatiquement
+services:
+  app:
+    environment:
+      DOMAIN: {{ current.env.domain_name }}
+    ports:
+      - {{ current.env.app_port }}:3000
+```
+
+## Templates Nginx
+
+Les fichiers placés dans `.dockflow/templates/nginx/` sont traités comme des configurations nginx et automatiquement déployés vers `/etc/nginx/sites-enabled/` sur le serveur après chaque déploiement réussi. Le nom du fichier est utilisé tel quel (aucun retrait d'extension).
+
+```
+.dockflow/templates/nginx/
+└── myapp.example.com.conf.j2   →   /etc/nginx/sites-enabled/myapp.example.com.conf
+```
+
+Après l'envoi, Dockflow lance `nginx -t` pour valider la configuration. Si le test échoue, la configuration précédente est automatiquement restaurée et un avertissement est journalisé. En cas de succès, nginx est rechargé avec `nginx -s reload`.
+
+<Callout type="warning">
+Les templates nginx sont actuellement déployés uniquement sur le **nœud manager actif**. Dans une configuration multi-manager où tous les managers sont exposés publiquement, chaque manager aurait besoin que sa config nginx soit mise à jour indépendamment. Un mécanisme de déploiement nginx multi-nœuds plus intelligent pourrait être introduit à l'avenir.
+</Callout>
+
+## Templates personnalisés
+
+Pour les fichiers **en dehors** de `.dockflow/`, déclarez-les dans `.dockflow/config.yml`. Les chemins sont relatifs à la racine du projet :
+
+```yaml
+# .dockflow/config.yml
+templates:
+  - "config/application.yml"
+  - "nginx/nginx.conf"
+  - "scripts/init.sh"
+```
+
+Ces fichiers sont rendus sur place. Pour produire vers un autre emplacement, utilisez le format étendu :
+
+```yaml
+# .dockflow/config.yml
+templates:
+  - "scripts/init.sh"                    # Rendu sur place
+  - src: "config/app.yml.njk"             # Source → destination différente
+    dest: "config/app.yml"
+```
+
+## Variables disponibles
+
+### Variables de base
+
+| Variable | Description | Exemple |
+|----------|-------------|--------|
+| `{{ env }}` | Environnement cible | `production` |
+| `{{ version }}` | Version du déploiement | `1.2.3` |
+| `{{ branch_name }}` | Nom de la branche Git | `main` |
+| `{{ server_name }}` | Nom du serveur courant | `manager_1` |
+| `{{ config.project_name }}` | Nom du projet depuis la config | `my-app` |
+
+### Serveur courant (`{{ current }}`)
+
+L'objet `current` contient les informations sur le serveur ciblé par le déploiement :
+
+| Variable | Description | Exemple |
+|----------|-------------|--------|
+| `{{ current.name }}` | Nom du serveur depuis servers.yml | `manager_1` |
+| `{{ current.host }}` | IP ou nom d'hôte du serveur | `192.168.1.10` |
+| `{{ current.port }}` | Port SSH | `22` |
+| `{{ current.user }}` | Utilisateur SSH | `dockflow` |
+| `{{ current.role }}` | Rôle du serveur | `manager` ou `worker` |
+| `{{ current.tags }}` | Tags du serveur | `['production']` |
+| `{{ current.env.my_var }}` | Variable d'environnement (clé en minuscules) | `my-value` |
+
+<Callout type="warning">
+**Toutes les clés de variable d'environnement doivent être en minuscules dans les templates.** Même si vous définissez `DB_HOST` dans `servers.yml`, vous devez la référencer via `{{ current.env.db_host }}`.
+</Callout>
+
+### Config (`{{ config }}`)
+
+Toutes les valeurs de votre `config.yml` :
+
+```yaml
+database: {{ config.project_name }}-db
+```
+
+### Tous les serveurs (`{{ servers }}`)
+
+Tous les serveurs de l'environnement courant, indexés par nom. Chaque serveur possède les mêmes propriétés que `current`.
+
+### Métadonnées du cluster (`{{ cluster }}`)
+
+| Variable | Description | Exemple |
+|----------|-------------|--------|
+| `{{ cluster.size }}` | Nombre total de nœuds | `5` |
+| `{{ cluster.manager_count }}` | Nombre de managers | `1` |
+| `{{ cluster.worker_count }}` | Nombre de workers | `4` |
+| `{{ cluster.managers }}` | Liste des IPs des managers | `['192.168.1.10']` |
+| `{{ cluster.workers }}` | Liste des IPs des workers | `['192.168.1.11', '192.168.1.12']` |
+
+### Arguments de build Docker
+
+Les variables de template fonctionnent aussi dans `build.args` de votre `docker-compose.yml`. Comme le fichier compose est rendu avant que le build ne s'exécute, les valeurs sont déjà résolues quand `docker build` s'exécute :
+
+```yaml
+services:
+  api:
+    build:
+      args:
+        SENTRY_DSN: "{{ current.env.sentry_dsn }}"
+        APP_VERSION: "{{ version }}"
+```
+
+<Callout type="warning">
+  Les build args sont visibles dans `docker history`. Utilisez-les pour des configurations non sensibles (URLs, versions, feature flags). Pour les secrets qui ne doivent pas apparaître dans les layers de l'image, injectez-les au **runtime** via `environment:` à la place.
+</Callout>
+
+## Syntaxe des templates
+
+### Conditions
+
+```yaml
+logging:
+{% if env == 'production' %}
+  level: "warn"
+  format: "json"
+{% else %}
+  level: "debug"
+  format: "pretty"
+{% endif %}
+
+features:
+  debug_toolbar: {{ 'true' if env != 'production' else 'false' }}
+```
+
+### Valeurs par défaut
+
+```yaml
+database:
+  pool_size: {{ current.env.db_pool_size | default(10) }}
+  timeout: {{ current.env.db_timeout | default(30) }}
+```
+
+### Boucles
+
+```nginx
+upstream backend {
+  {% for name, srv in servers.items() %}
+    {% if 'app' in srv.tags %}
+    server {{ srv.host }}:{{ srv.env.app_port | default(3000) }};
+    {% endif %}
+  {% endfor %}
+}
+```
+
+## Ordre d'exécution
+
+Les templates sont rendus tôt dans le processus de déploiement :
+
+1. Chargement de la configuration (`config.yml`, `servers.yml`)
+2. **Rendu de tous les fichiers dans `.dockflow/`** (docker-compose, Dockerfiles, etc.)
+3. **Rendu des templates personnalisés** depuis `config.yml`
+4. Auto-tag des images Docker dans `docker-compose.yml` (si `image_auto_tag` est activé)
+5. Build des images Docker
+6. Déploiement sur swarm
+
+<Callout type="info">
+Les templates sont rendus **avant** le build Docker, donc les fichiers rendus seront inclus dans vos images Docker s'ils sont dans le contexte de build.
+</Callout>
+
+## Exemples
+
+Voici des exemples de fichiers de template que vous pourriez créer dans votre projet.
+
+### Configuration applicative (ex. `config/application.yml`)
+
+```yaml
+database:
+  host: "{{ current.env.db_host }}"
+  port: {{ current.env.db_port | default(5432) }}
+  name: "{{ current.env.db_name }}"
+  password: "{{ current.env.db_password }}"
+
+server:
+  environment: "{{ env }}"
+  version: "{{ version }}"
+```
+
+### Reverse proxy Nginx (ex. `nginx/myapp.conf.njk`)
+
+```nginx
+server {
+    listen 80;
+    server_name {{ current.env.domain_name }};
+
+    location / {
+        proxy_pass http://127.0.0.1:{{ current.env.app_port }};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+### Script d'initialisation (ex. `scripts/init.sh`)
+
+```bash
+#!/bin/bash
+echo "Initializing {{ config.project_name }} v{{ version }}"
+echo "Environment: {{ env }}"
+
+{% if env == 'production' %}
+echo "Running production optimizations..."
+{% else %}
+echo "Running in development mode"
+{% endif %}
+```
+
+### Contrôle d'accès PostgreSQL (ex. `config/pg_hba.conf.njk`)
+
+```conf
+{% for name, srv in servers.items() %}
+  {% if srv.role == 'worker' or 'app' in srv.tags %}
+host    all    all    {{ srv.host }}/32    md5
+  {% endif %}
+{% endfor %}
+```

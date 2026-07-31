@@ -1,0 +1,110 @@
+# Orchestrateur
+
+import { Callout, Steps, Tabs } from 'nextra/components'
+
+Sélectionne le backend d'orchestration utilisé pour les déploiements. Dockflow supporte Docker Swarm (par défaut) et k3s (Kubernetes léger) comme cibles de déploiement — même configuration, mêmes commandes, runtime différent.
+
+## Configuration minimale
+
+```yaml
+# .dockflow/config.yml
+orchestrator: k3s
+```
+
+C'est tout. Toutes les commandes Dockflow (`deploy`, `logs`, `scale`, `rollback`, `setup`) s'adaptent automatiquement au backend sélectionné.
+
+<Callout type="info">
+  Si omis, `orchestrator` vaut `swarm` par défaut. Les projets existants continuent de fonctionner sans aucun changement.
+</Callout>
+
+## Toutes les options
+
+| Champ | Type | Description | Défaut |
+|---|---|---|---|
+| `orchestrator` | `"swarm"` \| `"k3s"` | Backend d'orchestration pour les déploiements | `"swarm"` |
+
+### `swarm` (Docker Swarm)
+
+- Utilise `docker stack deploy` et les services Docker Swarm
+- Traefik déployé comme un service Swarm avec réseau overlay
+- Nécessite Docker installé sur tous les nœuds (`dockflow setup` s'en charge)
+
+### `k3s` (Kubernetes léger)
+
+- Utilise `kubectl apply` avec des manifests Kubernetes auto-générés
+- Traefik est embarqué dans k3s — aucun déploiement séparé nécessaire
+- Les fichiers Compose sont automatiquement convertis en Deployments, Services et IngressRoutes Kubernetes
+
+## Fonctionnement
+
+<Steps>
+### Provisioning
+
+Lancez `dockflow setup swarm <env>` ou `dockflow setup k3s <env>` selon le backend choisi. Pour Swarm, cela installe Docker et initialise le cluster. Pour k3s, cela installe k3s sur le manager et rattache les workers via le node token.
+
+### Déploiement
+
+`dockflow deploy <env>` lit le champ `orchestrator` de votre configuration. Pour Swarm, le déploiement se fait via `docker stack deploy`. Pour k3s, votre `docker-compose.yml` est converti en manifests Kubernetes (Deployments, Services, PVCs) et appliqué avec `kubectl apply`.
+
+### Auto-configuration de Traefik
+
+Les deux backends supportent le HTTPS automatique via Traefik quand `proxy.enabled: true`. Pour Swarm, Traefik est déployé comme un service. Pour k3s, Dockflow configure l'instance Traefik intégrée via `HelmChartConfig` — les certificats Let's Encrypt fonctionnent de manière identique dans les deux cas.
+</Steps>
+
+## Prérequis k3s
+
+- **RAM** : minimum 512 Mo par nœud (1 Go recommandé)
+- **Ports** : 6443 (serveur API), 10250 (Kubelet), 8472/UDP (Flannel VXLAN)
+- **OS** : Toute distribution Linux supportée par k3s (Debian, Ubuntu, RHEL, etc.)
+
+<Callout type="warning">
+  k3s ajoute ~50–100 Mo d'utilisation RAM de base par rapport à Docker Swarm. Sur des nœuds à mémoire limitée (512 Mo), cela laisse moins de marge pour vos conteneurs applicatifs.
+</Callout>
+
+## Compatibilité Compose
+
+Votre `docker-compose.yml` existant fonctionne tel quel avec les deux backends. Dockflow gère la traduction :
+
+| Concept Compose | Swarm | k3s |
+|---|---|---|
+| Services | Services Swarm | Deployments Kubernetes + Services ClusterIP |
+| Volumes nommés | Volumes Docker | PersistentVolumeClaims |
+| Bind mounts | Bind mounts | Volumes hostPath |
+| `deploy.replicas` | Replicas Swarm | `spec.replicas` |
+| `deploy.placement` | Contraintes Swarm | `nodeSelector` |
+| Labels Traefik | Labels Swarm | CRDs IngressRoute |
+| Ports | Ports publiés | Ports de service ClusterIP |
+| `healthcheck` | Health checks Docker natifs | `livenessProbe` + `readinessProbe` |
+
+## Exemple
+
+<Tabs items={['Swarm (défaut)', 'k3s']}>
+  <Tabs.Tab>
+```yaml
+# .dockflow/config.yml
+project_name: "my-app"
+# orchestrator: swarm  (défaut, peut être omis)
+
+proxy:
+  enabled: true
+  email: admin@example.com
+  domains:
+    production: my-app.example.com
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```yaml
+# .dockflow/config.yml
+project_name: "my-app"
+orchestrator: k3s
+
+proxy:
+  enabled: true
+  email: admin@example.com
+  domains:
+    production: my-app.example.com
+```
+  </Tabs.Tab>
+</Tabs>
+
+Les deux configurations utilisent le même `docker-compose.yml` et `servers.yml` — la seule différence est le champ `orchestrator`.

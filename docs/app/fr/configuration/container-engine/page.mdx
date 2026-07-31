@@ -1,0 +1,63 @@
+# Moteur de conteneurs
+
+import { Callout } from 'nextra/components'
+
+Dockflow supporte **Docker** (par défaut) et **Podman** comme moteurs de conteneurs pour construire et distribuer les images.
+
+## Configuration
+
+```yaml
+# .dockflow/config.yml
+container_engine: podman
+```
+
+| Champ | Type | Description | Défaut |
+|---|---|---|---|
+| `container_engine` | `"docker"` \| `"podman"` | Moteur utilisé pour construire et pousser les images | Auto-détecté |
+
+<Callout type="info">
+  Si omis, Dockflow auto-détecte le moteur sur le serveur distant. Si `podman` est trouvé, il est utilisé automatiquement — sinon, `docker` est utilisé par défaut.
+</Callout>
+
+## Fonctionnement
+
+Le paramètre `container_engine` contrôle les opérations de **build** et de **distribution** :
+
+- **Build** : `docker build` ou `podman build` (local et distant)
+- **Save/Load** : `docker save | docker load` ou `podman save | podman load`
+- **Registre** : `docker login/push` ou `podman login/push`
+
+Podman est compatible en ligne de commande avec Docker pour ces opérations, donc votre `docker-compose.yml` et vos Dockerfiles fonctionnent tels quels.
+
+### k3s et containerd
+
+Avec `orchestrator: k3s`, les images sont toujours importées via `k3s ctr -n k8s.io images import` (containerd), quel que soit le moteur de build. Vous pouvez builder avec Docker ou Podman en local, et Dockflow gère le transfert vers containerd sur le nœud k3s.
+
+```
+# Avec Docker + k3s :
+docker save myapp:1.0 | ssh node "sudo k3s ctr -n k8s.io images import -"
+
+# Avec Podman + k3s :
+podman save myapp:1.0 | ssh node "sudo k3s ctr -n k8s.io images import -"
+```
+
+## Quand utiliser Podman
+
+- Builds rootless (aucun daemon Docker requis)
+- Environnements où Docker n'est pas installé ou pas autorisé
+- Workflows OCI-natifs
+
+<Callout type="warning">
+  Le support Podman s'applique uniquement au pipeline de build/distribution. L'orchestrateur (`swarm` ou `k3s`) se configure séparément via le champ [`orchestrator`](/fr/configuration/orchestrator).
+</Callout>
+
+## Exemple
+
+```yaml
+# .dockflow/config.yml
+project_name: "my-app"
+orchestrator: k3s
+container_engine: podman
+
+# Build avec Podman, déploiement sur k3s via containerd
+```

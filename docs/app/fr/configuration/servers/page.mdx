@@ -1,0 +1,271 @@
+# Configuration des serveurs
+
+import { Callout, FileTree, Tabs, Steps } from 'nextra/components'
+
+Le fichier `servers.yml` définit la topologie de vos serveurs (rôles, tags) et les variables d'environnement. Les identifiants de connexion sont fournis séparément via des **chaînes de connexion** générées par `dockflow setup`.
+
+## Architecture
+
+Dockflow utilise **Docker Swarm** pour l'orchestration. Chaque environnement a un **manager** qui reçoit les déploiements et des **workers** optionnels qui font tourner les conteneurs distribués.
+
+```mermaid
+graph TD
+    D["<b>dockflow deploy</b>"] --> M
+
+    subgraph Cluster Swarm
+        M["<b>Manager</b><br/>Reçoit docker-compose.yml<br/>Exécute : docker stack deploy<br/>Distribue les charges de travail"]
+        M -->|Orchestration Swarm| W1["Worker 1"]
+        M -->|Orchestration Swarm| W2["Worker 2"]
+        M -->|Orchestration Swarm| W3["Worker N"]
+    end
+
+    style D fill:#4f46e5,stroke:#4338ca,color:#fff
+    style M fill:#059669,stroke:#047857,color:#fff
+    style W1 fill:#0891b2,stroke:#0e7490,color:#fff
+    style W2 fill:#0891b2,stroke:#0e7490,color:#fff
+    style W3 fill:#0891b2,stroke:#0e7490,color:#fff
+```
+
+## Structure de base
+
+```yaml
+# .dockflow/servers.yml
+
+servers:
+  main_server:
+    role: manager
+    tags: [production]
+
+defaults:
+  user: dockflow
+  port: 22
+
+env:
+  all:
+    LOG_LEVEL: "info"
+  production:
+    LOG_LEVEL: "warn"
+```
+
+Cela définit un seul serveur nommé `main_server` avec le rôle `manager`. Les détails de connexion (host, clé SSH) viennent des secrets — pas de ce fichier.
+
+## Secrets
+
+Dockflow a besoin d'identifiants SSH pour se connecter à vos serveurs. L'approche recommandée est les **chaînes de connexion**, générées automatiquement par `dockflow setup`.
+
+<Tabs items={['Chaîne de connexion (recommandé)', 'Secrets individuels']}>
+  <Tabs.Tab>
+    Une chaîne de connexion est un JSON encodé en base64 contenant tous les identifiants pour un serveur :
+
+    ```json
+    {
+      "host": "192.168.1.10",
+      "port": 22,
+      "user": "dockflow",
+      "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\n...",
+      "password": "optional-sudo-password"
+    }
+    ```
+
+    Stockez-la sous `[ENV]_[SERVERNAME]_CONNECTION` :
+
+    <Tabs items={['.env.dockflow (CLI local)', 'Plateforme CI/CD']}>
+      <Tabs.Tab>
+        ```bash
+        # .env.dockflow (à la racine du projet — ne pas commiter)
+        PRODUCTION_MAIN_SERVER_CONNECTION=eyJob3N0Ijoi...
+        ```
+      </Tabs.Tab>
+      <Tabs.Tab>
+        Ajoutez-la aux secrets de votre plateforme CI/CD (GitHub Actions, GitLab CI, etc.) :
+
+        ```bash
+        PRODUCTION_MAIN_SERVER_CONNECTION=eyJob3N0Ijoi...
+        ```
+      </Tabs.Tab>
+    </Tabs>
+
+    <Callout type="error">
+      **Ne partagez pas les chaînes de connexion** — elles contiennent des clés privées SSH.
+    </Callout>
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Si vous préférez gérer les identifiants individuellement :
+
+    ```bash
+    PRODUCTION_MAIN_SERVER_HOST=10.0.0.10
+    PRODUCTION_MAIN_SERVER_SSH_PRIVATE_KEY=<contenu de la clé SSH>
+    PRODUCTION_MAIN_SERVER_USER=deploy
+    PRODUCTION_MAIN_SERVER_PORT=22
+    ```
+
+    Ceux-ci suivent la même convention de nommage et peuvent être stockés dans `.env.dockflow` ou comme secrets CI/CD.
+  </Tabs.Tab>
+</Tabs>
+
+<Callout type="warning">
+  Les noms de serveur utilisent des underscores dans les noms de secrets. Un serveur nommé `worker_1` utilise `PRODUCTION_WORKER_1_CONNECTION`.
+</Callout>
+
+### Surcharges de variables
+
+Surchargez n'importe quelle variable d'environnement via les secrets :
+
+```bash
+# Surcharge globale (tous les serveurs en production)
+PRODUCTION_DATABASE_URL=postgres://secret:5432/db
+
+# Surcharge spécifique à un serveur
+PRODUCTION_MAIN_SERVER_DATABASE_URL=postgres://primary:5432/db
+```
+
+## Champs des serveurs
+
+| Champ | Requis | Défaut | Description |
+|-------|----------|---------|-------------|
+| `role` | Non | `manager` | Rôle du nœud : `manager` ou `worker` |
+| `tags` | Oui | - | Tags d'environnement (ex. `[production]`) |
+| `env` | Non | - | Variables d'environnement spécifiques au serveur |
+| `host` | Non | Depuis la chaîne de connexion | Surcharge le host (rarement nécessaire) |
+| `user` | Non | `defaults.user` | Surcharge l'utilisateur SSH |
+| `port` | Non | `defaults.port` | Surcharge le port SSH |
+
+### Exemples
+
+<Tabs items={['Mono-nœud', 'Multi-nœuds']}>
+  <Tabs.Tab>
+    Pour des déploiements simples, un seul manager suffit :
+
+    ```yaml
+    servers:
+      production_server:
+        role: manager
+        tags: [production]
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Pour un scaling horizontal, ajoutez des workers :
+
+    ```yaml
+    servers:
+      manager:
+        role: manager
+        tags: [production]
+        env:
+          NODE_ID: "manager"
+
+      worker_1:
+        role: worker
+        tags: [production]
+        env:
+          NODE_ID: "worker-1"
+
+      worker_2:
+        role: worker
+        tags: [production]
+        env:
+          NODE_ID: "worker-2"
+    ```
+  </Tabs.Tab>
+</Tabs>
+
+## Configuration du cluster
+
+Avant votre premier déploiement multi-nœuds, initialisez le cluster Swarm :
+
+<Steps>
+### Configurer les secrets
+
+Ajoutez les chaînes de connexion pour **tous** les nœuds (manager + workers) dans `.env.dockflow` ou votre plateforme CI/CD.
+
+### Initialiser Swarm
+
+```bash
+dockflow setup swarm production
+```
+
+Cette commande va :
+- Ouvrir les ports de firewall (2377, 7946, 4789) sur tous les nœuds
+- Initialiser Swarm sur le manager
+- Rattacher les workers au cluster
+
+### Déployer
+
+```bash
+dockflow deploy production
+```
+
+Swarm distribue automatiquement les conteneurs aux workers en fonction de la disponibilité des ressources et des contraintes de placement.
+</Steps>
+
+<Callout type="info">
+  Vous n'avez besoin de lancer `setup swarm` qu'une seule fois par environnement. Ensuite, utilisez simplement `dockflow deploy`.
+</Callout>
+
+## Variables d'environnement
+
+Définissez des variables héritées en fonction des tags :
+
+```yaml
+env:
+  # Appliqué à TOUS les environnements
+  all:
+    APP_NAME: "{{ project_name }}"
+    LOG_LEVEL: "info"
+    TZ: "UTC"
+
+  # Surcharge pour la production
+  production:
+    LOG_LEVEL: "warn"
+    DATABASE_URL: "postgres://prod-db:5432/app"
+
+  # Surcharge pour le staging
+  staging:
+    LOG_LEVEL: "debug"
+```
+
+### Priorité des variables
+
+Les variables sont résolues de la priorité la plus basse à la plus haute. Une source de priorité plus élevée surcharge toujours une source inférieure :
+
+```mermaid
+graph BT
+    A["<b>1. defaults</b><br/>(user, port)"] --> B["<b>2. env.all</b><br/>(variables globales)"]
+    B --> C["<b>3. env.[tag]</b><br/>(spécifique à l'environnement)"]
+    C --> D["<b>4. servers.[name].env</b><br/>(spécifique au serveur)"]
+    D --> E["<b>5. Secret : ENV_VARNAME</b><br/>(surcharge globale)"]
+    E --> F["<b>6. Secret : ENV_SERVERNAME_VARNAME</b><br/>(surcharge par serveur)"]
+
+    style A fill:#94a3b8,stroke:#64748b,color:#fff
+    style B fill:#78716c,stroke:#57534e,color:#fff
+    style C fill:#0891b2,stroke:#0e7490,color:#fff
+    style D fill:#0d9488,stroke:#0f766e,color:#fff
+    style E fill:#8b5cf6,stroke:#7c3aed,color:#fff
+    style F fill:#4f46e5,stroke:#4338ca,color:#fff
+```
+
+## Templating
+
+Les valeurs dans `servers.yml` supportent le templating Nunjucks :
+
+```yaml
+env:
+  all:
+    APP_NAME: "{{ project_name }}"
+    STACK_NAME: "{{ project_name }}-{{ env }}"
+```
+
+Variables disponibles :
+
+| Variable | Description |
+|----------|-------------|
+| `{{ project_name }}` | Depuis config.yml |
+| `{{ env }}` | Environnement courant en cours de déploiement |
+| `{{ version }}` | Version du déploiement |
+| `{{ current.name }}` | Nom du serveur courant |
+| `{{ current.host }}` | Host du serveur courant |
+| `{{ current.role }}` | Rôle du serveur courant (manager/worker) |
+
+---
+
+**Suivant :** [Docker Compose](/fr/configuration/docker-compose) — définissez vos services applicatifs, réseaux, et volumes.

@@ -1,0 +1,216 @@
+# Envoi de fichiers
+
+import { Callout, FileTree, Steps } from 'nextra/components'
+
+Transférez des fichiers ou répertoires locaux vers vos serveurs avant chaque déploiement. Utile pour les fichiers de configuration référencés par vos services via des bind mounts.
+
+## Exemple minimal
+
+```yaml
+# .dockflow/config.yml
+uploads:
+  - src: .dockflow/docker/mosquitto/
+    dest: /opt/dockflow/mqtt/
+```
+
+Puis référencez le chemin absolu dans votre fichier compose :
+
+```yaml
+# docker-compose.yml
+services:
+  mqtt:
+    volumes:
+      - /opt/dockflow/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf
+```
+
+## Options
+
+| Champ | Type | Description | Requis |
+|-------|------|-------------|---------|
+| `src` | `string` | Chemin local relatif à la racine du projet (fichier ou répertoire) | Oui |
+| `dest` | `string` | Chemin de destination absolu sur le serveur distant | Oui |
+| `service` | `string \| string[]` | Service(s) auxquels cet envoi appartient. Lors d'un déploiement avec `--only`, seuls les envois correspondant à un service ciblé sont transférés. Les envois sans ce champ sont toujours transférés. | Non |
+| `permissions` | `string` | Permissions appliquées après l'envoi, en notation octale (ex. `"640"`, `"755"`). | Non |
+| `owner` | `string` | Propriétaire appliqué après l'envoi, au format `"user"` ou `"user:group"` (ex. `"mosquitto"`, `"www-data:www-data"`). Nécessite que l'utilisateur de déploiement ait `sudo` ou des privilèges suffisants. | Non |
+| `exclude` | `string[]` | Motifs glob ou chemins à ignorer pendant l'envoi d'un répertoire (ex. `".git"`, `"*.md"`, `"node_modules"`). Ignoré pour les envois de fichier unique. | Non |
+| `compress` | `boolean` | Compresse l'archive pendant le transfert (défaut : `true`). Mettre à `false` pour les répertoires pleins de fichiers déjà compressés (JARs, ZIPs, images) afin de réduire la charge CPU sans affecter la taille du transfert. | Non |
+
+`dest` doit commencer par `/`. Si `src` est un répertoire, `dest` est utilisé comme répertoire de destination et la structure relative est préservée.
+
+## Fonctionnement
+
+<Steps>
+### Vérification des permissions
+Avant le build, dockflow vérifie que l'utilisateur de déploiement a un accès en écriture à toutes les destinations d'envoi sur chaque nœud. Si une destination n'existe pas encore, son parent existant le plus proche est vérifié à la place. Le déploiement échoue immédiatement avec une commande de correction claire si une permission manque.
+
+### Build
+Les images Docker sont construites pendant que la vérification des permissions a lieu.
+
+### Transfert vers tous les nœuds
+Les fichiers sont transférés vers le manager **et tous les nœuds workers** en parallèle après le build, afin que les bind mounts fonctionnent quel que soit le nœud qui exécute le conteneur.
+
+### Hook pre-deploy
+Le hook `pre-deploy` s'exécute après la fin des envois — ce qui signifie qu'il peut référencer directement les fichiers envoyés (ex. `systemctl daemon-reload` après l'envoi d'une unité systemd).
+
+### Déploiement
+La stack est déployée après que tous les transferts et le hook pre-deploy soient terminés.
+</Steps>
+
+## Rendu Nunjucks
+
+Les fichiers à l'intérieur de `.dockflow/` sont automatiquement rendus via [Nunjucks](https://mozilla.github.io/nunjucks/) avant d'être envoyés. Cela signifie que vous pouvez utiliser n'importe quelle variable de template dans vos fichiers envoyés :
+
+```bash
+# .dockflow/services/myapp.service
+[Service]
+Environment="DB_HOST={{ current.env.db_host }}"
+Environment="DB_PASSWORD={{ current.env.db_password }}"
+ExecStart=/usr/bin/myapp
+```
+
+Les fichiers en dehors de `.dockflow/` sont transférés tels quels sans rendu.
+
+## Fichier unique vs répertoire
+
+```yaml
+uploads:
+  # Fichier unique → transféré vers le chemin de destination exact
+  - src: .dockflow/docker/nginx/nginx.conf
+    dest: /opt/dockflow/nginx/nginx.conf
+
+  # Répertoire → dest est le répertoire cible, la structure est préservée
+  - src: .dockflow/docker/mosquitto/
+    dest: /opt/dockflow/mqtt/
+    # résultat : /opt/dockflow/mqtt/mosquitto.conf
+    #            /opt/dockflow/mqtt/certs/ca.crt
+    #            etc.
+```
+
+Si `dest` se termine par `/` pour un fichier unique, le nom du fichier est préservé :
+
+```yaml
+uploads:
+  - src: .dockflow/docker/mosquitto.conf
+    dest: /opt/dockflow/mqtt/   # → /opt/dockflow/mqtt/mosquitto.conf
+```
+
+<Callout type="warning">
+  Les fichiers sont envoyés à chaque déploiement, même s'ils sont inchangés. Évitez de mettre de gros fichiers dans `uploads` — intégrez-les plutôt dans l'image Docker.
+</Callout>
+
+<Callout type="info">
+  Les fichiers sont créés avec l'umask par défaut du serveur. Utilisez `permissions` et `owner` pour imposer un contrôle d'accès spécifique après l'envoi.
+</Callout>
+
+```yaml
+uploads:
+  - src: .dockflow/docker/mosquitto/passwd
+    dest: /opt/dockflow/mqtt/passwd
+    permissions: "640"
+    owner: "mosquitto:mosquitto"
+```
+
+<Callout type="warning">
+  `owner` nécessite que l'utilisateur de déploiement ait les droits `sudo` pour `chown`. Sans cela, le déploiement échouera avec un message clair montrant la commande exacte à lancer manuellement ou la règle sudoers à ajouter.
+
+  Pour accorder le droit de manière permanente sur le serveur :
+  ```bash
+  echo 'dockflow ALL=(ALL) NOPASSWD: /bin/chown * /opt/dockflow/*' >> /etc/sudoers.d/dockflow
+  ```
+
+  Restreignez le chemin aux répertoires que vous utilisez réellement pour limiter la surface de privilège.
+</Callout>
+
+## Configuration des permissions
+
+Avant le premier déploiement, l'utilisateur de déploiement doit avoir un accès en écriture à chaque destination. Dockflow le détecte automatiquement et affiche les commandes exactes à exécuter :
+
+```
+Upload permission check failed:
+  main_server:
+    .dockflow/services/myapp.service: cannot create /etc/systemd/system/myapp.service (nearest existing parent: /etc/systemd/system)
+→ Run once on each failing server as root:
+  touch '/etc/systemd/system/myapp.service' && chown dockflow: '/etc/systemd/system/myapp.service'
+```
+
+Pour les répertoires :
+
+```
+  mkdir -p '/opt/dockflow/mqtt' && chown -R dockflow: '/opt/dockflow/mqtt'
+```
+
+## Limiter les envois à un service
+
+Quand vous utilisez `--only` pour déployer un seul service, les envois sans champ `service` s'exécutent quand même. Utilisez le champ `service` pour restreindre un envoi à des services spécifiques :
+
+```yaml
+uploads:
+  - src: .dockflow/docker/mosquitto/
+    dest: /opt/dockflow/mqtt/
+    service: mqtt                    # transféré uniquement lors du déploiement du service mqtt
+
+  - src: .dockflow/docker/prometheus.yml
+    dest: /opt/dockflow/monitoring/prometheus.yml
+    service: [prometheus, grafana]   # transféré quand l'un des deux services est ciblé
+
+  - src: .dockflow/shared.conf
+    dest: /opt/dockflow/shared.conf  # pas de champ service → toujours transféré
+```
+
+## Exemple complet
+
+```yaml
+# .dockflow/config.yml
+project_name: my-app
+
+uploads:
+  - src: .dockflow/docker/mosquitto/
+    dest: /opt/dockflow/mqtt/
+    service: mqtt
+  - src: .dockflow/docker/prometheus.yml
+    dest: /opt/dockflow/monitoring/prometheus.yml
+    service: prometheus
+```
+
+```yaml
+# docker-compose.yml
+services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    volumes:
+      - /opt/dockflow/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - /opt/dockflow/mqtt/passwd:/mosquitto/config/passwd
+
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - /opt/dockflow/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+```
+
+## Projets envoi-uniquement
+
+Certains projets n'ont aucun service Docker — ils ne font que transférer des fichiers vers un serveur. Utilisez `no_services: true` pour le déclarer explicitement :
+
+```yaml
+# .dockflow/config.yml
+project_name: my-project
+no_services: true
+
+uploads:
+  - src: ./dist/
+    dest: /var/www/my-project/
+```
+
+Avec `no_services: true` :
+- Le build Docker et le déploiement compose sont entièrement sautés
+- Les commandes nécessitant une stack en cours d'exécution (`dockflow app logs`, `dockflow app status`, `rollback`, etc.) retournent une erreur claire plutôt que d'échouer silencieusement
+- Les hooks pre/post-deploy s'exécutent quand même
+
+<Callout type="warning">
+  Sans `no_services: true`, un `docker-compose.yml` manquant est traité comme une erreur de configuration et le déploiement échoue. N'activez ce flag que quand le projet n'a réellement aucun service Docker — pas comme contournement d'un chemin compose mal configuré.
+</Callout>
+
+## Voir aussi
+
+- [Hooks](/fr/configuration/hooks) — utilisez `pre-deploy` pour recharger des services après l'envoi (ex. `systemctl daemon-reload`)
+- [Templates](/fr/configuration/templates) — référence complète des variables de template disponibles

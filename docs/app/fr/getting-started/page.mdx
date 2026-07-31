@@ -1,0 +1,296 @@
+# Démarrage
+
+import { Steps, Callout, FileTree, Tabs } from 'nextra/components'
+
+Dockflow se déploie sur un seul serveur ou sur un cluster multi-nœuds — même workflow. Il ne vous faut qu'un seul serveur Linux pour commencer.
+
+<Steps>
+## Installer le CLI
+
+<Tabs items={['npm (tout OS)', 'npx (sans installation)', 'Linux / macOS', 'Windows']}>
+  <Tabs.Tab>
+    ```bash
+    npm install -g @dockflow-tools/cli
+    dockflow --version
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Lancez n'importe quelle commande directement sans installer :
+
+    ```bash
+    npx @dockflow-tools/cli <command>
+    ```
+
+    Par exemple :
+
+    ```bash
+    npx @dockflow-tools/cli deploy production
+    ```
+
+    <Callout type="info">
+      Épinglez une version spécifique avec `npx @dockflow-tools/cli@1.2.3 <command>`.
+    </Callout>
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | bash
+    dockflow --version
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```powershell
+    irm https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.ps1 | iex
+    dockflow --version
+    ```
+  </Tabs.Tab>
+</Tabs>
+
+## Configurer votre serveur
+
+Il vous faut un serveur Debian/Ubuntu avec un accès SSH (utilisateur root ou sudo).
+
+<Tabs items={['Interactif (recommandé)', 'Non-interactif']}>
+  <Tabs.Tab>
+    Si le CLI est installé **sur le serveur** :
+
+    ```bash
+    dockflow setup
+    ```
+
+    Si le CLI est installé **sur votre machine locale** :
+
+    ```bash
+    dockflow setup root@your-server-ip
+    ```
+
+    L'assistant s'occupe de tout : installation de Docker, configuration de l'orchestrateur (Swarm ou k3s), clés SSH, et création de l'utilisateur de déploiement.
+    À la fin, il génère une **chaîne de connexion** — conservez-la pour la suite.
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Pour le provisioning automatisé (Terraform, CI, etc.). Doit être lancé **sur le serveur cible** :
+
+    ```bash
+    dockflow setup \
+      --host $(hostname -I | awk '{print $1}') \
+      --user dockflow \
+      --password "your-secure-password" \
+      --generate-key \
+      --portainer \
+      --portainer-password "portainer-admin-password"
+    ```
+
+    Voir `dockflow setup --help` pour toutes les options.
+  </Tabs.Tab>
+</Tabs>
+
+## Créer votre projet
+
+```bash
+dockflow init
+```
+
+Cela génère la structure suivante à la racine de votre projet :
+
+<FileTree>
+  <FileTree.Folder name=".dockflow" defaultOpen>
+    <FileTree.File name="config.yml" />
+    <FileTree.File name="servers.yml" />
+    <FileTree.Folder name="docker" defaultOpen>
+      <FileTree.File name="docker-compose.yml" />
+      <FileTree.File name="accessories.yml" />
+      <FileTree.File name="Dockerfile" />
+    </FileTree.Folder>
+    <FileTree.Folder name="hooks" />
+  </FileTree.Folder>
+</FileTree>
+
+- **`config.yml`** — Nom du projet, stratégie de build, health checks ([référence](/fr/configuration))
+- **`servers.yml`** — Serveurs et variables d'environnement ([référence](/fr/configuration/servers))
+- **`docker/`** — Stack Docker Compose, accessoires, et Dockerfile
+- **`hooks/`** — Scripts de hook pre/post build et deploy ([référence](/fr/configuration#hooks))
+
+## Déployer
+
+<Tabs items={['CLI', 'CI/CD']}>
+  <Tabs.Tab>
+    Créez un fichier `.env.dockflow` à la racine de votre projet avec la ou les chaînes de connexion issues du setup :
+
+    ```bash
+    PRODUCTION_MAIN_SERVER_CONNECTION=eyJ...base64...
+    ```
+
+    Puis déployez :
+
+    ```bash
+    dockflow deploy production
+    ```
+
+    <Callout type="info">
+      Le fichier `.env.dockflow` est chargé automatiquement par le CLI. Ne le commitez pas dans votre dépôt.
+    </Callout>
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ### Fichier de workflow
+
+    Le CLI détecte automatiquement l'environnement et la version à partir des variables de votre fournisseur CI (nom du tag, branche, SHA du commit). Aucune dépendance de workflow externe nécessaire.
+
+    Vous pouvez générer ces fichiers automatiquement avec `dockflow init`.
+
+    <Tabs items={['GitHub Actions', 'GitLab CI', 'Bitbucket Pipelines']}>
+      <Tabs.Tab>
+        Créez `.github/workflows/dockflow-build.yml` et `.github/workflows/dockflow-deploy.yml` :
+
+        ```yaml copy
+        # .github/workflows/dockflow-build.yml
+        name: Build
+
+        on:
+          push:
+            branches: ['*']
+
+        jobs:
+          build:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@v4
+              - run: npx @dockflow-tools/cli build
+                env:
+                  DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
+        ```
+
+        ```yaml copy
+        # .github/workflows/dockflow-deploy.yml
+        name: Deploy
+
+        on:
+          push:
+            tags: ['*']
+
+        jobs:
+          deploy:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@v4
+              - run: npx @dockflow-tools/cli deploy
+                env:
+                  DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
+        ```
+
+        <Callout type="info">
+          Épinglez une version spécifique du CLI avec `npx @dockflow-tools/cli@1.2.3`.
+        </Callout>
+      </Tabs.Tab>
+
+      <Tabs.Tab>
+        Créez `.gitlab-ci.yml` à la racine de votre projet :
+
+        ```yaml copy
+        stages:
+          - build
+          - deploy
+
+        # CI : construit les images sur push de branche (nécessite Docker)
+        build:
+          stage: build
+          image: node:24
+          services:
+            - docker:dind
+          variables:
+            DOCKER_HOST: tcp://docker:2375
+            DOCKER_TLS_CERTDIR: ""
+          before_script:
+            - apt-get update -qq && apt-get install -y -qq docker.io
+          script:
+            - npx @dockflow-tools/cli build
+          rules:
+            - if: $CI_COMMIT_TAG
+              when: never
+            - when: always
+
+        # CD : déploie sur push de tag (SSH uniquement, pas besoin de Docker)
+        deploy:
+          stage: deploy
+          image: node:24
+          script:
+            - npx @dockflow-tools/cli deploy
+          rules:
+            - if: $CI_COMMIT_TAG
+        ```
+      </Tabs.Tab>
+
+      <Tabs.Tab>
+        Créez `bitbucket-pipelines.yml` à la racine de votre projet :
+
+        ```yaml copy
+        image: node:24
+
+        definitions:
+          services:
+            docker:
+              image: docker:dind
+
+        pipelines:
+          # CI : construit les images sur push de branche (nécessite Docker)
+          branches:
+            '*':
+              - step:
+                  name: Build
+                  services:
+                    - docker
+                  script:
+                    - npx @dockflow-tools/cli build
+
+          # CD : déploie sur push de tag (SSH uniquement, pas besoin de Docker)
+          tags:
+            '*':
+              - step:
+                  name: Deploy
+                  script:
+                    - npx @dockflow-tools/cli deploy
+        ```
+
+        <Callout type="info">
+          Bitbucket Pipelines lit les secrets depuis **Repository variables** — allez dans Repository Settings → Repository variables pour les ajouter.
+        </Callout>
+      </Tabs.Tab>
+    </Tabs>
+
+    ### Secrets du dépôt
+
+    Ajoutez la chaîne de connexion générée pendant le setup à vos secrets CI/CD :
+
+    <Tabs items={['Chaîne de connexion (recommandé)', 'Secrets individuels']}>
+      <Tabs.Tab>
+        | Nom du secret | Description | Exemple |
+        |-------------|-------------|---------|
+        | `[ENV]_[SERVERNAME]_CONNECTION` | Chaîne de connexion par serveur | `PRODUCTION_MAIN_SERVER_CONNECTION` |
+        | `GIT_TOKEN` | Optionnel : pour la stratégie de build distant | Token GitHub/GitLab |
+
+        Où ajouter les secrets :
+        - **GitHub** : Settings → Secrets and variables → Actions
+        - **GitLab** : Settings → CI/CD → Variables
+        - **Bitbucket** : Repository Settings → Repository variables
+
+        <Callout type="error">
+          **Ne partagez pas les chaînes de connexion** — elles contiennent des clés privées SSH.
+        </Callout>
+      </Tabs.Tab>
+
+      <Tabs.Tab>
+        | Nom du secret | Description | Exemple |
+        |-------------|-------------|---------|
+        | `[ENV]_[SERVERNAME]_SSH_PRIVATE_KEY` | Clé privée SSH | `PRODUCTION_MAIN_SERVER_SSH_PRIVATE_KEY` |
+        | `[ENV]_[SERVERNAME]_HOST` | IP/nom d'hôte du serveur | `PRODUCTION_MAIN_SERVER_HOST` |
+        | `[ENV]_[SERVERNAME]_USER` | Utilisateur SSH (défaut : dockflow) | `PRODUCTION_MAIN_SERVER_USER` |
+        | `[ENV]_[SERVERNAME]_PORT` | Port SSH (défaut : 22) | `PRODUCTION_MAIN_SERVER_PORT` |
+        | `[ENV]_[SERVERNAME]_PASSWORD` | Mot de passe sudo (optionnel) | `PRODUCTION_MAIN_SERVER_PASSWORD` |
+        | `GIT_TOKEN` | Optionnel : pour la stratégie de build distant | Token GitHub/GitLab |
+      </Tabs.Tab>
+    </Tabs>
+
+    <Callout type="warning">
+      Les noms de serveur utilisent des underscores dans les secrets. Un serveur nommé `main_server` devient `MAIN_SERVER` dans les noms de secrets.
+    </Callout>
+  </Tabs.Tab>
+</Tabs>
+</Steps>

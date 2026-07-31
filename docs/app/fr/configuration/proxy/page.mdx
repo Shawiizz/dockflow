@@ -1,0 +1,193 @@
+# Proxy HTTPS automatique
+
+import { Callout, Steps, Tabs } from 'nextra/components'
+
+Dockflow peut provisionner automatiquement des certificats HTTPS et router le trafic vers vos services en utilisant [Traefik](https://traefik.io) comme reverse proxy. Ajoutez un domaine à votre config et ça fonctionne — aucune config Nginx à écrire, aucun Certbot à gérer.
+
+<Callout type="info">
+  Traefik est déployé comme un service Docker Swarm sur votre nœud manager. Il surveille vos déploiements de stack et obtient automatiquement des certificats Let's Encrypt via challenge HTTP.
+</Callout>
+
+## Configuration minimale
+
+```yaml
+# .dockflow/config.yml
+project_name: "my-app"
+
+proxy:
+  enabled: true
+  email: admin@example.com
+  domains:
+    production: my-app.example.com
+```
+
+C'est tout. Au prochain `dockflow deploy production`, Dockflow va :
+
+1. Déployer Traefik sur votre nœud manager (s'il ne tourne pas déjà)
+2. Injecter les labels de routage Traefik dans vos services applicatifs
+3. Traefik contacte Let's Encrypt et obtient le certificat
+4. HTTPS est en ligne, HTTP redirige automatiquement vers HTTPS
+
+## Environnements multiples
+
+```yaml
+proxy:
+  enabled: true
+  email: admin@example.com
+  domains:
+    production: my-app.example.com
+    staging: staging.my-app.example.com
+```
+
+Chaque environnement a son propre domaine et certificat. Traefik gère les renouvellements automatiquement.
+
+## Toutes les options
+
+```yaml
+proxy:
+  enabled: true
+  email: admin@example.com        # Requis si activé
+  domains:
+    production: my-app.example.com
+    staging: staging.my-app.example.com
+  dashboard:
+    enabled: true                  # Optionnel : expose le dashboard Traefik
+    domain: traefik.example.com
+```
+
+| Champ | Type | Description | Défaut |
+|---|---|---|---|
+| `enabled` | boolean | Active le proxy Traefik | `false` |
+| `email` | string | Email pour les notifications Let's Encrypt. Requis si `acme` n'est pas désactivé | — |
+| `acme` | boolean | Active le TLS ACME/Let's Encrypt. Mettre à `false` pour le mode HTTP uniquement | `true` |
+| `domains` | map | Domaine par environnement | — |
+| `dashboard.enabled` | boolean | Expose le dashboard Traefik | `false` |
+| `dashboard.domain` | string | Domaine pour le dashboard. Requis si `dashboard.enabled: true` | — |
+
+<Callout type="warning">
+  **Sécurité du dashboard** — Le dashboard Traefik est exposé publiquement quand il est activé. Restreignez l'accès avec votre firewall ou ajoutez un [middleware Traefik](https://doc.traefik.io/traefik/middlewares/http/basicauth/) pour l'authentification basique.
+</Callout>
+
+## Mode HTTP uniquement (sans TLS)
+
+Définissez `acme: false` pour faire tourner Traefik sans HTTPS — utile pour les réseaux internes, les environnements de développement, ou les setups de staging où vous gérez la terminaison TLS ailleurs.
+
+```yaml
+# .dockflow/config.yml
+proxy:
+  enabled: true
+  acme: false
+  domains:
+    staging: staging.internal
+```
+
+Quand `acme: false` :
+- Le port 443 et la redirection HTTPS sont désactivés — Traefik écoute uniquement sur le port 80
+- Aucun certificat Let's Encrypt n'est demandé — `email` n'est pas requis
+- Les labels de routage utilisent `entrypoints=web` au lieu de `websecure`
+
+<Callout type="warning">
+  N'utilisez pas `acme: false` en production avec du trafic public. Votre app sera servie en HTTP non chiffré.
+</Callout>
+
+## Prérequis
+
+- Les ports **80** et **443** doivent être ouverts et accessibles depuis internet sur votre nœud manager
+- Le DNS de votre domaine doit pointer vers l'IP de votre manager avant de déployer
+- Votre service applicatif doit exposer un port dans `docker-compose.yml` (Traefik le lit pour connaître le port du conteneur)
+
+## Fonctionnement
+
+<Steps>
+### Déploiement de Traefik
+
+Au `dockflow deploy`, Dockflow crée un réseau overlay `traefik-public` et déploie Traefik comme un service Swarm sur le nœud manager. Traefik surveille l'API Docker Swarm pour les services avec des labels `traefik.enable=true`.
+
+### Injection des labels
+
+Dockflow injecte automatiquement les labels de routage Traefik dans vos services applicatifs (tout service qui a `ports:` défini) :
+
+```yaml
+# Ce que Dockflow injecte automatiquement
+deploy:
+  labels:
+    - "traefik.enable=true"
+    - "traefik.http.routers.my-app-production-app.rule=Host(`my-app.example.com`)"
+    - "traefik.http.routers.my-app-production-app.entrypoints=websecure"
+    - "traefik.http.routers.my-app-production-app.tls.certresolver=letsencrypt"
+    - "traefik.http.services.my-app-production-app.loadbalancer.server.port=3000"
+networks:
+  - default
+  - traefik-public
+```
+
+### Émission du certificat
+
+Traefik réalise un challenge ACME HTTP-01 avec Let's Encrypt. Le certificat est stocké dans un volume Docker persistant (`traefik-certs`) et renouvelé automatiquement avant expiration.
+</Steps>
+
+## Coexistence avec Nginx
+
+Quand `proxy.enabled: true`, Dockflow saute le rôle Nginx pendant le déploiement. Si vous avez des templates Nginx existants dans `.dockflow/templates/nginx/`, désactivez le proxy ou migrez votre routage vers les labels Traefik.
+
+## Limites de débit Let's Encrypt
+
+Let's Encrypt applique des [limites de débit](https://letsencrypt.org/docs/rate-limits/). Pendant les tests, évitez de déclencher des demandes de certificat répétées pour le même domaine. Les erreurs sont rapportées dans les logs Traefik :
+
+```bash
+# Consulter les logs Traefik
+dockflow exec production traefik "traefik logs"
+# Ou directement sur le serveur
+docker service logs traefik_traefik
+```
+
+## Exemple : application avec HTTPS
+
+<Tabs items={['config.yml', 'docker-compose.yml', 'servers.yml']}>
+  <Tabs.Tab>
+```yaml
+project_name: "my-app"
+
+proxy:
+  enabled: true
+  email: admin@example.com
+  domains:
+    production: my-app.example.com
+    staging: staging.my-app.example.com
+
+health_checks:
+  enabled: true
+  on_failure: rollback
+  endpoints:
+    - name: "App"
+      url: "https://my-app.example.com/health"
+      expected_status: 200
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```yaml
+services:
+  app:
+    image: my-app
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```yaml
+defaults:
+  user: dockflow
+
+servers:
+  main:
+    role: manager
+    env:
+      APP_ENV: production
+```
+  </Tabs.Tab>
+</Tabs>

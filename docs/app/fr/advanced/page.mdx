@@ -1,0 +1,104 @@
+# Utilisation avancée
+
+import { Callout } from 'nextra/components'
+
+Patterns opérationnels pour gérer vos déploiements au-delà des bases.
+
+## Verrous de déploiement
+
+Empêchez les déploiements concurrents avec des verrous manuels :
+
+```bash
+# Verrouiller un environnement (ex : pendant une maintenance)
+dockflow lock acquire production -m "Migration de base de données en cours"
+
+# Vérifier le statut du verrou
+dockflow lock status production
+
+# Libérer une fois terminé
+dockflow lock release production
+```
+
+Le flag `dockflow deploy --force` permet de passer outre les verrous si besoin.
+
+<Callout type="info">
+  Les verrous s'appliquent aussi automatiquement pendant les déploiements et expirent après le [seuil configuré](/fr/configuration/config-file#verrou-de-deploiement).
+</Callout>
+
+## Déploiement sélectif
+
+Déployez des services spécifiques sans affecter les autres :
+
+```bash
+dockflow deploy production --only backend
+dockflow deploy production --only frontend,worker
+```
+
+Sautez la phase de build pour redéployer avec les images existantes :
+
+```bash
+dockflow deploy production --skip-build
+```
+
+Prévisualisez ce qu'un déploiement ferait sans l'exécuter :
+
+```bash
+dockflow deploy production --dry-run
+```
+
+## Workflow de debug
+
+Quand quelque chose ne va pas :
+
+```bash
+# 1. Vérifier ce qui tourne
+dockflow ps production
+dockflow details production
+
+# 2. Diagnostiquer les problèmes (montre pourquoi les conteneurs ne démarrent pas)
+dockflow diagnose production
+
+# 3. Consulter les logs
+dockflow logs production app -f
+dockflow logs production --since 10m
+
+# 4. Ouvrir un shell dans un conteneur
+dockflow bash production app
+
+# 5. SSH vers le serveur pour une inspection manuelle
+dockflow ssh production "docker service ls"
+
+# 6. Consulter l'historique de déploiement
+dockflow audit production
+dockflow metrics production --history
+```
+
+Activez la sortie verbeuse pendant le déploiement :
+
+```bash
+dockflow deploy production --debug
+```
+
+## Réplication de l'historique
+
+L'historique de déploiement (journal d'audit et métriques) est automatiquement répliqué vers **tous les nœuds du cluster** (managers et workers) après chaque déploiement. Cela garantit :
+
+- Aucune perte de données si un manager tombe
+- Un accès fluide à l'historique après promotion d'un worker en manager
+- Aucun historique fragmenté en cas de failover de manager
+
+L'historique est lu avec un fallback automatique : si le manager principal est injoignable, Dockflow essaie les autres managers, puis les workers.
+
+### Synchronisation manuelle
+
+Si un nœud était hors ligne pendant un déploiement, ou si un nouveau nœud a été ajouté au cluster, synchronisez manuellement l'historique complet :
+
+```bash
+dockflow history-sync production
+```
+
+Cette commande lit l'historique de tous les nœuds accessibles, fusionne et déduplique les entrées, puis réécrit le jeu de données complet sur chaque nœud.
+
+<Callout type="info">
+  `history-sync` déduplique par ID de métrique (JSONL) et par correspondance exacte de ligne (journal d'audit), donc l'exécuter plusieurs fois est sans danger.
+</Callout>

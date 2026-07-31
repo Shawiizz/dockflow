@@ -20,9 +20,9 @@ import remarkMdx from 'remark-mdx';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const DOCS_DIR = join(__dirname, '..', 'app');
+const DOCS_DIR = join(__dirname, '..', 'app', 'en');
 const PUBLIC_DIR = join(__dirname, '..', 'public');
-const BASE_URL = 'https://{{ current.env.docs_domain_name }}';
+const BASE_URL = 'https://{{ current.env.docs_domain_name }}/en';
 
 interface PageEntry {
   slug: string;

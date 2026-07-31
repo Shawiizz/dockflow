@@ -1,0 +1,198 @@
+# Configuration du projet
+
+import { Callout } from 'nextra/components'
+
+Le fichier `config.yml` définit l'identité de votre projet, les options de build, les health checks, et le comportement de déploiement. C'est le premier fichier à configurer dans tout projet Dockflow.
+
+## Exemple complet
+
+```yaml
+# .dockflow/config.yml
+
+project_name: "my-app"
+
+proxy:
+  enabled: true
+  email: admin@example.com
+  domains:
+    production: my-app.example.com
+    staging: staging.my-app.example.com
+
+options:
+  image_auto_tag: true
+  enable_debug_logs: false
+  remote_build: false
+
+stack_management:
+  keep_releases: 3
+  cleanup_on_failure: true
+
+lock:
+  stale_threshold_minutes: 30
+
+health_checks:
+  enabled: true
+  startup_delay: 15
+  on_failure: "rollback"
+  wait_for_internal: true
+  endpoints:
+    - name: "Main Application"
+      url: "http://localhost:{{ current.env.app_port }}/health"
+      remote: true
+      expected_status: 200
+      timeout: 30
+      retries: 3
+```
+
+## `project_name` (requis)
+
+Identifiant unique de votre projet. Utilisé comme préfixe du nom de stack Docker Swarm et comme nom du répertoire de release.
+
+**Format** : lettres minuscules, chiffres et tirets uniquement.
+
+```yaml
+project_name: "my-app"
+```
+
+Le nom de stack est dérivé sous la forme `{project_name}-{env}`. Les releases sont stockées à :
+
+```
+/var/lib/dockflow/stacks/my-app-production/
+  1/
+  2/
+  3/
+  current -> 3/
+```
+
+## Options
+
+### `image_auto_tag`
+**Défaut :** `true`
+
+Ajoute `-{env}:{version}` aux noms d'images pour l'isolation par environnement :
+
+- `my-app` → `my-app-production:1.0.0`
+- `backend:latest` → `backend-staging:2.1.0`
+
+Mettre à `false` pour conserver les noms d'images tels que définis dans `docker-compose.yml`.
+
+### `enable_debug_logs`
+**Défaut :** `false`
+
+Active les logs verbeux pour déboguer les problèmes de déploiement.
+
+### `remote_build`
+**Défaut :** `false`
+
+Construit les images Docker sur le serveur plutôt que dans le pipeline CI/CD. Voir [Stratégie de build](/fr/configuration/build-strategy) pour les détails.
+
+## Gestion de la stack
+
+### `keep_releases`
+**Défaut :** `3`
+
+Nombre de releases précédentes à conserver sur le serveur. Permet un rollback rapide et le nettoyage automatique des anciennes releases et images.
+
+### `cleanup_on_failure`
+**Défaut :** `true`
+
+Supprime les images construites pour un déploiement échoué de tous les nœuds du cluster immédiatement après l'échec. Sans effet quand un registre est utilisé — les images poussées vers un registre ne sont pas supprimées.
+
+## Health Checks
+
+Deux couches de vérification de santé :
+
+1. **Interne à Swarm** — Docker surveille les healthchecks de conteneur définis dans `docker-compose.yml` et effectue un rollback automatique en cas d'échec.
+2. **Externe à Dockflow** — Vérifications d'endpoints HTTP après convergence, configurables ci-dessous. Les vérifications s'exécutent localement par défaut ; définissez `remote: true` pour les exécuter via SSH sur le nœud manager à la place.
+
+### `enabled`
+**Défaut :** `true`
+
+Active ou désactive les health checks post-déploiement.
+
+### `startup_delay`
+**Défaut :** `10` (secondes)
+
+Temps d'attente après le déploiement avant d'exécuter les health checks externes.
+
+### `wait_for_internal`
+**Défaut :** `true`
+
+Attend que les healthchecks internes de Swarm réussissent avant d'exécuter les vérifications externes.
+
+### `on_failure`
+
+Action quand les health checks externes échouent :
+
+| Valeur | Comportement |
+|-------|----------|
+| `"fail"` | Marque le déploiement comme échoué |
+| `"rollback"` | Rollback vers la stack précédente |
+| `"notify"` | Journalise un avertissement mais continue |
+| `"ignore"` | Ignore les échecs de health check |
+
+### `endpoints`
+
+Liste des endpoints HTTP à vérifier après le déploiement :
+
+```yaml
+endpoints:
+  # Vérification locale — la machine CLI doit pouvoir atteindre cette URL
+  - name: "Public API"
+    url: "https://api.example.com/health"
+    expected_status: 200
+    timeout: 30
+    retries: 3
+
+  # Vérification distante — curl s'exécute sur le manager via SSH
+  - name: "Internal service"
+    url: "http://localhost:{{ app_port }}/health"
+    remote: true
+    expected_status: 200
+    retries: 5
+    retry_delay: 3
+```
+
+| Champ | Type | Description | Défaut |
+|-------|------|-------------|---------|
+| `url` | string | URL à vérifier. Supporte la syntaxe de template (`{{ var }}`). | — |
+| `name` | string | Libellé descriptif affiché dans les logs. | — |
+| `remote` | boolean | Exécute la vérification via curl SSH sur le nœud manager plutôt que localement. À utiliser pour les ports `localhost` ou les services non exposés sur internet. | `false` |
+| `expected_status` | number | Code de statut HTTP attendu. | `200` |
+| `method` | string | Méthode HTTP (`GET`, `POST`, `HEAD`, …). | `GET` |
+| `timeout` | number | Timeout de la requête en secondes. | `30` |
+| `retries` | number | Nombre de tentatives. | `3` |
+| `retry_delay` | number | Délai entre les tentatives en secondes. | `5` |
+| `validate_certs` | boolean | Valide les certificats SSL. Mettre à `false` pour les certificats auto-signés. | `true` |
+
+## Proxy
+
+Routage HTTPS automatique via Traefik + Let's Encrypt. Voir [Proxy HTTPS automatique](/fr/configuration/proxy) pour la référence complète.
+
+```yaml
+proxy:
+  enabled: true
+  email: admin@example.com
+  domains:
+    production: my-app.example.com
+```
+
+## Verrou de déploiement
+
+### `stale_threshold_minutes`
+**Défaut :** `30`
+
+Dockflow empêche les déploiements concurrents vers la même stack. Les fichiers de verrou sont stockés dans `/var/lib/dockflow/locks/` et expirent après ce seuil. Accepte des valeurs de 1 à 1440 (24 heures).
+
+## Journal d'audit
+
+Chaque déploiement est enregistré dans `/var/lib/dockflow/audit/{stack-name}.log` :
+
+```
+2024-01-15T10:30:00Z | DEPLOYED | 1.0.0 | user@ci-runner | success
+2024-01-16T14:20:00Z | DEPLOYED | 1.0.1 | user@ci-runner | success
+```
+
+---
+
+**Suivant :** [Serveurs & Connexions](/fr/configuration/servers) — définissez vos serveurs, variables d'environnement, et secrets CI.

@@ -1,0 +1,303 @@
+# Sauvegarde & Restauration
+
+import { Callout } from 'nextra/components'
+
+Dockflow fournit une sauvegarde et restauration intégrées pour les bases de données accessoires, les services de la stack principale, et les volumes Docker. Sauvegardez PostgreSQL, MySQL, MongoDB, Redis, des volumes Docker, ou tout service personnalisé en une seule commande.
+
+## Configuration
+
+Ajoutez une section `backup` à votre `.dockflow/config.yml`. Les cibles de sauvegarde peuvent être déclarées sous `accessories` (pour les services d'`accessories.yml`) ou `services` (pour les services de votre `docker-compose.yml` principal) :
+
+```yaml filename=".dockflow/config.yml"
+backup:
+  retention_count: 10    # Sauvegardes à conserver par service (défaut : 10)
+  compression: gzip      # gzip ou none (défaut : gzip)
+  accessories:
+    postgres:
+      type: postgres
+      dump_options: "--no-owner --clean"
+    redis:
+      type: redis
+  services:
+    app:
+      type: volume
+    mongodb:
+      type: mongodb
+```
+
+### Configuration des accessoires
+
+Chaque entrée sous `backup.accessories` correspond à un nom de service dans votre `accessories.yml` :
+
+| Champ | Requis | Description |
+|-------|----------|-------------|
+| `type` | Oui | Type de base de données : `postgres`, `mysql`, `mongodb`, `redis`, `raw`, ou `volume` |
+| `dump_options` | Non | Flags supplémentaires passés à la commande de dump (pas pour le type `volume`) |
+| `restore_options` | Non | Flags supplémentaires passés à la commande de restauration (pas pour le type `volume`) |
+| `dump_command` | Non | Surcharge la commande de dump par défaut (requis pour le type `raw`) |
+| `restore_command` | Non | Surcharge la commande de restauration par défaut (requis pour le type `raw`) |
+| `exclude_volumes` | Non | Motifs glob de noms de volumes ou chemins de bind mount à exclure (uniquement pour le type `volume`) |
+| `include_bind_mounts` | Non | Inclut les bind mounts hôtes dans la sauvegarde de volume (défaut : `true`, uniquement pour le type `volume`) |
+
+### Configuration des services
+
+Chaque entrée sous `backup.services` correspond à un nom de service dans votre `docker-compose.yml` principal. Utile quand vous avez une stack à service unique sans accessoires, ou quand vous devez sauvegarder des volumes ou données de vos conteneurs applicatifs principaux.
+
+```yaml filename=".dockflow/config.yml"
+backup:
+  services:
+    app:
+      type: volume
+    custom-db:
+      type: raw
+      dump_command: "mydb-dump --stdout"
+      restore_command: "mydb-restore --stdin"
+```
+
+Les mêmes champs sont disponibles que pour la configuration des accessoires :
+
+| Champ | Requis | Description |
+|-------|----------|-------------|
+| `type` | Oui | Type de base de données : `postgres`, `mysql`, `mongodb`, `redis`, `raw`, ou `volume` |
+| `dump_options` | Non | Flags supplémentaires passés à la commande de dump (pas pour le type `volume`) |
+| `restore_options` | Non | Flags supplémentaires passés à la commande de restauration (pas pour le type `volume`) |
+| `dump_command` | Non | Surcharge la commande de dump par défaut (requis pour le type `raw`) |
+| `restore_command` | Non | Surcharge la commande de restauration par défaut (requis pour le type `raw`) |
+| `exclude_volumes` | Non | Motifs glob de noms de volumes ou chemins de bind mount à exclure (uniquement pour le type `volume`) |
+| `include_bind_mounts` | Non | Inclut les bind mounts hôtes dans la sauvegarde de volume (défaut : `true`, uniquement pour le type `volume`) |
+
+<Callout type="info">
+  **Auto-détection** : Quand vous lancez une commande de backup avec un nom de service, Dockflow détermine automatiquement si le service appartient à `backup.services` ou `backup.accessories` et cible la bonne stack Docker. Vous n'avez pas besoin de préciser à quelle section un service appartient.
+</Callout>
+
+<Callout type="warning">
+  Un nom de service doit être unique entre `backup.services` et `backup.accessories`. Ne déclarez pas le même nom dans les deux sections.
+</Callout>
+
+## Commandes
+
+### Créer une sauvegarde
+
+```bash
+dockflow backup create <env> <service>
+```
+
+Exécute la commande de dump appropriée à l'intérieur du conteneur en cours d'exécution et stocke la sortie compressée sur le serveur.
+
+```bash
+dockflow backup create production postgres
+# ✓ Backup created
+# Backup ID: 20260309-143052-a3f1
+# Size: 12.5 MB
+# Duration: 3.2s
+```
+
+Utilisez `--json` pour obtenir les métadonnées de sauvegarde (`id`, `size`, `durationMs`, …) en JSON sur stdout — utile pour le scripting :
+
+```bash
+dockflow backup create production postgres --json
+# {"id":"20260309-143052-a3f1","service":"postgres","sizeBytes":13107200,...}
+```
+
+### Lister les sauvegardes
+
+```bash
+dockflow backup list <env> [service]
+dockflow backup list production           # Tous les services
+dockflow backup list production postgres  # Service spécifique
+dockflow backup list production --json    # Sortie JSON
+```
+
+### Restaurer depuis une sauvegarde
+
+```bash
+dockflow backup restore <env> <service>
+dockflow backup restore production postgres              # Restaure la plus récente
+dockflow backup restore production postgres --from 20260309-143052-a3f1  # Sauvegarde spécifique
+dockflow backup restore production postgres --yes        # Sans confirmation
+```
+
+<Callout type="error">
+  La restauration **écrase** la base de données actuelle. Il vous sera demandé de taper le nom de l'environnement pour confirmer.
+</Callout>
+
+### Purger les anciennes sauvegardes
+
+```bash
+dockflow backup prune <env> [service]
+dockflow backup prune production               # Tous les services
+dockflow backup prune production postgres      # Service spécifique
+dockflow backup prune production --keep 5      # Surcharge le nombre de rétention
+```
+
+## Types de bases de données supportés
+
+### PostgreSQL
+
+Utilise `pg_dump` et `psql`. Les identifiants sont lus automatiquement depuis les variables d'environnement du conteneur `POSTGRES_USER`, `POSTGRES_PASSWORD`, et `POSTGRES_DB`.
+
+```yaml
+backup:
+  accessories:
+    postgres:
+      type: postgres
+      dump_options: "--no-owner --clean --if-exists"
+```
+
+### MySQL
+
+Utilise `mysqldump` et `mysql`. Les identifiants sont lus depuis `MYSQL_USER` (ou `root`), `MYSQL_ROOT_PASSWORD` / `MYSQL_PASSWORD`, et `MYSQL_DATABASE`.
+
+```yaml
+backup:
+  accessories:
+    mysql:
+      type: mysql
+      dump_options: "--single-transaction --quick"
+```
+
+### MongoDB
+
+Utilise `mongodump --archive` et `mongorestore --archive`. Les identifiants sont lus depuis `MONGO_INITDB_ROOT_USERNAME`, `MONGO_INITDB_ROOT_PASSWORD`, et `MONGO_INITDB_DATABASE`.
+
+```yaml
+backup:
+  accessories:
+    mongodb:
+      type: mongodb
+```
+
+### Redis
+
+Déclenche `BGSAVE` et copie le fichier de dump RDB. La restauration écrit le nouveau fichier de dump, envoie `SHUTDOWN NOSAVE` pour empêcher Redis de l'écraser, puis redémarre le service (`docker service update --force` sur Swarm, `kubectl rollout restart` sur k3s).
+
+```yaml
+backup:
+  accessories:
+    redis:
+      type: redis
+```
+
+<Callout type="info">
+  La restauration Redis gère automatiquement le cycle complet : écrire le fichier RDB, arrêter Redis sans sauvegarder, et redémarrer le service. Cela fonctionne quelle que soit la configuration de politique de redémarrage du service.
+</Callout>
+
+### Personnalisé (Raw)
+
+Pour toute autre base de données, fournissez vos propres commandes de dump et restauration. Les commandes s'exécutent à l'intérieur du conteneur via `docker exec`.
+
+```yaml
+backup:
+  accessories:
+    custom-db:
+      type: raw
+      dump_command: "mydb-dump --stdout"
+      restore_command: "mydb-restore --stdin"
+```
+
+La commande de dump doit écrire vers stdout. La commande de restauration doit lire depuis stdin.
+
+### Volume
+
+Sauvegarde toutes les données persistantes associées à un conteneur de service : les **volumes Docker nommés** et les **bind mounts en lecture-écriture** (répertoires montés depuis l'hôte). Les volumes nommés sont archivés via un conteneur Alpine temporaire, tandis que les bind mounts sont archivés en tar directement depuis le système de fichiers hôte.
+
+Idéal pour les services où les données vivent dans des volumes ou des chemins montés depuis l'hôte plutôt que dans des bases de données (ex. stockage de fichiers, MinIO, uploads).
+
+```yaml
+backup:
+  accessories:
+    minio:
+      type: volume
+    uploads:
+      type: volume
+      exclude_volumes:
+        - "*-temp"
+        - "*-cache"
+        - "/etc/localtime"
+```
+
+Le système découvre automatiquement tous les volumes nommés et bind mounts en lecture-écriture sur le conteneur du service. Chacun produit une archive tar séparée. Les bind mounts en lecture seule (ex. fichiers de config) sont exclus automatiquement.
+
+| Champ | Requis | Description |
+|-------|----------|-------------|
+| `type` | Oui | Doit être `volume` |
+| `exclude_volumes` | Non | Tableau de motifs glob à ignorer. Correspond aux noms courts de volumes, noms complets de volumes Docker, chemins source de bind mounts, et chemins de destination dans le conteneur. |
+| `include_bind_mounts` | Non | Mettre à `false` pour ne sauvegarder que les volumes Docker nommés et ignorer tous les bind mounts (défaut : `true`). |
+
+#### Contrôler ce qui est sauvegardé
+
+Par défaut, tous les volumes nommés et bind mounts en lecture-écriture sont inclus. Il y a deux façons de contrôler cela :
+
+**Désactiver entièrement les bind mounts** — utilisez `include_bind_mounts: false` pour ne sauvegarder que les volumes Docker nommés :
+
+```yaml
+backup:
+  services:
+    app:
+      type: volume
+      include_bind_mounts: false  # Uniquement les volumes Docker nommés
+```
+
+**Exclure des montages spécifiques** — utilisez `exclude_volumes` avec des motifs glob pour ignorer des volumes ou bind mounts individuels. Les motifs correspondent aux noms courts de volumes, noms complets de volumes, chemins source hôte, et chemins de destination dans le conteneur :
+
+```yaml
+backup:
+  services:
+    app:
+      type: volume
+      exclude_volumes:
+        - "*-cache"            # Exclut les volumes se terminant par -cache
+        - "/etc/localtime"     # Exclut un bind mount spécifique par chemin hôte
+        - "/app/tmp"           # Exclut par chemin de destination dans le conteneur
+```
+
+<Callout type="info">
+  La sauvegarde de volume ne nécessite pas `dump_command` ni `restore_command`. Le système utilise `docker run --rm` avec un conteneur Alpine temporaire pour les volumes nommés, et `tar` directement pour les bind mounts.
+</Callout>
+
+<Callout type="warning">
+  L'hôte Docker doit pouvoir tirer l'image `alpine` (ou l'avoir en cache). Sur les serveurs isolés (air-gapped), assurez-vous que l'image est disponible localement.
+</Callout>
+
+## Stockage
+
+Les sauvegardes sont stockées sur le serveur manager à :
+
+```
+# Sauvegardes d'accessoires
+/var/lib/dockflow/backups/{stack}-accessories/{service}/
+
+# Sauvegardes de services de la stack principale
+/var/lib/dockflow/backups/{stack}/{service}/
+```
+
+Exemple de fichiers :
+
+```
+20260309-143052-a3f1.sql.gz       # Dump de base de données compressé
+20260309-143052-a3f1.meta.json    # Métadonnées (taille, durée, type)
+20260308-020000-b7c2.sql.gz
+20260308-020000-b7c2.meta.json
+20260310-030000-c4d3.data.tar.gz  # Sauvegarde de volume nommé
+20260310-030000-c4d3.app-uploads.tar.gz  # Sauvegarde de bind mount
+20260310-030000-c4d3.meta.json
+```
+
+## API
+
+Le WebUI expose les opérations de backup via REST :
+
+| Méthode | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/backup/list?env=&service=` | Liste les sauvegardes |
+| `POST` | `/api/backup/create?env=&service=` | Crée une sauvegarde |
+| `POST` | `/api/backup/restore?env=&service=&id=` | Restaure depuis une sauvegarde |
+| `POST` | `/api/backup/prune?env=&service=` | Purge les anciennes sauvegardes |
+
+## Bonnes pratiques
+
+- **Sauvegarder avant les déploiements** : Lancez `dockflow backup create` avant de déployer des migrations de schéma
+- **Mettre en place des sauvegardes régulières** : Utilisez cron ou votre pipeline CI pour planifier `dockflow backup create`
+- **Tester les restaurations** : Vérifiez périodiquement que les sauvegardes fonctionnent en restaurant vers un environnement de staging
+- **Surveiller l'utilisation disque** : Les sauvegardes s'accumulent sur le serveur ; utilisez `prune` pour maîtriser l'utilisation disque
+- **Épingler le nombre de rétention** : Définissez `retention_count` dans la config plutôt que de vous fier au défaut

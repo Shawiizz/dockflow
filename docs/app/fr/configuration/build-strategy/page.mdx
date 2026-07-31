@@ -1,0 +1,124 @@
+# Stratégie de build
+
+import { Callout } from 'nextra/components'
+
+Dockflow supporte différentes stratégies pour construire et transférer les images Docker vers vos serveurs.
+
+## Vue d'ensemble des stratégies
+
+| Stratégie | Lieu du build | Méthode de transfert | Idéal pour |
+|----------|---------------|-----------------|----------|
+| Local (défaut) | Runner CI/CD | Streaming SSH | Mono-nœud, petits clusters |
+| Local + Registre | Runner CI/CD | Registre Docker | Grands clusters multi-nœuds |
+| Distant | Serveur cible | Aucun (construit sur place) | Gros contextes, réseaux lents |
+
+## Build local (défaut)
+
+Les images sont construites dans votre pipeline CI/CD et transférées vers le serveur via SSH. Aucune configuration additionnelle requise.
+
+**Fonctionnement :**
+1. Dockflow analyse `docker-compose.yml` pour extraire les commandes de build
+2. Les images sont construites localement (en parallèle si plusieurs services)
+3. Les images sont streamées vers tous les nœuds du cluster via SSH :
+   ```
+   docker save IMAGE | gzip -1 | ssh user@host "gunzip | docker load"
+   ```
+
+C'est la stratégie la plus simple, elle fonctionne aussi bien pour les déploiements mono-nœud que pour les clusters multi-nœuds. Pour les clusters plus grands avec de nombreux nœuds ou des images lourdes, envisagez plutôt un [registre](/fr/configuration/registry).
+
+<Callout type="info">
+  Les images multiples sont construites en parallèle automatiquement. Les temps de build sont affichés par service une fois terminé.
+</Callout>
+
+## Build avec registre
+
+Pour les grands clusters multi-nœuds, utilisez un registre Docker afin que chaque nœud puisse tirer les images indépendamment. Cela évite de streamer de grosses images via SSH vers chaque nœud individuellement.
+
+**Fonctionnement :**
+1. Les images sont construites localement (comme par défaut)
+2. Les images sont poussées vers votre registre configuré
+3. Pendant le déploiement, chaque nœud tire l'image depuis le registre
+
+Voir [Registre Docker](/fr/configuration/registry) pour la configuration complète (GHCR, GitLab, Docker Hub, auto-hébergé).
+
+**Quand l'utiliser :**
+- Grands clusters multi-nœuds où le streaming SSH devient un goulot d'étranglement
+- Quand vous voulez du versioning d'images dans un registre
+- Pipelines CI/CD avec support natif de registre
+
+## Build distant
+
+Construisez les images directement sur le serveur plutôt que de les transférer :
+
+```yaml
+# .dockflow/config.yml
+options:
+  remote_build: true
+```
+
+**Fonctionnement :**
+1. Dockflow clone votre dépôt sur le serveur cible (supporte l'authentification par token Git)
+2. Les images sont construites directement sur le serveur
+3. Aucun transfert d'image nécessaire — les images sont déjà là où elles doivent être
+
+Pour les dépôts privés, ajoutez un secret `GIT_TOKEN` à votre environnement CI/CD. Dockflow construit automatiquement les URLs authentifiées pour GitHub et GitLab.
+
+**Quand l'utiliser :**
+- Gros contextes de build qui seraient lents à transférer
+- Connexions réseau lentes entre le CI/CD et le serveur
+- Quand le serveur dispose de plus de ressources de build que votre runner CI
+
+<Callout type="warning">
+  Les builds distants purgent le cache du builder Docker après chaque build pour libérer de l'espace disque. Le cache de layers Docker fonctionne toujours au sein d'un même build, mais n'est pas conservé entre les déploiements.
+</Callout>
+
+## Compromis
+
+| | Local | Local + Registre | Distant |
+|---|---|---|---|
+| **Complexité de setup** | Aucune | Config registre nécessaire | Accès Git sur le serveur |
+| **Usage réseau** | Stream SSH par nœud | Un seul push, les nœuds tirent | Clone Git uniquement |
+| **Cache de build** | Cache local complet | Cache local complet | Purgé entre les déploiements |
+| **Multi-nœuds** | Streaming vers chaque nœud | Pull registre par nœud | Streaming vers les workers |
+| **Ressources CI** | Nécessite Docker sur le runner | Nécessite Docker sur le runner | Ressources CI minimales |
+| **Dépôts privés** | N/A | N/A | Nécessite `GIT_TOKEN` |
+
+## Mode build uniquement
+
+Utilisez `dockflow build` pour construire les images sans déployer :
+
+```bash
+dockflow build production                 # Build tous les services
+dockflow build production --only app      # Build un service spécifique
+dockflow build production --push          # Build et push vers le registre
+```
+
+Utile pour valider les builds en CI avant de déployer, ou pour pré-construire des images.
+
+## Cache Docker
+
+Docker met en cache les layers d'images par défaut. Tant que rien ne change dans votre code source ou votre Dockerfile, les builds suivants réutilisent les layers en cache et se terminent en quelques secondes.
+
+Pour maximiser l'efficacité du cache :
+- Ordonnez les instructions du Dockerfile de la moins à la plus fréquemment modifiée
+- Copiez les fichiers de dépendances (`package.json`, `requirements.txt`) avant le code source
+- Utilisez des builds multi-stage pour séparer les dépendances de build et de runtime
+
+```dockerfile
+# Exemple : bonne utilisation du cache
+FROM node:24-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json ./    # Change rarement
+RUN npm ci                                # Mis en cache si le lockfile est inchangé
+COPY . .                                  # Change souvent
+RUN npm run build
+
+FROM node:24-alpine
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/node_modules ./node_modules
+CMD ["node", "dist/index.js"]
+```
+
+---
+
+**Suivant :** [Déploiement](/fr/deployment) — comprendre ce qu'il se passe lors d'un déploiement.

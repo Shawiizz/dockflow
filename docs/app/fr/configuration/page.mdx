@@ -1,0 +1,89 @@
+---
+asIndexPage: true
+description:
+  Configurez votre projet Dockflow — du fichier de configuration principal aux serveurs, Docker Compose, stratégie de build, et plus encore.
+---
+
+import { Cards } from 'nextra/components'
+
+# Configuration
+
+Commencez par la configuration de votre projet, puis définissez vos serveurs et votre stack Docker Compose. Les autres sujets sont optionnels et peuvent être explorés selon vos besoins.
+
+<Cards>
+  <Cards.Card
+    title="dockflow.yml"
+    description="Layout mono-fichier pour les projets simples — pas besoin de répertoire .dockflow/"
+    href="/fr/configuration/dockflow-yml"
+  />
+  <Cards.Card
+    title="Configuration du projet"
+    description="Nom du projet, health checks, verrou de déploiement, gestion des releases"
+    href="/fr/configuration/config-file"
+  />
+  <Cards.Card
+    title="Serveurs & Connexions"
+    description="Définitions des serveurs, variables d'environnement, secrets CI"
+    href="/fr/configuration/servers"
+  />
+  <Cards.Card
+    title="Docker Compose"
+    description="Services, réseaux, volumes, paramètres de déploiement"
+    href="/fr/configuration/docker-compose"
+  />
+  <Cards.Card
+    title="Stratégie de build"
+    description="Build local, push vers un registre, ou build distant"
+    href="/fr/configuration/build-strategy"
+  />
+  <Cards.Card
+    title="Registre Docker"
+    description="GHCR, GitLab, Docker Hub, auto-hébergé"
+    href="/fr/configuration/registry"
+  />
+  <Cards.Card
+    title="Moteur de conteneurs"
+    description="Docker ou Podman pour construire et distribuer les images"
+    href="/fr/configuration/container-engine"
+  />
+  <Cards.Card
+    title="Accessoires"
+    description="Bases de données, caches et autres services avec état"
+    href="/fr/configuration/accessories"
+  />
+  <Cards.Card
+    title="Envoi de fichiers"
+    description="Envoyer des fichiers et répertoires de configuration vers les serveurs avant le déploiement"
+    href="/fr/configuration/upload"
+  />
+  <Cards.Card
+    title="Hooks"
+    description="Scripts personnalisés au build et au déploiement"
+    href="/fr/configuration/hooks"
+  />
+  <Cards.Card
+    title="Templates"
+    description="Templating Nunjucks pour les fichiers de configuration"
+    href="/fr/configuration/templates"
+  />
+  <Cards.Card
+    title="Déploiement multi-nœuds"
+    description="Managers, workers, failover, scaling"
+    href="/fr/configuration/multi-host"
+  />
+  <Cards.Card
+    title="Proxy HTTPS automatique"
+    description="Traefik + Let's Encrypt, routage HTTPS zero-config"
+    href="/fr/configuration/proxy"
+  />
+  <Cards.Card
+    title="Notifications"
+    description="Webhooks HTTP en cas de succès ou d'échec du déploiement"
+    href="/fr/configuration/notifications"
+  />
+  <Cards.Card
+    title="Orchestrateur"
+    description="Choisissez entre Docker Swarm et k3s comme backend de déploiement"
+    href="/fr/configuration/orchestrator"
+  />
+</Cards>

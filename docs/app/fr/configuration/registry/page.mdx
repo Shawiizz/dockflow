@@ -1,0 +1,129 @@
+# Registre Docker
+
+import { Callout, Tabs } from 'nextra/components'
+
+Un registre Docker stocke vos images de manière centralisée pour que les nœuds Swarm puissent les tirer indépendamment.
+
+## Quand l'utiliser
+
+- **Nœud unique** : Non nécessaire. Les images sont transférées via SSH.
+- **Swarm multi-nœuds** : Recommandé pour les grands clusters. Sans registre, Dockflow transfère les images à chaque nœud via SSH (`docker save | ssh | docker load`), ce qui fonctionne bien pour les petits clusters mais devient plus lent quand le nombre de nœuds ou la taille des images augmente.
+
+## Configuration
+
+Ajoutez ce qui suit à `.dockflow/config.yml` :
+
+<Tabs items={['GitHub (GHCR)', 'GitLab', 'Docker Hub', 'Auto-hébergé']}>
+  <Tabs.Tab>
+    ```yaml
+    registry:
+      type: ghcr
+      enabled: true
+      url: "ghcr.io"
+      namespace: "your-org"
+      username: "{{ current.env.registry_username }}"
+      token: "{{ current.env.registry_token }}"
+    ```
+
+    **Secrets CI/CD requis :**
+    - `REGISTRY_USERNAME` (acteur GitHub)
+    - `REGISTRY_TOKEN` (token GitHub avec le scope `packages:write`)
+  </Tabs.Tab>
+
+  <Tabs.Tab>
+    ```yaml
+    registry:
+      type: gitlab
+      enabled: true
+      url: "registry.gitlab.com"
+      namespace: "your-group/your-project"
+      username: "gitlab-ci-token"
+      token: "{{ current.env.registry_token }}"
+    ```
+
+    **Secrets CI/CD requis :**
+    - `REGISTRY_TOKEN` (`CI_JOB_TOKEN` est automatique dans GitLab CI)
+  </Tabs.Tab>
+
+  <Tabs.Tab>
+    ```yaml
+    registry:
+      type: dockerhub
+      enabled: true
+      url: "docker.io"
+      namespace: "your-username"
+      username: "{{ current.env.registry_username }}"
+      password: "{{ current.env.registry_password }}"
+    ```
+
+    **Secrets CI/CD requis :**
+    - `REGISTRY_USERNAME`
+    - `REGISTRY_PASSWORD`
+  </Tabs.Tab>
+
+  <Tabs.Tab>
+    ```yaml
+    registry:
+      type: custom
+      enabled: true
+      url: "registry.example.com"
+      namespace: "your-team"
+      username: "{{ current.env.registry_username }}"
+      password: "{{ current.env.registry_password }}"
+    ```
+
+    **Secrets CI/CD requis :**
+    - `REGISTRY_USERNAME`
+    - `REGISTRY_PASSWORD`
+  </Tabs.Tab>
+</Tabs>
+
+<Callout type="info">
+  Les identifiants du registre utilisent la syntaxe de template Nunjucks. Les valeurs des variables d'environnement de `servers.yml` ou des secrets CI sont disponibles via `current.env.variable_name` (en minuscules).
+</Callout>
+
+## Référence de configuration
+
+| Champ | Type | Description | Défaut |
+|-------|------|-------------|---------|
+| `type` | `local` \| `dockerhub` \| `ghcr` \| `gitlab` \| `custom` | Type de registre (requis) | — |
+| `enabled` | `boolean` | Active/désactive le push vers le registre | `true` |
+| `url` | `string` | Nom d'hôte du registre (requis pour le type `custom`) | — |
+| `namespace` | `string` | Préfixe organisation ou utilisateur pour les images | — |
+| `username` | `string` | Nom d'utilisateur du registre | — |
+| `password` | `string` | Mot de passe du registre (utilisez la syntaxe de template pour les secrets) | — |
+| `token` | `string` | Token du registre (alternative au mot de passe) | — |
+| `additional_tags` | `string[]` | Tags supplémentaires à pousser en plus du tag de version | — |
+
+## Tagging des images
+
+Par défaut, les images sont taguées avec la version du déploiement. Vous pouvez ajouter des tags supplémentaires pointant vers la même image :
+
+```yaml
+registry:
+  type: ghcr
+  enabled: true
+  url: "ghcr.io"
+  namespace: "your-org"
+  additional_tags:
+    - "latest"
+    - "{env}"
+```
+
+**Exemple :** Déployer la version `1.2.0` sur `production` produit :
+
+```
+ghcr.io/your-org/my-app:1.2.0       # tag principal (version)
+ghcr.io/your-org/my-app:latest      # tag additionnel
+ghcr.io/your-org/my-app:production  # tag additionnel ({env} remplacé)
+```
+
+Variables disponibles : `{version}`, `{env}`, `{branch}`, `{sha}`
+
+## Dépannage
+
+**Échec d'authentification** : Testez les identifiants manuellement avec `docker login`.
+
+**Push refusé** : Vérifiez les droits d'écriture sur le namespace.
+
+**Les workers ne peuvent pas tirer les images** : Assurez-vous que tous les nœuds Swarm peuvent atteindre le registre. Pour les registres privés, authentifiez-vous sur chaque nœud.

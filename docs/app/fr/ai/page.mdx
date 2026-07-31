@@ -1,0 +1,87 @@
+# Intégration IA
+
+import { Callout, Tabs } from 'nextra/components'
+
+Dockflow offre un support de premier ordre pour les assistants IA via le [standard llms.txt](https://llmstxt.org/) et un [serveur MCP](https://modelcontextprotocol.io/) dédié.
+
+## llms.txt
+
+La documentation est disponible dans un format lisible par les machines, conforme au standard llms.txt :
+
+| Fichier | Description | URL |
+|------|-------------|-----|
+| `llms.txt` | Index concis avec liens et descriptions pour chaque page | [`/llms.txt`](/llms.txt) |
+| `llms-full.txt` | Documentation complète concaténée en un seul fichier | [`/llms-full.txt`](/llms-full.txt) |
+
+Ces fichiers sont générés automatiquement au build à partir des sources de la documentation.
+
+<Callout type="info">
+  Vous pouvez pointer n'importe quel assistant IA vers `https://{{ current.env.docs_domain_name }}/llms.txt` pour lui donner du contexte sur Dockflow.
+</Callout>
+
+## Serveur MCP
+
+Le package `@dockflow-tools/mcp` fournit un serveur [Model Context Protocol](https://modelcontextprotocol.io/) qui expose la documentation Dockflow comme des outils pour les assistants IA.
+
+### Installation
+
+<Tabs items={['Claude Code', 'VS Code', 'Claude Desktop', 'Autres clients MCP']}>
+  <Tabs.Tab>
+    ```bash
+    claude mcp add dockflow -- npx -y @dockflow-tools/mcp
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Ajoutez à votre `.vscode/mcp.json` :
+
+    ```json
+    {
+      "servers": {
+        "dockflow": {
+          "command": "npx",
+          "args": ["-y", "@dockflow-tools/mcp"]
+        }
+      }
+    }
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Ajoutez à votre `claude_desktop_config.json` :
+
+    ```json
+    {
+      "mcpServers": {
+        "dockflow": {
+          "command": "npx",
+          "args": ["-y", "@dockflow-tools/mcp"]
+        }
+      }
+    }
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Lancez le serveur via stdio :
+
+    ```bash
+    npx @dockflow-tools/mcp
+    ```
+  </Tabs.Tab>
+</Tabs>
+
+### Outils disponibles
+
+| Outil | Description |
+|------|-------------|
+| `list_pages` | Liste toutes les pages de documentation disponibles avec leurs descriptions |
+| `search_docs` | Recherche dans la documentation un sujet ou un mot-clé spécifique |
+| `get_page` | Récupère le contenu complet d'une page de documentation spécifique |
+
+### Exemple d'utilisation
+
+Une fois configuré, vous pouvez poser à votre assistant IA des questions comme :
+
+- *"Comment configurer un déploiement multi-hôtes avec Dockflow ?"*
+- *"Quelles sont les commandes CLI disponibles ?"*
+- *"Montre-moi la référence de configuration des accessoires"*
+
+Le serveur MCP récupère la documentation depuis le site en ligne et la met en cache en mémoire pour des réponses rapides.

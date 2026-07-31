@@ -1,0 +1,784 @@
+# Commandes CLI
+
+import { Callout, Tabs } from 'nextra/components'
+
+Dockflow fournit un CLI complet pour gérer les déploiements et interagir avec les services en cours d'exécution.
+
+## Installation
+
+<Tabs items={['Linux / macOS', 'Windows']}>
+  <Tabs.Tab>
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | bash
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```powershell
+    irm https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.ps1 | iex
+    ```
+  </Tabs.Tab>
+</Tabs>
+
+Le script détecte votre plateforme et architecture, télécharge le binaire, et l'ajoute à votre PATH.
+
+<Callout type="info">
+  Le binaire du CLI est autonome et ne nécessite aucune dépendance externe pour la plupart des commandes.
+  Utilisez `dockflow setup` sur l'hôte Linux cible, ou `dockflow setup user@host` depuis n'importe quelle plateforme pour configurer un serveur distant via SSH.
+</Callout>
+
+### Binaires disponibles
+
+| Binaire | Plateforme | Architecture |
+|--------|----------|-------------|
+| `dockflow-linux-x64` | Linux | x86_64 |
+| `dockflow-linux-arm64` | Linux | ARM64 |
+| `dockflow-macos-x64` | macOS | Intel |
+| `dockflow-macos-arm64` | macOS | Apple Silicon |
+| `dockflow-windows-x64.exe` | Windows | x86_64 |
+
+## Options globales
+
+Ces options sont disponibles sur toutes les commandes :
+
+| Option | Description |
+|--------|-------------|
+| `--no-color` | Désactive la sortie colorée |
+| `--verbose` | Active la sortie verbeuse |
+| `-v, --version` | Affiche la version du CLI |
+
+## Configuration de connexion
+
+Les commandes app nécessitent des chaînes de connexion configurées comme secrets CI ou dans `.env.dockflow` pour le développement local :
+
+```bash
+# .env.dockflow (pour usage local du CLI)
+PRODUCTION_MAIN_SERVER_CONNECTION=eyJob3N0Ijoi...  # JSON encodé en base64
+STAGING_STAGING_SERVER_CONNECTION=eyJob3N0Ijoi...
+```
+
+La chaîne de connexion est générée par `dockflow setup` et contient :
+- `host` : IP ou nom d'hôte du serveur
+- `port` : Port SSH
+- `user` : Utilisateur de déploiement
+- `privateKey` : Clé privée SSH
+- `password` : Mot de passe utilisateur (optionnel)
+
+<Callout type="info">
+  Les noms de serveur utilisent des underscores dans les secrets. Un serveur nommé `main_server` dans `servers.yml` utilise `MAIN_SERVER` dans le nom du secret.
+</Callout>
+
+<Callout type="info">
+  Toutes les commandes qui acceptent un argument `<env>` supportent la **correspondance par préfixe** : tapez `pr` au lieu de `production`, `st` au lieu de `staging`, etc. Si le préfixe est ambigu, Dockflow listera les environnements correspondants.
+</Callout>
+
+## Commandes principales
+
+### Deploy
+
+```bash
+dockflow deploy [env] [version]
+```
+
+Déploie l'application vers l'environnement spécifié. En CI, `env` et `version` sont tous deux auto-détectés depuis le tag git ou le nom de branche.
+
+| Option | Description |
+|--------|-------------|
+| `--only <list>` | Liste de services séparés par des virgules à déployer |
+| `--skip-build` | Saute la phase de build |
+| `--force` | Force le déploiement même si verrouillé |
+| `--accessories` | Déploie uniquement les accessoires (force le redéploiement) |
+| `--all` | Déploie l'app + force le redéploiement des accessoires |
+| `--skip-accessories` | Saute entièrement la vérification des accessoires |
+| `--no-failover` | Désactive le failover multi-manager (utilise uniquement le premier manager) |
+| `--dry-run` | Montre ce qui serait déployé sans exécuter |
+| `--branch <name>` | Surcharge la branche git auto-détectée |
+| `--debug` | Active la sortie de debug |
+
+<Callout type="info">
+  Par défaut, Dockflow vérifie si `accessories.yml` a changé et déploie automatiquement les accessoires si nécessaire. Utilisez `--skip-accessories` pour désactiver ce comportement.
+</Callout>
+
+```bash
+dockflow deploy production 1.0.0          # Déploie une version spécifique
+dockflow deploy staging                   # Version auto-générée
+dockflow deploy production --accessories  # Force le redéploiement des accessoires uniquement
+dockflow deploy production --all          # Déploie l'app + les accessoires
+dockflow deploy production --dry-run      # Prévisualise sans exécuter
+```
+
+### Build
+
+```bash
+dockflow build [env]
+```
+
+Construit les images Docker localement sans déployer. En CI, l'environnement est auto-détecté depuis le tag git ou le nom de branche.
+
+| Option | Description |
+|--------|-------------|
+| `--only <list>` | Liste de services séparés par des virgules à construire |
+| `--push` | Pousse les images vers le registre après le build |
+| `--skip-hooks` | Saute les hooks pre-build et post-build |
+| `--branch <name>` | Surcharge la branche git auto-détectée |
+| `--debug` | Active la sortie de debug |
+
+```bash
+dockflow build production                 # Construit tous les services
+dockflow build production --only app      # Construit un service spécifique
+dockflow build production --push          # Construit et pousse vers le registre
+```
+
+### Init
+
+```bash
+dockflow init [platform]
+```
+
+Initialise la structure du dossier `.dockflow/` avec les fichiers de configuration et le setup CI/CD.
+
+```bash
+dockflow init                 # Sélection interactive de la plateforme
+dockflow init github          # GitHub Actions
+dockflow init gitlab          # GitLab CI
+```
+
+### Config
+
+```bash
+dockflow config [subcommand]
+```
+
+Affiche et valide la configuration du projet.
+
+| Sous-commande | Description |
+|------------|-------------|
+| `show` (défaut) | Affiche la configuration actuelle |
+| `validate` (alias : `check`) | Valide les fichiers de config par rapport aux schémas |
+| `path` | Affiche le chemin du répertoire de configuration |
+
+La validation avertit aussi des clés inconnues : une clé que le schéma ne déclare pas est ignorée silencieusement au runtime (les fautes de frappe ne font jamais échouer un déploiement), donc `validate` signale chacune d'elles avec une suggestion "vouliez-vous dire" quand une correspondance proche existe — ex. `backup.retention` → `Did you mean "retention_count"?`.
+
+| Option | S'applique à | Description |
+|--------|-----------|-------------|
+| `--json` | show, validate | Sortie en JSON |
+| `--verbose` | validate | Affiche une sortie de validation détaillée |
+
+```bash
+dockflow config                   # Affiche la configuration
+dockflow config validate          # Valide les fichiers de config
+dockflow config check             # Identique à validate
+dockflow config path              # Affiche le répertoire de config
+```
+
+### UI
+
+```bash
+dockflow ui
+```
+
+Lance le dashboard WebUI de Dockflow pour la gestion visuelle des services, de la topologie, et des logs.
+
+| Option | Description |
+|--------|-------------|
+| `-p, --port <port>` | Port d'écoute (défaut : 4200) |
+| `--no-open` | N'ouvre pas le navigateur automatiquement |
+
+## Commandes app
+
+Ces commandes interagissent avec les services déployés via SSH. La plupart acceptent `-s, --server <name>` pour cibler un serveur spécifique (par défaut, le premier serveur de l'environnement).
+
+### Logs
+
+```bash
+dockflow logs <env> [service]
+```
+
+Consulte les logs des services en cours d'exécution. Sur Swarm, seules les **replicas de tâche actuellement en cours d'exécution** sont streamées par défaut — les replicas terminées et crashées sont exclues pour éviter le bruit entrelacé d'échecs passés. Utilisez `--all-tasks` pour les inclure, ou `--pick` pour sélectionner une replica spécifique de manière interactive.
+
+| Option | Description |
+|--------|-------------|
+| `-f, --follow` | Suit la sortie des logs |
+| `-n, --tail <lines>` | Nombre de lignes à afficher (défaut : 100) |
+| `-T, --timestamps` | Affiche les timestamps |
+| `--since <time>` | Affiche les logs depuis un timestamp (ex. `1h`, `2024-01-01`) |
+| `-s, --server <name>` | Serveur cible |
+| `-a, --all-tasks` | Inclut les logs des replicas de tâche terminées/historiques (Swarm uniquement) |
+| `--pick` | Sélectionne interactivement quelle replica de tâche suivre (Swarm uniquement) |
+
+```bash
+dockflow logs production                 # Tous les services, replicas en cours uniquement
+dockflow logs production app -f          # Suit un service spécifique
+dockflow logs production app -n 500      # Les 500 dernières lignes
+dockflow logs production --since 1h      # La dernière heure
+dockflow logs production app --all-tasks # Inclut les replicas crashées/anciennes
+dockflow logs production app --pick      # Choisit une replica dans une liste
+```
+
+<Callout type="info">
+Le sélecteur `--pick` liste chaque tâche (en cours + historique) avec son état actuel, son index de replica, son nœud, et tout message d'erreur — utile pour comprendre pourquoi une replica spécifique a crashé.
+</Callout>
+
+### Exec
+
+```bash
+dockflow exec <env> <service> [command...]
+```
+
+Exécute une commande à l'intérieur d'un conteneur en cours d'exécution (défaut : bash).
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Serveur cible |
+| `-u, --user <user>` | S'exécute en tant qu'utilisateur spécifié |
+| `-w, --workdir <dir>` | Répertoire de travail dans le conteneur |
+
+```bash
+dockflow exec production app bash          # Shell interactif
+dockflow exec production app "ls -la"      # Lance une commande
+dockflow exec production db "psql -U user" # Accès base de données
+```
+
+### Bash
+
+```bash
+dockflow bash <env> <service>
+```
+
+Ouvre un shell interactif dans un conteneur. Alias : `shell`.
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Serveur cible |
+| `--sh` | Utilise sh au lieu de bash |
+
+```bash
+dockflow bash production app              # Ouvre un shell bash
+dockflow shell production app --sh        # Utilise sh (conteneurs Alpine)
+```
+
+### Restart
+
+```bash
+dockflow restart <env> [service]
+```
+
+Force le redémarrage des services (mise à jour progressive).
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Serveur cible |
+
+```bash
+dockflow restart production           # Tous les services
+dockflow restart production app       # Service spécifique
+```
+
+### Stop
+
+```bash
+dockflow stop <env>
+```
+
+Arrête et supprime la stack entière. Demande une confirmation.
+
+| Option | Description |
+|--------|-------------|
+| `-y, --yes` | Sans confirmation |
+| `-s, --server <name>` | Serveur cible |
+
+### Scale
+
+```bash
+dockflow scale <env> <service> <replicas>
+```
+
+Fait scaler un service à un nombre de replicas spécifié.
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Serveur cible |
+
+```bash
+dockflow scale production app 3      # Scale à 3 replicas
+dockflow scale production worker 5   # Scale les workers
+```
+
+### Rollback
+
+```bash
+dockflow rollback <env> [service]
+```
+
+Rollback un service vers sa version précédente.
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Serveur cible |
+
+```bash
+dockflow rollback production app     # Rollback un service spécifique
+dockflow rollback production         # Rollback tous les services
+```
+
+### PS
+
+```bash
+dockflow ps <env>
+```
+
+Liste les conteneurs en cours d'exécution pour la stack.
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Serveur cible |
+| `--tasks` | Affiche les tâches plutôt que les conteneurs |
+
+### Version
+
+```bash
+dockflow version <env>
+```
+
+Affiche la version actuellement déployée de l'application.
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Serveur cible |
+| `--json` | Sortie en JSON |
+
+### Audit
+
+```bash
+dockflow audit <env>
+```
+
+Affiche le journal d'audit de déploiement (qui a déployé quoi et quand).
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Serveur cible |
+| `-n, --lines <number>` | Nombre d'entrées à afficher (défaut : 20) |
+| `--all` | Affiche toutes les entrées |
+| `--json` | Sortie en JSON |
+
+### Metrics
+
+```bash
+dockflow metrics <env>
+```
+
+Affiche les métriques et statistiques de déploiement.
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Serveur cible |
+| `--history` | Affiche l'historique de déploiement |
+| `-n, --lines <number>` | Nombre d'entrées d'historique (défaut : 20) |
+| `--json` | Sortie en JSON |
+| `--prune` | Supprime les anciennes métriques (conserve les 1000 dernières) |
+
+### Diagnose
+
+```bash
+dockflow diagnose <env>
+```
+
+Diagnostique les problèmes de déploiement et montre pourquoi les conteneurs pourraient ne pas démarrer.
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Serveur cible |
+| `-v, --verbose` | Affiche tous les détails de diagnostic |
+
+### Details
+
+```bash
+dockflow details <env>
+```
+
+Affiche un aperçu de la stack avec les services, replicas, et utilisation des ressources.
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Serveur cible |
+
+### SSH
+
+```bash
+dockflow ssh <env> [command...]
+```
+
+Ouvre une session SSH interactive ou exécute une commande sur le serveur.
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Serveur cible |
+
+```bash
+dockflow ssh production                    # Session interactive
+dockflow ssh production "docker ps"        # Lance une commande distante
+```
+
+### Prune
+
+```bash
+dockflow prune <env>
+```
+
+Supprime les ressources Docker inutilisées du serveur.
+
+| Option | Description |
+|--------|-------------|
+| `-a, --all` | Supprime toutes les images inutilisées, pas seulement les dangling |
+| `--images` | Purge uniquement les images |
+| `--containers` | Purge uniquement les conteneurs |
+| `--volumes` | Purge uniquement les volumes |
+| `--networks` | Purge uniquement les réseaux |
+| `-y, --yes` | Sans confirmation |
+| `-s, --server <name>` | Serveur cible |
+
+<Callout type="warning">
+  L'option `--volumes` supprime définitivement les données stockées dans les volumes Docker non attachés.
+</Callout>
+
+```bash
+dockflow prune production              # Purge tout (avec confirmation)
+dockflow prune production -y           # Sans confirmation
+dockflow prune production --images -a  # Toutes les images inutilisées
+```
+
+## Commandes de liste
+
+### Lister les environnements
+
+```bash
+dockflow list env
+```
+
+Liste les environnements disponibles et leurs serveurs. Alias : `envs`, `environments`.
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Sortie en JSON |
+
+### Lister les services
+
+```bash
+dockflow list services <env>
+```
+
+Liste les services d'une stack déployée. Alias : `svc`.
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Serveur cible |
+| `-t, --tasks` | Affiche les tâches individuelles pour chaque service |
+| `--json` | Sortie en JSON |
+
+### Lister les images
+
+```bash
+dockflow list images <env>
+```
+
+Affiche les images applicatives sur le serveur.
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Serveur cible |
+| `-a, --all` | Affiche toutes les images, pas seulement les images de l'app |
+
+## Commandes de verrou
+
+Gère les verrous de déploiement pour empêcher les déploiements concurrents.
+
+### Acquérir un verrou
+
+```bash
+dockflow lock acquire <env>
+```
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Serveur cible |
+| `-m, --message <msg>` | Raison du verrou |
+| `--force` | Force l'acquisition même si déjà verrouillé |
+
+### Statut du verrou
+
+```bash
+dockflow lock status <env>
+```
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Serveur cible |
+
+### Libérer le verrou
+
+```bash
+dockflow lock release <env>
+```
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Serveur cible |
+| `--force` | Force la libération sans confirmation |
+
+## Commandes accessories
+
+Gère les services avec état (bases de données, caches) avec un cycle de vie séparé. Alias : `acc`. Voir [Configuration des accessoires](/fr/configuration/accessories) pour le setup.
+
+### Déployer les accessoires
+
+```bash
+dockflow accessories deploy <env> [version]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--debug` | Active la sortie de debug |
+
+### Lister les accessoires
+
+```bash
+dockflow accessories list <env>     # ou : dockflow acc ls <env>
+```
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Serveur cible |
+| `--json` | Sortie en JSON |
+
+### Logs des accessoires
+
+```bash
+dockflow accessories logs <env> [service]
+```
+
+| Option | Description |
+|--------|-------------|
+| `-f, --follow` | Suit la sortie des logs |
+| `-n, --tail <lines>` | Nombre de lignes (défaut : 100) |
+| `--since <time>` | Affiche les logs depuis un timestamp |
+| `--timestamps` | Affiche les timestamps |
+| `--raw` | Sortie brute sans formatage |
+| `-s, --server <name>` | Serveur cible |
+
+### Exec sur les accessoires
+
+```bash
+dockflow accessories exec <env> <service> [command...]
+```
+
+Exécute une commande dans un conteneur accessoire (défaut : sh).
+
+| Option | Description |
+|--------|-------------|
+| `-u, --user <user>` | S'exécute en tant qu'utilisateur spécifié |
+| `--workdir <dir>` | Répertoire de travail |
+| `-s, --server <name>` | Serveur cible |
+
+```bash
+dockflow acc exec production postgres psql     # Lance psql
+dockflow acc exec production redis redis-cli   # Lance redis-cli
+```
+
+### Redémarrer les accessoires
+
+```bash
+dockflow accessories restart <env> [service]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--force` | Force le redémarrage même en cours de mise à jour |
+| `-s, --server <name>` | Serveur cible |
+
+### Arrêter les accessoires
+
+```bash
+dockflow accessories stop <env> [service]
+```
+
+Passe les accessoires à 0 replica (conserve les volumes).
+
+| Option | Description |
+|--------|-------------|
+| `-y, --yes` | Sans confirmation |
+| `-s, --server <name>` | Serveur cible |
+
+### Supprimer les accessoires
+
+```bash
+dockflow accessories remove <env>    # ou : dockflow acc rm <env>
+```
+
+Supprime entièrement la stack d'accessoires.
+
+| Option | Description |
+|--------|-------------|
+| `-v, --volumes` | Supprime aussi les volumes (DESTRUCTEUR) |
+| `-y, --yes` | Sans confirmation |
+| `-s, --server <name>` | Serveur cible |
+
+<Callout type="error">
+  Le flag `--volumes` supprime définitivement toutes les données. Il vous sera demandé de taper le nom de l'environnement pour confirmer.
+</Callout>
+
+## Commandes de setup
+
+Configure les serveurs pour le déploiement. Doit être lancé sur un hôte Linux, ou utilisez `setup user@host` pour les serveurs distants.
+
+### Setup interactif
+
+```bash
+dockflow setup
+```
+
+Lance l'assistant de setup interactif. Sur Windows/macOS, propose de se connecter à un serveur Linux via SSH.
+
+### Setup distant
+
+```bash
+dockflow setup user@host[:port]
+```
+
+Lance le setup sur un serveur Linux distant depuis n'importe quelle plateforme.
+
+| Option | Description |
+|--------|-------------|
+| `-k, --key <path>` | Chemin vers la clé privée SSH |
+| `--password <password>` | Mot de passe SSH |
+| `--connection <string>` | Utilise une chaîne de connexion Dockflow existante |
+
+```bash
+dockflow setup root@192.168.1.10 -k ~/.ssh/id_ed25519
+dockflow setup root@192.168.1.10:2222 -k ~/.ssh/id_ed25519
+dockflow setup --connection "eyJob3N0Ijoi..."
+```
+
+### Setup non-interactif
+
+```bash
+dockflow setup --host <ip> --user <name> --password <pwd> --generate-key
+```
+
+Configure un serveur sans invites (Linux uniquement, doit s'exécuter sur l'hôte cible). Passez les flags directement plutôt que d'utiliser l'assistant interactif.
+
+| Option | Description |
+|--------|-------------|
+| `--host <host>` | IP/nom d'hôte public pour la chaîne de connexion |
+| `--port <port>` | Port SSH (défaut : 22) |
+| `--user <user>` | Nom d'utilisateur de déploiement |
+| `--password <password>` | Mot de passe pour le nouvel utilisateur ou sudo |
+| `--ssh-key <path>` | Chemin vers une clé privée SSH existante |
+| `--generate-key` | Génère une nouvelle clé SSH |
+| `--deploy-password <pw>` | Mot de passe pour l'utilisateur de déploiement créé à distance (distant, avec `--user`) |
+| `--skip-docker-install` | Saute l'installation de Docker |
+| `--orchestrator <type>` | `swarm` (défaut) ou `k3s` — k3s saute l'installation de Docker |
+| `--portainer` | Installe Portainer |
+| `--portainer-port <port>` | Port HTTP de Portainer (défaut : 9000) |
+| `--portainer-password <pw>` | Mot de passe admin de Portainer |
+| `--portainer-domain <domain>` | Nom de domaine de Portainer |
+| `-y, --yes` | Sans confirmations |
+
+### Initialiser Swarm
+
+```bash
+dockflow setup swarm <env>
+```
+
+Initialise un cluster Docker Swarm pour un environnement. Rattache tous les serveurs configurés dans `servers.yml` au Swarm.
+
+### Initialiser k3s
+
+```bash
+dockflow setup k3s <env>
+```
+
+Installe et configure k3s sur le serveur cible pour un environnement.
+
+### Vérifier les dépendances
+
+```bash
+dockflow setup check
+```
+
+Vérifie que toutes les dépendances requises sont installées.
+
+### Obtenir la chaîne de connexion
+
+```bash
+dockflow setup connection
+```
+
+Affiche la chaîne de connexion pour un utilisateur de déploiement existant.
+
+| Option | Description |
+|--------|-------------|
+| `--host <host>` | IP/nom d'hôte du serveur |
+| `--port <port>` | Port SSH (défaut : 22) |
+| `--user <user>` | Nom d'utilisateur de déploiement |
+| `--key <path>` | Chemin vers la clé privée SSH |
+
+## Prérequis
+
+- `.env.dockflow` avec les chaînes de connexion (ou secrets CI)
+- `.dockflow/config.yml` avec `project_name`
+
+**Pour les commandes de setup (sur l'hôte Linux cible) :**
+- Accès root (le setup local doit s'exécuter en root ; le setup distant s'élève automatiquement)
+- SSH (`ssh`, `ssh-keygen`)
+- curl (télécharge le script d'installation de Docker)
+
+Les dépendances manquantes sont installées automatiquement pendant le setup.
+
+## Exemple de workflow complet
+
+```bash
+# 1. Setup du serveur
+dockflow setup root@192.168.1.10 -k ~/.ssh/id_ed25519
+
+# 2. Sauvegarder la chaîne de connexion
+echo "PRODUCTION_MAIN_SERVER_CONNECTION=..." > .env.dockflow
+
+# 3. Initialiser le projet
+dockflow init github
+
+# 4. Valider la configuration
+dockflow config validate
+
+# 5. Build en local (optionnel)
+dockflow build production
+
+# 6. Déployer
+dockflow deploy production 1.0.0
+
+# 7. Surveiller
+dockflow logs production -f
+dockflow details production
+dockflow ps production
+
+# 8. Vérifier la version et l'audit
+dockflow version production
+dockflow audit production
+
+# 9. Dépanner
+dockflow diagnose production
+dockflow bash production app
+dockflow ssh production
+
+# 10. Scaler
+dockflow scale production app 3
+
+# 11. Rollback si nécessaire
+dockflow rollback production app
+
+# 12. Gérer les accessoires
+dockflow acc logs production postgres -f
+dockflow acc exec production postgres psql
+
+# 13. Nettoyage
+dockflow prune production --images -a
+```

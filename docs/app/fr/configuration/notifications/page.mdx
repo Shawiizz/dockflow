@@ -1,0 +1,192 @@
+# Notifications
+
+import { Callout, Tabs } from 'nextra/components'
+
+Envoyez des webhooks HTTP automatiquement après chaque déploiement — succès ou échec — sans écrire de script de hook.
+
+## Exemple minimal
+
+```yaml
+# .dockflow/config.yml
+notifications:
+  webhooks:
+    - url: https://hooks.slack.com/services/T00/B00/xxxx
+```
+
+## Toutes les options
+
+### `notifications`
+
+| Champ | Type | Description | Défaut |
+|-------|------|-------------|---------|
+| `webhooks` | `Webhook[]` | Liste des endpoints webhook à notifier | `[]` |
+
+### `Webhook`
+
+| Champ | Type | Description | Défaut |
+|-------|------|-------------|---------|
+| `url` | `string` | Endpoint vers lequel envoyer un POST (doit être une URL valide) | — |
+| `on` | `string[]` | Quand déclencher : `success`, `failure`, `always` | `["always"]` |
+| `secret` | `string` | Secret de signature HMAC-SHA256 | — |
+| `headers` | `Record<string, string>` | En-têtes HTTP additionnels | — |
+| `timeout` | `number` | Timeout de la requête en secondes | `10` |
+
+## Fonctionnement
+
+Après chaque déploiement — qu'il réussisse ou échoue — Dockflow envoie une requête `POST` à chaque URL de webhook configurée avec un payload JSON :
+
+```json
+{
+  "event": "deploy.success",
+  "project": "my-app",
+  "env": "production",
+  "version": "1.4.2",
+  "branch": "main",
+  "performer": "ci@build-runner",
+  "status": "success",
+  "duration_ms": 47200,
+  "message": "Deployed 1.4.2 to production successfully",
+  "timestamp": "2026-04-12T14:30:00.000Z"
+}
+```
+
+`event` vaut soit `deploy.success` soit `deploy.failure`. Les appels webhook sont en **fire-and-forget** — un webhook en échec journalise un avertissement mais ne bloque ni ne fait échouer le déploiement.
+
+### Filtrage avec `on`
+
+```yaml
+webhooks:
+  - url: https://example.com/always    # se déclenche à chaque déploiement
+    on: [always]
+
+  - url: https://example.com/failures  # se déclenche uniquement en cas d'échec
+    on: [failure]
+
+  - url: https://example.com/success   # se déclenche uniquement en cas de succès
+    on: [success]
+```
+
+### Utiliser des secrets dans la configuration
+
+`config.yml` est rendu via Nunjucks avant d'être parsé, vous pouvez donc référencer des variables d'environnement au niveau serveur :
+
+```yaml
+# .dockflow/config.yml
+notifications:
+  webhooks:
+    - url: https://example.com/hook
+      secret: "{{ current.env.webhook_secret }}"
+```
+
+```yaml
+# .dockflow/servers.yml
+servers:
+  prod:
+    tags: [production]
+    env:
+      webhook_secret: "my-secret"   # défini via un secret CI en production
+```
+
+Les variables disponibles dans les templates de `config.yml` sont `env`, `version`, `branch`, `project_name`, `current` (le serveur cible du déploiement et son dict `env`), `servers`, et `cluster`. Les variables d'environnement brutes de `.env.dockflow` ne sont **pas** directement disponibles — routez-les via l'`env` de `servers.yml`.
+
+### Signature HMAC
+
+Quand `secret` est défini, Dockflow calcule `HMAC-SHA256(secret, body)` sur la chaîne JSON brute du corps et envoie le résultat via :
+
+```
+X-Dockflow-Signature: sha256=<hex-digest>
+```
+
+Pour vérifier côté serveur (exemple Node.js) :
+
+```javascript
+const crypto = require('crypto');
+
+function verifySignature(secret, rawBody, header) {
+  const expected = 'sha256=' + crypto
+    .createHmac('sha256', secret)
+    .update(rawBody, 'utf8')
+    .digest('hex');
+  return crypto.timingSafeEqual(
+    Buffer.from(expected),
+    Buffer.from(header)
+  );
+}
+```
+
+<Callout type="info">
+  Cette convention est identique aux webhooks GitHub — les middlewares `X-Hub-Signature-256` existants fonctionnent sans modification.
+</Callout>
+
+## Exemple complet
+
+<Tabs items={['Slack', 'Discord', 'Custom + signature']}>
+  <Tabs.Tab>
+```yaml
+# .dockflow/config.yml
+notifications:
+  webhooks:
+    - url: https://hooks.slack.com/services/T00/B00/xxxx
+      on: [always]
+```
+
+Les Incoming Webhooks de Slack acceptent du JSON standard. Le champ `text` n'est pas défini par Dockflow — utilisez un middleware ou un workflow Slack pour mapper les champs du payload vers un message.
+
+Pour un message formaté, pointez vers un relais léger qui construit le payload `blocks`, ou utilisez le hook `post-deploy` si vous avez besoin d'un formatage personnalisé.
+  </Tabs.Tab>
+  <Tabs.Tab>
+```yaml
+# .dockflow/config.yml
+notifications:
+  webhooks:
+    - url: https://discord.com/api/webhooks/1234/xxxx
+      on: [failure]
+      headers:
+        Content-Type: application/json
+```
+
+Les webhooks Discord attendent un champ `content` ou `embeds`. Pointez l'URL vers un relais ou utilisez un endpoint de bot Discord acceptant du JSON arbitraire.
+  </Tabs.Tab>
+  <Tabs.Tab>
+```yaml
+# .dockflow/servers.yml
+servers:
+  prod:
+    role: manager
+    tags: [production]
+    env:
+      webhook_secret: "s3cr3t"
+      internal_token: "tok_xxx"
+```
+
+```yaml
+# .dockflow/config.yml
+notifications:
+  webhooks:
+    - url: https://deploy-events.internal/hook
+      on: [success, failure]
+      secret: "{{ current.env.webhook_secret }}"
+      timeout: 5
+      headers:
+        Authorization: "Bearer {{ current.env.internal_token }}"
+        X-Source: dockflow
+```
+
+`config.yml` est rendu par Nunjucks avant le parsing. `{{ current.env.* }}` référence des variables d'environnement au niveau serveur définies dans `servers.yml`. En CI, ces valeurs proviennent de vos secrets CI plutôt que d'être codées en dur — voir [Serveurs & Connexions](/fr/configuration/servers).
+  </Tabs.Tab>
+</Tabs>
+
+## Cas particuliers
+
+<Callout type="warning">
+  Les webhooks sont envoyés **après** la libération du verrou, à la toute fin de la séquence de déploiement. Si le processus est tué avant ce point, aucun webhook n'est envoyé.
+</Callout>
+
+- Plusieurs webhooks se déclenchent en parallèle — l'ordre de livraison n'est pas garanti.
+- Si `on` contient à la fois `success` et `always`, le webhook se déclenche une seule fois (pas deux).
+- Les redirections ne sont pas suivies. Assurez-vous que l'URL répond directement.
+- Le champ `timeout` s'applique indépendamment par webhook.
+
+## Voir aussi
+
+- [Hooks](/fr/configuration/hooks) — exécuter des scripts arbitraires au build et au déploiement, y compris une logique de notification personnalisée
