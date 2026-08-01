@@ -1,6 +1,7 @@
 <div class="flex flex-col gap-6 animate-fade-in">
   <!-- Page Header -->
   <app-page-header title="Services" [subtitle]="'Docker Swarm services ' + (stackName() ? '(' + stackName() + ')' : '')">
+    <p-tag badge [value]="envService.selected() || 'All environments'" icon="pi pi-globe" severity="info" />
     <ng-container actions>
       <p-button
         label="Refresh"

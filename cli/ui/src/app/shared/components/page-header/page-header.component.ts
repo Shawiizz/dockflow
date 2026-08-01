@@ -6,7 +6,10 @@ import { Component, input, ChangeDetectionStrategy } from '@angular/core';
   template: `
     <div class="flex justify-between items-start gap-4 flex-wrap">
       <div class="min-w-0">
-        <h1 class="m-0 text-2xl font-semibold text-text-primary truncate">{{ title() }}</h1>
+        <div class="flex items-center gap-2.5 flex-wrap">
+          <h1 class="m-0 text-2xl font-semibold text-text-primary truncate">{{ title() }}</h1>
+          <ng-content select="[badge]" />
+        </div>
         @if (subtitle()) {
           <p class="mt-1 mb-0 text-sm text-text-muted">{{ subtitle() }}</p>
         }
