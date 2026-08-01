@@ -161,7 +161,15 @@ function resolveEnv(env?: string | null): MockEnv {
   return env === 'staging' ? 'staging' : 'production'
 }
 
+/**
+ * Servers are listed straight from config (no SSH round-trip needed), so — like the
+ * real /api/servers route — an empty env filter merges every environment's servers
+ * rather than silently collapsing to one. Services/accessories need a live SSH
+ * connection per environment, so (matching the real backend) they still fall back
+ * to a single environment when none is specified — see resolveEnv above.
+ */
 export function getServers(env?: string | null): ServerStatus[] {
+  if (!env) return [...DATA.production.servers, ...DATA.staging.servers]
   return DATA[resolveEnv(env)].servers
 }
 
