@@ -1,7 +1,7 @@
 /**
  * Accessories API Routes
  *
- * GET  /api/accessories              - List configured accessories (config only)
+ * GET  /api/accessories              - List configured accessories (accessories.yml only)
  * GET  /api/accessories/status?env=  - Live status from Docker Swarm
  * POST /api/accessories/:name/restart?env=     - Restart an accessory (docker service update --force)
  * POST /api/accessories/:name/stop?env=        - Stop an accessory (docker service scale to 0)
@@ -9,12 +9,62 @@
  */
 
 import { jsonResponse, errorResponse } from '../server';
-import { loadConfig, getAccessoriesStackName } from '../../utils/config';
+import { loadConfig, getAccessoriesStackName, getLayout } from '../../utils/config';
 import { getManagerConnection, resolveEnvironment, isValidDockerName, parseIntParam } from './_helpers';
 import { sshExec } from '../../utils/ssh';
 import { parseDockerLogLines } from '../../utils/docker-logs';
+import * as Compose from '../../services/compose';
 import type { AccessoryInfo, AccessoriesResponse } from '../types';
 import type { AccessoryStatusInfo, AccessoriesStatusResponse, AccessoryActionResponse, LogsResponse } from '../types';
+
+/** Normalizes compose `environment:` (map or `KEY=value` list form) into a plain string map. */
+export function normalizeEnv(raw: unknown): Record<string, string> | undefined {
+  if (!raw) return undefined;
+  if (Array.isArray(raw)) {
+    const result: Record<string, string> = {};
+    for (const entry of raw) {
+      const [key, ...rest] = String(entry).split('=');
+      if (key) result[key] = rest.join('=');
+    }
+    return result;
+  }
+  if (typeof raw === 'object') {
+    return Object.fromEntries(
+      Object.entries(raw as Record<string, unknown>).map(([key, value]) => [key, String(value)]),
+    );
+  }
+  return undefined;
+}
+
+export function normalizeStringArray(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  return raw.map((v) => String(v));
+}
+
+/**
+ * Read accessory definitions straight from accessories.yml (Docker Compose format) —
+ * accessories are never defined under `accessories:` in config.yml, that field doesn't
+ * exist. See docs/app/en/configuration/accessories/page.mdx.
+ */
+function readAccessoriesFromFile(): AccessoryInfo[] {
+  const accessoriesPath = getLayout().accessoriesPath;
+  if (!accessoriesPath) return [];
+
+  let compose: Compose.ParsedCompose;
+  try {
+    compose = Compose.load(accessoriesPath);
+  } catch {
+    return [];
+  }
+
+  return Object.entries(compose.services).map(([name, svc]) => ({
+    name,
+    image: typeof svc.image === 'string' ? svc.image : undefined,
+    volumes: normalizeStringArray(svc.volumes),
+    ports: normalizeStringArray(svc.ports),
+    env: normalizeEnv(svc.environment),
+  }));
+}
 
 /**
  * Handle /api/accessories/* routes
@@ -56,7 +106,7 @@ export async function handleAccessoriesRoutes(req: Request): Promise<Response> {
 }
 
 /**
- * List configured accessories from config.yml
+ * List configured accessories from accessories.yml
  */
 async function listAccessories(): Promise<Response> {
   const config = loadConfig({ silent: true });
@@ -69,24 +119,12 @@ async function listAccessories(): Promise<Response> {
     } satisfies AccessoriesResponse & { message?: string });
   }
 
-  const accessoriesConfig = config.accessories;
-  const accessories: AccessoryInfo[] = [];
-
-  if (accessoriesConfig) {
-    for (const [name, acc] of Object.entries(accessoriesConfig)) {
-      accessories.push({
-        name,
-        image: acc.image,
-        volumes: acc.volumes,
-        ports: acc.ports,
-        env: acc.env,
-      });
-    }
-  }
+  const accessories = readAccessoriesFromFile();
 
   return jsonResponse({
     accessories,
     total: accessories.length,
+    message: accessories.length === 0 ? 'No accessories.yml found.' : undefined,
   } satisfies AccessoriesResponse);
 }
 
@@ -118,22 +156,10 @@ async function getAccessoriesStatus(url: URL): Promise<Response> {
     return errorResponse('Cannot determine accessories stack name', 500);
   }
 
-  // Get accessories from config
-  const accessoriesConfig = config.accessories;
-  const accessories: AccessoryStatusInfo[] = [];
-
-  if (accessoriesConfig) {
-    for (const [name, acc] of Object.entries(accessoriesConfig)) {
-      accessories.push({
-        name,
-        image: acc.image,
-        volumes: acc.volumes,
-        ports: acc.ports,
-        env: acc.env,
-        status: 'unknown',
-      });
-    }
-  }
+  const accessories: AccessoryStatusInfo[] = readAccessoriesFromFile().map((acc) => ({
+    ...acc,
+    status: 'unknown',
+  }));
 
   try {
     // Get live service data via SSH

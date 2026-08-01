@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { parseIntParam } from '../api/routes/_helpers';
 import { parseServiceLs, classifyTaskState } from '../api/routes/services';
+import { normalizeEnv, normalizeStringArray } from '../api/routes/accessories';
 import { mapMetricStatus } from '../api/routes/deploy';
 import { parseSSHServerName, parseExecServiceName } from '../api/routes/ssh';
 
@@ -44,6 +45,39 @@ describe('parseServiceLs', () => {
   it('returns empty for header-only or empty output', () => {
     expect(parseServiceLs('ID  NAME  MODE  REPLICAS  IMAGE  PORTS', 'myapp')).toEqual([]);
     expect(parseServiceLs('', 'myapp')).toEqual([]);
+  });
+});
+
+describe('normalizeEnv', () => {
+  it('normalizes the compose map form', () => {
+    expect(normalizeEnv({ POSTGRES_USER: 'app', POSTGRES_PORT: 5432 })).toEqual({
+      POSTGRES_USER: 'app',
+      POSTGRES_PORT: '5432',
+    });
+  });
+
+  it('normalizes the compose KEY=value list form', () => {
+    expect(normalizeEnv(['POSTGRES_USER=app', 'POSTGRES_PASSWORD=secret=with=equals'])).toEqual({
+      POSTGRES_USER: 'app',
+      POSTGRES_PASSWORD: 'secret=with=equals',
+    });
+  });
+
+  it('returns undefined for missing or malformed input', () => {
+    expect(normalizeEnv(undefined)).toBeUndefined();
+    expect(normalizeEnv(null)).toBeUndefined();
+    expect(normalizeEnv('not-an-object')).toBeUndefined();
+  });
+});
+
+describe('normalizeStringArray', () => {
+  it('stringifies each array entry', () => {
+    expect(normalizeStringArray(['5432:5432', 6379])).toEqual(['5432:5432', '6379']);
+  });
+
+  it('returns undefined for non-array input', () => {
+    expect(normalizeStringArray(undefined)).toBeUndefined();
+    expect(normalizeStringArray('5432:5432')).toBeUndefined();
   });
 });
 
