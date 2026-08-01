@@ -112,7 +112,7 @@ export interface RawConfigResponse {
 
 // ─── Services ────────────────────────────────────────────────────────────────
 
-export type ServiceState = 'running' | 'paused' | 'stopped' | 'error' | 'unknown';
+export type ServiceState = 'running' | 'paused' | 'stopped' | 'starting' | 'error' | 'unknown';
 
 export interface ServiceInfo {
   id: string;

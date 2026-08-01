@@ -15,6 +15,7 @@ import { getAvailableEnvironments } from '../../utils/servers';
 import { sshExec } from '../../utils/ssh';
 import { parseDockerLogLines } from '../../utils/docker-logs';
 import { getManagerConnection, resolveEnvironment, isValidDockerName, parseIntParam } from './_helpers';
+import type { ManagerConnection } from './_helpers';
 import type {
   ServiceInfo,
   ServicesListResponse,
@@ -69,7 +70,13 @@ export async function handleServicesRoutes(req: Request): Promise<Response> {
 }
 
 /**
- * Parse `docker service ls` output into ServiceInfo objects
+ * Parse `docker service ls` output into ServiceInfo objects.
+ *
+ * A partial replica count (e.g. 1/2) is ambiguous from this table alone — it's
+ * the normal, transient shape of a service that's still converging (new task
+ * starting) as much as it is a service with a crashing task. It's provisionally
+ * marked 'starting' here; `resolvePartialStates` below inspects actual task
+ * state to tell the two apart before the response is sent.
  */
 export function parseServiceLs(output: string, stackName: string): ServiceInfo[] {
   const lines = output.trim().split('\n');
@@ -90,7 +97,7 @@ export function parseServiceLs(output: string, stackName: string): ServiceInfo[]
       if (total === 0) state = 'stopped';
       else if (running === total) state = 'running';
       else if (running === 0) state = 'stopped';
-      else state = 'error'; // partial
+      else state = 'starting'; // partial — resolved below via task inspection
     }
 
     return {
@@ -103,6 +110,46 @@ export function parseServiceLs(output: string, stackName: string): ServiceInfo[]
       ports: portsStr ? portsStr.split(',').map((p: string) => p.trim()) : [],
     };
   });
+}
+
+/** Task states that mean the task is never coming up on its own — a real failure, not convergence. */
+const FAILED_TASK_STATE_PREFIXES = ['failed', 'rejected'];
+
+/**
+ * Classify a task's `{{.CurrentState}}` string as a failure or normal convergence progress
+ * (docker reports states like "Running 3 seconds ago", "Starting 1 second ago",
+ * "Pending 4 seconds ago", "Failed 2 seconds ago").
+ */
+export function classifyTaskState(currentState: string): 'failed' | 'converging' {
+  const normalized = currentState.trim().toLowerCase();
+  return FAILED_TASK_STATE_PREFIXES.some((prefix) => normalized.startsWith(prefix))
+    ? 'failed'
+    : 'converging';
+}
+
+/**
+ * Resolve services provisionally marked 'starting' by parseServiceLs into either
+ * 'starting' (still converging, no failed tasks) or 'error' (a task has actually
+ * failed/been rejected) — mutates the passed-in services in place.
+ */
+async function resolvePartialStates(
+  conn: ManagerConnection,
+  services: ServiceInfo[],
+): Promise<void> {
+  const partial = services.filter((s) => s.state === 'starting');
+  if (partial.length === 0) return;
+
+  await Promise.all(
+    partial.map(async (service) => {
+      const result = await sshExec(
+        conn,
+        `docker service ps ${service.name} --filter 'desired-state=running' --format '{{.CurrentState}}' --no-trunc 2>/dev/null`,
+      );
+      const taskStates = result.stdout.trim().split('\n').filter(Boolean);
+      const hasFailure = taskStates.some((state) => classifyTaskState(state) === 'failed');
+      service.state = hasFailure ? 'error' : 'starting';
+    }),
+  );
 }
 
 /**
@@ -158,6 +205,7 @@ async function listServices(url: URL): Promise<Response> {
     }
 
     const services = parseServiceLs(result.stdout, stackName);
+    await resolvePartialStates(conn, services);
 
     return jsonResponse({
       services,

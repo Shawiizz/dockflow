@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { parseIntParam } from '../api/routes/_helpers';
-import { parseServiceLs } from '../api/routes/services';
+import { parseServiceLs, classifyTaskState } from '../api/routes/services';
 import { mapMetricStatus } from '../api/routes/deploy';
 import { parseSSHServerName, parseExecServiceName } from '../api/routes/ssh';
 
@@ -37,13 +37,31 @@ describe('parseServiceLs', () => {
 
   it('derives state from the replica counts', () => {
     const rows = parseServiceLs(table, 'myapp');
-    expect(rows[1].state).toBe('stopped'); // 0/1
-    expect(rows[2].state).toBe('error');   // 1/2 partial
+    expect(rows[1].state).toBe('stopped');  // 0/1
+    expect(rows[2].state).toBe('starting'); // 1/2 partial — ambiguous until task states are checked
   });
 
   it('returns empty for header-only or empty output', () => {
     expect(parseServiceLs('ID  NAME  MODE  REPLICAS  IMAGE  PORTS', 'myapp')).toEqual([]);
     expect(parseServiceLs('', 'myapp')).toEqual([]);
+  });
+});
+
+describe('classifyTaskState', () => {
+  it('treats running/starting/pending tasks as still converging', () => {
+    expect(classifyTaskState('Running 3 seconds ago')).toBe('converging');
+    expect(classifyTaskState('Starting 1 second ago')).toBe('converging');
+    expect(classifyTaskState('Pending 4 seconds ago')).toBe('converging');
+    expect(classifyTaskState('Preparing 2 seconds ago')).toBe('converging');
+  });
+
+  it('treats failed/rejected tasks as a real failure', () => {
+    expect(classifyTaskState('Failed 2 seconds ago')).toBe('failed');
+    expect(classifyTaskState('Rejected 5 seconds ago')).toBe('failed');
+  });
+
+  it('is case-insensitive and trims whitespace', () => {
+    expect(classifyTaskState('  FAILED 2 seconds ago  ')).toBe('failed');
   });
 });
 

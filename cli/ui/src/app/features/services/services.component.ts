@@ -66,9 +66,13 @@ export class ServicesComponent {
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private stopPollingFn: (() => void) | null = null;
   private loadVersion = 0;
+  private startingPollElapsed = 0;
+  private static readonly STARTING_POLL_INTERVAL_MS = 3000;
+  private static readonly STARTING_POLL_TIMEOUT_MS = 120_000;
 
   runningCount = computed(() => this.services().filter(s => s.state === 'running').length);
-  stoppedCount = computed(() => this.services().filter(s => s.state !== 'running').length);
+  startingCount = computed(() => this.services().filter(s => s.state === 'starting').length);
+  stoppedCount = computed(() => this.services().filter(s => s.state !== 'running' && s.state !== 'starting').length);
   filteredServices = computed(() => {
     const query = this.searchQuery().toLowerCase();
     if (!query) return this.services();
@@ -110,6 +114,7 @@ export class ServicesComponent {
             this.error.set(response.message);
           }
           this.cache.set(cacheKey, { services: response.services, stackName: response.stackName }, 60_000);
+          this.syncStartingPoll(env, response.services);
         },
         error: (err) => {
           if (version !== this.loadVersion) return;
@@ -143,6 +148,41 @@ export class ServicesComponent {
       this.stopPollingFn();
       this.stopPollingFn = null;
     }
+    this.stopStartingPoll();
+  }
+
+  /**
+   * Keeps reloading the list while any service is 'starting' — covers convergence
+   * triggered outside this UI (e.g. a CI deploy), not just this page's own actions.
+   * Self-terminates once every service has settled to running/error, or after
+   * STARTING_POLL_TIMEOUT_MS in case a service never converges.
+   */
+  private syncStartingPoll(env: string | undefined, services: ServiceInfo[]) {
+    const hasStarting = services.some(s => s.state === 'starting');
+    if (!hasStarting) {
+      this.stopStartingPoll();
+      return;
+    }
+    if (this.pollTimer || this.stopPollingFn) return; // already polling (ambient or action-triggered)
+
+    this.startingPollElapsed = 0;
+    this.pollTimer = setInterval(() => {
+      this.startingPollElapsed += ServicesComponent.STARTING_POLL_INTERVAL_MS;
+      if (this.startingPollElapsed >= ServicesComponent.STARTING_POLL_TIMEOUT_MS) {
+        this.stopStartingPoll();
+        return;
+      }
+      this.cache.invalidatePrefix('services:');
+      this.loadServices(env, { silent: true });
+    }, ServicesComponent.STARTING_POLL_INTERVAL_MS);
+  }
+
+  private stopStartingPoll() {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+    this.startingPollElapsed = 0;
   }
 
   // ── Service Actions ─────────────────────────────────────────────────────

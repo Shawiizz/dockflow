@@ -49,6 +49,7 @@ export function serviceStateSeverity(state: string | undefined): TagSeverity {
     case 'running': return 'success';
     case 'stopped': return 'danger';
     case 'paused': return 'warn';
+    case 'starting': return 'info';
     case 'error': return 'danger';
     default: return 'secondary';
   }

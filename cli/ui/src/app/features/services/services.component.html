@@ -20,6 +20,12 @@
         <span class="text-sm font-semibold text-success">{{ runningCount() }}</span>
         <span class="text-xs text-text-muted">Running</span>
       </div>
+      @if (startingCount() > 0) {
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-bg-tertiary">
+          <span class="text-sm font-semibold text-accent">{{ startingCount() }}</span>
+          <span class="text-xs text-text-muted">Starting</span>
+        </div>
+      }
       @if (stoppedCount() > 0) {
         <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-bg-tertiary">
           <span class="text-sm font-semibold text-error">{{ stoppedCount() }}</span>
