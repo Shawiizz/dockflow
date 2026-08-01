@@ -6,10 +6,10 @@ export async function GET(
   { params }: { params: Promise<{ name: string }> },
 ) {
   const { name } = await params
-  if (!findService(name)) {
+  const { searchParams } = new URL(request.url)
+  if (!findService(name, searchParams.get('env'))) {
     return NextResponse.json({ logs: [], service: name, lines: 0 }, { status: 404 })
   }
-  const { searchParams } = new URL(request.url)
   const lines = Number(searchParams.get('lines')) || 100
   return NextResponse.json({ logs: getLogs(name, lines), service: name, lines })
 }

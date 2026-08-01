@@ -139,6 +139,13 @@ html.app-light body {
    SCROLLBAR STYLING
    ============================================ */
 
+/* Standard property (Firefox) — ::-webkit-scrollbar below is Chromium/Safari only
+   and silently does nothing elsewhere, leaving the OS's full-width default scrollbar. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-secondary) transparent;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

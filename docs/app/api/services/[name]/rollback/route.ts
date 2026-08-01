@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server'
 import { findService } from '../../../_mock/store'
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ name: string }> },
 ) {
   const { name } = await params
-  const service = findService(name)
+  const { searchParams } = new URL(request.url)
+  const service = findService(name, searchParams.get('env'))
   if (!service) {
     return NextResponse.json({ success: false, message: `Service "${name}" not found` }, { status: 404 })
   }

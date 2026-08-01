@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
-import { servers, projectInfo } from '../_mock/store'
+import { getServers, projectInfo } from '../_mock/store'
 
-export function GET() {
+export function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const servers = getServers(searchParams.get('env'))
   return NextResponse.json({
     servers,
     environments: projectInfo.environments,

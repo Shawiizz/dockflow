@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server'
-import { services, stackName } from '../_mock/store'
+import { getServices, getStackName } from '../_mock/store'
 
-export function GET() {
+export function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const env = searchParams.get('env')
+  const services = getServices(env)
   return NextResponse.json({
     services,
-    stackName,
+    stackName: getStackName(env),
     total: services.length,
   })
 }

@@ -6,7 +6,8 @@ export async function POST(
   { params }: { params: Promise<{ name: string }> },
 ) {
   const { name } = await params
-  const service = findService(name)
+  const { searchParams } = new URL(request.url)
+  const service = findService(name, searchParams.get('env'))
   if (!service) {
     return NextResponse.json({ success: false, message: `Service "${name}" not found` }, { status: 404 })
   }
