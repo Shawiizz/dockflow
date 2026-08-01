@@ -68,7 +68,6 @@ my-project/
 | `lock` | object | `stale_threshold_minutes` | — |
 | `backup` | object | Backup config for accessories and services | — |
 | `templates` | array | Nunjucks template files to render before deploy | — |
-| `accessories` | object | Inline accessory service definitions | — |
 | `proxy` | object | Traefik + Let's Encrypt configuration | — |
 | `notifications` | object | Webhook notifications on deploy events | — |
 
@@ -112,7 +111,7 @@ Instead of `.dockflow/docker/docker-compose.yml`, Dockflow looks for `docker-com
 </Callout>
 
 - **Templates**: the `templates` field resolves paths relative to the project root (same as the standard layout).
-- **Accessories**: place `accessories.yml` at the project root alongside `dockflow.yml`. If not found there, Dockflow falls back to `.dockflow/docker/accessories.yml`. You can also define accessories inline under the `accessories` key in `dockflow.yml`.
+- **Accessories**: place `accessories.yml` at the project root alongside `dockflow.yml`. If not found there, Dockflow falls back to `.dockflow/docker/accessories.yml`.
 - **CI secrets**: the `{ENV}_{SERVER}_CONNECTION` format works identically — host overrides apply regardless of the layout.
 
 ## Full example

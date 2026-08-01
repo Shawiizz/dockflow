@@ -324,17 +324,6 @@ export const UploadItemSchema = z.object({
 });
 
 /**
- * Accessory service configuration schema
- */
-export const AccessoryConfigSchema = z.object({
-  image: z.string().optional(),
-  volumes: z.array(z.string()).optional(),
-  ports: z.array(z.string()).optional(),
-  env: z.record(z.string(), z.string()).optional(),
-  deploy: z.record(z.string(), z.unknown()).optional(),
-});
-
-/**
  * Complete Dockflow configuration schema
  */
 export const DockflowConfigSchema = z.object({
@@ -386,10 +375,6 @@ export const DockflowConfigSchema = z.object({
 
   templates: z.array(TemplateFileSchema).optional().describe(
     'List of files to render with Jinja2 templating before deployment'
-  ),
-
-  accessories: z.record(z.string(), AccessoryConfigSchema).optional().describe(
-    'Accessory services (databases, caches, etc.) managed alongside the main stack'
   ),
 
   proxy: ProxyConfigSchema.optional().describe(

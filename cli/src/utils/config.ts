@@ -118,14 +118,6 @@ export interface ProxyConfig {
   dashboard?: ProxyDashboardConfig;
 }
 
-export interface AccessoryConfig {
-  image?: string;
-  volumes?: string[];
-  ports?: string[];
-  env?: Record<string, string>;
-  deploy?: Record<string, unknown>;
-}
-
 export interface WebhookConfig {
   url: string;
   on?: Array<'success' | 'failure' | 'always'>;
@@ -160,7 +152,6 @@ export interface DockflowConfig {
   lock?: LockConfig;
   backup?: BackupConfig;
   templates?: (string | TemplateFileConfig)[];
-  accessories?: Record<string, AccessoryConfig>;
   proxy?: ProxyConfig;
   notifications?: NotificationsConfig;
   uploads?: UploadItem[];
@@ -461,7 +452,7 @@ const SERVER_KEYS = ['servers', 'defaults', 'env'] as const;
 const CONFIG_KEYS = [
   'project_name', 'orchestrator', 'container_engine', 'registry', 'proxy',
   'health_checks', 'stack_management', 'hooks', 'lock', 'notifications', 'backup',
-  'templates', 'accessories', 'options',
+  'templates', 'options',
 ] as const;
 
 /**

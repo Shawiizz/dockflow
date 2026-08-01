@@ -121,16 +121,6 @@ servers:
 defaults:
   user: deploy
 
-accessories:
-  db:
-    image: postgres:16
-    volumes:
-      - db-data:/var/lib/postgresql/data
-    env:
-      POSTGRES_DB: myapp
-      POSTGRES_USER: myapp
-      POSTGRES_PASSWORD: "{{ env.DB_PASSWORD }}"
-
 backup:
   accessories:
     db:
@@ -150,6 +140,21 @@ backup:
       replicas: 1
       restart_policy:
         condition: on-failure`,
+      },
+      {
+        path: 'accessories.yml',
+        content: `services:
+  db:
+    image: postgres:16
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: myapp
+      POSTGRES_USER: myapp
+      POSTGRES_PASSWORD: "{{ env.DB_PASSWORD }}"
+
+volumes:
+  db-data:`,
       },
     ],
   },
