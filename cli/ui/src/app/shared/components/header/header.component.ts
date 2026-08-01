@@ -1,10 +1,8 @@
 import { Component, input, output, inject, signal, OnInit, DestroyRef } from '@angular/core';
 import { NgClass } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { Router, NavigationEnd } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter } from 'rxjs';
-import { SelectModule } from 'primeng/select';
 import { TooltipModule } from 'primeng/tooltip';
 import { ButtonModule } from 'primeng/button';
 import { SkeletonModule } from 'primeng/skeleton';
@@ -15,7 +13,7 @@ import { ThemeService } from '@core/services/theme.service';
 @Component({
   selector: 'app-header',
   standalone: true,
-  imports: [NgClass, FormsModule, SelectModule, TooltipModule, ButtonModule, SkeletonModule],
+  imports: [NgClass, TooltipModule, ButtonModule, SkeletonModule],
   templateUrl: './header.component.html',
   styleUrl: './header.component.scss',
 })

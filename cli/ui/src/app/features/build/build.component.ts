@@ -8,11 +8,12 @@ import { EnvironmentService } from '@core/services/environment.service';
 import { OperationStateService } from '@core/services/operation-state.service';
 import { PageHeaderComponent } from '@shared/components/page-header/page-header.component';
 import { TerminalOutputComponent } from '@shared/components/terminal-output/terminal-output.component';
+import { EnvSelectorComponent } from '@shared/components/env-selector/env-selector.component';
 
 @Component({
   selector: 'app-build',
   standalone: true,
-  imports: [FormsModule, TagModule, InputTextModule, CheckboxModule, ButtonModule, PageHeaderComponent, TerminalOutputComponent],
+  imports: [FormsModule, TagModule, InputTextModule, CheckboxModule, ButtonModule, PageHeaderComponent, TerminalOutputComponent, EnvSelectorComponent],
   templateUrl: './build.component.html',
   styleUrl: './build.component.scss',
 })

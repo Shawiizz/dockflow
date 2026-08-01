@@ -1,7 +1,7 @@
 <div class="flex flex-col gap-6 animate-fade-in">
   <!-- Page Header -->
   <app-page-header title="Servers" subtitle="Manage and monitor your infrastructure">
-    <p-tag badge [value]="envService.selected() || 'All environments'" icon="pi pi-globe" severity="info" />
+    <p-tag badge value="All environments" icon="pi pi-globe" severity="info" pTooltip="Servers are read from config, not a live SSH target — always shows every environment" />
     <ng-container actions>
       <p-button
         label="Check All"
@@ -36,7 +36,7 @@
 
   <!-- Error -->
   @if (serverStatus.error()) {
-    <app-error-banner [message]="serverStatus.error()!" (retry)="serverStatus.reload(envService.selectedOrUndefined())" />
+    <app-error-banner [message]="serverStatus.error()!" (retry)="serverStatus.reload()" />
   }
 
   <!-- Loading -->

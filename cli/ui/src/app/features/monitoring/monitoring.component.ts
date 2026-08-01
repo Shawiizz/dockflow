@@ -8,13 +8,14 @@ import { EnvironmentService } from '@core/services/environment.service';
 import { VisibilityService } from '@core/services/visibility.service';
 import type { ContainerStatsEntry, AuditEntry } from '@api-types';
 import { PageHeaderComponent } from '@shared/components/page-header/page-header.component';
+import { EnvSelectorComponent } from '@shared/components/env-selector/env-selector.component';
 import { ContainerStatsTableComponent } from './components/container-stats-table/container-stats-table.component';
 import { AuditLogTableComponent } from './components/audit-log-table/audit-log-table.component';
 
 @Component({
   selector: 'app-monitoring',
   standalone: true,
-  imports: [TabsModule, SkeletonModule, PageHeaderComponent, ContainerStatsTableComponent, AuditLogTableComponent],
+  imports: [TabsModule, SkeletonModule, PageHeaderComponent, EnvSelectorComponent, ContainerStatsTableComponent, AuditLogTableComponent],
   templateUrl: './monitoring.component.html',
   styleUrl: './monitoring.component.scss',
 })

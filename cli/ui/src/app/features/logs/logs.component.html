@@ -1,6 +1,8 @@
 <div class="flex flex-col gap-4 h-full animate-fade-in">
   <!-- Page Header -->
-  <app-page-header title="Logs" subtitle="View Docker service logs" />
+  <app-page-header title="Logs" subtitle="View Docker service logs">
+    <app-env-selector badge />
+  </app-page-header>
 
   <!-- Services Error -->
   @if (servicesError()) {

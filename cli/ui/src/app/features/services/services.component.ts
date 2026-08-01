@@ -2,7 +2,6 @@ import { Component, inject, signal, computed, DestroyRef, effect } from '@angula
 import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
 import { SkeletonModule } from 'primeng/skeleton';
 import { ButtonModule } from 'primeng/button';
@@ -17,6 +16,7 @@ import { PageHeaderComponent } from '@shared/components/page-header/page-header.
 import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.component';
 import { ErrorBannerComponent } from '@shared/components/error-banner/error-banner.component';
 import { SearchFilterComponent } from '@shared/components/search-filter/search-filter.component';
+import { EnvSelectorComponent } from '@shared/components/env-selector/env-selector.component';
 import { ServiceCardComponent } from './components/service-card/service-card.component';
 import { ScaleDialogComponent } from './components/scale-dialog/scale-dialog.component';
 import type { ServiceInfo } from '@api-types';
@@ -27,7 +27,6 @@ import type { ServiceInfo } from '@api-types';
   imports: [
     RouterModule,
     FormsModule,
-    TagModule,
     TooltipModule,
     SkeletonModule,
     ButtonModule,
@@ -39,6 +38,7 @@ import type { ServiceInfo } from '@api-types';
     SearchFilterComponent,
     ServiceCardComponent,
     ScaleDialogComponent,
+    EnvSelectorComponent,
   ],
   providers: [ConfirmationService],
   templateUrl: './services.component.html',

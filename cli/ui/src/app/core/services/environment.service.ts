@@ -20,17 +20,14 @@ export class EnvironmentService {
   /** Loading state */
   readonly loading = signal(true);
 
-  /** Options for PrimeNG Select (with "All" entry) */
-  readonly allOptions = computed(() => [
-    { label: 'All environments', value: '' },
-    ...this.environments().map(e => ({ label: e, value: e })),
-  ]);
-
-  /** Options without the "All" entry */
-  readonly envOptions = computed(() => [
-    { label: 'Default', value: '' },
-    ...this.environments().map(e => ({ label: e, value: e })),
-  ]);
+  /**
+   * Options for the per-page environment selector. No "All environments" entry —
+   * every action here (deploy, logs, restart…) targets a single SSH connection,
+   * so the selection must always resolve to one real environment.
+   */
+  readonly envOptions = computed(() =>
+    this.environments().map(e => ({ label: e, value: e })),
+  );
 
   /** Whether environments have been loaded at least once */
   private loaded = false;

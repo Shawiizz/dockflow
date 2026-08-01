@@ -12,11 +12,12 @@ import { LogControlsComponent } from './components/log-controls/log-controls.com
 import { LogViewerComponent } from './components/log-viewer/log-viewer.component';
 import { PageHeaderComponent } from '@shared/components/page-header/page-header.component';
 import { ErrorBannerComponent } from '@shared/components/error-banner/error-banner.component';
+import { EnvSelectorComponent } from '@shared/components/env-selector/env-selector.component';
 
 @Component({
   selector: 'app-logs',
   standalone: true,
-  imports: [SkeletonModule, TooltipModule, LogControlsComponent, LogViewerComponent, PageHeaderComponent, ErrorBannerComponent],
+  imports: [SkeletonModule, TooltipModule, LogControlsComponent, LogViewerComponent, PageHeaderComponent, ErrorBannerComponent, EnvSelectorComponent],
   templateUrl: './logs.component.html',
   styleUrl: './logs.component.scss',
 })

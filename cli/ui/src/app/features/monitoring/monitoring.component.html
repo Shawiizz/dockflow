@@ -1,6 +1,8 @@
 <div class="flex flex-col gap-6 animate-fade-in">
   <!-- Page Header -->
-  <app-page-header title="Monitoring" subtitle="Container stats and audit log" />
+  <app-page-header title="Monitoring" subtitle="Container stats and audit log">
+    <app-env-selector badge />
+  </app-page-header>
 
   <p-tabs [(value)]="activeTab">
     <p-tablist>

@@ -25,20 +25,6 @@
 
   <!-- Right side -->
   <div class="flex items-center gap-2 shrink-0">
-    <!-- Environment selector -->
-    @if (envService.environments().length > 0) {
-      <p-select
-        [options]="envService.allOptions()"
-        [ngModel]="envService.selected()"
-        (ngModelChange)="envService.selected.set($event)"
-        optionLabel="label"
-        optionValue="value"
-        placeholder="Env"
-        size="small"
-        [class]="isMobile() ? 'min-w-24' : 'min-w-40'"
-      />
-    }
-
     <!-- Connection status -->
     @if (projectInfoService.loadingConnection()) {
       <div class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-accent-muted text-accent transition-all duration-300" role="status" aria-live="polite">

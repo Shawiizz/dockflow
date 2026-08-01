@@ -1,6 +1,7 @@
 <div class="flex flex-col gap-6 animate-fade-in">
   <!-- Page Header -->
   <app-page-header title="Deployments" subtitle="Deploy your project and view history">
+    <app-env-selector badge />
     <ng-container actions>
       <p-button
         [label]="showForm() ? 'Close' : 'New Deploy'"

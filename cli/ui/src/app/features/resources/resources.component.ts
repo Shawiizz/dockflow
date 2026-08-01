@@ -6,6 +6,7 @@ import { ApiService } from '@core/services/api.service';
 import { EnvironmentService } from '@core/services/environment.service';
 import type { PruneResult, LockInfo } from '@api-types';
 import { PageHeaderComponent } from '@shared/components/page-header/page-header.component';
+import { EnvSelectorComponent } from '@shared/components/env-selector/env-selector.component';
 import { PruneSectionComponent } from './components/prune-section/prune-section.component';
 import { LockSectionComponent } from './components/lock-section/lock-section.component';
 import { DiskUsageSectionComponent } from './components/disk-usage-section/disk-usage-section.component';
@@ -13,7 +14,7 @@ import { DiskUsageSectionComponent } from './components/disk-usage-section/disk-
 @Component({
   selector: 'app-resources',
   standalone: true,
-  imports: [TagModule, SkeletonModule, PageHeaderComponent, PruneSectionComponent, LockSectionComponent, DiskUsageSectionComponent],
+  imports: [TagModule, SkeletonModule, PageHeaderComponent, EnvSelectorComponent, PruneSectionComponent, LockSectionComponent, DiskUsageSectionComponent],
   templateUrl: './resources.component.html',
   styleUrl: './resources.component.scss',
 })

@@ -17,12 +17,13 @@ import { PageHeaderComponent } from '@shared/components/page-header/page-header.
 import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.component';
 import { ErrorBannerComponent } from '@shared/components/error-banner/error-banner.component';
 import { TerminalOutputComponent } from '@shared/components/terminal-output/terminal-output.component';
+import { EnvSelectorComponent } from '@shared/components/env-selector/env-selector.component';
 import type { DeployHistoryEntry } from '@api-types';
 
 @Component({
   selector: 'app-deploy',
   standalone: true,
-  imports: [FormsModule, SelectModule, TagModule, TooltipModule, SkeletonModule, InputTextModule, CheckboxModule, ButtonModule, DeployEntryComponent, PageHeaderComponent, EmptyStateComponent, ErrorBannerComponent, TerminalOutputComponent],
+  imports: [FormsModule, SelectModule, TagModule, TooltipModule, SkeletonModule, InputTextModule, CheckboxModule, ButtonModule, DeployEntryComponent, PageHeaderComponent, EmptyStateComponent, ErrorBannerComponent, TerminalOutputComponent, EnvSelectorComponent],
   templateUrl: './deploy.component.html',
   styleUrl: './deploy.component.scss',
 })

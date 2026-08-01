@@ -1,8 +1,7 @@
-import { Component, inject, signal, computed, DestroyRef, effect } from '@angular/core';
+import { Component, inject, signal, computed } from '@angular/core';
 import { RouterModule } from '@angular/router';
 import { SkeletonModule } from 'primeng/skeleton';
 import { ButtonModule } from 'primeng/button';
-import { EnvironmentService } from '@core/services/environment.service';
 import { ProjectInfoService } from '@core/services/project-info.service';
 import { ServerStatusService } from '@core/services/server-status.service';
 import { StatsCardComponent } from './components/stats-card/stats-card.component';
@@ -30,7 +29,6 @@ import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.
   styleUrl: './dashboard.component.scss',
 })
 export class DashboardComponent {
-  envService = inject(EnvironmentService);
   projectInfoService = inject(ProjectInfoService);
   serverStatus = inject(ServerStatusService);
 
@@ -48,14 +46,8 @@ export class DashboardComponent {
   });
 
   constructor() {
-    // Reload servers when environment changes
-    effect(() => {
-      const env = this.envService.selected();
-      // Don't load with empty env while environments are still loading
-      // to avoid a wasted request that gets overwritten when the real env arrives
-      if (!env && this.envService.loading()) return;
-      this.serverStatus.loadServers(env || undefined);
-    });
+    // Servers is a config read, not an SSH target — always show every environment.
+    this.serverStatus.loadServers();
   }
 
   onCheckServer(serverName: string) {
