@@ -40,8 +40,61 @@ export const connectionInfo: ConnectionInfo = {
   message: 'All servers configured',
 }
 
+/**
+ * Servers are keyed by tags (like the real servers.yml), not siloed per environment —
+ * a server can legitimately belong to more than one environment (e.g. a single shared
+ * box running both a staging and a production stack on different ports). worker-2 is
+ * that case here: it's tagged for both, so it shows up when filtering to either
+ * environment individually, and shows both tags in the "all environments" merged view.
+ */
+const ALL_SERVERS: ServerStatus[] = [
+  {
+    name: 'manager',
+    role: 'manager',
+    host: '10.0.1.50',
+    port: 22,
+    user: 'dockflow',
+    tags: ['production'],
+    status: 'online',
+    swarmStatus: 'leader',
+    env: {},
+  },
+  {
+    name: 'worker-1',
+    role: 'worker',
+    host: '10.0.1.51',
+    port: 22,
+    user: 'dockflow',
+    tags: ['production'],
+    status: 'online',
+    swarmStatus: 'reachable',
+    env: {},
+  },
+  {
+    name: 'worker-2',
+    role: 'worker',
+    host: '10.0.1.52',
+    port: 22,
+    user: 'dockflow',
+    tags: ['production', 'staging'],
+    status: 'online',
+    swarmStatus: 'reachable',
+    env: {},
+  },
+  {
+    name: 'staging',
+    role: 'manager',
+    host: '10.0.2.10',
+    port: 22,
+    user: 'dockflow',
+    tags: ['staging'],
+    status: 'online',
+    swarmStatus: 'leader',
+    env: {},
+  },
+]
+
 interface EnvData {
-  servers: ServerStatus[]
   services: ServiceInfo[]
   stackName: string
 }
@@ -49,41 +102,6 @@ interface EnvData {
 const DATA: Record<MockEnv, EnvData> = {
   production: {
     stackName: 'my-app-production',
-    servers: [
-      {
-        name: 'manager',
-        role: 'manager',
-        host: '10.0.1.50',
-        port: 22,
-        user: 'dockflow',
-        tags: ['production'],
-        status: 'online',
-        swarmStatus: 'leader',
-        env: {},
-      },
-      {
-        name: 'worker-1',
-        role: 'worker',
-        host: '10.0.1.51',
-        port: 22,
-        user: 'dockflow',
-        tags: ['production'],
-        status: 'online',
-        swarmStatus: 'reachable',
-        env: {},
-      },
-      {
-        name: 'worker-2',
-        role: 'worker',
-        host: '10.0.1.52',
-        port: 22,
-        user: 'dockflow',
-        tags: ['production'],
-        status: 'online',
-        swarmStatus: 'reachable',
-        env: {},
-      },
-    ],
     services: [
       {
         id: 'svc-app',
@@ -119,19 +137,6 @@ const DATA: Record<MockEnv, EnvData> = {
   },
   staging: {
     stackName: 'my-app-staging',
-    servers: [
-      {
-        name: 'staging',
-        role: 'manager',
-        host: '10.0.2.10',
-        port: 22,
-        user: 'dockflow',
-        tags: ['staging'],
-        status: 'online',
-        swarmStatus: 'leader',
-        env: {},
-      },
-    ],
     services: [
       {
         id: 'svc-app-staging',
@@ -163,14 +168,15 @@ function resolveEnv(env?: string | null): MockEnv {
 
 /**
  * Servers are listed straight from config (no SSH round-trip needed), so — like the
- * real /api/servers route — an empty env filter merges every environment's servers
- * rather than silently collapsing to one. Services/accessories need a live SSH
- * connection per environment, so (matching the real backend) they still fall back
- * to a single environment when none is specified — see resolveEnv above.
+ * real /api/servers route — an empty env filter returns every server rather than
+ * silently collapsing to one, and filtering is by tag membership (a server can carry
+ * more than one environment's tag), not by which env "owns" it. Services/accessories
+ * need a live SSH connection per environment, so (matching the real backend) they
+ * still fall back to a single environment when none is specified — see resolveEnv above.
  */
 export function getServers(env?: string | null): ServerStatus[] {
-  if (!env) return [...DATA.production.servers, ...DATA.staging.servers]
-  return DATA[resolveEnv(env)].servers
+  if (!env) return ALL_SERVERS
+  return ALL_SERVERS.filter((s) => s.tags.includes(env))
 }
 
 export function getServices(env?: string | null): ServiceInfo[] {
@@ -189,12 +195,8 @@ export function findServer(name: string, env?: string | null): ServerStatus | un
   const inEnv = getServers(env).find((s) => s.name === name)
   if (inEnv) return inEnv
   // Some real-app callers (e.g. the server status poller) don't forward `env` —
-  // fall back to a name lookup across all environments (server names are unique).
-  for (const envKey of Object.keys(DATA) as MockEnv[]) {
-    const server = DATA[envKey].servers.find((s) => s.name === name)
-    if (server) return server
-  }
-  return undefined
+  // fall back to a plain name lookup regardless of tags.
+  return ALL_SERVERS.find((s) => s.name === name)
 }
 
 const LOG_TEMPLATES: Record<string, string[]> = {
