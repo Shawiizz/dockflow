@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, viewChild, OnInit, OnDestroy, DestroyRef, ElementRef } from '@angular/core';
+import { Component, inject, signal, computed, effect, viewChild, OnInit, OnDestroy, DestroyRef, ElementRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TooltipModule } from 'primeng/tooltip';
 import { SkeletonModule } from 'primeng/skeleton';
@@ -68,6 +68,25 @@ export class TopologyComponent implements OnInit, OnDestroy {
 
   roleSeverity = roleSeverity;
 
+  /** Size of the scrollable wrapper around the canvas — the dot-grid background must always fill it, not just the bounding box of the current cards. */
+  private containerSize = signal({ width: 900, height: 500 });
+  private resizeObserver: ResizeObserver | null = null;
+
+  constructor() {
+    effect(() => {
+      const ref = this.canvasRef();
+      const container = ref?.nativeElement.parentElement;
+      if (!container) return;
+
+      this.resizeObserver?.disconnect();
+      this.resizeObserver = new ResizeObserver(([entry]) => {
+        if (!entry) return;
+        this.containerSize.set({ width: entry.contentRect.width, height: entry.contentRect.height });
+      });
+      this.resizeObserver.observe(container);
+    });
+  }
+
   loading = signal(true);
   error = signal<string | null>(null);
   saving = signal(false);
@@ -87,16 +106,14 @@ export class TopologyComponent implements OnInit, OnDestroy {
 
   canvasWidth = computed(() => {
     const allCards = [...this.services(), ...this.servers()];
-    if (allCards.length === 0) return 900;
-    const maxX = Math.max(...allCards.map(c => c.x + CARD_WIDTH + 40));
-    return Math.max(900, maxX);
+    const maxX = allCards.length === 0 ? 0 : Math.max(...allCards.map(c => c.x + CARD_WIDTH + 40));
+    return Math.max(900, this.containerSize().width, maxX);
   });
 
   canvasHeight = computed(() => {
     const allCards = [...this.services(), ...this.servers()];
-    if (allCards.length === 0) return 500;
-    const maxY = Math.max(...allCards.map(c => c.y + CARD_HEIGHT + 40));
-    return Math.max(500, maxY);
+    const maxY = allCards.length === 0 ? 0 : Math.max(...allCards.map(c => c.y + CARD_HEIGHT + 40));
+    return Math.max(500, this.containerSize().height, maxY);
   });
 
   connectionPaths = computed(() => {
@@ -137,6 +154,7 @@ export class TopologyComponent implements OnInit, OnDestroy {
   ngOnDestroy() {
     document.removeEventListener('mousemove', this.boundMouseMove);
     document.removeEventListener('mouseup', this.boundMouseUp);
+    this.resizeObserver?.disconnect();
   }
 
   loadData() {
