@@ -15,8 +15,8 @@ env:
   all:
     APP_NAME: "{{ project_name }}"
 
-  production:
-    # DATABASE_URL: "postgres://..."
+  # production:
+  #   DATABASE_URL: "postgres://..."
 
   # staging:
   #   DATABASE_URL: "postgres://..."

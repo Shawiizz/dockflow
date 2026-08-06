@@ -17,7 +17,10 @@ export const EnvVarsSchema = z.record(
     'Environment variable names must start with a letter and contain only letters, numbers, and underscores'
   ),
   z.string()
-).describe('Environment variables key-value pairs');
+)
+  .nullable()
+  .transform((val) => val ?? {})
+  .describe('Environment variables key-value pairs');
 
 /**
  * Server role schema
