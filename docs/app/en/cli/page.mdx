@@ -6,15 +6,34 @@ Dockflow provides a comprehensive CLI for managing deployments and interacting w
 
 ## Installation
 
-<Tabs items={['Linux / macOS', 'Windows']}>
+<Tabs items={['npm (any OS)', 'npx (no install)', 'Linux / macOS', 'Windows']}>
+  <Tabs.Tab>
+    ```bash
+    npm install -g @dockflow-tools/cli
+    dockflow --version
+    ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Run any command directly without installing:
+
+    ```bash
+    npx @dockflow-tools/cli <command>
+    ```
+
+    <Callout type="info">
+      Pin a specific version with `npx @dockflow-tools/cli@1.2.3 <command>`.
+    </Callout>
+  </Tabs.Tab>
   <Tabs.Tab>
     ```bash
     curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | bash
+    dockflow --version
     ```
   </Tabs.Tab>
   <Tabs.Tab>
     ```powershell
     irm https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.ps1 | iex
+    dockflow --version
     ```
   </Tabs.Tab>
 </Tabs>
