@@ -9,6 +9,7 @@ import { SkeletonModule } from 'primeng/skeleton';
 import { EnvironmentService } from '@core/services/environment.service';
 import { ProjectInfoService } from '@core/services/project-info.service';
 import { ThemeService } from '@core/services/theme.service';
+import { OperationStateService } from '@core/services/operation-state.service';
 
 @Component({
   selector: 'app-header',
@@ -28,12 +29,14 @@ export class HeaderComponent implements OnInit {
   envService = inject(EnvironmentService);
   projectInfoService = inject(ProjectInfoService);
   themeService = inject(ThemeService);
+  private opState = inject(OperationStateService);
 
   pageTitle = signal('Dashboard');
 
   ngOnInit() {
     this.envService.load();
     this.projectInfoService.load();
+    this.opState.reconnect();
 
     // Track current page title
     this.router.events.pipe(

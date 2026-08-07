@@ -1,6 +1,12 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { ApiService } from './api.service';
 
+interface StreamCtx {
+  logs: ReturnType<typeof signal<string[]>>;
+  running: ReturnType<typeof signal<boolean>>;
+  success: ReturnType<typeof signal<boolean | null>>;
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -11,25 +17,22 @@ export class OperationStateService {
   building = signal(false);
   buildLogs = signal<string[]>([]);
   buildSuccess = signal<boolean | null>(null);
-  private buildReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 
   // Deploy state
   deploying = signal(false);
   deployLogs = signal<string[]>([]);
   deploySuccess = signal<boolean | null>(null);
-  private deployReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+
+  private buildCtx: StreamCtx = { logs: this.buildLogs, running: this.building, success: this.buildSuccess };
+  private deployCtx: StreamCtx = { logs: this.deployLogs, running: this.deploying, success: this.deploySuccess };
+
+  private reconnected = false;
 
   startBuild(body: Record<string, unknown>) {
     this.building.set(true);
     this.buildLogs.set([]);
     this.buildSuccess.set(null);
-
-    this.streamOperation('/api/operations/build', body, {
-      logs: this.buildLogs,
-      running: this.building,
-      success: this.buildSuccess,
-      setReader: (r) => this.buildReader = r,
-    });
+    this.streamViaPost('/api/operations/build', body, this.buildCtx);
   }
 
   cancelBuild() {
@@ -51,13 +54,7 @@ export class OperationStateService {
     this.deploying.set(true);
     this.deployLogs.set([]);
     this.deploySuccess.set(null);
-
-    this.streamOperation('/api/operations/deploy', body, {
-      logs: this.deployLogs,
-      running: this.deploying,
-      success: this.deploySuccess,
-      setReader: (r) => this.deployReader = r,
-    });
+    this.streamViaPost('/api/operations/deploy', body, this.deployCtx);
   }
 
   cancelDeploy() {
@@ -75,75 +72,92 @@ export class OperationStateService {
     this.deploySuccess.set(null);
   }
 
-  private streamOperation(
-    url: string,
-    body: Record<string, unknown>,
-    ctx: {
-      logs: ReturnType<typeof signal<string[]>>;
-      running: ReturnType<typeof signal<boolean>>;
-      success: ReturnType<typeof signal<boolean | null>>;
-      setReader: (r: ReadableStreamDefaultReader<Uint8Array> | null) => void;
-    },
-  ) {
+  /**
+   * Reattach to the operation running (or last finished) on the server, if any.
+   * Safe to call repeatedly — only runs once.
+   */
+  reconnect() {
+    if (this.reconnected) return;
+    this.reconnected = true;
+
+    this.apiService.getOperationStatus().subscribe({
+      next: (status) => {
+        if (!status.type) return; // nothing to reattach to
+        const ctx = status.type === 'build' ? this.buildCtx : this.deployCtx;
+        ctx.logs.set([]);
+        ctx.success.set(null);
+        ctx.running.set(!!status.running);
+        this.streamViaGet('/api/operations/stream', ctx);
+      },
+      error: () => { /* status check failed — nothing to reattach to */ },
+    });
+  }
+
+  private streamViaPost(url: string, body: Record<string, unknown>, ctx: StreamCtx) {
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
-      .then((response) => {
-        if (!response.ok || !response.body) {
-          ctx.logs.update(l => [...l, `Error: ${response.statusText}`]);
+      .then((response) => this.consumeStream(response, ctx))
+      .catch((err: Error) => this.onStreamError(err, ctx));
+  }
+
+  private streamViaGet(url: string, ctx: StreamCtx) {
+    fetch(url)
+      .then((response) => this.consumeStream(response, ctx))
+      .catch((err: Error) => this.onStreamError(err, ctx));
+  }
+
+  private consumeStream(response: Response, ctx: StreamCtx) {
+    if (!response.ok || !response.body) {
+      // A 404 here just means "nothing to reattach to" for a reconnect — not a real error.
+      if (response.status !== 404) {
+        ctx.logs.update(l => [...l, `Error: ${response.statusText}`]);
+        ctx.success.set(false);
+      }
+      ctx.running.set(false);
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    const readChunk = (): void => {
+      reader.read().then(({ done, value }) => {
+        if (done) {
           ctx.running.set(false);
-          ctx.success.set(false);
+          if (ctx.success() === null) ctx.success.set(true);
           return;
         }
-        const reader = response.body.getReader();
-        ctx.setReader(reader);
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        const readChunk = (): void => {
-          reader.read().then(({ done, value }) => {
-            if (done) {
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+        for (const part of parts) {
+          const eventMatch = part.match(/^event:\s*(.+)$/m);
+          const dataMatch = part.match(/^data:\s*(.+)$/m);
+          if (!dataMatch) continue;
+          try {
+            const data = JSON.parse(dataMatch[1]);
+            const eventType = eventMatch ? eventMatch[1] : 'log';
+            if (eventType === 'log') {
+              ctx.logs.update(l => [...l, data.line]);
+            } else if (eventType === 'done') {
+              ctx.success.set(data.success);
               ctx.running.set(false);
-              if (ctx.success() === null) ctx.success.set(true);
-              ctx.setReader(null);
-              return;
             }
-            buffer += decoder.decode(value, { stream: true });
-            const parts = buffer.split('\n\n');
-            buffer = parts.pop() || '';
-            for (const part of parts) {
-              const eventMatch = part.match(/^event:\s*(.+)$/m);
-              const dataMatch = part.match(/^data:\s*(.+)$/m);
-              if (!dataMatch) continue;
-              try {
-                const data = JSON.parse(dataMatch[1]);
-                const eventType = eventMatch ? eventMatch[1] : 'log';
-                if (eventType === 'log') {
-                  ctx.logs.update(l => [...l, data.line]);
-                } else if (eventType === 'done') {
-                  ctx.success.set(data.success);
-                  ctx.running.set(false);
-                  ctx.setReader(null);
-                }
-              } catch { /* ignore parse errors */ }
-            }
-            readChunk();
-          }).catch((err: Error) => {
-            ctx.logs.update(l => [...l, `--- Connection lost: ${err.message} ---`]);
-            ctx.running.set(false);
-            ctx.success.set(false);
-            ctx.setReader(null);
-          });
-        };
+          } catch { /* ignore parse errors */ }
+        }
         readChunk();
-      })
-      .catch((err) => {
-        ctx.logs.update(l => [...l, `Error: ${err.message}`]);
-        ctx.running.set(false);
-        ctx.success.set(false);
-        ctx.setReader(null);
-      });
+      }).catch((err: Error) => this.onStreamError(err, ctx));
+    };
+    readChunk();
+  }
+
+  private onStreamError(err: Error, ctx: StreamCtx) {
+    ctx.logs.update(l => [...l, `--- Connection lost: ${err.message} ---`]);
+    ctx.running.set(false);
+    ctx.success.set(false);
   }
 }
