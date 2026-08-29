@@ -6,6 +6,7 @@ import {
   serialize,
   updateImageTags,
   injectSwarmDefaults,
+  stripBuildSections,
   injectAccessoriesDefaults,
   injectTraefikLabels,
   filterServices,
@@ -162,6 +163,55 @@ describe('updateImageTags', () => {
     updateImageTags(compose, baseConfig, 'production', '1.0.0');
     const reparsed = makeCompose(serialize(compose));
     expect(reparsed.services.api.image).toBe('api-production:1.0.0');
+  });
+});
+
+describe('stripBuildSections', () => {
+  it('removes build from every service', () => {
+    const compose = makeCompose(`
+services:
+  app:
+    image: app
+    build:
+      context: ../..
+      dockerfile: Dockerfile.app
+  worker:
+    image: worker
+    build: ../..
+`);
+
+    stripBuildSections(compose);
+
+    expect(compose.services.app).not.toHaveProperty('build');
+    expect(compose.services.worker).not.toHaveProperty('build');
+  });
+
+  it('leaves the rest of the service untouched', () => {
+    const compose = makeCompose(`
+services:
+  app:
+    image: app
+    build: ../..
+    ports:
+      - "80:80"
+`);
+
+    stripBuildSections(compose);
+
+    expect(compose.services.app.image).toBe('app');
+    expect(compose.services.app.ports).toEqual(['80:80']);
+  });
+
+  it('is a no-op on services without build', () => {
+    const compose = makeCompose(`
+services:
+  app:
+    image: app
+`);
+
+    stripBuildSections(compose);
+
+    expect(compose.services.app).toEqual({ image: 'app' });
   });
 });
 

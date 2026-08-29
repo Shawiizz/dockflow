@@ -64,6 +64,7 @@ export class SwarmStackBackend implements StackBackend {
       const prune = !input.servicesFilter?.length;
 
       // 3. Render compose: inject Swarm deploy defaults + optional Traefik labels
+      Compose.stripBuildSections(targeted);
       Compose.injectSwarmDefaults(targeted);
       if (input.proxy?.enabled) {
         Compose.injectTraefikLabels(targeted, input.proxy, input.stackName, input.env);

@@ -419,6 +419,22 @@ export function updateImageTags(
  * Inject Swarm deploy defaults (update_config + rollback_config) into all services.
  * User-provided values take precedence via deep merge.
  */
+/**
+ * Drop `build` from every service.
+ *
+ * Dockflow reads that section to know what to build, but `docker stack deploy` cannot build
+ * anything and prints "Ignoring unsupported options: build" on every deployment. Removing it
+ * once the image is built keeps that noise out of the output.
+ */
+export function stripBuildSections(compose: ParsedCompose): void {
+  for (const [name, svc] of Object.entries(compose.services)) {
+    if (!('build' in svc)) continue;
+
+    const { build: _build, ...rest } = svc as Record<string, unknown>;
+    compose.services[name] = rest as typeof svc;
+  }
+}
+
 export function injectSwarmDefaults(compose: ParsedCompose): void {
   for (const [name, svc] of Object.entries(compose.services)) {
     const userDeploy = (svc.deploy ?? {}) as Record<string, unknown>;
