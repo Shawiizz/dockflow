@@ -124,21 +124,25 @@ export function getOverridesForTarget(
 ): Map<string, string> {
   const overrides = new Map<string, string>();
   const contextRel = relative(projectRoot, target.context).replace(/\\/g, '/');
+  // An empty contextRel means the context is the project root, the common `context: ../..`
+  // case. Rendered paths are then already relative to it and there is no prefix to strip —
+  // testing against `contextRel + '/'` would reject every one of them.
+  const contextPrefix = contextRel === '' ? '' : `${contextRel}/`;
 
   for (const [relPath, content] of rendered) {
     const normalized = relPath.replace(/\\/g, '/');
-    if (normalized.startsWith(contextRel + '/')) {
-      const contextRelPath = normalized.slice(contextRel.length + 1);
-      overrides.set(contextRelPath, content);
-    }
+    if (!normalized.startsWith(contextPrefix)) continue;
+
+    overrides.set(normalized.slice(contextPrefix.length), content);
   }
 
+  // `dockerfile:` is resolved from the compose file's directory, so the name handed to
+  // `-f` rarely matches the Dockerfile's path inside the context. Key the rendered content
+  // under that name too; when the two coincide this rewrites the same entry.
   const dockerfileProjectRel = relative(projectRoot, target.dockerfileAbsPath).replace(/\\/g, '/');
-  if (!dockerfileProjectRel.startsWith(contextRel + '/')) {
-    const renderedDockerfile = rendered.get(dockerfileProjectRel);
-    if (renderedDockerfile) {
-      overrides.set(target.dockerfile.replace(/\\/g, '/'), renderedDockerfile);
-    }
+  const renderedDockerfile = rendered.get(dockerfileProjectRel);
+  if (renderedDockerfile) {
+    overrides.set(target.dockerfile.replace(/\\/g, '/'), renderedDockerfile);
   }
 
   return overrides;

@@ -122,6 +122,37 @@ describe('getOverridesForTarget', () => {
     expect(overrides.size).toBe(1);
   });
 
+  it('re-keys rendered files when the context is the project root', () => {
+    // `context: ../..` from .dockflow/docker resolves to the project root, so the paths
+    // are already relative to the context and nothing has to be stripped.
+    const target = makeTarget({
+      context: projectRoot,
+      dockerfile: 'Dockerfile.app',
+      dockerfileAbsPath: resolve(projectRoot, '.dockflow/docker/Dockerfile.app'),
+    });
+    const rendered = new Map([
+      ['src/environments/environment.ts', 'export const environment = {};'],
+      ['.dockflow/docker/Dockerfile.app', 'FROM node'],
+    ]);
+
+    const overrides = getOverridesForTarget(rendered, target, projectRoot);
+
+    expect(overrides.get('src/environments/environment.ts')).toBe('export const environment = {};');
+  });
+
+  it('still keys the Dockerfile under the name passed to -f at the project root', () => {
+    const target = makeTarget({
+      context: projectRoot,
+      dockerfile: 'Dockerfile.app',
+      dockerfileAbsPath: resolve(projectRoot, '.dockflow/docker/Dockerfile.app'),
+    });
+    const rendered = new Map([['.dockflow/docker/Dockerfile.app', 'FROM node']]);
+
+    const overrides = getOverridesForTarget(rendered, target, projectRoot);
+
+    expect(overrides.get('Dockerfile.app')).toBe('FROM node');
+  });
+
   it('empty rendered map yields empty overrides', () => {
     expect(getOverridesForTarget(new Map(), makeTarget(), projectRoot).size).toBe(0);
   });
