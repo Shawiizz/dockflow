@@ -189,6 +189,27 @@ dockflow config check             # Same as validate
 dockflow config path              # Show config directory
 ```
 
+### Validate
+
+```bash
+dockflow validate
+```
+
+Validate `.dockflow` configuration files against their schemas. Runs entirely offline — no SSH connection, no server required — which makes it the fastest way to check a config before pushing.
+
+It checks `config.yml`, `servers.yml`, the presence of the compose file, and reports unknown keys with a "did you mean" suggestion. It also fails on shell-style `${VAR}` placeholders in the compose file, which Dockflow never substitutes (see [Docker Compose](/en/configuration/docker-compose)).
+
+| Option | Description |
+|--------|-------------|
+| `--env <env>` | Also check that a specific environment exists in `servers.yml` |
+
+```bash
+dockflow validate                 # Validate every configuration file
+dockflow validate --env production
+```
+
+Exits `0` when everything is valid, `60` when a check fails.
+
 ### UI
 
 ```bash
@@ -201,6 +222,20 @@ Launch the Dockflow WebUI dashboard for visual management of services, topology,
 |--------|-------------|
 | `-p, --port <port>` | Port to listen on (default: 4200) |
 | `--no-open` | Do not open browser automatically |
+
+### Completion
+
+```bash
+dockflow completion [shell]
+```
+
+Generate a shell completion script for `bash`, `zsh` or `fish`.
+
+```bash
+dockflow completion bash > /etc/bash_completion.d/dockflow
+dockflow completion zsh  > "${fpath[1]}/_dockflow"
+dockflow completion fish > ~/.config/fish/completions/dockflow.fish
+```
 
 ## App Commands
 
@@ -352,6 +387,19 @@ List running containers for the stack.
 | `-s, --server <name>` | Target server |
 | `--tasks` | Show tasks instead of containers |
 
+### Status
+
+```bash
+dockflow status [env]
+```
+
+Show deployment status. Without an argument, summarises every environment; with one, focuses on that environment.
+
+```bash
+dockflow status               # All environments
+dockflow status production    # One environment
+```
+
 ### Version
 
 ```bash
@@ -379,6 +427,22 @@ Show deployment audit log (who deployed what and when).
 | `-n, --lines <number>` | Number of entries to show (default: 20) |
 | `--all` | Show all entries |
 | `--json` | Output as JSON |
+
+### History Sync
+
+```bash
+dockflow history-sync <env>
+```
+
+Sync deployment history across all cluster nodes. Each node records deployments locally, so after a failover — or when a node was unreachable during a deploy — their histories can diverge. This reconciles them.
+
+| Option | Description |
+|--------|-------------|
+| `--debug` | Enable debug output |
+
+```bash
+dockflow history-sync production
+```
 
 ### Metrics
 
@@ -644,6 +708,88 @@ Remove the accessories stack entirely.
 <Callout type="error">
   The `--volumes` flag permanently deletes all data. You will be prompted to type the environment name to confirm.
 </Callout>
+
+## Backup Commands
+
+Backup and restore accessory databases. See [Backup & Restore](/en/configuration/backup) for the per-service configuration.
+
+### Create Backup
+
+```bash
+dockflow backup create <env> [service]
+```
+
+Create a backup of a service or accessory database. Without a service name, backs up every configured accessory.
+
+| Option | Description |
+|--------|-------------|
+| `-j, --json` | Output backup metadata in JSON format |
+| `-s, --server <name>` | Target server (defaults to the first server for the environment) |
+
+```bash
+dockflow backup create production            # Every configured accessory
+dockflow backup create production postgres   # One service
+dockflow bak create production postgres      # `bak` is an alias
+```
+
+### List Backups
+
+```bash
+dockflow backup list <env> [service]
+```
+
+List available backups.
+
+| Option | Description |
+|--------|-------------|
+| `-j, --json` | Output in JSON format |
+| `-s, --server <name>` | Target server |
+
+```bash
+dockflow backup list production
+dockflow backup ls production postgres       # `ls` is an alias
+```
+
+### Restore Backup
+
+```bash
+dockflow backup restore <env> [service]
+```
+
+Restore a service or accessory database from a backup. Restores the latest backup unless `--from` is given.
+
+| Option | Description |
+|--------|-------------|
+| `--from <id>` | Backup ID or date prefix (default: latest) |
+| `-y, --yes` | Skip the confirmation prompt |
+| `-s, --server <name>` | Target server |
+
+```bash
+dockflow backup restore production postgres
+dockflow backup restore production postgres --from 2026-08-29
+```
+
+<Callout type="warning">
+  Restoring overwrites the current database. You are prompted to confirm unless `--yes` is passed.
+</Callout>
+
+### Prune Backups
+
+```bash
+dockflow backup prune <env> [service]
+```
+
+Remove old backups, keeping the most recent N per service.
+
+| Option | Description |
+|--------|-------------|
+| `--keep <n>` | Number of backups to keep per service (default: `retention_count` from config, or 10) |
+| `-y, --yes` | Skip the confirmation prompt |
+| `-s, --server <name>` | Target server |
+
+```bash
+dockflow backup prune production --keep 5
+```
 
 ## Setup Commands
 

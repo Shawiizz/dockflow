@@ -189,6 +189,27 @@ dockflow config check             # Identique à validate
 dockflow config path              # Affiche le répertoire de config
 ```
 
+### Validate
+
+```bash
+dockflow validate
+```
+
+Valide les fichiers de configuration `.dockflow` contre leurs schémas. S'exécute entièrement hors ligne — aucune connexion SSH, aucun serveur requis — ce qui en fait le moyen le plus rapide de vérifier une configuration avant de pousser.
+
+Sont vérifiés `config.yml`, `servers.yml`, la présence du fichier compose, ainsi que les clés inconnues, signalées avec une suggestion. La commande échoue également sur les placeholders `${VAR}` de style shell présents dans le compose, que Dockflow ne substitue jamais (voir [Docker Compose](/fr/configuration/docker-compose)).
+
+| Option | Description |
+|--------|-------------|
+| `--env <env>` | Vérifie aussi qu'un environnement précis existe dans `servers.yml` |
+
+```bash
+dockflow validate                 # Valide tous les fichiers de configuration
+dockflow validate --env production
+```
+
+Sort en `0` si tout est valide, en `60` si une vérification échoue.
+
 ### UI
 
 ```bash
@@ -201,6 +222,20 @@ Lance le dashboard WebUI de Dockflow pour la gestion visuelle des services, de l
 |--------|-------------|
 | `-p, --port <port>` | Port d'écoute (défaut : 4200) |
 | `--no-open` | N'ouvre pas le navigateur automatiquement |
+
+### Completion
+
+```bash
+dockflow completion [shell]
+```
+
+Génère un script de complétion pour `bash`, `zsh` ou `fish`.
+
+```bash
+dockflow completion bash > /etc/bash_completion.d/dockflow
+dockflow completion zsh  > "${fpath[1]}/_dockflow"
+dockflow completion fish > ~/.config/fish/completions/dockflow.fish
+```
 
 ## Commandes app
 
@@ -352,6 +387,19 @@ Liste les conteneurs en cours d'exécution pour la stack.
 | `-s, --server <name>` | Serveur cible |
 | `--tasks` | Affiche les tâches plutôt que les conteneurs |
 
+### Status
+
+```bash
+dockflow status [env]
+```
+
+Affiche l'état des déploiements. Sans argument, résume tous les environnements ; avec un argument, se concentre sur celui-ci.
+
+```bash
+dockflow status               # Tous les environnements
+dockflow status production    # Un seul environnement
+```
+
 ### Version
 
 ```bash
@@ -379,6 +427,22 @@ Affiche le journal d'audit de déploiement (qui a déployé quoi et quand).
 | `-n, --lines <number>` | Nombre d'entrées à afficher (défaut : 20) |
 | `--all` | Affiche toutes les entrées |
 | `--json` | Sortie en JSON |
+
+### History Sync
+
+```bash
+dockflow history-sync <env>
+```
+
+Synchronise l'historique de déploiement entre tous les nœuds du cluster. Chaque nœud enregistre les déploiements localement : après un basculement, ou si un nœud était injoignable pendant un déploiement, les historiques peuvent diverger. Cette commande les réconcilie.
+
+| Option | Description |
+|--------|-------------|
+| `--debug` | Active la sortie de débogage |
+
+```bash
+dockflow history-sync production
+```
 
 ### Metrics
 
@@ -644,6 +708,88 @@ Supprime entièrement la stack d'accessoires.
 <Callout type="error">
   Le flag `--volumes` supprime définitivement toutes les données. Il vous sera demandé de taper le nom de l'environnement pour confirmer.
 </Callout>
+
+## Commandes backup
+
+Sauvegarde et restauration des bases de données des accessoires. Voir [Backup & Restore](/fr/configuration/backup) pour la configuration par service.
+
+### Créer une sauvegarde
+
+```bash
+dockflow backup create <env> [service]
+```
+
+Crée une sauvegarde d'un service ou d'une base d'accessoire. Sans nom de service, sauvegarde tous les accessoires configurés.
+
+| Option | Description |
+|--------|-------------|
+| `-j, --json` | Sortie des métadonnées au format JSON |
+| `-s, --server <name>` | Serveur ciblé (par défaut le premier de l'environnement) |
+
+```bash
+dockflow backup create production            # Tous les accessoires configurés
+dockflow backup create production postgres   # Un seul service
+dockflow bak create production postgres      # `bak` est un alias
+```
+
+### Lister les sauvegardes
+
+```bash
+dockflow backup list <env> [service]
+```
+
+Liste les sauvegardes disponibles.
+
+| Option | Description |
+|--------|-------------|
+| `-j, --json` | Sortie au format JSON |
+| `-s, --server <name>` | Serveur ciblé |
+
+```bash
+dockflow backup list production
+dockflow backup ls production postgres       # `ls` est un alias
+```
+
+### Restaurer une sauvegarde
+
+```bash
+dockflow backup restore <env> [service]
+```
+
+Restaure un service ou une base d'accessoire depuis une sauvegarde. Restaure la plus récente sauf si `--from` est fourni.
+
+| Option | Description |
+|--------|-------------|
+| `--from <id>` | Identifiant de sauvegarde ou préfixe de date (par défaut : la plus récente) |
+| `-y, --yes` | Ignore la demande de confirmation |
+| `-s, --server <name>` | Serveur ciblé |
+
+```bash
+dockflow backup restore production postgres
+dockflow backup restore production postgres --from 2026-08-29
+```
+
+<Callout type="warning">
+  Une restauration écrase la base actuelle. Une confirmation est demandée sauf si `--yes` est passé.
+</Callout>
+
+### Purger les sauvegardes
+
+```bash
+dockflow backup prune <env> [service]
+```
+
+Supprime les anciennes sauvegardes en conservant les N plus récentes par service.
+
+| Option | Description |
+|--------|-------------|
+| `--keep <n>` | Nombre de sauvegardes conservées par service (par défaut : `retention_count` de la config, sinon 10) |
+| `-y, --yes` | Ignore la demande de confirmation |
+| `-s, --server <name>` | Serveur ciblé |
+
+```bash
+dockflow backup prune production --keep 5
+```
 
 ## Commandes de setup
 
