@@ -20,11 +20,11 @@ services:
 
 ## Nginx Templates
 
-Files placed in `.dockflow/templates/nginx/` are treated as nginx configurations and automatically deployed to `/etc/nginx/sites-enabled/` on the server after each successful deployment. The filename is used as-is (no extension stripping).
+Files placed in `.dockflow/templates/nginx/` are treated as nginx configurations and automatically deployed to `/etc/nginx/sites-enabled/` on the server after each successful deployment. The filename is used verbatim — name the file exactly as nginx should see it.
 
 ```
 .dockflow/templates/nginx/
-└── myapp.example.com.conf.j2   →   /etc/nginx/sites-enabled/myapp.example.com.conf
+└── myapp.example.com.conf   →   /etc/nginx/sites-enabled/myapp.example.com.conf
 ```
 
 After uploading, Dockflow runs `nginx -t` to validate the configuration. If the test fails, the previous configuration is automatically restored and a warning is logged. On success, nginx is reloaded with `nginx -s reload`.

@@ -181,7 +181,7 @@ export function parseImageRef(image: string): { name: string; tag: string | unde
  * Returns a Map<relativePath, renderedContent> where keys use forward slashes
  * and are relative to projectRoot (e.g. ".dockflow/docker/docker-compose.yml").
  *
- * .j2 files produce an entry without the .j2 extension.
+ * Filenames are preserved verbatim — name a file exactly as it should land on the server.
  * All files inside .dockflow/ are rendered through Nunjucks.
  * Custom templates from config.templates are rendered at their dest path.
  */
@@ -205,10 +205,7 @@ export function renderTemplates(
     const content = readFileSync(filePath, 'utf-8');
     const renderedContent = njk.renderString(content, templateCtx);
 
-    let relPath = relative(projectRoot, filePath).replace(/\\/g, '/');
-    if (relPath.endsWith('.j2')) {
-      relPath = relPath.slice(0, -3);
-    }
+    const relPath = relative(projectRoot, filePath).replace(/\\/g, '/');
 
     rendered.set(relPath, renderedContent);
     count++;
