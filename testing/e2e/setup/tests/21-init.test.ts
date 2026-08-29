@@ -62,6 +62,13 @@ describe("dockflow init (project scaffolding)", () => {
     expect(gitignore).toContain(".env.dockflow");
   });
 
+  test("the scaffold satisfies dockflow validate", async () => {
+    // Guards against a scaffold that writes files the CLI's own schemas reject:
+    // the tests above only assert the files exist and are non-empty.
+    const output = await inContainer(["sh", "-c", "dockflow validate 2>&1"], 60_000);
+    expect(output).toContain("All configuration files are valid");
+  });
+
   test("init also scaffolds CI workflow templates", async () => {
     // Non-interactive default selects GitHub Actions with both build + deploy jobs.
     const build = await inContainer(["cat", ".github/workflows/dockflow-build.yml"]);
