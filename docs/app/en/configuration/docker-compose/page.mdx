@@ -14,10 +14,10 @@ services:
       context: ../..
       dockerfile: Dockerfile
     ports:
-      - "${APP_PORT}:3000"
+      - "{{ current.env.app_port }}:3000"
     environment:
-      DB_PASSWORD: ${DB_PASSWORD}
-      ENV: ${ENV}
+      DB_PASSWORD: {{ current.env.db_password }}
+      ENV: {{ env }}
     networks:
       - app-network
 
@@ -33,23 +33,23 @@ Environment variables can come from multiple sources:
 
 - **`servers.yml`** — defined per-environment or per-server (see [Servers & Connections](/en/configuration/servers))
 - **CI secrets** — override `servers.yml` values
-- **Nunjucks templating** — all files in `.dockflow/` are automatically rendered with Nunjucks
+- **Nunjucks templating** — all files in `.dockflow/` are automatically rendered with Nunjucks. This is the only substitution Dockflow performs: shell-style `${VAR}` placeholders are **not** expanded, since the compose file is deployed with `docker stack deploy -c` without an env file.
 
 ```yaml
 services:
   app:
     image: my-app
     environment:
-      ENV: ${ENV}                        # Injected automatically
-      VERSION: ${VERSION}                # Injected automatically
-      DB_HOST: ${DB_HOST}                # From servers.yml or CI secrets
-      SECRET_KEY: ${SECRET_KEY}          # From servers.yml or CI secrets
+      ENV: {{ env }}                              # Always in the context
+      VERSION: {{ version }}                      # Always in the context
+      DB_HOST: {{ current.env.db_host }}          # From servers.yml or CI secrets
+      SECRET_KEY: {{ current.env.secret_key }}    # From servers.yml or CI secrets
     ports:
-      - "${APP_PORT:-3000}:3000"         # With default value
+      - "{{ current.env.app_port | default('3000') }}:3000"         # With default value
 ```
 
 <Callout type="info">
-  `${ENV}` and `${VERSION}` are always available — Dockflow injects them automatically during deployment.
+  `{{ env }}` and `{{ version }}` are always available in the render context — no need to declare them in `servers.yml`.
 </Callout>
 
 ## Automatic Image Tagging
@@ -255,8 +255,8 @@ services:
       context: ../..
       dockerfile: Dockerfile.backend
     environment:
-      DB_HOST: ${DB_HOST}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: {{ current.env.db_host }}
+      DB_PASSWORD: {{ current.env.db_password }}
       REDIS_URL: redis://redis:6379
     networks:
       - frontend

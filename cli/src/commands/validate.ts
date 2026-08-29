@@ -33,6 +33,10 @@ import {
   colors,
 } from '../utils/output';
 import { loadSecrets } from '../utils/secrets';
+import {
+  findShellPlaceholders,
+  describeShellPlaceholders,
+} from '../services/compose-lint';
 import { ValidationError, withErrorHandler } from '../utils/errors';
 import {
   findUnknownConfigKeys,
@@ -58,6 +62,21 @@ function warnUnknownKeys(filePath: string, finder: (data: unknown) => UnknownKey
       `Unknown key "${path}" — it is ignored.${suggestion ? ` Did you mean "${suggestion}"?` : ''}`,
     );
   }
+}
+
+/**
+ * Every env key declared in servers.yml, across servers and environments. Used to tell a
+ * plain typo apart from a variable the user really did define.
+ */
+function collectDeclaredEnvKeys(): string[] {
+  const servers = loadServersConfig({ silent: true });
+  if (!servers) return [];
+
+  const keys = new Set<string>();
+  for (const server of Object.values(servers.servers)) {
+    for (const key of Object.keys(server.env ?? {})) keys.add(key);
+  }
+  return [...keys];
 }
 
 interface ValidateOptions {
@@ -188,6 +207,17 @@ async function runValidate(options: ValidateOptions): Promise<void> {
     printWarning('This is fine for accessories-only projects.');
   } else {
     printSuccess(`docker-compose found: ${composePath.replace(projectRoot, '.')}`);
+
+    // Shell-style placeholders resolve to an empty string at deploy time, which is silent
+    // in production — so validate treats them as an error rather than a warning.
+    const placeholders = findShellPlaceholders(
+      readFileSync(composePath, 'utf-8'),
+      collectDeclaredEnvKeys(),
+    );
+    for (const line of describeShellPlaceholders(placeholders)) {
+      printError(line);
+    }
+    if (placeholders.length > 0) hasErrors = true;
   }
 
   printBlank();

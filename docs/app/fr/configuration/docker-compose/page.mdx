@@ -14,10 +14,10 @@ services:
       context: ../..
       dockerfile: Dockerfile
     ports:
-      - "${APP_PORT}:3000"
+      - "{{ current.env.app_port }}:3000"
     environment:
-      DB_PASSWORD: ${DB_PASSWORD}
-      ENV: ${ENV}
+      DB_PASSWORD: {{ current.env.db_password }}
+      ENV: {{ env }}
     networks:
       - app-network
 
@@ -40,16 +40,16 @@ services:
   app:
     image: my-app
     environment:
-      ENV: ${ENV}                        # Injecté automatiquement
-      VERSION: ${VERSION}                # Injecté automatiquement
-      DB_HOST: ${DB_HOST}                # Depuis servers.yml ou les secrets CI
-      SECRET_KEY: ${SECRET_KEY}          # Depuis servers.yml ou les secrets CI
+      ENV: {{ env }}                              # Toujours dans le contexte
+      VERSION: {{ version }}                      # Toujours dans le contexte
+      DB_HOST: {{ current.env.db_host }}                # Depuis servers.yml ou les secrets CI
+      SECRET_KEY: {{ current.env.secret_key }}          # Depuis servers.yml ou les secrets CI
     ports:
-      - "${APP_PORT:-3000}:3000"         # Avec valeur par défaut
+      - "{{ current.env.app_port | default('3000') }}:3000"         # Avec valeur par défaut
 ```
 
 <Callout type="info">
-  `${ENV}` et `${VERSION}` sont toujours disponibles — Dockflow les injecte automatiquement pendant le déploiement.
+  `{{ env }}` et `{{ version }}` sont toujours disponibles — Dockflow les injecte automatiquement pendant le déploiement.
 </Callout>
 
 ## Tagging automatique des images
@@ -255,8 +255,8 @@ services:
       context: ../..
       dockerfile: Dockerfile.backend
     environment:
-      DB_HOST: ${DB_HOST}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: {{ current.env.db_host }}
+      DB_PASSWORD: {{ current.env.db_password }}
       REDIS_URL: redis://redis:6379
     networks:
       - frontend

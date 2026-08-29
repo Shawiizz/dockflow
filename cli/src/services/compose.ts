@@ -14,6 +14,7 @@ import { join, relative, dirname } from 'path';
 import { walkDir } from '../utils/fs';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import nunjucks from 'nunjucks';
+import { findShellPlaceholders, describeShellPlaceholders } from './compose-lint';
 import type { DockflowConfig, ProxyConfig } from '../utils/config';
 import { getProjectRoot, getComposePath, getLayout } from '../utils/config';
 import { printDebug, printWarning } from '../utils/output';
@@ -289,6 +290,18 @@ export function renderAndResolveCompose(
 
   const composeRelPath = relative(projectRoot, originalComposePath).replace(/\\/g, '/');
   const composeContent = rendered.get(composeRelPath);
+
+  if (composeContent) {
+    // Warn rather than fail: an already-working deployment must not be blocked by this.
+    const declaredKeys = Object.keys(
+      (templateContext?.current as { env?: Record<string, string> } | undefined)?.env ?? {},
+    );
+    for (const line of describeShellPlaceholders(
+      findShellPlaceholders(composeContent, declaredKeys),
+    )) {
+      printWarning(`${composeRelPath} ${line}`);
+    }
+  }
   if (!composeContent) {
     throw new ConfigError(
       'Compose file not found in rendered templates',

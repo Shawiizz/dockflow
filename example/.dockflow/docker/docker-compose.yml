@@ -5,10 +5,10 @@ services:
       context: ../..
       dockerfile: Dockerfile.app
     environment:
-      ENV: ${ENV}
+      ENV: {{ env }}
     restart: always
     ports:
-      - "${APP_EXTERNAL_PORT}:3000"
+      - "{{ current.env.app_external_port }}:3000"
     # Uncomment the deploy section below to enable Docker Swarm mode
     # When registry is enabled in config.yml, images will be pushed to the registry
     # and pulled from there during swarm deployment
