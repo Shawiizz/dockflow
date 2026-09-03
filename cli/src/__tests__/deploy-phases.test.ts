@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   filterUploads,
   resolveFileDestPath,
+  uploadOwnedDir,
   fileBackupPath,
   dirBackupPath,
   runWithConcurrency,
@@ -104,5 +105,27 @@ describe('runWithConcurrency', () => {
 
   it('handles empty task list', async () => {
     await expect(runWithConcurrency([], 4)).resolves.toBeUndefined();
+  });
+});
+
+describe('uploadOwnedDir', () => {
+  it('file destination → the directory holding it', () => {
+    expect(uploadOwnedDir('/var/lib/app/seed/data.sql', false)).toBe('/var/lib/app/seed');
+  });
+
+  it('directory upload → the destination itself', () => {
+    expect(uploadOwnedDir('/etc/nginx/conf.d', true)).toBe('/etc/nginx/conf.d');
+  });
+
+  it('trailing slash means a directory even for a single file', () => {
+    expect(uploadOwnedDir('/etc/nginx/conf.d/', false)).toBe('/etc/nginx/conf.d');
+  });
+
+  it('strips the trailing slash of a directory upload', () => {
+    expect(uploadOwnedDir('/srv/app/', true)).toBe('/srv/app');
+  });
+
+  it('file at the filesystem root', () => {
+    expect(uploadOwnedDir('/motd', false)).toBe('/');
   });
 });

@@ -102,6 +102,18 @@ export function resolveFileDestPath(dest: string, srcBasename: string): string {
   return dest.endsWith('/') ? `${dest.replace(/\/$/, '')}/${srcBasename}` : dest;
 }
 
+/**
+ * Directory the deploy user must own for an upload to succeed.
+ *
+ * Files are written with `cat > path`, which needs write access on the containing
+ * directory rather than on the file itself. A directory upload owns its destination
+ * outright; a file upload owns the directory holding it.
+ */
+export function uploadOwnedDir(dest: string, isDirUpload: boolean): string {
+  const clean = dest.replace(/\/$/, '');
+  return isDirUpload || dest.endsWith('/') ? clean : dirname(clean);
+}
+
 /** Backup location of a single file inside the per-deploy backup dir. */
 export function fileBackupPath(backupBaseDir: string, destPath: string): string {
   return `${backupBaseDir}/${destPath.replace(/^\//, '')}`;
@@ -205,14 +217,13 @@ export async function checkUploadPermissions(ctx: DeployContext): Promise<void> 
 
   if (failures.length > 0) {
     const user = ctx.cluster.manager.connection.user;
-    const destList = filtered.map(u => {
-      const dest = u.dest.replace(/\/$/, '');
+    const commands = filtered.map(u => {
       const srcAbs = resolve(ctx.projectRoot, u.src);
       const isDir = existsSync(srcAbs) && statSync(srcAbs).isDirectory();
-      return isDir
-        ? `  mkdir -p '${dest}' && chown -R ${user}: '${dest}'`
-        : `  touch '${dest}' && chown ${user}: '${dest}'`;
-    }).join('\n');
+      const owned = uploadOwnedDir(u.dest, isDir);
+      return `  mkdir -p '${owned}' && chown ${isDir ? '-R ' : ''}${user}: '${owned}'`;
+    });
+    const destList = [...new Set(commands)].join('\n');
     throw new DeployError(
       `Upload permission check failed:\n${failures.join('\n')}`,
       ErrorCode.DEPLOY_FAILED,
