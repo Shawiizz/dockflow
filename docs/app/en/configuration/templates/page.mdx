@@ -20,7 +20,7 @@ services:
 
 ## Nginx Templates
 
-Files placed in `.dockflow/templates/nginx/` are treated as nginx configurations and automatically deployed to `/etc/nginx/sites-enabled/` on the server after each successful deployment. The filename is used verbatim — name the file exactly as nginx should see it.
+Files placed in `.dockflow/templates/nginx/` are treated as nginx configurations and automatically deployed to `/etc/nginx/sites-enabled/` on the server. The filename is used verbatim — name the file exactly as nginx should see it.
 
 ```
 .dockflow/templates/nginx/
@@ -28,6 +28,13 @@ Files placed in `.dockflow/templates/nginx/` are treated as nginx configurations
 ```
 
 After uploading, Dockflow runs `nginx -t` to validate the configuration. If the test fails, the previous configuration is automatically restored and a warning is logged. On success, nginx is reloaded with `nginx -s reload`.
+
+<Callout type="warning">
+  Nginx templates are installed after the stack is deployed but **before** the post-deployment
+  health checks run, and they are not reverted when a deployment rolls back. The `nginx -t`
+  rollback above only covers an invalid configuration. If health checks fail and the stack is
+  rolled back to the previous release, the new vhost stays live — restore it manually.
+</Callout>
 
 <Callout type="warning">
 Nginx templates are currently deployed to the **active manager node only**. In a multi-manager setup where all managers are publicly exposed, each manager would need its nginx config updated independently. A smarter multi-node nginx deployment mechanism may be introduced in the future.
@@ -63,8 +70,7 @@ templates:
 |----------|-------------|--------|
 | `{{ env }}` | Target environment | `production` |
 | `{{ version }}` | Deployment version | `1.2.3` |
-| `{{ branch_name }}` | Git branch name | `main` |
-| `{{ server_name }}` | Current server name | `manager_1` |
+| `{{ branch }}` | Git branch name | `main` |
 | `{{ config.project_name }}` | Project name from config | `my-app` |
 
 ### Current Server (`{{ current }}`)

@@ -130,10 +130,12 @@ Upload permission check failed:
   main_server:
     .dockflow/services/myapp.service: cannot create /etc/systemd/system/myapp.service (nearest existing parent: /etc/systemd/system)
 → Run once on each failing server as root:
-  touch '/etc/systemd/system/myapp.service' && chown dockflow: '/etc/systemd/system/myapp.service'
+  mkdir -p '/etc/systemd/system' && chown dockflow: '/etc/systemd/system'
 ```
 
-For directories:
+The command targets the **directory**, not the file: uploads write with `cat > path`, which
+needs write access on the directory that contains the file. For a directory upload, the
+destination itself is the target:
 
 ```
   mkdir -p '/opt/dockflow/mqtt' && chown -R dockflow: '/opt/dockflow/mqtt'

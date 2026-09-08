@@ -31,7 +31,7 @@ export default function Page() {
           </p>
 
           <div className="flex justify-center gap-3 mt-8 flex-wrap">
-            <Link href="/fr/getting-started" className="inline-flex items-center gap-2 px-7 py-3 rounded-[10px] bg-neutral-900 dark:bg-neutral-50 text-neutral-50 dark:text-neutral-950 text-[15px] font-semibold no-underline transition-all duration-200 hover:bg-neutral-800 dark:hover:bg-white hover:shadow-lg hover:shadow-neutral-900/10 dark:hover:shadow-white/10 hover:scale-[1.02]">
+            <Link href="/en/getting-started" className="inline-flex items-center gap-2 px-7 py-3 rounded-[10px] bg-neutral-900 dark:bg-neutral-50 text-neutral-50 dark:text-neutral-950 text-[15px] font-semibold no-underline transition-all duration-200 hover:bg-neutral-800 dark:hover:bg-white hover:shadow-lg hover:shadow-neutral-900/10 dark:hover:shadow-white/10 hover:scale-[1.02]">
               Commencer
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
             </Link>
@@ -193,7 +193,7 @@ export default function Page() {
         <p className="text-neutral-500 dark:text-neutral-400 text-[15px] mt-2.5">
           Votre premier déploiement en moins de 5 minutes.
         </p>
-        <Link href="/fr/getting-started" className="inline-flex items-center gap-2 mt-7 px-7 py-3 rounded-[10px] bg-neutral-900 dark:bg-neutral-50 text-neutral-50 dark:text-neutral-950 text-[15px] font-semibold no-underline transition-all duration-200 hover:bg-neutral-800 dark:hover:bg-white hover:shadow-lg hover:shadow-neutral-900/10 dark:hover:shadow-white/10 hover:scale-[1.02]">
+        <Link href="/en/getting-started" className="inline-flex items-center gap-2 mt-7 px-7 py-3 rounded-[10px] bg-neutral-900 dark:bg-neutral-50 text-neutral-50 dark:text-neutral-950 text-[15px] font-semibold no-underline transition-all duration-200 hover:bg-neutral-800 dark:hover:bg-white hover:shadow-lg hover:shadow-neutral-900/10 dark:hover:shadow-white/10 hover:scale-[1.02]">
           Commencer
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
         </Link>

@@ -61,6 +61,14 @@ volumes:
   Environment variables can be accessed using template syntax: `{{ variable_name }}`
 </Callout>
 
+<Callout type="warning">
+  Accessory images are always **pulled**, never built. Build targets are collected from
+  `docker-compose.yml` only, so a `build:` section in `accessories.yml` is ignored and the
+  image named by `image:` is used as-is. To ship a file into an accessory, use
+  [File Uploads](/en/configuration/upload) and bind-mount it — uploads complete before any
+  accessory starts, so the file is in place when the container comes up.
+</Callout>
+
 ## Automatic Deploy Configuration
 
 Dockflow automatically injects a minimal deploy configuration for each accessory service:

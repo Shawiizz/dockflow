@@ -12,12 +12,7 @@ const inter = Inter({
   variable: '--font-inter'
 })
 
-const i18n = [
-  { locale: 'en', name: 'English' },
-  { locale: 'fr', name: 'Français' }
-]
-
-const LOCALES = new Set(i18n.map((l) => l.locale))
+const LOCALES = new Set(['en', 'fr'])
 
 /**
  * `getPageMap(route)` can return the full tree (both locale folders) instead of
@@ -68,7 +63,6 @@ export function DocsLayout({ lang, pageMap: rawPageMap, banner, footer, children
           docsRepositoryBase="https://github.com/Shawiizz/dockflow/tree/main/docs"
           footer={footer}
           sidebar={{ defaultMenuCollapseLevel: 1 }}
-          i18n={i18n}
         >
           {children}
         </NextraLayout>

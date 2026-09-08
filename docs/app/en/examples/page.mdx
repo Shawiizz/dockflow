@@ -160,7 +160,7 @@ services:
       REDIS_URL: {{ current.env.redis_url }}
     networks:
       - frontend
-      - backend
+      - accessories
     deploy:
       replicas: 2
     healthcheck:
@@ -171,8 +171,18 @@ services:
 
 networks:
   frontend:
-  backend:
+  accessories:
+    external: true
+    name: my-stack-production-accessories_default
 ```
+
+<Callout type="warning">
+  The app and its accessories are **two separate stacks**, and Swarm prefixes every non-external
+  network with its own stack name. Declaring a `backend:` network in both files would create
+  `my-stack-production_backend` and `my-stack-production-accessories_backend` — two different
+  overlays, and `postgres` would not resolve. The app must join the accessories stack's network
+  explicitly, as `external`.
+</Callout>
 
 ### accessories.yml
 
@@ -185,20 +195,16 @@ services:
       POSTGRES_DB: myapp
     volumes:
       - pgdata:/var/lib/postgresql/data
-    networks:
-      - backend
 
   redis:
     image: redis:8-alpine
-    networks:
-      - backend
 
 volumes:
   pgdata:
-
-networks:
-  backend:
 ```
+
+Both accessories sit on the stack's implicit `default` network, which Swarm names
+`my-stack-production-accessories_default` — the network the app joins above.
 
 ### Deploy
 
