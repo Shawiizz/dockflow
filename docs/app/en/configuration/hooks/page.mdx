@@ -1,6 +1,6 @@
 # Hooks
 
-import { Callout, FileTree } from 'nextra/components'
+import { Callout } from 'nextra/components'
 
 Hooks allow you to run custom scripts at specific points during deployment.
 
@@ -23,40 +23,59 @@ Hooks allow you to run custom scripts at specific points during deployment.
   Local hooks run through bash. On Windows, dockflow automatically uses Git Bash when installed (the System32 WSL `bash.exe` stub is never used) — install [Git for Windows](https://git-scm.com/download/win) to run local hooks.
 </Callout>
 
-## File-based hooks
+## Entries
 
-Create shell scripts in `.dockflow/hooks/`:
-
-<FileTree>
-  <FileTree.Folder name=".dockflow" defaultOpen>
-    <FileTree.Folder name="hooks" defaultOpen>
-      <FileTree.File name="pre-build.sh" />
-      <FileTree.File name="post-build.sh" />
-      <FileTree.File name="pre-upload.sh" />
-      <FileTree.File name="post-upload.sh" />
-      <FileTree.File name="pre-deploy.sh" />
-      <FileTree.File name="post-deploy.sh" />
-    </FileTree.Folder>
-  </FileTree.Folder>
-</FileTree>
-
-All hooks are optional. If a hook file doesn't exist, it is skipped.
-
-## Inline hooks
-
-For simple commands, define them directly in `.dockflow/config.yml` instead of creating a separate script:
+Each phase holds a list of entries, run in the order they are declared. An entry is either a
+command to run or a script to execute:
 
 ```yaml
 # .dockflow/config.yml
 hooks:
-  post-deploy: systemctl reload nginx
-
-  pre-build:
-    - echo "Building {{ config.project_name }} {{ version }}"
-    - docker pull base-image:latest
+  post-upload:
+    - name: nginx
+      run: sudo nginx -t && sudo nginx -s reload
+      fatal: true
+      timeout: 30
+    - script: .dockflow/hooks/warm-cache.sh
+    - echo "done"
 ```
 
-When both a file and inline commands are defined for the same phase, the file runs first, then the inline commands.
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Label shown in the deploy output. Defaults to the script path, or `#1`, `#2`… |
+| `run` | string | Inline command |
+| `script` | string | Script path, relative to the project root |
+| `fatal` | boolean | Abort the deploy if this entry fails. Defaults to `hooks.fatal` |
+| `timeout` | number | Timeout in seconds for this entry. Defaults to `hooks.timeout` |
+
+An entry needs exactly one of `run` or `script`. A bare string is shorthand for `run`.
+
+<Callout type="info">
+  Scripts are ordinary files anywhere in the project — `.dockflow/hooks/` is a convention, not a
+  requirement, and a phase can run several of them.
+</Callout>
+
+## Per-entry fatality
+
+`hooks.fatal` sets the default, and any entry can override it. That lets one critical entry
+abort the deploy while its neighbours in the same phase only warn:
+
+```yaml
+hooks:
+  fatal: false
+  post-upload:
+    - name: nginx
+      run: sudo nginx -t && sudo nginx -s reload
+      fatal: true                 # an invalid vhost fails the deploy
+    - name: notify
+      run: curl -s https://hooks.example.com/deployed
+```
+
+Because uploads are rolled back when a deploy fails, an aborted `post-upload` also restores the
+previous version of every file it had just uploaded.
+
+`timeout` works the same way — a config reload wants a few seconds, a database migration may
+need the full default of 300.
 
 ## Templating
 
@@ -118,8 +137,20 @@ pg_dump $DATABASE_URL > /backups/pre-deploy-{{ version }}.sql
 # .dockflow/config.yml
 hooks:
   post-deploy:
-    - systemctl daemon-reload
-    - systemctl restart rclone-s3.service
+    - sudo systemctl daemon-reload
+    - sudo systemctl restart rclone-s3.service
+```
+
+### Declaring a script
+
+Scripts are referenced explicitly, so a phase can run more than one:
+
+```yaml
+# .dockflow/config.yml
+hooks:
+  pre-build:
+    - script: .dockflow/hooks/pre-build.sh
+    - script: scripts/generate-assets.sh
 ```
 
 ### Post-deploy: Notify team
@@ -138,41 +169,33 @@ curl -X POST "https://hooks.slack.com/services/xxx" \
 # .dockflow/config.yml
 hooks:
   enabled: true    # Enable/disable all hooks (default: true)
-  timeout: 300     # Timeout per hook in seconds (default: 300)
-  fatal: false     # Abort deploy on hook failure (default: false)
+  timeout: 300     # Default timeout per entry, in seconds (default: 300)
+  fatal: false     # Default fatality per entry (default: false)
 
-  pre-build: echo "starting build"
+  pre-build:
+    - echo "starting build"
   post-deploy:
-    - systemctl daemon-reload
-    - systemctl restart myservice
+    - sudo systemctl daemon-reload
+    - name: restart
+      run: sudo systemctl restart myservice
+      fatal: true
 ```
 
 | Field | Type | Description | Default |
 |-------|------|-------------|---------|
 | `enabled` | boolean | Enable or disable all hooks | `true` |
-| `timeout` | number | Max execution time per hook, in seconds | `300` |
-| `fatal` | boolean \| string[] | Abort the deploy when a hook exits with a non-zero code. A boolean covers every hook; a list of phase names makes only those fatal | `false` |
-| `pre-build` | string \| string[] | Inline command(s) for the pre-build phase | — |
-| `post-build` | string \| string[] | Inline command(s) for the post-build phase | — |
-| `pre-upload` | string \| string[] | Inline command(s) to run on the server before files are uploaded | — |
-| `post-upload` | string \| string[] | Inline command(s) to run on the server after files are uploaded | — |
-| `pre-deploy` | string \| string[] | Inline command(s) for the pre-deploy phase | — |
-| `post-deploy` | string \| string[] | Inline command(s) for the post-deploy phase | — |
+| `timeout` | number | Default timeout per entry, in seconds | `300` |
+| `fatal` | boolean | Default fatality per entry | `false` |
+| `pre-build` | entry[] | Entries to run before building images | — |
+| `post-build` | entry[] | Entries to run after building images | — |
+| `pre-upload` | entry[] | Entries to run on the server before files are uploaded | — |
+| `post-upload` | entry[] | Entries to run on the server after files are uploaded | — |
+| `pre-deploy` | entry[] | Entries to run on the server before the stack is deployed | — |
+| `post-deploy` | entry[] | Entries to run on the server after a successful deployment | — |
 
-By default, hook failures print a warning and let the deploy continue. Set `fatal: true` to treat a non-zero exit code as a deploy error — useful for hooks that run critical operations like database migrations.
-
-`fatal` also accepts a list of phases, so one critical hook can abort the deploy without turning every other hook into a deploy blocker:
-
-```yaml
-# .dockflow/config.yml
-hooks:
-  fatal: [post-upload]           # only this phase aborts
-  post-upload: nginx -t && nginx -s reload
-  post-deploy: curl -s https://hooks.example.com/notify || true
-```
-
-Here an invalid nginx configuration fails the deploy — and because uploads are rolled back when a deploy fails, the previous configuration is restored — while a webhook that cannot be reached stays a warning.
+See [Entries](#entries) for the fields an entry accepts.
 
 <Callout type="warning">
-  With `fatal: false` (the default), a failing hook does **not** abort the deploy. If your hook runs a critical operation (e.g. a migration), make that phase fatal.
+  With the default `fatal: false`, a failing hook does **not** abort the deploy. If an entry runs
+  a critical operation — a migration, a config reload — set `fatal: true` on that entry.
 </Callout>

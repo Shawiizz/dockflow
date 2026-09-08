@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { join } from 'path';
-import { windowsBashCandidates, isWslStubPath, isFatalPhase, type HookPhase } from '../services/hook';
+import { windowsBashCandidates, isWslStubPath, resolveHookEntries } from '../services/hook';
+import type { HookPhase } from '../utils/config';
 
 describe('windowsBashCandidates', () => {
   it('derives Git Bash locations from ProgramFiles variables', () => {
@@ -49,34 +50,59 @@ describe('HookPhase type', () => {
   });
 });
 
-describe('isFatalPhase', () => {
-  it('undefined keeps hooks non-fatal', () => {
-    expect(isFatalPhase(undefined, 'post-deploy')).toBe(false);
+describe('resolveHookEntries', () => {
+  it('no entries at all', () => {
+    expect(resolveHookEntries(undefined)).toEqual([]);
+    expect(resolveHookEntries([])).toEqual([]);
   });
 
-  it('a boolean applies to every phase', () => {
-    expect(isFatalPhase(true, 'pre-build')).toBe(true);
-    expect(isFatalPhase(true, 'post-deploy')).toBe(true);
-    expect(isFatalPhase(false, 'pre-build')).toBe(false);
+  it('a bare string is an inline command', () => {
+    const [entry] = resolveHookEntries(['echo hi']);
+
+    expect(entry.kind).toBe('run');
+    expect(entry.value).toBe('echo hi');
+    expect(entry.label).toBe('#1');
   });
 
-  it('a list makes only the named phases fatal', () => {
-    const fatal: HookPhase[] = ['post-upload'];
+  it('phase defaults apply when an entry says nothing', () => {
+    const [entry] = resolveHookEntries(['echo hi'], { fatal: true, timeout: 42 });
 
-    expect(isFatalPhase(fatal, 'post-upload')).toBe(true);
-    expect(isFatalPhase(fatal, 'post-deploy')).toBe(false);
-    expect(isFatalPhase(fatal, 'pre-build')).toBe(false);
+    expect(entry.fatal).toBe(true);
+    expect(entry.timeoutS).toBe(42);
   });
 
-  it('an empty list is equivalent to false', () => {
-    expect(isFatalPhase([], 'post-upload')).toBe(false);
+  it('an entry overrides the phase defaults', () => {
+    const [strict, lax] = resolveHookEntries(
+      [{ run: 'nginx -t', fatal: true, timeout: 10 }, { run: 'notify' }],
+      { fatal: false, timeout: 300 },
+    );
+
+    expect(strict.fatal).toBe(true);
+    expect(strict.timeoutS).toBe(10);
+    expect(lax.fatal).toBe(false);
+    expect(lax.timeoutS).toBe(300);
   });
 
-  it('several phases can be fatal at once', () => {
-    const fatal: HookPhase[] = ['pre-deploy', 'post-upload'];
+  it('falls back to 300s when nothing sets a timeout', () => {
+    expect(resolveHookEntries(['echo hi'])[0].timeoutS).toBe(300);
+  });
 
-    expect(isFatalPhase(fatal, 'pre-deploy')).toBe(true);
-    expect(isFatalPhase(fatal, 'post-upload')).toBe(true);
-    expect(isFatalPhase(fatal, 'pre-upload')).toBe(false);
+  it('a script entry keeps its path and labels itself with it', () => {
+    const [entry] = resolveHookEntries([{ script: '.dockflow/hooks/migrate.sh' }]);
+
+    expect(entry.kind).toBe('script');
+    expect(entry.value).toBe('.dockflow/hooks/migrate.sh');
+    expect(entry.label).toBe('.dockflow/hooks/migrate.sh');
+  });
+
+  it('name wins over the generated label', () => {
+    expect(resolveHookEntries([{ name: 'nginx', run: 'nginx -t' }])[0].label).toBe('nginx');
+  });
+
+  it('several scripts can share one phase, in order', () => {
+    const entries = resolveHookEntries([{ script: 'a.sh' }, { script: 'b.sh' }, 'echo done']);
+
+    expect(entries.map((e) => e.value)).toEqual(['a.sh', 'b.sh', 'echo done']);
+    expect(entries.map((e) => e.kind)).toEqual(['script', 'script', 'run']);
   });
 });

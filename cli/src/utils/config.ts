@@ -61,25 +61,48 @@ export interface HealthCheckConfig {
   endpoints?: HealthCheckEndpoint[];
 }
 
-export type HookPhase =
-  | 'pre-build'
-  | 'post-build'
-  | 'pre-upload'
-  | 'post-upload'
-  | 'pre-deploy'
-  | 'post-deploy';
+export const HOOK_PHASES = [
+  'pre-build',
+  'post-build',
+  'pre-upload',
+  'post-upload',
+  'pre-deploy',
+  'post-deploy',
+] as const;
+
+export type HookPhase = (typeof HOOK_PHASES)[number];
+
+/**
+ * One thing a phase runs. `run` is an inline command, `script` a file path
+ * relative to the project root — exactly one of the two.
+ *
+ * `fatal` and `timeout` fall back to the values on HooksConfig when omitted,
+ * so a single critical entry can abort the deploy while its neighbours only warn.
+ */
+export interface HookEntry {
+  /** Shown in the deploy output; defaults to the script path or the entry index. */
+  name?: string;
+  run?: string;
+  script?: string;
+  fatal?: boolean;
+  timeout?: number;
+}
+
+/** A bare string is shorthand for `{ run: <string> }`. */
+export type HookEntryInput = string | HookEntry;
 
 export interface HooksConfig {
   enabled?: boolean;
+  /** Default timeout, in seconds, for entries that do not set their own. */
   timeout?: number;
-  /** true/false for every hook, or the list of phases that abort the deploy. */
-  fatal?: boolean | HookPhase[];
-  'pre-build'?: string | string[];
-  'post-build'?: string | string[];
-  'pre-upload'?: string | string[];
-  'post-upload'?: string | string[];
-  'pre-deploy'?: string | string[];
-  'post-deploy'?: string | string[];
+  /** Default fatality for entries that do not set their own. */
+  fatal?: boolean;
+  'pre-build'?: HookEntryInput[];
+  'post-build'?: HookEntryInput[];
+  'pre-upload'?: HookEntryInput[];
+  'post-upload'?: HookEntryInput[];
+  'pre-deploy'?: HookEntryInput[];
+  'post-deploy'?: HookEntryInput[];
 }
 
 export interface StackManagementConfig {

@@ -12,6 +12,7 @@ import {
   getLayout,
 } from '../utils/config';
 import { getAvailableEnvironments, getServerNamesForEnvironment } from '../utils/servers';
+import { HOOK_PHASES } from '../utils/config';
 import { printSection, printError, printSuccess, printWarning, printDim, printSeparator, printBlank, printJSON, printRaw, colors } from '../utils/output';
 import { withErrorHandler, ValidationError } from '../utils/errors';
 import {
@@ -188,10 +189,9 @@ export function registerConfigCommand(program: Command): void {
 
         if (config.hooks?.enabled !== false) {
           const hooks = [];
-          if (config.hooks?.['pre-build']) hooks.push('pre-build');
-          if (config.hooks?.['post-build']) hooks.push('post-build');
-          if (config.hooks?.['pre-deploy']) hooks.push('pre-deploy');
-          if (config.hooks?.['post-deploy']) hooks.push('post-deploy');
+          for (const phase of HOOK_PHASES) {
+            if (config.hooks?.[phase]?.length) hooks.push(phase);
+          }
           if (hooks.length > 0) {
             printRaw(`  ${colors.dim('Hooks:')}        ${hooks.join(', ')}`);
           }

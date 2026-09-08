@@ -21,8 +21,8 @@ import type { SSHKeyConnection } from '../types';
 import { sshExec, shellEscape } from '../utils/ssh';
 import { printDebug, printDim, printRaw, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
-import type { DockflowConfig, HookPhase } from '../utils/config';
-import { DOCKFLOW_HOOKS_DIR, DOCKFLOW_STACKS_DIR } from '../constants';
+import type { DockflowConfig, HookEntry, HookEntryInput, HookPhase } from '../utils/config';
+import { DOCKFLOW_STACKS_DIR } from '../constants';
 import type { RenderedFiles } from './compose';
 
 export type { HookPhase };
@@ -34,20 +34,44 @@ export interface HookRemoteContext {
 
 const DEFAULT_HOOK_TIMEOUT_S = 300;
 
-/**
- * Whether a failure in this phase aborts the deploy.
- *
- * `fatal` is either a boolean covering every hook, or the list of phases that
- * abort — so a single critical hook can fail the deploy without turning every
- * other hook into a deploy blocker.
- */
-export function isFatalPhase(fatal: boolean | HookPhase[] | undefined, phase: HookPhase): boolean {
-  if (Array.isArray(fatal)) return fatal.includes(phase);
-  return fatal ?? false;
+/** A phase entry with its defaults applied, ready to run. */
+export interface ResolvedHookEntry {
+  /** Label for the deploy output. */
+  label: string;
+  kind: 'run' | 'script';
+  /** The command, or the script path relative to the project root. */
+  value: string;
+  fatal: boolean;
+  timeoutS: number;
 }
 
-function normalizeCommands(commands: string | string[]): string[] {
-  return Array.isArray(commands) ? commands : [commands];
+/**
+ * Apply the phase defaults to each entry.
+ *
+ * Entries run in declaration order, and each carries its own fatality and
+ * timeout — so a config reload that must abort the deploy can sit next to a
+ * notification that must not, in the same phase.
+ */
+export function resolveHookEntries(
+  entries: HookEntryInput[] | undefined,
+  defaults: { fatal?: boolean; timeout?: number } = {},
+): ResolvedHookEntry[] {
+  const fallbackFatal = defaults.fatal ?? false;
+  const fallbackTimeout = defaults.timeout ?? DEFAULT_HOOK_TIMEOUT_S;
+
+  return (entries ?? []).map((entry, i) => {
+    const e: HookEntry = typeof entry === 'string' ? { run: entry } : entry;
+    const kind: 'run' | 'script' = e.script !== undefined ? 'script' : 'run';
+    const value = (kind === 'script' ? e.script : e.run) ?? '';
+
+    return {
+      label: e.name ?? (kind === 'script' ? value : `#${i + 1}`),
+      kind,
+      value,
+      fatal: e.fatal ?? fallbackFatal,
+      timeoutS: e.timeout ?? fallbackTimeout,
+    };
+  });
 }
 
 // ─── Local bash resolution ────────────────────────────────────
@@ -109,7 +133,7 @@ async function execLocal(
   cwd: string,
   timeoutMs: number,
   fatal: boolean,
-  phase: HookPhase,
+  label: string,
 ): Promise<void> {
   const proc = Bun.spawn(args, {
     cwd,
@@ -141,14 +165,14 @@ async function execLocal(
   if (proc.exitCode !== 0) {
     if (fatal) {
       throw new DeployError(
-        `${phase} hook exited with code ${proc.exitCode}`,
+        `hook ${label} exited with code ${proc.exitCode}`,
         ErrorCode.DEPLOY_FAILED,
-        `Fix the hook, or drop ${phase} from hooks.fatal to treat its failures as warnings.`,
+        `Fix the hook, or set fatal: false on it to treat its failures as warnings.`,
       );
     }
-    printWarning(`${phase} hook exited with code ${proc.exitCode}`);
+    printWarning(`hook ${label} exited with code ${proc.exitCode}`);
   } else {
-    printDebug(`${phase} hook completed`);
+    printDebug(`hook ${label} completed`);
   }
 }
 
@@ -156,7 +180,7 @@ async function execRemote(
   connection: SSHKeyConnection,
   cmd: string,
   fatal: boolean,
-  phase: HookPhase,
+  label: string,
 ): Promise<void> {
   const result = await sshExec(connection, cmd);
   if (result.stdout.trim()) printRaw(result.stdout.trim());
@@ -164,28 +188,96 @@ async function execRemote(
   if (result.exitCode !== 0) {
     if (fatal) {
       throw new DeployError(
-        `Remote ${phase} hook exited with code ${result.exitCode}`,
+        `hook ${label} exited with code ${result.exitCode}`,
         ErrorCode.DEPLOY_FAILED,
-        `Fix the hook, or drop ${phase} from hooks.fatal to treat its failures as warnings.`,
+        `Fix the hook, or set fatal: false on it to treat its failures as warnings.`,
       );
     }
-    printWarning(`Remote ${phase} hook exited with code ${result.exitCode}`);
+    printWarning(`hook ${label} exited with code ${result.exitCode}`);
   } else {
-    printDebug(`Remote ${phase} hook completed`);
+    printDebug(`hook ${label} completed`);
   }
 }
 
+/** Read a script entry, preferring the Nunjucks-rendered content when there is one. */
+function readScript(entry: ResolvedHookEntry, projectRoot: string, rendered?: RenderedFiles): string {
+  const relPath = entry.value.replace(/\\/g, '/');
+  const fromRender = rendered?.get(relPath);
+  if (fromRender !== undefined) return fromRender;
+
+  const absPath = join(projectRoot, entry.value);
+  if (!existsSync(absPath)) {
+    throw new DeployError(
+      `hook script not found: ${entry.value}`,
+      ErrorCode.DEPLOY_FAILED,
+      'The path is relative to the project root. Fix it or remove the entry.',
+    );
+  }
+  return readFileSync(absPath, 'utf-8');
+}
+
+async function runScriptEntry(
+  entry: ResolvedHookEntry,
+  label: string,
+  projectRoot: string,
+  rendered: RenderedFiles | undefined,
+  remote: HookRemoteContext | undefined,
+  localBash: string,
+  stackDir: string,
+): Promise<void> {
+  const content = readScript(entry, projectRoot, rendered);
+
+  if (remote) {
+    const tmpPath = `/tmp/dockflow_hook_${Date.now()}.sh`;
+    try {
+      await sshExec(remote.connection, `printf '%s' '${shellEscape(content)}' > "${tmpPath}" && chmod +x "${tmpPath}"`);
+      await execRemote(
+        remote.connection,
+        `cd "${stackDir}" 2>/dev/null || cd /tmp; timeout ${entry.timeoutS} "${tmpPath}" 2>&1`,
+        entry.fatal,
+        label,
+      );
+    } finally {
+      await sshExec(remote.connection, `rm -f "${tmpPath}"`).catch(() => {});
+    }
+    return;
+  }
+
+  const tmpFile = join(tmpdir(), `dockflow-hook-${Date.now()}.sh`);
+  writeFileSync(tmpFile, content, { mode: 0o755 });
+  try {
+    await execLocal([localBash, tmpFile], projectRoot, entry.timeoutS * 1000, entry.fatal, label);
+  } finally {
+    try { unlinkSync(tmpFile); } catch {}
+  }
+}
+
+async function runCommandEntry(
+  entry: ResolvedHookEntry,
+  label: string,
+  projectRoot: string,
+  remote: HookRemoteContext | undefined,
+  localBash: string,
+  stackDir: string,
+): Promise<void> {
+  if (remote) {
+    await execRemote(
+      remote.connection,
+      `cd "${stackDir}" 2>/dev/null || cd /tmp; timeout ${entry.timeoutS} bash -c ${shellEscape(entry.value)} 2>&1`,
+      entry.fatal,
+      label,
+    );
+    return;
+  }
+  await execLocal([localBash, '-c', entry.value], projectRoot, entry.timeoutS * 1000, entry.fatal, label);
+}
+
 /**
- * Run the hook for a given phase.
+ * Run every entry declared for a phase, in order.
  *
- * Executes in order:
- *   1. File-based hook (.dockflow/hooks/{phase}.sh)
- *   2. Inline commands from config.yml
- *
- * Build phases (pre-build, post-build) run locally by default.
- * When remote_build: true they run on the server — pass `remote` to enable this.
- * Upload and deploy phases (pre-upload, post-upload, pre-deploy, post-deploy) always
- * run on the server; `remote` is required.
+ * Build phases (pre-build, post-build) run locally by default. When
+ * remote_build: true they run on the server — pass `remote` to enable this.
+ * Upload and deploy phases always run on the server; `remote` is required.
  */
 export async function runHook(
   phase: HookPhase,
@@ -196,24 +288,21 @@ export async function runHook(
 ): Promise<void> {
   if (config.hooks?.enabled === false) return;
 
-  const inlineCommands = config.hooks?.[phase];
-  const hookRelPath = `${DOCKFLOW_HOOKS_DIR}/${phase}.sh`;
-  const hookAbsPath = join(projectRoot, hookRelPath);
-  const hasFile = existsSync(hookAbsPath);
+  const entries = resolveHookEntries(config.hooks?.[phase], {
+    fatal: config.hooks?.fatal,
+    timeout: config.hooks?.timeout,
+  });
 
-  if (!inlineCommands && !hasFile) {
+  if (entries.length === 0) {
     printDebug(`No ${phase} hook found`);
     return;
   }
-
-  const timeoutS = config.hooks?.timeout ?? DEFAULT_HOOK_TIMEOUT_S;
-  const fatal = isFatalPhase(config.hooks?.fatal, phase);
 
   const isBuildPhase = phase === 'pre-build' || phase === 'post-build';
   const runRemotely = !isBuildPhase || config.options?.remote_build === true;
 
   if (runRemotely && !remote) {
-    printWarning(`${phase} hook skipped: no remote connection available`);
+    printWarning(`${phase} hooks skipped: no remote connection available`);
     return;
   }
 
@@ -221,11 +310,11 @@ export async function runHook(
   if (!runRemotely) {
     const resolved = resolveLocalBash();
     if (!resolved) {
-      const message = `${phase} hook skipped: no usable bash found for local hooks`;
+      const message = `${phase} hooks skipped: no usable bash found for local hooks`;
       const suggestion = process.platform === 'win32'
         ? 'Install Git for Windows (Git Bash) — the System32 WSL stub cannot run hooks without a WSL distro.'
         : 'Install bash to run local hooks.';
-      if (fatal) {
+      if (entries.some((e) => e.fatal)) {
         throw new DeployError(message, ErrorCode.DEPLOY_FAILED, suggestion);
       }
       printWarning(`${message} — ${suggestion}`);
@@ -234,72 +323,23 @@ export async function runHook(
     localBash = resolved;
   }
 
-  printDim(`Running ${phase} hook...`);
+  const target = runRemotely ? remote : undefined;
+  const stackDir = target ? `${DOCKFLOW_STACKS_DIR}/${target.stackName}/current` : '';
 
-  const stackDir = remote ? `${DOCKFLOW_STACKS_DIR}/${remote.stackName}/current` : '';
-
-  // File-based hook
-  if (hasFile) {
-    if (runRemotely && remote) {
-      const tmpPath = `/tmp/dockflow_hook_${phase}_${Date.now()}.sh`;
-      try {
-        const hookContent = rendered?.get(hookRelPath.replace(/\\/g, '/'))
-          ?? readFileSync(hookAbsPath, 'utf-8');
-        const escapedHook = shellEscape(hookContent);
-        await sshExec(remote.connection, `printf '%s' '${escapedHook}' > "${tmpPath}" && chmod +x "${tmpPath}"`);
-        await execRemote(remote.connection, `cd "${stackDir}" 2>/dev/null || cd /tmp; timeout ${timeoutS} "${tmpPath}" 2>&1`, fatal, phase);
-      } catch (error) {
-        if (error instanceof DeployError) throw error;
-        printWarning(`Remote ${phase} hook failed: ${error instanceof Error ? error.message : String(error)}`);
-      } finally {
-        await sshExec(remote.connection, `rm -f "${tmpPath}"`).catch(() => {});
+  for (const entry of entries) {
+    const label = `${phase} ${entry.label}`;
+    printDim(`Running ${label}...`);
+    try {
+      if (entry.kind === 'script') {
+        await runScriptEntry(entry, label, projectRoot, rendered, target, localBash, stackDir);
+      } else {
+        await runCommandEntry(entry, label, projectRoot, target, localBash, stackDir);
       }
-    } else {
-      const renderedContent = rendered?.get(hookRelPath.replace(/\\/g, '/'));
-      let scriptPath = hookAbsPath;
-      let tmpFile: string | undefined;
-      if (renderedContent) {
-        tmpFile = join(tmpdir(), `dockflow-hook-${phase}-${Date.now()}.sh`);
-        writeFileSync(tmpFile, renderedContent, { mode: 0o755 });
-        scriptPath = tmpFile;
-      }
-      try {
-        await execLocal([localBash, scriptPath], projectRoot, timeoutS * 1000, fatal, phase);
-      } catch (error) {
-        if (error instanceof DeployError) throw error;
-        printWarning(`${phase} hook failed: ${error instanceof Error ? error.message : String(error)}`);
-      } finally {
-        if (tmpFile) try { unlinkSync(tmpFile); } catch {}
-      }
-    }
-  }
-
-  // Inline commands from config
-  if (inlineCommands) {
-    const commands = normalizeCommands(inlineCommands);
-    if (runRemotely && remote) {
-      for (const cmd of commands) {
-        try {
-          await execRemote(
-            remote.connection,
-            `cd "${stackDir}" 2>/dev/null || cd /tmp; timeout ${timeoutS} bash -c ${shellEscape(cmd)} 2>&1`,
-            fatal,
-            phase,
-          );
-        } catch (error) {
-          if (error instanceof DeployError) throw error;
-          printWarning(`Remote ${phase} hook failed: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-    } else {
-      for (const cmd of commands) {
-        try {
-          await execLocal([localBash, '-c', cmd], projectRoot, timeoutS * 1000, fatal, phase);
-        } catch (error) {
-          if (error instanceof DeployError) throw error;
-          printWarning(`${phase} hook failed: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
+    } catch (error) {
+      if (error instanceof DeployError) throw error;
+      const message = `hook ${label} failed: ${error instanceof Error ? error.message : String(error)}`;
+      if (entry.fatal) throw new DeployError(message, ErrorCode.DEPLOY_FAILED);
+      printWarning(message);
     }
   }
 }

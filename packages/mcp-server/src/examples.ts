@@ -328,8 +328,13 @@ defaults:
 
 hooks:
   enabled: true
-  pre-build: scripts/test.sh
-  post-deploy: scripts/notify.sh`,
+  pre-build:
+    - name: tests
+      script: scripts/test.sh
+      fatal: true
+  post-deploy:
+    - name: notify
+      script: scripts/notify.sh`,
       },
       {
         path: 'scripts/test.sh',
