@@ -15,7 +15,7 @@ import { pipeline } from 'stream/promises';
 import { printDim, printWarning, formatBytes, createSpinner } from '../utils/output';
 import { walkDir } from '../utils/fs';
 import { packDirToTarGz, buildExcludeFilter } from '../utils/tar';
-import { sshExec, sshExecChannel, shellEscape } from '../utils/ssh';
+import { sshExec, sshExecChannel, shellQuote } from '../utils/ssh';
 import {
   DeployError,
   ErrorCode,
@@ -193,7 +193,7 @@ export async function checkUploadPermissions(ctx: DeployContext): Promise<void> 
     '}';
 
   const checks = filtered
-    .map(u => `check_path ${shellEscape(u.dest)} ${shellEscape(u.src)}`)
+    .map(u => `check_path ${shellQuote(u.dest)} ${shellQuote(u.src)}`)
     .join('\n');
 
   const script =
@@ -568,7 +568,7 @@ export async function ensureExternalNetworks(ctx: DeployContext): Promise<void> 
   for (const name of networks) {
     if (existing.has(name)) continue;
     printDim(`Creating overlay network: ${name}`);
-    const r = await sshExec(ctx.cluster.manager.connection, `docker network create --driver overlay --attachable ${shellEscape(name)}`);
+    const r = await sshExec(ctx.cluster.manager.connection, `docker network create --driver overlay --attachable ${shellQuote(name)}`);
     if (r.exitCode !== 0) throw new DeployError(
       `Failed to create overlay network '${name}': ${r.stderr.trim() || `exit ${r.exitCode}`}`,
       ErrorCode.DEPLOY_FAILED,

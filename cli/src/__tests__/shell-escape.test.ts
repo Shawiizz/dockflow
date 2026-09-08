@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { shellEscape } from '../utils/ssh';
+import { shellEscape, shellQuote } from '../utils/ssh';
 
 describe('shellEscape', () => {
   it('passes through values without quotes', () => {
@@ -23,5 +23,27 @@ describe('shellEscape', () => {
 
   it('leaves double quotes, backticks and dollars untouched (single-quote context)', () => {
     expect(shellEscape('a"b`c$d')).toBe('a"b`c$d');
+  });
+});
+
+describe('shellQuote', () => {
+  it('wraps the value so it stays one argument', () => {
+    expect(shellQuote('simple')).toBe("'simple'");
+  });
+
+  it('keeps shell operators inert', () => {
+    expect(shellQuote('nginx -t && nginx -s reload')).toBe("'nginx -t && nginx -s reload'");
+  });
+
+  it('survives a value containing single quotes', () => {
+    expect(shellQuote("it's")).toBe("'it'\\''s'");
+  });
+
+  it('neutralises an injection attempt', () => {
+    expect(shellQuote("'; rm -rf / #")).toBe("''\\''; rm -rf / #'");
+  });
+
+  it('a path with spaces stays one token', () => {
+    expect(shellQuote('/etc/my app/conf')).toBe("'/etc/my app/conf'");
   });
 });

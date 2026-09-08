@@ -18,7 +18,7 @@ import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import type { SSHKeyConnection } from '../types';
-import { sshExec, shellEscape } from '../utils/ssh';
+import { sshExec, shellEscape, shellQuote } from '../utils/ssh';
 import { printDebug, printDim, printRaw, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import type { DockflowConfig, HookEntry, HookEntryInput, HookPhase } from '../utils/config';
@@ -263,7 +263,7 @@ async function runCommandEntry(
   if (remote) {
     await execRemote(
       remote.connection,
-      `cd "${stackDir}" 2>/dev/null || cd /tmp; timeout ${entry.timeoutS} bash -c ${shellEscape(entry.value)} 2>&1`,
+      `cd "${stackDir}" 2>/dev/null || cd /tmp; timeout ${entry.timeoutS} bash -c ${shellQuote(entry.value)} 2>&1`,
       entry.fatal,
       label,
     );

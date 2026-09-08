@@ -4,7 +4,7 @@
  * URL. Unit-tested in __tests__/setup-forward.test.ts.
  */
 
-import { shellEscape } from '../../utils/ssh';
+import { shellQuote } from '../../utils/ssh';
 import type { SetupOptions } from './types';
 
 /**
@@ -19,7 +19,7 @@ export function buildForwardFlags(
   remote: { host: string; port: number },
 ): string[] {
   const flags: string[] = [];
-  const quote = (v: string) => `'${shellEscape(v)}'`;
+  const quote = shellQuote;
 
   if (options.skipDockerInstall) flags.push('--skip-docker-install');
   if (options.orchestrator) flags.push('--orchestrator', quote(options.orchestrator));

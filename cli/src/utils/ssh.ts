@@ -641,3 +641,14 @@ export function closeAllConnections(): void {
 export function shellEscape(value: string): string {
   return value.replace(/'/g, "'\\''");
 }
+
+/**
+ * A value as a single, fully-quoted shell token.
+ *
+ * `shellEscape` only makes a value safe *inside* single quotes — it adds none of
+ * its own, so interpolating it bare leaves every space and operator live. Reach
+ * for this whenever the value becomes one argument in a command string.
+ */
+export function shellQuote(value: string): string {
+  return `'${shellEscape(value)}'`;
+}
