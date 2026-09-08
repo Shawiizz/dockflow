@@ -7,7 +7,7 @@
 
 import type { SSHKeyConnection } from '../../../types';
 import { ok, err, type Result } from '../../../types/result';
-import { sshExec, sshExecStream, executeInteractiveSSH, shellEscape } from '../../../utils/ssh';
+import { sshExec, sshExecStream, executeInteractiveSSH, shellQuote } from '../../../utils/ssh';
 import { K3S_DOCKFLOW_KUBECONFIG, K3S_NAMESPACE_PREFIX } from '../../../constants';
 import type {
   ContainerBackend,
@@ -29,7 +29,7 @@ export class K3sContainerBackend implements ContainerBackend {
     const ns = this.ns(stackName);
     const result = await sshExec(
       this.conn,
-      `${this.kube} get pods -n ${ns} -l app=${shellEscape(serviceName)} --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null`,
+      `${this.kube} get pods -n ${ns} -l app=${shellQuote(serviceName)} --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null`,
     );
 
     const pod = result.stdout.trim().replace(/^'|'$/g, '');
@@ -124,7 +124,7 @@ export class K3sContainerBackend implements ContainerBackend {
     const ns = this.ns(stackName);
     const result = await sshExec(
       this.conn,
-      `${this.kube} cp '${shellEscape(localPath)}' ${ns}/${pod}:'${shellEscape(containerPath)}'`,
+      `${this.kube} cp ${shellQuote(localPath)} ${ns}/${pod}:${shellQuote(containerPath)}`,
     );
 
     if (result.exitCode !== 0) return err(new Error(`Failed to copy file: ${result.stderr}`));
@@ -143,7 +143,7 @@ export class K3sContainerBackend implements ContainerBackend {
     const ns = this.ns(stackName);
     const result = await sshExec(
       this.conn,
-      `${this.kube} cp ${ns}/${pod}:'${shellEscape(containerPath)}' '${shellEscape(localPath)}'`,
+      `${this.kube} cp ${ns}/${pod}:${shellQuote(containerPath)} ${shellQuote(localPath)}`,
     );
 
     if (result.exitCode !== 0) return err(new Error(`Failed to copy file: ${result.stderr}`));
@@ -204,7 +204,7 @@ export class K3sContainerBackend implements ContainerBackend {
       const envParts: string[] = [];
       if (options.env) {
         for (const [key, value] of Object.entries(options.env)) {
-          envParts.push(`${key}='${shellEscape(value)}'`);
+          envParts.push(`${key}=${shellQuote(value)}`);
         }
       }
 
@@ -212,13 +212,13 @@ export class K3sContainerBackend implements ContainerBackend {
       let wrapped = '';
 
       if (options.env) wrapped += envParts.join(' ') + ' ';
-      if (options.workdir) wrapped += `cd '${shellEscape(options.workdir)}' && `;
+      if (options.workdir) wrapped += `cd ${shellQuote(options.workdir)} && `;
       wrapped += cmdStr;
 
       if (options.user) {
-        parts.push('su', '-', options.user, '-c', `'${shellEscape(wrapped)}'`);
+        parts.push('su', '-', options.user, '-c', shellQuote(wrapped));
       } else {
-        parts.push('sh', '-c', `'${shellEscape(wrapped)}'`);
+        parts.push('sh', '-c', shellQuote(wrapped));
       }
     } else {
       if (Array.isArray(command)) {

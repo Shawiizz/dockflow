@@ -18,7 +18,7 @@ import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import type { SSHKeyConnection } from '../types';
-import { sshExec, shellEscape, shellQuote } from '../utils/ssh';
+import { sshExec, shellQuote } from '../utils/ssh';
 import { printDebug, printDim, printRaw, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import type { DockflowConfig, HookEntry, HookEntryInput, HookPhase } from '../utils/config';
@@ -230,7 +230,7 @@ async function runScriptEntry(
   if (remote) {
     const tmpPath = `/tmp/dockflow_hook_${Date.now()}.sh`;
     try {
-      await sshExec(remote.connection, `printf '%s' '${shellEscape(content)}' > "${tmpPath}" && chmod +x "${tmpPath}"`);
+      await sshExec(remote.connection, `printf '%s' ${shellQuote(content)} > "${tmpPath}" && chmod +x "${tmpPath}"`);
       await execRemote(
         remote.connection,
         `cd "${stackDir}" 2>/dev/null || cd /tmp; timeout ${entry.timeoutS} "${tmpPath}" 2>&1`,

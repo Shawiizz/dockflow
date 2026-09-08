@@ -10,8 +10,7 @@ import { resolve, join, relative } from 'path';
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { parse as parseYaml } from 'yaml';
 import type { SSHKeyConnection } from '../types';
-import { sshExec } from '../utils/ssh';
-import { shellEscape } from '../utils/ssh';
+import { sshExec, shellQuote } from '../utils/ssh';
 import { printDim, printRaw, printSuccess, printWarning, createTaskLog } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import { createTar, type TarEntry } from '../utils/tar';
@@ -356,8 +355,8 @@ function buildGitAuthEnv(): string {
     ? `PRIVATE-TOKEN: ${token}`
     : `Authorization: Bearer ${token}`;
 
-  const eHeader = shellEscape(header);
-  return `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0='http.extraHeader' GIT_CONFIG_VALUE_0='${eHeader}' `;
+  const qHeader = shellQuote(header);
+  return `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0='http.extraHeader' GIT_CONFIG_VALUE_0=${qHeader} `;
 }
 
 /**
@@ -410,14 +409,14 @@ export async function buildRemote(
     }
 
     const authEnv = buildGitAuthEnv();
-    const eBranch = shellEscape(params.branch);
-    const eRepoUrl = shellEscape(repoUrl);
-    const eTmpDir = shellEscape(tmpDir);
+    const qBranch = shellQuote(params.branch);
+    const qRepoUrl = shellQuote(repoUrl);
+    const qTmpDir = shellQuote(tmpDir);
 
     printDim(`Cloning repo on remote (${params.branch})...`);
     const cloneResult = await sshExec(
       connection,
-      `${authEnv}GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone --branch '${eBranch}' --single-branch '${eRepoUrl}' '${eTmpDir}' 2>&1`,
+      `${authEnv}GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone --branch ${qBranch} --single-branch ${qRepoUrl} ${qTmpDir} 2>&1`,
     );
     if (cloneResult.exitCode !== 0) {
       const output = (cloneResult.stderr.trim() || cloneResult.stdout.trim())
@@ -431,8 +430,8 @@ export async function buildRemote(
 
     // The checkout MUST succeed: building whatever the branch HEAD happens to
     // be would silently deploy different code than the version claims.
-    const eCommitSha = shellEscape(commitSha);
-    const checkoutResult = await sshExec(connection, `git -C '${eTmpDir}' checkout '${eCommitSha}' 2>&1`);
+    const qCommitSha = shellQuote(commitSha);
+    const checkoutResult = await sshExec(connection, `git -C ${qTmpDir} checkout ${qCommitSha} 2>&1`);
     if (checkoutResult.exitCode !== 0) {
       throw new DeployError(
         `Remote checkout of commit ${commitSha.slice(0, 12)} failed: ${checkoutResult.stdout.trim() || checkoutResult.stderr.trim()}`,
@@ -466,19 +465,19 @@ export async function buildRemote(
       const relContext = relative(params.projectRoot, target.context).replace(/\\/g, '/');
       const remoteContext = `${tmpDir}/${relContext}`;
 
-      const eDockerfile = shellEscape(`${remoteContext}/${relDockerfile}`);
-      const eTag = shellEscape(target.tag);
-      const eContext = shellEscape(remoteContext);
+      const qDockerfile = shellQuote(`${remoteContext}/${relDockerfile}`);
+      const qTag = shellQuote(target.tag);
+      const qContext = shellQuote(remoteContext);
 
       const remoteEngine = target.engine || 'docker';
 
       const buildArgStr = target.args
-        ? Object.entries(target.args).map(([k, v]) => `--build-arg '${shellEscape(`${k}=${v}`)}'`).join(' ')
+        ? Object.entries(target.args).map(([k, v]) => `--build-arg ${shellQuote(`${k}=${v}`)}`).join(' ')
         : '';
 
       const buildResult = await sshExec(
         connection,
-        `${remoteEngine} build${buildArgStr ? ` ${buildArgStr}` : ''} -f '${eDockerfile}' -t '${eTag}' '${eContext}' 2>&1`,
+        `${remoteEngine} build${buildArgStr ? ` ${buildArgStr}` : ''} -f ${qDockerfile} -t ${qTag} ${qContext} 2>&1`,
       );
 
       if (buildResult.exitCode !== 0) {
@@ -495,6 +494,6 @@ export async function buildRemote(
 
     return { images, durationMs: Date.now() - startTime };
   } finally {
-    await sshExec(connection, `rm -rf '${shellEscape(tmpDir)}'`).catch(() => {});
+    await sshExec(connection, `rm -rf ${shellQuote(tmpDir)}`).catch(() => {});
   }
 }

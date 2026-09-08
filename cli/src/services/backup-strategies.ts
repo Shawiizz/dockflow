@@ -7,7 +7,7 @@
  */
 
 import type { BackupDbType } from '../utils/config';
-import { shellEscape } from '../utils/ssh';
+import { shellQuote } from '../utils/ssh';
 import { DOCKFLOW_BACKUPS_DIR } from '../constants';
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -168,7 +168,7 @@ export function buildExecEnvFlags(env: Record<string, string>): string {
       if (!/^[A-Z_][A-Z0-9_]*$/i.test(k)) {
         throw new Error(`Invalid env key: ${k}`);
       }
-      return `-e ${k}='${shellEscape(v)}'`;
+      return `-e ${k}=${shellQuote(v)}`;
     })
     .join(' ');
 }
@@ -192,17 +192,17 @@ export function sanitizePathName(mountPath: string): string {
  * and non-emptiness can be verified.
  */
 export function buildArchiveCheckCommand(filePath: string, compression: 'gzip' | 'none'): string {
-  const f = shellEscape(filePath);
+  const f = shellQuote(filePath);
   if (compression === 'gzip') {
     return (
-      `if ! gunzip -t '${f}' 2>/dev/null; then echo CORRUPT; ` +
-      `elif [ "$(gunzip -c '${f}' 2>/dev/null | head -c 1 | wc -c)" -eq 0 ]; then echo EMPTY; ` +
+      `if ! gunzip -t ${f} 2>/dev/null; then echo CORRUPT; ` +
+      `elif [ "$(gunzip -c ${f} 2>/dev/null | head -c 1 | wc -c)" -eq 0 ]; then echo EMPTY; ` +
       `else echo OK; fi`
     );
   }
   return (
-    `if [ ! -f '${f}' ]; then echo CORRUPT; ` +
-    `elif [ "$(head -c 1 '${f}' 2>/dev/null | wc -c)" -eq 0 ]; then echo EMPTY; ` +
+    `if [ ! -f ${f} ]; then echo CORRUPT; ` +
+    `elif [ "$(head -c 1 ${f} 2>/dev/null | wc -c)" -eq 0 ]; then echo EMPTY; ` +
     `else echo OK; fi`
   );
 }

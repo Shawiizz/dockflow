@@ -13,7 +13,7 @@
 import type { SSHKeyConnection } from '../types';
 import type { BackupDbType, BackupAccessoryConfig } from '../utils/config';
 import { ok, err, type Result } from '../types';
-import { sshExec, sshExecChannel, shellEscape } from '../utils/ssh';
+import { sshExec, sshExecChannel, shellQuote } from '../utils/ssh';
 import { formatBytes, printDebug } from '../utils/output';
 import { findSwarmContainer } from './orchestrator/swarm/swarm-utils';
 import { SwarmStackBackend } from './orchestrator/swarm/swarm-stack';
@@ -141,7 +141,7 @@ export class Backup {
     const strategy = DB_STRATEGIES[dbType];
     const result = await sshExec(
       nodeConn,
-      `docker inspect --format '{{json .Config.Env}}' '${shellEscape(containerId)}'`
+      `docker inspect --format '{{json .Config.Env}}' ${shellQuote(containerId)}`
     );
 
     try {
@@ -179,7 +179,7 @@ export class Backup {
     // Get credentials and create backup directory in parallel (independent SSH calls)
     const [creds, mkdirResult] = await Promise.all([
       this.getContainerCredentials(containerId, dbType, nodeConn),
-      sshExec(nodeConn, `mkdir -p '${shellEscape(backupDir)}'`),
+      sshExec(nodeConn, `mkdir -p ${shellQuote(backupDir)}`),
     ]);
 
     if (mkdirResult.exitCode !== 0) {
@@ -205,20 +205,20 @@ export class Backup {
       : '';
     const envPart = execEnvFlags ? `${execEnvFlags} ` : '';
 
-    const dockerExec = `docker exec ${envPart}'${shellEscape(containerId)}' sh -c '${shellEscape(dumpCommand)}'`;
+    const dockerExec = `docker exec ${envPart}${shellQuote(containerId)} sh -c ${shellQuote(dumpCommand)}`;
     const fullCommand = compression === 'gzip'
-      ? `${dockerExec} | gzip > '${shellEscape(filePath)}'`
-      : `${dockerExec} > '${shellEscape(filePath)}'`;
+      ? `${dockerExec} | gzip > ${shellQuote(filePath)}`
+      : `${dockerExec} > ${shellQuote(filePath)}`;
 
     const result = await sshExec(nodeConn, fullCommand);
     if (result.exitCode !== 0) {
-      await sshExec(nodeConn, `rm -f '${shellEscape(filePath)}'`);
+      await sshExec(nodeConn, `rm -f ${shellQuote(filePath)}`);
       return err(new Error(`Backup failed: ${result.stderr}`));
     }
 
     const archiveIssue = await this.checkArchive(nodeConn, filePath, compression);
     if (archiveIssue) {
-      await sshExec(nodeConn, `rm -f '${shellEscape(filePath)}'`);
+      await sshExec(nodeConn, `rm -f ${shellQuote(filePath)}`);
       return err(new Error(
         `Backup verification failed: ${archiveIssue}${result.stderr.trim() ? ` (dump stderr: ${result.stderr.trim()})` : ''}`,
       ));
@@ -228,7 +228,7 @@ export class Backup {
 
     // Get file size
     const metaPath = `${backupDir}/${backupId}.meta.json`;
-    const sizeCmd = `SIZE=$(stat -c %s '${shellEscape(filePath)}' 2>/dev/null || echo 0) && echo $SIZE`;
+    const sizeCmd = `SIZE=$(stat -c %s ${shellQuote(filePath)} 2>/dev/null || echo 0) && echo $SIZE`;
     const sizeResult = await sshExec(nodeConn, sizeCmd);
     const sizeBytes = parseInt(sizeResult.stdout.trim(), 10) || 0;
 
@@ -246,7 +246,7 @@ export class Backup {
       nodePort: nodeConn.port,
     };
 
-    const { stream, done } = await sshExecChannel(nodeConn, `cat > '${shellEscape(metaPath)}'`);
+    const { stream, done } = await sshExecChannel(nodeConn, `cat > ${shellQuote(metaPath)}`);
     stream.end(JSON.stringify(metadata, null, 2));
     await done;
 
@@ -264,7 +264,7 @@ export class Backup {
   ): Promise<MountInfo[]> {
     const result = await sshExec(
       nodeConn,
-      `docker inspect --format '{{json .Mounts}}' '${shellEscape(containerId)}'`
+      `docker inspect --format '{{json .Mounts}}' ${shellQuote(containerId)}`
     );
 
     try {
@@ -291,7 +291,7 @@ export class Backup {
     const backupId = generateBackupId();
     const backupDir = this.getBackupDir(service);
 
-    const mkdirResult = await sshExec(nodeConn, `mkdir -p '${shellEscape(backupDir)}'`);
+    const mkdirResult = await sshExec(nodeConn, `mkdir -p ${shellQuote(backupDir)}`);
     if (mkdirResult.exitCode !== 0) {
       return err(new Error(`Failed to create backup directory: ${mkdirResult.stderr}`));
     }
@@ -308,12 +308,12 @@ export class Backup {
       // Named volumes: tar via temporary alpine container
       // Bind mounts: tar the host path directly
       const tarCmd = mount.mountType === 'volume'
-        ? `docker run --rm -v '${shellEscape(mount.source)}':/backup-source:ro alpine tar cf - -C /backup-source .`
-        : `tar cf - -C '${shellEscape(mount.source)}' .`;
+        ? `docker run --rm -v ${shellQuote(mount.source)}:/backup-source:ro alpine tar cf - -C /backup-source .`
+        : `tar cf - -C ${shellQuote(mount.source)} .`;
 
       const fullCommand = compression === 'gzip'
-        ? `${tarCmd} | gzip > '${shellEscape(filePath)}'`
-        : `${tarCmd} > '${shellEscape(filePath)}'`;
+        ? `${tarCmd} | gzip > ${shellQuote(filePath)}`
+        : `${tarCmd} > ${shellQuote(filePath)}`;
 
       const result = await sshExec(nodeConn, fullCommand);
       if (result.exitCode !== 0) {
@@ -327,7 +327,7 @@ export class Backup {
         return { ok: false as const, mount, error: `${archiveIssue}${result.stderr.trim() ? ` (${result.stderr.trim()})` : ''}` };
       }
 
-      const sizeCmd = `stat -c %s '${shellEscape(filePath)}' 2>/dev/null || echo 0`;
+      const sizeCmd = `stat -c %s ${shellQuote(filePath)} 2>/dev/null || echo 0`;
       const sizeResult = await sshExec(nodeConn, sizeCmd);
       const sizeBytes = parseInt(sizeResult.stdout.trim(), 10) || 0;
       return { ok: true as const, mount, sizeBytes };
@@ -336,7 +336,7 @@ export class Backup {
     // Check for failures — clean up all files for this backup ID on any error
     const failed = backupResults.find(r => !r.ok);
     if (failed) {
-      const cleanupPaths = filePaths.map(f => `'${shellEscape(f)}'`).join(' ');
+      const cleanupPaths = filePaths.map(f => shellQuote(f)).join(' ');
       await sshExec(nodeConn, `rm -f ${cleanupPaths}`);
       return err(new Error(`Backup failed for ${failed.mount.mountType} ${failed.mount.source}: ${failed.error}`));
     }
@@ -369,7 +369,7 @@ export class Backup {
     // Extended metadata includes per-volume/bind details
     const extendedMeta = { ...metadata, volumes: volumeEntries };
     const metaPath = `${backupDir}/${backupId}.meta.json`;
-    const { stream, done } = await sshExecChannel(nodeConn, `cat > '${shellEscape(metaPath)}'`);
+    const { stream, done } = await sshExecChannel(nodeConn, `cat > ${shellQuote(metaPath)}`);
     stream.end(JSON.stringify(extendedMeta, null, 2));
     await done;
 
@@ -387,7 +387,7 @@ export class Backup {
 
     // Read metadata to get volume/bind mount names
     const metaPath = `${backupDir}/${backupId}.meta.json`;
-    const metaResult = await sshExec(nodeConn, `cat '${shellEscape(metaPath)}' 2>/dev/null`);
+    const metaResult = await sshExec(nodeConn, `cat ${shellQuote(metaPath)} 2>/dev/null`);
     if (!metaResult.stdout.trim()) {
       return err(new Error(`Backup ${backupId} not found`));
     }
@@ -435,19 +435,19 @@ export class Backup {
       let restoreCmd: string;
       if (mountType === 'bind') {
         // Bind mount: clear target and extract directly on the host
-        const src = shellEscape(entry.sourcePath);
-        restoreCmd = `find '${src}' -mindepth 1 -delete && tar xf - -C '${src}'`;
+        const src = shellQuote(entry.sourcePath);
+        restoreCmd = `find ${src} -mindepth 1 -delete && tar xf - -C ${src}`;
       } else {
         // Named volume: extract via temporary alpine container
         const fullVolumeName = existingVolumes.find(
           v => v === entry.name || v === `${this.stackName}_${entry.name}`
         ) || `${this.stackName}_${entry.name}`;
-        restoreCmd = `docker run --rm -i -v '${shellEscape(fullVolumeName)}':/backup-target alpine sh -c 'rm -rf /backup-target/* /backup-target/..?* /backup-target/.[!.]* 2>/dev/null; tar xf - -C /backup-target'`;
+        restoreCmd = `docker run --rm -i -v ${shellQuote(fullVolumeName)}:/backup-target alpine sh -c 'rm -rf /backup-target/* /backup-target/..?* /backup-target/.[!.]* 2>/dev/null; tar xf - -C /backup-target'`;
       }
 
       const fullCommand = compression === 'gzip'
-        ? `gunzip -c '${shellEscape(filePath)}' | ${restoreCmd}`
-        : `cat '${shellEscape(filePath)}' | ${restoreCmd}`;
+        ? `gunzip -c ${shellQuote(filePath)} | ${restoreCmd}`
+        : `cat ${shellQuote(filePath)} | ${restoreCmd}`;
 
       restoreTasks.push({ entry, fullCommand });
     }
@@ -486,7 +486,7 @@ export class Backup {
       const baseDir = service
         ? this.getBackupDir(service)
         : `${DOCKFLOW_BACKUPS_DIR}/${this.stackName}`;
-      const findCmd = `find '${shellEscape(baseDir)}' -name '*.meta.json' 2>/dev/null | sort -r | while IFS= read -r f; do echo '${SEP}'; cat "$f"; done`;
+      const findCmd = `find ${shellQuote(baseDir)} -name '*.meta.json' 2>/dev/null | sort -r | while IFS= read -r f; do echo '${SEP}'; cat "$f"; done`;
       const result = await sshExec(conn, findCmd);
       return result.stdout;
     }));
@@ -608,10 +608,10 @@ export class Backup {
 
     // Backup file and container are on the same node — backups are created
     // via docker exec on the container's node, so the file is always local.
-    const dockerExec = `docker exec -i ${envPart}'${shellEscape(containerId)}' sh -c '${shellEscape(restoreCommand)}'`;
+    const dockerExec = `docker exec -i ${envPart}${shellQuote(containerId)} sh -c ${shellQuote(restoreCommand)}`;
     const fullCommand = backupCompression === 'gzip'
-      ? `gunzip -c '${shellEscape(dataFile)}' | ${dockerExec}`
-      : `cat '${shellEscape(dataFile)}' | ${dockerExec}`;
+      ? `gunzip -c ${shellQuote(dataFile)} | ${dockerExec}`
+      : `cat ${shellQuote(dataFile)} | ${dockerExec}`;
 
     const strategy = dbType !== 'raw' ? DB_STRATEGIES[dbType] : null;
     const result = await sshExec(nodeConn, fullCommand);
@@ -674,11 +674,11 @@ export class Backup {
       const node = byNode.get(key)!;
       const backupDir = this.getBackupDir(entry.service);
       if (entry.dbType === 'volume') {
-        node.paths.push(`'${shellEscape(backupDir)}'/${entry.id}.*.tar*`);
+        node.paths.push(`${shellQuote(backupDir)}/${entry.id}.*.tar*`);
       } else {
-        node.paths.push(`'${shellEscape(entry.filePath)}'`);
+        node.paths.push(shellQuote(entry.filePath));
       }
-      node.paths.push(`'${shellEscape(backupDir)}/${entry.id}.meta.json'`);
+      node.paths.push(shellQuote(`${backupDir}/${entry.id}.meta.json`));
     }
 
     await Promise.all([...byNode.values()].map(({ conn, paths }) =>

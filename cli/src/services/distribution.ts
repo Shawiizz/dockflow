@@ -10,7 +10,7 @@ import type { ClientChannel } from 'ssh2';
 import { createGzip } from 'node:zlib';
 import { Readable } from 'node:stream';
 import type { SSHKeyConnection } from '../types';
-import { sshExec, sshExecChannel, shellEscape } from '../utils/ssh';
+import { sshExec, sshExecChannel, shellQuote } from '../utils/ssh';
 import { printDebug, printDim, printSuccess, printWarning, createTimedSpinner } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import { parseImageRef } from './compose';
@@ -44,13 +44,13 @@ function importCommand(runtime: ContainerRuntime): string {
 }
 
 function saveCommand(image: string, runtime: ContainerRuntime): string {
-  if (runtime === 'containerd') return `sudo k3s ctr -n k8s.io images export - '${shellEscape(image)}' | gzip -1`;
-  return `${runtime} save '${shellEscape(image)}' | gzip -1`;
+  if (runtime === 'containerd') return `sudo k3s ctr -n k8s.io images export - ${shellQuote(image)} | gzip -1`;
+  return `${runtime} save ${shellQuote(image)} | gzip -1`;
 }
 
 function imageIdCommand(image: string, runtime: ContainerRuntime): string {
-  if (runtime === 'containerd') return `sudo k3s ctr -n k8s.io images ls -q 2>/dev/null | grep -F '${shellEscape(image)}' | head -1`;
-  return `${runtime} images --no-trunc -q '${shellEscape(image)}' 2>/dev/null | head -1`;
+  if (runtime === 'containerd') return `sudo k3s ctr -n k8s.io images ls -q 2>/dev/null | grep -F ${shellQuote(image)} | head -1`;
+  return `${runtime} images --no-trunc -q ${shellQuote(image)} 2>/dev/null | head -1`;
 }
 
 export async function getRemoteImageId(
@@ -382,12 +382,12 @@ export async function registryLogin(
 ): Promise<void> {
   printDebug('Logging in to container registry...');
 
-  const ePassword = shellEscape(config.password);
-  const eUrl = shellEscape(config.url);
-  const userFlag = config.username ? `-u '${shellEscape(config.username)}'` : '';
+  const qPassword = shellQuote(config.password);
+  const qUrl = shellQuote(config.url);
+  const userFlag = config.username ? `-u ${shellQuote(config.username)}` : '';
   const result = await sshExec(
     connection,
-    `echo '${ePassword}' | ${engine} login '${eUrl}' ${userFlag} --password-stdin 2>&1`,
+    `echo ${qPassword} | ${engine} login ${qUrl} ${userFlag} --password-stdin 2>&1`,
   );
 
   if (result.exitCode !== 0) {

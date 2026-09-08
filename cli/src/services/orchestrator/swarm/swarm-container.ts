@@ -8,7 +8,7 @@
 
 import type { SSHKeyConnection } from '../../../types';
 import { ok, err, type Result } from '../../../types/result';
-import { sshExec, sshExecStream, executeInteractiveSSH, shellEscape } from '../../../utils/ssh';
+import { sshExec, sshExecStream, executeInteractiveSSH, shellQuote } from '../../../utils/ssh';
 import { printWarning } from '../../../utils/output';
 import type {
   ContainerBackend,
@@ -133,7 +133,7 @@ export class SwarmContainerBackend implements ContainerBackend {
     const found = await this.findContainer(stackName, serviceName);
     if (!found) return err(new Error(`No running container found for service ${serviceName}`));
 
-    const result = await sshExec(found.connection, `docker cp '${shellEscape(localPath)}' ${found.containerId}:'${shellEscape(containerPath)}'`);
+    const result = await sshExec(found.connection, `docker cp ${shellQuote(localPath)} ${found.containerId}:${shellQuote(containerPath)}`);
     if (result.exitCode !== 0) return err(new Error(`Failed to copy file: ${result.stderr}`));
     return ok(undefined);
   }
@@ -147,7 +147,7 @@ export class SwarmContainerBackend implements ContainerBackend {
     const found = await this.findContainer(stackName, serviceName);
     if (!found) return err(new Error(`No running container found for service ${serviceName}`));
 
-    const result = await sshExec(found.connection, `docker cp ${found.containerId}:'${shellEscape(containerPath)}' '${shellEscape(localPath)}'`);
+    const result = await sshExec(found.connection, `docker cp ${found.containerId}:${shellQuote(containerPath)} ${shellQuote(localPath)}`);
     if (result.exitCode !== 0) return err(new Error(`Failed to copy file: ${result.stderr}`));
     return ok(undefined);
   }
