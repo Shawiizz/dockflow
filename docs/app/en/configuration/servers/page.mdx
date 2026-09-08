@@ -202,6 +202,58 @@ Swarm automatically distributes containers to workers based on resource availabi
   You only need to run `setup swarm` once per environment. After that, just use `dockflow deploy`.
 </Callout>
 
+## Deploy User Permissions
+
+`dockflow setup` creates the deploy user with `useradd` and **never adds it to the `sudo`
+group**. It is a machine account whose SSH key lives in your CI secrets, so it is granted only
+what a deployment actually needs.
+
+**Group membership**
+
+| Group | Why |
+|-------|-----|
+| `docker` | Access to the Docker socket, so deployments need no sudo at all |
+| nginx group | Group-write on `/etc/nginx/sites-enabled`, so nginx templates are written without sudo |
+
+The nginx group is taken from the `user` directive in `nginx -T`, falling back to `nginx` and
+then `www-data`. Setup also runs `chgrp -R` and `chmod -R g+rwX` on `sites-enabled`.
+
+**Sudo rules**
+
+Setup writes `/etc/sudoers.d/<username>` (mode `0440`) with exactly three entries — binary
+paths are resolved with `which` at setup time:
+
+```
+dockflow ALL=(ALL) NOPASSWD: /usr/sbin/nginx -t, /usr/sbin/nginx -s reload
+dockflow ALL=(ALL) NOPASSWD: /usr/local/bin/k3s ctr -n k8s.io images *
+dockflow ALL=(ALL) NOPASSWD: /bin/cat /var/lib/rancher/k3s/server/node-token
+```
+
+Nothing else is granted. In particular there is **no rule for `systemctl`** — a hook running
+`sudo systemctl daemon-reload` will fail on a normally provisioned server.
+
+<Callout type="warning">
+  **Put your own rules in your own file.** Setup rewrites `/etc/sudoers.d/<username>` every time
+  it runs, so anything you add there is lost on the next `dockflow setup`. Use a separate file:
+
+  ```bash
+  echo 'dockflow ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload' | sudo tee /etc/sudoers.d/dockflow-myapp > /dev/null
+  sudo chmod 440 /etc/sudoers.d/dockflow-myapp
+  sudo visudo -c
+  ```
+
+  Always finish with `visudo -c`: a syntax error in a sudoers file can lock you out of sudo
+  entirely. Keep a second session open while you edit.
+</Callout>
+
+<Callout type="info">
+  These rules are defence in depth, not a security boundary. Membership of the `docker` group is
+  equivalent to root — anyone who can reach the Docker socket can start a privileged container
+  and take the host. The restricted sudo still limits accidents and documents intent, and it
+  becomes a real boundary with `orchestrator: k3s` or rootless Podman, where that shortcut does
+  not exist. Protect the CI key accordingly.
+</Callout>
+
 ## Environment Variables
 
 Define variables that are inherited based on tags:
