@@ -61,10 +61,19 @@ export interface HealthCheckConfig {
   endpoints?: HealthCheckEndpoint[];
 }
 
+export type HookPhase =
+  | 'pre-build'
+  | 'post-build'
+  | 'pre-upload'
+  | 'post-upload'
+  | 'pre-deploy'
+  | 'post-deploy';
+
 export interface HooksConfig {
   enabled?: boolean;
   timeout?: number;
-  fatal?: boolean;
+  /** true/false for every hook, or the list of phases that abort the deploy. */
+  fatal?: boolean | HookPhase[];
   'pre-build'?: string | string[];
   'post-build'?: string | string[];
   'pre-upload'?: string | string[];

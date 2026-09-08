@@ -9,8 +9,9 @@
  *   - pre-deploy   (remote, before stack deployment)
  *   - post-deploy  (remote, after successful deployment and health checks)
  *
- * Hooks are non-fatal by default — failures log warnings but
- * do not block the deploy.
+ * Hooks are non-fatal by default — failures log warnings but do not block the
+ * deploy. `hooks.fatal` flips that for every phase, or for a chosen few when
+ * given as a list of phase names.
  */
 
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
@@ -20,11 +21,11 @@ import type { SSHKeyConnection } from '../types';
 import { sshExec, shellEscape } from '../utils/ssh';
 import { printDebug, printDim, printRaw, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
-import type { DockflowConfig } from '../utils/config';
+import type { DockflowConfig, HookPhase } from '../utils/config';
 import { DOCKFLOW_HOOKS_DIR, DOCKFLOW_STACKS_DIR } from '../constants';
 import type { RenderedFiles } from './compose';
 
-export type HookPhase = 'pre-build' | 'post-build' | 'pre-upload' | 'post-upload' | 'pre-deploy' | 'post-deploy';
+export type { HookPhase };
 
 export interface HookRemoteContext {
   connection: SSHKeyConnection;
@@ -32,6 +33,18 @@ export interface HookRemoteContext {
 }
 
 const DEFAULT_HOOK_TIMEOUT_S = 300;
+
+/**
+ * Whether a failure in this phase aborts the deploy.
+ *
+ * `fatal` is either a boolean covering every hook, or the list of phases that
+ * abort — so a single critical hook can fail the deploy without turning every
+ * other hook into a deploy blocker.
+ */
+export function isFatalPhase(fatal: boolean | HookPhase[] | undefined, phase: HookPhase): boolean {
+  if (Array.isArray(fatal)) return fatal.includes(phase);
+  return fatal ?? false;
+}
 
 function normalizeCommands(commands: string | string[]): string[] {
   return Array.isArray(commands) ? commands : [commands];
@@ -130,7 +143,7 @@ async function execLocal(
       throw new DeployError(
         `${phase} hook exited with code ${proc.exitCode}`,
         ErrorCode.DEPLOY_FAILED,
-        `Fix the hook or set hooks.fatal: false to treat failures as warnings.`,
+        `Fix the hook, or drop ${phase} from hooks.fatal to treat its failures as warnings.`,
       );
     }
     printWarning(`${phase} hook exited with code ${proc.exitCode}`);
@@ -153,7 +166,7 @@ async function execRemote(
       throw new DeployError(
         `Remote ${phase} hook exited with code ${result.exitCode}`,
         ErrorCode.DEPLOY_FAILED,
-        `Fix the hook or set hooks.fatal: false to treat failures as warnings.`,
+        `Fix the hook, or drop ${phase} from hooks.fatal to treat its failures as warnings.`,
       );
     }
     printWarning(`Remote ${phase} hook exited with code ${result.exitCode}`);
@@ -194,7 +207,7 @@ export async function runHook(
   }
 
   const timeoutS = config.hooks?.timeout ?? DEFAULT_HOOK_TIMEOUT_S;
-  const fatal = config.hooks?.fatal ?? false;
+  const fatal = isFatalPhase(config.hooks?.fatal, phase);
 
   const isBuildPhase = phase === 'pre-build' || phase === 'post-build';
   const runRemotely = !isBuildPhase || config.options?.remote_build === true;

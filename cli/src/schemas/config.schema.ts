@@ -119,6 +119,10 @@ export const TemplateFileSchema = z.union([
 /**
  * Hooks configuration schema
  */
+export const HookPhaseEnum = z.enum([
+  'pre-build', 'post-build', 'pre-upload', 'post-upload', 'pre-deploy', 'post-deploy',
+]);
+
 export const HooksConfigSchema = z.object({
   enabled: z.boolean().optional().default(true).describe(
     'Enable/disable hooks execution'
@@ -126,8 +130,9 @@ export const HooksConfigSchema = z.object({
   timeout: z.number().int().min(1).max(3600).optional().default(300).describe(
     'Maximum execution time for hooks in seconds'
   ),
-  fatal: z.boolean().optional().default(false).describe(
-    'Abort the deploy when a hook exits with a non-zero code (default: false — warnings only)'
+  fatal: z.union([z.boolean(), z.array(HookPhaseEnum)]).optional().default(false).describe(
+    'Abort the deploy when a hook exits with a non-zero code. A boolean applies to every '
+    + 'hook; a list of phase names makes only those fatal (default: false — warnings only)'
   ),
   'pre-build': z.union([z.string(), z.array(z.string())]).optional().describe(
     'Inline command(s) to run before building images'

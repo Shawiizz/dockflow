@@ -151,7 +151,7 @@ hooks:
 |-------|------|-------------|---------|
 | `enabled` | boolean | Enable or disable all hooks | `true` |
 | `timeout` | number | Max execution time per hook, in seconds | `300` |
-| `fatal` | boolean | Abort the deploy when a hook exits with a non-zero code | `false` |
+| `fatal` | boolean \| string[] | Abort the deploy when a hook exits with a non-zero code. A boolean covers every hook; a list of phase names makes only those fatal | `false` |
 | `pre-build` | string \| string[] | Inline command(s) for the pre-build phase | — |
 | `post-build` | string \| string[] | Inline command(s) for the post-build phase | — |
 | `pre-upload` | string \| string[] | Inline command(s) to run on the server before files are uploaded | — |
@@ -161,6 +161,18 @@ hooks:
 
 By default, hook failures print a warning and let the deploy continue. Set `fatal: true` to treat a non-zero exit code as a deploy error — useful for hooks that run critical operations like database migrations.
 
+`fatal` also accepts a list of phases, so one critical hook can abort the deploy without turning every other hook into a deploy blocker:
+
+```yaml
+# .dockflow/config.yml
+hooks:
+  fatal: [post-upload]           # only this phase aborts
+  post-upload: nginx -t && nginx -s reload
+  post-deploy: curl -s https://hooks.example.com/notify || true
+```
+
+Here an invalid nginx configuration fails the deploy — and because uploads are rolled back when a deploy fails, the previous configuration is restored — while a webhook that cannot be reached stays a warning.
+
 <Callout type="warning">
-  With `fatal: false` (the default), a failing hook does **not** abort the deploy. If your hook runs a critical operation (e.g. a migration), set `fatal: true`.
+  With `fatal: false` (the default), a failing hook does **not** abort the deploy. If your hook runs a critical operation (e.g. a migration), make that phase fatal.
 </Callout>
