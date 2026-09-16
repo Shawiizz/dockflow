@@ -14,30 +14,43 @@ import { detectCIEnvironment } from './ci';
 import { printWarning, printSuccess, printError, printBlank } from './output';
 
 /**
- * Parse a dotenv file content into key-value pairs
+ * Parse a dotenv file content into key-value pairs.
+ *
+ * A quoted value may span several lines, up to the line that ends with the
+ * closing quote — the only way to write a multi-line secret such as a private
+ * key. A value that opens and closes its quote on one line reads exactly as it
+ * always did, and escape sequences are never expanded.
  */
-function parseDotenv(content: string): Record<string, string> {
+export function parseDotenv(content: string): Record<string, string> {
   const result: Record<string, string> = {};
-  
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim();
+  const lines = content.replace(/\r\n/g, '\n').split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
-    
+
     const eqIndex = trimmed.indexOf('=');
     if (eqIndex === -1) continue;
-    
+
     const key = trimmed.slice(0, eqIndex).trim();
     let value = trimmed.slice(eqIndex + 1).trim();
-    
-    // Remove surrounding quotes
-    if ((value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))) {
+    const quote = value[0];
+
+    if ((quote === '"' || quote === "'") && value.length >= 2 && value.endsWith(quote)) {
       value = value.slice(1, -1);
+    } else if (quote === '"' || quote === "'") {
+      const closing = lines.findIndex((line, j) => j > i && line.trimEnd().endsWith(quote));
+      // Without a closing line, the lone quote stays part of a single-line value.
+      if (closing !== -1) {
+        const body = [value.slice(1), ...lines.slice(i + 1, closing), lines[closing].trimEnd().slice(0, -1)];
+        value = body.join('\n');
+        i = closing;
+      }
     }
-    
+
     if (key) result[key] = value;
   }
-  
+
   return result;
 }
 

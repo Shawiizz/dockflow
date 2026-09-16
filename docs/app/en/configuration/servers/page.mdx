@@ -119,6 +119,21 @@ PRODUCTION_DATABASE_URL=postgres://secret:5432/db
 PRODUCTION_MAIN_SERVER_DATABASE_URL=postgres://primary:5432/db
 ```
 
+In `.env.dockflow`, a multi-line value such as a private key goes between quotes, and runs up to
+the line that ends with the closing quote:
+
+```bash
+# .env.dockflow
+PRODUCTION_MAIN_SERVER_DEPLOY_KEY="-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+...
+-----END OPENSSH PRIVATE KEY-----
+"
+```
+
+Put the closing quote on its own line to keep the trailing newline, which OpenSSH expects. Escape
+sequences such as `\n` are not expanded.
+
 ## Server Fields
 
 | Field | Required | Default | Description |
