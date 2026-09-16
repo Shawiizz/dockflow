@@ -19,7 +19,7 @@ import type { DockflowConfig, ProxyConfig } from '../utils/config';
 import { getProjectRoot, getComposePath, getLayout } from '../utils/config';
 import { printDebug, printWarning } from '../utils/output';
 import { ConfigError } from '../utils/errors';
-import { TRAEFIK_NETWORK_NAME } from '../constants';
+import { DOCKFLOW_PLUGINS_DIR, TRAEFIK_NETWORK_NAME } from '../constants';
 import type { TemplateContext } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -55,6 +55,8 @@ export interface RenderedComposeResult {
   composeContent: string;
   composeDirPath: string;
   projectRoot: string;
+  /** The context every file under .dockflow/ was rendered with. */
+  renderContext: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -203,10 +205,15 @@ export function renderTemplates(
   let count = 0;
 
   for (const filePath of files) {
+    const relPath = relative(projectRoot, filePath).replace(/\\/g, '/');
+
+    // Plugin files are rendered by the plugin expansion, in the plugin's own
+    // scope. Rendering them here would turn every `{{ inputs.x }}` into an empty
+    // string and leave the corrupted copy where the build context picks it up.
+    if (relPath.startsWith(`${DOCKFLOW_PLUGINS_DIR}/`)) continue;
+
     const content = readFileSync(filePath, 'utf-8');
     const renderedContent = njk.renderString(content, templateCtx);
-
-    const relPath = relative(projectRoot, filePath).replace(/\\/g, '/');
 
     rendered.set(relPath, renderedContent);
     count++;
@@ -271,6 +278,7 @@ export function renderAndResolveCompose(
     cluster: templateContext?.cluster ?? {},
   };
   const rendered = renderTemplates(projectRoot, fullCtx);
+  const renderContext: Record<string, unknown> = { ...fullCtx, ...fullCtx.config };
 
   const originalComposePath = getComposePath();
   if (!originalComposePath) {
@@ -280,6 +288,7 @@ export function renderAndResolveCompose(
         composeContent: 'services: {}\n',
         composeDirPath: join(projectRoot, '.dockflow', 'docker'),
         projectRoot,
+        renderContext,
       };
     }
     throw new ConfigError(
@@ -314,6 +323,7 @@ export function renderAndResolveCompose(
     composeContent,
     composeDirPath: dirname(originalComposePath),
     projectRoot,
+    renderContext,
   };
 }
 

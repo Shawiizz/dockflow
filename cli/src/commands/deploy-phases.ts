@@ -249,14 +249,17 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
   for (const upload of filtered) {
 
     const srcAbs = resolve(ctx.projectRoot, upload.src);
-    if (!existsSync(srcAbs)) {
+    const srcRel = relative(ctx.projectRoot, srcAbs).replace(/\\/g, '/');
+    // A plugin's rendered file exists only in memory, never on disk.
+    const inMemory = ctx.rendered.has(srcRel);
+    if (!inMemory && !existsSync(srcAbs)) {
       printWarning(`upload: source not found, skipping: ${upload.src}`);
       continue;
     }
 
     const destBase = upload.dest.replace(/\/$/, '');
 
-    if (statSync(srcAbs).isDirectory()) {
+    if (!inMemory && statSync(srcAbs).isDirectory()) {
       // -----------------------------------------------------------------------
       // Directory upload
       // -----------------------------------------------------------------------
@@ -333,7 +336,6 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
       // -----------------------------------------------------------------------
       const destPath = resolveFileDestPath(upload.dest, basename(srcAbs));
       const backupPath = fileBackupPath(backupBaseDir, destPath);
-      const srcRel = relative(ctx.projectRoot, srcAbs).replace(/\\/g, '/');
       const renderedText = ctx.rendered.get(srcRel);
       const fileContent = renderedText !== undefined ? Buffer.from(renderedText) : readFileSync(srcAbs);
 

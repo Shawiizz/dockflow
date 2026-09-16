@@ -55,6 +55,7 @@ import { Lock } from '../services/lock';
 import { Audit } from '../services/audit';
 import { Metrics } from '../services/metrics';
 import * as Notification from '../services/notification';
+import * as Plugin from '../services/plugin';
 import * as Nginx from '../services/nginx';
 import * as Hook from '../services/hook';
 
@@ -217,12 +218,12 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
 
   // Render templates
   const templateContext = buildTemplateContext(env, manager.name);
-  const { rendered, composeContent, composeDirPath } = Compose.renderAndResolveCompose(
+  const { rendered, composeContent, composeDirPath, renderContext } = Compose.renderAndResolveCompose(
     { env, version: deployVersion, branch: branchName, project_name: config.project_name, config },
     templateContext,
     { uploadOnly: config.no_services },
   );
-  config = loadConfig({ content: rendered.get('.dockflow/config.yml'), silent: true }) ?? config;
+  config = await Plugin.loadConfigWithPlugins({ rendered, fallback: config, projectRoot, projectContext: renderContext });
 
   // Validate --only service names before acquiring the lock (skip for no_services — no Docker services)
   if (options.only && !config.no_services) {

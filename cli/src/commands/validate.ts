@@ -17,11 +17,13 @@ import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { parse as parseYaml } from 'yaml';
 import {
+  HOOK_PHASES,
   loadConfig,
   loadServersConfig,
   getComposePath,
   getLayout,
 } from '../utils/config';
+import * as Plugin from '../services/plugin';
 import {
   printSuccess,
   printError,
@@ -37,7 +39,7 @@ import {
   findShellPlaceholders,
   describeShellPlaceholders,
 } from '../services/compose-lint';
-import { ValidationError, withErrorHandler } from '../utils/errors';
+import { CLIError, ValidationError, withErrorHandler } from '../utils/errors';
 import {
   findUnknownConfigKeys,
   findUnknownServersKeys,
@@ -134,15 +136,28 @@ async function runValidate(options: ValidateOptions): Promise<void> {
       if (config.notifications?.webhooks?.length) {
         features.push(`notifications (${config.notifications.webhooks.length} webhook(s))`);
       }
-      if (config.hooks && (
-        config.hooks['pre-build'] ||
-        config.hooks['post-build'] ||
-        config.hooks['pre-deploy'] ||
-        config.hooks['post-deploy']
-      )) features.push('hooks');
+      if (HOOK_PHASES.some((phase) => config.hooks?.[phase]?.length)) features.push('hooks');
       if (config.backup) features.push('backup');
       if (features.length > 0) {
         printTableRow('Features:', features.join(', '));
+      }
+
+      // Expanded against the unrendered config: `with:` values that are templates
+      // pass through verbatim, which is enough to catch an unknown plugin, a
+      // missing input, a bad manifest or two uploads writing one path.
+      if (config.plugins?.length) {
+        try {
+          const expansion = await Plugin.expandPlugins(config.plugins, {
+            projectRoot,
+            projectContext: { env: options.env ?? '', version: '', project_name: config.project_name, config },
+          });
+          Plugin.applyPluginExpansion(config, new Map(), expansion, projectRoot);
+          for (const line of expansion.summary) printTableRow('Plugin:', line);
+        } catch (error) {
+          printError(error instanceof Error ? error.message : String(error));
+          if (error instanceof CLIError && error.suggestion) printWarning(error.suggestion);
+          hasErrors = true;
+        }
       }
     }
   }

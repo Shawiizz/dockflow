@@ -26,6 +26,7 @@ import * as Build from '../services/build';
 import * as Hook from '../services/hook';
 import * as Distribution from '../services/distribution';
 import * as Compose from '../services/compose';
+import * as Plugin from '../services/plugin';
 
 interface BuildOptions {
   only?: string;
@@ -130,7 +131,7 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
   const currentServerName = managers.length > 0 ? managers[0].name : undefined;
   const templateContext = currentServerName ? buildTemplateContext(env, currentServerName) : null;
 
-  const { rendered, composeContent, composeDirPath, projectRoot } = Compose.renderAndResolveCompose(
+  const { rendered, composeContent, composeDirPath, projectRoot, renderContext } = Compose.renderAndResolveCompose(
     {
       env,
       version: ciVersion ?? 'build',
@@ -141,8 +142,9 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
     templateContext,
   );
 
-  // Re-parse config from rendered templates (resolves {{ current.env.xxx }})
-  config = loadConfig({ content: rendered.get('.dockflow/config.yml'), silent: true }) ?? config;
+  // Re-parse config from rendered templates (resolves {{ current.env.xxx }}), then expand
+  // plugins so their build hooks run here exactly as they do on deploy.
+  config = await Plugin.loadConfigWithPlugins({ rendered, fallback: config, projectRoot, projectContext: renderContext });
 
   // Pre-build hook
   if (!options.skipHooks) {
