@@ -11,7 +11,7 @@
  * shared key would let the second silently overwrite the first.
  */
 
-import { existsSync, readFileSync, statSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { basename, isAbsolute, join, posix, resolve } from 'path';
 import nunjucks from 'nunjucks';
 import { parse as parseYaml } from 'yaml';
@@ -441,4 +441,71 @@ export async function loadConfigWithPlugins(args: {
     config: applyPluginExpansion(config, args.rendered, expansion, args.projectRoot),
     pluginSummary: expansion.summary,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Listing
+// ---------------------------------------------------------------------------
+
+export interface PluginListing {
+  name: string;
+  origin: 'local' | 'builtin';
+  location: string;
+  description?: string;
+  inputs: { name: string; required: boolean; default?: string; type: 'string' | 'file'; description?: string }[];
+  /** A project plugin of the same name replaces this built-in one. */
+  shadowed: boolean;
+  /** Why the manifest could not be read; the other fields are then empty. */
+  error?: string;
+}
+
+async function describePlugin(name: string, source: PluginSource): Promise<PluginListing> {
+  const listing: PluginListing = { name, origin: source.origin, location: source.location, inputs: [], shadowed: false };
+  try {
+    const manifest = parseManifest(await source.readFile(MANIFEST), `plugin ${name}`);
+    listing.description = manifest.description;
+    listing.inputs = Object.entries(manifest.inputs ?? {}).map(([inputName, def]) => ({
+      name: inputName,
+      required: def.required === true,
+      default: def.default,
+      type: def.type ?? 'string',
+      description: def.description,
+    }));
+  } catch (error) {
+    listing.error = error instanceof Error ? error.message : String(error);
+  }
+  return listing;
+}
+
+/**
+ * Every plugin a project can use: its own, then the built-in ones.
+ *
+ * A broken project plugin is listed with its error rather than hiding the rest.
+ */
+export async function listPlugins(
+  projectRoot: string,
+  builtins: Record<string, BuiltinPluginFiles> = BUILTIN_PLUGINS,
+): Promise<PluginListing[]> {
+  const listings: PluginListing[] = [];
+
+  const localRoot = join(projectRoot, DOCKFLOW_PLUGINS_DIR);
+  const localNames = existsSync(localRoot)
+    ? readdirSync(localRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+      .map((entry) => entry.name)
+      .filter((name) => existsSync(join(localRoot, name, MANIFEST)))
+      .sort()
+    : [];
+
+  for (const name of localNames) {
+    listings.push(await describePlugin(name, localSource(join(localRoot, name), `${DOCKFLOW_PLUGINS_DIR}/${name}`)));
+  }
+
+  for (const name of Object.keys(builtins).sort()) {
+    const listing = await describePlugin(name, builtinSource(builtins[name]));
+    listing.shadowed = localNames.includes(name);
+    listings.push(listing);
+  }
+
+  return listings;
 }

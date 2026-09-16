@@ -5,6 +5,7 @@ import { dirname, join } from 'path';
 import {
   applyPluginExpansion,
   expandPlugins,
+  listPlugins,
   parseManifest,
   pluginRelPath,
   resolveInputs,
@@ -397,5 +398,39 @@ describe('built-in plugins', () => {
     });
 
     await expect(expand).rejects.toThrow(/missing required input\(s\): unit/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Listing
+// ---------------------------------------------------------------------------
+
+describe('listPlugins', () => {
+  it('outside any project, lists only the built-in plugins', async () => {
+    const plugins = await listPlugins(project());
+
+    expect(plugins.map((p) => p.name)).toEqual(['nginx', 'systemd']);
+    expect(plugins.every((p) => p.origin === 'builtin' && !p.shadowed)).toBe(true);
+  });
+
+  it('describes inputs from the manifest', async () => {
+    const [nginx] = await listPlugins(project());
+
+    expect(nginx.inputs.find((i) => i.name === 'template')).toMatchObject({ type: 'file', required: false, default: 'vhost.conf' });
+    expect(nginx.inputs.find((i) => i.name === 'domain')).toMatchObject({ type: 'string', required: true });
+  });
+
+  it('lists project plugins first and flags the built-in one they replace', async () => {
+    const plugins = await listPlugins(webProject({ '.dockflow/plugins/nginx/plugin.yml': 'name: nginx\n' }));
+
+    expect(plugins.map((p) => `${p.name}:${p.origin}`)).toEqual(['nginx:local', 'web:local', 'nginx:builtin', 'systemd:builtin']);
+    expect(plugins.find((p) => p.origin === 'builtin' && p.name === 'nginx')?.shadowed).toBe(true);
+  });
+
+  it('a broken project plugin is listed with its error instead of hiding the others', async () => {
+    const plugins = await listPlugins(project({ '.dockflow/plugins/broken/plugin.yml': 'name: [unclosed' }));
+
+    expect(plugins.find((p) => p.name === 'broken')?.error).toMatch(/not valid YAML/);
+    expect(plugins.map((p) => p.name)).toContain('nginx');
   });
 });

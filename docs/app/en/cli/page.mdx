@@ -571,6 +571,22 @@ Show application images on the server.
 | `-s, --server <name>` | Target server |
 | `-a, --all` | Show all images, not just app images |
 
+## Plugins Commands
+
+### List Plugins
+
+```bash
+dockflow plugins list
+```
+
+List the built-in plugins and the project's own, with the inputs each one takes. A project plugin that replaces a built-in one is flagged, and a plugin whose manifest cannot be read is listed with its error. Works outside a project too, where only built-in plugins are shown. Alias: `ls`.
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Output as JSON |
+
+See [Plugins](/en/configuration/plugins).
+
 ## Lock Commands
 
 Manage deployment locks to prevent concurrent deployments.
