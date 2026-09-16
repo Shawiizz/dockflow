@@ -73,6 +73,17 @@ The `current` object contains information about the server being deployed to:
 **All environment variable keys must be lowercase in templates.** Even if you define `DB_HOST` in `servers.yml`, you must reference it as `{{ current.env.db_host }}`.
 </Callout>
 
+An undefined variable renders as an empty string. Deploy, build and `--dry-run` warn about every
+`current.env` reference a file writes out whose key is not defined for the target server:
+
+```
+.dockflow/hooks/key.sh:4: current.env.deploy_key is not defined for main_server and renders as an empty string.
+```
+
+This matters most for a secret that exists in CI but not in your local `.env.dockflow`: deployed
+from your machine, it silently becomes empty. A reference guarded by `default` or `or`, or only
+tested in a condition, is treated as optional and not reported.
+
 ### Config (`{{ config }}`)
 
 All values from your `config.yml`:

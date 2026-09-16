@@ -15,6 +15,7 @@ import { walkDir } from '../utils/fs';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import nunjucks from 'nunjucks';
 import { findShellPlaceholders, describeShellPlaceholders } from './compose-lint';
+import { findUndefinedEnvReferences, describeUndefinedEnvReferences } from './template-lint';
 import type { DockflowConfig, ProxyConfig } from '../utils/config';
 import { getProjectRoot, getComposePath, getLayout } from '../utils/config';
 import { printDebug, printWarning } from '../utils/output';
@@ -201,6 +202,19 @@ export function renderTemplates(
     ...ctx.config,
   };
 
+  // With a server resolved, warn about current.env references that render as empty
+  // strings. Without one — a build with no matching environment — every reference is
+  // undefined, and the caller has already said so.
+  const current = ctx.current as { name?: string; env?: Record<string, unknown> } | undefined;
+  const envKeys = current?.env !== null && typeof current?.env === 'object' ? Object.keys(current.env) : null;
+  const lint = (file: string, content: string): void => {
+    if (!envKeys) return;
+    const references = findUndefinedEnvReferences(content, envKeys);
+    for (const line of describeUndefinedEnvReferences(file, references, current?.name ?? 'this server')) {
+      printWarning(line);
+    }
+  };
+
   const files = walkDir(dockflowDir);
   let count = 0;
 
@@ -214,6 +228,7 @@ export function renderTemplates(
 
     const content = readFileSync(filePath, 'utf-8');
     const renderedContent = njk.renderString(content, templateCtx);
+    lint(relPath, content);
 
     rendered.set(relPath, renderedContent);
     count++;
@@ -229,7 +244,9 @@ export function renderTemplates(
       if (!absPath) continue;
       const relPath = relative(projectRoot, absPath).replace(/\\/g, '/');
       if (!relPath.startsWith('.dockflow/')) {
-        rendered.set(relPath, njk.renderString(readFileSync(absPath, 'utf-8'), templateCtx));
+        const content = readFileSync(absPath, 'utf-8');
+        rendered.set(relPath, njk.renderString(content, templateCtx));
+        lint(relPath, content);
       }
     }
   }
@@ -248,6 +265,7 @@ export function renderTemplates(
     try {
       const content = readFileSync(srcPath, 'utf-8');
       const renderedContent = njk.renderString(content, templateCtx);
+      lint(src, content);
       const relDest = dest.replace(/\\/g, '/');
       rendered.set(relDest, renderedContent);
       printDebug(`Rendered custom template: ${src} → ${dest}`);
