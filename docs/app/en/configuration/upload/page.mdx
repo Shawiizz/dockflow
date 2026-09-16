@@ -41,19 +41,22 @@ services:
 
 <Steps>
 ### Permission check
-Before building, dockflow verifies that the deploy user has write access to all upload destinations on every node. If a destination doesn't exist yet, its nearest existing parent directory is checked instead. The deploy fails immediately with a clear fix command if any permission is missing.
+Before anything is built, dockflow verifies that the deploy user has write access to all upload destinations on every node. If a destination doesn't exist yet, its nearest existing parent directory is checked instead. The deploy fails immediately with a clear fix command if any permission is missing.
 
 ### Build
-Docker images are built while the permission check is happening.
+Once permissions are confirmed, Docker images are built and distributed to the nodes.
+
+### `pre-upload` hook
+Runs before any file is transferred — the place for anything the uploads, or a plugin's `post-upload` entries, depend on.
 
 ### Transfer to all nodes
-Files are transferred to the manager **and all worker nodes** in parallel after the build, so bind mounts work regardless of which node runs the container.
+Files are transferred to the manager **and all worker nodes** in parallel, so bind mounts work regardless of which node runs the container. If the deployment fails at any point after this step, every uploaded file is restored to its previous version.
 
-### Pre-deploy hook
-The `pre-deploy` hook runs after uploads complete — meaning it can reference the uploaded files directly (e.g. `systemctl daemon-reload` after uploading a systemd unit).
+### `post-upload` and `pre-deploy` hooks
+Both run after the transfer, so they can use the uploaded files directly — `systemctl daemon-reload` after uploading a systemd unit, for instance.
 
 ### Deploy
-The stack is deployed after all transfers and the pre-deploy hook complete.
+The stack is deployed.
 </Steps>
 
 ## Nunjucks rendering
