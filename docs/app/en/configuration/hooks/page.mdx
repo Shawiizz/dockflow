@@ -56,6 +56,10 @@ An entry needs exactly one of `run` or `script`. A bare string is shorthand for 
   requirement, and a phase can run several of them.
 </Callout>
 
+<Callout type="info">
+  [Plugins](/en/configuration/plugins) add entries to these same phases. Theirs run before yours.
+</Callout>
+
 ## Per-entry fatality
 
 `hooks.fatal` sets the default, and any entry can override it. That lets one critical entry

@@ -10,6 +10,7 @@ export default {
   backup: 'Backup & Restore',
   upload: 'File Uploads',
   hooks: 'Hooks',
+  plugins: 'Plugins',
   templates: 'Templates',
   'multi-host': 'Multi-Node Deployment',
   proxy: 'Automatic HTTPS Proxy',

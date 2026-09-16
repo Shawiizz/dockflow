@@ -128,13 +128,13 @@ Traefik performs an HTTP-01 ACME challenge with Let's Encrypt. The certificate i
 
 ## Coexistence with Nginx
 
-Enabling the proxy does **not** disable nginx template deployment — the two run independently.
-Traefik is deployed as a Swarm service publishing ports 80 and 443, while any file in
-`.dockflow/templates/nginx/` is still installed into `/etc/nginx/sites-enabled/` and nginx is
-reloaded. A host nginx listening on port 80 and Traefik publishing port 80 cannot both bind it.
+Traefik and the [nginx plugin](/en/configuration/plugins#nginx) do not know about each other.
+Traefik is deployed as a Swarm service publishing ports 80 and 443, while the plugin installs a
+vhost for the host's nginx and reloads it. A host nginx listening on port 80 and Traefik
+publishing port 80 cannot both bind it.
 
-Pick one: either remove your nginx templates and route through Traefik labels, or leave
-`proxy.enabled: false` and keep managing vhosts yourself.
+Pick one: either drop the nginx plugin and route through Traefik labels, or leave
+`proxy.enabled: false` and serve through nginx.
 
 ## Let's Encrypt Rate Limits
 

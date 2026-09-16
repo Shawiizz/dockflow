@@ -213,7 +213,7 @@ what a deployment actually needs.
 | Group | Why |
 |-------|-----|
 | `docker` | Access to the Docker socket, so deployments need no sudo at all |
-| nginx group | Group-write on `/etc/nginx/sites-enabled`, so nginx templates are written without sudo |
+| nginx group | Group-write on `/etc/nginx/sites-enabled`, so the [nginx plugin](/en/configuration/plugins#nginx) writes vhosts without sudo |
 
 The nginx group is taken from the `user` directive in `nginx -T`, falling back to `nginx` and
 then `www-data`. Setup also runs `chgrp -R` and `chmod -R g+rwX` on `sites-enabled`.

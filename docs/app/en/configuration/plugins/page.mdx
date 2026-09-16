@@ -1,0 +1,210 @@
+# Plugins
+
+import { Callout } from 'nextra/components'
+
+A plugin packages a recurring piece of deployment — a vhost and its reload, a systemd unit and
+its activation — so a project declares it in a few lines instead of rewriting it. Plugins
+contribute to exactly two things, [file uploads](/en/configuration/upload) and
+[hook entries](/en/configuration/hooks), and never to anything else in your configuration.
+
+## Using a plugin
+
+Declare it in `.dockflow/config.yml`, with values for the inputs it expects:
+
+```yaml
+# .dockflow/config.yml
+plugins:
+  - use: nginx
+    with:
+      domain: api.example.com
+      port: "{{ current.env.app_port }}"
+```
+
+On `dockflow deploy` and `dockflow build`, each plugin is expanded into the uploads and hook
+entries it describes, alongside your own. Nothing is written into your project. The deploy output
+names every entry after the plugin that brought it — `post-upload nginx reload`.
+
+`dockflow validate` lists what each plugin contributes, and reports an unknown plugin, a missing
+or misspelled input, or two uploads writing the same path:
+
+```
+Plugin:              nginx (built-in): 1 upload(s), 2 hook entries
+```
+
+<Callout type="info">
+  `with:` values go through the same rendering as the rest of `config.yml`, so they can use any
+  template variable. The plugin itself only ever receives the resulting values.
+</Callout>
+
+## Built-in plugins
+
+### nginx
+
+Serves the app behind the host's nginx, through a vhost in `/etc/nginx/sites-enabled/`.
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `domain` | Yes | — | Server name the vhost answers to |
+| `port` | Yes | — | Host port the app listens on |
+| `listen` | No | `80` | Port nginx listens on |
+| `template` | No | built-in vhost | A vhost of your own, from the project |
+
+The vhost is uploaded to `/etc/nginx/sites-enabled/<domain>.conf`. A `post-upload` entry runs
+`nginx -t` and reloads nginx; it is fatal, so an invalid vhost fails the deploy and the upload
+rollback restores the previous one. If the deploy fails later, an `on-failure` entry reloads nginx
+again, so it serves the restored vhost rather than keeping the new one in memory.
+
+When the default vhost does not fit, point `template` at your own. It is rendered like the rest of
+your project, with the plugin's inputs available too:
+
+```yaml
+plugins:
+  - use: nginx
+    with:
+      domain: api.example.com
+      port: "{{ current.env.app_port }}"
+      template: .dockflow/nginx/api.conf
+```
+
+```nginx
+# .dockflow/nginx/api.conf
+server {
+    listen 80;
+    server_name {{ inputs.domain }};
+    client_max_body_size 50m;
+
+    location / {
+        proxy_pass http://127.0.0.1:{{ inputs.port }};
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+`dockflow setup` installs nginx and grants the deploy user what this plugin needs: group-write on
+`sites-enabled`, and sudo for `nginx -t` and `nginx -s reload`. See
+[Deploy User Permissions](/en/configuration/servers#deploy-user-permissions).
+
+### systemd
+
+Installs a unit file from the project, and keeps the unit enabled and running.
+
+| Input | Required | Description |
+|-------|----------|-------------|
+| `unit` | Yes | The unit file, from the project |
+| `name` | Yes | The unit's name as systemd sees it, e.g. `myapp.service` or `var-data.mount` |
+
+```yaml
+plugins:
+  - use: systemd
+    with:
+      unit: .dockflow/services/worker.service
+      name: worker.service
+```
+
+The unit is uploaded to `/etc/systemd/system/<name>`, then a fatal `post-upload` entry runs
+`systemctl daemon-reload` and `systemctl enable --now <name>`.
+
+<Callout type="warning">
+  `enable --now` starts a stopped unit but does not restart a running one: a changed unit file
+  takes effect on the unit's next restart.
+</Callout>
+
+<Callout type="warning">
+  `dockflow setup` grants **no** `systemctl` rights. Add them for each unit, in a sudoers file of
+  your own — see [Deploy User Permissions](/en/configuration/servers#deploy-user-permissions):
+
+  ```
+  dockflow ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload
+  dockflow ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable --now worker.service
+  ```
+</Callout>
+
+## Several instances
+
+A plugin can be used more than once. Give each instance an `id` — it keeps their entries apart in
+the output, and it is required as soon as the same plugin appears twice:
+
+```yaml
+plugins:
+  - use: nginx
+    id: api
+    with:
+      domain: api.example.com
+      port: "3000"
+  - use: nginx
+    id: admin
+    with:
+      domain: admin.example.com
+      port: "4000"
+```
+
+Each instance renders its files with its own inputs. `id` defaults to the plugin name.
+
+## How plugins merge
+
+- In every hook phase, plugin entries run **before** your own, in the order the plugins are
+  declared. A project step a plugin depends on belongs in an earlier phase — for instance
+  `pre-upload` for something a plugin's `post-upload` entry needs.
+- Two uploads that write the same path are refused, whether they come from plugins or from your
+  own `uploads`.
+- Plugin entries follow the rules of any other entry, including per-entry `fatal` and `timeout`.
+
+## Writing a plugin
+
+A project's own plugins live in `.dockflow/plugins/<name>/`, each with a `plugin.yml`. A plugin
+there takes precedence over a built-in plugin of the same name, which is how you replace one
+entirely. `use:` also accepts a path starting with `./` or `../`, resolved from the project root.
+
+```
+.dockflow/plugins/
+└── cache-warmer/
+    ├── plugin.yml
+    └── warm.sh
+```
+
+The manifest is a fragment of `config.yml`: `uploads` and `hooks` take exactly the fields they
+take there. The only addition is `inputs`.
+
+```yaml
+# .dockflow/plugins/cache-warmer/plugin.yml
+name: cache-warmer
+description: Warm the application cache once the new release is up.
+
+inputs:
+  url:
+    description: Base URL to warm
+    required: true
+  paths:
+    default: "/"
+
+hooks:
+  post-deploy:
+    - name: warm
+      script: warm.sh
+      timeout: 120
+```
+
+| Input field | Description |
+|-------------|-------------|
+| `description` | What the input is for |
+| `required` | Refuse the plugin when the project leaves it out |
+| `default` | Value used when the project does not provide one |
+| `type` | `string` (default) or `file` |
+
+### Rendering
+
+A plugin's own files — and the strings in its manifest — are rendered with a deliberately small
+context: `inputs`, `env`, `version` and `project_name`. Referring to anything else, such as
+`current.env`, is an error rather than an empty string. A plugin should not depend on how a
+project names its variables; whatever it needs is an input.
+
+A `file` input resolves its **default** from the plugin's directory, and a value **the project
+provides** from the project root. The project's file is its own, so it is rendered with the full
+project context as well as `inputs`.
+
+### Rules
+
+- File paths in a manifest cannot leave the plugin's directory.
+- A plugin uploads single files; directory uploads are not supported.
+- Plugin names use lowercase letters, digits and hyphens.
