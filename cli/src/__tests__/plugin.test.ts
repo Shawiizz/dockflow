@@ -360,6 +360,17 @@ describe('built-in plugins', () => {
     ]);
   });
 
+  it('nginx reloads again after a failed deploy, so the restored vhost is served', async () => {
+    const expansion = await expandPlugins(
+      [{ use: 'nginx', with: { domain: 'a.example.com', port: 3000 } }],
+      { projectRoot: project(), projectContext: context },
+    );
+
+    expect(expansion.hooks['on-failure']).toEqual([
+      { name: 'nginx restore', run: 'sudo nginx -t && sudo nginx -s reload', timeout: 30 },
+    ]);
+  });
+
   it('systemd installs the unit from the project under its systemd name', async () => {
     const root = project({ '.dockflow/services/app.service': '[Service]\nExecStart=/bin/true\n' });
     const expansion = await expandPlugins(

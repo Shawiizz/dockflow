@@ -10,9 +10,7 @@ import { writeFileSync } from 'fs';
 import { printWarning, printSuccess, printInfo, createSpinner } from '../../utils/output';
 import { CLIError, ErrorCode } from '../../utils/errors';
 import { promptPassword } from './prompts';
-
-const K3S_TOKEN_PATH = '/var/lib/rancher/k3s/server/node-token';
-const NGINX_SITES_ENABLED = '/etc/nginx/sites-enabled';
+import { K3S_TOKEN_PATH, NGINX_SITES_ENABLED } from '../../constants';
 
 /**
  * Configure nginx group access and deploy-time sudoers for a deploy user.

@@ -40,4 +40,3 @@ export * from './distribution';
 export * from './hook';
 
 // Nginx template deployment
-export * from './nginx';

@@ -29,3 +29,10 @@ hooks:
       run: sudo nginx -t && sudo nginx -s reload
       fatal: true
       timeout: 30
+
+  on-failure:
+    # Uploads are rolled back before this runs, so the previous vhost is back on
+    # disk — but nginx still serves the new one from memory until it reloads.
+    - name: restore
+      run: sudo nginx -t && sudo nginx -s reload
+      timeout: 30

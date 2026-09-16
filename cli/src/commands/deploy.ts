@@ -56,7 +56,6 @@ import { Audit } from '../services/audit';
 import { Metrics } from '../services/metrics';
 import * as Notification from '../services/notification';
 import * as Plugin from '../services/plugin';
-import * as Nginx from '../services/nginx';
 import * as Hook from '../services/hook';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
@@ -336,7 +335,6 @@ async function execute(ctx: DeployContext): Promise<void> {
     await deployApp(ctx, compose);
     stackDeployed = ctx.deployApp !== false && Compose.hasServices(compose);
 
-    await Nginx.deployNginxTemplates(ctx.cluster.manager.connection, ctx.rendered);
 
     await runHTTPHealthChecks(ctx);
     await Hook.runHook('post-deploy', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
