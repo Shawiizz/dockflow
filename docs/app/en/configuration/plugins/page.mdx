@@ -95,18 +95,29 @@ Installs a unit file from the project, and keeps the unit enabled and running.
 | Input | Required | Description |
 |-------|----------|-------------|
 | `unit` | Yes | The unit file, from the project |
-| `name` | Yes | The unit's name as systemd sees it, e.g. `myapp.service` or `var-data.mount` |
+| `name` | No | The unit's name as systemd sees it. Defaults to the unit file's name |
 
 ```yaml
 plugins:
   - use: systemd
     with:
       unit: .dockflow/services/worker.service
-      name: worker.service
 ```
 
 The unit is uploaded to `/etc/systemd/system/<name>`, then a fatal `post-upload` entry runs
 `systemctl daemon-reload` and `systemctl enable --now <name>`.
+
+systemd identifies a unit by its file name, so set `name` only when the file in your project is
+named differently — a mount unit, for instance, must be named after its mount point, and
+`/var/data` requires `var-data.mount`:
+
+```yaml
+plugins:
+  - use: systemd
+    with:
+      unit: .dockflow/services/data.conf
+      name: var-data.mount
+```
 
 <Callout type="warning">
   `enable --now` starts a stopped unit but does not restart a running one: a changed unit file

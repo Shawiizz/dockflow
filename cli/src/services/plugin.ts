@@ -28,9 +28,26 @@ const MANIFEST = 'plugin.yml';
 const FROM_PLUGIN = 'plugin:';
 const FROM_PROJECT = 'project:';
 
+/** A `file` input's path, without the tag saying where it resolves from. */
+function untagged(value: string): string {
+  for (const tag of [FROM_PLUGIN, FROM_PROJECT]) {
+    if (value.startsWith(tag)) return value.slice(tag.length);
+  }
+  return value;
+}
+
+/**
+ * The file name at the end of a path. Sees past a `file` input's tag, which a
+ * plain basename would keep for a file at the project root (`project:app.service`).
+ */
+export function pluginBasename(value: unknown): string {
+  return posix.basename(untagged(String(value)).replace(/\\/g, '/'));
+}
+
 // Plugin files see only their inputs: a reference to anything else is a bug in
 // the plugin, so it throws instead of rendering an empty string.
 const pluginEnv = new nunjucks.Environment(undefined, { autoescape: false, throwOnUndefined: true });
+pluginEnv.addFilter('basename', pluginBasename);
 
 // A project's own override file is rendered like the project's other files.
 const projectEnv = new nunjucks.Environment(undefined, { autoescape: false });

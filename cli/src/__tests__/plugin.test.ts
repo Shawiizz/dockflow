@@ -7,6 +7,7 @@ import {
   expandPlugins,
   listPlugins,
   parseManifest,
+  pluginBasename,
   pluginRelPath,
   resolveInputs,
   resolvePluginSource,
@@ -117,6 +118,19 @@ describe('parseManifest', () => {
 
   it('reports invalid YAML as such', () => {
     expect(() => parseManifest('name: [unclosed', 'test')).toThrow(/not valid YAML/);
+  });
+});
+
+describe('pluginBasename', () => {
+  it('takes the file name at the end of a path', () => {
+    expect(pluginBasename('.dockflow/services/app.service')).toBe('app.service');
+    expect(pluginBasename('a\\b\\c.mount')).toBe('c.mount');
+  });
+
+  it('sees past the tag a file input carries, even with no directory', () => {
+    expect(pluginBasename('project:app.service')).toBe('app.service');
+    expect(pluginBasename('project:.dockflow/services/app.service')).toBe('app.service');
+    expect(pluginBasename('plugin:vhost.conf')).toBe('vhost.conf');
   });
 });
 
@@ -398,10 +412,10 @@ describe('built-in plugins', () => {
     ]);
   });
 
-  it('systemd installs the unit from the project under its systemd name', async () => {
+  it('systemd names the unit after its file when no name is given', async () => {
     const root = project({ '.dockflow/services/app.service': '[Service]\nExecStart=/bin/true\n' });
     const expansion = await expandPlugins(
-      [{ use: 'systemd', with: { unit: '.dockflow/services/app.service', name: 'app.service' } }],
+      [{ use: 'systemd', with: { unit: '.dockflow/services/app.service' } }],
       { projectRoot: root, projectContext: context },
     );
 
@@ -414,7 +428,30 @@ describe('built-in plugins', () => {
     });
   });
 
-  it('systemd requires both inputs', async () => {
+  it('systemd uses the given name when the file is named differently', async () => {
+    const root = project({ '.dockflow/services/data.conf': '[Mount]\nWhere=/var/data\n' });
+    const expansion = await expandPlugins(
+      [{ use: 'systemd', with: { unit: '.dockflow/services/data.conf', name: 'var-data.mount' } }],
+      { projectRoot: root, projectContext: context },
+    );
+
+    expect(expansion.uploads[0].dest).toBe('/etc/systemd/system/var-data.mount');
+    expect(expansion.hooks['post-upload']?.[0]).toMatchObject({
+      run: 'sudo systemctl daemon-reload && sudo systemctl enable --now var-data.mount',
+    });
+  });
+
+  it('systemd names a unit at the project root without the input tag', async () => {
+    const root = project({ 'app.service': '[Service]\n' });
+    const expansion = await expandPlugins(
+      [{ use: 'systemd', with: { unit: 'app.service' } }],
+      { projectRoot: root, projectContext: context },
+    );
+
+    expect(expansion.uploads[0].dest).toBe('/etc/systemd/system/app.service');
+  });
+
+  it('systemd still requires the unit file', async () => {
     const expand = expandPlugins([{ use: 'systemd', with: { name: 'app.service' } }], {
       projectRoot: project(),
       projectContext: context,

@@ -7,12 +7,11 @@ inputs:
     type: file
     required: true
   name:
-    description: The unit's name as systemd sees it, e.g. myapp.service or var-data.mount
-    required: true
+    description: The unit's name as systemd sees it, when it differs from the unit file's name
 
 uploads:
   - src: "{{ inputs.unit }}"
-    dest: "/etc/systemd/system/{{ inputs.name }}"
+    dest: "/etc/systemd/system/{{ inputs.name or (inputs.unit | basename) }}"
     permissions: "644"
 
 hooks:
@@ -20,6 +19,6 @@ hooks:
     # enable --now starts a stopped unit but does not restart a running one, so a
     # changed unit file takes effect on the unit's next restart.
     - name: enable
-      run: sudo systemctl daemon-reload && sudo systemctl enable --now {{ inputs.name }}
+      run: sudo systemctl daemon-reload && sudo systemctl enable --now {{ inputs.name or (inputs.unit | basename) }}
       fatal: true
       timeout: 60
