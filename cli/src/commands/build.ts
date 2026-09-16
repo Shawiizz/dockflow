@@ -144,7 +144,7 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
 
   // Re-parse config from rendered templates (resolves {{ current.env.xxx }}), then expand
   // plugins so their build hooks run here exactly as they do on deploy.
-  config = await Plugin.loadConfigWithPlugins({ rendered, fallback: config, projectRoot, projectContext: renderContext });
+  ({ config } = await Plugin.loadConfigWithPlugins({ rendered, fallback: config, projectRoot, projectContext: renderContext }));
 
   // Pre-build hook
   if (!options.skipHooks) {

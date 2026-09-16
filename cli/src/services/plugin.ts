@@ -429,13 +429,16 @@ export async function loadConfigWithPlugins(args: {
   fallback: DockflowConfig;
   projectRoot: string;
   projectContext: Record<string, unknown>;
-}): Promise<DockflowConfig> {
+}): Promise<{ config: DockflowConfig; pluginSummary: string[] }> {
   const config = loadConfig({ content: args.rendered.get('.dockflow/config.yml'), silent: true }) ?? args.fallback;
-  if (!config.plugins?.length) return config;
+  if (!config.plugins?.length) return { config, pluginSummary: [] };
 
   const expansion = await expandPlugins(config.plugins, {
     projectRoot: args.projectRoot,
     projectContext: args.projectContext,
   });
-  return applyPluginExpansion(config, args.rendered, expansion, args.projectRoot);
+  return {
+    config: applyPluginExpansion(config, args.rendered, expansion, args.projectRoot),
+    pluginSummary: expansion.summary,
+  };
 }

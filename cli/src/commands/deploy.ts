@@ -205,16 +205,6 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   if (options.only) printInfo(`Only: ${options.only}`);
   printBlank();
 
-  // Dry-run exit
-  if (options.dryRun) {
-    displayDeployDryRun({
-      env, deployVersion, branchName, projectRoot, manager, workers,
-      deployApp: shouldDeployApp, forceAccessories, skipAccessories,
-      skipBuild: options.skipBuild, force: options.force, only: options.only, debug: options.debug,
-    });
-    return null;
-  }
-
   // Render templates
   const templateContext = buildTemplateContext(env, manager.name);
   const { rendered, composeContent, composeDirPath, renderContext } = Compose.renderAndResolveCompose(
@@ -222,7 +212,20 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
     templateContext,
     { uploadOnly: config.no_services },
   );
-  config = await Plugin.loadConfigWithPlugins({ rendered, fallback: config, projectRoot, projectContext: renderContext });
+  const pluginsLoaded = await Plugin.loadConfigWithPlugins({ rendered, fallback: config, projectRoot, projectContext: renderContext });
+  config = pluginsLoaded.config;
+
+  // Dry-run exit — after rendering and plugin expansion, so the summary lists the
+  // uploads and hook entries a deploy would actually run.
+  if (options.dryRun) {
+    displayDeployDryRun({
+      env, deployVersion, branchName, projectRoot, manager, workers,
+      deployApp: shouldDeployApp, forceAccessories, skipAccessories,
+      skipBuild: options.skipBuild, force: options.force, only: options.only, debug: options.debug,
+      config, pluginSummary: pluginsLoaded.pluginSummary,
+    });
+    return null;
+  }
 
   // Validate --only service names before acquiring the lock (skip for no_services — no Docker services)
   if (options.only && !config.no_services) {

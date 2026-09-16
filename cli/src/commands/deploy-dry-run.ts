@@ -5,6 +5,9 @@
 
 import { colors, printWarning, printDim, printBlank, printRaw } from '../utils/output';
 import type { ResolvedServer } from '../types';
+import { HOOK_PHASES, type DockflowConfig } from '../utils/config';
+import { resolvePhaseEntries } from '../services/hook';
+import { uploadName } from './deploy-phases';
 
 interface DeployDryRunOptions {
   env: string;
@@ -20,6 +23,9 @@ interface DeployDryRunOptions {
   force?: boolean;
   only?: string;
   debug?: boolean;
+  /** The final config, with plugins expanded. */
+  config: DockflowConfig;
+  pluginSummary: string[];
 }
 
 /**
@@ -39,7 +45,8 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
     skipBuild,
     force,
     only,
-    debug,
+    config,
+    pluginSummary,
   } = options;
 
   printWarning('═'.repeat(60));
@@ -83,6 +90,34 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
     printRaw(`  ${colors.bold('Only:')}            ${only}`);
   }
   printBlank();
+
+  // Plugins, uploads and hooks — what the deploy would transfer and run
+  if (pluginSummary.length > 0) {
+    printRaw(colors.info(colors.bold('Plugins:')));
+    printDim('─'.repeat(40));
+    for (const line of pluginSummary) printRaw(`  ${line}`);
+    printBlank();
+  }
+
+  const uploads = config.uploads ?? [];
+  if (uploads.length > 0) {
+    printRaw(colors.info(colors.bold('Uploads:')));
+    printDim('─'.repeat(40));
+    for (const upload of uploads) printRaw(`  ${uploadName(upload)} → ${upload.dest}`);
+    printBlank();
+  }
+
+  const hookLines = HOOK_PHASES.flatMap((phase) =>
+    resolvePhaseEntries(phase, config.hooks).map((entry) =>
+      `  ${phase.padEnd(12)} ${entry.label}${entry.fatal ? colors.dim(' (fatal)') : ''}`,
+    ),
+  );
+  if (config.hooks?.enabled !== false && hookLines.length > 0) {
+    printRaw(colors.info(colors.bold('Hooks:')));
+    printDim('─'.repeat(40));
+    for (const line of hookLines) printRaw(line);
+    printBlank();
+  }
 
   // Environment Variables
   printRaw(colors.info(colors.bold('Environment Variables:')));
