@@ -312,6 +312,18 @@ const PROJECT_NAME_REGEX = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
  * Extras — files/directories to transfer to the remote server before deploying.
  * Useful for config files referenced as bind mounts in docker-compose volumes.
  */
+export const PluginUseSchema = z.object({
+  use: z.string().min(1).describe(
+    'Plugin to use: a name (looked up in .dockflow/plugins/, then among built-in plugins) or a path starting with ./ or ../'
+  ),
+  id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/, 'lowercase letters, digits and hyphens only').optional().describe(
+    'Instance id, required when one plugin is used more than once. Defaults to the plugin name.'
+  ),
+  with: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().describe(
+    'Values for the inputs the plugin declares'
+  ),
+}).strict();
+
 export const UploadItemSchema = z.object({
   src: z.string().describe('Local path relative to project root (file or directory)'),
   dest: z.string()
@@ -380,7 +392,11 @@ export const DockflowConfigSchema = z.object({
   ),
 
   templates: z.array(TemplateFileSchema).optional().describe(
-    'List of files to render with Jinja2 templating before deployment'
+    'List of files to render with Nunjucks templating before deployment'
+  ),
+
+  plugins: z.array(PluginUseSchema).optional().describe(
+    'Plugins that contribute uploads and hook entries to the deployment'
   ),
 
   proxy: ProxyConfigSchema.optional().describe(

@@ -35,6 +35,10 @@ export const DEFAULT_SSH_PORT = 22;
 export const DOCKFLOW_LOCAL_DIR = '.dockflow';
 export const DOCKFLOW_HOOKS_DIR = '.dockflow/hooks';
 export const DOCKFLOW_NGINX_TEMPLATES_DIR = '.dockflow/templates/nginx';
+/** Where a project keeps its own plugins, one directory each. */
+export const DOCKFLOW_PLUGINS_DIR = '.dockflow/plugins';
+/** Prefix of the in-memory keys holding instance-rendered plugin files. Nothing is written there. */
+export const DOCKFLOW_PLUGIN_INSTANCES_DIR = '.dockflow/plugins/.instances';
 export const ENV_FILE_PATH = '.env.dockflow';
 
 /**

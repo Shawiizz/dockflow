@@ -1,0 +1,25 @@
+name: systemd
+description: Install a systemd unit from the project, and keep it enabled and running.
+
+inputs:
+  unit:
+    description: The unit file, from the project
+    type: file
+    required: true
+  name:
+    description: The unit's name as systemd sees it, e.g. myapp.service or var-data.mount
+    required: true
+
+uploads:
+  - src: "{{ inputs.unit }}"
+    dest: "/etc/systemd/system/{{ inputs.name }}"
+    permissions: "644"
+
+hooks:
+  post-upload:
+    # enable --now starts a stopped unit but does not restart a running one, so a
+    # changed unit file takes effect on the unit's next restart.
+    - name: enable
+      run: sudo systemctl daemon-reload && sudo systemctl enable --now {{ inputs.name }}
+      fatal: true
+      timeout: 60

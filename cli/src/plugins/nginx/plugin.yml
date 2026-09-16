@@ -1,0 +1,31 @@
+name: nginx
+description: Serve the app behind the host's nginx, through a vhost in sites-enabled.
+
+inputs:
+  domain:
+    description: Server name the vhost answers to
+    required: true
+  port:
+    description: Host port the app listens on
+    required: true
+  listen:
+    description: Port nginx listens on
+    default: "80"
+  template:
+    description: A vhost of your own, when the default one does not fit
+    type: file
+    default: vhost.conf
+
+uploads:
+  - src: "{{ inputs.template }}"
+    dest: "/etc/nginx/sites-enabled/{{ inputs.domain }}.conf"
+    permissions: "644"
+
+hooks:
+  post-upload:
+    # The vhost lands straight in sites-enabled: test before reloading. A failure
+    # aborts the deploy, and the upload rollback restores the previous vhost.
+    - name: reload
+      run: sudo nginx -t && sudo nginx -s reload
+      fatal: true
+      timeout: 30

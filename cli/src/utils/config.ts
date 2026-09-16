@@ -164,6 +164,14 @@ export interface NotificationsConfig {
   webhooks?: WebhookConfig[];
 }
 
+export interface PluginUse {
+  /** A plugin name, or a path starting with ./ or ../ */
+  use: string;
+  /** Instance id; defaults to the plugin name. */
+  id?: string;
+  with?: Record<string, string | number | boolean>;
+}
+
 export interface UploadItem {
   src: string;
   dest: string;
@@ -186,6 +194,7 @@ export interface DockflowConfig {
   lock?: LockConfig;
   backup?: BackupConfig;
   templates?: (string | TemplateFileConfig)[];
+  plugins?: PluginUse[];
   proxy?: ProxyConfig;
   notifications?: NotificationsConfig;
   uploads?: UploadItem[];
