@@ -296,21 +296,28 @@ async function materializeFile(
  */
 export async function expandPlugins(uses: PluginUse[] | undefined, opts: ExpandOptions): Promise<PluginExpansion> {
   const expansion: PluginExpansion = { uploads: [], hooks: {}, files: new Map(), summary: [] };
-  const seenIds = new Map<string, string>();
+  const seenIds = new Map<string, { entry: number; explicit: boolean }>();
 
-  for (const use of uses ?? []) {
+  for (const [index, use] of (uses ?? []).entries()) {
+    const entry = index + 1;
     const source = resolvePluginSource(use.use, opts.projectRoot, opts.builtins);
     const manifest = parseManifest(await source.readFile(MANIFEST), `plugin ${use.use}`);
 
     const id = use.id ?? manifest.name;
     const previous = seenIds.get(id);
     if (previous !== undefined) {
-      throw new ConfigError(
-        `plugin id "${id}" is used twice (${previous} and ${use.use})`,
-        'Give each instance its own `id`.',
-      );
+      // Say which fix applies: a forgotten id and a repeated one read alike otherwise.
+      throw !previous.explicit && use.id === undefined
+        ? new ConfigError(
+          `plugins #${previous.entry} and #${entry} both use ${manifest.name} without an id`,
+          `A plugin used more than once needs an \`id\` on each entry, e.g. \`id: ${manifest.name}-2\`.`,
+        )
+        : new ConfigError(
+          `plugins #${previous.entry} and #${entry} share the id "${id}"`,
+          'Each entry needs its own `id`. An entry without one takes the plugin name as its id.',
+        );
     }
-    seenIds.set(id, use.use);
+    seenIds.set(id, { entry, explicit: use.id !== undefined });
 
     const display = id === manifest.name ? manifest.name : `${manifest.name}[${id}]`;
     const where = `plugin ${display}`;

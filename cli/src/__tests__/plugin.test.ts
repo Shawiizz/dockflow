@@ -212,13 +212,36 @@ describe('expandPlugins', () => {
     expect(expansion.files.get(admin.src)).toContain(':4000');
   });
 
-  it('refuses one id for two instances', async () => {
+  it('a plugin used twice without ids says the ids are missing, and where', async () => {
     const expand = expandPlugins(
       [{ use: 'web', with: { domain: 'a' } }, { use: 'web', with: { domain: 'b' } }],
       { projectRoot: webProject(), projectContext: context, builtins: {} },
     );
 
-    await expect(expand).rejects.toThrow(/plugin id "web" is used twice/);
+    await expect(expand).rejects.toThrow('plugins #1 and #2 both use web without an id');
+  });
+
+  it('a repeated explicit id is reported as shared, not as missing', async () => {
+    const expand = expandPlugins(
+      [
+        { use: 'web', id: 'site', with: { domain: 'a' } },
+        { use: 'web', id: 'other', with: { domain: 'b' } },
+        { use: 'web', id: 'site', with: { domain: 'c' } },
+      ],
+      { projectRoot: webProject(), projectContext: context, builtins: {} },
+    );
+
+    await expect(expand).rejects.toThrow('plugins #1 and #3 share the id "site"');
+  });
+
+  it('an explicit id cannot take the name another entry uses by default', async () => {
+    const root = webProject({ '.dockflow/plugins/job/plugin.yml': 'name: job\n' });
+    const expand = expandPlugins(
+      [{ use: 'web', with: { domain: 'a' } }, { use: 'job', id: 'web' }],
+      { projectRoot: root, projectContext: context, builtins: {} },
+    );
+
+    await expect(expand).rejects.toThrow('plugins #1 and #2 share the id "web"');
   });
 
   it('a project override file sees the project context and the plugin inputs', async () => {
