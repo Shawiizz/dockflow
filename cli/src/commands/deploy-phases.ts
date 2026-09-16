@@ -164,6 +164,11 @@ async function streamDirToHost(
 }
 
 
+/** How an upload is named in the output: its plugin label, or its source path. */
+export function uploadName(upload: UploadItem): string {
+  return upload.label ?? upload.src;
+}
+
 function filterUploadsByService(ctx: DeployContext): UploadItem[] {
   return filterUploads(ctx.config.uploads, ctx.options.only);
 }
@@ -193,7 +198,7 @@ export async function checkUploadPermissions(ctx: DeployContext): Promise<void> 
     '}';
 
   const checks = filtered
-    .map(u => `check_path ${shellQuote(u.dest)} ${shellQuote(u.src)}`)
+    .map(u => `check_path ${shellQuote(u.dest)} ${shellQuote(uploadName(u))}`)
     .join('\n');
 
   const script =
@@ -253,7 +258,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
     // A plugin's rendered file exists only in memory, never on disk.
     const inMemory = ctx.rendered.has(srcRel);
     if (!inMemory && !existsSync(srcAbs)) {
-      printWarning(`upload: source not found, skipping: ${upload.src}`);
+      printWarning(`upload: source not found, skipping: ${uploadName(upload)}`);
       continue;
     }
 
@@ -305,7 +310,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
           .reduce((sum, f) => sum + statSync(f).size, 0);
         const totalStr = formatBytes(totalBytes);
         const spinner = createSpinner();
-        spinner.start(`upload: ${upload.src}/ -> ${name}:${destBase}/${compressFlag}`);
+        spinner.start(`upload: ${uploadName(upload)}/ -> ${name}:${destBase}/${compressFlag}`);
         let lastTick = 0;
         await streamDirToHost(srcAbs, excludePatterns, name, conn, destBase, compress,
           (bytesProcessed) => {
@@ -313,16 +318,16 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
             if (now - lastTick < 250) return;
             lastTick = now;
             const pct = Math.min(99, Math.round(bytesProcessed / totalBytes * 100));
-            spinner.update(`upload: ${upload.src}/ -> ${name}:${destBase}/ ${formatBytes(bytesProcessed)} / ${totalStr} (${pct}%)`);
+            spinner.update(`upload: ${uploadName(upload)}/ -> ${name}:${destBase}/ ${formatBytes(bytesProcessed)} / ${totalStr} (${pct}%)`);
           },
           () => spinner.update(`upload: unpacking on ${name}...`),
         );
-        spinner.succeed(`upload: ${upload.src}/ -> ${name}:${destBase}/ done`);
+        spinner.succeed(`upload: ${uploadName(upload)}/ -> ${name}:${destBase}/ done`);
         if (upload.permissions) await sshExec(conn, `chmod -R ${upload.permissions} '${destBase}'`);
         if (upload.owner) await sshExec(conn, `chown -R ${upload.owner} '${destBase}'`);
       } else {
         // Multiple hosts: stream independently to each host in parallel — no RAM buffer
-        printDim(`upload: ${upload.src}/ -> ${destBase}/${compressFlag} [${plan.hosts.length} hosts]`);
+        printDim(`upload: ${uploadName(upload)}/ -> ${destBase}/${compressFlag} [${plan.hosts.length} hosts]`);
         await Promise.all(plan.hosts.map(async ({ name, conn }) => {
           await streamDirToHost(srcAbs, excludePatterns, name, conn, destBase, compress);
           printDim(`  upload: -> ${name}:${destBase}/ done`);
@@ -367,7 +372,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
         if (result.exitCode !== 0) {
           const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
           throw new DeployError(
-            `upload: failed to transfer ${upload.src} → ${destPath} on ${name}: ${detail}`,
+            `upload: failed to transfer ${uploadName(upload)} → ${destPath} on ${name}: ${detail}`,
             ErrorCode.DEPLOY_FAILED,
             `Ensure ${conn.user} has write access to ${dirname(destPath)} on ${name}. Run once as root:\n  mkdir -p '${dirname(destPath)}' && chown ${conn.user}: '${dirname(destPath)}'`,
           );
@@ -394,7 +399,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
       });
 
       await runWithConcurrency(tasks, UPLOAD_CONCURRENCY);
-      printDim(`upload: ${upload.src} -> ${destPath}`);
+      printDim(`upload: ${uploadName(upload)} -> ${destPath}`);
     }
   }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   filterUploads,
   resolveFileDestPath,
+  uploadName,
   uploadOwnedDir,
   fileBackupPath,
   dirBackupPath,
@@ -127,5 +128,17 @@ describe('uploadOwnedDir', () => {
 
   it('file at the filesystem root', () => {
     expect(uploadOwnedDir('/motd', false)).toBe('/');
+  });
+});
+
+describe('uploadName', () => {
+  it('a project upload is named by its source path', () => {
+    expect(uploadName({ src: '.dockflow/services/app.service', dest: '/etc/systemd/system/app.service' }))
+      .toBe('.dockflow/services/app.service');
+  });
+
+  it('a plugin upload is named by its label, not by its in-memory key', () => {
+    expect(uploadName({ src: '.dockflow/plugins/.instances/nginx/plugin/vhost.conf', dest: '/x', label: 'nginx › vhost.conf' }))
+      .toBe('nginx › vhost.conf');
   });
 });

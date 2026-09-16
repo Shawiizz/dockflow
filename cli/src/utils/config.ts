@@ -174,6 +174,11 @@ export interface PluginUse {
 
 export interface UploadItem {
   src: string;
+  /**
+   * How the upload is named in the output. Set by plugin expansion, whose sources
+   * are in-memory keys that read like paths but match no file. Not a config key.
+   */
+  label?: string;
   dest: string;
   service?: string | string[];
   permissions?: string;

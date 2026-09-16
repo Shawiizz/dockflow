@@ -188,6 +188,7 @@ describe('expandPlugins', () => {
     const [upload] = expansion.uploads;
     expect(upload.dest).toBe('/etc/nginx/sites-enabled/api.example.com.conf');
     expect(upload.src).toBe(`${DOCKFLOW_PLUGIN_INSTANCES_DIR}/web/plugin/vhost.conf`);
+    expect(upload.label).toBe('web › vhost.conf');
     expect(expansion.files.get(upload.src)).toBe('server_name api.example.com; proxy_pass 127.0.0.1:3000;');
   });
 
@@ -203,6 +204,7 @@ describe('expandPlugins', () => {
 
     const [api, admin] = expansion.uploads;
     expect(api.src).not.toBe(admin.src);
+    expect([api.label, admin.label]).toEqual(['web[api] › vhost.conf', 'web[admin] › vhost.conf']);
     expect(expansion.files.get(api.src)).toContain('api.example.com');
     expect(expansion.files.get(api.src)).toContain(':3000');
     expect(expansion.files.get(admin.src)).toContain('admin.example.com');
@@ -227,6 +229,7 @@ describe('expandPlugins', () => {
 
     const [upload] = expansion.uploads;
     expect(upload.src).toBe(`${DOCKFLOW_PLUGIN_INSTANCES_DIR}/web/project/.dockflow/nginx/mine.conf`);
+    expect(upload.label).toBe('web › .dockflow/nginx/mine.conf');
     expect(expansion.files.get(upload.src)).toBe('api.example.com production custom');
   });
 

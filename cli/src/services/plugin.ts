@@ -241,14 +241,15 @@ interface Instance {
 
 /**
  * Read the file a rendered `src` or `script` points at, render it, and store it
- * under a key private to the instance. Returns that key.
+ * under a key private to the instance. Returns that key, and a label that names
+ * the file the way a reader of the output would recognise it.
  */
 async function materializeFile(
   ref: string,
   instance: Instance,
   opts: ExpandOptions,
   files: Map<string, string>,
-): Promise<string> {
+): Promise<{ key: string; label: string }> {
   if (ref === '') {
     throw new ConfigError(`${instance.where}: a file reference rendered empty — is a file input missing?`);
   }
@@ -287,7 +288,7 @@ async function materializeFile(
 
   const key = `${DOCKFLOW_PLUGIN_INSTANCES_DIR}/${instance.id}/${origin}/${relPath}`;
   files.set(key, content);
-  return key;
+  return { key, label: `${instance.display} › ${relPath}` };
 }
 
 /**
@@ -335,7 +336,8 @@ export async function expandPlugins(uses: PluginUse[] | undefined, opts: ExpandO
       if (!upload.dest.startsWith('/')) {
         throw new ConfigError(`${where}: upload dest must be an absolute path, got "${upload.dest}"`);
       }
-      expansion.uploads.push({ ...upload, src: await materializeFile(upload.src, instance, opts, expansion.files) });
+      const { key, label } = await materializeFile(upload.src, instance, opts, expansion.files);
+      expansion.uploads.push({ ...upload, src: key, label });
     }
 
     let entryCount = 0;
@@ -345,7 +347,7 @@ export async function expandPlugins(uses: PluginUse[] | undefined, opts: ExpandO
         const e: HookEntry = typeof entry === 'string' ? { run: entry } : { ...entry };
         e.name = e.name ? `${display} ${e.name}` : display;
         if (e.script !== undefined) {
-          e.script = await materializeFile(e.script, instance, opts, expansion.files);
+          e.script = (await materializeFile(e.script, instance, opts, expansion.files)).key;
         }
         const phaseEntries = expansion.hooks[phase] ?? [];
         phaseEntries.push(e);
