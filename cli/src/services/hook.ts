@@ -1,7 +1,7 @@
 /**
  * Hook — deploy phase hook module.
  *
- * Runs user-defined commands at six deploy phases:
+ * Runs user-defined entries at seven deploy phases:
  *   - pre-build    (local, or remote when remote_build: true)
  *   - post-build   (local, or remote when remote_build: true)
  *   - pre-upload   (remote, before files are uploaded to the server)
@@ -11,15 +11,14 @@
  *   - on-failure   (remote, after a failed deployment once rollbacks are done)
  *
  * Hooks are non-fatal by default — failures log warnings but do not block the
- * deploy. `hooks.fatal` flips that for every phase, or for a chosen few when
- * given as a list of phase names.
+ * deploy. `hooks.fatal` sets the default, and each entry can override it.
  */
 
-import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import type { SSHKeyConnection } from '../types';
-import { sshExec, shellQuote } from '../utils/ssh';
+import { sshExecChannel, shellQuote } from '../utils/ssh';
 import { printDebug, printDim, printRaw, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import type { DockflowConfig, HookEntry, HookEntryInput, HookPhase, HooksConfig } from '../utils/config';
@@ -108,7 +107,7 @@ let cachedLocalBash: string | null | undefined;
  * Resolve the bash executable used for local hooks.
  * Returns null when no usable bash exists on this machine.
  */
-function resolveLocalBash(): string | null {
+export function resolveLocalBash(): string | null {
   if (cachedLocalBash !== undefined) return cachedLocalBash;
 
   if (process.platform !== 'win32') {
@@ -178,14 +177,48 @@ async function execLocal(
   }
 }
 
+/**
+ * The remote program that runs one hook entry, whose text arrives on stdin.
+ *
+ * The text never appears in a command line: without `hidepid` on /proc, every
+ * local user can read another user's command lines, and a hook often carries a
+ * secret. It is written under umask 077 to a mktemp file only the deploy user can
+ * read, and removed on exit whatever happens. The program itself takes no hook
+ * text, so none can end up in it.
+ *
+ * A script runs directly and keeps its shebang; an inline command runs with bash.
+ */
+export function remoteHookProgram(opts: {
+  stackDir: string;
+  env: Record<string, string>;
+  timeoutS: number;
+  kind: 'script' | 'run';
+}): string {
+  const runner = opts.kind === 'run' ? 'bash ' : '';
+  return [
+    'umask 077',
+    'tmp=$(mktemp /tmp/dockflow-hook.XXXXXXXX) || exit 125',
+    `trap 'rm -f "$tmp"' EXIT`,
+    'cat > "$tmp"',
+    'chmod 700 "$tmp"',
+    `cd "${opts.stackDir}" 2>/dev/null || cd /tmp`,
+    `${remoteEnvPrefix(opts.env)}timeout ${opts.timeoutS} ${runner}"$tmp" < /dev/null 2>&1`,
+  ].join('\n');
+}
+
 async function execRemote(
   connection: SSHKeyConnection,
-  cmd: string,
+  program: string,
+  input: string,
   fatal: boolean,
   label: string,
 ): Promise<void> {
-  const result = await sshExec(connection, cmd);
+  const { stream, done } = await sshExecChannel(connection, program);
+  stream.end(input);
+  const result = await done;
   if (result.stdout.trim()) printRaw(result.stdout.trim());
+  // The entry's own output goes to stdout; stderr only carries a failure to set it up.
+  if (result.exitCode !== 0 && result.stderr.trim()) printRaw(result.stderr.trim());
 
   if (result.exitCode !== 0) {
     if (fatal) {
@@ -256,38 +289,26 @@ async function runScriptEntry(entry: ResolvedHookEntry, label: string, rc: Entry
   const content = readScript(entry, rc);
 
   if (rc.remote) {
-    const tmpPath = `/tmp/dockflow_hook_${Date.now()}.sh`;
-    try {
-      await sshExec(rc.remote.connection, `printf '%s' ${shellQuote(content)} > "${tmpPath}" && chmod +x "${tmpPath}"`);
-      await execRemote(
-        rc.remote.connection,
-        `cd "${rc.stackDir}" 2>/dev/null || cd /tmp; ${remoteEnvPrefix(rc.env)}timeout ${entry.timeoutS} "${tmpPath}" 2>&1`,
-        entry.fatal,
-        label,
-      );
-    } finally {
-      await sshExec(rc.remote.connection, `rm -f "${tmpPath}"`).catch(() => {});
-    }
+    const program = remoteHookProgram({ stackDir: rc.stackDir, env: rc.env, timeoutS: entry.timeoutS, kind: 'script' });
+    await execRemote(rc.remote.connection, program, content, entry.fatal, label);
     return;
   }
 
-  const tmpFile = join(tmpdir(), `dockflow-hook-${Date.now()}.sh`);
-  writeFileSync(tmpFile, content, { mode: 0o755 });
+  // A private directory: the system temp dir is shared, and the script may hold secrets.
+  const tmpDir = mkdtempSync(join(tmpdir(), 'dockflow-hook-'));
+  const tmpFile = join(tmpDir, 'hook.sh');
+  writeFileSync(tmpFile, content, { mode: 0o700 });
   try {
     await execLocal([rc.localBash, tmpFile], rc.projectRoot, entry.timeoutS * 1000, entry.fatal, label, rc.env);
   } finally {
-    try { unlinkSync(tmpFile); } catch {}
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
   }
 }
 
 async function runCommandEntry(entry: ResolvedHookEntry, label: string, rc: EntryRunContext): Promise<void> {
   if (rc.remote) {
-    await execRemote(
-      rc.remote.connection,
-      `cd "${rc.stackDir}" 2>/dev/null || cd /tmp; ${remoteEnvPrefix(rc.env)}timeout ${entry.timeoutS} bash -c ${shellQuote(entry.value)} 2>&1`,
-      entry.fatal,
-      label,
-    );
+    const program = remoteHookProgram({ stackDir: rc.stackDir, env: rc.env, timeoutS: entry.timeoutS, kind: 'run' });
+    await execRemote(rc.remote.connection, program, entry.value, entry.fatal, label);
     return;
   }
   await execLocal([rc.localBash, '-c', entry.value], rc.projectRoot, entry.timeoutS * 1000, entry.fatal, label, rc.env);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { join } from 'path';
-import { windowsBashCandidates, isWslStubPath, resolveHookEntries, resolvePhaseEntries, remoteEnvPrefix } from '../services/hook';
-import type { HookPhase } from '../utils/config';
+import { windowsBashCandidates, isWslStubPath, resolveHookEntries, resolvePhaseEntries, remoteEnvPrefix, remoteHookProgram, resolveLocalBash } from '../services/hook';
+import { HOOK_PHASES, type HookPhase } from '../utils/config';
 
 describe('windowsBashCandidates', () => {
   it('derives Git Bash locations from ProgramFiles variables', () => {
@@ -41,12 +41,10 @@ describe('isWslStubPath', () => {
   });
 });
 
-describe('HookPhase type', () => {
-  it('covers all six deploy phases', () => {
-    const phases: HookPhase[] = ['pre-build', 'post-build', 'pre-upload', 'post-upload', 'pre-deploy', 'post-deploy'];
-    expect(phases).toHaveLength(6);
-    expect(phases).toContain('pre-upload');
-    expect(phases).toContain('post-upload');
+describe('HOOK_PHASES', () => {
+  it('lists the seven phases in the order a deploy runs them', () => {
+    const expected: HookPhase[] = ['pre-build', 'post-build', 'pre-upload', 'post-upload', 'pre-deploy', 'post-deploy', 'on-failure'];
+    expect([...HOOK_PHASES]).toEqual(expected);
   });
 });
 
@@ -143,5 +141,63 @@ describe('remoteEnvPrefix', () => {
     const prefix = remoteEnvPrefix({ DOCKFLOW_ERROR: "can't reach host && rm -rf /" });
 
     expect(prefix).toBe("export DOCKFLOW_ERROR='can'\\''t reach host && rm -rf /'; ");
+  });
+});
+
+describe('remoteHookProgram', () => {
+  const base = { stackDir: '/var/lib/dockflow/stacks/demo/current', env: {}, timeoutS: 30 };
+
+  it('never carries the hook text: it only reads stdin', () => {
+    const program = remoteHookProgram({ ...base, kind: 'run' });
+
+    expect(program).toContain('cat > "$tmp"');
+    expect(program).toContain('umask 077');
+    expect(program).toContain('mktemp');
+    expect(program).toContain(`trap 'rm -f "$tmp"' EXIT`);
+  });
+
+  it('runs a script directly, so its shebang applies, and a command with bash', () => {
+    expect(remoteHookProgram({ ...base, kind: 'script' })).toContain('timeout 30 "$tmp" < /dev/null 2>&1');
+    expect(remoteHookProgram({ ...base, kind: 'run' })).toContain('timeout 30 bash "$tmp" < /dev/null 2>&1');
+  });
+
+  // Runs the generated program for real, with stdin carrying the entry. Linux CI has
+  // bash; on Windows this needs Git Bash, and the test is skipped without it.
+  const bash = resolveLocalBash();
+  const run = async (program: string, input: string) => {
+    const proc = Bun.spawn([bash as string, '-c', program], { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' });
+    proc.stdin.write(input);
+    proc.stdin.end();
+    const stdout = await new Response(proc.stdout).text();
+    await proc.exited;
+    return { stdout: stdout.trim(), exitCode: proc.exitCode };
+  };
+
+  it.skipIf(!bash)('executes the entry it receives on stdin, with the exported variables', async () => {
+    const program = remoteHookProgram({ ...base, stackDir: '/nonexistent', env: { DOCKFLOW_ERROR: "it's broken && worse" }, kind: 'run' });
+    const result = await run(program, 'echo "got: $DOCKFLOW_ERROR"');
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("got: it's broken && worse");
+  });
+
+  it.skipIf(!bash)('propagates the entry exit code', async () => {
+    const result = await run(remoteHookProgram({ ...base, stackDir: '/nonexistent', kind: 'run' }), 'exit 3');
+
+    expect(result.exitCode).toBe(3);
+  });
+
+  it.skipIf(!bash)('removes the file it wrote, even when the entry fails', async () => {
+    const result = await run(
+      remoteHookProgram({ ...base, stackDir: '/nonexistent', kind: 'run' }),
+      'echo "$0" > /tmp/dockflow-hook-probe-path; exit 1',
+    );
+    const leftover = await run(
+      remoteHookProgram({ ...base, stackDir: '/nonexistent', kind: 'run' }),
+      'p=$(cat /tmp/dockflow-hook-probe-path); rm -f /tmp/dockflow-hook-probe-path; test -e "$p" && echo present || echo gone',
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(leftover.stdout).toBe('gone');
   });
 });
