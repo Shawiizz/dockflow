@@ -152,6 +152,7 @@ export const HooksConfigSchema = z.object({
   'post-upload': hookPhase('on the server after files are uploaded'),
   'pre-deploy': hookPhase('on the server before the stack is deployed'),
   'post-deploy': hookPhase('on the server after a successful deployment'),
+  'on-failure': hookPhase('on the server after a failed deployment, once rollbacks are done'),
 });
 
 /**

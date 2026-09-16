@@ -8,6 +8,7 @@
  *   - post-upload  (remote, after files are uploaded to the server)
  *   - pre-deploy   (remote, before stack deployment)
  *   - post-deploy  (remote, after successful deployment and health checks)
+ *   - on-failure   (remote, after a failed deployment once rollbacks are done)
  *
  * Hooks are non-fatal by default — failures log warnings but do not block the
  * deploy. `hooks.fatal` flips that for every phase, or for a chosen few when
@@ -21,7 +22,7 @@ import type { SSHKeyConnection } from '../types';
 import { sshExec, shellQuote } from '../utils/ssh';
 import { printDebug, printDim, printRaw, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
-import type { DockflowConfig, HookEntry, HookEntryInput, HookPhase } from '../utils/config';
+import type { DockflowConfig, HookEntry, HookEntryInput, HookPhase, HooksConfig } from '../utils/config';
 import { DOCKFLOW_STACKS_DIR } from '../constants';
 import type { RenderedFiles } from './compose';
 
@@ -134,10 +135,11 @@ async function execLocal(
   timeoutMs: number,
   fatal: boolean,
   label: string,
+  env: Record<string, string>,
 ): Promise<void> {
   const proc = Bun.spawn(args, {
     cwd,
-    env: { ...process.env },
+    env: { ...process.env, ...env },
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -199,13 +201,47 @@ async function execRemote(
   }
 }
 
+/**
+ * The entries a phase runs, with the config defaults applied.
+ *
+ * on-failure entries are never fatal whatever the config says — the deploy has
+ * already failed, and an entry that threw would bury the error that caused it.
+ */
+export function resolvePhaseEntries(phase: HookPhase, hooks: HooksConfig | undefined): ResolvedHookEntry[] {
+  const entries = resolveHookEntries(hooks?.[phase], { fatal: hooks?.fatal, timeout: hooks?.timeout });
+  return phase === 'on-failure' ? entries.map((e) => ({ ...e, fatal: false })) : entries;
+}
+
+/** Everything an entry needs to run, resolved once per phase. */
+interface EntryRunContext {
+  projectRoot: string;
+  rendered?: RenderedFiles;
+  /** Set when entries run on the server rather than locally. */
+  remote?: HookRemoteContext;
+  localBash: string;
+  stackDir: string;
+  env: Record<string, string>;
+}
+
+/**
+ * Shell statements exporting `env` to everything that follows on the line.
+ *
+ * Keys come from Dockflow itself; values are quoted, so an error message full
+ * of quotes and operators stays inert.
+ */
+export function remoteEnvPrefix(env: Record<string, string>): string {
+  return Object.entries(env)
+    .map(([key, value]) => `export ${key}=${shellQuote(value)}; `)
+    .join('');
+}
+
 /** Read a script entry, preferring the Nunjucks-rendered content when there is one. */
-function readScript(entry: ResolvedHookEntry, projectRoot: string, rendered?: RenderedFiles): string {
+function readScript(entry: ResolvedHookEntry, rc: EntryRunContext): string {
   const relPath = entry.value.replace(/\\/g, '/');
-  const fromRender = rendered?.get(relPath);
+  const fromRender = rc.rendered?.get(relPath);
   if (fromRender !== undefined) return fromRender;
 
-  const absPath = join(projectRoot, entry.value);
+  const absPath = join(rc.projectRoot, entry.value);
   if (!existsSync(absPath)) {
     throw new DeployError(
       `hook script not found: ${entry.value}`,
@@ -216,29 +252,21 @@ function readScript(entry: ResolvedHookEntry, projectRoot: string, rendered?: Re
   return readFileSync(absPath, 'utf-8');
 }
 
-async function runScriptEntry(
-  entry: ResolvedHookEntry,
-  label: string,
-  projectRoot: string,
-  rendered: RenderedFiles | undefined,
-  remote: HookRemoteContext | undefined,
-  localBash: string,
-  stackDir: string,
-): Promise<void> {
-  const content = readScript(entry, projectRoot, rendered);
+async function runScriptEntry(entry: ResolvedHookEntry, label: string, rc: EntryRunContext): Promise<void> {
+  const content = readScript(entry, rc);
 
-  if (remote) {
+  if (rc.remote) {
     const tmpPath = `/tmp/dockflow_hook_${Date.now()}.sh`;
     try {
-      await sshExec(remote.connection, `printf '%s' ${shellQuote(content)} > "${tmpPath}" && chmod +x "${tmpPath}"`);
+      await sshExec(rc.remote.connection, `printf '%s' ${shellQuote(content)} > "${tmpPath}" && chmod +x "${tmpPath}"`);
       await execRemote(
-        remote.connection,
-        `cd "${stackDir}" 2>/dev/null || cd /tmp; timeout ${entry.timeoutS} "${tmpPath}" 2>&1`,
+        rc.remote.connection,
+        `cd "${rc.stackDir}" 2>/dev/null || cd /tmp; ${remoteEnvPrefix(rc.env)}timeout ${entry.timeoutS} "${tmpPath}" 2>&1`,
         entry.fatal,
         label,
       );
     } finally {
-      await sshExec(remote.connection, `rm -f "${tmpPath}"`).catch(() => {});
+      await sshExec(rc.remote.connection, `rm -f "${tmpPath}"`).catch(() => {});
     }
     return;
   }
@@ -246,30 +274,23 @@ async function runScriptEntry(
   const tmpFile = join(tmpdir(), `dockflow-hook-${Date.now()}.sh`);
   writeFileSync(tmpFile, content, { mode: 0o755 });
   try {
-    await execLocal([localBash, tmpFile], projectRoot, entry.timeoutS * 1000, entry.fatal, label);
+    await execLocal([rc.localBash, tmpFile], rc.projectRoot, entry.timeoutS * 1000, entry.fatal, label, rc.env);
   } finally {
     try { unlinkSync(tmpFile); } catch {}
   }
 }
 
-async function runCommandEntry(
-  entry: ResolvedHookEntry,
-  label: string,
-  projectRoot: string,
-  remote: HookRemoteContext | undefined,
-  localBash: string,
-  stackDir: string,
-): Promise<void> {
-  if (remote) {
+async function runCommandEntry(entry: ResolvedHookEntry, label: string, rc: EntryRunContext): Promise<void> {
+  if (rc.remote) {
     await execRemote(
-      remote.connection,
-      `cd "${stackDir}" 2>/dev/null || cd /tmp; timeout ${entry.timeoutS} bash -c ${shellQuote(entry.value)} 2>&1`,
+      rc.remote.connection,
+      `cd "${rc.stackDir}" 2>/dev/null || cd /tmp; ${remoteEnvPrefix(rc.env)}timeout ${entry.timeoutS} bash -c ${shellQuote(entry.value)} 2>&1`,
       entry.fatal,
       label,
     );
     return;
   }
-  await execLocal([localBash, '-c', entry.value], projectRoot, entry.timeoutS * 1000, entry.fatal, label);
+  await execLocal([rc.localBash, '-c', entry.value], rc.projectRoot, entry.timeoutS * 1000, entry.fatal, label, rc.env);
 }
 
 /**
@@ -285,13 +306,11 @@ export async function runHook(
   config: DockflowConfig,
   rendered?: RenderedFiles,
   remote?: HookRemoteContext,
+  options: { env?: Record<string, string> } = {},
 ): Promise<void> {
   if (config.hooks?.enabled === false) return;
 
-  const entries = resolveHookEntries(config.hooks?.[phase], {
-    fatal: config.hooks?.fatal,
-    timeout: config.hooks?.timeout,
-  });
+  const entries = resolvePhaseEntries(phase, config.hooks);
 
   if (entries.length === 0) {
     printDebug(`No ${phase} hook found`);
@@ -324,16 +343,23 @@ export async function runHook(
   }
 
   const target = runRemotely ? remote : undefined;
-  const stackDir = target ? `${DOCKFLOW_STACKS_DIR}/${target.stackName}/current` : '';
+  const rc: EntryRunContext = {
+    projectRoot,
+    rendered,
+    remote: target,
+    localBash,
+    stackDir: target ? `${DOCKFLOW_STACKS_DIR}/${target.stackName}/current` : '',
+    env: options.env ?? {},
+  };
 
   for (const entry of entries) {
     const label = `${phase} ${entry.label}`;
     printDim(`Running ${label}...`);
     try {
       if (entry.kind === 'script') {
-        await runScriptEntry(entry, label, projectRoot, rendered, target, localBash, stackDir);
+        await runScriptEntry(entry, label, rc);
       } else {
-        await runCommandEntry(entry, label, projectRoot, target, localBash, stackDir);
+        await runCommandEntry(entry, label, rc);
       }
     } catch (error) {
       if (error instanceof DeployError) throw error;

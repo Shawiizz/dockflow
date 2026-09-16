@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { join } from 'path';
-import { windowsBashCandidates, isWslStubPath, resolveHookEntries } from '../services/hook';
+import { windowsBashCandidates, isWslStubPath, resolveHookEntries, resolvePhaseEntries, remoteEnvPrefix } from '../services/hook';
 import type { HookPhase } from '../utils/config';
 
 describe('windowsBashCandidates', () => {
@@ -104,5 +104,44 @@ describe('resolveHookEntries', () => {
 
     expect(entries.map((e) => e.value)).toEqual(['a.sh', 'b.sh', 'echo done']);
     expect(entries.map((e) => e.kind)).toEqual(['script', 'script', 'run']);
+  });
+});
+
+describe('resolvePhaseEntries', () => {
+  it('applies the config defaults to the phase entries', () => {
+    const [entry] = resolvePhaseEntries('post-deploy', { fatal: true, timeout: 12, 'post-deploy': ['notify'] });
+
+    expect(entry.fatal).toBe(true);
+    expect(entry.timeoutS).toBe(12);
+  });
+
+  it('on-failure entries are never fatal, even when asked to be', () => {
+    const entries = resolvePhaseEntries('on-failure', {
+      fatal: true,
+      'on-failure': ['alert', { run: 'cleanup', fatal: true }],
+    });
+
+    expect(entries.map((e) => e.fatal)).toEqual([false, false]);
+  });
+
+  it('a phase with nothing declared runs nothing', () => {
+    expect(resolvePhaseEntries('on-failure', { fatal: true })).toEqual([]);
+    expect(resolvePhaseEntries('pre-build', undefined)).toEqual([]);
+  });
+});
+
+describe('remoteEnvPrefix', () => {
+  it('nothing to export', () => {
+    expect(remoteEnvPrefix({})).toBe('');
+  });
+
+  it('exports each variable, quoted', () => {
+    expect(remoteEnvPrefix({ DOCKFLOW_ROLLED_BACK_TO: '1.0.3' })).toBe("export DOCKFLOW_ROLLED_BACK_TO='1.0.3'; ");
+  });
+
+  it('an error message with quotes and operators stays one inert value', () => {
+    const prefix = remoteEnvPrefix({ DOCKFLOW_ERROR: "can't reach host && rm -rf /" });
+
+    expect(prefix).toBe("export DOCKFLOW_ERROR='can'\\''t reach host && rm -rf /'; ");
   });
 });

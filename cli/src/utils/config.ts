@@ -68,6 +68,7 @@ export const HOOK_PHASES = [
   'post-upload',
   'pre-deploy',
   'post-deploy',
+  'on-failure',
 ] as const;
 
 export type HookPhase = (typeof HOOK_PHASES)[number];
@@ -103,6 +104,7 @@ export interface HooksConfig {
   'post-upload'?: HookEntryInput[];
   'pre-deploy'?: HookEntryInput[];
   'post-deploy'?: HookEntryInput[];
+  'on-failure'?: HookEntryInput[];
 }
 
 export interface StackManagementConfig {

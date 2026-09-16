@@ -14,6 +14,7 @@ Hooks allow you to run custom scripts at specific points during deployment.
 | `post-upload` | Server | After files are uploaded, before stack deployment |
 | `pre-deploy` | Server | After file uploads, before stack deployment |
 | `post-deploy` | Server | After successful deployment and health checks |
+| `on-failure` | Server | After a failed deployment, once rollbacks are done |
 
 <Callout type="info">
   When [`remote_build: true`](/en/configuration/build-strategy) is set, `pre-build` and `post-build` hooks run on the server instead of locally — where the build is actually happening.
@@ -76,6 +77,34 @@ previous version of every file it had just uploaded.
 
 `timeout` works the same way — a config reload wants a few seconds, a database migration may
 need the full default of 300.
+
+## Reacting to a failed deploy
+
+`on-failure` runs when a deployment fails, after uploads, images and the stack have been rolled
+back — so its entries see the settled state rather than a deploy halfway through undoing itself.
+Use it to alert someone or to clean up state your own hooks created.
+
+```yaml
+hooks:
+  on-failure:
+    - name: alert
+      run: >-
+        curl -s -X POST https://hooks.example.com/alert
+        --data-urlencode "text=Deploy {{ version }} to {{ env }} failed: $DOCKFLOW_ERROR"
+```
+
+Two variables describe what happened:
+
+| Variable | Value |
+|----------|-------|
+| `DOCKFLOW_ERROR` | The error that failed the deployment |
+| `DOCKFLOW_ROLLED_BACK_TO` | The release the stack was rolled back to, or empty if none |
+
+<Callout type="info">
+  `on-failure` entries never abort anything, whatever `fatal` says — the deploy has already
+  failed, and a hook that threw would bury the error that caused it. A failing entry only prints
+  a warning.
+</Callout>
 
 ## Templating
 
@@ -192,6 +221,7 @@ hooks:
 | `post-upload` | entry[] | Entries to run on the server after files are uploaded | — |
 | `pre-deploy` | entry[] | Entries to run on the server before the stack is deployed | — |
 | `post-deploy` | entry[] | Entries to run on the server after a successful deployment | — |
+| `on-failure` | entry[] | Entries to run on the server after a failed deployment, never fatal | — |
 
 See [Entries](#entries) for the fields an entry accepts.
 

@@ -376,6 +376,18 @@ async function execute(ctx: DeployContext): Promise<void> {
       await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
     }
 
+    // Runs last so it observes the settled state. Hook.runHook never lets an
+    // on-failure entry abort, and this catch keeps the original error on top.
+    await Hook.runHook('on-failure', ctx.projectRoot, ctx.config, ctx.rendered, {
+      connection: ctx.cluster.manager.connection,
+      stackName: ctx.stackName,
+    }, {
+      env: {
+        DOCKFLOW_ERROR: err instanceof Error ? err.message : String(err),
+        DOCKFLOW_ROLLED_BACK_TO: rolledBackTo ?? '',
+      },
+    }).catch((e) => printWarning(`on-failure hooks could not run: ${e instanceof Error ? e.message : String(e)}`));
+
     if (rolledBackTo) {
       throw new DeployError(
         `Deployment failed and was rolled back to ${rolledBackTo}`,
