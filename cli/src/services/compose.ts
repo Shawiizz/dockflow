@@ -220,6 +220,15 @@ export function renderTemplates(
     }
   };
 
+  const render = (file: string, content: string): string => {
+    try {
+      return njk.renderString(content, templateCtx);
+    } catch (error) {
+      const message = (error instanceof Error ? error.message : String(error)).replace('(unknown path) ', '');
+      throw new ConfigError(`${file}: ${message}`);
+    }
+  };
+
   const files = walkDir(dockflowDir);
   let count = 0;
 
@@ -232,7 +241,7 @@ export function renderTemplates(
     if (relPath.startsWith(`${DOCKFLOW_PLUGINS_DIR}/`)) continue;
 
     const content = readFileSync(filePath, 'utf-8');
-    const renderedContent = njk.renderString(content, templateCtx);
+    const renderedContent = render(relPath, content);
     lint(relPath, content);
 
     rendered.set(relPath, renderedContent);
@@ -250,7 +259,7 @@ export function renderTemplates(
       const relPath = relative(projectRoot, absPath).replace(/\\/g, '/');
       if (!relPath.startsWith('.dockflow/')) {
         const content = readFileSync(absPath, 'utf-8');
-        rendered.set(relPath, njk.renderString(content, templateCtx));
+        rendered.set(relPath, render(relPath, content));
         lint(relPath, content);
       }
     }
@@ -267,16 +276,11 @@ export function renderTemplates(
       continue;
     }
 
-    try {
-      const content = readFileSync(srcPath, 'utf-8');
-      const renderedContent = njk.renderString(content, templateCtx);
-      lint(src, content);
-      const relDest = dest.replace(/\\/g, '/');
-      rendered.set(relDest, renderedContent);
-      printDebug(`Rendered custom template: ${src} → ${dest}`);
-    } catch (error) {
-      throw new Error(`Custom template render failed for ${src}: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    const content = readFileSync(srcPath, 'utf-8');
+    const renderedContent = render(src, content);
+    lint(src, content);
+    rendered.set(dest.replace(/\\/g, '/'), renderedContent);
+    printDebug(`Rendered custom template: ${src} → ${dest}`);
   }
 
   return rendered;
