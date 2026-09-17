@@ -2,3 +2,9 @@ project_name: "dockflow-docs"
 templates:
   - docs/scripts/generate-llms-txt.ts
   - docs/app/ai/page.mdx
+
+plugins:
+  - use: nginx
+    with:
+      domain: "{{ current.env.docs_domain_name }}"
+      port: "{{ current.env.docs_port }}"

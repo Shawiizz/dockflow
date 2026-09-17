@@ -94,3 +94,9 @@ health_checks:
       timeout: 20
       retries: 5
       retry_delay: 10
+
+plugins:
+  - use: nginx
+    with:
+      domain: my_domain.com
+      port: "{{ current.env.app_external_port }}"
