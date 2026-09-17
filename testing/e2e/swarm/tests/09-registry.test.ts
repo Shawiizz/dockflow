@@ -41,7 +41,7 @@ describe("registry distribution", () => {
     // Remove the registry-tagged images built on the host
     await exec(["docker", "rmi", FULL_IMAGE]).catch(() => {});
     await exec(["docker", "rmi", `${REGISTRY}/${IMAGE_REPO}:${TEST_ENV}-latest`]).catch(() => {});
-  });
+  }, 60_000);
 
   test("registry API is reachable from the host", async () => {
     const res = await fetch(`http://${REGISTRY}/v2/`, { signal: AbortSignal.timeout(5000) });
