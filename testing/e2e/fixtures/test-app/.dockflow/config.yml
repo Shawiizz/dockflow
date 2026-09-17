@@ -30,3 +30,20 @@ backup:
   accessories:
     redis:
       type: redis
+
+hooks:
+  pre-build:
+    - script: .dockflow/hooks/pre-build.sh
+  post-build:
+    - script: .dockflow/hooks/post-build.sh
+  pre-deploy:
+    - script: .dockflow/hooks/pre-deploy.sh
+  post-deploy:
+    - script: .dockflow/hooks/post-deploy.sh
+
+plugins:
+  - use: nginx
+    with:
+      domain: vhost.test.local
+      port: "{{ current.env.web_port }}"
+      listen: "8091"

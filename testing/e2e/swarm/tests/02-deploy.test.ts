@@ -65,6 +65,21 @@ describe("deploy", () => {
     });
   }, 30_000);
 
+  test("nginx plugin serves the app through its vhost", async () => {
+    const vhost = await dockerExec(MANAGER_CONTAINER, [
+      "cat",
+      "/etc/nginx/sites-enabled/vhost.test.local.conf",
+    ]);
+    expect(vhost).toContain("server_name vhost.test.local;");
+    expect(vhost).toContain("proxy_pass http://127.0.0.1:8080;");
+
+    const status = await dockerExec(MANAGER_CONTAINER, [
+      "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+      "-H", "Host: vhost.test.local", "http://127.0.0.1:8091/",
+    ]);
+    expect(status.trim()).toBe("200");
+  }, 30_000);
+
   test("traefik labels are injected", async () => {
     const labels = await getServiceLabels(SERVICE_NAME);
     expect(labels["traefik.enable"]).toBe("true");
