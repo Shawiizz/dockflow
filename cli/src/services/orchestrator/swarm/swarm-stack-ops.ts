@@ -137,7 +137,7 @@ export class SwarmStackOps {
    * Deploy a Docker stack.
    *
    * 1. Checks for stuck services and force-removes the stack if any.
-   * 2. Pipes compose YAML via heredoc to `docker stack deploy -c -`.
+   * 2. Pipes the compose YAML over stdin to `docker stack deploy -c -`.
    * 3. Verifies the stack exists after deploy.
    */
   async deployStack(
@@ -156,7 +156,8 @@ export class SwarmStackOps {
       await Bun.sleep(3000);
     }
 
-    // 2. Deploy via temp file (avoids shell escaping issues and ARG_MAX limits)
+    // 2. Deploy from stdin. The compose carries the stack's secrets: a file in
+    //    /tmp would be readable by every local user for the whole deploy.
     const flags = [
       prune ? '--prune' : '',
       registryAuth ? '--with-registry-auth' : '',
@@ -164,37 +165,18 @@ export class SwarmStackOps {
       .filter(Boolean)
       .join(' ');
 
-    const tmpFile = `/tmp/dockflow-${stackName}-${Date.now()}.yml`;
+    const { stream, done } = await sshExecChannel(
+      this.connection,
+      `docker stack deploy ${flags} -c - ${stackName}`,
+    );
+    stream.end(composeYaml);
+    const result = await done;
 
-    try {
-      // Write YAML via stdin — no shell escaping needed
-      const { stream: writeStream, done: writeDone } = await sshExecChannel(
-        this.connection,
-        `cat > '${tmpFile}'`,
+    if (result.exitCode !== 0) {
+      throw new DeployError(
+        `docker stack deploy failed (exit ${result.exitCode}): ${result.stderr.trim()}`,
+        ErrorCode.DEPLOY_FAILED,
       );
-      writeStream.end(composeYaml);
-      const writeResult = await writeDone;
-      if (writeResult.exitCode !== 0) {
-        throw new DeployError(
-          `Failed to write compose file: ${writeResult.stderr.trim()}`,
-          ErrorCode.DEPLOY_FAILED,
-        );
-      }
-
-      // Deploy from file
-      const result = await sshExec(
-        this.connection,
-        `docker stack deploy ${flags} -c '${tmpFile}' ${stackName}`,
-      );
-
-      if (result.exitCode !== 0) {
-        throw new DeployError(
-          `docker stack deploy failed (exit ${result.exitCode}): ${result.stderr.trim()}`,
-          ErrorCode.DEPLOY_FAILED,
-        );
-      }
-    } finally {
-      await sshExec(this.connection, `rm -f '${tmpFile}'`).catch(() => {});
     }
 
     // 3. Verify stack exists
@@ -458,23 +440,16 @@ export class SwarmStackOps {
 
     printInfo('Deploying accessories...');
 
-    // 3. Pull images (best-effort) via temp file
-    const pullTmpFile = `/tmp/dockflow-pull-${stackName}-${Date.now()}.yml`;
+    // 3. Pull images (best-effort), from stdin like the deploy itself
     try {
       const { stream: pullStream, done: pullDone } = await sshExecChannel(
         this.connection,
-        `cat > '${pullTmpFile}'`,
+        `docker compose -f - pull 2>/dev/null || true`,
       );
       pullStream.end(accessoriesComposeYaml);
       await pullDone;
-      await sshExec(
-        this.connection,
-        `docker compose -f '${pullTmpFile}' pull 2>/dev/null || true`,
-      );
     } catch {
       printDebug('Accessories image pull skipped (compose v2 not available or pull failed)');
-    } finally {
-      await sshExec(this.connection, `rm -f '${pullTmpFile}'`).catch(() => {});
     }
 
     // 4. Deploy
