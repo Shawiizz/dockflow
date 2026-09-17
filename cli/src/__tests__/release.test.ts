@@ -243,7 +243,7 @@ describe('Release.rollback', () => {
     };
 
     await expect(release.rollback('demo', backend as never, '2.0.0')).rejects.toThrow(
-      'Could not read compose for rollback',
+      'Could not read the stack for rollback',
     );
     expect(calls.redeploy).toHaveLength(0);
   });
@@ -289,8 +289,32 @@ describe('Release.createRelease', () => {
     };
 
     await expect(
-      release.createRelease('demo', '1.0.0', 'services: {}\n', meta('1.0.0', 100)),
+      release.createRelease('demo', '1.0.0', 'services: {}\n', 'services: {}\n', meta('1.0.0', 100)),
     ).rejects.toThrow('current release symlink');
+  });
+
+  it('stores the rendered stack beside the compose', async () => {
+    const release = new Release(conn);
+
+    await release.createRelease('demo', '1.0.0', 'services: {}\n', 'rendered\n', meta('1.0.0', 100));
+
+    expect(executedCommands.some((c) => c.startsWith('cat > ') && c.endsWith('/1.0.0/stack.yml"'))).toBe(true);
+    expect(executedCommands.some((c) => c.startsWith('cat > ') && c.endsWith('/1.0.0/docker-compose.yml"'))).toBe(true);
+  });
+});
+
+describe('Release.rollback — what it re-applies', () => {
+  it('reads the rendered stack, and falls back to the compose of an older release', async () => {
+    const release = new Release(conn);
+    const { backend, calls } = makeFakeBackend();
+    sshResponses = (cmd) => (cmd.startsWith('cat ') ? okResult('rendered\n') : okResult());
+
+    await release.rollback('demo', backend as never, null, '/var/lib/dockflow/stacks/demo/1.5.0');
+
+    expect(executedCommands).toContain(
+      'cat "/var/lib/dockflow/stacks/demo/1.5.0/stack.yml" 2>/dev/null || cat "/var/lib/dockflow/stacks/demo/1.5.0/docker-compose.yml"',
+    );
+    expect(calls.redeploy[0].content).toBe('rendered\n');
   });
 });
 

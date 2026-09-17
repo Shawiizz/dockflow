@@ -324,16 +324,25 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     await ensureExternalNetworks(ctx);
 
-    const [releaseResult] = await Promise.all([
-      ctx.releases.createRelease(ctx.stackName, ctx.deployVersion, Compose.serialize(compose), {
+    // The whole stack, even under --only: a rollback restores every service.
+    const renderedStack = ctx.orchestrator.render({
+      stackName: ctx.stackName, env: ctx.env, compose, proxy: ctx.config.proxy, useRegistry: ctx.config.registry?.enabled,
+    });
+
+    // Settled, not Promise.all: when accessories fail first, the release write
+    // must still hand back the symlink to restore, or cleanup deletes `current`.
+    const [releaseOutcome, accessoriesOutcome] = await Promise.allSettled([
+      ctx.releases.createRelease(ctx.stackName, ctx.deployVersion, Compose.serialize(compose), renderedStack, {
         project_name: ctx.config.project_name, version: ctx.deployVersion, env: ctx.env,
         timestamp: new Date().toISOString(), epoch: Math.floor(Date.now() / 1000),
         performer: getPerformer(), branch: ctx.branchName,
       }),
       deployAccessories(ctx),
     ]);
-    previousSymlink = releaseResult.previousSymlink;
+    if (releaseOutcome.status === 'rejected') throw releaseOutcome.reason;
+    previousSymlink = releaseOutcome.value.previousSymlink;
     releaseCreated = true;
+    if (accessoriesOutcome.status === 'rejected') throw accessoriesOutcome.reason;
 
     await deployApp(ctx, compose);
     stackDeployed = ctx.deployApp !== false && Compose.hasServices(compose);

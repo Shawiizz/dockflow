@@ -38,20 +38,24 @@ export class K3sStackBackend implements StackBackend {
 
   async deploy(input: StackDeployInput): Promise<Result<void, DeployError>> {
     try {
-      // Inject Traefik labels so K8sManifest can convert them to IngressRoute
-      if (input.proxy?.enabled) {
-        Compose.injectTraefikLabels(input.compose, input.proxy, input.stackName, input.env);
-      }
-      const manifests = K8sManifest.composeToManifests(
-        input.stackName,
-        input.compose,
-        input.proxy,
-        { useRegistry: input.useRegistry === true },
-      );
-      return await this.applyManifests(input.stackName, manifests);
+      return await this.applyManifests(input.stackName, this.render(input));
     } catch (e) {
       return err(toDeployError(e));
     }
+  }
+
+  render(input: StackDeployInput): string {
+    const compose = Compose.loadFromString(Compose.serialize(input.compose));
+    // Traefik labels are what K8sManifest turns into an IngressRoute.
+    if (input.proxy?.enabled) {
+      Compose.injectTraefikLabels(compose, input.proxy, input.stackName, input.env);
+    }
+    return K8sManifest.composeToManifests(
+      input.stackName,
+      compose,
+      input.proxy,
+      { useRegistry: input.useRegistry === true },
+    );
   }
 
   async deployAccessory(input: AccessoryDeployInput): Promise<Result<{ deployed: boolean }, DeployError>> {

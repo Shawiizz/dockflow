@@ -19,7 +19,7 @@ import type { SSHKeyConnection } from '../types';
 import { sshExec, sshExecChannel } from '../utils/ssh';
 import { printDebug, printInfo, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
-import { DOCKFLOW_STACKS_DIR } from '../constants';
+import { DOCKFLOW_STACKS_DIR, RELEASE_STACK_FILE } from '../constants';
 import type { StackBackend } from './orchestrator/interfaces';
 import type { DockflowConfig } from '../utils/config';
 
@@ -120,13 +120,17 @@ export class Release {
   }
 
   /**
-   * Create a new release directory and upload compose + metadata.
+   * Create a new release directory and upload compose, rendered stack and metadata.
    * Updates the `current` symlink to point at the new release.
+   *
+   * The compose keeps the project's images for partial deploys and image cleanup;
+   * the rendered stack is what rollback re-applies.
    */
   async createRelease(
     stackName: string,
     version: string,
     composeYaml: string,
+    renderedStack: string,
     metadata: ReleaseMetadata,
   ): Promise<{ previousSymlink: string | null }> {
     const dir = this.releaseDir(stackName, version);
@@ -147,16 +151,24 @@ export class Release {
     }
 
     // Write compose and metadata via stdin (no shell escaping needed)
-    const [composeHandle, metaHandle] = await Promise.all([
+    const [composeHandle, stackHandle, metaHandle] = await Promise.all([
       sshExecChannel(this.connection, `cat > "${dir}/docker-compose.yml"`),
+      sshExecChannel(this.connection, `cat > "${dir}/${RELEASE_STACK_FILE}"`),
       sshExecChannel(this.connection, `cat > "${dir}/metadata.json"`),
     ]);
     composeHandle.stream.end(composeYaml);
+    stackHandle.stream.end(renderedStack);
     metaHandle.stream.end(metaJson);
-    const [composeResult, metaResult] = await Promise.all([composeHandle.done, metaHandle.done]);
+    const [composeResult, stackResult, metaResult] = await Promise.all([composeHandle.done, stackHandle.done, metaHandle.done]);
     if (composeResult.exitCode !== 0) {
       throw new DeployError(
         `Failed to write release compose for ${version}: ${composeResult.stderr.trim() || `exit ${composeResult.exitCode}`}`,
+        ErrorCode.DEPLOY_FAILED,
+      );
+    }
+    if (stackResult.exitCode !== 0) {
+      throw new DeployError(
+        `Failed to write release stack for ${version}: ${stackResult.stderr.trim() || `exit ${stackResult.exitCode}`}`,
         ErrorCode.DEPLOY_FAILED,
       );
     }
@@ -250,15 +262,19 @@ export class Release {
 
     printInfo(`Rolling back to ${previousVersion}...`);
 
-    const composeResult = await sshExec(this.connection, `cat "${previousDir}/docker-compose.yml"`);
-    if (composeResult.exitCode !== 0 || !composeResult.stdout.trim()) {
+    // A release written before the rendered stack was stored only has its compose.
+    const stackResult = await sshExec(
+      this.connection,
+      `cat "${previousDir}/${RELEASE_STACK_FILE}" 2>/dev/null || cat "${previousDir}/docker-compose.yml"`,
+    );
+    if (stackResult.exitCode !== 0 || !stackResult.stdout.trim()) {
       throw new DeployError(
-        `Could not read compose for rollback at ${previousDir}`,
+        `Could not read the stack for rollback at ${previousDir}`,
         ErrorCode.ROLLBACK_FAILED,
       );
     }
 
-    const deployResult = await orchestrator.redeploy(stackName, composeResult.stdout);
+    const deployResult = await orchestrator.redeploy(stackName, stackResult.stdout);
     if (!deployResult.success) {
       throw new DeployError(deployResult.error.message, ErrorCode.ROLLBACK_FAILED);
     }

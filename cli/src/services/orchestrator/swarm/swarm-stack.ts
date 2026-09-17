@@ -56,27 +56,28 @@ export class SwarmStackBackend implements StackBackend {
       const volumes = Compose.getExternalVolumes(input.compose);
       await this.ops.createExternalResources(networks, volumes);
 
-      // 2. When --services filter is set, only deploy those services.
-      //    Prune is disabled so other running services are left untouched.
-      const targeted = input.servicesFilter?.length
-        ? Compose.filterServices(input.compose, input.servicesFilter)
-        : input.compose;
+      // 2. When --services filter is set, only those services are deployed, and
+      //    prune is disabled so other running services are left untouched.
       const prune = !input.servicesFilter?.length;
-
-      // 3. Render compose: inject Swarm deploy defaults + optional Traefik labels
-      Compose.stripBuildSections(targeted);
-      Compose.injectSwarmDefaults(targeted);
-      if (input.proxy?.enabled) {
-        Compose.injectTraefikLabels(targeted, input.proxy, input.stackName, input.env);
-      }
-      const content = Compose.serialize(targeted);
-
-      // 4. Apply
-      await this.ops.deployStack(input.stackName, content, { prune, withRegistryAuth: true });
+      await this.ops.deployStack(input.stackName, this.render(input), { prune, withRegistryAuth: true });
       return ok(undefined);
     } catch (e) {
       return err(toDeployError(e));
     }
+  }
+
+  render(input: StackDeployInput): string {
+    const compose = Compose.loadFromString(Compose.serialize(input.compose));
+    const targeted = input.servicesFilter?.length
+      ? Compose.filterServices(compose, input.servicesFilter)
+      : compose;
+
+    Compose.stripBuildSections(targeted);
+    Compose.injectSwarmDefaults(targeted);
+    if (input.proxy?.enabled) {
+      Compose.injectTraefikLabels(targeted, input.proxy, input.stackName, input.env);
+    }
+    return Compose.serialize(targeted);
   }
 
   async deployAccessory(input: AccessoryDeployInput): Promise<Result<{ deployed: boolean }, DeployError>> {

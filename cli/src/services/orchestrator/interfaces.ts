@@ -92,6 +92,13 @@ export interface StackBackend {
   deploy(input: StackDeployInput): Promise<Result<void, DeployError>>;
 
   /**
+   * The stack definition `deploy` applies for this input, without applying it:
+   * the compose with the backend's defaults and routing injected, or manifests.
+   * A release stores it, so rollback re-applies what actually ran. Never mutates the input.
+   */
+  render(input: StackDeployInput): string;
+
+  /**
    * Deploy the accessories companion stack. Implementations may skip if the
    * content is unchanged since the last deploy unless `force: true`.
    */
