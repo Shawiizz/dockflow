@@ -236,11 +236,11 @@ export function renderTemplates(
 
   printDebug(`Rendered ${count} file(s) in .dockflow/`);
 
-  // In flat layout, root-level compose and accessories are not inside .dockflow/ so
-  // they aren't picked up by the walk above — render them explicitly here.
+  // In flat layout, dockflow.yml and the root-level compose and accessories are not
+  // inside .dockflow/ so they aren't picked up by the walk above — render them here.
   const layout = getLayout();
   if (layout.type === 'flat') {
-    for (const absPath of [layout.composePath, layout.accessoriesPath]) {
+    for (const absPath of [layout.configPath, layout.composePath, layout.accessoriesPath]) {
       if (!absPath) continue;
       const relPath = relative(projectRoot, absPath).replace(/\\/g, '/');
       if (!relPath.startsWith('.dockflow/')) {

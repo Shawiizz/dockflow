@@ -378,6 +378,17 @@ export function loadConfig(options: LoadConfigOptions = {}): DockflowConfig | nu
   try {
     const parsed = parseYaml(content);
 
+    // A rendered dockflow.yml carries the servers too: keep the config part.
+    if (rawContent !== undefined && getLayout().type === 'flat') {
+      const result = validateRootConfig(parsed);
+      if (!result.success) {
+        if (!silent) printRaw(formatValidationErrors(result.error, 'dockflow.yml'));
+        return null;
+      }
+      const { servers: _s, defaults: _d, env: _e, ...configPart } = result.data;
+      return configPart as DockflowConfig;
+    }
+
     if (validate) {
       const result = validateConfigSchema(parsed);
       if (!result.success) {

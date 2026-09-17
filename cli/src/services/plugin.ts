@@ -12,13 +12,13 @@
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
-import { basename, isAbsolute, join, posix, resolve } from 'path';
+import { basename, isAbsolute, join, posix, relative, resolve } from 'path';
 import nunjucks from 'nunjucks';
 import { parse as parseYaml } from 'yaml';
 import { DOCKFLOW_PLUGIN_INSTANCES_DIR, DOCKFLOW_PLUGINS_DIR } from '../constants';
 import { BUILTIN_PLUGINS, type BuiltinPluginFiles } from '../plugins';
 import { PLUGIN_NAME_PATTERN, PluginManifestSchema, type PluginManifest } from '../schemas/plugin.schema';
-import { HOOK_PHASES, loadConfig } from '../utils/config';
+import { getLayout, HOOK_PHASES, loadConfig } from '../utils/config';
 import type { DockflowConfig, HookEntry, HookEntryInput, HookPhase, PluginUse, UploadItem } from '../utils/config';
 import { ConfigError } from '../utils/errors';
 
@@ -454,7 +454,8 @@ export async function loadConfigWithPlugins(args: {
   projectRoot: string;
   projectContext: Record<string, unknown>;
 }): Promise<{ config: DockflowConfig; pluginSummary: string[] }> {
-  const config = loadConfig({ content: args.rendered.get('.dockflow/config.yml'), silent: true }) ?? args.fallback;
+  const configRelPath = relative(args.projectRoot, getLayout().configPath).replace(/\\/g, '/');
+  const config = loadConfig({ content: args.rendered.get(configRelPath), silent: true }) ?? args.fallback;
   if (!config.plugins?.length) return { config, pluginSummary: [] };
 
   const expansion = await expandPlugins(config.plugins, {
