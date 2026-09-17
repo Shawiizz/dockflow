@@ -66,11 +66,20 @@ export function registerPruneCommand(program: Command): void {
 
       const spinner = createSpinner();
 
+      // A failed prune must not read as a success.
+      const run = async (command: string, what: string) => {
+        const result = await sshExec(connection, command);
+        if (result.exitCode !== 0) {
+          throw new Error(`${what} failed (exit ${result.exitCode}): ${result.stderr.trim() || result.stdout.trim()}`);
+        }
+        return result;
+      };
+
       try {
         // Prune containers
         if (pruneAll || options.containers) {
           spinner.start('Pruning stopped containers...');
-          const result = await sshExec(connection, 'docker container prune -f');
+          const result = await run('docker container prune -f', 'Container prune');
           const match = result.stdout.match(/Total reclaimed space: (.+)/);
           spinner.succeed(`Containers pruned${match ? ` (${match[1]})` : ''}`);
         }
@@ -79,7 +88,7 @@ export function registerPruneCommand(program: Command): void {
         if (pruneAll || options.images) {
           const allFlag = options.all ? ' -a' : '';
           spinner.start(`Pruning ${options.all ? 'all unused' : 'dangling'} images...`);
-          const result = await sshExec(connection, `docker image prune -f${allFlag}`);
+          const result = await run(`docker image prune -f${allFlag}`, 'Image prune');
           const match = result.stdout.match(/Total reclaimed space: (.+)/);
           spinner.succeed(`Images pruned${match ? ` (${match[1]})` : ''}`);
         }
@@ -87,7 +96,7 @@ export function registerPruneCommand(program: Command): void {
         // Prune volumes (careful - can delete data!)
         if (pruneAll || options.volumes) {
           spinner.start('Pruning unused volumes...');
-          const result = await sshExec(connection, 'docker volume prune -f');
+          const result = await run('docker volume prune -f', 'Volume prune');
           const match = result.stdout.match(/Total reclaimed space: (.+)/);
           spinner.succeed(`Volumes pruned${match ? ` (${match[1]})` : ''}`);
         }
@@ -95,7 +104,7 @@ export function registerPruneCommand(program: Command): void {
         // Prune networks
         if (pruneAll || options.networks) {
           spinner.start('Pruning unused networks...');
-          await sshExec(connection, 'docker network prune -f');
+          await run('docker network prune -f', 'Network prune');
           spinner.succeed('Networks pruned');
         }
 
@@ -104,7 +113,7 @@ export function registerPruneCommand(program: Command): void {
 
         // Show disk usage after prune
         printSection('Current Disk Usage');
-        const dfResult = await sshExec(connection, 'docker system df');
+        const dfResult = await run('docker system df', 'Disk usage');
         printRaw(dfResult.stdout);
 
       } catch (error) {
