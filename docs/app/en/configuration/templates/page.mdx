@@ -149,6 +149,27 @@ database:
   timeout: {{ current.env.db_timeout | default(30) }}
 ```
 
+### Multi-line and special values in YAML
+
+A value is inserted as plain text. In a YAML file, one that holds a line break, a quote or a `#`
+— a private key, a generated password — breaks the file, whatever quotes surround it.
+The `dump` filter writes the value as a JSON string, which is valid YAML and keeps it intact.
+It adds its own quotes, so write none:
+
+```yaml
+ssh_key: {{ current.env.ssh_private_key | dump }}
+```
+
+When the value sits inside a longer string, build the whole string first, then `dump` it:
+
+```yaml
+database_url: {{ ("postgres://app:" ~ current.env.db_password ~ "@db:5432/app") | dump }}
+```
+
+<Callout type="warning">
+  In `docker-compose.yml`, Docker then substitutes `$VAR` itself: a `$` in a value must be written `$$`.
+</Callout>
+
 ### Loops
 
 ```nginx
