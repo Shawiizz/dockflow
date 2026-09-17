@@ -22,7 +22,7 @@ import {
 } from './compose-lint';
 import { findUndefinedEnvReferences, describeUndefinedEnvReferences } from './template-lint';
 import type { DockflowConfig, ProxyConfig } from '../utils/config';
-import { getProjectRoot, getComposePath, getLayout } from '../utils/config';
+import { getAccessoriesPath, getProjectRoot, getComposePath, getLayout } from '../utils/config';
 import { printDebug, printWarning } from '../utils/output';
 import { ConfigError } from '../utils/errors';
 import { DOCKFLOW_PLUGINS_DIR, TRAEFIK_NETWORK_NAME } from '../constants';
@@ -293,6 +293,28 @@ function stripDollars(value: unknown): unknown {
 }
 
 /**
+ * Warnings for the `$` placeholders Docker would empty in a stack file.
+ *
+ * Placeholders are looked for in the file as written, where they are the user's own text.
+ * In the rendered file they may be part of an inserted secret.
+ */
+function placeholderWarnings(
+  absPath: string,
+  rendered: string,
+  renderContext: Record<string, unknown>,
+  declaredKeys: string[],
+): string[] {
+  const written = readFileSync(absPath, 'utf-8');
+  const withoutDollars = nunjucks
+    .configure({ autoescape: false, noCache: true })
+    .renderString(written, stripDollars(renderContext) as object);
+  return [
+    ...describeShellPlaceholders(findShellPlaceholders(written, declaredKeys)),
+    ...describeInsertedPlaceholders(findInsertedPlaceholders(rendered, withoutDollars)),
+  ];
+}
+
+/**
  * Render templates and extract compose content in one call.
  * Eliminates the duplicate render→findCompose→getDirPath boilerplate
  * shared between deploy.ts and build.ts.
@@ -338,17 +360,15 @@ export function renderAndResolveCompose(
     const declaredKeys = Object.keys(
       (templateContext?.current as { env?: Record<string, string> } | undefined)?.env ?? {},
     );
-    // Placeholders are looked for in the file as written, where they are the user's own
-    // text. In the rendered file they may be part of an inserted secret.
-    const written = readFileSync(originalComposePath, 'utf-8');
-    const withoutDollars = nunjucks
-      .configure({ autoescape: false, noCache: true })
-      .renderString(written, stripDollars(renderContext) as object);
-    for (const line of [
-      ...describeShellPlaceholders(findShellPlaceholders(written, declaredKeys)),
-      ...describeInsertedPlaceholders(findInsertedPlaceholders(composeContent, withoutDollars)),
-    ]) {
-      printWarning(`${composeRelPath} ${line}`);
+    const accessoriesPath = getAccessoriesPath();
+    for (const absPath of [originalComposePath, accessoriesPath]) {
+      if (!absPath) continue;
+      const relPath = relative(projectRoot, absPath).replace(/\\/g, '/');
+      const content = rendered.get(relPath);
+      if (!content) continue;
+      for (const line of placeholderWarnings(absPath, content, renderContext, declaredKeys)) {
+        printWarning(`${relPath} ${line}`);
+      }
     }
   }
   if (!composeContent) {

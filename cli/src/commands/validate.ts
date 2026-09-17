@@ -14,7 +14,7 @@
 
 import type { Command } from 'commander';
 import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { join, relative, sep } from 'path';
 import { parse as parseYaml } from 'yaml';
 import {
   HOOK_PHASES,
@@ -22,6 +22,7 @@ import {
   loadServersConfig,
   getComposePath,
   getLayout,
+  getAccessoriesPath,
 } from '../utils/config';
 import * as Plugin from '../services/plugin';
 import {
@@ -222,15 +223,16 @@ async function runValidate(options: ValidateOptions): Promise<void> {
     printWarning('This is fine for accessories-only projects.');
   } else {
     printSuccess(`docker-compose found: ${composePath.replace(projectRoot, '.')}`);
+  }
 
-    // Shell-style placeholders resolve to an empty string at deploy time, which is silent
-    // in production — so validate treats them as an error rather than a warning.
-    const placeholders = findShellPlaceholders(
-      readFileSync(composePath, 'utf-8'),
-      collectDeclaredEnvKeys(),
-    );
+  // Shell-style placeholders resolve to an empty string at deploy time, which is silent
+  // in production — so validate treats them as an error rather than a warning.
+  const declaredKeys = collectDeclaredEnvKeys();
+  for (const stackFile of [composePath, getAccessoriesPath()]) {
+    if (!stackFile) continue;
+    const placeholders = findShellPlaceholders(readFileSync(stackFile, 'utf-8'), declaredKeys);
     for (const line of describeShellPlaceholders(placeholders)) {
-      printError(line);
+      printError(`${relative(projectRoot, stackFile).split(sep).join('/')} ${line}`);
     }
     if (placeholders.length > 0) hasErrors = true;
   }
