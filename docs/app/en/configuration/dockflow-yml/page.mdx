@@ -64,12 +64,15 @@ my-project/
 | `options` | object | `remote_build`, `image_auto_tag`, `enable_debug_logs` | — |
 | `stack_management` | object | `keep_releases`, `cleanup_on_failure` | — |
 | `health_checks` | object | Endpoint checks, timeouts, on-failure behavior | — |
-| `hooks` | object | `pre-build`, `post-build`, `pre-deploy`, `post-deploy` scripts | — |
+| `hooks` | object | Commands and scripts to run at each deploy phase ([reference](/en/configuration/hooks)) | — |
+| `plugins` | array | Plugins contributing uploads and hooks ([reference](/en/configuration/plugins)) | — |
 | `lock` | object | `stale_threshold_minutes` | — |
 | `backup` | object | Backup config for accessories and services | — |
 | `templates` | array | Nunjucks template files to render before deploy | — |
 | `proxy` | object | Traefik + Let's Encrypt configuration | — |
 | `notifications` | object | Webhook notifications on deploy events | — |
+| `uploads` | array | Files or directories to transfer to the servers ([reference](/en/configuration/upload)) | — |
+| `no_services` | boolean | Upload-only project, with no Docker services | `false` |
 
 **From `servers.yml`:**
 

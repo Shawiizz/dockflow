@@ -126,42 +126,59 @@ DATABASE_URL="{{ current.env.database_url }}"
 
 ### Pre-build: Generate assets
 
-```bash
-# .dockflow/hooks/pre-build.sh
-#!/bin/bash
-npm run build:assets
+```yaml
+# .dockflow/config.yml
+hooks:
+  pre-build:
+    - npm run build:assets
 ```
 
 ### Post-build: Security scan
 
-```bash
-# .dockflow/hooks/post-build.sh
-#!/bin/bash
-docker scan {{ project_name }}:{{ version }} || true
+```yaml
+# .dockflow/config.yml
+hooks:
+  post-build:
+    - docker scan {{ project_name }}:{{ version }} || true
 ```
 
 ### Pre-upload: Stop a service before files arrive
 
-```bash
-# .dockflow/hooks/pre-upload.sh
-#!/bin/bash
-systemctl stop myapp || true
+```yaml
+# .dockflow/config.yml
+hooks:
+  pre-upload:
+    - sudo systemctl stop myapp || true
 ```
 
 ### Post-upload: Run a migration on uploaded files
 
-```bash
-# .dockflow/hooks/post-upload.sh
-#!/bin/bash
-cd /var/www/myapp && php artisan migrate --force
+```yaml
+# .dockflow/config.yml
+hooks:
+  post-upload:
+    - cd /var/www/myapp && php artisan migrate --force
 ```
 
 ### Pre-deploy: Database backup
 
+A longer step reads better as a script. Its path is declared in `config.yml`; the file
+itself is rendered like any other file under `.dockflow/`:
+
+```yaml
+# .dockflow/config.yml
+hooks:
+  pre-deploy:
+    - name: backup
+      script: .dockflow/hooks/backup.sh
+      fatal: true
+```
+
 ```bash
-# .dockflow/hooks/pre-deploy.sh
+# .dockflow/hooks/backup.sh
 #!/bin/bash
-pg_dump $DATABASE_URL > /backups/pre-deploy-{{ version }}.sql
+set -euo pipefail
+pg_dump "{{ current.env.database_url }}" > /backups/pre-deploy-{{ version }}.sql
 ```
 
 ### Post-deploy: Reload a systemd service
@@ -174,22 +191,30 @@ hooks:
     - sudo systemctl restart rclone-s3.service
 ```
 
-### Declaring a script
+### Several entries in one phase
 
-Scripts are referenced explicitly, so a phase can run more than one:
+A phase runs its entries in order, commands and scripts alike:
 
 ```yaml
 # .dockflow/config.yml
 hooks:
   pre-build:
-    - script: .dockflow/hooks/pre-build.sh
+    - script: .dockflow/hooks/check-env.sh
     - script: scripts/generate-assets.sh
+    - npm run lint
 ```
 
 ### Post-deploy: Notify team
 
+```yaml
+# .dockflow/config.yml
+hooks:
+  post-deploy:
+    - script: .dockflow/hooks/notify.sh
+```
+
 ```bash
-# .dockflow/hooks/post-deploy.sh
+# .dockflow/hooks/notify.sh
 #!/bin/bash
 curl -X POST "https://hooks.slack.com/services/xxx" \
   -H "Content-Type: application/json" \

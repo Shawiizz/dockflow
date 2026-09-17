@@ -68,7 +68,7 @@ webhooks:
 
 ### Using secrets in the config
 
-`config.yml` is rendered through Nunjucks before being parsed, so you can reference server-level env vars:
+`config.yml` (or `dockflow.yml`) is rendered through Nunjucks before being parsed, so you can reference server-level env vars:
 
 ```yaml
 # .dockflow/config.yml
@@ -172,7 +172,7 @@ notifications:
         X-Source: dockflow
 ```
 
-`config.yml` is rendered by Nunjucks before parsing. `{{ current.env.* }}` references server-level env vars defined in `servers.yml`. In CI, those values come from your CI secrets rather than being hardcoded — see [Servers & Connections](/en/configuration/servers).
+`config.yml` (or `dockflow.yml`) is rendered by Nunjucks before parsing. `{{ current.env.* }}` references server-level env vars defined in `servers.yml`. In CI, those values come from your CI secrets rather than being hardcoded — see [Servers & Connections](/en/configuration/servers).
   </Tabs.Tab>
 </Tabs>
 
