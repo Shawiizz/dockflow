@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  findShellPlaceholders,
+  describeInsertedPlaceholders,
   describeShellPlaceholders,
+  findInsertedPlaceholders,
+  findShellPlaceholders,
 } from '../services/compose-lint';
 
 describe('findShellPlaceholders', () => {
@@ -34,10 +36,19 @@ describe('findShellPlaceholders', () => {
     expect(findShellPlaceholders(compose)).toHaveLength(0);
   });
 
-  test('ignores bare $variables, which nginx and shell scripts use legitimately', () => {
-    const compose = '    command: sh -c "echo $HOME && echo $host"';
+  test('reports bare $variables too, which Docker substitutes the same way', () => {
+    const found = findShellPlaceholders('    command: sh -c "echo $HOME && echo $host"');
 
-    expect(findShellPlaceholders(compose)).toHaveLength(0);
+    expect(found.map((p) => p.raw)).toEqual(['$HOME', '$host']);
+  });
+
+  test('ignores the $$ escape in its bare form, and reads what follows a pair', () => {
+    expect(findShellPlaceholders("    command: sh -c 'echo $$HOME'")).toHaveLength(0);
+    expect(findShellPlaceholders('a: $$$HOME').map((p) => p.raw)).toEqual(['$HOME']);
+  });
+
+  test('ignores a $ that starts no variable name', () => {
+    expect(findShellPlaceholders('a: "cost: 5$ or $1"')).toHaveLength(0);
   });
 
   test('handles the default-value and error forms', () => {
@@ -83,5 +94,36 @@ describe('describeShellPlaceholders', () => {
 
   test('returns nothing for a clean file', () => {
     expect(describeShellPlaceholders(findShellPlaceholders('services: {}'))).toEqual([]);
+  });
+});
+
+describe('findInsertedPlaceholders', () => {
+  test('reports the line where a value brought a placeholder in', () => {
+    const rendered = 'a: ${KEEP}\nb: "pa$word"';
+    const without = 'a: ${KEEP}\nb: "paword"';
+
+    expect(findInsertedPlaceholders(rendered, without)).toEqual([2]);
+  });
+
+  test('a placeholder written in the file is not blamed on a value, even repeated by a loop', () => {
+    const rendered = 'a: $HOME\nb: $HOME\nc: "x$y"';
+    const without = 'a: $HOME\nb: $HOME\nc: "xy"';
+
+    expect(findInsertedPlaceholders(rendered, without)).toEqual([3]);
+  });
+
+  test('nothing inserted, nothing reported', () => {
+    expect(findInsertedPlaceholders('a: $$x', 'a: $$x')).toEqual([]);
+  });
+});
+
+describe('describeInsertedPlaceholders', () => {
+  test('gives the line and the escape, never the value', () => {
+    const [line] = describeInsertedPlaceholders(findInsertedPlaceholders('p: "s3cr$et"', 'p: "s3cret"'));
+
+    expect(line).toContain('line 1');
+    expect(line).toContain('replace("$", "$$")');
+    expect(line).not.toContain('s3cr');
+    expect(line).not.toContain('$et');
   });
 });

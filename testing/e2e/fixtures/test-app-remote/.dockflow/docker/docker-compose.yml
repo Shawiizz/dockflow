@@ -5,7 +5,7 @@ services:
       context: ../..
       dockerfile: Dockerfile.web
     ports:
-      - "${WEB_PORT}:80"
+      - "{{ current.env.web_port }}:80"
     deploy:
       replicas: 1
       update_config:

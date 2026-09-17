@@ -14,7 +14,12 @@ import { join, relative, dirname } from 'path';
 import { walkDir } from '../utils/fs';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import nunjucks from 'nunjucks';
-import { findShellPlaceholders, describeShellPlaceholders } from './compose-lint';
+import {
+  describeInsertedPlaceholders,
+  describeShellPlaceholders,
+  findInsertedPlaceholders,
+  findShellPlaceholders,
+} from './compose-lint';
 import { findUndefinedEnvReferences, describeUndefinedEnvReferences } from './template-lint';
 import type { DockflowConfig, ProxyConfig } from '../utils/config';
 import { getProjectRoot, getComposePath, getLayout } from '../utils/config';
@@ -277,6 +282,16 @@ export function renderTemplates(
   return rendered;
 }
 
+/** A copy of the render context whose strings hold no `$`. */
+function stripDollars(value: unknown): unknown {
+  if (typeof value === 'string') return value.replaceAll('$', '');
+  if (Array.isArray(value)) return value.map(stripDollars);
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, stripDollars(item)]));
+  }
+  return value;
+}
+
 /**
  * Render templates and extract compose content in one call.
  * Eliminates the duplicate render→findCompose→getDirPath boilerplate
@@ -323,9 +338,16 @@ export function renderAndResolveCompose(
     const declaredKeys = Object.keys(
       (templateContext?.current as { env?: Record<string, string> } | undefined)?.env ?? {},
     );
-    for (const line of describeShellPlaceholders(
-      findShellPlaceholders(composeContent, declaredKeys),
-    )) {
+    // Placeholders are looked for in the file as written, where they are the user's own
+    // text. In the rendered file they may be part of an inserted secret.
+    const written = readFileSync(originalComposePath, 'utf-8');
+    const withoutDollars = nunjucks
+      .configure({ autoescape: false, noCache: true })
+      .renderString(written, stripDollars(renderContext) as object);
+    for (const line of [
+      ...describeShellPlaceholders(findShellPlaceholders(written, declaredKeys)),
+      ...describeInsertedPlaceholders(findInsertedPlaceholders(composeContent, withoutDollars)),
+    ]) {
       printWarning(`${composeRelPath} ${line}`);
     }
   }
