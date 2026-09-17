@@ -124,14 +124,9 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
   printDim('─'.repeat(40));
   const envVars = Object.entries(manager.env);
   if (envVars.length > 0) {
+    // No value is printed: a name tells nothing reliable about what a variable holds.
     envVars.forEach(([key, value]) => {
-      // Mask sensitive values
-      const displayValue = key.toLowerCase().includes('password') ||
-        key.toLowerCase().includes('secret') ||
-        key.toLowerCase().includes('key')
-        ? '********'
-        : value;
-      printRaw(`  ${key}=${displayValue}`);
+      printRaw(`  ${key} ${colors.dim(value ? `(${value.length} chars)` : '(empty)')}`);
     });
   } else {
     printRaw('  (none)');
