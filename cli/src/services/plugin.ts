@@ -196,8 +196,6 @@ export function resolveInputs(
       values[key] = isFile ? `${FROM_PLUGIN}${def.default}` : def.default;
     } else if (def.required) {
       missing.push(key);
-    } else {
-      values[key] = '';
     }
   }
 
@@ -231,7 +229,19 @@ function render(env: nunjucks.Environment, template: string, context: object, wh
   try {
     return env.renderString(template, context);
   } catch (error) {
-    throw new ConfigError(`${where}: ${error instanceof Error ? error.message : String(error)}`);
+    const message = error instanceof Error ? error.message : String(error);
+    // An optional input without a default is left undefined: name the one the line uses.
+    const at = /Line (\d+), Column \d+\]\s*attempted to output null or undefined value/.exec(message);
+    const inputs = (context as { inputs?: Record<string, unknown> }).inputs ?? {};
+    const unset = at
+      ? [...(template.split('\n')[Number(at[1]) - 1] ?? '').matchAll(/inputs\.(\w+)/g)]
+          .map((m) => m[1])
+          .filter((name) => inputs[name] === undefined)
+      : [];
+    if (at && unset.length > 0) {
+      throw new ConfigError(`${where}: line ${at[1]} uses input ${unset.join(', ')}, which was not given`);
+    }
+    throw new ConfigError(`${where}: ${message}`);
   }
 }
 

@@ -396,9 +396,25 @@ describe('built-in plugins', () => {
     expect(vhost).toContain('server_name api.example.com;');
     expect(vhost).toContain('proxy_pass http://127.0.0.1:24001;');
     expect(vhost).toContain('listen 80;');
+    expect(vhost).toContain('proxy_set_header X-Forwarded-Proto $scheme;');
     expect(expansion.hooks['post-upload']).toEqual([
       { name: 'nginx reload', run: 'sudo nginx -t && sudo nginx -s reload', fatal: true, timeout: 30 },
     ]);
+  });
+
+  it('nginx needs no port with a vhost of its own, and names the port when the default vhost lacks it', async () => {
+    const root = project({ '.dockflow/static.conf': 'server { root /srv; }\n' });
+    const expansion = await expandPlugins(
+      [{ use: 'nginx', with: { domain: 'static.example.com', template: '.dockflow/static.conf' } }],
+      { projectRoot: root, projectContext: context },
+    );
+    expect(expansion.files.get(expansion.uploads[0].src)).toBe('server { root /srv; }\n');
+
+    const expand = expandPlugins([{ use: 'nginx', with: { domain: 'a.example.com' } }], {
+      projectRoot: project(),
+      projectContext: context,
+    });
+    await expect(expand).rejects.toThrow(/uses input port, which was not given/);
   });
 
   it('nginx reloads again after a failed deploy, so the restored vhost is served', async () => {

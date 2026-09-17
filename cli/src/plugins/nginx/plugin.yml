@@ -6,8 +6,7 @@ inputs:
     description: Server name the vhost answers to
     required: true
   port:
-    description: Host port the app listens on
-    required: true
+    description: Host port the app listens on, used by the default vhost
   listen:
     description: Port nginx listens on
     default: "80"

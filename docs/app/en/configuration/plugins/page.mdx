@@ -48,7 +48,7 @@ Serves the app behind the host's nginx, through a vhost in `/etc/nginx/sites-ena
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `domain` | Yes | — | Server name the vhost answers to |
-| `port` | Yes | — | Host port the app listens on |
+| `port` | With the built-in vhost | — | Host port the app listens on |
 | `listen` | No | `80` | Port nginx listens on |
 | `template` | No | built-in vhost | A vhost of your own, from the project |
 
@@ -58,7 +58,7 @@ rollback restores the previous one. If the deploy fails later, an `on-failure` e
 again, so it serves the restored vhost rather than keeping the new one in memory.
 
 When the default vhost does not fit, point `template` at your own. It is rendered like the rest of
-your project, with the plugin's inputs available too:
+your project, with the plugin's inputs available too. `port` is then only needed if your vhost uses it:
 
 ```yaml
 plugins:
@@ -203,7 +203,7 @@ hooks:
 |-------------|-------------|
 | `description` | What the input is for |
 | `required` | Refuse the plugin when the project leaves it out |
-| `default` | Value used when the project does not provide one |
+| `default` | Value used when the project does not provide one. An optional input without a default is undefined, and rendering a file that writes it out fails, naming the input |
 | `type` | `string` (default) or `file` |
 
 ### Rendering
