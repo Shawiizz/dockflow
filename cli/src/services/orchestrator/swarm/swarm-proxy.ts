@@ -2,9 +2,11 @@
  * Swarm proxy backend.
  *
  * Deploys Traefik as a Swarm stack when `config.proxy.enabled` is true.
- * The stack is deployed once and left running — subsequent deploys only
- * ensure it exists (idempotent).
+ * Later deploys leave it alone unless its configuration changed: the hash of the
+ * generated stack is kept as a label on the service and compared on each deploy.
  */
+
+import { createHash } from 'crypto';
 
 import type { SSHKeyConnection } from '../../../types';
 import type { ProxyConfig } from '../../../utils/config';
@@ -19,21 +21,24 @@ import {
 
 import type { ProxyBackend } from '../interfaces';
 
+const CONFIG_HASH_LABEL = 'dockflow.config-hash';
+
 export class SwarmProxyBackend implements ProxyBackend {
   constructor(private readonly connection: SSHKeyConnection) {}
 
   /**
-   * Ensure the Traefik stack is deployed and running.
-   * Idempotent: skips if the stack already exists with the right replica count.
+   * Ensure the Traefik stack is running with the current configuration.
+   * Skips when it already runs with the same generated stack.
    */
   async ensureRunning(proxyConfig: ProxyConfig): Promise<void> {
-    const running = await this.isRunning();
-    if (running) {
+    const configHash = SwarmProxyBackend.configHash(proxyConfig);
+    const state = await this.currentState();
+    if (state.replicas === '1/1' && state.configHash === configHash) {
       printDebug('Traefik stack already running');
       return;
     }
 
-    printDim('Deploying Traefik reverse proxy...');
+    printDim(state.replicas ? 'Updating Traefik reverse proxy...' : 'Deploying Traefik reverse proxy...');
 
     // Create overlay network (idempotent)
     await sshExec(
@@ -50,45 +55,40 @@ export class SwarmProxyBackend implements ProxyBackend {
       );
     }
 
-    // Generate and deploy stack via temp file
-    const composeYaml = SwarmProxyBackend.generateCompose(proxyConfig);
-    const tmpFile = `/tmp/dockflow-traefik-${Date.now()}.yml`;
+    const { stream, done } = await sshExecChannel(
+      this.connection,
+      `docker stack deploy --prune --resolve-image changed -c - ${TRAEFIK_STACK_NAME}`,
+    );
+    stream.end(SwarmProxyBackend.generateCompose(proxyConfig, configHash));
+    const result = await done;
 
-    try {
-      const { stream, done } = await sshExecChannel(this.connection, `cat > '${tmpFile}'`);
-      stream.end(composeYaml);
-      await done;
-
-      const result = await sshExec(
-        this.connection,
-        `docker stack deploy --prune --resolve-image changed -c '${tmpFile}' ${TRAEFIK_STACK_NAME}`,
-      );
-
-      if (result.exitCode !== 0) {
-        throw new Error(`Traefik deployment failed: ${result.stderr.trim() || result.stdout.trim()}`);
-      }
-    } finally {
-      await sshExec(this.connection, `rm -f '${tmpFile}'`).catch(() => {});
+    if (result.exitCode !== 0) {
+      throw new Error(`Traefik deployment failed: ${result.stderr.trim() || result.stdout.trim()}`);
     }
 
     printSuccess('Traefik reverse proxy deployed');
   }
 
-  /**
-   * Check if the Traefik stack is already running with 1/1 replica.
-   */
-  private async isRunning(): Promise<boolean> {
-    const result = await sshExec(
-      this.connection,
-      `docker service ls --filter "name=${TRAEFIK_STACK_NAME}_traefik" --format '{{.Replicas}}' 2>/dev/null`,
-    );
-    return result.stdout.trim() === '1/1';
+  /** Replicas of the Traefik service (empty when absent) and the config hash it was deployed with. */
+  private async currentState(): Promise<{ replicas: string; configHash: string }> {
+    const service = `${TRAEFIK_STACK_NAME}_traefik`;
+    const [replicas, labels] = await Promise.all([
+      sshExec(this.connection, `docker service ls --filter "name=${service}" --format '{{.Replicas}}' 2>/dev/null`),
+      sshExec(this.connection, `docker service inspect ${service} --format '{{index .Spec.Labels "${CONFIG_HASH_LABEL}"}}' 2>/dev/null`),
+    ]);
+    return { replicas: replicas.stdout.trim(), configHash: labels.exitCode === 0 ? labels.stdout.trim() : '' };
+  }
+
+  /** A short hash of the stack generated for this configuration. */
+  static configHash(proxyConfig: ProxyConfig): string {
+    return createHash('sha256').update(SwarmProxyBackend.generateCompose(proxyConfig)).digest('hex').slice(0, 16);
   }
 
   /**
    * Generate the Traefik docker-compose YAML from config.
+   * With a config hash, the service carries it as a label.
    */
-  static generateCompose(proxyConfig: ProxyConfig): string {
+  static generateCompose(proxyConfig: ProxyConfig, configHash?: string): string {
     const acme = proxyConfig.acme !== false;
     const dashboard = proxyConfig.dashboard?.enabled === true;
     const dashboardDomain = proxyConfig.dashboard?.domain;
@@ -146,6 +146,10 @@ export class SwarmProxyBackend implements ProxyBackend {
       } else {
         labels.push('traefik.http.routers.traefik-dashboard.entrypoints=web');
       }
+    }
+
+    if (configHash) {
+      labels.push(`${CONFIG_HASH_LABEL}=${configHash}`);
     }
 
     // Build the compose structure as YAML
