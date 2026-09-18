@@ -52,7 +52,7 @@ export const STACK_REMOVAL_MAX_ATTEMPTS = 30;
 /** Delay (ms) between stack removal polling attempts */
 export const STACK_REMOVAL_POLL_INTERVAL_MS = 2000;
 
-/** Default timeout (s) for waiting for Swarm service convergence */
+/** Outer convergence deadline (s) of a deploy, on every orchestrator */
 export const CONVERGENCE_TIMEOUT_S = 300;
 /** Default polling interval (s) for convergence checks */
 export const CONVERGENCE_INTERVAL_S = 5;
@@ -84,16 +84,20 @@ export const TRAEFIK_CERTS_VOLUME = 'traefik-certs';
 export const TRAEFIK_IMAGE = 'traefik:v3.6';
 
 /**
- * k3s orchestrator constants
+ * Orchestrator-neutral waits. Kubernetes-specific constants live in
+ * services/orchestrator/kubernetes/constants.ts, which neutral code never imports.
  */
-export const K3S_API_PORT = 6443;
-export const K3S_KUBECONFIG_PATH = '/etc/rancher/k3s/k3s.yaml';
-export const K3S_DOCKFLOW_KUBECONFIG = '/var/lib/dockflow/k3s.yaml';
-export const K3S_TOKEN_PATH = '/var/lib/rancher/k3s/server/node-token';
-export const K3S_NAMESPACE_PREFIX = 'dockflow';
-export const K3S_TRAEFIK_NAMESPACE = 'kube-system';
-export const K3S_PORTS = [
-  { port: 6443,  protocol: 'tcp', description: 'Kubernetes API server' },
-  { port: 10250, protocol: 'tcp', description: 'Kubelet metrics' },
-  { port: 8472,  protocol: 'udp', description: 'Flannel VXLAN overlay' },
-];
+/** Pods must stay ready with unchanged restart counts this long (HealthOptions.stabilityS) */
+export const HEALTH_STABILITY_WINDOW_S = 10;
+/** Defaults of health_checks.timeout / health_checks.interval */
+export const DEFAULT_HEALTHCHECK_TIMEOUT_S = 120;
+export const DEFAULT_HEALTHCHECK_INTERVAL_S = 5;
+/** Wait budget of scale, restart, rollback <service> and accessories restart */
+export const CONTROL_WAIT_TIMEOUT_S = 300;
+/** Wait budget of stop, accessories stop, accessories remove and volumes rm */
+export const DELETE_WAIT_TIMEOUT_S = 120;
+/** Backup data files without metadata are pruned only past this age: a backup being written has none yet */
+export const BACKUP_ORPHAN_GRACE_H = 24;
+
+/** Pull secret name, fixed before any remote call so offline renders reference the same name */
+export const REGISTRY_PULL_SECRET_NAME = 'dockflow-registry';

@@ -6,6 +6,7 @@
  * across all commands.
  */
 
+import type { Diagnostic } from '../services/orchestrator/diagnostics';
 import { printBlank, colors } from './output';
 import { closeAllConnections } from './ssh';
 import { loadConfig } from './config';
@@ -33,12 +34,13 @@ export enum ErrorCode {
   SSH_KEY_NOT_FOUND = 31,
   SSH_AUTH_FAILED = 32,
   
-  // Docker errors (40-49)
+  // Orchestrator errors (40-49)
   DOCKER_NOT_AVAILABLE = 40,
   STACK_NOT_FOUND = 41,
   SERVICE_NOT_FOUND = 42,
   CONTAINER_NOT_FOUND = 43,
-  
+  ORCHESTRATOR_UNAVAILABLE = 44,
+
   // Deployment errors (50-59)
   DEPLOY_FAILED = 50,
   DEPLOY_LOCKED = 51,
@@ -48,6 +50,7 @@ export enum ErrorCode {
   // Validation errors (60-69)
   VALIDATION_FAILED = 60,
   INVALID_ARGUMENT = 61,
+  UNSUPPORTED_OPERATION = 62,
 
   // Backup errors (70-79)
   BACKUP_FAILED = 70,
@@ -129,6 +132,67 @@ export class BackupError extends CLIError {
   }
 }
 
+/** kubectl/helm/docker missing, kubeconfig unreadable, API unreachable, identity rejected. */
+export class OrchestratorUnavailableError extends CLIError {
+  constructor(message: string, suggestion?: string, cause?: Error) {
+    super(message, ErrorCode.ORCHESTRATOR_UNAVAILABLE, suggestion, cause);
+    this.name = 'OrchestratorUnavailableError';
+  }
+}
+
+/** Raised by requireCapability / requireCapabilityFor before any remote work. */
+export class UnsupportedOperationError extends CLIError {
+  constructor(message: string, suggestion?: string) {
+    super(message, ErrorCode.UNSUPPORTED_OPERATION, suggestion);
+    this.name = 'UnsupportedOperationError';
+  }
+}
+
+/**
+ * A user command inside a container exited non-zero. Not a CLIError: ErrorCode values double as
+ * process exit codes, so a container's 62 would read as UNSUPPORTED_OPERATION. withErrorHandler
+ * passes the code through as process.exitCode instead.
+ */
+export class ExecExitError extends Error {
+  constructor(public readonly exitCode: number) {
+    super(`Command exited with code ${exitCode}`);
+    this.name = 'ExecExitError';
+  }
+}
+
+const MAX_LISTED_DIAGNOSTICS = 20;
+
+/**
+ * Compose or x-dockflow problems found at render. Declared here and re-exported by
+ * services/orchestrator/diagnostics.ts: the reverse (a class extending CLIError in a module this
+ * one re-exports from) is an import cycle that throws whenever this module loads first.
+ */
+export class ComposeTranslationError extends CLIError {
+  constructor(
+    message: string,
+    suggestion: string,
+    public readonly diagnostics: Diagnostic[],
+  ) {
+    super(message, ErrorCode.VALIDATION_FAILED, suggestion);
+    this.name = 'ComposeTranslationError';
+  }
+
+  static fromDiagnostics(file: string, kind: string, diagnostics: Diagnostic[]): ComposeTranslationError {
+    const errors = diagnostics.filter((d) => d.severity === 'error');
+    const lines = errors
+      .slice(0, MAX_LISTED_DIAGNOSTICS)
+      .map((d) => `${d.path}: ${d.message}${d.hint ? ` (${d.hint})` : ''}`);
+    if (errors.length > MAX_LISTED_DIAGNOSTICS) {
+      lines.push(`... and ${errors.length - MAX_LISTED_DIAGNOSTICS} more`);
+    }
+    return new ComposeTranslationError(
+      `${file} cannot be deployed with orchestrator: ${kind} (${errors.length} error(s))`,
+      lines.join('\n'),
+      diagnostics,
+    );
+  }
+}
+
 /**
  * Format error for display
  *
@@ -201,6 +265,11 @@ export function withErrorHandler<T extends unknown[]>(
     try {
       await action(...args);
     } catch (error) {
+      // The container already wrote its own stderr; return normally so the finally still runs.
+      if (error instanceof ExecExitError) {
+        process.exitCode = error.exitCode;
+        return;
+      }
       handleError(error);
     } finally {
       closeAllConnections();
@@ -215,9 +284,9 @@ export function withServicesRequired<T extends unknown[]>(
   return withErrorHandler(async (...args: T): Promise<void> => {
     if (loadConfig()?.no_services) {
       throw new DeployError(
-        'This command requires Docker services',
+        'This command requires services',
         ErrorCode.VALIDATION_FAILED,
-        'This project is configured as no_services and has no Docker services.',
+        'This project is configured as no_services and has no services.',
       );
     }
     await action(...args);
