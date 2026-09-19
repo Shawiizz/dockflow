@@ -3,7 +3,9 @@
  * Uses Zod for runtime type checking and validation
  */
 
+import { posix } from 'path';
 import { z } from 'zod';
+import { M } from '../services/orchestrator/messages';
 
 /**
  * Registry configuration schema
@@ -248,6 +250,9 @@ export const ProxyDashboardSchema = z.object({
   { message: 'proxy.dashboard.domain is required when proxy.dashboard.enabled is true' }
 );
 
+/** Proxy keys that only the Kubernetes Traefik implements; Swarm's Traefik is per stack. */
+export const K3S_ONLY_PROXY_KEYS = ['manage', 'acme_ca_server', 'acme_ca_bundle', 'default_ingress_class'] as const;
+
 /**
  * Reverse proxy configuration schema (Traefik + Let's Encrypt)
  */
@@ -267,10 +272,118 @@ export const ProxyConfigSchema = z.object({
   dashboard: ProxyDashboardSchema.optional().describe(
     'Traefik dashboard configuration'
   ),
-}).refine(
-  (data) => !data.enabled || data.acme === false || !!data.email,
-  { message: 'proxy.email is required when proxy.enabled is true and acme is not disabled' }
-);
+  manage: z.boolean().optional().default(true).describe(
+    'k3s only. true (default): this stack installs and updates the cluster Traefik. ' +
+    'false: this stack uses the Traefik another stack manages and never changes it'
+  ),
+  acme_ca_server: z.url({ protocol: /^https$/, error: M.acmeCaServerHttps }).optional().describe(
+    'k3s only. ACME directory URL; unset means Let\'s Encrypt production. ' +
+    'Use https://acme-staging-v02.api.letsencrypt.org/directory to rehearse, or a private CA'
+  ),
+  acme_ca_bundle: z.string().min(1, M.acmeCaBundlePath).optional().describe(
+    'k3s only. Project path of the PEM bundle that signs acme_ca_server when it is not publicly trusted; ' +
+    'under .dockflow/ or listed in templates'
+  ),
+  default_ingress_class: z.boolean().optional().default(false).describe(
+    'k3s only. Make IngressClass traefik the cluster default, so Ingress objects in any namespace ' +
+    'that omit ingressClassName are published on 80/443'
+  ),
+}).superRefine((proxy, ctx) => {
+  // A stack that does not manage the proxy never registers an ACME account
+  if (proxy.enabled && proxy.acme !== false && proxy.manage !== false && !proxy.email) {
+    ctx.addIssue({ code: 'custom', message: 'proxy.email is required when proxy.enabled is true and acme is not disabled' });
+  }
+  if (proxy.manage === false && !proxy.enabled) {
+    ctx.addIssue({ code: 'custom', message: M.proxyManageNeedsEnabled, path: ['manage'] });
+  }
+  if (proxy.acme === false) {
+    for (const key of ['acme_ca_server', 'acme_ca_bundle'] as const) {
+      if (proxy[key] !== undefined) ctx.addIssue({ code: 'custom', message: M.acmeCaNeedsAcme, path: [key] });
+    }
+  }
+  if (proxy.acme_ca_bundle !== undefined && proxy.acme_ca_server === undefined) {
+    ctx.addIssue({ code: 'custom', message: M.acmeCaBundleNeedsServer, path: ['acme_ca_bundle'] });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Helm releases (k3s only)
+// ---------------------------------------------------------------------------
+
+/** Go durations as Helm's --timeout reads them: `90s`, `5m`, `1h30m` */
+export const DURATION_RE = /^([0-9]+(\.[0-9]+)?(ms|s|m|h))+$/;
+/** DNS-1123 label without its length limit; Helm release names stop at 53, namespaces at 63 */
+const DNS_LABEL_RE = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
+/** One exact SemVer 2.0 version with an optional leading v: no range, no wildcard, no latest */
+export const EXACT_SEMVER_RE = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
+const CHART_DIGEST_RE = /^[a-f0-9]{64}$/;
+
+export const HelmReleaseSchema = z.object({
+  name: z.string()
+    .max(53, M.helmNameTooLong)
+    .regex(DNS_LABEL_RE, M.helmName)
+    .describe('Helm release name, unique across roles; addressed by --only, rollback and dockflow helm'),
+  chart: z.string().min(1, M.helmChart).describe(
+    'Chart name inside repo, or an OCI reference oci://<registry>/<path>/<chart> without tag or digest'
+  ),
+  repo: z.url({ protocol: /^https?$/, error: M.helmRepoUrl }).optional().describe(
+    'Chart repository URL (http:// or https://); required unless chart starts with oci://'
+  ),
+  // YAML reads `version: 1.2` as a number: the exact-version message says more than a type error
+  version: z.string(M.exactVersion).regex(EXACT_SEMVER_RE, M.exactVersion).describe(
+    'Exact chart version such as 1.2.3 or v1.2.3 (no ranges, no latest)'
+  ),
+  digest: z.string().regex(CHART_DIGEST_RE, M.chartDigest).optional().describe(
+    'Expected sha256 of the chart archive (.tgz), 64 lowercase hexadecimal characters'
+  ),
+  role: z.enum(['app', 'accessory']).optional().default('app').describe(
+    'app: deployed, rolled back and uninstalled with the application; accessory: deployed with --accessories, never uninstalled implicitly'
+  ),
+  namespace: z.string()
+    .max(63, M.namespaceLabel)
+    .regex(DNS_LABEL_RE, M.namespaceLabel)
+    .optional()
+    .describe('Target namespace (default: the stack namespace)'),
+  values: z.record(z.string(), z.unknown()).optional().default({}).describe(
+    'Chart values, merged after values_files; rendered with the rest of config.yml'
+  ),
+  values_files: z.array(z.string().min(1, M.valuesFilePath)).optional().default([]).describe(
+    'Values files merged in order; each must be under .dockflow/ or listed in templates, so it is rendered'
+  ),
+  timeout: z.string().regex(DURATION_RE, M.duration).optional().describe(
+    'Helm --timeout for this release (default: helm.timeout)'
+  ),
+  auth: z.object({
+    username: z.string().min(1, M.helmAuthField),
+    password: z.string().min(1, M.helmAuthField),
+  }).optional().describe(
+    'Basic auth for repo, or the registry login for an oci:// chart; never stored in releases or logs'
+  ),
+}).strict();
+
+export const HelmConfigSchema = z.object({
+  timeout: z.string().regex(DURATION_RE, M.duration).optional().default('5m').describe(
+    'Default Helm --timeout of every release'
+  ),
+  releases: z.array(HelmReleaseSchema).optional().default([]).describe(
+    'Helm releases, applied in list order'
+  ),
+}).strict();
+
+/**
+ * Whether `path` reaches the rendered file map: every file under .dockflow/ and every templates
+ * destination is rendered with Nunjucks, nothing else is. A values file or CA bundle outside that
+ * set would be read as nothing (the render map has no entry for it), so the schema refuses it.
+ */
+export function isRenderedPath(path: string, templates: ReadonlyArray<string | { src: string; dest: string }> | undefined): boolean {
+  const target = normalizeProjectPath(path);
+  if (target.startsWith('.dockflow/')) return true;
+  return (templates ?? []).some((t) => normalizeProjectPath(typeof t === 'string' ? t : t.dest) === target);
+}
+
+function normalizeProjectPath(path: string): string {
+  return posix.normalize(path.replace(/\\/g, '/'));
+}
 
 /**
  * Webhook notification configuration schema
@@ -342,9 +455,9 @@ export const UploadItemSchema = z.object({
 });
 
 /**
- * Complete Dockflow configuration schema
+ * Dockflow configuration schema without its cross-field rules (see DockflowConfigSchema)
  */
-export const DockflowConfigSchema = z.object({
+export const DockflowConfigBaseSchema = z.object({
   project_name: z.string()
     .min(1, 'Project name is required')
     .max(63, 'Project name must be 63 characters or less (DNS label limit)')
@@ -417,4 +530,66 @@ export const DockflowConfigSchema = z.object({
     'Skips Docker build, compose deploy, and all service commands. ' +
     'Without this flag, a missing docker-compose.yml is treated as a configuration error.'
   ),
+
+  helm: HelmConfigSchema.optional().describe(
+    'Helm releases deployed with the stack (orchestrator: k3s only)'
+  ),
 });
+
+type DockflowConfigOutput = z.output<typeof DockflowConfigBaseSchema>;
+
+/** Rules that span several sections of config.yml (DESIGN-CORE 7.1, design-04 2.3.1). */
+function checkConfigRules(config: DockflowConfigOutput, ctx: z.RefinementCtx): void {
+  const issue = (message: string, path: PropertyKey[]): void => {
+    ctx.addIssue({ code: 'custom', message, path });
+  };
+  const k3s = config.orchestrator === 'k3s';
+
+  if (config.helm !== undefined && !k3s) issue(M.helmRequiresK3s, ['helm']);
+  const seen = new Set<string>();
+  (config.helm?.releases ?? []).forEach((release, i) => {
+    const at = (...rest: PropertyKey[]): PropertyKey[] => ['helm', 'releases', i, ...rest];
+    if (seen.has(release.name)) issue(M.helmDuplicateName(release.name), at('name'));
+    seen.add(release.name);
+    const oci = release.chart.startsWith('oci://');
+    if (oci && release.repo !== undefined) issue(M.helmRepoWithOci, at('repo'));
+    if (!oci && release.repo === undefined) issue(M.helmRepoRequired, at('repo'));
+    release.values_files.forEach((file, j) => {
+      if (file !== '' && !isRenderedPath(file, config.templates)) {
+        issue(M.valuesFileUnrendered(file), at('values_files', j));
+      }
+    });
+  });
+
+  if (k3s && config.options?.remote_build === true) issue(M.remoteBuildK3s, ['options', 'remote_build']);
+
+  const proxy = config.proxy;
+  if (proxy === undefined) return;
+  if (!k3s) {
+    // Only values that differ from the defaults: zod has filled the defaults in already
+    const written = {
+      manage: proxy.manage === false,
+      acme_ca_server: proxy.acme_ca_server !== undefined,
+      acme_ca_bundle: proxy.acme_ca_bundle !== undefined,
+      default_ingress_class: proxy.default_ingress_class === true,
+    };
+    for (const key of K3S_ONLY_PROXY_KEYS) {
+      if (written[key]) issue(M.proxyKeyRequiresK3s(`proxy.${key}`), ['proxy', key]);
+    }
+  }
+  const bundle = proxy.acme_ca_bundle;
+  if (bundle !== undefined && bundle !== '' && !isRenderedPath(bundle, config.templates)) {
+    issue(M.acmeCaBundleUnrendered(bundle), ['proxy', 'acme_ca_bundle']);
+  }
+}
+
+/**
+ * Complete Dockflow configuration schema
+ */
+export const DockflowConfigSchema = DockflowConfigBaseSchema.superRefine(checkConfigRules);
+
+// zod 4's merge() drops refinements, and dockflow.yml (flat layout) is validated by this schema
+// merged with the servers schema: every merge result keeps the cross-field rules.
+const mergeWithoutRules = DockflowConfigSchema.merge;
+DockflowConfigSchema.merge = ((other: z.ZodObject) =>
+  mergeWithoutRules(other).superRefine((value, ctx) => checkConfigRules(value as DockflowConfigOutput, ctx))) as typeof mergeWithoutRules;

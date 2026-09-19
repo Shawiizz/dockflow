@@ -807,3 +807,22 @@ describe('SSH transport adapter', () => {
     expect(fake.isClosed()).toBe(true);
   });
 });
+
+describe('FakeSsh', () => {
+  it('reports whether it was asserted, including when the assertion fails', async () => {
+    const { ssh, kubectl } = setup([
+      { command: / 'get' /, respond: { exitCode: 0, stdout: LIST([]) } },
+      { command: / 'delete' /, respond: { exitCode: 0 } },
+    ]);
+    await kubectl.getJson(['pods'], { namespace: NS });
+    expect(ssh.asserted).toBe(false);
+    expect(() => ssh.assertDone()).toThrow(/rule 1 .* was never used/);
+    expect(ssh.asserted).toBe(true);
+
+    const clean = setup([{ command: / 'get' /, respond: { exitCode: 0, stdout: LIST([]) } }]);
+    await clean.kubectl.getJson(['pods'], { namespace: NS });
+    expect(clean.ssh.asserted).toBe(false);
+    clean.ssh.assertAllRulesUsed();
+    expect(clean.ssh.asserted).toBe(true);
+  });
+});

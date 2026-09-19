@@ -82,8 +82,14 @@ export class FakeSsh {
   /** commands no rule matched; assertAllRulesUsed() fails when any exist */
   readonly unexpected: string[] = [];
   private readonly used = new Set<FakeSshRule>();
+  private done = false;
 
   constructor(private readonly rules: FakeSshRule[]) {}
+
+  /** assertAllRulesUsed() was called; assertExecutorInvariants fails a fake that never was (design-07 3.9) */
+  get asserted(): boolean {
+    return this.done;
+  }
 
   /** implements the SSH transport interface runtime/* receive through injection */
   transport(): SshTransport {
@@ -101,12 +107,18 @@ export class FakeSsh {
   }
 
   assertAllRulesUsed(): void {
+    this.done = true;
     const problems: string[] = [];
     this.rules.forEach((rule, index) => {
       if (!this.used.has(rule)) problems.push(`rule ${index} (${String(rule.command)}) was never used`);
     });
     for (const command of this.unexpected) problems.push(`unexpected SSH call: ${command}`);
     if (problems.length > 0) throw new Error(`FakeSsh:\n${problems.join('\n')}`);
+  }
+
+  /** the name every other fake gives its completeness check (design-07 3.0 rule 4) */
+  assertDone(): void {
+    this.assertAllRulesUsed();
   }
 
   private match(node: ClusterNodeRef, command: string, path: SshPath): FakeSshRule {

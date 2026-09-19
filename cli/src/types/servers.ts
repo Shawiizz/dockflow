@@ -14,9 +14,9 @@
 export type EnvVars = Record<string, string>;
 
 /**
- * Server role in the Swarm cluster
- * - manager: Receives deployments, orchestrates the cluster
- * - worker: Joins the swarm, runs containers distributed by manager
+ * Server role in the cluster
+ * - manager: Swarm manager / k3s server; receives deployments, orchestrates the cluster
+ * - worker: Swarm worker / k3s agent; runs the workloads the managers schedule
  */
 export type ServerRole = 'manager' | 'worker';
 
@@ -24,10 +24,14 @@ export type ServerRole = 'manager' | 'worker';
  * Server definition in servers.yml
  */
 export interface ServerConfig {
-  /** Role in Swarm cluster: manager or worker (default: manager) */
+  /** Role in the cluster: manager or worker (default: manager) */
   role?: ServerRole;
   /** Server hostname or IP (can be overridden by CI secret) */
   host?: string;
+  /** Private IP used for cluster traffic (k3s node-ip, firewall sources, join address); defaults to host */
+  private_host?: string;
+  /** Kubernetes node labels applied by dockflow setup (k3s only) */
+  node_labels?: Record<string, string>;
   /** Environment tags this server belongs to (e.g., production, staging) */
   tags: string[];
   /** SSH user (overrides defaults.user) */
@@ -76,10 +80,14 @@ export interface ServersConfig {
 export interface ResolvedServer {
   /** Server name (key in servers.yml) */
   name: string;
-  /** Role in Swarm cluster */
+  /** Role in the cluster */
   role: ServerRole;
   /** Server hostname or IP */
   host: string;
+  /** Address for cluster traffic: servers.yml private_host, else host */
+  privateHost: string;
+  /** servers.yml node_labels ({} when absent) */
+  nodeLabels: Record<string, string>;
   /** SSH port */
   port: number;
   /** SSH user */
@@ -119,10 +127,12 @@ export const SERVER_DEFAULTS: ServerDefaults = {
 export interface SafeServer {
   /** Server name (key in servers.yml) */
   name: string;
-  /** Role in Swarm cluster */
+  /** Role in the cluster */
   role: ServerRole;
   /** Server hostname or IP (hydrated from CI secrets) */
   host: string;
+  /** Address for cluster traffic: servers.yml private_host, else host */
+  private_host: string;
   /** SSH port */
   port: number;
   /** SSH user */

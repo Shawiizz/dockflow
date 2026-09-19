@@ -150,6 +150,38 @@ export interface ProxyConfig {
   acme?: boolean;
   domains?: Record<string, string>;
   dashboard?: ProxyDashboardConfig;
+  /** k3s only. false: use the cluster's Traefik without ever changing it (default: true) */
+  manage?: boolean;
+  /** k3s only. ACME directory URL; unset means Let's Encrypt production */
+  acme_ca_server?: string;
+  /** k3s only. Project path of the PEM bundle trusted for acme_ca_server */
+  acme_ca_bundle?: string;
+  /** k3s only. Make IngressClass traefik the cluster default (default: false) */
+  default_ingress_class?: boolean;
+}
+
+export interface HelmReleaseConfig {
+  name: string;
+  /** chart name inside `repo`, or `oci://<registry>/<path>/<chart>` */
+  chart: string;
+  repo?: string;
+  /** exact version, no range */
+  version: string;
+  /** sha256 of the chart archive */
+  digest?: string;
+  role?: 'app' | 'accessory';
+  /** default: the stack namespace */
+  namespace?: string;
+  values?: Record<string, unknown>;
+  values_files?: string[];
+  timeout?: string;
+  auth?: { username: string; password: string };
+}
+
+export interface HelmConfig {
+  /** default timeout of every release (default: 5m) */
+  timeout?: string;
+  releases?: HelmReleaseConfig[];
 }
 
 export interface WebhookConfig {
@@ -204,6 +236,7 @@ export interface DockflowConfig {
   notifications?: NotificationsConfig;
   uploads?: UploadItem[];
   no_services?: boolean;
+  helm?: HelmConfig;
 }
 
 /**
@@ -478,15 +511,6 @@ export function getStackName(env: string): string | null {
 }
 
 /**
- * Get accessories stack name (separate from main app stack)
- */
-export function getAccessoriesStackName(env: string): string | null {
-  const projectName = getProjectName();
-  if (!projectName) return null;
-  return `${projectName}-${env}-accessories`;
-}
-
-/**
  * Get the path to the docker-compose file (.yml or .yaml).
  * In flat layout mode (dockflow.yml present), looks at the project root.
  * Otherwise looks in .dockflow/docker/.
@@ -511,7 +535,7 @@ const SERVER_KEYS = ['servers', 'defaults', 'env'] as const;
 const CONFIG_KEYS = [
   'project_name', 'orchestrator', 'container_engine', 'registry', 'proxy',
   'health_checks', 'stack_management', 'hooks', 'lock', 'notifications', 'backup',
-  'templates', 'options',
+  'templates', 'options', 'helm',
 ] as const;
 
 /**

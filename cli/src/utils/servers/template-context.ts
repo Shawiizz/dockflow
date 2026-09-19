@@ -30,6 +30,7 @@ function toSafeServer(server: ResolvedServer): SafeServer {
     name: server.name,
     role: server.role,
     host: server.host,
+    private_host: server.privateHost,
     port: server.port,
     user: server.user,
     tags: [...server.tags],
