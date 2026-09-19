@@ -1,0 +1,10 @@
+# Managed by Dockflow (dockflow setup --orchestrator k3s). Changes are overwritten.
+agent-token-file: /etc/rancher/k3s/dockflow/agent-token
+disable:
+  - traefik
+flannel-backend: vxlan
+node-ip: 10.0.0.5
+node-name: main
+secrets-encryption: true
+secrets-encryption-provider: secretbox
+write-kubeconfig-mode: "0600"

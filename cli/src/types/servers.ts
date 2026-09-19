@@ -86,6 +86,11 @@ export interface ResolvedServer {
   host: string;
   /** Address for cluster traffic: servers.yml private_host, else host */
   privateHost: string;
+  /**
+   * servers.yml private_host as written (null when absent). k3s setup derives the address mode from it
+   * (design-05 2.2), which `privateHost` cannot tell apart from the fallback to host.
+   */
+  declaredPrivateHost: string | null;
   /** servers.yml node_labels ({} when absent) */
   nodeLabels: Record<string, string>;
   /** SSH port */

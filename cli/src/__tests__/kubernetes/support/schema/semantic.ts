@@ -657,7 +657,9 @@ function checkReferences(object: Json, env: RuleEnvironment): Finding[] {
       const secretName = rec(spec[type]).secret;
       const secret = typeof secretName === 'string' ? env.secrets.get(secretName) : undefined;
       const path = childPath(childPath('spec', type), 'secret');
-      if (secret === undefined) findings.push(finding(path, `${JSON.stringify(secretName)} is not a Secret of the artifact`));
+      // A user-managed Secret (`...basicauth.secret=<name>`, design-04 2.14.1 rule 6) is not visible, so its keys cannot be checked.
+      if (secret === undefined && typeof secretName === 'string' && env.external.has(secretName)) continue;
+      if (secret === undefined) findings.push(finding(path, `${JSON.stringify(secretName)} is neither a Secret of the artifact nor a declared external name`));
       else if (Object.keys(rec(secret.data)).length !== 1) findings.push(finding(path, `Secret ${String(secretName)} must hold exactly one data key`));
     }
     return findings;

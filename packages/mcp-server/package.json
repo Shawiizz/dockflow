@@ -1,7 +1,7 @@
 {
   "name": "@dockflow-tools/mcp",
   "version": "1.0.1",
-  "description": "MCP server for Dockflow documentation - enables AI assistants to search and query Dockflow docs",
+  "description": "MCP server for Dockflow - lets AI assistants search the docs, get examples and validate configuration for Docker Swarm and k3s",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -11,6 +11,8 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
+    "test": "node --import tsx --test \"src/__tests__/**/*.test.ts\"",
+    "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
     "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public"
   },
   "keywords": [
@@ -18,7 +20,9 @@
     "mcp",
     "model-context-protocol",
     "ai",
-    "documentation"
+    "documentation",
+    "kubernetes",
+    "k3s"
   ],
   "license": "MIT",
   "repository": {

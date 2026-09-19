@@ -72,6 +72,40 @@ function resolveConnection(
 }
 
 /**
+ * Build the ResolvedServer of one servers.yml entry (CI overrides applied).
+ * Returns null when no host is configured and no CI secret provides one.
+ */
+export function toResolvedServer(
+  config: ServersConfig,
+  environment: string,
+  serverName: string,
+  serverConfig: ServerConfig
+): ResolvedServer | null {
+  const defaults = {
+    user: config.defaults?.user ?? SERVER_DEFAULTS.user,
+    port: config.defaults?.port ?? SERVER_DEFAULTS.port,
+  };
+
+  const connection = resolveConnection(environment, serverName, serverConfig, defaults);
+  if (!connection) {
+    return null;
+  }
+
+  return {
+    name: serverName,
+    role: serverConfig.role ?? 'manager',
+    host: connection.host,
+    privateHost: serverConfig.private_host ?? connection.host,
+    declaredPrivateHost: serverConfig.private_host ?? null,
+    nodeLabels: { ...serverConfig.node_labels },
+    port: connection.port,
+    user: connection.user,
+    env: mergeEnvVars(config, environment, serverName, serverConfig.env),
+    tags: serverConfig.tags,
+  };
+}
+
+/**
  * Resolve all servers for a given environment/tag
  */
 export function resolveServersForEnvironment(environment: string): ResolvedServer[] {
@@ -79,45 +113,26 @@ export function resolveServersForEnvironment(environment: string): ResolvedServe
   if (!config) {
     return [];
   }
-  
-  const defaults = {
-    user: config.defaults?.user ?? SERVER_DEFAULTS.user,
-    port: config.defaults?.port ?? SERVER_DEFAULTS.port,
-  };
-  
+
   const resolvedServers: ResolvedServer[] = [];
-  
+
   for (const [serverName, serverConfig] of Object.entries(config.servers)) {
     // Check if this server has the requested tag
     if (!serverConfig.tags.includes(environment)) {
       continue;
     }
-    
-    // Resolve connection info
-    const connection = resolveConnection(environment, serverName, serverConfig, defaults);
-    if (!connection) {
+
+    const server = toResolvedServer(config, environment, serverName, serverConfig);
+    if (!server) {
       printWarning(`Server "${serverName}" has no host configured and no CI secret found.`);
       printWarning(`  Expected CI secret: ${environment.toUpperCase()}_${serverNameToEnvKey(serverName)}_CONNECTION`);
       printWarning(`  See: https://dockflow.shawiizz.dev/getting-started#copy-ci-config-file`);
       continue;
     }
-    
-    // Merge environment variables
-    const envVars = mergeEnvVars(config, environment, serverName, serverConfig.env);
-    
-    resolvedServers.push({
-      name: serverName,
-      role: serverConfig.role ?? 'manager',
-      host: connection.host,
-      privateHost: serverConfig.private_host ?? connection.host,
-      nodeLabels: { ...serverConfig.node_labels },
-      port: connection.port,
-      user: connection.user,
-      env: envVars,
-      tags: serverConfig.tags,
-    });
+
+    resolvedServers.push(server);
   }
-  
+
   return resolvedServers;
 }
 
@@ -139,30 +154,8 @@ export function resolveServerByName(serverName: string, environment: string): Re
   if (!serverConfig.tags.includes(environment)) {
     return null;
   }
-  
-  const defaults = {
-    user: config.defaults?.user ?? SERVER_DEFAULTS.user,
-    port: config.defaults?.port ?? SERVER_DEFAULTS.port,
-  };
-  
-  const connection = resolveConnection(environment, serverName, serverConfig, defaults);
-  if (!connection) {
-    return null;
-  }
-  
-  const envVars = mergeEnvVars(config, environment, serverName, serverConfig.env);
-  
-  return {
-    name: serverName,
-    role: serverConfig.role ?? 'manager',
-    host: connection.host,
-    privateHost: serverConfig.private_host ?? connection.host,
-    nodeLabels: { ...serverConfig.node_labels },
-    port: connection.port,
-    user: connection.user,
-    env: envVars,
-    tags: serverConfig.tags,
-  };
+
+  return toResolvedServer(config, environment, serverName, serverConfig);
 }
 
 /**

@@ -1,30 +1,60 @@
 import { describe, expect, it } from 'bun:test';
-import { parseDockerLogLines } from '../utils/docker-logs';
+import { LogLineBuffer, splitServiceLogsContext } from '../utils/docker-logs';
 
-describe('parseDockerLogLines', () => {
-  it('parses RFC3339-prefixed lines into timestamp + message', () => {
-    const out = parseDockerLogLines('2026-01-15T10:30:00.123456789Z Server started on :8080', 'web');
-    expect(out).toHaveLength(1);
-    expect(out[0].timestamp).toBe('2026-01-15T10:30:00.123456789Z');
-    expect(out[0].message).toBe('Server started on :8080');
-    expect(out[0].service).toBe('web');
+describe('LogLineBuffer', () => {
+  it('returns the complete lines of a chunk', () => {
+    const buffer = new LogLineBuffer();
+    expect(buffer.push('first\nsecond\n')).toEqual(['first', 'second']);
+    expect(buffer.flush()).toEqual([]);
   });
 
-  it('lines without timestamp fall back to now', () => {
-    const before = Date.now();
-    const out = parseDockerLogLines('plain log line', 'web');
-    expect(out).toHaveLength(1);
-    expect(out[0].message).toBe('plain log line');
-    expect(new Date(out[0].timestamp).getTime()).toBeGreaterThanOrEqual(before - 1000);
+  it('keeps a line split across chunks whole', () => {
+    const buffer = new LogLineBuffer();
+    expect(buffer.push('GET /hea')).toEqual([]);
+    expect(buffer.push('lth 200\nPOST')).toEqual(['GET /health 200']);
+    expect(buffer.push(' /login 302\n')).toEqual(['POST /login 302']);
   });
 
-  it('skips empty and whitespace-only lines', () => {
-    const out = parseDockerLogLines('\n2026-01-01T00:00:00Z a\n\n   \n2026-01-01T00:00:01Z b\n', 'svc');
-    expect(out.map(l => l.message)).toEqual(['a', 'b']);
+  it('strips the carriage return of CRLF output', () => {
+    const buffer = new LogLineBuffer();
+    expect(buffer.push('a\r\nb\r\n')).toEqual(['a', 'b']);
   });
 
-  it('empty input yields empty array', () => {
-    expect(parseDockerLogLines('', 'svc')).toEqual([]);
-    expect(parseDockerLogLines('   \n  ', 'svc')).toEqual([]);
+  it('keeps empty lines, which the caller decides about', () => {
+    expect(new LogLineBuffer().push('a\n\nb\n')).toEqual(['a', '', 'b']);
+  });
+
+  it('hands out the unterminated last line on flush, once', () => {
+    const buffer = new LogLineBuffer();
+    expect(buffer.push('done\npartial')).toEqual(['done']);
+    expect(buffer.flush()).toEqual(['partial']);
+    expect(buffer.flush()).toEqual([]);
+  });
+});
+
+describe('splitServiceLogsContext', () => {
+  it('splits the padded task and node context of docker service logs', () => {
+    expect(splitServiceLogsContext('shop-production_web.2.x2x4qabcdef@worker-1    | GET / 200')).toEqual({
+      task: 'shop-production_web.2.x2x4qabcdef',
+      node: 'worker-1',
+      text: 'GET / 200',
+    });
+  });
+
+  it('keeps pipes inside the message', () => {
+    expect(splitServiceLogsContext('web.1.abc@manager-1 | a | b')?.text).toBe('a | b');
+  });
+
+  it('keeps a timestamp that follows the context in the text', () => {
+    expect(splitServiceLogsContext('web.2.x2x4q@worker-1    | 2026-09-17T10:00:00.123456789Z GET /')).toEqual({
+      task: 'web.2.x2x4q',
+      node: 'worker-1',
+      text: '2026-09-17T10:00:00.123456789Z GET /',
+    });
+  });
+
+  it('returns null for a line without context', () => {
+    expect(splitServiceLogsContext('plain log line')).toBeNull();
+    expect(splitServiceLogsContext('2026-09-17T10:00:00Z web.2.x@worker-1    | GET /')).toBeNull();
   });
 });

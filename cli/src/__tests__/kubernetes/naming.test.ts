@@ -249,6 +249,51 @@ describe('port names (DESIGN-CORE 5.4, design-02 6.7)', () => {
       ]),
     ).toEqual(['tcp-53', 'udp-53']);
   });
+
+  it("a request of another port's generated form is refused, whichever port comes first", () => {
+    expect(
+      assignPortNames([
+        { port: 80, protocol: 'TCP', requested: null },
+        { port: 81, protocol: 'TCP', requested: 'tcp-80' },
+      ]),
+    ).toEqual(['tcp-80', 'tcp-81']);
+    expect(
+      assignPortNames([
+        { port: 80, protocol: 'TCP', requested: 'tcp-81' },
+        { port: 81, protocol: 'TCP', requested: null },
+      ]),
+    ).toEqual(['tcp-80', 'tcp-81']);
+    expect(
+      assignPortNames([
+        { port: 53, protocol: 'TCP', requested: 'UDP-53' },
+        { port: 53, protocol: 'UDP', requested: null },
+      ]),
+    ).toEqual(['tcp-53', 'udp-53']);
+  });
+
+  it('the generated form is refused even when no port of the list has it, so adding that port renames nothing', () => {
+    expect(assignPortNames([{ port: 80, protocol: 'TCP', requested: 'tcp-9000' }])).toEqual(['tcp-80']);
+    expect(assignPortNames([{ port: 80, protocol: 'TCP', requested: 'tcp-080' }])).toEqual(['tcp-80']);
+  });
+
+  it("a request of the port's own generated form is kept, and blocks nobody", () => {
+    expect(
+      assignPortNames([
+        { port: 80, protocol: 'TCP', requested: 'TCP-80' },
+        { port: 81, protocol: 'TCP', requested: 'tcp-80' },
+      ]),
+    ).toEqual(['tcp-80', 'tcp-81']);
+  });
+
+  it('entries repeating a (port, protocol) key fall back to its one generated name; the caller tells them apart', () => {
+    expect(
+      assignPortNames([
+        { port: 80, protocol: 'TCP', requested: null },
+        { port: 80, protocol: 'TCP', requested: 'tcp-80' },
+        { port: 80, protocol: 'TCP', requested: 'http' },
+      ]),
+    ).toEqual(['tcp-80', 'tcp-80', 'http']);
+  });
 });
 
 describe('importedImageRef (DESIGN-CORE 5.7)', () => {

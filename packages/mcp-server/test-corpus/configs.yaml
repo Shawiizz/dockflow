@@ -1,0 +1,969 @@
+# Configuration corpus shared by the two validators of Dockflow configuration files.
+#
+#   packages/mcp-server/src/__tests__/corpus.test.ts   validate_config agrees with cliValid
+#   cli/src/__tests__/kubernetes/mcp/corpus.test.ts     cliValid is the CLI schemas' verdict (U-MCP-01)
+#
+# Each row: name, file (config = .dockflow/config.yml, servers = .dockflow/servers.yml,
+# root = dockflow.yml), yaml, cliValid, mcpErrors (fragments that must appear in the lines BOTH
+# tools print), and for a servers row the optional orchestrator it is validated for (the k3s
+# topology rules apply only then). Nunjucks placeholders are stored rendered.
+
+# --- config.yml: accepted -------------------------------------------------------------------
+
+- name: swarm project with defaults only
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+
+- name: k3s project with defaults only
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+
+- name: k3s Helm releases using every field
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    templates:
+      - helm/web-values.yml
+      - src: templates/api.yml
+        dest: helm/api-values.yml
+    helm:
+      timeout: 1h30m
+      releases:
+        - name: web
+          chart: podinfo
+          repo: https://charts.example.com
+          version: 6.15.0
+          digest: 0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0
+          namespace: web-system
+          values:
+            replicaCount: 2
+          values_files:
+            - .dockflow/helm/web.yml
+            - helm/web-values.yml
+          timeout: 90s
+        - name: api
+          chart: oci://registry.example.com/charts/api
+          version: v1.4.2-rc.1+build.7
+          values_files:
+            - helm/api-values.yml
+          auth:
+            username: deploy
+            password: "s3cret"
+        - name: cache
+          chart: oci://registry.example.com/charts/cache
+          version: 2.0.1
+          role: accessory
+
+- name: plain http chart repository (a deploy warning, not an error)
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      releases:
+        - name: web
+          chart: web
+          repo: http://charts.example.com
+          version: 1.0.0
+
+- name: swarm proxy with the k3s-only keys at their defaults
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    proxy:
+      enabled: true
+      email: ops@example.com
+      manage: true
+      default_ingress_class: false
+
+- name: k3s proxy that does not manage Traefik needs no email
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    proxy:
+      enabled: true
+      manage: false
+
+- name: k3s proxy with a private ACME CA
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    proxy:
+      enabled: true
+      email: ops@example.com
+      acme_ca_server: https://ca.example.com/acme/directory
+      acme_ca_bundle: .dockflow/ca/root.pem
+      default_ingress_class: true
+
+- name: remote_build on swarm
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    options:
+      remote_build: true
+
+# --- config.yml: refused --------------------------------------------------------------------
+
+- name: invalid project name
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "project_name: Project name must contain only lowercase letters, numbers, and hyphens. Cannot start or end with a hyphen."
+  yaml: |
+    project_name: My_Shop
+
+- name: helm without orchestrator (swarm by default)
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "helm: helm releases require orchestrator: k3s"
+  yaml: |
+    project_name: shop
+    helm:
+      releases:
+        - name: web
+          chart: oci://registry.example.com/charts/web
+          version: 1.0.0
+
+- name: helm on an explicit swarm project
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "helm: helm releases require orchestrator: k3s"
+  yaml: |
+    project_name: shop
+    orchestrator: swarm
+    helm:
+      releases: []
+
+- name: helm release name with capitals
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "helm.releases[0].name: name must be lowercase letters, digits and -, starting and ending with a letter or digit"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      releases:
+        - name: Web
+          chart: oci://registry.example.com/charts/web
+          version: 1.0.0
+
+- name: helm release name longer than 53 characters
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "helm.releases[0].name: name must be at most 53 characters, the Helm release name limit"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      releases:
+        - name: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          chart: oci://registry.example.com/charts/web
+          version: 1.0.0
+
+- name: helm release with an empty chart
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "helm.releases[0].chart: chart must be a chart name, or an oci:// reference"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      releases:
+        - name: web
+          chart: ""
+          repo: https://charts.example.com
+          version: 1.0.0
+
+- name: helm repository that is not a URL
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "helm.releases[0].repo: repo must be an https:// or http:// URL"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      releases:
+        - name: web
+          chart: web
+          repo: charts.example.com
+          version: 1.0.0
+
+- name: helm chart version range
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "helm.releases[0].version: must be an exact version such as 1.2.3 (no ranges, no latest)"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      releases:
+        - name: web
+          chart: oci://registry.example.com/charts/web
+          version: "^1.2.0"
+
+- name: helm chart version latest
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "helm.releases[0].version: must be an exact version such as 1.2.3 (no ranges, no latest)"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      releases:
+        - name: web
+          chart: oci://registry.example.com/charts/web
+          version: latest
+
+- name: helm chart version read as a number
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "helm.releases[0].version: must be an exact version such as 1.2.3 (no ranges, no latest)"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      releases:
+        - name: web
+          chart: oci://registry.example.com/charts/web
+          version: 1.2
+
+- name: helm chart digest with a prefix
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "helm.releases[0].digest: digest must be the 64 hexadecimal characters of the chart archive's sha256"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      releases:
+        - name: web
+          chart: oci://registry.example.com/charts/web
+          version: 1.0.0
+          digest: sha256:0f1e2d3c
+
+- name: helm namespace with a dot
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "helm.releases[0].namespace: namespace must be lowercase letters, digits and -, at most 63 characters, starting and ending with a letter or digit"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      releases:
+        - name: web
+          chart: oci://registry.example.com/charts/web
+          version: 1.0.0
+          namespace: team.apps
+
+- name: helm release timeout in words
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "helm.releases[0].timeout: timeout must be a duration such as 90s, 5m or 1h30m"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      releases:
+        - name: web
+          chart: oci://registry.example.com/charts/web
+          version: 1.0.0
+          timeout: 5 minutes
+
+- name: helm default timeout in words
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "helm.timeout: timeout must be a duration such as 90s, 5m or 1h30m"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      timeout: soon
+
+- name: helm empty values file entry
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "helm.releases[0].values_files[0]: values_files entries must be non-empty paths"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      releases:
+        - name: web
+          chart: oci://registry.example.com/charts/web
+          version: 1.0.0
+          values_files: [""]
+
+- name: helm values file outside the rendered files
+  file: config
+  cliValid: false
+  mcpErrors:
+    - 'helm.releases[0].values_files[0]: values file "helm/values.yml" is not rendered: Dockflow only renders files under .dockflow/ and files listed in templates'
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      releases:
+        - name: web
+          chart: oci://registry.example.com/charts/web
+          version: 1.0.0
+          values_files:
+            - helm/values.yml
+
+- name: helm registry login with an empty user name
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "helm.releases[0].auth.username: auth.username and auth.password must not be empty"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      releases:
+        - name: web
+          chart: oci://registry.example.com/charts/web
+          version: 1.0.0
+          auth:
+            username: ""
+            password: "s3cret"
+
+- name: helm release declared twice
+  file: config
+  cliValid: false
+  mcpErrors:
+    - 'helm.releases[1].name: Helm release "web" is declared twice'
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      releases:
+        - name: web
+          chart: oci://registry.example.com/charts/web
+          version: 1.0.0
+        - name: web
+          chart: oci://registry.example.com/charts/web
+          version: 1.1.0
+
+- name: helm OCI chart with a repository
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "helm.releases[0].repo: repo must not be set for an oci:// chart"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      releases:
+        - name: web
+          chart: oci://registry.example.com/charts/web
+          repo: https://charts.example.com
+          version: 1.0.0
+
+- name: helm repository chart without a repository
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "helm.releases[0].repo: repo is required unless chart starts with oci://"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      releases:
+        - name: web
+          chart: podinfo
+          version: 6.15.0
+
+- name: helm release key typo
+  file: config
+  cliValid: false
+  mcpErrors:
+    - 'helm.releases[0]: Unrecognized key: "values_file"'
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    helm:
+      releases:
+        - name: web
+          chart: oci://registry.example.com/charts/web
+          version: 1.0.0
+          values_file: .dockflow/helm/web.yml
+
+- name: remote_build on k3s
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "options.remote_build: options.remote_build is not supported with orchestrator: k3s (k3s nodes run containerd only); build locally or push to a registry"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    options:
+      remote_build: true
+
+- name: proxy email missing
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "proxy: proxy.email is required when proxy.enabled is true and acme is not disabled"
+  yaml: |
+    project_name: shop
+    proxy:
+      enabled: true
+
+- name: proxy.manage on swarm
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "proxy.manage: proxy.manage requires orchestrator: k3s"
+  yaml: |
+    project_name: shop
+    proxy:
+      enabled: true
+      email: ops@example.com
+      manage: false
+
+- name: proxy.acme_ca_server and acme_ca_bundle on swarm
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "proxy.acme_ca_server: proxy.acme_ca_server requires orchestrator: k3s"
+    - "proxy.acme_ca_bundle: proxy.acme_ca_bundle requires orchestrator: k3s"
+  yaml: |
+    project_name: shop
+    proxy:
+      enabled: true
+      email: ops@example.com
+      acme_ca_server: https://ca.example.com/acme/directory
+      acme_ca_bundle: .dockflow/ca/root.pem
+
+- name: proxy.default_ingress_class on swarm
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "proxy.default_ingress_class: proxy.default_ingress_class requires orchestrator: k3s"
+  yaml: |
+    project_name: shop
+    proxy:
+      default_ingress_class: true
+
+- name: proxy.manage without proxy.enabled
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "proxy.manage: proxy.manage only applies when proxy.enabled is true"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    proxy:
+      manage: false
+
+- name: ACME CA server over plain HTTP
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "proxy.acme_ca_server: proxy.acme_ca_server must be an https:// URL"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    proxy:
+      enabled: true
+      email: ops@example.com
+      acme_ca_server: http://ca.example.com/acme/directory
+
+- name: ACME CA server with ACME disabled
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "proxy.acme_ca_server: proxy.acme_ca_server and proxy.acme_ca_bundle need proxy.acme"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    proxy:
+      enabled: true
+      acme: false
+      acme_ca_server: https://ca.example.com/acme/directory
+
+- name: ACME CA bundle without a CA server
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "proxy.acme_ca_bundle: proxy.acme_ca_bundle only applies to a custom proxy.acme_ca_server"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    proxy:
+      enabled: true
+      email: ops@example.com
+      acme_ca_bundle: .dockflow/ca/root.pem
+
+- name: ACME CA bundle empty
+  file: config
+  cliValid: false
+  mcpErrors:
+    - "proxy.acme_ca_bundle: proxy.acme_ca_bundle must be the project path of a PEM file"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    proxy:
+      enabled: true
+      email: ops@example.com
+      acme_ca_server: https://ca.example.com/acme/directory
+      acme_ca_bundle: ""
+
+- name: ACME CA bundle outside the rendered files
+  file: config
+  cliValid: false
+  mcpErrors:
+    - 'proxy.acme_ca_bundle: proxy.acme_ca_bundle "certs/root.pem" is not rendered: Dockflow only renders files under .dockflow/ and files listed in templates'
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    proxy:
+      enabled: true
+      email: ops@example.com
+      acme_ca_server: https://ca.example.com/acme/directory
+      acme_ca_bundle: certs/root.pem
+
+# --- servers.yml ----------------------------------------------------------------------------
+
+- name: k3s fields on servers validated without an orchestrator
+  file: servers
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    servers:
+      cp-1:
+        host: 203.0.113.11
+        private_host: 10.0.0.11
+        tags: [production]
+        node_labels:
+          zone: eu-west-1a
+          example.com/tier: ""
+      cp-2:
+        host: 203.0.113.12
+        private_host: "2001:db8::12"
+        tags: [production]
+
+- name: two managers on swarm
+  file: servers
+  orchestrator: swarm
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    servers:
+      cp-1:
+        host: 203.0.113.11
+        tags: [production]
+      cp-2:
+        host: 203.0.113.12
+        tags: [production]
+
+- name: two managers on k3s
+  file: servers
+  orchestrator: k3s
+  cliValid: false
+  mcpErrors:
+    - 'servers: tag "production" has 2 managers; an embedded-etcd cluster needs an odd number, so declare 1 or 3'
+  yaml: |
+    servers:
+      cp-1:
+        host: 203.0.113.11
+        tags: [production]
+      cp-2:
+        host: 203.0.113.12
+        tags: [production]
+
+- name: four managers on k3s
+  file: servers
+  orchestrator: k3s
+  cliValid: false
+  mcpErrors:
+    - 'servers: tag "production" has 4 managers; an embedded-etcd cluster needs an odd number, so declare 1 or 3'
+  yaml: |
+    servers:
+      cp-1:
+        host: 203.0.113.11
+        tags: [production]
+      cp-2:
+        host: 203.0.113.12
+        tags: [production]
+      cp-3:
+        host: 203.0.113.13
+        tags: [production]
+      cp-4:
+        host: 203.0.113.14
+        tags: [production]
+
+- name: three managers and two workers on k3s
+  file: servers
+  orchestrator: k3s
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    servers:
+      cp-1:
+        host: 203.0.113.11
+        private_host: 10.0.0.11
+        role: manager
+        tags: [production]
+      cp-2:
+        host: 203.0.113.12
+        private_host: 10.0.0.12
+        role: manager
+        tags: [production]
+      cp-3:
+        host: 203.0.113.13
+        private_host: 10.0.0.13
+        role: manager
+        tags: [production]
+      worker-1:
+        host: 203.0.113.21
+        role: worker
+        tags: [production]
+      worker-2:
+        host: 203.0.113.22
+        role: worker
+        tags: [production]
+
+- name: one manager per environment on k3s
+  file: servers
+  orchestrator: k3s
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    servers:
+      prod:
+        host: 203.0.113.11
+        tags: [production]
+      stage:
+        host: 203.0.113.12
+        tags: [staging]
+
+- name: two keys with one node name on k3s
+  file: servers
+  orchestrator: k3s
+  cliValid: false
+  mcpErrors:
+    - 'servers: "web_1" and "web-1" both become node name "web-1"; rename one'
+  yaml: |
+    servers:
+      web_1:
+        host: 203.0.113.11
+        tags: [production]
+      web-1:
+        host: 203.0.113.12
+        role: worker
+        tags: [production]
+
+- name: one node name in two environments on k3s
+  file: servers
+  orchestrator: k3s
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    servers:
+      web_1:
+        host: 203.0.113.11
+        tags: [production]
+      web-1:
+        host: 203.0.113.12
+        tags: [staging]
+
+- name: IPv6 private_host on k3s
+  file: servers
+  orchestrator: k3s
+  cliValid: false
+  mcpErrors:
+    - "servers.main.private_host: IPv6 cluster addresses are not supported by Dockflow k3s setup yet"
+  yaml: |
+    servers:
+      main:
+        host: 203.0.113.10
+        private_host: "2001:db8::10"
+        tags: [production]
+
+- name: IPv6 host without private_host on k3s
+  file: servers
+  orchestrator: k3s
+  cliValid: false
+  mcpErrors:
+    - "servers.main.private_host: IPv6 cluster addresses are not supported by Dockflow k3s setup yet"
+  yaml: |
+    servers:
+      main:
+        host: "2001:db8::10"
+        tags: [production]
+
+- name: IPv6 host with an IPv4 private_host on k3s
+  file: servers
+  orchestrator: k3s
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        host: "2001:db8::10"
+        private_host: 10.0.0.10
+        tags: [production]
+
+- name: IPv6 private_host on swarm
+  file: servers
+  orchestrator: swarm
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        host: 203.0.113.10
+        private_host: "2001:db8::10"
+        tags: [production]
+
+- name: private_host that is not an address
+  file: servers
+  cliValid: false
+  mcpErrors:
+    - "servers.main.private_host: private_host must be an IPv4 or IPv6 address"
+  yaml: |
+    servers:
+      main:
+        host: 203.0.113.10
+        private_host: db.internal
+        tags: [production]
+
+- name: node label key with a leading dash
+  file: servers
+  cliValid: false
+  mcpErrors:
+    - "servers.main.node_labels.-zone: node label keys must be an optional DNS subdomain and /, then at most 63 letters, digits, -, _ or . starting and ending with a letter or digit"
+  yaml: |
+    servers:
+      main:
+        host: 203.0.113.10
+        tags: [production]
+        node_labels:
+          "-zone": eu
+
+- name: node label key longer than 253 characters
+  file: servers
+  cliValid: false
+  mcpErrors:
+    - "node label keys must be at most 253 characters"
+  yaml: |
+    servers:
+      main:
+        host: 203.0.113.10
+        tags: [production]
+        node_labels:
+          aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: x
+
+- name: node label keys under reserved prefixes
+  file: servers
+  cliValid: false
+  mcpErrors:
+    - "servers.main.node_labels.node-role.kubernetes.io/worker: node label keys under kubernetes.io/, k8s.io/ and dockflow.shawiizz.dev/ are reserved"
+    - "servers.main.node_labels.dockflow.shawiizz.dev/pool: node label keys under kubernetes.io/, k8s.io/ and dockflow.shawiizz.dev/ are reserved"
+  yaml: |
+    servers:
+      main:
+        host: 203.0.113.10
+        tags: [production]
+        node_labels:
+          node-role.kubernetes.io/worker: "true"
+          dockflow.shawiizz.dev/pool: web
+
+- name: node label value with a leading dash
+  file: servers
+  cliValid: false
+  mcpErrors:
+    - "servers.main.node_labels.zone: node label values must be empty, or letters, digits, -, _ and . starting and ending with a letter or digit"
+  yaml: |
+    servers:
+      main:
+        host: 203.0.113.10
+        tags: [production]
+        node_labels:
+          zone: "-eu"
+
+- name: node label value longer than 63 characters
+  file: servers
+  cliValid: false
+  mcpErrors:
+    - "servers.main.node_labels.zone: node label values must be at most 63 characters"
+  yaml: |
+    servers:
+      main:
+        host: 203.0.113.10
+        tags: [production]
+        node_labels:
+          zone: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+- name: node labels on swarm are accepted and ignored
+  file: servers
+  orchestrator: swarm
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        host: 203.0.113.10
+        tags: [production]
+        node_labels:
+          zone: eu-west-1a
+
+- name: no server
+  file: servers
+  cliValid: false
+  mcpErrors:
+    - "servers: At least one server must be defined"
+  yaml: |
+    servers: {}
+
+- name: server name with capitals
+  file: servers
+  cliValid: false
+  mcpErrors:
+    - "servers.Main: Server name must be lowercase alphanumeric with hyphens or underscores"
+  yaml: |
+    servers:
+      Main:
+        host: 203.0.113.10
+        tags: [production]
+
+- name: environment without a manager
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        host: 203.0.113.10
+        role: worker
+        tags: [production]
+
+# --- dockflow.yml ---------------------------------------------------------------------------
+
+- name: k3s flat project with a three-manager cluster
+  file: root
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    servers:
+      cp-1:
+        host: 203.0.113.11
+        private_host: 10.0.0.11
+        tags: [production]
+        node_labels:
+          zone: eu-west-1a
+      cp-2:
+        host: 203.0.113.12
+        private_host: 10.0.0.12
+        tags: [production]
+      cp-3:
+        host: 203.0.113.13
+        private_host: 10.0.0.13
+        tags: [production]
+    defaults:
+      user: deploy
+
+- name: k3s flat project with two managers
+  file: root
+  cliValid: false
+  mcpErrors:
+    - 'servers: tag "production" has 2 managers; an embedded-etcd cluster needs an odd number, so declare 1 or 3'
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    servers:
+      cp-1:
+        host: 203.0.113.11
+        tags: [production]
+      cp-2:
+        host: 203.0.113.12
+        tags: [production]
+
+- name: swarm flat project with two managers
+  file: root
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    servers:
+      cp-1:
+        host: 203.0.113.11
+        tags: [production]
+      cp-2:
+        host: 203.0.113.12
+        tags: [production]
+
+- name: swarm flat project with helm releases
+  file: root
+  cliValid: false
+  mcpErrors:
+    - "helm: helm releases require orchestrator: k3s"
+  yaml: |
+    project_name: shop
+    servers:
+      main:
+        host: 203.0.113.10
+        tags: [production]
+    helm:
+      releases:
+        - name: web
+          chart: oci://registry.example.com/charts/web
+          version: 1.0.0
+
+- name: k3s flat project with a Helm release and remote_build
+  file: root
+  cliValid: false
+  mcpErrors:
+    - "options.remote_build: options.remote_build is not supported with orchestrator: k3s (k3s nodes run containerd only); build locally or push to a registry"
+  yaml: |
+    project_name: shop
+    orchestrator: k3s
+    options:
+      remote_build: true
+    servers:
+      main:
+        host: 203.0.113.10
+        tags: [production]
+    helm:
+      releases:
+        - name: web
+          chart: oci://registry.example.com/charts/web
+          version: 1.0.0

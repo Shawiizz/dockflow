@@ -1,35 +1,48 @@
 /**
- * Backup — manages backup and restore operations for accessory databases
- * and Docker volumes.
+ * Backup and restore of a stack's services, over the orchestrator's BackupBackend.
  *
- * Uses SSH + docker exec to run dump/restore commands inside containers,
- * and docker run with temporary Alpine containers for volume backups.
+ * Orchestrator-neutral: the backend runs dumps, restores and volume archives its own way (docker
+ * exec on Swarm, kubectl exec and helper pods on Kubernetes). This module owns what both share:
+ * the backup directory and its metadata files, the end-to-end verification of every archive on
+ * the node holding it (right after a backup, and before a restore touches anything), the restore
+ * refusals, and listing and pruning across every node with SSH credentials.
  *
- * Design: backups are stored on the node where the service runs, not necessarily
- * the manager. nodeHost/nodePort are stored in metadata so future operations
- * (restore, prune, list) can connect to the correct node directly.
+ * Backups live on the node that wrote them (Swarm: the container's node; k3s: the control plane
+ * the command ran on); `nodeHost`/`nodePort` in the metadata say which.
  */
 
-import type { SSHKeyConnection } from '../types';
-import type { BackupDbType, BackupAccessoryConfig } from '../utils/config';
-import { ok, err, type Result } from '../types';
-import { sshExec, sshExecChannel, shellQuote } from '../utils/ssh';
-import { formatBytes, printDebug } from '../utils/output';
-import { findSwarmContainer } from './orchestrator/swarm/swarm-utils';
-import { SwarmStackBackend } from './orchestrator/swarm/swarm-stack';
-import { DOCKFLOW_BACKUPS_DIR } from '../constants';
+import { BACKUP_ORPHAN_GRACE_H, DOCKFLOW_BACKUPS_DIR } from '../constants';
+import { err, ok, type Result } from '../types/result';
+import type { BackupAccessoryConfig, BackupDbType } from '../utils/config';
+import { BackupError, ErrorCode, UnsupportedOperationError, ValidationError } from '../utils/errors';
+import { formatBytes, printDebug, printInfo, printWarning } from '../utils/output';
+import { shellQuote, sshExec, sshExecChannel } from '../utils/ssh';
 import {
-  DB_STRATEGIES,
-  buildExecEnvFlags,
-  buildArchiveCheckCommand,
-  parseContainerEnv,
-  parseContainerMounts,
-  buildDataFilePath,
+  type ArchiveIntegrity,
+  backupScopeName,
   buildBackupDir,
-  selectBackupsToPrune,
+  buildDataFilePath,
+  buildDumpScript,
+  buildRestoreScript,
+  buildVerifyScript,
+  DB_TYPES,
   findBackupMatch,
+  integrityOf,
+  parseRestoreRefusal,
+  selectBackupsToPrune,
+  stripRefusalMarker,
 } from './backup-strategies';
-import type { ContainerCredentials, MountInfo } from './backup-strategies';
+import type {
+  BackupBackend,
+  BackupFile,
+  BackupVolume,
+  ClusterNodeRef,
+  Orchestrator,
+  OrchestratorKind,
+  ServiceInfo,
+  StackRef,
+  StackRole,
+} from './orchestrator/interfaces';
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -47,193 +60,291 @@ export interface BackupBaseEntry {
   nodePort: number;
 }
 
+/** One archive of a `type: volume` backup */
+export interface BackupVolumeRecord {
+  name: string;
+  sizeBytes: number;
+  mountType: 'volume' | 'bind';
+  /** Docker volume name, PVC name or host path */
+  sourcePath: string;
+  /** absent in metadata written before the rewrite */
+  mountPath?: string;
+  /** servers.yml key of the node holding the volume; absent in metadata written before the rewrite */
+  node?: string | null;
+}
+
+/** `<id>.meta.json`, mode 0600 (design-06 4.5) */
 export interface BackupMetadata extends BackupBaseEntry {
   durationMs: number;
+  /** backup directory name of the role: `<project>-<env>` or `<project>-<env>-accessories` */
   stackName: string;
+  /** absent in metadata written before the rewrite */
+  orchestrator?: OrchestratorKind;
+  role?: StackRole;
+  volumes?: BackupVolumeRecord[];
 }
 
 export interface BackupListEntry extends BackupBaseEntry {
   filePath: string;
+  /** servers.yml key of the node the backup was listed on */
+  node: string;
 }
 
+export interface BackupListing {
+  /** newest first */
+  entries: BackupListEntry[];
+  /** nodes with SSH credentials that did not answer; backups stored there are not listed */
+  unreachable: ClusterNodeRef[];
+}
+
+export interface PruneReport {
+  /** backups removed by retention (metadata and data files) */
+  removed: number;
+  /** data files whose metadata was missing, older than the grace period */
+  orphanFiles: number;
+  bytesFreed: number;
+}
+
+export interface RestoreOptions {
+  /** skips the trailer check and the refusal of backups without integrity data */
+  forceUnverified: boolean;
+}
+
+// ─── Refusals ─────────────────────────────────────────────────────────────
+
+/**
+ * R-23: a restore writes one replica (the instance a dump streams into, or the ordinal-0 claim),
+ * so bringing the other replicas back would leave members that disagree about the dataset.
+ */
+export function assertSingleReplica(svc: ServiceInfo, env: string): void {
+  const replicas = svc.replicas.desired;
+  if (replicas <= 1) return;
+  const suggestion =
+    svc.role === 'accessory'
+      ? `Set \`deploy.replicas: 1\` for ${svc.name} in accessories.yml and run \`dockflow deploy ${env} --accessories\` first, restore, then set it back.`
+      : `Scale it to 1 first with \`dockflow scale ${env} ${svc.name} 1\`, restore, then scale it back.`;
+  throw new UnsupportedOperationError(
+    `Service ${svc.name} runs ${replicas} replicas; dockflow backup restore writes one replica only`,
+    suggestion,
+  );
+}
+
+/** R-17 */
+function redisAppendOnlyRefusal(service: string): BackupError {
+  return new BackupError(
+    `Redis in service ${service} has appendonly enabled; a restored dump.rdb would be ignored at startup, so nothing was changed`,
+    { code: ErrorCode.RESTORE_FAILED, suggestion: 'Back up and restore this service with `type: volume`.' },
+  );
+}
+
+const UNVERIFIED_SUGGESTION =
+  'Check the file yourself and re-run with `--force-unverified`, or take a new backup with `compression: gzip`.';
+
 // ─── Helpers ──────────────────────────────────────────────────────────────
+
+const META_SEPARATOR = '---DOCKFLOW_META_SEP---';
+/** ids and service names become path components of remote rm commands */
+const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const COMPRESSIONS: ReadonlySet<string> = new Set(['gzip', 'none']);
 
 function generateBackupId(): string {
   const now = new Date();
   const pad = (n: number) => n.toString().padStart(2, '0');
-  const suffix = Math.random().toString(16).slice(2, 6);
+  const suffix = Math.random().toString(16).slice(2, 6).padEnd(4, '0');
   return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}-${suffix}`;
+}
+
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+function firstLine(text: string): string {
+  return (
+    text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line !== '') ?? ''
+  );
+}
+
+function nodeKey(node: ClusterNodeRef): string {
+  return `${node.connection.host}:${node.connection.port}`;
+}
+
+function isBackupType(value: unknown): value is BackupDbType {
+  return typeof value === 'string' && (value === 'volume' || Object.hasOwn(DB_TYPES, value));
+}
+
+/** metadata read back from a node, or null when it cannot describe a backup safely */
+function parseMetadata(text: string): BackupMetadata | null {
+  let meta: Partial<BackupMetadata>;
+  try {
+    meta = JSON.parse(text) as Partial<BackupMetadata>;
+  } catch (error) {
+    printDebug(`Skipping malformed backup metadata: ${asError(error).message}`);
+    return null;
+  }
+  if (
+    typeof meta !== 'object' ||
+    meta === null ||
+    typeof meta.id !== 'string' ||
+    !SAFE_NAME.test(meta.id) ||
+    typeof meta.service !== 'string' ||
+    !SAFE_NAME.test(meta.service) ||
+    !isBackupType(meta.dbType) ||
+    typeof meta.compression !== 'string' ||
+    !COMPRESSIONS.has(meta.compression)
+  ) {
+    printDebug('Skipping backup metadata without a usable id, service, type or compression');
+    return null;
+  }
+  if (!meta.nodeHost || !meta.nodePort) {
+    printDebug(`Skipping backup ${meta.id}: metadata has no node information`);
+    return null;
+  }
+  return meta as BackupMetadata;
 }
 
 // ─── Backup ───────────────────────────────────────────────────────────────
 
 export class Backup {
-  private readonly orchestrator: SwarmStackBackend;
-
   constructor(
-    /** Manager connection — used for Swarm operations (service restart) */
-    private readonly connection: SSHKeyConnection,
-    private readonly stackName: string,
-    /** All node connections — used to find containers and run backup/restore on any node */
-    private readonly allConnections: SSHKeyConnection[] = []
-  ) {
-    this.orchestrator = new SwarmStackBackend(connection);
+    private readonly orchestrator: Orchestrator,
+    private readonly ref: StackRef,
+  ) {}
+
+  private get backups(): BackupBackend {
+    return this.orchestrator.backups;
   }
 
-  private findContainer(service: string) {
-    return findSwarmContainer(this.stackName, service, this.connection, this.allConnections);
+  private get env(): string {
+    return this.orchestrator.target.env;
   }
 
-  private getBackupDir(service: string): string {
-    return buildBackupDir(this.stackName, service);
+  private get scope(): string {
+    return backupScopeName(this.ref, this.orchestrator.target.stackName);
   }
 
-  /** Derive the data file path from metadata */
-  private getDataFilePath(
-    backupDir: string,
-    id: string,
-    dbType: BackupDbType,
-    compression: 'gzip' | 'none',
-    volumeName?: string
-  ): string {
-    return buildDataFilePath(backupDir, id, dbType, compression, volumeName);
+  private backupDir(service: string): string {
+    return buildBackupDir(this.scope, service);
   }
 
-  /**
-   * Verify a backup archive: returns null when it is valid and non-empty,
-   * or a human-readable problem description otherwise. Remote pipelines exit
-   * with the last command's status, so a failed dump/tar can still produce a
-   * valid-but-empty archive, and a container dying mid-dump a truncated one.
-   */
-  private async checkArchive(
-    conn: SSHKeyConnection,
-    filePath: string,
-    compression: 'gzip' | 'none',
-  ): Promise<string | null> {
-    const result = await sshExec(conn, buildArchiveCheckCommand(filePath, compression));
-    const verdict = result.stdout.trim();
-    if (verdict === 'OK') return null;
-    if (verdict === 'EMPTY') return 'the archive is empty';
-    if (verdict === 'CORRUPT') return 'the archive is corrupt, truncated or missing';
-    return `archive check failed (${verdict || `exit ${result.exitCode}`})`;
+  // ─── Nodes ──────────────────────────────────────────────────────────────
+
+  /** managers then workers with SSH credentials, deduplicated by host:port */
+  private nodes(): ClusterNodeRef[] {
+    const seen = new Set<string>();
+    return [...this.orchestrator.target.managers, ...this.orchestrator.target.workers].filter((node) => {
+      const key = nodeKey(node);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
-  /**
-   * Resolve the node connection for a backup entry by matching nodeHost/nodePort.
-   * Falls back to the manager connection if no match found.
-   */
-  private resolveNodeConnection(entry: { nodeHost: string; nodePort: number }): SSHKeyConnection {
-    const all = [this.connection, ...this.allConnections];
-    return all.find(c => c.host === entry.nodeHost && c.port === entry.nodePort)
-      ?? this.connection;
+  /** every node, or the one `--node` names */
+  private nodesFor(name: string | undefined): ClusterNodeRef[] {
+    const nodes = this.nodes();
+    if (name === undefined) return nodes;
+    const node = nodes.find((candidate) => candidate.name === name);
+    if (!node) {
+      throw new ValidationError(
+        `Server ${name} is not a server of ${this.env} with SSH credentials`,
+        `Pass one of: ${nodes.map((candidate) => candidate.name).join(', ')}.`,
+      );
+    }
+    return [node];
   }
 
-  /**
-   * Read environment variables from a running container
-   */
-  private async getContainerCredentials(
-    containerId: string,
-    dbType: BackupDbType,
-    nodeConn: SSHKeyConnection
-  ): Promise<ContainerCredentials> {
-    if (dbType === 'raw' || dbType === 'volume') return {};
-
-    const strategy = DB_STRATEGIES[dbType];
-    const result = await sshExec(
-      nodeConn,
-      `docker inspect --format '{{json .Config.Env}}' ${shellQuote(containerId)}`
+  /** the node holding a backup, from the host and port its metadata recorded */
+  private nodeOf(entry: BackupBaseEntry): ClusterNodeRef {
+    const node = this.nodes().find(
+      (candidate) => candidate.connection.host === entry.nodeHost && candidate.connection.port === entry.nodePort,
     );
+    if (!node) {
+      throw new BackupError(
+        `Backup ${entry.id} is stored on ${entry.nodeHost}:${entry.nodePort}, which is not a server of ${this.env} with SSH credentials`,
+        { code: ErrorCode.BACKUP_NOT_FOUND },
+      );
+    }
+    return node;
+  }
 
-    try {
-      return parseContainerEnv(result.stdout, strategy.envMapping);
-    } catch (e) {
-      printDebug(`Failed to parse container env for ${containerId}: ${e}`);
-      return {};
+  // ─── Files on nodes ─────────────────────────────────────────────────────
+
+  /** null when the archive is sound, else the one line naming the problem */
+  private async checkArchive(
+    node: ClusterNodeRef,
+    remotePath: string,
+    compression: 'gzip' | 'none',
+    integrity: ArchiveIntegrity,
+  ): Promise<string | null> {
+    const result = await sshExec(node.connection, buildVerifyScript(remotePath, compression, integrity), {
+      requireExitStatus: true,
+    });
+    const lines = result.stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line !== '');
+    if (result.exitCode === 0 && lines.at(-1) === 'OK') return null;
+    const reason = lines.find((line) => line !== 'OK');
+    if (reason !== undefined) return reason;
+    const detail = firstLine(result.stderr);
+    return `the verification on ${node.name} exited with code ${result.exitCode}${detail ? ` (${detail})` : ''}`;
+  }
+
+  private async removeFiles(files: BackupFile[]): Promise<void> {
+    const byNode = new Map<string, { node: ClusterNodeRef; paths: string[] }>();
+    for (const file of files) {
+      const group = byNode.get(nodeKey(file.node)) ?? { node: file.node, paths: [] };
+      group.paths.push(shellQuote(file.remotePath));
+      byNode.set(nodeKey(file.node), group);
+    }
+    await Promise.all(
+      [...byNode.values()].map(async ({ node, paths }) => {
+        try {
+          await sshExec(node.connection, `rm -f -- ${paths.join(' ')}`);
+        } catch (error) {
+          printDebug(`Could not remove ${paths.join(' ')} on ${node.name}: ${asError(error).message}`);
+        }
+      }),
+    );
+  }
+
+  private async fileSize(file: BackupFile): Promise<number> {
+    const result = await sshExec(file.node.connection, `stat -c %s ${shellQuote(file.remotePath)} 2>/dev/null || echo 0`);
+    return Number.parseInt(result.stdout.trim(), 10) || 0;
+  }
+
+  private async writeMetadata(node: ClusterNodeRef, dir: string, metadata: BackupMetadata): Promise<void> {
+    const path = `${dir}/${metadata.id}.meta.json`;
+    const { stream, done } = await sshExecChannel(node.connection, `umask 077 && cat > ${shellQuote(path)}`);
+    stream.end(JSON.stringify(metadata, null, 2));
+    const result = await done;
+    if (result.exitCode !== 0) {
+      throw new BackupError(`Cannot write the metadata of backup ${metadata.id} on ${node.name}: ${firstLine(result.stderr)}`);
     }
   }
 
-  /**
-   * Create a backup of an accessory service.
-   * The backup file is written on the node where the container runs.
-   */
-  async backup(
+  private async readMetadata(node: ClusterNodeRef, dir: string, id: string): Promise<BackupMetadata> {
+    const result = await sshExec(node.connection, `cat ${shellQuote(`${dir}/${id}.meta.json`)} 2>/dev/null`);
+    if (!result.stdout.trim()) throw new BackupError(`Backup ${id} not found`, { code: ErrorCode.BACKUP_NOT_FOUND });
+    const meta = parseMetadata(result.stdout.trim());
+    if (!meta) throw new BackupError(`Invalid backup metadata for ${id}`, { code: ErrorCode.RESTORE_FAILED });
+    return meta;
+  }
+
+  private metadata(
+    id: string,
     service: string,
-    config: BackupAccessoryConfig,
-    compression: 'gzip' | 'none' = 'gzip'
-  ): Promise<Result<BackupMetadata, Error>> {
-    const found = await this.findContainer(service);
-    if (!found) {
-      return err(new Error(`No running container found for service ${service}`));
-    }
-    const { containerId, connection: nodeConn } = found;
-    const dbType = config.type;
-
-    // Volume backup uses a different flow (docker run instead of docker exec)
-    if (dbType === 'volume') {
-      return this.backupVolumes(service, containerId, nodeConn, config, compression);
-    }
-
-    const backupId = generateBackupId();
-    const backupDir = this.getBackupDir(service);
-
-    // Get credentials and create backup directory in parallel (independent SSH calls)
-    const [creds, mkdirResult] = await Promise.all([
-      this.getContainerCredentials(containerId, dbType, nodeConn),
-      sshExec(nodeConn, `mkdir -p ${shellQuote(backupDir)}`),
-    ]);
-
-    if (mkdirResult.exitCode !== 0) {
-      return err(new Error(`Failed to create backup directory: ${mkdirResult.stderr}`));
-    }
-
-    // Build dump command
-    let dumpCommand: string;
-    if (dbType === 'raw') {
-      dumpCommand = config.dump_command!;
-    } else {
-      const strategy = DB_STRATEGIES[dbType];
-      dumpCommand = config.dump_command || strategy.buildDumpCommand(creds, config.dump_options);
-    }
-
-    const filePath = this.getDataFilePath(backupDir, backupId, dbType, compression);
-
-    const startTime = Date.now();
-
-    // Build exec env flags (e.g. PGPASSWORD, MYSQL_PWD)
-    const execEnvFlags = dbType !== 'raw'
-      ? buildExecEnvFlags(DB_STRATEGIES[dbType].buildExecEnv(creds))
-      : '';
-    const envPart = execEnvFlags ? `${execEnvFlags} ` : '';
-
-    const dockerExec = `docker exec ${envPart}${shellQuote(containerId)} sh -c ${shellQuote(dumpCommand)}`;
-    const fullCommand = compression === 'gzip'
-      ? `${dockerExec} | gzip > ${shellQuote(filePath)}`
-      : `${dockerExec} > ${shellQuote(filePath)}`;
-
-    const result = await sshExec(nodeConn, fullCommand);
-    if (result.exitCode !== 0) {
-      await sshExec(nodeConn, `rm -f ${shellQuote(filePath)}`);
-      return err(new Error(`Backup failed: ${result.stderr}`));
-    }
-
-    const archiveIssue = await this.checkArchive(nodeConn, filePath, compression);
-    if (archiveIssue) {
-      await sshExec(nodeConn, `rm -f ${shellQuote(filePath)}`);
-      return err(new Error(
-        `Backup verification failed: ${archiveIssue}${result.stderr.trim() ? ` (dump stderr: ${result.stderr.trim()})` : ''}`,
-      ));
-    }
-
-    const durationMs = Date.now() - startTime;
-
-    // Get file size
-    const metaPath = `${backupDir}/${backupId}.meta.json`;
-    const sizeCmd = `SIZE=$(stat -c %s ${shellQuote(filePath)} 2>/dev/null || echo 0) && echo $SIZE`;
-    const sizeResult = await sshExec(nodeConn, sizeCmd);
-    const sizeBytes = parseInt(sizeResult.stdout.trim(), 10) || 0;
-
-    const metadata: BackupMetadata = {
-      id: backupId,
+    dbType: BackupDbType,
+    compression: 'gzip' | 'none',
+    node: ClusterNodeRef,
+    sizeBytes: number,
+    durationMs: number,
+  ): BackupMetadata {
+    return {
+      id,
       service,
       dbType,
       timestamp: new Date().toISOString(),
@@ -241,282 +352,166 @@ export class Backup {
       sizeBytes,
       compression,
       durationMs,
-      stackName: this.stackName,
-      nodeHost: nodeConn.host,
-      nodePort: nodeConn.port,
+      stackName: this.scope,
+      nodeHost: node.connection.host,
+      nodePort: node.connection.port,
+      orchestrator: this.orchestrator.kind,
+      role: this.ref.role,
     };
-
-    const { stream, done } = await sshExecChannel(nodeConn, `cat > ${shellQuote(metaPath)}`);
-    stream.end(JSON.stringify(metadata, null, 2));
-    await done;
-
-    return ok(metadata);
   }
 
-  // ─── Volume Backup ───────────────────────────────────────────────────────
-
-  /** Discover named Docker volumes and read-write bind mounts on a container */
-  private async getContainerMounts(
-    containerId: string,
-    nodeConn: SSHKeyConnection,
-    excludePatterns?: string[],
-    includeBindMounts: boolean = true
-  ): Promise<MountInfo[]> {
-    const result = await sshExec(
-      nodeConn,
-      `docker inspect --format '{{json .Mounts}}' ${shellQuote(containerId)}`
-    );
-
-    try {
-      return parseContainerMounts(result.stdout, this.stackName, excludePatterns, includeBindMounts);
-    } catch (e) {
-      printDebug(`Failed to parse container mounts for ${containerId}: ${e}`);
-      return [];
-    }
-  }
-
-  /** Backup all named volumes and bind mounts for a service container */
-  private async backupVolumes(
-    service: string,
-    containerId: string,
-    nodeConn: SSHKeyConnection,
-    config: BackupAccessoryConfig,
-    compression: 'gzip' | 'none'
-  ): Promise<Result<BackupMetadata, Error>> {
-    const mounts = await this.getContainerMounts(containerId, nodeConn, config.exclude_volumes, config.include_bind_mounts !== false);
-    if (mounts.length === 0) {
-      return err(new Error(`No volumes or bind mounts found for service ${service}`));
-    }
-
-    const backupId = generateBackupId();
-    const backupDir = this.getBackupDir(service);
-
-    const mkdirResult = await sshExec(nodeConn, `mkdir -p ${shellQuote(backupDir)}`);
-    if (mkdirResult.exitCode !== 0) {
-      return err(new Error(`Failed to create backup directory: ${mkdirResult.stderr}`));
-    }
-
-    const startTime = Date.now();
-
-    // Build all file paths upfront for reliable cleanup
-    const filePaths = mounts.map(m => this.getDataFilePath(backupDir, backupId, 'volume', compression, m.name));
-
-    // Backup all volumes in parallel (independent SSH calls, all on nodeConn)
-    const backupResults = await Promise.all(mounts.map(async (mount, i) => {
-      const filePath = filePaths[i];
-
-      // Named volumes: tar via temporary alpine container
-      // Bind mounts: tar the host path directly
-      const tarCmd = mount.mountType === 'volume'
-        ? `docker run --rm -v ${shellQuote(mount.source)}:/backup-source:ro alpine tar cf - -C /backup-source .`
-        : `tar cf - -C ${shellQuote(mount.source)} .`;
-
-      const fullCommand = compression === 'gzip'
-        ? `${tarCmd} | gzip > ${shellQuote(filePath)}`
-        : `${tarCmd} > ${shellQuote(filePath)}`;
-
-      const result = await sshExec(nodeConn, fullCommand);
-      if (result.exitCode !== 0) {
-        return { ok: false as const, mount, error: result.stderr };
-      }
-
-      // Same pipeline pitfall as db dumps: a failed tar still exits through
-      // gzip with status 0. A legitimate tar is never empty (trailer blocks).
-      const archiveIssue = await this.checkArchive(nodeConn, filePath, compression);
-      if (archiveIssue) {
-        return { ok: false as const, mount, error: `${archiveIssue}${result.stderr.trim() ? ` (${result.stderr.trim()})` : ''}` };
-      }
-
-      const sizeCmd = `stat -c %s ${shellQuote(filePath)} 2>/dev/null || echo 0`;
-      const sizeResult = await sshExec(nodeConn, sizeCmd);
-      const sizeBytes = parseInt(sizeResult.stdout.trim(), 10) || 0;
-      return { ok: true as const, mount, sizeBytes };
-    }));
-
-    // Check for failures — clean up all files for this backup ID on any error
-    const failed = backupResults.find(r => !r.ok);
-    if (failed) {
-      const cleanupPaths = filePaths.map(f => shellQuote(f)).join(' ');
-      await sshExec(nodeConn, `rm -f ${cleanupPaths}`);
-      return err(new Error(`Backup failed for ${failed.mount.mountType} ${failed.mount.source}: ${failed.error}`));
-    }
-
-    let totalSizeBytes = 0;
-    const volumeEntries: { name: string; sizeBytes: number; mountType: 'volume' | 'bind'; sourcePath: string }[] = [];
-    for (const r of backupResults) {
-      if (r.ok) {
-        totalSizeBytes += r.sizeBytes;
-        volumeEntries.push({ name: r.mount.name, sizeBytes: r.sizeBytes, mountType: r.mount.mountType, sourcePath: r.mount.source });
-      }
-    }
-
-    const durationMs = Date.now() - startTime;
-
-    const metadata: BackupMetadata = {
-      id: backupId,
-      service,
-      dbType: 'volume',
-      timestamp: new Date().toISOString(),
-      size: formatBytes(totalSizeBytes),
-      sizeBytes: totalSizeBytes,
-      compression,
-      durationMs,
-      stackName: this.stackName,
-      nodeHost: nodeConn.host,
-      nodePort: nodeConn.port,
-    };
-
-    // Extended metadata includes per-volume/bind details
-    const extendedMeta = { ...metadata, volumes: volumeEntries };
-    const metaPath = `${backupDir}/${backupId}.meta.json`;
-    const { stream, done } = await sshExecChannel(nodeConn, `cat > ${shellQuote(metaPath)}`);
-    stream.end(JSON.stringify(extendedMeta, null, 2));
-    await done;
-
-    return ok(metadata);
-  }
-
-  /** Restore volumes and bind mounts from a backup */
-  private async restoreVolumes(
-    service: string,
-    backupId: string,
-    compression: 'gzip' | 'none',
-    nodeConn: SSHKeyConnection
-  ): Promise<Result<void, Error>> {
-    const backupDir = this.getBackupDir(service);
-
-    // Read metadata to get volume/bind mount names
-    const metaPath = `${backupDir}/${backupId}.meta.json`;
-    const metaResult = await sshExec(nodeConn, `cat ${shellQuote(metaPath)} 2>/dev/null`);
-    if (!metaResult.stdout.trim()) {
-      return err(new Error(`Backup ${backupId} not found`));
-    }
-
-    let meta: BackupMetadata & { volumes?: { name: string; sizeBytes: number; mountType: 'volume' | 'bind'; sourcePath: string }[] };
-    try {
-      meta = JSON.parse(metaResult.stdout.trim());
-    } catch {
-      return err(new Error(`Invalid backup metadata for ${backupId}`));
-    }
-
-    const volumeEntries = meta.volumes ?? [];
-    if (volumeEntries.length === 0) {
-      return err(new Error(`No volume information in backup metadata for ${backupId}`));
-    }
-
-    // List existing Docker volumes to resolve short names for volume mounts
-    const volListResult = await sshExec(
-      nodeConn,
-      `docker volume ls --filter "label=com.docker.stack.namespace=${this.stackName}" --format "{{.Name}}"`
-    );
-    const existingVolumes = volListResult.stdout.trim().split('\n').filter(Boolean);
-
-    const restoreTasks: { entry: typeof volumeEntries[number]; fullCommand: string }[] = [];
-
-    for (const entry of volumeEntries) {
-      const filePath = this.getDataFilePath(backupDir, backupId, 'volume', compression, entry.name);
-      const { mountType } = entry;
-
-      if (!mountType || (mountType === 'bind' && !entry.sourcePath)) {
-        return err(new Error(
-          `Backup metadata for ${backupId} is missing mount information for "${entry.name}" — refusing to restore`,
-        ));
-      }
-
-      // The restore commands wipe the target before extracting — make sure
-      // the source archive is sound before destroying anything.
-      const archiveIssue = await this.checkArchive(nodeConn, filePath, compression);
-      if (archiveIssue) {
-        return err(new Error(
-          `Backup file for ${mountType} ${entry.name} cannot be restored: ${archiveIssue}`,
-        ));
-      }
-
-      let restoreCmd: string;
-      if (mountType === 'bind') {
-        // Bind mount: clear target and extract directly on the host
-        const src = shellQuote(entry.sourcePath);
-        restoreCmd = `find ${src} -mindepth 1 -delete && tar xf - -C ${src}`;
-      } else {
-        // Named volume: extract via temporary alpine container
-        const fullVolumeName = existingVolumes.find(
-          v => v === entry.name || v === `${this.stackName}_${entry.name}`
-        ) || `${this.stackName}_${entry.name}`;
-        restoreCmd = `docker run --rm -i -v ${shellQuote(fullVolumeName)}:/backup-target alpine sh -c 'rm -rf /backup-target/* /backup-target/..?* /backup-target/.[!.]* 2>/dev/null; tar xf - -C /backup-target'`;
-      }
-
-      const fullCommand = compression === 'gzip'
-        ? `gunzip -c ${shellQuote(filePath)} | ${restoreCmd}`
-        : `cat ${shellQuote(filePath)} | ${restoreCmd}`;
-
-      restoreTasks.push({ entry, fullCommand });
-    }
-
-    const restoreResults = await Promise.allSettled(
-      restoreTasks.map(({ fullCommand }) => sshExec(nodeConn, fullCommand)),
-    );
-
-    for (let i = 0; i < restoreResults.length; i++) {
-      const r = restoreResults[i];
-      const { entry } = restoreTasks[i];
-      const { mountType } = entry;
-      if (r.status === 'rejected') {
-        return err(new Error(`Restore failed for ${mountType} ${entry.name}: ${r.reason?.message ?? 'unknown'}`));
-      }
-      if (r.value.exitCode !== 0) {
-        return err(new Error(`Restore failed for ${mountType} ${entry.name}: ${r.value.stderr}`));
-      }
-    }
-
-    return ok(undefined);
-  }
+  // ─── Backup ─────────────────────────────────────────────────────────────
 
   /**
-   * List available backups.
-   * Queries all node connections in parallel and aggregates results.
+   * Create a backup of a service. The dump or archives are verified on the node holding them with
+   * the same check a restore runs, and removed when that fails.
    */
-  async list(service?: string): Promise<Result<BackupListEntry[], Error>> {
-    const allConns = [this.connection, ...this.allConnections.filter(
-      c => !(c.host === this.connection.host && c.port === this.connection.port)
-    )];
+  async backup(
+    service: string,
+    config: BackupAccessoryConfig,
+    compression: 'gzip' | 'none' = 'gzip',
+  ): Promise<Result<BackupMetadata, Error>> {
+    try {
+      return ok(
+        config.type === 'volume'
+          ? await this.backupVolumes(service, config, compression)
+          : await this.backupDatabase(service, config, compression),
+      );
+    } catch (error) {
+      return err(asError(error));
+    }
+  }
 
-    const SEP = '---DOCKFLOW_META_SEP---';
+  private async backupDatabase(
+    service: string,
+    config: BackupAccessoryConfig,
+    compression: 'gzip' | 'none',
+  ): Promise<BackupMetadata> {
+    const script = buildDumpScript(config, compression);
+    const integrity = integrityOf(config, compression);
+    const id = generateBackupId();
+    const dir = this.backupDir(service);
+    const started = Date.now();
 
-    const perNodeResults = await Promise.all(allConns.map(async (conn) => {
-      const baseDir = service
-        ? this.getBackupDir(service)
-        : `${DOCKFLOW_BACKUPS_DIR}/${this.stackName}`;
-      const findCmd = `find ${shellQuote(baseDir)} -name '*.meta.json' 2>/dev/null | sort -r | while IFS= read -r f; do echo '${SEP}'; cat "$f"; done`;
-      const result = await sshExec(conn, findCmd);
-      return result.stdout;
-    }));
+    const file = await this.backups.dump(this.ref, { service }, script, buildDataFilePath(dir, id, config.type, compression), {
+      gzip: compression === 'gzip',
+    });
+    const issue = await this.checkArchive(file.node, file.remotePath, compression, integrity);
+    if (issue !== null) {
+      await this.removeFiles([file]);
+      throw new BackupError(`Backup verification failed: ${issue}`);
+    }
 
-    const entries: BackupListEntry[] = [];
-    const seenIds = new Set<string>();
+    const durationMs = Date.now() - started;
+    const sizeBytes = await this.fileSize(file);
+    const metadata = this.metadata(id, service, config.type, compression, file.node, sizeBytes, durationMs);
+    try {
+      await this.writeMetadata(file.node, dir, metadata);
+    } catch (error) {
+      await this.removeFiles([file]);
+      throw error;
+    }
 
-    for (const stdout of perNodeResults) {
-      if (!stdout.trim()) continue;
-      const chunks = stdout.split(SEP).filter(c => c.trim());
+    if (integrity === 'opaque') {
+      printWarning(
+        `Backup ${id} of ${service} cannot be verified before a restore because it is not compressed; set compression: gzip for this service`,
+      );
+    }
+    return metadata;
+  }
 
-      for (const chunk of chunks) {
-        try {
-          const meta = JSON.parse(chunk.trim()) as BackupMetadata & { volumes?: { name: string }[] };
+  private async backupVolumes(
+    service: string,
+    config: BackupAccessoryConfig,
+    compression: 'gzip' | 'none',
+  ): Promise<BackupMetadata> {
+    const volumes = await this.backups.volumes(this.ref, service, {
+      includeBindMounts: config.include_bind_mounts !== false,
+      exclude: config.exclude_volumes ?? [],
+    });
+    if (volumes.length === 0) throw new BackupError(`No volumes or bind mounts found for service ${service}`);
 
-          // Deduplicate: same backup ID may appear on multiple nodes if replicated
-          if (seenIds.has(meta.id)) continue;
-          seenIds.add(meta.id);
+    const id = generateBackupId();
+    const dir = this.backupDir(service);
+    const started = Date.now();
 
-          if (!meta.nodeHost || !meta.nodePort) {
-            printDebug(`Skipping backup ${meta.id}: metadata has no node information`);
-            continue;
+    const files = await this.backups.archiveVolumes(this.ref, service, volumes, `${dir}/${id}`, {
+      gzip: compression === 'gzip',
+    });
+    if (files.length !== volumes.length) {
+      await this.removeFiles(files);
+      throw new BackupError(`Backup of ${service} returned ${files.length} archive(s) for ${volumes.length} volume(s)`);
+    }
+
+    for (const [index, file] of files.entries()) {
+      const issue = await this.checkArchive(file.node, file.remotePath, compression, 'tar');
+      if (issue !== null) {
+        await this.removeFiles(files);
+        throw new BackupError(`Backup failed for ${volumes[index].kind} ${volumes[index].source}: ${issue}`);
+      }
+    }
+
+    const durationMs = Date.now() - started;
+    const sizes = await Promise.all(files.map((file) => this.fileSize(file)));
+    const total = sizes.reduce((sum, size) => sum + size, 0);
+    const metadata: BackupMetadata = {
+      ...this.metadata(id, service, 'volume', compression, files[0].node, total, durationMs),
+      volumes: volumes.map((volume, index) => ({
+        name: volume.name,
+        sizeBytes: sizes[index],
+        mountType: volume.kind,
+        sourcePath: volume.source,
+        mountPath: volume.mountPath,
+        node: volume.node,
+      })),
+    };
+    try {
+      await this.writeMetadata(files[0].node, dir, metadata);
+    } catch (error) {
+      await this.removeFiles(files);
+      throw error;
+    }
+    return metadata;
+  }
+
+  // ─── List ───────────────────────────────────────────────────────────────
+
+  /**
+   * Backups of one service (or the whole role) on every node with credentials, newest first.
+   * A node that does not answer is reported in `unreachable`, never skipped silently.
+   */
+  async list(service?: string, options: { node?: string } = {}): Promise<Result<BackupListing, Error>> {
+    try {
+      const nodes = this.nodesFor(options.node);
+      const base = service ? this.backupDir(service) : `${DOCKFLOW_BACKUPS_DIR}/${this.scope}`;
+      const command = `find ${shellQuote(base)} -name '*.meta.json' 2>/dev/null | sort -r | while IFS= read -r f; do echo '${META_SEPARATOR}'; cat "$f"; done`;
+
+      const answers = await Promise.all(
+        nodes.map(async (node) => {
+          try {
+            return { node, stdout: (await sshExec(node.connection, command)).stdout };
+          } catch (error) {
+            printDebug(`Backups on ${node.name} could not be listed: ${asError(error).message}`);
+            return { node, stdout: null };
           }
+        }),
+      );
 
-          const dir = this.getBackupDir(meta.service);
-          const volumeName = meta.dbType === 'volume' && meta.volumes?.length
-            ? meta.volumes[0].name
-            : undefined;
-          const dataFile = this.getDataFilePath(dir, meta.id, meta.dbType, meta.compression, volumeName);
-
+      const entries: BackupListEntry[] = [];
+      const seen = new Set<string>();
+      const unreachable: ClusterNodeRef[] = [];
+      for (const { node, stdout } of answers) {
+        if (stdout === null) {
+          unreachable.push(node);
+          continue;
+        }
+        for (const chunk of stdout.split(META_SEPARATOR)) {
+          if (!chunk.trim()) continue;
+          const meta = parseMetadata(chunk.trim());
+          // the same backup may appear on several nodes when copied by hand
+          if (!meta || seen.has(meta.id)) continue;
+          seen.add(meta.id);
+          const volumeName = meta.dbType === 'volume' ? meta.volumes?.[0]?.name : undefined;
           entries.push({
             id: meta.id,
             service: meta.service,
@@ -525,200 +520,294 @@ export class Backup {
             size: meta.size,
             sizeBytes: meta.sizeBytes,
             compression: meta.compression,
-            filePath: dataFile,
+            filePath: buildDataFilePath(this.backupDir(meta.service), meta.id, meta.dbType, meta.compression, volumeName),
             nodeHost: meta.nodeHost,
             nodePort: meta.nodePort,
+            node: node.name,
           });
-        } catch (parseErr) {
-          printDebug(`Skipping malformed backup metadata: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`);
         }
       }
+
+      entries.sort((a, b) => (a.timestamp < b.timestamp ? 1 : a.timestamp > b.timestamp ? -1 : 0));
+      return ok({ entries, unreachable });
+    } catch (error) {
+      return err(asError(error));
     }
-
-    // Sort newest-first across all nodes
-    entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-
-    return ok(entries);
   }
 
   /**
-   * Restore from a backup.
-   * Connects to the node where the backup was created (stored in metadata).
+   * A backup by id, id prefix or `latest` (undefined). The newest backup cannot be known while a
+   * node that may hold a newer one did not answer, so `latest` is refused then.
+   */
+  async resolveBackup(service: string, idOrLatest?: string): Promise<Result<BackupListEntry, Error>> {
+    const listed = await this.list(service);
+    if (!listed.success) return listed;
+    const { entries, unreachable } = listed.data;
+    const names = unreachable.map((node) => node.name).join(', ');
+    const latest = !idOrLatest || idOrLatest === 'latest';
+
+    if (latest && unreachable.length > 0) {
+      return err(
+        new BackupError(`The newest backup of ${service} cannot be determined: ${names} did not answer`, {
+          code: ErrorCode.BACKUP_NOT_FOUND,
+          suggestion: `Name the backup explicitly with \`--from <id>\`, or bring ${names} back and retry.`,
+        }),
+      );
+    }
+
+    const match = findBackupMatch(entries, latest ? undefined : idOrLatest);
+    if (match) return ok(match);
+    const suggestion = unreachable.length > 0 ? `Bring ${names} back and retry; backups stored there are not listed.` : undefined;
+    return err(
+      new BackupError(
+        entries.length === 0
+          ? `No backups found for service ${service}`
+          : `No backup matching "${idOrLatest}" found for service ${service}`,
+        { code: ErrorCode.BACKUP_NOT_FOUND, suggestion },
+      ),
+    );
+  }
+
+  // ─── Restore ────────────────────────────────────────────────────────────
+
+  /**
+   * Restore a backup into the running service. Refuses a service with more than one desired
+   * replica (R-23) before anything is read, and verifies the archive end to end on the node
+   * holding it before the backend is called.
    */
   async restore(
     service: string,
     backupId: string,
     config: BackupAccessoryConfig,
-    compression?: 'gzip' | 'none'
+    compression?: 'gzip' | 'none',
+    options: RestoreOptions = { forceUnverified: false },
   ): Promise<Result<void, Error>> {
-    const dbType = config.type;
+    try {
+      const svc = (await this.orchestrator.stack.getServices(this.ref)).find((candidate) => candidate.name === service);
+      if (svc) assertSingleReplica(svc, this.env);
 
-    // First resolve which node has this backup
-    const listResult = await this.list(service);
-    if (!listResult.success) return err(listResult.error);
+      const listed = await this.list(service);
+      if (!listed.success) return listed;
+      const entry = listed.data.entries.find((candidate) => candidate.id === backupId);
+      if (!entry) {
+        const names = listed.data.unreachable.map((node) => node.name).join(', ');
+        throw new BackupError(`Backup ${backupId} not found`, {
+          code: ErrorCode.BACKUP_NOT_FOUND,
+          suggestion: names ? `Bring ${names} back and retry; backups stored there are not listed.` : undefined,
+        });
+      }
+      if (entry.dbType !== config.type) {
+        throw new BackupError(
+          `Backup ${entry.id} is a ${entry.dbType} backup, but ${service} is configured with type ${config.type}`,
+          { code: ErrorCode.RESTORE_FAILED },
+        );
+      }
 
-    const entry = listResult.data.find(e => e.id === backupId);
-    if (!entry) {
-      return err(new Error(`Backup ${backupId} not found`));
+      const node = this.nodeOf(entry);
+      const effective = compression ?? entry.compression;
+      if (config.type === 'volume') {
+        await this.restoreVolumes(service, entry, effective, node);
+      } else {
+        await this.restoreDatabase(service, entry, config, effective, node, options);
+      }
+      return ok(undefined);
+    } catch (error) {
+      return err(asError(error));
     }
+  }
 
-    const nodeConn = this.resolveNodeConnection(entry);
-    const backupDir = this.getBackupDir(service);
-
-    // Determine compression from argument or metadata
-    const backupCompression = compression ?? entry.compression;
-
-    // Volume restore uses a different flow (docker run instead of docker exec)
-    if (dbType === 'volume') {
-      return this.restoreVolumes(service, backupId, backupCompression, nodeConn);
+  /** the verification a restore runs before anything changes; `--force-unverified` only relaxes trailer and opaque */
+  private async verifyBeforeRestore(
+    file: BackupFile,
+    compression: 'gzip' | 'none',
+    integrity: ArchiveIntegrity,
+    id: string,
+    service: string,
+    options: RestoreOptions,
+  ): Promise<void> {
+    let check = integrity;
+    if (integrity === 'trailer' || integrity === 'opaque') {
+      if (options.forceUnverified) {
+        check = 'opaque';
+        printWarning(`Restoring ${id} without verifying it`);
+      } else if (integrity === 'opaque') {
+        throw new BackupError(
+          `Backup ${id} has no integrity data and cannot be verified before it replaces ${service}'s data`,
+          { code: ErrorCode.RESTORE_FAILED, suggestion: UNVERIFIED_SUGGESTION },
+        );
+      }
     }
-
-    const found = await this.findContainer(service);
-    if (!found) {
-      return err(new Error(`No running container found for service ${service}`));
+    const issue = await this.checkArchive(file.node, file.remotePath, compression, check);
+    if (issue !== null) {
+      throw new BackupError(`Backup ${id} cannot be restored: ${issue}`, {
+        code: ErrorCode.RESTORE_FAILED,
+        suggestion: check === 'trailer' ? UNVERIFIED_SUGGESTION : undefined,
+      });
     }
-    const { containerId, connection: containerConn } = found;
+  }
 
-    const dataFile = this.getDataFilePath(backupDir, backupId, dbType, backupCompression);
+  private async restoreDatabase(
+    service: string,
+    entry: BackupListEntry,
+    config: BackupAccessoryConfig,
+    compression: 'gzip' | 'none',
+    node: ClusterNodeRef,
+    options: RestoreOptions,
+  ): Promise<void> {
+    const type = config.type;
+    if (type === 'volume') return;
+    const file: BackupFile = { node, remotePath: buildDataFilePath(this.backupDir(service), entry.id, type, compression) };
+    await this.verifyBeforeRestore(file, compression, integrityOf(config, compression), entry.id, service, options);
 
-    // Refuse to stream an empty/corrupt backup into the database — for
-    // postgres/mysql an empty stream would be a silent no-op "success",
-    // and file-overwriting restores (redis) would destroy the live data.
-    const archiveIssue = await this.checkArchive(nodeConn, dataFile, backupCompression);
-    if (archiveIssue) {
-      return err(new Error(`Backup ${backupId} cannot be restored: ${archiveIssue}`));
+    const { exitCode, stderr } = await this.backups.restore(this.ref, { service }, buildRestoreScript(config), file, {
+      gunzip: compression === 'gzip',
+    });
+    if (parseRestoreRefusal(stderr) === 'redis-appendonly') throw redisAppendOnlyRefusal(service);
+
+    // a restore that stops the server itself (redis SHUTDOWN NOSAVE) ends exec with a non-zero
+    // status and nothing on stderr: that is the expected outcome, not a failure
+    const killsServer = DB_TYPES[type].requiresServiceRestart;
+    const detail = stripRefusalMarker(stderr).trim();
+    if (exitCode !== 0 && !(killsServer && detail === '')) {
+      throw new BackupError(`Restore failed: ${detail || `exit code ${exitCode}`}`, { code: ErrorCode.RESTORE_FAILED });
     }
+    if (killsServer) await this.backups.restartAfterRestore(this.ref, service);
+  }
 
-    // Get credentials from the container's node
-    const creds = await this.getContainerCredentials(containerId, dbType, containerConn);
-
-    // Build restore command
-    let restoreCommand: string;
-    if (dbType === 'raw') {
-      restoreCommand = config.restore_command!;
-    } else {
-      restoreCommand = config.restore_command || DB_STRATEGIES[dbType].buildRestoreCommand(creds, config.restore_options);
+  private async restoreVolumes(
+    service: string,
+    entry: BackupListEntry,
+    compression: 'gzip' | 'none',
+    node: ClusterNodeRef,
+  ): Promise<void> {
+    const dir = this.backupDir(service);
+    const meta = await this.readMetadata(node, dir, entry.id);
+    const records = meta.volumes ?? [];
+    if (records.length === 0) {
+      throw new BackupError(`No volume information in backup metadata for ${entry.id}`, { code: ErrorCode.RESTORE_FAILED });
     }
-
-    // Build exec env flags
-    const execEnvFlags = dbType !== 'raw'
-      ? buildExecEnvFlags(DB_STRATEGIES[dbType].buildExecEnv(creds))
-      : '';
-    const envPart = execEnvFlags ? `${execEnvFlags} ` : '';
-
-    // Backup file and container are on the same node — backups are created
-    // via docker exec on the container's node, so the file is always local.
-    const dockerExec = `docker exec -i ${envPart}${shellQuote(containerId)} sh -c ${shellQuote(restoreCommand)}`;
-    const fullCommand = backupCompression === 'gzip'
-      ? `gunzip -c ${shellQuote(dataFile)} | ${dockerExec}`
-      : `cat ${shellQuote(dataFile)} | ${dockerExec}`;
-
-    const strategy = dbType !== 'raw' ? DB_STRATEGIES[dbType] : null;
-    const result = await sshExec(nodeConn, fullCommand);
-
-    // For strategies that kill the container as part of restore (e.g. Redis SHUTDOWN NOSAVE),
-    // a non-zero exit from docker exec is expected — the process died mid-exec.
-    // Only treat it as an error if there's actual stderr output.
-    const restoreKillsContainer = strategy?.requiresServiceRestart ?? false;
-    if (result.exitCode !== 0 && (!restoreKillsContainer || result.stderr.trim())) {
-      return err(new Error(`Restore failed: ${result.stderr}`));
-    }
-
-    // If the restore killed the container (e.g. Redis SHUTDOWN NOSAVE):
-    // Swarm's restart_policy brings it back automatically in most cases.
-    // We also force a service update as a safety net for setups where the restart
-    // policy is disabled or exhausted — non-fatal if it fails.
-    if (strategy?.requiresServiceRestart) {
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      try {
-        await this.orchestrator.restart(this.stackName, service);
-      } catch (e) {
-        printDebug(`Service update after restore failed (non-fatal): ${e instanceof Error ? e.message : String(e)}`);
+    for (const record of records) {
+      if (
+        typeof record.name !== 'string' ||
+        !SAFE_NAME.test(record.name) ||
+        (record.mountType !== 'volume' && record.mountType !== 'bind') ||
+        (record.mountType === 'bind' && !record.sourcePath)
+      ) {
+        throw new BackupError(
+          `Backup metadata for ${entry.id} is missing mount information for "${String(record.name)}"; refusing to restore`,
+          { code: ErrorCode.RESTORE_FAILED },
+        );
       }
     }
 
-    return ok(undefined);
+    const archives = records.map((record) => ({
+      volume: {
+        name: record.name,
+        kind: record.mountType,
+        source: record.sourcePath ?? '',
+        mountPath: record.mountPath ?? '',
+        node: record.node ?? null,
+      } satisfies BackupVolume,
+      file: { node, remotePath: buildDataFilePath(dir, entry.id, 'volume', compression, record.name) } satisfies BackupFile,
+    }));
+
+    // every archive, before anything is changed
+    for (const { volume, file } of archives) {
+      const issue = await this.checkArchive(file.node, file.remotePath, compression, 'tar');
+      if (issue !== null) {
+        throw new BackupError(`Backup ${entry.id} cannot be restored: ${issue} (${volume.kind} ${volume.name})`, {
+          code: ErrorCode.RESTORE_FAILED,
+        });
+      }
+    }
+
+    await this.backups.restoreVolumes(this.ref, service, archives);
   }
 
+  // ─── Prune ──────────────────────────────────────────────────────────────
+
   /**
-   * Prune old backups keeping only the last N (batched deletion).
-   * Deletes files on the node where each backup is stored.
-   * Accepts optional pre-fetched entries to avoid a redundant SSH call.
+   * Keep the `retentionCount` newest backups, and remove data files left without metadata by
+   * interrupted backups once they are older than BACKUP_ORPHAN_GRACE_H (a backup being written
+   * has no metadata yet). Files are removed on the node they were listed on.
    */
   async prune(
     service: string | undefined,
     retentionCount: number,
-    prefetchedEntries?: BackupListEntry[]
-  ): Promise<Result<number, Error>> {
-    let entries: BackupListEntry[];
-    if (prefetchedEntries) {
-      entries = prefetchedEntries;
-    } else {
-      const listResult = await this.list(service);
-      if (!listResult.success) return err(listResult.error);
-      entries = listResult.data;
-    }
-
-    // Defensive sort newest-first, keep the most recent retentionCount
-    const toRemove = selectBackupsToPrune(entries, retentionCount);
-    if (toRemove.length === 0) {
-      return ok(0);
-    }
-
-    // Group by node to batch rm calls per node
-    const byNode = new Map<string, { conn: SSHKeyConnection; paths: string[] }>();
-    for (const entry of toRemove) {
-      const nodeConn = this.resolveNodeConnection(entry);
-      const key = `${nodeConn.host}:${nodeConn.port}`;
-      if (!byNode.has(key)) byNode.set(key, { conn: nodeConn, paths: [] });
-      const node = byNode.get(key)!;
-      const backupDir = this.getBackupDir(entry.service);
-      if (entry.dbType === 'volume') {
-        node.paths.push(`${shellQuote(backupDir)}/${entry.id}.*.tar*`);
-      } else {
-        node.paths.push(shellQuote(entry.filePath));
+    options: { node?: string; prefetched?: BackupListEntry[] } = {},
+  ): Promise<Result<PruneReport, Error>> {
+    try {
+      const nodes = this.nodesFor(options.node);
+      let entries = options.prefetched;
+      if (!entries) {
+        const listed = await this.list(service, { node: options.node });
+        if (!listed.success) return listed;
+        entries = listed.data.entries;
       }
-      node.paths.push(shellQuote(`${backupDir}/${entry.id}.meta.json`));
+
+      const toRemove = selectBackupsToPrune(entries, retentionCount);
+      const byNode = new Map<string, { node: ClusterNodeRef; patterns: string[] }>();
+      let bytesFreed = 0;
+      for (const entry of toRemove) {
+        if (!SAFE_NAME.test(entry.id) || !SAFE_NAME.test(entry.service)) {
+          throw new BackupError(`Backup ${JSON.stringify(entry.id)} of ${JSON.stringify(entry.service)} has an unusable name; nothing was pruned`);
+        }
+        const node = this.nodes().find((candidate) => candidate.name === entry.node) ?? this.nodeOf(entry);
+        const group = byNode.get(nodeKey(node)) ?? { node, patterns: [] };
+        // `<id>.` then a glob: the data file(s), the metadata and any rc file of that backup only
+        group.patterns.push(`${shellQuote(`${this.backupDir(entry.service)}/${entry.id}.`)}*`);
+        byNode.set(nodeKey(node), group);
+        bytesFreed += entry.sizeBytes;
+      }
+      for (const { node, patterns } of byNode.values()) {
+        const result = await sshExec(node.connection, `rm -f -- ${patterns.join(' ')}`);
+        if (result.exitCode !== 0) {
+          throw new BackupError(`Cannot remove backups on ${node.name}: ${firstLine(result.stderr)}`);
+        }
+      }
+
+      const orphans = await this.pruneOrphans(service, nodes);
+      bytesFreed += orphans.bytes;
+      if (orphans.files > 0) {
+        printInfo(`Removed ${orphans.files} orphaned backup file(s) (${formatBytes(orphans.bytes)}) left by interrupted backups`);
+      }
+      return ok({ removed: toRemove.length, orphanFiles: orphans.files, bytesFreed });
+    } catch (error) {
+      return err(asError(error));
     }
-
-    await Promise.all([...byNode.values()].map(({ conn, paths }) =>
-      sshExec(conn, `rm -f ${paths.join(' ')}`)
-    ));
-
-    return ok(toRemove.length);
   }
 
-  /**
-   * Resolve a backup by ID prefix or "latest"
-   */
-  async resolveBackup(
-    service: string,
-    idOrLatest?: string
-  ): Promise<Result<BackupListEntry, Error>> {
-    const listResult = await this.list(service);
-    if (!listResult.success) return err(listResult.error);
+  private async pruneOrphans(service: string | undefined, nodes: ClusterNodeRef[]): Promise<{ files: number; bytes: number }> {
+    const base = service ? this.backupDir(service) : `${DOCKFLOW_BACKUPS_DIR}/${this.scope}`;
+    // backup ids start with the date, so only files named after one are candidates
+    const command =
+      `find ${shellQuote(base)} -type f -name '[0-9]*' ! -name '*.meta.json' -mmin +${BACKUP_ORPHAN_GRACE_H * 60} 2>/dev/null | ` +
+      `while IFS= read -r f; do b=\${f##*/}; [ -e "\${f%/*}/\${b%%.*}.meta.json" ] && continue; ` +
+      `s=$(stat -c %s "$f" 2>/dev/null || echo 0); rm -f -- "$f" && printf '%s\\t%s\\n' "$s" "$f"; done`;
 
-    const entries = listResult.data;
-    if (entries.length === 0) {
-      return err(new Error(`No backups found for service ${service}`));
+    let files = 0;
+    let bytes = 0;
+    for (const node of nodes) {
+      let stdout: string;
+      try {
+        stdout = (await sshExec(node.connection, command)).stdout;
+      } catch (error) {
+        printDebug(`Orphaned backup files on ${node.name} were not checked: ${asError(error).message}`);
+        continue;
+      }
+      for (const line of stdout.split(/\r?\n/)) {
+        const [size, path] = line.split('\t');
+        if (!path) continue;
+        files++;
+        bytes += Number.parseInt(size, 10) || 0;
+        printDebug(`Removed orphaned backup file ${path} on ${node.name}`);
+      }
     }
-
-    const match = findBackupMatch(entries, idOrLatest);
-    if (!match) {
-      return err(new Error(`No backup matching "${idOrLatest}" found for service ${service}`));
-    }
-
-    return ok(match);
+    return { files, bytes };
   }
 }
 
-/**
- * Factory function
- */
-export function createBackup(
-  connection: SSHKeyConnection,
-  stackName: string,
-  allConnections: SSHKeyConnection[] = []
-): Backup {
-  return new Backup(connection, stackName, allConnections);
+/** The backup engine of one role of the stack the orchestrator targets. */
+export function createBackup(orchestrator: Orchestrator, ref: StackRef): Backup {
+  return new Backup(orchestrator, ref);
 }

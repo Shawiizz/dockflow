@@ -95,20 +95,26 @@ export interface PortNameRequest {
   requested: string | null;
 }
 
+const GENERATED_PORT_NAME = /^(?:tcp|udp|sctp)-\d+$/;
+
 /**
  * Names for the ports of one Service or container, in model order: the first entry that requests a
- * name keeps it, every later entry whose sanitized request is already claimed falls back to
- * `<protocol>-<port>` (5.4 collision rule).
+ * name keeps it, every later entry whose sanitized request is already taken falls back to
+ * `<protocol>-<port>` (5.4 collision rule). A request of the generated form (`tcp-81`) is kept only
+ * by the port it names, so it never takes another port's fallback, including a port added later.
+ * The names are unique across entries with distinct (port, protocol), as container ports are.
+ * Entries repeating a key (several published ports onto one target on `-lb`) share that key's
+ * generated name, and the caller tells them apart by what only it knows.
  */
 export function assignPortNames(entries: readonly PortNameRequest[]): string[] {
-  const claimed = new Set<string>();
+  const taken = new Set<string>();
   return entries.map((entry) => {
+    const generated = portNameFor(entry.port, entry.protocol, null);
     const requested = sanitizedPortName(entry.requested);
-    if (requested !== null && !claimed.has(requested)) {
-      claimed.add(requested);
-      return requested;
-    }
-    return portNameFor(entry.port, entry.protocol, null);
+    const foreign = requested !== null && requested !== generated && GENERATED_PORT_NAME.test(requested);
+    const name = requested !== null && !foreign && !taken.has(requested) ? requested : generated;
+    taken.add(name);
+    return name;
   });
 }
 

@@ -2,11 +2,10 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { getIndex, getFull, parseSections } from './docs.js';
-import { EXAMPLES, listExamples, formatExample } from './examples.js';
-import { validateConfig, validateServersOnly, formatValidationResult } from './validate.js';
+import { EXAMPLES, SCENARIO_DESCRIPTION, listExamples, formatExample } from './examples.js';
+import { detectFileType, FILE_NAMES, formatValidationResult, validateFile } from './validate.js';
 import { readProjectConfig, formatProjectConfig } from './project.js';
 
 const server = new McpServer({
@@ -26,7 +25,7 @@ server.registerTool('list_pages', {
 server.registerTool('search_docs', {
   description: 'Search Dockflow documentation for a specific topic or keyword',
   inputSchema: {
-    query: z.string().describe('Search query (e.g. "docker compose", "hooks", "multi-host", "registry")'),
+    query: z.string().describe('Search query (e.g. "docker compose", "hooks", "multi-host", "registry", "kubernetes", "helm")'),
     max_results: z.number().optional().default(5).describe('Maximum number of results to return'),
   },
 }, async ({ query, max_results }) => {
@@ -64,7 +63,7 @@ server.registerTool('search_docs', {
 server.registerTool('get_page', {
   description: 'Get the full content of a specific Dockflow documentation page by name or slug',
   inputSchema: {
-    page: z.string().describe('Page identifier (e.g. "getting-started", "docker-compose", "hooks", "proxy", "servers")'),
+    page: z.string().describe('Page identifier (e.g. "getting-started", "docker-compose", "hooks", "proxy", "servers", "kubernetes", "helm")'),
   },
 }, async ({ page }) => {
   const full = await getFull();
@@ -91,11 +90,9 @@ server.registerTool('get_page', {
 // ── Setup tools ──────────────────────────────────────────────────────────────
 
 server.registerTool('get_examples', {
-  description: 'Get complete, ready-to-use Dockflow configuration examples for common project setups. Call without arguments to list available scenarios, or with a scenario id to get the full files.',
+  description: 'Get complete, ready-to-use Dockflow configuration examples for common project setups, on Docker Swarm or k3s (Kubernetes, including Helm releases). Call without arguments to list available scenarios, or with a scenario id to get the full files.',
   inputSchema: {
-    scenario: z.string().optional().describe(
-      'Scenario id: simple, standard, app-with-database, with-proxy, with-registry, multi-server, k3s, with-hooks, with-ci. Omit to list all.',
-    ),
+    scenario: z.string().optional().describe(SCENARIO_DESCRIPTION),
   },
 }, async ({ scenario }) => {
   if (!scenario) {
@@ -112,43 +109,24 @@ server.registerTool('get_examples', {
 });
 
 server.registerTool('validate_config', {
-  description: 'Validate the content of a dockflow.yml, config.yml, or servers.yml file. Returns validation errors with field paths to help fix issues before deploying.',
+  description: 'Validate the content of a dockflow.yml, config.yml, or servers.yml file with the same rules as the Dockflow CLI, including the k3s ones (Helm releases, private_host, node_labels, manager count). Returns validation errors with field paths to help fix issues before deploying.',
   inputSchema: {
     content: z.string().describe('Raw YAML content to validate'),
     type: z.enum(['auto', 'root', 'config', 'servers']).optional().default('auto').describe(
       'auto: detect from content (default). root: dockflow.yml (config + servers merged). config: .dockflow/config.yml only. servers: .dockflow/servers.yml only.',
     ),
+    orchestrator: z.enum(['swarm', 'k3s']).optional().describe(
+      'Orchestrator of the project, for a servers.yml validated alone (config.yml and dockflow.yml declare their own). With k3s, the cluster rules apply: an odd manager count, distinct node names, no IPv6 cluster address.',
+    ),
   },
-}, async ({ content, type }) => {
-  let detectedType = type;
-
-  if (detectedType === 'auto') {
-    try {
-      const parsed = parseYaml(content);
-      if (parsed && typeof parsed === 'object') {
-        const obj = parsed as Record<string, unknown>;
-        if (obj.project_name && obj.servers) detectedType = 'root';
-        else if (obj.servers && !obj.project_name) detectedType = 'servers';
-        else detectedType = 'config';
-      }
-    } catch {
-      detectedType = 'config';
-    }
-  }
-
-  const result = detectedType === 'servers'
-    ? validateServersOnly(content)
-    : validateConfig(content);
-
-  const filename = detectedType === 'servers' ? 'servers.yml'
-    : detectedType === 'root' ? 'dockflow.yml'
-    : 'config.yml';
-
-  return { content: [{ type: 'text', text: formatValidationResult(result, filename) }] };
+}, async ({ content, type, orchestrator }) => {
+  const fileType = type === 'auto' ? detectFileType(content) : type;
+  const result = validateFile(content, fileType, { orchestrator });
+  return { content: [{ type: 'text', text: formatValidationResult(result, FILE_NAMES[fileType]) }] };
 });
 
 server.registerTool('read_project_config', {
-  description: 'Read the Dockflow configuration files from the current project. Returns the layout type (flat dockflow.yml or standard .dockflow/) and the content of all config files found.',
+  description: 'Read the Dockflow configuration files from the current project. Returns the layout type (flat dockflow.yml or standard .dockflow/), the orchestrator (swarm or k3s) and the content of the config, servers, docker-compose and accessories files found. .env.dockflow and Helm values files are never read.',
 }, async () => {
   const result = readProjectConfig(process.cwd());
   return { content: [{ type: 'text', text: formatProjectConfig(result) }] };
@@ -162,6 +140,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Failed to start Dockflow MCP server:', err);
+  // stdout carries the MCP protocol: report on stderr only
+  process.stderr.write(`Failed to start Dockflow MCP server: ${err instanceof Error ? err.message : String(err)}\n`);
   process.exit(1);
 });

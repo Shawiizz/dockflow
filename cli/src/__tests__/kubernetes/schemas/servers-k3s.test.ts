@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it } from 'bun:test';
 import type { z } from 'zod';
 import {
   k3sTopologyIssues,
@@ -8,6 +8,8 @@ import {
   type TopologyServer,
 } from '../../../schemas/servers.schema';
 import { M } from '../../../services/orchestrator/messages';
+import type { ServerConfig, ServersConfig } from '../../../types/servers';
+import { toResolvedServer } from '../../../utils/servers/resolver';
 
 function issuesOf(schema: z.ZodType, input: unknown): { path: string; message: string }[] {
   const result = schema.safeParse(input);
@@ -86,6 +88,55 @@ describe('servers.yml node_labels (DESIGN-CORE 7.2)', () => {
       { path: 'node_labels.disk', message: M.labelValueTooLong },
     ]);
     expect(issuesOf(ServerConfigSchema, server({ node_labels: { disk: 'a'.repeat(63) } }))).toEqual([]);
+  });
+});
+
+describe('ResolvedServer private_host and node_labels (DESIGN-CORE 6.6 item 6, 7.2)', () => {
+  // an environment name no CI secret of the test process uses
+  const ENV = 'resolverprobe';
+  const HOST_OVERRIDE = 'RESOLVERPROBE_SRV_1_HOST';
+  afterEach(() => {
+    delete process.env[HOST_OVERRIDE];
+  });
+
+  const resolve = (entry: Partial<ServerConfig>) => {
+    const serverConfig: ServerConfig = { tags: [ENV], ...entry };
+    const config: ServersConfig = { servers: { srv_1: serverConfig } };
+    return toResolvedServer(config, ENV, 'srv_1', serverConfig);
+  };
+
+  it('privateHost falls back to host; declaredPrivateHost keeps what servers.yml wrote', () => {
+    const declared = resolve({ host: '203.0.113.10', private_host: '10.0.0.10' });
+    expect([declared?.privateHost, declared?.declaredPrivateHost]).toEqual(['10.0.0.10', '10.0.0.10']);
+
+    const absent = resolve({ host: '203.0.113.10' });
+    expect([absent?.privateHost, absent?.declaredPrivateHost]).toEqual(['203.0.113.10', null]);
+  });
+
+  it('a private_host written equal to host stays declared (design-05 2.2 reads private_host first)', () => {
+    const server = resolve({ host: '203.0.113.10', private_host: '203.0.113.10' });
+    expect([server?.privateHost, server?.declaredPrivateHost]).toEqual(['203.0.113.10', '203.0.113.10']);
+  });
+
+  it('the fallback follows the CI host override, the declared value does not', () => {
+    process.env[HOST_OVERRIDE] = '198.51.100.7';
+    const absent = resolve({ host: '203.0.113.10' });
+    expect([absent?.host, absent?.privateHost, absent?.declaredPrivateHost]).toEqual(['198.51.100.7', '198.51.100.7', null]);
+    const declared = resolve({ host: '203.0.113.10', private_host: '10.0.0.10' });
+    expect([declared?.host, declared?.privateHost, declared?.declaredPrivateHost]).toEqual([
+      '198.51.100.7',
+      '10.0.0.10',
+      '10.0.0.10',
+    ]);
+  });
+
+  it('copies node_labels ({} when absent) and returns null without any host', () => {
+    const labels = { disk: 'ssd' };
+    const labelled = resolve({ host: '10.0.0.10', node_labels: labels });
+    expect(labelled?.nodeLabels).toEqual(labels);
+    expect(labelled?.nodeLabels).not.toBe(labels);
+    expect(resolve({ host: '10.0.0.10' })?.nodeLabels).toEqual({});
+    expect(resolve({})).toBeNull();
   });
 });
 

@@ -336,6 +336,8 @@ export interface RevertResult {
 export interface ApplyOptions {
   prune: boolean;
   services: string[] | null;
+  /** `dockflow rollback --allow-chart-drift`, forwarded to Helm upgrades from a record; never set by `on_failure: rollback` */
+  allowChartDrift?: boolean;
 }
 
 export interface ControlOptions {

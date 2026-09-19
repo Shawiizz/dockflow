@@ -1,353 +1,323 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
-import type { SSHExecResult } from '../types';
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
+import type { DeployReceipt, ReleaseMetadata, RevertResult, StackRef } from '../services/orchestrator/interfaces';
+import {
+  composeImages,
+  importedImages,
+  rollbackRelease,
+  selectRetention,
+  selectRollbackTarget,
+  settles,
+} from '../services/release';
+import { ok } from '../types/result';
+import { DeployError, ErrorCode } from '../utils/errors';
+import * as output from '../utils/output';
+import { FakeOrchestrator } from './kubernetes/fakes/fake-orchestrator';
+import { expectCliError } from './kubernetes/support/matchers';
 
-// ---------------------------------------------------------------------------
-// SSH mock — must be installed before importing Release.
-// Each test scripts responses via `sshResponses`; commands are recorded
-// in `executedCommands` for assertions.
-// ---------------------------------------------------------------------------
+const STACK = 'shop-production';
+const APP_REF: StackRef = { project: 'shop', env: 'production', role: 'app' };
+const WAIT = { timeoutS: 300, intervalS: 5 };
 
-type Responder = (cmd: string) => SSHExecResult | undefined;
-
-const executedCommands: string[] = [];
-let sshResponses: Responder = () => undefined;
-
-const okResult = (stdout = ''): SSHExecResult => ({ stdout, stderr: '', exitCode: 0 });
-
-const realSsh = await import('../utils/ssh');
-mock.module('../utils/ssh', () => ({
-  ...realSsh,
-  sshExec: async (_conn: unknown, cmd: string): Promise<SSHExecResult> => {
-    executedCommands.push(cmd);
-    return sshResponses(cmd) ?? okResult();
-  },
-  sshExecChannel: async (_conn: unknown, cmd: string) => {
-    executedCommands.push(cmd);
-    return {
-      stream: { end: (_data?: unknown) => {} },
-      done: Promise.resolve(sshResponses(cmd) ?? okResult()),
-    };
-  },
-}));
-
-const { Release, parseReleaseList, selectRollbackCandidate, extractComposeImages, computeOrphanImages } =
-  await import('../services/release');
-type ReleaseMetadata = import('../services/release').ReleaseMetadata;
-const { DeployError } = await import('../utils/errors');
-
-function meta(version: string, epoch: number): ReleaseMetadata {
+function meta(version: string, epoch: number, fields: Partial<ReleaseMetadata> = {}): ReleaseMetadata {
   return {
-    project_name: 'demo',
+    project_name: 'shop',
     version,
     env: 'production',
-    timestamp: new Date(epoch).toISOString(),
+    timestamp: new Date(Date.UTC(2026, 0, 1) + epoch * 1000).toISOString(),
     epoch,
     performer: 'ci',
     branch: 'main',
+    ...fields,
   };
 }
+
+const versions = (list: readonly ReleaseMetadata[]): string[] => list.map((r) => r.version);
+
+let warnings: string[] = [];
+let spies: { mockRestore(): void }[] = [];
 
 beforeEach(() => {
-  executedCommands.length = 0;
-  sshResponses = () => undefined;
+  warnings = [];
+  spies = [
+    spyOn(output, 'printWarning').mockImplementation((message: string) => {
+      warnings.push(message);
+    }),
+    spyOn(output, 'printInfo').mockImplementation(() => {}),
+    spyOn(output, 'printDim').mockImplementation(() => {}),
+    spyOn(output, 'printDebug').mockImplementation(() => {}),
+  ];
+});
+
+afterEach(() => {
+  for (const spy of spies) spy.mockRestore();
 });
 
 // ---------------------------------------------------------------------------
-// Pure helpers
+// Pure helpers (design-03 22.2)
 // ---------------------------------------------------------------------------
 
-describe('parseReleaseList', () => {
-  it('parses one metadata JSON per line, sorted newest first', () => {
-    const out = parseReleaseList(
-      JSON.stringify(meta('1.0.0', 100)) + '\n' + JSON.stringify(meta('1.0.1', 200)) + '\n',
-    );
-    expect(out.map(r => r.version)).toEqual(['1.0.1', '1.0.0']);
+describe('selectRetention', () => {
+  const list = [meta('1.0.0', 1), meta('1.1.0', 2), meta('1.2.0', 3), meta('1.3.0', 4), meta('1.4.0', 5)];
+
+  it('keeps the newest `keep` releases by epoch and removes the rest, newest first', () => {
+    const { kept, removed } = selectRetention(list, '1.4.0', 3);
+    expect(versions(kept)).toEqual(['1.4.0', '1.3.0', '1.2.0']);
+    expect(versions(removed)).toEqual(['1.1.0', '1.0.0']);
   });
 
-  it('empty output → empty list', () => {
-    expect(parseReleaseList('')).toEqual([]);
-    expect(parseReleaseList('  \n ')).toEqual([]);
+  it('keeps current when it is older than the newest `keep` (after a rollback)', () => {
+    const { kept, removed } = selectRetention(list, '1.0.0', 3);
+    expect(versions(kept)).toEqual(['1.4.0', '1.3.0', '1.2.0', '1.0.0']);
+    expect(versions(removed)).toEqual(['1.1.0']);
   });
 
-  it('corrupted lines are skipped and reported, valid ones kept', () => {
-    let corrupted = 0;
-    const out = parseReleaseList(
-      JSON.stringify(meta('1.0.0', 100)) + '\n{broken json\n' + JSON.stringify(meta('1.0.1', 200)),
-      () => corrupted++,
-    );
-    expect(out).toHaveLength(2);
-    expect(corrupted).toBe(1);
-  });
-});
-
-describe('selectRollbackCandidate', () => {
-  const releases = [meta('3.0.0', 300), meta('2.0.0', 200), meta('1.0.0', 100)];
-
-  it('with failedVersion: picks newest release that is not the failed one', () => {
-    expect(selectRollbackCandidate(releases, '3.0.0')!.version).toBe('2.0.0');
+  it('removes nothing when keep >= the number of releases', () => {
+    expect(versions(selectRetention(list, '1.4.0', 5).removed)).toEqual([]);
+    expect(versions(selectRetention(list, '1.4.0', 9).kept)).toEqual(['1.4.0', '1.3.0', '1.2.0', '1.1.0', '1.0.0']);
   });
 
-  it('failedVersion not in list: picks newest', () => {
-    expect(selectRollbackCandidate(releases, '9.9.9')!.version).toBe('3.0.0');
+  it('keep 0 keeps current only; a current absent from the list keeps nothing extra', () => {
+    expect(versions(selectRetention(list, '1.2.0', 0).kept)).toEqual(['1.2.0']);
+    expect(versions(selectRetention(list, '9.9.9', 2).kept)).toEqual(['1.4.0', '1.3.0']);
+    expect(versions(selectRetention(list, null, 2).removed)).toEqual(['1.2.0', '1.1.0', '1.0.0']);
   });
 
-  it('without failedVersion: skips the most recent (current) release', () => {
-    expect(selectRollbackCandidate(releases)!.version).toBe('2.0.0');
-  });
-
-  it('no candidate available → null', () => {
-    expect(selectRollbackCandidate([], '1.0.0')).toBeNull();
-    expect(selectRollbackCandidate([meta('1.0.0', 100)])).toBeNull();
-    expect(selectRollbackCandidate([meta('1.0.0', 100)], '1.0.0')).toBeNull();
+  it('sorts unsorted input, ties on epoch by version descending', () => {
+    const shuffled = [meta('1.0.0', 1), meta('1.2.0', 3), meta('1.1.b', 2), meta('1.1.a', 2)];
+    expect(versions(selectRetention(shuffled, null, 2).kept)).toEqual(['1.2.0', '1.1.b']);
   });
 });
 
-describe('extractComposeImages', () => {
-  it('handles unquoted, single-quoted and double-quoted images', () => {
-    const yaml = `
-services:
-  a:
-    image: plain:1
-  b:
-    image: 'single:2'
-  c:
-    image: "double:3"
-`;
-    expect(extractComposeImages(yaml)).toEqual(['plain:1', 'single:2', 'double:3']);
+describe('selectRollbackTarget', () => {
+  const list = [meta('1.2.0', 3), meta('1.0.0', 1), meta('1.1.0', 2)];
+
+  it('targets the release right before current', () => {
+    expect(selectRollbackTarget(list, '1.2.0', null)?.version).toBe('1.1.0');
   });
 
-  it('no images → empty list', () => {
-    expect(extractComposeImages('services: {}')).toEqual([]);
+  it('after a rollback, targets the release before current, not current again', () => {
+    expect(selectRollbackTarget(list, '1.1.0', null)?.version).toBe('1.0.0');
+  });
+
+  it('with the failed version known, the newest release other than it', () => {
+    expect(selectRollbackTarget(list, '1.1.0', '1.2.0')?.version).toBe('1.1.0');
+    expect(selectRollbackTarget(list, '1.2.0', '9.9.9')?.version).toBe('1.2.0');
+    expect(selectRollbackTarget([meta('1.2.0', 3)], '1.2.0', '1.2.0')).toBeNull();
+  });
+
+  it('without a current record, skips the newest (what runs)', () => {
+    expect(selectRollbackTarget(list, null, null)?.version).toBe('1.1.0');
+    expect(selectRollbackTarget(list, '7.0.0', null)?.version).toBe('1.1.0');
+  });
+
+  it('null when nothing is older', () => {
+    expect(selectRollbackTarget(list, '1.0.0', null)).toBeNull();
+    expect(selectRollbackTarget([meta('1.0.0', 1)], null, null)).toBeNull();
+    expect(selectRollbackTarget([], null, null)).toBeNull();
   });
 });
 
-describe('computeOrphanImages', () => {
-  it('removes only images that are neither running nor kept', () => {
-    const orphans = computeOrphanImages(
-      'running:1\n',
-      'services:\n  a:\n    image: kept:1\n',
-      'services:\n  a:\n    image: kept:1\n  b:\n    image: running:1\n  c:\n    image: orphan:1\n',
-    );
-    expect(orphans).toEqual(['orphan:1']);
+describe('composeImages', () => {
+  it('lists service images in order without duplicates, whatever the quoting', () => {
+    const compose = [
+      'services:',
+      '  web:',
+      '    image: registry.example.com/shop/web:1.4.2',
+      '  worker:',
+      "    image: 'registry.example.com/shop/web:1.4.2'",
+      '  cache:',
+      '    image: "redis:8-alpine"',
+      '  built:',
+      '    build: .',
+    ].join('\n');
+    expect(composeImages(compose)).toEqual(['registry.example.com/shop/web:1.4.2', 'redis:8-alpine']);
   });
 
-  it(':latest images are never removed', () => {
-    const orphans = computeOrphanImages('', '', 'services:\n  a:\n    image: thing:latest\n');
-    expect(orphans).toEqual([]);
+  it('resolves merge keys', () => {
+    const compose = ['x-base: &base', '  image: shop/api:2', 'services:', '  api:', '    <<: *base'].join('\n');
+    expect(composeImages(compose)).toEqual(['shop/api:2']);
   });
 
-  it('deduplicates orphans', () => {
-    const orphans = computeOrphanImages(
-      '',
-      '',
-      'services:\n  a:\n    image: dup:1\n  b:\n    image: dup:1\n',
-    );
-    expect(orphans).toEqual(['dup:1']);
+  it('null, empty and unreadable composes have no images', () => {
+    expect(composeImages(null)).toEqual([]);
+    expect(composeImages('')).toEqual([]);
+    expect(composeImages('services: [unclosed')).toEqual([]);
+    expect(composeImages('services: {}')).toEqual([]);
+  });
+});
+
+describe('importedImages', () => {
+  it('keeps the references Dockflow imported into the nodes, from containers and init containers', () => {
+    const content = [
+      '# dockflow-artifact: k8s-manifests/1',
+      'apiVersion: apps/v1',
+      'kind: Deployment',
+      'metadata: {name: web, namespace: dockflow-shop-production}',
+      'spec:',
+      '  template:',
+      '    spec:',
+      '      initContainers:',
+      '        - {name: migrate, image: dockflow.invalid/shop-web:1.4.1}',
+      '      containers:',
+      '        - {name: web, image: dockflow.invalid/shop-web:1.4.1}',
+      '        - {name: proxy, image: "nginx:1.27"}',
+      '---',
+      'apiVersion: apps/v1',
+      'kind: StatefulSet',
+      'metadata: {name: api, namespace: dockflow-shop-production}',
+      'spec:',
+      '  template:',
+      '    spec:',
+      '      containers:',
+      '        - {name: api, image: dockflow.invalid/shop-api:1.4.1}',
+      '        - {name: sidecar, image: registry.example.com/shop/sidecar:3}',
+    ].join('\n');
+    expect(importedImages(content)).toEqual(['dockflow.invalid/shop-web:1.4.1', 'dockflow.invalid/shop-api:1.4.1']);
   });
 
-  it('empty running output does not protect anything', () => {
-    const orphans = computeOrphanImages('\n', '', 'services:\n  a:\n    image: x:1\n');
-    expect(orphans).toEqual(['x:1']);
+  it('reads Job pod templates, and never an `image` key outside a container list', () => {
+    const content = [
+      'apiVersion: batch/v1',
+      'kind: Job',
+      'metadata: {name: migrate, namespace: dockflow-shop-production}',
+      'spec:',
+      '  template:',
+      '    spec:',
+      '      containers:',
+      '        - {name: migrate, image: dockflow.invalid/shop-migrate:1.4.1}',
+      '---',
+      'apiVersion: v1',
+      'kind: ConfigMap',
+      'metadata: {name: settings, namespace: dockflow-shop-production}',
+      'data:',
+      '  image: dockflow.invalid/not-an-image:1',
+    ].join('\n');
+    expect(importedImages(content)).toEqual(['dockflow.invalid/shop-migrate:1.4.1']);
+  });
+
+  it('a Swarm stack file has none', () => {
+    expect(importedImages('# dockflow-artifact: swarm-compose/1\nservices:\n  web:\n    image: shop/web:1.4.1\n')).toEqual([]);
+  });
+});
+
+describe('settles (design-03 3.4, PD-8)', () => {
+  const reverted: RevertResult = { status: 'reverted', services: ['web'], message: 'reverted web to 1.4.1' };
+  const nothing: RevertResult = { status: 'nothing-to-revert', services: [] };
+  const failed: RevertResult = { status: 'failed', services: ['web'], message: 'did not converge' };
+  const native: RevertResult = { status: 'native', services: [] };
+
+  it('a confirmed revert settles the role', () => {
+    expect(settles(reverted, '1.4.1', false)).toBe(true);
+    expect(settles(reverted, null, false)).toBe(true);
+  });
+
+  it('nothing-to-revert settles only a first deploy', () => {
+    expect(settles(nothing, null, false)).toBe(true);
+    // failure_action pause/continue or a Job: the failed version still runs
+    expect(settles(nothing, '1.4.1', false)).toBe(false);
+  });
+
+  it('a failed revert never settles', () => {
+    expect(settles(failed, '1.4.1', false)).toBe(false);
+    expect(settles(failed, null, true)).toBe(false);
+  });
+
+  it('native settles exactly when Swarm rolled back', () => {
+    expect(settles(native, '1.4.1', true)).toBe(true);
+    expect(settles(native, '1.4.1', false)).toBe(false);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Rollback flow (scripted SSH + fake StackBackend)
+// Swarm regression rows (design-07 15)
 // ---------------------------------------------------------------------------
 
-interface FakeBackendOptions {
-  redeployFails?: boolean;
-  convergenceFails?: boolean;
-}
-
-function makeFakeBackend(options: FakeBackendOptions = {}) {
-  const calls: { redeploy: Array<{ stackName: string; content: string }>; convergence: number } = {
-    redeploy: [],
-    convergence: 0,
+describe('U-SWARM-08: a release written before stack.yml existed', () => {
+  // FileReleaseStore.readArtifact falls back to docker-compose.yml with format swarm-compose/1
+  // (asserted against the store in stores/file-stores.test.ts); here, what the rollback does with it.
+  const oldCompose = 'services:\n  web:\n    image: shop/web:1.4.1\n';
+  const oldRelease = {
+    version: '1.4.1',
+    epoch: 1,
+    compose: oldCompose,
+    artifact: { format: 'swarm-compose/1' as const, content: oldCompose, digest: '' },
+    metadata: { orchestrator: undefined, artifact_format: undefined },
   };
-  const backend = {
-    redeploy: async (stackName: string, rawContent: string) => {
-      calls.redeploy.push({ stackName, content: rawContent });
-      return options.redeployFails
-        ? { success: false as const, error: new DeployError('redeploy boom') }
-        : { success: true as const, data: undefined };
-    },
-    waitConvergence: async () => {
-      calls.convergence++;
-      return { converged: !options.convergenceFails, rolledBack: false, timedOut: false };
-    },
-  };
-  return { backend, calls };
-}
 
-const conn = { host: 'h', port: 22, user: 'u', privateKey: 'k' };
+  it('is applied as a swarm-compose/1 artifact on Swarm', async () => {
+    const swarm = new FakeOrchestrator('swarm');
+    swarm.seedRelease(STACK, oldRelease);
+    swarm.seedRelease(STACK, { version: '1.4.2', epoch: 2 });
 
-describe('Release.rollback', () => {
-  it('happy path: redeploys previous compose, updates symlink, removes failed dir', async () => {
-    const release = new Release(conn);
-    const { backend, calls } = makeFakeBackend();
+    expect(await rollbackRelease(swarm, { ref: APP_REF, stackName: STACK, to: null, failedVersion: null, wait: WAIT })).toBe('1.4.1');
 
-    sshResponses = (cmd) => {
-      if (cmd.includes('for d in */')) {
-        return okResult(JSON.stringify(meta('2.0.0', 200)) + '\n' + JSON.stringify(meta('1.0.0', 100)));
-      }
-      if (cmd.startsWith('cat ')) return okResult('services:\n  web:\n    image: web:1\n');
-      return okResult();
-    };
-
-    const version = await release.rollback('demo', backend as never, '2.0.0');
-
-    expect(version).toBe('1.0.0');
-    expect(calls.redeploy).toHaveLength(1);
-    expect(calls.redeploy[0].content).toContain('web:1');
-    expect(calls.convergence).toBe(1);
-    // Symlink restored to the previous release dir
-    expect(executedCommands.some(c => c.includes('ln -sfn') && c.includes('/1.0.0'))).toBe(true);
-    // Failed release dir removed
-    expect(executedCommands.some(c => c.includes('rm -rf') && c.includes('/2.0.0'))).toBe(true);
+    const [, version, artifact, options] = swarm.callsTo('stack.apply')[0] ?? [];
+    expect(version).toBe('1.4.1');
+    expect(artifact).toMatchObject({ format: 'swarm-compose/1', content: oldCompose });
+    expect(options).toEqual({ prune: true, services: null });
+    expect(swarm.callsTo('images.verifyPresence')).toEqual([]);
+    expect(swarm.storedReleases(STACK).current).toBe('1.4.1');
   });
 
-  it('fast path: previousReleasePath skips release discovery', async () => {
-    const release = new Release(conn);
-    const { backend, calls } = makeFakeBackend();
+  it('is refused on k3s before anything is applied', async () => {
+    const k3s = new FakeOrchestrator('k3s');
+    k3s.seedRelease(STACK, oldRelease);
+    k3s.seedRelease(STACK, { version: '1.4.2', epoch: 2 });
 
-    sshResponses = (cmd) => (cmd.startsWith('cat ') ? okResult('services: {}\n') : okResult());
-
-    const version = await release.rollback('demo', backend as never, null, '/var/lib/dockflow/stacks/demo/1.5.0');
-
-    expect(version).toBe('1.5.0');
-    expect(calls.redeploy).toHaveLength(1);
-    // No listing command was needed
-    expect(executedCommands.some(c => c.includes('for d in */'))).toBe(false);
-  });
-
-  it('no previous release → DeployError', async () => {
-    const release = new Release(conn);
-    const { backend } = makeFakeBackend();
-    sshResponses = (cmd) => (cmd.includes('for d in */') ? okResult('') : okResult());
-
-    await expect(release.rollback('demo', backend as never, '1.0.0')).rejects.toThrow(
-      'No previous release available for rollback',
+    await expectCliError(
+      rollbackRelease(k3s, { ref: APP_REF, stackName: STACK, to: null, failedVersion: null, wait: WAIT }),
+      {
+        type: DeployError,
+        code: ErrorCode.ROLLBACK_FAILED,
+        message: 'Release 1.4.1 was produced for swarm-compose/1 and cannot be applied with orchestrator: k3s',
+      },
     );
-  });
-
-  it('unreadable previous compose → DeployError, no redeploy attempted', async () => {
-    const release = new Release(conn);
-    const { backend, calls } = makeFakeBackend();
-    sshResponses = (cmd) => {
-      if (cmd.includes('for d in */')) {
-        return okResult(JSON.stringify(meta('2.0.0', 200)) + '\n' + JSON.stringify(meta('1.0.0', 100)));
-      }
-      if (cmd.startsWith('cat ')) return { stdout: '', stderr: 'no such file', exitCode: 1 };
-      return okResult();
-    };
-
-    await expect(release.rollback('demo', backend as never, '2.0.0')).rejects.toThrow(
-      'Could not read the stack for rollback',
-    );
-    expect(calls.redeploy).toHaveLength(0);
-  });
-
-  it('redeploy failure → DeployError, symlink not touched', async () => {
-    const release = new Release(conn);
-    const { backend } = makeFakeBackend({ redeployFails: true });
-    sshResponses = (cmd) => {
-      if (cmd.includes('for d in */')) {
-        return okResult(JSON.stringify(meta('2.0.0', 200)) + '\n' + JSON.stringify(meta('1.0.0', 100)));
-      }
-      if (cmd.startsWith('cat ')) return okResult('services: {}\n');
-      return okResult();
-    };
-
-    await expect(release.rollback('demo', backend as never, '2.0.0')).rejects.toThrow('redeploy boom');
-    expect(executedCommands.some(c => c.includes('ln -sfn'))).toBe(false);
-  });
-
-  it('convergence failure → DeployError', async () => {
-    const release = new Release(conn);
-    const { backend } = makeFakeBackend({ convergenceFails: true });
-    sshResponses = (cmd) => {
-      if (cmd.includes('for d in */')) {
-        return okResult(JSON.stringify(meta('2.0.0', 200)) + '\n' + JSON.stringify(meta('1.0.0', 100)));
-      }
-      if (cmd.startsWith('cat ')) return okResult('services: {}\n');
-      return okResult();
-    };
-
-    await expect(release.rollback('demo', backend as never, '2.0.0')).rejects.toThrow(
-      'Rollback did not converge',
-    );
+    expect(k3s.events).not.toContain('stack.apply:app');
+    expect(k3s.storedReleases(STACK).current).toBe('1.4.2');
   });
 });
 
-describe('Release.createRelease', () => {
-  it('fails loudly when the current symlink cannot be updated', async () => {
-    const release = new Release(conn);
-    sshResponses = (cmd) => {
-      if (cmd.includes('ln -sfn')) return { stdout: '', stderr: 'permission denied', exitCode: 1 };
-      return okResult();
-    };
+describe('U-SWARM-10: rollbackRelease finalizes on both orchestrators', () => {
+  for (const kind of ['swarm', 'k3s'] as const) {
+    it(`${kind}: finalize receives the apply receipt, after the convergence wait and before setCurrent`, async () => {
+      const orchestrator = new FakeOrchestrator(kind);
+      orchestrator.seedRelease(STACK, { version: '1.4.1', epoch: 1 });
+      orchestrator.seedRelease(STACK, { version: '1.4.2', epoch: 2 });
+      const receipt: DeployReceipt = {
+        ref: APP_REF,
+        version: '1.4.1',
+        startedAt: new Date(Date.UTC(2026, 0, 1)),
+        services: null,
+        skipped: false,
+        artifactDigest: 'fake-app-1.4.1',
+        changes: [],
+        helm: [],
+        helmChanges: [],
+        helmDeclared: [],
+        previousVersion: null,
+      };
+      orchestrator.program('stack.apply', ok(receipt));
 
-    await expect(
-      release.createRelease('demo', '1.0.0', 'services: {}\n', 'services: {}\n', meta('1.0.0', 100)),
-    ).rejects.toThrow('current release symlink');
-  });
+      await rollbackRelease(orchestrator, { ref: APP_REF, stackName: STACK, to: null, failedVersion: '1.4.2', wait: WAIT });
 
-  it('stores the rendered stack beside the compose', async () => {
-    const release = new Release(conn);
+      expect(orchestrator.callsTo('stack.finalize')).toEqual([[receipt]]);
+      expect(orchestrator.callsTo('stack.waitConvergence')[0]?.[0]).toBe(receipt);
+      const events = orchestrator.events;
+      expect(events.indexOf('stack.waitConvergence:app')).toBeLessThan(events.indexOf('stack.finalize:app'));
+      expect(events.indexOf('stack.finalize:app')).toBeLessThan(events.indexOf('releases.setCurrent:1.4.1'));
+    });
 
-    await release.createRelease('demo', '1.0.0', 'services: {}\n', 'rendered\n', meta('1.0.0', 100));
+    it(`${kind}: a finalize that rejects does not undo a converged rollback`, async () => {
+      const orchestrator = new FakeOrchestrator(kind);
+      orchestrator.seedRelease(STACK, { version: '1.4.1', epoch: 1 });
+      orchestrator.seedRelease(STACK, { version: '1.4.2', epoch: 2 });
+      orchestrator.program('stack.finalize', new Error('prune failed'));
 
-    expect(executedCommands.some((c) => c.startsWith('cat > ') && c.endsWith('/1.0.0/stack.yml"'))).toBe(true);
-    expect(executedCommands.some((c) => c.startsWith('cat > ') && c.endsWith('/1.0.0/docker-compose.yml"'))).toBe(true);
-  });
-});
-
-describe('Release.rollback — what it re-applies', () => {
-  it('reads the rendered stack, and falls back to the compose of an older release', async () => {
-    const release = new Release(conn);
-    const { backend, calls } = makeFakeBackend();
-    sshResponses = (cmd) => (cmd.startsWith('cat ') ? okResult('rendered\n') : okResult());
-
-    await release.rollback('demo', backend as never, null, '/var/lib/dockflow/stacks/demo/1.5.0');
-
-    expect(executedCommands).toContain(
-      'cat "/var/lib/dockflow/stacks/demo/1.5.0/stack.yml" 2>/dev/null || cat "/var/lib/dockflow/stacks/demo/1.5.0/docker-compose.yml"',
-    );
-    expect(calls.redeploy[0].content).toBe('rendered\n');
-  });
-});
-
-describe('Release.rollback — symlink failure', () => {
-  it('redeploy succeeded but symlink update failed → loud rollback error', async () => {
-    const release = new Release(conn);
-    const { backend, calls } = makeFakeBackend();
-    sshResponses = (cmd) => {
-      if (cmd.includes('for d in */')) {
-        return okResult(JSON.stringify(meta('2.0.0', 200)) + '\n' + JSON.stringify(meta('1.0.0', 100)));
-      }
-      if (cmd.startsWith('cat ')) return okResult('services: {}\n');
-      if (cmd.includes('ln -sfn')) return { stdout: '', stderr: 'read-only file system', exitCode: 1 };
-      return okResult();
-    };
-
-    await expect(release.rollback('demo', backend as never, '2.0.0')).rejects.toThrow(
-      'failed to update the current release symlink',
-    );
-    // The redeploy itself did happen — only the bookkeeping failed
-    expect(calls.redeploy).toHaveLength(1);
-  });
-});
-
-describe('Release.listReleases', () => {
-  it('returns parsed sorted releases from the remote listing', async () => {
-    const release = new Release(conn);
-    sshResponses = (cmd) =>
-      cmd.includes('for d in */')
-        ? okResult(JSON.stringify(meta('1.0.0', 100)) + '\n' + JSON.stringify(meta('2.0.0', 200)))
-        : okResult();
-
-    const releases = await release.listReleases('demo');
-    expect(releases.map(r => r.version)).toEqual(['2.0.0', '1.0.0']);
-  });
+      expect(await rollbackRelease(orchestrator, { ref: APP_REF, stackName: STACK, to: null, failedVersion: '1.4.2', wait: WAIT })).toBe(
+        '1.4.1',
+      );
+      expect(orchestrator.storedReleases(STACK)).toMatchObject({ current: '1.4.1', versions: ['1.4.1'] });
+      expect(warnings).toEqual(['Cleanup after rollback failed: prune failed; the rollback itself succeeded']);
+    });
+  }
 });

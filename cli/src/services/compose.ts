@@ -479,7 +479,11 @@ const SOURCE_TEXT_PATHS: readonly (readonly string[])[] = [
   ['volumes', '*', 'driver_opts', '*'],
 ];
 
-/** File modes Compose reads in base 8, where YAML 1.2 reads `0440` as decimal 440. */
+/**
+ * File modes Compose reads in base 8, where YAML 1.2 reads `0440` as decimal 440. An octal literal
+ * loads as its source text (`"0440"`), so the k3s normalizer can tell it from a decimal `288`;
+ * `serialize` turns it back into a number for docker/cli, whose schema types `mode` as a number.
+ */
 const FILE_MODE_PATHS: readonly (readonly string[])[] = [
   ['services', '*', 'secrets', '[]', 'mode'],
   ['services', '*', 'configs', '[]', 'mode'],
@@ -666,8 +670,35 @@ function sourceText(scalar: Scalar): unknown {
 
 function octalFileMode(scalar: Scalar): unknown {
   if (!isUntaggedPlain(scalar) || typeof scalar.value !== 'number') return undefined;
-  const digits = OCTAL_MODE.exec(scalar.source ?? '')?.[1];
-  return digits === undefined ? undefined : parseInt(digits, 8);
+  return OCTAL_MODE.test(scalar.source ?? '') ? scalar.source : undefined;
+}
+
+/**
+ * `value` with every octal mode string at `path` turned into its number. Copies only the objects
+ * and lists on the way to a changed mode, so the compose being serialized is left untouched.
+ */
+function numericFileModes(value: unknown, path: readonly string[]): unknown {
+  const [segment, ...rest] = path;
+  if (segment === undefined) {
+    const digits = typeof value === 'string' ? OCTAL_MODE.exec(value)?.[1] : undefined;
+    return digits === undefined ? value : Number.parseInt(digits, 8);
+  }
+  if (segment === '[]') {
+    if (!Array.isArray(value)) return value;
+    const next = value.map((item) => numericFileModes(item, rest));
+    return next.some((item, index) => item !== value[index]) ? next : value;
+  }
+  if (!isRecord(value)) return value;
+  let copy: Record<string, unknown> | undefined;
+  for (const key of segment === '*' ? Object.keys(value) : [segment]) {
+    if (!Object.hasOwn(value, key)) continue;
+    const next = numericFileModes(value[key], rest);
+    if (next === value[key]) continue;
+    // the spread keeps a `__proto__` key an own property, so the assignment below stays a plain write
+    copy ??= { ...value };
+    copy[key] = next;
+  }
+  return copy ?? value;
 }
 
 /**
@@ -743,8 +774,9 @@ export function load(composePath: string): ParsedCompose {
  * Parse a docker-compose YAML string into a ParsedCompose (both orchestrators).
  *
  * `file` names the source in error messages. Numbers and booleans written where Compose expects
- * strings keep their source text (`PORT: 010` stays `"010"`), and file modes written `0440` are
- * read as octal. See `parseComposeYaml` for what is refused.
+ * strings keep their source text (`PORT: 010` stays `"010"`), and so do octal file modes
+ * (`mode: 0440` stays `"0440"`, which Compose reads in base 8). See `parseComposeYaml` for what is
+ * refused.
  */
 export function loadFromString(content: string, file = 'compose file'): ParsedCompose {
   const raw = parseComposeYaml(content, file);
@@ -758,7 +790,8 @@ export function loadFromString(content: string, file = 'compose file'): ParsedCo
 }
 
 /**
- * Serialize a ParsedCompose back to a YAML string, without anchors or aliases.
+ * Serialize a ParsedCompose back to a YAML string, without anchors or aliases. File modes loaded
+ * as octal text (`"0440"`) are written as numbers (`288`), the only form docker/cli accepts.
  */
 export function serialize(compose: ParsedCompose): string {
   const obj: Record<string, unknown> = { ...compose.raw };
@@ -766,7 +799,9 @@ export function serialize(compose: ParsedCompose): string {
   if (compose.networks) obj.networks = compose.networks;
   if (compose.volumes) obj.volumes = compose.volumes;
 
-  return stringifyYaml(obj, { lineWidth: 0, aliasDuplicateObjects: false });
+  let out: unknown = obj;
+  for (const path of FILE_MODE_PATHS) out = numericFileModes(out, path);
+  return stringifyYaml(out, { lineWidth: 0, aliasDuplicateObjects: false });
 }
 
 // ---------------------------------------------------------------------------

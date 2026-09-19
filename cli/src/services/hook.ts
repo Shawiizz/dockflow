@@ -22,14 +22,60 @@ import { sshExecChannel, shellQuote } from '../utils/ssh';
 import { printDebug, printDim, printRaw, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import type { DockflowConfig, HookEntry, HookEntryInput, HookPhase, HooksConfig } from '../utils/config';
-import { DOCKFLOW_STACKS_DIR } from '../constants';
 import type { RenderedFiles } from './compose';
+import type { Orchestrator } from './orchestrator/interfaces';
+import { K8S_KUBECONFIG_PATH } from './orchestrator/kubernetes/constants';
+import { K3S_KUBECTL_COMMAND } from './orchestrator/kubernetes/k3s/distribution';
 
 export type { HookPhase };
 
+/** Where and with what the entries of a remote phase run (DESIGN-CORE 8.8). */
 export interface HookRemoteContext {
   connection: SSHKeyConnection;
-  stackName: string;
+  /** `releases.hookWorkingDir(stack)`: never a shared world-writable directory */
+  workingDir: string;
+  /**
+   * Create the directory, private, before entering it (k3s: `/var/lib/dockflow/hooks/<stack>`).
+   * Never for the Swarm `current` link, which the release store owns and which does not exist
+   * before the first release.
+   */
+  createWorkingDir: boolean;
+  /** exported to every remote entry */
+  env: Record<string, string>;
+}
+
+/**
+ * The variables every remote entry receives, on both orchestrators; on k3s also what a hook needs
+ * to reach the cluster, whose kubeconfig is cluster-admin (hence the private working directory).
+ */
+export function hookEnvironment(orchestrator: Orchestrator, version: string): Record<string, string> {
+  const { target } = orchestrator;
+  const env: Record<string, string> = {
+    DOCKFLOW_STACK: target.stackName,
+    DOCKFLOW_ENV: target.env,
+    DOCKFLOW_VERSION: version,
+    DOCKFLOW_ORCHESTRATOR: orchestrator.kind,
+  };
+  if (orchestrator.kind === 'k3s') {
+    env.DOCKFLOW_NAMESPACE = orchestrator.naming.scope({ project: target.project, env: target.env, role: 'app' });
+    env.KUBECONFIG = K8S_KUBECONFIG_PATH;
+    env.DOCKFLOW_KUBECTL = K3S_KUBECTL_COMMAND;
+  }
+  return env;
+}
+
+/** Remote hooks run on the control plane by default, in the release store's working directory. */
+export function remoteHookContext(
+  orchestrator: Orchestrator,
+  version: string,
+  connection: SSHKeyConnection = orchestrator.target.controlPlane.connection,
+): HookRemoteContext {
+  return {
+    connection,
+    workingDir: orchestrator.releases.hookWorkingDir(orchestrator.target.stackName),
+    createWorkingDir: orchestrator.kind === 'k3s',
+    env: hookEnvironment(orchestrator, version),
+  };
 }
 
 const DEFAULT_HOOK_TIMEOUT_S = 300;
@@ -187,21 +233,29 @@ async function execLocal(
  * text, so none can end up in it.
  *
  * A script runs directly and keeps its shebang; an inline command runs with bash.
+ *
+ * A directory to create is made 0700 and entered, or the entry does not run: on k3s the entry
+ * exports a cluster-admin KUBECONFIG, so it never falls back to a shared directory.
  */
 export function remoteHookProgram(opts: {
-  stackDir: string;
+  workingDir: string;
+  createWorkingDir: boolean;
   env: Record<string, string>;
   timeoutS: number;
   kind: 'script' | 'run';
 }): string {
   const runner = opts.kind === 'run' ? 'bash ' : '';
+  const dir = shellQuote(opts.workingDir);
+  const enter = opts.createWorkingDir
+    ? `mkdir -p ${dir} && chmod 700 ${dir} && cd ${dir} || { echo ${shellQuote(`Hook working directory ${opts.workingDir} cannot be created or entered`)} >&2; exit 125; }`
+    : `cd ${dir} 2>/dev/null || cd /tmp`;
   return [
     'umask 077',
     'tmp=$(mktemp /tmp/dockflow-hook.XXXXXXXX) || exit 125',
     `trap 'rm -f "$tmp"' EXIT`,
     'cat > "$tmp"',
     'chmod 700 "$tmp"',
-    `cd "${opts.stackDir}" 2>/dev/null || cd /tmp`,
+    enter,
     `${remoteEnvPrefix(opts.env)}timeout ${opts.timeoutS} ${runner}"$tmp" < /dev/null 2>&1`,
   ].join('\n');
 }
@@ -252,7 +306,6 @@ interface EntryRunContext {
   /** Set when entries run on the server rather than locally. */
   remote?: HookRemoteContext;
   localBash: string;
-  stackDir: string;
   env: Record<string, string>;
 }
 
@@ -289,7 +342,7 @@ async function runScriptEntry(entry: ResolvedHookEntry, label: string, rc: Entry
   const content = readScript(entry, rc);
 
   if (rc.remote) {
-    const program = remoteHookProgram({ stackDir: rc.stackDir, env: rc.env, timeoutS: entry.timeoutS, kind: 'script' });
+    const program = remoteProgramFor(rc.remote, rc.env, entry);
     await execRemote(rc.remote.connection, program, content, entry.fatal, label);
     return;
   }
@@ -305,9 +358,19 @@ async function runScriptEntry(entry: ResolvedHookEntry, label: string, rc: Entry
   }
 }
 
+function remoteProgramFor(remote: HookRemoteContext, env: Record<string, string>, entry: ResolvedHookEntry): string {
+  return remoteHookProgram({
+    workingDir: remote.workingDir,
+    createWorkingDir: remote.createWorkingDir,
+    env,
+    timeoutS: entry.timeoutS,
+    kind: entry.kind,
+  });
+}
+
 async function runCommandEntry(entry: ResolvedHookEntry, label: string, rc: EntryRunContext): Promise<void> {
   if (rc.remote) {
-    const program = remoteHookProgram({ stackDir: rc.stackDir, env: rc.env, timeoutS: entry.timeoutS, kind: 'run' });
+    const program = remoteProgramFor(rc.remote, rc.env, entry);
     await execRemote(rc.remote.connection, program, entry.value, entry.fatal, label);
     return;
   }
@@ -369,8 +432,8 @@ export async function runHook(
     rendered,
     remote: target,
     localBash,
-    stackDir: target ? `${DOCKFLOW_STACKS_DIR}/${target.stackName}/current` : '',
-    env: options.env ?? {},
+    // the phase's own variables (on-failure) come last: they are Dockflow's too, and more specific
+    env: { ...(target?.env ?? {}), ...(options.env ?? {}) },
   };
 
   for (const entry of entries) {

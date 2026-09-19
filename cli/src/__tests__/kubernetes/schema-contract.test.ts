@@ -1705,6 +1705,17 @@ describe('semantic rules (design-07 7.3, design-02 14.4)', () => {
     expect(issues.map((found) => `${found.kind}/${found.name} ${found.rule}`)).toEqual(['Deployment/db S07']);
   });
 
+  test('a user-managed middleware auth Secret passes when declared external (S07)', () => {
+    const objects = kitchenSink();
+    at(find(objects, 'Middleware', 'auth'), 'spec.basicAuth').secret = 'user-htpasswd';
+    const declared = validateSemantics(objects, { ...CONTEXT, externalNames: ['shared-media', 'accessory-headers', 'user-htpasswd'] });
+    expect(declared).toEqual([]);
+    const undeclared = validateSemantics(objects, CONTEXT);
+    expect(undeclared.map((found) => `${found.kind}/${found.name} ${found.path}: ${found.rule}`)).toEqual([
+      'Middleware/auth spec.basicAuth.secret: S07',
+    ]);
+  });
+
   test('every rule id has a failing mutation, every SEM-only rule a passing fixture', () => {
     const failing = new Set(SEMANTIC.map((mutation) => mutation.rule));
     expect(SEMANTIC_RULE_IDS.filter((id) => !failing.has(id))).toEqual([]);

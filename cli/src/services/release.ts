@@ -1,391 +1,312 @@
 /**
- * Release — manages versioned release directories on the remote manager.
- *
- * Handles rollback to previous releases and cleans up old releases
- * along with their orphaned Docker images.
- *
- * Remote directory structure:
- *   /var/lib/dockflow/stacks/{stackName}/
- *     current -> v1.2.4/          (symlink)
- *     v1.2.3/
- *       docker-compose.yml
- *       metadata.json
- *     v1.2.4/
- *       docker-compose.yml
- *       metadata.json
+ * Release flows shared by both orchestrators (DESIGN-CORE 6.8, design-03 12.5 and 16): the
+ * full-stack rollback, the cleanup of old releases, and the pure selections they and the stores
+ * rely on. Where releases live is the ReleaseStore's business (files on Swarm, Secrets on k3s).
  */
 
-import type { SSHKeyConnection } from '../types';
-import { sshExec, sshExecChannel } from '../utils/ssh';
-import { printDebug, printInfo, printWarning } from '../utils/output';
+import { parse, parseAllDocuments } from 'yaml';
 import { DeployError, ErrorCode } from '../utils/errors';
-import { DOCKFLOW_STACKS_DIR, RELEASE_STACK_FILE } from '../constants';
-import type { StackBackend } from './orchestrator/interfaces';
-import type { DockflowConfig } from '../utils/config';
+import { printDebug, printDim, printInfo, printWarning } from '../utils/output';
+import type {
+  ApplyOptions,
+  ClusterNodeRef,
+  Orchestrator,
+  ReleaseMetadata,
+  RevertResult,
+  StackArtifact,
+  StackRef,
+  WaitOptions,
+} from './orchestrator/interfaces';
+import { K8S_IMPORTED_IMAGE_REGISTRY } from './orchestrator/kubernetes/constants';
 
-const DEFAULT_KEEP_RELEASES = 3;
-
-export interface ReleaseMetadata {
-  project_name: string;
-  version: string;
-  env: string;
-  timestamp: string;
-  epoch: number;
-  performer: string;
-  branch: string;
+export interface RollbackReleaseArgs {
+  ref: StackRef;
+  stackName: string;
+  /** explicit target; null picks the release before current (or the newest other than the failed one) */
+  to: string | null;
+  /** the version whose deploy failed; its record is removed once the rollback converged */
+  failedVersion: string | null;
+  wait: WaitOptions;
+  /** `dockflow rollback --allow-chart-drift`; the automatic rollback of `on_failure: rollback` never sets it */
+  allowChartDrift?: boolean;
 }
 
 // ---------------------------------------------------------------------------
-// Pure helpers — release logic without SSH, unit-tested in __tests__/release.test.ts
+// Pure helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Parse the output of the release listing command (one metadata JSON per line)
- * into ReleaseMetadata entries sorted by epoch descending (newest first).
- * Calls `onCorrupted` for each line that fails to parse.
- */
-export function parseReleaseList(stdout: string, onCorrupted?: () => void): ReleaseMetadata[] {
-  const raw = stdout.trim();
-  if (!raw) return [];
+function compareText(a: string, b: string): number {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+}
 
-  const releases: ReleaseMetadata[] = [];
-  for (const line of raw.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      releases.push(JSON.parse(trimmed) as ReleaseMetadata);
-    } catch {
-      onCorrupted?.();
-    }
+/** newest first: epoch descending, then version descending (the ReleaseStore.list order) */
+function newestFirst(list: readonly ReleaseMetadata[]): ReleaseMetadata[] {
+  return [...list].sort((a, b) => b.epoch - a.epoch || compareText(b.version, a.version));
+}
+
+/** The newest `keep` releases by epoch, plus current when it is older; everything else is removed. */
+export function selectRetention(
+  list: readonly ReleaseMetadata[],
+  current: string | null,
+  keep: number,
+): { kept: ReleaseMetadata[]; removed: ReleaseMetadata[] } {
+  const sorted = newestFirst(list);
+  const kept = sorted.slice(0, Math.max(0, keep));
+  if (current !== null && !kept.some((r) => r.version === current)) {
+    const currentRelease = sorted.find((r) => r.version === current);
+    if (currentRelease) kept.push(currentRelease);
   }
-
-  releases.sort((a, b) => b.epoch - a.epoch);
-  return releases;
+  const keptVersions = new Set(kept.map((r) => r.version));
+  return { kept, removed: sorted.filter((r) => !keptVersions.has(r.version)) };
 }
 
 /**
- * Pick the release to roll back to. When the failed version is known, any other
- * release qualifies; otherwise skip the most recent (it's the one being replaced).
+ * The newest release strictly older than current. With the failed version known, the newest
+ * release other than it. Without a current record, the newest is skipped (it is what runs).
  */
-export function selectRollbackCandidate(
-  releases: ReleaseMetadata[],
-  failedVersion?: string | null,
+export function selectRollbackTarget(
+  list: readonly ReleaseMetadata[],
+  current: string | null,
+  failedVersion: string | null,
 ): ReleaseMetadata | null {
-  const candidates = failedVersion
-    ? releases.filter(r => r.version !== failedVersion)
-    : releases.slice(1);
-  return candidates[0] ?? null;
+  const sorted = newestFirst(list);
+  if (failedVersion !== null) return sorted.find((r) => r.version !== failedVersion) ?? null;
+  const index = sorted.findIndex((r) => r.version === current);
+  return index === -1 ? (sorted[1] ?? null) : (sorted[index + 1] ?? null);
 }
 
-/** Extract image references from compose YAML text (regex-based, tolerant of quotes). */
-export function extractComposeImages(yamlText: string): string[] {
-  const matches = yamlText.match(/image:\s*['"]?([^\s'"]+)/g);
-  if (!matches) return [];
-  return matches.map(m => m.replace(/image:\s*['"]?/, ''));
+/** Image references of a stored compose, in service order, without duplicates; [] when unreadable. */
+export function composeImages(compose: string | null): string[] {
+  if (compose === null || compose.trim() === '') return [];
+  let doc: unknown;
+  try {
+    doc = parse(compose, { merge: true });
+  } catch {
+    return [];
+  }
+  const services = isRecord(doc) ? doc.services : undefined;
+  if (!isRecord(services)) return [];
+  const images: string[] = [];
+  for (const service of Object.values(services)) {
+    const image = isRecord(service) ? service.image : undefined;
+    if (typeof image === 'string' && image !== '' && !images.includes(image)) images.push(image);
+  }
+  return images;
 }
 
 /**
- * Compute which images from removed releases can be deleted: anything not used
- * by a running stack, not referenced by a kept release, and not tagged :latest.
- * Returns a deduplicated list.
+ * Image references of an artifact that Dockflow streamed into the node runtimes (import mode).
+ * Registry and public images are pulled by the nodes and need no presence check.
  */
-export function computeOrphanImages(
-  runningImagesOutput: string,
-  keptComposeYaml: string,
-  removedComposeYaml: string,
-): string[] {
-  const protectedImages = new Set(runningImagesOutput.trim().split('\n').filter(Boolean));
-  for (const img of extractComposeImages(keptComposeYaml)) {
-    protectedImages.add(img);
+export function importedImages(content: string): string[] {
+  const prefix = `${K8S_IMPORTED_IMAGE_REGISTRY}/`;
+  const found = new Set<string>();
+  // an unreadable document is refused by the backend's apply, which parses the same content
+  for (const doc of parseAllDocuments(content)) {
+    if (doc.errors.length > 0) continue;
+    try {
+      collectContainerImages(doc.toJS(), found);
+    } catch {}
   }
-
-  const orphans: string[] = [];
-  for (const img of extractComposeImages(removedComposeYaml)) {
-    if (!protectedImages.has(img) && !img.endsWith(':latest')) {
-      orphans.push(img);
-    }
-  }
-  return [...new Set(orphans)];
+  return [...found].filter((ref) => ref.startsWith(prefix));
 }
 
-export class Release {
-  constructor(private readonly connection: SSHKeyConnection) {}
+const CONTAINER_LISTS = new Set(['containers', 'initContainers']);
 
-  private stackDir(stackName: string): string {
-    return `${DOCKFLOW_STACKS_DIR}/${stackName}`;
+/** container images wherever a pod template sits (Deployment, StatefulSet, DaemonSet, Job); never ConfigMap data */
+function collectContainerImages(value: unknown, into: Set<string>): void {
+  if (Array.isArray(value)) {
+    for (const item of value) collectContainerImages(item, into);
+    return;
   }
-
-  private releaseDir(stackName: string, version: string): string {
-    return `${this.stackDir(stackName)}/${version}`;
+  if (!isRecord(value)) return;
+  for (const [key, child] of Object.entries(value)) {
+    if (!CONTAINER_LISTS.has(key) || !Array.isArray(child)) {
+      collectContainerImages(child, into);
+      continue;
+    }
+    for (const container of child) {
+      if (isRecord(container) && typeof container.image === 'string') into.add(container.image);
+    }
   }
+}
 
-  /**
-   * Create a new release directory and upload compose, rendered stack and metadata.
-   * Updates the `current` symlink to point at the new release.
-   *
-   * The compose keeps the project's images for partial deploys and image cleanup;
-   * the rendered stack is what rollback re-applies.
-   */
-  async createRelease(
-    stackName: string,
-    version: string,
-    composeYaml: string,
-    renderedStack: string,
-    metadata: ReleaseMetadata,
-  ): Promise<{ previousSymlink: string | null }> {
-    const dir = this.releaseDir(stackName, version);
-    const metaJson = JSON.stringify(metadata, null, 2);
-    const stackDir = this.stackDir(stackName);
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
-    // Read previous symlink target before overwriting — used to restore on failure
-    const prevResult = await sshExec(this.connection, `readlink "${stackDir}/current" 2>/dev/null || echo ""`);
-    const previousSymlink = prevResult.stdout.trim() || null;
+/**
+ * Does this revert prove the app role runs what `previousVersion` describes again (design-03 3.4,
+ * PD-8)? Only then may the failed version's record be rewound.
+ */
+export function settles(r: RevertResult, previousVersion: string | null, nativeRolledBack: boolean): boolean {
+  if (r.status === 'native') return nativeRolledBack;
+  if (r.status === 'reverted') return true;
+  // a first deploy leaves its workloads for debugging, but there is no earlier state to describe
+  return r.status === 'nothing-to-revert' && previousVersion === null;
+}
 
-    const mkdirResult = await sshExec(this.connection, `mkdir -p "${dir}"`);
-    if (mkdirResult.exitCode !== 0) {
-      throw new DeployError(
-        `Failed to create release directory ${dir}: ${mkdirResult.stderr.trim() || `exit ${mkdirResult.exitCode}`}`,
-        ErrorCode.DEPLOY_FAILED,
-        `Ensure the deploy user has write access to ${stackDir}. Run once as root:\n  mkdir -p '${stackDir}' && chown ${this.connection.user}: '${stackDir}'`,
-      );
-    }
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
-    // Write compose and metadata via stdin (no shell escaping needed)
-    const [composeHandle, stackHandle, metaHandle] = await Promise.all([
-      sshExecChannel(this.connection, `cat > "${dir}/docker-compose.yml"`),
-      sshExecChannel(this.connection, `cat > "${dir}/${RELEASE_STACK_FILE}"`),
-      sshExecChannel(this.connection, `cat > "${dir}/metadata.json"`),
-    ]);
-    composeHandle.stream.end(composeYaml);
-    stackHandle.stream.end(renderedStack);
-    metaHandle.stream.end(metaJson);
-    const [composeResult, stackResult, metaResult] = await Promise.all([composeHandle.done, stackHandle.done, metaHandle.done]);
-    if (composeResult.exitCode !== 0) {
-      throw new DeployError(
-        `Failed to write release compose for ${version}: ${composeResult.stderr.trim() || `exit ${composeResult.exitCode}`}`,
-        ErrorCode.DEPLOY_FAILED,
-      );
-    }
-    if (stackResult.exitCode !== 0) {
-      throw new DeployError(
-        `Failed to write release stack for ${version}: ${stackResult.stderr.trim() || `exit ${stackResult.exitCode}`}`,
-        ErrorCode.DEPLOY_FAILED,
-      );
-    }
-    if (metaResult.exitCode !== 0) {
-      throw new DeployError(
-        `Failed to write release metadata for ${version}: ${metaResult.stderr.trim() || `exit ${metaResult.exitCode}`}`,
-        ErrorCode.DEPLOY_FAILED,
-      );
-    }
+function activeNodes(orchestrator: Orchestrator): ClusterNodeRef[] {
+  return [...orchestrator.target.managers, ...orchestrator.target.workers];
+}
 
-    // The `current` symlink is what rollback and partial deploys resolve —
-    // a silent failure here leaves the stack state pointing at the old release.
-    const linkResult = await sshExec(this.connection, `ln -sfn "${dir}" "${stackDir}/current"`);
-    if (linkResult.exitCode !== 0) {
-      throw new DeployError(
-        `Failed to update the current release symlink: ${linkResult.stderr.trim() || `exit ${linkResult.exitCode}`}`,
-        ErrorCode.DEPLOY_FAILED,
-        `Ensure the deploy user can write to ${stackDir}.`,
-      );
-    }
+// ---------------------------------------------------------------------------
+// Full-stack rollback (design-03 16.1)
+// ---------------------------------------------------------------------------
 
-    printDebug(`Release ${version} created at ${dir}`);
-    return { previousSymlink };
+/**
+ * Applies a stored release with prune on, waits for it, then makes it current and drops the failed
+ * record. Returns the version rolled back to. On Kubernetes the backend's `apply` feeds its Redactor
+ * from the artifact's Secrets and resolves Helm credentials from the current config (design-03 16.2).
+ */
+export async function rollbackRelease(orchestrator: Orchestrator, args: RollbackReleaseArgs): Promise<string> {
+  const { releases, stack, capabilities } = orchestrator;
+  const [list, current] = await Promise.all([releases.list(args.stackName), releases.current(args.stackName)]);
+  const target = args.to ?? selectRollbackTarget(list, current?.version ?? null, args.failedVersion)?.version ?? null;
+  if (target === null) {
+    throw new DeployError('No previous release available for rollback', ErrorCode.ROLLBACK_FAILED);
   }
-
-  /**
-   * Read the compose file from the current release symlink.
-   * Returns null if no release exists yet.
-   */
-  async getCurrentComposeContent(stackName: string): Promise<string | null> {
-    const result = await sshExec(
-      this.connection,
-      `cat "${this.stackDir(stackName)}/current/docker-compose.yml" 2>/dev/null`,
-    );
-    return result.exitCode === 0 && result.stdout.trim() ? result.stdout : null;
-  }
-
-  /** List all releases sorted by epoch descending (newest first). */
-  async listReleases(stackName: string): Promise<ReleaseMetadata[]> {
-    const dir = this.stackDir(stackName);
-
-    const result = await sshExec(
-      this.connection,
-      `cd "${dir}" 2>/dev/null && for d in */; do ` +
-        `[ -L "\${d%/}" ] && continue; ` +
-        `[ -f "$d/metadata.json" ] && tr -d '\\n' < "$d/metadata.json" && echo; ` +
-      `done || true`,
-    );
-
-    return parseReleaseList(result.stdout, () =>
-      printWarning(`Skipping release directory with corrupted metadata in ${dir}`),
+  if (target === args.failedVersion) {
+    throw new DeployError(
+      `Release ${target} is the failed release; nothing distinct to roll back to`,
+      ErrorCode.ROLLBACK_FAILED,
     );
   }
 
-  /**
-   * Rollback to the previous release. Returns the version rolled back to.
-   * When `previousReleasePath` is supplied the target is used directly;
-   * otherwise releases are listed and the most recent non-failed one is used.
-   */
-  async rollback(
-    stackName: string,
-    orchestrator: StackBackend,
-    failedVersion?: string | null,
-    previousReleasePath?: string | null,
-  ): Promise<string> {
-    let previousDir: string;
-    let previousVersion: string;
-    let failedDir: string | undefined;
-
-    if (previousReleasePath) {
-      // Fast path: we already know where the previous release lives.
-      previousDir = previousReleasePath;
-      previousVersion = previousReleasePath.split('/').pop() ?? previousReleasePath;
-      failedDir = failedVersion ? this.releaseDir(stackName, failedVersion) : undefined;
-    } else {
-      // Fallback: discover via listReleases.
-      const releases = await this.listReleases(stackName);
-      const previous = selectRollbackCandidate(releases, failedVersion);
-
-      if (!previous) {
-        throw new DeployError(
-          'No previous release available for rollback',
-          ErrorCode.ROLLBACK_FAILED,
-        );
-      }
-
-      previousDir = this.releaseDir(stackName, previous.version);
-      previousVersion = previous.version;
-      failedDir = failedVersion ? this.releaseDir(stackName, failedVersion) : undefined;
-    }
-
-    printInfo(`Rolling back to ${previousVersion}...`);
-
-    // A release written before the rendered stack was stored only has its compose.
-    const stackResult = await sshExec(
-      this.connection,
-      `cat "${previousDir}/${RELEASE_STACK_FILE}" 2>/dev/null || cat "${previousDir}/docker-compose.yml"`,
+  printInfo(`Rolling back to ${target}...`);
+  const artifact = await releases.readArtifact(args.stackName, target);
+  if (artifact.format !== capabilities.artifactFormat) {
+    throw new DeployError(
+      `Release ${target} was produced for ${artifact.format} and cannot be applied with orchestrator: ${orchestrator.kind}`,
+      ErrorCode.ROLLBACK_FAILED,
     );
-    if (stackResult.exitCode !== 0 || !stackResult.stdout.trim()) {
-      throw new DeployError(
-        `Could not read the stack for rollback at ${previousDir}`,
-        ErrorCode.ROLLBACK_FAILED,
-      );
-    }
+  }
+  await assertImagesPresent(orchestrator, target, artifact, args.ref.env);
 
-    const deployResult = await orchestrator.redeploy(stackName, stackResult.stdout);
-    if (!deployResult.success) {
-      throw new DeployError(deployResult.error.message, ErrorCode.ROLLBACK_FAILED);
-    }
+  const options: ApplyOptions = { prune: true, services: null };
+  if (args.allowChartDrift === true) options.allowChartDrift = true;
+  const applied = await stack.apply(args.ref, target, artifact, options);
+  if (!applied.success) {
+    throw new DeployError(applied.error.message, ErrorCode.ROLLBACK_FAILED, applied.error.suggestion);
+  }
+  const receipt = applied.data;
 
-    const convergence = await orchestrator.waitConvergence(stackName, 300, 5);
-    if (!convergence.converged) {
-      throw new DeployError('Rollback did not converge', ErrorCode.ROLLBACK_FAILED);
-    }
-
-    const linkResult = await sshExec(this.connection, `ln -sfn "${previousDir}" "${this.stackDir(stackName)}/current"`);
-    if (linkResult.exitCode !== 0) {
-      throw new DeployError(
-        `Rollback deployed ${previousVersion} but failed to update the current release symlink: ${linkResult.stderr.trim() || `exit ${linkResult.exitCode}`}`,
-        ErrorCode.ROLLBACK_FAILED,
-      );
-    }
-
-    if (failedDir) {
-      await sshExec(this.connection, `timeout 30 rm -rf "${failedDir}"`).catch(() => {
-        printWarning(`Could not remove failed release directory ${failedDir}`);
-      });
-    }
-
-    return previousVersion;
+  const convergence = await stack.waitConvergence(receipt, args.wait);
+  if (convergence.status !== 'converged') {
+    const detail = convergence.message ?? convergence.failures[0]?.message ?? convergence.status;
+    throw new DeployError(
+      `Rollback to ${target} did not converge: ${detail}`,
+      ErrorCode.ROLLBACK_FAILED,
+      `Run \`dockflow diagnose ${args.ref.env}\`.`,
+    );
   }
 
-  /**
-   * Remove a single release directory.
-   * If restoreTo is provided and the `current` symlink points to this version,
-   * restores it to the given target (or removes the symlink if restoreTo is null).
-   */
-  async removeRelease(stackName: string, version: string, restoreTo?: string | null): Promise<void> {
-    const dir = this.releaseDir(stackName, version);
-    const stackDir = this.stackDir(stackName);
-
-    if (restoreTo !== undefined) {
-      await sshExec(
-        this.connection,
-        `currentTarget=$(readlink "${stackDir}/current" 2>/dev/null); ` +
-        `timeout 30 rm -rf "${dir}"; ` +
-        `if [ "$currentTarget" = "${dir}" ]; then ` +
-        (restoreTo
-          ? `ln -sfn "${restoreTo}" "${stackDir}/current"; `
-          : `rm -f "${stackDir}/current"; `) +
-        `fi`,
-      );
-    } else {
-      await sshExec(this.connection, `timeout 30 rm -rf "${dir}"`);
-    }
-
-    printDebug(`Removed release ${version}`);
+  // prunes what the rolled-back-from version added; finalize never throws, but a converged rollback
+  // must reach setCurrent whatever happens here
+  try {
+    await stack.finalize(receipt);
+  } catch (error) {
+    printWarning(`Cleanup after rollback failed: ${errorText(error)}; the rollback itself succeeded`);
   }
-
-  /**
-   * Cleanup old releases keeping only the N most recent.
-   * Also removes orphaned Docker images from deleted releases.
-   *
-   * Batches SSH calls: 1 for running images (all stacks), 1 for kept compose
-   * files, 1 for to-remove compose files, 1 for image cleanup, 1 for dir cleanup.
-   */
-  async cleanupOldReleases(
-    stackName: string,
-    config: DockflowConfig,
-  ): Promise<void> {
-    const keepN = config.stack_management?.keep_releases ?? DEFAULT_KEEP_RELEASES;
-    const releases = await this.listReleases(stackName);
-
-    if (releases.length <= keepN) {
-      printDebug(`${releases.length} release(s), keeping ${keepN} — nothing to clean`);
-      return;
-    }
-
-    const toKeep = releases.slice(0, keepN);
-    const toRemove = releases.slice(keepN);
-
-    // 1-3. Collect running images, kept compose images, and to-remove compose images in parallel
-    const keptDirs = toKeep.map(r => `"${this.releaseDir(stackName, r.version)}/docker-compose.yml"`).join(' ');
-    const removeDirs = toRemove.map(r => `"${this.releaseDir(stackName, r.version)}/docker-compose.yml"`).join(' ');
-
-    const [runningResult, keptResult, removeResult] = await Promise.all([
-      sshExec(
-        this.connection,
-        `for stack in $(docker stack ls --format '{{.Name}}' 2>/dev/null); do ` +
-          `docker stack services "$stack" --format '{{.Image}}' 2>/dev/null; ` +
-        `done`,
-      ),
-      sshExec(this.connection, `cat ${keptDirs} 2>/dev/null || echo ""`),
-      sshExec(this.connection, `cat ${removeDirs} 2>/dev/null || echo ""`),
-    ]);
-
-    const orphanImages = computeOrphanImages(runningResult.stdout, keptResult.stdout, removeResult.stdout);
-
-    // 4. Batch cleanup orphaned images in ONE SSH call
-    if (orphanImages.length > 0) {
-      const quotedImages = orphanImages.map(img => `'${img}'`).join(' ');
-      // Remove containers using these images, then the images themselves
-      await sshExec(
-        this.connection,
-        `for img in ${quotedImages}; do ` +
-          `ids=$(docker ps -a --filter "ancestor=$img" -q 2>/dev/null); ` +
-          `[ -n "$ids" ] && docker rm -f $ids 2>/dev/null; ` +
-          `timeout 60 docker rmi "$img" 2>/dev/null; ` +
-        `done; true`,
-      );
-      printDebug(`Removed ${orphanImages.length} orphaned image(s)`);
-    }
-
-    // 5. Batch remove release directories in ONE SSH call
-    const rmDirs = toRemove.map(r => `"${this.releaseDir(stackName, r.version)}"`).join(' ');
-    await sshExec(this.connection, `timeout 60 rm -rf ${rmDirs}`);
-
-    printInfo(`Cleaned up ${toRemove.length} old release(s)`);
+  await releases.setCurrent(args.stackName, target);
+  if (args.failedVersion !== null) {
+    const failed = args.failedVersion;
+    await releases
+      .remove(args.stackName, failed)
+      .catch((error) => printWarning(`Could not remove failed release ${failed}: ${errorText(error)}`));
   }
+  await warnAccessoriesNotRolledBack(orchestrator, args, target, list);
+  return target;
+}
+
+/**
+ * A node that never received the release's imported images (added or re-provisioned since) would
+ * leave the rollback in ImagePullBackOff; refuse before anything is touched (design-03 16.2, K45).
+ */
+async function assertImagesPresent(
+  orchestrator: Orchestrator,
+  version: string,
+  artifact: StackArtifact,
+  env: string,
+): Promise<void> {
+  const refs = importedImages(artifact.content);
+  if (refs.length === 0) return;
+  const report = await orchestrator.images.verifyPresence(refs, activeNodes(orchestrator));
+  const missingRefs = report.flatMap((entry) => entry.missing);
+  const ref = refs.find((r) => missingRefs.includes(r)) ?? missingRefs[0];
+  if (ref === undefined) return;
+  const nodes = report.filter((entry) => entry.missing.includes(ref)).map((entry) => entry.node);
+  throw new DeployError(
+    `Release ${version} cannot be applied: image ${ref} is missing on ${nodes.join(', ')}`,
+    ErrorCode.ROLLBACK_FAILED,
+    `Re-deploy that version with \`dockflow deploy ${env} ${version}\`, or remove the affected node(s) from servers.yml.`,
+  );
+}
+
+/**
+ * Releases record the app role only, so the accessories keep what was deployed last (design-03
+ * 16.3, DV-S2-4). Said only when both digests are known and differ.
+ */
+async function warnAccessoriesNotRolledBack(
+  orchestrator: Orchestrator,
+  args: RollbackReleaseArgs,
+  target: string,
+  list: readonly ReleaseMetadata[],
+): Promise<void> {
+  try {
+    const recorded = list.find((r) => r.version === target)?.accessories_digest ?? null;
+    if (recorded === null) return;
+    const state = await orchestrator.releases.readState(args.stackName);
+    if (state.accessoriesDigest === null || state.accessoriesDigest === recorded) return;
+    const accessories = await orchestrator.stack.getServices({ ...args.ref, role: 'accessory' });
+    printWarning(
+      `Accessories were not rolled back; ${accessories.length} accessory service(s) still run the definition deployed after ${target}`,
+    );
+    printDim(
+      `  Restore them by checking out the accessories.yml of ${target} and running \`dockflow deploy ${args.ref.env} --accessories\`.`,
+    );
+  } catch (error) {
+    printDebug(`Accessories check after the rollback was skipped: ${errorText(error)}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Release cleanup (design-03 12.5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Removes releases beyond `keep`, then the images only they used. The composes of the releases to
+ * drop are read before `prune`, which deletes them (I-6). Failures are warnings: the deploy is done.
+ */
+export async function cleanupReleases(orchestrator: Orchestrator, stackName: string, keep: number): Promise<void> {
+  try {
+    const { releases } = orchestrator;
+    const [list, current] = await Promise.all([releases.list(stackName), releases.current(stackName)]);
+    const { kept, removed } = selectRetention(list, current?.version ?? null, keep);
+    if (removed.length === 0) return;
+    const read = (version: string): Promise<string | null> => releases.readCompose(stackName, version).catch(() => null);
+    const removedCompose = await Promise.all(removed.map((r) => read(r.version)));
+    const keptCompose = await Promise.all(kept.map((r) => read(r.version)));
+
+    const actuallyRemoved = await releases.prune(stackName, keep);
+    if (actuallyRemoved.length === 0) return;
+    const removedVersions = new Set(actuallyRemoved.map((r) => r.version));
+    const removedImages = unique(
+      removed.flatMap((r, i) => (removedVersions.has(r.version) ? composeImages(removedCompose[i] ?? null) : [])),
+    );
+    const keptImages = unique(keptCompose.flatMap((compose) => composeImages(compose)));
+    await orchestrator.images.collectGarbage(activeNodes(orchestrator), removedImages, keptImages);
+    printInfo(`Cleaned up ${actuallyRemoved.length} old release(s)`);
+  } catch (error) {
+    printWarning(`Release cleanup failed: ${errorText(error)}`);
+  }
+}
+
+function unique(values: readonly string[]): string[] {
+  return [...new Set(values)];
 }

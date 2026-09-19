@@ -449,8 +449,7 @@ services:
 });
 
 describe('U-SWARM-03: octal file modes', () => {
-  it('mode: 0440 is read as octal for secrets, configs and tmpfs', () => {
-    const compose = makeCompose(`
+  const octalModes = `
 services:
   web:
     image: web
@@ -465,11 +464,31 @@ services:
         target: /cache
         tmpfs:
           mode: 01777
-`);
+`;
+
+  function modes(compose: ParsedCompose): unknown[] {
     const web = compose.services.web;
-    expect(record((web.secrets as unknown[])[0]).mode).toBe(0o440);
-    expect(record((web.configs as unknown[])[0]).mode).toBe(0o640);
-    expect(record(record((web.volumes as unknown[])[0]).tmpfs).mode).toBe(0o1777);
+    return [
+      record((web.secrets as unknown[])[0]).mode,
+      record((web.configs as unknown[])[0]).mode,
+      record(record((web.volumes as unknown[])[0]).tmpfs).mode,
+    ];
+  }
+
+  it('mode: 0440 keeps its source text for secrets, configs and tmpfs', () => {
+    // a number would be indistinguishable from a decimal mode written without the leading 0
+    expect(modes(makeCompose(octalModes))).toEqual(['0440', '0o640', '01777']);
+  });
+
+  it('serialize writes octal modes as the numbers docker/cli reads (0440 -> 288)', () => {
+    const compose = makeCompose(octalModes);
+    const text = serialize(compose);
+
+    expect(text).toContain('mode: 288\n');
+    expect(text).toContain('mode: 416\n');
+    expect(text).toContain('mode: 1023\n');
+    expect(modes(loadFromString(text))).toEqual([0o440, 0o640, 0o1777]);
+    expect(modes(compose)).toEqual(['0440', '0o640', '01777']);
   });
 
   it('mode: 440 stays decimal and a quoted mode stays a string', () => {
@@ -484,11 +503,37 @@ services:
         mode: "0440"
       - source: zero
         mode: 0
+      - source: text
+        mode: "440"
 `);
     const secrets = compose.services.web.secrets as unknown[];
     expect(record(secrets[0]).mode).toBe(440);
     expect(record(secrets[1]).mode).toBe('0440');
     expect(record(secrets[2]).mode).toBe(0);
+    expect(record(secrets[3]).mode).toBe('440');
+
+    const serialized = loadFromString(serialize(compose)).services.web.secrets as unknown[];
+    expect(serialized.map((secret) => record(secret).mode)).toEqual([440, 0o440, 0, '440']);
+  });
+
+  it('serialize converts modes on the file-mode paths only', () => {
+    const compose = makeCompose(`
+x-mode: &mode "0440"
+services:
+  web:
+    image: web
+    environment:
+      mode: "0440"
+    secrets:
+      - token
+      - source: other
+        mode: *mode
+`);
+    const reloaded = loadFromString(serialize(compose));
+
+    expect(reloaded.raw['x-mode']).toBe('0440');
+    expect(record(reloaded.services.web.environment).mode).toBe('0440');
+    expect(reloaded.services.web.secrets).toEqual(['token', { source: 'other', mode: 0o440 }]);
   });
 
   it('a mode written under an anchor is converted where it is used', () => {
@@ -502,7 +547,9 @@ services:
     secrets:
       - *secret
 `);
-    expect(record((compose.services.web.secrets as unknown[])[0]).mode).toBe(0o400);
+    expect(record((compose.services.web.secrets as unknown[])[0]).mode).toBe('0400');
+    // outside the file-mode paths YAML 1.2 applies: 0400 is decimal 400
+    expect(record(compose.raw['x-secret']).mode).toBe(400);
   });
 });
 

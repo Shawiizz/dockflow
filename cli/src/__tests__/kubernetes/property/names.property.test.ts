@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'bun:test';
 import { sha256Hex } from '../../../utils/hash';
 import {
+  assignPortNames,
   hashedObjectName,
   headlessServiceName,
   importedImageRef,
@@ -274,6 +275,34 @@ describe('names (design-07 8.3)', () => {
       const name = portNameFor(port, protocol, requested);
       expect(isIanaSvcName(name)).toBe(true);
       if (requested !== null && isIanaSvcName(requested)) expect(name).toBe(requested);
+    },
+  );
+
+  forAll(
+    'P-N08 assignPortNames gives distinct (port, protocol) entries unique valid names',
+    (rng) => {
+      const protocols: Protocol[] = ['TCP', 'UDP', 'SCTP'];
+      const keys = new Map<string, { port: number; protocol: Protocol }>();
+      for (let i = randomInt(rng, 1, 12); i > 0; i--) {
+        const port = pick(rng, [53, 80, 81, 443, 8080, randomInt(rng, 1, 65535)]);
+        const protocol = pick(rng, protocols);
+        keys.set(`${port}/${protocol}`, { port, protocol });
+      }
+      const ports = [...keys.values()];
+      const generatedForm = () => `${pick(rng, protocols).toLowerCase()}-${pick(rng, ports).port}`;
+      return ports.map(({ port, protocol }) => ({
+        port,
+        protocol,
+        requested: pick(rng, [null, 'http', 'HTTP', 'api', 'tcp-80', generatedForm(), generatedForm().toUpperCase(), cleanLabel(rng, 15, true), '1234']),
+      }));
+    },
+    (entries) => {
+      const names = assignPortNames(entries);
+      expect(new Set(names).size).toBe(entries.length);
+      entries.forEach((entry, i) => {
+        expect(isIanaSvcName(names[i])).toBe(true);
+        expect([portNameFor(entry.port, entry.protocol, entry.requested), portNameFor(entry.port, entry.protocol, null)]).toContain(names[i]);
+      });
     },
   );
 
