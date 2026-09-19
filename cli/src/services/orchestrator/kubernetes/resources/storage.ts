@@ -7,4 +7,6 @@ export interface StorageClass extends KubeObjectBase<'storage.k8s.io/v1', 'Stora
   provisioner: string;
   reclaimPolicy?: 'Retain' | 'Delete';
   volumeBindingMode?: 'Immediate' | 'WaitForFirstConsumer';
+  /** read side only (K06): whether a standalone PVC bound to this class may grow (design-03 5.4.2) */
+  allowVolumeExpansion?: boolean;
 }

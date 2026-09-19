@@ -12,6 +12,7 @@ import {
   HELM_CHARTS_DIR,
   HELM_DEFAULT_TIMEOUT,
   HELM_HOME_DIR,
+  HELM_MANAGED_BY,
   HELM_TMP_DIR,
   K8S_APPLY_TIMEOUT_S,
   K8S_DELETE_WAIT_S,
@@ -45,6 +46,7 @@ import {
   K8S_STORAGE_CLASS,
   K8S_SYSTEM_NAMESPACE,
   K8S_TRANSPORT_FAILURES_TOLERATED,
+  KUBE_KEYS,
   LABELS,
   MAX_LOAD_BALANCER_PORTS,
   MAX_MIN_READY_S,
@@ -145,8 +147,28 @@ describe('U-CONST-01 DESIGN-CORE 5.1 values', () => {
       helmValues: 'dockflow.shawiizz.dev/helm-values-sha256',
       helmChartDigest: 'dockflow.shawiizz.dev/helm-chart-sha256',
       reclaimPolicyBefore: 'dockflow.shawiizz.dev/reclaim-policy-before',
+      crdChartVersion: 'dockflow.shawiizz.dev/chart-version',
+      crdTraefikVersion: 'dockflow.shawiizz.dev/traefik-version',
       defaultContainer: 'kubectl.kubernetes.io/default-container',
     });
+  });
+
+  it('keys defined by Kubernetes or Helm, including Helm release ownership', () => {
+    expect(KUBE_KEYS).toEqual({
+      hostname: 'kubernetes.io/hostname',
+      os: 'kubernetes.io/os',
+      arch: 'kubernetes.io/arch',
+      podTemplateHash: 'pod-template-hash',
+      controllerRevisionHash: 'controller-revision-hash',
+      deploymentRevision: 'deployment.kubernetes.io/revision',
+      defaultStorageClass: 'storageclass.kubernetes.io/is-default-class',
+      serviceAccountName: 'kubernetes.io/service-account.name',
+      helmResourcePolicy: 'helm.sh/resource-policy',
+      helmReleaseName: 'meta.helm.sh/release-name',
+      helmReleaseNamespace: 'meta.helm.sh/release-namespace',
+    });
+    expect(HELM_MANAGED_BY).toBe('Helm');
+    expect(HELM_MANAGED_BY).not.toBe(K8S_MANAGED_BY);
   });
 
   it('object parts, including the release backup part of design-03 13.4', () => {

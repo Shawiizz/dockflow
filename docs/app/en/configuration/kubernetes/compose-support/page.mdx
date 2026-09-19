@@ -1,0 +1,364 @@
+# Compose Support Table
+
+import { Callout } from 'nextra/components'
+
+How Dockflow handles every key of a compose file (`docker-compose.yml` and `accessories.yml`) on Docker Swarm and on k3s. On k3s, each key of the Compose specification has exactly one policy: it is translated to Kubernetes objects, translated with a warning, ignored because nothing corresponds to it, or rejected with an error that says what to use instead. No key is ever dropped silently.
+
+<Callout type="info">
+  This page is generated from the key registry of the CLI. After changing the registry, run `bun run scripts/gen-compose-support.ts` in `cli/`; `bun run scripts/gen-compose-support.ts --check` fails when the tables below are out of date.
+</Callout>
+
+## Reading the tables
+
+- **Key**: the path of the key in the compose file. `*` stands for any service, volume, network or map key, `[]` for the items of a list (the long syntax of `ports`, `volumes`, `secrets`...).
+- **Swarm**: what `docker stack deploy` does with the key: **Supported**, **Ignored** (skipped with a warning) or **Rejected** (the deploy fails).
+- **k3s**: what the Kubernetes translation does with the key:
+
+| Outcome | Meaning |
+|---|---|
+| Translated | Mapped to Kubernetes fields. Details are printed with `--debug`. |
+| Translated with warning | Mapped as closely as Kubernetes allows; the deploy prints a warning that says what differs. |
+| Ignored | Nothing in Kubernetes corresponds to the key and nothing is lost; the Notes column says why. |
+| Ignored with warning | The key has no effect on k3s; the deploy prints a warning. |
+| Rejected | `dockflow deploy` and `dockflow validate` stop with an error that names the key and the fix. |
+
+When the outcome depends on the value (for example "Translated; some values are rejected"), the Notes column says which values.
+
+- **Notes**: the Kubernetes target, the values that behave differently, and the `x-dockflow` settings that change the translation.
+
+Run `dockflow validate <env>` to see every warning and error for a project without deploying it.
+
+## Keys that are not in the tables
+
+- **Unknown keys are refused.** A key that is neither in the Compose specification this release follows nor in these tables stops the deploy: it is either a typo (the error suggests the closest known key) or a key added to Compose after the specification date given below, which needs a newer Dockflow.
+- **Extension fields** (`x-` keys) are skipped, so they can hold YAML anchors, except `x-dockflow`, which carries the Kubernetes-only settings of a service or a top-level volume. Its keys are listed in the `x-dockflow` reference of the [Kubernetes page](/en/configuration/kubernetes).
+- **Traefik labels** (`traefik.*` in `labels` or `deploy.labels`) become routes and middlewares; the [Kubernetes page](/en/configuration/kubernetes) describes how they are translated.
+
+## Keys by area
+
+{/* BEGIN GENERATED: compose-support */}
+
+Generated from the key registry of this Dockflow release, which follows the Compose specification of 2026-09-17 (upstream commit `914ec15`).
+
+### Identity and image
+
+| Key | Swarm | k3s | Notes |
+|---|---|---|---|
+| `services.*` | Supported | Translated | The service key names the workload, its Services and its env Secret (sanitized to a DNS label) |
+| `services.*.image` | Supported | Translated | Built images are imported into the nodes, or pulled from the registry when one is configured |
+| `services.*.build` | Supported | Translated | Built by the Dockflow builder for `docker-compose.yml` services; accessories are pulled |
+| `services.*.build.context` | Supported | Translated | Read by the Dockflow builder |
+| `services.*.build.dockerfile` | Supported | Translated | Read by the Dockflow builder |
+| `services.*.build.args` | Supported | Translated | Read by the Dockflow builder |
+| `services.*.build.additional_contexts` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.cache_from` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.cache_to` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.dockerfile_inline` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.entitlements` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.extra_hosts` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.isolation` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.labels` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.network` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.no_cache` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.no_cache_filter` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.platforms` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.privileged` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.provenance` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.pull` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.sbom` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.secrets` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.shm_size` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.ssh` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.tags` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.target` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.build.ulimits` | Ignored | Ignored with warning | The Dockflow builder reads only `context`, `dockerfile` and `args`; it warns about this key (`build.key-ignored`) on both orchestrators |
+| `services.*.pull_policy` | Rejected | Translated; some values warn or are rejected | Becomes `imagePullPolicy`; periodic policies pull on every pod start |
+| `services.*.pull_refresh_after` | Rejected | Ignored with warning |  |
+| `services.*.platform` | Rejected | Translated; some values warn or are rejected | Schedules pods on nodes of that OS and architecture; the variant is ignored |
+| `services.*.container_name` | Ignored | Ignored with warning | Pod names are generated by Kubernetes |
+| `services.*.labels` | Supported | Translated | Become pod annotations; `traefik.*` labels become routes and middlewares |
+| `services.*.label_file` | Rejected | Translated | Read relative to the compose file; `labels` win over the file |
+| `services.*.annotations` | Rejected | Translated | Become pod annotations |
+| `services.*.deploy.labels` | Supported | Translated | Become workload annotations; `traefik.*` labels become routes and middlewares |
+| `services.*.profiles` | Rejected | Rejected | No Compose profile is activated, so the service would never start |
+| `services.*.provider` | Rejected | Rejected |  |
+| `services.*.extends` | Rejected | Rejected | Share settings with a YAML anchor and a merge key (`<<: *common`) |
+| `services.*.models` | Rejected | Rejected |  |
+| `services.*.develop` | Rejected | Ignored | Only configures local development (compose watch) |
+| `services.*.attach` | Rejected | Ignored | Only affects local log output |
+
+### Process
+
+| Key | Swarm | k3s | Notes |
+|---|---|---|---|
+| `services.*.command` | Supported | Translated | Becomes the container `args`; a string is split into words as `docker stack deploy` does |
+| `services.*.entrypoint` | Supported | Translated | Becomes the container `command` |
+| `services.*.working_dir` | Supported | Translated |  |
+| `services.*.tty` | Supported | Translated |  |
+| `services.*.stdin_open` | Supported | Translated |  |
+| `services.*.init` | Supported | Translated | Shares the pod process namespace so the pause container reaps zombies |
+| `services.*.stop_grace_period` | Supported | Translated | Becomes `terminationGracePeriodSeconds` |
+| `services.*.stop_signal` | Supported | Translated; some values warn | `SIGTERM` is the default; another signal cannot be set on Kubernetes |
+| `services.*.post_start` | Rejected | Translated | Becomes the container's `postStart` exec handler; one hook per container |
+| `services.*.post_start[].command` | Rejected | Translated |  |
+| `services.*.post_start[].environment` | Rejected | Rejected | Kubernetes runs lifecycle hooks with the container's user, working directory and environment |
+| `services.*.post_start[].privileged` | Rejected | Translated; some values are rejected | `false` is accepted; `true` is refused |
+| `services.*.post_start[].user` | Rejected | Rejected | Kubernetes runs lifecycle hooks with the container's user, working directory and environment |
+| `services.*.post_start[].working_dir` | Rejected | Rejected | Kubernetes runs lifecycle hooks with the container's user, working directory and environment |
+| `services.*.pre_stop` | Rejected | Translated | Becomes the container's `preStop` exec handler; one hook per container |
+| `services.*.pre_stop[].command` | Rejected | Translated |  |
+| `services.*.pre_stop[].environment` | Rejected | Rejected | Kubernetes runs lifecycle hooks with the container's user, working directory and environment |
+| `services.*.pre_stop[].privileged` | Rejected | Translated; some values are rejected | `false` is accepted; `true` is refused |
+| `services.*.pre_stop[].user` | Rejected | Rejected | Kubernetes runs lifecycle hooks with the container's user, working directory and environment |
+| `services.*.pre_stop[].working_dir` | Rejected | Rejected | Kubernetes runs lifecycle hooks with the container's user, working directory and environment |
+| `services.*.pre_start` | Rejected | Rejected | Run the step in the entrypoint, or as a service with `deploy.mode: replicated-job` |
+| `services.*.logging` | Supported | Ignored with warning | Container logs are collected and rotated by the kubelet; read them with `dockflow logs` |
+
+### Environment and files
+
+| Key | Swarm | k3s | Notes |
+|---|---|---|---|
+| `services.*.environment` | Supported | Translated | Stored in an immutable Secret read with `envFrom` |
+| `services.*.env_file` | Supported | Translated | Read relative to the compose file with the Compose dotenv rules; `environment` wins |
+| `services.*.env_file[].format` | Supported | Translated | `raw` reads the file verbatim |
+| `services.*.env_file[].path` | Supported | Translated |  |
+| `services.*.env_file[].required` | Supported | Translated |  |
+| `services.*.secrets` | Supported | Translated | Mounted from the Secret Dockflow creates for the top-level entry |
+| `services.*.secrets[].gid` | Supported | Translated; some values warn | Files mounted from Secrets and ConfigMaps are owned by root; a non-zero id warns (use `x-dockflow.fs_group`) |
+| `services.*.secrets[].mode` | Supported | Translated | Becomes `defaultMode`; write bits are cleared, as Compose ignores them |
+| `services.*.secrets[].source` | Supported | Translated |  |
+| `services.*.secrets[].target` | Supported | Translated | Relative targets are placed under `/run/secrets/` |
+| `services.*.secrets[].uid` | Supported | Translated; some values warn | Files mounted from Secrets and ConfigMaps are owned by root; a non-zero id warns (use `x-dockflow.fs_group`) |
+| `services.*.configs` | Supported | Translated | Mounted from the ConfigMap Dockflow creates for the top-level entry |
+| `services.*.configs[].gid` | Supported | Translated; some values warn | Files mounted from Secrets and ConfigMaps are owned by root; a non-zero id warns (use `x-dockflow.fs_group`) |
+| `services.*.configs[].mode` | Supported | Translated | Becomes `defaultMode`; write bits are cleared, as Compose ignores them |
+| `services.*.configs[].source` | Supported | Translated |  |
+| `services.*.configs[].target` | Supported | Translated | Must be an absolute path |
+| `services.*.configs[].uid` | Supported | Translated; some values warn | Files mounted from Secrets and ConfigMaps are owned by root; a non-zero id warns (use `x-dockflow.fs_group`) |
+| `secrets` | Supported | Translated |  |
+| `secrets.*` | Supported | Translated | Becomes an immutable Secret named from its content; unused entries are not created |
+| `secrets.*.environment` | Supported | Rejected | Dockflow passes no process environment; render the value into a file with Nunjucks instead |
+| `secrets.*.external` | Supported | Translated | Pods mount an existing Secret that Dockflow neither creates nor prunes |
+| `secrets.*.external.name` | Supported | Translated | Deprecated object form of `name` |
+| `secrets.*.file` | Supported | Translated | Read relative to the compose file, inside the project |
+| `secrets.*.labels` | Supported | Translated with warning |  |
+| `secrets.*.name` | Supported | Translated; some values warn | Names the existing object when `external: true`; otherwise ignored with a warning |
+| `secrets.*.template_driver` | Supported | Rejected | Render the content with Nunjucks instead |
+| `secrets.*.driver` | Supported | Rejected |  |
+| `secrets.*.driver_opts` | Supported | Rejected |  |
+| `configs` | Supported | Translated |  |
+| `configs.*` | Supported | Translated | Becomes an immutable ConfigMap named from its content; unused entries are not created |
+| `configs.*.environment` | Rejected | Rejected | Dockflow passes no process environment; render the value into a file with Nunjucks instead |
+| `configs.*.external` | Supported | Translated | Pods mount an existing ConfigMap that Dockflow neither creates nor prunes |
+| `configs.*.external.name` | Supported | Translated | Deprecated object form of `name` |
+| `configs.*.file` | Supported | Translated | Read relative to the compose file, inside the project |
+| `configs.*.labels` | Supported | Translated with warning |  |
+| `configs.*.name` | Supported | Translated; some values warn | Names the existing object when `external: true`; otherwise ignored with a warning |
+| `configs.*.template_driver` | Supported | Rejected | Render the content with Nunjucks instead |
+| `configs.*.content` | Rejected | Translated | Becomes the data of the ConfigMap |
+
+### Ports and networking
+
+| Key | Swarm | k3s | Notes |
+|---|---|---|---|
+| `services.*.ports` | Supported | Translated | Published ports become a LoadBalancer Service on every node; `x-dockflow.publish` changes the exposure; see also `x-dockflow.lb_source_ranges` |
+| `services.*.ports[].target` | Supported | Translated |  |
+| `services.*.ports[].published` | Supported | Translated |  |
+| `services.*.ports[].host_ip` | Supported | Translated | Honoured for node-bound ports (`mode: host`, `x-dockflow.publish: hostport`); refused on a load balancer |
+| `services.*.ports[].protocol` | Supported | Translated |  |
+| `services.*.ports[].mode` | Supported | Translated | `host` binds the port on the node running the pod |
+| `services.*.ports[].name` | Supported | Translated | Names the container and Service ports when valid |
+| `services.*.ports[].app_protocol` | Supported | Translated |  |
+| `services.*.expose` | Ignored | Translated | Ports of the cluster-internal Service |
+| `services.*.networks` | Supported | Ignored | Kubernetes has one flat pod network: membership does not isolate services |
+| `services.*.networks.*` | Supported | Ignored | Informational; the network must be declared at top level |
+| `services.*.networks.*.aliases` | Supported | Translated | Each alias becomes a Service with the same selector and ports |
+| `services.*.networks.*.ipv4_address` | Ignored | Rejected | Pod addresses are assigned by the cluster |
+| `services.*.networks.*.ipv6_address` | Ignored | Rejected | Pod addresses are assigned by the cluster |
+| `services.*.networks.*.driver_opts` | Ignored | Ignored with warning |  |
+| `services.*.networks.*.gw_priority` | Ignored | Ignored with warning |  |
+| `services.*.networks.*.interface_name` | Ignored | Ignored with warning |  |
+| `services.*.networks.*.link_local_ips` | Ignored | Ignored with warning |  |
+| `services.*.networks.*.mac_address` | Ignored | Ignored with warning |  |
+| `services.*.networks.*.priority` | Ignored | Ignored with warning |  |
+| `services.*.network_mode` | Ignored | Translated / Rejected | `host` is supported (with a warning); `none`, `service:` and `container:` are rejected |
+| `services.*.links` | Ignored | Translated | An alias becomes a Service name |
+| `services.*.external_links` | Ignored | Ignored with warning |  |
+| `services.*.hostname` | Supported | Translated | A single DNS label; every replica gets the same host name |
+| `services.*.domainname` | Ignored | Ignored with warning |  |
+| `services.*.mac_address` | Ignored | Ignored with warning |  |
+| `services.*.dns` | Supported | Translated with warning | Added after the cluster DNS, which answers first |
+| `services.*.dns_search` | Supported | Translated |  |
+| `services.*.dns_opt` | Supported | Translated |  |
+| `services.*.extra_hosts` | Supported | Translated | Become `hostAliases`; `host-gateway` has no fixed address on Kubernetes |
+| `networks` | Supported | Ignored | Kubernetes has one flat pod network; declared networks are informational |
+| `networks.*` | Supported | Ignored | Informational: network membership does not isolate services |
+| `networks.*.name` | Supported | Ignored | Names the external network; otherwise ignored |
+| `networks.*.driver` | Supported | Ignored | The pod network is managed by the cluster |
+| `networks.*.driver_opts` | Supported | Ignored | The pod network is managed by the cluster |
+| `networks.*.ipam` | Supported | Ignored | The pod network is managed by the cluster |
+| `networks.*.attachable` | Supported | Ignored | The pod network is managed by the cluster |
+| `networks.*.enable_ipv4` | Supported | Ignored | The pod network is managed by the cluster |
+| `networks.*.labels` | Supported | Ignored | The pod network is managed by the cluster |
+| `networks.*.enable_ipv6` | Supported | Ignored with warning |  |
+| `networks.*.internal` | Supported | Ignored with warning | Not enforced: network policies are not generated |
+| `networks.*.external` | Supported | Ignored; some values warn | Stacks run in separate namespaces; reach another stack with `<service>.<namespace>.svc.cluster.local` |
+| `networks.*.external.name` | Supported | Ignored; some values warn |  |
+
+### Volumes
+
+| Key | Swarm | k3s | Notes |
+|---|---|---|---|
+| `services.*.volumes` | Supported | Translated | Named volumes become PersistentVolumeClaims, absolute host paths `hostPath` mounts; relative binds are refused |
+| `services.*.volumes[].type` | Supported | Translated; some values are rejected | `volume`, `bind` and `tmpfs` are supported |
+| `services.*.volumes[].source` | Supported | Translated |  |
+| `services.*.volumes[].target` | Supported | Translated |  |
+| `services.*.volumes[].read_only` | Supported | Translated |  |
+| `services.*.volumes[].consistency` | Supported | Ignored | Only applies to Docker Desktop |
+| `services.*.volumes[].bind` | Supported | Translated |  |
+| `services.*.volumes[].bind.propagation` | Supported | Translated |  |
+| `services.*.volumes[].bind.create_host_path` | Supported | Translated; some values warn | `false` is not enforced: the container runtime creates a missing directory |
+| `services.*.volumes[].bind.recursive` | Supported | Translated; some values warn or are rejected | `readonly` becomes `recursiveReadOnly: IfPossible`; `disabled` is ignored with a warning |
+| `services.*.volumes[].bind.selinux` | Supported | Ignored with warning |  |
+| `services.*.volumes[].volume` | Supported | Translated |  |
+| `services.*.volumes[].volume.nocopy` | Supported | Translated | Kubernetes never copies image files into a volume; `nocopy` only silences that notice |
+| `services.*.volumes[].volume.subpath` | Supported | Translated |  |
+| `services.*.volumes[].volume.labels` | Supported | Ignored with warning | Set `labels` on the top-level volume instead |
+| `services.*.volumes[].tmpfs` | Supported | Translated |  |
+| `services.*.volumes[].tmpfs.size` | Supported | Translated |  |
+| `services.*.volumes[].tmpfs.mode` | Supported | Ignored with warning | Memory-backed volumes are world-writable |
+| `services.*.volumes[].image` | Supported | Rejected | Image mounts need Kubernetes 1.36; Dockflow supports clusters from 1.34 |
+| `services.*.tmpfs` | Ignored | Translated | Memory-backed `emptyDir` volumes |
+| `services.*.shm_size` | Ignored | Translated | A memory-backed volume mounted at `/dev/shm` |
+| `services.*.volumes_from` | Rejected | Rejected | Mount a named volume in both services instead |
+| `volumes` | Supported | Translated |  |
+| `volumes.*` | Supported | Translated | Becomes a PersistentVolumeClaim, never pruned; unmounted volumes are not created; see also `x-dockflow.size`, `x-dockflow.storage_class`, `x-dockflow.access_mode`, `x-dockflow.per_replica` |
+| `volumes.*.driver` | Supported | Translated; some values are rejected | Only `local` is accepted |
+| `volumes.*.driver_opts` | Supported | Translated; some values are rejected | Mount a host path directly, or create the claim and use `external: true`; an empty map is accepted |
+| `volumes.*.external` | Supported | Translated | Pods mount an existing claim that Dockflow never creates or deletes |
+| `volumes.*.external.name` | Supported | Translated | Deprecated object form of `name` |
+| `volumes.*.name` | Supported | Translated; some values warn | Names the existing claim when `external: true`; otherwise ignored with a warning |
+| `volumes.*.labels` | Supported | Translated | Become labels of the claim |
+| `volumes.*.x-dockflow` | Ignored | Translated | Size, storage class, access mode and per-replica claims (see the `x-dockflow` reference) |
+
+### Healthcheck
+
+| Key | Swarm | k3s | Notes |
+|---|---|---|---|
+| `services.*.healthcheck` | Supported | Translated | Becomes readiness and liveness probes (and a startup probe with `start_period`); see also `x-dockflow.probes` |
+| `services.*.healthcheck.test` | Supported | Translated |  |
+| `services.*.healthcheck.disable` | Supported | Translated |  |
+| `services.*.healthcheck.interval` | Supported | Translated |  |
+| `services.*.healthcheck.timeout` | Supported | Translated |  |
+| `services.*.healthcheck.retries` | Supported | Translated |  |
+| `services.*.healthcheck.start_period` | Supported | Translated |  |
+| `services.*.healthcheck.start_interval` | Supported | Translated |  |
+
+### Deploy
+
+| Key | Swarm | k3s | Notes |
+|---|---|---|---|
+| `services.*.deploy` | Supported | Translated |  |
+| `services.*.deploy.mode` | Supported | Translated | `replicated` becomes a Deployment (or StatefulSet), `global` a DaemonSet, `replicated-job` a Job; see also `x-dockflow.kind` |
+| `services.*.deploy.replicas` | Supported | Translated |  |
+| `services.*.deploy.endpoint_mode` | Supported | Translated | `dnsrr` makes the Service headless |
+| `services.*.deploy.update_config` | Supported | Translated | Becomes the rolling update strategy and `minReadySeconds` |
+| `services.*.deploy.update_config.parallelism` | Supported | Translated |  |
+| `services.*.deploy.update_config.delay` | Supported | Ignored | Kubernetes has no pause between update batches |
+| `services.*.deploy.update_config.failure_action` | Supported | Translated; some values warn or are rejected | A failed app rollout is always reverted; a failed accessory rollout stops the deploy |
+| `services.*.deploy.update_config.monitor` | Supported | Translated | Becomes `minReadySeconds` |
+| `services.*.deploy.update_config.max_failure_ratio` | Supported | Translated; some values warn or are rejected | Any failed pod fails the rollout |
+| `services.*.deploy.update_config.order` | Supported | Translated | `start-first` surges, `stop-first` replaces in place |
+| `services.*.deploy.rollback_config` | Supported | Ignored | A revert re-applies the previous objects with their own update settings |
+| `services.*.deploy.restart_policy` | Supported | Translated |  |
+| `services.*.deploy.restart_policy.condition` | Supported | Translated; some values warn or are rejected | Long-running workloads always restart; Jobs never restart a failed pod in place |
+| `services.*.deploy.restart_policy.delay` | Supported | Translated with warning | Kubernetes restarts containers with its own back-off |
+| `services.*.deploy.restart_policy.window` | Supported | Translated with warning | Kubernetes restarts containers with its own back-off |
+| `services.*.deploy.restart_policy.max_attempts` | Supported | Translated; some values warn | The retry limit of a `replicated-job`; warned for long-running workloads |
+| `services.*.deploy.resources` | Supported | Translated |  |
+| `services.*.deploy.resources.limits` | Supported | Translated |  |
+| `services.*.deploy.resources.limits.cpus` | Supported | Translated |  |
+| `services.*.deploy.resources.limits.memory` | Supported | Translated |  |
+| `services.*.deploy.resources.limits.pids` | Supported | Ignored with warning | Kubernetes has no per-container process limit |
+| `services.*.deploy.resources.reservations` | Supported | Translated |  |
+| `services.*.deploy.resources.reservations.cpus` | Supported | Translated |  |
+| `services.*.deploy.resources.reservations.memory` | Supported | Translated |  |
+| `services.*.deploy.resources.reservations.devices` | Rejected | Rejected | Device reservations (GPUs) are not supported yet |
+| `services.*.deploy.resources.reservations.generic_resources` | Supported | Rejected | Place the service with `x-dockflow.node_selector` instead |
+| `services.*.deploy.placement` | Supported | Translated |  |
+| `services.*.deploy.placement.constraints` | Supported | Translated | `node.role`, `node.hostname` (servers.yml keys), `node.labels.*` and `node.platform.*` become node affinity |
+| `services.*.deploy.placement.preferences` | Supported | Translated | Become topology spread constraints |
+| `services.*.deploy.placement.preferences[].spread` | Supported | Translated |  |
+| `services.*.deploy.placement.max_replicas_per_node` | Supported | Translated | `1` is exact (pod anti-affinity); a larger value is approximated with a warning |
+| `services.*.scale` | Rejected | Translated |  |
+| `services.*.restart` | Ignored | Translated; some values warn or are rejected | Long-running pods always restart on Kubernetes; on a `replicated-job` it sets the retry limit |
+| `services.*.depends_on` | Supported | Ignored | Containers start in any order and restart until their dependencies answer; accessories are deployed before the app |
+| `services.*.depends_on.*` | Supported | Ignored | A service of either compose file |
+| `services.*.depends_on.*.condition` | Rejected | Ignored; some values warn or are rejected | Not enforced: `service_healthy` and `service_completed_successfully` warn |
+| `services.*.depends_on.*.required` | Rejected | Ignored | Accepted; has no effect |
+| `services.*.depends_on.*.restart` | Rejected | Ignored with warning |  |
+| `services.*.cpus` | Rejected | Translated | Same as `deploy.resources.limits.cpus` |
+| `services.*.cpu_quota` | Rejected | Translated | With `cpu_period`, a CPU limit |
+| `services.*.cpu_period` | Rejected | Translated | Only used together with `cpu_quota` |
+| `services.*.cpu_shares` | Rejected | Ignored with warning | Set `deploy.resources.reservations.cpus` instead (1024 shares = 1 CPU) |
+| `services.*.cpu_rt_runtime` | Rejected | Rejected |  |
+| `services.*.cpu_rt_period` | Rejected | Rejected |  |
+| `services.*.cpu_count` | Rejected | Rejected | Windows containers only |
+| `services.*.cpu_percent` | Rejected | Rejected | Windows containers only |
+| `services.*.cpuset` | Rejected | Rejected | CPU pinning needs the kubelet static CPU manager |
+| `services.*.mem_limit` | Rejected | Translated | Same as `deploy.resources.limits.memory` |
+| `services.*.mem_reservation` | Rejected | Translated | Same as `deploy.resources.reservations.memory` |
+| `services.*.mem_swappiness` | Rejected | Ignored with warning |  |
+| `services.*.memswap_limit` | Rejected | Ignored with warning |  |
+| `services.*.pids_limit` | Rejected | Ignored with warning | Kubernetes has no per-container process limit |
+| `services.*.x-dockflow` | Ignored | Translated | Kubernetes-only settings (see the `x-dockflow` reference) |
+
+### Security
+
+| Key | Swarm | k3s | Notes |
+|---|---|---|---|
+| `services.*.user` | Supported | Translated | Numeric user and group ids only |
+| `services.*.group_add` | Rejected | Translated | Numeric group ids only |
+| `services.*.privileged` | Ignored | Translated; some values warn | `privileged: true` is applied and warned about: the container gets full access to the node |
+| `services.*.cap_add` | Supported | Translated |  |
+| `services.*.cap_drop` | Supported | Translated |  |
+| `services.*.read_only` | Supported | Translated |  |
+| `services.*.security_opt` | Ignored | Translated; some values warn or are rejected | `no-new-privileges`, `seccomp` and `apparmor` are translated; SELinux labels are ignored |
+| `services.*.sysctls` | Supported | Translated | Only the kubelet safe set is accepted |
+| `services.*.pid` | Ignored | Translated; some values warn or are rejected | `host` is applied with a warning; `service:` and `container:` are refused |
+| `services.*.ipc` | Ignored | Translated; some values warn or are rejected | `host` is applied with a warning; `private` and `shareable` are the pod default |
+| `services.*.uts` | Rejected | Translated; some values are rejected | Only accepted together with `network_mode: host` |
+| `services.*.userns_mode` | Ignored | Translated; some values are rejected | `host` is the pod default and accepted |
+| `services.*.cgroup` | Ignored | Translated; some values are rejected | `private` is the default and accepted; `host` is refused |
+| `services.*.cgroup_parent` | Ignored | Ignored with warning |  |
+| `services.*.devices` | Ignored | Rejected |  |
+| `services.*.device_cgroup_rules` | Rejected | Rejected |  |
+| `services.*.gpus` | Rejected | Rejected |  |
+| `services.*.runtime` | Rejected | Translated; some values are rejected | `runc` is accepted; other runtimes are refused |
+| `services.*.isolation` | Supported | Translated; some values are rejected | Windows containers only; `default` is accepted |
+| `services.*.credential_spec` | Supported | Rejected | Windows containers only |
+| `services.*.use_api_socket` | Rejected | Translated; some values are rejected | k3s nodes have no Docker API socket |
+| `services.*.ulimits` | Supported | Ignored with warning | Containers inherit the limits of the node's container runtime |
+| `services.*.oom_score_adj` | Rejected | Ignored with warning |  |
+| `services.*.oom_kill_disable` | Rejected | Ignored with warning |  |
+| `services.*.blkio_config` | Rejected | Ignored with warning |  |
+| `services.*.storage_opt` | Rejected | Ignored with warning |  |
+
+### Top-level
+
+| Key | Swarm | k3s | Notes |
+|---|---|---|---|
+| `version` | Supported | Ignored | Obsolete; ignored |
+| `name` | Rejected | Ignored with warning | The stack and namespace names come from `project_name` and the environment |
+| `include` | Rejected | Rejected | Dockflow deploys one compose file; share fragments with YAML anchors or a Nunjucks `{% include %}` |
+| `models` | Rejected | Rejected |  |
+| `jobs` | Rejected | Rejected | Use a service with `deploy.mode: replicated-job` for a run-to-completion task |
+| `services` | Supported | Translated |  |
+
+{/* END GENERATED: compose-support */}
+
+## See also
+
+- [Kubernetes (k3s)](/en/configuration/kubernetes): how a compose project maps to Kubernetes, naming, exposure, probes and the `x-dockflow` reference
+- [Docker Compose](/en/configuration/docker-compose): the compose files Dockflow deploys
+- [Orchestrator](/en/configuration/orchestrator): choosing between Swarm and k3s

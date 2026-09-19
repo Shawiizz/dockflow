@@ -758,7 +758,7 @@ const SEMANTIC: Mutation[] = [
   {
     id: 'S03-service',
     rule: 'S03',
-    change: 'Service selector matching no workload (SEM-043)',
+    change: 'Service selector that is not the selector labels of its own service (SEM-043)',
     mutate: (o) => {
       at(find(o, 'Service', 'db'), 'spec.selector')[LABELS.service] = 'other';
     },
@@ -1494,6 +1494,14 @@ const SEMANTIC: Mutation[] = [
 
 /** Passing fixtures of the SEM rules without an S equivalent (design-02 14.6). */
 const PASSING: Mutation[] = [
+  {
+    id: 'S03-job-service',
+    rule: 'S03',
+    change: 'the Service of a replicated-job with 0 replicas, whose Job the artifact never contains (design-02 4.6, 6.1)',
+    mutate: (o) => {
+      o.splice(o.indexOf(find(o, 'Job', 'migrate-0c1d2e3f')), 1);
+    },
+  },
   { id: 'SEM-013', rule: 'SEM-013', change: 'stop-first DaemonSet (maxSurge 0, maxUnavailable 1)', mutate: () => {} },
   {
     id: 'SEM-013-surge',

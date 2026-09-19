@@ -1,0 +1,78 @@
+# Traefik values golden "default-class": buildTraefikValues output (traefik-values.test.ts)
+api:
+  dashboard: false
+commonLabels:
+  dockflow.shawiizz.dev/part: system
+deployment:
+  kind: Deployment
+  replicas: 1
+gateway:
+  enabled: false
+gatewayClass:
+  enabled: false
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+image:
+  registry: docker.io
+  repository: traefik
+  tag: v3.7.13
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+  name: traefik
+ingressRoute:
+  dashboard:
+    enabled: false
+  healthcheck:
+    enabled: false
+nodeSelector:
+  kubernetes.io/hostname: main
+  node-role.kubernetes.io/control-plane: "true"
+persistence:
+  enabled: false
+ports:
+  web:
+    expose:
+      default: true
+    hostPort: 80
+    port: 8000
+  websecure:
+    expose:
+      default: false
+    http:
+      tls:
+        enabled: true
+    port: 8443
+priorityClassName: system-cluster-critical
+providers:
+  kubernetesCRD:
+    allowCrossNamespace: false
+    allowEmptyServices: true
+    allowExternalNameServices: false
+    enabled: true
+  kubernetesGateway:
+    enabled: false
+  kubernetesIngress:
+    allowExternalNameServices: false
+    enabled: true
+    publishedService:
+      enabled: false
+resources:
+  limits:
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+service:
+  enabled: true
+  spec:
+    type: ClusterIP
+tolerations:
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/control-plane
+    operator: Exists
+  - key: CriticalAddonsOnly
+    operator: Exists
+updateStrategy:
+  type: Recreate

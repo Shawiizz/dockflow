@@ -317,15 +317,6 @@ function templateLabels(object: Json): Record<string, string> {
   return template === null ? {} : stringMap(template.metadata.labels);
 }
 
-/** Selector labels of a workload: its selector, or the ones the Job controller will match on. */
-function workloadSelector(workload: Json): Record<string, string> {
-  if (workload.kind !== 'Job') return stringMap(rec(rec(workload.spec).selector).matchLabels);
-  const labels = templateLabels(workload);
-  const selector: Record<string, string> = {};
-  for (const key of [LABELS.stack, LABELS.service]) if (labels[key] !== undefined) selector[key] = labels[key];
-  return selector;
-}
-
 /** Container ports of the pod templates a Service selector matches. */
 function selectedPorts(selector: Record<string, string>, env: RuleEnvironment): Json[] {
   const ports: Json[] = [];
@@ -464,18 +455,22 @@ function checkLabels(object: Json): Finding[] {
 // S03 selectors (SEM-010, SEM-043)
 
 function checkSelectors(object: Json, env: RuleEnvironment): Finding[] {
+  const expected = { [LABELS.stack]: env.namespace, [LABELS.service]: labelsOf(object)[LABELS.service] ?? '' };
+  const shape = `{${LABELS.stack}: ${expected[LABELS.stack]}, ${LABELS.service}: ${expected[LABELS.service]}}`;
   if (object.kind === 'Service') {
+    // SEM-043 as a shape rule: every workload selector is pinned to the same labels below, so an
+    // equal selector reaches the service's pods whenever it has a workload. Demanding one in the
+    // artifact would refuse the Service of a `replicated-job` with 0 replicas, which is emitted
+    // while its Job is not (design-02 4.6, 6.1).
     const selector = stringMap(rec(object.spec).selector);
-    const selected = env.workloads.some((workload) => sameLabels(workloadSelector(workload), selector));
-    return selected ? [] : [finding('spec.selector', 'does not equal the selector labels of any workload of the artifact')];
+    return sameLabels(selector, expected) ? [] : [finding('spec.selector', `must be exactly the selector labels of its service, ${shape}`)];
   }
   if (object.kind === 'Job') return [];
   const selector = rec(rec(object.spec).selector);
   const matchLabels = stringMap(selector.matchLabels);
-  const expected = { [LABELS.stack]: env.namespace, [LABELS.service]: labelsOf(object)[LABELS.service] ?? '' };
   const findings: Finding[] = [];
   if (!sameLabels(matchLabels, expected) || list(selector.matchExpressions).length > 0) {
-    findings.push(finding('spec.selector', `must be exactly matchLabels {${LABELS.stack}: ${expected[LABELS.stack]}, ${LABELS.service}: ${expected[LABELS.service]}}`));
+    findings.push(finding('spec.selector', `must be exactly matchLabels ${shape}`));
   }
   if (!matchesLabels(matchLabels, templateLabels(object))) findings.push(finding('spec.selector.matchLabels', 'is not a subset of the pod template labels'));
   return findings;

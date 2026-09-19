@@ -1,82 +1,181 @@
 /**
  * Swarm proxy backend.
  *
- * Deploys Traefik as a Swarm stack when `config.proxy.enabled` is true.
- * Later deploys leave it alone unless its configuration changed: the hash of the
+ * Deploys Traefik as a Swarm stack when `config.proxy.enabled` is true, on the swarm the control
+ * plane belongs to. Later deploys leave it alone unless its configuration changed: the hash of the
  * generated stack is kept as a label on the service and compared on each deploy.
  */
 
 import { createHash } from 'crypto';
 
-import type { SSHKeyConnection } from '../../../types';
+import { TRAEFIK_CERTS_VOLUME, TRAEFIK_IMAGE, TRAEFIK_NETWORK_NAME, TRAEFIK_STACK_NAME } from '../../../constants';
 import type { ProxyConfig } from '../../../utils/config';
-import { sshExec, sshExecChannel } from '../../../utils/ssh';
+import { DeployError, ErrorCode } from '../../../utils/errors';
 import { printDebug, printDim, printSuccess } from '../../../utils/output';
-import {
-  TRAEFIK_STACK_NAME,
-  TRAEFIK_NETWORK_NAME,
-  TRAEFIK_CERTS_VOLUME,
-  TRAEFIK_IMAGE,
-} from '../../../constants';
-
-import type { ProxyBackend } from '../interfaces';
+import { shellQuote } from '../../../utils/ssh';
+import type {
+  HelmEventSink,
+  OrchestratorTarget,
+  ProxyBackend,
+  ProxyEnsureResult,
+  ProxyPlan,
+  ProxyStatus,
+} from '../interfaces';
+import { execWithStdin } from './swarm-stack-ops';
+import { type SwarmExecResult, type SwarmSsh, swarmSsh, swarmTransportError } from './swarm-utils';
 
 const CONFIG_HASH_LABEL = 'dockflow.config-hash';
+const TRAEFIK_SERVICE = `${TRAEFIK_STACK_NAME}_traefik`;
+
+export interface SwarmProxyBackendOptions {
+  /** default: the real SSH transport */
+  ssh?: SwarmSsh;
+}
+
+/** What the running Traefik service reports; every field empty when it is not deployed. */
+export interface SwarmProxyState {
+  /** `1/1`; '' when the service does not exist */
+  replicas: string;
+  image: string;
+  configHash: string;
+  args: string[];
+}
+
+/** `traefik:v3.6@sha256:...` -> `v3.6`; null without a tag. */
+export function imageTag(image: string): string | null {
+  const reference = image.split('@')[0];
+  const colon = reference.lastIndexOf(':');
+  if (colon < 0 || colon < reference.lastIndexOf('/')) return null;
+  return reference.slice(colon + 1) || null;
+}
+
+function parseArgs(text: string): string[] {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+/** ProxyStatus of a Swarm Traefik; Swarm has no owner record, reclaim policy or recorded node. */
+export function swarmProxyStatus(state: SwarmProxyState): ProxyStatus {
+  const installed = state.replicas !== '';
+  const ready = state.replicas === '1/1';
+  const entryPoints = state.args
+    .map((arg) => /^--entrypoints\.([^.=]+)\.address=/.exec(arg)?.[1])
+    .filter((name): name is string => name !== undefined);
+  const status: ProxyStatus = {
+    installed,
+    ready,
+    version: installed ? imageTag(state.image) : null,
+    owner: null,
+    entryPoints: [...new Set(entryPoints)],
+    acme: state.args.some((arg) => arg.startsWith('--certificatesresolvers.letsencrypt.acme.')),
+    acmeReclaimPolicy: null,
+  };
+  if (installed && !ready) status.detail = `Traefik runs ${state.replicas} replicas`;
+  return status;
+}
 
 export class SwarmProxyBackend implements ProxyBackend {
-  constructor(private readonly connection: SSHKeyConnection) {}
+  private readonly ssh: SwarmSsh;
+
+  constructor(
+    private readonly target: OrchestratorTarget,
+    options: SwarmProxyBackendOptions = {},
+  ) {
+    this.ssh = options.ssh ?? swarmSsh;
+  }
+
+  /** Read-only: whether `ensure()` would deploy Traefik, and why. */
+  async plan(proxy: ProxyConfig, _env: string): Promise<ProxyPlan> {
+    const state = await this.currentState();
+    const status = swarmProxyStatus(state);
+    const base = { status, blockers: [], warnings: [], node: null };
+    if (!status.installed) return { ...base, action: 'install', reason: 'Traefik is not deployed' };
+    if (state.configHash !== SwarmProxyBackend.configHash(proxy)) {
+      return { ...base, action: 'upgrade', reason: 'the proxy configuration changed' };
+    }
+    if (!status.ready) return { ...base, action: 'upgrade', reason: `Traefik runs ${state.replicas} replicas` };
+    return { ...base, action: 'unchanged', reason: 'Traefik already runs this configuration' };
+  }
 
   /**
-   * Ensure the Traefik stack is running with the current configuration.
-   * Skips when it already runs with the same generated stack.
+   * Ensures the Traefik stack runs with the current configuration; skips when it already runs the
+   * same generated stack. Progress goes to `events` when given, else to today's output lines.
    */
-  async ensureRunning(proxyConfig: ProxyConfig): Promise<void> {
-    const configHash = SwarmProxyBackend.configHash(proxyConfig);
-    const state = await this.currentState();
-    if (state.replicas === '1/1' && state.configHash === configHash) {
+  async ensure(proxy: ProxyConfig, env: string, events?: HelmEventSink): Promise<ProxyEnsureResult> {
+    const plan = await this.plan(proxy, env);
+    if (plan.action === 'unchanged') {
       printDebug('Traefik stack already running');
-      return;
+      return { changed: false, action: 'unchanged', version: plan.status.version };
     }
 
-    printDim(state.replicas ? 'Updating Traefik reverse proxy...' : 'Deploying Traefik reverse proxy...');
+    const step = plan.status.installed ? 'Updating Traefik reverse proxy...' : 'Deploying Traefik reverse proxy...';
+    if (events) events.step(step);
+    else printDim(step);
 
-    // Create overlay network (idempotent)
-    await sshExec(
-      this.connection,
-      `docker network create --driver overlay --attachable ${TRAEFIK_NETWORK_NAME} 2>/dev/null || true`,
-    );
+    await this.run(`docker network create --driver overlay --attachable ${shellQuote(TRAEFIK_NETWORK_NAME)} 2>/dev/null || true`);
+    if (proxy.acme !== false) {
+      await this.run(`docker volume create ${shellQuote(TRAEFIK_CERTS_VOLUME)} 2>/dev/null || true`);
+    }
 
-    // Create certs volume if ACME enabled (idempotent)
-    const acme = proxyConfig.acme !== false;
-    if (acme) {
-      await sshExec(
-        this.connection,
-        `docker volume create ${TRAEFIK_CERTS_VOLUME} 2>/dev/null || true`,
+    const compose = SwarmProxyBackend.generateCompose(proxy, SwarmProxyBackend.configHash(proxy));
+    let result: SwarmExecResult;
+    try {
+      result = await execWithStdin(
+        this.ssh,
+        this.target.controlPlane,
+        `docker stack deploy --prune --resolve-image changed -c - ${shellQuote(TRAEFIK_STACK_NAME)}`,
+        compose,
+      );
+    } catch (error) {
+      throw swarmTransportError(this.target.controlPlane, this.target.env, error);
+    }
+    if (result.exitCode !== 0) {
+      throw new DeployError(
+        `Traefik deployment failed: ${result.stderr.trim() || result.stdout.trim()}`,
+        ErrorCode.DEPLOY_FAILED,
       );
     }
 
-    const { stream, done } = await sshExecChannel(
-      this.connection,
-      `docker stack deploy --prune --resolve-image changed -c - ${TRAEFIK_STACK_NAME}`,
-    );
-    stream.end(SwarmProxyBackend.generateCompose(proxyConfig, configHash));
-    const result = await done;
-
-    if (result.exitCode !== 0) {
-      throw new Error(`Traefik deployment failed: ${result.stderr.trim() || result.stdout.trim()}`);
-    }
-
-    printSuccess('Traefik reverse proxy deployed');
+    if (!events) printSuccess('Traefik reverse proxy deployed');
+    return { changed: true, action: plan.action, version: imageTag(TRAEFIK_IMAGE) };
   }
 
-  /** Replicas of the Traefik service (empty when absent) and the config hash it was deployed with. */
-  private async currentState(): Promise<{ replicas: string; configHash: string }> {
-    const service = `${TRAEFIK_STACK_NAME}_traefik`;
-    const [replicas, labels] = await Promise.all([
-      sshExec(this.connection, `docker service ls --filter "name=${service}" --format '{{.Replicas}}' 2>/dev/null`),
-      sshExec(this.connection, `docker service inspect ${service} --format '{{index .Spec.Labels "${CONFIG_HASH_LABEL}"}}' 2>/dev/null`),
+  async status(): Promise<ProxyStatus> {
+    return swarmProxyStatus(await this.currentState());
+  }
+
+  private async run(command: string): Promise<SwarmExecResult> {
+    try {
+      return await this.ssh.exec(this.target.controlPlane, command);
+    } catch (error) {
+      throw swarmTransportError(this.target.controlPlane, this.target.env, error);
+    }
+  }
+
+  private async currentState(): Promise<SwarmProxyState> {
+    const [listed, inspected] = await Promise.all([
+      this.run(
+        `docker service ls --filter ${shellQuote(`name=${TRAEFIK_SERVICE}`)} --format '{{.Replicas}}|{{.Image}}' 2>/dev/null`,
+      ),
+      this.run(
+        `docker service inspect ${shellQuote(TRAEFIK_SERVICE)} --format '{{index .Spec.Labels "${CONFIG_HASH_LABEL}"}}|{{json .Spec.TaskTemplate.ContainerSpec.Args}}' 2>/dev/null`,
+      ),
     ]);
-    return { replicas: replicas.stdout.trim(), configHash: labels.exitCode === 0 ? labels.stdout.trim() : '' };
+    const [replicas = '', image = ''] = (listed.stdout.trim().split('\n')[0] ?? '').split('|');
+    let configHash = '';
+    let args: string[] = [];
+    if (inspected.exitCode === 0) {
+      const text = inspected.stdout.trim();
+      const pipe = text.indexOf('|');
+      configHash = (pipe < 0 ? text : text.slice(0, pipe)).trim();
+      args = pipe < 0 ? [] : parseArgs(text.slice(pipe + 1));
+    }
+    return { replicas: replicas.trim(), image: image.trim(), configHash, args };
   }
 
   /** A short hash of the stack generated for this configuration. */

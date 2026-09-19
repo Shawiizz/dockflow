@@ -516,6 +516,21 @@ describe('FakeCluster', () => {
       kube.assertDone();
       assertExecutorInvariants({ kube, allow: { volumeDeletion: true }, volumes: cluster });
     });
+
+    it('lets pvc-protection release a claim that only an unscheduled pod references', async () => {
+      const { cluster, kube } = setup();
+      cluster.behave('shop/nowhere:1', { kind: 'unschedulable', message: '0/2 nodes are available: 2 node(s) had volume node affinity conflict.' });
+      await apply(kube, namespace(), claim('acme'), pod('proxy', 'shop/nowhere:1', { claim: 'acme' }));
+      cluster.tick(3);
+      const pending = await get(kube, 'pods', 'proxy');
+      expect(status(pending).phase).toBe('Pending');
+      expect(spec(pending).nodeName).toBeUndefined();
+
+      await kube.delete(['persistentvolumeclaims/acme'], { namespace: NS, wait: true, timeoutS: 30, ignoreNotFound: false });
+      expect(await kube.getJson(['persistentvolumeclaims'], { namespace: NS, name: 'acme', allowNotFound: true })).toEqual([]);
+      kube.assertDone();
+      assertExecutorInvariants({ kube, allow: { volumeDeletion: true }, volumes: cluster });
+    });
   });
 
   describe('workload verbs', () => {

@@ -41,9 +41,17 @@ function kubeError(reason: KubeErrorReason, stderr = sample(reason)): KubeError 
 const CONTEXT = { env: 'production', operation: 'deploy', distribution: 'k3s' };
 const RERUN_SETUP = 'Re-run `dockflow setup k3s production`.';
 
+/**
+ * Container runtime failures of `kubectl exec`: not a `KubeErrorReason` of their own (the API call
+ * succeeded), so they sit beside the reason directories. The container backend classifies them into
+ * its own refusals by the runtime's quoted form; re-recorded on the test machine like every sample.
+ */
+const EXEC_DIR = 'exec';
+const EXEC_SAMPLES = ['named-shell-stat.txt', 'sh-not-found.txt', 'sh-stat.txt', 'tar-not-found.txt'];
+
 describe('classifyKubectlFailure', () => {
   it('has at least two recorded-shape samples for every reason and no other directory', () => {
-    expect(readdirSync(SAMPLES).sort()).toEqual([...REASONS].sort());
+    expect(readdirSync(SAMPLES).sort()).toEqual([...REASONS, EXEC_DIR].sort());
     for (const reason of REASONS) {
       expect(readdirSync(join(SAMPLES, reason)).filter((file) => file.endsWith('.txt')).length).toBeGreaterThanOrEqual(2);
     }
@@ -56,6 +64,16 @@ describe('classifyKubectlFailure', () => {
       }
     });
   }
+
+  it('leaves the container runtime start failures of exec/ unclassified, in the shape the exec rule keys on', () => {
+    expect(readdirSync(join(SAMPLES, EXEC_DIR)).sort()).toEqual(EXEC_SAMPLES);
+    for (const file of EXEC_SAMPLES) {
+      const stderr = readFileSync(join(SAMPLES, EXEC_DIR, file), 'utf8');
+      // exit codes vary across runtimes (1, 126, 127, 128); the quoted program name does not
+      expect({ file, reason: classifyKubectlFailure(1, stderr) }).toEqual({ file, reason: 'Unknown' });
+      expect({ file, quoted: /exec: "[^"]+": (?:executable file not found|stat )/.test(stderr) }).toEqual({ file, quoted: true });
+    }
+  });
 
   it('U-RT-E-02: exit 127 is ToolMissing whatever stderr says', () => {
     expect(classifyKubectlFailure(127, '')).toBe('ToolMissing');

@@ -13,6 +13,8 @@ export const DOCKFLOW_K8S_PREFIX = 'dockflow.shawiizz.dev';
 const P = DOCKFLOW_K8S_PREFIX;
 
 export const K8S_MANAGED_BY = 'dockflow';
+/** value Helm writes in LABELS.managedBy on every object of a release; never written by Dockflow */
+export const HELM_MANAGED_BY = 'Helm';
 export const K8S_FIELD_MANAGER = 'dockflow';
 /** the only two other field managers Dockflow uses: the two writers of the state ConfigMap */
 export const K8S_FIELD_MANAGER_RELEASE_STATE = 'dockflow-release-state';
@@ -56,6 +58,10 @@ export const ANNOTATIONS = {
   helmChartDigest: `${P}/helm-chart-sha256`,
   /** original PV reclaim policy recorded before a --volumes deletion (C13) */
   reclaimPolicyBefore: `${P}/reclaim-policy-before`,
+  /** on the traefik.io CRDs Dockflow applies: the chart version they came from (design-04 2.5) */
+  crdChartVersion: `${P}/chart-version`,
+  /** on the same CRDs: the chart's Traefik appVersion */
+  crdTraefikVersion: `${P}/traefik-version`,
   defaultContainer: 'kubectl.kubernetes.io/default-container',
 } as const;
 
@@ -84,6 +90,9 @@ export const KUBE_KEYS = {
   defaultStorageClass: 'storageclass.kubernetes.io/is-default-class',
   serviceAccountName: 'kubernetes.io/service-account.name',
   helmResourcePolicy: 'helm.sh/resource-policy',
+  /** Helm's ownership annotations, with HELM_MANAGED_BY the only marks of a release-owned object */
+  helmReleaseName: 'meta.helm.sh/release-name',
+  helmReleaseNamespace: 'meta.helm.sh/release-namespace',
 } as const;
 
 export const K8S_STATE_CONFIGMAP = 'dockflow-state';

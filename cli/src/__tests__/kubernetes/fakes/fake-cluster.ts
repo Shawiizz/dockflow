@@ -1800,8 +1800,13 @@ export class FakeCluster implements KubeCallHandler, PersistentVolumeView {
     switch (finalizer) {
       case PVC_PROTECTION: {
         const namespace = entry.object.metadata.namespace;
+        // the controller only counts scheduled pods: an unschedulable Pending pod mounts nothing
         return !this.entriesOf('Pod').some(
-          (pod) => pod.object.metadata.namespace === namespace && !isTerminal(pod) && podClaims(pod.object).includes(entry.object.metadata.name),
+          (pod) =>
+            pod.object.metadata.namespace === namespace &&
+            obj(pod.object.spec).nodeName !== undefined &&
+            !isTerminal(pod) &&
+            podClaims(pod.object).includes(entry.object.metadata.name),
         );
       }
       case PV_PROTECTION:

@@ -325,6 +325,8 @@ export interface InternalHealthResult {
   rolledBack: boolean;
   failures: ServiceFailure[];
   message?: string;
+  /** set when the check ended on a read it could not make, so the failure mapping keeps the hint */
+  suggestion?: string;
 }
 
 export interface RevertResult {

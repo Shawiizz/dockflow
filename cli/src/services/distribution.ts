@@ -1,56 +1,188 @@
 /**
- * Distribution — image transfer module.
- *
- * Streams Docker images to nodes via SSH pipe.
- * Supports both Docker (docker save/load) and containerd (k3s ctr import) runtimes.
- * Also handles registry push and authentication.
+ * Distribution: the local image preparation both image backends use (tag, image id and `save` of
+ * the local docker or podman engine), and the Swarm transfer that streams a saved image to a node
+ * over SSH (`save | gzip -1` -> `gunzip | load`). Kubernetes nodes never load images here: the
+ * Kubernetes images backend imports them into containerd through its node shells.
  */
 
-import type { ClientChannel } from 'ssh2';
+import { PassThrough, Readable, type Writable } from 'node:stream';
+import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import { createGzip } from 'node:zlib';
-import { Readable } from 'node:stream';
 import type { SSHKeyConnection } from '../types';
-import { sshExec, sshExecChannel, shellQuote } from '../utils/ssh';
-import { printDebug, printDim, printSuccess, printWarning, createTimedSpinner } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
+import { createTimedSpinner, printDebug, printDim, printSuccess, printWarning } from '../utils/output';
+import { shellQuote, sshExec, sshExecChannelUnbuffered } from '../utils/ssh';
 import { parseImageRef } from './compose';
 
-export type ContainerRuntime = 'docker' | 'containerd' | 'podman';
+/** Swarm node engines; containerd nodes import through the Kubernetes images backend */
+export type ContainerRuntime = 'docker' | 'podman';
+
+const TRANSFER_MAX_RETRIES = 2;
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function firstTextLine(text: string): string {
+  return text.split(/\r?\n/).find((line) => line.trim().length > 0)?.trim() ?? '';
+}
+
+function nextTurn(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+// ---------------------------------------------------------------------------
+// Local engine (both backends)
+// ---------------------------------------------------------------------------
+
+/** The local engine calls an image import needs; tests substitute FakeLocalEngine. */
+export interface LocalEngine {
+  readonly kind: ContainerRuntime;
+  /** `<engine> tag <source> <target>` */
+  tag(source: string, target: string): Promise<void>;
+  /** the image id (`sha256:...`) `<engine> image inspect` reports; throws when the image is missing */
+  imageId(ref: string): Promise<string>;
+  /** `<engine> save <refs...>` as a tar stream; a failed save destroys the stream with the error */
+  save(refs: readonly string[]): Readable;
+}
+
+/** The error every local engine call fails with, real or fake. */
+export function localEngineError(kind: ContainerRuntime, args: readonly string[], stderr: string): DeployError {
+  const detail = firstTextLine(stderr);
+  return new DeployError(`${kind} ${args.join(' ')} failed${detail ? `: ${detail}` : ''}`, ErrorCode.DEPLOY_FAILED);
+}
+
+async function runLocal(kind: ContainerRuntime, args: readonly string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const proc = Bun.spawn([kind, ...args], { stdout: 'pipe', stderr: 'pipe' });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  return { exitCode, stdout, stderr };
+}
+
+function saveStream(kind: ContainerRuntime, refs: readonly string[]): Readable {
+  const args = ['save', ...refs];
+  const proc = Bun.spawn([kind, ...args], { stdout: 'pipe', stderr: 'pipe' });
+  const stderr = new Response(proc.stderr).text();
+  const out = new PassThrough();
+  let finished = false;
+  const source = Readable.fromWeb(proc.stdout as unknown as NodeReadableStream<Uint8Array>);
+  source.on('error', (error) => {
+    finished = true;
+    out.destroy(error);
+  });
+  source.pipe(out, { end: false });
+  source.on('end', () => {
+    void Promise.all([proc.exited, stderr]).then(([exitCode, text]) => {
+      finished = true;
+      if (exitCode === 0) out.end();
+      else out.destroy(localEngineError(kind, args, text));
+    });
+  });
+  // a consumer that gave up (a failed node, an expired guard) must not leave the save running
+  out.on('close', () => {
+    if (!finished) proc.kill();
+  });
+  return out;
+}
+
+/** The docker or podman CLI of this machine. */
+export function createLocalEngine(kind: ContainerRuntime): LocalEngine {
+  return {
+    kind,
+    async tag(source, target) {
+      const args = ['tag', source, target];
+      const result = await runLocal(kind, args);
+      if (result.exitCode !== 0) throw localEngineError(kind, args, result.stderr);
+    },
+    async imageId(ref) {
+      const args = ['image', 'inspect', '--format', '{{.Id}}', ref];
+      const result = await runLocal(kind, args);
+      const id = result.stdout.trim();
+      if (result.exitCode !== 0 || id === '') throw localEngineError(kind, args, result.stderr);
+      // podman prints the bare hex; docker, crictl and `images --no-trunc` carry the algorithm
+      return /^[0-9a-f]{64}$/.test(id) ? `sha256:${id}` : id;
+    },
+    save: (refs) => saveStream(kind, refs),
+  };
+}
+
+/** `container_engine` from config.yml, else docker when this machine has it, else podman. */
+export function detectLocalEngine(configured?: ContainerRuntime): ContainerRuntime {
+  if (configured) return configured;
+  if (Bun.which('docker')) return 'docker';
+  return Bun.which('podman') ? 'podman' : 'docker';
+}
+
+/** Progress of an image backend: one line per node outcome, and best-effort failures. */
+export const imageProgress = {
+  info: (line: string): void => printDim(line),
+  debug: (line: string): void => printDebug(line),
+};
+
+// ---------------------------------------------------------------------------
+// Swarm transfer
+// ---------------------------------------------------------------------------
 
 export interface DistributionTarget {
   connection: SSHKeyConnection;
   name: string;
 }
 
-const TRANSFER_MAX_RETRIES = 2;
-
-function k3sPermissionSuggestion(nodeName: string, deployUser: string): string {
-  return (
-    `The deploy user needs restricted sudo for k3s on ${nodeName}.\n` +
-    `Run once on the server:\n` +
-    `  K3S=$(which k3s)\n` +
-    `  echo "${deployUser} ALL=(ALL) NOPASSWD: $K3S ctr -n k8s.io images *" > /etc/sudoers.d/dockflow-k3s\n` +
-    `  chmod 440 /etc/sudoers.d/dockflow-k3s`
-  );
+/** An exec channel whose streams the caller drives; the caller reads both outputs. */
+export interface TransferChannel {
+  stdin: Writable;
+  stdout: Readable;
+  stderr: Readable;
+  done: Promise<{ exitCode: number }>;
+  close(): void;
 }
 
-function isPermissionError(stderr: string): boolean {
-  return stderr.includes('is not allowed') || stderr.includes('not in the sudoers') || stderr.includes('command not found');
+/** What the transfer runs on nodes; the Swarm backends' SSH seam satisfies it. */
+export interface TransferTransport<T extends DistributionTarget = DistributionTarget> {
+  exec(target: T, command: string): Promise<{ exitCode: number; stdout: string; stderr: string }>;
+  channel(target: T, command: string): Promise<TransferChannel>;
 }
 
-function importCommand(runtime: ContainerRuntime): string {
-  if (runtime === 'containerd') return 'gunzip | sudo k3s ctr -n k8s.io images import -';
+export const sshTransferTransport: TransferTransport = {
+  async exec(target, command) {
+    const result = await sshExec(target.connection, command);
+    return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
+  },
+  async channel(target, command) {
+    const { stream, done } = await sshExecChannelUnbuffered(target.connection, command);
+    return { stdin: stream, stdout: stream, stderr: stream.stderr, done, close: () => stream.close() };
+  },
+};
+
+export interface TransferOptions<T extends DistributionTarget = DistributionTarget> {
+  /** default: SSH through utils/ssh */
+  transport?: TransferTransport<T>;
+  /** default: the local CLI of the same engine as the nodes */
+  local?: LocalEngine;
+}
+
+function loadCommand(runtime: ContainerRuntime): string {
   return `gunzip | ${runtime} load`;
 }
 
 function saveCommand(image: string, runtime: ContainerRuntime): string {
-  if (runtime === 'containerd') return `sudo k3s ctr -n k8s.io images export - ${shellQuote(image)} | gzip -1`;
   return `${runtime} save ${shellQuote(image)} | gzip -1`;
 }
 
 function imageIdCommand(image: string, runtime: ContainerRuntime): string {
-  if (runtime === 'containerd') return `sudo k3s ctr -n k8s.io images ls -q 2>/dev/null | grep -F ${shellQuote(image)} | head -1`;
   return `${runtime} images --no-trunc -q ${shellQuote(image)} 2>/dev/null | head -1`;
+}
+
+/** Collects a channel output as text as it arrives. */
+function collectText(stream: Readable): () => string {
+  const chunks: Buffer[] = [];
+  stream.on('data', (chunk: unknown) => {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk instanceof Uint8Array ? chunk : String(chunk)));
+  });
+  return () => Buffer.concat(chunks).toString('utf8');
 }
 
 export async function getRemoteImageId(
@@ -62,195 +194,122 @@ export async function getRemoteImageId(
   return result.stdout.trim();
 }
 
-export async function getLocalImageId(image: string, engine: 'docker' | 'podman' = 'docker'): Promise<string> {
-  const proc = Bun.spawn(
-    [engine, 'images', '--no-trunc', '-q', image],
-    { stdout: 'pipe', stderr: 'pipe' },
-  );
+export async function getLocalImageId(image: string, engine: ContainerRuntime = 'docker'): Promise<string> {
+  const proc = Bun.spawn([engine, 'images', '--no-trunc', '-q', image], { stdout: 'pipe', stderr: 'pipe' });
   const stdout = await new Response(proc.stdout).text();
   await proc.exited;
   return stdout.trim().split('\n')[0] || '';
 }
 
-async function pipeToChannel(
-  source: ReadableStream<Uint8Array>,
-  sink: ClientChannel,
-): Promise<void> {
-  const reader = source.getReader();
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      try {
-        if (!sink.write(value)) {
-          await new Promise<void>((resolve) => {
-            const onDrain = () => { sink.removeListener('close', onClose); resolve(); };
-            const onClose = () => { sink.removeListener('drain', onDrain); resolve(); };
-            sink.once('drain', onDrain);
-            sink.once('close', onClose);
-          });
-        }
-      } catch {
-        break;
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  try { sink.end(); } catch { }
-}
-
-function pipeChannels(
-  source: ClientChannel,
-  sink: ClientChannel,
-): Promise<void> {
-  return new Promise<void>((resolve) => {
-    sink.once('close', () => { try { source.destroy(); } catch { } });
-
-    source.on('data', (chunk: Buffer) => {
-      try {
-        if (!sink.write(chunk)) {
-          source.pause();
-          sink.once('drain', () => source.resume());
-        }
-      } catch {
-        try { source.destroy(); } catch { }
-      }
-    });
-
-    source.on('end', () => {
-      try { sink.end(); } catch { }
-      resolve();
-    });
-    source.on('close', () => resolve());
-    source.on('error', () => resolve());
-  });
-}
-
-async function streamToTarget(
+async function remoteImageId<T extends DistributionTarget>(
+  transport: TransferTransport<T>,
+  target: T,
   image: string,
-  target: DistributionTarget,
-  runtime: ContainerRuntime = 'docker',
+  runtime: ContainerRuntime,
+): Promise<string> {
+  const result = await transport.exec(target, imageIdCommand(image, runtime));
+  return result.stdout.trim();
+}
+
+async function streamToTarget<T extends DistributionTarget>(
+  image: string,
+  target: T,
+  runtime: ContainerRuntime,
+  transport: TransferTransport<T>,
+  local: LocalEngine,
 ): Promise<void> {
-  const { stream: sink, done } = await sshExecChannel(
-    target.connection,
-    importCommand(runtime),
-  );
-
-  sink.resume();
-
-  const localEngine = runtime === 'containerd' ? 'docker' : runtime;
-  const saveProc = Bun.spawn([localEngine, 'save', image], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-
+  const sink = await transport.channel(target, loadCommand(runtime));
+  const stderr = collectText(sink.stderr);
+  sink.stdout.resume();
+  sink.stdin.on('error', () => {});
   const gzip = createGzip({ level: 1 });
-  Readable.fromWeb(saveProc.stdout as unknown as import('node:stream/web').ReadableStream).pipe(gzip);
+  let saveError: unknown = null;
+  const save = local.save([image]);
+  save.on('error', (error) => {
+    saveError = error;
+    gzip.destroy();
+    sink.close();
+  });
+  save.pipe(gzip).pipe(sink.stdin);
 
-  const gzipStream = Readable.toWeb(gzip) as unknown as ReadableStream<Uint8Array>;
-  await pipeToChannel(gzipStream, sink);
-
-  const [result] = await Promise.all([done, saveProc.exited]);
-
-  if (saveProc.exitCode !== 0) {
-    const stderr = await new Response(saveProc.stderr).text();
-    throw new Error(`docker save failed for ${image}: ${stderr.trim()}`);
-  }
-  if (result.exitCode !== 0) {
-    const detail = result.stderr.trim();
-    if (isPermissionError(detail)) {
-      throw new DeployError(`k3s image import failed on ${target.name}: ${detail}`, ErrorCode.DEPLOY_FAILED, k3sPermissionSuggestion(target.name, target.connection.user));
-    }
-    throw new Error(`image import failed on ${target.name}: ${detail}`);
+  const { exitCode } = await sink.done;
+  await nextTurn();
+  if (saveError !== null) throw saveError instanceof Error ? saveError : new Error(String(saveError));
+  if (exitCode !== 0) {
+    throw new Error(`image load failed on ${target.name}: ${firstTextLine(stderr()) || `exit ${exitCode}`}`);
   }
 }
 
-async function streamRemoteToTarget(
+async function streamRemoteToTarget<T extends DistributionTarget>(
   image: string,
-  source: SSHKeyConnection,
-  target: DistributionTarget,
-  runtime: ContainerRuntime = 'docker',
+  source: T,
+  target: T,
+  runtime: ContainerRuntime,
+  transport: TransferTransport<T>,
 ): Promise<void> {
-  const { stream: sink, done: sinkDone } = await sshExecChannel(
-    target.connection,
-    importCommand(runtime),
-  );
-  sink.resume();
+  const sink = await transport.channel(target, loadCommand(runtime));
+  const sinkStderr = collectText(sink.stderr);
+  sink.stdout.resume();
+  sink.stdin.on('error', () => {});
 
-  const { stream: src, done: srcDone } = await sshExecChannel(
-    source,
-    saveCommand(image, runtime),
-  );
+  const src = await transport.channel(source, saveCommand(image, runtime));
+  const srcStderr = collectText(src.stderr);
+  src.stdin.end();
+  src.stdout.pipe(sink.stdin);
 
-  await pipeChannels(src, sink);
-
-  const [srcResult, sinkResult] = await Promise.all([srcDone, sinkDone]);
-
+  const [srcResult, sinkResult] = await Promise.all([src.done, sink.done]);
+  await nextTurn();
   if (srcResult.exitCode !== 0) {
-    const detail = srcResult.stderr.trim();
-    if (isPermissionError(detail)) {
-      throw new DeployError(`k3s image export failed on source: ${detail}`, ErrorCode.DEPLOY_FAILED, k3sPermissionSuggestion('source node', source.user));
-    }
-    throw new Error(`image export failed on remote: ${detail}`);
+    throw new Error(`image export failed on ${source.name}: ${firstTextLine(srcStderr()) || `exit ${srcResult.exitCode}`}`);
   }
   if (sinkResult.exitCode !== 0) {
-    const detail = sinkResult.stderr.trim();
-    if (isPermissionError(detail)) {
-      throw new DeployError(`k3s image import failed on ${target.name}: ${detail}`, ErrorCode.DEPLOY_FAILED, k3sPermissionSuggestion(target.name, target.connection.user));
-    }
-    throw new Error(`image import failed on ${target.name}: ${detail}`);
+    throw new Error(`image load failed on ${target.name}: ${firstTextLine(sinkStderr()) || `exit ${sinkResult.exitCode}`}`);
   }
 }
 
-async function filterTargetsNeedingImage(
+async function filterTargetsNeedingImage<T extends DistributionTarget>(
   image: string,
   sourceId: string,
-  targets: DistributionTarget[],
-  runtime: ContainerRuntime = 'docker',
-): Promise<DistributionTarget[]> {
+  targets: T[],
+  runtime: ContainerRuntime,
+  transport: TransferTransport<T>,
+): Promise<T[]> {
   if (!sourceId) return targets;
 
   const checks = await Promise.all(
-    targets.map(async (t) => {
-      const targetId = await getRemoteImageId(t.connection, image, runtime);
-      return { target: t, needsUpdate: targetId !== sourceId };
-    }),
+    targets.map(async (target) => ({
+      target,
+      needsUpdate: (await remoteImageId(transport, target, image, runtime)) !== sourceId,
+    })),
   );
 
   for (const { target, needsUpdate } of checks) {
-    if (!needsUpdate) {
-      printDim(`Already up to date on ${target.name}: ${image}`);
-    }
+    if (!needsUpdate) printDim(`Already up to date on ${target.name}: ${image}`);
   }
 
   return checks.filter((c) => c.needsUpdate).map((c) => c.target);
 }
 
-async function transferImageToTargets(
+async function transferImageToTargets<T extends DistributionTarget>(
   image: string,
-  targets: DistributionTarget[],
-  streamFn: (image: string, target: DistributionTarget) => Promise<void>,
+  targets: T[],
+  streamFn: (image: string, target: T) => Promise<void>,
   label: string,
 ): Promise<void> {
   let remaining = targets;
   let lastError: string | null = null;
 
   for (let attempt = 1; attempt <= TRANSFER_MAX_RETRIES + 1; attempt++) {
-    const results = await Promise.allSettled(
-      remaining.map((t) => streamFn(image, t)),
-    );
+    const results = await Promise.allSettled(remaining.map((t) => streamFn(image, t)));
 
-    const failed: DistributionTarget[] = [];
+    const failed: T[] = [];
     const errors: string[] = [];
 
     for (let i = 0; i < results.length; i++) {
-      if (results[i].status === 'rejected') {
+      const result = results[i];
+      if (result.status === 'rejected') {
         failed.push(remaining[i]);
-        errors.push((results[i] as PromiseRejectedResult).reason?.message ?? 'unknown');
+        errors.push(errorMessage(result.reason));
       } else {
         printSuccess(`Transferred ${image} to ${remaining[i].name}${label}`);
       }
@@ -262,9 +321,7 @@ async function transferImageToTargets(
     remaining = failed;
 
     if (attempt <= TRANSFER_MAX_RETRIES) {
-      printWarning(
-        `Transfer attempt ${attempt} failed for ${image} on ${remaining.map((t) => t.name).join(', ')}, retrying...`,
-      );
+      printWarning(`Transfer attempt ${attempt} failed for ${image} on ${remaining.map((t) => t.name).join(', ')}, retrying...`);
     }
   }
 
@@ -274,16 +331,17 @@ async function transferImageToTargets(
   );
 }
 
-async function distributeImages(
+async function distributeImages<T extends DistributionTarget>(
   images: string[],
-  targets: DistributionTarget[],
+  targets: T[],
   runtime: ContainerRuntime,
-  source: SSHKeyConnection | 'local',
+  source: T | 'local',
+  transport: TransferTransport<T>,
+  local: LocalEngine,
 ): Promise<void> {
   if (images.length === 0 || targets.length === 0) return;
 
-  const isRemote = source !== 'local';
-  const label = isRemote ? ' (from remote)' : '';
+  const label = source === 'local' ? '' : ' (from remote)';
 
   const spinner = createTimedSpinner();
   spinner.start(`Distributing ${images.length} image(s) to ${targets.length} node(s)${label}...`);
@@ -292,16 +350,18 @@ async function distributeImages(
     for (const image of images) {
       spinner.update(`Distributing ${image}${label}...`);
 
-      const sourceId = isRemote
-        ? await getRemoteImageId(source, image, runtime)
-        : await getLocalImageId(image);
+      const sourceId =
+        source === 'local'
+          ? await local.imageId(image).catch(() => '')
+          : await remoteImageId(transport, source, image, runtime);
 
-      const needsUpdate = await filterTargetsNeedingImage(image, sourceId, targets, runtime);
+      const needsUpdate = await filterTargetsNeedingImage(image, sourceId, targets, runtime, transport);
       if (needsUpdate.length === 0) continue;
 
-      const streamFn = isRemote
-        ? (img: string, t: DistributionTarget) => streamRemoteToTarget(img, source, t, runtime)
-        : (img: string, t: DistributionTarget) => streamToTarget(img, t, runtime);
+      const streamFn =
+        source === 'local'
+          ? (img: string, t: T) => streamToTarget(img, t, runtime, transport, local)
+          : (img: string, t: T) => streamRemoteToTarget(img, source, t, runtime, transport);
 
       await transferImageToTargets(image, needsUpdate, streamFn, label);
     }
@@ -313,43 +373,44 @@ async function distributeImages(
   }
 }
 
-export async function distributeAll(
+/** Streams locally built images to every target that does not already have the same image id. */
+export async function distributeAll<T extends DistributionTarget>(
   images: string[],
-  targets: DistributionTarget[],
+  targets: T[],
   runtime: ContainerRuntime = 'docker',
+  options: TransferOptions<T> = {},
 ): Promise<void> {
-  return distributeImages(images, targets, runtime, 'local');
+  const transport = options.transport ?? (sshTransferTransport as TransferTransport<T>);
+  return distributeImages(images, targets, runtime, 'local', transport, options.local ?? createLocalEngine(runtime));
 }
 
+/** Streams images built on `source` (remote build) to the targets, node to node through this machine. */
 export async function distributeFromRemote(
   images: string[],
   source: SSHKeyConnection,
   targets: DistributionTarget[],
   runtime: ContainerRuntime = 'docker',
+  options: TransferOptions = {},
 ): Promise<void> {
-  return distributeImages(images, targets, runtime, source);
+  const transport = options.transport ?? sshTransferTransport;
+  const origin: DistributionTarget = { name: source.host, connection: source };
+  return distributeImages(images, targets, runtime, origin, transport, options.local ?? createLocalEngine(runtime));
 }
 
 export async function transferImage(
   image: string,
   target: DistributionTarget,
   runtime: ContainerRuntime = 'docker',
+  options: TransferOptions = {},
 ): Promise<void> {
-  const sourceId = await getLocalImageId(image);
-  if (sourceId) {
-    const targetId = await getRemoteImageId(target.connection, image, runtime);
-    if (sourceId === targetId) {
-      printDim(`Already up to date on ${target.name}: ${image}`);
-      return;
-    }
+  const transport = options.transport ?? sshTransferTransport;
+  const local = options.local ?? createLocalEngine(runtime);
+  const sourceId = await local.imageId(image).catch(() => '');
+  if (sourceId && (await remoteImageId(transport, target, image, runtime)) === sourceId) {
+    printDim(`Already up to date on ${target.name}: ${image}`);
+    return;
   }
-
-  await transferImageToTargets(
-    image,
-    [target],
-    (img, t) => streamToTarget(img, t, runtime),
-    '',
-  );
+  await transferImageToTargets(image, [target], (img, t) => streamToTarget(img, t, runtime, transport, local), '');
 }
 
 export async function transferImageFromRemote(
@@ -357,53 +418,74 @@ export async function transferImageFromRemote(
   source: SSHKeyConnection,
   target: DistributionTarget,
   runtime: ContainerRuntime = 'docker',
+  options: TransferOptions = {},
 ): Promise<void> {
-  const sourceId = await getRemoteImageId(source, image, runtime);
-  if (sourceId) {
-    const targetId = await getRemoteImageId(target.connection, image, runtime);
-    if (sourceId === targetId) {
-      printDim(`Already up to date on ${target.name}: ${image}`);
-      return;
-    }
+  const transport = options.transport ?? sshTransferTransport;
+  const origin: DistributionTarget = { name: source.host, connection: source };
+  const sourceId = await remoteImageId(transport, origin, image, runtime);
+  if (sourceId && (await remoteImageId(transport, target, image, runtime)) === sourceId) {
+    printDim(`Already up to date on ${target.name}: ${image}`);
+    return;
   }
-
   await transferImageToTargets(
     image,
     [target],
-    (img, t) => streamRemoteToTarget(img, source, t, runtime),
+    (img, t) => streamRemoteToTarget(img, origin, t, runtime, transport),
     ' (from remote)',
   );
 }
 
-export async function registryLogin(
-  connection: SSHKeyConnection,
-  config: { url: string; username?: string; password: string },
-  engine: 'docker' | 'podman' = 'docker',
+// ---------------------------------------------------------------------------
+// Registry
+// ---------------------------------------------------------------------------
+
+export interface RegistryLogin {
+  url: string;
+  username?: string;
+  password: string;
+}
+
+export function registryLoginCommand(engine: ContainerRuntime, config: Pick<RegistryLogin, 'url' | 'username'>): string {
+  const user = config.username ? ` -u ${shellQuote(config.username)}` : '';
+  return `${engine} login ${shellQuote(config.url)}${user} --password-stdin`;
+}
+
+/** `<engine> login` on a node, the password on stdin so it never reaches a process listing. */
+export async function registryLoginOn<T extends DistributionTarget>(
+  transport: TransferTransport<T>,
+  target: T,
+  config: RegistryLogin,
+  engine: ContainerRuntime = 'docker',
 ): Promise<void> {
   printDebug('Logging in to container registry...');
-
-  const qPassword = shellQuote(config.password);
-  const qUrl = shellQuote(config.url);
-  const userFlag = config.username ? `-u ${shellQuote(config.username)}` : '';
-  const result = await sshExec(
-    connection,
-    `echo ${qPassword} | ${engine} login ${qUrl} ${userFlag} --password-stdin 2>&1`,
-  );
-
-  if (result.exitCode !== 0) {
+  const channel = await transport.channel(target, registryLoginCommand(engine, config));
+  const stdout = collectText(channel.stdout);
+  const stderr = collectText(channel.stderr);
+  channel.stdin.on('error', () => {});
+  channel.stdin.end(`${config.password}\n`);
+  const { exitCode } = await channel.done;
+  await nextTurn();
+  if (exitCode !== 0) {
     throw new DeployError(
-      `Registry login failed: ${result.stdout.trim()}`,
+      `Registry login failed on ${target.name}: ${firstTextLine(stderr()) || firstTextLine(stdout()) || `exit ${exitCode}`}`,
       ErrorCode.DEPLOY_FAILED,
       'Check registry URL and credentials.',
     );
   }
-
   printDebug('Registry login successful');
+}
+
+export async function registryLogin(
+  connection: SSHKeyConnection,
+  config: RegistryLogin,
+  engine: ContainerRuntime = 'docker',
+): Promise<void> {
+  await registryLoginOn(sshTransferTransport, { name: connection.host, connection }, config, engine);
 }
 
 async function pushSingleImage(
   image: string,
-  engine: 'docker' | 'podman',
+  engine: ContainerRuntime,
   additionalTags?: { tags: string[]; env: string; version: string; branch: string; sha: string },
 ): Promise<void> {
   printDim(`Pushing ${image}...`);
@@ -417,10 +499,7 @@ async function pushSingleImage(
   await proc.exited;
 
   if (proc.exitCode !== 0) {
-    throw new DeployError(
-      `${engine} push failed for ${image}: ${stderr.trim()}`,
-      ErrorCode.DEPLOY_FAILED,
-    );
+    throw new DeployError(`${engine} push failed for ${image}: ${stderr.trim()}`, ErrorCode.DEPLOY_FAILED);
   }
 
   printSuccess(`Pushed ${image}`);
@@ -428,53 +507,53 @@ async function pushSingleImage(
   if (additionalTags && additionalTags.tags.length > 0) {
     const imageBase = parseImageRef(image).name;
 
-    await Promise.all(additionalTags.tags.map(async (tagTemplate) => {
-      const tag = tagTemplate
-        .replace(/\{version\}/g, additionalTags.version)
-        .replace(/\{env\}/g, additionalTags.env)
-        .replace(/\{branch\}/g, sanitizeBranch(additionalTags.branch))
-        .replace(/\{sha\}/g, additionalTags.sha);
+    await Promise.all(
+      additionalTags.tags.map(async (tagTemplate) => {
+        const tag = tagTemplate
+          .replace(/\{version\}/g, additionalTags.version)
+          .replace(/\{env\}/g, additionalTags.env)
+          .replace(/\{branch\}/g, sanitizeBranch(additionalTags.branch))
+          .replace(/\{sha\}/g, additionalTags.sha);
 
-      const taggedImage = `${imageBase}:${tag}`;
+        const taggedImage = `${imageBase}:${tag}`;
 
-      const tagProc = Bun.spawn([engine, 'tag', image, taggedImage], {
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
-      await tagProc.exited;
+        const tagProc = Bun.spawn([engine, 'tag', image, taggedImage], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
+        await tagProc.exited;
 
-      if (tagProc.exitCode !== 0) {
-        printWarning(`Failed to tag ${taggedImage}`);
-        return;
-      }
+        if (tagProc.exitCode !== 0) {
+          printWarning(`Failed to tag ${taggedImage}`);
+          return;
+        }
 
-      const pushProc = Bun.spawn([engine, 'push', taggedImage], {
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
-      const pushStderr = await new Response(pushProc.stderr).text();
-      await pushProc.exited;
+        const pushProc = Bun.spawn([engine, 'push', taggedImage], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
+        const pushStderr = await new Response(pushProc.stderr).text();
+        await pushProc.exited;
 
-      if (pushProc.exitCode !== 0) {
-        printWarning(`Failed to push additional tag ${taggedImage}: ${pushStderr.trim()}`);
-      } else {
-        printDim(`Pushed additional tag: ${taggedImage}`);
-      }
-    }));
+        if (pushProc.exitCode !== 0) {
+          printWarning(`Failed to push additional tag ${taggedImage}: ${pushStderr.trim()}`);
+        } else {
+          printDim(`Pushed additional tag: ${taggedImage}`);
+        }
+      }),
+    );
   }
 }
 
 export async function pushImages(
   images: string[],
   additionalTags?: { tags: string[]; env: string; version: string; branch: string },
-  engine: 'docker' | 'podman' = 'docker',
+  engine: ContainerRuntime = 'docker',
 ): Promise<void> {
   const sha = additionalTags ? await getGitSha() : '';
   const tagsWithSha = additionalTags ? { ...additionalTags, sha } : undefined;
 
-  await Promise.all(
-    images.map((image) => pushSingleImage(image, engine, tagsWithSha)),
-  );
+  await Promise.all(images.map((image) => pushSingleImage(image, engine, tagsWithSha)));
 }
 
 async function getGitSha(): Promise<string> {

@@ -36,27 +36,36 @@ function compareKeys(a: string, b: string): number {
   return compareCodeUnits(a, b);
 }
 
-function describe(object: ManifestObject): string {
-  return `${object.kind}/${object.metadata?.name ?? '?'}`;
+interface NamedObject {
+  kind?: string;
+  metadata?: { name?: string };
+}
+
+function describe(object: NamedObject): string {
+  return `${object.kind ?? 'object'}/${object.metadata?.name ?? '?'}`;
 }
 
 /**
  * Rebuilds a manifest value with keys in emission order and undefined properties dropped. `null`
  * and non-finite numbers are never produced by the translator: meeting one is a Dockflow bug.
+ * `keepNull` holds only for objects the API server may have produced (`emitObject`).
  */
-function ordered(value: unknown, where: string, path: string): unknown {
-  if (value === null) throw new DeployError(`Manifest ${where} has a null value at ${path || '.'}`, ErrorCode.DEPLOY_FAILED, BUG_HINT);
+function ordered(value: unknown, where: string, path: string, keepNull: boolean): unknown {
+  if (value === null) {
+    if (keepNull) return null;
+    throw new DeployError(`Manifest ${where} has a null value at ${path || '.'}`, ErrorCode.DEPLOY_FAILED, BUG_HINT);
+  }
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) throw new DeployError(`Manifest ${where} has a non-finite number at ${path}`, ErrorCode.DEPLOY_FAILED, BUG_HINT);
     return value;
   }
   if (typeof value === 'string' || typeof value === 'boolean') return value;
-  if (Array.isArray(value)) return value.map((item, i) => ordered(item, where, `${path}[${i}]`));
+  if (Array.isArray(value)) return value.map((item, i) => ordered(item, where, `${path}[${i}]`, keepNull));
   if (typeof value === 'object' && [Object.prototype, null].includes(Object.getPrototypeOf(value))) {
     const record = value as Record<string, unknown>;
     const out: Record<string, unknown> = {};
     for (const key of Object.keys(record).sort(compareKeys)) {
-      if (record[key] !== undefined) out[key] = ordered(record[key], where, path ? `${path}.${key}` : key);
+      if (record[key] !== undefined) out[key] = ordered(record[key], where, path ? `${path}.${key}` : key, keepNull);
     }
     return out;
   }
@@ -98,13 +107,23 @@ function styleScalars(doc: Document, memo: Map<string, boolean>): void {
   });
 }
 
+function assertNamed(object: NamedObject): void {
+  if (typeof object.metadata?.name !== 'string' || object.metadata.name === '') {
+    throw new DeployError(`Manifest ${object.kind ?? 'object'} has no metadata.name`, ErrorCode.DEPLOY_FAILED, BUG_HINT);
+  }
+}
+
 function assertEncodable(object: ManifestObject): void {
   if (!isManifestKind(object.kind)) {
     throw new DeployError(`Manifest kind ${String(object.kind)} cannot be part of a stack artifact`, ErrorCode.DEPLOY_FAILED, BUG_HINT);
   }
-  if (typeof object.metadata?.name !== 'string' || object.metadata.name === '') {
-    throw new DeployError(`Manifest ${object.kind} has no metadata.name`, ErrorCode.DEPLOY_FAILED, BUG_HINT);
-  }
+  assertNamed(object);
+}
+
+function emitDocument(value: unknown, memo: Map<string, boolean>): string {
+  const doc = new Document(value, { aliasDuplicateObjects: false });
+  styleScalars(doc, memo);
+  return doc.toString({ lineWidth: 0, indent: 2, blockQuote: 'literal' });
 }
 
 /** Deterministic multi-document YAML: header comments, then ordered documents. */
@@ -124,11 +143,21 @@ export function emitManifests(objects: ManifestObject[], header: ArtifactHeader)
   let out = `${lines.join('\n')}\n`;
   const memo = new Map<string, boolean>();
   for (const object of sorted) {
-    const doc = new Document(ordered(object, describe(object), ''), { aliasDuplicateObjects: false });
-    styleScalars(doc, memo);
-    out += `---\n${doc.toString({ lineWidth: 0, indent: 2, blockQuote: 'literal' })}`;
+    out += `---\n${emitDocument(ordered(object, describe(object), '', false), memo)}`;
   }
   return out;
+}
+
+/**
+ * One object that is not part of a stack artifact (Namespace, release Secret, state ConfigMap,
+ * Lease, helper pods): the key order and scalar styles of an artifact document, without the header
+ * and without the artifact kind restriction. `null` is kept, because these objects are also rebuilt
+ * from what the API server returned.
+ */
+export function emitObject(object: object): string {
+  const named = object as NamedObject;
+  assertNamed(named);
+  return emitDocument(ordered(object, describe(named), '', true), new Map());
 }
 
 /** First-line format detection; content without the header line is 'swarm-compose/1'. */

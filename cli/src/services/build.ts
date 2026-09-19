@@ -147,8 +147,41 @@ export function getOverridesForTarget(
   return overrides;
 }
 
+/** The build keys the Dockflow builder reads; every other key of a `build` mapping is ignored. */
+export const BUILD_KEYS_READ: readonly string[] = ['context', 'dockerfile', 'args'];
+
+/** The compose file the builder reads build sections from (accessories are pulled, never built). */
+const BUILD_COMPOSE_FILE = 'docker-compose.yml';
+
+export interface IgnoredBuildKey {
+  service: string;
+  key: string;
+}
+
+/** Keys of a `build` mapping the builder does not read, in file order; `x-` extensions are not keys. */
+export function ignoredKeysOf(service: string, build: unknown): IgnoredBuildKey[] {
+  if (build === null || typeof build !== 'object' || Array.isArray(build)) return [];
+  return Object.keys(build)
+    .filter((key) => !BUILD_KEYS_READ.includes(key) && !key.startsWith('x-'))
+    .map((key) => ({ service, key }));
+}
+
 /**
- * Extract build targets from a compose YAML string.
+ * `build.key-ignored` (design-01 IMG-09): printed by the builder itself on both orchestrators,
+ * because the build runs before any render and its diagnostics sink. Silently dropping a key such
+ * as `target` or `platforms` would build a different image than the one the file describes.
+ */
+export function warnIgnoredBuildKeys(keys: readonly IgnoredBuildKey[], file: string = BUILD_COMPOSE_FILE): void {
+  for (const { service, key } of keys) {
+    printWarning(
+      `${file} services.${service}.build.${key}: build.${key} is ignored: the Dockflow builder only reads context, dockerfile and args`,
+    );
+    printDim(`  Remove \`build.${key}\`, or build and push the image yourself and reference it with \`image:\`.`);
+  }
+}
+
+/**
+ * Extract build targets from a compose YAML string, warning once per build key the builder ignores.
  * Parses the YAML directly — no external dependency needed.
  */
 export function getBuildTargets(
@@ -163,6 +196,7 @@ export function getBuildTargets(
     : null;
 
   const targets: BuildTarget[] = [];
+  const ignored: IgnoredBuildKey[] = [];
 
   for (const [name, svc] of Object.entries(services)) {
     if (filterSet && !filterSet.has(name)) continue;
@@ -180,6 +214,7 @@ export function getBuildTargets(
       const buildObj = build as Record<string, unknown>;
       dockerfile = (buildObj.dockerfile as string) ?? 'Dockerfile';
       context = (buildObj.context as string) ?? '.';
+      ignored.push(...ignoredKeysOf(name, build));
     } else {
       continue;
     }
@@ -216,6 +251,7 @@ export function getBuildTargets(
     });
   }
 
+  warnIgnoredBuildKeys(ignored);
   return targets;
 }
 
@@ -360,7 +396,8 @@ function buildGitAuthEnv(): string {
 }
 
 /**
- * Build images on a remote server via SSH.
+ * Build images on a remote server via SSH. Only for orchestrators with `capabilities.remoteBuild`:
+ * k3s nodes run containerd and ship no image builder, so callers refuse it there first (D13).
  *
  * 1. Git clone the repo on the remote host
  * 2. Extract build targets locally

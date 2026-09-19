@@ -1,0 +1,123 @@
+# Traefik values golden "acme-dashboard": buildTraefikValues output (traefik-values.test.ts)
+api:
+  dashboard: true
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: ops@example.com
+      httpChallenge:
+        entryPoint: web
+      storage: /data/acme.json
+commonLabels:
+  dockflow.shawiizz.dev/part: system
+deployment:
+  initContainers:
+    - command:
+        - sh
+        - -c
+        - touch /data/acme.json && chmod 600 /data/acme.json
+      image: docker.io/traefik:v3.7.13
+      imagePullPolicy: IfNotPresent
+      name: acme-permissions
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+      volumeMounts:
+        - mountPath: /data
+          name: data
+  kind: Deployment
+  replicas: 1
+gateway:
+  enabled: false
+gatewayClass:
+  enabled: false
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+image:
+  registry: docker.io
+  repository: traefik
+  tag: v3.7.13
+ingressClass:
+  enabled: true
+  isDefaultClass: false
+  name: traefik
+ingressRoute:
+  dashboard:
+    enabled: true
+    entryPoints:
+      - websecure
+    matchRule: Host(`traefik.example.com`)
+    tls:
+      certResolver: letsencrypt
+  healthcheck:
+    enabled: false
+nodeSelector:
+  kubernetes.io/hostname: main
+  node-role.kubernetes.io/control-plane: "true"
+persistence:
+  accessMode: ReadWriteOnce
+  enabled: true
+  name: data
+  path: /data
+  size: 128Mi
+  storageClass: dockflow-local
+podSecurityContext:
+  fsGroup: 65532
+  fsGroupChangePolicy: OnRootMismatch
+ports:
+  web:
+    expose:
+      default: true
+    hostPort: 80
+    http:
+      redirections:
+        entryPoint:
+          permanent: true
+          priority: 1
+          scheme: https
+          to: websecure
+    port: 8000
+  websecure:
+    expose:
+      default: true
+    hostPort: 443
+    http:
+      tls:
+        enabled: true
+    port: 8443
+priorityClassName: system-cluster-critical
+providers:
+  kubernetesCRD:
+    allowCrossNamespace: false
+    allowEmptyServices: true
+    allowExternalNameServices: false
+    enabled: true
+  kubernetesGateway:
+    enabled: false
+  kubernetesIngress:
+    allowExternalNameServices: false
+    enabled: true
+    publishedService:
+      enabled: false
+resources:
+  limits:
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+service:
+  enabled: true
+  spec:
+    type: ClusterIP
+tolerations:
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/control-plane
+    operator: Exists
+  - key: CriticalAddonsOnly
+    operator: Exists
+updateStrategy:
+  type: Recreate

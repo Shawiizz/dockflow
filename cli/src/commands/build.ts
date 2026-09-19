@@ -17,7 +17,8 @@ import { detectCIEnvironment, parseTagForDeployment, resolveDeployParams } from 
 import { getCurrentBranch } from '../utils/git';
 import { withErrorHandler, ConfigError } from '../utils/errors';
 import { resolveEnvironmentPrefix } from '../utils/validation';
-import { loadConfig, getLayout } from '../utils/config';
+import { loadConfig, getLayout, type DockflowConfig } from '../utils/config';
+import { requireCapabilityFor } from '../services/orchestrator/capabilities';
 import { validateConfig as validateConfigSchema, validateServersConfig as validateServersSchema } from '../schemas';
 import { existsSync, readFileSync } from 'fs';
 import { parse as parseYaml } from 'yaml';
@@ -72,6 +73,17 @@ function quickValidateConfig(): void {
   }
 }
 
+/**
+ * A remote build needs an image builder on the nodes, which k3s nodes do not have (D13). Refused
+ * right after the config is read, before any template render, hook or SSH work. The config schema
+ * refuses the same combination, but the flat layout reaches this point without schema validation.
+ */
+export function assertBuildSupported(config: Pick<DockflowConfig, 'orchestrator' | 'options'>): void {
+  if (config.options?.remote_build === true) {
+    requireCapabilityFor(config.orchestrator ?? 'swarm', 'remoteBuild', 'options.remote_build');
+  }
+}
+
 export async function runBuild(env: string | undefined, options: Partial<BuildOptions>): Promise<void> {
   if (options.debug) setVerbose(true);
 
@@ -112,6 +124,7 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
   }
 
   if (config.options?.enable_debug_logs) setVerbose(true);
+  assertBuildSupported(config);
 
   const branchName = options.branch || getCurrentBranch();
 

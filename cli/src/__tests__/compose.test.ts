@@ -983,6 +983,13 @@ volumes:
     const compose = makeCompose('services:\n  web:\n    image: nginx\n');
     expect(Object.keys(filterServices(compose, ['nope']).services)).toEqual([]);
   });
+
+  it('raw.services follows the filtered services and the source compose is left untouched', () => {
+    const compose = makeCompose('services:\n  web:\n    image: nginx\n  worker:\n    image: worker\n');
+    const filtered = filterServices(compose, ['web']);
+    expect(filtered.raw.services).toBe(filtered.services);
+    expect(Object.keys(compose.raw.services as Record<string, unknown>)).toEqual(['web', 'worker']);
+  });
 });
 
 describe('syncNonTargetedImageTags', () => {
@@ -1006,6 +1013,15 @@ describe('syncNonTargetedImageTags', () => {
     const server = makeCompose('services:\n  web:\n    image: web:1\n  old:\n    image: old:1\n');
     const result = syncNonTargetedImageTags(local, server, ['web']);
     expect(result.services.old).toBeUndefined();
+  });
+
+  it('raw.services follows the synced services and the local compose is left untouched', () => {
+    const local = makeCompose('services:\n  web:\n    image: web-prod:2.0.0\n  api:\n    image: api-prod:2.0.0\n');
+    const server = makeCompose('services:\n  api:\n    image: api-prod:1.0.0\n');
+    const result = syncNonTargetedImageTags(local, server, ['web']);
+    expect(result.raw.services).toBe(result.services);
+    expect((local.raw.services as Record<string, Record<string, unknown>>).api.image).toBe('api-prod:2.0.0');
+    expect(local.services.api.image).toBe('api-prod:2.0.0');
   });
 });
 

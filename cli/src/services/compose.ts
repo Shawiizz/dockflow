@@ -1057,12 +1057,10 @@ export function injectTraefikLabels(
  */
 export function filterServices(compose: ParsedCompose, filter: string[]): ParsedCompose {
   const filterSet = new Set(filter);
-  return {
-    ...compose,
-    services: Object.fromEntries(
-      Object.entries(compose.services).filter(([name]) => filterSet.has(name)),
-    ),
-  };
+  const services = Object.fromEntries(
+    Object.entries(compose.services).filter(([name]) => filterSet.has(name)),
+  );
+  return { ...compose, raw: { ...compose.raw, services }, services };
 }
 
 /**
@@ -1091,7 +1089,7 @@ export function syncNonTargetedImageTags(
     if (typeof serverImage === 'string' && serverImage !== '') services[name] = { ...svc, image: serverImage };
   }
 
-  return { ...local, services };
+  return { ...local, raw: { ...local.raw, services }, services };
 }
 
 /**

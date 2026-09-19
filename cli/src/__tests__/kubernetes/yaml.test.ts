@@ -2,7 +2,8 @@ import { describe, expect, it } from 'bun:test';
 import { parseAllDocuments } from 'yaml';
 import { canonicalJson, sha256Hex } from '../../utils/hash';
 import { DeployError } from '../../utils/errors';
-import type { ConfigMap, Secret, Service } from '../../services/orchestrator/kubernetes/resources/core';
+import type { ConfigMap, Namespace, Secret, Service } from '../../services/orchestrator/kubernetes/resources/core';
+import type { Lease } from '../../services/orchestrator/kubernetes/resources/coordination';
 import type { Deployment } from '../../services/orchestrator/kubernetes/resources/apps';
 import type { ManifestObject } from '../../services/orchestrator/kubernetes/resources/registry';
 import {
@@ -11,6 +12,7 @@ import {
   artifactDigest,
   configMapValue,
   emitManifests,
+  emitObject,
   KEY_PRIORITY,
   parseManifests,
   readArtifactFormat,
@@ -231,6 +233,99 @@ describe('emitManifests (U-YAML-01)', () => {
   it('is byte-identical across calls (rule 9)', () => {
     const objects = [deployment('web'), service('web'), secret('s')];
     expect(emitManifests(objects, header)).toBe(emitManifests([...objects].reverse(), header));
+  });
+});
+
+describe('emitObject', () => {
+  function namespaceObject(name: string): Namespace {
+    return {
+      apiVersion: 'v1',
+      kind: 'Namespace',
+      metadata: { name, labels: { 'app.kubernetes.io/managed-by': 'dockflow' }, annotations: { 'dockflow.shawiizz.dev/stack': 'on' } },
+    };
+  }
+
+  it('emits a kind no artifact may contain, with no header, no separator and one trailing newline', () => {
+    const text = emitObject(namespaceObject(NS));
+    expect(text).toBe(
+      [
+        'apiVersion: v1',
+        'kind: Namespace',
+        'metadata:',
+        `  name: ${NS}`,
+        '  annotations:',
+        '    dockflow.shawiizz.dev/stack: "on"',
+        '  labels:',
+        '    app.kubernetes.io/managed-by: dockflow',
+        '',
+      ].join('\n'),
+    );
+    expect(text).not.toContain('---');
+    expect(text).not.toContain(ARTIFACT_FORMAT_LINE_PREFIX);
+  });
+
+  it('writes an artifact kind exactly as its artifact document', () => {
+    const object = secret('web-env-3f9a1c2e');
+    expect(emitObject(object)).toBe(documents(emitManifests([object], header))[0]);
+  });
+
+  it('applies KEY_PRIORITY then code-unit order, drops undefined and does not depend on construction order', () => {
+    const a: Lease = {
+      apiVersion: 'coordination.k8s.io/v1',
+      kind: 'Lease',
+      metadata: { name: 'dockflow-deploy', namespace: NS },
+      spec: { holderIdentity: 'ci', leaseDurationSeconds: 60, acquireTime: undefined },
+    };
+    const b: Lease = {
+      spec: { leaseDurationSeconds: 60, holderIdentity: 'ci' },
+      metadata: { namespace: NS, name: 'dockflow-deploy' },
+      kind: 'Lease',
+      apiVersion: 'coordination.k8s.io/v1',
+    };
+    expect(emitObject(a)).toBe(
+      [
+        'apiVersion: coordination.k8s.io/v1',
+        'kind: Lease',
+        'metadata:',
+        '  name: dockflow-deploy',
+        `  namespace: ${NS}`,
+        'spec:',
+        '  holderIdentity: ci',
+        '  leaseDurationSeconds: 60',
+        '',
+      ].join('\n'),
+    );
+    expect(emitObject(b)).toBe(emitObject(a));
+  });
+
+  it('keeps a null the API server returned, so a re-created object stays what was read', () => {
+    const live = {
+      apiVersion: 'v1',
+      kind: 'Secret',
+      metadata: { name: 'dockflow-release-1.4.2', namespace: NS, creationTimestamp: null },
+      type: 'Opaque',
+      data: { 'manifests.yaml': 'eA==' },
+    };
+    expect(emitObject(live)).toContain('  creationTimestamp: null\n');
+  });
+
+  it('quotes what kubectl would read as another type and writes block literals', () => {
+    const state = {
+      apiVersion: 'v1',
+      kind: 'ConfigMap',
+      metadata: { name: 'dockflow-release-state', namespace: NS },
+      data: { current: 'no', previous: '1.4.2', notes: 'first\nsecond\n' },
+    };
+    const text = emitObject(state);
+    expect(text).toContain('  current: "no"\n');
+    expect(text).toContain('  notes: |\n    first\n    second\n');
+    expect(parseAllDocuments(text, { version: '1.1' })[0].toJS()).toEqual(state);
+  });
+
+  it('throws a DeployError for a missing name and for values YAML cannot carry', () => {
+    expect(() => emitObject({ apiVersion: 'v1', kind: 'Lease', metadata: {} })).toThrow(DeployError);
+    expect(() => emitObject({ apiVersion: 'v1', kind: 'Lease', metadata: { name: 'l' }, spec: { leaseTransitions: Number.NaN } })).toThrow(DeployError);
+    expect(() => emitObject({ apiVersion: 'v1', kind: 'Secret', metadata: { name: 's' }, spec: { at: new Date(0) } })).toThrow(DeployError);
   });
 });
 

@@ -1,9 +1,33 @@
-import { describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { getBuildTargets, getOverridesForTarget } from '../services/build';
+import { assertBuildSupported } from '../commands/build';
+import { BUILD_KEYS_READ, getBuildTargets, getOverridesForTarget, ignoredKeysOf } from '../services/build';
 import type { BuildTarget } from '../services/build';
+import { capabilityRefusal } from '../services/orchestrator/capabilities';
+import { ErrorCode, UnsupportedOperationError } from '../utils/errors';
+import * as output from '../utils/output';
 
 const BASE = resolve('/project/.dockflow/docker');
+
+// every warning the builder prints goes through these spies, so no test writes to stderr
+let warnings: string[] = [];
+let hints: string[] = [];
+
+beforeEach(() => {
+  warnings = [];
+  hints = [];
+  spyOn(output, 'printWarning').mockImplementation((message: string) => {
+    warnings.push(message);
+  });
+  spyOn(output, 'printDim').mockImplementation((message: string) => {
+    hints.push(message);
+  });
+});
+
+afterEach(() => {
+  mock.restore();
+});
 
 describe('getBuildTargets', () => {
   it('string build → context dir with default Dockerfile', () => {
@@ -78,6 +102,103 @@ services:
 
   it('empty compose yields no targets', () => {
     expect(getBuildTargets('services: {}\n', BASE)).toEqual([]);
+  });
+});
+
+describe('build.key-ignored (design-01 IMG-09)', () => {
+  const HINT_TARGET = '  Remove `build.target`, or build and push the image yourself and reference it with `image:`.';
+
+  // getBuildTargets takes no orchestrator: it is the one entry of `dockflow build` and of the
+  // deploy build on Swarm and k3s alike, so the warning cannot differ between them
+  for (const orchestrator of ['swarm', 'k3s'] as const) {
+    it(`warns once per ignored key with its compose path (${orchestrator})`, () => {
+      assertBuildSupported({ orchestrator, options: {} });
+      const targets = getBuildTargets('services:\n  web:\n    image: web:1\n    build:\n      context: .\n      target: prod\n', BASE);
+
+      expect(targets.map((t) => t.tag)).toEqual(['web:1']);
+      expect(warnings).toEqual([
+        'docker-compose.yml services.web.build.target: build.target is ignored: the Dockflow builder only reads context, dockerfile and args',
+      ]);
+      expect(hints).toEqual([HINT_TARGET]);
+    });
+  }
+
+  it('lists every ignored key in file order and never the keys the builder reads', () => {
+    const yaml = `
+services:
+  web:
+    image: web:1
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+      args: { A: "1" }
+      platforms: [linux/arm64]
+      cache_from: [web:cache]
+      x-note: kept for tooling
+`;
+    getBuildTargets(yaml, BASE);
+
+    expect(warnings.map((w) => w.split(':')[0])).toEqual([
+      'docker-compose.yml services.web.build.platforms',
+      'docker-compose.yml services.web.build.cache_from',
+    ]);
+    expect(hints).toHaveLength(2);
+    expect(BUILD_KEYS_READ).toEqual(['context', 'dockerfile', 'args']);
+  });
+
+  it('warns only for the services selected with --only, and never for a string build', () => {
+    const yaml = 'services:\n  a:\n    build:\n      context: .\n      target: x\n  b:\n    build: .\n  c:\n    build:\n      context: .\n      ssh: [default]\n';
+
+    getBuildTargets(yaml, BASE, 'b,c');
+
+    expect(warnings).toEqual([
+      'docker-compose.yml services.c.build.ssh: build.ssh is ignored: the Dockflow builder only reads context, dockerfile and args',
+    ]);
+  });
+
+  it('ignoredKeysOf reads mappings only', () => {
+    expect(ignoredKeysOf('web', '.')).toEqual([]);
+    expect(ignoredKeysOf('web', ['.'])).toEqual([]);
+    expect(ignoredKeysOf('web', { context: '.', no_cache: true })).toEqual([{ service: 'web', key: 'no_cache' }]);
+  });
+});
+
+describe('remote build refusal (U-CMD-REFUSE-02)', () => {
+  it('refuses options.remote_build on k3s with the remoteBuild capability refusal', () => {
+    const refusal = capabilityRefusal('remoteBuild', 'options.remote_build');
+    let caught: unknown = null;
+    try {
+      assertBuildSupported({ orchestrator: 'k3s', options: { remote_build: true } });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(UnsupportedOperationError);
+    const error = caught as UnsupportedOperationError;
+    expect(error.code).toBe(ErrorCode.UNSUPPORTED_OPERATION);
+    expect(error.message).toBe(refusal.message);
+    expect(error.message).toBe(
+      'options.remote_build is not supported with orchestrator: k3s: k3s nodes run containerd only and ship no image builder',
+    );
+    expect(error.suggestion).toBe(refusal.suggestion);
+  });
+
+  it('accepts remote builds on Swarm (the default orchestrator) and local builds everywhere', () => {
+    expect(() => assertBuildSupported({ options: { remote_build: true } })).not.toThrow();
+    expect(() => assertBuildSupported({ orchestrator: 'swarm', options: { remote_build: true } })).not.toThrow();
+    expect(() => assertBuildSupported({ orchestrator: 'k3s', options: { remote_build: false } })).not.toThrow();
+    expect(() => assertBuildSupported({ orchestrator: 'k3s' })).not.toThrow();
+  });
+
+  it('runs the check right after the config is read, before any render, hook or build', () => {
+    const source = readFileSync(resolve(import.meta.dir, '../commands/build.ts'), 'utf8');
+    const body = source.slice(source.indexOf('export async function runBuild'));
+    const check = body.indexOf('assertBuildSupported(config)');
+
+    expect(check).toBeGreaterThan(body.indexOf('loadConfig()'));
+    for (const later of ['Compose.renderAndResolveCompose(', 'Hook.runHook(', 'Build.buildAll(']) {
+      expect(check).toBeLessThan(body.indexOf(later));
+    }
   });
 });
 
