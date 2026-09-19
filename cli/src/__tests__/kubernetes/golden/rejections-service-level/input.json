@@ -1,0 +1,5 @@
+{
+  "description": "Every service-level R row that can coexist in one file (one service per family so no refusal masks another), plus every reject-policy key at least once",
+  "proxy": { "enabled": true, "acme": false },
+  "expectRenderError": { "app": true }
+}

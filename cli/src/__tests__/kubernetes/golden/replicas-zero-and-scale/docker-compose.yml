@@ -1,0 +1,13 @@
+services:
+  idle:
+    image: nginx:1.27
+    deploy:
+      replicas: 0
+  scaled:
+    image: nginx:1.27
+    scale: 3
+  batch:
+    image: busybox:1.36
+    deploy:
+      mode: replicated-job
+      replicas: 0

@@ -1,0 +1,47 @@
+{
+  "app": [
+    {
+      "severity": "error",
+      "code": "unsupported.include",
+      "path": "include",
+      "message": "include is not supported: Dockflow deploys a single compose file",
+      "hint": "Inline the included services, or share fragments with a Nunjucks `{% include %}`."
+    },
+    {
+      "severity": "error",
+      "code": "unsupported.jobs",
+      "path": "jobs",
+      "message": "jobs is not supported in this Dockflow version",
+      "hint": "For a run-to-completion task use a service with `deploy.mode: replicated-job`; scheduled jobs are not supported yet."
+    },
+    {
+      "severity": "error",
+      "code": "unsupported.models",
+      "path": "models",
+      "message": "models is not supported on Kubernetes deploys",
+      "hint": "Run the model server as a regular service with an image."
+    },
+    {
+      "severity": "error",
+      "code": "keys.unknown",
+      "path": "totally-unknown-top-level-key",
+      "message": "is not known to this Dockflow release, which follows the Compose specification of 2026-09-17",
+      "hint": "Check the spelling; if the key was added to the Compose specification after that date, upgrade Dockflow, and put Kubernetes-only settings under `x-dockflow` (see the Kubernetes page of the docs)."
+    },
+    {
+      "severity": "error",
+      "code": "names.invalid-key",
+      "path": "volumes[\"bad name!\"]",
+      "message": "bad name! is not a valid volume name",
+      "hint": "Use letters, digits, `.`, `_` and `-` only."
+    },
+    {
+      "severity": "error",
+      "code": "extension.misplaced",
+      "path": "x-dockflow",
+      "message": "x-dockflow is not allowed here",
+      "hint": "Put `x-dockflow` under a service (`services.<name>.x-dockflow`) or a volume (`volumes.<name>.x-dockflow`)."
+    }
+  ],
+  "accessory": []
+}

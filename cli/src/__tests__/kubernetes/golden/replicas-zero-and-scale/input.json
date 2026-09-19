@@ -1,0 +1,3 @@
+{
+  "description": "replicas: 0 on a Deployment, scale: 3 without deploy.replicas, and a replicated-job with replicas: 0 (no Job created)"
+}

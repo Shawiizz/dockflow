@@ -1,0 +1,11 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "deploy.job-zero-replicas",
+      "path": "services.batch.deploy.replicas",
+      "message": "Job service batch has 0 replicas and is not created"
+    }
+  ],
+  "accessory": []
+}

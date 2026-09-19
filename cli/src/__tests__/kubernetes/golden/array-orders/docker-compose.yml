@@ -1,0 +1,45 @@
+services:
+  worker:
+    image: nginx:1.27
+    x-dockflow:
+      kind: statefulset
+    sysctls:
+      - net.ipv4.tcp_fin_timeout=30
+      - net.ipv4.ip_local_port_range=1024 65535
+    dns_opt:
+      - ndots:2
+      - use-vc
+      - ndots:3
+    volumes:
+      - type: volume
+        source: zvol
+        target: /zdata
+      - type: volume
+        source: avol
+        target: /adata
+    deploy:
+      replicas: 2
+      placement:
+        constraints:
+          - node.labels.zone != us-west
+          - node.labels.zone != us-east
+        preferences:
+          - spread: node.labels.zone
+          - spread: node.labels.rack
+      labels:
+        traefik.enable: "true"
+        traefik.http.routers.worker.rule: "Host(`worker.example.com`)"
+        traefik.http.routers.worker.middlewares: "worker-chain"
+        traefik.http.routers.worker.service: "worker"
+        traefik.http.services.worker.loadbalancer.server.port: "8080"
+        traefik.http.middlewares.worker-allow.ipallowlist.sourcerange: "10.0.0.2/32,10.0.0.1/32"
+        traefik.http.middlewares.worker-strip.stripprefix.prefixes: "/b,/a"
+        traefik.http.middlewares.worker-chain.chain.middlewares: "worker-strip,worker-allow"
+
+volumes:
+  zvol:
+    x-dockflow:
+      per_replica: true
+  avol:
+    x-dockflow:
+      per_replica: true

@@ -1,0 +1,12 @@
+{
+  "app": [
+    {
+      "severity": "warning",
+      "code": "env.unset-variable",
+      "path": "services.web.environment.UNSET_ME",
+      "message": "UNSET_ME has no value, so it is not set in the container: Dockflow does not pass its own environment to the service",
+      "hint": "Give it a value, for example `UNSET_ME: \"{{ current.env.unset_me }}\"`."
+    }
+  ],
+  "accessory": []
+}

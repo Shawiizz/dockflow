@@ -1,0 +1,4 @@
+{
+  "description": "Built web image imported to nodes, one published port, one env var, replicas 2 (design-02 12 reference case)",
+  "images": { "mode": "import", "built": ["shop-web:1.4.2"] }
+}

@@ -1,0 +1,10 @@
+services:
+  web:
+    build: .
+    image: shop-web:1.4.2
+    ports:
+      - "8080:3000"
+    environment:
+      APP_ENV: production
+    deploy:
+      replicas: 2

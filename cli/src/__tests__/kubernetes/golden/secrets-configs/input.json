@@ -1,0 +1,4 @@
+{
+  "description": "File secret, inline-content config, binary config, a long target with mode 0440, one secret mounted twice under two modes, external secret and config, and ignored uid/gid",
+  "secretFiles": ["files/token.txt"]
+}

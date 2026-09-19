@@ -1,0 +1,25 @@
+services:
+  web:
+    image: nginx:1.27
+    env_file:
+      - path: files/base.env
+      - path: files/override.env
+      - path: files/raw.env
+        format: raw
+    environment:
+      INLINE_OVERRIDE: from-environment
+      UNSET_ME:
+    label_file:
+      - files/labels.env
+    secrets:
+      - api_key
+    configs:
+      - app_conf
+
+secrets:
+  api_key:
+    file: files/api_key.txt
+
+configs:
+  app_conf:
+    file: files/app_conf.txt

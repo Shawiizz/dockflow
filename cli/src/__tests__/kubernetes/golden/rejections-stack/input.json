@@ -1,0 +1,4 @@
+{
+  "description": "The normalizer's stack checks (design-01 10): two services sanitizing to the same Kubernetes name (names.sanitize-collision). volumes.rwo-replicas/ports.published-conflict/ports.host-port-replicas are translator codes render() never reaches once the normalizer already reported an error (render.ts aborts after normalize), so they are not reachable from this same file; names.file-collision needs two content-named objects whose truncated content hash coincides despite different content, which is not constructible by hand in a fixture. All four are exercised by their own unit and row tests instead.",
+  "expectRenderError": { "app": true }
+}

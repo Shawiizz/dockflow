@@ -1,0 +1,116 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Golden case input.json",
+  "description": "Editor-help mirror of GoldenInputSchema in support/golden.ts. That zod schema is authoritative; this file is not validated against it automatically.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["description"],
+  "definitions": {
+    "protocol": { "type": "string", "enum": ["TCP", "UDP", "SCTP"] },
+    "reservedHostPort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port", "protocol", "reason"],
+      "properties": {
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "protocol": { "$ref": "#/definitions/protocol" },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "helmRelease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "chart", "version"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "chart": { "type": "string", "minLength": 1 },
+        "repo": { "type": "string" },
+        "version": { "type": "string", "minLength": 1 },
+        "digest": { "type": "string" },
+        "role": { "type": "string", "enum": ["app", "accessory"] },
+        "namespace": { "type": "string" },
+        "values": { "type": "object" },
+        "values_files": { "type": "array", "items": { "type": "string" } },
+        "timeout": { "type": "string" },
+        "auth": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["username", "password"],
+          "properties": {
+            "username": { "type": "string", "minLength": 1 },
+            "password": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "description": { "type": "string", "minLength": 1 },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "project": { "type": "string", "minLength": 1 },
+        "env": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "proxy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "email": { "type": "string" },
+        "acme": { "type": "boolean" },
+        "domains": { "type": "object", "additionalProperties": { "type": "string" } },
+        "dashboard": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "domain": { "type": "string" }
+          }
+        },
+        "manage": { "type": "boolean" },
+        "acme_ca_server": { "type": "string" },
+        "acme_ca_bundle": { "type": "string" },
+        "default_ingress_class": { "type": "boolean" }
+      }
+    },
+    "images": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "type": "string", "enum": ["import", "registry", "none"] },
+        "built": { "type": "array", "items": { "type": "string" } },
+        "pullSecretName": { "type": ["string", "null"] }
+      }
+    },
+    "imageDelivery": { "type": "string", "enum": ["import", "registry", "none"] },
+    "keepReleases": { "type": "integer", "minimum": 1 },
+    "serverSshPorts": { "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 65535 } },
+    "extraReservedHostPorts": { "type": "array", "items": { "$ref": "#/definitions/reservedHostPort" } },
+    "serverNames": { "type": "array", "items": { "type": "string" } },
+    "traits": { "type": "object" },
+    "secretFiles": { "type": "array", "items": { "type": "string" } },
+    "helm": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout": { "type": "string" },
+        "releases": { "type": "array", "items": { "$ref": "#/definitions/helmRelease" } }
+      }
+    },
+    "traefikOnCluster": { "type": "boolean" },
+    "stabilityVersion": { "type": "string" },
+    "expectRenderError": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "app": { "type": "boolean" },
+        "accessory": { "type": "boolean" }
+      }
+    },
+    "expectLoadError": { "type": "string" }
+  }
+}

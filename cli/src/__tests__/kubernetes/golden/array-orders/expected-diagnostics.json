@@ -1,0 +1,38 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "probes.routed-without-healthcheck",
+      "path": "services.worker",
+      "message": "Service worker is routed by Traefik but has no healthcheck; traffic starts as soon as the container starts",
+      "hint": "Add a healthcheck."
+    },
+    {
+      "severity": "info",
+      "code": "routing.port-added",
+      "path": "services.worker.deploy.labels[\"traefik.http.routers.worker.rule\"]",
+      "message": "Port 8080 of service worker is added to its Service for router worker"
+    },
+    {
+      "severity": "info",
+      "code": "update.statefulset-order",
+      "path": "services.worker.deploy.update_config.order",
+      "message": "Service worker is a StatefulSet; replicas are replaced one at a time, stop-first"
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.worker.volumes[0]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /zdata (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.worker.volumes[1]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /adata (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    }
+  ],
+  "accessory": []
+}

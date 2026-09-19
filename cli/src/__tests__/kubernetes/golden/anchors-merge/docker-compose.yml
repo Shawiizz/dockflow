@@ -1,0 +1,15 @@
+x-common: &common
+  image: nginx:1.27
+  environment:
+    LOG_LEVEL: info
+
+services:
+  web:
+    <<: *common
+    ports:
+      - "8080:80"
+  worker:
+    <<: *common
+    environment:
+      LOG_LEVEL: debug
+      ROLE: worker

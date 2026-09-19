@@ -1,0 +1,4 @@
+services:
+  app:
+    build: .
+    image: shop-app:1.4.2

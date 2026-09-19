@@ -247,6 +247,9 @@ export interface SecurityContext {
   allowPrivilegeEscalation?: boolean;
   runAsUser?: number;
   runAsGroup?: number;
+  /** hardened helper pods (design-05 16.4); the translator never sets this for workload containers */
+  runAsNonRoot?: boolean;
+  seccompProfile?: SeccompProfile;
 }
 
 export type ImagePullPolicy = 'Always' | 'IfNotPresent' | 'Never';
@@ -325,6 +328,8 @@ export interface PodSecurityContext {
   fsGroupChangePolicy?: 'OnRootMismatch' | 'Always';
   runAsUser?: number;
   runAsGroup?: number;
+  /** hardened helper pods (design-05 16.4) */
+  runAsNonRoot?: boolean;
 }
 
 export interface Toleration {

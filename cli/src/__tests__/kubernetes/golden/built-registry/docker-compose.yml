@@ -1,0 +1,6 @@
+services:
+  app:
+    build: .
+    image: registry.example.com/shop/app:1.4.2
+  worker:
+    image: redis:7.2

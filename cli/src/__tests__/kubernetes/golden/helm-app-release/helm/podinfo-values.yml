@@ -1,0 +1,5 @@
+image:
+  tag: 6.15.0
+resources:
+  limits:
+    memory: 128Mi

@@ -1,0 +1,4 @@
+{
+  "description": "Dotenv and raw env files with precedence and override, an environment-level unset and an empty value, label_file, and compose secrets/configs read from files/",
+  "secretFiles": ["files/api_key.txt"]
+}

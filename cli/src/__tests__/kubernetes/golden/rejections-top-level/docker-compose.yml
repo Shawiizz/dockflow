@@ -1,0 +1,17 @@
+include:
+  - other.yml
+models:
+  demo: {}
+jobs:
+  nightly: {}
+x-dockflow:
+  whatever: true
+totally-unknown-top-level-key:
+  value: 1
+
+services:
+  web:
+    image: nginx:1.27
+
+volumes:
+  "bad name!":

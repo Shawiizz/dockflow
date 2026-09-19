@@ -1,0 +1,3 @@
+{
+  "description": "A service with no environment and no files: no Secret, no envFrom, no P/config-hash"
+}

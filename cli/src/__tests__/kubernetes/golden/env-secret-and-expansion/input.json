@@ -1,0 +1,3 @@
+{
+  "description": "environment as a list plus env_file, values with $(HOME) and $$x, command/entrypoint with $(X) and shell words: env Secret data verbatim, doubled $ in command/args, P/config-hash, compose $$ reduced once"
+}

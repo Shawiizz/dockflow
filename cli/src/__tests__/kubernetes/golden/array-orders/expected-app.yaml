@@ -1,0 +1,281 @@
+# dockflow-artifact: k8s-manifests/1
+# stack: shop-production
+# role: app
+# version: 1.4.2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: worker
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: worker
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: worker
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  clusterIP: None
+  ports:
+    - name: tcp-8080
+      port: 8080
+      protocol: TCP
+  selector:
+    dockflow.shawiizz.dev/service: worker
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker-hl
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: worker
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: worker
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: worker
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  clusterIP: None
+  ports:
+    - name: tcp-8080
+      port: 8080
+      protocol: TCP
+  selector:
+    dockflow.shawiizz.dev/service: worker
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: worker
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: worker
+    dockflow.shawiizz.dev/release: 1.4.2
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: worker
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: worker
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  minReadySeconds: 30
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  podManagementPolicy: Parallel
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      dockflow.shawiizz.dev/service: worker
+      dockflow.shawiizz.dev/stack: dockflow-shop-production
+  serviceName: worker-hl
+  template:
+    metadata:
+      annotations:
+        dockflow.shawiizz.dev/compose-service: worker
+        kubectl.kubernetes.io/default-container: worker
+      labels:
+        app.kubernetes.io/instance: dockflow-shop-production
+        app.kubernetes.io/name: worker
+        dockflow.shawiizz.dev/role: app
+        dockflow.shawiizz.dev/service: worker
+        dockflow.shawiizz.dev/stack: dockflow-shop-production
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: zone
+                    operator: NotIn
+                    values:
+                      - us-east
+                      - us-west
+      automountServiceAccountToken: false
+      containers:
+        - name: worker
+          image: nginx:1.27
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: tcp-8080
+              containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            - name: avol
+              mountPath: /adata
+            - name: zvol
+              mountPath: /zdata
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "3"
+          - name: use-vc
+      enableServiceLinks: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+        sysctls:
+          - name: net.ipv4.ip_local_port_range
+            value: 1024 65535
+          - name: net.ipv4.tcp_fin_timeout
+            value: "30"
+      terminationGracePeriodSeconds: 10
+      topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              dockflow.shawiizz.dev/service: worker
+              dockflow.shawiizz.dev/stack: dockflow-shop-production
+          maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+        - labelSelector:
+            matchLabels:
+              dockflow.shawiizz.dev/service: worker
+              dockflow.shawiizz.dev/stack: dockflow-shop-production
+          maxSkew: 1
+          topologyKey: zone
+          whenUnsatisfiable: ScheduleAnyway
+        - labelSelector:
+            matchLabels:
+              dockflow.shawiizz.dev/service: worker
+              dockflow.shawiizz.dev/stack: dockflow-shop-production
+          maxSkew: 1
+          topologyKey: rack
+          whenUnsatisfiable: ScheduleAnyway
+  updateStrategy:
+    type: RollingUpdate
+  volumeClaimTemplates:
+    - metadata:
+        name: avol
+        annotations:
+          dockflow.shawiizz.dev/compose-volume: avol
+        labels:
+          app.kubernetes.io/instance: dockflow-shop-production
+          app.kubernetes.io/managed-by: dockflow
+          app.kubernetes.io/part-of: shop
+          dockflow.shawiizz.dev/part: stack
+          dockflow.shawiizz.dev/role: app
+          dockflow.shawiizz.dev/stack: dockflow-shop-production
+          dockflow.shawiizz.dev/volume: avol
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+        storageClassName: dockflow-local
+    - metadata:
+        name: zvol
+        annotations:
+          dockflow.shawiizz.dev/compose-volume: zvol
+        labels:
+          app.kubernetes.io/instance: dockflow-shop-production
+          app.kubernetes.io/managed-by: dockflow
+          app.kubernetes.io/part-of: shop
+          dockflow.shawiizz.dev/part: stack
+          dockflow.shawiizz.dev/role: app
+          dockflow.shawiizz.dev/stack: dockflow-shop-production
+          dockflow.shawiizz.dev/volume: zvol
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+        storageClassName: dockflow-local
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: worker-allow
+  namespace: dockflow-shop-production
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  ipAllowList:
+    sourceRange:
+      - 10.0.0.1/32
+      - 10.0.0.2/32
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: worker-chain
+  namespace: dockflow-shop-production
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  chain:
+    middlewares:
+      - name: worker-strip
+      - name: worker-allow
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: worker-strip
+  namespace: dockflow-shop-production
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  stripPrefix:
+    prefixes:
+      - /b
+      - /a
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: worker--87eba76e
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: worker
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: worker
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: worker
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  routes:
+    - kind: Rule
+      match: Host(`worker.example.com`)
+      middlewares:
+        - name: worker-chain
+      services:
+        - name: worker
+          port: 8080

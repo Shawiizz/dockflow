@@ -1,0 +1,5 @@
+{
+  "description": "Built service delivered by registry with a pull secret, plus one pulled service: plain registry ref, IfNotPresent, imagePullSecrets on every pod template",
+  "imageDelivery": "registry",
+  "images": { "mode": "registry", "built": ["registry.example.com/shop/app:1.4.2"], "pullSecretName": "dockflow-registry" }
+}

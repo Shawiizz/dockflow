@@ -1,0 +1,3 @@
+{
+  "description": "Compose $$ escaping, ${VAR:-default} expansion, and source-text scalars (010, yes, 1e3): values equal the source text"
+}

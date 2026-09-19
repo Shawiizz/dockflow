@@ -1,0 +1,23 @@
+{
+  "description": "One app Helm release with values_files and inline values, and one accessory Helm release",
+  "helm": {
+    "releases": [
+      {
+        "name": "podinfo",
+        "chart": "podinfo",
+        "repo": "https://charts.example.com",
+        "version": "6.15.0",
+        "values_files": [".dockflow/helm/podinfo-values.yml"],
+        "values": { "replicaCount": 2 }
+      },
+      {
+        "name": "redis-exporter",
+        "chart": "redis-exporter",
+        "repo": "https://charts.example.com",
+        "version": "1.2.3",
+        "role": "accessory",
+        "values": { "redisAddress": "redis://cache:6379" }
+      }
+    ]
+  }
+}

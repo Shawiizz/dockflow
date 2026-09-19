@@ -1,0 +1,142 @@
+services:
+  web:
+    image: nginx:1.27
+
+  identity-misc:
+    image: nginx:1.27
+    profiles: ["test"]
+    provider:
+      type: something
+    extends:
+      service: web
+    models:
+      demo: {}
+    pre_start:
+      - command: ["true"]
+
+  hooks-svc:
+    image: nginx:1.27
+    post_start:
+      - command: ["true"]
+        environment:
+          FOO: bar
+        privileged: true
+        user: "1000"
+        working_dir: /tmp
+    pre_stop:
+      - command: ["true"]
+        environment:
+          FOO: bar
+        privileged: true
+        user: "1000"
+        working_dir: /tmp
+
+  security-svc:
+    image: nginx:1.27
+    uts: host
+    userns_mode: private
+    cgroup: host
+    devices:
+      - "/dev/foo:/dev/foo"
+    device_cgroup_rules:
+      - "c 1:3 mrw"
+    gpus: all
+    runtime: nvidia
+    isolation: hyperv
+    credential_spec:
+      file: my_credential_spec.json
+    use_api_socket: true
+
+  network-svc:
+    image: nginx:1.27
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+      - 9.9.9.9
+      - 1.0.0.1
+    networks:
+      default:
+        ipv4_address: 10.0.0.5
+        ipv6_address: "fd00::5"
+
+  volumes-svc:
+    image: nginx:1.27
+    volumes:
+      - type: bind
+        source: relative/path
+        target: /data
+      - type: image
+        target: /img
+        image:
+          name: some-image
+      - type: volume
+        source: driver-opts-vol
+        target: /data-ro
+    volumes_from:
+      - web
+
+  deploy-svc:
+    image: nginx:1.27
+    cpu_rt_runtime: 950000
+    cpu_rt_period: 1000000
+    cpu_count: 2
+    cpu_percent: 50
+    cpuset: "0-1"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: ["gpu"]
+          generic_resources:
+            - discrete_resource_spec:
+                kind: gpu
+                value: 1
+
+  placement-svc:
+    image: nginx:1.27
+    deploy:
+      placement:
+        constraints:
+          - node.id == abc123
+
+  routing-svc:
+    image: nginx:1.27
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.routing-svc.rule: "Host(`routing.example.com`)"
+      traefik.http.services.routing-svc.loadbalancer.server.port: "8080"
+      traefik.http.routers.routing-svc.middlewares: "routing-svc-mw"
+      traefik.http.middlewares.routing-svc-mw.errors.service: "backend@consulcatalog"
+      traefik.http.middlewares.routing-svc-mw.errors.status: "500-599"
+      traefik.http.middlewares.routing-svc-mw.errors.query: "/error"
+
+  labels-svc:
+    image: nginx:1.27
+    labels:
+      dockflow.shawiizz.dev/custom: "value"
+      "invalid label!": "value"
+
+  secrets-configs-svc:
+    image: nginx:1.27
+    secrets:
+      - bad_secret
+    configs:
+      - bad_config
+
+volumes:
+  driver-opts-vol:
+    driver_opts:
+      opt1: val1
+
+secrets:
+  bad_secret:
+    environment: SOME_VAR
+    template_driver: mytemplate
+    driver: customdriver
+    driver_opts:
+      opt1: val1
+
+configs:
+  bad_config:
+    environment: SOME_VAR
+    template_driver: mytemplate

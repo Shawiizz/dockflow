@@ -1,0 +1,4 @@
+{
+  "description": "Long forms: host-mode port, bind with bind.recursive, tmpfs with size, a per-replica-less subpath volume mount, and secrets/configs with target and mode",
+  "secretFiles": ["files/api_key.txt"]
+}

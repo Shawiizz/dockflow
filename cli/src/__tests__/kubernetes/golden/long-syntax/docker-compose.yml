@@ -1,0 +1,43 @@
+services:
+  app:
+    image: nginx:1.27
+    ports:
+      - target: 8443
+        published: 8443
+        protocol: tcp
+        mode: host
+    volumes:
+      - type: bind
+        source: /srv/app/data
+        target: /data
+        read_only: true
+        bind:
+          recursive: readonly
+      - type: tmpfs
+        target: /cache
+        tmpfs:
+          size: 64m
+      - type: volume
+        source: appvol
+        target: /app/sub
+        volume:
+          subpath: nested
+    secrets:
+      - source: api_key
+        target: /run/secrets/api-key.txt
+        mode: 0440
+    configs:
+      - source: app_conf
+        target: /etc/app/app.conf
+        mode: 0440
+
+volumes:
+  appvol:
+
+secrets:
+  api_key:
+    file: files/api_key.txt
+
+configs:
+  app_conf:
+    file: files/app.conf

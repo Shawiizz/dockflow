@@ -1,0 +1,4 @@
+{
+  "description": "Two YAML documents in one file abort at load time",
+  "expectLoadError": "docker-compose.yml: the file contains several YAML documents; keep one"
+}

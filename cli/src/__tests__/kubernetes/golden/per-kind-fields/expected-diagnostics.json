@@ -1,0 +1,24 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "update.statefulset-order",
+      "path": "services.db.deploy.update_config.order",
+      "message": "Service db is a StatefulSet; replicas are replaced one at a time, stop-first"
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.db.volumes[0]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /var/lib/postgresql/data (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "info",
+      "code": "names.volume-sanitized",
+      "path": "volumes.db_data",
+      "message": "volume db_data is stored in the claim db-data"
+    }
+  ],
+  "accessory": []
+}

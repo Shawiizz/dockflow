@@ -1,0 +1,5 @@
+services:
+  web_app:
+    image: nginx:1.27
+  web-app:
+    image: nginx:1.27

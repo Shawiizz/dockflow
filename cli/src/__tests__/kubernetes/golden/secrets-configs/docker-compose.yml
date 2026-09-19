@@ -1,0 +1,33 @@
+services:
+  app:
+    image: nginx:1.27
+    secrets:
+      - source: token
+        target: /run/secrets/token-a
+        mode: 0440
+        uid: "1000"
+      - source: token
+        target: /run/secrets/very/long/nested/path/for/the/second/mount/token-b
+        mode: 0400
+      - ext_secret
+    configs:
+      - source: inline_conf
+      - source: binary_conf
+      - ext_config
+
+secrets:
+  token:
+    file: files/token.txt
+  ext_secret:
+    external: true
+    name: shop-ext-secret
+
+configs:
+  inline_conf:
+    content: |
+      setting: value
+  binary_conf:
+    file: files/logo.bin
+  ext_config:
+    external: true
+    name: shop-ext-config

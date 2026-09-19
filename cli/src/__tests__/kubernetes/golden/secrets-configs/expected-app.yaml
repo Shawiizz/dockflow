@@ -1,0 +1,215 @@
+# dockflow-artifact: k8s-manifests/1
+# stack: shop-production
+# role: app
+# version: 1.4.2
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: token-secret-f0fbc53b
+  namespace: dockflow-shop-production
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/hashed: "true"
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+data:
+  token: YS1zZWNyZXQtdG9rZW4tdmFsdWUK
+immutable: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: binary-conf-config-97bbb409
+  namespace: dockflow-shop-production
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/hashed: "true"
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+binaryData:
+  binary_conf: iVBORw0KGgr/2IAAAQI=
+immutable: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inline-conf-config-9b4e48a0
+  namespace: dockflow-shop-production
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/hashed: "true"
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+data:
+  inline_conf: |
+    setting: value
+immutable: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: app
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: app
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  clusterIP: None
+  ports:
+    - name: placeholder
+      port: 9
+      protocol: TCP
+  selector:
+    dockflow.shawiizz.dev/service: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: app
+    dockflow.shawiizz.dev/release: 1.4.2
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: app
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  minReadySeconds: 30
+  progressDeadlineSeconds: 240
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      dockflow.shawiizz.dev/service: app
+      dockflow.shawiizz.dev/stack: dockflow-shop-production
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      annotations:
+        dockflow.shawiizz.dev/compose-service: app
+        dockflow.shawiizz.dev/config-hash: 79903f5b1fbb3417ec221805af93c26fee42be3a1187ab55600f38cbea9d2198
+        kubectl.kubernetes.io/default-container: app
+      labels:
+        app.kubernetes.io/instance: dockflow-shop-production
+        app.kubernetes.io/name: app
+        dockflow.shawiizz.dev/role: app
+        dockflow.shawiizz.dev/service: app
+        dockflow.shawiizz.dev/stack: dockflow-shop-production
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: app
+          image: nginx:1.27
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: config-binary-conf-444
+              mountPath: /binary_conf
+              readOnly: true
+              subPath: binary_conf
+            - name: config-ext-config-444
+              mountPath: /ext_config
+              readOnly: true
+              subPath: ext_config
+            - name: config-inline-conf-444
+              mountPath: /inline_conf
+              readOnly: true
+              subPath: inline_conf
+            - name: secret-ext-secret-444
+              mountPath: /run/secrets/ext_secret
+              readOnly: true
+              subPath: ext_secret
+            - name: secret-token-440
+              mountPath: /run/secrets/token-a
+              readOnly: true
+              subPath: token
+            - name: secret-token-400
+              mountPath: /run/secrets/very/long/nested/path/for/the/second/mount/token-b
+              readOnly: true
+              subPath: token
+      enableServiceLinks: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 10
+      topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              dockflow.shawiizz.dev/service: app
+              dockflow.shawiizz.dev/stack: dockflow-shop-production
+          matchLabelKeys:
+            - pod-template-hash
+          maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+      volumes:
+        - name: config-binary-conf-444
+          configMap:
+            name: binary-conf-config-97bbb409
+            defaultMode: 292
+            items:
+              - key: binary_conf
+                path: binary_conf
+        - name: config-ext-config-444
+          configMap:
+            name: shop-ext-config
+            defaultMode: 292
+            items:
+              - key: ext_config
+                path: ext_config
+        - name: config-inline-conf-444
+          configMap:
+            name: inline-conf-config-9b4e48a0
+            defaultMode: 292
+            items:
+              - key: inline_conf
+                path: inline_conf
+        - name: secret-ext-secret-444
+          secret:
+            defaultMode: 292
+            items:
+              - key: ext_secret
+                path: ext_secret
+            secretName: shop-ext-secret
+        - name: secret-token-400
+          secret:
+            defaultMode: 256
+            items:
+              - key: token
+                path: token
+            secretName: token-secret-f0fbc53b
+        - name: secret-token-440
+          secret:
+            defaultMode: 288
+            items:
+              - key: token
+                path: token
+            secretName: token-secret-f0fbc53b

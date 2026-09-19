@@ -1,0 +1,352 @@
+{
+  "app": [
+    {
+      "severity": "error",
+      "code": "files.environment-unsupported",
+      "path": "configs.bad_config.environment",
+      "message": "config content from the environment variable SOME_VAR is not supported: Dockflow passes no process environment",
+      "hint": "Put the value in a file under `.dockflow/` that renders it with Nunjucks (for example `{{ current.env.some_var }}`) and use `file:`."
+    },
+    {
+      "severity": "error",
+      "code": "files.template-driver-unsupported",
+      "path": "configs.bad_config.template_driver",
+      "message": "template_driver is not supported",
+      "hint": "Render the content with Nunjucks instead."
+    },
+    {
+      "severity": "info",
+      "code": "network.flat",
+      "path": "networks",
+      "message": "Kubernetes has one flat pod network: network membership does not isolate services"
+    },
+    {
+      "severity": "error",
+      "code": "files.driver-unsupported",
+      "path": "secrets.bad_secret.driver",
+      "message": "driver is not supported for secrets",
+      "hint": "Remove `driver`."
+    },
+    {
+      "severity": "error",
+      "code": "files.driver-unsupported",
+      "path": "secrets.bad_secret.driver_opts",
+      "message": "driver_opts is not supported for secrets",
+      "hint": "Remove `driver_opts`."
+    },
+    {
+      "severity": "error",
+      "code": "files.environment-unsupported",
+      "path": "secrets.bad_secret.environment",
+      "message": "secret content from the environment variable SOME_VAR is not supported: Dockflow passes no process environment",
+      "hint": "Put the value in a file under `.dockflow/` that renders it with Nunjucks (for example `{{ current.env.some_var }}`) and use `file:`."
+    },
+    {
+      "severity": "error",
+      "code": "files.template-driver-unsupported",
+      "path": "secrets.bad_secret.template_driver",
+      "message": "template_driver is not supported",
+      "hint": "Render the content with Nunjucks instead."
+    },
+    {
+      "severity": "error",
+      "code": "resources.windows-only",
+      "path": "services.deploy-svc.cpu_count",
+      "message": "cpu_count only applies to Windows containers",
+      "hint": "Remove `cpu_count`."
+    },
+    {
+      "severity": "error",
+      "code": "resources.windows-only",
+      "path": "services.deploy-svc.cpu_percent",
+      "message": "cpu_percent only applies to Windows containers",
+      "hint": "Remove `cpu_percent`."
+    },
+    {
+      "severity": "error",
+      "code": "resources.realtime-unsupported",
+      "path": "services.deploy-svc.cpu_rt_period",
+      "message": "cpu_rt_period (real-time scheduling) is not supported",
+      "hint": "Remove `cpu_rt_period`."
+    },
+    {
+      "severity": "error",
+      "code": "resources.realtime-unsupported",
+      "path": "services.deploy-svc.cpu_rt_runtime",
+      "message": "cpu_rt_runtime (real-time scheduling) is not supported",
+      "hint": "Remove `cpu_rt_runtime`."
+    },
+    {
+      "severity": "error",
+      "code": "resources.cpuset-unsupported",
+      "path": "services.deploy-svc.cpuset",
+      "message": "cpuset is not supported: CPU pinning needs the kubelet static CPU manager",
+      "hint": "Remove `cpuset`."
+    },
+    {
+      "severity": "error",
+      "code": "resources.devices-unsupported",
+      "path": "services.deploy-svc.deploy.resources.reservations.devices",
+      "message": "device reservations (for example GPUs) are not supported in this Dockflow version",
+      "hint": "Remove the device reservation."
+    },
+    {
+      "severity": "error",
+      "code": "resources.generic-unsupported",
+      "path": "services.deploy-svc.deploy.resources.reservations.generic_resources",
+      "message": "generic_resources is not supported",
+      "hint": "Use `x-dockflow.node_selector` to place the service on nodes that have the resource."
+    },
+    {
+      "severity": "error",
+      "code": "hooks.option-unsupported",
+      "path": "services.hooks-svc.post_start[0].environment",
+      "message": "post_start[0].environment is not supported: Kubernetes runs lifecycle hooks with the container's user, working directory and environment",
+      "hint": "Remove `environment`, or wrap the command with `/bin/sh -c`."
+    },
+    {
+      "severity": "error",
+      "code": "hooks.option-unsupported",
+      "path": "services.hooks-svc.post_start[0].privileged",
+      "message": "post_start[0].privileged is not supported: Kubernetes runs lifecycle hooks with the container's user, working directory and environment",
+      "hint": "Remove `privileged`, or wrap the command with `/bin/sh -c`."
+    },
+    {
+      "severity": "error",
+      "code": "hooks.option-unsupported",
+      "path": "services.hooks-svc.post_start[0].user",
+      "message": "post_start[0].user is not supported: Kubernetes runs lifecycle hooks with the container's user, working directory and environment",
+      "hint": "Remove `user`, or wrap the command with `/bin/sh -c`."
+    },
+    {
+      "severity": "error",
+      "code": "hooks.option-unsupported",
+      "path": "services.hooks-svc.post_start[0].working_dir",
+      "message": "post_start[0].working_dir is not supported: Kubernetes runs lifecycle hooks with the container's user, working directory and environment",
+      "hint": "Remove `working_dir`, or wrap the command with `/bin/sh -c`."
+    },
+    {
+      "severity": "error",
+      "code": "hooks.option-unsupported",
+      "path": "services.hooks-svc.pre_stop[0].environment",
+      "message": "pre_stop[0].environment is not supported: Kubernetes runs lifecycle hooks with the container's user, working directory and environment",
+      "hint": "Remove `environment`, or wrap the command with `/bin/sh -c`."
+    },
+    {
+      "severity": "error",
+      "code": "hooks.option-unsupported",
+      "path": "services.hooks-svc.pre_stop[0].privileged",
+      "message": "pre_stop[0].privileged is not supported: Kubernetes runs lifecycle hooks with the container's user, working directory and environment",
+      "hint": "Remove `privileged`, or wrap the command with `/bin/sh -c`."
+    },
+    {
+      "severity": "error",
+      "code": "hooks.option-unsupported",
+      "path": "services.hooks-svc.pre_stop[0].user",
+      "message": "pre_stop[0].user is not supported: Kubernetes runs lifecycle hooks with the container's user, working directory and environment",
+      "hint": "Remove `user`, or wrap the command with `/bin/sh -c`."
+    },
+    {
+      "severity": "error",
+      "code": "hooks.option-unsupported",
+      "path": "services.hooks-svc.pre_stop[0].working_dir",
+      "message": "pre_stop[0].working_dir is not supported: Kubernetes runs lifecycle hooks with the container's user, working directory and environment",
+      "hint": "Remove `working_dir`, or wrap the command with `/bin/sh -c`."
+    },
+    {
+      "severity": "error",
+      "code": "unsupported.extends",
+      "path": "services.identity-misc.extends",
+      "message": "extends is not supported",
+      "hint": "Share common settings with a YAML anchor and a merge key (`<<: *common`)."
+    },
+    {
+      "severity": "error",
+      "code": "unsupported.models",
+      "path": "services.identity-misc.models",
+      "message": "models is not supported on Kubernetes deploys",
+      "hint": "Run the model server as a regular service with an image."
+    },
+    {
+      "severity": "error",
+      "code": "unsupported.pre-start",
+      "path": "services.identity-misc.pre_start",
+      "message": "pre_start is not supported in this Dockflow version",
+      "hint": "Run the step in the container entrypoint, or as a separate service with `deploy.mode: replicated-job`."
+    },
+    {
+      "severity": "error",
+      "code": "unsupported.profiles",
+      "path": "services.identity-misc.profiles",
+      "message": "profiles is not supported: Dockflow activates no Compose profile, so this service would never start",
+      "hint": "Remove `profiles` to deploy the service, or delete the service."
+    },
+    {
+      "severity": "error",
+      "code": "unsupported.provider",
+      "path": "services.identity-misc.provider",
+      "message": "provider services are not supported",
+      "hint": "Declare the dependency as a service or accessory with an image."
+    },
+    {
+      "severity": "error",
+      "code": "labels.reserved",
+      "path": "services.labels-svc.labels[\"dockflow.shawiizz.dev/custom\"]",
+      "message": "dockflow.shawiizz.dev/custom uses the prefix dockflow.shawiizz.dev/, which is reserved for Dockflow",
+      "hint": "Rename the label."
+    },
+    {
+      "severity": "warning",
+      "code": "labels.invalid-key",
+      "path": "services.labels-svc.labels[\"invalid label!\"]",
+      "message": "label invalid label! is not a valid Kubernetes annotation key and is dropped",
+      "hint": "Use an optional DNS prefix and a name of letters, digits, `-`, `_` and `.` (at most 63 characters)."
+    },
+    {
+      "severity": "error",
+      "code": "network.too-many-dns",
+      "path": "services.network-svc.dns",
+      "message": "at most 2 nameservers can be added next to the cluster DNS (Kubernetes allows 3 in total)",
+      "hint": "Keep the 2 most important servers, or resolve the other names through the cluster DNS."
+    },
+    {
+      "severity": "error",
+      "code": "network.static-ip-unsupported",
+      "path": "services.network-svc.networks.default.ipv4_address",
+      "message": "static IP addresses are not supported: pod addresses are assigned by the cluster",
+      "hint": "Reach the service by its name `network-svc`."
+    },
+    {
+      "severity": "error",
+      "code": "network.static-ip-unsupported",
+      "path": "services.network-svc.networks.default.ipv6_address",
+      "message": "static IP addresses are not supported: pod addresses are assigned by the cluster",
+      "hint": "Reach the service by its name `network-svc`."
+    },
+    {
+      "severity": "error",
+      "code": "placement.node-id",
+      "path": "services.placement-svc.deploy.placement.constraints[0]",
+      "message": "node.id constraints are not supported: Swarm node ids do not exist on Kubernetes",
+      "hint": "Use `node.hostname == <servers.yml name>` instead."
+    },
+    {
+      "severity": "info",
+      "code": "routing.container-labels",
+      "path": "services.routing-svc.labels",
+      "message": "Traefik labels in labels are used on Kubernetes; on Swarm Traefik only reads deploy.labels"
+    },
+    {
+      "severity": "error",
+      "code": "routing.middleware-provider",
+      "path": "services.routing-svc.labels[\"traefik.http.middlewares.routing-svc-mw.errors.service\"]",
+      "message": "middleware routing-svc-mw sends errors to backend, which comes from the consulcatalog provider that Dockflow's Traefik does not load",
+      "hint": "Use a compose service name, or a service declared with `traefik.http.services` labels."
+    },
+    {
+      "severity": "error",
+      "code": "security.cgroup-host-unsupported",
+      "path": "services.security-svc.cgroup",
+      "message": "cgroup: host is not supported",
+      "hint": "Remove `cgroup`."
+    },
+    {
+      "severity": "error",
+      "code": "resources.windows-only",
+      "path": "services.security-svc.credential_spec",
+      "message": "credential_spec only applies to Windows containers",
+      "hint": "Remove `credential_spec`."
+    },
+    {
+      "severity": "error",
+      "code": "security.devices-unsupported",
+      "path": "services.security-svc.device_cgroup_rules",
+      "message": "device access is not supported",
+      "hint": "Remove `device_cgroup_rules`, or mount the device path with a bind mount and `privileged: true`."
+    },
+    {
+      "severity": "error",
+      "code": "security.devices-unsupported",
+      "path": "services.security-svc.devices",
+      "message": "device access is not supported",
+      "hint": "Remove `devices`, or mount the device path with a bind mount and `privileged: true`."
+    },
+    {
+      "severity": "error",
+      "code": "resources.devices-unsupported",
+      "path": "services.security-svc.gpus",
+      "message": "device reservations (for example GPUs) are not supported in this Dockflow version",
+      "hint": "Remove the device reservation."
+    },
+    {
+      "severity": "error",
+      "code": "resources.windows-only",
+      "path": "services.security-svc.isolation",
+      "message": "isolation only applies to Windows containers",
+      "hint": "Remove `isolation`."
+    },
+    {
+      "severity": "error",
+      "code": "security.runtime-unsupported",
+      "path": "services.security-svc.runtime",
+      "message": "runtime nvidia is not supported",
+      "hint": "Remove `runtime`."
+    },
+    {
+      "severity": "error",
+      "code": "security.api-socket-unsupported",
+      "path": "services.security-svc.use_api_socket",
+      "message": "use_api_socket is not supported: k3s nodes have no Docker API socket",
+      "hint": "Remove `use_api_socket`."
+    },
+    {
+      "severity": "error",
+      "code": "security.userns-unsupported",
+      "path": "services.security-svc.userns_mode",
+      "message": "userns_mode private is not supported"
+    },
+    {
+      "severity": "error",
+      "code": "security.uts-host-unsupported",
+      "path": "services.security-svc.uts",
+      "message": "uts: host is only available with network_mode: host on Kubernetes",
+      "hint": "Use `network_mode: host`, or remove `uts`."
+    },
+    {
+      "severity": "error",
+      "code": "mounts.relative-bind",
+      "path": "services.volumes-svc.volumes[0].source",
+      "message": "the relative host path relative/path cannot be mounted: a Kubernetes pod mounts paths of the node it runs on",
+      "hint": "Upload the file with `uploads:` in `config.yml` to an absolute path and mount that path, or declare it as a config (`configs: {path: {file: relative/path}}`) and mount it with `configs:`."
+    },
+    {
+      "severity": "error",
+      "code": "mounts.image-unsupported",
+      "path": "services.volumes-svc.volumes[1].type",
+      "message": "image mounts are not supported: they need Kubernetes 1.36 and Dockflow supports clusters from 1.34",
+      "hint": "Copy the files into the service image, or into a named volume."
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.volumes-svc.volumes[2]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /data-ro (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "error",
+      "code": "unsupported.volumes-from",
+      "path": "services.volumes-svc.volumes_from",
+      "message": "volumes_from is not supported",
+      "hint": "Declare a named volume at top level and mount it in both services."
+    },
+    {
+      "severity": "error",
+      "code": "volumes.driver-opts-unsupported",
+      "path": "volumes.driver-opts-vol.driver_opts",
+      "message": "driver_opts are not supported",
+      "hint": "For a host directory, mount the path directly (`/srv/data:/data`); for NFS, create a claim and reference it with `external: true`."
+    }
+  ],
+  "accessory": []
+}

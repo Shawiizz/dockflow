@@ -1,0 +1,3 @@
+{
+  "description": "Not a compose-pair case: this directory only marks the case as discovered. The actual assertions render the existing Swarm e2e fixture directories (test-app, test-app-registry, test-app-remote, test-app-rollback, test-app-uploads) under testing/e2e/fixtures/*/.dockflow/docker/ with the e2e context, in the dedicated 'golden case: swarm-fixtures' describe block of golden.test.ts, so later e2e packages never have to touch this case."
+}

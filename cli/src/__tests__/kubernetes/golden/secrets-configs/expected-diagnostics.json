@@ -1,0 +1,24 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "files.external-key",
+      "path": "services.app.configs[2]",
+      "message": "the external config shop-ext-config must contain a data key named ext_config"
+    },
+    {
+      "severity": "warning",
+      "code": "files.ownership-ignored",
+      "path": "services.app.secrets[0]",
+      "message": "uid and gid are ignored: files mounted from Kubernetes Secrets and ConfigMaps are owned by root",
+      "hint": "Make the file readable with `mode`, or set `x-dockflow.fs_group` to give its group to the pod."
+    },
+    {
+      "severity": "info",
+      "code": "files.external-key",
+      "path": "services.app.secrets[2]",
+      "message": "the external secret shop-ext-secret must contain a data key named ext_secret"
+    }
+  ],
+  "accessory": []
+}

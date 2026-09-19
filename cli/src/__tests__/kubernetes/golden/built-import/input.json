@@ -1,0 +1,5 @@
+{
+  "description": "Built service imported to nodes (D12/D13): dockflow.invalid/ ref, IfNotPresent, no imagePullSecrets",
+  "imageDelivery": "import",
+  "images": { "mode": "import", "built": ["shop-app:1.4.2"] }
+}

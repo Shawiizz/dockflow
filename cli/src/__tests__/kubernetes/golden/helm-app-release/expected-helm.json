@@ -1,0 +1,44 @@
+[
+  {
+    "name": "podinfo",
+    "role": "app",
+    "namespace": "dockflow-shop-production",
+    "chart": {
+      "kind": "repo",
+      "repo": "https://charts.example.com",
+      "chart": "podinfo"
+    },
+    "version": "6.15.0",
+    "values": {
+      "image": {
+        "tag": "6.15.0"
+      },
+      "resources": {
+        "limits": {
+          "memory": "128Mi"
+        }
+      },
+      "replicaCount": 2
+    },
+    "valuesSha256": "832348c5df102dec698de0da2129b5e6e200bb04bba7502c00a2116bd05231f7",
+    "timeoutS": 300,
+    "chartSha256": null
+  },
+  {
+    "name": "redis-exporter",
+    "role": "accessory",
+    "namespace": "dockflow-shop-production",
+    "chart": {
+      "kind": "repo",
+      "repo": "https://charts.example.com",
+      "chart": "redis-exporter"
+    },
+    "version": "1.2.3",
+    "values": {
+      "redisAddress": "redis://cache:6379"
+    },
+    "valuesSha256": "46b9f899f875600e7a5cc1a4743ade0e3b8655fd58e52e3956332f0e148304e9",
+    "timeoutS": 300,
+    "chartSha256": null
+  }
+]

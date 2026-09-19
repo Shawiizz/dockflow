@@ -1,0 +1,4 @@
+{
+  "description": "sysctls, spread preferences, NotIn constraints, dns_opt, per-replica volumes and a middleware chain, all written out of declaration order (core rule 4, design-02 9.4)",
+  "proxy": { "enabled": true, "acme": false }
+}

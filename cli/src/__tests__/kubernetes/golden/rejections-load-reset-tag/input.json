@@ -1,0 +1,4 @@
+{
+  "description": "A !reset tag (Compose override syntax) aborts at load time: Dockflow reads a single file",
+  "expectLoadError": "docker-compose.yml: tag !reset at line 3 is only meaningful in Compose override files; Dockflow reads a single file"
+}

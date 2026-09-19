@@ -1,0 +1,10 @@
+services:
+  web:
+    image: nginx:1.27
+    environment:
+      - HOME_DIR=$(HOME)/app
+      - LITERAL=$$not-a-var
+    env_file:
+      - files/web.env
+    command: ["sh", "-c", "echo $(FOO) && echo $$literal"]
+    entrypoint: ["/bin/sh", "-c", "run $(BAR)"]

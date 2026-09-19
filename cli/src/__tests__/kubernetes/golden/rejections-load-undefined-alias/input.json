@@ -1,0 +1,4 @@
+{
+  "description": "An alias with no preceding anchor aborts at load time",
+  "expectLoadError": "docker-compose.yml: unresolved alias *missing at line 4"
+}

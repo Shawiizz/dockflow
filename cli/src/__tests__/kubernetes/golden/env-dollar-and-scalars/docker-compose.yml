@@ -1,0 +1,9 @@
+services:
+  web:
+    image: nginx:1.27
+    environment:
+      DOLLAR: "$$literal"
+      WITH_DEFAULT: "${UNDEFINED_VAR:-fallback}"
+      OCTAL_LOOKING: 010
+      YES_WORD: yes
+      SCI_NOTATION: 1e3

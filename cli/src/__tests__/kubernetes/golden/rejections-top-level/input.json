@@ -1,0 +1,4 @@
+{
+  "description": "Top-level keys that cannot coexist with the render: include, models, jobs, a top-level x-dockflow, an unknown top-level key, an invalid volume key; one valid service so the rest normalizes",
+  "expectRenderError": { "app": true }
+}

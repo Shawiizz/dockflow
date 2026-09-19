@@ -1,0 +1,4 @@
+{
+  "description": "A duplicate mapping key aborts the file at load time",
+  "expectLoadError": "docker-compose.yml: duplicate key image at line 4"
+}
