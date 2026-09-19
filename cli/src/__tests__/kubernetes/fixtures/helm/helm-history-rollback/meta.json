@@ -1,0 +1,13 @@
+{
+  "synthetic": true,
+  "k3sVersion": "v1.36.4+k3s1",
+  "helmVersion": "v4.3.0",
+  "steps": [
+    "kubectl create namespace fixture-helm-history-rollback",
+    "helm upgrade --install web e2e-web-0.1.0.tgz -n fixture-helm-history-rollback --wait=watcher --timeout 120s",
+    "upgrade-stderr.txt: stderr of helm upgrade --install web e2e-broken-0.1.0.tgz -n fixture-helm-history-rollback --rollback-on-failure --wait=watcher --timeout 60s",
+    "list.json: helm list -n fixture-helm-history-rollback --filter ^web$ -o json",
+    "history.json: helm history web -n fixture-helm-history-rollback --max 20 -o json",
+    "release-secrets.txt: kubectl get secrets -n fixture-helm-history-rollback -l owner=helm,name=web -o name"
+  ]
+}

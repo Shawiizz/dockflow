@@ -1,0 +1,298 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "action": "Binding",
+            "apiVersion": "v1",
+            "eventTime": "2026-01-01T00:15:00.106300Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "api-bg5g5vghlb-27kgr",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "8",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "message": "Successfully assigned fixture-multi-container/api-bg5g5vghlb-27kgr to agent-1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "api-bg5g5vghlb-27kgr.188673239cb495df",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "9",
+                "uid": "00000000-0000-4000-8000-000000000006"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "default-scheduler-server-1",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{api}",
+                "kind": "Pod",
+                "name": "api-bg5g5vghlb-27kgr",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "10",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Container image \"nginx:1.27-alpine\" already present on machine",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "api-bg5g5vghlb-27kgr.18867323dd177704",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "11",
+                "uid": "00000000-0000-4000-8000-000000000007"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{api}",
+                "kind": "Pod",
+                "name": "api-bg5g5vghlb-27kgr",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "12",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Created container: api",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "api-bg5g5vghlb-27kgr.18867323eeaee07f",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "13",
+                "uid": "00000000-0000-4000-8000-000000000008"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{api}",
+                "kind": "Pod",
+                "name": "api-bg5g5vghlb-27kgr",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "14",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:02Z",
+            "message": "Started container api",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:02Z",
+                "name": "api-bg5g5vghlb-27kgr.18867323fea93941",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "15",
+                "uid": "00000000-0000-4000-8000-000000000009"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{log-shipper}",
+                "kind": "Pod",
+                "name": "api-bg5g5vghlb-27kgr",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "16",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:02Z",
+            "message": "Container image \"busybox:1.37\" already present on machine",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:02Z",
+                "name": "api-bg5g5vghlb-27kgr.188673241256aef6",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "17",
+                "uid": "00000000-0000-4000-8000-000000000010"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{log-shipper}",
+                "kind": "Pod",
+                "name": "api-bg5g5vghlb-27kgr",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "18",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:02Z",
+            "message": "Created container: log-shipper",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:02Z",
+                "name": "api-bg5g5vghlb-27kgr.1886732417e94f37",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "19",
+                "uid": "00000000-0000-4000-8000-000000000011"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{log-shipper}",
+                "kind": "Pod",
+                "name": "api-bg5g5vghlb-27kgr",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "20",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:02Z",
+            "message": "Started container log-shipper",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:02Z",
+                "name": "api-bg5g5vghlb-27kgr.188673242b9d7762",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "21",
+                "uid": "00000000-0000-4000-8000-000000000012"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "ReplicaSet",
+                "name": "api-bg5g5vghlb",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000002"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Created pod: api-bg5g5vghlb-27kgr",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "api-bg5g5vghlb.18867323b4eb3cf0",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "7",
+                "uid": "00000000-0000-4000-8000-000000000005"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "replicaset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "replicaset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "name": "api",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000001"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Scaled up replica set api-bg5g5vghlb from 0 to 1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "api.188673237d13823e",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "4",
+                "uid": "00000000-0000-4000-8000-000000000003"
+            },
+            "reason": "ScalingReplicaSet",
+            "reportingComponent": "deployment-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "deployment-controller"
+            },
+            "type": "Normal"
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

@@ -1,0 +1,265 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "action": "Binding",
+            "apiVersion": "v1",
+            "eventTime": "2026-01-01T00:15:00.204118Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "web-h7fqpf2pgw-hhx68",
+                "namespace": "fixture-image-pull-backoff",
+                "resourceVersion": "8",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "message": "Successfully assigned fixture-image-pull-backoff/web-h7fqpf2pgw-hhx68 to server-1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web-h7fqpf2pgw-hhx68.188673239ff52b72",
+                "namespace": "fixture-image-pull-backoff",
+                "resourceVersion": "9",
+                "uid": "00000000-0000-4000-8000-000000000006"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "default-scheduler-server-1",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 4,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-h7fqpf2pgw-hhx68",
+                "namespace": "fixture-image-pull-backoff",
+                "resourceVersion": "10",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:16:01Z",
+            "message": "Pulling image \"localhost:35010/e2e/missing:1\"",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "web-h7fqpf2pgw-hhx68.18867323bfe1a5f7",
+                "namespace": "fixture-image-pull-backoff",
+                "resourceVersion": "11",
+                "uid": "00000000-0000-4000-8000-000000000007"
+            },
+            "reason": "Pulling",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 4,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-h7fqpf2pgw-hhx68",
+                "namespace": "fixture-image-pull-backoff",
+                "resourceVersion": "12",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:16:01Z",
+            "message": "Failed to pull image \"localhost:35010/e2e/missing:1\": failed to pull and unpack image \"localhost:35010/e2e/missing:1\": failed to resolve reference \"localhost:35010/e2e/missing:1\": failed to do request: Head \"http://localhost:35010/v2/e2e/missing/manifests/1\": dial tcp 127.0.0.1:35010: connect: connection refused",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "web-h7fqpf2pgw-hhx68.18867323d1657c5c",
+                "namespace": "fixture-image-pull-backoff",
+                "resourceVersion": "13",
+                "uid": "00000000-0000-4000-8000-000000000008"
+            },
+            "reason": "Failed",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Warning"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 4,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-h7fqpf2pgw-hhx68",
+                "namespace": "fixture-image-pull-backoff",
+                "resourceVersion": "14",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:16:01Z",
+            "message": "Error: ErrImagePull",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "web-h7fqpf2pgw-hhx68.18867323de1fc72e",
+                "namespace": "fixture-image-pull-backoff",
+                "resourceVersion": "15",
+                "uid": "00000000-0000-4000-8000-000000000009"
+            },
+            "reason": "Failed",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Warning"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 5,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-h7fqpf2pgw-hhx68",
+                "namespace": "fixture-image-pull-backoff",
+                "resourceVersion": "18",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:16:06Z",
+            "message": "Error: ImagePullBackOff",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:02Z",
+                "name": "web-h7fqpf2pgw-hhx68.18867323f30c0c4b",
+                "namespace": "fixture-image-pull-backoff",
+                "resourceVersion": "19",
+                "uid": "00000000-0000-4000-8000-000000000011"
+            },
+            "reason": "Failed",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Warning"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 5,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-h7fqpf2pgw-hhx68",
+                "namespace": "fixture-image-pull-backoff",
+                "resourceVersion": "16",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:16:06Z",
+            "message": "Back-off pulling image \"localhost:35010/e2e/missing:1\"",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:02Z",
+                "name": "web-h7fqpf2pgw-hhx68.1886732402475fcc",
+                "namespace": "fixture-image-pull-backoff",
+                "resourceVersion": "17",
+                "uid": "00000000-0000-4000-8000-000000000010"
+            },
+            "reason": "BackOff",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "ReplicaSet",
+                "name": "web-h7fqpf2pgw",
+                "namespace": "fixture-image-pull-backoff",
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000002"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Created pod: web-h7fqpf2pgw-hhx68",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web-h7fqpf2pgw.1886732387c3b4a8",
+                "namespace": "fixture-image-pull-backoff",
+                "resourceVersion": "7",
+                "uid": "00000000-0000-4000-8000-000000000005"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "replicaset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "replicaset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "name": "web",
+                "namespace": "fixture-image-pull-backoff",
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000001"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Scaled up replica set web-h7fqpf2pgw from 0 to 1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web.18867323ad8c0085",
+                "namespace": "fixture-image-pull-backoff",
+                "resourceVersion": "4",
+                "uid": "00000000-0000-4000-8000-000000000003"
+            },
+            "reason": "ScalingReplicaSet",
+            "reportingComponent": "deployment-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "deployment-controller"
+            },
+            "type": "Normal"
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

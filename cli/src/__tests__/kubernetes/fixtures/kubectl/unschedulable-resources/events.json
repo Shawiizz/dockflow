@@ -1,0 +1,104 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "action": "Scheduling",
+            "apiVersion": "v1",
+            "eventTime": "2026-01-01T00:15:00.318207Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "web-8k689hhgsx-rvc8f",
+                "namespace": "fixture-unschedulable-resources",
+                "resourceVersion": "8",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "message": "0/2 nodes are available: 2 Insufficient memory. preemption: 0/2 nodes are available: 2 No preemption victims found for incoming pod.",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web-8k689hhgsx-rvc8f.18867323a63d0107",
+                "namespace": "fixture-unschedulable-resources",
+                "resourceVersion": "9",
+                "uid": "00000000-0000-4000-8000-000000000006"
+            },
+            "reason": "FailedScheduling",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "default-scheduler-server-1",
+            "series": {
+                "count": 3,
+                "lastObservedTime": "2026-01-01T00:16:00.527331Z"
+            },
+            "source": {},
+            "type": "Warning"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "ReplicaSet",
+                "name": "web-8k689hhgsx",
+                "namespace": "fixture-unschedulable-resources",
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000002"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Created pod: web-8k689hhgsx-rvc8f",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web-8k689hhgsx.18867323a4fb9805",
+                "namespace": "fixture-unschedulable-resources",
+                "resourceVersion": "7",
+                "uid": "00000000-0000-4000-8000-000000000005"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "replicaset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "replicaset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "name": "web",
+                "namespace": "fixture-unschedulable-resources",
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000001"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Scaled up replica set web-8k689hhgsx from 0 to 1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web.18867323ad0ec7ef",
+                "namespace": "fixture-unschedulable-resources",
+                "resourceVersion": "4",
+                "uid": "00000000-0000-4000-8000-000000000003"
+            },
+            "reason": "ScalingReplicaSet",
+            "reportingComponent": "deployment-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "deployment-controller"
+            },
+            "type": "Normal"
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

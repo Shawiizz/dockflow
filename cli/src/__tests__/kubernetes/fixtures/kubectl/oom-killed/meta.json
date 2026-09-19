@@ -1,0 +1,10 @@
+{
+  "synthetic": true,
+  "k3sVersion": "v1.36.4+k3s1",
+  "steps": [
+    "kubectl create namespace fixture-oom-killed",
+    "kubectl apply: Deployment web (1 replica, busybox:1.37 running sh -c 'head -c 64m /dev/zero | tail', memory limit 16Mi)",
+    "wait until the container restarted twice with lastState.terminated.reason OOMKilled",
+    "capture the namespace resources and the cluster nodes and persistentvolumes"
+  ]
+}

@@ -1,0 +1,11 @@
+[Unit]
+Description=e2e registry forwarder on 127.0.0.1:%i
+After=network-online.target
+
+[Service]
+EnvironmentFile=/etc/e2e/forward-%i.env
+ExecStart=/usr/bin/socat TCP-LISTEN:%i,bind=127.0.0.1,fork,reuseaddr TCP:${TARGET}
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

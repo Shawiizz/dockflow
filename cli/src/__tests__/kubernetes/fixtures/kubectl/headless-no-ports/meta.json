@@ -1,0 +1,10 @@
+{
+  "synthetic": true,
+  "k3sVersion": "v1.36.4+k3s1",
+  "steps": [
+    "kubectl create namespace fixture-headless-no-ports",
+    "kubectl apply: Deployment worker (2 replicas, busybox:1.37 running sleep, no ports) with headless Service worker-hl without any port, and Deployment cache (1 replica, no ports) with headless Service cache-hl carrying the placeholder port 9/TCP",
+    "kubectl rollout status for both Deployments, then wait until both Services have EndpointSlices with ready endpoints",
+    "capture the namespace resources and the cluster nodes and persistentvolumes"
+  ]
+}

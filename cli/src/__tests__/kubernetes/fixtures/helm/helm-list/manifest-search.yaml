@@ -1,0 +1,70 @@
+---
+# Source: e2e-web/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: search-e2e-web
+  labels:
+    app.kubernetes.io/name: e2e-web
+    app.kubernetes.io/instance: search
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: e2e-web-0.2.0
+data:
+  message: "hello from search"
+---
+# Source: e2e-web/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: search-e2e-web
+  labels:
+    app.kubernetes.io/name: e2e-web
+    app.kubernetes.io/instance: search
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: e2e-web-0.2.0
+spec:
+  selector:
+    app.kubernetes.io/name: e2e-web
+    app.kubernetes.io/instance: search
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+# Source: e2e-web/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search-e2e-web
+  labels:
+    app.kubernetes.io/name: e2e-web
+    app.kubernetes.io/instance: search
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: e2e-web-0.2.0
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: e2e-web
+      app.kubernetes.io/instance: search
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: e2e-web
+        app.kubernetes.io/instance: search
+        chart-version: "0.2.0"
+    spec:
+      containers:
+        - name: web
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: message
+              mountPath: /usr/share/nginx/html/message
+              subPath: message
+      volumes:
+        - name: message
+          configMap:
+            name: search-e2e-web
+

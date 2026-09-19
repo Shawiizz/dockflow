@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "generatedBy": "testing/e2e/k3s/tools/lock-images.ts",
+  "images": [
+    { "ref": "docker.io/library/ubuntu:24.04", "digest": "sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3", "use": "node image base", "bake": false },
+    { "ref": "docker.io/library/registry:3", "digest": "sha256:fd374bae807c225661adfe2c0c1f9970a0b8fab1761fd7dfb91e0fd9a8748f9b", "use": "registry and registry-auth containers", "bake": false },
+    { "ref": "docker.io/library/nginx:alpine", "digest": "sha256:62ff2089abf5a9ed33bd232895bef5e22f7bb4b200675cec49a5ebc48e3d4ac8", "use": "charts server; fixture base image (host build); workload", "bake": true },
+    { "ref": "docker.io/traefik:v3.7.13", "digest": "sha256:f86a2cab1b5c649070c49f883c743dd32d8485a56e3368c5f93b9e91f1e91259", "use": "Dockflow Traefik (TRAEFIK_CHART_PIN.appVersion)", "bake": true },
+    { "ref": "docker.io/library/busybox:1.37", "digest": "sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0", "use": "crash, job, dns, args workloads", "bake": true },
+    { "ref": "docker.io/library/redis:8-alpine", "digest": "sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0", "use": "accessory, backup", "bake": true },
+    { "ref": "docker.io/library/postgres:17-alpine", "digest": "sha256:f02121de6f74d30d8a94cd1d9584125e2178d7e6c377d8130112d4e52d867995", "use": "accessory, backup", "bake": true },
+    { "ref": "docker.io/library/mysql:8.4", "digest": "sha256:85b9bf2e29cf836ecb8c2a15a935d4ba0c606631dff1dd79531a11983c638f2a", "use": "nightly backup-extended", "bake": "nightly" },
+    { "ref": "docker.io/library/mongo:8.0", "digest": "sha256:4968f22d0c6c10ef29952f3e807f62872ba22b3312f25803564fbfc08255efc2", "use": "nightly backup-extended", "bake": "nightly" },
+    { "ref": "ghcr.io/letsencrypt/pebble:2.7.0", "digest": "sha256:c156cabea562e43ed0060bddc03539c07de40e311b52c6b0e5ea710a496e56b8", "use": "ACME test CA (K49)", "bake": false },
+    { "ref": "ghcr.io/letsencrypt/pebble-challtestsrv:2.7.0", "digest": "sha256:26789c714fc40ab2de771fb34c06d13232b8ca4f96f77995483d5dfe8744f276", "use": "DNS for the ACME challenge", "bake": false }
+  ]
+}

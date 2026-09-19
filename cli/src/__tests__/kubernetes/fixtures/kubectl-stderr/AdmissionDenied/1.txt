@@ -1,0 +1,1 @@
+Error from server (Forbidden): error when creating "STDIN": admission webhook "validate.policy.example.com" denied the request: images from registry.example.com/untrusted are not allowed

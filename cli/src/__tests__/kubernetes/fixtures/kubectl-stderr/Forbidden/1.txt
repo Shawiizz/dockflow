@@ -1,0 +1,1 @@
+Error from server (Forbidden): deployments.apps is forbidden: User "system:serviceaccount:dockflow-system:dockflow-deployer" cannot list resource "deployments" in API group "apps" in the namespace "dockflow-shop-production"

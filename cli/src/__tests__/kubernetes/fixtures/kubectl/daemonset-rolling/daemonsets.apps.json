@@ -1,0 +1,117 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "apiVersion": "apps/v1",
+            "kind": "DaemonSet",
+            "metadata": {
+                "annotations": {
+                    "deprecated.daemonset.template.generation": "2",
+                    "dockflow.shawiizz.dev/compose-service": "agent",
+                    "dockflow.shawiizz.dev/release": "1.4.2"
+                },
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "generation": 2,
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-daemonset-rolling",
+                    "app.kubernetes.io/managed-by": "dockflow",
+                    "app.kubernetes.io/name": "agent",
+                    "app.kubernetes.io/part-of": "shop",
+                    "dockflow.shawiizz.dev/part": "stack",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "agent",
+                    "dockflow.shawiizz.dev/stack": "fixture-daemonset-rolling"
+                },
+                "name": "agent",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "1",
+                "uid": "00000000-0000-4000-8000-000000000001"
+            },
+            "spec": {
+                "revisionHistoryLimit": 3,
+                "selector": {
+                    "matchLabels": {
+                        "dockflow.shawiizz.dev/service": "agent",
+                        "dockflow.shawiizz.dev/stack": "fixture-daemonset-rolling"
+                    }
+                },
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "dockflow.shawiizz.dev/compose-service": "agent",
+                            "kubectl.kubernetes.io/default-container": "agent"
+                        },
+                        "labels": {
+                            "app.kubernetes.io/instance": "fixture-daemonset-rolling",
+                            "app.kubernetes.io/name": "agent",
+                            "dockflow.shawiizz.dev/role": "app",
+                            "dockflow.shawiizz.dev/service": "agent",
+                            "dockflow.shawiizz.dev/stack": "fixture-daemonset-rolling"
+                        }
+                    },
+                    "spec": {
+                        "automountServiceAccountToken": false,
+                        "containers": [
+                            {
+                                "command": [
+                                    "sh",
+                                    "-c",
+                                    "sleep 7200"
+                                ],
+                                "image": "busybox:1.37",
+                                "imagePullPolicy": "IfNotPresent",
+                                "name": "agent",
+                                "readinessProbe": {
+                                    "exec": {
+                                        "command": [
+                                            "true"
+                                        ]
+                                    },
+                                    "failureThreshold": 3,
+                                    "initialDelaySeconds": 30,
+                                    "periodSeconds": 5,
+                                    "successThreshold": 1,
+                                    "timeoutSeconds": 1
+                                },
+                                "resources": {},
+                                "terminationMessagePath": "/dev/termination-log",
+                                "terminationMessagePolicy": "File"
+                            }
+                        ],
+                        "dnsPolicy": "ClusterFirst",
+                        "enableServiceLinks": false,
+                        "restartPolicy": "Always",
+                        "schedulerName": "default-scheduler",
+                        "securityContext": {
+                            "seccompProfile": {
+                                "type": "RuntimeDefault"
+                            }
+                        },
+                        "terminationGracePeriodSeconds": 10
+                    }
+                },
+                "updateStrategy": {
+                    "rollingUpdate": {
+                        "maxSurge": 0,
+                        "maxUnavailable": 1
+                    },
+                    "type": "RollingUpdate"
+                }
+            },
+            "status": {
+                "currentNumberScheduled": 2,
+                "desiredNumberScheduled": 2,
+                "numberAvailable": 1,
+                "numberMisscheduled": 0,
+                "numberReady": 1,
+                "numberUnavailable": 1,
+                "observedGeneration": 2,
+                "updatedNumberScheduled": 1
+            }
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

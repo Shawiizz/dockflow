@@ -1,0 +1,105 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "annotations": {
+                    "dockflow.shawiizz.dev/compose-service": "cache"
+                },
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-headless-no-ports",
+                    "app.kubernetes.io/managed-by": "dockflow",
+                    "app.kubernetes.io/name": "cache",
+                    "app.kubernetes.io/part-of": "shop",
+                    "dockflow.shawiizz.dev/part": "stack",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "cache",
+                    "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports"
+                },
+                "name": "cache-hl",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "44",
+                "uid": "00000000-0000-4000-8000-000000000027"
+            },
+            "spec": {
+                "clusterIP": "None",
+                "clusterIPs": [
+                    "None"
+                ],
+                "internalTrafficPolicy": "Cluster",
+                "ipFamilies": [
+                    "IPv4"
+                ],
+                "ipFamilyPolicy": "SingleStack",
+                "ports": [
+                    {
+                        "name": "placeholder",
+                        "port": 9,
+                        "protocol": "TCP",
+                        "targetPort": 9
+                    }
+                ],
+                "selector": {
+                    "dockflow.shawiizz.dev/service": "cache",
+                    "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports"
+                },
+                "sessionAffinity": "None",
+                "type": "ClusterIP"
+            },
+            "status": {
+                "loadBalancer": {}
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "annotations": {
+                    "dockflow.shawiizz.dev/compose-service": "worker"
+                },
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-headless-no-ports",
+                    "app.kubernetes.io/managed-by": "dockflow",
+                    "app.kubernetes.io/name": "worker",
+                    "app.kubernetes.io/part-of": "shop",
+                    "dockflow.shawiizz.dev/part": "stack",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "worker",
+                    "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports"
+                },
+                "name": "worker-hl",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "27",
+                "uid": "00000000-0000-4000-8000-000000000016"
+            },
+            "spec": {
+                "clusterIP": "None",
+                "clusterIPs": [
+                    "None"
+                ],
+                "internalTrafficPolicy": "Cluster",
+                "ipFamilies": [
+                    "IPv4"
+                ],
+                "ipFamilyPolicy": "SingleStack",
+                "selector": {
+                    "dockflow.shawiizz.dev/service": "worker",
+                    "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports"
+                },
+                "sessionAffinity": "None",
+                "type": "ClusterIP"
+            },
+            "status": {
+                "loadBalancer": {}
+            }
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

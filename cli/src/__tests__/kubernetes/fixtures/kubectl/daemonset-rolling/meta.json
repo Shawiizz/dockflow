@@ -1,0 +1,12 @@
+{
+  "synthetic": true,
+  "k3sVersion": "v1.36.4+k3s1",
+  "steps": [
+    "kubectl create namespace fixture-daemonset-rolling",
+    "kubectl apply: DaemonSet agent (busybox:1.37 running sleep 3600, RollingUpdate maxUnavailable 1 maxSurge 0) on server-1 and agent-1",
+    "kubectl rollout status daemonset/agent --timeout=120s",
+    "update the template to sleep 7200 with a readiness probe exec true, initialDelaySeconds 30",
+    "wait until updatedNumberScheduled is 1 and numberUnavailable is 1, then capture into the scenario directory",
+    "kubectl rollout status daemonset/agent --timeout=180s, then capture into completed/"
+  ]
+}

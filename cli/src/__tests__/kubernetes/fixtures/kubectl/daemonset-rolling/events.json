@@ -1,0 +1,550 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "action": "Binding",
+            "apiVersion": "v1",
+            "eventTime": "2026-01-01T00:15:00.106300Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "agent-8szr6",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "21",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "message": "Successfully assigned fixture-daemonset-rolling/agent-8szr6 to agent-1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "agent-8szr6.1886732385b622b4",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "22",
+                "uid": "00000000-0000-4000-8000-000000000014"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "default-scheduler-server-1",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{agent}",
+                "kind": "Pod",
+                "name": "agent-8szr6",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "25",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Created container: agent",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "agent-8szr6.18867323daf51f45",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "26",
+                "uid": "00000000-0000-4000-8000-000000000016"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{agent}",
+                "kind": "Pod",
+                "name": "agent-8szr6",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "23",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Container image \"busybox:1.37\" already present on machine",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "agent-8szr6.18867323e33e46e2",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "24",
+                "uid": "00000000-0000-4000-8000-000000000015"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{agent}",
+                "kind": "Pod",
+                "name": "agent-8szr6",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "27",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:02Z",
+            "message": "Started container agent",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:02Z",
+                "name": "agent-8szr6.18867323fb1c2920",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "28",
+                "uid": "00000000-0000-4000-8000-000000000017"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "action": "Binding",
+            "apiVersion": "v1",
+            "eventTime": "2026-01-01T00:17:01.100147Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "agent-nhfnb",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "35",
+                "uid": "00000000-0000-4000-8000-000000000005"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "message": "Successfully assigned fixture-daemonset-rolling/agent-nhfnb to server-1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:17:01Z",
+                "name": "agent-nhfnb.1886733fb9690f5b",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "36",
+                "uid": "00000000-0000-4000-8000-000000000021"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "default-scheduler-server-1",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:17:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{agent}",
+                "kind": "Pod",
+                "name": "agent-nhfnb",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "37",
+                "uid": "00000000-0000-4000-8000-000000000005"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:17:02Z",
+            "message": "Container image \"busybox:1.37\" already present on machine",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:17:02Z",
+                "name": "agent-nhfnb.1886734001946b9e",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "38",
+                "uid": "00000000-0000-4000-8000-000000000022"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:17:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{agent}",
+                "kind": "Pod",
+                "name": "agent-nhfnb",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "39",
+                "uid": "00000000-0000-4000-8000-000000000005"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:17:02Z",
+            "message": "Created container: agent",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:17:02Z",
+                "name": "agent-nhfnb.188673401c4ff173",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "40",
+                "uid": "00000000-0000-4000-8000-000000000023"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:17:03Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{agent}",
+                "kind": "Pod",
+                "name": "agent-nhfnb",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "41",
+                "uid": "00000000-0000-4000-8000-000000000005"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:17:03Z",
+            "message": "Started container agent",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:17:03Z",
+                "name": "agent-nhfnb.188673402425fbd5",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "42",
+                "uid": "00000000-0000-4000-8000-000000000024"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "action": "Binding",
+            "apiVersion": "v1",
+            "eventTime": "2026-01-01T00:15:00.106300Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "agent-vzhpq",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "13",
+                "uid": "00000000-0000-4000-8000-000000000007"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "message": "Successfully assigned fixture-daemonset-rolling/agent-vzhpq to server-1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "agent-vzhpq.188673237b823148",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "14",
+                "uid": "00000000-0000-4000-8000-000000000010"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "default-scheduler-server-1",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{agent}",
+                "kind": "Pod",
+                "name": "agent-vzhpq",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "17",
+                "uid": "00000000-0000-4000-8000-000000000007"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Created container: agent",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "agent-vzhpq.18867323c70b6ea7",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "18",
+                "uid": "00000000-0000-4000-8000-000000000012"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{agent}",
+                "kind": "Pod",
+                "name": "agent-vzhpq",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "15",
+                "uid": "00000000-0000-4000-8000-000000000007"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Container image \"busybox:1.37\" already present on machine",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "agent-vzhpq.18867323cbbe2179",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "16",
+                "uid": "00000000-0000-4000-8000-000000000011"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{agent}",
+                "kind": "Pod",
+                "name": "agent-vzhpq",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "19",
+                "uid": "00000000-0000-4000-8000-000000000007"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:02Z",
+            "message": "Started container agent",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:02Z",
+                "name": "agent-vzhpq.1886732427c125db",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "20",
+                "uid": "00000000-0000-4000-8000-000000000013"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:17:00Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{agent}",
+                "kind": "Pod",
+                "name": "agent-vzhpq",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "31",
+                "uid": "00000000-0000-4000-8000-000000000007"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:17:00Z",
+            "message": "Stopping container agent",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:17:00Z",
+                "name": "agent-vzhpq.1886733f7790963e",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "32",
+                "uid": "00000000-0000-4000-8000-000000000019"
+            },
+            "reason": "Killing",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "DaemonSet",
+                "name": "agent",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "9",
+                "uid": "00000000-0000-4000-8000-000000000001"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Created pod: agent-vzhpq",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "agent.188673238d2ec840",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "10",
+                "uid": "00000000-0000-4000-8000-000000000008"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "daemonset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "daemonset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "DaemonSet",
+                "name": "agent",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "11",
+                "uid": "00000000-0000-4000-8000-000000000001"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Created pod: agent-8szr6",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "agent.188673239860c287",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "12",
+                "uid": "00000000-0000-4000-8000-000000000009"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "daemonset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "daemonset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:17:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "DaemonSet",
+                "name": "agent",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "29",
+                "uid": "00000000-0000-4000-8000-000000000001"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:17:00Z",
+            "message": "Deleted pod: agent-vzhpq",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:17:00Z",
+                "name": "agent.1886733f905181c9",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "30",
+                "uid": "00000000-0000-4000-8000-000000000018"
+            },
+            "reason": "SuccessfulDelete",
+            "reportingComponent": "daemonset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "daemonset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:17:01Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "DaemonSet",
+                "name": "agent",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "33",
+                "uid": "00000000-0000-4000-8000-000000000001"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:17:01Z",
+            "message": "Created pod: agent-nhfnb",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:17:01Z",
+                "name": "agent.1886733fc2ab7e2a",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "34",
+                "uid": "00000000-0000-4000-8000-000000000020"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "daemonset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "daemonset-controller"
+            },
+            "type": "Normal"
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

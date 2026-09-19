@@ -39,3 +39,13 @@
 *.png           binary
 *.so            binary
 *.war           binary
+
+# Goldens are byte-compared; kubectl/helm fixtures are replayed byte for byte
+cli/src/__tests__/kubernetes/golden/**              text eol=lf
+cli/src/__tests__/kubernetes/setup/k3s/golden/**    text eol=lf
+cli/src/__tests__/kubernetes/fixtures/**            -text
+cli/src/__tests__/kubernetes/support/schema/*.gz    binary
+
+# Copied into the e2e node image: sshd, systemd and OpenSSH reject CRLF
+testing/e2e/docker/**                               text eol=lf
+testing/e2e/fixtures/keys/*                         text eol=lf

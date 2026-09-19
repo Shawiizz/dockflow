@@ -1,0 +1,4 @@
+# Pinned downloads, image archives, auth files and packaged charts (k3s/tools/*, helpers/cluster.ts)
+.cache/
+# Debug dumps and JUnit reports of the k3s lanes
+.artifacts/

@@ -1,0 +1,2 @@
+E0917 10:00:00.000000    4312 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: the server has asked for the client to provide credentials"
+error: You must be logged in to the server (the server has asked for the client to provide credentials)

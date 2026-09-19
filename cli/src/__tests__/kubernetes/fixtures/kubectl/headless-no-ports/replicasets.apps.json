@@ -1,0 +1,205 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "apiVersion": "apps/v1",
+            "kind": "ReplicaSet",
+            "metadata": {
+                "annotations": {
+                    "deployment.kubernetes.io/desired-replicas": "1",
+                    "deployment.kubernetes.io/max-replicas": "2",
+                    "deployment.kubernetes.io/revision": "1",
+                    "dockflow.shawiizz.dev/compose-service": "cache",
+                    "dockflow.shawiizz.dev/release": "1.4.2"
+                },
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "generation": 1,
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-headless-no-ports",
+                    "app.kubernetes.io/name": "cache",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "cache",
+                    "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports",
+                    "pod-template-hash": "hwgfx9bvlh"
+                },
+                "name": "cache-hwgfx9bvlh",
+                "namespace": "fixture-headless-no-ports",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Deployment",
+                        "name": "cache",
+                        "uid": "00000000-0000-4000-8000-000000000018"
+                    }
+                ],
+                "resourceVersion": "30",
+                "uid": "00000000-0000-4000-8000-000000000019"
+            },
+            "spec": {
+                "replicas": 1,
+                "selector": {
+                    "matchLabels": {
+                        "dockflow.shawiizz.dev/service": "cache",
+                        "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports",
+                        "pod-template-hash": "hwgfx9bvlh"
+                    }
+                },
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "dockflow.shawiizz.dev/compose-service": "cache",
+                            "kubectl.kubernetes.io/default-container": "cache"
+                        },
+                        "labels": {
+                            "app.kubernetes.io/instance": "fixture-headless-no-ports",
+                            "app.kubernetes.io/name": "cache",
+                            "dockflow.shawiizz.dev/role": "app",
+                            "dockflow.shawiizz.dev/service": "cache",
+                            "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports",
+                            "pod-template-hash": "hwgfx9bvlh"
+                        }
+                    },
+                    "spec": {
+                        "automountServiceAccountToken": false,
+                        "containers": [
+                            {
+                                "command": [
+                                    "sh",
+                                    "-c",
+                                    "sleep 3600"
+                                ],
+                                "image": "busybox:1.37",
+                                "imagePullPolicy": "IfNotPresent",
+                                "name": "cache",
+                                "resources": {},
+                                "terminationMessagePath": "/dev/termination-log",
+                                "terminationMessagePolicy": "File"
+                            }
+                        ],
+                        "dnsPolicy": "ClusterFirst",
+                        "enableServiceLinks": false,
+                        "restartPolicy": "Always",
+                        "schedulerName": "default-scheduler",
+                        "securityContext": {
+                            "seccompProfile": {
+                                "type": "RuntimeDefault"
+                            }
+                        },
+                        "terminationGracePeriodSeconds": 10
+                    }
+                }
+            },
+            "status": {
+                "availableReplicas": 1,
+                "fullyLabeledReplicas": 1,
+                "observedGeneration": 1,
+                "readyReplicas": 1,
+                "replicas": 1
+            }
+        },
+        {
+            "apiVersion": "apps/v1",
+            "kind": "ReplicaSet",
+            "metadata": {
+                "annotations": {
+                    "deployment.kubernetes.io/desired-replicas": "2",
+                    "deployment.kubernetes.io/max-replicas": "3",
+                    "deployment.kubernetes.io/revision": "1",
+                    "dockflow.shawiizz.dev/compose-service": "worker",
+                    "dockflow.shawiizz.dev/release": "1.4.2"
+                },
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "generation": 1,
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-headless-no-ports",
+                    "app.kubernetes.io/name": "worker",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "worker",
+                    "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports",
+                    "pod-template-hash": "gr4tmskc6t"
+                },
+                "name": "worker-gr4tmskc6t",
+                "namespace": "fixture-headless-no-ports",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Deployment",
+                        "name": "worker",
+                        "uid": "00000000-0000-4000-8000-000000000001"
+                    }
+                ],
+                "resourceVersion": "2",
+                "uid": "00000000-0000-4000-8000-000000000002"
+            },
+            "spec": {
+                "replicas": 2,
+                "selector": {
+                    "matchLabels": {
+                        "dockflow.shawiizz.dev/service": "worker",
+                        "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports",
+                        "pod-template-hash": "gr4tmskc6t"
+                    }
+                },
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "dockflow.shawiizz.dev/compose-service": "worker",
+                            "kubectl.kubernetes.io/default-container": "worker"
+                        },
+                        "labels": {
+                            "app.kubernetes.io/instance": "fixture-headless-no-ports",
+                            "app.kubernetes.io/name": "worker",
+                            "dockflow.shawiizz.dev/role": "app",
+                            "dockflow.shawiizz.dev/service": "worker",
+                            "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports",
+                            "pod-template-hash": "gr4tmskc6t"
+                        }
+                    },
+                    "spec": {
+                        "automountServiceAccountToken": false,
+                        "containers": [
+                            {
+                                "command": [
+                                    "sh",
+                                    "-c",
+                                    "sleep 3600"
+                                ],
+                                "image": "busybox:1.37",
+                                "imagePullPolicy": "IfNotPresent",
+                                "name": "worker",
+                                "resources": {},
+                                "terminationMessagePath": "/dev/termination-log",
+                                "terminationMessagePolicy": "File"
+                            }
+                        ],
+                        "dnsPolicy": "ClusterFirst",
+                        "enableServiceLinks": false,
+                        "restartPolicy": "Always",
+                        "schedulerName": "default-scheduler",
+                        "securityContext": {
+                            "seccompProfile": {
+                                "type": "RuntimeDefault"
+                            }
+                        },
+                        "terminationGracePeriodSeconds": 10
+                    }
+                }
+            },
+            "status": {
+                "availableReplicas": 2,
+                "fullyLabeledReplicas": 2,
+                "observedGeneration": 1,
+                "readyReplicas": 2,
+                "replicas": 2
+            }
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

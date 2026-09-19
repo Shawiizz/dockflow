@@ -1,0 +1,348 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "dockflow.shawiizz.dev/compose-service": "web",
+                    "kubectl.kubernetes.io/default-container": "web"
+                },
+                "creationTimestamp": "2026-01-01T00:15:46Z",
+                "generateName": "web-kvz7hg45z8-",
+                "generation": 1,
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-evicted-pod",
+                    "app.kubernetes.io/name": "web",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "web",
+                    "dockflow.shawiizz.dev/stack": "fixture-evicted-pod",
+                    "pod-template-hash": "kvz7hg45z8"
+                },
+                "name": "web-kvz7hg45z8-bz4r2",
+                "namespace": "fixture-evicted-pod",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "ReplicaSet",
+                        "name": "web-kvz7hg45z8",
+                        "uid": "00000000-0000-4000-8000-000000000002"
+                    }
+                ],
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000005"
+            },
+            "spec": {
+                "automountServiceAccountToken": false,
+                "containers": [
+                    {
+                        "command": [
+                            "sh",
+                            "-c",
+                            "dd if=/dev/zero of=/tmp/fill bs=1M count=64; sleep 3600"
+                        ],
+                        "image": "busybox:1.37",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "web",
+                        "resources": {
+                            "limits": {
+                                "ephemeral-storage": "16Mi"
+                            },
+                            "requests": {
+                                "ephemeral-storage": "16Mi"
+                            }
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File"
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": false,
+                "nodeName": "agent-1",
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "securityContext": {
+                    "seccompProfile": {
+                        "type": "RuntimeDefault"
+                    }
+                },
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 10,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-01-01T00:15:47Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-01-01T00:15:46Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-01-01T00:15:48Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-01-01T00:15:48Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-01-01T00:15:46Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://7f74b6c5c618",
+                        "image": "docker.io/library/busybox:1.37",
+                        "imageID": "containerd://6053936389b8",
+                        "lastState": {},
+                        "name": "web",
+                        "ready": true,
+                        "restartCount": 0,
+                        "started": true,
+                        "state": {
+                            "running": {
+                                "startedAt": "2026-01-01T00:15:48Z"
+                            }
+                        }
+                    }
+                ],
+                "hostIP": "192.0.2.12",
+                "hostIPs": [
+                    {
+                        "ip": "192.0.2.12"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Running",
+                "podIP": "10.42.1.10",
+                "podIPs": [
+                    {
+                        "ip": "10.42.1.10"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-01-01T00:15:46Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "dockflow.shawiizz.dev/compose-service": "web",
+                    "kubectl.kubernetes.io/default-container": "web"
+                },
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "generateName": "web-kvz7hg45z8-",
+                "generation": 1,
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-evicted-pod",
+                    "app.kubernetes.io/name": "web",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "web",
+                    "dockflow.shawiizz.dev/stack": "fixture-evicted-pod",
+                    "pod-template-hash": "kvz7hg45z8"
+                },
+                "name": "web-kvz7hg45z8-lwht6",
+                "namespace": "fixture-evicted-pod",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "ReplicaSet",
+                        "name": "web-kvz7hg45z8",
+                        "uid": "00000000-0000-4000-8000-000000000002"
+                    }
+                ],
+                "resourceVersion": "5",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "spec": {
+                "automountServiceAccountToken": false,
+                "containers": [
+                    {
+                        "command": [
+                            "sh",
+                            "-c",
+                            "dd if=/dev/zero of=/tmp/fill bs=1M count=64; sleep 3600"
+                        ],
+                        "image": "busybox:1.37",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "web",
+                        "resources": {
+                            "limits": {
+                                "ephemeral-storage": "16Mi"
+                            },
+                            "requests": {
+                                "ephemeral-storage": "16Mi"
+                            }
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File"
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": false,
+                "nodeName": "server-1",
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "securityContext": {
+                    "seccompProfile": {
+                        "type": "RuntimeDefault"
+                    }
+                },
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 10,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-01-01T00:15:45Z",
+                        "message": "Pod ephemeral local storage usage exceeds the total limit of containers 16Mi. ",
+                        "observedGeneration": 1,
+                        "reason": "TerminationByKubelet",
+                        "status": "True",
+                        "type": "DisruptionTarget"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-01-01T00:15:47Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-01-01T00:15:47Z",
+                        "observedGeneration": 1,
+                        "reason": "PodFailed",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-01-01T00:15:47Z",
+                        "observedGeneration": 1,
+                        "reason": "PodFailed",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://39114c09839b",
+                        "image": "docker.io/library/busybox:1.37",
+                        "imageID": "containerd://6053936389b8",
+                        "lastState": {},
+                        "name": "web",
+                        "ready": false,
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://39114c09839b",
+                                "exitCode": 137,
+                                "finishedAt": "2026-01-01T00:15:46Z",
+                                "reason": "Error",
+                                "startedAt": "2026-01-01T00:15:02Z"
+                            }
+                        }
+                    }
+                ],
+                "hostIP": "192.0.2.11",
+                "hostIPs": [
+                    {
+                        "ip": "192.0.2.11"
+                    }
+                ],
+                "message": "Pod ephemeral local storage usage exceeds the total limit of containers 16Mi. ",
+                "observedGeneration": 1,
+                "phase": "Failed",
+                "podIP": "10.42.0.10",
+                "podIPs": [
+                    {
+                        "ip": "10.42.0.10"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "reason": "Evicted",
+                "startTime": "2026-01-01T00:15:00Z"
+            }
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

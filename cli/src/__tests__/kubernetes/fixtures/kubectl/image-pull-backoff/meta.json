@@ -1,0 +1,10 @@
+{
+  "synthetic": true,
+  "k3sVersion": "v1.36.4+k3s1",
+  "steps": [
+    "kubectl create namespace fixture-image-pull-backoff",
+    "kubectl apply: Deployment web (1 replica, image localhost:35010/e2e/missing:1, which the e2e registry does not serve)",
+    "wait until the container reports waiting reason ImagePullBackOff",
+    "capture the namespace resources and the cluster nodes and persistentvolumes"
+  ]
+}

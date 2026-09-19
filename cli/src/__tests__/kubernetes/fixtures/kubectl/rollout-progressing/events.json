@@ -1,0 +1,707 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "action": "Binding",
+            "apiVersion": "v1",
+            "eventTime": "2026-01-01T00:15:00.106300Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "web-b4phj422s5-6lnzl",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "31",
+                "uid": "00000000-0000-4000-8000-000000000017"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "message": "Successfully assigned fixture-rollout-progressing/web-b4phj422s5-6lnzl to server-1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web-b4phj422s5-6lnzl.18867323858b4fef",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "32",
+                "uid": "00000000-0000-4000-8000-000000000019"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "default-scheduler-server-1",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-b4phj422s5-6lnzl",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "35",
+                "uid": "00000000-0000-4000-8000-000000000017"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Created container: web",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "web-b4phj422s5-6lnzl.18867323cbcd888c",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "36",
+                "uid": "00000000-0000-4000-8000-000000000021"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-b4phj422s5-6lnzl",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "33",
+                "uid": "00000000-0000-4000-8000-000000000017"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Container image \"nginx:1.27-alpine\" already present on machine",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "web-b4phj422s5-6lnzl.18867323dc398df7",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "34",
+                "uid": "00000000-0000-4000-8000-000000000020"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-b4phj422s5-6lnzl",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "37",
+                "uid": "00000000-0000-4000-8000-000000000017"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:02Z",
+            "message": "Started container web",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:02Z",
+                "name": "web-b4phj422s5-6lnzl.1886732429bc46cf",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "38",
+                "uid": "00000000-0000-4000-8000-000000000022"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "action": "Binding",
+            "apiVersion": "v1",
+            "eventTime": "2026-01-01T00:15:00.106300Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "web-b4phj422s5-gs8jf",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "9",
+                "uid": "00000000-0000-4000-8000-000000000005"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "message": "Successfully assigned fixture-rollout-progressing/web-b4phj422s5-gs8jf to server-1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web-b4phj422s5-gs8jf.188673237a835b08",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "10",
+                "uid": "00000000-0000-4000-8000-000000000007"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "default-scheduler-server-1",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-b4phj422s5-gs8jf",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "11",
+                "uid": "00000000-0000-4000-8000-000000000005"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Container image \"nginx:1.27-alpine\" already present on machine",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "web-b4phj422s5-gs8jf.18867323c17999df",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "12",
+                "uid": "00000000-0000-4000-8000-000000000008"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-b4phj422s5-gs8jf",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "13",
+                "uid": "00000000-0000-4000-8000-000000000005"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Created container: web",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "web-b4phj422s5-gs8jf.18867323c3c5f856",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "14",
+                "uid": "00000000-0000-4000-8000-000000000009"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-b4phj422s5-gs8jf",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "15",
+                "uid": "00000000-0000-4000-8000-000000000005"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:02Z",
+            "message": "Started container web",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:02Z",
+                "name": "web-b4phj422s5-gs8jf.188673240c405ec2",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "16",
+                "uid": "00000000-0000-4000-8000-000000000010"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "action": "Binding",
+            "apiVersion": "v1",
+            "eventTime": "2026-01-01T00:15:00.106300Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "web-b4phj422s5-j8mhb",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "20",
+                "uid": "00000000-0000-4000-8000-000000000011"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "message": "Successfully assigned fixture-rollout-progressing/web-b4phj422s5-j8mhb to agent-1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web-b4phj422s5-j8mhb.18867323a8ec367f",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "21",
+                "uid": "00000000-0000-4000-8000-000000000013"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "default-scheduler-server-1",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-b4phj422s5-j8mhb",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "24",
+                "uid": "00000000-0000-4000-8000-000000000011"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Created container: web",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "web-b4phj422s5-j8mhb.18867323b728694d",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "25",
+                "uid": "00000000-0000-4000-8000-000000000015"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-b4phj422s5-j8mhb",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "22",
+                "uid": "00000000-0000-4000-8000-000000000011"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Container image \"nginx:1.27-alpine\" already present on machine",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "web-b4phj422s5-j8mhb.18867323de159c4d",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "23",
+                "uid": "00000000-0000-4000-8000-000000000014"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-b4phj422s5-j8mhb",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "26",
+                "uid": "00000000-0000-4000-8000-000000000011"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:02Z",
+            "message": "Started container web",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:02Z",
+                "name": "web-b4phj422s5-j8mhb.188673240ef8e2b9",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "27",
+                "uid": "00000000-0000-4000-8000-000000000016"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "ReplicaSet",
+                "name": "web-b4phj422s5",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "18",
+                "uid": "00000000-0000-4000-8000-000000000002"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Created pod: web-b4phj422s5-j8mhb",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web-b4phj422s5.188673237d2803e2",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "19",
+                "uid": "00000000-0000-4000-8000-000000000012"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "replicaset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "replicaset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "ReplicaSet",
+                "name": "web-b4phj422s5",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "7",
+                "uid": "00000000-0000-4000-8000-000000000002"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Created pod: web-b4phj422s5-gs8jf",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web-b4phj422s5.188673237d60872c",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "8",
+                "uid": "00000000-0000-4000-8000-000000000006"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "replicaset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "replicaset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "ReplicaSet",
+                "name": "web-b4phj422s5",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "29",
+                "uid": "00000000-0000-4000-8000-000000000002"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Created pod: web-b4phj422s5-6lnzl",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web-b4phj422s5.1886732388bd91de",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "30",
+                "uid": "00000000-0000-4000-8000-000000000018"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "replicaset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "replicaset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "action": "Binding",
+            "apiVersion": "v1",
+            "eventTime": "2026-01-01T00:18:00.100560Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "web-htj6sx4lpn-ff4rl",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "44",
+                "uid": "00000000-0000-4000-8000-000000000024"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "message": "Successfully assigned fixture-rollout-progressing/web-htj6sx4lpn-ff4rl to agent-1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:18:00Z",
+                "name": "web-htj6sx4lpn-ff4rl.1886734d733811d4",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "45",
+                "uid": "00000000-0000-4000-8000-000000000026"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "default-scheduler-server-1",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:18:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-htj6sx4lpn-ff4rl",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "46",
+                "uid": "00000000-0000-4000-8000-000000000024"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:18:01Z",
+            "message": "Container image \"nginx:1.28-alpine\" already present on machine",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:18:01Z",
+                "name": "web-htj6sx4lpn-ff4rl.1886734da5d515b3",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "47",
+                "uid": "00000000-0000-4000-8000-000000000027"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:18:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-htj6sx4lpn-ff4rl",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "48",
+                "uid": "00000000-0000-4000-8000-000000000024"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:18:01Z",
+            "message": "Created container: web",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:18:01Z",
+                "name": "web-htj6sx4lpn-ff4rl.1886734db61687c2",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "49",
+                "uid": "00000000-0000-4000-8000-000000000028"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:18:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-htj6sx4lpn-ff4rl",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "50",
+                "uid": "00000000-0000-4000-8000-000000000024"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:18:02Z",
+            "message": "Started container web",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:18:02Z",
+                "name": "web-htj6sx4lpn-ff4rl.1886734de0864c36",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "51",
+                "uid": "00000000-0000-4000-8000-000000000029"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:18:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "ReplicaSet",
+                "name": "web-htj6sx4lpn",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "42",
+                "uid": "00000000-0000-4000-8000-000000000003"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:18:00Z",
+            "message": "Created pod: web-htj6sx4lpn-ff4rl",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:18:00Z",
+                "name": "web-htj6sx4lpn.1886734d6d0b8d04",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "43",
+                "uid": "00000000-0000-4000-8000-000000000025"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "replicaset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "replicaset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "name": "web",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "4",
+                "uid": "00000000-0000-4000-8000-000000000001"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Scaled up replica set web-b4phj422s5 from 0 to 3",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web.188673238505554c",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "5",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "reason": "ScalingReplicaSet",
+            "reportingComponent": "deployment-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "deployment-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:18:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "name": "web",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "39",
+                "uid": "00000000-0000-4000-8000-000000000001"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:18:00Z",
+            "message": "Scaled up replica set web-htj6sx4lpn from 0 to 1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:18:00Z",
+                "name": "web.1886734d76cd1cd1",
+                "namespace": "fixture-rollout-progressing",
+                "resourceVersion": "40",
+                "uid": "00000000-0000-4000-8000-000000000023"
+            },
+            "reason": "ScalingReplicaSet",
+            "reportingComponent": "deployment-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "deployment-controller"
+            },
+            "type": "Normal"
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

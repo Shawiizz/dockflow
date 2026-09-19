@@ -1,0 +1,207 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "addressType": "IPv4",
+            "apiVersion": "discovery.k8s.io/v1",
+            "endpoints": [
+                {
+                    "addresses": [
+                        "10.42.1.10"
+                    ],
+                    "conditions": {
+                        "ready": true,
+                        "serving": true,
+                        "terminating": false
+                    },
+                    "nodeName": "agent-1",
+                    "targetRef": {
+                        "kind": "Pod",
+                        "name": "web-fbldgxtr82-m958d",
+                        "namespace": "fixture-rollout-complete",
+                        "uid": "00000000-0000-4000-8000-000000000024"
+                    }
+                },
+                {
+                    "addresses": [
+                        "10.42.0.10"
+                    ],
+                    "conditions": {
+                        "ready": true,
+                        "serving": true,
+                        "terminating": false
+                    },
+                    "nodeName": "server-1",
+                    "targetRef": {
+                        "kind": "Pod",
+                        "name": "web-fbldgxtr82-nqbxd",
+                        "namespace": "fixture-rollout-complete",
+                        "uid": "00000000-0000-4000-8000-000000000034"
+                    }
+                },
+                {
+                    "addresses": [
+                        "10.42.0.11"
+                    ],
+                    "conditions": {
+                        "ready": true,
+                        "serving": true,
+                        "terminating": false
+                    },
+                    "nodeName": "server-1",
+                    "targetRef": {
+                        "kind": "Pod",
+                        "name": "web-fbldgxtr82-cvpjp",
+                        "namespace": "fixture-rollout-complete",
+                        "uid": "00000000-0000-4000-8000-000000000044"
+                    }
+                }
+            ],
+            "kind": "EndpointSlice",
+            "metadata": {
+                "annotations": {
+                    "endpoints.kubernetes.io/last-change-trigger-time": "2026-01-01T00:21:08Z"
+                },
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "generateName": "web-",
+                "generation": 9,
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-rollout-complete",
+                    "app.kubernetes.io/managed-by": "dockflow",
+                    "app.kubernetes.io/name": "web",
+                    "app.kubernetes.io/part-of": "shop",
+                    "dockflow.shawiizz.dev/part": "stack",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "web",
+                    "dockflow.shawiizz.dev/stack": "fixture-rollout-complete",
+                    "endpointslice.kubernetes.io/managed-by": "endpointslice-controller.k8s.io",
+                    "kubernetes.io/service-name": "web"
+                },
+                "name": "web-9dkxj",
+                "namespace": "fixture-rollout-complete",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Service",
+                        "name": "web",
+                        "uid": "00000000-0000-4000-8000-000000000053"
+                    }
+                ],
+                "resourceVersion": "94",
+                "uid": "00000000-0000-4000-8000-000000000054"
+            },
+            "ports": [
+                {
+                    "name": "tcp-80",
+                    "port": 80,
+                    "protocol": "TCP"
+                }
+            ]
+        },
+        {
+            "addressType": "IPv4",
+            "apiVersion": "discovery.k8s.io/v1",
+            "endpoints": [
+                {
+                    "addresses": [
+                        "10.42.1.10"
+                    ],
+                    "conditions": {
+                        "ready": true,
+                        "serving": true,
+                        "terminating": false
+                    },
+                    "nodeName": "agent-1",
+                    "targetRef": {
+                        "kind": "Pod",
+                        "name": "web-fbldgxtr82-m958d",
+                        "namespace": "fixture-rollout-complete",
+                        "uid": "00000000-0000-4000-8000-000000000024"
+                    }
+                },
+                {
+                    "addresses": [
+                        "10.42.0.10"
+                    ],
+                    "conditions": {
+                        "ready": true,
+                        "serving": true,
+                        "terminating": false
+                    },
+                    "nodeName": "server-1",
+                    "targetRef": {
+                        "kind": "Pod",
+                        "name": "web-fbldgxtr82-nqbxd",
+                        "namespace": "fixture-rollout-complete",
+                        "uid": "00000000-0000-4000-8000-000000000034"
+                    }
+                },
+                {
+                    "addresses": [
+                        "10.42.0.11"
+                    ],
+                    "conditions": {
+                        "ready": true,
+                        "serving": true,
+                        "terminating": false
+                    },
+                    "nodeName": "server-1",
+                    "targetRef": {
+                        "kind": "Pod",
+                        "name": "web-fbldgxtr82-cvpjp",
+                        "namespace": "fixture-rollout-complete",
+                        "uid": "00000000-0000-4000-8000-000000000044"
+                    }
+                }
+            ],
+            "kind": "EndpointSlice",
+            "metadata": {
+                "annotations": {
+                    "endpoints.kubernetes.io/last-change-trigger-time": "2026-01-01T00:21:08Z"
+                },
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "generateName": "web-lb-",
+                "generation": 9,
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-rollout-complete",
+                    "app.kubernetes.io/managed-by": "dockflow",
+                    "app.kubernetes.io/name": "web",
+                    "app.kubernetes.io/part-of": "shop",
+                    "dockflow.shawiizz.dev/part": "stack",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "web",
+                    "dockflow.shawiizz.dev/stack": "fixture-rollout-complete",
+                    "endpointslice.kubernetes.io/managed-by": "endpointslice-controller.k8s.io",
+                    "kubernetes.io/service-name": "web-lb"
+                },
+                "name": "web-lb-qjl28",
+                "namespace": "fixture-rollout-complete",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Service",
+                        "name": "web-lb",
+                        "uid": "00000000-0000-4000-8000-000000000055"
+                    }
+                ],
+                "resourceVersion": "96",
+                "uid": "00000000-0000-4000-8000-000000000056"
+            },
+            "ports": [
+                {
+                    "name": "tcp-8080",
+                    "port": 80,
+                    "protocol": "TCP"
+                }
+            ]
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

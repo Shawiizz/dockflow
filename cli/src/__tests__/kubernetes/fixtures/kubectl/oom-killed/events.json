@@ -1,0 +1,232 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "action": "Binding",
+            "apiVersion": "v1",
+            "eventTime": "2026-01-01T00:15:00.106300Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "web-qlwq4g8hrz-bqtf5",
+                "namespace": "fixture-oom-killed",
+                "resourceVersion": "8",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "message": "Successfully assigned fixture-oom-killed/web-qlwq4g8hrz-bqtf5 to agent-1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web-qlwq4g8hrz-bqtf5.188673237bb237d9",
+                "namespace": "fixture-oom-killed",
+                "resourceVersion": "9",
+                "uid": "00000000-0000-4000-8000-000000000006"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "default-scheduler-server-1",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 3,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-qlwq4g8hrz-bqtf5",
+                "namespace": "fixture-oom-killed",
+                "resourceVersion": "12",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:32Z",
+            "message": "Created container: web",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "web-qlwq4g8hrz-bqtf5.18867323bd3fece7",
+                "namespace": "fixture-oom-killed",
+                "resourceVersion": "13",
+                "uid": "00000000-0000-4000-8000-000000000008"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 3,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-qlwq4g8hrz-bqtf5",
+                "namespace": "fixture-oom-killed",
+                "resourceVersion": "10",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:32Z",
+            "message": "Container image \"busybox:1.37\" already present on machine",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "web-qlwq4g8hrz-bqtf5.18867323be39ac15",
+                "namespace": "fixture-oom-killed",
+                "resourceVersion": "11",
+                "uid": "00000000-0000-4000-8000-000000000007"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 3,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-qlwq4g8hrz-bqtf5",
+                "namespace": "fixture-oom-killed",
+                "resourceVersion": "14",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:32Z",
+            "message": "Started container web",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:02Z",
+                "name": "web-qlwq4g8hrz-bqtf5.18867324045f3e89",
+                "namespace": "fixture-oom-killed",
+                "resourceVersion": "15",
+                "uid": "00000000-0000-4000-8000-000000000009"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 4,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:03Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-qlwq4g8hrz-bqtf5",
+                "namespace": "fixture-oom-killed",
+                "resourceVersion": "16",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:45Z",
+            "message": "Back-off restarting failed container web in pod web-qlwq4g8hrz-bqtf5_fixture-oom-killed(00000000-0000-4000-8000-000000000004)",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:03Z",
+                "name": "web-qlwq4g8hrz-bqtf5.1886732430cc29b0",
+                "namespace": "fixture-oom-killed",
+                "resourceVersion": "17",
+                "uid": "00000000-0000-4000-8000-000000000010"
+            },
+            "reason": "BackOff",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Warning"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "ReplicaSet",
+                "name": "web-qlwq4g8hrz",
+                "namespace": "fixture-oom-killed",
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000002"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Created pod: web-qlwq4g8hrz-bqtf5",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web-qlwq4g8hrz.18867323aafa5db9",
+                "namespace": "fixture-oom-killed",
+                "resourceVersion": "7",
+                "uid": "00000000-0000-4000-8000-000000000005"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "replicaset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "replicaset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "name": "web",
+                "namespace": "fixture-oom-killed",
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000001"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Scaled up replica set web-qlwq4g8hrz from 0 to 1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web.188673239f0acb3b",
+                "namespace": "fixture-oom-killed",
+                "resourceVersion": "4",
+                "uid": "00000000-0000-4000-8000-000000000003"
+            },
+            "reason": "ScalingReplicaSet",
+            "reportingComponent": "deployment-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "deployment-controller"
+            },
+            "type": "Normal"
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

@@ -1,0 +1,10 @@
+{
+  "synthetic": true,
+  "k3sVersion": "v1.36.4+k3s1",
+  "steps": [
+    "kubectl create namespace fixture-pvc-pending-rwx",
+    "kubectl apply: PersistentVolumeClaim shared (ReadWriteMany, 1Gi, storageClassName dockflow-local) and Deployment web (1 replica, busybox:1.37 mounting the claim at /data)",
+    "wait until the claim has a ProvisioningFailed event and 60 more seconds",
+    "capture the namespace resources and the cluster nodes and persistentvolumes"
+  ]
+}

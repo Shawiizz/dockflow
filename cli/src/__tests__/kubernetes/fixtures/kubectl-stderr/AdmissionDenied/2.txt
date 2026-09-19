@@ -1,0 +1,1 @@
+Error from server (Forbidden): error when creating "STDIN": pods "dockflow-backup-web-data" is forbidden: violates PodSecurity "restricted:latest": allowPrivilegeEscalation != false (container "helper" must set securityContext.allowPrivilegeEscalation=false), runAsNonRoot != true (pod or container "helper" must set securityContext.runAsNonRoot=true)

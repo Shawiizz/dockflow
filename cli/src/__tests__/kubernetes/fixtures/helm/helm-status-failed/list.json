@@ -1,0 +1,1 @@
+[{"name":"broken","namespace":"fixture-helm-status-failed","revision":"2","updated":"2026-01-01 00:01:35.318526004 +0000 UTC","status":"failed","chart":"e2e-broken-0.1.0","app_version":"1.0.0"}]

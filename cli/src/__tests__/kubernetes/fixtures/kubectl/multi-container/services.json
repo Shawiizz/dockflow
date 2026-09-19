@@ -1,0 +1,61 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "annotations": {
+                    "dockflow.shawiizz.dev/compose-service": "api"
+                },
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-multi-container",
+                    "app.kubernetes.io/managed-by": "dockflow",
+                    "app.kubernetes.io/name": "api",
+                    "app.kubernetes.io/part-of": "shop",
+                    "dockflow.shawiizz.dev/part": "stack",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "api",
+                    "dockflow.shawiizz.dev/stack": "fixture-multi-container"
+                },
+                "name": "api",
+                "namespace": "fixture-multi-container",
+                "resourceVersion": "22",
+                "uid": "00000000-0000-4000-8000-000000000013"
+            },
+            "spec": {
+                "clusterIP": "10.43.28.128",
+                "clusterIPs": [
+                    "10.43.28.128"
+                ],
+                "internalTrafficPolicy": "Cluster",
+                "ipFamilies": [
+                    "IPv4"
+                ],
+                "ipFamilyPolicy": "SingleStack",
+                "ports": [
+                    {
+                        "name": "tcp-80",
+                        "port": 80,
+                        "protocol": "TCP",
+                        "targetPort": 80
+                    }
+                ],
+                "selector": {
+                    "dockflow.shawiizz.dev/service": "api",
+                    "dockflow.shawiizz.dev/stack": "fixture-multi-container"
+                },
+                "sessionAffinity": "None",
+                "type": "ClusterIP"
+            },
+            "status": {
+                "loadBalancer": {}
+            }
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

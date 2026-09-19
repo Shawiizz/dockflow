@@ -1,0 +1,548 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "action": "Binding",
+            "apiVersion": "v1",
+            "eventTime": "2026-01-01T00:15:00.106300Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "cache-hwgfx9bvlh-qjjt9",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "36",
+                "uid": "00000000-0000-4000-8000-000000000021"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "message": "Successfully assigned fixture-headless-no-ports/cache-hwgfx9bvlh-qjjt9 to agent-1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "cache-hwgfx9bvlh-qjjt9.18867323a4318f79",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "37",
+                "uid": "00000000-0000-4000-8000-000000000023"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "default-scheduler-server-1",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{cache}",
+                "kind": "Pod",
+                "name": "cache-hwgfx9bvlh-qjjt9",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "38",
+                "uid": "00000000-0000-4000-8000-000000000021"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Container image \"busybox:1.37\" already present on machine",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "cache-hwgfx9bvlh-qjjt9.18867323ccfe059b",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "39",
+                "uid": "00000000-0000-4000-8000-000000000024"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{cache}",
+                "kind": "Pod",
+                "name": "cache-hwgfx9bvlh-qjjt9",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "40",
+                "uid": "00000000-0000-4000-8000-000000000021"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Created container: cache",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "cache-hwgfx9bvlh-qjjt9.18867323e9a4c3e4",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "41",
+                "uid": "00000000-0000-4000-8000-000000000025"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{cache}",
+                "kind": "Pod",
+                "name": "cache-hwgfx9bvlh-qjjt9",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "42",
+                "uid": "00000000-0000-4000-8000-000000000021"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:02Z",
+            "message": "Started container cache",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:02Z",
+                "name": "cache-hwgfx9bvlh-qjjt9.188673240547fb6f",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "43",
+                "uid": "00000000-0000-4000-8000-000000000026"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "ReplicaSet",
+                "name": "cache-hwgfx9bvlh",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "34",
+                "uid": "00000000-0000-4000-8000-000000000019"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Created pod: cache-hwgfx9bvlh-qjjt9",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "cache-hwgfx9bvlh.188673237e002d09",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "35",
+                "uid": "00000000-0000-4000-8000-000000000022"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "replicaset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "replicaset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "name": "cache",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "31",
+                "uid": "00000000-0000-4000-8000-000000000018"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Scaled up replica set cache-hwgfx9bvlh from 0 to 1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "cache.18867323a6789765",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "32",
+                "uid": "00000000-0000-4000-8000-000000000020"
+            },
+            "reason": "ScalingReplicaSet",
+            "reportingComponent": "deployment-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "deployment-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "action": "Binding",
+            "apiVersion": "v1",
+            "eventTime": "2026-01-01T00:15:00.106300Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "worker-gr4tmskc6t-b6fcd",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "19",
+                "uid": "00000000-0000-4000-8000-000000000010"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "message": "Successfully assigned fixture-headless-no-ports/worker-gr4tmskc6t-b6fcd to agent-1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "worker-gr4tmskc6t-b6fcd.18867323ace82740",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "20",
+                "uid": "00000000-0000-4000-8000-000000000012"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "default-scheduler-server-1",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{worker}",
+                "kind": "Pod",
+                "name": "worker-gr4tmskc6t-b6fcd",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "21",
+                "uid": "00000000-0000-4000-8000-000000000010"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Container image \"busybox:1.37\" already present on machine",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "worker-gr4tmskc6t-b6fcd.18867323cbcde990",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "22",
+                "uid": "00000000-0000-4000-8000-000000000013"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{worker}",
+                "kind": "Pod",
+                "name": "worker-gr4tmskc6t-b6fcd",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "23",
+                "uid": "00000000-0000-4000-8000-000000000010"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Created container: worker",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "worker-gr4tmskc6t-b6fcd.18867323da20a6a5",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "24",
+                "uid": "00000000-0000-4000-8000-000000000014"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{worker}",
+                "kind": "Pod",
+                "name": "worker-gr4tmskc6t-b6fcd",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "25",
+                "uid": "00000000-0000-4000-8000-000000000010"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:02Z",
+            "message": "Started container worker",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:02Z",
+                "name": "worker-gr4tmskc6t-b6fcd.1886732406dc5ba7",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "26",
+                "uid": "00000000-0000-4000-8000-000000000015"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "action": "Binding",
+            "apiVersion": "v1",
+            "eventTime": "2026-01-01T00:15:00.106300Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "worker-gr4tmskc6t-j9w9k",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "8",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "message": "Successfully assigned fixture-headless-no-ports/worker-gr4tmskc6t-j9w9k to server-1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "worker-gr4tmskc6t-j9w9k.18867323a7c95f69",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "9",
+                "uid": "00000000-0000-4000-8000-000000000006"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "default-scheduler-server-1",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{worker}",
+                "kind": "Pod",
+                "name": "worker-gr4tmskc6t-j9w9k",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "10",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Container image \"busybox:1.37\" already present on machine",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "worker-gr4tmskc6t-j9w9k.18867323c79d9641",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "11",
+                "uid": "00000000-0000-4000-8000-000000000007"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{worker}",
+                "kind": "Pod",
+                "name": "worker-gr4tmskc6t-j9w9k",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "12",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Created container: worker",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "worker-gr4tmskc6t-j9w9k.18867323cdeec03a",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "13",
+                "uid": "00000000-0000-4000-8000-000000000008"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{worker}",
+                "kind": "Pod",
+                "name": "worker-gr4tmskc6t-j9w9k",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "14",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:02Z",
+            "message": "Started container worker",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:02Z",
+                "name": "worker-gr4tmskc6t-j9w9k.188673240fad3ecc",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "15",
+                "uid": "00000000-0000-4000-8000-000000000009"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "ReplicaSet",
+                "name": "worker-gr4tmskc6t",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000002"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Created pod: worker-gr4tmskc6t-j9w9k",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "worker-gr4tmskc6t.188673237f6f0cea",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "7",
+                "uid": "00000000-0000-4000-8000-000000000005"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "replicaset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "replicaset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "ReplicaSet",
+                "name": "worker-gr4tmskc6t",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "17",
+                "uid": "00000000-0000-4000-8000-000000000002"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Created pod: worker-gr4tmskc6t-b6fcd",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "worker-gr4tmskc6t.188673239d355e74",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "18",
+                "uid": "00000000-0000-4000-8000-000000000011"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "replicaset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "replicaset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "name": "worker",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000001"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Scaled up replica set worker-gr4tmskc6t from 0 to 2",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "worker.18867323912ca650",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "4",
+                "uid": "00000000-0000-4000-8000-000000000003"
+            },
+            "reason": "ScalingReplicaSet",
+            "reportingComponent": "deployment-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "deployment-controller"
+            },
+            "type": "Normal"
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

@@ -1,0 +1,1 @@
+Error from server (Conflict): error when replacing "STDIN": Operation cannot be fulfilled on leases.coordination.k8s.io "lock-dockflow-shop-production": the object has been modified; please apply your changes to the latest version and try again

@@ -1,0 +1,118 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "apiVersion": "apps/v1",
+            "kind": "ReplicaSet",
+            "metadata": {
+                "annotations": {
+                    "deployment.kubernetes.io/desired-replicas": "1",
+                    "deployment.kubernetes.io/max-replicas": "2",
+                    "deployment.kubernetes.io/revision": "1",
+                    "dockflow.shawiizz.dev/compose-service": "web",
+                    "dockflow.shawiizz.dev/release": "1.4.2"
+                },
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "generation": 1,
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-progress-deadline-exceeded",
+                    "app.kubernetes.io/name": "web",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "web",
+                    "dockflow.shawiizz.dev/stack": "fixture-progress-deadline-exceeded",
+                    "pod-template-hash": "ltfzrls7cm"
+                },
+                "name": "web-ltfzrls7cm",
+                "namespace": "fixture-progress-deadline-exceeded",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Deployment",
+                        "name": "web",
+                        "uid": "00000000-0000-4000-8000-000000000001"
+                    }
+                ],
+                "resourceVersion": "2",
+                "uid": "00000000-0000-4000-8000-000000000002"
+            },
+            "spec": {
+                "replicas": 1,
+                "selector": {
+                    "matchLabels": {
+                        "dockflow.shawiizz.dev/service": "web",
+                        "dockflow.shawiizz.dev/stack": "fixture-progress-deadline-exceeded",
+                        "pod-template-hash": "ltfzrls7cm"
+                    }
+                },
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "dockflow.shawiizz.dev/compose-service": "web",
+                            "kubectl.kubernetes.io/default-container": "web"
+                        },
+                        "labels": {
+                            "app.kubernetes.io/instance": "fixture-progress-deadline-exceeded",
+                            "app.kubernetes.io/name": "web",
+                            "dockflow.shawiizz.dev/role": "app",
+                            "dockflow.shawiizz.dev/service": "web",
+                            "dockflow.shawiizz.dev/stack": "fixture-progress-deadline-exceeded",
+                            "pod-template-hash": "ltfzrls7cm"
+                        }
+                    },
+                    "spec": {
+                        "automountServiceAccountToken": false,
+                        "containers": [
+                            {
+                                "command": [
+                                    "sh",
+                                    "-c",
+                                    "sleep 3600"
+                                ],
+                                "image": "busybox:1.37",
+                                "imagePullPolicy": "IfNotPresent",
+                                "name": "web",
+                                "readinessProbe": {
+                                    "exec": {
+                                        "command": [
+                                            "sh",
+                                            "-c",
+                                            "exit 1"
+                                        ]
+                                    },
+                                    "failureThreshold": 3,
+                                    "periodSeconds": 5,
+                                    "successThreshold": 1,
+                                    "timeoutSeconds": 1
+                                },
+                                "resources": {},
+                                "terminationMessagePath": "/dev/termination-log",
+                                "terminationMessagePolicy": "File"
+                            }
+                        ],
+                        "dnsPolicy": "ClusterFirst",
+                        "enableServiceLinks": false,
+                        "restartPolicy": "Always",
+                        "schedulerName": "default-scheduler",
+                        "securityContext": {
+                            "seccompProfile": {
+                                "type": "RuntimeDefault"
+                            }
+                        },
+                        "terminationGracePeriodSeconds": 10
+                    }
+                }
+            },
+            "status": {
+                "fullyLabeledReplicas": 1,
+                "observedGeneration": 1,
+                "replicas": 1
+            }
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

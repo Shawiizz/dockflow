@@ -1,0 +1,11 @@
+{
+  "synthetic": true,
+  "k3sVersion": "v1.36.4+k3s1",
+  "steps": [
+    "kubectl create namespace fixture-metrics-top",
+    "kubectl apply: app Deployment web (2 replicas, nginx:1.27-alpine, memory limit 128Mi), accessory StatefulSet db (1 replica, busybox:1.37 running sleep, memory limit 256Mi) and helper pod dockflow-helper-archive-3f9a2c1b (label dockflow.shawiizz.dev/part=helper)",
+    "wait until every pod is Ready and metrics-server has scraped them (kubectl top pods lists all four)",
+    "capture the namespace resources and the cluster nodes and persistentvolumes",
+    "kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/fixture-metrics-top/pods > metrics/metrics-top.json"
+  ]
+}

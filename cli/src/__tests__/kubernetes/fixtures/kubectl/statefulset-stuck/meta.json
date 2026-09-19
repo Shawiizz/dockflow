@@ -1,0 +1,12 @@
+{
+  "synthetic": true,
+  "k3sVersion": "v1.36.4+k3s1",
+  "steps": [
+    "kubectl create namespace fixture-statefulset-stuck",
+    "kubectl apply: accessory StatefulSet db (2 replicas, podManagementPolicy Parallel, RollingUpdate, busybox:1.37 running sleep, volumeClaimTemplates data 1Gi ReadWriteOnce on dockflow-local) and headless Service db-hl with the placeholder port 9",
+    "kubectl rollout status statefulset/db --timeout=180s",
+    "update the template to busybox:1.36 running sh -c 'exit 1'",
+    "wait until db-1 runs the update revision and reports CrashLoopBackOff with restartCount 3 (db-0 stays on the current revision)",
+    "capture the namespace resources and the cluster nodes and persistentvolumes"
+  ]
+}

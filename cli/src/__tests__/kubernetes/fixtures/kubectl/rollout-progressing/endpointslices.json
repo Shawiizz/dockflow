@@ -1,0 +1,125 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "addressType": "IPv4",
+            "apiVersion": "discovery.k8s.io/v1",
+            "endpoints": [
+                {
+                    "addresses": [
+                        "10.42.0.10"
+                    ],
+                    "conditions": {
+                        "ready": true,
+                        "serving": true,
+                        "terminating": false
+                    },
+                    "nodeName": "server-1",
+                    "targetRef": {
+                        "kind": "Pod",
+                        "name": "web-b4phj422s5-gs8jf",
+                        "namespace": "fixture-rollout-progressing",
+                        "uid": "00000000-0000-4000-8000-000000000005"
+                    }
+                },
+                {
+                    "addresses": [
+                        "10.42.1.10"
+                    ],
+                    "conditions": {
+                        "ready": true,
+                        "serving": true,
+                        "terminating": false
+                    },
+                    "nodeName": "agent-1",
+                    "targetRef": {
+                        "kind": "Pod",
+                        "name": "web-b4phj422s5-j8mhb",
+                        "namespace": "fixture-rollout-progressing",
+                        "uid": "00000000-0000-4000-8000-000000000011"
+                    }
+                },
+                {
+                    "addresses": [
+                        "10.42.0.11"
+                    ],
+                    "conditions": {
+                        "ready": true,
+                        "serving": true,
+                        "terminating": false
+                    },
+                    "nodeName": "server-1",
+                    "targetRef": {
+                        "kind": "Pod",
+                        "name": "web-b4phj422s5-6lnzl",
+                        "namespace": "fixture-rollout-progressing",
+                        "uid": "00000000-0000-4000-8000-000000000017"
+                    }
+                },
+                {
+                    "addresses": [
+                        "10.42.1.11"
+                    ],
+                    "conditions": {
+                        "ready": false,
+                        "serving": false,
+                        "terminating": false
+                    },
+                    "nodeName": "agent-1",
+                    "targetRef": {
+                        "kind": "Pod",
+                        "name": "web-htj6sx4lpn-ff4rl",
+                        "namespace": "fixture-rollout-progressing",
+                        "uid": "00000000-0000-4000-8000-000000000024"
+                    }
+                }
+            ],
+            "kind": "EndpointSlice",
+            "metadata": {
+                "annotations": {
+                    "endpoints.kubernetes.io/last-change-trigger-time": "2026-01-01T00:18:01Z"
+                },
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "generateName": "web-",
+                "generation": 5,
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-rollout-progressing",
+                    "app.kubernetes.io/managed-by": "dockflow",
+                    "app.kubernetes.io/name": "web",
+                    "app.kubernetes.io/part-of": "shop",
+                    "dockflow.shawiizz.dev/part": "stack",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "web",
+                    "dockflow.shawiizz.dev/stack": "fixture-rollout-progressing",
+                    "endpointslice.kubernetes.io/managed-by": "endpointslice-controller.k8s.io",
+                    "kubernetes.io/service-name": "web"
+                },
+                "name": "web-7nxtr",
+                "namespace": "fixture-rollout-progressing",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Service",
+                        "name": "web",
+                        "uid": "00000000-0000-4000-8000-000000000030"
+                    }
+                ],
+                "resourceVersion": "53",
+                "uid": "00000000-0000-4000-8000-000000000031"
+            },
+            "ports": [
+                {
+                    "name": "tcp-80",
+                    "port": 80,
+                    "protocol": "TCP"
+                }
+            ]
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

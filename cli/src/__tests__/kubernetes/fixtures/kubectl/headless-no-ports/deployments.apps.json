@@ -1,0 +1,235 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": {
+                "annotations": {
+                    "deployment.kubernetes.io/revision": "1",
+                    "dockflow.shawiizz.dev/compose-service": "cache",
+                    "dockflow.shawiizz.dev/release": "1.4.2"
+                },
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "generation": 1,
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-headless-no-ports",
+                    "app.kubernetes.io/managed-by": "dockflow",
+                    "app.kubernetes.io/name": "cache",
+                    "app.kubernetes.io/part-of": "shop",
+                    "dockflow.shawiizz.dev/part": "stack",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "cache",
+                    "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports"
+                },
+                "name": "cache",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "29",
+                "uid": "00000000-0000-4000-8000-000000000018"
+            },
+            "spec": {
+                "progressDeadlineSeconds": 240,
+                "replicas": 1,
+                "revisionHistoryLimit": 3,
+                "selector": {
+                    "matchLabels": {
+                        "dockflow.shawiizz.dev/service": "cache",
+                        "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports"
+                    }
+                },
+                "strategy": {
+                    "rollingUpdate": {
+                        "maxSurge": 1,
+                        "maxUnavailable": 0
+                    },
+                    "type": "RollingUpdate"
+                },
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "dockflow.shawiizz.dev/compose-service": "cache",
+                            "kubectl.kubernetes.io/default-container": "cache"
+                        },
+                        "labels": {
+                            "app.kubernetes.io/instance": "fixture-headless-no-ports",
+                            "app.kubernetes.io/name": "cache",
+                            "dockflow.shawiizz.dev/role": "app",
+                            "dockflow.shawiizz.dev/service": "cache",
+                            "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports"
+                        }
+                    },
+                    "spec": {
+                        "automountServiceAccountToken": false,
+                        "containers": [
+                            {
+                                "command": [
+                                    "sh",
+                                    "-c",
+                                    "sleep 3600"
+                                ],
+                                "image": "busybox:1.37",
+                                "imagePullPolicy": "IfNotPresent",
+                                "name": "cache",
+                                "resources": {},
+                                "terminationMessagePath": "/dev/termination-log",
+                                "terminationMessagePolicy": "File"
+                            }
+                        ],
+                        "dnsPolicy": "ClusterFirst",
+                        "enableServiceLinks": false,
+                        "restartPolicy": "Always",
+                        "schedulerName": "default-scheduler",
+                        "securityContext": {
+                            "seccompProfile": {
+                                "type": "RuntimeDefault"
+                            }
+                        },
+                        "terminationGracePeriodSeconds": 10
+                    }
+                }
+            },
+            "status": {
+                "availableReplicas": 1,
+                "conditions": [
+                    {
+                        "lastTransitionTime": "2026-01-01T00:15:03Z",
+                        "lastUpdateTime": "2026-01-01T00:15:03Z",
+                        "message": "Deployment has minimum availability.",
+                        "reason": "MinimumReplicasAvailable",
+                        "status": "True",
+                        "type": "Available"
+                    },
+                    {
+                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastUpdateTime": "2026-01-01T00:15:03Z",
+                        "message": "ReplicaSet \"cache-hwgfx9bvlh\" has successfully progressed.",
+                        "reason": "NewReplicaSetAvailable",
+                        "status": "True",
+                        "type": "Progressing"
+                    }
+                ],
+                "observedGeneration": 1,
+                "readyReplicas": 1,
+                "replicas": 1,
+                "updatedReplicas": 1
+            }
+        },
+        {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": {
+                "annotations": {
+                    "deployment.kubernetes.io/revision": "1",
+                    "dockflow.shawiizz.dev/compose-service": "worker",
+                    "dockflow.shawiizz.dev/release": "1.4.2"
+                },
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "generation": 1,
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-headless-no-ports",
+                    "app.kubernetes.io/managed-by": "dockflow",
+                    "app.kubernetes.io/name": "worker",
+                    "app.kubernetes.io/part-of": "shop",
+                    "dockflow.shawiizz.dev/part": "stack",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "worker",
+                    "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports"
+                },
+                "name": "worker",
+                "namespace": "fixture-headless-no-ports",
+                "resourceVersion": "1",
+                "uid": "00000000-0000-4000-8000-000000000001"
+            },
+            "spec": {
+                "progressDeadlineSeconds": 240,
+                "replicas": 2,
+                "revisionHistoryLimit": 3,
+                "selector": {
+                    "matchLabels": {
+                        "dockflow.shawiizz.dev/service": "worker",
+                        "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports"
+                    }
+                },
+                "strategy": {
+                    "rollingUpdate": {
+                        "maxSurge": 1,
+                        "maxUnavailable": 0
+                    },
+                    "type": "RollingUpdate"
+                },
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "dockflow.shawiizz.dev/compose-service": "worker",
+                            "kubectl.kubernetes.io/default-container": "worker"
+                        },
+                        "labels": {
+                            "app.kubernetes.io/instance": "fixture-headless-no-ports",
+                            "app.kubernetes.io/name": "worker",
+                            "dockflow.shawiizz.dev/role": "app",
+                            "dockflow.shawiizz.dev/service": "worker",
+                            "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports"
+                        }
+                    },
+                    "spec": {
+                        "automountServiceAccountToken": false,
+                        "containers": [
+                            {
+                                "command": [
+                                    "sh",
+                                    "-c",
+                                    "sleep 3600"
+                                ],
+                                "image": "busybox:1.37",
+                                "imagePullPolicy": "IfNotPresent",
+                                "name": "worker",
+                                "resources": {},
+                                "terminationMessagePath": "/dev/termination-log",
+                                "terminationMessagePolicy": "File"
+                            }
+                        ],
+                        "dnsPolicy": "ClusterFirst",
+                        "enableServiceLinks": false,
+                        "restartPolicy": "Always",
+                        "schedulerName": "default-scheduler",
+                        "securityContext": {
+                            "seccompProfile": {
+                                "type": "RuntimeDefault"
+                            }
+                        },
+                        "terminationGracePeriodSeconds": 10
+                    }
+                }
+            },
+            "status": {
+                "availableReplicas": 2,
+                "conditions": [
+                    {
+                        "lastTransitionTime": "2026-01-01T00:15:03Z",
+                        "lastUpdateTime": "2026-01-01T00:15:03Z",
+                        "message": "Deployment has minimum availability.",
+                        "reason": "MinimumReplicasAvailable",
+                        "status": "True",
+                        "type": "Available"
+                    },
+                    {
+                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastUpdateTime": "2026-01-01T00:15:03Z",
+                        "message": "ReplicaSet \"worker-gr4tmskc6t\" has successfully progressed.",
+                        "reason": "NewReplicaSetAvailable",
+                        "status": "True",
+                        "type": "Progressing"
+                    }
+                ],
+                "observedGeneration": 1,
+                "readyReplicas": 2,
+                "replicas": 2,
+                "updatedReplicas": 2
+            }
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

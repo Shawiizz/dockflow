@@ -1,0 +1,12 @@
+{
+  "synthetic": true,
+  "k3sVersion": "v1.36.4+k3s1",
+  "helmVersion": "v4.3.0",
+  "steps": [
+    "kubectl create namespace fixture-helm-status-failed",
+    "helm upgrade --install broken e2e-web-0.1.0.tgz -n fixture-helm-status-failed --wait=watcher --timeout 120s",
+    "upgrade-stderr.txt: stderr of helm upgrade --install broken e2e-broken-0.1.0.tgz -n fixture-helm-status-failed --wait=watcher --timeout 60s (no --rollback-on-failure)",
+    "list.json: helm list -n fixture-helm-status-failed --filter ^broken$ -o json",
+    "history.json: helm history broken -n fixture-helm-status-failed --max 20 -o json"
+  ]
+}

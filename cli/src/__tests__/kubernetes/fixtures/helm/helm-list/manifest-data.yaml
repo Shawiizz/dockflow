@@ -1,0 +1,55 @@
+---
+# Source: e2e-pvc/templates/pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-e2e-pvc
+  labels:
+    app.kubernetes.io/name: e2e-pvc
+    app.kubernetes.io/instance: data
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: e2e-pvc-0.1.0
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: dockflow-local
+  resources:
+    requests:
+      storage: 1Gi
+---
+# Source: e2e-pvc/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-e2e-pvc
+  labels:
+    app.kubernetes.io/name: e2e-pvc
+    app.kubernetes.io/instance: data
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: e2e-pvc-0.1.0
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: e2e-pvc
+      app.kubernetes.io/instance: data
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: e2e-pvc
+        app.kubernetes.io/instance: data
+    spec:
+      containers:
+        - name: data
+          image: busybox:1.37
+          command: ["sh", "-c", "sleep 3600"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: data-e2e-pvc
+

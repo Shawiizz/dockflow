@@ -1,0 +1,1 @@
+error: unable to recognize "STDIN": no matches for kind "Middleware" in version "traefik.io/v1alpha1"

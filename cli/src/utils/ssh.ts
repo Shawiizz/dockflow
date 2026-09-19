@@ -32,6 +32,38 @@ interface PoolEntry {
 const pool = new Map<string, PoolEntry>();
 let exitHandlerRegistered = false;
 
+// ─── Exit status ──────────────────────────────────────────────
+
+/** Exit code reported for a remote command ended by a signal, as the OpenSSH client does. */
+export const SSH_SIGNALLED_EXIT_CODE = 255;
+
+/**
+ * The channel closed before the server sent an exit status: the connection dropped or the
+ * channel was closed mid-command, so any output received is incomplete.
+ */
+export class SSHExitStatusError extends Error {
+  constructor() {
+    super('SSH channel closed without an exit status (connection lost or channel closed mid-command)');
+    this.name = 'SSHExitStatusError';
+  }
+}
+
+/** ssh2 hands over the status, null when a signal ended the command, undefined when none arrived. */
+function strictExitCode(code: number | null | undefined): number | undefined {
+  if (typeof code === 'number') return code;
+  return code === null ? SSH_SIGNALLED_EXIT_CODE : undefined;
+}
+
+export interface SSHExecOptions {
+  /** Collect stdout as raw bytes in `binaryOutput` instead of text. */
+  collectBinary?: boolean;
+  /**
+   * Reject with SSHExitStatusError when no exit status arrives, and report a signal as
+   * SSH_SIGNALLED_EXIT_CODE. Off by default, where both read as exit code 0.
+   */
+  requireExitStatus?: boolean;
+}
+
 function poolKey(conn: ConnectionInfo): string {
   return `${conn.host}:${conn.port || DEFAULT_SSH_PORT}:${conn.user}`;
 }
@@ -75,6 +107,8 @@ function isRetryableConnectionError(err: unknown): boolean {
 
 function isTransportError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
+  // The command may have run: only a command that never started is sent again
+  if (err instanceof SSHExitStatusError) return false;
   const msg = err.message.toLowerCase();
   return (
     msg.includes('not connected') ||
@@ -255,7 +289,7 @@ function connectDedicatedClient(conn: ConnectionInfo): Promise<SSHClient> {
 function execOnClient(
   client: SSHClient,
   command: string,
-  options?: { collectBinary?: boolean },
+  options?: SSHExecOptions,
 ): Promise<SSHExecResult> {
   return new Promise<SSHExecResult>((resolve, reject) => {
     client.exec(command, (err, stream) => {
@@ -280,11 +314,20 @@ function execOnClient(
         stderr += data.toString();
       });
 
-      stream.on('close', (code: number) => {
+      stream.on('close', (code: number | null | undefined) => {
+        let exitCode = code ?? 0;
+        if (options?.requireExitStatus) {
+          const status = strictExitCode(code);
+          if (status === undefined) {
+            reject(new SSHExitStatusError());
+            return;
+          }
+          exitCode = status;
+        }
         resolve({
           stdout,
           stderr,
-          exitCode: code ?? 0,
+          exitCode,
           binaryOutput: options?.collectBinary ? Buffer.concat(chunks) : undefined,
         });
       });
@@ -350,7 +393,7 @@ function execStreamOnClient(
 export async function sshExec(
   conn: ConnectionInfo,
   command: string,
-  options?: { collectBinary?: boolean },
+  options?: SSHExecOptions,
 ): Promise<SSHExecResult> {
   const client = await getPooledClient(conn);
 
@@ -563,7 +606,7 @@ export interface SSHChannelHandle {
 /**
  * Open an SSH exec channel and return the raw stream for direct piping.
  * Uses connection pooling. Caller owns the stream lifecycle.
- * This allows streaming large data (e.g. docker save) without buffering.
+ * stdout and stderr are also collected for `done`; long streams use sshExecChannelUnbuffered.
  */
 export async function sshExecChannel(
   conn: ConnectionInfo,
@@ -607,6 +650,61 @@ function openChannelOnClient(
           stream.on('close', finish);
         },
       );
+
+      resolve({ stream, done });
+    });
+  });
+}
+
+export interface SSHUnbufferedChannelHandle {
+  /** Writable stdin and readable stdout, stderr on `stream.stderr`; the caller must consume both. */
+  stream: ClientChannel;
+  /**
+   * Settles on the exit status, possibly before stdout has been read to the end. A signal reads
+   * as SSH_SIGNALLED_EXIT_CODE; a channel closed without a status rejects with SSHExitStatusError.
+   */
+  done: Promise<{ exitCode: number }>;
+}
+
+/**
+ * sshExecChannel for long streams (image import, backup relay, `logs -f`): no output is kept in
+ * memory, and a missing exit status is an error instead of exit code 0.
+ * Uses connection pooling; never retried.
+ */
+export async function sshExecChannelUnbuffered(
+  conn: ConnectionInfo,
+  command: string,
+): Promise<SSHUnbufferedChannelHandle> {
+  const client = await getPooledClient(conn);
+  return openUnbufferedChannelOnClient(client, command);
+}
+
+function openUnbufferedChannelOnClient(
+  client: SSHClient,
+  command: string,
+): Promise<SSHUnbufferedChannelHandle> {
+  return new Promise<SSHUnbufferedChannelHandle>((resolve, reject) => {
+    client.exec(command, (err, stream) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      const done = new Promise<{ exitCode: number }>((resolveDone, rejectDone) => {
+        // Same 'exit' or 'close' race as openChannelOnClient; 'close' first means no status came
+        let settled = false;
+        const settle = (code: number | null | undefined) => {
+          if (settled) return;
+          settled = true;
+          const exitCode = strictExitCode(code);
+          if (exitCode === undefined) rejectDone(new SSHExitStatusError());
+          else resolveDone({ exitCode });
+        };
+        stream.on('exit', settle);
+        stream.on('close', settle);
+      });
+      // A caller that abandons the channel must not turn a lost connection into an unhandled rejection
+      done.catch(() => {});
 
       resolve({ stream, done });
     });

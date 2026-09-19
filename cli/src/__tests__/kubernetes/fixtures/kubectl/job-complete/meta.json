@@ -1,0 +1,10 @@
+{
+  "synthetic": true,
+  "k3sVersion": "v1.36.4+k3s1",
+  "steps": [
+    "kubectl create namespace fixture-job-complete",
+    "kubectl apply: Job migrate-<8 hex> of the replicated-job service migrate (busybox:1.37 running sh -c 'exit 0', backoffLimit 0, completions 1, restartPolicy Never)",
+    "wait until the Job reports condition Complete=True",
+    "capture the namespace resources and the cluster nodes and persistentvolumes"
+  ]
+}

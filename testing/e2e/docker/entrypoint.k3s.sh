@@ -1,71 +1,21 @@
-#!/bin/bash
+#!/bin/sh
+# k3s e2e node entrypoint: prepare what systemd and the kubelet need inside a container, then hand
+# PID 1 to systemd. k3s itself is installed later by `dockflow setup k3s`.
+set -eu
 
-log() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
-}
+# kubelet volume mounts and local-path need shared propagation
+mount --make-rshared /
 
-K3S_TOKEN="${K3S_TOKEN:-dockflow-e2e-token}"
-KUBECONFIG_SRC="/etc/rancher/k3s/k3s.yaml"
-KUBECONFIG_DST="/var/lib/dockflow/k3s.yaml"
+# unique identity per container (systemd, k3s node password); host keys survive a restart
+rm -f /etc/machine-id && systemd-machine-id-setup >/dev/null
+[ -e /etc/ssh/ssh_host_ed25519_key ] || ssh-keygen -A >/dev/null
 
-if [ "${K3S_ROLE}" = "server" ]; then
-    # Let remote health checks reach the test app through Traefik by domain:
-    # curl http://k3s.test.local on this node hits Traefik's web entrypoint.
-    echo "127.0.0.1 k3s.test.local" >> /etc/hosts
+# kubelet OOM watcher reads /dev/kmsg
+[ -e /dev/kmsg ] || ln -s /dev/console /dev/kmsg
 
-    log "Starting k3s server..."
-    # Traefik stays enabled: the e2e suite asserts IngressRoute generation
-    # and HTTP routing through the k3s-bundled Traefik.
-    k3s server \
-        --token "$K3S_TOKEN" \
-        --write-kubeconfig-mode 644 \
-        --snapshotter native \
-        --kube-apiserver-arg="--anonymous-auth=true" &
+# registry forwarders (e2e-forward@<port>.service): 127.0.0.1:<port> on the node -> lane registry
+install -d /etc/e2e
+printf 'TARGET=%s\n' "${E2E_REGISTRY_ADDR:?}" >/etc/e2e/forward-35010.env
+printf 'TARGET=%s\n' "${E2E_REGISTRY_AUTH_ADDR:?}" >/etc/e2e/forward-35011.env
 
-    # Wait for k3s to be ready
-    for i in {1..120}; do
-        if [ -f "$KUBECONFIG_SRC" ] && k3s kubectl get nodes >/dev/null 2>&1; then
-            log "k3s server is ready."
-            break
-        fi
-        if [ $i -eq 120 ]; then
-            log "ERROR: k3s server failed to start within 120 seconds."
-            exit 1
-        fi
-        sleep 1
-    done
-
-    # Copy kubeconfig to dockflow path (CLI expects it there)
-    cp "$KUBECONFIG_SRC" "$KUBECONFIG_DST"
-    chmod 644 "$KUBECONFIG_DST"
-    log "Kubeconfig copied to $KUBECONFIG_DST"
-
-elif [ "${K3S_ROLE}" = "agent" ]; then
-    K3S_SERVER="${K3S_SERVER_URL:-https://dockflow-test-k3s:6443}"
-    log "Starting k3s agent (server=$K3S_SERVER)..."
-    k3s agent \
-        --server "$K3S_SERVER" \
-        --token "$K3S_TOKEN" \
-        --snapshotter native &
-
-    # Wait for agent to join
-    for i in {1..60}; do
-        if pgrep -x "k3s-agent" >/dev/null 2>&1; then
-            log "k3s agent started."
-            break
-        fi
-        if [ $i -eq 60 ]; then
-            log "ERROR: k3s agent failed to start within 60 seconds."
-            exit 1
-        fi
-        sleep 1
-    done
-else
-    log "ERROR: K3S_ROLE must be 'server' or 'agent'."
-    exit 1
-fi
-
-# Start SSH server (foreground)
-log "Starting SSH server..."
-mkdir -p /run/sshd
-exec /usr/sbin/sshd -D -e
+exec /sbin/init

@@ -1,0 +1,1 @@
+Error from server (InternalError): an error on the server ("") has prevented the request from succeeding (get deployments.apps)

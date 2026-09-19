@@ -4,7 +4,18 @@ import {
   describeShellPlaceholders,
   findInsertedPlaceholders,
   findShellPlaceholders,
+  lintsStackFiles,
 } from '../services/compose-lint';
+
+describe('lintsStackFiles', () => {
+  test('Swarm keeps linting docker-compose.yml and accessories.yml', () => {
+    expect(lintsStackFiles('swarm')).toBe(true);
+  });
+
+  test('k3s skips both files: the renderer reports the same placeholders as errors', () => {
+    expect(lintsStackFiles('k3s')).toBe(false);
+  });
+});
 
 describe('findShellPlaceholders', () => {
   test('reports a plain placeholder with its line number', () => {
@@ -95,6 +106,27 @@ describe('describeShellPlaceholders', () => {
   test('returns nothing for a clean file', () => {
     expect(describeShellPlaceholders(findShellPlaceholders('services: {}'))).toEqual([]);
   });
+
+  test('keeps the Swarm wording, which is also the default', () => {
+    const placeholders = findShellPlaceholders('a: ${APP_PORT}');
+    const expected = [
+      'line 1: ${APP_PORT} — Docker replaces it when deploying, and Dockflow gives it no value. ' +
+        'Use {{ current.env.app_port }} for a Dockflow value, or $${APP_PORT} to keep the text as is.',
+    ];
+
+    expect(describeShellPlaceholders(placeholders)).toEqual(expected);
+    expect(describeShellPlaceholders(placeholders, 'swarm')).toEqual(expected);
+  });
+
+  test('on k3s names Dockflow\'s interpolation instead of Docker', () => {
+    const [line] = describeShellPlaceholders(findShellPlaceholders('a: ${APP_PORT}'), 'k3s');
+
+    expect(line).toBe(
+      'line 1: ${APP_PORT} — Dockflow interpolates the file with an empty environment when rendering, so it has no value. ' +
+        'Use {{ current.env.app_port }} for a Dockflow value, or $${APP_PORT} to keep the text as is.',
+    );
+    expect(line).not.toContain('Docker');
+  });
 });
 
 describe('findInsertedPlaceholders', () => {
@@ -125,5 +157,16 @@ describe('describeInsertedPlaceholders', () => {
     expect(line).toContain('replace("$", "$$")');
     expect(line).not.toContain('s3cr');
     expect(line).not.toContain('$et');
+  });
+
+  test('keeps the Swarm wording by default and names the renderer on k3s', () => {
+    expect(describeInsertedPlaceholders([3])).toEqual([
+      'line 3 (rendered): a value inserted by a template contains a $ that Docker will replace when deploying. ' +
+        'Escape it with | replace("$", "$$").',
+    ]);
+    expect(describeInsertedPlaceholders([3], 'k3s')).toEqual([
+      'line 3 (rendered): a value inserted by a template contains a $ that Compose interpolation will read as a placeholder when rendering. ' +
+        'Escape it with | replace("$", "$$").',
+    ]);
   });
 });

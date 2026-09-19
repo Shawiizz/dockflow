@@ -1,0 +1,10 @@
+{
+  "synthetic": true,
+  "k3sVersion": "v1.36.4+k3s1",
+  "steps": [
+    "kubectl create namespace fixture-unschedulable-node-selector",
+    "kubectl apply: Deployment web (1 replica, busybox:1.37 running sleep, nodeSelector zone=nowhere)",
+    "wait 70 seconds with the pod Pending and PodScheduled=False",
+    "capture the namespace resources and the cluster nodes and persistentvolumes"
+  ]
+}

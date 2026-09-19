@@ -1,0 +1,1 @@
+error: error loading config file "/var/lib/dockflow/kube/config": open /var/lib/dockflow/kube/config: permission denied

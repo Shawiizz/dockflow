@@ -1,0 +1,10 @@
+{
+  "synthetic": true,
+  "k3sVersion": "v1.36.4+k3s1",
+  "steps": [
+    "kubectl create namespace fixture-evicted-pod",
+    "kubectl apply: Deployment web (1 replica, busybox:1.37 running sh -c 'dd if=/dev/zero of=/tmp/fill bs=1M count=64; sleep 3600', ephemeral-storage limit 16Mi)",
+    "wait until the first pod is Failed with reason Evicted and its replacement is Running",
+    "capture the namespace resources and the cluster nodes and persistentvolumes"
+  ]
+}

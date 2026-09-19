@@ -1,0 +1,10 @@
+{
+  "synthetic": true,
+  "k3sVersion": "v1.36.4+k3s1",
+  "steps": [
+    "kubectl create namespace fixture-init-container-crash",
+    "kubectl apply: Deployment web (1 replica, init container init running busybox:1.37 sh -c 'exit 1', container web nginx:1.27-alpine)",
+    "wait until the init container reports CrashLoopBackOff with restartCount 3",
+    "capture the namespace resources and the cluster nodes and persistentvolumes"
+  ]
+}

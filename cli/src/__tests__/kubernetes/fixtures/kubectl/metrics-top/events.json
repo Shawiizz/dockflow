@@ -1,0 +1,645 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "action": "Binding",
+            "apiVersion": "v1",
+            "eventTime": "2026-01-01T00:15:00.106300Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "db-0",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "32",
+                "uid": "00000000-0000-4000-8000-000000000018"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "message": "Successfully assigned fixture-metrics-top/db-0 to server-1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "db-0.18867323a3ecdd6c",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "33",
+                "uid": "00000000-0000-4000-8000-000000000020"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "default-scheduler-server-1",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{db}",
+                "kind": "Pod",
+                "name": "db-0",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "36",
+                "uid": "00000000-0000-4000-8000-000000000018"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Created container: db",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "db-0.18867323bfeba6dd",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "37",
+                "uid": "00000000-0000-4000-8000-000000000022"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{db}",
+                "kind": "Pod",
+                "name": "db-0",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "34",
+                "uid": "00000000-0000-4000-8000-000000000018"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Container image \"busybox:1.37\" already present on machine",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "db-0.18867323cf4a2f8f",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "35",
+                "uid": "00000000-0000-4000-8000-000000000021"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{db}",
+                "kind": "Pod",
+                "name": "db-0",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "38",
+                "uid": "00000000-0000-4000-8000-000000000018"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:02Z",
+            "message": "Started container db",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:02Z",
+                "name": "db-0.18867323f1aa93aa",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "39",
+                "uid": "00000000-0000-4000-8000-000000000023"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "StatefulSet",
+                "name": "db",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "30",
+                "uid": "00000000-0000-4000-8000-000000000016"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "create Pod db-0 in StatefulSet db successful",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "db.18867323a3dd09ec",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "31",
+                "uid": "00000000-0000-4000-8000-000000000019"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "statefulset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "statefulset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "action": "Binding",
+            "apiVersion": "v1",
+            "eventTime": "2026-01-01T00:16:00.106720Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "dockflow-helper-archive-3f9a2c1b",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "41",
+                "uid": "00000000-0000-4000-8000-000000000024"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "message": "Successfully assigned fixture-metrics-top/dockflow-helper-archive-3f9a2c1b to server-1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:16:00Z",
+                "name": "dockflow-helper-archive-3f9a2c1b.188673318cd538b1",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "42",
+                "uid": "00000000-0000-4000-8000-000000000025"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "default-scheduler-server-1",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:16:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{archive}",
+                "kind": "Pod",
+                "name": "dockflow-helper-archive-3f9a2c1b",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "43",
+                "uid": "00000000-0000-4000-8000-000000000024"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:16:01Z",
+            "message": "Container image \"busybox:1.37\" already present on machine",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:16:01Z",
+                "name": "dockflow-helper-archive-3f9a2c1b.18867331b7810b32",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "44",
+                "uid": "00000000-0000-4000-8000-000000000026"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:16:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{archive}",
+                "kind": "Pod",
+                "name": "dockflow-helper-archive-3f9a2c1b",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "45",
+                "uid": "00000000-0000-4000-8000-000000000024"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:16:01Z",
+            "message": "Created container: archive",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:16:01Z",
+                "name": "dockflow-helper-archive-3f9a2c1b.18867331cdd7a433",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "46",
+                "uid": "00000000-0000-4000-8000-000000000027"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:16:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{archive}",
+                "kind": "Pod",
+                "name": "dockflow-helper-archive-3f9a2c1b",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "47",
+                "uid": "00000000-0000-4000-8000-000000000024"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:16:02Z",
+            "message": "Started container archive",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:16:02Z",
+                "name": "dockflow-helper-archive-3f9a2c1b.18867331f453b399",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "48",
+                "uid": "00000000-0000-4000-8000-000000000028"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "action": "Binding",
+            "apiVersion": "v1",
+            "eventTime": "2026-01-01T00:15:00.106300Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "web-782lrz9hsf-6dfnp",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "19",
+                "uid": "00000000-0000-4000-8000-000000000010"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "message": "Successfully assigned fixture-metrics-top/web-782lrz9hsf-6dfnp to agent-1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web-782lrz9hsf-6dfnp.18867323811babeb",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "20",
+                "uid": "00000000-0000-4000-8000-000000000012"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "default-scheduler-server-1",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-782lrz9hsf-6dfnp",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "23",
+                "uid": "00000000-0000-4000-8000-000000000010"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Created container: web",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "web-782lrz9hsf-6dfnp.18867323d5ee4ce1",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "24",
+                "uid": "00000000-0000-4000-8000-000000000014"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-782lrz9hsf-6dfnp",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "21",
+                "uid": "00000000-0000-4000-8000-000000000010"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Container image \"nginx:1.27-alpine\" already present on machine",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "web-782lrz9hsf-6dfnp.18867323da846b14",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "22",
+                "uid": "00000000-0000-4000-8000-000000000013"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-782lrz9hsf-6dfnp",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "25",
+                "uid": "00000000-0000-4000-8000-000000000010"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:02Z",
+            "message": "Started container web",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:02Z",
+                "name": "web-782lrz9hsf-6dfnp.1886732406eae378",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "26",
+                "uid": "00000000-0000-4000-8000-000000000015"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "action": "Binding",
+            "apiVersion": "v1",
+            "eventTime": "2026-01-01T00:15:00.106300Z",
+            "firstTimestamp": null,
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "Pod",
+                "name": "web-782lrz9hsf-7fvrw",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "8",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": null,
+            "message": "Successfully assigned fixture-metrics-top/web-782lrz9hsf-7fvrw to server-1",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web-782lrz9hsf-7fvrw.188673238cf71da9",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "9",
+                "uid": "00000000-0000-4000-8000-000000000006"
+            },
+            "reason": "Scheduled",
+            "reportingComponent": "default-scheduler",
+            "reportingInstance": "default-scheduler-server-1",
+            "source": {},
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-782lrz9hsf-7fvrw",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "12",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Created container: web",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "web-782lrz9hsf-7fvrw.18867323bb814a35",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "13",
+                "uid": "00000000-0000-4000-8000-000000000008"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-782lrz9hsf-7fvrw",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "10",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:01Z",
+            "message": "Container image \"nginx:1.27-alpine\" already present on machine",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:01Z",
+                "name": "web-782lrz9hsf-7fvrw.18867323de0fb698",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "11",
+                "uid": "00000000-0000-4000-8000-000000000007"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-782lrz9hsf-7fvrw",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "14",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:02Z",
+            "message": "Started container web",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:02Z",
+                "name": "web-782lrz9hsf-7fvrw.1886732415856033",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "15",
+                "uid": "00000000-0000-4000-8000-000000000009"
+            },
+            "reason": "Started",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "ReplicaSet",
+                "name": "web-782lrz9hsf",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "17",
+                "uid": "00000000-0000-4000-8000-000000000002"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Created pod: web-782lrz9hsf-6dfnp",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web-782lrz9hsf.188673238f9480f1",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "18",
+                "uid": "00000000-0000-4000-8000-000000000011"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "replicaset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "replicaset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "ReplicaSet",
+                "name": "web-782lrz9hsf",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000002"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Created pod: web-782lrz9hsf-7fvrw",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web-782lrz9hsf.1886732396d0d603",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "7",
+                "uid": "00000000-0000-4000-8000-000000000005"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "replicaset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "replicaset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "name": "web",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000001"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "message": "Scaled up replica set web-782lrz9hsf from 0 to 2",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "name": "web.1886732381a2d4c7",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "4",
+                "uid": "00000000-0000-4000-8000-000000000003"
+            },
+            "reason": "ScalingReplicaSet",
+            "reportingComponent": "deployment-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "deployment-controller"
+            },
+            "type": "Normal"
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

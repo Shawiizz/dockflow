@@ -1,0 +1,9 @@
+Error from server (Invalid): PersistentVolumeClaim "db-data" is invalid: spec: Forbidden: spec is immutable after creation except resources.requests and volumeAttributesClassName for bound claims
+  core.PersistentVolumeClaimSpec{
+  	AccessModes:      {"ReadWriteOnce"},
+  	Selector:         nil,
+- 	Resources:        core.VolumeResourceRequirements{Requests: core.ResourceList{s"storage": {i: resource.int64Amount{value: 1073741824}, s: "1Gi", Format: "BinarySI"}}},
++ 	Resources:        core.VolumeResourceRequirements{Requests: core.ResourceList{s"storage": {i: resource.int64Amount{value: 2147483648}, s: "2Gi", Format: "BinarySI"}}},
+  	VolumeName:       "pvc-00000000-0000-4000-8000-000000000003",
+  	StorageClassName: &"dockflow-local",
+  }

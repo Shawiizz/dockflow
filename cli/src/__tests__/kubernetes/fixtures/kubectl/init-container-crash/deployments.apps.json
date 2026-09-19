@@ -1,0 +1,138 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": {
+                "annotations": {
+                    "deployment.kubernetes.io/revision": "1",
+                    "dockflow.shawiizz.dev/compose-service": "web",
+                    "dockflow.shawiizz.dev/release": "1.4.2"
+                },
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "generation": 1,
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-init-container-crash",
+                    "app.kubernetes.io/managed-by": "dockflow",
+                    "app.kubernetes.io/name": "web",
+                    "app.kubernetes.io/part-of": "shop",
+                    "dockflow.shawiizz.dev/part": "stack",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "web",
+                    "dockflow.shawiizz.dev/stack": "fixture-init-container-crash"
+                },
+                "name": "web",
+                "namespace": "fixture-init-container-crash",
+                "resourceVersion": "1",
+                "uid": "00000000-0000-4000-8000-000000000001"
+            },
+            "spec": {
+                "progressDeadlineSeconds": 240,
+                "replicas": 1,
+                "revisionHistoryLimit": 3,
+                "selector": {
+                    "matchLabels": {
+                        "dockflow.shawiizz.dev/service": "web",
+                        "dockflow.shawiizz.dev/stack": "fixture-init-container-crash"
+                    }
+                },
+                "strategy": {
+                    "rollingUpdate": {
+                        "maxSurge": 1,
+                        "maxUnavailable": 0
+                    },
+                    "type": "RollingUpdate"
+                },
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "dockflow.shawiizz.dev/compose-service": "web",
+                            "kubectl.kubernetes.io/default-container": "web"
+                        },
+                        "labels": {
+                            "app.kubernetes.io/instance": "fixture-init-container-crash",
+                            "app.kubernetes.io/name": "web",
+                            "dockflow.shawiizz.dev/role": "app",
+                            "dockflow.shawiizz.dev/service": "web",
+                            "dockflow.shawiizz.dev/stack": "fixture-init-container-crash"
+                        }
+                    },
+                    "spec": {
+                        "automountServiceAccountToken": false,
+                        "containers": [
+                            {
+                                "image": "nginx:1.27-alpine",
+                                "imagePullPolicy": "IfNotPresent",
+                                "name": "web",
+                                "ports": [
+                                    {
+                                        "containerPort": 80,
+                                        "name": "tcp-80",
+                                        "protocol": "TCP"
+                                    }
+                                ],
+                                "resources": {},
+                                "terminationMessagePath": "/dev/termination-log",
+                                "terminationMessagePolicy": "File"
+                            }
+                        ],
+                        "dnsPolicy": "ClusterFirst",
+                        "enableServiceLinks": false,
+                        "initContainers": [
+                            {
+                                "command": [
+                                    "sh",
+                                    "-c",
+                                    "exit 1"
+                                ],
+                                "image": "busybox:1.37",
+                                "imagePullPolicy": "IfNotPresent",
+                                "name": "init",
+                                "resources": {},
+                                "terminationMessagePath": "/dev/termination-log",
+                                "terminationMessagePolicy": "File"
+                            }
+                        ],
+                        "restartPolicy": "Always",
+                        "schedulerName": "default-scheduler",
+                        "securityContext": {
+                            "seccompProfile": {
+                                "type": "RuntimeDefault"
+                            }
+                        },
+                        "terminationGracePeriodSeconds": 10
+                    }
+                }
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastUpdateTime": "2026-01-01T00:15:00Z",
+                        "message": "Deployment does not have minimum availability.",
+                        "reason": "MinimumReplicasUnavailable",
+                        "status": "False",
+                        "type": "Available"
+                    },
+                    {
+                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastUpdateTime": "2026-01-01T00:15:01Z",
+                        "message": "ReplicaSet \"web-gwx9gxmmlm\" is progressing.",
+                        "reason": "ReplicaSetUpdated",
+                        "status": "True",
+                        "type": "Progressing"
+                    }
+                ],
+                "observedGeneration": 1,
+                "replicas": 1,
+                "unavailableReplicas": 1,
+                "updatedReplicas": 1
+            }
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

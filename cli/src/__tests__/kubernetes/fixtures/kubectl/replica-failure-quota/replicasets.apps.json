@@ -1,0 +1,116 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "apiVersion": "apps/v1",
+            "kind": "ReplicaSet",
+            "metadata": {
+                "annotations": {
+                    "deployment.kubernetes.io/desired-replicas": "3",
+                    "deployment.kubernetes.io/max-replicas": "4",
+                    "deployment.kubernetes.io/revision": "1",
+                    "dockflow.shawiizz.dev/compose-service": "web",
+                    "dockflow.shawiizz.dev/release": "1.4.2"
+                },
+                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "generation": 1,
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-replica-failure-quota",
+                    "app.kubernetes.io/name": "web",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "web",
+                    "dockflow.shawiizz.dev/stack": "fixture-replica-failure-quota",
+                    "pod-template-hash": "lbvqsx2s79"
+                },
+                "name": "web-lbvqsx2s79",
+                "namespace": "fixture-replica-failure-quota",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Deployment",
+                        "name": "web",
+                        "uid": "00000000-0000-4000-8000-000000000001"
+                    }
+                ],
+                "resourceVersion": "2",
+                "uid": "00000000-0000-4000-8000-000000000002"
+            },
+            "spec": {
+                "replicas": 3,
+                "selector": {
+                    "matchLabels": {
+                        "dockflow.shawiizz.dev/service": "web",
+                        "dockflow.shawiizz.dev/stack": "fixture-replica-failure-quota",
+                        "pod-template-hash": "lbvqsx2s79"
+                    }
+                },
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "dockflow.shawiizz.dev/compose-service": "web",
+                            "kubectl.kubernetes.io/default-container": "web"
+                        },
+                        "labels": {
+                            "app.kubernetes.io/instance": "fixture-replica-failure-quota",
+                            "app.kubernetes.io/name": "web",
+                            "dockflow.shawiizz.dev/role": "app",
+                            "dockflow.shawiizz.dev/service": "web",
+                            "dockflow.shawiizz.dev/stack": "fixture-replica-failure-quota",
+                            "pod-template-hash": "lbvqsx2s79"
+                        }
+                    },
+                    "spec": {
+                        "automountServiceAccountToken": false,
+                        "containers": [
+                            {
+                                "command": [
+                                    "sh",
+                                    "-c",
+                                    "sleep 3600"
+                                ],
+                                "image": "busybox:1.37",
+                                "imagePullPolicy": "IfNotPresent",
+                                "name": "web",
+                                "resources": {},
+                                "terminationMessagePath": "/dev/termination-log",
+                                "terminationMessagePolicy": "File"
+                            }
+                        ],
+                        "dnsPolicy": "ClusterFirst",
+                        "enableServiceLinks": false,
+                        "restartPolicy": "Always",
+                        "schedulerName": "default-scheduler",
+                        "securityContext": {
+                            "seccompProfile": {
+                                "type": "RuntimeDefault"
+                            }
+                        },
+                        "terminationGracePeriodSeconds": 10
+                    }
+                }
+            },
+            "status": {
+                "availableReplicas": 1,
+                "conditions": [
+                    {
+                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "message": "pods \"web-lbvqsx2s79-zbdkv\" is forbidden: exceeded quota: pods, requested: pods=1, used: pods=1, limited: pods=1",
+                        "reason": "FailedCreate",
+                        "status": "True",
+                        "type": "ReplicaFailure"
+                    }
+                ],
+                "fullyLabeledReplicas": 1,
+                "observedGeneration": 1,
+                "readyReplicas": 1,
+                "replicas": 1
+            }
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

@@ -1,0 +1,10 @@
+{
+  "synthetic": true,
+  "k3sVersion": "v1.36.4+k3s1",
+  "steps": [
+    "kubectl create namespace fixture-crashloop",
+    "kubectl apply: Deployment web-app of compose service web_app (1 replica, busybox:1.37 running sh -c 'exit 1', Dockflow labels and annotations)",
+    "wait until the pod reports CrashLoopBackOff with restartCount 3",
+    "capture the namespace resources and the cluster nodes and persistentvolumes"
+  ]
+}

@@ -2,8 +2,9 @@
  * Compose — template rendering + docker-compose YAML manipulation.
  *
  * Handles Jinja2/nunjucks template rendering, YAML load/serialize,
- * image tag updates, Swarm deploy config injection, and Traefik label
- * generation — all in pure TypeScript.
+ * image tag updates, accessories and Swarm deploy config injection, and
+ * Traefik label generation — all in pure TypeScript. Both orchestrators
+ * load compose files through `loadFromString`.
  *
  * Template rendering is entirely in-memory — no files are ever
  * written to disk. Returns a Map<relativePath, renderedContent>.
@@ -12,15 +13,32 @@
 import { readFileSync, existsSync } from 'fs';
 import { join, relative, dirname } from 'path';
 import { walkDir } from '../utils/fs';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import {
+  type Alias,
+  type Document,
+  isAlias,
+  isMap,
+  isScalar,
+  isSeq,
+  LineCounter,
+  type Node,
+  parseDocument,
+  Scalar,
+  stringify as stringifyYaml,
+  visit,
+  type YAMLError,
+  type YAMLMap,
+} from 'yaml';
 import nunjucks from 'nunjucks';
 import {
   describeInsertedPlaceholders,
   describeShellPlaceholders,
   findInsertedPlaceholders,
   findShellPlaceholders,
+  lintsStackFiles,
 } from './compose-lint';
 import { findUndefinedEnvReferences, describeUndefinedEnvReferences } from './template-lint';
+import type { OrchestratorKind } from './orchestrator/interfaces';
 import type { DockflowConfig, ProxyConfig } from '../utils/config';
 import { getAccessoriesPath, getProjectRoot, getComposePath, getLayout } from '../utils/config';
 import { printDebug, printWarning } from '../utils/output';
@@ -66,17 +84,21 @@ export interface RenderedComposeResult {
 }
 
 // ---------------------------------------------------------------------------
-// Swarm deploy defaults
+// Deploy defaults
 // ---------------------------------------------------------------------------
 
-const DEFAULT_UPDATE_CONFIG: Record<string, unknown> = {
+/**
+ * Dockflow's `update_config` for app services. Swarm merges it into the stack file; on k3s the
+ * normalizer falls back to it field by field and never materializes it.
+ */
+export const DEFAULT_UPDATE_CONFIG = Object.freeze({
   parallelism: 1,
   delay: '10s',
   failure_action: 'rollback',
   monitor: '30s',
   max_failure_ratio: 0,
   order: 'start-first',
-};
+} as const);
 
 const DEFAULT_ROLLBACK_CONFIG: Record<string, unknown> = {
   parallelism: 1,
@@ -91,9 +113,38 @@ const DEFAULT_RESTART_POLICY: Record<string, unknown> = {
   max_attempts: 3,
 };
 
+/** Modes that run one task per node: docker refuses `replicas` with them. */
+const PER_NODE_MODES = new Set(['global', 'global-job']);
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Compose reads an empty value (`key:`) as unset. */
+function isAbsent(value: unknown): value is null | undefined {
+  return value === undefined || value === null;
+}
+
+/**
+ * Services whose definition is a mapping. Anything else is left in place for the normalizer
+ * (or docker) to refuse with a precise message instead of crashing a rewrite helper.
+ */
+function serviceEntries(compose: ParsedCompose): [string, Record<string, unknown>][] {
+  if (!isRecord(compose.services)) return [];
+  return Object.entries(compose.services).filter(
+    (entry): entry is [string, Record<string, unknown>] => isRecord(entry[1]),
+  );
+}
+
+/** Mirrors the build targets `build.ts` collects: only these services get a Dockflow-built image. */
+function hasBuild(service: Record<string, unknown>): boolean {
+  const build = service.build;
+  return typeof build === 'string' ? build !== '' : build !== null && typeof build === 'object';
+}
 
 /**
  * Deep merge `source` into `target`.
@@ -359,7 +410,7 @@ export function renderAndResolveCompose(
   const composeRelPath = relative(projectRoot, originalComposePath).replace(/\\/g, '/');
   const composeContent = rendered.get(composeRelPath);
 
-  if (composeContent) {
+  if (composeContent && lintsStackFiles(ctx.config.orchestrator ?? 'swarm')) {
     // Warn rather than fail: an already-working deployment must not be blocked by this.
     const declaredKeys = Object.keys(
       (templateContext?.current as { env?: Record<string, string> } | undefined)?.env ?? {},
@@ -395,19 +446,308 @@ export function renderAndResolveCompose(
 // YAML load / serialize
 // ---------------------------------------------------------------------------
 
+/** Alias expansions allowed before a file is refused as a resource-exhaustion attempt. */
+const MAX_ALIAS_COUNT = 1000;
+
+const YAML_TAG_PREFIX = 'tag:yaml.org,2002:';
+
+/** Explicit tags whose value is still plain JSON. `!` is the non-specific tag (a string). */
+const PLAIN_TAGS = new Set([
+  '!',
+  ...['str', 'int', 'float', 'bool', 'null', 'map', 'seq'].map((name) => `${YAML_TAG_PREFIX}${name}`),
+]);
+
+/** Compose merge tags: they only mean something when override files are merged. */
+const OVERRIDE_TAGS = new Set(['!reset', '!override']);
+
+/**
+ * String-typed values YAML would otherwise read as numbers or booleans: `PORT: 010` must reach
+ * the container as `010`, not `10`. `*` is any key of a mapping, `[]` any item of a sequence.
+ */
+const SOURCE_TEXT_PATHS: readonly (readonly string[])[] = [
+  ['services', '*', 'environment', '*'],
+  ['services', '*', 'labels', '*'],
+  ['services', '*', 'deploy', 'labels', '*'],
+  ['services', '*', 'annotations', '*'],
+  ['services', '*', 'build', 'args', '*'],
+  ['services', '*', 'sysctls', '*'],
+  ['services', '*', 'extra_hosts', '*'],
+  ['services', '*', 'x-dockflow', 'node_selector', '*'],
+  ['services', '*', 'x-dockflow', 'pod_labels', '*'],
+  ['services', '*', 'x-dockflow', 'tolerations', '[]', 'value'],
+  ['volumes', '*', 'labels', '*'],
+  ['volumes', '*', 'driver_opts', '*'],
+];
+
+/** File modes Compose reads in base 8, where YAML 1.2 reads `0440` as decimal 440. */
+const FILE_MODE_PATHS: readonly (readonly string[])[] = [
+  ['services', '*', 'secrets', '[]', 'mode'],
+  ['services', '*', 'configs', '[]', 'mode'],
+  ['services', '*', 'volumes', '[]', 'tmpfs', 'mode'],
+];
+
+const OCTAL_MODE = /^0o?([0-7]+)$/;
+
+type AliasTargets = Map<Alias, Node | undefined>;
+
+/** `!!binary` rather than `tag:yaml.org,2002:binary`, as the user wrote it. */
+function displayTag(tag: string): string {
+  return tag.startsWith(YAML_TAG_PREFIX) ? `!!${tag.slice(YAML_TAG_PREFIX.length)}` : tag;
+}
+
+/** The first line of a yaml message: the rest is a code frame that may quote a secret. */
+function firstLine(message: string): string {
+  const [line] = message.split('\n');
+  return line.replace(/:$/, '').replaceAll(YAML_TAG_PREFIX, '!!');
+}
+
+function describeYamlError(doc: Document, error: YAMLError, lineOf: (offset: number) => number): string {
+  if (error.code === 'MULTIPLE_DOCS') return 'the file contains several YAML documents; keep one';
+  if (error.code !== 'DUPLICATE_KEY') return firstLine(error.message);
+
+  let key: string | undefined;
+  visit(doc, {
+    Pair(_key, pair) {
+      if (isScalar(pair.key) && pair.key.range?.[0] === error.pos[0]) {
+        key = String(pair.key.value);
+        return visit.BREAK;
+      }
+      return undefined;
+    },
+  });
+  const line = lineOf(error.pos[0]);
+  return key === undefined ? `duplicate key at line ${line}` : `duplicate key ${key} at line ${line}`;
+}
+
+/**
+ * Refuse every tag that is not a core-schema tag. yaml only warns about `!reset` and unknown tags
+ * and keeps the value; `!!binary`, `!!set`, `!!omap` and `!!timestamp` resolve to values that are
+ * not plain JSON.
+ */
+function refuseTags(doc: Document, file: string, lineOf: (offset: number) => number): void {
+  visit(doc, {
+    Node(_key, node) {
+      if (isAlias(node) || node.tag === undefined || PLAIN_TAGS.has(node.tag)) return;
+      const line = node.range ? lineOf(node.range[0]) : 0;
+      if (OVERRIDE_TAGS.has(node.tag)) {
+        throw new ConfigError(
+          `${file}: tag ${node.tag} at line ${line} is only meaningful in Compose override files; Dockflow reads a single file`,
+          'Remove the tag and write the final value.',
+        );
+      }
+      throw new ConfigError(
+        `${file}: unsupported YAML tag ${displayTag(node.tag)} at line ${line}`,
+        'Remove the tag and write a plain string, number, boolean, list or mapping.',
+      );
+    },
+  });
+}
+
+/**
+ * The node each alias stands for, `undefined` when no anchor precedes it. Same rule as yaml's
+ * `Alias.resolve` (the last anchor of that name before the alias), in one pass instead of one per
+ * alias. `cyclic` holds the aliases placed inside the value they name.
+ */
+function aliasTargets(doc: Document): { targets: AliasTargets; cyclic: Alias[] } {
+  const anchors = new Map<string, Node>();
+  const targets: AliasTargets = new Map();
+  const cyclic: Alias[] = [];
+  visit(doc, {
+    Node(_key, node, path) {
+      if (isAlias(node)) {
+        const target = anchors.get(node.source);
+        targets.set(node, target);
+        if (target !== undefined && path.includes(target)) cyclic.push(node);
+      } else if (node.anchor) {
+        anchors.set(node.anchor, node);
+      }
+    },
+  });
+  return { targets, cyclic };
+}
+
+/** A deep copy in which every use of an anchor is its own object (structuredClone keeps sharing). */
+function copyPlain(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(copyPlain);
+  if (!isRecord(value)) return value;
+  const copy: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    // defineProperty keeps a `__proto__` key an own property, as yaml's toJS does
+    Object.defineProperty(copy, key, { value: copyPlain(item), writable: true, enumerable: true, configurable: true });
+  }
+  return copy;
+}
+
+function deref(node: unknown, aliases: AliasTargets): unknown {
+  return isAlias(node) ? aliases.get(node) : node;
+}
+
+function isMergeKey(key: unknown): boolean {
+  if (!isScalar(key) || (key.type !== undefined && key.type !== Scalar.PLAIN)) return false;
+  return key.value === '<<' || (typeof key.value === 'symbol' && key.value.description === '<<');
+}
+
+/**
+ * The entries a mapping has once `toJS` resolved its merge keys, keyed like `toJS` keys them:
+ * written keys always win, then merged maps in order, the first one winning.
+ */
+function mapEntries(map: YAMLMap, aliases: AliasTargets, seen: ReadonlySet<YAMLMap> = new Set()): Map<string, unknown> {
+  const entries = new Map<string, unknown>();
+  const inner = new Set(seen).add(map);
+  for (const pair of map.items) {
+    if (isMergeKey(pair.key)) {
+      const value = deref(pair.value, aliases);
+      const sources = isSeq(value) ? value.items.map((item) => deref(item, aliases)) : [value];
+      for (const source of sources) {
+        if (!isMap(source) || inner.has(source)) continue;
+        for (const [key, node] of mapEntries(source, aliases, inner)) {
+          if (!entries.has(key)) entries.set(key, node);
+        }
+      }
+      continue;
+    }
+    const key = deref(pair.key, aliases);
+    if (isScalar(key)) entries.set(key.value === null ? '' : String(key.value), pair.value);
+  }
+  return entries;
+}
+
+/**
+ * Replace, in the loaded value, every scalar found at `path` by what `rewrite` returns for its
+ * node (`undefined` keeps it). The walk follows aliases and merge keys, so a value written once
+ * under an anchor is rewritten wherever it lands on the path.
+ */
+function rewriteScalars(
+  node: unknown,
+  value: unknown,
+  path: readonly string[],
+  aliases: AliasTargets,
+  rewrite: (scalar: Scalar) => unknown,
+): void {
+  const [segment, ...rest] = path;
+  if (segment === undefined) return;
+  const target = deref(node, aliases);
+
+  const visitChild = (child: unknown, current: unknown, replace: (next: unknown) => void): void => {
+    if (rest.length > 0) {
+      rewriteScalars(child, current, rest, aliases, rewrite);
+      return;
+    }
+    const scalar = deref(child, aliases);
+    if (!isScalar(scalar)) return;
+    const next = rewrite(scalar);
+    if (next !== undefined) replace(next);
+  };
+
+  if (segment === '[]') {
+    if (!isSeq(target) || !Array.isArray(value)) return;
+    target.items.forEach((item, index) => {
+      if (index < value.length) visitChild(item, value[index], (next) => { value[index] = next; });
+    });
+    return;
+  }
+  if (!isMap(target) || !isRecord(value)) return;
+  for (const [key, child] of mapEntries(target, aliases)) {
+    if ((segment === '*' || segment === key) && Object.hasOwn(value, key)) {
+      visitChild(child, value[key], (next) => { value[key] = next; });
+    }
+  }
+}
+
+/** Untagged plain scalars only: an explicit `!!int` is the user's own choice of type. */
+function isUntaggedPlain(scalar: Scalar): boolean {
+  return scalar.tag === undefined && scalar.type === Scalar.PLAIN;
+}
+
+function sourceText(scalar: Scalar): unknown {
+  if (!isUntaggedPlain(scalar) || scalar.value === null || typeof scalar.value === 'string') return undefined;
+  return scalar.source;
+}
+
+function octalFileMode(scalar: Scalar): unknown {
+  if (!isUntaggedPlain(scalar) || typeof scalar.value !== 'number') return undefined;
+  const digits = OCTAL_MODE.exec(scalar.source ?? '')?.[1];
+  return digits === undefined ? undefined : parseInt(digits, 8);
+}
+
+/**
+ * Parse compose YAML into plain JSON. Refused with a `ConfigError` naming `file`: YAML errors,
+ * duplicate keys, several documents, tags outside the core schema, unresolved aliases and alias
+ * bombs. Merge keys are resolved and aliases become copies.
+ */
+function parseComposeYaml(content: string, file: string): Record<string, unknown> {
+  const lines = new LineCounter();
+  const doc = parseDocument(content, {
+    merge: true,
+    keepSourceTokens: true,
+    uniqueKeys: true,
+    lineCounter: lines,
+    // yaml would print its own notices on stderr; Dockflow reports through ConfigError only
+    logLevel: 'error',
+  });
+  const lineOf = (offset: number): number => lines.linePos(offset).line;
+
+  const [error] = doc.errors;
+  if (error) throw new ConfigError(`${file}: ${describeYamlError(doc, error, lineOf)}`);
+  refuseTags(doc, file, lineOf);
+  const [warning] = doc.warnings;
+  if (warning) throw new ConfigError(`${file}: ${firstLine(warning.message)}`);
+
+  const { targets: aliases, cyclic } = aliasTargets(doc);
+  const at = (alias: Alias): string => (alias.range ? ` at line ${lineOf(alias.range[0])}` : '');
+  for (const [alias, target] of aliases) {
+    if (target === undefined) throw new ConfigError(`${file}: unresolved alias *${alias.source}${at(alias)}`);
+  }
+  const [loop] = cyclic;
+  if (loop) {
+    throw new ConfigError(
+      `${file}: alias *${loop.source}${at(loop)} is inside the value it refers to`,
+      'Point the alias at an anchor defined outside the mapping or list that contains it.',
+    );
+  }
+
+  let value: unknown;
+  try {
+    value = doc.toJS({ maxAliasCount: MAX_ALIAS_COUNT });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    throw new ConfigError(
+      /alias count/i.test(message)
+        ? `${file}: too many alias expansions (limit ${MAX_ALIAS_COUNT})`
+        : `${file}: ${firstLine(message)}`,
+    );
+  }
+
+  if (value === null || value === undefined) return {};
+  if (!isRecord(value)) {
+    throw new ConfigError(`${file}: the top level must be a mapping`, 'Start the file with Compose keys such as `services:`.');
+  }
+
+  // toJS shares one object between every use of an anchor; the rewrites below and the
+  // injection helpers must not leak from one service into another.
+  const raw = copyPlain(value) as Record<string, unknown>;
+  for (const path of SOURCE_TEXT_PATHS) rewriteScalars(doc.contents, raw, path, aliases, sourceText);
+  for (const path of FILE_MODE_PATHS) rewriteScalars(doc.contents, raw, path, aliases, octalFileMode);
+  return raw;
+}
+
 /**
  * Load and parse a docker-compose YAML file from disk.
  */
 export function load(composePath: string): ParsedCompose {
   const content = readFileSync(composePath, 'utf-8');
-  return loadFromString(content);
+  return loadFromString(content, composePath);
 }
 
 /**
- * Parse a docker-compose YAML string into a ParsedCompose.
+ * Parse a docker-compose YAML string into a ParsedCompose (both orchestrators).
+ *
+ * `file` names the source in error messages. Numbers and booleans written where Compose expects
+ * strings keep their source text (`PORT: 010` stays `"010"`), and file modes written `0440` are
+ * read as octal. See `parseComposeYaml` for what is refused.
  */
-export function loadFromString(content: string): ParsedCompose {
-  const raw = parseYaml(content) as Record<string, unknown>;
+export function loadFromString(content: string, file = 'compose file'): ParsedCompose {
+  const raw = parseComposeYaml(content, file);
 
   return {
     raw,
@@ -418,7 +758,7 @@ export function loadFromString(content: string): ParsedCompose {
 }
 
 /**
- * Serialize a ParsedCompose back to a YAML string.
+ * Serialize a ParsedCompose back to a YAML string, without anchors or aliases.
  */
 export function serialize(compose: ParsedCompose): string {
   const obj: Record<string, unknown> = { ...compose.raw };
@@ -426,7 +766,7 @@ export function serialize(compose: ParsedCompose): string {
   if (compose.networks) obj.networks = compose.networks;
   if (compose.volumes) obj.volumes = compose.volumes;
 
-  return stringifyYaml(obj, { lineWidth: 0 });
+  return stringifyYaml(obj, { lineWidth: 0, aliasDuplicateObjects: false });
 }
 
 // ---------------------------------------------------------------------------
@@ -434,13 +774,24 @@ export function serialize(compose: ParsedCompose): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Update image tags in all services.
+ * Whether built images are pushed to the registry and pulled from it: enabled, with a URL AND a
+ * password. The one registry predicate: the delivery mode, the push, the pull secret and the
+ * image references must agree, or pods reference images nothing pushed.
+ */
+export function usesRegistry(config: DockflowConfig): boolean {
+  const registry = config.registry;
+  return registry?.enabled === true && !!registry.url && !!registry.password;
+}
+
+/**
+ * Update the image tags of the services Dockflow builds (those with a `build` section).
+ * Pulled images keep the reference the compose file gives them.
  *
  * If `image_auto_tag` is true (default):
  *   - Strips existing tag: "my-api:old" → "my-api"
  *   - Appends env + version: "my-api" → "my-api-{env}:{version}"
  *
- * If `registry.enabled`:
+ * If `usesRegistry(config)`:
  *   - Prepends registry prefix (only if image doesn't already contain a registry domain)
  */
 export function updateImageTags(
@@ -451,7 +802,7 @@ export function updateImageTags(
   servicesFilter?: string,
 ): void {
   const autoTag = config.options?.image_auto_tag !== false;
-  const useRegistry = config.registry?.enabled === true;
+  const useRegistry = usesRegistry(config);
   const registryUrl = config.registry?.url ?? '';
   const registryNs = config.registry?.namespace ?? '';
   const registryPrefix = registryNs
@@ -461,9 +812,9 @@ export function updateImageTags(
     ? new Set(servicesFilter.split(',').map(s => s.trim()))
     : null;
 
-  for (const [name, svc] of Object.entries(compose.services)) {
-    const originalImage = svc.image as string | undefined;
-    if (!originalImage) continue;
+  for (const [name, svc] of serviceEntries(compose)) {
+    const originalImage = svc.image;
+    if (typeof originalImage !== 'string' || originalImage === '' || !hasBuild(svc)) continue;
     if (filterSet && !filterSet.has(name)) continue;
 
     let newImage: string;
@@ -490,10 +841,6 @@ export function updateImageTags(
 // ---------------------------------------------------------------------------
 
 /**
- * Inject Swarm deploy defaults (update_config + rollback_config) into all services.
- * User-provided values take precedence via deep merge.
- */
-/**
  * Drop `build` from every service.
  *
  * Dockflow reads that section to know what to build, but `docker stack deploy` cannot build
@@ -509,6 +856,10 @@ export function stripBuildSections(compose: ParsedCompose): void {
   }
 }
 
+/**
+ * Inject Swarm deploy defaults (update_config + rollback_config) into all services.
+ * User-provided values take precedence via deep merge.
+ */
 export function injectSwarmDefaults(compose: ParsedCompose): void {
   for (const [name, svc] of Object.entries(compose.services)) {
     const userDeploy = (svc.deploy ?? {}) as Record<string, unknown>;
@@ -535,21 +886,28 @@ export function injectSwarmDefaults(compose: ParsedCompose): void {
 }
 
 /**
- * Inject accessories-specific deploy config (restart_policy only).
- * User values take precedence.
+ * Inject the accessories deploy defaults. User values take precedence.
+ *
+ * Both orchestrators: `deploy.replicas: 1` when no replica count is written, except for services
+ * that run once per node (`global`, `global-job`), which docker refuses with `replicas`, and for
+ * services that set `scale`, which the count would contradict.
+ * Swarm only: the restart policy defaults. k3s gets nothing else, so every value the normalizer
+ * warns about is one the user wrote.
  */
-export function injectAccessoriesDefaults(compose: ParsedCompose): void {
-  for (const [name, svc] of Object.entries(compose.services)) {
-    const deploy = (svc.deploy ?? {}) as Record<string, unknown>;
-    const userRestart = (deploy.restart_policy ?? {}) as Record<string, unknown>;
+export function injectAccessoriesDefaults(compose: ParsedCompose, kind: OrchestratorKind): void {
+  for (const [name, svc] of serviceEntries(compose)) {
+    // A malformed `deploy` is left for the normalizer (or docker) to refuse as written.
+    if (!isAbsent(svc.deploy) && !isRecord(svc.deploy)) continue;
+    const deploy = isRecord(svc.deploy) ? svc.deploy : {};
+    const mergedDeploy: Record<string, unknown> = { ...deploy };
 
-    const mergedRestart = deepMerge(DEFAULT_RESTART_POLICY, userRestart);
+    const perNode = typeof deploy.mode === 'string' && PER_NODE_MODES.has(deploy.mode);
+    if (isAbsent(deploy.replicas) && isAbsent(svc.scale) && !perNode) mergedDeploy.replicas = 1;
 
-    const mergedDeploy = {
-      ...deploy,
-      replicas: deploy.replicas ?? 1,
-      restart_policy: mergedRestart,
-    };
+    if (kind === 'swarm' && (isAbsent(deploy.restart_policy) || isRecord(deploy.restart_policy))) {
+      const userRestart = isRecord(deploy.restart_policy) ? deploy.restart_policy : {};
+      mergedDeploy.restart_policy = deepMerge(DEFAULT_RESTART_POLICY, userRestart);
+    }
 
     compose.services[name] = { ...svc, deploy: mergedDeploy };
   }
@@ -690,54 +1048,53 @@ export function syncNonTargetedImageTags(
 ): ParsedCompose {
   const targeted = new Set(targetedServices);
   const services = { ...local.services };
+  const serverServices = new Map(serviceEntries(server));
 
-  for (const [name, svc] of Object.entries(services)) {
+  for (const [name, svc] of serviceEntries(local)) {
     if (targeted.has(name)) continue;
-    const serverImage = server.services[name]?.image as string | undefined;
-    if (serverImage) services[name] = { ...svc, image: serverImage };
+    const serverImage = serverServices.get(name)?.image;
+    if (typeof serverImage === 'string' && serverImage !== '') services[name] = { ...svc, image: serverImage };
   }
 
   return { ...local, services };
 }
 
 /**
+ * Names of the external entries of a top-level section: the `name:` Docker knows the
+ * resource by when one is written, the compose key otherwise.
+ */
+function externalNames(section: Record<string, unknown> | undefined): string[] {
+  if (!isRecord(section)) return [];
+  const names: string[] = [];
+  for (const [key, value] of Object.entries(section)) {
+    if (!isRecord(value) || value.external !== true) continue;
+    names.push(typeof value.name === 'string' && value.name !== '' ? value.name : key);
+  }
+  return names;
+}
+
+/**
  * Extract all external network names from a compose object.
  */
 export function getExternalNetworks(compose: ParsedCompose): string[] {
-  if (!compose.networks) return [];
-  return Object.entries(compose.networks)
-    .filter(([, value]) => {
-      if (value && typeof value === 'object') {
-        return (value as Record<string, unknown>).external === true;
-      }
-      return false;
-    })
-    .map(([name]) => name);
+  return externalNames(compose.networks);
 }
 
 /**
  * Extract all external volume names from a compose object.
  */
 export function getExternalVolumes(compose: ParsedCompose): string[] {
-  if (!compose.volumes) return [];
-  return Object.entries(compose.volumes)
-    .filter(([, value]) => {
-      if (value && typeof value === 'object') {
-        return (value as Record<string, unknown>).external === true;
-      }
-      return false;
-    })
-    .map(([name]) => name);
+  return externalNames(compose.volumes);
+}
+
+export function hasServices(compose: ParsedCompose): boolean {
+  return Object.keys(compose.services).length > 0;
 }
 
 /**
  * Extract all image tags referenced in services.
  * Returns a deduplicated list.
  */
-export function hasServices(compose: ParsedCompose): boolean {
-  return Object.keys(compose.services).length > 0;
-}
-
 export function getImages(compose: ParsedCompose): string[] {
   const images = new Set<string>();
   for (const svc of Object.values(compose.services)) {

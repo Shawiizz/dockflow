@@ -1,0 +1,12 @@
+{
+  "synthetic": true,
+  "k3sVersion": "v1.36.4+k3s1",
+  "steps": [
+    "kubectl create namespace fixture-rollout-progressing",
+    "kubectl apply: Deployment web (3 replicas, nginx:1.27-alpine, readiness probe httpGet / on port 80 with initialDelaySeconds 60 and periodSeconds 5, strategy RollingUpdate maxSurge 1 maxUnavailable 0) and ClusterIP Service web (port 80)",
+    "kubectl rollout status deployment/web --timeout=180s",
+    "kubectl set image deployment/web web=nginx:1.28-alpine",
+    "wait until the new ReplicaSet has one pod Running with Ready=False (before its first readiness probe)",
+    "capture the namespace resources and the cluster nodes and persistentvolumes"
+  ]
+}

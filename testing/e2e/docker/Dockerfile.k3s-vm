@@ -1,78 +1,57 @@
-# Ubuntu 24.04 + k3s + SSH for E2E testing
-FROM ubuntu:24.04
+# k3s e2e node: systemd as PID 1 with sshd, and nothing k3s-related installed (no /usr/local/bin/k3s,
+# no /etc/rancher, no /var/lib/dockflow, no sudoers file): `dockflow setup k3s` does all of it.
+# Built by testing/e2e/k3s/tools/build-node-image.ts (context testing/e2e), which passes the pins as
+# build args and prepares .cache/ first. No `# syntax` line: the builder's bundled frontend is used,
+# so the build pulls nothing beyond the pinned base image.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+ENV DEBIAN_FRONTEND=noninteractive container=docker
+# ssh.socket is masked because ssh.service runs sshd as a daemon (the healthcheck tests the service);
+# the apt timers would update packages on the nodes during a lane
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      systemd systemd-sysv dbus openssh-server sudo ca-certificates curl jq socat \
+      iptables nftables iproute2 kmod conntrack ebtables ethtool util-linux mount \
+      procps psmisc gzip zstd tar ufw \
+  && rm -rf /var/lib/apt/lists/* \
+  && systemctl mask systemd-udevd.service systemd-udevd-kernel.socket systemd-udevd-control.socket \
+       getty.target systemd-logind.service console-getty.service \
+       ssh.socket apt-daily.timer apt-daily-upgrade.timer \
+  && systemctl enable ssh.service \
+  && systemctl set-default multi-user.target \
+  && rm -f /etc/ssh/ssh_host_* /etc/machine-id
 
-ARG DEPLOY_USER=deploytest
-ARG DEPLOY_PASSWORD=dockflow123
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Install dependencies (no docker.io — k3s uses containerd)
-RUN apt-get update && \
-    apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends \
-        openssh-server \
-        sudo \
-        bash \
-        curl \
-        ca-certificates \
-        git \
-        jq \
-        rsync \
-        netcat-openbsd \
-        gzip \
-        iptables \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install k3s binary directly (installer needs systemd, so we download manually)
-ARG K3S_VERSION=v1.32.4%2Bk3s1
-RUN ARCH=$(uname -m) && \
-    SUFFIX="" && \
-    if [ "$ARCH" = "aarch64" ]; then SUFFIX="-arm64"; fi && \
-    curl -fL "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s${SUFFIX}" \
-      -o /usr/local/bin/k3s && \
-    chmod +x /usr/local/bin/k3s && \
-    k3s --version
-
-# Configure SSH
-RUN mkdir -p /var/run/sshd && \
-    sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && \
-    sed -i 's/#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
-    sed -i 's/#PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config && \
-    echo "MaxSessions 50" >> /etc/ssh/sshd_config && \
-    echo "MaxStartups 50:30:100" >> /etc/ssh/sshd_config
-
-# Set root password
-RUN echo "root:${DEPLOY_PASSWORD}" | chpasswd
-
-# Create deploy user with sudo privileges and pre-baked SSH key
-RUN useradd -m -s /bin/bash ${DEPLOY_USER} && \
-    echo "${DEPLOY_USER}:${DEPLOY_PASSWORD}" | chpasswd && \
-    echo "${DEPLOY_USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
-    mkdir -p /home/${DEPLOY_USER}/.ssh && \
-    chmod 700 /home/${DEPLOY_USER}/.ssh && \
-    chown -R ${DEPLOY_USER}:${DEPLOY_USER} /home/${DEPLOY_USER}
-
-# Copy the pre-generated public key into authorized_keys
-COPY fixtures/keys/id_ed25519.pub /home/${DEPLOY_USER}/.ssh/authorized_keys
-RUN chmod 600 /home/${DEPLOY_USER}/.ssh/authorized_keys && \
-    chown ${DEPLOY_USER}:${DEPLOY_USER} /home/${DEPLOY_USER}/.ssh/authorized_keys
-
-# Copy scripts
-COPY docker/entrypoint.k3s.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
-COPY docker/healthcheck.k3s.sh /healthcheck.sh
-RUN chmod +x /healthcheck.sh
-
-# Create dockflow runtime directory
-RUN mkdir -p /var/lib/dockflow && chmod 1777 /var/lib/dockflow
-
-# kubectl symlink for convenience (k3s bundles it)
-RUN ln -sf /usr/local/bin/k3s /usr/local/bin/kubectl 2>/dev/null || true
-
-EXPOSE 22 6443 80 443
-
-HEALTHCHECK --interval=5s --timeout=5s --start-period=45s --retries=20 \
-    CMD /healthcheck.sh
-
-ENTRYPOINT ["/entrypoint.sh"]
+ARG TARGETARCH
+ARG K3S_VERSION
+ARG K3S_BIN_SHA256
+ARG K3S_INSTALL_SHA256
+ARG HELM_VERSION
+ARG HELM_ARCHIVE_SHA256
+ARG TRAEFIK_CHART_SHA256
+LABEL dockflow.e2e.k3s-version="${K3S_VERSION}" dockflow.e2e.helm-version="${HELM_VERSION}"
+# Content-addressed cache of pinned downloads (file name == sha256), verified at build time; setup
+# and the proxy backend look here before downloading and verify against the pin again (K78)
+COPY .cache/downloads/sha256/ /var/cache/dockflow/sha256/
+RUN cd /var/cache/dockflow/sha256 \
+  && for f in *; do echo "$f  $f" | sha256sum -c --quiet - || exit 1; done \
+  && for pin in "$K3S_BIN_SHA256" "$K3S_INSTALL_SHA256" "$HELM_ARCHIVE_SHA256" "$TRAEFIK_CHART_SHA256"; do \
+       if [ -z "$pin" ] || [ ! -f "$pin" ]; then echo "pinned download '$pin' is not in .cache/downloads/sha256" >&2; exit 1; fi; \
+     done
+# Harness helm (assertions only; setup installs its own copy at HELM_BIN_PATH)
+RUN install -d /opt/e2e/bin \
+  && tar -xzf "/var/cache/dockflow/sha256/${HELM_ARCHIVE_SHA256}" -C /opt/e2e/bin --strip-components=1 "linux-${TARGETARCH}/helm"
+# k3s system images (pinned airgap archive) and baked workload images, imported and pinned by k3s at start
+COPY .cache/images/k3s-airgap-images-${TARGETARCH}.tar.zst /var/lib/rancher/k3s/agent/images/
+COPY .cache/images/e2e-images-${TARGETARCH}.tar /var/lib/rancher/k3s/agent/images/
+# Users: deploy user without any sudo rule or group; root reachable only with the bootstrap key
+RUN useradd -m -s /bin/bash deploytest && usermod -p '*' deploytest \
+  && install -d -m 0700 -o deploytest -g deploytest /home/deploytest/.ssh \
+  && install -d -m 0700 /root/.ssh
+COPY --chown=deploytest:deploytest --chmod=0600 fixtures/keys/id_ed25519.pub /home/deploytest/.ssh/authorized_keys
+COPY --chmod=0600 fixtures/keys/bootstrap_ed25519.pub /root/.ssh/authorized_keys
+COPY docker/k3s-node/sshd_config.d/10-e2e.conf /etc/ssh/sshd_config.d/10-e2e.conf
+COPY docker/k3s-node/e2e-forward@.service /etc/systemd/system/e2e-forward@.service
+RUN systemctl enable e2e-forward@35010.service e2e-forward@35011.service
+COPY --chmod=0755 docker/entrypoint.k3s.sh /usr/local/bin/entrypoint.k3s.sh
+COPY --chmod=0755 docker/healthcheck.k3s.sh /usr/local/bin/healthcheck.k3s.sh
+STOPSIGNAL SIGRTMIN+3
+ENTRYPOINT ["/usr/local/bin/entrypoint.k3s.sh"]

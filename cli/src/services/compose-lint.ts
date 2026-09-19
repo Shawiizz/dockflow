@@ -12,7 +12,33 @@
  * without its text, which is part of that value.
  *
  * This module only reports; the caller decides between a warning and a hard failure.
+ *
+ * On k3s the two stack files are not linted at all (`lintsStackFiles`): Dockflow applies Compose
+ * interpolation itself and the normalizer refuses every placeholder with its YAML path, so a
+ * lint warning would report each one a second time.
  */
+
+import type { OrchestratorKind } from './orchestrator/interfaces';
+
+/**
+ * Whether `docker-compose.yml` and `accessories.yml` go through this lint on an orchestrator.
+ * Swarm keeps linting both; on k3s the renderer reports the same placeholders as errors.
+ */
+export function lintsStackFiles(orchestrator: OrchestratorKind): boolean {
+  return orchestrator === 'swarm';
+}
+
+/** What becomes of a written placeholder, as told to the user. */
+const PLACEHOLDER_FATE: Record<OrchestratorKind, string> = {
+  swarm: 'Docker replaces it when deploying, and Dockflow gives it no value',
+  k3s: 'Dockflow interpolates the file with an empty environment when rendering, so it has no value',
+};
+
+/** Who reads a `$` that an inserted value carries. */
+const INSERTED_READER: Record<OrchestratorKind, string> = {
+  swarm: 'Docker will replace when deploying',
+  k3s: 'Compose interpolation will read as a placeholder when rendering',
+};
 
 /** Values Dockflow puts at the root of the render context rather than under `current.env`. */
 const ROOT_CONTEXT_VARS: Record<string, string> = {
@@ -98,10 +124,13 @@ export function findShellPlaceholders(
 /**
  * Human-readable lines describing the placeholders, one per finding.
  */
-export function describeShellPlaceholders(placeholders: ShellPlaceholder[]): string[] {
+export function describeShellPlaceholders(
+  placeholders: ShellPlaceholder[],
+  orchestrator: OrchestratorKind = 'swarm',
+): string[] {
   return placeholders.map(({ raw, line, suggestion, declared }) => {
     const origin = declared ? ' (declared in servers.yml)' : '';
-    return `line ${line}: ${raw}${origin} — Docker replaces it when deploying, and Dockflow gives it no value. ` +
+    return `line ${line}: ${raw}${origin} — ${PLACEHOLDER_FATE[orchestrator]}. ` +
       `Use ${suggestion} for a Dockflow value, or $${raw} to keep the text as is.`;
   });
 }
@@ -135,9 +164,12 @@ export function findInsertedPlaceholders(rendered: string, renderedWithout: stri
  * Human-readable lines for placeholders a value brought in. The placeholder itself is not
  * shown: it is part of the value, likely a secret.
  */
-export function describeInsertedPlaceholders(lines: number[]): string[] {
+export function describeInsertedPlaceholders(
+  lines: number[],
+  orchestrator: OrchestratorKind = 'swarm',
+): string[] {
   return lines.map((line) =>
-    `line ${line} (rendered): a value inserted by a template contains a $ that Docker will replace when deploying. ` +
+    `line ${line} (rendered): a value inserted by a template contains a $ that ${INSERTED_READER[orchestrator]}. ` +
     'Escape it with | replace("$", "$$").',
   );
 }

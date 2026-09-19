@@ -107,7 +107,7 @@ export interface Secret extends KubeObjectBase<'v1', 'Secret'> {
    * (registry Secret), `kubernetes.io/service-account-token` (deployer token), the release type.
    */
   type?: string;
-  /** base64 of the raw bytes; `stringData` is never emitted (emission rule 7) */
+  /** base64 of the raw bytes; the plain-string form of Secret data is never emitted (emission rule 7) */
   data?: Record<string, string>;
   immutable?: boolean;
 }
