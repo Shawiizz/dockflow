@@ -1,6 +1,6 @@
 /**
- * Shared firewall helper for opening ports on remote hosts.
- * Used by both swarm.ts and k3s.ts setup commands.
+ * Firewall helper for opening ports on remote hosts. Swarm-only (design-05 19.4): k3s setup has its
+ * own scoped rules and executors in `k3s/firewall.ts`.
  */
 
 import { createSpinner } from '../../utils/output';
