@@ -1,14 +1,11 @@
 /**
- * Validate command
- *
- * Validates all .dockflow configuration files without connecting to any server.
- * Checks:
- *   - config.yml   schema + Zod validation
- *   - servers.yml  schema + Zod validation
- *   - docker-compose file existence
+ * Validate command (DESIGN-CORE 2.6): schema and lint checks, unchanged; with an environment
+ * argument and `orchestrator: k3s`, also an OFFLINE render of both roles (no SSH, no kubectl, no
+ * Helm, no registry call — `deploy --dry-run` is the live check, this one never resolves an
+ * orchestrator target).
  *
  * Exit codes:
- *   0 — all checks passed
+ *   0 — all checks passed (warnings only still exit 0)
  *   60 — one or more validation errors (VALIDATION_FAILED)
  */
 
@@ -23,30 +20,40 @@ import {
   getComposePath,
   getLayout,
   getAccessoriesPath,
+  type DockflowConfig,
 } from '../utils/config';
 import * as Plugin from '../services/plugin';
+import * as Compose from '../services/compose';
+import { createFileResolver } from '../services/orchestrator/file-resolver';
+import { k3sDistribution } from '../services/orchestrator/kubernetes/k3s/distribution';
+import { namespaceFor } from '../services/orchestrator/kubernetes/naming';
+import { normalizeStack } from '../services/orchestrator/kubernetes/normalize';
+import type { NormalizeInput } from '../services/orchestrator/kubernetes/normalize/context';
+import { renderStackArtifact, reservedHostPortsFromConfig, type RenderEnvironment } from '../services/orchestrator/kubernetes/render';
+import { HelmConfigError, renderedValuesFileLookup, resolveHelmReleases } from '../services/orchestrator/kubernetes/helm/resolve';
+import { DiagnosticSink, type Diagnostic } from '../services/orchestrator/diagnostics';
+import type { FileResolver, StackDeployInput, StackRole } from '../services/orchestrator/interfaces';
+import type { TopologyServer } from '../schemas/servers.schema';
+import { k3sTopologyIssues } from '../schemas/servers.schema';
+import { resolveImageDelivery, declaredHelmNames } from './deploy-phases';
+import { buildTemplateContext } from '../utils/servers';
+import { getCurrentBranch } from '../utils/git';
 import {
   printSuccess,
   printError,
   printInfo,
   printWarning,
+  printDebug,
   printBlank,
   printSection,
   printTableRow,
+  printDim,
   colors,
 } from '../utils/output';
 import { loadSecrets } from '../utils/secrets';
-import {
-  findShellPlaceholders,
-  describeShellPlaceholders,
-} from '../services/compose-lint';
-import { CLIError, ValidationError, withErrorHandler } from '../utils/errors';
-import {
-  findUnknownConfigKeys,
-  findUnknownServersKeys,
-  findUnknownRootKeys,
-  type UnknownKey,
-} from '../schemas';
+import { findShellPlaceholders, describeShellPlaceholders } from '../services/compose-lint';
+import { CLIError, ComposeTranslationError, ValidationError, withErrorHandler } from '../utils/errors';
+import { findUnknownConfigKeys, findUnknownServersKeys, findUnknownRootKeys, type UnknownKey } from '../schemas';
 
 /**
  * Warn about keys the schema does not declare (Zod strips them silently, so a
@@ -61,9 +68,7 @@ function warnUnknownKeys(filePath: string, finder: (data: unknown) => UnknownKey
   }
 
   for (const { path, suggestion } of finder(raw)) {
-    printWarning(
-      `Unknown key "${path}" — it is ignored.${suggestion ? ` Did you mean "${suggestion}"?` : ''}`,
-    );
+    printWarning(`Unknown key "${path}" — it is ignored.${suggestion ? ` Did you mean "${suggestion}"?` : ''}`);
   }
 }
 
@@ -83,13 +88,236 @@ function collectDeclaredEnvKeys(): string[] {
 }
 
 interface ValidateOptions {
-  env?: string;
+  debug?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// k3s offline render (DESIGN-CORE 2.6, design-07 U-FLOW-08)
+// ---------------------------------------------------------------------------
+
+function printDiagnostics(file: string, diagnostics: readonly Diagnostic[]): boolean {
+  let hasErrors = false;
+  for (const d of diagnostics) {
+    if (d.severity === 'error') {
+      hasErrors = true;
+      printError(`${file} ${d.path}: ${d.message}`);
+    } else if (d.severity === 'warning') {
+      printWarning(`${file} ${d.path}: ${d.message}`);
+    } else {
+      printDebug(`${file} ${d.path}: ${d.message}`);
+    }
+    if (d.hint) printDim(`  ${d.hint}`);
+  }
+  return hasErrors;
+}
+
+function accessoriesRelPathFor(projectRoot: string): string {
+  const layout = getLayout();
+  return layout.accessoriesPath ? relative(projectRoot, layout.accessoriesPath).replace(/\\/g, '/') : '.dockflow/docker/accessories.yml';
+}
+
+function configSourceFor(projectRoot: string, rendered: ReadonlyMap<string, string>): { file: string; text: string } {
+  const layout = getLayout();
+  const file = relative(projectRoot, layout.configPath).replace(/\\/g, '/');
+  return { file, text: rendered.get(file) ?? '' };
+}
+
+/** The other role, normalized with an empty sibling first (pure, diagnostics discarded): design-01 1.3. */
+function siblingFor(
+  other: Compose.ParsedCompose | null,
+  role: StackRole,
+  identity: NormalizeInput['identity'],
+  config: DockflowConfig,
+  serverNames: string[],
+  imageDelivery: NormalizeInput['imageDelivery'],
+  files: FileResolver,
+): StackDeployInput['sibling'] {
+  const empty: StackDeployInput['sibling'] = { services: [], volumes: [], middlewares: [] };
+  if (!other) return empty;
+
+  const { stack } = normalizeStack({
+    compose: other,
+    role: role === 'app' ? 'accessory' : 'app',
+    identity,
+    proxy: config.proxy,
+    sibling: empty,
+    serverNames,
+    imageDelivery,
+    files,
+    traits: k3sDistribution.traits,
+    sink: new DiagnosticSink(),
+  });
+
+  return {
+    services: stack.services.map((s) => ({
+      key: s.composeName,
+      name: s.name,
+      aliases: s.network.aliases,
+      published: s.ports.filter((p) => p.published !== null).map((p) => ({ port: p.published as number, protocol: p.protocol })),
+    })),
+    volumes: stack.volumes.map((v) => ({ key: v.key, claimName: v.name, external: v.external })),
+    middlewares: stack.middlewares.map((m) => m.name),
+  };
+}
+
+/** The synthetic `StackDeployInput` of DESIGN-CORE 2.6's table, for one role. */
+function buildValidateInput(
+  config: DockflowConfig,
+  env: string,
+  role: StackRole,
+  compose: Compose.ParsedCompose,
+  other: Compose.ParsedCompose | null,
+  serverNames: string[],
+  files: FileResolver,
+  helmReleases: ReturnType<typeof resolveHelmReleases>['releases'],
+): StackDeployInput {
+  const project = config.project_name;
+  const identity = { project, env, stackName: `${project}-${env}`, namespace: namespaceFor(project, env), version: '0.0.0-validate' };
+  const delivery = resolveImageDelivery(config, role === 'app' ? compose : (other ?? compose));
+
+  return {
+    ref: { project, env, role },
+    version: '0.0.0-validate',
+    compose,
+    proxy: config.proxy,
+    services: null,
+    previousVersion: null,
+    force: false,
+    images: delivery,
+    helm: helmReleases,
+    helmDeclared: declaredHelmNames(config, role),
+    sibling: siblingFor(other, role, identity, config, serverNames, delivery.mode, files),
+    serverNames,
+    files,
+    rebindVolumes: false,
+    traefikOnCluster: config.proxy?.enabled === true,
+  };
+}
+
+/** Renders one role offline and prints its diagnostics; returns whether it carried an error. */
+function renderRoleOffline(label: string, input: StackDeployInput, env: RenderEnvironment): boolean {
+  try {
+    const { artifact } = renderStackArtifact(input, env);
+    return printDiagnostics(label, artifact.diagnostics);
+  } catch (error) {
+    if (error instanceof ComposeTranslationError) {
+      return printDiagnostics(label, error.diagnostics);
+    }
+    throw error;
+  }
 }
 
 /**
- * Run all validation checks and return whether everything passed.
+ * The FS-independent core of the k3s offline render (DESIGN-CORE 2.6): everything from the already
+ * rendered templates onward. Split out so it can be unit-tested without `getProjectRoot()`'s global,
+ * process-wide cache (`utils/config.ts` has no reset hook) — the CLI wrapper below gathers its
+ * arguments from the real project, a test builds them in memory.
  */
-async function runValidate(options: ValidateOptions): Promise<void> {
+export function renderK3sOfflineCore(
+  config: DockflowConfig,
+  env: string,
+  serverNames: readonly string[],
+  serversConfig: import('../types/servers').ServersConfig,
+  rendered: ReadonlyMap<string, string>,
+  composeContent: string,
+  projectRoot: string,
+  composeDirPath: string,
+): boolean {
+  const compose = Compose.loadFromString(composeContent);
+  const accessoriesContent = rendered.get(accessoriesRelPathFor(projectRoot));
+  const accessoriesCompose = accessoriesContent ? Compose.loadFromString(accessoriesContent) : null;
+  if (accessoriesCompose) Compose.injectAccessoriesDefaults(accessoriesCompose, 'k3s');
+
+  const files = createFileResolver(rendered, projectRoot, composeDirPath);
+
+  let hasErrors = false;
+  let appHelm: ReturnType<typeof resolveHelmReleases>['releases'] = [];
+  let accHelm: ReturnType<typeof resolveHelmReleases>['releases'] = [];
+  try {
+    const configSource = configSourceFor(projectRoot, rendered);
+    const composeServices = { app: Object.keys(compose.services), accessory: Object.keys(accessoriesCompose?.services ?? {}) };
+    const readValuesFile = renderedValuesFileLookup(rendered);
+    appHelm = resolveHelmReleases({ helm: config.helm, role: 'app', stackNamespace: namespaceFor(config.project_name, env), configSource, readValuesFile, composeServices, noServices: config.no_services === true, templates: config.templates }).releases;
+    accHelm = resolveHelmReleases({ helm: config.helm, role: 'accessory', stackNamespace: namespaceFor(config.project_name, env), configSource, readValuesFile, composeServices, noServices: config.no_services === true, templates: config.templates }).releases;
+  } catch (error) {
+    if (error instanceof HelmConfigError) {
+      hasErrors = printDiagnostics(configSourceFor(projectRoot, rendered).file, error.diagnostics) || hasErrors;
+    } else {
+      throw error;
+    }
+  }
+
+  const renderEnv: RenderEnvironment = {
+    traits: k3sDistribution.traits,
+    imageDelivery: resolveImageDelivery(config, compose).mode,
+    keepReleases: config.stack_management?.keep_releases,
+    extraReservedHostPorts: reservedHostPortsFromConfig(config, serversConfig, env),
+  };
+  const appInput = buildValidateInput(config, env, 'app', compose, accessoriesCompose, serverNames as string[], files, appHelm);
+  hasErrors = renderRoleOffline('docker-compose.yml', appInput, renderEnv) || hasErrors;
+
+  if (accessoriesCompose) {
+    const accInput = buildValidateInput(config, env, 'accessory', accessoriesCompose, compose, serverNames as string[], files, accHelm);
+    hasErrors = renderRoleOffline('accessories.yml', accInput, renderEnv) || hasErrors;
+  }
+
+  return hasErrors;
+}
+
+/**
+ * DESIGN-CORE 2.6: offline normalize + translate of both roles, plus the two k3s topology rules of
+ * 7.2 (`M.managerCount`, `M.duplicateNode`, design-07 U-SETUP-PLAN-03/04). No SSH, no kubectl, no
+ * Helm, no registry call, no orchestrator target resolved.
+ */
+async function runK3sOfflineRender(rootConfig: DockflowConfig, env: string): Promise<boolean> {
+  const serversConfig = loadServersConfig({ silent: true });
+  if (!serversConfig) return false; // the servers.yml section above already reported the failure
+
+  const topology: Record<string, TopologyServer> = {};
+  for (const [name, server] of Object.entries(serversConfig.servers)) {
+    topology[name] = { role: server.role, host: server.host, private_host: server.private_host, tags: server.tags };
+  }
+  let hasErrors = printDiagnostics('servers.yml', k3sTopologyIssues(topology, env));
+
+  const serverNames = Object.keys(serversConfig.servers).filter((name) => serversConfig.servers[name].tags.includes(env));
+  if (serverNames.length === 0) {
+    printWarning(`No servers found with tag "${env}"; the k3s render is skipped`);
+    return hasErrors;
+  }
+
+  const templateContext = buildTemplateContext(env, serverNames[0]);
+  let rendered: ReadonlyMap<string, string>;
+  let composeContent: string;
+  let composeDirPath: string;
+  let resolvedRoot: string;
+  let config = rootConfig;
+  try {
+    const result = Compose.renderAndResolveCompose(
+      { env, version: '0.0.0-validate', branch: getCurrentBranch(), project_name: rootConfig.project_name, config: rootConfig },
+      templateContext,
+      { uploadOnly: rootConfig.no_services === true },
+    );
+    rendered = result.rendered;
+    composeContent = result.composeContent;
+    composeDirPath = result.composeDirPath;
+    resolvedRoot = result.projectRoot;
+    if (rootConfig.plugins?.length) {
+      const pluginsLoaded = await Plugin.loadConfigWithPlugins({ rendered: rendered as Map<string, string>, fallback: rootConfig, projectRoot: resolvedRoot, projectContext: result.renderContext });
+      config = pluginsLoaded.config;
+    }
+  } catch (error) {
+    printError(error instanceof CLIError ? error.message : String(error));
+    return true;
+  }
+
+  return hasErrors || renderK3sOfflineCore(config, env, serverNames, serversConfig, rendered, composeContent, resolvedRoot, composeDirPath);
+}
+
+// ---------------------------------------------------------------------------
+// Run all validation checks and return whether everything passed.
+// ---------------------------------------------------------------------------
+
+async function runValidate(env: string | undefined, options: ValidateOptions): Promise<void> {
   loadSecrets();
 
   const layout = getLayout();
@@ -107,10 +335,7 @@ async function runValidate(options: ValidateOptions): Promise<void> {
     printError('No dockflow.yml or .dockflow/ directory found');
     printWarning(`Expected dockflow.yml at: ${projectRoot}`);
     printWarning("Run 'dockflow init' to create a project configuration.");
-    throw new ValidationError(
-      'No Dockflow configuration found',
-      "Run 'dockflow init' to initialize this project.",
-    );
+    throw new ValidationError('No Dockflow configuration found', "Run 'dockflow init' to initialize this project.");
   }
 
   printInfo(`Project root: ${projectRoot} (${flat ? 'flat layout' : 'standard layout'})`);
@@ -120,11 +345,12 @@ async function runValidate(options: ValidateOptions): Promise<void> {
 
   printSection(flat ? 'dockflow.yml' : 'config.yml');
 
+  let config: DockflowConfig | null = null;
   if (!existsSync(configPath)) {
     printError(`${flat ? 'dockflow.yml' : 'config.yml'} not found`);
     hasErrors = true;
   } else {
-    const config = loadConfig({ validate: true, silent: false });
+    config = loadConfig({ validate: true, silent: false });
     if (!config) {
       hasErrors = true;
     } else {
@@ -134,23 +360,17 @@ async function runValidate(options: ValidateOptions): Promise<void> {
       const features: string[] = [];
       if (config.registry) features.push(`registry (${config.registry.type})`);
       if (config.proxy?.enabled) features.push('proxy (Traefik)');
-      if (config.notifications?.webhooks?.length) {
-        features.push(`notifications (${config.notifications.webhooks.length} webhook(s))`);
-      }
-      if (HOOK_PHASES.some((phase) => config.hooks?.[phase]?.length)) features.push('hooks');
+      if (config.notifications?.webhooks?.length) features.push(`notifications (${config.notifications.webhooks.length} webhook(s))`);
+      if (HOOK_PHASES.some((phase) => config?.hooks?.[phase]?.length)) features.push('hooks');
       if (config.backup) features.push('backup');
-      if (features.length > 0) {
-        printTableRow('Features:', features.join(', '));
-      }
+      if (config.orchestrator === 'k3s') features.push('orchestrator (k3s)');
+      if (features.length > 0) printTableRow('Features:', features.join(', '));
 
-      // Expanded against the unrendered config: `with:` values that are templates
-      // pass through verbatim, which is enough to catch an unknown plugin, a
-      // missing input, a bad manifest or two uploads writing one path.
       if (config.plugins?.length) {
         try {
           const expansion = await Plugin.expandPlugins(config.plugins, {
             projectRoot,
-            projectContext: { env: options.env ?? '', version: '', project_name: config.project_name, config },
+            projectContext: { env: env ?? '', version: '', project_name: config.project_name, config },
           });
           Plugin.applyPluginExpansion(config, new Map(), expansion, projectRoot);
           for (const line of expansion.summary) printTableRow('Plugin:', line);
@@ -169,43 +389,36 @@ async function runValidate(options: ValidateOptions): Promise<void> {
 
   printSection(flat ? 'servers (from dockflow.yml)' : 'servers.yml');
 
+  let envExists = false;
   if (!flat && !existsSync(serversPath)) {
     printError('servers.yml not found');
     hasErrors = true;
   } else {
     const servers = loadServersConfig({ validate: true, silent: false });
     if (!servers) {
-      // loadServersConfig already printed the validation errors
       hasErrors = true;
     } else {
-      // Derive environments from server tags
       const tagMap: Record<string, { managers: number; workers: number }> = {};
       for (const server of Object.values(servers.servers)) {
         for (const tag of server.tags) {
           if (!tagMap[tag]) tagMap[tag] = { managers: 0, workers: 0 };
-          if ((server.role ?? 'manager') === 'manager') {
-            tagMap[tag].managers++;
-          } else {
-            tagMap[tag].workers++;
-          }
+          if ((server.role ?? 'manager') === 'manager') tagMap[tag].managers++;
+          else tagMap[tag].workers++;
         }
       }
       const envNames = Object.keys(tagMap);
       printSuccess(`${flat ? 'dockflow.yml' : 'servers.yml'} — OK (${envNames.length} environment(s): ${envNames.join(', ')})`);
-      // Flat layout: dockflow.yml was already checked above (root schema covers servers)
-      if (!flat) {
-        warnUnknownKeys(serversPath, findUnknownServersKeys);
-      }
+      if (!flat) warnUnknownKeys(serversPath, findUnknownServersKeys);
 
-      // If --env specified, check that env exists
-      if (options.env) {
-        if (!tagMap[options.env]) {
-          printError(`Environment "${options.env}" not found in servers.yml`);
+      if (env) {
+        if (!tagMap[env]) {
+          printError(`Environment "${env}" not found in servers.yml`);
           printWarning(`Available: ${envNames.join(', ')}`);
           hasErrors = true;
         } else {
-          const { managers, workers } = tagMap[options.env];
-          printTableRow(`${options.env}:`, `${managers} manager(s), ${workers} worker(s)`);
+          envExists = true;
+          const { managers, workers } = tagMap[env];
+          printTableRow(`${env}:`, `${managers} manager(s), ${workers} worker(s)`);
         }
       }
     }
@@ -225,8 +438,6 @@ async function runValidate(options: ValidateOptions): Promise<void> {
     printSuccess(`docker-compose found: ${composePath.replace(projectRoot, '.')}`);
   }
 
-  // Shell-style placeholders resolve to an empty string at deploy time, which is silent
-  // in production — so validate treats them as an error rather than a warning.
   const declaredKeys = collectDeclaredEnvKeys();
   for (const stackFile of [composePath, getAccessoriesPath()]) {
     if (!stackFile) continue;
@@ -239,12 +450,21 @@ async function runValidate(options: ValidateOptions): Promise<void> {
 
   printBlank();
 
-  // ── 5. Result ───────────────────────────────────────────────────────────────
+  // ── 5. k3s offline render (DESIGN-CORE 2.6) ─────────────────────────────────
+  // Only with an env, on k3s, and once every earlier section succeeded enough to name servers.
+
+  if (env && envExists && config && (config.orchestrator ?? 'swarm') === 'k3s') {
+    printSection(`k3s render (${env})`);
+    const renderHasErrors = await runK3sOfflineRender(config, env);
+    if (renderHasErrors) hasErrors = true;
+    else printSuccess(`k3s render — OK`);
+    printBlank();
+  }
+
+  // ── 6. Result ───────────────────────────────────────────────────────────────
 
   if (hasErrors) {
-    throw new ValidationError(
-      'Configuration validation failed — fix the errors above before deploying.',
-    );
+    throw new ValidationError('Configuration validation failed — fix the errors above before deploying.');
   }
 
   printSuccess('All configuration files are valid.');
@@ -253,11 +473,13 @@ async function runValidate(options: ValidateOptions): Promise<void> {
 
 export function registerValidateCommand(program: Command): void {
   program
-    .command('validate')
+    .command('validate [env]')
     .description('Validate .dockflow configuration files without connecting to any server')
     .helpGroup('Setup')
-    .option('--env <env>', 'Also check that a specific environment exists in servers.yml')
-    .action(withErrorHandler(async (options: ValidateOptions) => {
-      await runValidate(options);
-    }));
+    .option('--debug', 'Enable debug output')
+    .action(
+      withErrorHandler(async (env: string | undefined, options: ValidateOptions) => {
+        await runValidate(env, options);
+      }),
+    );
 }

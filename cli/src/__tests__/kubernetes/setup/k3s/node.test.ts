@@ -3,7 +3,8 @@ import { Readable } from 'node:stream';
 import { DOCKFLOW_VERSION } from '../../../../constants';
 import { SETUP_LOCK_FILE } from '../../../../commands/setup/k3s/constants';
 import { inspect, runK3sNodeStep } from '../../../../commands/setup/k3s/node';
-import { buildLocalPlan, buildNodePlan, type K3sNodePlan } from '../../../../commands/setup/k3s/plan';
+import { buildLocalPlan, buildNodePlan, finalizeClusterPlan, type K3sNodeInspection, type K3sNodePlan } from '../../../../commands/setup/k3s/plan';
+import { sha256Hex } from '../../../../utils/hash';
 import * as output from '../../../../utils/output';
 import { FakeHostRunner } from '../../fakes/fake-host-runner';
 import { assertExecutorInvariants } from '../../support/invariants';
@@ -192,5 +193,110 @@ describe('inspect (4.1, N6)', () => {
     const result = await run(JSON.stringify(inspectPlan()), runner);
     expect(result.exitCode).toBe(0);
     expect(await runner.stat(SETUP_LOCK_FILE)).toBeNull();
+  });
+});
+
+describe('dockflowNodeEvent progress lines (3.4)', () => {
+  /** an unmanaged, freshly reachable node: fed straight to `finalizeClusterPlan`, no real `inspect()` needed */
+  function freshLocalInspection(): K3sNodeInspection {
+    return {
+      os: { id: 'ubuntu', versionId: '24.04', kernel: '6.8.0-45-generic', arch: 'amd64', systemd: true, selinux: 'absent' },
+      resources: { cpus: 4, memoryBytes: 8 * 1024 ** 3, varLibFreeBytes: 100 * 1024 ** 3 },
+      network: { localIpv4: ['10.0.0.10'], resolvedHost: null, defaultRouteIp: '10.0.0.10' },
+      commands: { missing: [], packageManager: 'apt-get' },
+      k3s: {
+        binaryVersion: null,
+        unit: null,
+        activeState: null,
+        subState: null,
+        managed: false,
+        state: null,
+        dropinSha256: null,
+        restartSha256: null,
+        dropin: null,
+        foreignConfig: [],
+        unitEnvK3sVars: [],
+        tokenFingerprints: { token: null, agentToken: null },
+        caSha256: null,
+        datastore: null,
+        apiReady: null,
+        netcheckPresent: null,
+        defaultStorageClasses: null,
+      },
+      helmVersion: null,
+      firewall: { ufw: 'absent', firewalld: 'absent' },
+      portsInUse: [],
+      swarmActive: false,
+      dockerPresent: false,
+      nmCloudSetupEnabled: false,
+      wireguardAvailable: true,
+      cgroupMemory: true,
+      ntpSynchronized: true,
+      deployUser: { exists: false, uid: null, home: null, keyAuthorized: false },
+      legacySudoRules: [],
+    };
+  }
+
+  it('prepare emits a start event and a matching finish event around every step, before the result line', async () => {
+    const localCluster = buildLocalPlan({
+      nodeName: KEY,
+      deployUser: 'dockflow',
+      deployPublicKey: PUBLIC_KEY,
+      privateHost: null,
+      publicHost: '10.0.0.10',
+      requestedBackend: null,
+      dockflowVersion: DOCKFLOW_VERSION,
+      flags: { skipFirewall: true },
+    });
+    const resolved = finalizeClusterPlan(localCluster, { [KEY]: freshLocalInspection() });
+    expect(resolved.refusals).toEqual([]);
+    const plan = buildNodePlan({ operation: 'prepare', node: KEY, arch: 'amd64', plan: localCluster, cluster: resolved });
+
+    // self-consistent fake pins (real K3S_PIN/HELM_PIN hashes are of actual release artefacts, unreproducible here)
+    const k3sBytes = Buffer.from('#!fake k3s binary\n');
+    const scriptBytes = Buffer.from('#!/bin/sh\nexit 0\n');
+    const helmBytes = Buffer.from('#!fake helm archive\n');
+    const runner = host();
+    runner.seedCache(k3sBytes);
+    runner.seedCache(scriptBytes);
+    runner.seedCache(helmBytes);
+    const wired: K3sNodePlan = {
+      ...plan,
+      pins: {
+        k3s: {
+          version: plan.pins.k3s.version,
+          binary: { url: 'https://fake.invalid/k3s', sha256: sha256Hex(k3sBytes) },
+          installScript: { url: 'https://fake.invalid/install.sh', sha256: sha256Hex(scriptBytes) },
+        },
+        helm: plan.pins.helm === null ? null : { version: plan.pins.helm.version, archive: { url: 'https://fake.invalid/helm', sha256: sha256Hex(helmBytes) } },
+      },
+    };
+
+    const result = await run(JSON.stringify(wired), runner);
+    expect(result.exitCode).toBe(0);
+    expect(result.lines.length).toBeGreaterThan(1);
+
+    type EventLine = { dockflowNodeEvent: { step: string; status: string; detail?: string } };
+    type ResultLine = { dockflowNodeResult: { steps: { id: string }[] } };
+    const eventLines = result.lines.slice(0, -1) as EventLine[];
+    const resultLine = result.lines.at(-1) as ResultLine;
+    expect(resultLine).toHaveProperty('dockflowNodeResult');
+    for (const line of eventLines) expect(line).toHaveProperty('dockflowNodeEvent');
+
+    const events = eventLines.map((line) => line.dockflowNodeEvent);
+    const starts = events.filter((e) => e.status === 'start').map((e) => e.step);
+    // one start event per recorded step, in the same order the result lists them (3.4's own example: `download-k3s`)
+    expect(starts).toEqual(resultLine.dockflowNodeResult.steps.map((s) => s.id));
+    expect(starts).toContain('download-k3s');
+    const startIndex = events.findIndex((e) => e.step === 'download-k3s' && e.status === 'start');
+    const finishIndex = events.findIndex((e) => e.step === 'download-k3s' && e.status === 'ok');
+    expect(finishIndex).toBeGreaterThan(startIndex);
+  });
+
+  it('inspect (no steps) prints no event lines, only the result (N5 stays exactly one line)', async () => {
+    const runner = withInspectStubs(host());
+    const result = await run(JSON.stringify(inspectPlan()), runner);
+    expect(result.lines).toHaveLength(1);
+    expect(result.lines[0]).toHaveProperty('dockflowNodeResult');
   });
 });

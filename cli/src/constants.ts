@@ -96,6 +96,10 @@ export const DEFAULT_HEALTHCHECK_INTERVAL_S = 5;
 export const CONTROL_WAIT_TIMEOUT_S = 300;
 /** Wait budget of stop, accessories stop, accessories remove and volumes rm */
 export const DELETE_WAIT_TIMEOUT_S = 120;
+/** `status` per-environment budget with one manager (core 8.6 per-command budget table) */
+export const STATUS_BUDGET_SINGLE_MANAGER_MS = 8000;
+/** `status` per-environment budget with several managers: failover probing needs the extra time */
+export const STATUS_BUDGET_MULTI_MANAGER_MS = 20000;
 /** Backup data files without metadata are pruned only past this age: a backup being written has none yet */
 export const BACKUP_ORPHAN_GRACE_H = 24;
 

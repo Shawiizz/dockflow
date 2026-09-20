@@ -1,77 +1,55 @@
 /**
- * Backup API Routes
+ * Backup API Routes (design-06 8.2, 3.20, 4)
  *
- * GET  /api/backup/list?env=&service=         - List backups
+ * GET  /api/backup/list?env=&service=         - List backups (every configured service when omitted)
  * POST /api/backup/create?env=&service=       - Create a backup
- * POST /api/backup/restore?env=&service=&id=  - Restore from a backup
+ * POST /api/backup/restore?env=&service=&id=  - Restore from a backup (`id` is required)
  * POST /api/backup/prune?env=&service=        - Prune old backups (service optional)
  */
 
-import { jsonResponse, errorResponse } from '../server';
-import { loadConfig, getStackName, getAccessoriesStackName, type BackupAccessoryConfig } from '../../utils/config';
-import { getManagerConnection, resolveEnvironment, getAllNodeConnections } from './_helpers';
-import { createBackup, type Backup, type BackupBaseEntry } from '../../services/backup';
-import { requireBackupConfig, listFromAllStacks, listGroupedFromAllStacks, type BackupSource } from '../../commands/backup/utils';
-import type { SSHKeyConnection } from '../../types';
-import type { BackupEntry, BackupListResponse, BackupActionResponse, BackupPruneResponse } from '../types';
+import { resolveService, type Day2Context } from '../../commands/shared/day2';
+import { configuredSources, nounForSource, requireBackupConfig, requireBackupSource, type BackupSource } from '../../commands/backup/utils';
+import { createBackup, type Backup, type BackupBaseEntry, type BackupListEntry } from '../../services/backup';
+import type { StackRef } from '../../services/orchestrator/interfaces';
+import { DeployError, ErrorCode } from '../../utils/errors';
+import { errorResponse, jsonResponse, withOrchestrator, type ApiContext } from './_helpers';
+import type { BackupActionResponse, BackupEntry, BackupListResponse, BackupPruneResponse } from '../types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
-interface BackupContext {
-  env: string;
-  conn: SSHKeyConnection;
-  stackName: string;
-  backupService: Backup;
-  backupConfig: BackupAccessoryConfig;
-  compression: 'gzip' | 'none';
+function refFor(ctx: ApiContext, source: BackupSource): StackRef {
+  return source === 'services' ? ctx.appRef : ctx.accessoryRef;
 }
 
-/** Resolve env and connection — returns an error Response on failure */
-function resolveEnvAndConnection(url: URL): { env: string; conn: SSHKeyConnection } | Response {
-  const env = resolveEnvironment(url.searchParams.get('env'));
-  if (!env) return errorResponse('No environment available', 400);
-
-  const conn = getManagerConnection(env);
-  if (!conn) return errorResponse('Cannot connect to manager', 500);
-
-  return { env, conn };
-}
-
-/** Resolve backup context for a specific service (auto-detects stack) */
-function resolveBackupContextForService(env: string, conn: SSHKeyConnection, service: string): BackupContext | Response {
-  const cfg = getBackupConfig(service);
-  if (cfg instanceof Response) return cfg;
-
-  const stackName = cfg.source === 'services' ? getStackName(env) : getAccessoriesStackName(env);
-  if (!stackName) return errorResponse('No project configured', 400);
-
+/** `resolveService` (shared with the CLI, R-14 included) needs a full `Day2Context`; the API context
+ * carries the same identity fields and has no use for `invalidate`/`lock`'s own memo or laziness. */
+function asDay2Context(ctx: ApiContext): Day2Context {
   return {
-    env, conn, stackName,
-    backupService: createBackup(conn, stackName, getAllNodeConnections(env)),
-    backupConfig: cfg.backupConfig,
-    compression: cfg.compression,
+    ...ctx,
+    invalidate: () => {},
+    lock: () => ctx.orchestrator.lock(ctx.stackName, ctx.config.lock?.stale_threshold_minutes),
   };
 }
 
-/** Map a service entry to the API response shape */
-function toBackupEntry(e: BackupBaseEntry): BackupEntry {
-  return {
-    id: e.id,
-    service: e.service,
-    dbType: e.dbType,
-    timestamp: e.timestamp,
-    size: e.size,
-    sizeBytes: e.sizeBytes,
-  };
-}
-
-/** Load backup config for a service — wraps shared util with Response error handling */
-function getBackupConfig(service: string): { backupConfig: BackupAccessoryConfig; compression: 'gzip' | 'none'; source: BackupSource } | Response {
-  try {
-    return requireBackupConfig(service);
-  } catch {
-    return errorResponse(`No backup configuration for service '${service}'`, 400);
+function groupByService(entries: readonly BackupListEntry[]): Map<string, BackupListEntry[]> {
+  const grouped = new Map<string, BackupListEntry[]>();
+  for (const entry of entries) {
+    const list = grouped.get(entry.service) ?? [];
+    list.push(entry);
+    grouped.set(entry.service, list);
   }
+  return grouped;
+}
+
+function toBackupEntry(entry: BackupBaseEntry): BackupEntry {
+  return {
+    id: entry.id,
+    service: entry.service,
+    dbType: entry.dbType,
+    timestamp: entry.timestamp,
+    size: entry.size,
+    sizeBytes: entry.sizeBytes,
+  };
 }
 
 // ─── Router ───────────────────────────────────────────────────────────────
@@ -107,132 +85,128 @@ export async function handleBackupRoutes(req: Request): Promise<Response> {
  * GET /api/backup/list?env=&service=
  */
 async function listBackups(url: URL): Promise<Response> {
-  const base = resolveEnvAndConnection(url);
-  if (base instanceof Response) return base;
-
   const service = url.searchParams.get('service') || undefined;
 
-  let allEntries: BackupBaseEntry[] = [];
+  return withOrchestrator(
+    url,
+    async (ctx) => {
+      const sources = service ? [requireBackupSource(service).source] : configuredSources();
 
-  if (service) {
-    const ctx = resolveBackupContextForService(base.env, base.conn, service);
-    if (ctx instanceof Response) return ctx;
-    const result = await ctx.backupService.list(service);
-    if (!result.success) return errorResponse(result.error.message, 500);
-    allEntries = result.data;
-  } else {
-    allEntries = await listFromAllStacks(base.conn, base.env);
-  }
+      const entries: BackupListEntry[] = [];
+      const unreachableNodes = new Set<string>();
+      for (const source of sources) {
+        const result = await createBackup(ctx.orchestrator, refFor(ctx, source)).list(service);
+        if (!result.success) throw result.error;
+        entries.push(...result.data.entries);
+        for (const node of result.data.unreachable) unreachableNodes.add(node.name);
+      }
+      entries.sort((a, b) => (a.timestamp < b.timestamp ? 1 : a.timestamp > b.timestamp ? -1 : 0));
 
-  const response: BackupListResponse = {
-    backups: allEntries.map(toBackupEntry),
-    total: allEntries.length,
-  };
-
-  return jsonResponse(response);
+      return jsonResponse({
+        backups: entries.map(toBackupEntry),
+        total: entries.length,
+        unreachableNodes: [...unreachableNodes],
+      } satisfies BackupListResponse);
+    },
+    { failover: false },
+  );
 }
 
 /**
  * POST /api/backup/create?env=&service=
  */
 async function handleCreateBackup(url: URL): Promise<Response> {
-  const base = resolveEnvAndConnection(url);
-  if (base instanceof Response) return base;
-
   const service = url.searchParams.get('service');
   if (!service) return errorResponse('Service name required', 400);
 
-  const ctx = resolveBackupContextForService(base.env, base.conn, service);
-  if (ctx instanceof Response) return ctx;
+  return withOrchestrator(url, async (ctx) => {
+    // ctx.env, not the raw query param: withOrchestrator already resolved the default environment.
+    const { backupConfig, compression, source } = requireBackupConfig(service, ctx.env, 'dockflow backup create');
+    const ref = refFor(ctx, source);
+    const { service: svc } = await resolveService(asDay2Context(ctx), ref, service, { allowHelm: false, noun: nounForSource(source) });
 
-  const result = await ctx.backupService.backup(service, ctx.backupConfig, ctx.compression);
+    const result = await createBackup(ctx.orchestrator, ref).backup(svc.name, backupConfig, compression);
+    if (!result.success) throw result.error;
 
-  if (!result.success) {
-    return errorResponse(result.error.message, 500);
-  }
-
-  const response: BackupActionResponse = {
-    success: true,
-    message: `Backup ${result.data.id} created`,
-    backup: toBackupEntry(result.data),
-  };
-
-  return jsonResponse(response);
+    return jsonResponse({
+      success: true,
+      message: `Backup ${result.data.id} created`,
+      backup: toBackupEntry(result.data),
+    } satisfies BackupActionResponse);
+  });
 }
 
 /**
  * POST /api/backup/restore?env=&service=&id=
+ *
+ * `id` is required: the route never resolves `latest` itself (K64b) — the UI lists backups first
+ * and lets the operator pick one. `forceUnverified` is always `false`: restoring an unverifiable
+ * backup is a CLI-only escape hatch.
  */
 async function restoreBackup(url: URL): Promise<Response> {
-  const base = resolveEnvAndConnection(url);
-  if (base instanceof Response) return base;
-
   const service = url.searchParams.get('service');
   const backupId = url.searchParams.get('id');
 
   if (!service) return errorResponse('Service name required', 400);
+  if (!backupId) return errorResponse('Backup id required', 400);
 
-  const ctx = resolveBackupContextForService(base.env, base.conn, service);
-  if (ctx instanceof Response) return ctx;
+  return withOrchestrator(url, async (ctx) => {
+    const { backupConfig, source } = requireBackupConfig(service, ctx.env, 'dockflow backup restore');
+    const ref = refFor(ctx, source);
+    const { service: svc } = await resolveService(asDay2Context(ctx), ref, service, { allowHelm: false, noun: nounForSource(source) });
 
-  // Resolve backup
-  const resolveResult = await ctx.backupService.resolveBackup(service, backupId ?? undefined);
-  if (!resolveResult.success) {
-    return errorResponse(resolveResult.error.message, 404);
-  }
+    const lock = ctx.orchestrator.lock(ctx.stackName, ctx.config.lock?.stale_threshold_minutes);
+    const acquired = await lock.acquire({ message: `Restore ${svc.name} via WebUI` });
+    if (!acquired.success) {
+      throw new DeployError(acquired.error.message, ErrorCode.DEPLOY_LOCKED);
+    }
+    try {
+      // assertSingleReplica (R-23) and the archive verification run inside Backup.restore itself.
+      const result = await createBackup(ctx.orchestrator, ref).restore(svc.name, backupId, backupConfig, undefined, { forceUnverified: false });
+      if (!result.success) throw result.error;
 
-  const result = await ctx.backupService.restore(service, resolveResult.data.id, ctx.backupConfig, resolveResult.data.compression);
-
-  if (!result.success) {
-    return errorResponse(result.error.message, 500);
-  }
-
-  const response: BackupActionResponse = {
-    success: true,
-    message: `Restored ${service} from backup ${resolveResult.data.id}`,
-  };
-
-  return jsonResponse(response);
+      return jsonResponse({
+        success: true,
+        message: `Restored ${svc.name} from backup ${backupId}`,
+      } satisfies BackupActionResponse);
+    } finally {
+      await lock.release();
+    }
+  });
 }
 
 /**
  * POST /api/backup/prune?env=&service=
  */
 async function pruneBackups(url: URL): Promise<Response> {
-  const base = resolveEnvAndConnection(url);
-  if (base instanceof Response) return base;
-
   const service = url.searchParams.get('service') || undefined;
 
-  const config = loadConfig({ silent: true });
-  const retentionCount = config?.backup?.retention_count ?? 10;
+  return withOrchestrator(
+    url,
+    async (ctx) => {
+      const retentionCount = ctx.config.backup?.retention_count ?? 10;
+      const sources = service ? [requireBackupSource(service).source] : configuredSources();
 
-  let totalPruned = 0;
+      let totalPruned = 0;
+      for (const source of sources) {
+        const ref = refFor(ctx, source);
+        const backupService: Backup = createBackup(ctx.orchestrator, ref);
+        const listed = await backupService.list(service);
+        if (!listed.success) throw listed.error;
 
-  if (service) {
-    const ctx = resolveBackupContextForService(base.env, base.conn, service);
-    if (ctx instanceof Response) return ctx;
-    const result = await ctx.backupService.prune(service, retentionCount);
-    if (!result.success) return errorResponse(result.error.message, 500);
-    totalPruned = result.data;
-  } else {
-    const stackData = await listGroupedFromAllStacks(base.conn, base.env);
-    for (const { backupService, byService } of stackData) {
-      for (const [svc, entries] of Object.entries(byService)) {
-        if (entries.length <= retentionCount) continue;
-        const result = await backupService.prune(svc, retentionCount, entries);
-        if (result.success) totalPruned += result.data;
+        for (const [svcName, svcEntries] of groupByService(listed.data.entries)) {
+          if (svcEntries.length <= retentionCount) continue;
+          const result = await backupService.prune(svcName, retentionCount, { prefetched: svcEntries });
+          if (result.success) totalPruned += result.data.removed;
+        }
       }
-    }
-  }
 
-  const response: BackupPruneResponse = {
-    success: true,
-    pruned: totalPruned,
-    message: service
-      ? `Pruned ${totalPruned} backup(s) for ${service}`
-      : `Pruned ${totalPruned} backup(s)`,
-  };
-
-  return jsonResponse(response);
+      return jsonResponse({
+        success: true,
+        pruned: totalPruned,
+        message: service ? `Pruned ${totalPruned} backup(s) for ${service}` : `Pruned ${totalPruned} backup(s)`,
+      } satisfies BackupPruneResponse);
+    },
+    { failover: false },
+  );
 }

@@ -36,6 +36,7 @@ const K8S_DOCUMENTS = [
   'apis__coordination.k8s.io__v1_openapi.json',
   'apis__storage.k8s.io__v1_openapi.json',
   'apis__rbac.authorization.k8s.io__v1_openapi.json',
+  'apis__apiextensions.k8s.io__v1_openapi.json',
 ];
 const REF_PREFIX = '#/components/schemas/';
 
@@ -56,6 +57,8 @@ const K8S_ROOTS: Record<string, string> = {
   'coordination.k8s.io/v1/Lease': 'io.k8s.api.coordination.v1.Lease',
   'storage.k8s.io/v1/StorageClass': 'io.k8s.api.storage.v1.StorageClass',
   'rbac.authorization.k8s.io/v1/ClusterRoleBinding': 'io.k8s.api.rbac.v1.ClusterRoleBinding',
+  // The pinned Traefik CRDs themselves (design-04 2.5, KubeExecutor.apply before install/upgrade).
+  'apiextensions.k8s.io/v1/CustomResourceDefinition': 'io.k8s.apiextensions-apiserver.pkg.apis.apiextensions.v1.CustomResourceDefinition',
 };
 
 interface CrdRoot {

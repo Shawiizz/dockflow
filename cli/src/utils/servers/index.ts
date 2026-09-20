@@ -1,11 +1,13 @@
 /**
  * Server utilities - barrel export
- * 
+ *
  * This module provides all server-related functionality:
  * - CI secrets resolution
  * - Server resolution from servers.yml
- * - Multi-manager failover
  * - Template context building for Jinja2
+ *
+ * Control-plane resolution (`resolveOrchestratorTarget`, `probeControlPlane`) lives in
+ * `services/orchestrator/target.ts`, not here: `failover.ts` no longer has those exports.
  */
 
 // CI secrets resolution
@@ -30,14 +32,6 @@ export {
   getAllNodeConnections,
   getEnvVarsForEnvironment,
 } from './resolver';
-
-// Manager failover
-export {
-  checkManagerStatus,
-  findActiveManager,
-  type ActiveManagerResult,
-  type FindActiveManagerOptions,
-} from './failover';
 
 // Template context
 export { buildTemplateContext } from './template-context';

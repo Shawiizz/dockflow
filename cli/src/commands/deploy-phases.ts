@@ -1,5 +1,7 @@
 /**
- * Deploy phases — self-contained steps called by `deploy.ts` (design-03 3.4, 12, 19.3).
+ * Deploy phases — self-contained steps called by `deploy.ts` (design-03 3.4, 12, 19.3): image
+ * delivery, uploads (direct SSH, orchestrator-independent) and the audit/metrics/history-sync
+ * write-up, alongside the accessories/app deploy phases proper.
  *
  * Orchestrator-agnostic: every remote effect goes through `ctx.orchestrator`, so the same code runs
  * a k3s or a Swarm deploy (DESIGN-CORE 2.2). k3s-only pieces (the normalizer call inside
@@ -7,12 +9,15 @@
  * `StackDeployInput.sibling`.
  */
 
-import { relative } from 'path';
+import { existsSync, readFileSync, statSync } from 'fs';
+import { basename, dirname, relative, resolve as resolvePath } from 'path';
+import { pipeline } from 'stream/promises';
 import * as Build from '../services/build';
 import * as Compose from '../services/compose';
 import type { ParsedCompose } from '../services/compose';
 import * as Distribution from '../services/distribution';
 import type { ContainerRuntime } from '../services/distribution';
+import * as HistorySync from '../services/history-sync';
 import { createFileResolver } from '../services/orchestrator/file-resolver';
 import { convergenceFailureError, healthFailureError } from '../services/orchestrator/failure';
 import { openOrchestrator } from '../services/orchestrator/factory';
@@ -27,6 +32,7 @@ import type {
   Orchestrator,
   RevertResult,
   StackArtifact,
+  StackBackend,
   StackDeployInput,
   StackRef,
   StackRole,
@@ -38,11 +44,22 @@ import type { StackIdentity } from '../services/orchestrator/kubernetes/model/ty
 import { KubeError } from '../services/orchestrator/kubernetes/runtime/errors';
 import { HealthCheck } from '../services/health-check';
 import { renderedValuesFileLookup, resolveHelmReleases } from '../services/orchestrator/kubernetes/helm/resolve';
-import { HEALTH_STABILITY_WINDOW_S, CONVERGENCE_INTERVAL_S, CONVERGENCE_TIMEOUT_S, DEFAULT_HEALTHCHECK_INTERVAL_S, DEFAULT_HEALTHCHECK_TIMEOUT_S, REGISTRY_PULL_SECRET_NAME } from '../constants';
-import { getLayout, type DockflowConfig, type HealthCheckConfig } from '../utils/config';
-import { OrchestratorUnavailableError } from '../utils/errors';
-import { printDebug, printDim, printInfo, printSuccess, printWarning } from '../utils/output';
-import { sshExec } from '../utils/ssh';
+import {
+  CONVERGENCE_INTERVAL_S,
+  CONVERGENCE_TIMEOUT_S,
+  DEFAULT_HEALTHCHECK_INTERVAL_S,
+  DEFAULT_HEALTHCHECK_TIMEOUT_S,
+  DOCKFLOW_UPLOAD_BACKUPS_DIR,
+  HEALTH_STABILITY_WINDOW_S,
+  REGISTRY_PULL_SECRET_NAME,
+} from '../constants';
+import { getLayout, getPerformer, type DockflowConfig, type HealthCheckConfig, type UploadItem } from '../utils/config';
+import { OrchestratorUnavailableError, DeployError, ErrorCode } from '../utils/errors';
+import { walkDir } from '../utils/fs';
+import { createSpinner, formatBytes, printDebug, printDim, printInfo, printSuccess, printWarning } from '../utils/output';
+import { buildExcludeFilter, packDirToTarGz } from '../utils/tar';
+import { sshExec, sshExecChannel, shellQuote } from '../utils/ssh';
+import type { SSHKeyConnection } from '../types';
 import type { DeployContext } from './deploy-context';
 import { activeNodes } from './deploy-context';
 
@@ -167,6 +184,337 @@ export async function buildAndDistribute(ctx: DeployContext, compose: ParsedComp
 
   await runBuildHook(ctx, 'post-build');
   return { images, engine, delivery };
+}
+
+// ---------------------------------------------------------------------------
+// Uploads (config.uploads): independent of the orchestrator, always over direct SSH (core 2.2
+// "hooks pre-upload ; uploads ; post-upload ; pre-deploy"). Pre-rewrite home of this logic; the
+// rewrite only swaps ClusterConnection/ClusterNode for OrchestratorTarget/ClusterNodeRef.
+// ---------------------------------------------------------------------------
+
+export interface HostUploadState {
+  name: string;
+  conn: SSHKeyConnection;
+  backedUp: string[];
+  created: string[];
+  backedUpDirs: Array<{ dest: string; backup: string }>;
+  createdDirs: string[];
+}
+
+export interface UploadRollbackPlan {
+  hosts: HostUploadState[];
+  backupBaseDir: string;
+}
+
+const UPLOAD_CONCURRENCY = 8;
+
+/** Work-stealing concurrency pool — N workers drain a shared task queue. */
+export async function runWithConcurrency(tasks: Array<() => Promise<void>>, limit: number): Promise<void> {
+  let i = 0;
+  const worker = async () => {
+    let idx: number;
+    while ((idx = i++) < tasks.length) await tasks[idx]();
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+}
+
+export function resolveFileDestPath(dest: string, srcBasename: string): string {
+  return dest.endsWith('/') ? `${dest.replace(/\/$/, '')}/${srcBasename}` : dest;
+}
+
+export function uploadOwnedDir(dest: string, isDirUpload: boolean): string {
+  const clean = dest.replace(/\/$/, '');
+  return isDirUpload || dest.endsWith('/') ? clean : dirname(clean);
+}
+
+export function fileBackupPath(backupBaseDir: string, destPath: string): string {
+  return `${backupBaseDir}/${destPath.replace(/^\//, '')}`;
+}
+
+export function dirBackupPath(backupBaseDir: string, destBase: string): string {
+  return `${backupBaseDir}/${destBase.replace(/^\//, '')}.tar.gz`;
+}
+
+/** Uploads relevant to a partial deploy (--only): scopeless uploads always apply. */
+export function filterUploads(uploads: UploadItem[] | undefined, only?: string): UploadItem[] {
+  if (!uploads || uploads.length === 0) return [];
+  if (!only) return uploads;
+  const serviceFilter = new Set(only.split(',').map((s) => s.trim()));
+  return uploads.filter((u) => {
+    if (!u.service) return true;
+    const services = Array.isArray(u.service) ? u.service : [u.service];
+    return services.some((s) => serviceFilter.has(s));
+  });
+}
+
+export function uploadName(upload: UploadItem): string {
+  return upload.label ?? upload.src;
+}
+
+function filterUploadsByService(ctx: DeployContext): UploadItem[] {
+  return filterUploads(ctx.config.uploads, ctx.options.only);
+}
+
+async function streamDirToHost(
+  srcDir: string,
+  excludePatterns: string[],
+  name: string,
+  conn: SSHKeyConnection,
+  destBase: string,
+  compress: boolean,
+  onProgress?: (bytesProcessed: number) => void,
+  onExtracting?: () => void,
+): Promise<void> {
+  const extractCmd = compress ? `tar xzf - -C '${destBase}'` : `tar xf - -C '${destBase}'`;
+  const { stream, done } = await sshExecChannel(conn, extractCmd);
+  await pipeline(packDirToTarGz(srcDir, excludePatterns, onProgress, compress), stream as unknown as NodeJS.WritableStream);
+  onExtracting?.();
+  const result = await done;
+  if (result.exitCode !== 0) {
+    throw new DeployError(
+      `upload: tar extraction failed at ${destBase} on ${name}: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
+      ErrorCode.DEPLOY_FAILED,
+    );
+  }
+}
+
+/**
+ * Pre-flight permission check for upload destinations, one SSH round trip per node, run before
+ * the build so a permission mistake surfaces immediately rather than after the image is built.
+ */
+export async function checkUploadPermissions(ctx: DeployContext): Promise<void> {
+  const filtered = filterUploadsByService(ctx);
+  if (filtered.length === 0) return;
+
+  const checkFn =
+    'check_path() {\n' +
+    '  local dest="$1" label="$2"\n' +
+    '  if [ -e "$dest" ]; then\n' +
+    '    [ -w "$dest" ] || ERRORS="${ERRORS}$label: not writable: $dest\\n"\n' +
+    '  else\n' +
+    '    local p="$dest"\n' +
+    '    while [ ! -d "$p" ]; do p=$(dirname "$p"); done\n' +
+    '    [ -w "$p" ] || ERRORS="${ERRORS}$label: cannot create $dest (nearest existing parent: $p)\\n"\n' +
+    '  fi\n' +
+    '}';
+  const checks = filtered.map((u) => `check_path ${shellQuote(u.dest)} ${shellQuote(uploadName(u))}`).join('\n');
+  const script = `ERRORS=""\n${checkFn}\n${checks}\n[ -z "$ERRORS" ] || { printf "%b" "$ERRORS"; exit 1; }`;
+
+  const nodes = activeNodes(ctx.target);
+  const failures: string[] = [];
+  printDebug(`Checking upload permissions on ${nodes.length} node(s)...`);
+
+  await Promise.all(
+    nodes.map(async (node) => {
+      const result = await sshExec(node.connection, script);
+      if (result.exitCode !== 0) {
+        const detail = (result.stdout.trim() || result.stderr.trim()).split('\n').map((l) => `    ${l}`).join('\n');
+        failures.push(`  ${node.name}:\n${detail}`);
+      }
+    }),
+  );
+
+  if (failures.length > 0) {
+    const user = ctx.target.controlPlane.connection.user;
+    const commands = filtered.map((u) => {
+      const srcAbs = resolvePath(ctx.projectRoot, u.src);
+      const isDir = existsSync(srcAbs) && statSync(srcAbs).isDirectory();
+      const owned = uploadOwnedDir(u.dest, isDir);
+      return `  mkdir -p '${owned}' && chown ${isDir ? '-R ' : ''}${user}: '${owned}'`;
+    });
+    const destList = [...new Set(commands)].join('\n');
+    throw new DeployError(
+      `Upload permission check failed:\n${failures.join('\n')}`,
+      ErrorCode.DEPLOY_FAILED,
+      `Ensure the deploy user has write access to all upload destinations.\nRun once on each failing server as root:\n${destList}`,
+    );
+  }
+}
+
+export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPlan> {
+  const backupBaseDir = `${DOCKFLOW_UPLOAD_BACKUPS_DIR}/${ctx.stackName}/${ctx.deployVersion}`;
+  const plan: UploadRollbackPlan = {
+    hosts: activeNodes(ctx.target).map((n) => ({ name: n.name, conn: n.connection, backedUp: [], created: [], backedUpDirs: [], createdDirs: [] })),
+    backupBaseDir,
+  };
+
+  const filtered = filterUploadsByService(ctx);
+  if (filtered.length === 0) return plan;
+
+  for (const upload of filtered) {
+    const srcAbs = resolvePath(ctx.projectRoot, upload.src);
+    const srcRel = relative(ctx.projectRoot, srcAbs).replace(/\\/g, '/');
+    const inMemory = ctx.rendered.has(srcRel);
+    if (!inMemory && !existsSync(srcAbs)) {
+      printWarning(`upload: source not found, skipping: ${uploadName(upload)}`);
+      continue;
+    }
+
+    const destBase = upload.dest.replace(/\/$/, '');
+
+    if (!inMemory && statSync(srcAbs).isDirectory()) {
+      const excludePatterns = upload.exclude ?? [];
+
+      await Promise.all(
+        plan.hosts.map(async (hostState) => {
+          const { name, conn } = hostState;
+          const backupPath = dirBackupPath(backupBaseDir, destBase);
+          await sshExec(conn, `mkdir -p '${dirname(backupPath)}'`);
+          const backupResult = await sshExec(
+            conn,
+            `if [ -d '${destBase}' ] && [ -n "$(ls -A '${destBase}' 2>/dev/null)" ]; then tar czf '${backupPath}' -C '${destBase}' . 2>/dev/null && echo backed_up; else echo missing; fi`,
+          );
+          if (backupResult.stdout.trim() === 'backed_up') hostState.backedUpDirs.push({ dest: destBase, backup: backupPath });
+          else hostState.createdDirs.push(destBase);
+
+          const mkdirResult = await sshExec(conn, `mkdir -p '${destBase}'`);
+          if (mkdirResult.exitCode !== 0) {
+            throw new DeployError(
+              `upload: cannot create ${destBase} on ${name}: ${mkdirResult.stderr.trim() || `exit ${mkdirResult.exitCode}`}`,
+              ErrorCode.DEPLOY_FAILED,
+              `The deploy user must own the destination directory. Run once on the server as root:\n  mkdir -p '${destBase}' && chown ${conn.user}: '${destBase}'`,
+            );
+          }
+        }),
+      );
+
+      const compress = upload.compress !== false;
+      const compressFlag = compress ? '' : ' [no compression]';
+
+      if (plan.hosts.length === 1) {
+        const { name, conn } = plan.hosts[0];
+        const isExcluded = buildExcludeFilter(excludePatterns);
+        const totalBytes = walkDir(srcAbs)
+          .filter((f) => !isExcluded(relative(srcAbs, f).replace(/\\/g, '/')))
+          .reduce((sum, f) => sum + statSync(f).size, 0);
+        const totalStr = formatBytes(totalBytes);
+        const spinner = createSpinner();
+        spinner.start(`upload: ${uploadName(upload)}/ -> ${name}:${destBase}/${compressFlag}`);
+        let lastTick = 0;
+        await streamDirToHost(
+          srcAbs,
+          excludePatterns,
+          name,
+          conn,
+          destBase,
+          compress,
+          (bytesProcessed) => {
+            const now = Date.now();
+            if (now - lastTick < 250) return;
+            lastTick = now;
+            const pct = Math.min(99, Math.round((bytesProcessed / (totalBytes || 1)) * 100));
+            spinner.update(`upload: ${uploadName(upload)}/ -> ${name}:${destBase}/ ${formatBytes(bytesProcessed)} / ${totalStr} (${pct}%)`);
+          },
+          () => spinner.update(`upload: unpacking on ${name}...`),
+        );
+        spinner.succeed(`upload: ${uploadName(upload)}/ -> ${name}:${destBase}/ done`);
+        if (upload.permissions) await sshExec(conn, `chmod -R ${upload.permissions} '${destBase}'`);
+        if (upload.owner) await sshExec(conn, `chown -R ${upload.owner} '${destBase}'`);
+      } else {
+        printDebug(`upload: ${uploadName(upload)}/ -> ${destBase}/${compressFlag} [${plan.hosts.length} hosts]`);
+        await Promise.all(
+          plan.hosts.map(async ({ name, conn }) => {
+            await streamDirToHost(srcAbs, excludePatterns, name, conn, destBase, compress);
+            printDebug(`  upload: -> ${name}:${destBase}/ done`);
+            if (upload.permissions) await sshExec(conn, `chmod -R ${upload.permissions} '${destBase}'`);
+            if (upload.owner) await sshExec(conn, `chown -R ${upload.owner} '${destBase}'`);
+          }),
+        );
+      }
+    } else {
+      const destPath = resolveFileDestPath(upload.dest, basename(srcAbs));
+      const backupPath = fileBackupPath(backupBaseDir, destPath);
+      const renderedText = ctx.rendered.get(srcRel);
+      const fileContent = renderedText !== undefined ? Buffer.from(renderedText) : readFileSync(srcAbs);
+
+      await Promise.all(
+        plan.hosts.map(async ({ name, conn }) => {
+          const r = await sshExec(conn, `mkdir -p '${dirname(destPath)}' '${dirname(backupPath)}'`);
+          if (r.exitCode !== 0) {
+            throw new DeployError(
+              `upload: cannot create ${dirname(destPath)} on ${name}: ${r.stderr.trim() || `exit ${r.exitCode}`}`,
+              ErrorCode.DEPLOY_FAILED,
+              `The deploy user must own the destination directory. Run once on the server as root:\n  mkdir -p '${dirname(destPath)}' && chown ${conn.user}: '${dirname(destPath)}'`,
+            );
+          }
+        }),
+      );
+
+      const tasks = plan.hosts.map((hostState) => async () => {
+        const { name, conn } = hostState;
+        const backupResult = await sshExec(conn, `if test -f '${destPath}'; then cp '${destPath}' '${backupPath}' && echo existed; else echo missing; fi`);
+        if (backupResult.stdout.trim() === 'existed') hostState.backedUp.push(destPath);
+        else hostState.created.push(destPath);
+
+        const { stream, done } = await sshExecChannel(conn, `cat > '${destPath}'`);
+        stream.end(fileContent);
+        const result = await done;
+        if (result.exitCode !== 0) {
+          const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
+          throw new DeployError(
+            `upload: failed to transfer ${uploadName(upload)} -> ${destPath} on ${name}: ${detail}`,
+            ErrorCode.DEPLOY_FAILED,
+            `Ensure ${conn.user} has write access to ${dirname(destPath)} on ${name}. Run once as root:\n  mkdir -p '${dirname(destPath)}' && chown ${conn.user}: '${dirname(destPath)}'`,
+          );
+        }
+        if (upload.permissions) {
+          const r = await sshExec(conn, `chmod ${upload.permissions} '${destPath}'`);
+          if (r.exitCode !== 0) {
+            throw new DeployError(`upload: chmod ${upload.permissions} failed on ${destPath} (${name}): ${r.stderr.trim() || `exit ${r.exitCode}`}`, ErrorCode.DEPLOY_FAILED);
+          }
+        }
+        if (upload.owner) {
+          const r = await sshExec(conn, `chown ${upload.owner} '${destPath}'`);
+          if (r.exitCode !== 0) {
+            throw new DeployError(
+              `upload: chown ${upload.owner} failed on ${destPath} (${name}): ${r.stderr.trim() || `exit ${r.exitCode}`}`,
+              ErrorCode.DEPLOY_FAILED,
+              `The deploy user needs sudo rights for chown. Either run once on the server as root:\n  chown ${upload.owner} '${destPath}'\nOr grant the deploy user the right permanently:\n  echo '${conn.user} ALL=(ALL) NOPASSWD: /bin/chown * ${dirname(destPath)}/*' >> /etc/sudoers.d/dockflow`,
+            );
+          }
+        }
+      });
+
+      await runWithConcurrency(tasks, UPLOAD_CONCURRENCY);
+      printDebug(`upload: ${uploadName(upload)} -> ${destPath}`);
+    }
+  }
+
+  return plan;
+}
+
+export async function rollbackUploads(plan: UploadRollbackPlan): Promise<void> {
+  await Promise.all(
+    plan.hosts.map(async ({ conn, backedUp, created, backedUpDirs, createdDirs }) => {
+      for (const destPath of backedUp) {
+        const backupPath = fileBackupPath(plan.backupBaseDir, destPath);
+        const r = await sshExec(conn, `cp '${backupPath}' '${destPath}' && rm -f '${backupPath}'`);
+        if (r.exitCode !== 0) throw new DeployError(`upload rollback: failed to restore '${destPath}': ${r.stderr.trim() || `exit ${r.exitCode}`}`, ErrorCode.DEPLOY_FAILED);
+      }
+      for (const destPath of created) await sshExec(conn, `rm -f '${destPath}'`);
+      for (const { dest, backup } of backedUpDirs) {
+        const tmp = `${dest}.dockflow-restore-${Date.now()}`;
+        const r = await sshExec(conn, `mkdir -p '${tmp}' && tar xzf '${backup}' -C '${tmp}'`);
+        if (r.exitCode !== 0) {
+          await sshExec(conn, `rm -rf '${tmp}'`);
+          throw new DeployError(`upload rollback: failed to extract backup for '${dest}': ${r.stderr.trim() || `exit ${r.exitCode}`}`, ErrorCode.DEPLOY_FAILED);
+        }
+        const swap = await sshExec(conn, `rm -rf '${dest}' && mv '${tmp}' '${dest}'`);
+        if (swap.exitCode !== 0) {
+          throw new DeployError(
+            `upload rollback: failed to restore '${dest}': ${swap.stderr.trim() || `exit ${swap.exitCode}`}\nThe extracted backup is still available at '${tmp}' on the server.`,
+            ErrorCode.DEPLOY_FAILED,
+          );
+        }
+      }
+      for (const dest of createdDirs) await sshExec(conn, `rm -rf '${dest}'`);
+      await sshExec(conn, `rm -rf '${plan.backupBaseDir}'`);
+    }),
+  );
+}
+
+export async function commitUploads(plan: UploadRollbackPlan): Promise<void> {
+  await Promise.all(plan.hosts.map(({ conn }) => sshExec(conn, `rm -rf '${plan.backupBaseDir}'`)));
 }
 
 // ---------------------------------------------------------------------------
@@ -329,6 +677,20 @@ async function revertIfBackend(ctx: DeployContext, receipt: DeployReceipt): Prom
   return result;
 }
 
+/**
+ * `finalize` is documented to never throw (interfaces.ts `StackBackend.finalize`, K33 (a)): both
+ * real backends already turn every internal failure into a warning. This is defense in depth for a
+ * backend that breaks the contract anyway — a throwing prune must never turn a converged, healthy
+ * deploy into a "did we ship it?" failure (U-FLOW-12).
+ */
+async function safeFinalize(stack: StackBackend, receipt: DeployReceipt): Promise<void> {
+  try {
+    await stack.finalize(receipt);
+  } catch (error) {
+    printWarning(`Cleanup after deploy failed: ${message(error)}; the deploy itself succeeded`);
+  }
+}
+
 export async function deployAccessories(ctx: DeployContext, input: StackDeployInput | null): Promise<void> {
   if (!input) return; // skipped or no accessories.yml
   const stack = ctx.orchestrator.stack; // already rendered and printed by execute()
@@ -345,7 +707,7 @@ export async function deployAccessories(ctx: DeployContext, input: StackDeployIn
     const revert = convergence.status === 'reverted' ? NATIVE : await revertIfBackend(ctx, receipt);
     throw convergenceFailureError(convergence, revert, { env: ctx.env, role: 'accessory', previousVersion: null });
   }
-  await stack.finalize(receipt);
+  await safeFinalize(stack, receipt);
   printSuccess('Accessories deployed');
 }
 
@@ -388,7 +750,7 @@ export async function deployApp(ctx: DeployContext, input: StackDeployInput): Pr
     }
   }
 
-  await orch.stack.finalize(receipt); // never throws (I-19)
+  await safeFinalize(orch.stack, receipt);
 }
 
 // ---------------------------------------------------------------------------
@@ -403,10 +765,12 @@ export async function runHTTPHealthChecks(ctx: DeployContext): Promise<void> {
 
 /**
  * Best-effort only: there is nothing left to roll back to if this fails. `on_failure` is forced to
- * `notify` because rolling back a rollback is not an option.
+ * `notify` because rolling back a rollback is not an option. Takes only the two fields it reads
+ * (not a full `DeployContext`) so `dockflow rollback <env>` (design-06 3.13), which has no deploy
+ * context to build, can call it too.
  */
-export async function runPostRollbackHealthChecks(ctx: DeployContext, orchestrator: Orchestrator): Promise<void> {
-  const hc: HealthCheckConfig | undefined = ctx.config.health_checks;
+export async function runPostRollbackHealthChecks(config: DockflowConfig, orchestrator: Orchestrator): Promise<void> {
+  const hc: HealthCheckConfig | undefined = config.health_checks;
   if (hc?.enabled === false || !hc?.endpoints?.length) return;
   const health = new HealthCheck(orchestrator.target.controlPlane.connection);
   await health.checkHTTPEndpoints({ ...hc, on_failure: 'notify' }).catch((e) => printWarning(`Post-rollback health check failed: ${message(e)}`));
@@ -456,4 +820,42 @@ export async function releaseLock(ctx: DeployContext, lock: LockStore, acquired:
     const second = await other.release(); // unconditional, after verifying the holder is this deploy
     if (!second.success) printWarning(`Lock release failed: ${second.error.message}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// History (audit + metrics + sync), best-effort — Swarm-visible, unchanged behaviour (19.3)
+// ---------------------------------------------------------------------------
+
+/** Connections that receive history-sync writes: every active node except the control plane. */
+function historySyncConns(target: DeployContext['target']): SSHKeyConnection[] {
+  return [...target.managers.filter((m) => m.name !== target.controlPlane.name), ...target.workers].map((n) => n.connection);
+}
+
+export async function recordHistory(ctx: DeployContext, status: 'success' | 'failed', durationMs: number, auditMessage: string): Promise<void> {
+  let auditLine = '';
+  let metricsJson = '';
+
+  const [auditResult, metricsResult] = await Promise.allSettled([
+    ctx.audit.writeEntry(ctx.stackName, status === 'success' ? 'deployed' : 'failed', auditMessage, ctx.deployVersion),
+    ctx.metrics.writeDeployment({
+      stackName: ctx.stackName,
+      version: ctx.deployVersion,
+      env: ctx.env,
+      branch: ctx.branchName,
+      status,
+      durationMs,
+      performer: getPerformer(),
+      buildSkipped: !!ctx.options.skipBuild,
+      accessoriesDeployed: !ctx.skipAccessories,
+      nodeCount: activeNodes(ctx.target).length,
+    }),
+  ]);
+
+  if (auditResult.status === 'fulfilled') auditLine = auditResult.value;
+  else printWarning(`Audit write failed: ${message(auditResult.reason)}`);
+
+  if (metricsResult.status === 'fulfilled') metricsJson = metricsResult.value;
+  else printWarning(`Metrics write failed: ${message(metricsResult.reason)}`);
+
+  await HistorySync.syncToAllNodes(historySyncConns(ctx.target), ctx.stackName, auditLine, metricsJson).catch((e) => printWarning(`History sync failed: ${message(e)}`));
 }

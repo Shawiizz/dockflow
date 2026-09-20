@@ -1,73 +1,161 @@
 /**
- * Rollback command - Rollback to previous version
- *
- * Uses the StackBackend abstraction to support both Swarm and k3s.
+ * `dockflow rollback <env> [service]` (design-06 3.13): a full-stack rollback through
+ * `services/release.ts` `rollbackRelease`, or a single service through `StackBackend.rollbackService`.
+ * Both forms take the deploy lock (2.8, U-FLOW-14, design-03 I-16): a rollback re-applies a whole
+ * release (or one service's closure) and must not interleave with a running deploy.
  */
 
 import type { Command } from 'commander';
-import { getPerformer } from '../../utils/config';
-import { createSpinner } from '../../utils/output';
-import { validateEnv } from '../../utils/validation';
-import { createStackBackend } from '../../services/orchestrator/factory';
-import { Release } from '../../services/release';
+import { CONTROL_WAIT_TIMEOUT_S } from '../../constants';
 import { Audit } from '../../services/audit';
 import { Metrics } from '../../services/metrics';
 import * as Notification from '../../services/notification';
-import { withErrorHandler, DeployError, ErrorCode } from '../../utils/errors';
+import type { LockStore } from '../../services/orchestrator/interfaces';
+import { rollbackRelease } from '../../services/release';
+import { getPerformer } from '../../utils/config';
+import { CLIError, DeployError, ErrorCode, UnsupportedOperationError, withErrorHandler } from '../../utils/errors';
+import { createSpinner, printSuccess } from '../../utils/output';
+import { withResolvedEnv } from '../../utils/validation';
 import { runPostRollbackHealthChecks } from '../deploy-phases';
+import { type Day2Context, openDay2, resolveService } from '../shared/day2';
+
+export interface RollbackCommandOptions {
+  server?: string;
+  allowChartDrift?: boolean;
+}
+
+/** Audit entry, deployment metric and webhook, best-effort (today's behaviour, unchanged). */
+async function recordRollback(ctx: Day2Context, params: { version: string; message: string; startTime: number }): Promise<void> {
+  const connection = ctx.orchestrator.target.controlPlane.connection;
+  const audit = new Audit(connection);
+  const metrics = new Metrics(connection);
+  const durationMs = Date.now() - params.startTime;
+  await Promise.allSettled([
+    audit.writeEntry(ctx.stackName, 'rolled_back', params.message, params.version),
+    metrics.writeDeployment({
+      stackName: ctx.stackName,
+      version: params.version,
+      env: ctx.env,
+      branch: '',
+      status: 'rolled_back',
+      durationMs,
+      performer: getPerformer(),
+      buildSkipped: true,
+      accessoriesDeployed: false,
+      nodeCount: 1,
+    }),
+    Notification.notify(ctx.config.notifications?.webhooks, {
+      project: ctx.config.project_name,
+      env: ctx.env,
+      version: params.version,
+      branch: '',
+      performer: getPerformer(),
+      status: 'success',
+      duration_ms: durationMs,
+      message: params.message,
+    }),
+  ]);
+}
+
+/** Acquires the deploy lock, runs `action`, releases it in `finally` (design-06 2.8). */
+async function withRollbackLock<T>(ctx: Day2Context, message: string, version: string | undefined, action: () => Promise<T>): Promise<T> {
+  const lock: LockStore = ctx.lock();
+  const acquireOptions: Parameters<LockStore['acquire']>[0] = version !== undefined ? { message, version } : { message };
+  const acquired = await lock.acquire(acquireOptions);
+  if (!acquired.success) {
+    throw new DeployError(acquired.error.message, ErrorCode.DEPLOY_LOCKED);
+  }
+  try {
+    return await action();
+  } finally {
+    await lock.release();
+  }
+}
+
+async function rollbackFullStack(ctx: Day2Context, options: RollbackCommandOptions): Promise<void> {
+  const startTime = Date.now();
+  // design-03 16.1: rollbackRelease, then the post-rollback HTTP health checks (design-06 3.13,
+  // best-effort, forced to `notify`), then audit/metrics/notification, all before the lock releases.
+  const target = await withRollbackLock(ctx, 'Rollback', 'rollback', async () => {
+    const version = await rollbackRelease(ctx.orchestrator, {
+      ref: ctx.appRef,
+      stackName: ctx.stackName,
+      to: null,
+      failedVersion: null,
+      wait: { timeoutS: CONTROL_WAIT_TIMEOUT_S, intervalS: 5 },
+      ...(options.allowChartDrift ? { allowChartDrift: true } : {}),
+    });
+    await runPostRollbackHealthChecks(ctx.config, ctx.orchestrator);
+    await recordRollback(ctx, { version, message: `Rolled back ${ctx.stackName} to ${version}`, startTime });
+    return version;
+  });
+  printSuccess(`Rolled back to ${target}`);
+}
+
+/** An accessory has no release history (R-12); the defensive backend re-check is never reached from here. */
+async function assertNotAccessory(ctx: Day2Context, name: string): Promise<void> {
+  const accessory = await resolveService(ctx, ctx.accessoryRef, name).catch(() => null);
+  if (accessory) {
+    throw new UnsupportedOperationError(
+      `Service ${accessory.service.name} is an accessory; accessories have no release history`,
+      'Change accessories.yml and run `dockflow deploy <env> --accessories`.',
+    );
+  }
+}
+
+async function rollbackOneService(ctx: Day2Context, name: string): Promise<void> {
+  let svc: { name: string };
+  try {
+    svc = (await resolveService(ctx, ctx.appRef, name)).service;
+  } catch (error) {
+    if (error instanceof CLIError && error.code === ErrorCode.SERVICE_NOT_FOUND) await assertNotAccessory(ctx, name);
+    throw error;
+  }
+
+  const startTime = Date.now();
+  const spinner = createSpinner();
+  const { toVersion } = await withRollbackLock(ctx, `Rollback ${svc.name}`, undefined, async () => {
+    spinner.start(`Rolling back ${svc.name}...`);
+    const result = await ctx.orchestrator.stack.rollbackService(ctx.appRef, svc.name, { wait: true, timeoutS: CONTROL_WAIT_TIMEOUT_S });
+    ctx.invalidate(ctx.appRef);
+    const message = result.toVersion
+      ? `Rolled back ${svc.name} to its definition in release ${result.toVersion}`
+      : `Rolled back ${svc.name} to its previous definition`;
+    spinner.succeed(message);
+    return result;
+  });
+
+  await recordRollback(ctx, {
+    version: 'service-rollback',
+    message: toVersion ? `Rolled back service ${svc.name} to release ${toVersion}` : `Rolled back service ${svc.name} in ${ctx.stackName}`,
+    startTime,
+  });
+}
+
+export async function runRollback(env: string, service: string | undefined, options: RollbackCommandOptions): Promise<void> {
+  const ctx = await openDay2(env, { server: options.server });
+
+  if (ctx.config.no_services) {
+    throw new DeployError(
+      'Rollback is not supported for upload-only projects',
+      ErrorCode.ROLLBACK_FAILED,
+      'To restore a previous version, re-deploy from the corresponding git commit.',
+    );
+  }
+
+  if (service) {
+    await rollbackOneService(ctx, service);
+    return;
+  }
+  await rollbackFullStack(ctx, options);
+}
 
 export function registerRollbackCommand(program: Command): void {
   program
     .command('rollback <env> [service]')
     .description('Rollback to previous version')
     .helpGroup('Operate')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withErrorHandler(async (env: string, service: string | undefined, options: { server?: string }) => {
-      const { config, stackName, connection } = validateEnv(env, options.server);
-
-      if (config.no_services) {
-        throw new DeployError(
-          'Rollback is not supported for upload-only projects',
-          ErrorCode.ROLLBACK_FAILED,
-          'To restore a previous version, re-deploy from the corresponding git commit.',
-        );
-      }
-
-      const orchType = config.orchestrator ?? 'swarm';
-      const orchestrator = createStackBackend(orchType, connection);
-      const audit = new Audit(connection);
-      const metrics = new Metrics(connection);
-      const spinner = createSpinner();
-      const startTime = Date.now();
-
-      if (service) {
-        // Single-service rollback — orchestrator-native (docker service rollback / kubectl rollout undo)
-        spinner.start(`Rolling back ${stackName}_${service}...`);
-        await orchestrator.rollbackService(stackName, service);
-        spinner.succeed(`Rolled back ${stackName}_${service}`);
-
-        const durationMs = Date.now() - startTime;
-        const message = `Rolled back service ${service} in ${stackName}`;
-        await Promise.allSettled([
-          audit.writeEntry(stackName, 'rolled_back', message, 'service-rollback'),
-          metrics.writeDeployment({ stackName, version: 'service-rollback', env, branch: '', status: 'rolled_back', durationMs, performer: getPerformer(), buildSkipped: true, accessoriesDeployed: false, nodeCount: 1 }),
-          Notification.notify(config.notifications?.webhooks, { project: config.project_name, env, version: 'service-rollback', branch: '', performer: getPerformer(), status: 'success', duration_ms: durationMs, message }),
-        ]);
-      } else {
-        // Full stack rollback — redeploy previous release compose and update symlink
-        spinner.start('Rolling back to previous release...');
-        const releases = new Release(connection);
-        const rolledBackTo = await releases.rollback(stackName, orchestrator);
-        spinner.succeed(`Rolled back to ${rolledBackTo}`);
-        await runPostRollbackHealthChecks(connection, orchestrator, stackName, config.health_checks);
-
-        const durationMs = Date.now() - startTime;
-        const message = `Rolled back ${stackName} to ${rolledBackTo}`;
-        await Promise.allSettled([
-          audit.writeEntry(stackName, 'rolled_back', message, rolledBackTo),
-          metrics.writeDeployment({ stackName, version: rolledBackTo, env, branch: '', status: 'rolled_back', durationMs, performer: getPerformer(), buildSkipped: true, accessoriesDeployed: false, nodeCount: 1 }),
-          Notification.notify(config.notifications?.webhooks, { project: config.project_name, env, version: rolledBackTo, branch: '', performer: getPerformer(), status: 'success', duration_ms: durationMs, message }),
-        ]);
-      }
-    }));
+    .option('-s, --server <name>', 'Target server (defaults to first ready manager)')
+    .option('--allow-chart-drift', 'Reinstall a Helm release even when its chart bytes changed upstream (full rollback only)')
+    .action(withErrorHandler(withResolvedEnv(runRollback)));
 }

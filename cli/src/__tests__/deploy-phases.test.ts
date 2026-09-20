@@ -12,18 +12,30 @@ import {
   declaredHelmNames,
   deployAccessories,
   deployApp,
+  dirBackupPath,
   ensureRegistryAccess,
+  fileBackupPath,
+  filterUploads,
   isControlPlaneLoss,
   parseOnly,
   printArtifactDiagnostics,
+  recordHistory,
   releaseLock,
+  resolveFileDestPath,
+  runPostRollbackHealthChecks,
+  runWithConcurrency,
   settles,
+  uploadName,
+  uploadOwnedDir,
 } from '../commands/deploy-phases';
 import type { Audit } from '../services/audit';
+import { HealthCheck } from '../services/health-check';
+import * as HistorySync from '../services/history-sync';
 import type { Metrics } from '../services/metrics';
 import type { DeployReceipt, ResolvedHelmRelease, StackArtifact, StackRef } from '../services/orchestrator/interfaces';
 import { KubeError } from '../services/orchestrator/kubernetes/runtime/errors';
 import { err, ok } from '../types/result';
+import type { UploadItem } from '../utils/config';
 import { DeployError, ErrorCode, OrchestratorUnavailableError } from '../utils/errors';
 import * as output from '../utils/output';
 import { FakeOrchestrator } from './kubernetes/fakes/fake-orchestrator';
@@ -256,6 +268,14 @@ describe('deployAccessories', () => {
     await expect(deployAccessories(fakeContext(orchestrator), deployInput({ ref: { role: 'accessory' } }))).rejects.toThrow(DeployError);
     expect(orchestrator.callsTo('stack.revert')).toHaveLength(0);
   });
+
+  it('a rejecting finalize becomes a warning, not a thrown error (K33 (a), U-FLOW-12)', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    orchestrator.program('stack.finalize', new Error('prune failed: Forbidden'));
+    await deployAccessories(fakeContext(orchestrator), deployInput({ ref: { role: 'accessory' } }));
+    expect(recorded.warn).toEqual(['Cleanup after deploy failed: prune failed: Forbidden; the deploy itself succeeded']);
+    expect(recorded.success).toEqual(['Accessories deployed']);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -329,6 +349,14 @@ describe('deployApp', () => {
     expect(thrown).toBeInstanceOf(DeployError);
     expect((thrown as DeployError).code).toBe(ErrorCode.HEALTH_CHECK_FAILED);
     expect(ctx.appSettled).toBe(true);
+  });
+
+  it('a rejecting finalize becomes a warning, not a thrown error (K33 (a), U-FLOW-12)', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    orchestrator.program('stack.finalize', new Error('GC failed: Forbidden'));
+    const ctx = fakeContext(orchestrator);
+    await deployApp(ctx, deployInput()); // must resolve, not reject
+    expect(recorded.warn).toEqual(['Cleanup after deploy failed: GC failed: Forbidden; the deploy itself succeeded']);
   });
 });
 
@@ -499,5 +527,236 @@ describe('releaseLock', () => {
     await releaseLock(ctx, lock, acquired.data);
 
     expect(recorded.warn).toEqual(['Lock release failed: also unreachable']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Uploads — pure helpers (ClusterConnection/ClusterNode adapted to OrchestratorTarget/ClusterNodeRef)
+// ---------------------------------------------------------------------------
+
+describe('filterUploads', () => {
+  const uploads: UploadItem[] = [
+    { src: 'global.conf', dest: '/etc/global.conf' }, // no service
+    { src: 'web.conf', dest: '/etc/web.conf', service: 'web' }, // string service
+    { src: 'shared.conf', dest: '/etc/shared.conf', service: ['web', 'api'] }, // array service
+  ];
+
+  it('no uploads -> empty list', () => {
+    expect(filterUploads(undefined)).toEqual([]);
+    expect(filterUploads([])).toEqual([]);
+  });
+
+  it('no --only filter -> everything', () => {
+    expect(filterUploads(uploads)).toHaveLength(3);
+  });
+
+  it('uploads without service always apply', () => {
+    const result = filterUploads(uploads, 'worker');
+    expect(result.map((u) => u.src)).toEqual(['global.conf']);
+  });
+
+  it('string service matches', () => {
+    const result = filterUploads(uploads, 'web');
+    expect(result.map((u) => u.src)).toEqual(['global.conf', 'web.conf', 'shared.conf']);
+  });
+
+  it('array service matches any targeted service', () => {
+    const result = filterUploads(uploads, 'api');
+    expect(result.map((u) => u.src)).toEqual(['global.conf', 'shared.conf']);
+  });
+
+  it('comma-separated filter with spaces', () => {
+    expect(filterUploads(uploads, 'worker, web')).toHaveLength(3);
+  });
+});
+
+describe('resolveFileDestPath', () => {
+  it('trailing slash -> dest dir + source basename', () => {
+    expect(resolveFileDestPath('/etc/app/', 'config.yml')).toBe('/etc/app/config.yml');
+  });
+
+  it('no trailing slash -> dest used verbatim (rename allowed)', () => {
+    expect(resolveFileDestPath('/etc/app/renamed.yml', 'config.yml')).toBe('/etc/app/renamed.yml');
+  });
+});
+
+describe('upload backup paths', () => {
+  const base = '/var/lib/dockflow/upload-backups/shop-production/1.4.2';
+
+  it('file backup mirrors the destination path under the backup dir', () => {
+    expect(fileBackupPath(base, '/etc/app/config.yml')).toBe(`${base}/etc/app/config.yml`);
+  });
+
+  it('dir backup is a tar.gz named after the destination', () => {
+    expect(dirBackupPath(base, '/srv/app')).toBe(`${base}/srv/app.tar.gz`);
+  });
+
+  it('invariant: rollback reads the exact path upload wrote', () => {
+    // uploadFiles writes fileBackupPath(base, destPath); rollbackUploads recomputes it from the
+    // same inputs — they must always agree.
+    const destPath = resolveFileDestPath('/etc/nginx/', 'site.conf');
+    expect(fileBackupPath(base, destPath)).toBe(`${base}/etc/nginx/site.conf`);
+  });
+});
+
+describe('runWithConcurrency', () => {
+  it('runs every task exactly once', async () => {
+    const done: number[] = [];
+    const tasks = Array.from({ length: 10 }, (_, i) => async () => {
+      done.push(i);
+    });
+    await runWithConcurrency(tasks, 3);
+    expect(done.sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  });
+
+  it('never exceeds the concurrency limit', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const tasks = Array.from({ length: 12 }, () => async () => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((r) => setTimeout(r, 5));
+      active--;
+    });
+    await runWithConcurrency(tasks, 4);
+    expect(maxActive).toBeLessThanOrEqual(4);
+  });
+
+  it('propagates task errors', async () => {
+    const tasks = [
+      async () => {},
+      async () => {
+        throw new Error('boom');
+      },
+    ];
+    await expect(runWithConcurrency(tasks, 2)).rejects.toThrow('boom');
+  });
+
+  it('handles an empty task list', async () => {
+    await expect(runWithConcurrency([], 4)).resolves.toBeUndefined();
+  });
+});
+
+describe('uploadOwnedDir', () => {
+  it('file destination -> the directory holding it', () => {
+    expect(uploadOwnedDir('/var/lib/app/seed/data.sql', false)).toBe('/var/lib/app/seed');
+  });
+
+  it('directory upload -> the destination itself', () => {
+    expect(uploadOwnedDir('/etc/nginx/conf.d', true)).toBe('/etc/nginx/conf.d');
+  });
+
+  it('trailing slash means a directory even for a single file', () => {
+    expect(uploadOwnedDir('/etc/nginx/conf.d/', false)).toBe('/etc/nginx/conf.d');
+  });
+
+  it('strips the trailing slash of a directory upload', () => {
+    expect(uploadOwnedDir('/srv/app/', true)).toBe('/srv/app');
+  });
+
+  it('file at the filesystem root', () => {
+    expect(uploadOwnedDir('/motd', false)).toBe('/');
+  });
+});
+
+describe('uploadName', () => {
+  it('a project upload is named by its source path', () => {
+    expect(uploadName({ src: '.dockflow/services/app.service', dest: '/etc/systemd/system/app.service' })).toBe('.dockflow/services/app.service');
+  });
+
+  it('a plugin upload is named by its label, not by its in-memory key', () => {
+    expect(uploadName({ src: '.dockflow/plugins/.instances/nginx/plugin/vhost.conf', dest: '/x', label: 'nginx › vhost.conf' })).toBe('nginx › vhost.conf');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// recordHistory (audit + metrics + sync, 19.3)
+// ---------------------------------------------------------------------------
+
+function fakeAudit(writeEntry: Audit['writeEntry']): Audit {
+  return { writeEntry } as unknown as Audit;
+}
+
+function fakeMetrics(writeDeployment: Metrics['writeDeployment']): Metrics {
+  return { writeDeployment } as unknown as Metrics;
+}
+
+describe('recordHistory', () => {
+  it('writes audit + metrics, then syncs both to every active node but the control plane', async () => {
+    const orchestrator = new FakeOrchestrator('k3s', { target: { managers: [nodeRef('server_1'), nodeRef('server_2')] } });
+    const auditCalls: unknown[][] = [];
+    const audit = fakeAudit(async (...args) => {
+      auditCalls.push(args);
+      return 'audit-line';
+    });
+    const metrics = fakeMetrics(async () => 'metrics-json');
+    const syncSpy = spyOn(HistorySync, 'syncToAllNodes').mockResolvedValue(undefined);
+
+    const ctx = fakeContext(orchestrator, { audit, metrics });
+    await recordHistory(ctx, 'success', 1234, 'Deployed 1.4.2 to production successfully');
+
+    expect(auditCalls).toEqual([[ctx.stackName, 'deployed', 'Deployed 1.4.2 to production successfully', ctx.deployVersion]]);
+    expect(syncSpy).toHaveBeenCalledTimes(1);
+    const [conns, stackName, auditLine, metricsJson] = syncSpy.mock.calls[0] as [unknown[], string, string, string];
+    expect(conns).toHaveLength(2); // server_2 + agent_1, never the control plane (server_1)
+    expect(stackName).toBe(ctx.stackName);
+    expect(auditLine).toBe('audit-line');
+    expect(metricsJson).toBe('metrics-json');
+    expect(recorded.warn).toEqual([]);
+
+    syncSpy.mockRestore();
+  });
+
+  it('a failing audit or metrics write is a warning, never thrown, and history sync still runs', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    const audit = fakeAudit(async () => {
+      throw new Error('disk full');
+    });
+    const metrics = fakeMetrics(async () => 'metrics-json');
+    const syncSpy = spyOn(HistorySync, 'syncToAllNodes').mockResolvedValue(undefined);
+
+    const ctx = fakeContext(orchestrator, { audit, metrics });
+    await recordHistory(ctx, 'failed', 500, 'Deploy 1.4.2 to production failed: boom');
+
+    expect(recorded.warn).toEqual(['Audit write failed: disk full']);
+    expect(syncSpy).toHaveBeenCalledTimes(1);
+    // the audit line could not be written: history sync still runs, with an empty audit line
+    expect(syncSpy.mock.calls[0][2]).toBe('');
+
+    syncSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runPostRollbackHealthChecks — (config, orchestrator), not a full DeployContext, so
+// `dockflow rollback <env>` (design-06 3.13) can call it without building one
+// ---------------------------------------------------------------------------
+
+describe('runPostRollbackHealthChecks', () => {
+  it('no health_checks configured: does nothing', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    await runPostRollbackHealthChecks(config(), orchestrator);
+    expect(recorded.warn).toEqual([]);
+  });
+
+  it('health_checks.enabled: false: does nothing even with endpoints configured', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    const cfg = config({ health_checks: { enabled: false, endpoints: [{ url: 'https://shop.example.com/health' }] } });
+    await runPostRollbackHealthChecks(cfg, orchestrator);
+    expect(recorded.warn).toEqual([]);
+  });
+
+  it('a failing endpoint check becomes a warning, never thrown (best-effort, on_failure forced to notify)', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    const cfg = config({ health_checks: { endpoints: [{ url: 'https://shop.example.com/health' }], on_failure: 'fail' } });
+    const spy = spyOn(HealthCheck.prototype, 'checkHTTPEndpoints').mockRejectedValue(new Error('HTTP health checks failed: https://shop.example.com/health'));
+
+    await runPostRollbackHealthChecks(cfg, orchestrator);
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0][0].on_failure).toBe('notify'); // never rolls back a rollback
+    expect(recorded.warn).toEqual(['Post-rollback health check failed: HTTP health checks failed: https://shop.example.com/health']);
+
+    spy.mockRestore();
   });
 });

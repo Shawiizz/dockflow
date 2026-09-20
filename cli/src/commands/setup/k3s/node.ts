@@ -137,6 +137,17 @@ function emit(result: NodeStepResult): void {
   printRaw(JSON.stringify({ dockflowNodeResult: result }));
 }
 
+/** Live per-step progress (3.4): one line per step, `start` before the work and the outcome after. */
+function emitEvent(step: string, status: 'start' | 'ok' | 'skip' | 'warn', detail?: string): void {
+  printRaw(JSON.stringify({ dockflowNodeEvent: detail === undefined ? { step, status } : { step, status, detail } }));
+}
+
+/** Records a step in the result and mirrors it as a progress event; `failed` is reported only in the final result (3.4 status enum has no `failed`). */
+function finishStep(steps: StepResult[], entry: StepResult): void {
+  steps.push(entry);
+  if (entry.status !== 'failed') emitEvent(entry.id, entry.status, entry.detail);
+}
+
 function describeError(error: unknown, redactor: Redactor): { message: string; suggestion: string; logTail: string[] } {
   if (error instanceof SetupStepError) {
     return { message: redactor.redact(error.message), suggestion: redactor.redact(error.suggestion ?? ''), logTail: error.logTail.map((line) => redactor.redact(line)) };
@@ -393,31 +404,38 @@ async function runPrepare(runner: HostRunner, plan: K3sNodePlan): Promise<{ step
   const steps: StepResult[] = [];
   const warnings: string[] = [];
 
+  // deploy-user before dockflow-dir (design-05 4.3 order): ensureDockflowDir chowns to the deploy
+  // user, who must already exist on a fresh node with a non-root deploy user.
+  emitEvent('deploy-user', 'start');
+  if (node.deployUser !== 'root' && node.deployPublicKey !== null) {
+    await ensureDeployUser(node.deployUser, node.deployPublicKey, { runner, passwordless: true });
+  }
+  finishStep(steps, { id: 'deploy-user', status: 'ok' });
+
+  emitEvent('dockflow-dir', 'start');
   await ensureDockflowDir(node.deployUser, runner);
   if (node.role !== 'agent') {
     const user = await runner.lookupUser(node.deployUser);
     if (user !== null) await ensureHelmDirectories(runner, user);
   }
-  steps.push({ id: 'dockflow-dir', status: 'ok' });
+  finishStep(steps, { id: 'dockflow-dir', status: 'ok' });
 
-  if (node.deployUser !== 'root' && node.deployPublicKey !== null) {
-    await ensureDeployUser(node.deployUser, node.deployPublicKey, { runner, passwordless: true });
-  }
-  steps.push({ id: 'deploy-user', status: 'ok' });
-
+  emitEvent('sudoers', 'start');
   await configureServiceAccess(node.deployUser, 'k3s', { runner, key: node.key, onWarning: (message) => warnings.push(message) });
-  steps.push({ id: 'sudoers', status: 'ok' });
+  finishStep(steps, { id: 'sudoers', status: 'ok' });
 
+  emitEvent('legacy-sudoers', 'start');
   const legacy = await findLegacySudoRules(runner);
   if (legacy.length > 0) {
     warnings.push(userMessages.legacySudoRules(node.key, legacy).message);
-    steps.push({ id: 'legacy-sudoers', status: 'warn', detail: legacy.join(', ') });
+    finishStep(steps, { id: 'legacy-sudoers', status: 'warn', detail: legacy.join(', ') });
   } else {
-    steps.push({ id: 'legacy-sudoers', status: 'ok' });
+    finishStep(steps, { id: 'legacy-sudoers', status: 'ok' });
   }
 
+  emitEvent('firewall', 'start');
   if (plan.options.skipFirewall || cluster.firewallTool === null) {
-    steps.push({ id: 'firewall', status: 'skip' });
+    finishStep(steps, { id: 'firewall', status: 'skip' });
   } else {
     const status = await probeFirewall(runner);
     const rules = buildFirewallRules(
@@ -432,19 +450,23 @@ async function runPrepare(runner: HostRunner, plan: K3sNodePlan): Promise<{ step
       nodeIp: cluster.network.nodeIp,
       skipFirewall: plan.options.skipFirewall,
     });
-    steps.push({ id: 'firewall', status: 'ok' });
+    finishStep(steps, { id: 'firewall', status: 'ok' });
   }
 
+  emitEvent('download-k3s', 'start');
   await downloadToCache(runner, k3sBinaryComponent(plan.pins.k3s.version, plan.pins.k3s.binary), node.key);
-  steps.push({ id: 'download-k3s', status: 'ok' });
+  finishStep(steps, { id: 'download-k3s', status: 'ok' });
+  emitEvent('download-install-script', 'start');
   await downloadToCache(runner, installScriptComponent(plan.pins.k3s.version, plan.pins.k3s.installScript), node.key);
-  steps.push({ id: 'download-install-script', status: 'ok' });
+  finishStep(steps, { id: 'download-install-script', status: 'ok' });
   if (node.role !== 'agent' && plan.pins.helm !== null) {
+    emitEvent('download-helm', 'start');
     await downloadToCache(runner, helmComponent(plan.pins.helm), node.key);
-    steps.push({ id: 'download-helm', status: 'ok' });
+    finishStep(steps, { id: 'download-helm', status: 'ok' });
+    emitEvent('download-traefik-chart', 'start');
     const chart = await cacheTraefikChart(runner, { key: node.key, deployUser: node.deployUser });
     if (chart.warning !== null) warnings.push(chart.warning.message);
-    steps.push({ id: 'download-traefik-chart', status: chart.warning !== null ? 'warn' : 'ok' });
+    finishStep(steps, { id: 'download-traefik-chart', status: chart.warning !== null ? 'warn' : 'ok' });
   }
 
   return { steps, warnings };
@@ -508,11 +530,13 @@ async function runInstall(runner: HostRunner, plan: K3sNodePlan, clock: Clock, r
   const kind = cluster.action.kind;
   const freshInstall = kind === 'install' || kind === 'repair';
 
+  emitEvent('verify-cache', 'start');
   if (freshInstall) {
     await downloadToCache(runner, k3sBinaryComponent(plan.pins.k3s.version, plan.pins.k3s.binary), node.key);
   }
-  steps.push({ id: 'verify-cache', status: freshInstall ? 'ok' : 'skip' });
+  finishStep(steps, { id: 'verify-cache', status: freshInstall ? 'ok' : 'skip' });
 
+  emitEvent('tokens', 'start');
   let generatedAgentToken: string | null = null;
   if (node.role === 'server-init' && plan.tokens.agent === null && freshInstall) {
     generatedAgentToken = generateAgentToken();
@@ -523,8 +547,9 @@ async function runInstall(runner: HostRunner, plan: K3sNodePlan, clock: Clock, r
     await runner.mkdir(TOKEN_DIRECTORY.path, { mode: TOKEN_DIRECTORY.mode, uid: 0, gid: 0 });
     for (const file of tokenFiles) await writeFileAtomic(runner, file.path, file.content, { mode: file.mode, uid: 0, gid: 0 });
   }
-  steps.push({ id: 'tokens', status: tokenFiles.length > 0 ? 'ok' : 'skip' });
+  finishStep(steps, { id: 'tokens', status: tokenFiles.length > 0 ? 'ok' : 'skip' });
 
+  emitEvent('config', 'start');
   const render = renderK3sConfig(node, {
     env: plan.env,
     addressMode: cluster.addressMode,
@@ -538,16 +563,18 @@ async function runInstall(runner: HostRunner, plan: K3sNodePlan, clock: Clock, r
     if (!(await fileMatches(runner, K3S_CONFIG_DROPIN, render.content, { mode: K3S_CONFIG_DROPIN_MODE, uid: 0, gid: 0 }))) {
       await writeFileAtomic(runner, K3S_CONFIG_DROPIN, render.content, { mode: K3S_CONFIG_DROPIN_MODE, uid: 0, gid: 0 });
     }
-    steps.push({ id: 'config', status: 'ok' });
+    finishStep(steps, { id: 'config', status: 'ok' });
   } else {
-    steps.push({ id: 'config', status: 'skip' });
+    finishStep(steps, { id: 'config', status: 'skip' });
   }
 
   if (freshInstall) {
+    emitEvent('binary', 'start');
     await installK3sBinary(runner, k3sBinaryComponent(plan.pins.k3s.version, plan.pins.k3s.binary), node.key);
-    steps.push({ id: 'binary', status: 'ok' });
+    finishStep(steps, { id: 'binary', status: 'ok' });
   }
 
+  if (freshInstall) emitEvent('join-probe', 'start');
   if (freshInstall && node.role !== 'server-init' && cluster.joinUrl !== null) {
     const probe = await runner.run(['curl', '-sk', '--max-time', '5', '-o', '/dev/null', '-w', '%{http_code}', `${cluster.joinUrl}/cacerts`]);
     if (probe.stdout.trim() !== '200') {
@@ -557,28 +584,32 @@ async function runInstall(runner: HostRunner, plan: K3sNodePlan, clock: Clock, r
       );
     }
   }
-  if (freshInstall) steps.push({ id: 'join-probe', status: node.role === 'server-init' ? 'skip' : 'ok' });
+  if (freshInstall) finishStep(steps, { id: 'join-probe', status: node.role === 'server-init' ? 'skip' : 'ok' });
 
   if (freshInstall) {
+    emitEvent('install-script', 'start');
     await runInstallScript(runner, installScriptComponent(plan.pins.k3s.version, plan.pins.k3s.installScript), node.role, node.key, { redactor });
-    steps.push({ id: 'install-script', status: 'ok' });
+    finishStep(steps, { id: 'install-script', status: 'ok' });
   }
 
+  emitEvent('restart', 'start');
   const unit = k3sUnitFor(node.role);
   if (kind !== 'noop') {
     const verb = kind === 'start' ? 'start' : 'restart';
     await runner.run(['systemctl', verb, '--no-block', unit]);
   }
-  steps.push({ id: 'restart', status: kind === 'noop' ? 'skip' : 'ok' });
+  finishStep(steps, { id: 'restart', status: kind === 'noop' ? 'skip' : 'ok' });
 
+  emitEvent('wait-service', 'start');
   if (kind !== 'noop') {
     await waitForService(runner, clock, { key: node.key, role: node.role, joinUrl: cluster.joinUrl, redactor });
   }
-  steps.push({ id: 'wait-service', status: kind === 'noop' ? 'skip' : 'ok' });
+  finishStep(steps, { id: 'wait-service', status: kind === 'noop' ? 'skip' : 'ok' });
 
+  emitEvent('state', 'start');
   const caSha256 = await computeCaSha256(runner, node.role);
   await writeNodeState(runner, plan, render.sha256, render.restartSha256, caSha256, clock.now().toISOString());
-  steps.push({ id: 'state', status: 'ok' });
+  finishStep(steps, { id: 'state', status: 'ok' });
 
   let tokens: { server: string; agent: string } | null = null;
   if (node.role === 'server-init' && generatedAgentToken !== null) {
@@ -597,14 +628,16 @@ async function runControlPlane(runner: HostRunner, plan: K3sNodePlan, clock: Clo
   const kube = hostKubeExecutor(runner, node.key, { redactor });
   const steps: StepResult[] = [];
 
+  emitEvent('helm', 'start');
   let helmVersion = '';
   if (plan.pins.helm !== null) {
     const arch = await nodeArch(runner, node.key);
     const helm = await installHelm(runner, plan.pins.helm, arch, node.key);
     helmVersion = helm.version;
   }
-  steps.push({ id: 'helm', status: 'ok' });
+  finishStep(steps, { id: 'helm', status: 'ok' });
 
+  emitEvent('system-objects', 'start');
   await applySystemObjects(kube, { env: plan.env });
   let token: string;
   if (plan.options.rotateDeployToken && node.role === 'server-init') {
@@ -614,22 +647,28 @@ async function runControlPlane(runner: HostRunner, plan: K3sNodePlan, clock: Clo
     token = await waitForDeployerToken(kube, clock, { env: plan.env });
   }
   redactor.add([token]);
-  steps.push({ id: 'system-objects', status: 'ok' });
+  finishStep(steps, { id: 'system-objects', status: 'ok' });
 
+  emitEvent('storage-default', 'start');
   const storageDefault = await assertSingleDefaultStorageClass(kube, { env: plan.env });
-  steps.push({ id: 'storage-default', status: 'ok' });
-  steps.push({ id: 'deployer-token', status: 'ok' });
+  finishStep(steps, { id: 'storage-default', status: 'ok' });
+  // the token itself was already awaited as part of system-objects; this step only records that it happened
+  emitEvent('deployer-token', 'start');
+  finishStep(steps, { id: 'deployer-token', status: 'ok' });
 
+  emitEvent('kubeconfig', 'start');
   const caPem = (await runner.readFile(K3S_SERVER_CA))?.toString('utf8') ?? '';
   const user = await runner.lookupUser(node.deployUser);
   const kubeconfig = user === null ? 'unchanged' : await writeKubeconfig(runner, user, caPem, token);
-  steps.push({ id: 'kubeconfig', status: 'ok' });
+  finishStep(steps, { id: 'kubeconfig', status: 'ok' });
 
+  emitEvent('encryption-status', 'start');
   const encryptionRaw = await runner.run([K3S_BINARY, 'secrets-encrypt', 'status', '-o', 'json']);
   const { status: encryption, problem: encryptionProblem } = evaluateEncryptionStatus(encryptionRaw.stdout, node.key);
   if (encryptionProblem !== null) throw new SetupStepError(encryptionProblem.message, encryptionProblem.suggestion);
-  steps.push({ id: 'encryption-status', status: 'ok' });
+  finishStep(steps, { id: 'encryption-status', status: 'ok' });
 
+  emitEvent('traefik-absent', 'start');
   const traefikCharts = await kube.getJson<{ metadata: { name: string } }>(['helmcharts.helm.cattle.io'], { namespace: 'kube-system', allowNotFound: true });
   const traefikDeployments = await kube.getJson<{ metadata: { name: string } }>(['deployments.apps'], { namespace: 'kube-system', name: 'traefik', allowNotFound: true });
   const traefikBundled = traefikCharts.some((c) => c.metadata.name === 'traefik' || c.metadata.name === 'traefik-crd') || traefikDeployments.length > 0;
@@ -639,7 +678,7 @@ async function runControlPlane(runner: HostRunner, plan: K3sNodePlan, clock: Clo
       'Dockflow installs its own Traefik (proxy.enabled); reset the cluster or remove the kube-system HelmCharts traefik and traefik-crd.',
     );
   }
-  steps.push({ id: 'traefik-absent', status: 'ok' });
+  finishStep(steps, { id: 'traefik-absent', status: 'ok' });
 
   return { steps, report: { helmVersion, kubeconfig, encryption, traefikBundled: false, storageDefault } };
 }
@@ -666,22 +705,25 @@ async function runFinalize(runner: HostRunner, plan: K3sNodePlan, clock: Clock):
   const kube = hostKubeExecutor(runner, node.key);
   const steps: StepResult[] = [];
 
+  emitEvent('stale-helper-cleanup', 'start');
   const removed = await removeNetcheckDaemonSet(kube);
-  steps.push({ id: 'stale-helper-cleanup', status: removed === 'removed' ? 'ok' : 'skip' });
+  finishStep(steps, { id: 'stale-helper-cleanup', status: removed === 'removed' ? 'ok' : 'skip' });
 
+  emitEvent('node-labels', 'start');
   const cluster = plan.cluster;
   if (cluster !== undefined) {
     for (const planNode of cluster.nodes) await reconcileNodeLabels(kube, planNode.nodeName, planNode.nodeLabels);
   }
-  steps.push({ id: 'node-labels', status: 'ok' });
+  finishStep(steps, { id: 'node-labels', status: 'ok' });
 
+  emitEvent('network-check', 'start');
   const nodeCount = cluster?.nodes.length ?? 1;
   let networkCheck: NetworkCheckResult = { ran: false, ok: true, failures: [] };
   if (nodeCount > 1 && !plan.options.skipNetworkCheck) {
     await applyNetcheckDaemonSet(kube);
     networkCheck = await runNetworkCheck(kube, clock, { nodeCount, flannelBackend: cluster?.flannelBackend ?? 'vxlan' });
   }
-  steps.push({ id: 'network-check', status: !networkCheck.ran ? 'skip' : networkCheck.ok ? 'ok' : 'failed' });
+  finishStep(steps, { id: 'network-check', status: !networkCheck.ran ? 'skip' : networkCheck.ok ? 'ok' : 'failed' });
 
   const expected: ExpectedNode[] = (cluster?.nodes ?? [{ key: node.key, nodeName: node.nodeName, role: node.role, nodeIp: null, nodeLabels: {} }]).map((planNode) => ({
     key: planNode.key,
@@ -690,6 +732,7 @@ async function runFinalize(runner: HostRunner, plan: K3sNodePlan, clock: Clock):
     controlPlane: planNode.role !== 'agent',
     etcdMember: cluster?.datastore === 'etcd' && planNode.role !== 'agent',
   }));
+  emitEvent('cluster-verification', 'start');
   const verification = await buildClusterVerification(kube, {
     env: plan.env,
     expected,
@@ -698,7 +741,7 @@ async function runFinalize(runner: HostRunner, plan: K3sNodePlan, clock: Clock):
     networkCheck,
     clock,
   });
-  steps.push({ id: 'cluster-verification', status: verification.problems.some((p) => p.severity === 'error') ? 'failed' : 'ok' });
+  finishStep(steps, { id: 'cluster-verification', status: verification.problems.some((p) => p.severity === 'error') ? 'failed' : 'ok' });
 
   return { steps, verification };
 }

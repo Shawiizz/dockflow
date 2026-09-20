@@ -1,18 +1,131 @@
 /**
- * Prune command - Remove unused Docker resources
+ * `dockflow prune <env>` (design-06 3.15): reclaim image (and, on Swarm, container/volume/network)
+ * disk space on every manager and worker. Target selection is pure (`planPrune`) and runs right
+ * after the config is loaded, before `openDay2`, so a target k3s does not support is refused without
+ * ever probing a manager (core 6.2).
  */
 
 import type { Command } from 'commander';
-import { sshExec } from '../../utils/ssh';
-import { printIntro, printOutro, printInfo, printSection, printWarning, printDebug, printBlank, printRaw, createSpinner } from '../../utils/output';
-import { validateEnv, withResolvedEnv } from '../../utils/validation';
-import { DockerError, withServicesRequired } from '../../utils/errors';
+import { capabilitiesFor } from '../../services/orchestrator/capabilities';
+import type { OrchestratorKind } from '../../services/orchestrator/interfaces';
+import { loadConfig } from '../../utils/config';
+import { withServicesRequired } from '../../utils/errors';
+import { createSpinner, printBlank, printInfo, printIntro, printOutro, printRaw, printSection, printWarning } from '../../utils/output';
 import { confirmPrompt } from '../../utils/prompts';
+import { withResolvedEnv } from '../../utils/validation';
+import { openDay2, planPrune, type PruneTarget } from '../shared/day2';
+
+export interface PruneCommandOptions {
+  all?: boolean;
+  images?: boolean;
+  containers?: boolean;
+  volumes?: boolean;
+  networks?: boolean;
+  yes?: boolean;
+  server?: string;
+}
+
+const K3S_NO_ALL_NOTE =
+  'containerd keeps no dangling images and the kubelet removes unused images under disk pressure; use `--all` to remove every unused image now';
+
+const RUNTIME_LABEL: Record<Exclude<PruneTarget, 'images'>, string> = {
+  containers: 'Containers',
+  volumes: 'Volumes',
+  networks: 'Networks',
+};
+
+/** the configured orchestrator kind, read locally (before `openDay2`) so a refused target is never probed */
+function configuredOrchestratorKind(): OrchestratorKind {
+  return loadConfig()?.orchestrator ?? 'swarm';
+}
+
+export async function runPrune(
+  env: string,
+  options: PruneCommandOptions,
+  getOrchestratorKind: () => OrchestratorKind = configuredOrchestratorKind,
+): Promise<void> {
+  const kind = getOrchestratorKind();
+  const isK3s = kind === 'k3s';
+  const plan = planPrune(options, capabilitiesFor(kind)); // may refuse before any SSH (R-02..R-04)
+
+  printIntro(`Prune Resources - ${env}`);
+  printInfo(plan.note ?? `Targets: ${plan.targets.join(', ')}`);
+  printBlank();
+
+  // without --all, k3s images are a documented no-op (containerd/kubelet already reclaim them)
+  const pruneImagesNow = plan.targets.includes('images') && !(isK3s && !options.all);
+  if (plan.targets.includes('images') && !pruneImagesNow) {
+    printInfo(K3S_NO_ALL_NOTE);
+  }
+
+  if (!options.yes) {
+    if (isK3s) {
+      if (pruneImagesNow) {
+        const confirmed = await confirmPrompt({
+          message: 'This will remove every container image no container uses, on every node (images imported by Dockflow stay pinned).',
+          initialValue: false,
+        });
+        if (!confirmed) {
+          printInfo('Cancelled');
+          return;
+        }
+      }
+    } else {
+      printWarning('This will permanently remove unused Docker resources.');
+      if (plan.targets.includes('volumes')) {
+        printWarning('WARNING: Pruning volumes will delete data that is not attached to containers!');
+      }
+      const confirmed = await confirmPrompt({ message: 'Are you sure you want to continue?', initialValue: false });
+      if (!confirmed) {
+        printInfo('Cancelled');
+        return;
+      }
+    }
+  }
+
+  const ctx = await openDay2(env, { server: options.server });
+  const nodes = [...ctx.orchestrator.target.managers, ...ctx.orchestrator.target.workers];
+
+  for (const target of plan.targets) {
+    if (target === 'images') {
+      if (!pruneImagesNow) continue;
+      const spinner = createSpinner();
+      spinner.start(`Pruning ${options.all ? 'all unused' : 'dangling'} images...`);
+      const results = await ctx.orchestrator.images.prune(nodes, { all: Boolean(options.all) });
+      spinner.succeed('Images pruned');
+      for (const result of results) {
+        printRaw(`  Images pruned on ${result.node}${result.reclaimed ? ` (reclaimed ${result.reclaimed})` : ''}`);
+      }
+      continue;
+    }
+
+    const label = RUNTIME_LABEL[target];
+    const spinner = createSpinner();
+    spinner.start(`Pruning unused ${label.toLowerCase()}...`);
+    const results = await ctx.orchestrator.images.pruneRuntime(nodes, target);
+    spinner.succeed(`${label} pruned`);
+    for (const result of results) {
+      printRaw(`  ${label} pruned on ${result.node}${result.reclaimed ? ` (reclaimed ${result.reclaimed})` : ''}`);
+    }
+  }
+
+  if (pruneImagesNow) {
+    printBlank();
+    printSection('Current Disk Usage');
+    const usage = await ctx.orchestrator.images.list(nodes, { all: false });
+    for (const row of usage) {
+      printRaw(`  ${row.node}: ${row.diskUsage ?? 'unknown'}`);
+    }
+  }
+
+  printBlank();
+  printOutro('Prune complete');
+}
 
 export function registerPruneCommand(program: Command): void {
   program
     .command('prune <env>')
-    .description('Remove unused Docker resources (images, containers, volumes, networks)')
+    .description('Remove unused resources (images, containers, volumes, networks)')
     .helpGroup('Operate')
     .option('-a, --all', 'Remove all unused images, not just dangling ones')
     .option('--images', 'Prune images only')
@@ -20,105 +133,6 @@ export function registerPruneCommand(program: Command): void {
     .option('--volumes', 'Prune volumes only')
     .option('--networks', 'Prune networks only')
     .option('-y, --yes', 'Skip confirmation')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withServicesRequired(withResolvedEnv(async (env: string, options: {
-      all?: boolean;
-      images?: boolean;
-      containers?: boolean;
-      volumes?: boolean;
-      networks?: boolean;
-      yes?: boolean;
-      server?: string;
-    }) => {
-      const { connection } = validateEnv(env, options.server);
-      printDebug('Connection validated', { targets: [options.images, options.containers, options.volumes, options.networks] });
-
-      // Determine what to prune
-      const pruneAll = !options.images && !options.containers && !options.volumes && !options.networks;
-      const targets: string[] = [];
-      
-      if (pruneAll || options.containers) targets.push('containers');
-      if (pruneAll || options.images) targets.push('images');
-      if (pruneAll || options.volumes) targets.push('volumes');
-      if (pruneAll || options.networks) targets.push('networks');
-
-      printIntro(`Prune Docker Resources on ${env}`);
-      printInfo(`Targets: ${targets.join(', ')}`);
-      printBlank();
-
-      if (!options.yes) {
-        printWarning('This will permanently remove unused Docker resources.');
-        if (options.volumes || pruneAll) {
-          printWarning('WARNING: Pruning volumes will delete data that is not attached to containers!');
-        }
-        
-        const confirmed = await confirmPrompt({
-          message: 'Are you sure you want to continue?',
-          initialValue: false,
-        });
-
-        if (!confirmed) {
-          printInfo('Cancelled');
-          return;
-        }
-        printBlank();
-      }
-
-      const spinner = createSpinner();
-
-      // A failed prune must not read as a success.
-      const run = async (command: string, what: string) => {
-        const result = await sshExec(connection, command);
-        if (result.exitCode !== 0) {
-          throw new Error(`${what} failed (exit ${result.exitCode}): ${result.stderr.trim() || result.stdout.trim()}`);
-        }
-        return result;
-      };
-
-      try {
-        // Prune containers
-        if (pruneAll || options.containers) {
-          spinner.start('Pruning stopped containers...');
-          const result = await run('docker container prune -f', 'Container prune');
-          const match = result.stdout.match(/Total reclaimed space: (.+)/);
-          spinner.succeed(`Containers pruned${match ? ` (${match[1]})` : ''}`);
-        }
-
-        // Prune images
-        if (pruneAll || options.images) {
-          const allFlag = options.all ? ' -a' : '';
-          spinner.start(`Pruning ${options.all ? 'all unused' : 'dangling'} images...`);
-          const result = await run(`docker image prune -f${allFlag}`, 'Image prune');
-          const match = result.stdout.match(/Total reclaimed space: (.+)/);
-          spinner.succeed(`Images pruned${match ? ` (${match[1]})` : ''}`);
-        }
-
-        // Prune volumes (careful - can delete data!)
-        if (pruneAll || options.volumes) {
-          spinner.start('Pruning unused volumes...');
-          const result = await run('docker volume prune -f', 'Volume prune');
-          const match = result.stdout.match(/Total reclaimed space: (.+)/);
-          spinner.succeed(`Volumes pruned${match ? ` (${match[1]})` : ''}`);
-        }
-
-        // Prune networks
-        if (pruneAll || options.networks) {
-          spinner.start('Pruning unused networks...');
-          await run('docker network prune -f', 'Network prune');
-          spinner.succeed('Networks pruned');
-        }
-
-        printBlank();
-        printOutro('Docker resources cleaned up successfully');
-
-        // Show disk usage after prune
-        printSection('Current Disk Usage');
-        const dfResult = await run('docker system df', 'Disk usage');
-        printRaw(dfResult.stdout);
-
-      } catch (error) {
-        spinner.fail(`Prune failed: ${error}`);
-        throw new DockerError(`${error}`);
-      }
-    })));
+    .option('-s, --server <name>', 'Target server (defaults to first ready manager)')
+    .action(withServicesRequired(withResolvedEnv((env: string, options: PruneCommandOptions) => runPrune(env, options))));
 }

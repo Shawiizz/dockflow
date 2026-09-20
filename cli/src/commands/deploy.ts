@@ -1,17 +1,17 @@
 /**
- * Deploy command
+ * Deploy command (DESIGN-CORE 2.2, design-03 3.2/3.3/3.6): `deploy`, `deploy --dry-run`.
  *
- * Deploys the application to a cluster using direct SSH.
- * Setup resolution, phase execution, and types are split into:
- *   deploy-context.ts  — DeployContext interface
- *   deploy-phases.ts   — build, accessories, app, audit phases
- *   deploy-dry-run.ts  — dry-run display
+ * Orchestrator-neutral: every remote effect goes through `ctx.orchestrator` (deploy-phases.ts,
+ * P64), so the same flow runs a k3s or a Swarm deploy. `resolveSetup` does every read that has no
+ * side effect (render, resolve, connect); `execute` does the mutating flow and owns the
+ * release-record invariant (core 2.2) and the deploy lock.
  */
 
+import { relative } from 'path';
 import type { Command } from 'commander';
 import {
   getProjectRoot,
-  loadConfig,
+  getLayout,
   getPerformer,
 } from '../utils/config';
 import {
@@ -21,76 +21,201 @@ import {
   printDebug,
   printBlank,
   printWarning,
+  printRaw,
   setVerbose,
   isVerbose,
   createSpinner,
 } from '../utils/output';
-import {
-  resolveDeploymentForEnvironment,
-  getServerPrivateKey,
-  getServerPassword,
-  getAvailableEnvironments,
-  findActiveManager,
-  buildTemplateContext,
-} from '../utils/servers';
-import { loadSecrets } from '../utils/secrets';
-import { resolveEnvironmentPrefix } from '../utils/validation';
+import { buildTemplateContext } from '../utils/servers';
+import { confirmPrompt } from '../utils/prompts';
 import { detectCIEnvironment, resolveDeployParams } from '../utils/ci';
 import { getCurrentBranch } from '../utils/git';
 import { getLatestVersion, incrementVersion } from '../utils/version';
 import {
   ConfigError,
-  ConnectionError,
   DeployError,
   ErrorCode,
+  ValidationError,
   withErrorHandler,
 } from '../utils/errors';
 import { displayDeployDryRun } from './deploy-dry-run';
-import type { ClusterNode, SSHKeyConnection } from '../types';
 
 import * as Compose from '../services/compose';
-import { createStackBackend, createProxyBackend } from '../services/orchestrator/factory';
-import { Release } from '../services/release';
-import { Lock } from '../services/lock';
 import { Audit } from '../services/audit';
 import { Metrics } from '../services/metrics';
 import * as Notification from '../services/notification';
 import * as Plugin from '../services/plugin';
 import * as Hook from '../services/hook';
+import { remoteHookContext } from '../services/hook';
+import { rollbackRelease, cleanupReleases } from '../services/release';
+import { openOrchestrator } from '../services/orchestrator/factory';
+import { chartDisplay, checkAdoptNames, checkOnlyNames, syncNonTargetedHelmRecords } from '../services/orchestrator/kubernetes/helm/resolve';
+import { valuesDiff, formatValuesDiff } from '../services/orchestrator/kubernetes/helm/values-diff';
+import { CONVERGENCE_INTERVAL_S, CONVERGENCE_TIMEOUT_S } from '../constants';
+import type {
+  HelmBackend,
+  HelmChartSource,
+  Orchestrator,
+  ReleaseMetadata,
+  StackArtifact,
+  StackDeployInput,
+  StackRef,
+} from '../services/orchestrator/interfaces';
 
-import type { DeployOptions, DeployContext } from './deploy-context';
-import { buildAndDistribute, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
-import type { BuildResult } from './deploy-phases';
-import type { UploadRollbackPlan } from './deploy-phases';
+import type { DeployContext, DeployOptions } from './deploy-context';
+import { activeNodes } from './deploy-context';
+import {
+  buildAccessoriesInput,
+  buildAndDistribute,
+  buildStackInput,
+  checkUploadPermissions,
+  cleanupBundle,
+  commitUploads,
+  deployAccessories,
+  deployApp,
+  ensureRegistryAccess,
+  parseOnly,
+  printArtifactDiagnostics,
+  recordHistory,
+  releaseLock,
+  resolveImageDelivery,
+  rollbackUploads,
+  runHTTPHealthChecks,
+  runPostRollbackHealthChecks,
+  uploadFiles,
+  warnRegistryWithoutPassword,
+  type BuildResult,
+  type UploadRollbackPlan,
+} from './deploy-phases';
+
+/**
+ * `deploy --adopt` and `--yes` are not part of `DeployOptions` (owned by P64,
+ * `deploy-context.ts`): `adopt` already is, `yes` (non-interactive confirmation skip, used by the
+ * adoption flow of design-04 3.7.4) is added locally, the way every other command adds its own flags.
+ */
+interface DeployCliOptions extends DeployOptions {
+  yes?: boolean;
+}
+
+function message(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Deployment target selection (which roles this invocation touches)
 // ---------------------------------------------------------------------------
 
-function getDeploymentTargets(options: DeployOptions) {
+function getDeploymentTargets(options: Partial<DeployOptions>) {
   if (options.skipAccessories) return { deployApp: true, forceAccessories: false, skipAccessories: true };
   if (options.all) return { deployApp: true, forceAccessories: true, skipAccessories: false };
   if (options.accessories) return { deployApp: false, forceAccessories: true, skipAccessories: false };
   return { deployApp: true, forceAccessories: false, skipAccessories: false };
 }
 
-function buildConnection(env: string, serverName: string, host: string, port: number, user: string): SSHKeyConnection {
-  const privateKey = getServerPrivateKey(env, serverName);
-  if (!privateKey) {
-    throw new ConnectionError(
-      `No SSH private key found for "${serverName}"`,
-      `Expected CI secret: ${env.toUpperCase()}_${serverName.toUpperCase()}_CONNECTION`,
-    );
-  }
-  const password = getServerPassword(env, serverName);
-  return { host, port, user, privateKey, password: password || undefined };
+// ---------------------------------------------------------------------------
+// Diagnostics labels (mirrors deploy-phases.ts's private accessoriesRelPath; DESIGN-CORE 8.2)
+// ---------------------------------------------------------------------------
+
+function accessoriesFileLabel(ctx: DeployContext): string {
+  const layout = getLayout();
+  return layout.accessoriesPath
+    ? relative(ctx.projectRoot, layout.accessoriesPath).replace(/\\/g, '/')
+    : '.dockflow/docker/accessories.yml';
+}
+
+function composeFileLabel(ctx: DeployContext): string {
+  const layout = getLayout();
+  return layout.composePath ? relative(ctx.projectRoot, layout.composePath).replace(/\\/g, '/') : 'docker-compose.yml';
 }
 
 // ---------------------------------------------------------------------------
-// Setup — resolve env, config, connections, version, render templates
+// traefikOnCluster (design-04 2.9.2, core K28): the one cluster read the render needs
 // ---------------------------------------------------------------------------
 
-async function resolveSetup(rawEnv: string | undefined, rawVersion: string | undefined, options: Partial<DeployOptions>) {
+async function resolveTraefikOnCluster(ctx: DeployContext): Promise<boolean> {
+  if (ctx.orchestrator.kind !== 'k3s') return false;
+  // this deploy ensures/needs it (managing or consuming): the cluster read below is never needed
+  if (ctx.config.proxy?.enabled === true) return true;
+  try {
+    const status = await ctx.orchestrator.proxy.status();
+    return status.installed;
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// --only: borrow the previous release's Helm records for non-targeted releases (3.4.5, I18)
+// ---------------------------------------------------------------------------
+
+async function previousArtifactHelm(ctx: DeployContext) {
+  const current = await ctx.orchestrator.releases.currentVersion(ctx.stackName);
+  if (!current) return null;
+  const artifact = await ctx.orchestrator.releases.readArtifact(ctx.stackName, current);
+  return artifact.helm;
+}
+
+// ---------------------------------------------------------------------------
+// Hooks — thin wrapper binding the phase to this deploy's remote context (design-03 3.3)
+// ---------------------------------------------------------------------------
+
+async function runDeployHook(ctx: DeployContext, phase: Hook.HookPhase, env?: Record<string, string>): Promise<void> {
+  const remote = remoteHookContext(ctx.orchestrator, ctx.deployVersion, ctx.target.controlPlane.connection);
+  await Hook.runHook(phase, ctx.projectRoot, ctx.config, ctx.rendered, remote, env ? { env } : {});
+}
+
+// ---------------------------------------------------------------------------
+// --adopt (design-04 3.7.4): read-only diff + confirmation, the upgrade itself runs under the lock
+// ---------------------------------------------------------------------------
+
+async function confirmYesNo(options: Partial<DeployCliOptions>, promptMessage: string): Promise<boolean> {
+  if (options.yes) return true;
+  if (!process.stdin.isTTY) return false;
+  return confirmPrompt({ message: promptMessage, initialValue: false });
+}
+
+/** Prints the value diff for every `--adopt`ed release and confirms, before the lock. */
+async function previewAdoptions(ctx: DeployContext, appInput: StackDeployInput): Promise<void> {
+  const names = ctx.options.adopt;
+  const helm = ctx.orchestrator.helm;
+  if (!names?.length || !helm) return;
+
+  for (const release of appInput.helm.filter((r) => names.includes(r.name))) {
+    const deployed = await helm.deployedValues(release.namespace, release.name);
+    const diff = valuesDiff(deployed?.values ?? null, release.values);
+    printInfo(`Adopting Helm release ${release.name} (${chartDisplay(release.chart, release.version)}) in ${release.namespace}`);
+    for (const line of formatValuesDiff(diff)) printRaw(line);
+
+    if (!ctx.options.dryRun) {
+      const confirmed = await confirmYesNo(ctx.options as Partial<DeployCliOptions>, `Dockflow will manage ${release.name} from now on and replace its values. Continue?`);
+      if (!confirmed) throw new ValidationError('Confirmation required', 'Re-run with `--yes` in non-interactive sessions.');
+    }
+  }
+}
+
+/** Takes over the named releases under the lock, before the ordinary deploy sees them as unchanged. */
+async function applyAdoptions(ctx: DeployContext, appInput: StackDeployInput): Promise<void> {
+  const names = ctx.options.adopt;
+  const helm = ctx.orchestrator.helm as HelmBackend | null;
+  if (!names?.length || !helm) return;
+
+  const historyMax = Math.max(5, (ctx.config.stack_management?.keep_releases ?? 3) + 2);
+  for (const release of appInput.helm.filter((r) => names.includes(r.name))) {
+    const result = await helm.upgradeInstall(release, {
+      historyMax,
+      stackId: ctx.stackName,
+      description: `Dockflow ${ctx.deployVersion}`,
+      adopt: true,
+    });
+    printSuccess(`Helm release ${release.name} is now managed by Dockflow; its previous revision is ${result.previousRevision ?? '-'} in \`dockflow helm history ${ctx.env} ${release.name}\``);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// resolveSetup — no remote writes except the read-only connect + probe of openOrchestrator
+// ---------------------------------------------------------------------------
+
+async function resolveSetup(rawEnv: string | undefined, rawVersion: string | undefined, options: Partial<DeployCliOptions>): Promise<{ ctx: DeployContext } | null> {
   let env = rawEnv;
   let version = rawVersion;
 
@@ -102,309 +227,266 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
       version = version ?? params.version;
       printInfo(`CI detected (${ci.provider}): deploying to ${env} with version ${version}`);
     } else {
-      throw new ConfigError(
-        'Environment is required',
-        'Usage: dockflow deploy <env> [version]\nIn CI, environment and version are auto-detected from git tag/branch.',
-      );
+      throw new ConfigError('Environment is required', 'Usage: dockflow deploy <env> [version]\nIn CI, environment and version are auto-detected from git tag/branch.');
     }
   }
 
-  loadSecrets();
-
-  let config = loadConfig();
-  if (!config) throw new ConfigError('No config.yml found', 'Run `dockflow init` to create a project configuration.');
-
-  if (config.options?.enable_debug_logs) setVerbose(true);
-  printDebug('Secrets loaded from environment');
-
-  env = resolveEnvironmentPrefix(env);
-
-  const { deployApp: shouldDeployApp, forceAccessories, skipAccessories } = getDeploymentTargets(options as DeployOptions);
+  const { deployApp: shouldDeployApp, forceAccessories, skipAccessories } = getDeploymentTargets(options);
   const accessoriesDesc = skipAccessories ? '' : forceAccessories ? ' + Accessories (forced)' : ' + Accessories (auto)';
   const targetDesc = options.accessories ? 'Accessories only' : `App${accessoriesDesc}`;
 
   printIntro(`Deploying ${targetDesc} to ${env}`);
   printBlank();
 
-  // Resolve deployment servers
-  const deployment = resolveDeploymentForEnvironment(env);
-  if (!deployment) {
-    const availableEnvs = getAvailableEnvironments();
-    throw new ConfigError(
-      `No manager server found for environment "${env}"`,
-      availableEnvs.length > 0 ? `Available environments: ${availableEnvs.join(', ')}` : 'Each environment needs a server with role: manager',
-    );
-  }
+  const { config, orchestrator } = await openOrchestrator(env, {
+    failover: options.noFailover !== true,
+    requireWorkerCredentials: true,
+    onProbe: (p) => printDebug(`probe ${p.node}: ${p.status}${p.detail ? ` (${p.detail})` : ''}`),
+  });
+  const target = orchestrator.target;
+  env = target.env;
 
-  let { manager, managers, workers } = deployment;
+  if (config.options?.enable_debug_logs) setVerbose(true);
 
-  // Multi-manager failover
-  if (managers.length > 1 && !options.noFailover) {
-    const managerSpinner = createSpinner();
-    managerSpinner.start(`Checking ${managers.length} managers for active leader...`);
-    const activeResult = await findActiveManager(env, managers, { verbose: !!options.debug });
-    if (!activeResult) {
-      managerSpinner.fail('No reachable managers found');
-      throw new ConnectionError('All managers are unreachable. Cannot deploy.', `Managers tried: ${managers.map((m) => `${m.name} (${m.host})`).join(', ')}`);
-    }
-    manager = activeResult.manager;
-    if (activeResult.failedManagers.length > 0) {
-      managerSpinner.warn(`Using ${manager.name} (${activeResult.status}). Unreachable: ${activeResult.failedManagers.join(', ')}`);
-    } else {
-      managerSpinner.succeed(`Using ${manager.name} (${activeResult.status === 'leader' ? 'leader' : 'active manager'})`);
-    }
-  }
-
-  // Build cluster
-  const managerNode: ClusterNode = {
-    connection: buildConnection(env, manager.name, manager.host, manager.port, manager.user),
-    name: manager.name,
-  };
-  const workerNodes: ClusterNode[] = workers.map((w) => ({
-    connection: buildConnection(env, w.name, w.host, w.port, w.user),
-    name: w.name,
-  }));
-  const otherManagerNodes: ClusterNode[] = [];
-  for (const m of managers) {
-    if (m.name === manager.name) continue;
-    try { otherManagerNodes.push({ connection: buildConnection(env, m.name, m.host, m.port, m.user), name: m.name }); }
-    catch { printWarning(`History sync: no SSH key for ${m.name}`); }
-  }
-  const cluster = { manager: managerNode, workers: workerNodes, otherManagers: otherManagerNodes };
-
-  // Version resolution
   const branchName = options.branch || getCurrentBranch();
   let deployVersion: string;
-
   if (version) {
     deployVersion = version;
   } else {
     const versionSpinner = createSpinner();
     versionSpinner.start('Fetching latest deployed version...');
-    const connectionString = Buffer.from(JSON.stringify(cluster.manager.connection)).toString('base64');
-    const latestVersion = await getLatestVersion(connectionString, config.project_name || 'app', env, !!options.debug);
+    const latestVersion = await getLatestVersion(orchestrator, target.stackName);
     if (latestVersion) {
       deployVersion = incrementVersion(latestVersion);
-      versionSpinner.succeed(`Latest version: ${latestVersion} → New version: ${deployVersion}`);
+      versionSpinner.succeed(`Latest version: ${latestVersion} -> New version: ${deployVersion}`);
     } else {
       deployVersion = '1.0.0';
       versionSpinner.info('No previous deployment found, starting at 1.0.0');
     }
   }
 
-  const stackName = `${config.project_name}-${env}`;
   const projectRoot = getProjectRoot();
 
-  // Display info
   printInfo(`Version: ${deployVersion}`);
   printInfo(`Environment: ${env}`);
-  printInfo(`Manager: ${isVerbose() ? `${manager.name} (${manager.host})` : manager.name}`);
-  if (workers.length > 0) printInfo(`Workers: ${workers.map((w) => isVerbose() ? `${w.name} (${w.host})` : w.name).join(', ')}`);
+  printInfo(`Control plane: ${isVerbose() ? `${target.controlPlane.name} (${target.controlPlane.host})` : target.controlPlane.name}`);
+  if (target.workers.length > 0) printInfo(`Workers: ${target.workers.map((w) => (isVerbose() ? `${w.name} (${w.host})` : w.name)).join(', ')}`);
+  if (target.kind === 'k3s') printInfo(`Namespace: ${orchestrator.naming.scope({ project: config.project_name, env, role: 'app' })}`);
   printInfo(`Branch: ${branchName}`);
   printInfo(`Targets: ${targetDesc}`);
   if (options.only) printInfo(`Only: ${options.only}`);
   printBlank();
 
-  // Render templates
-  const templateContext = buildTemplateContext(env, manager.name);
+  const templateContext = buildTemplateContext(env, target.controlPlane.name);
   const { rendered, composeContent, composeDirPath, renderContext } = Compose.renderAndResolveCompose(
     { env, version: deployVersion, branch: branchName, project_name: config.project_name, config },
     templateContext,
-    { uploadOnly: config.no_services },
+    { uploadOnly: config.no_services === true },
   );
   const pluginsLoaded = await Plugin.loadConfigWithPlugins({ rendered, fallback: config, projectRoot, projectContext: renderContext });
-  config = pluginsLoaded.config;
+  const finalConfig = pluginsLoaded.config;
 
-  // Dry-run exit — after rendering and plugin expansion, so the summary lists the
-  // uploads and hook entries a deploy would actually run.
+  if (options.only) {
+    const compose = Compose.loadFromString(composeContent);
+    checkOnlyNames(parseOnly(options.only), Object.keys(compose.services), finalConfig.helm);
+  }
+  if (options.adopt?.length) {
+    checkAdoptNames(options.adopt, finalConfig.helm);
+  }
+
+  const ctx: DeployContext = {
+    env,
+    config: finalConfig,
+    stackName: target.stackName,
+    branchName,
+    deployVersion,
+    projectRoot,
+    target,
+    orchestrator,
+    deployApp: shouldDeployApp,
+    forceAccessories,
+    skipAccessories,
+    options,
+    rendered,
+    composeContent,
+    composeDirPath,
+    audit: new Audit(target.controlPlane.connection),
+    metrics: new Metrics(target.controlPlane.connection),
+    revertedTo: null,
+    applyStarted: false,
+    appSettled: false,
+    cleanupOrchestrator: null,
+    traefikOnCluster: false,
+  };
+
   if (options.dryRun) {
-    displayDeployDryRun({
-      env, deployVersion, branchName, projectRoot, manager, workers,
-      deployApp: shouldDeployApp, forceAccessories, skipAccessories,
-      skipBuild: options.skipBuild, force: options.force, only: options.only, debug: options.debug,
-      config, pluginSummary: pluginsLoaded.pluginSummary,
-    });
+    await displayDeployDryRun(ctx, pluginsLoaded.pluginSummary);
     return null;
   }
-
-  // Validate --only service names before acquiring the lock (skip for no_services — no Docker services)
-  if (options.only && !config.no_services) {
-    const compose = Compose.loadFromString(composeContent);
-    const available = Object.keys(compose.services);
-    const filterSet = options.only.split(',').map((s) => s.trim());
-    const unknown = filterSet.filter(s => !available.includes(s));
-    if (unknown.length > 0) {
-      throw new DeployError(
-        `Unknown service(s): ${unknown.join(', ')}. Available: ${available.join(', ')}`,
-        ErrorCode.VALIDATION_FAILED,
-        'Use the exact service names defined in your docker-compose file.',
-      );
-    }
-  }
-
-  // Build context
-  const orchType = config.orchestrator ?? 'swarm';
-  const managerConn = cluster.manager.connection;
-  const ctx: DeployContext = {
-    env, config, stackName, branchName, deployVersion, projectRoot,
-    cluster,
-    deployApp: shouldDeployApp, forceAccessories, skipAccessories,
-    options, rendered, composeContent, composeDirPath,
-    orchestrator: createStackBackend(orchType, managerConn),
-    proxyBackend: config.proxy?.enabled ? createProxyBackend(orchType, managerConn) : undefined,
-    releases: new Release(managerConn),
-    lock: new Lock(managerConn, stackName),
-    audit: new Audit(managerConn),
-    metrics: new Metrics(managerConn),
-  };
 
   return { ctx };
 }
 
 // ---------------------------------------------------------------------------
-// Execute — lock, phases, rollback, audit, unlock
+// execute — lock, phases, rollback, audit, unlock (design-03 3.3, DESIGN-CORE 2.2)
 // ---------------------------------------------------------------------------
 
-async function execute(ctx: DeployContext): Promise<void> {
-  const lockResult = await ctx.lock.acquire({ version: ctx.deployVersion, force: ctx.options.force, message: `Deploy ${ctx.deployVersion}` });
-  if (!lockResult.success) throw new DeployError(lockResult.error.message, ErrorCode.DEPLOY_LOCKED);
+export async function execute(ctx: DeployContext): Promise<void> {
+  const orch = ctx.orchestrator;
+  const lock = orch.lock(ctx.stackName, ctx.config.lock?.stale_threshold_minutes);
+  const acquired = await lock.acquire({ version: ctx.deployVersion, force: ctx.options.force, message: `Deploy ${ctx.deployVersion}` });
+  if (!acquired.success) throw new DeployError(acquired.error.message, ErrorCode.DEPLOY_LOCKED);
 
+  const appRef: StackRef = { project: ctx.config.project_name, env: ctx.env, role: 'app' };
   const startTime = Date.now();
   let deployFailed = false;
-  let stackDeployed = false;
-  let uploadPlan: UploadRollbackPlan | null = null;
-  let previousSymlink: string | null = null;
-  let buildResult: BuildResult | null = null;
-  let auditMessage = `Deploy ${ctx.deployVersion} to ${ctx.env}`;
+  let appDeployed = false;
   let releaseCreated = false;
+  let previous: string | null = null;
+  let build: BuildResult | null = null;
+  let uploadPlan: UploadRollbackPlan | null = null;
+  let auditMessage = `Deploy ${ctx.deployVersion} to ${ctx.env}`;
   let interrupted = false;
 
-  const handleSignal = () => {
+  const handleSignal = (): void => {
     if (interrupted) return;
     interrupted = true;
-    printWarning(`\nDeploy interrupted — cleaning up before exit...`);
+    printWarning('\nDeploy interrupted — cleaning up before exit...');
     (async () => {
       if (uploadPlan) await rollbackUploads(uploadPlan).catch(() => {});
-      if (releaseCreated) await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
-      await ctx.lock.release().catch(() => {});
+      if (releaseCreated && (!ctx.applyStarted || ctx.appSettled)) {
+        await orch.releases.remove(ctx.stackName, ctx.deployVersion, { restoreCurrentTo: previous }).catch(() => {});
+      } else if (ctx.applyStarted) {
+        printWarning(`Version ${ctx.deployVersion} was applied but its state is unknown; run dockflow status ${ctx.env}`);
+      }
+      await lock.release().catch(() => {});
     })().finally(() => process.exit(130));
   };
-
   process.once('SIGINT', handleSignal);
   process.once('SIGTERM', handleSignal);
 
   try {
     let compose = Compose.loadFromString(ctx.composeContent);
-
     Compose.updateImageTags(compose, ctx.config, ctx.env, ctx.deployVersion, ctx.options.only);
 
-    await checkUploadPermissions(ctx);
+    const delivery = resolveImageDelivery(ctx.config, compose);
+    warnRegistryWithoutPassword(ctx.config);
 
-    buildResult = await buildAndDistribute(ctx, compose);
-
-    await Hook.runHook('pre-upload', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
-
-    uploadPlan = await uploadFiles(ctx);
-
-    await Hook.runHook('post-upload', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
-
-    await Hook.runHook('pre-deploy', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
-
-    // When --only targets specific services, borrow image tags from the server
-    // release for non-targeted services so both the deploy and the release file
-    // reflect what is actually running for those services.
-    // Falls back to the local compose as-is if no release exists yet.
     if (ctx.options.only) {
-      const currentContent = await ctx.releases.getCurrentComposeContent(ctx.stackName);
-      if (currentContent) {
-        const filter = ctx.options.only.split(',').map((s: string) => s.trim());
-        compose = Compose.syncNonTargetedImageTags(compose, Compose.loadFromString(currentContent), filter);
-      }
+      const current = await orch.releases.currentCompose(ctx.stackName);
+      if (current) compose = Compose.syncNonTargetedImageTags(compose, Compose.loadFromString(current), parseOnly(ctx.options.only));
     }
 
-    await ensureExternalNetworks(ctx);
+    // 0. the one read the render needs (core K28): does a Dockflow-owned Traefik exist on the cluster?
+    ctx.traefikOnCluster = await resolveTraefikOnCluster(ctx);
 
-    // The whole stack, even under --only: a rollback restores every service.
-    const renderedStack = ctx.orchestrator.render({
-      stackName: ctx.stackName, env: ctx.env, compose, proxy: ctx.config.proxy, useRegistry: ctx.config.registry?.enabled,
-    });
+    // 1. render both roles BEFORE any remote mutation (m14/K73)
+    let appInput = buildStackInput(ctx, 'app', compose, delivery);
+    if (ctx.options.only) {
+      appInput = { ...appInput, helm: syncNonTargetedHelmRecords(appInput.helm, await previousArtifactHelm(ctx), parseOnly(ctx.options.only)) };
+    }
+    const appArtifact = orch.stack.render(appInput);
+    printArtifactDiagnostics(composeFileLabel(ctx), appArtifact);
 
-    // Settled, not Promise.all: when accessories fail first, the release write
-    // must still hand back the symlink to restore, or cleanup deletes `current`.
+    const accInput = buildAccessoriesInput(ctx, delivery);
+    const accArtifact = accInput ? orch.stack.render(accInput) : null;
+    if (accInput && accArtifact) printArtifactDiagnostics(accessoriesFileLabel(ctx), accArtifact);
+
+    await previewAdoptions(ctx, appInput);
+
+    // 2. remote work starts here
+    await checkUploadPermissions(ctx);
+    build = await buildAndDistribute(ctx, compose, delivery);
+    await ensureRegistryAccess(ctx, appRef);
+
+    await runDeployHook(ctx, 'pre-upload');
+    uploadPlan = await uploadFiles(ctx);
+    await runDeployHook(ctx, 'post-upload');
+    await runDeployHook(ctx, 'pre-deploy');
+
+    // 3. proxy before anything that can render routes (K09), whenever anything is deployed
+    const anythingDeployed = ctx.deployApp || accInput !== null;
+    if (ctx.config.proxy?.enabled && anythingDeployed) {
+      await orch.proxy.plan(ctx.config.proxy, ctx.env);
+      await orch.proxy.ensure(ctx.config.proxy, ctx.env);
+    }
+
+    await applyAdoptions(ctx, appInput);
+
+    // Settled, not Promise.all: when accessories fail first, the release write must still hand back
+    // the symlink/`previous` to restore.
     const [releaseOutcome, accessoriesOutcome] = await Promise.allSettled([
-      ctx.releases.createRelease(ctx.stackName, ctx.deployVersion, Compose.serialize(compose), renderedStack, {
-        project_name: ctx.config.project_name, version: ctx.deployVersion, env: ctx.env,
-        timestamp: new Date().toISOString(), epoch: Math.floor(Date.now() / 1000),
-        performer: getPerformer(), branch: ctx.branchName,
-      }),
-      deployAccessories(ctx),
+      ctx.deployApp
+        ? orch.releases.create(ctx.stackName, {
+            version: ctx.deployVersion,
+            compose: Compose.serialize(compose),
+            artifact: appArtifact,
+            metadata: buildReleaseMetadata(ctx, orch, appArtifact, accArtifact),
+          })
+        : orch.releases.currentVersion(ctx.stackName).then((v) => ({ previous: v })),
+      deployAccessories(ctx, accInput),
     ]);
     if (releaseOutcome.status === 'rejected') throw releaseOutcome.reason;
-    previousSymlink = releaseOutcome.value.previousSymlink;
-    releaseCreated = true;
+    previous = releaseOutcome.value.previous;
+    releaseCreated = ctx.deployApp;
     if (accessoriesOutcome.status === 'rejected') throw accessoriesOutcome.reason;
 
-    await deployApp(ctx, compose);
-    stackDeployed = ctx.deployApp !== false && Compose.hasServices(compose);
-
+    await deployApp(ctx, { ...appInput, previousVersion: previous });
+    appDeployed = ctx.deployApp && (Compose.hasServices(compose) || appInput.helm.length > 0);
 
     await runHTTPHealthChecks(ctx);
-    await Hook.runHook('post-deploy', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
+    await runDeployHook(ctx, 'post-deploy');
 
     await Promise.all([
-      ctx.releases.cleanupOldReleases(ctx.stackName, ctx.config),
-      commitUploads(uploadPlan).catch((e) => printWarning(`Upload commit failed: ${e instanceof Error ? e.message : String(e)}`)),
+      cleanupReleases(orch, ctx.stackName, ctx.config.stack_management?.keep_releases ?? 3),
+      commitUploads(uploadPlan).catch((e) => printWarning(`Upload commit failed: ${message(e)}`)),
     ]);
     auditMessage = `Deployed ${ctx.deployVersion} to ${ctx.env} successfully`;
   } catch (err) {
     deployFailed = true;
-    auditMessage = `Deploy ${ctx.deployVersion} to ${ctx.env} failed: ${err instanceof Error ? err.message : String(err)}`;
+    auditMessage = `Deploy ${ctx.deployVersion} to ${ctx.env} failed: ${message(err)}`;
 
-    if (uploadPlan) {
-      await rollbackUploads(uploadPlan).catch((e) => printWarning(`Upload rollback failed: ${e instanceof Error ? e.message : String(e)}`));
-    }
-
-    if (buildResult && ctx.config.stack_management?.cleanup_on_failure !== false) {
-      await cleanupFailedImages(buildResult, [ctx.cluster.manager, ...ctx.cluster.workers]).catch(() => {});
-    }
+    if (uploadPlan) await rollbackUploads(uploadPlan).catch((e) => printWarning(`Upload rollback failed: ${message(e)}`));
 
     let rolledBackTo: string | null = null;
-    if (stackDeployed && ctx.config.health_checks?.on_failure === 'rollback' && previousSymlink) {
-      // rollback() handles its own cleanup — calling removeRelease first would delete the failed release before rollback can list it.
+    const bundle = await cleanupBundle(ctx, err);
+    ctx.cleanupOrchestrator = bundle;
+
+    if (appDeployed && ctx.config.health_checks?.on_failure === 'rollback' && previous && previous !== ctx.deployVersion) {
       try {
-        rolledBackTo = await ctx.releases.rollback(ctx.stackName, ctx.orchestrator, ctx.deployVersion, previousSymlink);
+        rolledBackTo = await rollbackRelease(bundle, {
+          ref: appRef,
+          stackName: ctx.stackName,
+          to: previous,
+          failedVersion: ctx.deployVersion,
+          wait: { timeoutS: CONVERGENCE_TIMEOUT_S, intervalS: CONVERGENCE_INTERVAL_S },
+        });
         printWarning(`Rolled back to ${rolledBackTo}`);
-        await runPostRollbackHealthChecks(ctx.cluster.manager.connection, ctx.orchestrator, ctx.stackName, ctx.config.health_checks);
+        await runPostRollbackHealthChecks(ctx.config, bundle);
+      } catch (e) {
+        printWarning(`Rollback failed: ${message(e)}\nThe cluster may be in an inconsistent state. Run 'dockflow status ${ctx.env}' to check what is running.`);
+        printWarning(`Release ${ctx.deployVersion} is deployed but the deploy reported a failure; current stays ${ctx.deployVersion}`);
       }
-      catch (e) {
-        printWarning(
-          `Rollback failed: ${e instanceof Error ? e.message : String(e)}\n` +
-          `The cluster may be in an inconsistent state. Run 'dockflow status' to check what is running.`
-        );
-        await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
-      }
-    } else {
-      await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
+    } else if (appDeployed || (ctx.applyStarted && !ctx.appSettled)) {
+      // K08: once the app was applied, the release record and `current` are never rewound.
+      if (previous === ctx.deployVersion) printWarning(`Release ${ctx.deployVersion} was redeployed in place; nothing distinct to roll back to`);
+      else if (appDeployed) printWarning(`Release ${ctx.deployVersion} is deployed but the deploy reported a failure; current stays ${ctx.deployVersion}`);
+      else printWarning(`Version ${ctx.deployVersion} was applied but its state is unknown; run dockflow status ${ctx.env}`);
+    } else if (releaseCreated) {
+      await bundle.releases.remove(ctx.stackName, ctx.deployVersion, { restoreCurrentTo: previous }).catch((e) => printWarning(`Release cleanup failed: ${message(e)}`));
     }
 
-    // Runs last so it observes the settled state. Hook.runHook never lets an
-    // on-failure entry abort, and this catch keeps the original error on top.
-    await Hook.runHook('on-failure', ctx.projectRoot, ctx.config, ctx.rendered, {
-      connection: ctx.cluster.manager.connection,
-      stackName: ctx.stackName,
-    }, {
-      env: {
-        DOCKFLOW_ERROR: err instanceof Error ? err.message : String(err),
-        DOCKFLOW_ROLLED_BACK_TO: rolledBackTo ?? '',
-      },
-    }).catch((e) => printWarning(`on-failure hooks could not run: ${e instanceof Error ? e.message : String(e)}`));
-
-    if (rolledBackTo) {
-      throw new DeployError(
-        `Deployment failed and was rolled back to ${rolledBackTo}`,
-        ErrorCode.DEPLOY_FAILED,
-      );
+    // after rollback/revert so that in-use protection sees the settled cluster (I-18)
+    if (build && ctx.config.stack_management?.cleanup_on_failure !== false && build.delivery.mode === 'import') {
+      await bundle.images.remove(build.images, activeNodes(ctx.target)).catch((e) => printWarning(`Image cleanup failed: ${message(e)}`));
     }
+
+    await runDeployHook(ctx, 'on-failure', {
+      DOCKFLOW_ERROR: message(err),
+      DOCKFLOW_ROLLED_BACK_TO: rolledBackTo ?? ctx.revertedTo ?? '',
+    }).catch((e) => printWarning(`on-failure hooks could not run: ${message(e)}`));
+
+    if (rolledBackTo) throw new DeployError(`Deployment failed and was rolled back to ${rolledBackTo}`, ErrorCode.DEPLOY_FAILED);
     throw err;
   } finally {
     process.off('SIGINT', handleSignal);
@@ -414,26 +496,57 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     await recordHistory(ctx, status, durationMs, auditMessage);
     await Notification.notify(ctx.config.notifications?.webhooks, {
-      project: ctx.config.project_name, env: ctx.env, version: ctx.deployVersion,
-      branch: ctx.branchName, performer: getPerformer(), status, duration_ms: durationMs, message: auditMessage,
+      project: ctx.config.project_name,
+      env: ctx.env,
+      version: ctx.deployVersion,
+      branch: ctx.branchName,
+      performer: getPerformer(),
+      status,
+      duration_ms: durationMs,
+      message: auditMessage,
     });
-    await ctx.lock.release().catch((e) => printWarning(`Lock release failed: ${e instanceof Error ? e.message : String(e)}`));
+    await releaseLock(ctx, lock, acquired.data);
   }
 
-  const managerCount = 1 + ctx.cluster.otherManagers.length;
-  const workerCount = ctx.cluster.workers.length;
+  const managerCount = ctx.target.managers.length;
+  const workerCount = ctx.target.workers.length;
   const totalNodes = managerCount + workerCount;
   printBlank();
-  printSuccess(totalNodes > 1
-    ? `Deployment completed! Cluster: ${managerCount} manager(s) + ${workerCount} worker(s)`
-    : 'Deployment completed!');
+  printSuccess(totalNodes > 1 ? `Deployment completed! Cluster: ${managerCount} manager(s) + ${workerCount} worker(s)` : 'Deployment completed!');
+}
+
+function chartLabel(chart: HelmChartSource): string {
+  return chart.kind === 'oci' ? chart.ref : `${chart.repo}#${chart.chart}`;
+}
+
+function buildReleaseMetadata(ctx: DeployContext, orch: Orchestrator, appArtifact: StackArtifact, accArtifact: StackArtifact | null): ReleaseMetadata {
+  const now = new Date();
+  return {
+    project_name: ctx.config.project_name,
+    version: ctx.deployVersion,
+    env: ctx.env,
+    timestamp: now.toISOString(),
+    epoch: Math.floor(now.getTime() / 1000),
+    performer: getPerformer(),
+    branch: ctx.branchName,
+    orchestrator: orch.kind,
+    artifact_format: orch.capabilities.artifactFormat,
+    helm: appArtifact.helm.map((h) => ({
+      name: h.name,
+      chart: chartLabel(h.chart),
+      version: h.version,
+      values_sha256: h.valuesSha256,
+      chart_sha256: h.chartSha256,
+    })),
+    accessories_digest: accArtifact?.digest ?? null,
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
-export async function runDeploy(env: string | undefined, version: string | undefined, options: Partial<DeployOptions>): Promise<void> {
+export async function runDeploy(env: string | undefined, version: string | undefined, options: Partial<DeployCliOptions>): Promise<void> {
   if (options.debug) setVerbose(true);
   const setup = await resolveSetup(env, version, options);
   if (!setup) return;
@@ -445,7 +558,7 @@ export function registerDeployCommand(program: Command): void {
     .command('deploy [env] [version]')
     .description('Deploy application to specified environment')
     .helpGroup('Deploy')
-    .option('--only <services>', 'Comma-separated list of services to deploy')
+    .option('--only <services>', 'Comma-separated list of services (or app Helm releases) to deploy')
     .option('--skip-build', 'Skip the build phase')
     .option('--force', 'Force deployment even if locked')
     .option('--accessories', 'Deploy only accessories (databases, caches, etc.)')
@@ -453,10 +566,14 @@ export function registerDeployCommand(program: Command): void {
     .option('--skip-accessories', 'Skip accessories check entirely')
     .option('--no-failover', 'Disable multi-manager failover (use first manager only)')
     .option('--dry-run', 'Show what would be deployed without executing')
+    .option('--render', 'With --dry-run: print the rendered manifests (secrets masked)')
     .option('--branch <branch>', 'Override auto-detected git branch')
+    .option('--adopt <name>', 'Take over a Helm release installed outside Dockflow (repeatable)', (v: string, prev: string[]) => [...prev, v], [] as string[])
+    .option('--rebind-volumes', 'Accept a claim-shape change that repoints a service at another claim')
+    .option('-y, --yes', 'Skip interactive confirmations')
     .option('--debug', 'Enable debug output')
     .action(
-      withErrorHandler(async (env: string | undefined, version: string | undefined, options: DeployOptions) => {
+      withErrorHandler(async (env: string | undefined, version: string | undefined, options: DeployCliOptions & { render?: boolean }) => {
         await runDeploy(env, version, options);
       }),
     );

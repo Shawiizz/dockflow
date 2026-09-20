@@ -1,21 +1,27 @@
 /**
- * Servers API Routes
- * 
+ * Servers API Routes (design-06 8.2)
+ *
  * GET /api/servers - List all servers with their status
  * GET /api/servers/:name - Get a specific server
- * GET /api/servers/:name/status - Check server connectivity
+ * GET /api/servers/:name/status - Check server connectivity, and control-plane status for managers
  */
 
 import { jsonResponse, errorResponse } from '../server';
-import { loadServersConfig } from '../../utils/config';
-import { 
-  resolveServersForEnvironment, 
-  getAvailableEnvironments,
-  getServerPrivateKey,
-  checkManagerStatus 
-} from '../../utils/servers';
+import { loadConfig, loadServersConfig } from '../../utils/config';
+import { resolveServersForEnvironment, getAvailableEnvironments, getFullConnectionInfo } from '../../utils/servers';
+import { probeControlPlane } from '../../services/orchestrator/target';
+import type { ClusterNodeRef, ControlPlaneProbe, OrchestratorKind } from '../../services/orchestrator/interfaces';
+import { sshExec } from '../../utils/ssh';
 import type { ResolvedServer } from '../../types';
-import type { ServerStatus } from '../types';
+import type { ControlPlaneStatus, ServerStatus, SwarmStatus } from '../types';
+
+/** bounded so an unreachable server never stalls the status poll (design-06 8.2) */
+const SERVER_STATUS_TIMEOUT_MS = 10_000;
+const TIMED_OUT = Symbol('server-status-timeout');
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT> {
+  return Promise.race([promise, new Promise<typeof TIMED_OUT>((resolve) => setTimeout(() => resolve(TIMED_OUT), ms))]);
+}
 
 /**
  * Convert ResolvedServer to ServerStatus
@@ -149,66 +155,95 @@ async function getServer(serverName: string, url: URL): Promise<Response> {
   return jsonResponse(toServerStatus(resolvedServer));
 }
 
+/** `leader`/`ready`/`unready` pass through; `unreachable` covers a probe that could not decide either way. */
+function toControlPlaneStatus(status: ControlPlaneProbe['status']): ControlPlaneStatus {
+  return status === 'leader' || status === 'ready' || status === 'unready' ? status : 'unreachable';
+}
+
+function toSwarmStatus(status: ControlPlaneProbe['status']): SwarmStatus {
+  if (status === 'leader') return 'leader';
+  if (status === 'ready') return 'reachable';
+  return 'unreachable';
+}
+
 /**
- * Check server connectivity and Swarm status
+ * Check server connectivity, and — for a manager — control-plane status. `sshExec(conn, 'true')`
+ * bounded to `SERVER_STATUS_TIMEOUT_MS`: a failure or timeout answers `status: 'offline'` without
+ * ever probing the control plane, since a server that cannot be reached is not one either.
  */
 async function checkServerStatus(serverName: string, url: URL): Promise<Response> {
   const env = url.searchParams.get('env');
-  
+
   const serversConfig = loadServersConfig();
   if (!serversConfig) {
     return errorResponse('No servers.yml found', 404);
   }
-  
-  // Find the server
+
+  // Find the server (and the environment it resolved under, for its connection)
   const environments = env ? [env] : getAvailableEnvironments();
   let resolvedServer: ResolvedServer | null = null;
-  
+  let resolvedEnv: string | null = null;
+
   for (const e of environments) {
     const servers = resolveServersForEnvironment(e);
-    const found = servers.find(s => s.name === serverName);
+    const found = servers.find((s) => s.name === serverName);
     if (found) {
       resolvedServer = found;
+      resolvedEnv = e;
       break;
     }
   }
-  
-  if (!resolvedServer) {
+
+  if (!resolvedServer || !resolvedEnv) {
     return errorResponse(`Server "${serverName}" not found`, 404);
   }
-  
-  // Check if we have connection info — find env from server tags
-  const serverEnv = resolvedServer.tags[0] || '';
-  const privateKey = getServerPrivateKey(serverEnv, serverName);
-  if (!privateKey) {
+
+  const conn = getFullConnectionInfo(resolvedEnv, serverName);
+  if (!conn) {
     return jsonResponse({
       ...toServerStatus(resolvedServer),
       status: 'unknown',
       message: 'No connection credentials available. Set up .env.dockflow or CI secrets.',
-    });
+    } satisfies ServerStatus);
   }
-  
-  // Try to check manager status
+
+  let raced: Awaited<ReturnType<typeof sshExec>> | typeof TIMED_OUT;
   try {
-    const status = await checkManagerStatus({
-      host: resolvedServer.host,
-      port: resolvedServer.port,
-      user: resolvedServer.user,
-      privateKey,
-    });
-    
-    const serverStatus: ServerStatus = {
-      ...toServerStatus(resolvedServer),
-      status: status ? 'online' : 'offline',
-      swarmStatus: status || undefined,
-    };
-    
-    return jsonResponse(serverStatus);
+    raced = await withTimeout(sshExec(conn, 'true'), SERVER_STATUS_TIMEOUT_MS);
   } catch (error) {
     return jsonResponse({
       ...toServerStatus(resolvedServer),
-      status: 'error',
+      status: 'offline',
       error: error instanceof Error ? error.message : 'Connection failed',
-    });
+    } satisfies ServerStatus);
   }
+
+  if (raced === TIMED_OUT || raced.exitCode !== 0) {
+    return jsonResponse({
+      ...toServerStatus(resolvedServer),
+      status: 'offline',
+      error: raced === TIMED_OUT ? 'Connection timed out' : raced.stderr.trim() || 'Command failed',
+    } satisfies ServerStatus);
+  }
+
+  if (resolvedServer.role !== 'manager') {
+    return jsonResponse({ ...toServerStatus(resolvedServer), status: 'online' } satisfies ServerStatus);
+  }
+
+  const kind: OrchestratorKind = loadConfig({ silent: true })?.orchestrator ?? 'swarm';
+  const nodeRef: ClusterNodeRef = {
+    name: resolvedServer.name,
+    role: resolvedServer.role,
+    host: resolvedServer.host,
+    privateHost: resolvedServer.privateHost,
+    connection: conn,
+  };
+  const probe = await probeControlPlane(kind, nodeRef);
+
+  return jsonResponse({
+    ...toServerStatus(resolvedServer),
+    status: 'online',
+    controlPlaneStatus: toControlPlaneStatus(probe.status),
+    swarmStatus: kind === 'swarm' ? toSwarmStatus(probe.status) : undefined,
+  } satisfies ServerStatus);
 }

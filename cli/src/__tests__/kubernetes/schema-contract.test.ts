@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { ANNOTATIONS, KUBE_KEYS, LABELS } from '../../services/orchestrator/kubernetes/constants';
+import { ANNOTATIONS, KUBE_KEYS, LABELS, PARTS } from '../../services/orchestrator/kubernetes/constants';
 import type { DaemonSet, Deployment, StatefulSet } from '../../services/orchestrator/kubernetes/resources/apps';
 import type { Job } from '../../services/orchestrator/kubernetes/resources/batch';
 import type { Lease } from '../../services/orchestrator/kubernetes/resources/coordination';
@@ -481,7 +481,32 @@ function nonArtifactObjects(): Json[] {
     type: 'dockflow.shawiizz.dev/release.v1',
     data: { 'metadata.json': b64('{}') },
   };
-  return structuredClone([namespace, lease, storageClass, account, binding, helper, volume, release]) as unknown as Json[];
+  // The pinned traefik.io CRDs applied before install/upgrade (design-04 2.5); not a translator
+  // kind, so plain Json rather than the `CustomResourceDefinition` type (owned by P31, outside P07's
+  // dependency closure).
+  const crd: Json = {
+    apiVersion: 'apiextensions.k8s.io/v1',
+    kind: 'CustomResourceDefinition',
+    metadata: {
+      name: 'ingressroutes.traefik.io',
+      labels: { [LABELS.managedBy]: 'dockflow', [LABELS.part]: PARTS.system },
+      annotations: { [ANNOTATIONS.crdChartVersion]: '41.6.0', [ANNOTATIONS.crdTraefikVersion]: 'v3.5.3' },
+    },
+    spec: {
+      group: 'traefik.io',
+      names: { kind: 'IngressRoute', listKind: 'IngressRouteList', plural: 'ingressroutes', singular: 'ingressroute' },
+      scope: 'Namespaced',
+      versions: [
+        {
+          name: 'v1alpha1',
+          served: true,
+          storage: true,
+          schema: { openAPIV3Schema: { type: 'object', properties: { spec: { type: 'object', 'x-kubernetes-preserve-unknown-fields': true } } } },
+        },
+      ],
+    },
+  };
+  return structuredClone([namespace, lease, storageClass, account, binding, helper, volume, release, crd]) as unknown as Json[];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1554,6 +1579,7 @@ describe('vendored schema bundles (design-07 7.1, design-02 14.2)', () => {
     const { kubernetes, traefik } = schemaBundles();
     expect(Object.keys(kubernetes.roots).sort()).toEqual(
       [
+        'apiextensions.k8s.io/v1/CustomResourceDefinition',
         'apps/v1/DaemonSet',
         'apps/v1/Deployment',
         'apps/v1/StatefulSet',
@@ -1614,6 +1640,17 @@ describe('structural validator (design-07 7.2, 7.5; design-02 14.3)', () => {
 
   test('objects created outside artifacts pass', () => {
     for (const object of nonArtifactObjects()) expect(validateObject(object)).toEqual([]);
+  });
+
+  test('a pinned traefik.io CRD (design-04 2.5) is checked against its own vendored root, not left as gvk', () => {
+    const crd = nonArtifactObjects().find((object) => object.kind === 'CustomResourceDefinition');
+    if (crd === undefined) throw new Error('no CustomResourceDefinition fixture');
+    expect(validateObject(crd)).toEqual([]);
+    at(crd, 'spec').preserveUnknownFieldsTypo = true;
+    expect(validateObject(crd).map((found) => found.rule)).toEqual(['unknown-field']);
+    delete at(crd, 'spec').preserveUnknownFieldsTypo;
+    delete at(crd, 'spec').group;
+    expect(validateObject(crd).map((found) => found.rule)).toEqual(['required']);
   });
 
   test('an unknown apiVersion/kind has no schema', () => {

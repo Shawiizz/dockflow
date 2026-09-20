@@ -101,13 +101,24 @@ export function __setOrchestratorOpenerForTests(nextOpener: typeof openOrchestra
   targetCache.clear();
 }
 
+export interface WithOrchestratorOptions {
+  /** default true; false skips the control-plane probe (backup list/prune, design-06 8.2) */
+  failover?: boolean;
+}
+
 /**
  * resolveEnvironment(env query) -> openOrchestrator -> handler; every thrown error goes through
  * apiErrorResponse. Caches the resolved control plane per env for `API_TARGET_CACHE_MS` by passing
  * it as `server` to `openOrchestrator` (no probe, target.ts step 2); an `OrchestratorUnavailableError`
- * or `ConnectionError` evicts the entry so the next request probes again.
+ * or `ConnectionError` evicts the entry so the next request probes again. `options.failover` is
+ * forwarded to `openOrchestrator` as-is (target.ts step 3: `failover: false` with no cached `server`
+ * takes the first manager, no probe).
  */
-export async function withOrchestrator(url: URL, handler: (ctx: ApiContext) => Promise<Response>): Promise<Response> {
+export async function withOrchestrator(
+  url: URL,
+  handler: (ctx: ApiContext) => Promise<Response>,
+  options?: WithOrchestratorOptions,
+): Promise<Response> {
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) {
     return apiErrorResponse(new CLIError('No environments configured', ErrorCode.ENV_NOT_FOUND, 'Add servers to servers.yml.'));
@@ -117,7 +128,7 @@ export async function withOrchestrator(url: URL, handler: (ctx: ApiContext) => P
   const server = cached && Date.now() - cached.at < API_TARGET_CACHE_MS ? cached.server : undefined;
 
   try {
-    const { config, orchestrator } = await opener(env, { server });
+    const { config, orchestrator } = await opener(env, { server, failover: options?.failover });
     targetCache.set(env, { server: orchestrator.target.controlPlane.name, at: Date.now() });
     const ctx: ApiContext = {
       env,

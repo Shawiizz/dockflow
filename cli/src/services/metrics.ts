@@ -2,8 +2,15 @@
  * Metrics — collects and stores deployment metrics on the remote manager.
  *
  * All data is stored in /var/lib/dockflow/metrics/<stack>/
+ *
+ * Reads and `--prune` no longer target `servers[0]` only (design-06 3.19, R-S4-04): a deploy can
+ * pick any manager under failover (D20) and replicates metrics best-effort, so a single down node
+ * must not hide history. `fetchMetricsWithFallback` and `pruneMetricsOnAllNodes` below are the
+ * multi-node entry points `commands/app/metrics.ts` uses instead of the single-connection `Metrics`
+ * class directly.
  */
 
+import type { ClusterNodeRef } from './orchestrator/interfaces';
 import { sshExec, sshExecChannel } from '../utils/ssh';
 import { DOCKFLOW_METRICS_DIR } from '../constants';
 import type { SSHKeyConnection } from '../types';
@@ -233,4 +240,50 @@ export class Metrics {
 
     return toRemove;
   }
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export interface MetricsFallbackResult {
+  metrics: DeploymentMetric[];
+  /** node the data was read from; null when every node's read failed or came back empty */
+  node: ClusterNodeRef | null;
+}
+
+/**
+ * design-06 3.19: the same manager-then-worker fallback `history`/`audit` use, first non-empty
+ * result. `nodes` is expected managers-first (`[...target.managers, ...target.workers]`).
+ */
+export async function fetchMetricsWithFallback(nodes: readonly ClusterNodeRef[], stackName: string, limit?: number): Promise<MetricsFallbackResult> {
+  for (const node of nodes) {
+    try {
+      const metrics = await new Metrics(node.connection).fetch(stackName, limit);
+      if (metrics.length > 0) return { metrics, node };
+    } catch (error) {
+      printDebug(`Metrics: node ${node.name} unreachable, trying next...`, { error: errorText(error) });
+    }
+  }
+  return { metrics: [], node: null };
+}
+
+export interface MetricsPruneOutcome {
+  node: string;
+  removed: number;
+  error?: string;
+}
+
+/** design-06 3.19: `--prune` runs on every reachable node instead of the first manager only. */
+export async function pruneMetricsOnAllNodes(nodes: readonly ClusterNodeRef[], stackName: string, keepLast?: number): Promise<MetricsPruneOutcome[]> {
+  return Promise.all(
+    nodes.map(async (node): Promise<MetricsPruneOutcome> => {
+      try {
+        const removed = await new Metrics(node.connection).prune(stackName, keepLast);
+        return { node: node.name, removed };
+      } catch (error) {
+        return { node: node.name, removed: 0, error: errorText(error) };
+      }
+    }),
+  );
 }

@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'bun:test';
-import { parseJsonlLines, calculateMetricsSummary } from '../services/metrics';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
+import { calculateMetricsSummary, fetchMetricsWithFallback, parseJsonlLines, pruneMetricsOnAllNodes } from '../services/metrics';
 import type { DeploymentMetric } from '../services/metrics';
+import type { ClusterNodeRef } from '../services/orchestrator/interfaces';
+import * as ssh from '../utils/ssh';
+
+function fakeNode(name: string, host: string): ClusterNodeRef {
+  return { name, role: 'manager', host, privateHost: host, connection: { host, port: 22, user: 'deploy', privateKey: 'test-only-key' } };
+}
 
 function metric(overrides: Partial<DeploymentMetric>): DeploymentMetric {
   return {
@@ -110,5 +116,64 @@ describe('calculateMetricsSummary', () => {
     expect(summary.most_deployed_versions).toHaveLength(5);
     expect(summary.most_deployed_versions[0]).toEqual({ version: 'v3', count: 3 });
     expect(summary.most_deployed_versions[1]).toEqual({ version: 'v2', count: 2 });
+  });
+});
+
+// design-06 3.19 / R-S4-04: reads and --prune no longer target the first manager only.
+describe('fetchMetricsWithFallback', () => {
+  let spy: ReturnType<typeof spyOn> | undefined;
+  afterEach(() => spy?.mockRestore());
+
+  it('falls back past an unreachable node and stops at the first non-empty result', async () => {
+    const a = fakeNode('server-1', '10.0.0.1');
+    const b = fakeNode('server-2', '10.0.0.2');
+    const c = fakeNode('server-3', '10.0.0.3');
+    const hosts: string[] = [];
+    spy = spyOn(ssh, 'sshExec').mockImplementation(async (conn) => {
+      hosts.push(conn.host);
+      if (conn.host === a.host) throw new Error('connection refused');
+      if (conn.host === b.host) return { exitCode: 0, stdout: '{"id":"m1"}\n', stderr: '' };
+      return { exitCode: 0, stdout: '{"id":"m2"}\n', stderr: '' };
+    });
+
+    const result = await fetchMetricsWithFallback([a, b, c], 'shop-production', 20);
+
+    expect(result.node?.name).toBe('server-2');
+    expect(result.metrics).toEqual([{ id: 'm1' } as unknown as DeploymentMetric]);
+    expect(hosts).toEqual([a.host, b.host]); // never reaches the third node once one answers
+  });
+
+  it('every node unreachable or empty gives no metrics and a null node', async () => {
+    const a = fakeNode('server-1', '10.0.0.1');
+    const b = fakeNode('server-2', '10.0.0.2');
+    spy = spyOn(ssh, 'sshExec').mockImplementation(async () => ({ exitCode: 0, stdout: '', stderr: '' }));
+
+    const result = await fetchMetricsWithFallback([a, b], 'shop-production');
+
+    expect(result.metrics).toEqual([]);
+    expect(result.node).toBeNull();
+  });
+});
+
+describe('pruneMetricsOnAllNodes', () => {
+  let spy: ReturnType<typeof spyOn> | undefined;
+  afterEach(() => spy?.mockRestore());
+
+  it('runs on every reachable node and reports the failure of one without dropping the others', async () => {
+    const a = fakeNode('server-1', '10.0.0.1');
+    const b = fakeNode('server-2', '10.0.0.2');
+    spy = spyOn(ssh, 'sshExec').mockImplementation(async (conn, command) => {
+      if (conn.host === a.host) throw new Error('node unreachable');
+      if (command.startsWith('wc -l')) return { exitCode: 0, stdout: '1500\n', stderr: '' };
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+
+    const outcomes = await pruneMetricsOnAllNodes([a, b], 'shop-production', 1000);
+
+    expect(outcomes).toHaveLength(2);
+    const failed = outcomes.find((o) => o.node === 'server-1');
+    expect(failed?.removed).toBe(0);
+    expect(failed?.error).toBeDefined();
+    expect(outcomes.find((o) => o.node === 'server-2')).toEqual({ node: 'server-2', removed: 500 });
   });
 });

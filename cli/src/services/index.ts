@@ -9,9 +9,6 @@
 // Deployment metrics
 export * from './metrics';
 
-// Deployment locks
-export * from './lock';
-
 // Backup & restore
 export * from './backup';
 

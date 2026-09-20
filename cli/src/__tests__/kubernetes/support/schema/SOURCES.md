@@ -8,7 +8,7 @@ Every definition is trimmed to the validation keywords (`description` and `examp
 ## k8s-v1.34.0.json.gz
 
 Kubernetes `v1.34.0` OpenAPI v3, the minimum server version (`K3S_PIN.minimumServerVersion`), so a field added
-in a later version fails offline. 209 definitions.
+in a later version fails offline. 232 definitions.
 
 | Document | sha256 |
 |---|---|
@@ -18,8 +18,9 @@ in a later version fails offline. 209 definitions.
 | https://raw.githubusercontent.com/kubernetes/kubernetes/v1.34.0/api/openapi-spec/v3/apis__coordination.k8s.io__v1_openapi.json | `32e5f290ef2b787989f2903ba7642b0b43b15adef246c421329b5507095f94b2` |
 | https://raw.githubusercontent.com/kubernetes/kubernetes/v1.34.0/api/openapi-spec/v3/apis__storage.k8s.io__v1_openapi.json | `509afce05a4ef0b7a34b839e3d57303859f2498f0508bb9edc23214c52319cb3` |
 | https://raw.githubusercontent.com/kubernetes/kubernetes/v1.34.0/api/openapi-spec/v3/apis__rbac.authorization.k8s.io__v1_openapi.json | `d6d18974b0d7fc6ac7e89584d53ecc8616875e3097c02cc7dd706de6efd57fd4` |
+| https://raw.githubusercontent.com/kubernetes/kubernetes/v1.34.0/api/openapi-spec/v3/apis__apiextensions.k8s.io__v1_openapi.json | `e67d9d38b1cd5d7e74181275586105f58c5ac0d364f619dfe1dd2d63f11a2eb4` |
 
-Roots: `apps/v1/DaemonSet`, `apps/v1/Deployment`, `apps/v1/StatefulSet`, `batch/v1/Job`, `coordination.k8s.io/v1/Lease`, `rbac.authorization.k8s.io/v1/ClusterRoleBinding`, `storage.k8s.io/v1/StorageClass`, `v1/ConfigMap`, `v1/Namespace`, `v1/PersistentVolume`, `v1/PersistentVolumeClaim`, `v1/Pod`, `v1/Secret`, `v1/Service`, `v1/ServiceAccount`.
+Roots: `apiextensions.k8s.io/v1/CustomResourceDefinition`, `apps/v1/DaemonSet`, `apps/v1/Deployment`, `apps/v1/StatefulSet`, `batch/v1/Job`, `coordination.k8s.io/v1/Lease`, `rbac.authorization.k8s.io/v1/ClusterRoleBinding`, `storage.k8s.io/v1/StorageClass`, `v1/ConfigMap`, `v1/Namespace`, `v1/PersistentVolume`, `v1/PersistentVolumeClaim`, `v1/Pod`, `v1/Secret`, `v1/Service`, `v1/ServiceAccount`.
 
 ## traefik-41.6.0.json.gz
 

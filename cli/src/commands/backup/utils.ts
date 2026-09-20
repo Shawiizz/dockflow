@@ -1,90 +1,75 @@
 /**
- * Shared utilities for backup commands
+ * Shared helpers for the `dockflow backup` command group (design-06 3.20): local config lookup
+ * (before any SSH) and the role a service's backup configuration belongs to. The engine itself
+ * (`services/backup.ts`, over `Orchestrator.backups`) does everything that touches a node.
  */
 
-import { loadConfig, getStackName, getAccessoriesStackName, type BackupAccessoryConfig } from '../../utils/config';
-import { BackupError, ErrorCode } from '../../utils/errors';
-import type { SSHKeyConnection } from '../../types';
-import { createBackup, type Backup, type BackupListEntry } from '../../services/backup';
-import { getAllNodeConnections } from '../../utils/servers';
+import type { StackRef } from '../../services/orchestrator/interfaces';
+import { type BackupAccessoryConfig, loadConfig } from '../../utils/config';
+import { BackupError, ErrorCode, UnsupportedOperationError } from '../../utils/errors';
+import type { Day2Context } from '../shared/day2';
 
 export type BackupSource = 'services' | 'accessories';
 
-/**
- * Load and validate backup configuration for a specific service.
- * Searches both `backup.services` (main stack) and `backup.accessories`.
- * Returns the config, compression setting, and which source it came from.
- */
-export function requireBackupConfig(service: string): {
+export interface ResolvedBackupConfig {
   backupConfig: BackupAccessoryConfig;
   compression: 'gzip' | 'none';
   source: BackupSource;
-} {
+}
+
+const TRAEFIK_NAMES: ReadonlySet<string> = new Set(['traefik', 'dockflow-traefik']);
+
+function lookup(service: string): ResolvedBackupConfig | null {
   const config = loadConfig();
-
+  const compression = config?.backup?.compression ?? 'gzip';
   const fromServices = config?.backup?.services?.[service];
-  if (fromServices) {
-    return { backupConfig: fromServices, compression: config?.backup?.compression ?? 'gzip', source: 'services' };
-  }
-
+  if (fromServices) return { backupConfig: fromServices, compression, source: 'services' };
   const fromAccessories = config?.backup?.accessories?.[service];
-  if (fromAccessories) {
-    return { backupConfig: fromAccessories, compression: config?.backup?.compression ?? 'gzip', source: 'accessories' };
-  }
+  if (fromAccessories) return { backupConfig: fromAccessories, compression, source: 'accessories' };
+  return null;
+}
 
-  throw new BackupError(
-    `No backup configuration found for service '${service}'`,
-    {
-      code: ErrorCode.BACKUP_CONFIG_MISSING,
-      suggestion: `Add backup config in .dockflow/config.yml:\n  backup:\n    services:        # for main stack services\n      ${service}:\n        type: volume\n    accessories:     # for accessory services\n      ${service}:\n        type: postgres  # postgres, mysql, mongodb, redis, raw, or volume`,
-    }
+function missingConfigError(service: string): BackupError {
+  const available = getBackupServiceNames();
+  return new BackupError(`No backup configuration found for service '${service}'`, {
+    code: ErrorCode.BACKUP_CONFIG_MISSING,
+    suggestion:
+      available.length > 0
+        ? `Available services: ${available.join(', ')}.`
+        : 'Add backup config in `.dockflow/config.yml` under `backup.services` or `backup.accessories`.',
+  });
+}
+
+/** R-24: Traefik's ACME storage is not a compose service and has no dump/restore path in v1. */
+function traefikRefusal(operation: string, env: string): UnsupportedOperationError {
+  return new UnsupportedOperationError(
+    `${operation} is not supported: Traefik is not a stack service`,
+    `Back up Traefik's \`acme.json\` with the procedure in the proxy documentation (\`dockflow ssh ${env}\`, then \`kubectl exec\`).`,
   );
 }
 
 /**
- * Resolve the stack name based on where the backup config was found.
- * - 'services' → main stack name ({project}-{env})
- * - 'accessories' → accessories stack name ({project}-{env}-accessories)
+ * Loads and validates a service's backup config from config.yml (local, before SSH). Used by
+ * `create`/`restore`, where an unconfigured `traefik`/`dockflow-traefik` on k3s is R-24 instead of
+ * the ordinary missing-configuration refusal.
  */
-export function resolveBackupStack(env: string, source: BackupSource): string {
-  const stackName = source === 'services'
-    ? getStackName(env)
-    : getAccessoriesStackName(env);
-
-  if (!stackName) {
-    throw new BackupError('No project configured', {
-      code: ErrorCode.BACKUP_FAILED,
-      suggestion: 'Ensure project_name is set in .dockflow/config.yml',
-    });
+export function requireBackupConfig(service: string, env: string, operation: string): ResolvedBackupConfig {
+  const found = lookup(service);
+  if (found) return found;
+  if ((loadConfig()?.orchestrator ?? 'swarm') === 'k3s' && TRAEFIK_NAMES.has(service)) {
+    throw traefikRefusal(operation, env);
   }
-
-  return stackName;
+  throw missingConfigError(service);
 }
 
-/**
- * Get all configured backup stack names for an environment.
- * Returns entries for both services and accessories stacks if configured.
- */
-export function getAllBackupStacks(env: string): { stackName: string; source: BackupSource }[] {
-  const config = loadConfig();
-  const stacks: { stackName: string; source: BackupSource }[] = [];
-
-  if (config?.backup?.services && Object.keys(config.backup.services).length > 0) {
-    const stackName = getStackName(env);
-    if (stackName) stacks.push({ stackName, source: 'services' });
-  }
-
-  if (config?.backup?.accessories && Object.keys(config.backup.accessories).length > 0) {
-    const stackName = getAccessoriesStackName(env);
-    if (stackName) stacks.push({ stackName, source: 'accessories' });
-  }
-
-  return stacks;
+/** Same lookup for `list`/`prune`, which are not in R-24's trigger set (design-06 3.20). */
+export function requireBackupSource(service: string): ResolvedBackupConfig {
+  const found = lookup(service);
+  if (found) return found;
+  throw missingConfigError(service);
 }
 
-/**
- * Get all configured backup service names (from both services and accessories).
- */
+/** Names configured under `backup.services` and `backup.accessories`, for "missing argument" suggestions. */
 export function getBackupServiceNames(): string[] {
   const config = loadConfig();
   const names: string[] = [];
@@ -93,59 +78,20 @@ export function getBackupServiceNames(): string[] {
   return names;
 }
 
-// ─── Shared data-fetching helpers (used by both CLI commands and API routes) ──
-
-/** Backup entries grouped by service within a single stack */
-export interface StackGroupedEntries {
-  backupService: Backup;
-  byService: Record<string, BackupListEntry[]>;
+/** The `StackRef` a backup source resolves to; app and accessory share one namespace on k3s (D7). */
+export function refForSource(ctx: Day2Context, source: BackupSource): StackRef {
+  return source === 'services' ? ctx.appRef : ctx.accessoryRef;
 }
 
-/**
- * List backups across all configured stacks, sorted newest-first.
- */
-export async function listFromAllStacks(
-  connection: SSHKeyConnection,
-  env: string
-): Promise<BackupListEntry[]> {
-  const stacks = getAllBackupStacks(env);
-  const entries: BackupListEntry[] = [];
-
-  const allConnections = getAllNodeConnections(env);
-
-  for (const { stackName } of stacks) {
-    const backupService = createBackup(connection, stackName, allConnections);
-    const result = await backupService.list();
-    if (result.success) entries.push(...result.data);
-  }
-
-  entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  return entries;
+export function nounForSource(source: BackupSource): 'service' | 'accessory' {
+  return source === 'services' ? 'service' : 'accessory';
 }
 
-/**
- * List backups across all configured stacks, grouped by stack and service.
- * Returns one entry per stack, each containing a BackupService and its entries grouped by service name.
- */
-export async function listGroupedFromAllStacks(
-  connection: SSHKeyConnection,
-  env: string
-): Promise<StackGroupedEntries[]> {
-  const stacks = getAllBackupStacks(env);
-  const result: StackGroupedEntries[] = [];
-  const allConnections = getAllNodeConnections(env);
-
-  for (const { stackName } of stacks) {
-    const backupService = createBackup(connection, stackName, allConnections);
-    const listResult = await backupService.list();
-    if (!listResult.success) continue;
-
-    const byService: Record<string, BackupListEntry[]> = {};
-    for (const entry of listResult.data) {
-      (byService[entry.service] ??= []).push(entry);
-    }
-    result.push({ backupService, byService });
-  }
-
-  return result;
+/** Every role with at least one backup configured, for `list`/`prune` without a service name. */
+export function configuredSources(): BackupSource[] {
+  const config = loadConfig();
+  const sources: BackupSource[] = [];
+  if (config?.backup?.services && Object.keys(config.backup.services).length > 0) sources.push('services');
+  if (config?.backup?.accessories && Object.keys(config.backup.accessories).length > 0) sources.push('accessories');
+  return sources;
 }

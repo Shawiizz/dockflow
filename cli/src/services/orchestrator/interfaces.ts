@@ -654,6 +654,21 @@ export interface ProxyBackend {
   /** idempotent; no disruption when the effective configuration is unchanged */
   ensure(proxy: ProxyConfig, env: string, events?: HelmEventSink): Promise<ProxyEnsureResult>;
   status(): Promise<ProxyStatus>;
+  /**
+   * Counts what still depends on this proxy cluster-wide: IngressRoutes outside the system
+   * namespace and Ingress objects of the Dockflow ingress class (plus classless ones when the
+   * deployed values default that class). `helm uninstall <env> --system` (without `--force`) reads
+   * this to refuse while routes still exist (design-04 3.12.6 step 5). Optional: a caller without it
+   * proceeds unconditionally, and Swarm never implements it.
+   */
+  routesInUse?(): Promise<{ namespaces: string[]; ingressRoutes: number; ingresses: number }>;
+  /**
+   * Deletes the ownership/state ConfigMap, so the proxy is no longer recorded as managed by this
+   * stack. `helm uninstall <env> --system` calls this after Traefik itself is uninstalled
+   * (design-04 3.12.6 step 11); a later `ensure()` from any owner recreates the record. Optional: a
+   * caller without it leaves the ConfigMap in place, and Swarm never implements it.
+   */
+  forget?(): Promise<void>;
 }
 
 export interface RegistryCredentials {
@@ -744,6 +759,13 @@ export interface VolumeInfo {
   /** compose names or pod names currently mounting it */
   usedBy: string[];
   hostPath: string | null;
+  /**
+   * The PersistentVolume a claimed PVC is bound to; null for an unclaimed row (there `name` already
+   * is the PV) and for a PVC not yet bound. Read while the claim still exists, this is what lets a
+   * caller find the same PV again by name once Helm's own uninstall has deleted the claim (design-04
+   * 3.10 `deleteVolumes`). Optional: a `VolumeInfo` built before this field existed omits it.
+   */
+  boundVolume?: string | null;
 }
 
 export interface VolumeRemovalReport {
@@ -764,6 +786,16 @@ export interface VolumeBackend {
    * command can print it.
    */
   remove(scope: VolumeScope, names: string[]): Promise<VolumeRemovalReport>;
+  /**
+   * Patches each named PersistentVolume's reclaim policy to Retain, without touching its claim; a PV
+   * already Retain is left alone. Only ever strengthens retention, so it needs none of `remove`'s
+   * protocol (no annotation, nothing to restore). `helm uninstall <env> --keep-volumes` calls this
+   * before the uninstall (design-04 3.10 `keepVolumes`), so Helm's own delete of a manifest PVC never
+   * takes its data with it. Names are PV names (`VolumeInfo.boundVolume` or an unclaimed row's
+   * `name`), not PVC names. Optional: a caller without it protects only claim-template PVCs, which
+   * Helm never deletes on its own.
+   */
+  retainVolumes?(scope: VolumeScope, volumeNames: string[]): Promise<{ changed: string[] }>;
 }
 
 export interface HelmManifestObject {

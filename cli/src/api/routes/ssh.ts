@@ -1,25 +1,24 @@
 /**
- * SSH WebSocket Route Handler
+ * SSH WebSocket Route Handler (design-06 8.2)
  *
  * Upgrades HTTP connections to WebSocket for interactive SSH sessions.
  * Uses the ssh2 library for direct SSH connections (no temp key files needed).
  *
  * Supports two modes:
- * 1. Shell mode (/ws/ssh/:serverName) - Interactive SSH shell to a specific server
- * 2. Exec mode (/ws/exec/:serviceName?env=) - Docker exec into a running container
+ * 1. Shell mode (/ws/ssh/:serverName) - Interactive SSH shell to a specific server (unchanged)
+ * 2. Exec mode (/ws/exec/:serviceName?env=) - PTY session in a service instance, through
+ *    `ContainerBackend.interactiveCommand` (`docker exec -it` on Swarm, `kubectl exec -it` on k3s)
  */
 
 import type { ServerWebSocket } from 'bun';
 import { Client as SSHClient, type ClientChannel } from 'ssh2';
 import { loadServersConfig } from '../../utils/config';
-import {
-  resolveServersForEnvironment,
-  getAvailableEnvironments,
-  getServerPrivateKey,
-} from '../../utils/servers';
+import { resolveServersForEnvironment, getAvailableEnvironments, getServerPrivateKey } from '../../utils/servers';
 import { normalizePrivateKey } from '../../utils/ssh-keys';
+import { openOrchestrator } from '../../services/orchestrator/factory';
 import { DEFAULT_SSH_PORT, SSH_READY_TIMEOUT_MS, SSH_KEEPALIVE_INTERVAL_MS } from '../../constants';
-import { getManagerConnection, isValidDockerName } from './_helpers';
+import { isValidDockerName, resolveApiService, type ApiContext } from './_helpers';
+import type { SSHKeyConnection } from '../../types';
 
 /** Data attached to each WebSocket during upgrade */
 export interface WSData {
@@ -155,6 +154,111 @@ function resolveServerConnection(serverName: string) {
 }
 
 /**
+ * Resolve the service (app role first, then accessory) and open a PTY session on a dedicated SSH
+ * connection through `ContainerBackend.interactiveCommand` — one `openOrchestrator` per session,
+ * like every other failover-at-start command (design-06 6). Session bookkeeping (the map entry,
+ * resize, the heartbeat/watchdog) is unchanged; only how the remote command is found changes.
+ */
+async function connectExecSession(
+  ws: ServerWebSocket<WSData>,
+  sessionId: string,
+  client: SSHClient,
+  env: string,
+  serviceName: string,
+): Promise<void> {
+  let target: { connection: SSHKeyConnection; command: string };
+  try {
+    const { config, orchestrator } = await openOrchestrator(env, {});
+    const ctx: ApiContext = {
+      env,
+      config,
+      orchestrator,
+      stackName: orchestrator.target.stackName,
+      appRef: { project: orchestrator.target.project, env, role: 'app' },
+      accessoryRef: { project: orchestrator.target.project, env, role: 'accessory' },
+    };
+    const { ref, service } = await resolveApiService(ctx, serviceName, ['app', 'accessory']);
+    target = await orchestrator.containers.interactiveCommand(ref, { service: service.name }, '/bin/sh');
+  } catch (error) {
+    try {
+      ws.send(JSON.stringify({ type: 'error', message: error instanceof Error ? error.message : String(error) }));
+    } catch {
+      // WebSocket may already be closed
+    }
+    cleanupSession(sessionId);
+    return;
+  }
+
+  client.on('ready', () => {
+    client.exec(target.command, { pty: { term: 'xterm-256color', rows: 24, cols: 80 } }, (execErr, execStream) => {
+      if (execErr) {
+        ws.send(JSON.stringify({ type: 'error', message: `Exec error: ${execErr.message}` }));
+        client.end();
+        return;
+      }
+
+      const session = activeSessions.get(sessionId);
+      if (session) session.stream = execStream;
+
+      ws.send(JSON.stringify({ type: 'connected', service: serviceName }));
+
+      execStream.on('data', (data: Buffer) => {
+        try {
+          ws.send(data);
+        } catch {
+          // WebSocket may be closed
+        }
+      });
+
+      execStream.stderr?.on('data', (data: Buffer) => {
+        try {
+          ws.send(data);
+        } catch {
+          // WebSocket may be closed
+        }
+      });
+
+      execStream.on('close', () => {
+        try {
+          ws.send(JSON.stringify({ type: 'exit', code: 0 }));
+        } catch {
+          // WebSocket may already be closed
+        }
+        cleanupSession(sessionId);
+      });
+    });
+  });
+
+  client.on('error', (err) => {
+    try {
+      ws.send(JSON.stringify({ type: 'error', message: err.message }));
+    } catch {
+      // Ignore
+    }
+    cleanupSession(sessionId);
+  });
+
+  client.on('close', () => {
+    try {
+      ws.send(JSON.stringify({ type: 'exit', code: 0 }));
+    } catch {
+      // WebSocket may already be closed
+    }
+    cleanupSession(sessionId);
+  });
+
+  client.connect({
+    host: target.connection.host,
+    port: target.connection.port,
+    username: target.connection.user,
+    privateKey: normalizePrivateKey(target.connection.privateKey),
+    hostVerifier: () => true,
+    readyTimeout: SSH_READY_TIMEOUT_MS,
+    keepaliveInterval: SSH_KEEPALIVE_INTERVAL_MS,
+  });
+}
+
+/**
  * Bun WebSocket handlers for SSH sessions.
  * Attach these to Bun.serve({ websocket: sshWebSocketHandlers })
  */
@@ -162,7 +266,7 @@ export const sshWebSocketHandlers = {
   open(ws: ServerWebSocket<WSData>) {
     ensureTimersStarted();
 
-    // ── Exec mode: docker exec into a container ──
+    // ── Exec mode: PTY session in a service instance (design-06 8.2) ──
     if (ws.data?.mode === 'exec') {
       const serviceName = ws.data.serviceName;
       const env = ws.data.env;
@@ -179,13 +283,6 @@ export const sshWebSocketHandlers = {
         return;
       }
 
-      const conn = getManagerConnection(env);
-      if (!conn) {
-        ws.send(JSON.stringify({ type: 'error', message: `Cannot connect to manager for env "${env}": no credentials found` }));
-        ws.close();
-        return;
-      }
-
       const sessionId = `exec-${serviceName}-${Date.now()}`;
       const client = new SSHClient();
 
@@ -193,109 +290,7 @@ export const sshWebSocketHandlers = {
       ws.data.sessionId = sessionId;
       activeWebSockets.set(sessionId, ws);
 
-      client.on('ready', () => {
-        // First find the container for the service
-        client.exec(
-          `docker ps --filter label=com.docker.swarm.service.name=${serviceName} --format '{{.ID}}' | head -n1`,
-          (err, stream) => {
-            if (err) {
-              ws.send(JSON.stringify({ type: 'error', message: `Failed to find container: ${err.message}` }));
-              client.end();
-              return;
-            }
-
-            let containerId = '';
-            stream.on('data', (data: Buffer) => {
-              containerId += data.toString();
-            });
-
-            stream.on('close', () => {
-              containerId = containerId.trim();
-              if (!containerId) {
-                ws.send(JSON.stringify({ type: 'error', message: `No container found for service ${serviceName}` }));
-                cleanupSession(sessionId);
-                return;
-              }
-
-              // Now exec into the container with PTY
-              client.exec(
-                `docker exec -it ${containerId} /bin/sh`,
-                { pty: { term: 'xterm-256color', rows: 24, cols: 80 } },
-                (execErr, execStream) => {
-                  if (execErr) {
-                    ws.send(JSON.stringify({ type: 'error', message: `Exec error: ${execErr.message}` }));
-                    client.end();
-                    return;
-                  }
-
-                  // Store stream reference for resize
-                  const session = activeSessions.get(sessionId);
-                  if (session) {
-                    session.stream = execStream;
-                  }
-
-                  ws.send(JSON.stringify({ type: 'connected', service: serviceName }));
-
-                  execStream.on('data', (data: Buffer) => {
-                    try {
-                      ws.send(data);
-                    } catch {
-                      // WebSocket may be closed
-                    }
-                  });
-
-                  execStream.stderr?.on('data', (data: Buffer) => {
-                    try {
-                      ws.send(data);
-                    } catch {
-                      // WebSocket may be closed
-                    }
-                  });
-
-                  execStream.on('close', () => {
-                    try {
-                      ws.send(JSON.stringify({ type: 'exit', code: 0 }));
-                    } catch {
-                      // WebSocket may already be closed
-                    }
-                    cleanupSession(sessionId);
-                  });
-                },
-              );
-            });
-          },
-        );
-      });
-
-      client.on('error', (err) => {
-        try {
-          ws.send(JSON.stringify({ type: 'error', message: err.message }));
-        } catch {
-          // Ignore
-        }
-        cleanupSession(sessionId);
-      });
-
-      client.on('close', () => {
-        try {
-          ws.send(JSON.stringify({ type: 'exit', code: 0 }));
-        } catch {
-          // WebSocket may already be closed
-        }
-        cleanupSession(sessionId);
-      });
-
-      // Connect using ssh2 with manager credentials
-      client.connect({
-        host: conn.host,
-        port: conn.port,
-        username: conn.user,
-        privateKey: normalizePrivateKey(conn.privateKey),
-        hostVerifier: () => true,
-        readyTimeout: SSH_READY_TIMEOUT_MS,
-        keepaliveInterval: SSH_KEEPALIVE_INTERVAL_MS,
-      });
-
+      void connectExecSession(ws, sessionId, client, env, serviceName);
       return;
     }
 

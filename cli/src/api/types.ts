@@ -484,6 +484,8 @@ export interface BackupEntry {
 export interface BackupListResponse {
   backups: BackupEntry[];
   total: number;
+  /** nodes with credentials that did not answer; the list may be missing their backups (K64b) */
+  unreachableNodes: string[];
 }
 
 export interface BackupActionResponse {

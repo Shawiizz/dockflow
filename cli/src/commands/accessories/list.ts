@@ -1,161 +1,91 @@
 /**
- * Accessories List Command
- * List all running accessories and their status
+ * `dockflow accessories list` (design-06 3.16): the accessory-role listing, table + a Volumes section
+ * from the orchestrator's `VolumeBackend` (never null, core 6.1, K61), so this command works
+ * identically on both orchestrators without special-casing Swarm.
  */
 
 import type { Command } from 'commander';
+import { formatPorts, formatReplicas } from '../../services/orchestrator/format';
+import type { ServiceInfo } from '../../services/orchestrator/interfaces';
 import { getLayout } from '../../utils/config';
-import { sshExec } from '../../utils/ssh';
-import { printInfo, printIntro, printSection, printBlank, printJSON, printDim, printRaw, colors } from '../../utils/output';
-import { validateEnv, withResolvedEnv } from '../../utils/validation';
-import { validateAccessoriesStack } from './utils';
-import { DockerError, withErrorHandler } from '../../utils/errors';
+import { withServicesRequired } from '../../utils/errors';
+import { colors, printBlank, printDim, printInfo, printJSON, printRaw, printSection } from '../../utils/output';
+import { withResolvedEnv } from '../../utils/validation';
+import { listingJson, openDay2 } from '../shared/day2';
 
-interface ServiceInfo {
-  name: string;
-  mode: string;
-  replicas: string;
-  image: string;
-  ports: string;
-}
-
-/**
- * Parse docker stack services output
- */
-function parseServicesOutput(output: string): ServiceInfo[] {
-  const lines = output.trim().split('\n').filter(Boolean);
-  return lines.map(line => {
-    const parts = line.split('\t');
-    return {
-      name: parts[0] || '',
-      mode: parts[1] || '',
-      replicas: parts[2] || '',
-      image: parts[3] || '',
-      ports: parts[4] || '',
-    };
-  });
-}
-
-/**
- * Format replicas with color
- */
-function formatReplicas(replicas: string): string {
-  if (!replicas) return colors.dim('-');
-  
-  const [current, desired] = replicas.split('/').map(s => parseInt(s.trim(), 10));
-  
-  if (isNaN(current) || isNaN(desired)) {
-    return colors.dim(replicas);
-  }
-  
-  if (current === desired && current > 0) {
-    return colors.success(`● ${replicas}`);
-  }
-  if (current === 0) {
-    return colors.error(`○ ${replicas}`);
-  }
-  return colors.warning(`◐ ${replicas}`);
+export interface AccessoriesListOptions {
+  server?: string;
+  json?: boolean;
 }
 
 function hasAccessoriesFile(): boolean {
   return getLayout().accessoriesPath !== null;
 }
 
-/**
- * Register the accessories list command
- */
+function serviceLabel(service: ServiceInfo): string {
+  return service.kind === 'helm' ? `${service.name} (helm)` : service.name;
+}
+
+export async function runAccessoriesList(env: string, options: AccessoriesListOptions): Promise<void> {
+  const ctx = await openDay2(env, { server: options.server });
+  const ref = ctx.accessoryRef;
+  const deployed = await ctx.orchestrator.stack.exists(ref);
+
+  if (!deployed) {
+    if (!hasAccessoriesFile()) {
+      printInfo('No accessories.yml found in .dockflow/docker/');
+      printInfo('Create one to define your accessories (databases, caches, etc.)');
+    } else {
+      printInfo('Accessories not deployed yet');
+      printBlank();
+      printInfo(`Deploy with: dockflow deploy ${env} --accessories`);
+    }
+    return;
+  }
+
+  const services = await ctx.orchestrator.stack.getServices(ref);
+
+  if (options.json) {
+    printJSON(listingJson(ctx, ref, services));
+    return;
+  }
+
+  if (services.length === 0) {
+    printInfo('No accessories services found');
+    return;
+  }
+
+  printRaw(colors.dim(`  ${'SERVICE'.padEnd(28)}${'REPLICAS'.padEnd(12)}${'IMAGE'.padEnd(35)}PORTS`));
+  printDim(`  ${'-'.repeat(90)}`);
+  for (const service of services) {
+    printRaw(
+      `  ${colors.info(serviceLabel(service).padEnd(28))}` +
+        `${formatReplicas(service).padEnd(12)}` +
+        `${colors.dim(service.image.padEnd(35))}` +
+        `${colors.dim(formatPorts(service.ports) || '-')}`,
+    );
+  }
+
+  const volumes = await ctx.orchestrator.volumes.list({ project: ctx.orchestrator.target.project, env, role: 'accessory' });
+  if (volumes.length > 0) {
+    printBlank();
+    printSection('Volumes');
+    printRaw(colors.dim(`  ${'NAME'.padEnd(30)}${'STATUS'.padEnd(12)}${'CAPACITY'.padEnd(12)}NODE`));
+    for (const volume of volumes) {
+      printRaw(`  ${volume.name.padEnd(30)}${volume.phase.padEnd(12)}${(volume.capacity ?? '-').padEnd(12)}${volume.node ?? '-'}`);
+    }
+  }
+
+  printBlank();
+  printInfo(ctx.orchestrator.naming.describe(ref));
+}
+
 export function registerAccessoriesListCommand(program: Command): void {
   program
     .command('list <env>')
     .alias('ls')
     .description('List running accessories and their status')
     .option('-j, --json', 'Output in JSON format')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
-    .action(withErrorHandler(withResolvedEnv(async (env: string, options: { json?: boolean; server?: string }) => {
-      if (!options.json) {
-        printIntro(`Accessories - ${env}`);
-        printBlank();
-      }
-
-      // Validate environment
-      const { connection } = validateEnv(env, options.server);
-      const validation = await validateAccessoriesStack(connection, env);
-
-      try {
-        if (!validation.exists) {
-          if (!hasAccessoriesFile()) {
-            printInfo('No accessories.yml found in .dockflow/docker/');
-            printInfo('Create one to define your accessories (databases, caches, etc.)');
-          } else {
-            printInfo('Accessories not deployed yet');
-            printBlank();
-            printInfo(`Deploy with: dockflow deploy ${env} --accessories`);
-          }
-          return;
-        }
-
-        const { stackName } = validation;
-
-        // Get services info using docker stack services
-        const format = '{{.Name}}\t{{.Mode}}\t{{.Replicas}}\t{{.Image}}\t{{.Ports}}';
-        const listCmd = `docker stack services ${stackName} --format "${format}"`;
-        
-        const result = await sshExec(connection, listCmd);
-
-        if (result.exitCode !== 0) {
-          throw new DockerError('Failed to list accessories' + (result.stderr ? ': ' + result.stderr : ''));
-        }
-
-        const services = parseServicesOutput(result.stdout);
-
-        if (services.length === 0) {
-          printInfo('No accessories services found');
-          return;
-        }
-
-        if (options.json) {
-          printJSON(services);
-          return;
-        }
-
-        // Display table header
-        printRaw(colors.bold('  SERVICE'.padEnd(30) + 'REPLICAS'.padEnd(15) + 'IMAGE'.padEnd(35) + 'PORTS'));
-        printDim('  ' + '-'.repeat(90));
-
-        for (const service of services) {
-          const serviceName = service.name.replace(`${stackName}_`, '');
-          const imageShort = service.image.length > 32 
-            ? service.image.substring(0, 29) + '...' 
-            : service.image;
-          
-          printRaw(
-            `  ${colors.info(serviceName.padEnd(28))} ` +
-            `${formatReplicas(service.replicas).padEnd(25)} ` +
-            `${colors.dim(imageShort.padEnd(35))} ` +
-            `${colors.dim(service.ports || '-')}`
-          );
-        }
-
-        printBlank();
-
-        // Show volumes (associated with the stack)
-        const volumesResult = await sshExec(connection, 
-          `docker volume ls --filter "label=com.docker.stack.namespace=${stackName}" --format "{{.Name}}"`
-        );
-        
-        if (volumesResult.stdout.trim()) {
-          printSection('Volumes');
-          for (const vol of volumesResult.stdout.trim().split('\n').filter(Boolean)) {
-            printRaw(`  ${colors.info(vol)}`);
-          }
-        }
-
-        printBlank();
-        printInfo(`Stack: ${stackName}`);
-
-      } catch (error) {
-        if (error instanceof DockerError) throw error;
-        throw new DockerError(`Failed to list accessories: ${error}`);
-      }
-    })));
+    .option('-s, --server <name>', 'Target manager (defaults to the first ready manager)')
+    .action(withServicesRequired(withResolvedEnv(runAccessoriesList)));
 }

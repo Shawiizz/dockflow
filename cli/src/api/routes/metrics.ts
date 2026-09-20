@@ -1,25 +1,18 @@
 /**
- * Metrics API Routes
+ * Metrics API Routes (design-06 8.2, 3.9)
  *
- * Container resource stats and audit log endpoints.
- *
- * GET /api/metrics/stats  - Get real-time container resource usage (CPU, memory, network, block I/O)
- * GET /api/metrics/audit  - Get the deploy audit log for the current stack
+ * GET /api/metrics/stats  - Real-time container resource usage (CPU, memory, network, block I/O)
+ * GET /api/metrics/audit  - Deploy audit log for the current stack
  */
 
-import { jsonResponse, errorResponse } from '../server';
-import { sshExec } from '../../utils/ssh';
+import { getStackName } from '../../utils/config';
+import { formatBytes } from '../../utils/output';
 import { sshExecWithFallback } from '../../utils/ssh-fallback';
-import { getManagerConnection, getAllNodeConnections, resolveEnvironment, parseIntParam } from './_helpers';
+import { shellQuote } from '../../utils/ssh';
+import { errorResponse, getAllNodeConnections, jsonResponse, parseIntParam, resolveEnvironment, withOrchestrator } from './_helpers';
+import type { ContainerStats } from '../../services/orchestrator/interfaces';
 import { DOCKFLOW_AUDIT_DIR } from '../../constants';
-import type {
-  ContainerStatsEntry,
-  ContainerStatsResponse,
-  AuditEntry,
-  AuditResponse,
-} from '../types';
-
-// ─── Route handler ──────────────────────────────────────────────────────────
+import type { AuditEntry, AuditResponse, ContainerStatsEntry, ContainerStatsResponse } from '../types';
 
 /**
  * Handle /api/metrics/* routes
@@ -44,124 +37,94 @@ export async function handleMetricsRoutes(req: Request): Promise<Response> {
 
 // ─── Container stats ────────────────────────────────────────────────────────
 
+function toStatsEntry(stats: ContainerStats): ContainerStatsEntry {
+  const cpuPercent = stats.cpuMilli === null ? '-' : `${(stats.cpuMilli / 10).toFixed(2)}%`;
+  const memUsage =
+    stats.memoryBytes === null
+      ? '-'
+      : `${formatBytes(stats.memoryBytes)} / ${stats.memoryLimitBytes !== null ? formatBytes(stats.memoryLimitBytes) : '-'}`;
+  const memPercent =
+    stats.memoryBytes === null || stats.memoryLimitBytes === null || stats.memoryLimitBytes === 0
+      ? '-'
+      : `${((stats.memoryBytes / stats.memoryLimitBytes) * 100).toFixed(2)}%`;
+
+  return {
+    name: stats.instance,
+    service: stats.service,
+    node: stats.node ?? undefined,
+    role: stats.role,
+    cpuPercent,
+    memUsage,
+    memPercent,
+    netIO: stats.netIO ?? '-',
+    blockIO: stats.blockIO ?? '-',
+  };
+}
+
 /**
- * Get container resource stats via `docker stats --no-stream`.
- *
- * Uses pipe-delimited format for reliable parsing:
- *   Name|CPU%|MemUsage|Mem%|NetIO|BlockIO
- *
- * When a stackName is available, results are filtered to containers
- * belonging to that stack.
+ * Container stats for both roles, one bundle: on k3s the two `containers.stats` calls share the
+ * per-namespace metrics read (3.9's memo), so no container appears twice (K63a). A metrics-server
+ * unavailable on k3s surfaces as `OrchestratorUnavailableError` -> 503 through `withOrchestrator`.
  */
 async function getContainerStats(url: URL): Promise<Response> {
-  const env = resolveEnvironment(url.searchParams.get('env'));
-  if (!env) return errorResponse('No environments configured', 404);
-
-  const conn = getManagerConnection(env);
-  if (!conn) return errorResponse('No manager server with credentials found', 404);
-
-  try {
-    // docker stats outputs one row per container, --no-stream takes a snapshot
-    let command = "docker stats --no-stream --format '{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.BlockIO}}'";
-
-    // Filter by stack name if available
-    if (conn.stackName) {
-      command += ` | grep -F '${conn.stackName}'`;
-      // grep may exit 1 if no matches, so ensure we get output either way
-      command = `${command} || true`;
-    }
-
-    const result = await sshExec(conn, command);
-
-    if (result.exitCode !== 0) {
-      return errorResponse(result.stderr.trim() || 'Failed to get container stats', 500);
-    }
-
-    const containers: ContainerStatsEntry[] = result.stdout
-      .trim()
-      .split('\n')
-      .filter((line) => line.trim())
-      .map((line) => {
-        const parts = line.split('|');
-        return {
-          name: parts[0] || '',
-          cpuPercent: parts[1] || '0.00%',
-          memUsage: parts[2] || '0B / 0B',
-          memPercent: parts[3] || '0.00%',
-          netIO: parts[4] || '0B / 0B',
-          blockIO: parts[5] || '0B / 0B',
-        };
-      })
-      .filter((entry) => entry.name !== '');
-
-    return jsonResponse({
-      containers,
-      timestamp: new Date().toISOString(),
-    } satisfies ContainerStatsResponse);
-  } catch (error) {
-    return errorResponse(error instanceof Error ? error.message : 'Failed to get container stats', 500);
-  }
+  return withOrchestrator(url, async (ctx) => {
+    const [appStats, accessoryStats] = await Promise.all([
+      ctx.orchestrator.containers.stats(ctx.appRef),
+      ctx.orchestrator.containers.stats(ctx.accessoryRef),
+    ]);
+    const containers = [...appStats, ...accessoryStats].map(toStatsEntry);
+    return jsonResponse({ containers, timestamp: new Date().toISOString() } satisfies ContainerStatsResponse);
+  });
 }
 
 // ─── Audit log ──────────────────────────────────────────────────────────────
 
-// (audit log below)
+/**
+ * `timestamp | action | version | performer | message`, the format the `history` command writes
+ * (`app/history.ts`, unchanged by this rewrite; its own parser stays private to that file).
+ */
+function parseAuditLine(line: string): AuditEntry | null {
+  const parts = line.split(' | ').map((part) => part.trim());
+  if (parts.length < 4 || !parts[0]) return null;
+  return {
+    timestamp: parts[0],
+    action: parts[1] ?? '',
+    version: parts[2] ?? '',
+    performer: parts[3] ?? '',
+    message: parts[4] || undefined,
+  };
+}
 
 /**
- * Read the deploy audit log from the remote server.
- *
- * The audit file uses a pipe-delimited format:
- *   timestamp|action|version|performer|message
- *
- * Supports query parameters:
- * - env:   environment to query (defaults to first available)
- * - lines: max number of entries to return (default 100)
+ * Read the deploy audit log, replicated across nodes. `stackName` is `<project>-<env>`, not the
+ * bare project name the pre-rewrite route used (the `getManagerConnection` bug `_helpers.ts` notes).
  */
 async function getAuditLog(url: URL): Promise<Response> {
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
 
-  const conn = getManagerConnection(env);
-  if (!conn) return errorResponse('No manager server with credentials found', 404);
+  const stackName = getStackName(env);
+  if (!stackName) return errorResponse('Project name not found in config — cannot resolve audit path', 500);
+
+  const connections = getAllNodeConnections(env);
+  if (connections.length === 0) return errorResponse(`No SSH credentials available for environment "${env}"`, 503);
 
   const lines = parseIntParam(url.searchParams.get('lines'), 100, 1, 10000);
-  const auditFile = `${DOCKFLOW_AUDIT_DIR}/${conn.stackName}.log`;
+  const auditFile = `${DOCKFLOW_AUDIT_DIR}/${stackName}.log`;
 
   try {
-    const command = `tail -n ${lines} "${auditFile}" 2>/dev/null || echo ""`;
-    // Use fallback across all nodes since audit log is replicated
-    const nodeConnections = getAllNodeConnections(env);
-    const connections = nodeConnections.length > 0 ? nodeConnections : [conn];
+    const command = `tail -n ${lines} ${shellQuote(auditFile)} 2>/dev/null || echo ""`;
     const result = await sshExecWithFallback(connections, command);
-
     const output = result.stdout.trim();
 
-    if (!output) {
-      return jsonResponse({
-        entries: [],
-        total: 0,
-      } satisfies AuditResponse);
-    }
+    if (!output) return jsonResponse({ entries: [], total: 0 } satisfies AuditResponse);
 
     const entries: AuditEntry[] = output
       .split('\n')
-      .filter((line) => line.trim())
-      .map((line) => {
-        const parts = line.split('|');
-        return {
-          timestamp: parts[0] || '',
-          action: parts[1] || '',
-          version: parts[2] || '',
-          performer: parts[3] || '',
-          message: parts.slice(4).join('|') || undefined,
-        };
-      })
-      .filter((entry) => entry.timestamp !== '');
+      .map(parseAuditLine)
+      .filter((entry): entry is AuditEntry => entry !== null);
 
-    return jsonResponse({
-      entries,
-      total: entries.length,
-    } satisfies AuditResponse);
+    return jsonResponse({ entries, total: entries.length } satisfies AuditResponse);
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : 'Failed to read audit log', 500);
   }
