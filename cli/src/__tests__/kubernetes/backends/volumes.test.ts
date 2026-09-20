@@ -390,6 +390,7 @@ describe('list', () => {
       reclaimPolicy: 'Retain',
       usedBy: ['db'],
       hostPath: `${kube.distribution.localVolumeRoot}/${provisioned}_${NS}_db-data`,
+      boundVolume: provisioned,
     });
     expect(uploads).toEqual({
       name: 'uploads',
@@ -402,6 +403,7 @@ describe('list', () => {
       reclaimPolicy: 'Retain',
       usedBy: [],
       hostPath: `${HOST_ROOT}/pv-uploads_${NS}_uploads`,
+      boundVolume: 'pv-uploads',
     });
     // a chart's claim: no Dockflow labels, listed with role null only
     expect(postgres).toMatchObject({ name: 'data-postgres-0', composeName: null, role: null, node: 'agent_1', reclaimPolicy: 'Retain', usedBy: ['postgres-0'] });
@@ -436,6 +438,7 @@ describe('list', () => {
         reclaimPolicy: 'Retain',
         usedBy: [],
         hostPath: `${HOST_ROOT}/pv-dockflow-traefik_${SYSTEM}_dockflow-traefik`,
+        boundVolume: 'pv-dockflow-traefik',
       },
     ]);
     expect(await backend.list(scope({ namespace: SYSTEM, role: 'app' }))).toEqual([]);
@@ -464,6 +467,7 @@ describe('list', () => {
       reclaimPolicy: null,
       usedBy: [],
       hostPath: null,
+      boundVolume: null,
     });
     expect(infos[3]).toEqual({
       name: 'pv-orphan',
@@ -476,6 +480,7 @@ describe('list', () => {
       reclaimPolicy: 'Retain',
       usedBy: [],
       hostPath: `${HOST_ROOT}/pv-orphan_${NS}_gone`,
+      boundVolume: null,
     });
     expect(infos[2]).toMatchObject({ name: 'pv-media-old', phase: 'Released', role: null });
     // released PVs carry no role label

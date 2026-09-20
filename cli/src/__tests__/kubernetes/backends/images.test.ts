@@ -356,9 +356,11 @@ describe('KubernetesImageBackend.distribute', () => {
 
     const both = [WEB_IMPORTED, 'dockflow.invalid/shop-worker:1.4.2'];
     expect(h.engine.saves).toEqual([both, both]);
-    expect(channels(h).map((call) => call.node)).toEqual(['server_1', 'agent_1']);
+    // both nodes stream a real gzip pipeline concurrently, so which one's node-shell channel
+    // settles first is a genuine race; only the unordered set of outcomes is asserted (like I10).
+    expect(channels(h).map((call) => call.node).sort()).toEqual(['agent_1', 'server_1']);
     expect(h.containerd.refs('agent_1')).toEqual(both);
-    expect(h.info).toEqual([importedLine('server_1', both), importedLine('agent_1', both)]);
+    expect([...h.info].sort()).toEqual([importedLine('server_1', both), importedLine('agent_1', both)].sort());
   });
 
   it('I4: runs the exact import pipeline and streams gzip whose gunzipped bytes equal the save output', async () => {
@@ -443,7 +445,9 @@ describe('KubernetesImageBackend.distribute', () => {
       message: 'Image import on agent_1 failed: ctr: failed to extract layer: write /var/lib/containerd: no space left on device',
       suggestion: null,
     });
-    expect(h.info).toEqual([importedLine('server_1', [WEB_IMPORTED]), importedLine('agent_2', [WEB_IMPORTED])]);
+    // server_1 and agent_2 both stream a real gzip pipeline concurrently: completion order
+    // between them is a genuine race, so only the unordered set of outcomes is asserted.
+    expect([...h.info].sort()).toEqual([importedLine('server_1', [WEB_IMPORTED]), importedLine('agent_2', [WEB_IMPORTED])].sort());
     expect(h.containerd.refs('agent_2')).toEqual([WEB_IMPORTED]);
   });
 

@@ -612,6 +612,9 @@ export class KubernetesVolumeBackend implements VolumeBackend {
           reclaimPolicy: pv ? policyOf(pv) : null,
           usedBy: [...(users.get(pvc.metadata.name) ?? [])].sort(compareCodeUnits),
           hostPath: hostPathOf(pv),
+          // read while the claim still exists, so a Helm uninstall can find this PV again by name
+          // once it has deleted the claim (design-04 3.10 deleteVolumes/keepVolumes)
+          boundVolume: pv ? pv.metadata.name : null,
         },
       };
     });
@@ -631,6 +634,7 @@ export class KubernetesVolumeBackend implements VolumeBackend {
           reclaimPolicy: policyOf(pv),
           usedBy: [],
           hostPath: hostPathOf(pv),
+          boundVolume: null,
         },
       });
     }
