@@ -29,6 +29,11 @@ export function buildForwardFlags(
   if (options.portainerPassword) flags.push('--portainer-password', quote(options.portainerPassword));
   if (options.portainerDomain) flags.push('--portainer-domain', quote(options.portainerDomain));
 
+  // k3s single-host node identity (design-05 19.6): servers.yml supplies none of this remotely.
+  if (options.nodeName) flags.push('--node-name', quote(options.nodeName));
+  if (options.privateHost) flags.push('--private-host', quote(options.privateHost));
+  if (options.flannelBackend) flags.push('--flannel-backend', quote(options.flannelBackend));
+
   if (options.user) {
     flags.push('--user', quote(options.user));
     if (options.deployPassword) flags.push('--password', quote(options.deployPassword));

@@ -15,12 +15,15 @@ import { generateSSHKey, addToAuthorizedKeys, authorizeKeyForUser, listSSHKeys }
 import { createDeployUser, promptAndValidateUserPassword, } from './user';
 import { displayConnectionInfo } from './connection';
 import { ensureSetupDependencies, completeSetup } from './flow';
-import type { HostConfig, SetupOrchestrator } from './types';
+import { validateK3sFlags } from './k3s/plan';
+import { nodeNameFor } from '../../services/orchestrator/kubernetes/naming';
+import type { HostConfig, HostK3sConfig, SetupOptions } from './types';
 
 /**
  * Run interactive setup wizard
  */
-export async function runInteractiveSetup(options?: { skipDockerInstall?: boolean; orchestrator?: SetupOrchestrator; portainer?: boolean; portainerPort?: string; portainerPassword?: string }): Promise<void> {
+export async function runInteractiveSetup(options?: SetupOptions): Promise<void> {
+  const isK3s = options?.orchestrator === 'k3s';
   printIntro('Machine Setup Wizard');
   printBlank();
 
@@ -191,11 +194,28 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
     return;  // Early return for display-only option
   }
 
+  let k3s: HostK3sConfig | undefined;
+  if (isK3s) {
+    printBlank();
+    printSection('Kubernetes Node');
+    const shortHostname = os.hostname().split('.')[0] ?? os.hostname();
+    const nodeName = await prompt('Kubernetes node name', nodeNameFor(options?.nodeName || shortHostname));
+    const privateHostAnswer = await prompt('Private IP for cluster traffic (optional)', options?.privateHost || '');
+    k3s = {
+      nodeName,
+      privateHost: privateHostAnswer || null,
+      flannelBackend: validateK3sFlags({ flannelBackend: options?.flannelBackend }),
+    };
+  }
+
   printBlank();
   printSection('Optional Services');
 
+  const nginxPrompt = isK3s
+    ? "Install Nginx (reverse proxy; ports 80/443 conflict with Dockflow's Traefik when proxy.enabled)?"
+    : 'Install Nginx (reverse proxy)?';
   let installNginx = false;
-  if (await confirm('Install Nginx (reverse proxy)?', true)) {
+  if (await confirm(nginxPrompt, true)) {
     installNginx = true;
   }
 
@@ -206,7 +226,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
     domain: undefined as string | undefined
   };
 
-  if (await confirm('Install Portainer (container management UI)?', false)) {
+  if (!isK3s && await confirm('Install Portainer (container management UI)?', false)) {
     portainerConfig.install = true;
     portainerConfig.password = await promptPassword('Portainer admin password');
     const portStr = await prompt('Portainer HTTP port', '9000');
@@ -225,12 +245,18 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
   printRaw(`${colors.info('SSH Port:')} ${sshPort}`);
   printRaw(`${colors.info('Deployment User:')} ${deployUser}`);
   printRaw(`${colors.info('Create New User:')} ${needsUserSetup ? 'Yes' : 'No'}`);
+  if (k3s) {
+    printRaw(`${colors.info('Kubernetes Node Name:')} ${k3s.nodeName}`);
+    printRaw(`${colors.info('Private Host:')} ${k3s.privateHost ?? '(none)'}`);
+  }
   printRaw(`${colors.info('Install Nginx:')} ${installNginx ? 'Yes' : 'No'}`);
-  printRaw(`${colors.info('Install Portainer:')} ${portainerConfig.install ? 'Yes' : 'No'}`);
-  if (portainerConfig.install) {
-    printRaw(`${colors.info('Portainer Port:')} ${portainerConfig.port}`);
-    if (portainerConfig.domain) {
-      printRaw(`${colors.info('Portainer Domain:')} ${portainerConfig.domain}`);
+  if (!isK3s) {
+    printRaw(`${colors.info('Install Portainer:')} ${portainerConfig.install ? 'Yes' : 'No'}`);
+    if (portainerConfig.install) {
+      printRaw(`${colors.info('Portainer Port:')} ${portainerConfig.port}`);
+      if (portainerConfig.domain) {
+        printRaw(`${colors.info('Portainer Domain:')} ${portainerConfig.domain}`);
+      }
     }
   }
   printBlank();
@@ -243,7 +269,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
   if (needsUserSetup && deployPassword) {
     printBlank();
     const pubKey = fs.readFileSync(`${privateKeyPath}.pub`, 'utf-8').trim();
-    if (!createDeployUser(deployUser, deployPassword, pubKey)) {
+    if (!(await createDeployUser(deployUser, deployPassword, pubKey))) {
       throw new CLIError(
         'Failed to create deployment user',
         ErrorCode.COMMAND_FAILED
@@ -261,8 +287,9 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
     skipDockerInstall: options?.skipDockerInstall || false,
     orchestrator: options?.orchestrator || 'swarm',
     installNginx,
-    portainer: portainerConfig
+    portainer: portainerConfig,
+    k3s,
   };
 
-  completeSetup(config);
+  await completeSetup(config);
 }

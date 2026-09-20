@@ -1,15 +1,17 @@
 /**
  * Setup commands - Configure host machines for deployment
- * 
+ *
  * This module provides commands to:
  * - Setup a local Linux host for deployment
  * - Setup a remote Linux host via SSH
  * - Setup Docker Swarm cluster (manager + workers)
+ * - Setup a k3s cluster (single host or a whole environment)
  * - Check dependencies
  * - Generate connection strings
  */
 
 import type { Command } from 'commander';
+import { Option } from 'commander';
 import * as fs from 'fs';
 import { printIntro, printSuccess, printWarning, printInfo, printBlank, printRaw } from '../../utils/output';
 import { isLinux, displayDependencyStatus } from './dependencies';
@@ -22,8 +24,10 @@ import { runNonInteractiveSetup } from './non-interactive';
 import { runRemoteSetup, promptRemoteConnection } from './remote';
 import { buildForwardFlags } from './forward';
 import { runSetupSwarm } from './swarm';
-import { runSetupK3s } from './k3s';
-import { CLIError, ConfigError, ErrorCode, withErrorHandler } from '../../utils/errors';
+import { runK3sClusterSetup, runK3sReset } from './k3s/index';
+import { runK3sNodeStep } from './k3s/node';
+import { addK3sClusterOptions, assertClusterFlagsNeedEnv, resolveBootstrapIdentity, toResetOptions, toSetupOptions } from './k3s/options';
+import { CLIError, ConfigError, ErrorCode, ValidationError, withErrorHandler } from '../../utils/errors';
 import type { SetupOptions, ConnectionOptions, RemoteSetupOptions } from './types';
 
 /** Parse a `user@host[:port]` target string */
@@ -39,13 +43,13 @@ function parseTarget(target: string): { user: string; host: string; port: number
 export function registerSetupCommand(program: Command): void {
   const setup = program
     .command('setup [target]')
-    .description('Setup host machine for deployment (use user@host for remote setup)')
+    .description('Setup host machine for deployment (use user@host for remote setup, or dockflow setup k3s <env> for a cluster)')
     .helpGroup('Setup')
     // Remote options
-    .option('-k, --key <path>', 'Path to SSH private key (remote)')
+    .option('-k, --key <path>', 'Path to SSH private key (remote); bootstrap identity in cluster mode')
     .option('--connection <string>', 'Dockflow connection string (remote)')
     // Shared options
-    .option('--password <password>', 'SSH password (remote) or sudo password (local)')
+    .option('--password <password>', 'SSH password (remote) or sudo password (local); bootstrap identity in cluster mode')
     // Local non-interactive options
     .option('--host <host>', 'Public IP/hostname for connection string (local)')
     .option('--port <port>', 'SSH port (local)', '22')
@@ -60,15 +64,51 @@ export function registerSetupCommand(program: Command): void {
     .option('--portainer-port <port>', 'Portainer HTTP port (local)', '9000')
     .option('--portainer-password <password>', 'Portainer admin password (local)')
     .option('--portainer-domain <domain>', 'Portainer domain name (local)')
-    .option('-y, --yes', 'Skip confirmations (local)')
-    .option('--dev', 'Build and upload local CLI binary instead of downloading from GitHub (development)')
-    .action(withErrorHandler(async (target: string | undefined, options: SetupOptions & { key?: string; connection?: string; dev?: boolean; deployPassword?: string }) => {
+    .option('-y, --yes', 'Skip confirmations (local); do not ask before restarts and upgrades in cluster mode')
+    .option('--dev', 'Build and upload local CLI binary instead of downloading from GitHub (development); bootstrap identity in cluster mode')
+    // k3s cluster mode (design-05 1.2, 19.1): --env selects `setup --orchestrator k3s --env <env>`
+    // over `setup k3s <env>`; every other cluster flag is registered once by addK3sClusterOptions.
+    .option('--env <env>', 'Environment tag in servers.yml (k3s cluster mode)')
+    // k3s local/remote single-host mode (design-05 1.2, 19.6): node identity servers.yml would
+    // otherwise supply.
+    .option('--node-name <name>', 'Kubernetes node name (single-host k3s setup)')
+    .option('--private-host <ip>', 'Private IP for cluster traffic (single-host k3s setup)')
+    // Hidden node-step mode (design-05 1.1, 3.4): one node operation read from stdin, run by the
+    // coordinator over SSH or by the local single-host flow, never typed by an operator.
+    .addOption(new Option('--k3s-plan <source>', 'Run one k3s node-step plan read from stdin').hideHelp())
+    .action(withErrorHandler(async (target: string | undefined, options: SetupOptions) => {
+      if (options.k3sPlan !== undefined) {
+        await runK3sNodeStep(process.stdin);
+        return;
+      }
+
       if (options.orchestrator && options.orchestrator !== 'swarm' && options.orchestrator !== 'k3s') {
         throw new CLIError(
           `Invalid orchestrator: "${options.orchestrator}"`,
           ErrorCode.INVALID_ARGUMENT,
           'Supported values: swarm, k3s',
         );
+      }
+
+      if (options.env) {
+        if (target || options.connection) {
+          throw new ValidationError('--env runs cluster setup from the project; do not pass user@host');
+        }
+        if (options.nodeName || options.privateHost) {
+          throw new ValidationError('--node-name and --private-host are not used with --env; servers.yml is the source of node identity');
+        }
+      } else {
+        assertClusterFlagsNeedEnv(options);
+      }
+
+      if (options.orchestrator === 'k3s' && options.env) {
+        const bootstrap = await resolveBootstrapIdentity(options);
+        if (options.reset) {
+          await runK3sReset(options.env, bootstrap, toResetOptions(options));
+        } else {
+          await runK3sClusterSetup(options.env, bootstrap, toSetupOptions(options));
+        }
+        return;
       }
 
       let remoteOpts: RemoteSetupOptions | null = null;
@@ -160,7 +200,7 @@ export function registerSetupCommand(program: Command): void {
 
       // Detect non-interactive mode: connection/identity flags provided
       // Config flags (--skip-docker-install, --portainer) don't trigger non-interactive mode
-      const hasLocalFlags = options.host || options.user || options.sshKey || options.generateKey || options.yes;
+      const hasLocalFlags = options.host || options.user || options.sshKey || options.generateKey || options.yes || options.nodeName || options.privateHost;
 
       if (hasLocalFlags) {
         await runNonInteractiveSetup(options);
@@ -168,6 +208,10 @@ export function registerSetupCommand(program: Command): void {
         await runInteractiveSetup(options);
       }
     }));
+
+  // Cluster-mode flags (design-05 1.2, 19.1, F38): registered once on `setup`, which parses every
+  // one of them wherever it is written on the command line, including after `k3s <env>`.
+  addK3sClusterOptions(setup);
 
   // Swarm cluster setup
   setup
@@ -177,12 +221,20 @@ export function registerSetupCommand(program: Command): void {
       await runSetupSwarm(env);
     }));
 
-  // k3s cluster setup
-  setup
-    .command('k3s <env>')
-    .description('Initialize k3s cluster for an environment')
-    .action(withErrorHandler(async (env: string) => {
-      await runSetupK3s(env);
+  // k3s cluster setup: a thin alias of `setup --orchestrator k3s --env <env>` (D19, design-05 1.1).
+  // Its own copies of the cluster flags exist only so Commander accepts them written after `k3s
+  // <env>` and shows them in this subcommand's help; the parsed values are always read back through
+  // `optsWithGlobals()`, never this action's own `options` argument (F38).
+  addK3sClusterOptions(setup.command('k3s <env>'))
+    .description('Initialize or update the k3s cluster of an environment (installs, upgrades, verifies)')
+    .action(withErrorHandler(async (env: string, _localOptions: unknown, command: Command) => {
+      const options = command.optsWithGlobals() as SetupOptions;
+      const bootstrap = await resolveBootstrapIdentity(options);
+      if (options.reset) {
+        await runK3sReset(env, bootstrap, toResetOptions(options));
+      } else {
+        await runK3sClusterSetup(env, bootstrap, toSetupOptions(options));
+      }
     }));
 
   // Check dependencies

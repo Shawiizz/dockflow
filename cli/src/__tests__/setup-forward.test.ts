@@ -59,14 +59,32 @@ describe('buildForwardFlags', () => {
     expect(flags).not.toContain('--password');
     expect(flags).not.toContain('--generate-key');
   });
+
+  // CLI4 (design-05 22.2): single-host k3s node identity forwarded to the remote setup, quoted.
+  it('forwards k3s node identity, quoted', () => {
+    const flags = buildForwardFlags(
+      { orchestrator: 'k3s', nodeName: "node one", privateHost: '10.0.0.5', flannelBackend: 'wireguard-native' },
+      REMOTE,
+    ).join(' ');
+    expect(flags).toContain("--node-name 'node one'");
+    expect(flags).toContain("--private-host '10.0.0.5'");
+    expect(flags).toContain("--flannel-backend 'wireguard-native'");
+  });
+
+  it('no k3s node identity → nothing forwarded', () => {
+    const flags = buildForwardFlags({}, REMOTE).join(' ');
+    expect(flags).not.toContain('--node-name');
+    expect(flags).not.toContain('--private-host');
+    expect(flags).not.toContain('--flannel-backend');
+  });
 });
 
 describe('buildBinaryDownloadUrl', () => {
-  const BASE = 'https://github.com/Shawiizz/dockflow/releases/latest/download';
+  const BASE = 'https://github.com/example/dockflow/releases/latest/download';
 
   it('pins the URL to the CLI version', () => {
     expect(buildBinaryDownloadUrl(BASE, '2.1.0', 'dockflow-linux-x64')).toBe(
-      'https://github.com/Shawiizz/dockflow/releases/download/2.1.0/dockflow-linux-x64',
+      'https://github.com/example/dockflow/releases/download/2.1.0/dockflow-linux-x64',
     );
   });
 

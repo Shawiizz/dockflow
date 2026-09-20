@@ -11,7 +11,19 @@ import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
 import { generateSSHKey, addToAuthorizedKeys } from './key-files';
 import { createDeployUser, } from './user';
 import { ensureSetupDependencies, completeSetup } from './flow';
-import type { SetupOptions, HostConfig } from './types';
+import { validateK3sFlags } from './k3s/plan';
+import { nodeNameFor } from '../../services/orchestrator/kubernetes/naming';
+import type { SetupOptions, HostConfig, HostK3sConfig } from './types';
+
+/** design-05 1.2: `--node-name` defaults to `nodeNameFor(hostname -s)`; `--flannel-backend` is validated once, here. */
+function localK3sConfig(options: SetupOptions): HostK3sConfig {
+  const shortHostname = os.hostname().split('.')[0] ?? os.hostname();
+  return {
+    nodeName: options.nodeName || nodeNameFor(shortHostname),
+    privateHost: options.privateHost || null,
+    flannelBackend: validateK3sFlags({ flannelBackend: options.flannelBackend }),
+  };
+}
 
 /**
  * Run non-interactive setup
@@ -71,19 +83,29 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
     }
   }
 
+  const orchestrator = options.orchestrator || 'swarm';
+  const k3s = orchestrator === 'k3s' ? localK3sConfig(options) : undefined;
+
   printSection('Configuration');
   printRaw(`${colors.info('Public Host:')} ${publicHost}`);
   printRaw(`${colors.info('SSH Port:')} ${sshPort}`);
   printRaw(`${colors.info('Deployment User:')} ${deployUser}`);
   printRaw(`${colors.info('Create New User:')} ${needsUserSetup ? 'Yes' : 'No'}`);
-  printRaw(`${colors.info('Skip Docker Install:')} ${options.skipDockerInstall ? 'Yes' : 'No'}`);
+  if (orchestrator === 'k3s' && k3s) {
+    printRaw(`${colors.info('Kubernetes Node Name:')} ${k3s.nodeName}`);
+    printRaw(`${colors.info('Private Host:')} ${k3s.privateHost ?? '(none)'}`);
+  } else {
+    printRaw(`${colors.info('Skip Docker Install:')} ${options.skipDockerInstall ? 'Yes' : 'No'}`);
+  }
   printRaw(`${colors.info('Install Nginx:')} ${options.nginx ? 'Yes' : 'No'}`);
-  printRaw(`${colors.info('Install Portainer:')} ${options.portainer ? 'Yes' : 'No'}`);
+  if (orchestrator !== 'k3s') {
+    printRaw(`${colors.info('Install Portainer:')} ${options.portainer ? 'Yes' : 'No'}`);
+  }
   printBlank();
 
   if (needsUserSetup && deployPassword) {
     const pubKey = fs.readFileSync(`${privateKeyPath}.pub`, 'utf-8').trim();
-    if (!createDeployUser(deployUser, deployPassword, pubKey)) {
+    if (!(await createDeployUser(deployUser, deployPassword, pubKey))) {
       throw new CLIError(
         'Failed to create deployment user',
         ErrorCode.COMMAND_FAILED
@@ -98,16 +120,17 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
     deployPassword,
     privateKeyPath,
     skipDockerInstall: options.skipDockerInstall || false,
-    orchestrator: options.orchestrator || 'swarm',
+    orchestrator,
     installNginx: options.nginx || false,
     portainer: {
-      install: options.portainer || false,
+      install: orchestrator !== 'k3s' && (options.portainer || false),
       port: parseInt(options.portainerPort || '9000', 10),
       password: options.portainerPassword,
       domain: options.portainerDomain
-    }
+    },
+    k3s,
   };
 
   printBlank();
-  completeSetup(config);
+  await completeSetup(config);
 }
