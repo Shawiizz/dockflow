@@ -1,0 +1,7 @@
+services:
+  worker:
+    image: nginx:1.27
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.worker.rule: "Host(`worker.example.com`)"
+      traefik.http.services.worker.loadbalancer.server.port: "8080"

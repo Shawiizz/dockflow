@@ -1,0 +1,3 @@
+{
+  "description": "four StatefulSets differing in replicas, ports, endpoint_mode and update_config.order: podManagementPolicy, serviceName and the selector stay identical in form on all four (design-02 4.3, K13)"
+}

@@ -1,0 +1,12 @@
+services:
+  app:
+    image: nginx:1.27
+    tmpfs:
+      - /tmp/scratch
+    volumes:
+      - type: tmpfs
+        target: /tmp/sized
+        tmpfs:
+          size: 64m
+      - /cache
+    shm_size: 1g

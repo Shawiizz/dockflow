@@ -1,0 +1,132 @@
+# dockflow-artifact: k8s-manifests/1
+# stack: shop-production
+# role: app
+# version: 1.4.2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: app
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: app
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  clusterIP: None
+  ports:
+    - name: placeholder
+      port: 9
+      protocol: TCP
+  selector:
+    dockflow.shawiizz.dev/service: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: app
+    dockflow.shawiizz.dev/release: 1.4.2
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: app
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  minReadySeconds: 30
+  progressDeadlineSeconds: 240
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      dockflow.shawiizz.dev/service: app
+      dockflow.shawiizz.dev/stack: dockflow-shop-production
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      annotations:
+        dockflow.shawiizz.dev/compose-service: app
+        kubectl.kubernetes.io/default-container: app
+      labels:
+        app.kubernetes.io/instance: dockflow-shop-production
+        app.kubernetes.io/name: app
+        dockflow.shawiizz.dev/role: app
+        dockflow.shawiizz.dev/service: app
+        dockflow.shawiizz.dev/stack: dockflow-shop-production
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: app
+          image: nginx:1.27
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: host-e961f40b
+              mountPath: /etc/app/app.conf
+              readOnly: true
+              recursiveReadOnly: IfPossible
+            - name: host-85208f91
+              mountPath: /srv/data
+            - name: host-cc3090aa
+              mountPath: /srv/no-create
+            - name: host-a2d993cd
+              mountPath: /srv/ro-recursive
+              readOnly: true
+              recursiveReadOnly: Enabled
+            - name: host-97eac18f
+              mountPath: /srv/rw-recursive
+              readOnly: true
+            - name: host-607f3c05
+              mountPath: /srv/slave
+              mountPropagation: HostToContainer
+      enableServiceLinks: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 10
+      topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              dockflow.shawiizz.dev/service: app
+              dockflow.shawiizz.dev/stack: dockflow-shop-production
+          matchLabelKeys:
+            - pod-template-hash
+          maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+      volumes:
+        - name: host-607f3c05
+          hostPath:
+            path: /srv/shop/slave-mount
+        - name: host-85208f91
+          hostPath:
+            path: /srv/shop/data
+        - name: host-97eac18f
+          hostPath:
+            path: /srv/shop/writable-recursive
+        - name: host-a2d993cd
+          hostPath:
+            path: /srv/shop/readonly-recursive
+        - name: host-cc3090aa
+          hostPath:
+            path: /srv/shop/no-create
+        - name: host-e961f40b
+          hostPath:
+            path: /srv/shop/app.conf

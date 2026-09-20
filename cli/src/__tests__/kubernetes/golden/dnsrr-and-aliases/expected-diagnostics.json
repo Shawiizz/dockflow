@@ -1,0 +1,11 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "network.flat",
+      "path": "networks",
+      "message": "Kubernetes has one flat pod network: network membership does not isolate services"
+    }
+  ],
+  "accessory": []
+}

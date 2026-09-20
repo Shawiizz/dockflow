@@ -1,0 +1,3 @@
+{
+  "description": "short, long and udp ports, two host ports onto one target, a numeric-only entry, an IPv6 wildcard host IP, expose, a port range, one port declared on TCP and UDP, and two app_protocol values on one port (design-02 5.4, 6.1-6.3, 6.7)"
+}

@@ -1,0 +1,19 @@
+services:
+  web_app:
+    image: nginx:1.27
+    ports:
+      - "8080:80"
+    volumes:
+      - postgres_data:/var/lib/data
+
+  2fa:
+    image: nginx:1.27
+
+  Api.V2:
+    image: nginx:1.27
+
+  svc-name-with-seventy-characters-total-for-sanitization-test-aaaaaaaaa:
+    image: nginx:1.27
+
+volumes:
+  postgres_data:

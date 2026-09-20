@@ -1,0 +1,87 @@
+# dockflow-artifact: k8s-manifests/1
+# stack: shop-production
+# role: app
+# version: 1.4.2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: agent
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: agent
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: agent
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  clusterIP: None
+  ports:
+    - name: placeholder
+      port: 9
+      protocol: TCP
+  selector:
+    dockflow.shawiizz.dev/service: agent
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: agent
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: agent
+    dockflow.shawiizz.dev/release: 1.4.2
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: agent
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: agent
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  minReadySeconds: 30
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      dockflow.shawiizz.dev/service: agent
+      dockflow.shawiizz.dev/stack: dockflow-shop-production
+  template:
+    metadata:
+      annotations:
+        dockflow.shawiizz.dev/compose-service: agent
+        kubectl.kubernetes.io/default-container: agent
+      labels:
+        app.kubernetes.io/instance: dockflow-shop-production
+        app.kubernetes.io/name: agent
+        dockflow.shawiizz.dev/role: app
+        dockflow.shawiizz.dev/service: agent
+        dockflow.shawiizz.dev/stack: dockflow-shop-production
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: agent
+          args:
+            - sleep
+            - "3600"
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+      enableServiceLinks: false
+      nodeSelector:
+        zone: us-east
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 10
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 100%

@@ -1,0 +1,38 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "probes.routed-without-healthcheck",
+      "path": "services.web",
+      "message": "Service web is routed by Traefik but has no healthcheck; traffic starts as soon as the container starts",
+      "hint": "Add a healthcheck."
+    },
+    {
+      "severity": "info",
+      "code": "routing.container-labels",
+      "path": "services.web.labels",
+      "message": "Traefik labels in labels are used on Kubernetes; on Swarm Traefik only reads deploy.labels"
+    },
+    {
+      "severity": "warning",
+      "code": "routing.middleware-escaped-comma",
+      "path": "services.web.labels[\"traefik.http.middlewares.auth.basicauth.users\"]",
+      "message": "basicauth.users uses \\, or \\\\ to keep a comma or a backslash in a value; Traefik on Swarm has no escape and splits the same label differently",
+      "hint": "Avoid commas inside values when the same file is also deployed on Swarm."
+    },
+    {
+      "severity": "warning",
+      "code": "routing.middleware-deprecated",
+      "path": "services.web.labels[\"traefik.http.middlewares.ipallow.ipwhitelist.sourcerange\"]",
+      "message": "middleware type ipWhiteList is deprecated in Traefik v3",
+      "hint": "Use `ipallowlist` with the same options."
+    },
+    {
+      "severity": "info",
+      "code": "routing.middleware-unused",
+      "path": "services.web.labels[\"traefik.http.middlewares.unused.addprefix.prefix\"]",
+      "message": "Middleware unused is not used by any router"
+    }
+  ],
+  "accessory": []
+}

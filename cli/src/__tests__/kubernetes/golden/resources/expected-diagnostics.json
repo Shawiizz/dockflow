@@ -1,0 +1,12 @@
+{
+  "app": [
+    {
+      "severity": "warning",
+      "code": "resources.pids-unsupported",
+      "path": "services.pids-limited.deploy.resources.limits.pids",
+      "message": "deploy.resources.limits.pids is ignored: Kubernetes has no per-container process limit",
+      "hint": "Set `podPidsLimit` in the kubelet configuration if the limit matters."
+    }
+  ],
+  "accessory": []
+}

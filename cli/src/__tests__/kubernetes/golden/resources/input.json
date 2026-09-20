@@ -1,0 +1,3 @@
+{
+  "description": "Resource limits only, reservations only, both together, and a pids limit: canonical quantities and explicit zero requests"
+}

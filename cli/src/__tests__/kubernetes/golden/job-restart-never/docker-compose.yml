@@ -1,0 +1,18 @@
+services:
+  job-no:
+    image: busybox:1.36
+    command: ["true"]
+    restart: "no"
+    deploy:
+      mode: replicated-job
+  job-onfailure:
+    image: busybox:1.36
+    command: ["true"]
+    restart: on-failure
+    deploy:
+      mode: replicated-job
+  job-none:
+    image: busybox:1.36
+    command: ["true"]
+    deploy:
+      mode: replicated-job

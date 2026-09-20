@@ -1,0 +1,18 @@
+services:
+  restart-none:
+    image: nginx:1.27
+    deploy:
+      restart_policy:
+        condition: none
+  restart-onfailure:
+    image: nginx:1.27
+    deploy:
+      restart_policy:
+        condition: on-failure
+  restart-delay-window:
+    image: nginx:1.27
+    deploy:
+      restart_policy:
+        condition: any
+        delay: 5s
+        window: 30s

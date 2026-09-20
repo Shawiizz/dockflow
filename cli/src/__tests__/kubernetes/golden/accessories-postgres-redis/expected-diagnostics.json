@@ -1,0 +1,37 @@
+{
+  "app": [],
+  "accessory": [
+    {
+      "severity": "info",
+      "code": "probes.routed-without-healthcheck",
+      "path": "services.admin",
+      "message": "Service admin is routed by Traefik but has no healthcheck; traffic starts as soon as the container starts",
+      "hint": "Add a healthcheck."
+    },
+    {
+      "severity": "info",
+      "code": "routing.container-labels",
+      "path": "services.admin.labels",
+      "message": "Traefik labels in labels are used on Kubernetes; on Swarm Traefik only reads deploy.labels"
+    },
+    {
+      "severity": "info",
+      "code": "update.strategy-recreate",
+      "path": "services.postgres.deploy.update_config",
+      "message": "Service postgres is updated with Recreate because it mounts volume postgres_data (ReadWriteOnce)"
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.postgres.volumes[0]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /var/lib/postgresql/data (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "info",
+      "code": "names.volume-sanitized",
+      "path": "volumes.postgres_data",
+      "message": "volume postgres_data is stored in the claim postgres-data"
+    }
+  ]
+}

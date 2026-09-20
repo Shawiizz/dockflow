@@ -1,0 +1,48 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "volumes.bind-node-local",
+      "path": "services.app.volumes[0]",
+      "message": "Bind source /srv/shop/app.conf must exist on every node that may run app"
+    },
+    {
+      "severity": "info",
+      "code": "volumes.bind-node-local",
+      "path": "services.app.volumes[1]",
+      "message": "Bind source /srv/shop/data must exist on every node that may run app"
+    },
+    {
+      "severity": "info",
+      "code": "volumes.bind-node-local",
+      "path": "services.app.volumes[2]",
+      "message": "Bind source /srv/shop/readonly-recursive must exist on every node that may run app"
+    },
+    {
+      "severity": "info",
+      "code": "volumes.bind-node-local",
+      "path": "services.app.volumes[3]",
+      "message": "Bind source /srv/shop/writable-recursive must exist on every node that may run app"
+    },
+    {
+      "severity": "info",
+      "code": "volumes.bind-node-local",
+      "path": "services.app.volumes[4]",
+      "message": "Bind source /srv/shop/slave-mount must exist on every node that may run app"
+    },
+    {
+      "severity": "warning",
+      "code": "volumes.bind-create-host-path",
+      "path": "services.app.volumes[5]",
+      "message": "create_host_path: false of bind /srv/shop/no-create is not enforced; the node creates a missing directory",
+      "hint": "Create the path on every node that may run the service, for example with `uploads` in config.yml."
+    },
+    {
+      "severity": "info",
+      "code": "volumes.bind-node-local",
+      "path": "services.app.volumes[5]",
+      "message": "Bind source /srv/shop/no-create must exist on every node that may run app"
+    }
+  ],
+  "accessory": []
+}

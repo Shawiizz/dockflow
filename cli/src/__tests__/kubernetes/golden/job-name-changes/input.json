@@ -1,0 +1,3 @@
+{
+  "description": "two replicated-job services identical except for replicas: the Job name checksum covers completions/parallelism, so the two Jobs get different names (design-02 4.6, issue I3 regression)"
+}

@@ -1,0 +1,3 @@
+{
+  "description": "dns at the k3s limit, dns_search, dns_opt with a repeated name, extra_hosts as a map and as a list sharing an IP, and hostname"
+}

@@ -1,0 +1,12 @@
+{
+  "app": [
+    {
+      "severity": "error",
+      "code": "update.monitor-too-long",
+      "path": "services.web.deploy.update_config.monitor",
+      "message": "update_config.monitor of service web is 300s, which leaves no time to observe a rollout inside the 300s convergence deadline",
+      "hint": "Set `update_config.monitor` to at most 210s."
+    }
+  ],
+  "accessory": []
+}

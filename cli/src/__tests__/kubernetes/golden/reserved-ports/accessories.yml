@@ -1,0 +1,6 @@
+services:
+  cache:
+    image: redis:7
+    ports:
+      - "443:6379"
+      - "9109:6379"

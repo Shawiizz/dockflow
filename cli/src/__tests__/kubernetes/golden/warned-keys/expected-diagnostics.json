@@ -1,0 +1,386 @@
+{
+  "app": [
+    {
+      "severity": "warning",
+      "code": "files.labels-ignored",
+      "path": "configs.legacy_conf.labels",
+      "message": "labels on configs are ignored"
+    },
+    {
+      "severity": "warning",
+      "code": "files.name-ignored",
+      "path": "configs.legacy_conf.name",
+      "message": "name legacy-conf-map is ignored: Dockflow names the object from its content (legacy-conf-config-2fb8a760)"
+    },
+    {
+      "severity": "warning",
+      "code": "keys.name-ignored",
+      "path": "name",
+      "message": "name is ignored: the stack is always named shop-production and deployed to namespace dockflow-shop-production",
+      "hint": "Remove `name`; `project_name` and the environment decide the names."
+    },
+    {
+      "severity": "info",
+      "code": "network.flat",
+      "path": "networks",
+      "message": "Kubernetes has one flat pod network: network membership does not isolate services"
+    },
+    {
+      "severity": "warning",
+      "code": "networks.ipv6-ignored",
+      "path": "networks.mynet.enable_ipv6",
+      "message": "enable_ipv6 is ignored: the pod network is managed by the cluster"
+    },
+    {
+      "severity": "warning",
+      "code": "networks.internal-not-enforced",
+      "path": "networks.mynet.internal",
+      "message": "internal: true is not enforced: pods can reach the internet and every other pod",
+      "hint": "Remove `internal: true`, or restrict the traffic outside Dockflow: network policies are not generated in this Dockflow version."
+    },
+    {
+      "severity": "warning",
+      "code": "networks.external-cross-stack",
+      "path": "networks.other-net",
+      "message": "external network other-legacy-net cannot connect stacks on Kubernetes: other Dockflow stacks run in other namespaces",
+      "hint": "Reach a service of another stack with `<service>.<namespace>.svc.cluster.local`."
+    },
+    {
+      "severity": "warning",
+      "code": "networks.external-cross-stack",
+      "path": "networks.shared-net",
+      "message": "external network legacy-net cannot connect stacks on Kubernetes: other Dockflow stacks run in other namespaces",
+      "hint": "Reach a service of another stack with `<service>.<namespace>.svc.cluster.local`."
+    },
+    {
+      "severity": "warning",
+      "code": "files.labels-ignored",
+      "path": "secrets.db_pass.labels",
+      "message": "labels on secrets are ignored"
+    },
+    {
+      "severity": "warning",
+      "code": "files.name-ignored",
+      "path": "secrets.db_pass.name",
+      "message": "name db-pass-secret is ignored: Dockflow names the object from its content (db-pass-secret-46a9d5bd)"
+    },
+    {
+      "severity": "warning",
+      "code": "deploy.restart-policy-unsupported",
+      "path": "services.deploymisc.deploy.restart_policy.delay",
+      "message": "restart_policy.delay of service deploymisc cannot be expressed; Kubernetes retries with exponential backoff"
+    },
+    {
+      "severity": "warning",
+      "code": "deploy.restart-policy-unsupported",
+      "path": "services.deploymisc.deploy.restart_policy.max_attempts",
+      "message": "restart_policy.max_attempts of service deploymisc cannot be expressed; Kubernetes retries with exponential backoff"
+    },
+    {
+      "severity": "warning",
+      "code": "deploy.restart-policy-unsupported",
+      "path": "services.deploymisc.deploy.restart_policy.window",
+      "message": "restart_policy.window of service deploymisc cannot be expressed; Kubernetes retries with exponential backoff"
+    },
+    {
+      "severity": "warning",
+      "code": "deploy.max-failure-ratio",
+      "path": "services.deploymisc.deploy.update_config.max_failure_ratio",
+      "message": "update_config.max_failure_ratio is ignored: any failed pod fails the rollout"
+    },
+    {
+      "severity": "info",
+      "code": "depends_on.no-ordering",
+      "path": "services.depmisc.depends_on",
+      "message": "depends_on has no Kubernetes equivalent: containers start in any order and restart until their dependencies answer; accessories are deployed before the app"
+    },
+    {
+      "severity": "warning",
+      "code": "depends_on.condition-ignored",
+      "path": "services.depmisc.depends_on.other.condition",
+      "message": "condition service_healthy on other is not enforced: this service may start before other is healthy",
+      "hint": "Make the program retry its connections at startup."
+    },
+    {
+      "severity": "warning",
+      "code": "depends_on.restart-ignored",
+      "path": "services.depmisc.depends_on.other.restart",
+      "message": "restart: true on other is ignored: Dockflow does not restart this service when other changes"
+    },
+    {
+      "severity": "info",
+      "code": "update.strategy-recreate",
+      "path": "services.extvolref.deploy.update_config",
+      "message": "Service extvolref is updated with Recreate because it mounts volume namedvol-2 (ReadWriteOnce)"
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.extvolref.volumes[0]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /vol2 (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "warning",
+      "code": "files.ownership-ignored",
+      "path": "services.filesvc.configs[0]",
+      "message": "uid and gid are ignored: files mounted from Kubernetes Secrets and ConfigMaps are owned by root",
+      "hint": "Make the file readable with `mode`, or set `x-dockflow.fs_group` to give its group to the pod."
+    },
+    {
+      "severity": "warning",
+      "code": "files.ownership-ignored",
+      "path": "services.filesvc.secrets[0]",
+      "message": "uid and gid are ignored: files mounted from Kubernetes Secrets and ConfigMaps are owned by root",
+      "hint": "Make the file readable with `mode`, or set `x-dockflow.fs_group` to give its group to the pod."
+    },
+    {
+      "severity": "warning",
+      "code": "unsupported.container-name",
+      "path": "services.identity-misc.container_name",
+      "message": "container_name is ignored: pod names are generated by Kubernetes",
+      "hint": "Remove `container_name`; other services reach this one by the name `identity-misc`."
+    },
+    {
+      "severity": "warning",
+      "code": "logging.ignored",
+      "path": "services.identity-misc.logging",
+      "message": "logging is ignored: container logs are collected by the kubelet and rotated on each node",
+      "hint": "Read logs with `dockflow logs <env> <service>`, or ship them with a log collector."
+    },
+    {
+      "severity": "warning",
+      "code": "image.pull-refresh-ignored",
+      "path": "services.identity-misc.pull_refresh_after",
+      "message": "pull_refresh_after is ignored: Kubernetes pulls according to imagePullPolicy only",
+      "hint": "Remove `pull_refresh_after`."
+    },
+    {
+      "severity": "warning",
+      "code": "process.stop-signal-ignored",
+      "path": "services.identity-misc.stop_signal",
+      "message": "stop_signal SIGUSR1 is not supported on Kubernetes: the image STOPSIGNAL, or SIGTERM, is sent",
+      "hint": "Set `STOPSIGNAL` in the Dockerfile, or handle `SIGTERM` in the program."
+    },
+    {
+      "severity": "warning",
+      "code": "network.attachment-option-ignored",
+      "path": "services.netattach.networks.mynet.driver_opts",
+      "message": "networks.mynet.driver_opts is ignored on Kubernetes"
+    },
+    {
+      "severity": "warning",
+      "code": "network.attachment-option-ignored",
+      "path": "services.netattach.networks.mynet.gw_priority",
+      "message": "networks.mynet.gw_priority is ignored on Kubernetes"
+    },
+    {
+      "severity": "warning",
+      "code": "network.attachment-option-ignored",
+      "path": "services.netattach.networks.mynet.interface_name",
+      "message": "networks.mynet.interface_name is ignored on Kubernetes"
+    },
+    {
+      "severity": "warning",
+      "code": "network.attachment-option-ignored",
+      "path": "services.netattach.networks.mynet.link_local_ips",
+      "message": "networks.mynet.link_local_ips is ignored on Kubernetes"
+    },
+    {
+      "severity": "warning",
+      "code": "network.attachment-option-ignored",
+      "path": "services.netattach.networks.mynet.mac_address",
+      "message": "networks.mynet.mac_address is ignored on Kubernetes"
+    },
+    {
+      "severity": "warning",
+      "code": "network.attachment-option-ignored",
+      "path": "services.netattach.networks.mynet.priority",
+      "message": "networks.mynet.priority is ignored on Kubernetes"
+    },
+    {
+      "severity": "info",
+      "code": "update.surge-disabled",
+      "path": "services.nethost.deploy.update_config.order",
+      "message": "Service nethost binds node ports, so replicas are replaced stop-first (brief downtime per replica)",
+      "hint": "Publish through the load balancer (remove `mode: host` or `x-dockflow.publish: hostport`) to keep start-first updates."
+    },
+    {
+      "severity": "warning",
+      "code": "network.host-network",
+      "path": "services.nethost.network_mode",
+      "message": "Service nethost uses the node network (Swarm ignored network_mode: host)"
+    },
+    {
+      "severity": "warning",
+      "code": "network.dns-secondary",
+      "path": "services.netmisc.dns",
+      "message": "DNS servers of service netmisc are used only when cluster DNS does not answer"
+    },
+    {
+      "severity": "warning",
+      "code": "network.domainname-ignored",
+      "path": "services.netmisc.domainname",
+      "message": "domainname is ignored"
+    },
+    {
+      "severity": "warning",
+      "code": "network.external-links-ignored",
+      "path": "services.netmisc.external_links",
+      "message": "external_links is ignored: use the name of the target service directly"
+    },
+    {
+      "severity": "warning",
+      "code": "network.attachment-option-ignored",
+      "path": "services.netmisc.mac_address",
+      "message": "mac_address is ignored on Kubernetes"
+    },
+    {
+      "severity": "warning",
+      "code": "resources.cpu-shares-ignored",
+      "path": "services.resmisc.cpu_shares",
+      "message": "cpu_shares is ignored: Kubernetes weighs CPU by reservations",
+      "hint": "Set `deploy.resources.reservations.cpus` instead (1024 shares = 1 CPU)."
+    },
+    {
+      "severity": "warning",
+      "code": "resources.pids-unsupported",
+      "path": "services.resmisc.deploy.resources.limits.pids",
+      "message": "deploy.resources.limits.pids is ignored: Kubernetes has no per-container process limit",
+      "hint": "Set `podPidsLimit` in the kubelet configuration if the limit matters."
+    },
+    {
+      "severity": "warning",
+      "code": "resources.swap-ignored",
+      "path": "services.resmisc.mem_swappiness",
+      "message": "mem_swappiness is ignored: swap is configured per node on Kubernetes"
+    },
+    {
+      "severity": "warning",
+      "code": "resources.swap-ignored",
+      "path": "services.resmisc.memswap_limit",
+      "message": "memswap_limit is ignored: swap is configured per node on Kubernetes"
+    },
+    {
+      "severity": "warning",
+      "code": "resources.pids-unsupported",
+      "path": "services.resmisc.pids_limit",
+      "message": "pids_limit is ignored: Kubernetes has no per-container process limit",
+      "hint": "Set `podPidsLimit` in the kubelet configuration if the limit matters."
+    },
+    {
+      "severity": "warning",
+      "code": "resources.blkio-ignored",
+      "path": "services.security-misc.blkio_config",
+      "message": "blkio_config is ignored: Kubernetes has no block IO limits"
+    },
+    {
+      "severity": "warning",
+      "code": "security.option-ignored",
+      "path": "services.security-misc.cgroup_parent",
+      "message": "cgroup_parent is ignored"
+    },
+    {
+      "severity": "warning",
+      "code": "security.host-namespace",
+      "path": "services.security-misc.ipc",
+      "message": "ipc: host shares the node's IPC namespace"
+    },
+    {
+      "severity": "warning",
+      "code": "resources.oom-ignored",
+      "path": "services.security-misc.oom_kill_disable",
+      "message": "oom_kill_disable is ignored: Kubernetes derives OOM priorities from the pod QoS class"
+    },
+    {
+      "severity": "warning",
+      "code": "resources.oom-ignored",
+      "path": "services.security-misc.oom_score_adj",
+      "message": "oom_score_adj is ignored: Kubernetes derives OOM priorities from the pod QoS class"
+    },
+    {
+      "severity": "warning",
+      "code": "security.host-namespace",
+      "path": "services.security-misc.pid",
+      "message": "pid: host shares the node's process namespace with the container"
+    },
+    {
+      "severity": "warning",
+      "code": "security.privileged",
+      "path": "services.security-misc.privileged",
+      "message": "Service security-misc runs privileged (Swarm ignored privileged)"
+    },
+    {
+      "severity": "warning",
+      "code": "resources.storage-opt-ignored",
+      "path": "services.security-misc.storage_opt",
+      "message": "storage_opt is ignored"
+    },
+    {
+      "severity": "warning",
+      "code": "security.ulimits-ignored",
+      "path": "services.security-misc.ulimits",
+      "message": "ulimits are ignored: containers inherit the limits of the node's container runtime",
+      "hint": "Set the limits in the container entrypoint (`ulimit`) if the program needs them."
+    },
+    {
+      "severity": "info",
+      "code": "update.strategy-recreate",
+      "path": "services.volmisc.deploy.update_config",
+      "message": "Service volmisc is updated with Recreate because it mounts volume namedvol (ReadWriteOnce)"
+    },
+    {
+      "severity": "warning",
+      "code": "volumes.bind-create-host-path",
+      "path": "services.volmisc.volumes[0]",
+      "message": "create_host_path: false of bind /srv/data is not enforced; the node creates a missing directory",
+      "hint": "Create the path on every node that may run the service, for example with `uploads` in config.yml."
+    },
+    {
+      "severity": "info",
+      "code": "volumes.bind-node-local",
+      "path": "services.volmisc.volumes[0]",
+      "message": "Bind source /srv/data must exist on every node that may run volmisc"
+    },
+    {
+      "severity": "warning",
+      "code": "mounts.selinux-ignored",
+      "path": "services.volmisc.volumes[0].bind.selinux",
+      "message": "the SELinux relabel option Z is ignored"
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.volmisc.volumes[1]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /vol (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "warning",
+      "code": "mounts.volume-labels-ignored",
+      "path": "services.volmisc.volumes[1].volume.labels",
+      "message": "volume.labels is ignored",
+      "hint": "Set `labels` on the top-level volume instead."
+    },
+    {
+      "severity": "info",
+      "code": "volumes.tmpfs-memory",
+      "path": "services.volmisc.volumes[2]",
+      "message": "tmpfs /tmp/cache of service volmisc counts against its memory limit"
+    },
+    {
+      "severity": "warning",
+      "code": "mounts.tmpfs-mode-ignored",
+      "path": "services.volmisc.volumes[2].tmpfs.mode",
+      "message": "tmpfs.mode is ignored: memory-backed volumes are world-writable (0777)"
+    },
+    {
+      "severity": "warning",
+      "code": "volumes.name-ignored",
+      "path": "volumes.namedvol-2.name",
+      "message": "name custom-claim-name is ignored: the claim is named namedvol-2 in namespace dockflow-shop-production",
+      "hint": "Remove `name`, or set `external: true` to use an existing claim named `custom-claim-name`."
+    }
+  ],
+  "accessory": []
+}

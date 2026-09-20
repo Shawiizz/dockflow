@@ -1,0 +1,4 @@
+{
+  "description": "An unsafe net.* sysctl, a host-level sysctl and an invalid sysctl name, all with network_mode: host: every one of them is refused",
+  "expectRenderError": { "app": true }
+}

@@ -1,0 +1,3 @@
+{
+  "description": "interval 10s, timeout 3s, retries 5, start_period 40s: startup failureThreshold: 18, liveness initialDelaySeconds: 0 (design-02 5.6)"
+}

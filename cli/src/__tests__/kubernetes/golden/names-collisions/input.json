@@ -1,0 +1,4 @@
+{
+  "description": "web_app and web-app sanitize to the same Kubernetes service name",
+  "expectRenderError": { "app": true }
+}

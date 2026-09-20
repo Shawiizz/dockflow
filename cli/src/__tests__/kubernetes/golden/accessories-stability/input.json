@@ -1,0 +1,5 @@
+{
+  "description": "The same accessories rendered a second time with a different stabilityVersion: bytes and digest must be identical",
+  "proxy": { "enabled": true },
+  "stabilityVersion": "2.0.0"
+}

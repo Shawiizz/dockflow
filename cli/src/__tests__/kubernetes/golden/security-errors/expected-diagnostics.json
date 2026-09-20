@@ -1,0 +1,31 @@
+{
+  "app": [
+    {
+      "severity": "error",
+      "code": "security.init-host-pid",
+      "path": "services.bad-init.init",
+      "message": "Service bad-init cannot combine init: true with pid: host",
+      "hint": "Remove `init: true`."
+    },
+    {
+      "severity": "warning",
+      "code": "security.host-namespace",
+      "path": "services.bad-init.pid",
+      "message": "pid: host shares the node's process namespace with the container"
+    },
+    {
+      "severity": "warning",
+      "code": "security.privileged",
+      "path": "services.bad-priv.privileged",
+      "message": "Service bad-priv runs privileged (Swarm ignored privileged)"
+    },
+    {
+      "severity": "error",
+      "code": "security.no-new-privileges-privileged",
+      "path": "services.bad-priv.security_opt",
+      "message": "Service bad-priv cannot combine no-new-privileges with privileged",
+      "hint": "Remove one of them."
+    }
+  ],
+  "accessory": []
+}

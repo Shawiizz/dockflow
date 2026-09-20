@@ -1,0 +1,3 @@
+{
+  "description": "A 52-character service name (the StatefulSet limit) stays as written; a 53-character name is truncated and hashed"
+}

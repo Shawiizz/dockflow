@@ -1,0 +1,55 @@
+{
+  "app": [
+    {
+      "severity": "error",
+      "code": "ports.reserved-host-port",
+      "path": "services.web.ports[0]",
+      "message": "services.web.ports[0] publishes 22/tcp, which is reserved on the nodes (SSH)",
+      "hint": "Publish another port; SSH uses this one on every node."
+    },
+    {
+      "severity": "error",
+      "code": "ports.reserved-host-port",
+      "path": "services.web.ports[1]",
+      "message": "services.web.ports[1] publishes 32230/tcp, which is reserved on the nodes (SSH port of server_1)",
+      "hint": "Publish another port; SSH port of server_1 uses this one on every node."
+    },
+    {
+      "severity": "error",
+      "code": "ports.reserved-host-port",
+      "path": "services.web.ports[2]",
+      "message": "services.web.ports[2] publishes 80/tcp, which is reserved on the nodes (Dockflow Traefik)",
+      "hint": "Route the service through the proxy with traefik labels, or publish another port."
+    },
+    {
+      "severity": "error",
+      "code": "ports.reserved-host-port",
+      "path": "services.web.ports[3]",
+      "message": "services.web.ports[3] publishes 8443/tcp, which is reserved on the nodes (nginx plugin)",
+      "hint": "Publish another port; nginx plugin uses this one on every node."
+    },
+    {
+      "severity": "error",
+      "code": "ports.reserved-host-port",
+      "path": "services.web.ports[4]",
+      "message": "services.web.ports[4] publishes 9109/tcp, which is reserved on the nodes (published by accessories service cache)",
+      "hint": "Publish another port; published by accessories service cache uses this one on every node."
+    }
+  ],
+  "accessory": [
+    {
+      "severity": "error",
+      "code": "ports.reserved-host-port",
+      "path": "services.cache.ports[0]",
+      "message": "services.cache.ports[0] publishes 443/tcp, which is reserved on the nodes (Dockflow Traefik)",
+      "hint": "Route the service through the proxy with traefik labels, or publish another port."
+    },
+    {
+      "severity": "error",
+      "code": "ports.reserved-host-port",
+      "path": "services.cache.ports[1]",
+      "message": "services.cache.ports[1] publishes 9109/tcp, which is reserved on the nodes (published by app service web)",
+      "hint": "Publish another port; published by app service web uses this one on every node."
+    }
+  ]
+}

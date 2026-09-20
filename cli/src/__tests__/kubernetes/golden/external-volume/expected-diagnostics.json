@@ -1,0 +1,18 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "update.strategy-recreate",
+      "path": "services.app.deploy.update_config",
+      "message": "Service app is updated with Recreate because it mounts volume data (ReadWriteOnce)"
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.app.volumes[0]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /var/lib/data (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    }
+  ],
+  "accessory": []
+}

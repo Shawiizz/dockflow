@@ -1,0 +1,24 @@
+{
+  "app": [
+    {
+      "severity": "error",
+      "code": "security.invalid-sysctl",
+      "path": "services.netbox.sysctls[\"Net.ipv4.tcp_syncookies\"]",
+      "message": "Net.ipv4.tcp_syncookies is not a sysctl name"
+    },
+    {
+      "severity": "error",
+      "code": "security.unsafe-sysctl",
+      "path": "services.netbox.sysctls[\"net.core.somaxconn\"]",
+      "message": "sysctl net.core.somaxconn is not in the Kubernetes safe set, and Dockflow's k3s setup does not enable unsafe sysctls, so the kubelet rejects every pod of netbox with SysctlForbidden",
+      "hint": "Remove the sysctl, or set it on the nodes themselves."
+    },
+    {
+      "severity": "error",
+      "code": "security.host-sysctl",
+      "path": "services.netbox.sysctls[\"vm.overcommit_memory\"]",
+      "message": "sysctl vm.overcommit_memory is not namespaced and cannot be set for one container"
+    }
+  ],
+  "accessory": []
+}

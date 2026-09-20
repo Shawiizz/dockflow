@@ -1,0 +1,3 @@
+{
+  "description": "three replicated-job services with restart: no, on-failure and none: restartPolicy: Never on all three, backoffLimit 0 for restart: no and 6 otherwise (design-02 4.5, K35)"
+}

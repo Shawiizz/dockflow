@@ -1,0 +1,24 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "update.surge-disabled",
+      "path": "services.web.deploy.update_config.order",
+      "message": "Service web binds node ports, so replicas are replaced stop-first (brief downtime per replica)",
+      "hint": "Publish through the load balancer (remove `mode: host` or `x-dockflow.publish: hostport`) to keep start-first updates."
+    },
+    {
+      "severity": "warning",
+      "code": "network.hostname-host-network",
+      "path": "services.web.hostname",
+      "message": "hostname of service web is ignored with the node network"
+    },
+    {
+      "severity": "warning",
+      "code": "network.host-network",
+      "path": "services.web.network_mode",
+      "message": "Service web uses the node network (Swarm ignored network_mode: host)"
+    }
+  ],
+  "accessory": []
+}

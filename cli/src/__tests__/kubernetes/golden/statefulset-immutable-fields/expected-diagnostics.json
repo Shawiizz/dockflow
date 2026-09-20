@@ -1,0 +1,23 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "update.statefulset-order",
+      "path": "services.ss-a.deploy.update_config.order",
+      "message": "Service ss-a is a StatefulSet; replicas are replaced one at a time, stop-first"
+    },
+    {
+      "severity": "info",
+      "code": "update.statefulset-order",
+      "path": "services.ss-b.deploy.update_config.order",
+      "message": "Service ss-b is a StatefulSet; replicas are replaced one at a time, stop-first"
+    },
+    {
+      "severity": "info",
+      "code": "update.statefulset-order",
+      "path": "services.ss-c.deploy.update_config.order",
+      "message": "Service ss-c is a StatefulSet; replicas are replaced one at a time, stop-first"
+    }
+  ],
+  "accessory": []
+}

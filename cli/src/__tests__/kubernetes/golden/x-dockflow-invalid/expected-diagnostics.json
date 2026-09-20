@@ -1,0 +1,61 @@
+{
+  "app": [
+    {
+      "severity": "error",
+      "code": "extension.invalid",
+      "path": "services.bad-cidr.x-dockflow.lb_source_ranges[0]",
+      "message": "not-a-cidr is not a CIDR range such as 10.0.0.0/8",
+      "hint": "See the `x-dockflow` reference on the Kubernetes page of the documentation."
+    },
+    {
+      "severity": "error",
+      "code": "extension.invalid",
+      "path": "services.bad-fsgroup.x-dockflow.fs_group",
+      "message": "expected number, got string",
+      "hint": "See the `x-dockflow` reference on the Kubernetes page of the documentation."
+    },
+    {
+      "severity": "error",
+      "code": "extension.invalid",
+      "path": "services.bad-kind.x-dockflow.kind",
+      "message": "expected one of deployment, statefulset",
+      "hint": "See the `x-dockflow` reference on the Kubernetes page of the documentation."
+    },
+    {
+      "severity": "error",
+      "code": "extension.invalid",
+      "path": "services.bad-nodeselector.x-dockflow.node_selector[\"Bad Key!\"]",
+      "message": "key Bad Key! must be a Kubernetes label key: an optional DNS prefix and \"/\", then at most 63 letters, digits, \"-\", \"_\" or \".\"",
+      "hint": "See the `x-dockflow` reference on the Kubernetes page of the documentation."
+    },
+    {
+      "severity": "error",
+      "code": "extension.invalid",
+      "path": "services.bad-toleration.x-dockflow.tolerations[0].value",
+      "message": "must not be set when operator is Exists",
+      "hint": "See the `x-dockflow` reference on the Kubernetes page of the documentation."
+    },
+    {
+      "severity": "error",
+      "code": "extension.invalid",
+      "path": "services.bad-unknown.x-dockflow.bogus",
+      "message": "is not an x-dockflow key",
+      "hint": "See the `x-dockflow` reference on the Kubernetes page of the documentation."
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.ext-vol-user.volumes[0]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /data (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "error",
+      "code": "extension.external-volume",
+      "path": "volumes.shared_ext.x-dockflow.size",
+      "message": "x-dockflow.size has no effect on the external volume shared_ext",
+      "hint": "Remove `x-dockflow.size`; the existing claim keeps its own settings."
+    }
+  ],
+  "accessory": []
+}

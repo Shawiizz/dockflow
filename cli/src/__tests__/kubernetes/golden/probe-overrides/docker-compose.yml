@@ -1,0 +1,38 @@
+services:
+  http-readiness:
+    image: nginx:1.27
+    x-dockflow:
+      probes:
+        use: readiness
+        http:
+          path: /health
+          port: 8080
+  tcp-liveness:
+    image: nginx:1.27
+    x-dockflow:
+      probes:
+        use: liveness
+        tcp:
+          port: 9000
+  http-both:
+    image: nginx:1.27
+    x-dockflow:
+      probes:
+        http:
+          path: /ready
+          port: 8080
+  hc-readiness:
+    image: nginx:1.27
+    healthcheck:
+      test: ["CMD", "true"]
+      start_period: 20s
+    x-dockflow:
+      probes:
+        use: readiness
+  hc-none:
+    image: nginx:1.27
+    healthcheck:
+      test: ["CMD", "true"]
+    x-dockflow:
+      probes:
+        use: none

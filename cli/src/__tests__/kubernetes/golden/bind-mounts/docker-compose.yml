@@ -1,0 +1,28 @@
+services:
+  app:
+    image: nginx:1.27
+    volumes:
+      - /srv/shop/app.conf:/etc/app/app.conf:ro
+      - /srv/shop/data:/srv/data
+      - type: bind
+        source: /srv/shop/readonly-recursive
+        target: /srv/ro-recursive
+        read_only: true
+        bind:
+          recursive: readonly
+      - type: bind
+        source: /srv/shop/writable-recursive
+        target: /srv/rw-recursive
+        read_only: true
+        bind:
+          recursive: writable
+      - type: bind
+        source: /srv/shop/slave-mount
+        target: /srv/slave
+        bind:
+          propagation: rslave
+      - type: bind
+        source: /srv/shop/no-create
+        target: /srv/no-create
+        bind:
+          create_host_path: false

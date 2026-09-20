@@ -1,0 +1,41 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "network.flat",
+      "path": "networks",
+      "message": "Kubernetes has one flat pod network: network membership does not isolate services"
+    },
+    {
+      "severity": "info",
+      "code": "volumes.tmpfs-memory",
+      "path": "services.cache.tmpfs[0]",
+      "message": "tmpfs /tmp/scratch of service cache counts against its memory limit"
+    },
+    {
+      "severity": "info",
+      "code": "volumes.bind-node-local",
+      "path": "services.cache.volumes[0]",
+      "message": "Bind source /var/cache/local must exist on every node that may run cache"
+    },
+    {
+      "severity": "info",
+      "code": "update.statefulset-order",
+      "path": "services.queue.deploy.update_config.order",
+      "message": "Service queue is a StatefulSet; replicas are replaced one at a time, stop-first"
+    },
+    {
+      "severity": "info",
+      "code": "routing.container-labels",
+      "path": "services.web.labels",
+      "message": "Traefik labels in labels are used on Kubernetes; on Swarm Traefik only reads deploy.labels"
+    },
+    {
+      "severity": "info",
+      "code": "names.volume-sanitized",
+      "path": "volumes.queue_data",
+      "message": "volume queue_data is stored in the claim queue-data"
+    }
+  ],
+  "accessory": []
+}

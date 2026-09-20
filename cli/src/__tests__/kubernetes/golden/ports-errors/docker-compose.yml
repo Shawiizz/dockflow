@@ -1,0 +1,43 @@
+services:
+  loopback-lb:
+    image: nginx:1.27
+    ports:
+      - "127.0.0.1:5432:5432"
+  conflict-a:
+    image: nginx:1.27
+    ports:
+      - "8080:80"
+  conflict-b:
+    image: nginx:1.27
+    ports:
+      - "8080:81"
+  host-dup:
+    image: nginx:1.27
+    ports:
+      - target: 9100
+        published: 9100
+        protocol: tcp
+        mode: host
+        host_ip: 10.0.0.1
+      - target: 9100
+        published: 9100
+        protocol: tcp
+        mode: host
+        host_ip: 10.0.0.2
+  host-replicas:
+    image: nginx:1.27
+    deploy:
+      replicas: 3
+    ports:
+      - target: 9500
+        published: 9500
+        protocol: tcp
+        mode: host
+  too-many:
+    image: nginx:1.27
+    ports:
+      - "6100-6110:6100-6110"
+  sctp-svc:
+    image: nginx:1.27
+    ports:
+      - "5000:5000/sctp"

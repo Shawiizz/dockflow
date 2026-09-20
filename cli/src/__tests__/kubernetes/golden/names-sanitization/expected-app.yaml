@@ -1,0 +1,422 @@
+# dockflow-artifact: k8s-manifests/1
+# stack: shop-production
+# role: app
+# version: 1.4.2
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-volume: postgres_data
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+    dockflow.shawiizz.dev/volume: postgres-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: dockflow-local
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-v2
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: Api.V2
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: api-v2
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: api-v2
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  clusterIP: None
+  ports:
+    - name: placeholder
+      port: 9
+      protocol: TCP
+  selector:
+    dockflow.shawiizz.dev/service: api-v2
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: s-2fa
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: 2fa
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: s-2fa
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: s-2fa
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  clusterIP: None
+  ports:
+    - name: placeholder
+      port: 9
+      protocol: TCP
+  selector:
+    dockflow.shawiizz.dev/service: s-2fa
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: svc-name-with-seventy-characters-total-for-sa-efd327
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: svc-name-with-seventy-characters-total-for-sanitization-test-aaaaaaaaa
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: svc-name-with-seventy-characters-total-for-sa-efd327
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: svc-name-with-seventy-characters-total-for-sa-efd327
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  clusterIP: None
+  ports:
+    - name: placeholder
+      port: 9
+      protocol: TCP
+  selector:
+    dockflow.shawiizz.dev/service: svc-name-with-seventy-characters-total-for-sa-efd327
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-app
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: web_app
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: web-app
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: web-app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  ports:
+    - name: tcp-80
+      port: 80
+      protocol: TCP
+  selector:
+    dockflow.shawiizz.dev/service: web-app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-app-lb
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: web_app
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: web-app
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: web-app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  type: LoadBalancer
+  allocateLoadBalancerNodePorts: false
+  ports:
+    - name: tcp-80
+      port: 8080
+      protocol: TCP
+      targetPort: 80
+  selector:
+    dockflow.shawiizz.dev/service: web-app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-v2
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: Api.V2
+    dockflow.shawiizz.dev/release: 1.4.2
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: api-v2
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: api-v2
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  minReadySeconds: 30
+  progressDeadlineSeconds: 240
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      dockflow.shawiizz.dev/service: api-v2
+      dockflow.shawiizz.dev/stack: dockflow-shop-production
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      annotations:
+        dockflow.shawiizz.dev/compose-service: Api.V2
+        kubectl.kubernetes.io/default-container: api-v2
+      labels:
+        app.kubernetes.io/instance: dockflow-shop-production
+        app.kubernetes.io/name: api-v2
+        dockflow.shawiizz.dev/role: app
+        dockflow.shawiizz.dev/service: api-v2
+        dockflow.shawiizz.dev/stack: dockflow-shop-production
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: api-v2
+          image: nginx:1.27
+          imagePullPolicy: IfNotPresent
+      enableServiceLinks: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 10
+      topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              dockflow.shawiizz.dev/service: api-v2
+              dockflow.shawiizz.dev/stack: dockflow-shop-production
+          matchLabelKeys:
+            - pod-template-hash
+          maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: s-2fa
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: 2fa
+    dockflow.shawiizz.dev/release: 1.4.2
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: s-2fa
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: s-2fa
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  minReadySeconds: 30
+  progressDeadlineSeconds: 240
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      dockflow.shawiizz.dev/service: s-2fa
+      dockflow.shawiizz.dev/stack: dockflow-shop-production
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      annotations:
+        dockflow.shawiizz.dev/compose-service: 2fa
+        kubectl.kubernetes.io/default-container: s-2fa
+      labels:
+        app.kubernetes.io/instance: dockflow-shop-production
+        app.kubernetes.io/name: s-2fa
+        dockflow.shawiizz.dev/role: app
+        dockflow.shawiizz.dev/service: s-2fa
+        dockflow.shawiizz.dev/stack: dockflow-shop-production
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: s-2fa
+          image: nginx:1.27
+          imagePullPolicy: IfNotPresent
+      enableServiceLinks: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 10
+      topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              dockflow.shawiizz.dev/service: s-2fa
+              dockflow.shawiizz.dev/stack: dockflow-shop-production
+          matchLabelKeys:
+            - pod-template-hash
+          maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: svc-name-with-seventy-characters-total-for-sa-efd327
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: svc-name-with-seventy-characters-total-for-sanitization-test-aaaaaaaaa
+    dockflow.shawiizz.dev/release: 1.4.2
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: svc-name-with-seventy-characters-total-for-sa-efd327
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: svc-name-with-seventy-characters-total-for-sa-efd327
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  minReadySeconds: 30
+  progressDeadlineSeconds: 240
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      dockflow.shawiizz.dev/service: svc-name-with-seventy-characters-total-for-sa-efd327
+      dockflow.shawiizz.dev/stack: dockflow-shop-production
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      annotations:
+        dockflow.shawiizz.dev/compose-service: svc-name-with-seventy-characters-total-for-sanitization-test-aaaaaaaaa
+        kubectl.kubernetes.io/default-container: svc-name-with-seventy-characters-total-for-sa-efd327
+      labels:
+        app.kubernetes.io/instance: dockflow-shop-production
+        app.kubernetes.io/name: svc-name-with-seventy-characters-total-for-sa-efd327
+        dockflow.shawiizz.dev/role: app
+        dockflow.shawiizz.dev/service: svc-name-with-seventy-characters-total-for-sa-efd327
+        dockflow.shawiizz.dev/stack: dockflow-shop-production
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: svc-name-with-seventy-characters-total-for-sa-efd327
+          image: nginx:1.27
+          imagePullPolicy: IfNotPresent
+      enableServiceLinks: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 10
+      topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              dockflow.shawiizz.dev/service: svc-name-with-seventy-characters-total-for-sa-efd327
+              dockflow.shawiizz.dev/stack: dockflow-shop-production
+          matchLabelKeys:
+            - pod-template-hash
+          maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: web_app
+    dockflow.shawiizz.dev/release: 1.4.2
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: web-app
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: web-app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  minReadySeconds: 30
+  progressDeadlineSeconds: 240
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      dockflow.shawiizz.dev/service: web-app
+      dockflow.shawiizz.dev/stack: dockflow-shop-production
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        dockflow.shawiizz.dev/compose-service: web_app
+        kubectl.kubernetes.io/default-container: web-app
+      labels:
+        app.kubernetes.io/instance: dockflow-shop-production
+        app.kubernetes.io/name: web-app
+        dockflow.shawiizz.dev/role: app
+        dockflow.shawiizz.dev/service: web-app
+        dockflow.shawiizz.dev/stack: dockflow-shop-production
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: web-app
+          image: nginx:1.27
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: tcp-80
+              containerPort: 80
+              protocol: TCP
+          volumeMounts:
+            - name: pvc-postgres-data
+              mountPath: /var/lib/data
+      enableServiceLinks: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 10
+      topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              dockflow.shawiizz.dev/service: web-app
+              dockflow.shawiizz.dev/stack: dockflow-shop-production
+          matchLabelKeys:
+            - pod-template-hash
+          maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+      volumes:
+        - name: pvc-postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-data

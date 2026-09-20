@@ -1,0 +1,223 @@
+# dockflow-artifact: k8s-manifests/1
+# stack: shop-production
+# role: app
+# version: 1.4.2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: job-no
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: job-no
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: job-no
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: job-no
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  clusterIP: None
+  ports:
+    - name: placeholder
+      port: 9
+      protocol: TCP
+  selector:
+    dockflow.shawiizz.dev/service: job-no
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: job-none
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: job-none
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: job-none
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: job-none
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  clusterIP: None
+  ports:
+    - name: placeholder
+      port: 9
+      protocol: TCP
+  selector:
+    dockflow.shawiizz.dev/service: job-none
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: job-onfailure
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: job-onfailure
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: job-onfailure
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: job-onfailure
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  clusterIP: None
+  ports:
+    - name: placeholder
+      port: 9
+      protocol: TCP
+  selector:
+    dockflow.shawiizz.dev/service: job-onfailure
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-no-6bd15131
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: job-no
+    dockflow.shawiizz.dev/release: 1.4.2
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: job-no
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: job-no
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  backoffLimit: 0
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      annotations:
+        dockflow.shawiizz.dev/compose-service: job-no
+        kubectl.kubernetes.io/default-container: job-no
+      labels:
+        app.kubernetes.io/instance: dockflow-shop-production
+        app.kubernetes.io/name: job-no
+        dockflow.shawiizz.dev/role: app
+        dockflow.shawiizz.dev/service: job-no
+        dockflow.shawiizz.dev/stack: dockflow-shop-production
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: job-no
+          args:
+            - "true"
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+      enableServiceLinks: false
+      restartPolicy: Never
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 10
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-none-788494bd
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: job-none
+    dockflow.shawiizz.dev/release: 1.4.2
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: job-none
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: job-none
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  backoffLimit: 6
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      annotations:
+        dockflow.shawiizz.dev/compose-service: job-none
+        kubectl.kubernetes.io/default-container: job-none
+      labels:
+        app.kubernetes.io/instance: dockflow-shop-production
+        app.kubernetes.io/name: job-none
+        dockflow.shawiizz.dev/role: app
+        dockflow.shawiizz.dev/service: job-none
+        dockflow.shawiizz.dev/stack: dockflow-shop-production
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: job-none
+          args:
+            - "true"
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+      enableServiceLinks: false
+      restartPolicy: Never
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 10
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-onfailure-83655b6e
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: job-onfailure
+    dockflow.shawiizz.dev/release: 1.4.2
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: job-onfailure
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: job-onfailure
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  backoffLimit: 6
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      annotations:
+        dockflow.shawiizz.dev/compose-service: job-onfailure
+        kubectl.kubernetes.io/default-container: job-onfailure
+      labels:
+        app.kubernetes.io/instance: dockflow-shop-production
+        app.kubernetes.io/name: job-onfailure
+        dockflow.shawiizz.dev/role: app
+        dockflow.shawiizz.dev/service: job-onfailure
+        dockflow.shawiizz.dev/stack: dockflow-shop-production
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: job-onfailure
+          args:
+            - "true"
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+      enableServiceLinks: false
+      restartPolicy: Never
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 10

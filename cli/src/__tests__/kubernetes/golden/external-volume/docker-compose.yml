@@ -1,0 +1,14 @@
+services:
+  app:
+    image: nginx:1.27
+    deploy:
+      replicas: 1
+    volumes:
+      - data:/var/lib/data
+
+volumes:
+  data:
+    external: true
+    name: shop-existing-claim
+    x-dockflow:
+      access_mode: ReadWriteOnce

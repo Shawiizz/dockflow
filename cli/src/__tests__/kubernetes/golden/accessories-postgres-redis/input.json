@@ -1,0 +1,4 @@
+{
+  "description": "postgres (RWO volume, env, CMD-SHELL healthcheck with start_period, published 5432), redis, and an admin web UI with explicit Traefik labels",
+  "proxy": { "enabled": true }
+}

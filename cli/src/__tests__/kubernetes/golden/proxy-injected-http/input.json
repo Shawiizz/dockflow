@@ -1,0 +1,4 @@
+{
+  "description": "ACME off with a domain: the injected default route uses web without tls, and an explicit label router kept on websecure warns that it is not exposed",
+  "proxy": { "enabled": true, "acme": false, "domains": { "production": "example.com" } }
+}

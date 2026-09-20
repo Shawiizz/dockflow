@@ -1,0 +1,165 @@
+name: legacy-compose-name
+
+services:
+  identity-misc:
+    image: nginx:1.27
+    container_name: my-legacy-container
+    pull_refresh_after: 24h
+    stop_signal: SIGUSR1
+    logging:
+      driver: json-file
+
+  security-misc:
+    image: busybox:1.36
+    command: ["sleep", "3600"]
+    privileged: true
+    pid: host
+    ipc: host
+    cgroup_parent: my-cgroup
+    ulimits:
+      nofile: 1024
+    oom_score_adj: 100
+    oom_kill_disable: true
+    blkio_config:
+      weight: 300
+    storage_opt:
+      size: "10G"
+
+  netattach:
+    image: nginx:1.27
+    networks:
+      mynet:
+        driver_opts:
+          com.example: "yes"
+        gw_priority: 1
+        interface_name: eth1
+        link_local_ips:
+          - 169.254.0.1
+        mac_address: "02:42:ac:11:00:02"
+        priority: 1
+
+  nethost:
+    image: nginx:1.27
+    network_mode: host
+
+  netmisc:
+    image: nginx:1.27
+    external_links:
+      - "legacy:legacy"
+    domainname: example.com
+    mac_address: "02:42:ac:11:00:03"
+    dns:
+      - 1.1.1.1
+
+  aliasnet:
+    image: nginx:1.27
+    networks:
+      - shared-net
+      - other-net
+
+  filesvc:
+    image: nginx:1.27
+    secrets:
+      - source: api_key
+        target: api_key.txt
+        uid: "1000"
+        gid: "1000"
+      - source: db_pass
+        target: db_pass.txt
+    configs:
+      - source: app_conf
+        target: /etc/app.conf
+        uid: "1000"
+        gid: "1000"
+      - source: legacy_conf
+        target: /etc/legacy.conf
+
+  volmisc:
+    image: nginx:1.27
+    volumes:
+      - type: bind
+        source: /srv/data
+        target: /data
+        bind:
+          create_host_path: false
+          selinux: "Z"
+      - type: volume
+        source: namedvol
+        target: /vol
+        volume:
+          labels:
+            team: platform
+      - type: tmpfs
+        target: /tmp/cache
+        tmpfs:
+          mode: "1777"
+
+  extvolref:
+    image: nginx:1.27
+    volumes:
+      - namedvol-2:/vol2
+
+  other:
+    image: nginx:1.27
+
+  depmisc:
+    image: nginx:1.27
+    depends_on:
+      other:
+        condition: service_healthy
+        restart: true
+
+  resmisc:
+    image: nginx:1.27
+    cpu_shares: 512
+    mem_swappiness: 60
+    memswap_limit: 512m
+    pids_limit: 100
+    deploy:
+      resources:
+        limits:
+          pids: 50
+
+  deploymisc:
+    image: nginx:1.27
+    deploy:
+      update_config:
+        max_failure_ratio: 0.5
+      restart_policy:
+        delay: 5s
+        window: 10s
+        max_attempts: 3
+
+networks:
+  mynet:
+    internal: true
+    enable_ipv6: true
+  shared-net:
+    external: true
+    name: legacy-net
+  other-net:
+    external:
+      name: other-legacy-net
+
+volumes:
+  namedvol:
+  namedvol-2:
+    name: custom-claim-name
+
+secrets:
+  api_key:
+    file: ./files/api_key.txt
+  db_pass:
+    file: ./files/db_pass.txt
+    name: db-pass-secret
+    labels:
+      team: platform
+
+configs:
+  app_conf:
+    file: ./files/app_conf.txt
+  legacy_conf:
+    file: ./files/legacy_conf.txt
+    name: legacy-conf-map
+    labels:
+      team: platform

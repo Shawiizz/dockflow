@@ -1,0 +1,24 @@
+services:
+  queue:
+    image: postgres:16
+    x-dockflow:
+      kind: statefulset
+    deploy:
+      replicas: 3
+      update_config:
+        order: start-first
+    volumes:
+      - queue_data:/var/lib/postgresql/data
+    configs:
+      - source: queue_conf
+        target: /etc/queue/queue.conf
+
+configs:
+  queue_conf:
+    content: |
+      max_connections = 100
+
+volumes:
+  queue_data:
+    x-dockflow:
+      per_replica: true

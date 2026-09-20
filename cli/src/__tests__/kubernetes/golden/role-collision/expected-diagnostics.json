@@ -1,0 +1,20 @@
+{
+  "app": [
+    {
+      "severity": "error",
+      "code": "names.role-collision",
+      "path": "services.db",
+      "message": "db is declared in both docker-compose.yml and accessories.yml",
+      "hint": "Rename one of them: services and accessories share the namespace `dockflow-shop-production`, so names must be unique."
+    }
+  ],
+  "accessory": [
+    {
+      "severity": "error",
+      "code": "names.role-collision",
+      "path": "services.db",
+      "message": "db is declared in both docker-compose.yml and accessories.yml",
+      "hint": "Rename one of them: services and accessories share the namespace `dockflow-shop-production`, so names must be unique."
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+services:
+  svc-fifty-two-characters-exactly-aaaaaaaaaaaaaaaaaaa:
+    image: nginx:1.27
+
+  svc-fifty-three-characters-exactly-aaaaaaaaaaaaaaaaaa:
+    image: nginx:1.27

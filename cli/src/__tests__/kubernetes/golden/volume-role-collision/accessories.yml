@@ -1,0 +1,12 @@
+services:
+  worker:
+    image: nginx:1.27
+    volumes:
+      - shared_data:/data
+      - cache_data:/cache
+
+volumes:
+  shared_data:
+  cache_data:
+    external: true
+    name: cache-data

@@ -1,0 +1,25 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "probes.routed-without-healthcheck",
+      "path": "services.web",
+      "message": "Service web is routed by Traefik but has no healthcheck; traffic starts as soon as the container starts",
+      "hint": "Add a healthcheck."
+    },
+    {
+      "severity": "info",
+      "code": "routing.container-labels",
+      "path": "services.web.labels",
+      "message": "Traefik labels in labels are used on Kubernetes; on Swarm Traefik only reads deploy.labels"
+    },
+    {
+      "severity": "warning",
+      "code": "routing.entrypoint-not-exposed",
+      "path": "services.web.labels[\"traefik.http.routers.web-secure.entrypoints\"]",
+      "message": "websecure is not reachable from outside when proxy.acme is false",
+      "hint": "Set `proxy.acme: true` in config.yml to publish 443 and request certificates, or route this router through `web`."
+    }
+  ],
+  "accessory": []
+}

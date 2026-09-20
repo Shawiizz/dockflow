@@ -1,0 +1,3 @@
+{
+  "description": "an external volume with an explicit claim name and access_mode: no PVC, claimName = external name, Recreate strategy (design-02 7.2)"
+}

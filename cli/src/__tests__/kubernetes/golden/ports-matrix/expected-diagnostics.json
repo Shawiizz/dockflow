@@ -1,0 +1,18 @@
+{
+  "app": [
+    {
+      "severity": "warning",
+      "code": "ports.no-published-port",
+      "path": "services.web.ports[4]",
+      "message": "Port 3000 of service web has no published port; Swarm published a random node port, Kubernetes exposes it inside the cluster only",
+      "hint": "Write `\"3000:3000\"` to publish it on the nodes, or use `expose`."
+    },
+    {
+      "severity": "warning",
+      "code": "ports.name-conflict",
+      "path": "services.web.ports[7]",
+      "message": "Port 6500/tcp of service web has two different names or app_protocol values; the first is used"
+    }
+  ],
+  "accessory": []
+}

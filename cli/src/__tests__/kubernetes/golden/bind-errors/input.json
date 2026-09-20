@@ -1,0 +1,4 @@
+{
+  "description": "docker.sock and podman.sock binds, rshared propagation without privileged, and bind.recursive: readonly with rslave propagation (design-02 5.5)",
+  "expectRenderError": { "app": true }
+}

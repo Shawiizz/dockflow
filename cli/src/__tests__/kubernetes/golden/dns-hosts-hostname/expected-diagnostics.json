@@ -1,0 +1,11 @@
+{
+  "app": [
+    {
+      "severity": "warning",
+      "code": "network.dns-secondary",
+      "path": "services.web.dns",
+      "message": "DNS servers of service web are used only when cluster DNS does not answer"
+    }
+  ],
+  "accessory": []
+}

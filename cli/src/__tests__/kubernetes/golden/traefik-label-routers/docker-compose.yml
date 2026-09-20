@@ -1,0 +1,14 @@
+services:
+  api:
+    image: nginx:1.27
+    expose:
+      - "80"
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.api-web.rule: "Host(`api.example.com`)"
+      traefik.http.routers.api-web.entrypoints: "web"
+      traefik.http.routers.api-web.priority: "10"
+      traefik.http.routers.api-secure.rule: "Host(`api.example.com`) && PathPrefix(`/secure`)"
+      traefik.http.routers.api-secure.entrypoints: "websecure"
+      traefik.http.routers.api-secure.middlewares: "auth@docker"
+      traefik.http.middlewares.auth.basicauth.users: "admin:$$apr1$$xyz"

@@ -1,0 +1,3 @@
+-----BEGIN CERTIFICATE-----
+fake-cert-content-for-tests
+-----END CERTIFICATE-----

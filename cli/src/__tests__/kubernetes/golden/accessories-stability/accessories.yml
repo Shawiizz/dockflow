@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: shop
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      start_period: 30s
+
+  redis:
+    image: redis:7
+
+  admin:
+    image: adminer:4
+    ports:
+      - "8081:8080"
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.admin.rule: "Host(`admin.example.com`)"
+
+volumes:
+  postgres_data:

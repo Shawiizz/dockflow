@@ -1,0 +1,23 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "process.init-shared-pid",
+      "path": "services.helper.init",
+      "message": "init: true of service helper becomes a shared process namespace, where the pod's pause container is PID 1 and reaps zombies"
+    },
+    {
+      "severity": "warning",
+      "code": "security.host-namespace",
+      "path": "services.worker.pid",
+      "message": "pid: host shares the node's process namespace with the container"
+    },
+    {
+      "severity": "warning",
+      "code": "security.privileged",
+      "path": "services.worker.privileged",
+      "message": "Service worker runs privileged (Swarm ignored privileged)"
+    }
+  ],
+  "accessory": []
+}

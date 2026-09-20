@@ -1,0 +1,18 @@
+services:
+  hostmode:
+    image: nginx:1.27
+    ports:
+      - target: 9000
+        published: 9000
+        protocol: tcp
+        mode: host
+        host_ip: 10.0.0.5
+  hostport:
+    image: nginx:1.27
+    x-dockflow:
+      publish: hostport
+    ports:
+      - target: 8000
+        published: 8000
+        protocol: tcp
+        host_ip: 127.0.0.1

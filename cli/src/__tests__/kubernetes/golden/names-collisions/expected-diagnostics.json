@@ -1,0 +1,19 @@
+{
+  "app": [
+    {
+      "severity": "error",
+      "code": "names.sanitize-collision",
+      "path": "services.web_app",
+      "message": "resolves to the Kubernetes name web-app, already used by service web-app (services.web-app)",
+      "hint": "Rename one of the services."
+    },
+    {
+      "severity": "warning",
+      "code": "names.sanitized",
+      "path": "services.web_app",
+      "message": "is deployed as Kubernetes service web-app; clients using the name web_app will not resolve it",
+      "hint": "Rename the service to `web-app` (lowercase letters, digits and `-`)."
+    }
+  ],
+  "accessory": []
+}

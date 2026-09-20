@@ -1,0 +1,3 @@
+{
+  "description": "a Deployment with a shared volume and a StatefulSet with a per-replica volume: the standalone PVC and the claim template carry exactly the P/compose-volume and P/volume metadata renderedClaimShapes reads (design-02 7.4.1, K14)"
+}

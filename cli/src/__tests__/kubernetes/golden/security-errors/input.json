@@ -1,0 +1,4 @@
+{
+  "description": "privileged combined with no-new-privileges, and init combined with pid: host, are both refused",
+  "expectRenderError": { "app": true }
+}

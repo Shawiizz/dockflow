@@ -1,0 +1,16 @@
+services:
+  conflict-equals:
+    image: nginx:1.27
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+          - node.role == worker
+
+  conflict-not-in:
+    image: nginx:1.27
+    deploy:
+      placement:
+        constraints:
+          - node.labels.zone == east
+          - node.labels.zone != east

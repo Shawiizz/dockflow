@@ -1,0 +1,4 @@
+{
+  "description": "update_config.monitor: 5m leaves no time to observe a rollout inside the 300s convergence deadline (PD-5)",
+  "expectRenderError": { "app": true }
+}

@@ -1,0 +1,3 @@
+{
+  "description": "a named volume on a single-replica Deployment, plus a second nocopy mount: PVC, Recreate strategy, pvc- pod volume, copy-up info only for the first mount (design-02 7.1, 4.2)"
+}

@@ -1,0 +1,30 @@
+{
+  "app": [
+    {
+      "severity": "warning",
+      "code": "deploy.restart-policy-unsupported",
+      "path": "services.restart-delay-window.deploy.restart_policy.delay",
+      "message": "restart_policy.delay of service restart-delay-window cannot be expressed; Kubernetes retries with exponential backoff"
+    },
+    {
+      "severity": "warning",
+      "code": "deploy.restart-policy-unsupported",
+      "path": "services.restart-delay-window.deploy.restart_policy.window",
+      "message": "restart_policy.window of service restart-delay-window cannot be expressed; Kubernetes retries with exponential backoff"
+    },
+    {
+      "severity": "warning",
+      "code": "deploy.restart-none",
+      "path": "services.restart-none.deploy.restart_policy.condition",
+      "message": "restart_policy.condition none cannot be honoured by a long-running workload: Kubernetes restarts its containers",
+      "hint": "Use `deploy.mode: replicated-job` for a container that must run once."
+    },
+    {
+      "severity": "info",
+      "code": "restart.on-failure",
+      "path": "services.restart-onfailure.deploy.restart_policy.condition",
+      "message": "on Kubernetes a long-running container is also restarted when it exits with code 0"
+    }
+  ],
+  "accessory": []
+}

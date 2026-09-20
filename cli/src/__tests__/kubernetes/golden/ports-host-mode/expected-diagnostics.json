@@ -1,0 +1,26 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "update.surge-disabled",
+      "path": "services.hostmode.deploy.update_config.order",
+      "message": "Service hostmode binds node ports, so replicas are replaced stop-first (brief downtime per replica)",
+      "hint": "Publish through the load balancer (remove `mode: host` or `x-dockflow.publish: hostport`) to keep start-first updates."
+    },
+    {
+      "severity": "info",
+      "code": "update.surge-disabled",
+      "path": "services.hostport.deploy.update_config.order",
+      "message": "Service hostport binds node ports, so replicas are replaced stop-first (brief downtime per replica)",
+      "hint": "Publish through the load balancer (remove `mode: host` or `x-dockflow.publish: hostport`) to keep start-first updates."
+    },
+    {
+      "severity": "info",
+      "code": "ports.loopback-host-port",
+      "path": "services.hostport.ports[0]",
+      "message": "127.0.0.1:8000:8000/tcp binds the host port to 127.0.0.1, so only the node that runs the pod can reach it",
+      "hint": "Remove the address to bind the port on every address of that node."
+    }
+  ],
+  "accessory": []
+}

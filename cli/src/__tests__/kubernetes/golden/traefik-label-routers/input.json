@@ -1,0 +1,4 @@
+{
+  "description": "Two routers on one service with different entry points, a priority and an @docker middleware reference suffix",
+  "proxy": { "enabled": true, "acme": true }
+}

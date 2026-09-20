@@ -1,0 +1,3 @@
+{
+  "description": "restart_policy.condition none and on-failure, and delay/window on a Deployment: deploy.restart-policy-unsupported and the normalizer's deploy.restart-none (design-02 4.5)"
+}

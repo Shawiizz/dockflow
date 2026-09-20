@@ -1,0 +1,4 @@
+{
+  "description": "Service db is declared in both docker-compose.yml and accessories.yml, which share one namespace",
+  "expectRenderError": { "app": true, "accessory": true }
+}

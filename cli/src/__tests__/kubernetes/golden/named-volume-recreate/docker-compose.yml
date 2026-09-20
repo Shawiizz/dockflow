@@ -1,0 +1,12 @@
+services:
+  app:
+    image: nginx:1.27
+    deploy:
+      replicas: 1
+    volumes:
+      - data:/var/lib/data
+      - cache:/var/cache/app:nocopy
+
+volumes:
+  data:
+  cache:

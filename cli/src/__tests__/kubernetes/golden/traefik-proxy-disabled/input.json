@@ -1,0 +1,3 @@
+{
+  "description": "Traefik labels with proxy.enabled false: no routing objects are created"
+}

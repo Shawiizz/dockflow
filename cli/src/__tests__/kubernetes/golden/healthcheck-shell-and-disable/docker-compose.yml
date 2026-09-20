@@ -1,0 +1,14 @@
+services:
+  shell-svc:
+    image: nginx:1.27
+    healthcheck:
+      test: "curl -f http://localhost:$$PORT/health"
+  disabled-svc:
+    image: nginx:1.27
+    healthcheck:
+      test: ["CMD", "true"]
+      disable: true
+  none-svc:
+    image: nginx:1.27
+    healthcheck:
+      test: ["NONE"]

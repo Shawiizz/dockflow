@@ -1,0 +1,3 @@
+{
+  "description": "absolute file and directory binds, short :ro, long bind.recursive readonly and writable, rslave propagation, and create_host_path: false (design-02 5.5)"
+}

@@ -1,0 +1,41 @@
+services:
+  mgr:
+    image: nginx:1.27
+    deploy:
+      replicas: 2
+      placement:
+        constraints:
+          - node.role == manager
+        preferences:
+          - spread: node.labels.zone
+          - spread: node.labels.rack
+        max_replicas_per_node: 1
+
+  worker:
+    image: nginx:1.27
+    deploy:
+      replicas: 3
+      placement:
+        constraints:
+          - node.role != manager
+          - node.platform.arch == x86_64
+          - node.platform.os == linux
+        max_replicas_per_node: 2
+    x-dockflow:
+      node_selector:
+        zone: east
+
+  pinned:
+    image: nginx:1.27
+    deploy:
+      placement:
+        constraints:
+          - node.hostname == worker_1
+          - node.labels.zone != east
+          - node.labels.zone != west
+    x-dockflow:
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: batch
+          effect: NoSchedule

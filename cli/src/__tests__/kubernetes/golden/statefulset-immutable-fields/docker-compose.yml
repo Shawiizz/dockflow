@@ -1,0 +1,35 @@
+services:
+  ss-a:
+    image: nginx:1.27
+    x-dockflow:
+      kind: statefulset
+    deploy:
+      replicas: 1
+  ss-b:
+    image: nginx:1.27
+    x-dockflow:
+      kind: statefulset
+    deploy:
+      replicas: 3
+      endpoint_mode: dnsrr
+    ports:
+      - "8080:80"
+  ss-c:
+    image: nginx:1.27
+    x-dockflow:
+      kind: statefulset
+    deploy:
+      replicas: 1
+      update_config:
+        order: start-first
+    expose:
+      - "9090"
+  ss-d:
+    image: nginx:1.27
+    x-dockflow:
+      kind: statefulset
+    deploy:
+      replicas: 3
+      endpoint_mode: vip
+      update_config:
+        order: stop-first

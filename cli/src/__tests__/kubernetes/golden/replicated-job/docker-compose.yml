@@ -1,0 +1,10 @@
+services:
+  migrate:
+    image: busybox:1.36
+    command: ["true"]
+    deploy:
+      mode: replicated-job
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3

@@ -1,0 +1,10 @@
+services:
+  default-grace:
+    image: nginx:1.27
+  custom-grace:
+    image: nginx:1.27
+    stop_grace_period: 60s
+    post_start:
+      - command: ["/bin/sh", "-c", "echo started $(DATE)"]
+    pre_stop:
+      - command: ["/bin/sh", "-c", "echo stopping $(DATE)"]

@@ -1,0 +1,3 @@
+{
+  "description": "x-dockflow.probes without a healthcheck (http + readiness, tcp + liveness, http + both) and with a healthcheck (use: readiness, use: none): every row of the which-probes table (design-02 5.6)"
+}

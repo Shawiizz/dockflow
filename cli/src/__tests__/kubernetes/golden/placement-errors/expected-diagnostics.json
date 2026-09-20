@@ -1,0 +1,34 @@
+{
+  "app": [
+    {
+      "severity": "error",
+      "code": "placement.conflict",
+      "path": "services.conflict-equals.deploy.placement.constraints[1]",
+      "message": "Constraint node.role == worker of service conflict-equals contradicts node.role == manager",
+      "hint": "Remove one of the two constraints."
+    },
+    {
+      "severity": "error",
+      "code": "placement.conflict",
+      "path": "services.conflict-not-in.deploy.placement.constraints[1]",
+      "message": "Constraint node.labels.zone != east of service conflict-not-in contradicts node.labels.zone == east",
+      "hint": "Remove one of the two constraints."
+    }
+  ],
+  "accessory": [
+    {
+      "severity": "error",
+      "code": "placement.invalid-constraint",
+      "path": "services.bad-arch.deploy.placement.constraints[0]",
+      "message": "node.platform.arch == mips is not a valid placement constraint: unknown architecture mips",
+      "hint": "Write `<attribute> == <value>` or `<attribute> != <value>`; attributes: `node.role`, `node.hostname`, `node.labels.<key>`, `node.platform.os`, `node.platform.arch`."
+    },
+    {
+      "severity": "error",
+      "code": "placement.unknown-server",
+      "path": "services.unknown-host.deploy.placement.constraints[0]",
+      "message": "worker9 is not a server of this environment (servers.yml declares server_1, agent_1)",
+      "hint": "Use one of the servers.yml keys; `node.hostname` selects nodes by their Dockflow name, not by their OS host name."
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+services:
+  web:
+    image: nginx:1.27
+    ports:
+      - "8080:80"
+    deploy:
+      endpoint_mode: dnsrr
+    networks:
+      default:
+        aliases:
+          - web-alt
+    links:
+      - "cache:web-legacy"
+  cache:
+    image: redis:7

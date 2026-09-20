@@ -1,0 +1,3 @@
+{
+  "description": "stop_grace_period unset and set to 60s, plus post_start and pre_stop hooks with $(X): terminationGracePeriodSeconds 10/60, hooks not escaped (design-02 5.7)"
+}

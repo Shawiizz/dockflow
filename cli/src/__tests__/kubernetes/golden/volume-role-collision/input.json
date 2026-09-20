@@ -1,0 +1,4 @@
+{
+  "description": "shared_data is declared as a real volume in both files (refused); cache_data is shared through the documented external pattern (accepted)",
+  "expectRenderError": { "app": true, "accessory": true }
+}

@@ -1,0 +1,29 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "extension.probes-none",
+      "path": "services.hc-none.x-dockflow.probes.use",
+      "message": "the healthcheck is not turned into probes (x-dockflow.probes.use: none)"
+    },
+    {
+      "severity": "info",
+      "code": "probes.override-defaults",
+      "path": "services.http-both.x-dockflow.probes",
+      "message": "Probes of service http-both use Docker's default timings (no healthcheck)"
+    },
+    {
+      "severity": "info",
+      "code": "probes.override-defaults",
+      "path": "services.http-readiness.x-dockflow.probes",
+      "message": "Probes of service http-readiness use Docker's default timings (no healthcheck)"
+    },
+    {
+      "severity": "info",
+      "code": "probes.override-defaults",
+      "path": "services.tcp-liveness.x-dockflow.probes",
+      "message": "Probes of service tcp-liveness use Docker's default timings (no healthcheck)"
+    }
+  ],
+  "accessory": []
+}

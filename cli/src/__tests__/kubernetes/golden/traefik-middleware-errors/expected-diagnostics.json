@@ -1,0 +1,60 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "routing.container-labels",
+      "path": "services.web.labels",
+      "message": "Traefik labels in labels are used on Kubernetes; on Swarm Traefik only reads deploy.labels"
+    },
+    {
+      "severity": "error",
+      "code": "routing.middleware-option-unknown",
+      "path": "services.web.labels[\"traefik.http.middlewares.badopt.stripprefix.prefixx\"]",
+      "message": "stripprefix.prefixx is not an option of the stripPrefix middleware",
+      "hint": "Check the spelling; the closest options are `prefixes` and `forceSlash`."
+    },
+    {
+      "severity": "error",
+      "code": "routing.service-undefined",
+      "path": "services.web.labels[\"traefik.http.middlewares.errbad.errors.service\"]",
+      "message": "middleware errbad sends errors to ghost, which is not a service of this file",
+      "hint": "Use a compose service name, or declare the port with `traefik.http.services.ghost.loadbalancer.server.port`."
+    },
+    {
+      "severity": "error",
+      "code": "routing.users-file",
+      "path": "services.web.labels[\"traefik.http.middlewares.filemw.basicauth.usersfile\"]",
+      "message": "basicauth.usersfile names a file on the machine running dockflow, which the cluster's Traefik cannot read",
+      "hint": "Inline the users with `...basicauth.users=user:hash`, or create the Secret yourself and reference it with `...basicauth.secret=<name>`."
+    },
+    {
+      "severity": "error",
+      "code": "routing.middleware-provider",
+      "path": "services.web.labels[\"traefik.http.routers.web.middlewares\"]",
+      "message": "middleware extmw comes from the file provider, which Dockflow's Traefik does not load",
+      "hint": "Define the middleware with `traefik.http.middlewares` labels instead."
+    }
+  ],
+  "accessory": [
+    {
+      "severity": "info",
+      "code": "probes.routed-without-healthcheck",
+      "path": "services.api",
+      "message": "Service api is routed by Traefik but has no healthcheck; traffic starts as soon as the container starts",
+      "hint": "Add a healthcheck."
+    },
+    {
+      "severity": "info",
+      "code": "routing.container-labels",
+      "path": "services.api.labels",
+      "message": "Traefik labels in labels are used on Kubernetes; on Swarm Traefik only reads deploy.labels"
+    },
+    {
+      "severity": "error",
+      "code": "routing.middleware-invalid",
+      "path": "services.api.labels[\"traefik.http.middlewares.badprefix.addprefix.prefix\"]",
+      "message": "Middleware badprefix: addPrefix.prefix must start with /",
+      "hint": "Start the prefix with `/`."
+    }
+  ]
+}

@@ -140,7 +140,9 @@ function buildConnectConfig(conn: ConnectionInfo, keepalive: boolean): ConnectCo
     host: conn.host,
     port: conn.port || DEFAULT_SSH_PORT,
     username: conn.user,
-    hostVerifier: () => true,
+    // Every caller keeps today's accept-anything behaviour byte for byte; only the setup
+    // transport passes its own verifier (design-05 3.5, K60).
+    hostVerifier: conn.hostVerifier ?? (() => true),
     readyTimeout: SSH_READY_TIMEOUT_MS,
   };
 
@@ -614,6 +616,34 @@ export async function sshExecChannel(
 ): Promise<SSHChannelHandle> {
   const client = await getPooledClient(conn);
   return openChannelOnClient(client, command);
+}
+
+export interface SSHDedicatedChannelHandle extends SSHChannelHandle {
+  /** Closes the dedicated client this channel was opened on; the caller owns its lifecycle. */
+  close(): void;
+}
+
+/**
+ * sshExecChannel over a dedicated (non-pooled) client (design-05 3.5): the setup transport uses
+ * this and nothing else, so a bootstrap or deploy-key connection with its own `hostVerifier` is
+ * never reused unverified through the `host:port:user` pool key.
+ */
+export async function sshExecChannelDedicated(
+  conn: ConnectionInfo,
+  command: string,
+): Promise<SSHDedicatedChannelHandle> {
+  const client = await connectDedicatedClient(conn);
+  const handle = await openChannelOnClient(client, command);
+  return {
+    ...handle,
+    close: () => {
+      try {
+        client.end();
+      } catch {
+        /* already dead */
+      }
+    },
+  };
 }
 
 function openChannelOnClient(

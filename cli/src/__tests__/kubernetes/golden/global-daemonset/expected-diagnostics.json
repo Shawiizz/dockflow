@@ -1,0 +1,18 @@
+{
+  "app": [
+    {
+      "severity": "warning",
+      "code": "placement.global-ignored",
+      "path": "services.agent.deploy.placement",
+      "message": "Spread preferences of global service agent are ignored"
+    },
+    {
+      "severity": "warning",
+      "code": "update.global-all-at-once",
+      "path": "services.agent.deploy.update_config.parallelism",
+      "message": "Global service agent sets update_config.parallelism: 0, so every node loses it at the same time during an update",
+      "hint": "Set `update_config.parallelism: 1` to replace it node by node."
+    }
+  ],
+  "accessory": []
+}

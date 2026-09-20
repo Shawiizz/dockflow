@@ -1,0 +1,4 @@
+{
+  "description": "the same worker with no ports, but traits.headlessServiceNeedsPort: false: a port-less headless Service (design-02 6.1)",
+  "traits": { "headlessServiceNeedsPort": false }
+}

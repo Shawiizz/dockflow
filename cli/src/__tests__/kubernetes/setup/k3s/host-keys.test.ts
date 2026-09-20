@@ -1,12 +1,19 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { once } from 'events';
 import { type AddressInfo, connect, createServer, type Server as NetServer, type Socket } from 'net';
 import { Server, type ServerChannel, utils } from 'ssh2';
 import type { ConnectionInfo } from '../../../../types';
 import type * as SshModule from '../../../../utils/ssh';
+import { HostKeyStore, sshFingerprint, type HostKeyDecision } from '../../../../commands/setup/k3s/host-keys';
+import type { K3sNodeSpec } from '../../../../commands/setup/k3s/plan';
 
-// release.test.ts replaces sshExec and sshExecChannel process-wide with mock.module, which bun:test
-// never undoes; the query suffix loads utils/ssh as a separate, unmocked module instance.
+// No test in this suite mocks a module (the architecture forbids it, README.md "one harness"); the
+// query suffix still loads utils/ssh as its own module instance, isolating this file's pool/exit-
+// status assertions (which call the real `closeAllConnections()`) from every other file's pooled
+// clients, since `utils/ssh.ts`'s pool is process-wide module state.
 const UNMOCKED_SSH = '../../../../utils/ssh.ts?unmocked';
 const {
   closeAllConnections,
@@ -14,6 +21,7 @@ const {
   SSHExitStatusError,
   sshExec,
   sshExecChannel,
+  sshExecChannelDedicated,
   sshExecChannelUnbuffered,
 } = (await import(UNMOCKED_SSH)) as typeof SshModule;
 
@@ -211,5 +219,201 @@ describe('utils/ssh exit status: channels', () => {
     const { stream, done } = await sshExecChannelUnbuffered(conn, command);
     stream.resume();
     expect(await rejectionOf(done)).toBeInstanceOf(SSHExitStatusError);
+  });
+});
+
+describe('sshExecChannelDedicated (design-05 3.5): never the pool', () => {
+  it('opens its own connection per call, independent of sshExec’s pool and of each other', async () => {
+    const first = script('dedicated-1', closedWithoutStatus);
+    const handleA = await sshExecChannelDedicated(conn, first);
+    expect(await handleA.done).toEqual({ exitCode: 0, stdout: 'partial', stderr: '' });
+
+    // closing every pooled client (as withErrorHandler does after a command) must not touch a
+    // dedicated channel: it was never registered with the pool in the first place.
+    closeAllConnections();
+    handleA.close();
+
+    const second = script('dedicated-2', closedWithoutStatus);
+    const handleB = await sshExecChannelDedicated(conn, second);
+    expect(await handleB.done).toEqual({ exitCode: 0, stdout: 'partial', stderr: '' });
+    handleB.close();
+  });
+
+  it('closing one dedicated channel does not affect a concurrently open one on the same connection', async () => {
+    const first = script('dedicated-concurrent-1', (channel) => {
+      channel.write('alive');
+      // left open until the test closes it
+    });
+    const second = script('dedicated-concurrent-2', closedWithoutStatus);
+    const handleA = await sshExecChannelDedicated(conn, first);
+    const handleB = await sshExecChannelDedicated(conn, second);
+    expect(await handleB.done).toEqual({ exitCode: 0, stdout: 'partial', stderr: '' });
+    handleB.close();
+    // handleA's own connection is untouched by handleB's close()
+    handleA.stream.end();
+    handleA.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HostKeyStore (design-05 3.5, K60): the setup transport's host-key verifier and pin store.
+// Exercised directly (no SSH server needed): `verifierFor` returns the exact `(key, callback)`
+// function form ssh2's `hostVerifier` option calls, offered here with real ssh-keygen-generated
+// host key blobs so `sshFingerprint` is checked against real `ssh-keygen -lf` output (HK7).
+// ---------------------------------------------------------------------------
+
+// `ssh-keygen -t <type> -N "" -f <file>`, base64 body of the resulting .pub, and the fingerprint
+// `ssh-keygen -lf <file>.pub` printed (SHA256, this repository's own generation, HK7).
+const ED25519_PUB_B64 = 'AAAAC3NzaC1lZDI1NTE5AAAAIPRcylrE6A2C73bhBiOyOjS6dE1nPOAPfhdMWIpbtzAF';
+const ED25519_FINGERPRINT = 'SHA256:Ldb7KXMtd57Q+bjn9lpVRV4n8uuQKR9m/aoX4AqIgh4';
+const ECDSA_PUB_B64 =
+  'AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBJv9crWRro5HTDISKs4DaMiostuKL9dZOXdHBjo/6mKKdbOSmCuStEyWjhKKVkk3d71SIDouUyqzt8GhACLSkaE=';
+const ECDSA_FINGERPRINT = 'SHA256:PT0vXUS7orNdLN8Q24oRkxmoPAZlns1idwjIMYSkLLA';
+const RSA_PUB_B64 =
+  'AAAAB3NzaC1yc2EAAAADAQABAAABAQDHJUUA6Meo2gZaIGodAy5g0COGLNESR3EsvO3tW9hb05omUO1YmCIvtwf+e0ucNnxNR/eOViuQ+flb3QZ45YdT5AJwGL6EGGVOVOjoEBPbPHrjjGRhUawRFH/Rl2f9uCZ73yd+PkWiXiHI1elEta2D116fsF0oBemj2Oi5MbLFMNOOaFu8Wo/U/wSsYjGd7yl4WMdIR7kBCYNINDkeuaDY8OzZt9Hnl/+SNq7OZ223fhHMoMBTXATqia7++G4+IdBM+tEr25Qtkwk+PDhY/xja45TM5dSW5bYe/eMSaiL/lWDdkZgIlYiIPxfvkNDonvRA0m3/I10jmLi44xCEjz6p';
+const RSA_FINGERPRINT = 'SHA256:BgdOktlx5ag2rI93I8Hds3NuGU+lDvEBBsjD0Zg+XVE';
+
+const HK_ENV = 'production';
+
+function hkNode(key: string, host = '10.0.0.10'): K3sNodeSpec {
+  return { key, nodeName: key, role: 'server', ssh: { host, port: 22 }, deployUser: 'dockflow', deployPublicKey: null, privateHost: null, hostName: null, hostIp: host, nodeLabels: {} };
+}
+
+function verify(store: HostKeyStore, node: K3sNodeSpec, key: Buffer, onDecision: (d: HostKeyDecision) => void = () => {}): Promise<boolean> {
+  const verifier = store.verifierFor(node, onDecision);
+  return new Promise<boolean>((resolve) => {
+    const outcome = verifier(key, resolve);
+    if (outcome !== undefined) resolve(outcome as unknown as boolean);
+  });
+}
+
+describe('HostKeyStore (design-05 3.5, K60)', () => {
+  let dirs: string[] = [];
+  function tmpProjectDir(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'dockflow-hostkeys-'));
+    dirs.push(dir);
+    return dir;
+  }
+
+  afterEach(() => {
+    const previous = process.env[`${HK_ENV.toUpperCase()}_SRV-1_HOST_KEY`];
+    if (previous !== undefined) delete process.env[`${HK_ENV.toUpperCase()}_SRV-1_HOST_KEY`];
+    for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+    dirs = [];
+  });
+
+  it('HK1 pin matches -> connect, outcome matched, no file write', async () => {
+    const dir = tmpProjectDir();
+    mkdirSync(join(dir, '.dockflow'), { recursive: true });
+    const knownHosts = join(dir, '.dockflow', 'known_hosts');
+    writeFileSync(knownHosts, `srv-1 10.0.0.10 22 ssh-ed25519 ${ED25519_PUB_B64}\n`, { mode: 0o600 });
+
+    const store = new HostKeyStore(dir, HK_ENV, { insecureHostKey: false, requireHostKey: false, interactive: false });
+    const decisions: HostKeyDecision[] = [];
+    const accepted = await verify(store, hkNode('srv-1'), Buffer.from(ED25519_PUB_B64, 'base64'), (d) => decisions.push(d));
+
+    expect(accepted).toBe(true);
+    expect(decisions).toEqual([{ key: 'srv-1', fingerprint: ED25519_FINGERPRINT, outcome: 'matched' }]);
+    store.persistRecorded();
+    expect(readFileSync(knownHosts, 'utf8')).toBe(`srv-1 10.0.0.10 22 ssh-ed25519 ${ED25519_PUB_B64}\n`);
+  });
+
+  it('HK2 pin differs -> ConnectionError-shaped refusal naming both fingerprints; no verify(true)', async () => {
+    const dir = tmpProjectDir();
+    mkdirSync(join(dir, '.dockflow'), { recursive: true });
+    writeFileSync(join(dir, '.dockflow', 'known_hosts'), `srv-1 10.0.0.10 22 ecdsa-sha2-nistp256 ${ECDSA_PUB_B64}\n`, { mode: 0o600 });
+
+    const store = new HostKeyStore(dir, HK_ENV, { insecureHostKey: false, requireHostKey: false, interactive: false });
+    const accepted = await verify(store, hkNode('srv-1'), Buffer.from(ED25519_PUB_B64, 'base64'));
+
+    expect(accepted).toBe(false);
+    const error = store.takeError();
+    expect(error?.message).toBe('The SSH host key of srv-1 (10.0.0.10:22) changed');
+    expect(error?.suggestion).toContain(ECDSA_FINGERPRINT);
+    expect(error?.suggestion).toContain(ED25519_FINGERPRINT);
+  });
+
+  it('HK3 no pin, non-TTY, key auth -> recorded once, warned, persisted 0600 sorted by key; a second run matches silently', async () => {
+    const dir = tmpProjectDir();
+    const warnings: string[] = [];
+    const store = new HostKeyStore(dir, HK_ENV, { insecureHostKey: false, requireHostKey: false, interactive: false, onWarning: (m) => warnings.push(m) });
+
+    expect(store.refusalFor(hkNode('srv-1'), { usesPassword: false })).toBeNull();
+    const decisionsA: HostKeyDecision[] = [];
+    const decisionsB: HostKeyDecision[] = [];
+    const acceptedB = await verify(store, hkNode('srv-2'), Buffer.from(ECDSA_PUB_B64, 'base64'), (d) => decisionsB.push(d));
+    const acceptedA = await verify(store, hkNode('srv-1'), Buffer.from(ED25519_PUB_B64, 'base64'), (d) => decisionsA.push(d));
+
+    expect(acceptedA).toBe(true);
+    expect(acceptedB).toBe(true);
+    expect(decisionsA[0].outcome).toBe('recorded');
+    expect(decisionsB[0].outcome).toBe('recorded');
+    expect(warnings.filter((w) => w.includes('first contact'))).toHaveLength(2);
+
+    store.persistRecorded();
+    const knownHosts = join(dir, '.dockflow', 'known_hosts');
+    expect(readFileSync(knownHosts, 'utf8')).toBe(`srv-1 10.0.0.10 22 ssh-ed25519 ${ED25519_PUB_B64}\nsrv-2 10.0.0.10 22 ecdsa-sha2-nistp256 ${ECDSA_PUB_B64}\n`);
+    // Windows NTFS does not track POSIX permission bits the way writeFileSync's `mode` implies
+    if (process.platform !== 'win32') expect(statSync(knownHosts).mode & 0o777).toBe(0o600);
+
+    // a fresh store over the same project dir now matches without recording or warning again
+    const secondRun = new HostKeyStore(dir, HK_ENV, {
+      insecureHostKey: false,
+      requireHostKey: false,
+      interactive: false,
+      onWarning: (m) => {
+        throw new Error(`unexpected warning on a matching second run: ${m}`);
+      },
+    });
+    const decisions2: HostKeyDecision[] = [];
+    const accepted2 = await verify(secondRun, hkNode('srv-1'), Buffer.from(ED25519_PUB_B64, 'base64'), (d) => decisions2.push(d));
+    expect(accepted2).toBe(true);
+    expect(decisions2[0].outcome).toBe('matched');
+  });
+
+  it('HK4 no pin, non-TTY, --password -> refused before any key is offered (2.1)', () => {
+    const dir = tmpProjectDir();
+    const store = new HostKeyStore(dir, HK_ENV, { insecureHostKey: false, requireHostKey: false, interactive: false });
+    const refusal = store.refusalFor(hkNode('srv-1'), { usesPassword: true });
+    expect(refusal).not.toBeNull();
+    expect(refusal?.message).toContain('srv-1');
+    expect(refusal?.suggestion).toContain('--insecure-host-key');
+  });
+
+  it('HK5 --require-host-key without a pin refuses; --insecure-host-key skips verification with a warning, no file write', async () => {
+    const dir = tmpProjectDir();
+    const strict = new HostKeyStore(dir, HK_ENV, { insecureHostKey: false, requireHostKey: true, interactive: false });
+    expect(strict.refusalFor(hkNode('srv-1'), { usesPassword: false })?.message).toBe('srv-1 has no recorded SSH host key');
+
+    const warnings: string[] = [];
+    const insecure = new HostKeyStore(dir, HK_ENV, { insecureHostKey: true, requireHostKey: false, interactive: false, onWarning: (m) => warnings.push(m) });
+    // --insecure-host-key bypasses even the password-on-unverified-host rule
+    expect(insecure.refusalFor(hkNode('srv-1'), { usesPassword: true })).toBeNull();
+    const decisions: HostKeyDecision[] = [];
+    const accepted = await verify(insecure, hkNode('srv-1'), Buffer.from(ED25519_PUB_B64, 'base64'), (d) => decisions.push(d));
+    expect(accepted).toBe(true);
+    expect(decisions[0].outcome).toBe('skipped');
+    expect(warnings).toEqual(['Host key verification is disabled for srv-1']);
+    insecure.persistRecorded();
+    expect(existsSync(join(dir, '.dockflow', 'known_hosts'))).toBe(false);
+  });
+
+  it('HK6 <ENV>_<KEY>_HOST_KEY takes precedence over a conflicting file entry', () => {
+    const dir = tmpProjectDir();
+    mkdirSync(join(dir, '.dockflow'), { recursive: true });
+    writeFileSync(join(dir, '.dockflow', 'known_hosts'), `srv-1 10.0.0.10 22 ecdsa-sha2-nistp256 ${ECDSA_PUB_B64}\n`, { mode: 0o600 });
+    process.env[`${HK_ENV.toUpperCase()}_SRV-1_HOST_KEY`] = `ssh-ed25519 ${ED25519_PUB_B64}`;
+
+    const store = new HostKeyStore(dir, HK_ENV, { insecureHostKey: false, requireHostKey: false, interactive: false });
+    const pin = store.lookup(hkNode('srv-1'));
+    expect(pin?.type).toBe('ssh-ed25519');
+    expect(pin?.base64).toBe(ED25519_PUB_B64);
+    expect(store.fileConflictsWithEnv(hkNode('srv-1'))).toBe(true);
+  });
+
+  it('HK7 sshFingerprint matches ssh-keygen -lf for ed25519, ecdsa and rsa host keys', () => {
+    expect(sshFingerprint(Buffer.from(ED25519_PUB_B64, 'base64'))).toBe(ED25519_FINGERPRINT);
+    expect(sshFingerprint(Buffer.from(ECDSA_PUB_B64, 'base64'))).toBe(ECDSA_FINGERPRINT);
+    expect(sshFingerprint(Buffer.from(RSA_PUB_B64, 'base64'))).toBe(RSA_FINGERPRINT);
   });
 });

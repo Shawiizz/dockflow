@@ -1,0 +1,4 @@
+{
+  "description": "RWO with replicas > 1, ReadWriteMany on the default class, a global service with an RWO volume (generated and external), an RWOP volume shared by two services, and a per-replica volume shared by two StatefulSets (design-02 7.3, 4.2, 4.3, 4.4)",
+  "expectRenderError": { "app": true }
+}

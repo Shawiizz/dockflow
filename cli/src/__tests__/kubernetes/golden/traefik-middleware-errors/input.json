@@ -1,0 +1,5 @@
+{
+  "description": "An @file middleware reference, basicauth.usersfile, an unknown middleware option and errors.service naming an unknown service refuse at the normalizer; addprefix.prefix without a leading slash refuses at the translator",
+  "proxy": { "enabled": true },
+  "expectRenderError": { "app": true, "accessory": true }
+}

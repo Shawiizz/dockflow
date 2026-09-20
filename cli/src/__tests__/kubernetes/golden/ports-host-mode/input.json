@@ -1,0 +1,3 @@
+{
+  "description": "a long-syntax mode: host port with a host_ip, and x-dockflow.publish: hostport with a loopback host_ip (design-02 5.4, 6.3)"
+}

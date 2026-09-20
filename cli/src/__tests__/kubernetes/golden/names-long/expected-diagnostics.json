@@ -1,0 +1,12 @@
+{
+  "app": [
+    {
+      "severity": "warning",
+      "code": "names.sanitized",
+      "path": "services.svc-fifty-three-characters-exactly-aaaaaaaaaaaaaaaaaa",
+      "message": "is deployed as Kubernetes service svc-fifty-three-characters-exactly-aaaaaaaaaa-2d8a39; clients using the name svc-fifty-three-characters-exactly-aaaaaaaaaaaaaaaaaa will not resolve it",
+      "hint": "Rename the service to `svc-fifty-three-characters-exactly-aaaaaaaaaa-2d8a39` (lowercase letters, digits and `-`)."
+    }
+  ],
+  "accessory": []
+}

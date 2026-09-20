@@ -1,0 +1,8 @@
+services:
+  netbox:
+    image: nginx:1.27
+    network_mode: host
+    sysctls:
+      net.core.somaxconn: "1024"
+      vm.overcommit_memory: "1"
+      Net.ipv4.tcp_syncookies: "1"

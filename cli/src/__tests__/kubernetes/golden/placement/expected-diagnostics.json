@@ -1,0 +1,12 @@
+{
+  "app": [
+    {
+      "severity": "warning",
+      "code": "placement.max-replicas-approximate",
+      "path": "services.worker.deploy.placement.max_replicas_per_node",
+      "message": "max_replicas_per_node: 2 of service worker cannot be enforced; replicas are spread across nodes instead",
+      "hint": "Use 1 for a strict one-per-node limit."
+    }
+  ],
+  "accessory": []
+}

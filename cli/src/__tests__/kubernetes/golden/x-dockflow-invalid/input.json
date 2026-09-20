@@ -1,0 +1,4 @@
+{
+  "description": "Every strict x-dockflow validation failure: unknown key, invalid enum, wrong type, invalid CIDR, invalid label key, an invalid toleration, and x-dockflow.size on an external volume",
+  "expectRenderError": { "app": true }
+}

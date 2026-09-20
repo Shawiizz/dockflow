@@ -2,6 +2,8 @@
  * SSH connection type definitions
  */
 
+import type { HostVerifier, SyncHostVerifier } from 'ssh2';
+
 /**
  * Base SSH connection information
  */
@@ -9,6 +11,12 @@ export interface SSHConnectionInfo {
   host: string;
   port: number;
   user: string;
+  /**
+   * Host key check for this connection only (design-05 3.5, K60). Every existing caller omits it
+   * and keeps today's accept-anything behaviour (`utils/ssh.ts` `buildConnectConfig`); only the
+   * setup transport passes one.
+   */
+  hostVerifier?: HostVerifier | SyncHostVerifier;
 }
 
 /**
@@ -38,19 +46,8 @@ export function isKeyConnection(conn: ConnectionInfo): conn is SSHKeyConnection 
   return 'privateKey' in conn;
 }
 
-/** A named cluster node: SSH connection + display name. */
-export interface ClusterNode {
-  connection: SSHKeyConnection;
-  name: string;
-}
-
-/** Full SSH topology of a deployment target. */
-export interface ClusterConnection {
-  manager: ClusterNode;
-  workers: ClusterNode[];
-  /** Swarm managers other than the active leader. */
-  otherManagers: ClusterNode[];
-}
+/** The node topology type every orchestrator uses (DESIGN-CORE 1.2): superseded ClusterNode/ClusterConnection. */
+export type { ClusterNodeRef } from '../services/orchestrator/interfaces';
 
 /**
  * SSH command execution result

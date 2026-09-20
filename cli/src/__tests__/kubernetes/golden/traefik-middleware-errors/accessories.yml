@@ -1,0 +1,10 @@
+services:
+  api:
+    image: nginx:1.27
+    ports:
+      - "9090:80"
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.api.rule: "Host(`api.example.com`)"
+      traefik.http.routers.api.middlewares: "badprefix"
+      traefik.http.middlewares.badprefix.addprefix.prefix: "v1"

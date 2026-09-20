@@ -1,0 +1,94 @@
+# dockflow-artifact: k8s-manifests/1
+# stack: project-with-sixty-three-characters-total-for-namespace-test-aa-env-with-fifty-characters-total-for-namespace-tsta
+# role: app
+# version: 1.4.2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: dockflow-project-with-sixty-three-characters-total-for-0add5693
+  annotations:
+    dockflow.shawiizz.dev/compose-service: web
+  labels:
+    app.kubernetes.io/instance: dockflow-project-with-sixty-three-characters-total-for-0add5693
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: web
+    app.kubernetes.io/part-of: project-with-sixty-three-characters-total-for-namespace-test-aa
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: web
+    dockflow.shawiizz.dev/stack: dockflow-project-with-sixty-three-characters-total-for-0add5693
+spec:
+  clusterIP: None
+  ports:
+    - name: placeholder
+      port: 9
+      protocol: TCP
+  selector:
+    dockflow.shawiizz.dev/service: web
+    dockflow.shawiizz.dev/stack: dockflow-project-with-sixty-three-characters-total-for-0add5693
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: dockflow-project-with-sixty-three-characters-total-for-0add5693
+  annotations:
+    dockflow.shawiizz.dev/compose-service: web
+    dockflow.shawiizz.dev/release: 1.4.2
+  labels:
+    app.kubernetes.io/instance: dockflow-project-with-sixty-three-characters-total-for-0add5693
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: web
+    app.kubernetes.io/part-of: project-with-sixty-three-characters-total-for-namespace-test-aa
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: web
+    dockflow.shawiizz.dev/stack: dockflow-project-with-sixty-three-characters-total-for-0add5693
+spec:
+  minReadySeconds: 30
+  progressDeadlineSeconds: 240
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      dockflow.shawiizz.dev/service: web
+      dockflow.shawiizz.dev/stack: dockflow-project-with-sixty-three-characters-total-for-0add5693
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      annotations:
+        dockflow.shawiizz.dev/compose-service: web
+        kubectl.kubernetes.io/default-container: web
+      labels:
+        app.kubernetes.io/instance: dockflow-project-with-sixty-three-characters-total-for-0add5693
+        app.kubernetes.io/name: web
+        dockflow.shawiizz.dev/role: app
+        dockflow.shawiizz.dev/service: web
+        dockflow.shawiizz.dev/stack: dockflow-project-with-sixty-three-characters-total-for-0add5693
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: web
+          image: nginx:1.27
+          imagePullPolicy: IfNotPresent
+      enableServiceLinks: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 10
+      topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              dockflow.shawiizz.dev/service: web
+              dockflow.shawiizz.dev/stack: dockflow-project-with-sixty-three-characters-total-for-0add5693
+          matchLabelKeys:
+            - pod-template-hash
+          maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway

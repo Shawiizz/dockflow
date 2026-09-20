@@ -1,0 +1,45 @@
+{
+  "app": [
+    {
+      "severity": "error",
+      "code": "volumes.docker-socket",
+      "path": "services.app.volumes[0]",
+      "message": "Service app mounts the container engine socket /var/run/docker.sock, which does not exist on Kubernetes nodes",
+      "hint": "Remove the mount; use the Kubernetes API from a sidecar instead."
+    },
+    {
+      "severity": "error",
+      "code": "volumes.docker-socket",
+      "path": "services.app.volumes[1]",
+      "message": "Service app mounts the container engine socket /run/podman/podman.sock, which does not exist on Kubernetes nodes",
+      "hint": "Remove the mount; use the Kubernetes API from a sidecar instead."
+    },
+    {
+      "severity": "info",
+      "code": "volumes.bind-node-local",
+      "path": "services.app.volumes[2]",
+      "message": "Bind source /srv/shop/shared must exist on every node that may run app"
+    },
+    {
+      "severity": "error",
+      "code": "volumes.propagation-bidirectional",
+      "path": "services.app.volumes[2]",
+      "message": "Bind /srv/shop/shared of service app uses shared propagation, which Kubernetes allows only for privileged containers",
+      "hint": "Use `rslave` propagation, or set `privileged: true`."
+    },
+    {
+      "severity": "info",
+      "code": "volumes.bind-node-local",
+      "path": "services.app.volumes[3]",
+      "message": "Bind source /srv/shop/ro-slave must exist on every node that may run app"
+    },
+    {
+      "severity": "error",
+      "code": "volumes.recursive-readonly-propagation",
+      "path": "services.app.volumes[3]",
+      "message": "Bind /srv/shop/ro-slave of service app asks for bind.recursive: readonly with rslave propagation, which Kubernetes cannot combine",
+      "hint": "Use private propagation, or `bind.recursive: enabled`."
+    }
+  ],
+  "accessory": []
+}

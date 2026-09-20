@@ -1,0 +1,18 @@
+{
+  "app": [
+    {
+      "severity": "warning",
+      "code": "routing.proxy-disabled",
+      "path": "services.web",
+      "message": "Traefik labels have no effect because proxy.enabled is false",
+      "hint": "Set `proxy.enabled: true` in config.yml, or remove the labels."
+    },
+    {
+      "severity": "warning",
+      "code": "labels.annotation-conflict",
+      "path": "services.web.annotations.note",
+      "message": "Key note of service web is set by labels and annotations with different values; annotations win"
+    }
+  ],
+  "accessory": []
+}

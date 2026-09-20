@@ -1,0 +1,13 @@
+services:
+  batch-one:
+    image: busybox:1.36
+    command: ["true"]
+    deploy:
+      mode: replicated-job
+      replicas: 1
+  batch-two:
+    image: busybox:1.36
+    command: ["true"]
+    deploy:
+      mode: replicated-job
+      replicas: 2

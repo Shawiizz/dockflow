@@ -1,0 +1,133 @@
+{
+  "app": [
+    {
+      "severity": "error",
+      "code": "volumes.rwo-global",
+      "path": "services.global-ext.deploy.mode",
+      "message": "Global service global-ext runs on every node and cannot share volume vol4 (ReadWriteOnce)",
+      "hint": "Use a bind mount for per-node data, or a `ReadWriteMany` storage class."
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.global-ext.volumes[0]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /data (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "error",
+      "code": "volumes.rwo-global",
+      "path": "services.global-rwo.deploy.mode",
+      "message": "Global service global-rwo runs on every node and cannot share volume vol3 (ReadWriteOnce)",
+      "hint": "Use a bind mount for per-node data, or a `ReadWriteMany` storage class."
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.global-rwo.volumes[0]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /data (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "info",
+      "code": "update.statefulset-order",
+      "path": "services.perrep-a.deploy.update_config.order",
+      "message": "Service perrep-a is a StatefulSet; replicas are replaced one at a time, stop-first"
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.perrep-a.volumes[0]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /data (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "info",
+      "code": "update.statefulset-order",
+      "path": "services.perrep-b.deploy.update_config.order",
+      "message": "Service perrep-b is a StatefulSet; replicas are replaced one at a time, stop-first"
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.perrep-b.volumes[0]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /data2 (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "error",
+      "code": "volumes.rwo-replicas",
+      "path": "services.rwo-replicas.deploy.replicas",
+      "message": "Service rwo-replicas mounts volume vol1 (ReadWriteOnce) and cannot run 3 replicas",
+      "hint": "Set `deploy.replicas: 1`, or set `x-dockflow.kind: statefulset` and `volumes.vol1.x-dockflow.per_replica: true`."
+    },
+    {
+      "severity": "info",
+      "code": "update.strategy-recreate",
+      "path": "services.rwo-replicas.deploy.update_config",
+      "message": "Service rwo-replicas is updated with Recreate because it mounts volume vol1 (ReadWriteOnce)"
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.rwo-replicas.volumes[0]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /data (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "info",
+      "code": "update.strategy-recreate",
+      "path": "services.rwop-a.deploy.update_config",
+      "message": "Service rwop-a is updated with Recreate because it mounts volume vol5 (ReadWriteOncePod)"
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.rwop-a.volumes[0]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /data (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "info",
+      "code": "update.strategy-recreate",
+      "path": "services.rwop-b.deploy.update_config",
+      "message": "Service rwop-b is updated with Recreate because it mounts volume vol5 (ReadWriteOncePod)"
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.rwop-b.volumes[0]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /data2 (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.rwx-default.volumes[0]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /data (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "error",
+      "code": "volumes.access-mode-unsupported",
+      "path": "volumes.vol2.x-dockflow.access_mode",
+      "message": "Volume vol2 asks for ReadWriteMany, which storage class dockflow-local cannot provision",
+      "hint": "Use `ReadWriteOnce`, or set `x-dockflow.storage_class` to a class that supports `ReadWriteMany`."
+    },
+    {
+      "severity": "error",
+      "code": "volumes.rwop-shared",
+      "path": "volumes.vol5",
+      "message": "Volume vol5 (ReadWriteOncePod) is used by rwop-a, rwop-b, but only one pod can mount it",
+      "hint": "Give each service its own volume, or set `x-dockflow.access_mode: ReadWriteOnce`."
+    },
+    {
+      "severity": "error",
+      "code": "volumes.per-replica-shared",
+      "path": "volumes.vol6",
+      "message": "Volume vol6 has per_replica: true and is mounted by perrep-a, perrep-b; a claim template belongs to one StatefulSet",
+      "hint": "Declare one per-replica volume per service."
+    }
+  ],
+  "accessory": []
+}

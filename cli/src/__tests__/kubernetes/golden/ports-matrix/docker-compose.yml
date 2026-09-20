@@ -1,0 +1,29 @@
+services:
+  web:
+    image: nginx:1.27
+    ports:
+      - "6000:6000"
+      - target: 6000
+        published: 6000
+        protocol: udp
+      - "8080:3000"
+      - "9090:3000"
+      - "3000"
+      - "[::]:9443:443"
+      - target: 6500
+        published: 6500
+        protocol: tcp
+        name: primary
+        app_protocol: http
+      - target: 6500
+        published: 6600
+        protocol: tcp
+        name: secondary
+        app_protocol: grpc
+      - "7000-7001:7000-7001"
+      - target: 7001
+        published: 17001
+        protocol: tcp
+        name: colliding
+    expose:
+      - "5432"

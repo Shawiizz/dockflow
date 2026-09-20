@@ -1,0 +1,9 @@
+services:
+  web:
+    image: nginx:1.27
+    ports:
+      - "8080:80"
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.web-secure.rule: "Host(`web.example.com`)"
+      traefik.http.routers.web-secure.entrypoints: "websecure"

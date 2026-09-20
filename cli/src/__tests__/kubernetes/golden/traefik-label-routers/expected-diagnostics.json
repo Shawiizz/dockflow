@@ -1,0 +1,25 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "probes.routed-without-healthcheck",
+      "path": "services.api",
+      "message": "Service api is routed by Traefik but has no healthcheck; traffic starts as soon as the container starts",
+      "hint": "Add a healthcheck."
+    },
+    {
+      "severity": "info",
+      "code": "routing.container-labels",
+      "path": "services.api.labels",
+      "message": "Traefik labels in labels are used on Kubernetes; on Swarm Traefik only reads deploy.labels"
+    },
+    {
+      "severity": "warning",
+      "code": "routing.web-served-with-acme",
+      "path": "services.api.labels[\"traefik.http.routers.api-web.entrypoints\"]",
+      "message": "router api-web is served over plain HTTP on web; on Swarm the HTTPS redirect shadowed it",
+      "hint": "Remove `web` from its entry points to keep the redirect."
+    }
+  ],
+  "accessory": []
+}

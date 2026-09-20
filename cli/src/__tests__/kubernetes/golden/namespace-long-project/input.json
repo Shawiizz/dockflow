@@ -1,0 +1,7 @@
+{
+  "description": "A 63-character project and a 50-character env make dockflow-<project>-<env> too long: the namespace is truncated and hashed",
+  "identity": {
+    "project": "project-with-sixty-three-characters-total-for-namespace-test-aa",
+    "env": "env-with-fifty-characters-total-for-namespace-tsta"
+  }
+}

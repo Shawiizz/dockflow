@@ -1,0 +1,46 @@
+services:
+  bad-unknown:
+    image: nginx:1.27
+    x-dockflow:
+      bogus: true
+
+  bad-kind:
+    image: nginx:1.27
+    x-dockflow:
+      kind: vm
+
+  bad-fsgroup:
+    image: nginx:1.27
+    x-dockflow:
+      fs_group: notanumber
+
+  bad-cidr:
+    image: nginx:1.27
+    x-dockflow:
+      lb_source_ranges:
+        - not-a-cidr
+
+  bad-nodeselector:
+    image: nginx:1.27
+    x-dockflow:
+      node_selector:
+        "Bad Key!": value
+
+  bad-toleration:
+    image: nginx:1.27
+    x-dockflow:
+      tolerations:
+        - operator: Exists
+          value: x
+
+  ext-vol-user:
+    image: nginx:1.27
+    volumes:
+      - shared_ext:/data
+
+volumes:
+  shared_ext:
+    external: true
+    name: shared-ext-claim
+    x-dockflow:
+      size: 10Gi

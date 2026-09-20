@@ -1,0 +1,350 @@
+# dockflow-artifact: k8s-manifests/1
+# stack: shop-production
+# role: app
+# version: 1.4.2
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: auth-auth-secret-5126ff1a
+  namespace: dockflow-shop-production
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/hashed: "true"
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+data:
+  users: YWRtaW46JGFwcjEkYWJjMTIzCnVzLGVyOiRhcHIxJGRlZjQ1Ngo=
+immutable: true
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dauth-auth-secret-f6a0317e
+  namespace: dockflow-shop-production
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/hashed: "true"
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+data:
+  users: c3ZjdXNlcjp0aGVyZWFsbTpzb21laGFzaAo=
+immutable: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: web
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: web
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: web
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  ports:
+    - name: tcp-80
+      port: 80
+      protocol: TCP
+  selector:
+    dockflow.shawiizz.dev/service: web
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-lb
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: web
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: web
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: web
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  type: LoadBalancer
+  allocateLoadBalancerNodePorts: false
+  ports:
+    - name: tcp-80
+      port: 8080
+      protocol: TCP
+      targetPort: 80
+  selector:
+    dockflow.shawiizz.dev/service: web
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: web
+    dockflow.shawiizz.dev/release: 1.4.2
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: web
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: web
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  minReadySeconds: 30
+  progressDeadlineSeconds: 240
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      dockflow.shawiizz.dev/service: web
+      dockflow.shawiizz.dev/stack: dockflow-shop-production
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      annotations:
+        dockflow.shawiizz.dev/compose-service: web
+        kubectl.kubernetes.io/default-container: web
+      labels:
+        app.kubernetes.io/instance: dockflow-shop-production
+        app.kubernetes.io/name: web
+        dockflow.shawiizz.dev/role: app
+        dockflow.shawiizz.dev/service: web
+        dockflow.shawiizz.dev/stack: dockflow-shop-production
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: web
+          image: nginx:1.27
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: tcp-80
+              containerPort: 80
+              protocol: TCP
+      enableServiceLinks: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 10
+      topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              dockflow.shawiizz.dev/service: web
+              dockflow.shawiizz.dev/stack: dockflow-shop-production
+          matchLabelKeys:
+            - pod-template-hash
+          maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: auth
+  namespace: dockflow-shop-production
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  basicAuth:
+    secret: auth-auth-secret-5126ff1a
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: cbreak
+  namespace: dockflow-shop-production
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  circuitBreaker:
+    checkPeriod: 10s
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: chained
+  namespace: dockflow-shop-production
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  chain:
+    middlewares:
+      - name: strip
+      - name: auth
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: dauth
+  namespace: dockflow-shop-production
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  digestAuth:
+    removeHeader: true
+    secret: dauth-auth-secret-f6a0317e
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: errmw
+  namespace: dockflow-shop-production
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  errors:
+    service:
+      name: web
+      port: 80
+    status:
+      - 500-599
+    statusRewrites:
+      "404": 200
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: ipallow
+  namespace: dockflow-shop-production
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  ipWhiteList:
+    sourceRange:
+      - 10.0.0.0/8
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: limiter
+  namespace: dockflow-shop-production
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  retry:
+    attempts: 3
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip
+  namespace: dockflow-shop-production
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  stripPrefix:
+    prefixes:
+      - /api
+      - /v1
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: unused
+  namespace: dockflow-shop-production
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  addPrefix:
+    prefix: /legacy
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: web--4b5e57f6
+  namespace: dockflow-shop-production
+  annotations:
+    dockflow.shawiizz.dev/compose-service: web
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/name: web
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/service: web
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`web.example.com`)
+      middlewares:
+        - name: strip
+        - name: auth
+        - name: limiter
+        - name: cbreak
+        - name: dauth
+        - name: ipallow
+        - name: chained
+        - name: errmw
+      services:
+        - name: web
+          port: 80

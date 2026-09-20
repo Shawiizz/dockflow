@@ -1,0 +1,5 @@
+services:
+  web:
+    image: nginx:1.27
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]

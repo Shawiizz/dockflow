@@ -1,0 +1,6 @@
+services:
+  cache:
+    image: redis:7
+    deploy:
+      update_config:
+        failure_action: rollback

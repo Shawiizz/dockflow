@@ -1,0 +1,66 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.api.volumes[0]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /data (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.api.volumes[1]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /cache (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "info",
+      "code": "names.volume-sanitized",
+      "path": "volumes.cache_data",
+      "message": "volume cache_data is stored in the claim cache-data"
+    },
+    {
+      "severity": "info",
+      "code": "names.volume-sanitized",
+      "path": "volumes.shared_data",
+      "message": "volume shared_data is stored in the claim shared-data"
+    },
+    {
+      "severity": "error",
+      "code": "volumes.role-collision",
+      "path": "volumes.shared_data",
+      "message": "volume shared_data is declared in both docker-compose.yml and accessories.yml; on Kubernetes both would be the claim shared-data",
+      "hint": "Declare the volume in one file and reference it from the other with `external: true` and `name: shared-data`, or rename one of them."
+    }
+  ],
+  "accessory": [
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.worker.volumes[0]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /data (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.worker.volumes[1]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /cache (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "info",
+      "code": "names.volume-sanitized",
+      "path": "volumes.shared_data",
+      "message": "volume shared_data is stored in the claim shared-data"
+    },
+    {
+      "severity": "error",
+      "code": "volumes.role-collision",
+      "path": "volumes.shared_data",
+      "message": "volume shared_data is declared in both docker-compose.yml and accessories.yml; on Kubernetes both would be the claim shared-data",
+      "hint": "Declare the volume in one file and reference it from the other with `external: true` and `name: shared-data`, or rename one of them."
+    }
+  ]
+}

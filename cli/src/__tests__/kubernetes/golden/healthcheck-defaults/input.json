@@ -1,0 +1,3 @@
+{
+  "description": "a healthcheck with only a test command: Docker's default timings, liveness initialDelaySeconds: 30 (design-02 5.6)"
+}

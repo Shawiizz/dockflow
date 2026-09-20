@@ -1,0 +1,18 @@
+services:
+  svc-default-si:
+    image: nginx:1.27
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 1500ms
+      timeout: 900ms
+      retries: 3
+      start_period: 500ms
+  svc-custom-si:
+    image: nginx:1.27
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 1500ms
+      timeout: 900ms
+      retries: 3
+      start_period: 500ms
+      start_interval: 1200ms

@@ -1,0 +1,4 @@
+{
+  "description": "Every supported compose feature exercised together: workload kinds, ports, volumes, files, healthcheck, security, placement, resources and routing, with no error",
+  "proxy": { "enabled": true }
+}

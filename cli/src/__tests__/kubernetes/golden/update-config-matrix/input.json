@@ -1,0 +1,3 @@
+{
+  "description": "update_config strategies (start-first/P=2, stop-first/P=0), monitor raising minReadySeconds and progressDeadlineSeconds, and the written-key-only diagnostics for delay, max_failure_ratio and failure_action (design-02 4.1, 4.2, PD-5)"
+}

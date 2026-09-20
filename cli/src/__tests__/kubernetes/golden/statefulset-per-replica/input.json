@@ -1,0 +1,3 @@
+{
+  "description": "x-dockflow.kind: statefulset with replicas 3, one per_replica volume and one shared config: claim templates, -hl, podManagementPolicy: Parallel, retention policy, update.statefulset-order (design-02 4.3)"
+}

@@ -1,0 +1,33 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "probes.routed-without-healthcheck",
+      "path": "services.api",
+      "message": "Service api is routed by Traefik but has no healthcheck; traffic starts as soon as the container starts",
+      "hint": "Add a healthcheck."
+    },
+    {
+      "severity": "warning",
+      "code": "routing.duplicate-injected-host",
+      "path": "services.api",
+      "message": "api and web all get the injected route Host(`example.com`); Traefik sends each request to one of them",
+      "hint": "Add `traefik.enable=false` to `deploy.labels` of the services that must not answer on example.com, or give them their own router rule."
+    },
+    {
+      "severity": "info",
+      "code": "probes.routed-without-healthcheck",
+      "path": "services.web",
+      "message": "Service web is routed by Traefik but has no healthcheck; traffic starts as soon as the container starts",
+      "hint": "Add a healthcheck."
+    },
+    {
+      "severity": "warning",
+      "code": "routing.duplicate-injected-host",
+      "path": "services.web",
+      "message": "web and api all get the injected route Host(`example.com`); Traefik sends each request to one of them",
+      "hint": "Add `traefik.enable=false` to `deploy.labels` of the services that must not answer on example.com, or give them their own router rule."
+    }
+  ],
+  "accessory": []
+}

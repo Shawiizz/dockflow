@@ -1,0 +1,4 @@
+{
+  "description": "Conflicting placement constraints refuse at the translator; an unknown architecture and a host outside serverNames refuse at the normalizer",
+  "expectRenderError": { "app": true, "accessory": true }
+}

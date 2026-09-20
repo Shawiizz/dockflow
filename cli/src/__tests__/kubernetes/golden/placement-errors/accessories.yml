@@ -1,0 +1,14 @@
+services:
+  bad-arch:
+    image: nginx:1.27
+    deploy:
+      placement:
+        constraints:
+          - node.platform.arch == mips
+
+  unknown-host:
+    image: nginx:1.27
+    deploy:
+      placement:
+        constraints:
+          - node.hostname == worker9

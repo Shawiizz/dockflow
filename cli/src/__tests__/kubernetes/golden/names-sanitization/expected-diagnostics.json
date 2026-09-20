@@ -1,0 +1,52 @@
+{
+  "app": [
+    {
+      "severity": "warning",
+      "code": "names.sanitized",
+      "path": "services.svc-name-with-seventy-characters-total-for-sanitization-test-aaaaaaaaa",
+      "message": "is deployed as Kubernetes service svc-name-with-seventy-characters-total-for-sa-efd327; clients using the name svc-name-with-seventy-characters-total-for-sanitization-test-aaaaaaaaa will not resolve it",
+      "hint": "Rename the service to `svc-name-with-seventy-characters-total-for-sa-efd327` (lowercase letters, digits and `-`)."
+    },
+    {
+      "severity": "warning",
+      "code": "names.sanitized",
+      "path": "services.web_app",
+      "message": "is deployed as Kubernetes service web-app; clients using the name web_app will not resolve it",
+      "hint": "Rename the service to `web-app` (lowercase letters, digits and `-`)."
+    },
+    {
+      "severity": "info",
+      "code": "update.strategy-recreate",
+      "path": "services.web_app.deploy.update_config",
+      "message": "Service web_app is updated with Recreate because it mounts volume postgres_data (ReadWriteOnce)"
+    },
+    {
+      "severity": "info",
+      "code": "volumes.copy-up-not-emulated",
+      "path": "services.web_app.volumes[0]",
+      "message": "Kubernetes does not copy the image's files into an empty volume mounted at /var/lib/data (Docker does)",
+      "hint": "Seed the volume from the entrypoint, or mount a subdirectory the image does not ship."
+    },
+    {
+      "severity": "warning",
+      "code": "names.sanitized",
+      "path": "services[\"2fa\"]",
+      "message": "is deployed as Kubernetes service s-2fa; clients using the name 2fa will not resolve it",
+      "hint": "Rename the service to `s-2fa` (lowercase letters, digits and `-`)."
+    },
+    {
+      "severity": "warning",
+      "code": "names.sanitized",
+      "path": "services[\"Api.V2\"]",
+      "message": "is deployed as Kubernetes service api-v2; clients using the name Api.V2 will not resolve it",
+      "hint": "Rename the service to `api-v2` (lowercase letters, digits and `-`)."
+    },
+    {
+      "severity": "info",
+      "code": "names.volume-sanitized",
+      "path": "volumes.postgres_data",
+      "message": "volume postgres_data is stored in the claim postgres-data"
+    }
+  ],
+  "accessory": []
+}

@@ -1,0 +1,24 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "deploy.update-delay",
+      "path": "services.delay-ratio.deploy.update_config.delay",
+      "message": "update_config.delay is not applied: Kubernetes has no pause between update batches"
+    },
+    {
+      "severity": "warning",
+      "code": "deploy.max-failure-ratio",
+      "path": "services.delay-ratio.deploy.update_config.max_failure_ratio",
+      "message": "update_config.max_failure_ratio is ignored: any failed pod fails the rollout"
+    }
+  ],
+  "accessory": [
+    {
+      "severity": "warning",
+      "code": "deploy.failure-action",
+      "path": "services.cache.deploy.update_config.failure_action",
+      "message": "update_config.failure_action rollback is not applied: a failed accessory rollout stops the deploy without a revert"
+    }
+  ]
+}

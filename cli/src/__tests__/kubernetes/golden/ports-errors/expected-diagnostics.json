@@ -1,0 +1,61 @@
+{
+  "app": [
+    {
+      "severity": "error",
+      "code": "ports.published-conflict",
+      "path": "services.conflict-b.ports[0]",
+      "message": "services.conflict-b.ports[0] publishes 8080/tcp, already published by services.conflict-a.ports[0]",
+      "hint": "Publish each node port from one service only."
+    },
+    {
+      "severity": "info",
+      "code": "update.surge-disabled",
+      "path": "services.host-dup.deploy.update_config.order",
+      "message": "Service host-dup binds node ports, so replicas are replaced stop-first (brief downtime per replica)",
+      "hint": "Publish through the load balancer (remove `mode: host` or `x-dockflow.publish: hostport`) to keep start-first updates."
+    },
+    {
+      "severity": "error",
+      "code": "ports.host-duplicate-target",
+      "path": "services.host-dup.ports[1]",
+      "message": "services.host-dup.ports[1] binds container port 9100/tcp on the node a second time",
+      "hint": "Bind the container port once in `mode: host`, or use the default ingress mode."
+    },
+    {
+      "severity": "error",
+      "code": "ports.host-port-replicas",
+      "path": "services.host-replicas.deploy.replicas",
+      "message": "host-replicas binds node port 9500/tcp and runs 3 replicas, but two pods cannot bind one port on one node",
+      "hint": "Publish through the load balancer (`x-dockflow.publish: loadbalancer`), or run one pod per node with `deploy.mode: global`."
+    },
+    {
+      "severity": "info",
+      "code": "update.surge-disabled",
+      "path": "services.host-replicas.deploy.update_config.order",
+      "message": "Service host-replicas binds node ports, so replicas are replaced stop-first (brief downtime per replica)",
+      "hint": "Publish through the load balancer (remove `mode: host` or `x-dockflow.publish: hostport`) to keep start-first updates."
+    },
+    {
+      "severity": "error",
+      "code": "ports.host-ip-unsupported",
+      "path": "services.loopback-lb.ports[0]",
+      "message": "services.loopback-lb.ports[0] binds 127.0.0.1, which a load balancer publishing on every node cannot honour",
+      "hint": "Remove the address to publish on every node, use `expose` for in-cluster access only, or set `x-dockflow.publish: hostport` to bind it on the node running the pod."
+    },
+    {
+      "severity": "error",
+      "code": "ports.sctp-loadbalancer",
+      "path": "services.sctp-svc.ports[0]",
+      "message": "services.sctp-svc.ports[0] publishes 5000/sctp through the load balancer, which forwards only TCP and UDP",
+      "hint": "Set `x-dockflow.publish: hostport` to bind the port on the node running the pod, or use `expose` for in-cluster access only."
+    },
+    {
+      "severity": "error",
+      "code": "ports.too-many-published",
+      "path": "services.too-many.ports",
+      "message": "Service too-many publishes 11 ports through its load balancer; ServiceLB runs one container per port on every node, so at most 10 are accepted",
+      "hint": "Publish fewer ports, or set `x-dockflow.publish: hostport`."
+    }
+  ],
+  "accessory": []
+}

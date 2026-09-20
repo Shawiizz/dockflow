@@ -1,0 +1,18 @@
+{
+  "app": [
+    {
+      "severity": "info",
+      "code": "update.surge-disabled",
+      "path": "services.hostport-svc.deploy.update_config.order",
+      "message": "Service hostport-svc binds node ports, so replicas are replaced stop-first (brief downtime per replica)",
+      "hint": "Publish through the load balancer (remove `mode: host` or `x-dockflow.publish: hostport`) to keep start-first updates."
+    },
+    {
+      "severity": "info",
+      "code": "ports.publish-none",
+      "path": "services.none-svc.x-dockflow.publish",
+      "message": "Published ports of service none-svc are not exposed on the nodes"
+    }
+  ],
+  "accessory": []
+}

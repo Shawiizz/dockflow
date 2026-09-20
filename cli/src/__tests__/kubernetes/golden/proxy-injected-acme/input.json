@@ -1,0 +1,4 @@
+{
+  "description": "Two app services with published ports get injected default routes under the same ACME domain",
+  "proxy": { "enabled": true, "acme": true, "domains": { "production": "example.com" } }
+}

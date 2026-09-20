@@ -1,0 +1,21 @@
+services:
+  web:
+    image: nginx:1.27
+    deploy:
+      replicas: 1
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+  queue:
+    image: postgres:16
+    x-dockflow:
+      kind: statefulset
+    deploy:
+      replicas: 2
+    volumes:
+      - queue_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+  queue_data:
+    x-dockflow:
+      per_replica: true

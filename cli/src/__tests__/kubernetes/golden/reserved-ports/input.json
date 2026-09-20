@@ -1,0 +1,10 @@
+{
+  "description": "every reserved-host-port reason on both roles: SSH, the servers.yml SSH port, a Dockflow-owned Traefik while this stack's own proxy is disabled, the nginx plugin port, and a port the sibling role also publishes (design-02 6.6, PD-2)",
+  "proxy": { "enabled": false },
+  "traefikOnCluster": true,
+  "extraReservedHostPorts": [
+    { "port": 32230, "protocol": "TCP", "reason": "SSH port of server_1" },
+    { "port": 8443, "protocol": "TCP", "reason": "nginx plugin" }
+  ],
+  "expectRenderError": { "app": true, "accessory": true }
+}

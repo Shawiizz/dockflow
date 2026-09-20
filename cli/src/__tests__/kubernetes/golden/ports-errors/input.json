@@ -1,0 +1,4 @@
+{
+  "description": "a load-balanced host IP, two services publishing the same port, two host-mode entries on one target, a host-mode port with replicas > 1, 11 published ports and an SCTP load-balanced port (design-02 6.3, 6.6)",
+  "expectRenderError": { "app": true }
+}

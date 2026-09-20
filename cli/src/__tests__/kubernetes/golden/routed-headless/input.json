@@ -1,0 +1,4 @@
+{
+  "description": "A service with no ports, routed by an explicit loadbalancer.server.port label and no healthcheck",
+  "proxy": { "enabled": true }
+}

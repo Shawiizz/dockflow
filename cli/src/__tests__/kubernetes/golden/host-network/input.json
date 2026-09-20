@@ -1,0 +1,3 @@
+{
+  "description": "network_mode: host with an exposed port and a hostname: hostNetwork, ClusterFirstWithHostNet, hostPort = containerPort, no -lb (design-02 5.4, 5.11)"
+}

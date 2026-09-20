@@ -1,33 +1,43 @@
 /**
- * Remote setup functionality (Windows/macOS -> Linux)
+ * Remote setup functionality (Windows/macOS -> Linux), and the two primitives the k3s cluster
+ * transport (`k3s/transport.ts`) reuses over its own dedicated, host-key-verified connections:
+ * `deliverBinary` (verified binary delivery into a private temp dir, design-05 3.3, K57c) and
+ * `runNodeStep` (the `--k3s-plan` JSON-line protocol, design-05 3.4).
  */
 
 import * as fs from 'fs';
 import { join, resolve } from 'path';
 import { Client as SSHClient } from 'ssh2';
 import { printIntro, printOutro, printSection, printError, printInfo, printBlank, printDim, createSpinner } from '../../utils/output';
-import { sshExec, executeInteractiveSSH } from '../../utils/ssh';
+import { sshExec, sshExecChannelDedicated, executeInteractiveSSH } from '../../utils/ssh';
 import type { ConnectionInfo } from '../../types';
 import { isKeyConnection } from '../../types';
 import { normalizePrivateKey } from '../../utils/ssh-keys';
+import { ConnectionError } from '../../utils/errors';
+import { archFromMachine, type NodeBinary, nodeBinaryDeliveryScript, parseDeliveryFailure, resolveNodeBinary } from './k3s/install';
+import type { NodeArch, K3sNodePlan } from './k3s/plan';
 import { DOCKFLOW_RELEASE_URL } from './constants';
 import { DEFAULT_SSH_PORT, DOCKFLOW_VERSION } from '../../constants';
-import { buildBinaryDownloadUrl } from './forward';
 import { prompt, promptPassword, selectMenu, promptMultiline } from './prompts';
 import { parseConnectionString } from './connection';
 import type { RemoteSetupOptions } from './types';
 
-/**
- * Detect remote server architecture
- */
-async function detectRemoteArch(conn: ConnectionInfo): Promise<'x64' | 'arm64'> {
+/** `uname -m` -> the pinned architecture, or the refusal of design-05 3.3 (K57c). */
+export async function detectRemoteArch(conn: ConnectionInfo): Promise<NodeArch> {
   const result = await sshExec(conn, 'uname -m');
-  const arch = result.stdout.trim();
-
-  if (arch === 'aarch64' || arch === 'arm64') {
-    return 'arm64';
+  const arch = archFromMachine(result.stdout);
+  if (arch === null) {
+    throw new ConnectionError(
+      `Unsupported architecture ${result.stdout.trim()} on ${conn.host}; k3s nodes must be amd64 or arm64`,
+      'Use an amd64 (x86_64) or arm64 (aarch64) machine.',
+    );
   }
-  return 'x64';
+  return arch;
+}
+
+/** the bun --target suffix for a pinned architecture ('x64', not 'amd64') */
+function bunTargetArch(arch: NodeArch): 'x64' | 'arm64' {
+  return arch === 'amd64' ? 'x64' : 'arm64';
 }
 
 /**
@@ -71,7 +81,7 @@ async function uploadFile(
     host: conn.host,
     port: conn.port || DEFAULT_SSH_PORT,
     username: conn.user,
-    hostVerifier: () => true,
+    hostVerifier: conn.hostVerifier ?? (() => true),
     readyTimeout: 30_000,
   };
 
@@ -88,7 +98,9 @@ async function uploadFile(
         if (err) { client.end(); reject(err); return; }
 
         const readStream = fs.createReadStream(localPath);
-        const writeStream = sftp.createWriteStream(remotePath, { mode: 0o755 });
+        // 0700: the file lands in a private per-connection temp dir and is verified before use
+        // (design-05 3.3); a world- or group-readable upload would defeat that privacy.
+        const writeStream = sftp.createWriteStream(remotePath, { mode: 0o700 });
         let transferred = 0;
 
         readStream.on('data', (chunk: Buffer) => {
@@ -120,6 +132,169 @@ async function uploadFile(
     client.on('error', reject);
     client.connect(config as never);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Shared primitives (design-05 3.3, 3.4): reused by runRemoteSetup below and by
+// k3s/transport.ts's cluster SetupTransport over its own dedicated, host-key-verified
+// connections. Every interpolated shell value is shellQuote()d; nothing here builds a command
+// string outside curlArgs()/nodeBinaryDeliveryScript().
+// ---------------------------------------------------------------------------
+
+/**
+ * A private `mktemp -d` directory (0700, owned by the connecting user), replacing a fixed
+ * world-writable path: no local user can swap the binary between download and execution (F28).
+ */
+export async function makeTempDir(conn: ConnectionInfo): Promise<string> {
+  const result = await sshExec(conn, 'mktemp -d "${TMPDIR:-/tmp}/dockflow-setup.XXXXXXXX"', { requireExitStatus: true });
+  if (result.exitCode !== 0 || result.stdout.trim() === '') {
+    throw new ConnectionError(
+      `Could not create a temporary directory on ${conn.host} (${(result.stderr.split(/\r?\n/).find((l) => l.trim()) ?? '').trim() || `exit ${result.exitCode}`})`,
+      'Check that the connecting user can write under $TMPDIR or /tmp.',
+    );
+  }
+  return result.stdout.trim();
+}
+
+/** Best-effort `rm -rf` of a temp dir created by makeTempDir; never throws. */
+export async function cleanupTempDir(conn: ConnectionInfo, dir: string): Promise<void> {
+  try {
+    await sshExec(conn, `rm -rf -- ${shellQuoteOf(dir)}`);
+  } catch {
+    /* cleanup is best effort */
+  }
+}
+
+function shellQuoteOf(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * Verified delivery of the Dockflow binary into `dir` (K57c): an upload is SFTP'd into
+ * `<dir>/dockflow.part` first (uploadFile, mode 0700), a download fetches it there; either way the
+ * hash is checked with `sha256sum -c` before the file is made executable and moved into place, so a
+ * failed check leaves no executable behind.
+ */
+export async function deliverBinary(conn: ConnectionInfo, dir: string, binary: NodeBinary, key: string): Promise<void> {
+  if (binary.mode === 'upload') {
+    await uploadFile(conn, binary.path, `${dir}/dockflow.part`);
+  }
+  const script = nodeBinaryDeliveryScript(dir, binary);
+  const result = await sshExec(conn, script, { requireExitStatus: true });
+  if (result.exitCode !== 0) {
+    const problem = parseDeliveryFailure(result, { key, binary });
+    throw new ConnectionError(problem.message, problem.suggestion);
+  }
+}
+
+/** `<dir>/dockflow --version` must print DOCKFLOW_VERSION (3.3's "version" row). */
+export async function verifyDeliveredVersion(conn: ConnectionInfo, dir: string, key: string): Promise<void> {
+  const result = await sshExec(conn, `${dir}/dockflow --version`);
+  const printed = result.stdout.split(/\r?\n/)[0]?.trim() ?? '';
+  if (result.exitCode !== 0 || !printed.includes(DOCKFLOW_VERSION)) {
+    throw new ConnectionError(
+      `${key} runs Dockflow ${printed || 'unknown'} from ${dir}/dockflow, expected ${DOCKFLOW_VERSION}`,
+      'Delete the node’s temporary directory and run setup again.',
+    );
+  }
+}
+
+export interface NodeEvent {
+  step: string;
+  status: 'start' | 'ok' | 'skip' | 'warn';
+  detail?: string;
+}
+
+export interface NodeStepHandlers {
+  onEvent(event: NodeEvent): void;
+}
+
+/** What the node step protocol (3.4) settles to: a printed result, a guard timeout, or a crash. */
+export type NodeStepOutcome =
+  | { kind: 'result'; result: Record<string, unknown> }
+  | { kind: 'timeout' }
+  | { kind: 'crash'; exitCode: number; stderrTail: string[] };
+
+const STDERR_TAIL_LINES = 20;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Runs `<prefix><dir>/dockflow setup --orchestrator k3s --k3s-plan -` over a non-PTY dedicated
+ * channel (never the pool, 3.5): the plan JSON is written to stdin and the stream is closed, stdout
+ * JSON lines are parsed as they arrive (`dockflowNodeEvent` dispatched live, `dockflowNodeResult`
+ * captured), and the channel is closed once `guardS` seconds pass without a result line.
+ */
+export async function runNodeStep(
+  conn: ConnectionInfo,
+  dir: string,
+  plan: K3sNodePlan,
+  handlers: NodeStepHandlers,
+  guardS: number,
+): Promise<NodeStepOutcome> {
+  const prefix = conn.user === 'root' ? '' : 'sudo -n -- ';
+  const command = `${prefix}${dir}/dockflow setup --orchestrator k3s --k3s-plan -`;
+  const channel = await sshExecChannelDedicated(conn, command);
+
+  let result: Record<string, unknown> | null = null;
+  let timedOut = false;
+  let settled = false;
+  let buffer = '';
+  let stderrTail: string[] = [];
+
+  const timer = setTimeout(() => {
+    if (!settled) {
+      timedOut = true;
+      channel.close();
+    }
+  }, guardS * 1000);
+
+  channel.stream.on('data', (chunk: Buffer) => {
+    buffer += chunk.toString('utf8');
+    let at = buffer.indexOf('\n');
+    while (at !== -1) {
+      const line = buffer.slice(0, at);
+      buffer = buffer.slice(at + 1);
+      at = buffer.indexOf('\n');
+      if (line.trim() === '') continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (!isRecord(parsed)) continue;
+      if (isRecord(parsed.dockflowNodeEvent)) {
+        const event = parsed.dockflowNodeEvent;
+        handlers.onEvent({ step: String(event.step), status: event.status as NodeEvent['status'], detail: typeof event.detail === 'string' ? event.detail : undefined });
+      } else if (isRecord(parsed.dockflowNodeResult)) {
+        result = parsed.dockflowNodeResult;
+      }
+    }
+  });
+  channel.stream.stderr.on('data', (chunk: Buffer) => {
+    stderrTail = [...stderrTail, ...chunk.toString('utf8').split(/\r?\n/).filter((line) => line.trim() !== '')].slice(-STDERR_TAIL_LINES);
+  });
+
+  channel.stream.end(JSON.stringify(plan));
+
+  let exitCode = -1;
+  try {
+    const exit = await channel.done;
+    exitCode = exit.exitCode;
+  } catch {
+    /* a lost connection is reported like any other missing result line */
+  } finally {
+    clearTimeout(timer);
+    settled = true;
+    channel.close();
+  }
+
+  if (result !== null) return { kind: 'result', result };
+  if (timedOut) return { kind: 'timeout' };
+  return { kind: 'crash', exitCode, stderrTail };
 }
 
 /**
@@ -274,67 +449,75 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
 
   testSpinner.succeed('SSH connection successful');
 
-  const remotePath = '/tmp/dockflow';
+  const archSpinner = createSpinner();
+  archSpinner.start('Detecting server architecture...');
+  const arch = await detectRemoteArch(conn);
+  archSpinner.succeed(`Server architecture: ${arch}`);
 
+  // A private mktemp -d directory (design-05 3.3, F28) replaces the fixed, world-writable
+  // /tmp/dockflow path: no local user on the target can swap the binary before it runs as root.
+  const dirSpinner = createSpinner();
+  dirSpinner.start('Creating a private temporary directory...');
+  let dir: string;
+  try {
+    dir = await makeTempDir(conn);
+  } catch (err) {
+    dirSpinner.fail('Could not create a temporary directory');
+    printError(err instanceof Error ? err.message : String(err));
+    return;
+  }
+  dirSpinner.succeed('Temporary directory ready');
+  const remotePath = `${dir}/dockflow`;
+
+  let binary: NodeBinary;
   if (opts.dev) {
-    // Dev mode: build locally and upload
-    const archSpinner = createSpinner();
-    archSpinner.start('Detecting server architecture...');
-    const arch = await detectRemoteArch(conn);
-    archSpinner.succeed(`Server architecture: ${arch}`);
-
     const buildSpinner = createSpinner();
-    buildSpinner.start(`Building CLI binary (linux-${arch})...`);
+    buildSpinner.start(`Building CLI binary (linux-${bunTargetArch(arch)})...`);
     try {
-      const binaryPath = await buildLocalBinary(arch);
+      const binaryPath = await buildLocalBinary(bunTargetArch(arch));
       const size = fs.statSync(binaryPath).size;
       buildSpinner.succeed(`Binary built (${(size / 1024 / 1024).toFixed(1)} MB)`);
-
-      // Check if remote already has the same binary (hash comparison)
-      const localHash = new Bun.CryptoHasher('sha256').update(fs.readFileSync(binaryPath)).digest('hex');
-      const remoteHashResult = await sshExec(conn, `sha256sum ${remotePath} 2>/dev/null | cut -d' ' -f1`);
-      const remoteHash = remoteHashResult.stdout.trim();
-
-      if (localHash === remoteHash) {
-        printInfo('Binary unchanged, skipping upload');
-      } else {
-        const uploadSpinner = createSpinner();
-        uploadSpinner.start('Uploading binary to remote server... 0%');
-        await uploadFile(conn, binaryPath, remotePath, (pct) => {
-          uploadSpinner.text = `Uploading binary to remote server... ${pct}%`;
-        });
-        uploadSpinner.succeed('Binary uploaded');
-      }
+      binary = { mode: 'upload', path: binaryPath, sha256: new Bun.CryptoHasher('sha256').update(fs.readFileSync(binaryPath)).digest('hex') };
     } catch (err) {
-      buildSpinner.fail(`Build/upload failed: ${err}`);
+      buildSpinner.fail(`Build failed: ${err}`);
+      await cleanupTempDir(conn, dir);
       return;
     }
   } else {
-    // Release mode: download from GitHub
-    const archSpinner = createSpinner();
-    archSpinner.start('Detecting server architecture...');
-    const arch = await detectRemoteArch(conn);
-    archSpinner.succeed(`Server architecture: ${arch}`);
-
-    // Pinned to this CLI's version so the binary provisioning the server is
-    // the same one the operator runs (dev builds fall back to latest).
-    const binaryName = `dockflow-linux-${arch}`;
-    const downloadUrl = buildBinaryDownloadUrl(DOCKFLOW_RELEASE_URL, DOCKFLOW_VERSION, binaryName);
-
-    const downloadSpinner = createSpinner();
-    downloadSpinner.start('Downloading Dockflow CLI to remote server...');
-
-    const downloadCmd = `curl -fsSL "${downloadUrl}" -o ${remotePath} && chmod +x ${remotePath}`;
-    const downloadResult = await sshExec(conn, downloadCmd);
-
-    if (downloadResult.exitCode !== 0) {
-      downloadSpinner.fail('Failed to download Dockflow CLI');
-      printError(downloadResult.stderr || 'Download failed');
+    // Pinned to this CLI's version so the binary provisioning the server is the same one the
+    // operator runs, and verified against the release's published SHA256SUMS (K57c) before it is
+    // ever made executable.
+    try {
+      const resolved = await resolveNodeBinary({ localBinaries: null, arches: [arch], nodeCount: 1, releaseUrl: DOCKFLOW_RELEASE_URL });
+      const forArch = resolved[arch];
+      if (forArch === undefined) throw new Error(`no pinned binary for ${arch}`);
+      binary = forArch;
+    } catch (err) {
+      printError(err instanceof Error ? err.message : String(err));
+      await cleanupTempDir(conn, dir);
       return;
     }
-
-    downloadSpinner.succeed('Dockflow CLI downloaded');
   }
+
+  const deliverSpinner = createSpinner();
+  deliverSpinner.start(binary.mode === 'upload' ? 'Uploading and verifying the Dockflow binary...' : 'Downloading and verifying the Dockflow binary...');
+  try {
+    await deliverBinary(conn, dir, binary, opts.host);
+  } catch (err) {
+    deliverSpinner.fail('Binary delivery failed');
+    printError(err instanceof Error ? err.message : String(err));
+    await cleanupTempDir(conn, dir);
+    return;
+  }
+  try {
+    await verifyDeliveredVersion(conn, dir, opts.host);
+  } catch (err) {
+    deliverSpinner.fail('Binary delivery failed');
+    printError(err instanceof Error ? err.message : String(err));
+    await cleanupTempDir(conn, dir);
+    return;
+  }
+  deliverSpinner.succeed('Dockflow binary verified');
 
   printBlank();
   printSection('Running setup on remote server');
@@ -354,7 +537,7 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
 
   const cleanupSpinner = createSpinner();
   cleanupSpinner.start('Cleaning up...');
-  await sshExec(conn, `rm -f ${remotePath}`);
+  await cleanupTempDir(conn, dir);
   cleanupSpinner.succeed('Cleanup complete');
 
   printBlank();

@@ -1,0 +1,18 @@
+services:
+  app:
+    image: nginx:1.27
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /run/podman/podman.sock:/run/podman/podman.sock
+      - type: bind
+        source: /srv/shop/shared
+        target: /srv/shared
+        bind:
+          propagation: rshared
+      - type: bind
+        source: /srv/shop/ro-slave
+        target: /srv/ro-slave
+        read_only: true
+        bind:
+          recursive: readonly
+          propagation: rslave

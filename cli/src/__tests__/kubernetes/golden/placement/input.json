@@ -1,0 +1,4 @@
+{
+  "description": "node.role, node.hostname, node.labels, arch, os, spreads, max_replicas_per_node and x-dockflow placement",
+  "serverNames": ["server_1", "worker_1"]
+}

@@ -1,0 +1,25 @@
+services:
+  start-first-p2:
+    image: nginx:1.27
+    deploy:
+      update_config:
+        order: start-first
+        parallelism: 2
+        monitor: 90s
+  stop-first-p0:
+    image: nginx:1.27
+    deploy:
+      update_config:
+        order: stop-first
+        parallelism: 0
+  monitor-200:
+    image: nginx:1.27
+    deploy:
+      update_config:
+        monitor: 200s
+  delay-ratio:
+    image: nginx:1.27
+    deploy:
+      update_config:
+        delay: 5s
+        max_failure_ratio: 0.2

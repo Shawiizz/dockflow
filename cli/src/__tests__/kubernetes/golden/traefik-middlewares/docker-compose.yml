@@ -1,0 +1,21 @@
+services:
+  web:
+    image: nginx:1.27
+    ports:
+      - "8080:80"
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.web.rule: "Host(`web.example.com`)"
+      traefik.http.routers.web.middlewares: "strip,auth,limiter,cbreak,dauth,ipallow,chained,errmw"
+      traefik.http.middlewares.strip.stripprefix.prefixes: "/api,/v1"
+      traefik.http.middlewares.auth.basicauth.users: 'admin:$$apr1$$abc123,us\,er:$$apr1$$def456'
+      traefik.http.middlewares.limiter.retry.attempts: "3"
+      traefik.http.middlewares.cbreak.circuitbreaker.checkperiod: "10s"
+      traefik.http.middlewares.dauth.digestauth.users: "svcuser:therealm:somehash"
+      traefik.http.middlewares.dauth.digestauth.removeheader: "true"
+      traefik.http.middlewares.ipallow.ipwhitelist.sourcerange: "10.0.0.0/8"
+      traefik.http.middlewares.chained.chain.middlewares: "strip,auth"
+      traefik.http.middlewares.errmw.errors.service: "web"
+      traefik.http.middlewares.errmw.errors.status: "500-599"
+      traefik.http.middlewares.errmw.errors.statusrewrites.404: "200"
+      traefik.http.middlewares.unused.addprefix.prefix: "/legacy"
