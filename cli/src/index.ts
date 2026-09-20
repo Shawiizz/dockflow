@@ -24,6 +24,8 @@ import { registerConfigCommand } from './commands/config';
 import { registerUICommand } from './commands/ui';
 import { registerValidateCommand } from './commands/validate';
 import { registerCompletionCommand } from './commands/completion';
+import { registerVolumesCommands } from './commands/volumes';
+import { registerHelmCommands } from './commands/helm';
 
 const program = new Command();
 
@@ -46,6 +48,8 @@ registerAccessoriesCommands(program);
 registerBackupCommands(program);
 registerLockCommands(program);
 registerListCommands(program);
+registerVolumesCommands(program);
+registerHelmCommands(program);
 registerPluginsCommands(program);
 registerConfigCommand(program);
 registerDeployCommand(program);
