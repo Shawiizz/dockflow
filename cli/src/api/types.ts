@@ -21,6 +21,8 @@ export interface HealthResponse {
 export type ServerRole = 'manager' | 'worker';
 export type ServerConnectionStatus = 'unknown' | 'checking' | 'online' | 'offline' | 'error';
 export type SwarmStatus = 'leader' | 'reachable' | 'unreachable' | 'not-swarm';
+/** orchestrator-neutral control-plane probe result (design-06 8.3), managers only */
+export type ControlPlaneStatus = 'leader' | 'ready' | 'unready' | 'unreachable';
 
 export interface ServerStatus {
   name: string;
@@ -30,6 +32,9 @@ export interface ServerStatus {
   user: string;
   tags: string[];
   status: ServerConnectionStatus;
+  /** managers only, both orchestrators */
+  controlPlaneStatus?: ControlPlaneStatus;
+  /** @deprecated Swarm managers only; kept for the current UI, superseded by controlPlaneStatus */
   swarmStatus?: SwarmStatus;
   error?: string;
   message?: string;
@@ -115,13 +120,20 @@ export interface RawConfigResponse {
 export type ServiceState = 'running' | 'paused' | 'stopped' | 'starting' | 'error' | 'unknown';
 
 export interface ServiceInfo {
+  /** native name: `<stack>_<svc>` on Swarm, Kubernetes object name, `helm:<release>` for Helm rows */
   id: string;
+  /** compose name, or Helm release name; accepted by every action route */
   name: string;
   image: string;
   replicas: number;
   replicasRunning: number;
+  /** running | stopped | starting (converging) | error (degraded) */
   state: ServiceState;
+  /** [] when none */
   ports: string[];
+  kind: 'service' | 'helm';
+  role: 'app' | 'accessory';
+  mode: 'replicated' | 'global' | 'job';
   updatedAt?: string;
   error?: string;
 }
@@ -212,7 +224,7 @@ export interface ServiceActionResponse {
 // ─── Accessories Status ─────────────────────────────────────────────────────
 
 export interface AccessoryStatusInfo extends AccessoryInfo {
-  status?: 'running' | 'stopped' | 'unknown';
+  status?: 'running' | 'stopped' | 'starting' | 'error' | 'unknown';
   replicas?: string;
   replicasRunning?: number;
   replicasDesired?: number;
@@ -265,9 +277,10 @@ export interface PruneRequest {
 }
 
 export interface PruneResult {
-  target: string;
+  target: 'images' | 'containers' | 'volumes' | 'networks';
   success: boolean;
-  reclaimed?: string;
+  /** null when no orchestrator on the path reported a figure (k3s images) */
+  reclaimed: string | null;
   error?: string;
 }
 
@@ -300,10 +313,16 @@ export interface LockActionResponse {
 // ─── Monitoring ─────────────────────────────────────────────────────────────
 
 export interface ContainerStatsEntry {
+  /** instance label */
   name: string;
+  service?: string;
+  node?: string;
+  /** from core ContainerStats.role; the UI can group by it, and no container is listed twice */
+  role: 'app' | 'accessory';
   cpuPercent: string;
   memUsage: string;
   memPercent: string;
+  /** '-' when the orchestrator does not report it (k3s) */
   netIO: string;
   blockIO: string;
 }

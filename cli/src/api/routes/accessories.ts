@@ -1,18 +1,25 @@
 /**
- * Accessories API Routes
+ * Accessories API Routes (design-06 8.2)
  *
- * GET  /api/accessories              - List configured accessories (accessories.yml only)
- * GET  /api/accessories/status?env=  - Live status from Docker Swarm
- * POST /api/accessories/:name/restart?env=     - Restart an accessory (docker service update --force)
- * POST /api/accessories/:name/stop?env=        - Stop an accessory (docker service scale to 0)
+ * GET  /api/accessories              - List configured accessories (accessories.yml + config.helm accessory releases)
+ * GET  /api/accessories/status?env=  - Live status merged with accessories.yml
+ * POST /api/accessories/:name/restart?env=     - Restart an accessory
+ * POST /api/accessories/:name/stop?env=        - Stop an accessory (records replicas-before-stop)
  * GET  /api/accessories/:name/logs?env=&lines= - Get accessory logs
  */
 
-import { jsonResponse, errorResponse } from '../server';
-import { loadConfig, getAccessoriesStackName, getLayout } from '../../utils/config';
-import { getManagerConnection, resolveEnvironment, isValidDockerName, parseIntParam } from './_helpers';
-import { sshExec } from '../../utils/ssh';
-import { parseDockerLogLines } from '../../utils/docker-logs';
+import { loadConfig, getLayout } from '../../utils/config';
+import { formatReplicas } from '../../services/orchestrator/format';
+import type { ServiceInfo as CoreServiceInfo } from '../../services/orchestrator/interfaces';
+import {
+  collectLogEntries,
+  errorResponse,
+  isValidDockerName,
+  jsonResponse,
+  parseIntParam,
+  resolveApiService,
+  withOrchestrator,
+} from './_helpers';
 import * as Compose from '../../services/compose';
 import type { AccessoryInfo, AccessoriesResponse } from '../types';
 import type { AccessoryStatusInfo, AccessoriesStatusResponse, AccessoryActionResponse, LogsResponse } from '../types';
@@ -66,6 +73,15 @@ function readAccessoriesFromFile(): AccessoryInfo[] {
   }));
 }
 
+/** Accessory-role Helm releases of `config.helm`, shown beside the compose accessories (design-06 8.2). */
+function helmAccessories(): AccessoryInfo[] {
+  const config = loadConfig({ silent: true });
+  const releases = config?.helm?.releases ?? [];
+  return releases
+    .filter((release) => release.role === 'accessory')
+    .map((release) => ({ name: release.name, image: `chart ${release.chart}@${release.version}` }));
+}
+
 /**
  * Handle /api/accessories/* routes
  */
@@ -106,7 +122,7 @@ export async function handleAccessoriesRoutes(req: Request): Promise<Response> {
 }
 
 /**
- * List configured accessories from accessories.yml
+ * List configured accessories from accessories.yml and accessory-role Helm releases
  */
 async function listAccessories(): Promise<Response> {
   const config = loadConfig({ silent: true });
@@ -119,7 +135,7 @@ async function listAccessories(): Promise<Response> {
     } satisfies AccessoriesResponse & { message?: string });
   }
 
-  const accessories = readAccessoriesFromFile();
+  const accessories = [...readAccessoriesFromFile(), ...helmAccessories()];
 
   return jsonResponse({
     accessories,
@@ -128,8 +144,15 @@ async function listAccessories(): Promise<Response> {
   } satisfies AccessoriesResponse);
 }
 
+const SERVICE_STATE_TO_ACCESSORY_STATUS: Record<CoreServiceInfo['state'], NonNullable<AccessoryStatusInfo['status']>> = {
+  running: 'running',
+  stopped: 'stopped',
+  converging: 'starting',
+  degraded: 'error',
+};
+
 /**
- * Get live accessories status from Docker Swarm
+ * Get live accessories status, merged with accessories.yml + accessory-role Helm releases by name
  */
 async function getAccessoriesStatus(url: URL): Promise<Response> {
   const config = loadConfig({ silent: true });
@@ -141,181 +164,69 @@ async function getAccessoriesStatus(url: URL): Promise<Response> {
     } satisfies AccessoriesStatusResponse);
   }
 
-  const env = resolveEnvironment(url.searchParams.get('env'));
-  if (!env) {
-    return errorResponse('No environments configured', 404);
-  }
-
-  const conn = getManagerConnection(env);
-  if (!conn) {
-    return errorResponse('No manager server with credentials found', 404);
-  }
-
-  const accStackName = getAccessoriesStackName(env);
-  if (!accStackName) {
-    return errorResponse('Cannot determine accessories stack name', 500);
-  }
-
-  const accessories: AccessoryStatusInfo[] = readAccessoriesFromFile().map((acc) => ({
+  const fileAccessories: AccessoryStatusInfo[] = [...readAccessoriesFromFile(), ...helmAccessories()].map((acc) => ({
     ...acc,
     status: 'unknown',
   }));
 
-  try {
-    // Get live service data via SSH
-    const command = `docker service ls --filter name=${accStackName} --format '{{.Name}}|{{.Replicas}}'`;
-    const result = await sshExec(conn, command);
-
-    if (result.exitCode === 0 && result.stdout.trim()) {
-      const lines = result.stdout.trim().split('\n').filter((l) => l.trim());
-
-      for (const line of lines) {
-        const [serviceName, replicas] = line.split('|');
-        if (!serviceName || !replicas) continue;
-
-        // Match config accessories with Docker services by name
-        // Docker service name format: ${accStackName}_${accessoryName}
-        const prefix = `${accStackName}_`;
-        if (!serviceName.startsWith(prefix)) continue;
-
-        const accName = serviceName.slice(prefix.length);
-        const acc = accessories.find((a) => a.name === accName);
-        if (!acc) continue;
-
-        acc.replicas = replicas;
-
-        // Parse replicas (e.g., "1/1", "0/1")
-        const replicasMatch = replicas.match(/^(\d+)\/(\d+)$/);
-        if (replicasMatch) {
-          acc.replicasRunning = parseInt(replicasMatch[1], 10);
-          acc.replicasDesired = parseInt(replicasMatch[2], 10);
-          if (acc.replicasDesired === 0) acc.status = 'stopped';
-          else if (acc.replicasRunning === acc.replicasDesired) acc.status = 'running';
-          else if (acc.replicasRunning === 0) acc.status = 'stopped';
-          else acc.status = 'unknown';
-        }
-      }
-    }
-
-    return jsonResponse({
-      accessories,
-      total: accessories.length,
-    } satisfies AccessoriesStatusResponse);
-  } catch (error) {
-    return errorResponse(
-      error instanceof Error ? error.message : 'Failed to get accessories status',
-      500,
-    );
-  }
+  return withOrchestrator(url, async (ctx) => {
+    const live = await ctx.orchestrator.stack.getServices(ctx.accessoryRef);
+    const byName = new Map(live.map((service) => [service.name, service]));
+    const accessories: AccessoryStatusInfo[] = fileAccessories.map((acc) => {
+      const service = byName.get(acc.name);
+      if (!service) return acc;
+      return {
+        ...acc,
+        status: SERVICE_STATE_TO_ACCESSORY_STATUS[service.state],
+        replicas: formatReplicas(service),
+        replicasRunning: service.replicas.running,
+        replicasDesired: service.replicas.desired,
+      };
+    });
+    return jsonResponse({ accessories, total: accessories.length } satisfies AccessoriesStatusResponse);
+  });
 }
 
 /**
- * Restart an accessory (docker service update --force)
+ * Restart an accessory
  */
 async function restartAccessory(name: string, url: URL): Promise<Response> {
   if (!isValidDockerName(name)) return errorResponse('Invalid accessory name', 400);
-  const env = resolveEnvironment(url.searchParams.get('env'));
-  if (!env) return errorResponse('No environments configured', 404);
 
-  const conn = getManagerConnection(env);
-  if (!conn) return errorResponse('No manager server with credentials found', 404);
-
-  const accStackName = getAccessoriesStackName(env);
-  if (!accStackName) return errorResponse('Cannot determine accessories stack name', 500);
-
-  try {
-    const result = await sshExec(conn, `docker service update --force --detach ${accStackName}_${name}`);
-    const success = result.exitCode === 0;
+  return withOrchestrator(url, async (ctx) => {
+    await ctx.orchestrator.stack.restart(ctx.accessoryRef, name, { wait: false, timeoutS: 0 });
     return jsonResponse({
-      success,
-      message: success
-        ? `Accessory "${name}" restarted successfully`
-        : `Failed to restart accessory "${name}"`,
-      output: result.stdout || result.stderr || undefined,
+      success: true,
+      message: `Accessory "${name}" restarted successfully`,
     } satisfies AccessoryActionResponse);
-  } catch (error) {
-    return errorResponse(
-      error instanceof Error ? error.message : 'Failed to restart accessory',
-      500,
-    );
-  }
+  });
 }
 
 /**
- * Stop an accessory (docker service scale to 0)
+ * Stop an accessory. Never `scale(..., 0)`: `stack.stop` records `P/replicas-before-stop`.
  */
 async function stopAccessory(name: string, url: URL): Promise<Response> {
   if (!isValidDockerName(name)) return errorResponse('Invalid accessory name', 400);
-  const env = resolveEnvironment(url.searchParams.get('env'));
-  if (!env) return errorResponse('No environments configured', 404);
 
-  const conn = getManagerConnection(env);
-  if (!conn) return errorResponse('No manager server with credentials found', 404);
-
-  const accStackName = getAccessoriesStackName(env);
-  if (!accStackName) return errorResponse('Cannot determine accessories stack name', 500);
-
-  try {
-    const result = await sshExec(conn, `docker service scale --detach ${accStackName}_${name}=0`);
-    const success = result.exitCode === 0;
+  return withOrchestrator(url, async (ctx) => {
+    await ctx.orchestrator.stack.stop(ctx.accessoryRef, [name], { wait: false, timeoutS: 0 });
     return jsonResponse({
-      success,
-      message: success
-        ? `Accessory "${name}" stopped successfully`
-        : `Failed to stop accessory "${name}"`,
-      output: result.stdout || result.stderr || undefined,
+      success: true,
+      message: `Accessory "${name}" stopped successfully`,
     } satisfies AccessoryActionResponse);
-  } catch (error) {
-    return errorResponse(
-      error instanceof Error ? error.message : 'Failed to stop accessory',
-      500,
-    );
-  }
+  });
 }
 
 /**
- * Get logs for a specific accessory
+ * Get logs for a specific accessory, with real timestamps (as the services logs route).
  */
 async function getAccessoryLogs(name: string, url: URL): Promise<Response> {
   if (!isValidDockerName(name)) return errorResponse('Invalid accessory name', 400);
-  const envFilter = url.searchParams.get('env');
   const lines = parseIntParam(url.searchParams.get('lines'), 100, 1, 10000);
 
-  const config = loadConfig({ silent: true });
-  if (!config) {
-    return errorResponse('No config.yml found', 404);
-  }
-
-  const env = resolveEnvironment(envFilter);
-  if (!env) {
-    return errorResponse('No environments configured', 404);
-  }
-
-  const conn = getManagerConnection(env);
-  if (!conn) {
-    return errorResponse('No manager server with credentials found', 404);
-  }
-
-  const accStackName = getAccessoriesStackName(env);
-  if (!accStackName) {
-    return errorResponse('Cannot determine accessories stack name', 500);
-  }
-
-  try {
-    const command = `docker service logs --tail ${lines} --timestamps ${accStackName}_${name} 2>&1`;
-    const result = await sshExec(conn, command);
-
-    const logEntries = parseDockerLogLines(result.stdout, name);
-
-    return jsonResponse({
-      logs: logEntries,
-      service: name,
-      lines: logEntries.length,
-    } satisfies LogsResponse);
-  } catch (error) {
-    return errorResponse(
-      error instanceof Error ? error.message : 'Failed to get logs',
-      500,
-    );
-  }
+  return withOrchestrator(url, async (ctx) => {
+    const { service } = await resolveApiService(ctx, name, ['accessory']);
+    const entries = await collectLogEntries(ctx.orchestrator.containers, ctx.accessoryRef, service.name, service.replicas.desired, lines);
+    return jsonResponse({ logs: entries, service: service.name, lines: entries.length } satisfies LogsResponse);
+  });
 }

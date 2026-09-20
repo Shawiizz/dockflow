@@ -17,7 +17,7 @@
  */
 
 import { join } from 'path';
-import { jsonResponse, errorResponse } from '../server';
+import { jsonResponse, errorResponse } from './_helpers';
 import type {
   DeployOperationRequest,
   BuildOperationRequest,
@@ -306,7 +306,7 @@ async function startDeployOperation(req: Request): Promise<Response> {
   if (body.accessories) args.push('--accessories');
   if (body.all) args.push('--all');
   if (body.skipAccessories) args.push('--skip-accessories');
-  if (body.services) args.push('--services', body.services);
+  if (body.services) args.push('--only', body.services);
   if (body.dryRun) args.push('--dry-run');
 
   const op = launchOperation('deploy', body.environment, args);
@@ -342,7 +342,7 @@ async function startBuildOperation(req: Request): Promise<Response> {
   const cliCmd = getCliCommand();
   const args = [...cliCmd, 'build', body.environment];
 
-  if (body.services) args.push('--services', body.services);
+  if (body.services) args.push('--only', body.services);
   if (body.push) args.push('--push');
 
   const op = launchOperation('build', body.environment, args);

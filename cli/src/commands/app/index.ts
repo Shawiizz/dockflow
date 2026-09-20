@@ -1,25 +1,26 @@
 /**
  * App commands - Interact with deployed services
- * These commands use SSH directly (no Ansible/Docker needed locally)
+ * These commands go through the Orchestrator bundle (Swarm or Kubernetes, core 6.4).
  */
 
 import type { Command } from 'commander';
-import { registerLogsCommand } from './logs';
-import { registerExecCommand } from './exec';
-import { registerRestartCommand } from './restart';
-import { registerStopCommand } from './stop';
+import { registerCpCommand } from './cp';
 import { registerDetailsCommand } from './details';
-import { registerSshCommand } from './ssh';
-import { registerScaleCommand } from './scale';
-import { registerRollbackCommand } from './rollback';
-import { registerPsCommand } from './ps';
-import { registerPruneCommand } from './prune';
-import { registerVersionCommand } from './version';
+import { registerDiagnoseCommand } from './diagnose';
+import { registerExecCommand } from './exec';
 import { registerHistoryCommand } from './history';
 import { registerHistorySyncCommand } from './history-sync';
+import { registerLogsCommand } from './logs';
 import { registerMetricsCommand } from './metrics';
-import { registerDiagnoseCommand } from './diagnose';
+import { registerPruneCommand } from './prune';
+import { registerPsCommand } from './ps';
+import { registerRestartCommand } from './restart';
+import { registerRollbackCommand } from './rollback';
+import { registerScaleCommand } from './scale';
+import { registerSshCommand } from './ssh';
 import { registerStatusCommand } from './status';
+import { registerStopCommand } from './stop';
+import { registerVersionCommand } from './version';
 
 /**
  * Register all app commands
@@ -35,9 +36,10 @@ export function registerAppCommands(program: Command): void {
   registerMetricsCommand(program);
   registerDiagnoseCommand(program);
   registerStatusCommand(program);
-  
+
   // Action commands
   registerExecCommand(program);
+  registerCpCommand(program);
   registerRestartCommand(program);
   registerStopCommand(program);
   registerScaleCommand(program);

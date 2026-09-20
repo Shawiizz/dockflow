@@ -4,10 +4,10 @@
  * GET /api/deploy/history - Get deployment history from remote manager
  */
 
-import { jsonResponse, errorResponse } from '../server';
 import { sshExecWithFallback } from '../../utils/ssh-fallback';
 import { printDebug } from '../../utils/output';
-import { getManagerConnection, getAllNodeConnections, resolveEnvironment, parseIntParam } from './_helpers';
+import { getStackName } from '../../utils/config';
+import { errorResponse, getAllNodeConnections, jsonResponse, resolveEnvironment, parseIntParam } from './_helpers';
 import { parseJsonlLines } from '../../services/metrics';
 import type { DeploymentMetric } from '../../services/metrics';
 import { DOCKFLOW_METRICS_DIR } from '../../constants';
@@ -47,25 +47,22 @@ async function getDeployHistory(url: URL): Promise<Response> {
     return jsonResponse({ deployments: [], total: 0 } satisfies DeployHistoryResponse);
   }
 
-  const conn = getManagerConnection(env);
-  if (!conn) {
-    return errorResponse(`No manager connection available for environment "${env}"`, 503);
-  }
-
-  if (!conn.stackName) {
+  const fullStackName = getStackName(env);
+  if (!fullStackName) {
     return errorResponse('Project name not found in config — cannot resolve metrics path', 500);
   }
 
-  // Stack name on remote is "<project_name>-<environment>"
-  const fullStackName = `${conn.stackName}-${env}`;
+  const connections = getAllNodeConnections(env);
+  if (connections.length === 0) {
+    return errorResponse(`No SSH credentials available for environment "${env}"`, 503);
+  }
+
   const metricsPath = `${DOCKFLOW_METRICS_DIR}/${fullStackName}/deployments.json`;
 
   try {
     // Read the last N*2 lines to account for potential filtering
     // Use fallback across all nodes since history is replicated
     const cmd = `tail -n ${limit * 2} "${metricsPath}" 2>/dev/null || echo ""`;
-    const nodeConnections = getAllNodeConnections(env);
-    const connections = nodeConnections.length > 0 ? nodeConnections : [conn];
     const result = await sshExecWithFallback(connections, cmd);
 
     const metrics = parseJsonlLines<Partial<DeploymentMetric>>(result.stdout);

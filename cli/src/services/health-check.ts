@@ -1,9 +1,10 @@
 /**
- * HealthCheck — orchestrator-agnostic health checking.
+ * HealthCheck — HTTP endpoint checks only.
  *
- * Internal health checks (Swarm tasks or K8s pods) are delegated to the
- * injected StackBackend. HTTP endpoint checks run sequentially with a
- * per-endpoint spinner that updates in place on each retry.
+ * Internal health (Kubernetes pods / Swarm tasks) is StackBackend.checkHealth (design-03 5, DESIGN-
+ * CORE 6.1), called directly by deploy-phases.ts with the receipt it just got from stack.deploy();
+ * this module never sees a receipt. It reaches endpoints the deploy itself does not control:
+ * `health_checks.endpoints`, checked sequentially with a per-endpoint spinner that updates on retry.
  */
 
 import type { SSHKeyConnection } from '../types';
@@ -11,33 +12,9 @@ import { sshExec } from '../utils/ssh';
 import { printDebug, printDim, printWarning, createSpinner } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import type { HealthCheckConfig, HealthCheckEndpoint } from '../utils/config';
-import type { StackBackend, InternalHealthResult } from './orchestrator/interfaces';
-
-// Defaults — overridable via config.health_checks.timeout / .interval
-const DEFAULT_HEALTHCHECK_TIMEOUT_S = 120;
-const DEFAULT_HEALTHCHECK_INTERVAL_S = 5;
 
 export class HealthCheck {
-  constructor(
-    private readonly connection: SSHKeyConnection,
-    private readonly stackBackend: StackBackend,
-  ) {}
-
-  /**
-   * Orchestrator-agnostic internal health check.
-   * Delegates to the injected StackBackend (Swarm or k3s).
-   */
-  async checkInternalHealth(
-    stackName: string,
-    config?: HealthCheckConfig,
-    servicesFilter?: string[],
-    deployStartedAt?: Date,
-  ): Promise<InternalHealthResult> {
-    const timeoutS = config?.timeout ?? DEFAULT_HEALTHCHECK_TIMEOUT_S;
-    const intervalS = config?.interval ?? DEFAULT_HEALTHCHECK_INTERVAL_S;
-
-    return this.stackBackend.checkInternalHealth(stackName, timeoutS, intervalS, servicesFilter, deployStartedAt);
-  }
+  constructor(private readonly connection: SSHKeyConnection) {}
 
   private async checkHTTPLocal(
     endpoint: HealthCheckEndpoint,
