@@ -283,6 +283,22 @@ spec:
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
+  name: redir
+  namespace: dockflow-shop-production
+  labels:
+    app.kubernetes.io/instance: dockflow-shop-production
+    app.kubernetes.io/managed-by: dockflow
+    app.kubernetes.io/part-of: shop
+    dockflow.shawiizz.dev/part: stack
+    dockflow.shawiizz.dev/role: app
+    dockflow.shawiizz.dev/stack: dockflow-shop-production
+spec:
+  redirectScheme:
+    scheme: https
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
   name: strip
   namespace: dockflow-shop-production
   labels:
@@ -342,6 +358,7 @@ spec:
         - name: limiter
         - name: cbreak
         - name: dauth
+        - name: redir
         - name: ipallow
         - name: chained
         - name: errmw

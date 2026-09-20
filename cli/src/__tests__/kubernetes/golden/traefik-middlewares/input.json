@@ -1,4 +1,4 @@
 {
-  "description": "Every supported middleware shape: a list option, an escaped comma, an indexed-map option, a numeric option, an int-or-string option, a boolean option, chain.middlewares, the deprecated ipwhitelist type, basicauth.users and errors.service, plus an unused middleware",
+  "description": "Every supported middleware shape: a list option, an escaped comma, an indexed-map option, a numeric option, an int-or-string option, a boolean option, chain.middlewares, digestauth, redirectscheme, the deprecated ipwhitelist type, basicauth.users and errors.service, plus an unused middleware",
   "proxy": { "enabled": true }
 }

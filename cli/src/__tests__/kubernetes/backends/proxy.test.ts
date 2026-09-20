@@ -184,10 +184,12 @@ interface HarnessOptions {
   nodeScript?: NodeShellStep[];
   managers?: readonly ReturnType<typeof fakeNode>[];
   caBundles?: Record<string, string>;
+  /** values the shared Redactor masks, so a helm failure's stderr can be asserted redacted (U-BE-PROXY-06) */
+  redactorSecrets?: string[];
 }
 
 function harness(options: HarnessOptions = {}): Harness {
-  const redactor = new Redactor([]);
+  const redactor = new Redactor(options.redactorSecrets ?? []);
   const clock = new FakeClock();
   const cluster = new FakeCluster({ traefikCrds: options.traefikCrds ?? false, clock });
   const kube = new FakeKubeExecutor({ redactor, cluster, script: options.kubeScript ?? [], clock });
@@ -635,6 +637,38 @@ describe('pending Helm operations', () => {
       suggestion: 'Remove the unfinished release with `dockflow helm uninstall production --system --force -y`, then deploy again; no route or certificate is lost, because the ACME volume is kept.',
     });
     expect(h.helm.calls.some((call) => call.args[0] === 'upgrade' || call.args[0] === 'rollback')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Helm failure (U-BE-PROXY-06)
+// ---------------------------------------------------------------------------
+
+describe('helm failure', () => {
+  test('U-BE-PROXY-06: a failed install becomes a DeployError naming the unwrapped, redacted detail', async () => {
+    const secret = 'sekrit-token-value';
+    const h = harness({ redactorSecrets: [secret] });
+    h.helm.failNext('dockflow-traefik', `admission webhook denied the request: token ${secret} rejected`);
+
+    await expectCliError(h.backend.ensure(httpOnlyProxy(), ENV, h.events), {
+      type: DeployError,
+      code: ErrorCode.DEPLOY_FAILED,
+      message: `Traefik failed to install in ${K8S_SYSTEM_NAMESPACE}: admission webhook denied the request: token *** rejected; nothing was installed`,
+      suggestion: `Run \`dockflow helm status ${ENV} --system\`, then \`dockflow diagnose ${ENV}\`.`,
+    });
+    // the failed install is rolled back (--rollback-on-failure): no release is left to upgrade next time
+    expect(h.helm.releases().some((release) => release.name === 'dockflow-traefik')).toBe(false);
+  });
+
+  test('a failed upgrade of an existing release reports the previous configuration as restored', async () => {
+    const h = harness();
+    await h.backend.ensure(httpOnlyProxy(), ENV, h.events);
+    h.helm.failNext('dockflow-traefik', 'the operation could not be completed');
+
+    await expectCliError(h.backend.ensure(httpOnlyProxy({ dashboard: { enabled: true, domain: 'traefik.example.com' } }), ENV, h.events), {
+      type: DeployError,
+      message: `Traefik failed to upgrade in ${K8S_SYSTEM_NAMESPACE}: the operation could not be completed; the previous configuration was restored`,
+    });
   });
 });
 
