@@ -196,81 +196,87 @@ describe('inspect (4.1, N6)', () => {
   });
 });
 
-describe('dockflowNodeEvent progress lines (3.4)', () => {
-  /** an unmanaged, freshly reachable node: fed straight to `finalizeClusterPlan`, no real `inspect()` needed */
-  function freshLocalInspection(): K3sNodeInspection {
-    return {
-      os: { id: 'ubuntu', versionId: '24.04', kernel: '6.8.0-45-generic', arch: 'amd64', systemd: true, selinux: 'absent' },
-      resources: { cpus: 4, memoryBytes: 8 * 1024 ** 3, varLibFreeBytes: 100 * 1024 ** 3 },
-      network: { localIpv4: ['10.0.0.10'], resolvedHost: null, defaultRouteIp: '10.0.0.10' },
-      commands: { missing: [], packageManager: 'apt-get' },
+/** an unmanaged, freshly reachable node: fed straight to `finalizeClusterPlan`, no real `inspect()` needed */
+function freshLocalInspection(): K3sNodeInspection {
+  return {
+    os: { id: 'ubuntu', versionId: '24.04', kernel: '6.8.0-45-generic', arch: 'amd64', systemd: true, selinux: 'absent' },
+    resources: { cpus: 4, memoryBytes: 8 * 1024 ** 3, varLibFreeBytes: 100 * 1024 ** 3 },
+    network: { localIpv4: ['10.0.0.10'], resolvedHost: null, defaultRouteIp: '10.0.0.10' },
+    commands: { missing: [], packageManager: 'apt-get' },
+    k3s: {
+      binaryVersion: null,
+      unit: null,
+      activeState: null,
+      subState: null,
+      managed: false,
+      state: null,
+      dropinSha256: null,
+      restartSha256: null,
+      dropin: null,
+      foreignConfig: [],
+      unitEnvK3sVars: [],
+      tokenFingerprints: { token: null, agentToken: null },
+      caSha256: null,
+      datastore: null,
+      apiReady: null,
+      netcheckPresent: null,
+      defaultStorageClasses: null,
+    },
+    helmVersion: null,
+    firewall: { ufw: 'absent', firewalld: 'absent' },
+    portsInUse: [],
+    swarmActive: false,
+    dockerPresent: false,
+    nmCloudSetupEnabled: false,
+    wireguardAvailable: true,
+    cgroupMemory: true,
+    ntpSynchronized: true,
+    deployUser: { exists: false, uid: null, home: null, keyAuthorized: false },
+    legacySudoRules: [],
+  };
+}
+
+function localPreparePlan(): K3sNodePlan {
+  const localCluster = buildLocalPlan({
+    nodeName: KEY,
+    deployUser: 'dockflow',
+    deployPublicKey: PUBLIC_KEY,
+    privateHost: null,
+    publicHost: '10.0.0.10',
+    requestedBackend: null,
+    dockflowVersion: DOCKFLOW_VERSION,
+    flags: { skipFirewall: true },
+  });
+  const resolved = finalizeClusterPlan(localCluster, { [KEY]: freshLocalInspection() });
+  return buildNodePlan({ operation: 'prepare', node: KEY, arch: 'amd64', plan: localCluster, cluster: resolved });
+}
+
+/** seeds the download cache so every `prepare` step downstream of `packages` succeeds too (self-consistent fake pins: real K3S_PIN/HELM_PIN hashes are of actual release artefacts, unreproducible here) */
+function wireLocalPreparePlan(runner: FakeHostRunner): K3sNodePlan {
+  const plan = localPreparePlan();
+  const k3sBytes = Buffer.from('#!fake k3s binary\n');
+  const scriptBytes = Buffer.from('#!/bin/sh\nexit 0\n');
+  const helmBytes = Buffer.from('#!fake helm archive\n');
+  runner.seedCache(k3sBytes);
+  runner.seedCache(scriptBytes);
+  runner.seedCache(helmBytes);
+  return {
+    ...plan,
+    pins: {
       k3s: {
-        binaryVersion: null,
-        unit: null,
-        activeState: null,
-        subState: null,
-        managed: false,
-        state: null,
-        dropinSha256: null,
-        restartSha256: null,
-        dropin: null,
-        foreignConfig: [],
-        unitEnvK3sVars: [],
-        tokenFingerprints: { token: null, agentToken: null },
-        caSha256: null,
-        datastore: null,
-        apiReady: null,
-        netcheckPresent: null,
-        defaultStorageClasses: null,
+        version: plan.pins.k3s.version,
+        binary: { url: 'https://fake.invalid/k3s', sha256: sha256Hex(k3sBytes) },
+        installScript: { url: 'https://fake.invalid/install.sh', sha256: sha256Hex(scriptBytes) },
       },
-      helmVersion: null,
-      firewall: { ufw: 'absent', firewalld: 'absent' },
-      portsInUse: [],
-      swarmActive: false,
-      dockerPresent: false,
-      nmCloudSetupEnabled: false,
-      wireguardAvailable: true,
-      cgroupMemory: true,
-      ntpSynchronized: true,
-      deployUser: { exists: false, uid: null, home: null, keyAuthorized: false },
-      legacySudoRules: [],
-    };
-  }
+      helm: plan.pins.helm === null ? null : { version: plan.pins.helm.version, archive: { url: 'https://fake.invalid/helm', sha256: sha256Hex(helmBytes) } },
+    },
+  };
+}
 
+describe('dockflowNodeEvent progress lines (3.4)', () => {
   it('prepare emits a start event and a matching finish event around every step, before the result line', async () => {
-    const localCluster = buildLocalPlan({
-      nodeName: KEY,
-      deployUser: 'dockflow',
-      deployPublicKey: PUBLIC_KEY,
-      privateHost: null,
-      publicHost: '10.0.0.10',
-      requestedBackend: null,
-      dockflowVersion: DOCKFLOW_VERSION,
-      flags: { skipFirewall: true },
-    });
-    const resolved = finalizeClusterPlan(localCluster, { [KEY]: freshLocalInspection() });
-    expect(resolved.refusals).toEqual([]);
-    const plan = buildNodePlan({ operation: 'prepare', node: KEY, arch: 'amd64', plan: localCluster, cluster: resolved });
-
-    // self-consistent fake pins (real K3S_PIN/HELM_PIN hashes are of actual release artefacts, unreproducible here)
-    const k3sBytes = Buffer.from('#!fake k3s binary\n');
-    const scriptBytes = Buffer.from('#!/bin/sh\nexit 0\n');
-    const helmBytes = Buffer.from('#!fake helm archive\n');
     const runner = host();
-    runner.seedCache(k3sBytes);
-    runner.seedCache(scriptBytes);
-    runner.seedCache(helmBytes);
-    const wired: K3sNodePlan = {
-      ...plan,
-      pins: {
-        k3s: {
-          version: plan.pins.k3s.version,
-          binary: { url: 'https://fake.invalid/k3s', sha256: sha256Hex(k3sBytes) },
-          installScript: { url: 'https://fake.invalid/install.sh', sha256: sha256Hex(scriptBytes) },
-        },
-        helm: plan.pins.helm === null ? null : { version: plan.pins.helm.version, archive: { url: 'https://fake.invalid/helm', sha256: sha256Hex(helmBytes) } },
-      },
-    };
+    const wired = wireLocalPreparePlan(runner);
 
     const result = await run(JSON.stringify(wired), runner);
     expect(result.exitCode).toBe(0);
@@ -298,5 +304,46 @@ describe('dockflowNodeEvent progress lines (3.4)', () => {
     const result = await run(JSON.stringify(inspectPlan()), runner);
     expect(result.lines).toHaveLength(1);
     expect(result.lines[0]).toHaveProperty('dockflowNodeResult');
+  });
+});
+
+describe('packages step (4.3)', () => {
+  it('nothing missing -> skip, no package manager probed', async () => {
+    const runner = host();
+    const wired = wireLocalPreparePlan(runner);
+    for (const command of ['curl', 'tar', 'sha256sum', 'ip']) runner.commands.set(command, `/usr/bin/${command}`);
+    // dockflow is the deploy user (not root): visudo is also checked
+    runner.commands.set('visudo', '/usr/sbin/visudo');
+    const result = await run(JSON.stringify(wired), runner);
+    const body = result.lines.at(-1) as { dockflowNodeResult: { status: string; steps: { id: string; status: string }[] } };
+    expect(body.dockflowNodeResult.status).toBe('ok');
+    expect(body.dockflowNodeResult.steps.find((s) => s.id === 'packages')?.status).toBe('skip');
+    expect(runner.commandsStartingWith('apt-get')).toEqual([]);
+  });
+
+  it('missing commands are installed through the detected package manager', async () => {
+    const runner = host();
+    const wired = wireLocalPreparePlan(runner);
+    runner.commands.set('apt-get', '/usr/bin/apt-get');
+    runner.commands.set('visudo', '/usr/sbin/visudo');
+    // curl, tar, sha256sum, ip stay unregistered: `which` reports them missing
+    runner.on(['apt-get', 'install', '-y'], {}, { id: 'install missing packages' });
+    const result = await run(JSON.stringify(wired), runner);
+    const body = result.lines.at(-1) as { dockflowNodeResult: { status: string; steps: { id: string; status: string }[] } };
+    expect(body.dockflowNodeResult.status).toBe('ok');
+    expect(body.dockflowNodeResult.steps.find((s) => s.id === 'packages')?.status).toBe('ok');
+    const installCalls = runner.commandsStartingWith('apt-get', 'install', '-y');
+    expect(installCalls).toHaveLength(1);
+    expect(installCalls[0]).toEqual(['apt-get', 'install', '-y', 'curl', 'tar', 'coreutils', 'iproute2']);
+  });
+
+  it('no package manager found -> skip (finalizeClusterPlan would already have refused otherwise)', async () => {
+    const runner = host();
+    const wired = wireLocalPreparePlan(runner);
+    runner.commands.set('visudo', '/usr/sbin/visudo');
+    const result = await run(JSON.stringify(wired), runner);
+    const body = result.lines.at(-1) as { dockflowNodeResult: { status: string; steps: { id: string; status: string }[] } };
+    expect(body.dockflowNodeResult.status).toBe('ok');
+    expect(body.dockflowNodeResult.steps.find((s) => s.id === 'packages')?.status).toBe('skip');
   });
 });

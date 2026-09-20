@@ -36,7 +36,7 @@ import {
 import { parseK3sConfig, renderK3sConfig, restartSha256Of } from './config';
 import { buildFirewallRules, probeFirewall, reconcileFirewall } from './firewall';
 import { cacheTraefikChart, ensureHelmDirectories, helmComponent, installHelm } from './helm';
-import { type HostRunner, fileMatches, firstLineOf, localHostRunner, SetupStepError, writeFileAtomic } from './host-runner';
+import { type HostRunner, fileMatches, firstLineOf, localHostRunner, runChecked, SetupStepError, writeFileAtomic } from './host-runner';
 import { applyIdentityObjects, rotateDeployToken, waitForDeployerToken, writeKubeconfig } from './identity';
 import {
   downloadToCache,
@@ -71,6 +71,24 @@ const NODE_PLAN_MAX_READ_BYTES = 1024 * 1024;
 const PROC_DIR = '/proc';
 const REQUIRED_COMMANDS: readonly string[] = ['curl', 'tar', 'sha256sum', 'ip', 'systemctl'];
 const PACKAGE_MANAGERS: readonly string[] = ['apt-get', 'dnf', 'yum', 'pacman', 'zypper', 'apk'];
+
+// The 4.3 `packages` step: which package provides each command `inspect` (4.1) may report missing.
+// `visudo` (the `sudo` package) is only relevant when the deploy user is not root.
+const PACKAGE_OF_COMMAND: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  curl: { 'apt-get': 'curl', dnf: 'curl', yum: 'curl', pacman: 'curl', zypper: 'curl', apk: 'curl' },
+  tar: { 'apt-get': 'tar', dnf: 'tar', yum: 'tar', pacman: 'tar', zypper: 'tar', apk: 'tar' },
+  sha256sum: { 'apt-get': 'coreutils', dnf: 'coreutils', yum: 'coreutils', pacman: 'coreutils', zypper: 'coreutils', apk: 'coreutils' },
+  ip: { 'apt-get': 'iproute2', dnf: 'iproute', yum: 'iproute', pacman: 'iproute2', zypper: 'iproute2', apk: 'iproute2' },
+  visudo: { 'apt-get': 'sudo', dnf: 'sudo', yum: 'sudo', pacman: 'sudo', zypper: 'sudo', apk: 'sudo' },
+};
+const INSTALL_ARGS_OF: Readonly<Record<string, readonly string[]>> = {
+  'apt-get': ['apt-get', 'install', '-y'],
+  dnf: ['dnf', 'install', '-y'],
+  yum: ['yum', 'install', '-y'],
+  pacman: ['pacman', '-S', '--noconfirm'],
+  zypper: ['zypper', 'install', '-y'],
+  apk: ['apk', 'add'],
+};
 
 const nodeMessages = {
   lockHeld: (key: string, pid: number): SetupProblem => ({
@@ -397,12 +415,47 @@ export async function inspect(runner: HostRunner, plan: K3sNodePlan): Promise<K3
 // prepare (4.3)
 // ---------------------------------------------------------------------------
 
+async function detectPackageManager(runner: HostRunner): Promise<string | null> {
+  for (const candidate of PACKAGE_MANAGERS) {
+    if ((await runner.run(['which', candidate])).exitCode === 0) return candidate;
+  }
+  return null;
+}
+
+/**
+ * The `packages` step (4.3): installs whichever of curl, tar, coreutils (sha256sum) and iproute2 (ip)
+ * is missing, plus sudo (visudo) when the deploy user is not root. `finalizeClusterPlan` already
+ * refused a node with missing commands and no package manager (4.1), so one is expected here.
+ */
+async function runPackagesStep(runner: HostRunner, deployUser: string): Promise<'ok' | 'skip'> {
+  const missing: string[] = [];
+  for (const command of REQUIRED_COMMANDS) {
+    if (command === 'systemctl') continue; // systemd itself is not installable; its absence refuses earlier (4.1)
+    if ((await runner.run(['which', command])).exitCode !== 0) missing.push(command);
+  }
+  if (deployUser !== 'root' && (await runner.run(['which', 'visudo'])).exitCode !== 0) missing.push('visudo');
+  if (missing.length === 0) return 'skip';
+
+  const manager = await detectPackageManager(runner);
+  if (manager === null) return 'skip';
+  const packages = [...new Set(missing.map((command) => PACKAGE_OF_COMMAND[command]?.[manager]).filter((name): name is string => name !== undefined))];
+  if (packages.length === 0) return 'skip';
+  await runChecked(runner, [...INSTALL_ARGS_OF[manager], ...packages], {
+    message: (detail) => `Installing ${packages.join(', ')} on this node failed (${detail})`,
+    suggestion: `Install ${packages.join(', ')} by hand, or re-run once its package manager is reachable.`,
+  });
+  return 'ok';
+}
+
 async function runPrepare(runner: HostRunner, plan: K3sNodePlan): Promise<{ steps: StepResult[]; warnings: string[] }> {
   const node = plan.node;
   const cluster = plan.cluster;
   if (cluster === undefined) throw new Error('prepare needs the cluster section');
   const steps: StepResult[] = [];
   const warnings: string[] = [];
+
+  emitEvent('packages', 'start');
+  finishStep(steps, { id: 'packages', status: await runPackagesStep(runner, node.deployUser) });
 
   // deploy-user before dockflow-dir (design-05 4.3 order): ensureDockflowDir chowns to the deploy
   // user, who must already exist on a fresh node with a non-root deploy user.

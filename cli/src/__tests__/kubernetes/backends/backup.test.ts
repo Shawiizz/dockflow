@@ -430,6 +430,19 @@ describe('volumes', () => {
     const volumes = await h.backend.volumes(ACC, 'db', { includeBindMounts: false, exclude: [] });
     expect(volumes).toEqual([{ name: 'db-data', kind: 'volume', source: 'db-data', mountPath: '/data', node: null }]);
   });
+
+  it('refuses a bind mount from the pod template when no instance is running: the node is unknown', async () => {
+    const podVolumes = [{ name: 'uploads', hostPath: { path: '/srv/uploads' } }];
+    const mounts = [{ name: 'uploads', mountPath: '/srv/uploads' }];
+    const items = [deployment('web', 'app', { volumes: podVolumes, mounts })];
+    const h = harness(items, []);
+    const error = await expectCliError(h.backend.volumes(APP, 'web', { includeBindMounts: true, exclude: [] }), {
+      type: BackupError,
+      message: 'Service web has no running pod; the node holding bind mount /srv/uploads is unknown',
+      suggestion: 'Start it first with `dockflow accessories restart production web` (app services: `dockflow restart production web`).',
+    });
+    expect(error).toBeDefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -727,7 +740,7 @@ describe('restartAfterRestore', () => {
     const notYet = composePod('db', 'accessory', { restarts: 0 });
     const restarted = composePod('db', 'accessory', { restarts: 1 });
     const h = harness(items, [
-      { method: 'shell', args: [`cat '/backups/id.rdb' | ${consumer}`], respond: result(0) },
+      { method: 'shell', args: [`${consumer} < '/backups/id.rdb'`], respond: result(0) },
       {
         id: 'poll',
         method: 'getJson',

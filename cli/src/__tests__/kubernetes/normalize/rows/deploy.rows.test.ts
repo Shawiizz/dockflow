@@ -129,6 +129,16 @@ const rows: NormalizeRow[] = [
     ],
   },
   {
+    id: 'N-DEP-13',
+    title: 'service-level cpus and mem_limit map directly when deploy.resources is absent',
+    compose: 'image: nginx:1.27\ncpus: 0.5\nmem_limit: 256m',
+    expect: [
+      { select: '/services/0/resources/limits/cpu', equals: 500 },
+      { select: '/services/0/resources/limits/memory', equals: 268_435_456 },
+      { diagnostics: [], exact: true },
+    ],
+  },
+  {
     id: 'N-DEP-14a',
     title: 'a replicated-job carries the compose restart value unchanged, no deploy.job-restart-any',
     compose: 'image: nginx:1.27\ndeploy:\n  mode: replicated-job\nrestart: "on-failure"',

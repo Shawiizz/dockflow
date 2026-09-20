@@ -15,6 +15,12 @@
 // alone, which does not upgrade a plain decimal byte count to binary form (design-02 1.2, 7.1).
 // T-META-04 (the ComposeTranslationError message/suggestion format) is render.ts's concern
 // (P38), not a translate/*.ts row.
+// T-META-05 (a diagnostic reported by both layers reaches the user once, on the merged list) is the
+// same case: `translateRow` (support/rows.ts) shares one DiagnosticSink across normalize and
+// translate "as in render()", and the dedupe-by-(code,path)/sort-by-(path,code) contract it relies
+// on belongs to DiagnosticSink itself (orchestrator/diagnostics.ts, P01), already asserted by
+// T/orchestrator/diagnostics.test.ts. No translate/*.ts module decides that behaviour, so there is
+// nothing translate-specific for a row here to pin.
 
 import { expect, test } from 'bun:test';
 import { ANNOTATIONS, LABELS } from '../../../../services/orchestrator/kubernetes/constants';

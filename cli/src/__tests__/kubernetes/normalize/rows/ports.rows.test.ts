@@ -4,6 +4,11 @@
 // Rows marked (T2) in design-01/design-07 are translator conditions: the normalizer keeps the
 // entries and emits nothing, which several rows below assert directly (ports.test.ts, the direct
 // handler test owned by P21, documents the same (T2) rows).
+//
+// Difference from the design-07 proposal, resolved by design-01 5.4's own `parsePortShort`
+// pseudocode: N-PORT-11's `["0:80"]` case is not `ports.invalid` (host port 0 means "assign any
+// free port", the same as an absent host port, so it maps to `published: null`, design-01 line
+// "host port 0 = random = not published"); the row asserts that instead (N-PORT-11c).
 
 import { type NormalizeRow, runNormalizeRows } from '../../support/rows';
 
@@ -100,7 +105,7 @@ const rows: NormalizeRow[] = [
   },
   {
     id: 'N-PORT-11a',
-    title: 'host port 0 is invalid in the short form (container port 0)',
+    title: 'a container port past 65535 is invalid',
     compose: 'image: nginx:1.27\nports: ["8080:65536"]',
     expect: { diagnostics: [{ severity: 'error', code: 'ports.invalid', path: 'services.web.ports[0]' }] },
   },
@@ -109,6 +114,15 @@ const rows: NormalizeRow[] = [
     title: 'a non-numeric port entry is invalid',
     compose: 'image: nginx:1.27\nports: ["abc"]',
     expect: { diagnostics: [{ severity: 'error', code: 'ports.invalid', path: 'services.web.ports[0]' }] },
+  },
+  {
+    id: 'N-PORT-11c',
+    title: 'host port 0 asks for any free port: not an error, just unpublished',
+    compose: 'image: nginx:1.27\nports: ["0:80"]',
+    expect: [
+      { select: '/services/0/ports/0', equals: { target: 80, published: null, protocol: 'TCP', mode: 'ingress', hostIp: null, name: null, appProtocol: null, path: 'services.web.ports[0]' } },
+      { diagnostics: [], exact: true },
+    ],
   },
   {
     id: 'N-PORT-12',

@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import type { HelmReleaseRecord, ResolvedHelmRelease } from '../../../services/orchestrator/interfaces';
 import { KubernetesHelmBackend } from '../../../services/orchestrator/kubernetes/backends/helm';
+import { removeVolumesByProtocol, type VolumeTarget } from '../../../services/orchestrator/kubernetes/backends/volumes';
 import { LABELS } from '../../../services/orchestrator/kubernetes/constants';
 import { helmSpecHash } from '../../../services/orchestrator/kubernetes/helm/resolve';
 import { canonicalJson, sha256Hex } from '../../../utils/hash';
@@ -17,7 +18,7 @@ import { FakeClock } from '../fakes/fake-clock';
 import { fakeNode, FakeKubeExecutor } from '../fakes/fake-kube-executor';
 import { FakeHelmExecutor } from '../fakes/fake-helm-executor';
 import { FakeNodeShell } from '../fakes/fake-node-shell';
-import { assertExecutorInvariants } from '../support/invariants';
+import { assertExecutorInvariants, assertNoSecretLeak } from '../support/invariants';
 import { readHelmFixture } from '../support/kubectl-fixtures';
 
 const NODE = fakeNode('server_1');
@@ -37,6 +38,8 @@ interface Harness {
   nodeShell: FakeNodeShell;
   clock: FakeClock;
   backend: KubernetesHelmBackend;
+  /** this harness's test deletes a PersistentVolumeClaim/PersistentVolume (INV-04) */
+  volumeDeletion: boolean;
 }
 
 let harnesses: Harness[] = [];
@@ -48,12 +51,19 @@ afterEach(() => {
     h.kube.assertDone();
     h.helm.assertDone();
     h.nodeShell.assertDone();
-    assertExecutorInvariants({ kube: h.kube, helm: h.helm, nodeShell: h.nodeShell, redactor: h.kube.redactor, volumes: h.cluster });
+    assertExecutorInvariants({
+      kube: h.kube,
+      helm: h.helm,
+      nodeShell: h.nodeShell,
+      redactor: h.kube.redactor,
+      volumes: h.cluster,
+      allow: { volumeDeletion: h.volumeDeletion },
+    });
     h.cluster.assertNoProblems();
   }
 });
 
-function harness(): Harness {
+function harness(options: { volumeDeletion?: boolean } = {}): Harness {
   const redactor = new Redactor([]);
   const cluster = new FakeCluster();
   const kube = new FakeKubeExecutor({ redactor, cluster, node: NODE });
@@ -64,7 +74,7 @@ function harness(): Harness {
     deps: { helm, kubectl: kube, nodeShell: nodeShell.forNode, clock, redactor, distribution: kube.distribution },
     env: ENV,
   });
-  const h: Harness = { cluster, kube, helm, nodeShell, clock, backend };
+  const h: Harness = { cluster, kube, helm, nodeShell, clock, backend, volumeDeletion: options.volumeDeletion ?? false };
   harnesses.push(h);
   return h;
 }
@@ -126,6 +136,34 @@ function seedInstalled(h: Harness, rel: ResolvedHelmRelease, options: { stackId?
   h.helm.seedRelease({ name: rel.name, namespace: rel.namespace, revisions: [{ chart: chartName, version: rel.version, values: rel.values, labels }] });
   seedSecret(h.cluster, { namespace: rel.namespace, name: rel.name, revision: 1, stackId, role: rel.role, specHash: helmSpecHash(rel) });
   return sha256;
+}
+
+/** a Bound PersistentVolumeClaim naming `volume`, minimal fields only (design-04 3.10, C13) */
+function claimObj(name: string, volume: string): KubeObject {
+  return {
+    apiVersion: 'v1',
+    kind: 'PersistentVolumeClaim',
+    metadata: { name, namespace: NS, uid: `uid-${name}` },
+    spec: { accessModes: ['ReadWriteOnce'], resources: { requests: { storage: '1Gi' } }, storageClassName: 'dockflow-local', volumeName: volume },
+    status: { phase: 'Bound' },
+  };
+}
+
+/** the PersistentVolume `name` is bound to, Retain, no node affinity (not a lost-node case) */
+function volumeObj(name: string, claim: string): KubeObject {
+  return {
+    apiVersion: 'v1',
+    kind: 'PersistentVolume',
+    metadata: { name },
+    spec: {
+      accessModes: ['ReadWriteOnce'],
+      capacity: { storage: '1Gi' },
+      claimRef: { apiVersion: 'v1', kind: 'PersistentVolumeClaim', name: claim, namespace: NS, uid: `uid-${claim}` },
+      persistentVolumeReclaimPolicy: 'Retain',
+      storageClassName: 'dockflow-local',
+    },
+    status: { phase: 'Bound' },
+  };
 }
 
 class Events {
@@ -551,5 +589,83 @@ describe('pinCharts', () => {
     const declared = release({ name: 'declared', declaredDigest: '0'.repeat(64) });
 
     await expect(h.backend.pinCharts([declared], [], { allowChartDrift: false })).rejects.toThrow(DeployError);
+  });
+
+  test('a mismatched declared digest is repinned to the actual bytes with --allow-chart-drift', async () => {
+    const h = harness();
+    const sha256 = h.helm.chart({ name: 'postgresql', version: '16.7.4', repo: REPO });
+    const declared = release({ name: 'declared', declaredDigest: '0'.repeat(64) });
+
+    const pinned = await h.backend.pinCharts([declared], [], { allowChartDrift: true });
+
+    expect(pinned[0]?.declaredDigest).toBe(sha256);
+    expect(pinned[0]?.declaredDigest).not.toBe('0'.repeat(64));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// credentials (3.5.3): a private repository authenticates without exposing them in argv
+// ---------------------------------------------------------------------------
+
+describe('credentials', () => {
+  test('a private repository chart authenticates through a per-call file, never argv', async () => {
+    const h = harness();
+    const password = 'chart-repo-password-5519';
+    // registered on the harness's shared redactor: afterEach's assertExecutorInvariants (INV-02)
+    // checks every kube/helm/nodeShell call for it too
+    h.helm.redactor.add([password]);
+    const auth = { username: 'ci-bot', password };
+    h.helm.chart({ name: 'postgresql', version: '16.7.4', repo: REPO });
+    const rel = release({ name: 'private', declaredDigest: null, auth });
+
+    const result = await h.backend.upgradeInstall(rel, { historyMax: 5, stackId: NS });
+
+    expect(result.changed).toBe(true);
+    expect(h.helm.credentials.some((c) => c.kind === 'repo-update')).toBe(true);
+    // the credentials file lived only inside the pull's own temp directory, removed in `finally`
+    expect(h.helm.credentialFilesLeft()).toEqual([]);
+    assertNoSecretLeak(h.helm, [password]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// uninstall --volumes (design-04 3.10): the C13 protocol runs after the release is gone
+// ---------------------------------------------------------------------------
+
+describe('uninstall --volumes', () => {
+  test('manifestObjects is read before uninstall, then removeVolumesByProtocol deletes the claims it found, one at a time', async () => {
+    const h = harness({ volumeDeletion: true });
+    const manifest = [
+      'apiVersion: v1',
+      'kind: PersistentVolumeClaim',
+      'metadata: {name: data-a}',
+      '---',
+      'apiVersion: v1',
+      'kind: PersistentVolumeClaim',
+      'metadata: {name: data-b}',
+    ].join('\n');
+    h.helm.chart({ name: 'postgresql', version: '16.7.4', repo: REPO, manifest });
+    h.helm.seedRelease({ name: 'postgres', namespace: NS, revisions: [{ chart: 'postgresql', version: '16.7.4', manifest }] });
+    h.cluster.seed([claimObj('data-a', 'pv-data-a'), volumeObj('pv-data-a', 'data-a'), claimObj('data-b', 'pv-data-b'), volumeObj('pv-data-b', 'data-b')]);
+
+    // design-04 3.10 step 0: the deletable claims are read from the manifest while the release still exists
+    const claims: VolumeTarget[] = (await h.backend.manifestObjects(NS, 'postgres'))
+      .filter((object) => object.kind === 'PersistentVolumeClaim' && !object.keep)
+      .map((object) => ({ claim: object.name, volume: null }));
+    expect(claims.map((c) => c.claim)).toEqual(['data-a', 'data-b']);
+
+    // step 1: helm uninstall itself never touches the PVCs (they are not part of the Helm call)
+    await h.backend.uninstall(NS, 'postgres', { timeoutS: 120 });
+    expect(h.helm.release(NS, 'postgres')).toBeNull();
+    expect(h.cluster.get('PersistentVolumeClaim', 'data-a', NS)).toBeDefined();
+
+    // step 2: the core C13 protocol, one volume at a time
+    const report = await removeVolumesByProtocol({ kubectl: h.kube }, claims, { namespace: NS, env: ENV });
+
+    expect(report.deleted.map((d) => d.claim).sort()).toEqual(['data-a', 'data-b']);
+    expect(h.cluster.get('PersistentVolumeClaim', 'data-a', NS)).toBeUndefined();
+    expect(h.cluster.get('PersistentVolumeClaim', 'data-b', NS)).toBeUndefined();
+    expect(h.cluster.get('PersistentVolume', 'pv-data-a')).toBeUndefined();
+    expect(h.cluster.get('PersistentVolume', 'pv-data-b')).toBeUndefined();
   });
 });

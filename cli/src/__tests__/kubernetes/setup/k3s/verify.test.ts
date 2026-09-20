@@ -6,6 +6,7 @@ import { Redactor } from '../../../../utils/redact';
 import { FakeCluster, type KubeObject } from '../../fakes/fake-cluster';
 import { FakeKubeExecutor, fakeNode, REST } from '../../fakes/fake-kube-executor';
 import { assertExecutorInvariants } from '../../support/invariants';
+import { chooseFirewallTool } from '../../../../commands/setup/k3s/firewall';
 import {
   applyNetcheckDaemonSet,
   type ConnectOutcome,
@@ -15,9 +16,11 @@ import {
   evaluateDeployIdentityChecks,
   evaluateEncryptionAcrossServers,
   evaluateEncryptionStatus,
+  evaluateEtcdMembers,
   evaluateNodeReadiness,
   evaluateStorageClasses,
   evaluateTraefikAbsence,
+  type ExposureProbeNode,
   netcheckDaemonSet,
   netcheckPlan,
   removeNetcheckDaemonSet,
@@ -134,6 +137,22 @@ describe('evaluateEncryptionStatus (section 9, V6)', () => {
       { key: 'server_3', status: good },
     ]);
     expect(problem?.message).toContain('server_2');
+  });
+});
+
+describe('evaluateEtcdMembers (16.2, V3)', () => {
+  it('V3 etcd member count mismatch -> error naming both counts', () => {
+    const problem = evaluateEtcdMembers(2, 3, ENV);
+    expect(problem?.message).toBe(`2 etcd members were found on ${ENV}, expected 3`);
+  });
+
+  it('count equal to the expected HA server count -> no problem', () => {
+    expect(evaluateEtcdMembers(3, 3, ENV)).toBeNull();
+  });
+
+  it('outside HA (expected 0) -> never checked, whatever the count', () => {
+    expect(evaluateEtcdMembers(0, 0, ENV)).toBeNull();
+    expect(evaluateEtcdMembers(1, 0, ENV)).toBeNull();
   });
 });
 
@@ -436,5 +455,26 @@ describe('runExposureProbe (16.5, V10)', () => {
     );
     expect(probes).toHaveLength(1);
     expect(probes[0].message).toContain('kubelet');
+  });
+
+  it('V10 a node whose ufw is installed but inactive is probed, a node with an active tool is not (16.5 gate)', async () => {
+    // the 16.5 pseudocode: `for node in plan.nodes where chooseFirewallTool(inspection[node]) == null`
+    const candidates: (ExposureProbeNode & { firewall: { ufw: 'active' | 'inactive'; firewalld: 'absent' } })[] = [
+      { key: 'server_1', addr: '203.0.113.10', role: 'server', etcdMember: false, firewall: { ufw: 'inactive', firewalld: 'absent' } },
+      { key: 'server_2', addr: '203.0.113.20', role: 'server', etcdMember: false, firewall: { ufw: 'active', firewalld: 'absent' } },
+    ];
+    const unmanaged = candidates.filter((node) => {
+      const chosen = chooseFirewallTool(node.firewall, { skipFirewall: false, key: node.key });
+      return chosen.success && chosen.data === null;
+    });
+    expect(unmanaged.map((n) => n.key)).toEqual(['server_1']);
+
+    const probes = await runExposureProbe(
+      unmanaged,
+      connectProbeOf({ '203.0.113.10:6443': 'open', '203.0.113.20:6443': 'open' }),
+      { env: ENV, isPrivate: () => false },
+    );
+    expect(probes).toHaveLength(1);
+    expect(probes[0].message).toContain('server_1');
   });
 });

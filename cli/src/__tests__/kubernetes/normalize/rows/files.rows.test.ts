@@ -93,6 +93,12 @@ const rows: NormalizeRow[] = [
     expect: { select: '/files/0/checksum', equals: sha256Hex(new TextEncoder().encode('x=1')) },
   },
   {
+    id: 'N-FILE-07',
+    title: 'a secret sourced from the environment is refused: Dockflow passes no process environment',
+    compose: 'services:\n  web:\n    image: nginx:1.27\nsecrets:\n  tok:\n    environment: TOKEN\n',
+    expect: { diagnostics: [{ severity: 'error', code: 'files.environment-unsupported', path: 'secrets.tok.environment' }] },
+  },
+  {
     id: 'N-FILE-08',
     title: 'an external secret carries no data and keeps its written name',
     compose: 'services:\n  web:\n    image: nginx:1.27\n    secrets: [tls]\nsecrets:\n  tls:\n    external: true\n    name: shared-tls\n',

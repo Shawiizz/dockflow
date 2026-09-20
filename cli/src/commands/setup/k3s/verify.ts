@@ -371,6 +371,15 @@ export function evaluateStorageClasses(classes: readonly StorageClass[], env: st
   return { storageClass: { present, reclaimPolicy, isDefault: true, defaults, effectiveDefault: true }, problem: null };
 }
 
+/** HA row of 16.2 (V3): the etcd-labelled node count must equal the planned server count. `expected <= 0` is outside HA (no check). */
+export function evaluateEtcdMembers(count: number, expected: number, env: string): SetupProblem | null {
+  if (expected <= 0 || count === expected) return null;
+  return {
+    message: `${count} etcd members were found on ${env}, expected ${expected}`,
+    suggestion: `Run \`k3s etcd-snapshot list\` on a server of ${env} and \`journalctl -u k3s -n 100\` on any server that never joined.`,
+  };
+}
+
 const REQUIRED_COMPONENTS: readonly { name: string; required: boolean }[] = [
   { name: 'coredns', required: true },
   { name: 'local-path-provisioner', required: true },
@@ -495,9 +504,8 @@ export async function buildClusterVerification(kube: KubeExecutor, options: Clus
   }
   const readyNodes = nodeViews.filter((n) => n.ready).length;
   const etcdMembers = nodeViews.filter((n) => n.roles.includes('etcd')).length;
-  if (options.etcdExpected > 0 && etcdMembers !== options.etcdExpected) {
-    addError(`${etcdMembers} etcd members were found on ${options.env}, expected ${options.etcdExpected}`);
-  }
+  const etcdProblem = evaluateEtcdMembers(etcdMembers, options.etcdExpected, options.env);
+  if (etcdProblem !== null) addError(etcdProblem.message, etcdProblem.suggestion);
 
   const deployments = await pollComponentsReady(kube, options.clock, options.componentsTimeoutS ?? SYSTEM_COMPONENTS_TIMEOUT_S);
   const components = evaluateComponentsList(deployments);

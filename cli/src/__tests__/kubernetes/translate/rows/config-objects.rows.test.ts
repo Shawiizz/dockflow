@@ -204,6 +204,29 @@ const rows: TranslateRow[] = [
 
 runTranslateRows('translate/config-objects (T-SECRET)', rows);
 
+test('T-SECRET-04 the same variables in a different declaration order produce the same name and checksum', () => {
+  const forwardOrder = builders.canonicalService({
+    environment: [
+      { name: 'ALPHA', value: 'a' },
+      { name: 'MIDDLE', value: 'm' },
+      { name: 'ZETA', value: 'z' },
+    ],
+  });
+  const shuffledOrder = builders.canonicalService({
+    environment: [
+      { name: 'ZETA', value: 'z' },
+      { name: 'ALPHA', value: 'a' },
+      { name: 'MIDDLE', value: 'm' },
+    ],
+  });
+  expect(envChecksum(shuffledOrder)).toBe(envChecksum(forwardOrder));
+
+  const forward = translateRow({ id: 'order-forward', title: 'order-forward', stack: (b) => b.canonicalStack({ services: [forwardOrder] }), expect: [] });
+  const shuffled = translateRow({ id: 'order-shuffled', title: 'order-shuffled', stack: (b) => b.canonicalStack({ services: [shuffledOrder] }), expect: [] });
+  const secretNameOf = (objects: typeof forward.objects) => objects.find((o) => o.kind === 'Secret')?.metadata.name;
+  expect(secretNameOf(shuffled.objects)).toBe(secretNameOf(forward.objects));
+});
+
 test('T-SECRET-10 a 52-character service name: env Secret name is 65 characters, every pod volume name is <= 63', () => {
   const longName = 'a'.repeat(52);
   const longSvc = builders.canonicalService({

@@ -8,6 +8,12 @@
 // and refuses the render before the translator ever runs (confirmed against
 // normalize/routing.ts: reaching `buildIngress` with a dangling reference is unreachable from user
 // input). It belongs to the normalizer row catalogue (design-01 11, P49), not here.
+//
+// T-ING-07 ("services[].port is a port of the referenced Service; every routes[] entry carries
+// kind: Rule explicitly") is not a dedicated row either: `translateChecked` runs semantic rules S16
+// (`spec.routes[].services[].port` must match a Service port) and S26 (`kind` is mandatory on every
+// route) on every row of this file already (support/schema/semantic.ts), so a row violating either
+// would fail whichever row produced it. A dedicated row would only repeat that coverage.
 
 import { expect, test } from 'bun:test';
 import { LABELS } from '../../../../services/orchestrator/kubernetes/constants';

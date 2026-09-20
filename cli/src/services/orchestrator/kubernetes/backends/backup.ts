@@ -352,8 +352,9 @@ export class KubernetesBackupBackend implements BackupBackend {
   ): Promise<{ exitCode: number; stderr: string }> {
     const consumer = this.execCommand(pod, container, script, namespace, true);
     if (sameNode(file.node, this.kubectl.node)) {
-      const producer = gunzip ? `gunzip -c ${shellQuote(file.remotePath)}` : `cat ${shellQuote(file.remotePath)}`;
-      const result = await this.runShell(`${producer} | ${consumer}`, `restore ${pod}`);
+      // gzip needs a decompressor in the pipeline; a plain file is redirected straight into stdin (design-06 4.3 step 2)
+      const line = gunzip ? `gunzip -c ${shellQuote(file.remotePath)} | ${consumer}` : `${consumer} < ${shellQuote(file.remotePath)}`;
+      const result = await this.runShell(line, `restore ${pod}`);
       return { exitCode: result.exitCode, stderr: stripTerminatedLine(result.stderr) };
     }
     return this.relay(file, gunzip, consumer);
@@ -585,6 +586,13 @@ export class KubernetesBackupBackend implements BackupBackend {
           return mount && !mount.readOnly ? [{ path: hostPath.path, mount }] : [];
         })
       : [];
+    // without a running pod the bind mount's node is unknown; falling back to the pod template silently would archive nothing
+    if (!sourcePod && bindMounts.length > 0) {
+      throw new BackupError(
+        `Service ${service} has no running pod; the node holding bind mount ${bindMounts[0].path} is unknown`,
+        { suggestion: `Start it first with \`dockflow accessories restart ${this.env} ${service}\` (app services: \`dockflow restart ${this.env} ${service}\`).` },
+      );
+    }
 
     const claimNames = unique(claimMounts.map((c) => c.claimName));
     const claims =
