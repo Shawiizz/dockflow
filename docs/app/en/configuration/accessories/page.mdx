@@ -1,6 +1,6 @@
 # Accessories
 
-import { Callout } from 'nextra/components'
+import { Callout, Tabs } from 'nextra/components'
 
 Accessories are **stateful services** (databases, caches, message queues, etc.) that have a separate lifecycle from your main application. They are deployed once and remain untouched during regular app deployments.
 
@@ -10,12 +10,23 @@ Accessories are **stateful services** (databases, caches, message queues, etc.) 
   **Problem**: If you put your database in the main `docker-compose.yml`, it gets restarted on every deployment. This can cause data corruption or downtime.
 </Callout>
 
-**Solution**: Accessories are deployed as a separate stack (Swarm) or namespace (k3s). Your app can be deployed 100 times without touching the database.
+**Solution**: Accessories have their own lifecycle, deployed once and left alone by app redeploys. On Swarm they are a separate stack; on k3s they live in the same namespace as the app, told apart by a `role` label. Your app can be deployed 100 times without touching the database.
 
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
 ```
 myapp-production              ← Main app (redeployed often)
 myapp-production-accessories  ← Databases, Redis, etc. (deployed once)
 ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```
+dockflow-myapp-production     ← One namespace, two roles
+  app services   → role=app
+  postgres, redis → role=accessory
+```
+  </Tabs.Tab>
+</Tabs>
 
 ## Configuration
 
@@ -168,7 +179,14 @@ dockflow accessories stop production postgres  # Scale specific to 0
 ```
 
 <Callout type="info">
-  Stop scales services to 0 replicas but keeps the containers and volumes. Use `restart` to bring them back.
+  Stop scales services to 0 replicas but keeps the containers (or pods) and volumes. Use `restart` to bring them back.
+</Callout>
+
+<Callout type="warning">
+  On k3s, an accessory scaled to 0 with `stop` **stays at 0** across ordinary app deploys — change
+  detection skips a redeploy of `accessories.yml` when it hasn't changed, so nothing re-applies the
+  replica count (Swarm parity). Bring it back with `accessories restart` or a forced
+  `deploy --accessories`.
 </Callout>
 
 ### Remove Accessories
@@ -176,10 +194,16 @@ dockflow accessories stop production postgres  # Scale specific to 0
 ```bash
 dockflow accessories remove production           # Remove stack (keep volumes)
 dockflow accessories remove production --volumes # Remove stack AND volumes
+dockflow accessories remove production --volumes -y  # Skip prompt and typed confirmation (CI)
 ```
 
 <Callout type="error">
-  The `--volumes` flag permanently deletes all data. You will be prompted to type the environment name to confirm.
+  The `--volumes` flag permanently deletes all data. You will be prompted to type the environment name to confirm, unless `-y`/`--yes` is passed — the only way to skip that typed confirmation, meant for non-interactive CI runs.
+</Callout>
+
+<Callout type="info">
+  On k3s, PersistentVolumeClaims are never deleted implicitly. Without `--volumes` the claims survive
+  the removal and are re-attached the next time the accessory is deployed.
 </Callout>
 
 ## Best Practices
@@ -223,9 +247,12 @@ deploy:
 
 ## Connecting Your App
 
-Your main application can connect to accessories using Docker's internal DNS:
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
+Your main application connects to accessories over the accessories stack's overlay network, using Docker's internal DNS:
 
-```yaml filename=".dockflow/docker/docker-compose.yml"
+```yaml
+# .dockflow/docker/docker-compose.yml
 services:
   app:
     image: myapp:latest
@@ -245,8 +272,52 @@ networks:
 <Callout type="warning">
   Make sure to reference the correct network name: `{project}-{env}-accessories_default`
 </Callout>
+  </Tabs.Tab>
+  <Tabs.Tab>
+App services and accessories share one namespace, so no external network is needed — the plain
+compose service name resolves through the namespace's own DNS:
+
+```yaml
+# .dockflow/docker/docker-compose.yml
+services:
+  app:
+    image: myapp:latest
+    environment:
+      DATABASE_URL: postgres://app:password@postgres:5432/myapp
+      REDIS_URL: redis://redis:6379
+```
+
+No `networks:` section, no external network declaration — `postgres` and `redis` resolve as soon
+as the accessories are deployed once, exactly as the Swarm example resolves after joining the
+`accessories` network.
+  </Tabs.Tab>
+</Tabs>
 
 <Callout type="info">
   **Protect your data**: Dockflow supports automated backup and restore for accessories. See [Backup & Restore](/en/configuration/backup) for details.
 </Callout>
+
+## Kubernetes (k3s)
+
+<Callout type="info">
+  On k3s, accessories are not a second stack: they are the compose services of `accessories.yml`,
+  applied into the **same namespace** as the app (`dockflow-{project}-{env}`) and told apart by a
+  `role` label (`app` or `accessory`). Prune, apply and stop are scoped by that label, so an app
+  deploy never touches accessory objects and vice versa.
+</Callout>
+
+- **Naming and DNS.** Because both roles share one namespace, a compose service name resolves
+  through plain in-cluster DNS — no `{project}-{env}-accessories_default`-style network to declare.
+- **Name collisions are refused.** An app service and an accessory cannot resolve to the same
+  Kubernetes name (`services and accessories share the namespace ..., so names must be unique`).
+  Rename one of them.
+- **Change detection is unchanged.** The same hash-based skip applies: `accessories.yml` unchanged
+  means no redeploy, whatever the previous replica count was — see the stop warning above.
+- **Volumes.** Accessory PersistentVolumeClaims follow the same rule as the app's: never deleted
+  implicitly, kept on `stop` and on a plain `remove`, deleted one at a time only by
+  `accessories remove --volumes` (or later by `dockflow volumes rm`).
+- **Helm accessory releases.** A `helm.releases[]` entry with `role: accessory` (see
+  [Helm Charts](/en/configuration/helm)) follows the accessory lifecycle too: it takes part in the
+  same change detection and is never uninstalled implicitly when removed from `config.yml` — Dockflow
+  only warns, and `dockflow helm uninstall <env> <name>` removes it by hand.
 

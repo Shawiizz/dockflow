@@ -7,6 +7,8 @@ export default {
   registry: 'Docker Registry',
   'container-engine': 'Container Engine',
   accessories: 'Accessories',
+  helm: 'Helm Charts',
+  volumes: 'Volumes & Data',
   backup: 'Backup & Restore',
   upload: 'File Uploads',
   hooks: 'Hooks',
@@ -15,5 +17,6 @@ export default {
   'multi-host': 'Multi-Node Deployment',
   proxy: 'Automatic HTTPS Proxy',
   notifications: 'Notifications',
-  orchestrator: 'Orchestrator'
+  orchestrator: 'Orchestrator',
+  kubernetes: 'Kubernetes (k3s)'
 }

@@ -1,0 +1,115 @@
+# Volumes & Data
+
+import { Callout } from 'nextra/components'
+
+How named volumes, bind mounts and tmpfs behave on each orchestrator, and every command that can delete data.
+
+## Behaviour by orchestrator
+
+| | Docker Swarm | k3s |
+|---|---|---|
+| named volume | a Docker volume, local to the node a task lands on | a `PersistentVolumeClaim` on the `dockflow-local` StorageClass, pinned to one node |
+| bind mount | a bind mount on whichever node runs the task | a `hostPath` mount; the path must exist on every node the pod could land on |
+| tmpfs | memory-backed, per task | a memory-backed `emptyDir` |
+| reclaim policy | n/a (volumes are node-local files) | `Retain` — removing the claim never deletes the underlying data by itself |
+
+A k3s claim is created with an explicit `storageClassName` and never binds to k3s's own default `local-path`
+class (whose reclaim policy is `Delete`) — see [Cluster setup](/en/configuration/kubernetes/setup#storage) for
+how Dockflow keeps `dockflow-local` the only default class.
+
+## `x-dockflow` volume options
+
+Set on a top-level compose volume (`volumes.<name>.x-dockflow`), k3s only:
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `size` | quantity, e.g. `10Gi` | `1Gi` | requested capacity; not enforced by `local-path` (informational — no diagnostic if the container writes past it) |
+| `storage_class` | string | `dockflow-local` | another StorageClass, when one exists on the cluster |
+| `access_mode` | `ReadWriteOnce` \| `ReadWriteOncePod` \| `ReadWriteMany` | `ReadWriteOnce` | on the default class, only `ReadWriteOnce`/`ReadWriteOncePod` are accepted — `local-path`'s provisioner refuses anything else |
+| `per_replica` | boolean | `false` | one claim **per replica**, built from claim templates — every service that mounts the volume must also set `x-dockflow.kind: statefulset` |
+
+`ReadWriteOnce` (the default) mounted by a replicated service forces the `Recreate` update strategy — a
+Kubernetes deployment with two live replicas cannot both hold the same RWO claim, so a rolling update would
+deadlock. Set `x-dockflow.kind: statefulset` with `per_replica: true` when every replica needs its own claim
+instead of one shared claim.
+
+## Data safety
+
+| Command | Swarm volumes | k3s PersistentVolumeClaims |
+|---|---|---|
+| `dockflow deploy` (service removed) | kept | kept — never pruned |
+| `dockflow stop` | kept | kept |
+| `dockflow accessories remove` | kept | kept |
+| `dockflow accessories remove --volumes` | deleted after a typed confirmation | deleted after a typed confirmation, one volume at a time — see [The reclaim protocol](#the-reclaim-protocol) |
+| `dockflow volumes rm` | not available | deleted after a typed confirmation; refused while a workload has it mounted |
+| Helm release removed from `config.yml` | n/a | kept running when it owns PersistentVolumeClaims; remove it explicitly with `dockflow helm uninstall <env> <name> --volumes` |
+| web dashboard, API routes | never deletes volumes | never deletes volumes — the delete path does not exist in the route table, with or without a flag |
+
+<Callout type="warning">
+  `-y` skips **both** the prompt and the typed confirmation, for CI. Without `-y`, a non-interactive shell
+  refuses rather than silently proceeding.
+</Callout>
+
+## The reclaim protocol
+
+`dockflow volumes rm` and every command above that deletes data on k3s follow one protocol, never a shortcut:
+
+1. Volumes are processed **one at a time** — the reclaim policy of a whole batch is never switched up front.
+2. Before deleting a claim, its bound PersistentVolume's current reclaim policy is recorded, both in memory
+   and as an annotation on the PV itself.
+3. The claim is deleted and Dockflow waits for it to disappear; only then is that one PV switched to
+   `Delete`, and Dockflow waits for the PV to disappear too.
+4. The original policy is **restored** whenever the claim still exists when the command ends — on success
+   and on failure (a timeout, a stuck finalizer, a pod that started mounting it between the read and the
+   delete): a claim that was not actually deleted never ends up on a `Delete` policy.
+5. Every volume is reported by name — deleted, or restored with its original policy, or (rarely) left on
+   `Delete` because the restore itself failed. A command killed mid-run can still leave a PV on `Delete`, but
+   never *without evidence*: the recorded policy is on the PV as an annotation, and the next
+   `dockflow volumes list` (or `accessories list`, or the kept-volumes note of `stop`) restores it
+   automatically and prints a warning naming the volume.
+
+This is why volumes are never deleted "in bulk" on k3s: a set of volumes patched to `Delete` up front, with a
+command that then fails partway through, is exactly the stuck state this protocol exists to make
+unreachable.
+
+## Commands
+
+```bash
+dockflow volumes list production
+dockflow volumes list production --role accessory
+dockflow volumes rm production old-cache
+```
+
+```
+  VOLUME        ROLE       COMPOSE    STATUS   CAPACITY  CLASS           NODE      RECLAIM  USED BY
+  db-data       accessory  db_data    Bound    10Gi      dockflow-local  server-1  Retain   db
+  data-pg-0     -          -          Bound    8Gi       dockflow-local  worker-1  Retain   postgres-0
+```
+
+The `RECLAIM` column is always shown — it is how an operator sees the data-retention guarantee, rather than
+assuming it. A volume left on `Delete` by something other than an interrupted Dockflow command (another
+StorageClass, or a manual `kubectl patch`) is highlighted with `(expected Retain)` and a one-line fix.
+`dockflow volumes rm <env> <name...>` refuses a volume currently mounted by a running pod — stop the service
+first with `dockflow stop` or `dockflow accessories stop`.
+
+## Caveats
+
+- **No copy-up.** Kubernetes volume drivers do not replicate Docker's "seed a fresh named volume from the
+  image's own files at the mount path" behaviour, and the translator cannot detect from the compose file
+  alone whether an image would have populated it. A named volume always starts **empty** on k3s — seed it
+  from the entrypoint, or mount a subdirectory the image does not ship. See
+  [Kubernetes (k3s) → Limitations](/en/configuration/kubernetes#limitations).
+- **Capacity is not enforced.** `local-path`'s provisioner does not enforce the quantity `x-dockflow.size`
+  requests; it is informational.
+- **Node loss makes the data unavailable**, not lost — a standalone volume is pinned to the node it was
+  first created on (`WaitForFirstConsumer`); if that node is gone for good, follow the per-command recovery
+  steps on the [Automatic HTTPS Proxy](/en/configuration/proxy) page (the same pattern applies to any
+  single-node claim) or restore from a backup.
+- **Bind mounts need the path on every node** a pod could be scheduled to, since a `hostPath` mount is
+  resolved locally by whichever node runs the pod.
+
+## See also
+
+- [Kubernetes (k3s)](/en/configuration/kubernetes): how compose volumes map to Kubernetes objects
+- [Helm](/en/configuration/helm): the same reclaim protocol applied to chart-owned volumes
+- [Backup & Restore](/en/configuration/backup): backing up volume data

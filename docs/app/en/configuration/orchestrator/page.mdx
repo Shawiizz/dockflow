@@ -1,110 +1,111 @@
 # Orchestrator
 
-import { Callout, Steps, Tabs } from 'nextra/components'
+import { Callout } from 'nextra/components'
 
-Selects the orchestration backend used for deployments. Dockflow supports Docker Swarm (default) and k3s (lightweight Kubernetes) as deployment targets — same config, same commands, different runtime.
+Dockflow deploys the same project to Docker Swarm (the default) or to k3s ([lightweight
+Kubernetes](https://k3s.io)). The orchestrator changes how your project actually runs — and some features
+differ between the two — but the same `config.yml`, `docker-compose.yml` and commands drive both.
 
-## Minimal Configuration
+## Minimal configuration
 
 ```yaml
 # .dockflow/config.yml
 orchestrator: k3s
 ```
-
-That's it. All Dockflow commands (`deploy`, `logs`, `scale`, `rollback`, `setup`) adapt automatically to the selected backend.
 
 <Callout type="info">
-  When omitted, `orchestrator` defaults to `swarm`. Existing projects continue to work without any changes.
+  When `orchestrator` is omitted it defaults to `swarm`; existing projects keep working unchanged.
 </Callout>
-
-## All Options
-
-| Field | Type | Description | Default |
-|---|---|---|---|
-| `orchestrator` | `"swarm"` \| `"k3s"` | Orchestration backend for deployments | `"swarm"` |
-
-### `swarm` (Docker Swarm)
-
-- Uses `docker stack deploy` and Docker Swarm services
-- Traefik deployed as a Swarm service with overlay networking
-- Requires Docker installed on all nodes (`dockflow setup` handles this)
-
-### `k3s` (Lightweight Kubernetes)
-
-- Uses `kubectl apply` with auto-generated Kubernetes manifests
-- Traefik is embedded in k3s — no separate deployment needed
-- Compose files are automatically converted to Kubernetes Deployments, Services, and IngressRoutes
-
-## How It Works
-
-<Steps>
-### Provisioning
-
-Run `dockflow setup swarm <env>` or `dockflow setup k3s <env>` depending on your chosen backend. For Swarm, this installs Docker and initializes the cluster. For k3s, it installs k3s on the manager and joins workers via the node token.
-
-### Deployment
-
-`dockflow deploy <env>` reads the `orchestrator` field from your config. For Swarm, it deploys using `docker stack deploy`. For k3s, it converts your `docker-compose.yml` into Kubernetes manifests (Deployments, Services, PVCs) and applies them with `kubectl apply`.
-
-### Traefik auto-configuration
-
-Both backends support automatic HTTPS via Traefik when `proxy.enabled: true`. For Swarm, Traefik is deployed as a service. For k3s, Dockflow configures the built-in Traefik instance via `HelmChartConfig` — Let's Encrypt certificates work identically in both cases.
-</Steps>
-
-## k3s Prerequisites
-
-- **RAM**: minimum 512 MB per node (1 GB recommended)
-- **Ports**: 6443 (API server), 10250 (Kubelet), 8472/UDP (Flannel VXLAN)
-- **OS**: Any Linux distribution supported by k3s (Debian, Ubuntu, RHEL, etc.)
 
 <Callout type="warning">
-  k3s adds ~50–100 MB of baseline RAM usage compared to Docker Swarm. On memory-constrained nodes (512 MB), this leaves less headroom for your application containers.
+  **Switching an existing environment's orchestrator is a redeploy into a new cluster** — releases are not
+  migrated between orchestrators. **Breaking change**: `dockflow setup k3s <env>` now connects with a
+  **bootstrap identity** (`--ssh-user`, default `root`, with `-k/--key` or `--password`) instead of the
+  deploy key the previous `dockflow setup k3s` used, and it installs and manages the *whole* cluster.
+  Kubernetes clusters created by a Dockflow version before this release (or set up by hand) are **not
+  supported** and have no migration path — uninstall them and run `dockflow setup k3s <env>` fresh. See
+  [Cluster setup](/en/configuration/kubernetes/setup) for the full procedure.
 </Callout>
 
-## Compose Compatibility
+## Support matrix
 
-Your existing `docker-compose.yml` works as-is with both backends. Dockflow handles the translation:
-
-| Compose concept | Swarm | k3s |
+| Feature | Swarm | k3s |
 |---|---|---|
-| Services | Swarm services | Kubernetes Deployments + ClusterIP Services |
-| Named volumes | Docker volumes | PersistentVolumeClaims |
-| Bind mounts | Bind mounts | hostPath volumes |
-| `deploy.replicas` | Swarm replicas | `spec.replicas` |
-| `deploy.placement` | Swarm constraints | `nodeSelector` |
-| Traefik labels | Swarm labels | IngressRoute CRDs |
-| Ports | Published ports | ClusterIP service ports |
-| `healthcheck` | Native Docker health checks | `livenessProbe` + `readinessProbe` |
+| Compose services | `docker stack deploy` | translated to Kubernetes objects ([support table](/en/configuration/kubernetes/compose-support)) |
+| Accessories | separate stack `<project>-<env>-accessories` | same namespace as the app, distinguished by a role label |
+| Published ports `H:C` | routing mesh on every node | ServiceLB LoadBalancer on every node |
+| Services without ports | reachable by name | headless Service, reachable by name |
+| Automatic HTTPS | Traefik service | Traefik Helm release in `dockflow-system` (pinned chart) |
+| Failed update | reverted by Swarm | reverted by Dockflow (previous release's objects re-applied) |
+| First deploy failure | Swarm rollback | workloads left in place for debugging |
+| Release history, deploy lock | files on the manager | Secrets and a Lease in the cluster, shared by every server |
+| Several managers | leader probe | any Ready server (`/readyz`); managers must be an odd count (1, 3, 5) |
+| Local images | loaded on every node | imported into containerd on every node (pinned) |
+| Registry | `docker login` + `--with-registry-auth` | `dockflow-registry` image pull Secret |
+| `options.remote_build` | supported | refused |
+| `dockflow exec --user` | supported | refused |
+| Helm charts | not available | [`helm`](/en/configuration/helm) section |
+| `dockflow volumes` | not available | supported |
+| `dockflow prune --networks` | supported | refused |
+| Backups | `docker exec` | `kubectl exec` streams and helper pods |
+| Web dashboard | full | designed for Swarm; unsupported actions answer "not supported" |
 
-## Example
+## Refusals
 
-<Tabs items={['Swarm (default)', 'k3s']}>
-  <Tabs.Tab>
-```yaml
-# .dockflow/config.yml
-project_name: "my-app"
-# orchestrator: swarm  (default, can be omitted)
+An action a backend does not implement is refused before any remote work, with a message and a suggestion —
+never a silent no-op:
 
-proxy:
-  enabled: true
-  email: admin@example.com
-  domains:
-    production: my-app.example.com
-```
-  </Tabs.Tab>
-  <Tabs.Tab>
-```yaml
-# .dockflow/config.yml
-project_name: "my-app"
-orchestrator: k3s
+| Capability | Message | Suggestion |
+|---|---|---|
+| `exec --user` | `<operation> is not supported with orchestrator: k3s: the Kubernetes exec API runs commands as the container user` | `Set user: in docker-compose.yml, or run: dockflow exec <env> <service> -- su -s /bin/sh <user> -c '<command>'` |
+| `build --remote` / `options.remote_build` | `<operation> is not supported with orchestrator: k3s: k3s nodes run containerd only and ship no image builder` | `Build locally (remove options.remote_build) or push to a registry.` |
+| `dockflow helm *` on Swarm | `<operation> requires orchestrator: k3s` | `Helm releases are only supported on Kubernetes.` |
+| `dockflow volumes *` on Swarm | `<operation> is not supported with orchestrator: swarm` | `List Swarm volumes on a node with: dockflow ssh <env> then docker volume ls.` |
+| `dockflow prune --networks` on k3s | `<operation> is not supported with orchestrator: k3s: the pod network is managed by the cluster` | (none) |
 
-proxy:
-  enabled: true
-  email: admin@example.com
-  domains:
-    production: my-app.example.com
-```
-  </Tabs.Tab>
-</Tabs>
+An API route hitting one of these returns HTTP 501 with `{success: false, message, suggestion}` instead of a
+plain error.
 
-Both configurations use the same `docker-compose.yml` and `servers.yml` — the only difference is the `orchestrator` field.
+## Data safety
+
+| Command | Swarm volumes | k3s PersistentVolumeClaims |
+|---|---|---|
+| `dockflow deploy` (service removed) | kept | kept — never pruned |
+| `dockflow stop` | kept | kept |
+| `dockflow accessories remove` | kept | kept |
+| `dockflow accessories remove --volumes` | deleted after a typed confirmation | deleted after a typed confirmation, one volume at a time (each PersistentVolume's reclaim policy is switched to `Delete` only once its claim is gone, and restored if the command stops) |
+| `dockflow volumes rm` | not available | deleted after a typed confirmation; refused while mounted |
+| Helm release removed from `config.yml` | n/a | kept running when it owns PersistentVolumeClaims (`dockflow helm uninstall <env> <name> --volumes` removes them explicitly) |
+| web dashboard, API routes | never deletes volumes | never deletes volumes |
+
+<Callout type="info">
+  `-y` skips the prompt **and** the typed confirmation (for CI); without `-y` in a non-interactive shell the
+  command refuses instead of proceeding silently. `dockflow volumes list` shows every volume's reclaim
+  policy. See [Volumes & Data](/en/configuration/volumes) for the full protocol.
+</Callout>
+
+## Requirements
+
+- k3s **server**: 2 CPU / 2 GB RAM. k3s **agent**: 1 CPU / 512 MB RAM.
+- Ports, all restricted to the cluster's own nodes: TCP 6443 (agents to servers), TCP 10250 (every node to
+  every node), UDP 8472 **or** UDP 51820/51821 (WireGuard, depending on the flannel backend), TCP 2379-2380
+  (servers to servers, high availability only). 80/443 are opened to the public only when the [Automatic
+  HTTPS Proxy](/en/configuration/proxy) is enabled.
+
+<Callout type="warning">
+  A published compose port bypasses host `ufw`/`firewalld` `INPUT` rules on both orchestrators — restrict
+  it with `x-dockflow.lb_source_ranges` (k3s) or a provider firewall instead.
+</Callout>
+
+## Pinned versions
+
+See [Cluster setup → Pinned versions](/en/configuration/kubernetes/setup#pinned-versions) for the exact k3s,
+Helm and Traefik chart versions this Dockflow release installs.
+
+## See also
+
+- [Kubernetes (k3s)](/en/configuration/kubernetes): how a compose project maps to Kubernetes
+- [Cluster setup](/en/configuration/kubernetes/setup): provisioning a k3s cluster
+- [Helm](/en/configuration/helm): Helm chart releases
+- [Volumes & Data](/en/configuration/volumes): PersistentVolumeClaims and data safety
+- [Multi-Node Deployment](/en/configuration/multi-host): several managers and failover

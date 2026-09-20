@@ -24,13 +24,47 @@ Hooks allow you to run custom scripts at specific points during deployment.
   Local hooks run through bash. On Windows, dockflow automatically uses Git Bash when installed (the System32 WSL `bash.exe` stub is never used) — install [Git for Windows](https://git-scm.com/download/win) to run local hooks.
 </Callout>
 
+## Environment variables
+
+Every server-side entry receives these variables in its process environment, on both orchestrators:
+
+| Variable | Value |
+|----------|-------|
+| `DOCKFLOW_STACK` | The stack name |
+| `DOCKFLOW_ENV` | The environment being deployed |
+| `DOCKFLOW_VERSION` | The version being deployed |
+| `DOCKFLOW_ORCHESTRATOR` | `swarm` or `k3s` |
+
+On k3s, three more are set, so a hook can reach the cluster without any setup of its own:
+
+| Variable | Value |
+|----------|-------|
+| `DOCKFLOW_NAMESPACE` | The stack's namespace (`dockflow-{project}-{env}`) |
+| `KUBECONFIG` | `/var/lib/dockflow/kube/config` — the deploy user's cluster-admin kubeconfig |
+| `DOCKFLOW_KUBECTL` | `/usr/local/bin/k3s kubectl`, ready to run against that kubeconfig |
+
+```bash
+# .dockflow/hooks/warm-cache.sh
+#!/bin/bash
+if [ "$DOCKFLOW_ORCHESTRATOR" = "k3s" ]; then
+  $DOCKFLOW_KUBECTL -n "$DOCKFLOW_NAMESPACE" get pods
+fi
+```
+
+<Callout type="warning">
+  On k3s, every server-side hook runs in a **private working directory**,
+  `/var/lib/dockflow/hooks/<stack>` (mode `0700`, owned by the deploy user) — never a shared or
+  world-writable directory such as `/tmp`. A hook here has `KUBECONFIG` exported to a cluster-admin
+  identity; starting it in a directory any local user could write to would let that user plant a
+  file the hook might source, read or execute.
+</Callout>
+
 ## Entries
 
 Each phase holds a list of entries, run in the order they are declared. An entry is either a
 command to run or a script to execute:
 
 ```yaml
-# .dockflow/config.yml
 hooks:
   post-upload:
     - name: nginx
@@ -127,7 +161,6 @@ DATABASE_URL="{{ current.env.database_url }}"
 ### Pre-build: Generate assets
 
 ```yaml
-# .dockflow/config.yml
 hooks:
   pre-build:
     - npm run build:assets
@@ -136,7 +169,6 @@ hooks:
 ### Post-build: Security scan
 
 ```yaml
-# .dockflow/config.yml
 hooks:
   post-build:
     - docker scan {{ project_name }}:{{ version }} || true
@@ -145,7 +177,6 @@ hooks:
 ### Pre-upload: Stop a service before files arrive
 
 ```yaml
-# .dockflow/config.yml
 hooks:
   pre-upload:
     - sudo systemctl stop myapp || true
@@ -154,7 +185,6 @@ hooks:
 ### Post-upload: Run a migration on uploaded files
 
 ```yaml
-# .dockflow/config.yml
 hooks:
   post-upload:
     - cd /var/www/myapp && php artisan migrate --force
@@ -166,7 +196,6 @@ A longer step reads better as a script. Its path is declared in `config.yml`; th
 itself is rendered like any other file under `.dockflow/`:
 
 ```yaml
-# .dockflow/config.yml
 hooks:
   pre-deploy:
     - name: backup
@@ -184,7 +213,6 @@ pg_dump "{{ current.env.database_url }}" > /backups/pre-deploy-{{ version }}.sql
 ### Post-deploy: Reload a systemd service
 
 ```yaml
-# .dockflow/config.yml
 hooks:
   post-deploy:
     - sudo systemctl daemon-reload
@@ -196,7 +224,6 @@ hooks:
 A phase runs its entries in order, commands and scripts alike:
 
 ```yaml
-# .dockflow/config.yml
 hooks:
   pre-build:
     - script: .dockflow/hooks/check-env.sh
@@ -207,7 +234,6 @@ hooks:
 ### Post-deploy: Notify team
 
 ```yaml
-# .dockflow/config.yml
 hooks:
   post-deploy:
     - script: .dockflow/hooks/notify.sh
@@ -224,7 +250,6 @@ curl -X POST "https://hooks.slack.com/services/xxx" \
 ## Configuration
 
 ```yaml
-# .dockflow/config.yml
 hooks:
   enabled: true    # Enable/disable all hooks (default: true)
   timeout: 300     # Default timeout per entry, in seconds (default: 300)

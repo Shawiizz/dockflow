@@ -8,6 +8,7 @@ Dockflow supports **Docker** (default) and **Podman** as container engines for b
 
 ```yaml
 # .dockflow/config.yml
+project_name: "my-app"
 container_engine: podman
 ```
 
@@ -31,15 +32,28 @@ Podman is CLI-compatible with Docker for these operations, so your `docker-compo
 
 ### k3s and containerd
 
-When using `orchestrator: k3s`, images are always imported via `k3s ctr -n k8s.io images import` (containerd) regardless of the build engine. You can build with Docker or Podman locally, and Dockflow handles the transfer to containerd on the k3s node.
+When using `orchestrator: k3s`, images are always imported via `k3s ctr -n k8s.io images import`
+(containerd) regardless of the build engine. You can build with Docker or Podman locally, and
+Dockflow handles the transfer to containerd on every eligible k3s node.
 
 ```
 # With Docker + k3s:
-docker save myapp:1.0 | ssh node "sudo k3s ctr -n k8s.io images import -"
+docker save myapp:1.0 | ssh node "sudo k3s ctr -n k8s.io images import --label io.cri-containerd.pinned=pinned -"
 
 # With Podman + k3s:
-podman save myapp:1.0 | ssh node "sudo k3s ctr -n k8s.io images import -"
+podman save myapp:1.0 | ssh node "sudo k3s ctr -n k8s.io images import --label io.cri-containerd.pinned=pinned -"
 ```
+
+Imported images are re-tagged under a reference that never resolves on its own,
+`dockflow.invalid/<image>`, before being imported — so a node that is missing the import fails
+fast with `ErrImagePull` instead of accidentally pulling a same-named public image from Docker Hub.
+The `io.cri-containerd.pinned=pinned` label keeps kubelet's image garbage collector from evicting it
+between deploys; `dockflow prune` still removes it once it's no longer referenced by any release.
+
+<Callout type="warning">
+  `options.remote_build` is refused at validation on k3s: images are built where the CLI runs (or in
+  CI), never on a cluster node. See [Build Strategy](/en/configuration/build-strategy).
+</Callout>
 
 ## When to Use Podman
 

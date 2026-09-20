@@ -6,7 +6,18 @@ The `servers.yml` file defines your server topology (roles, tags) and environmen
 
 ## Architecture
 
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
 Dockflow uses **Docker Swarm** for orchestration. Each environment has one **manager** that receives deployments and optional **workers** that run distributed containers.
+  </Tabs.Tab>
+  <Tabs.Tab>
+Dockflow installs a **k3s** cluster. A `manager` in `servers.yml` becomes a k3s **server** (control
+plane, with embedded etcd when there is more than one); a `worker` becomes a k3s **agent**, which
+only runs workloads. Deploys, Helm releases and day-2 commands run over SSH on a control-plane node
+— see [Multi-Node Deployment](/en/configuration/multi-host) for HA and failover, and
+[Cluster Setup](/en/configuration/kubernetes/setup) for the full provisioning flow.
+  </Tabs.Tab>
+</Tabs>
 
 ```mermaid
 graph TD
@@ -138,12 +149,17 @@ sequences such as `\n` are not expanded.
 
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `role` | No | `manager` | Node role: `manager` or `worker` |
+| `role` | No | `manager` | Node role: `manager` (Swarm manager / k3s server) or `worker` (Swarm worker / k3s agent) |
 | `tags` | Yes | - | Environment tags (e.g., `[production]`) |
 | `env` | No | - | Server-specific environment variables |
 | `host` | No | From connection string | Override host (rarely needed) |
+| `private_host` | No | `host` | **k3s only.** Address used for cluster traffic: the k3s node IP, the address firewall rules restrict cluster ports to, and the server/agent join address. IPv4 only so far. |
+| `node_labels` | No | - | **k3s only.** Kubernetes node labels applied by `dockflow setup k3s`, usable from `x-dockflow.node_selector` to pin a service to specific nodes. |
 | `user` | No | `defaults.user` | Override SSH user |
 | `port` | No | `defaults.port` | Override SSH port |
+
+See [Multi-Node Deployment](/en/configuration/multi-host#private-ip-and-node-labels) for
+`private_host`/`node_labels` examples and the HA manager-count rule.
 
 ### Examples
 
@@ -152,6 +168,7 @@ sequences such as `\n` are not expanded.
     For simple deployments, a single manager is sufficient:
 
     ```yaml
+    # .dockflow/servers.yml
     servers:
       production_server:
         role: manager
@@ -162,6 +179,7 @@ sequences such as `\n` are not expanded.
     For horizontal scaling, add workers:
 
     ```yaml
+    # .dockflow/servers.yml
     servers:
       manager:
         role: manager
@@ -186,8 +204,10 @@ sequences such as `\n` are not expanded.
 
 ## Cluster Setup
 
-Before your first multi-node deployment, initialize the Swarm cluster:
+Before your first multi-node deployment, initialize the cluster:
 
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
 <Steps>
 ### Configure secrets
 
@@ -216,6 +236,36 @@ Swarm automatically distributes containers to workers based on resource availabi
 <Callout type="info">
   You only need to run `setup swarm` once per environment. After that, just use `dockflow deploy`.
 </Callout>
+  </Tabs.Tab>
+  <Tabs.Tab>
+<Steps>
+### Configure secrets
+
+Add connection strings for **all** nodes (managers + workers) in `.env.dockflow` or your CI/CD platform.
+
+### Initialize the cluster
+
+```bash
+dockflow setup k3s production --ssh-user root --key ~/.ssh/bootstrap_ed25519
+```
+
+Unlike Swarm setup, this connects with a **bootstrap identity** (`--ssh-user`, `-k/--key` or
+`--password`) rather than the deploy key — see the full flag table and what gets installed on the
+[Cluster setup guide](/en/configuration/kubernetes/setup).
+
+### Deploy
+
+```bash
+dockflow deploy production
+```
+</Steps>
+
+<Callout type="info">
+  You only need to run `setup k3s` once per environment (again after adding a node, or with
+  `--upgrade` to move to a newer pinned k3s). After that, just use `dockflow deploy`.
+</Callout>
+  </Tabs.Tab>
+</Tabs>
 
 ## Deploy User Permissions
 
@@ -223,6 +273,8 @@ Swarm automatically distributes containers to workers based on resource availabi
 group**. It is a machine account whose SSH key lives in your CI secrets, so it is granted only
 what a deployment actually needs.
 
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
 **Group membership**
 
 | Group | Why |
@@ -235,21 +287,68 @@ then `www-data`. Setup also runs `chgrp -R` and `chmod -R g+rwX` on `sites-enabl
 
 **Sudo rules**
 
-Setup writes `/etc/sudoers.d/<username>` (mode `0440`) with exactly three entries — binary
-paths are resolved with `which` at setup time:
+Setup writes `/etc/sudoers.d/<username>` (mode `0440`) with the nginx rule only, when nginx is
+installed on the host (the [nginx plugin](/en/configuration/plugins#nginx) needs it) — binary paths
+are resolved with `which` at setup time:
 
 ```
 dockflow ALL=(ALL) NOPASSWD: /usr/sbin/nginx -t, /usr/sbin/nginx -s reload
-dockflow ALL=(ALL) NOPASSWD: /usr/local/bin/k3s ctr -n k8s.io images *
-dockflow ALL=(ALL) NOPASSWD: /bin/cat /var/lib/rancher/k3s/server/node-token
 ```
 
-Nothing else is granted. In particular there is **no rule for `systemctl`** — a hook running
-`sudo systemctl daemon-reload` will fail on a normally provisioned server.
+On a host without nginx, the file is removed rather than left empty. Nothing else is granted — in
+particular there is **no rule for `systemctl`**; a hook running `sudo systemctl daemon-reload` fails
+on a normally provisioned server.
+  </Tabs.Tab>
+  <Tabs.Tab>
+**Deploy identity**
+
+There is no Docker group to join: day-2 commands and deploys authenticate to the Kubernetes API
+with a dedicated kubeconfig at `/var/lib/dockflow/kube/config` (mode `0600`, owned by the deploy
+user), bound to a ServiceAccount with **cluster-admin**.
 
 <Callout type="warning">
-  **Put your own rules in your own file.** Setup rewrites `/etc/sudoers.d/<username>` every time
-  it runs, so anything you add there is lost on the next `dockflow setup`. Use a separate file:
+  Stated honestly: cluster-admin is broad. Helm charts routinely need cluster-scoped objects
+  (CRDs, ClusterRoles), and the deploy user is already root-equivalent on Swarm through the
+  `docker` group — this keeps the same trust level rather than pretending to narrow it. A
+  namespace-scoped deploy identity is future work. Revoke access by deleting the
+  `dockflow-deployer-token` Secret and re-running setup.
+</Callout>
+
+**Sudo rules**
+
+Setup writes `/etc/sudoers.d/dockflow-k3s` (mode `0440`, owned by `root`) with exactly **five**
+commands — the only things a k3s node ever needs `sudo` for, all related to importing and
+inspecting locally built images in containerd:
+
+```
+# Managed by Dockflow (dockflow setup, orchestrator k3s). Changes are overwritten.
+Cmnd_Alias DOCKFLOW_K3S_IMAGES = /usr/local/bin/k3s ctr -n k8s.io images import --label io.cri-containerd.pinned\=pinned -, \
+    /usr/local/bin/k3s crictl images -o json, \
+    /usr/local/bin/k3s ctr -n k8s.io images ls, \
+    /usr/local/bin/k3s ctr -n k8s.io images rm *, \
+    /usr/local/bin/k3s crictl rmi --prune
+Defaults!DOCKFLOW_K3S_IMAGES !requiretty
+dockflow ALL=(root) NOPASSWD: DOCKFLOW_K3S_IMAGES
+```
+
+The nginx plugin's own rule, if used, still goes in the separate per-user file
+(`/etc/sudoers.d/<username>`) described in the Swarm tab — the two files are independent, so a k3s
+host running the nginx plugin ends up with both. There is still **no rule for `systemctl`**.
+
+<Callout type="error">
+  **Older Dockflow versions wrote two different, root-equivalent rules** into
+  `/etc/sudoers.d/<username>` (`k3s ctr -n k8s.io images *` — any `ctr images` subcommand with any
+  arguments — and `cat .../node-token`, which reads the cluster's join secret). `dockflow setup`
+  now detects and removes them, and warns if a hand-edited file still contains one:
+  `Legacy root-equivalent sudo rules are still present on <node> (<files>)`. Inspect and delete them
+  by hand if you see that warning after an upgrade.
+</Callout>
+  </Tabs.Tab>
+</Tabs>
+
+<Callout type="warning">
+  **Put your own rules in your own file.** Setup rewrites the files above every time it runs, so
+  anything you add there is lost on the next `dockflow setup`. Use a separate file:
 
   ```bash
   echo 'dockflow ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload' | sudo tee /etc/sudoers.d/dockflow-myapp > /dev/null

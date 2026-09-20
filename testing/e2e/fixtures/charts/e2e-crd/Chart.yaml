@@ -1,0 +1,6 @@
+apiVersion: v2
+name: e2e-crd
+description: Dockflow e2e fixture chart — a CRD in crds/ plus one custom resource of that kind
+type: application
+version: 0.1.0
+appVersion: "1.0"

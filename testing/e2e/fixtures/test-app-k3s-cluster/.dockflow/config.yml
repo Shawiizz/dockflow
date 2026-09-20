@@ -1,0 +1,5 @@
+# Used only by the lane preload (k3s/setup.ts) to run `dockflow setup k3s e2e` against a fresh
+# topology. servers.yml is generated for the lane (helpers/fixtures.ts); nothing else is deployed
+# with this fixture, so it carries no docker-compose.yml.
+project_name: k3s-cluster
+orchestrator: k3s

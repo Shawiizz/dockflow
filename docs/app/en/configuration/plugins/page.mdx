@@ -7,12 +7,21 @@ its activation — so a project declares it in a few lines instead of rewriting 
 contribute to exactly two things, [file uploads](/en/configuration/upload) and
 [hook entries](/en/configuration/hooks), and never to anything else in your configuration.
 
+<Callout type="info">
+  Plugins are **host-level**, not orchestrator-level: they still run on the servers of the
+  environment over SSH, exactly as on Swarm. `orchestrator: k3s` changes nothing about how a plugin
+  is declared or what it contributes — see [Kubernetes hosts](#kubernetes-k3s-hosts) below for the
+  one thing that does change, the sudo rules a plugin needs.
+</Callout>
+
 ## Using a plugin
 
 Declare it in `.dockflow/config.yml`, with values for the inputs it expects:
 
 ```yaml
 # .dockflow/config.yml
+project_name: "my-app"
+
 plugins:
   - use: nginx
     with:
@@ -85,7 +94,8 @@ server {
 ```
 
 `dockflow setup` installs nginx and grants the deploy user what this plugin needs: group-write on
-`sites-enabled`, and sudo for `nginx -t` and `nginx -s reload`. See
+`sites-enabled` (Swarm), and sudo for `nginx -t` and `nginx -s reload` in `/etc/sudoers.d/<user>` —
+on both orchestrators, next to whatever other sudoers file the orchestrator itself writes there. See
 [Deploy User Permissions](/en/configuration/servers#deploy-user-permissions).
 
 ### systemd
@@ -133,6 +143,24 @@ plugins:
   dockflow ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable --now worker.service
   ```
 </Callout>
+
+## Kubernetes (k3s) hosts
+
+Plugins run on the servers of the environment over SSH exactly as on Swarm — a k3s node is still a
+regular Linux host, and the nginx and systemd plugins work there unchanged.
+
+- **Sudo rules stay separate.** k3s setup writes its own five image-management commands to
+  `/etc/sudoers.d/dockflow-k3s` (see [Deploy User Permissions](/en/configuration/servers#deploy-user-permissions)).
+  The nginx plugin's `nginx -t` / `nginx -s reload` rule lives in `/etc/sudoers.d/<user>`, exactly as
+  on Swarm — a k3s host running the nginx plugin simply has both files. The systemd plugin still
+  needs its own sudoers rule of your own on **both** orchestrators; setup grants no `systemctl`
+  right by itself. An upload with `owner:` still needs the `chown` sudoers rule the upload error
+  prints.
+- **The nginx plugin's listen port is a reserved host port.** Whatever port nginx listens on
+  (`listen`, default `80`) is reserved on that node exactly like the SSH port, so a compose service
+  that tries to publish the same port on the same node is refused at validation time. A
+  Dockflow-managed Traefik (see [Automatic HTTPS Proxy](/en/configuration/proxy)) and the nginx
+  plugin cannot both bind 80/443 on the same node — put them on different nodes, or drop one.
 
 ## Several instances
 

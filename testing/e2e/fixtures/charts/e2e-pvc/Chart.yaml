@@ -1,0 +1,6 @@
+apiVersion: v2
+name: e2e-pvc
+description: Dockflow e2e fixture chart — a PVC on dockflow-local plus a Deployment mounting it
+type: application
+version: 0.1.0
+appVersion: "1.0"

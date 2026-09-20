@@ -1,0 +1,237 @@
+# Helm
+
+import { Callout, Steps } from 'nextra/components'
+
+<Callout type="info">k3s only.</Callout>
+
+Deploy Helm charts alongside your compose project — or instead of one entirely. Dockflow resolves, pins and
+applies every declared release as part of `dockflow deploy`, records what it installed, and rolls a release
+back to the exact bytes it recorded when something goes wrong.
+
+## Minimal example
+
+```yaml
+# .dockflow/config.yml
+project_name: shop
+orchestrator: k3s
+helm:
+  releases:
+    - name: podinfo
+      chart: podinfo
+      repo: https://stefanprodan.github.io/podinfo
+      version: 6.15.0
+      values:
+        replicaCount: 2
+```
+
+## Options
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `helm.timeout` | duration (`90s`, `5m`, `1h`) | `5m` | default `timeout` of every release |
+| `helm.releases` | list | `[]` | apply order = list order |
+| `releases[].name` | DNS-1123 label, at most 53 characters | required | Helm release name; unique across roles; used by `--only`, `rollback`, `helm *` |
+| `releases[].chart` | `oci://host[:port]/path/<chart>`, or a chart name | required | an OCI reference without tag or digest, or the chart name inside `repo` |
+| `releases[].repo` | `http(s)://` URL | required unless `chart` is `oci://` | the chart repository (`http://` is accepted with a warning, and refused together with `auth`) |
+| `releases[].version` | exact SemVer, optional leading `v` | required | no ranges, no `latest` |
+| `releases[].digest` | 64 lowercase hex | none | expected sha256 of the chart **archive** (`.tgz`), verified on every pull; without it Dockflow records the digest it installed and verifies it on rollback |
+| `releases[].role` | `app` \| `accessory` | `app` | see [Roles](#roles) |
+| `releases[].namespace` | DNS-1123 label | the stack namespace | another namespace is created automatically; Dockflow never labels or deletes it |
+| `releases[].values_files` | list of project-relative paths | `[]` | merged in order; must be under `.dockflow/` or listed in `templates:` (both Nunjucks-rendered) |
+| `releases[].values` | map | `{}` | merged after `values_files`, and Nunjucks-rendered with the rest of `config.yml` |
+| `releases[].timeout` | duration, 30s to 1h | `helm.timeout` | Helm's own `--timeout` |
+| `releases[].auth` | `{username, password}` | none | basic auth for `repo`, or registry login for `oci://`; never stored in releases or printed |
+
+<Callout type="warning">
+  Values in `values` and `values_files` follow **Helm's own YAML rules**, not `config.yml`'s: `yes`, `on` and
+  `off` parse as booleans and `0644` as octal, exactly as in the chart's own `values.yaml`.
+</Callout>
+
+## How it works
+
+<Steps>
+### Resolution, before the deploy lock
+
+Every declared chart is resolved and pinned (its exact archive pulled, hashed and cached) before the deploy
+lock is taken, so a slow or unreachable repository fails fast without holding the lock.
+
+### Values merge
+
+`values_files` (in list order), then `values`, are merged and rendered with the same Nunjucks context as
+every other file under `.dockflow/`. Secrets go through `{{ value | dump }}` for a YAML-safe, JSON-quoted
+result; a chart value that is itself a Go template (evaluated by the chart, not by Dockflow) is escaped with
+`{% raw %}...{% endraw %}`.
+
+### Apply
+
+`helm upgrade --install` with a wait for the release to become ready and an automatic rollback on failure.
+Releases are applied **before** compose objects in a deploy, in list order, and are recorded with a set of
+`P/...` ownership labels so Dockflow can tell its own releases from ones installed by hand.
+
+### Recording and rollback
+
+Each release records its chart version, its resolved values **and the archive's sha256**. `dockflow helm
+rollback` restores exactly those bytes, or refuses when the chart content on the repository has since
+changed (`--allow-chart-drift` overrides the refusal deliberately).
+</Steps>
+
+## Roles
+
+- **`app`** (the default): deployed with the application, on the same schedule as `docker-compose.yml`.
+  Removed from `config.yml` and no longer declared → uninstalled on the next deploy, **unless** it owns
+  PersistentVolumeClaims, in which case it keeps running and the deploy warns
+  (`Helm release <n> is no longer in config.yml but owns volumes (<pvcs>); it keeps running.`) rather than
+  silently deleting a database.
+- **`accessory`**: change-detected like `accessories.yml` — reapplied only when its declaration changes — and
+  **never uninstalled implicitly**, even when removed from `config.yml`; the deploy warns instead so the
+  operator decides.
+
+## Examples
+
+**Accessory chart, secret from the environment:**
+
+```yaml
+# .dockflow/config.yml
+helm:
+  timeout: 10m
+  releases:
+    - name: postgres
+      role: accessory
+      chart: postgresql
+      repo: https://charts.example.org
+      version: 16.7.4
+      values_files:
+        - .dockflow/helm/postgres.yaml
+```
+
+```yaml
+# .dockflow/helm/postgres.yaml
+auth:
+  username: shop
+  database: shop
+  password: {{ current.env.db_password | dump }}
+primary:
+  persistence:
+    storageClass: dockflow-local
+```
+
+The application reaches it through the Service the chart creates, in the same namespace:
+
+```yaml
+# .dockflow/docker/docker-compose.yml
+services:
+  api:
+    environment:
+      DATABASE_HOST: postgres-postgresql
+```
+
+**Private OCI registry, routed through Dockflow's Traefik with a plain Ingress:**
+
+```yaml
+helm:
+  releases:
+    - name: search
+      chart: oci://registry.example.com/charts/search
+      version: 2.4.1
+      auth:
+        username: {{ current.env.registry_user | dump }}
+        password: {{ current.env.registry_token | dump }}
+      values:
+        ingress:
+          enabled: true
+          className: traefik
+          annotations:
+            traefik.ingress.kubernetes.io/router.entrypoints: websecure
+            traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+          hosts:
+            - host: search.example.com
+              paths: [{path: /, pathType: Prefix}]
+```
+
+**A chart whose own values contain a Go template**, escaped from Nunjucks with `{% raw %}`:
+
+```yaml
+# .dockflow/helm/api.yaml
+podLabels:
+  release: "{% raw %}{{ .Release.Name }}{% endraw %}"
+```
+
+## Helm-only projects
+
+A project with no `docker-compose.yml` and at least one `app`-role release is a Helm-only project — the same
+`dockflow deploy`, `status`, `rollback`, `logs`, `exec` and `stop` work against its Helm-managed workloads.
+Add `proxy.enabled` and `health_checks.endpoints` as usual to route and verify it:
+
+```yaml
+# .dockflow/config.yml
+project_name: wiki
+orchestrator: k3s
+proxy:
+  enabled: true
+  email: ops@example.com
+  domains:
+    production: wiki.example.com
+health_checks:
+  endpoints:
+    - url: https://wiki.example.com/health
+helm:
+  releases:
+    - name: wiki
+      chart: wiki
+      repo: https://charts.example.org
+      version: 3.2.0
+      values_files:
+        - .dockflow/helm/wiki.yaml
+        - .dockflow/helm/wiki.{{ env }}.yaml
+```
+
+## Cluster-scoped charts
+
+An operator or a chart that ships its own CRDs is declared like any other release, usually with `role:
+accessory` and its own `namespace` so it does not collide with the application:
+
+```yaml
+helm:
+  releases:
+    - name: example-operator
+      role: accessory
+      chart: oci://registry.example.com/charts/example-operator
+      version: v1.18.2
+      namespace: example-operator
+      timeout: 15m
+```
+
+Charts that ship CRDs in `crds/` install them once and never upgrade them (Helm's own rule); CRDs delivered
+through `templates/` are upgraded normally.
+
+## Commands
+
+| Command | Purpose |
+|---|---|
+| `dockflow helm list <env> [--role app\|accessory] [--json]` | every owned release, plus declared releases that are not yet installed |
+| `dockflow helm status <env> [release] [--system]` | release, workloads and volumes of one release; `--system` shows the Dockflow-owned Traefik release too |
+| `dockflow helm history <env> <release> [--max <n>]` | revision history, newest first |
+| `dockflow helm values <env> <release> [--reveal]` | the user-supplied values of a revision; sensitive-looking keys are masked unless `--reveal` (requires an interactive terminal) |
+| `dockflow helm uninstall <env> <release> [--volumes\|--keep-volumes]` | uninstall a release; refused without a volume flag when it owns deletable PersistentVolumeClaims |
+| `dockflow helm rollback <env> <release> [revision]` | roll back to an earlier revision, or the newest superseded one by default |
+
+## Caveats
+
+- **Pinned Helm version only** — see the [Cluster setup](/en/configuration/kubernetes/setup#pinned-versions)
+  pins table; no other Helm binary is used.
+- **Exact chart versions only**: no ranges, no `latest`. `digest` pins the archive bytes as well as the
+  version.
+- **The PVC rule** (also documented on [Volumes & Data](/en/configuration/volumes)): `helm uninstall` deletes
+  every object in a chart's manifest unless the chart itself protects it, so Dockflow refuses an implicit
+  uninstall of any release that owns PersistentVolumeClaims and asks for `--volumes` or `--keep-volumes`
+  explicitly.
+- **`dockflow-traefik` is reserved** for Dockflow's own Traefik release — do not declare a release with that
+  name; see the [Automatic HTTPS Proxy](/en/configuration/proxy) page for how it is managed.
+- Charts run with the deploy identity's cluster-admin rights (the same identity every other object is applied
+  with) — treat a chart as trusted code, the same way you would treat root access on a server.
+
+## See also
+
+- [Kubernetes (k3s)](/en/configuration/kubernetes): compose-to-Kubernetes translation
+- [Volumes & Data](/en/configuration/volumes): PersistentVolumeClaims and the reclaim-policy protocol
+- [Automatic HTTPS Proxy](/en/configuration/proxy): the Dockflow-owned Traefik Helm release

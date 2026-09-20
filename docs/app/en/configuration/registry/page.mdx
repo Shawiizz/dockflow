@@ -2,12 +2,14 @@
 
 import { Callout, Tabs } from 'nextra/components'
 
-A Docker registry stores your images centrally so Swarm nodes can pull them independently.
+A Docker registry stores your images centrally so cluster nodes can pull them independently — on
+Swarm as well as on k3s, the `registry` configuration below is identical.
 
 ## When to Use
 
 - **Single node**: Not required. Images are transferred via SSH.
 - **Multi-node Swarm**: Recommended for large clusters. Without a registry, Dockflow transfers images to each node via SSH (`docker save | ssh | docker load`), which works well for small clusters but becomes slower as the number of nodes or image size grows.
+- **Multi-node k3s**: Recommended for the same reason — without a registry, Dockflow imports images into containerd on each node over SSH (`docker save | ssh | k3s ctr images import`, see [Container Engine](/en/configuration/container-engine#k3s-and-containerd)).
 
 ## Configuration
 
@@ -120,10 +122,30 @@ ghcr.io/your-org/my-app:production  # additional tag ({env} replaced)
 
 Available variables: `{version}`, `{env}`, `{branch}`, `{sha}`
 
+## How Nodes Pull From a Private Registry
+
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
+    Dockflow logs in on the manager (`docker login`) and deploys with `--with-registry-auth`, which
+    forwards the encrypted credentials to every worker so they can pull independently. Nothing is
+    written to disk on the workers.
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Dockflow applies one Kubernetes image pull Secret, `dockflow-registry`
+    (`kubernetes.io/dockerconfigjson`), in the stack's namespace, and every workload references it.
+    There is no `docker login` step and no `registries.yaml` to edit on any node — the credentials
+    exist only inside that Secret, rotate by re-deploying, and reach no node's filesystem.
+  </Tabs.Tab>
+</Tabs>
+
 ## Troubleshooting
 
-**Authentication failed**: Test credentials manually with `docker login`.
+**Authentication failed**: Test credentials manually with `docker login` (Swarm) — on k3s, check that
+`username`/`password` or `token` resolve to real values with `dockflow validate <env>`.
 
 **Push denied**: Verify write access to the namespace.
 
-**Workers cannot pull**: Ensure all Swarm nodes can reach the registry. For private registries, authenticate on each node.
+**Workers cannot pull (Swarm)**: Ensure all Swarm nodes can reach the registry. For private registries, authenticate on each node.
+
+**Pods stuck `ImagePullBackOff` (k3s)**: Check `dockflow diagnose <env>` for the pull error, and
+confirm `registry.enabled: true` so the `dockflow-registry` Secret is actually applied.

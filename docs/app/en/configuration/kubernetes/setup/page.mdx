@@ -1,0 +1,283 @@
+# Cluster setup
+
+import { Callout, Steps, Tabs } from 'nextra/components'
+
+`dockflow setup k3s <env>` installs a pinned, checksum-verified [k3s](https://k3s.io) cluster on every server
+of an environment and prepares everything Dockflow deploys with: the storage class, the deploy identity, Helm,
+and (on request) the firewall rules. Re-running it is safe — it upgrades, repairs drift and adds nodes rather
+than reinstalling from scratch.
+
+<Callout type="warning">
+  **Breaking change.** `dockflow setup k3s <env>` now connects with a **bootstrap identity**
+  (`--ssh-user`, default `root`, with `-k/--key` or `--password`) — **never** with the deploy key the previous
+  `dockflow setup k3s` used — and it installs, upgrades, configures and verifies the *whole* cluster, not just
+  one more node. A cluster created by the previous k3s support, or by hand, has no Dockflow `state.json` and is
+  **refused**: uninstall it first (`k3s-uninstall.sh` on every node) and run `dockflow setup k3s <env>` again.
+  There is no migration path. This is the same breaking change stated on the
+  [Orchestrator](/en/configuration/orchestrator) page.
+</Callout>
+
+## Prerequisites
+
+- A systemd Linux host, amd64 or arm64, for every server and agent of the environment.
+- Root SSH access for the bootstrap user, or passwordless sudo.
+- Outbound HTTPS from every node to `github.com`, `get.helm.sh` and `traefik.github.io` (the pinned chart is
+  cached locally by setup afterwards) and to Docker Hub for system images.
+- 2 CPU / 2 GB RAM per server, 1 CPU / 512 MB per agent.
+- IPv4 addresses only (v1 does not support IPv6 cluster addresses); WireGuard support in the kernel when nodes
+  only share public addresses (below).
+
+## servers.yml for k3s
+
+`role: manager` becomes a k3s **server** (control plane + etcd/SQLite datastore); `role: worker` becomes an
+**agent**. `private_host` should be the address the servers and agents use to reach each other — set it
+whenever the nodes share a private network, since high availability (more than one manager) requires it.
+`node_labels` become Kubernetes node labels, matched by `x-dockflow.node_selector`. Manager counts must be odd
+(1, 3, 5, 7 — an even count cannot keep an embedded-etcd quorum through a single failure and is refused).
+
+<Tabs items={['Single server', 'Server + agents', 'HA (3 servers)']}>
+  <Tabs.Tab>
+```yaml
+# .dockflow/servers.yml
+defaults:
+  user: deploy
+servers:
+  cp1:
+    host: 203.0.113.10
+    private_host: 10.0.0.10
+    role: manager
+    tags: [production]
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```yaml
+# .dockflow/servers.yml
+defaults:
+  user: deploy
+servers:
+  cp1:
+    host: 203.0.113.10
+    private_host: 10.0.0.10
+    role: manager
+    tags: [production]
+  worker1:
+    host: 203.0.113.20
+    private_host: 10.0.0.20
+    role: worker
+    tags: [production]
+    node_labels:
+      zone: a
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```yaml
+# .dockflow/servers.yml
+defaults:
+  user: deploy
+servers:
+  cp1:
+    host: 203.0.113.10
+    private_host: 10.0.0.10
+    role: manager
+    tags: [production]
+  cp2:
+    host: 203.0.113.11
+    private_host: 10.0.0.11
+    role: manager
+    tags: [production]
+  cp3:
+    host: 203.0.113.12
+    private_host: 10.0.0.12
+    role: manager
+    tags: [production]
+```
+  </Tabs.Tab>
+</Tabs>
+
+```bash
+dockflow setup k3s production --ssh-user root --key ~/.ssh/bootstrap_ed25519
+```
+
+## What setup installs
+
+<Steps>
+### Binaries and configuration
+
+The pinned, checksum-verified k3s binary and `install.sh`; a drop-in config enabling secrets encryption,
+disabling the bundled Traefik (Dockflow ships its own, see [Helm](/en/configuration/helm)), setting the
+kubeconfig mode to `0600`, the node name to the servers.yml key, and the node IP to `private_host`.
+
+### Servers, then agents
+
+Servers first — sequentially, the first one initializing the cluster (or embedded etcd, with high
+availability) — then every agent in parallel. Re-running with new servers.yml entries only touches the new
+nodes.
+
+### Helm, storage, identity
+
+The pinned Helm binary; the `dockflow-system` namespace; the `dockflow-local` StorageClass (`Retain` reclaim
+policy, patched to be the *only* default class — see [Volumes & Data](/en/configuration/volumes)); the
+cluster-admin deploy identity and its kubeconfig, written to every server.
+
+### Firewall and verification
+
+Firewall rules restricted to cluster nodes, when an active `ufw` or `firewalld` is found (below); a final
+check that every node is `Ready`, the system pods are running, and secrets encryption is enabled.
+</Steps>
+
+## Pinned versions
+
+{/* BEGIN GENERATED: k3s-pins (cli/scripts/pin-kubernetes.ts) */}
+| Component | Version |
+|---|---|
+| k3s | `v1.36.4+k3s1` |
+| Minimum server version | `v1.34.0` |
+| Helm | `v4.3.0` |
+| Traefik chart | `41.6.0` (Traefik `v3.7.13`) |
+{/* END GENERATED: k3s-pins */}
+
+Every binary, chart and image Dockflow installs is pinned to an exact version and verified against a sha256
+checksum before use (`cli/scripts/pin-kubernetes.ts` refreshes this table together with the CLI's own pinned
+constants, so it can never drift from what a deploy actually installs). `dockflow setup k3s <env> --upgrade`
+moves an existing cluster to the pins of the Dockflow version you run, one minor version at a time, servers
+before agents.
+
+## Options
+
+Cluster mode (`dockflow setup k3s <env> [options]`, equivalently `dockflow setup --orchestrator k3s --env
+<env> [options]`); `dockflow setup k3s --help` shows the same table with current defaults.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `<env>` | required | environment tag in `servers.yml` |
+| `--ssh-user <user>` | `root` | bootstrap SSH user — never the deploy user's key unless given here explicitly |
+| `-k, --key <path>` | none | bootstrap private key |
+| `--password <password>` | none | bootstrap SSH password (or key passphrase with `--key`); prefer the interactive prompt, since a flag value lands in shell history |
+| `--dev` | off | build the local CLI and upload it instead of downloading the release binary |
+| `--dry-run` | off | print the plan and every refusal, change nothing |
+| `-y, --yes` | off | do not ask before disruptive actions (upgrade, restart) — never enough on its own for `--reset` or a datastore conversion |
+| `--upgrade` | off | explicit consent to upgrade an existing cluster to the pins above |
+| `--convert-datastore` | off | explicit, one-way consent to convert SQLite to embedded etcd (adding managers to a single-server cluster) |
+| `--shared-cluster` | off | allow setting this environment up on nodes that already serve another Dockflow environment (see [Security model](#security-model)) |
+| `--flannel-backend <vxlan\|wireguard-native>` | computed | override the computed overlay backend on a fresh cluster; an existing cluster keeps its installed backend |
+| `--skip-firewall` | off | do not touch `ufw`/`firewalld`; print the required flows and the deny statement instead |
+| `--skip-network-check` | off | skip the cross-node pod network check |
+| `--skip-reachability-check` | off | skip the post-setup exposure probe |
+| `--insecure-host-key` | off | do not verify or record SSH host keys (prints a warning per node) |
+| `--require-host-key` | off | refuse to connect to a node with no recorded host key (for CI) |
+| `--rotate-deploy-token` | off | revoke and recreate the deployer token, and rewrite every kubeconfig |
+| `--reset` | off | uninstall mode (see [Uninstalling](#uninstalling)) |
+| `--node <key>` | all nodes | with `--reset` only: reset only these `servers.yml` keys |
+| `--delete-volumes` | off | with `--reset` only: also delete volume data, datastore backups and the cluster token |
+| `--confirm <env>` | none | with `--reset` in a non-interactive session: must equal `<env>` |
+
+Local mode (`dockflow setup [user@host] --orchestrator k3s`, no `--env`, single server) keeps the existing
+options of `dockflow setup` (`--user`, `--host`, `--port`, `-k/--key`, `--generate-key`,
+`--skip-docker-install`, `-y/--yes`, `--dev`, …) plus `--node-name` and `--private-host`.
+`--skip-docker-install` is accepted and ignored on k3s; `--portainer` stays refused.
+
+## Security model
+
+- **The deploy identity is cluster-admin, and therefore root-equivalent on every node** of the cluster it
+  provisions — the same honest statement already made about the Swarm deploy user, which is already
+  root-equivalent there. Helm charts routinely need cluster-scoped objects (CRDs, ClusterRoles), so anything
+  weaker would refuse a large share of real charts.
+- **Every Dockflow environment on one cluster shares that single cluster-admin identity.** There is one
+  `dockflow-deployer` ServiceAccount, one token Secret and one kubeconfig per node — not one per environment —
+  so a **staging** deploy key on a shared cluster administers the **production** namespace, its release
+  Secrets (which hold plaintext application environment) and its volumes too. `dockflow setup k3s <env>`
+  therefore **refuses** to run on a node whose recorded state already lists another environment, unless
+  `--shared-cluster` is passed and the consequence above is accepted. Use one cluster per environment when
+  that isolation matters; a per-environment identity is future work.
+- The deploy token is a long-lived, manually created ServiceAccount token (a CI deploy has no other
+  credential to obtain a short-lived one): it never expires on its own and is not removed by Kubernetes'
+  legacy-token cleanup, so rotate it periodically with `--rotate-deploy-token`.
+- SSH host keys are pinned per node in `.dockflow/known_hosts` on first connection, recorded from
+  `<ENV>_<KEY>_HOST_KEY` in CI; a mismatch refuses the connection. Deploy-time connections (as opposed to
+  setup) are not pinned yet — future work.
+- **Revoking a node**: `dockflow setup k3s <env> --reset --node <key>` (removes its token files, sudoers rule
+  and kube directory), then `k3s token rotate` on a remaining server, `dockflow setup k3s <env>` again
+  (redistributes fresh tokens), `dockflow setup k3s <env> --rotate-deploy-token`, and finally rotate the
+  deploy SSH key in `.env.dockflow`/CI. Simply removing the server from `servers.yml` revokes nothing.
+
+## Storage
+
+`dockflow-local` is the only StorageClass Dockflow marks as default, and it enforces that, not merely hopes
+for it: setup patches k3s's own `local-path` class with `storageclass.kubernetes.io/is-default-class: "false"`
+and **re-asserts it on every run**, because k3s restores that annotation whenever it re-applies its own
+manifests on start. Verification lists every StorageClass and fails, naming the competing class, when
+anything other than `dockflow-local` carries the default annotation. See [Volumes & Data](/en/configuration/volumes)
+for the reclaim policy this buys.
+
+## Networking
+
+Nodes that all have `private_host` set use the `vxlan` overlay backend; a cluster with any node reachable
+only by a public address uses `wireguard-native` instead (`--flannel-backend` overrides this on a fresh
+cluster only). High availability — more than one manager — additionally requires every manager to have a
+`private_host`, since an embedded-etcd cluster cannot run its consensus protocol over public addresses.
+
+When an **active** `ufw` or `firewalld` is found, setup writes rules restricted to the cluster's own nodes:
+TCP 6443 (agents and servers to servers), TCP 10250 (every node to every node), UDP 8472 or UDP 51820
+(depending on the overlay backend, every node to every node), TCP 2379-2380 (servers to servers, HA only),
+and TCP 80 (with TCP 443 when ACME is on) on control-plane nodes only, from anywhere. An installed-but-inactive
+firewall is treated the same as no firewall at all — writing rules into a tool nothing enforces would be
+worse than silence, so instead:
+
+```
+No host firewall is managed on srv-1, srv-2, worker-1 (ufw is installed but inactive).
+Allow exactly these flows in your provider firewall:
+  TCP 6443         from srv-2 10.0.0.11, worker-1 10.0.0.21         to srv-1 10.0.0.10
+  TCP 10250        between srv-1 10.0.0.10, srv-2 10.0.0.11, worker-1 10.0.0.21
+  UDP 8472         between srv-1 10.0.0.10, srv-2 10.0.0.11, worker-1 10.0.0.21
+  TCP 2379-2380    between srv-1 10.0.0.10, srv-2 10.0.0.11
+  TCP 80           from anywhere                                    to srv-1, srv-2 (control-plane, proxy.enabled)
+  TCP 443          from anywhere                                    to srv-1, srv-2 (proxy.enabled, ACME on)
+Deny 6443, 10250, 2379-2380 and 8472 from every address outside this list. They are authenticated,
+but they must not be exposed: 6443 and 10250 are administrative APIs and UDP 8472 carries
+unencrypted pod traffic. Dockflow cannot verify this for you when no host firewall is managed.
+```
+
+The same condition is repeated as a warning in the setup summary, and setup probes those three ports from the
+coordinator afterwards unless `--skip-reachability-check` is given. Published compose ports (LoadBalancer or
+`hostPort`) bypass host `INPUT` rules by design — a compose `ports:` entry is reachable from wherever it says,
+whatever the firewall allows; restrict it with `x-dockflow.lb_source_ranges` or a provider firewall instead.
+If you enable `proxy.enabled` after the cluster already exists, re-run setup once so it opens 80/443 — the
+deploy identity has no root on the nodes to do it itself.
+
+## Day-2 operations
+
+- **Re-running** setup is idempotent: it repairs drift (a re-applied `local-path` default, a missing
+  firewall rule) and installs nothing that is already correct.
+- **Adding a node**: add it to `servers.yml` and re-run; only the new node is touched.
+- **Upgrading**: `dockflow setup k3s <env> --upgrade` (or answer yes to the prompt) moves to the pins of the
+  Dockflow version in use, one minor version at a time, servers before agents.
+- **Converting the datastore**: going from one manager to several requires `--convert-datastore` (a one-way
+  SQLite-to-embedded-etcd conversion), and is required in a non-TTY session.
+- **Partial failure**: setup exits non-zero and prints a per-node summary naming the failed step; fix the
+  cause and re-run — already-completed nodes are left alone.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `k3s is not installed on <node>` on an existing environment | the node has no Dockflow `state.json`; it was never set up by this command, or was reset — run `dockflow setup k3s <env>` for it |
+| kubeconfig missing or unreadable | re-run setup; it rewrites `/var/lib/dockflow/kube/config` on every server |
+| deploy identity rejected (401/403 from the API) | the deployer token was rotated or deleted outside Dockflow — run `dockflow setup k3s <env> --rotate-deploy-token` |
+| the API is not answering | check that the node is `Ready` (`dockflow ssh <env>`, `k3s kubectl get nodes`) and that 6443 is reachable from the coordinator |
+| `M.managerCount` | an even number of managers cannot keep an etcd quorum through one failure — declare 1, 3 or 5 |
+| `M.duplicateNode` | two `servers.yml` keys sanitize to the same Kubernetes node name — rename one |
+| a bootstrap connection needs a password but the session is not a terminal and no host key is recorded | record the host key once from a terminal, set `<ENV>_<KEY>_HOST_KEY`, or pass `--insecure-host-key` knowingly |
+
+## Uninstalling
+
+`--reset` removes what setup installed, but the underlying k3s binary is removed manually with the scripts
+k3s itself provides: `/usr/local/bin/k3s-uninstall.sh` on servers, `/usr/local/bin/k3s-agent-uninstall.sh` on
+agents. These scripts also remove the data under `/var/lib/rancher/k3s/storage` — export anything you need
+first (see [Volumes & Data](/en/configuration/volumes) and [Backup & Restore](/en/configuration/backup)).
+
+## See also
+
+- [Kubernetes (k3s)](/en/configuration/kubernetes): how a compose project maps to Kubernetes objects
+- [Orchestrator](/en/configuration/orchestrator): the support matrix and the breaking bootstrap-identity change
+- [Helm](/en/configuration/helm): the Dockflow-owned Traefik release and user Helm charts
+- [Multi-Node Deployment](/en/configuration/multi-host): high availability and failover behaviour

@@ -1,0 +1,8 @@
+apiVersion: v2
+name: e2e-web
+description: Dockflow e2e fixture chart — an nginx web workload for Helm scenarios
+type: application
+# Overridden at package time by `helm package --version` (tools/package-charts.ts); never edited by
+# hand for a release. Templates branch on `.Chart.Version`, which that flag also sets.
+version: 0.1.0
+appVersion: "1.0"

@@ -1,0 +1,198 @@
+# Kubernetes (k3s)
+
+import { Callout } from 'nextra/components'
+
+When `orchestrator: k3s` is set, Dockflow translates your `docker-compose.yml` (and `accessories.yml`) into
+Kubernetes objects and applies them to a [k3s](https://k3s.io) cluster over SSH, instead of running
+`docker stack deploy`. This page explains how that translation works: naming and labels, secrets, exposure,
+probes, rollout and revert, the `x-dockflow` extension, and the current limitations. For a key-by-key table of
+every compose setting see the [compose support table](/en/configuration/kubernetes/compose-support); for the
+cluster itself see [Cluster setup](/en/configuration/kubernetes/setup).
+
+<Callout type="info">
+  New to k3s on Dockflow? Start with the [Orchestrator](/en/configuration/orchestrator) page for the support
+  matrix, then [Cluster setup](/en/configuration/kubernetes/setup) to provision a cluster.
+</Callout>
+
+## Naming and labels
+
+Every object Dockflow creates lives in one namespace per environment, `dockflow-<project_name>-<env>`
+(for example `dockflow-shop-production`), and carries `app.kubernetes.io/managed-by: dockflow` plus a set of
+`dockflow.shawiizz.dev/*` labels (`stack`, `role`, `service`, `part`, …) that every backend, prune pass and
+day-2 command selects on. A compose service name becomes a Kubernetes name through the same sanitizer
+everywhere: lowercased, `[^a-z0-9-]` turned into `-`, collapsed and trimmed, and hashed and truncated only
+when the result would exceed the Kubernetes length limit (52 characters for a service name, so a kind switch
+between Deployment, StatefulSet, DaemonSet and Job never renames anything). A name that had to change is
+reported with an info diagnostic, since anything reading the compose name directly (a hostname a client
+still expects) would no longer resolve.
+
+| Compose | Kubernetes | Example |
+|---|---|---|
+| service name | workload + Service name, `app.kubernetes.io/name` and the `dockflow.shawiizz.dev/service` label | `web_app` -> `web-app` |
+| `project_name` + environment | namespace | `shop` + `production` -> `dockflow-shop-production` |
+| volume key | PersistentVolumeClaim name | `postgres_data` -> `postgres-data` |
+| environment / secrets / configs | content-addressed Secret or ConfigMap name (below) | `web-env-3f9a1c2e` |
+
+Object metadata also carries a small set of annotations Dockflow reads back on later deploys, day-2 commands
+and backups: `dockflow.shawiizz.dev/compose-service`, `.../release` (the exact release version, on the
+release Secret and every app workload), and `.../config-hash` (below). None of this is meant to be edited by
+hand — a manifest applied outside Dockflow, or an object missing these labels, is treated as foreign and
+never adopted silently.
+
+## Secrets and ConfigMaps
+
+A service's `environment` and `env_file` entries are written to one immutable Secret and mounted whole with
+`envFrom`, never as individual `env[].value` entries. Top-level compose `secrets` and `configs` become their
+own immutable Secret/ConfigMap, one object per compose entry. Every one of these objects is **content-named**:
+its name ends in a short hash of its data (`<service>-env-<sha8>`, `<key>-secret-<sha8>`, `<key>-config-<sha8>`),
+so a changed value creates a new object with a new name instead of mutating the old one in place. This is
+deliberate, not an artifact of the translator: Kubernetes Secrets are not revisioned the way a pod template
+is, so if a fixed name were reused, reverting the pod template (an automatic revert, `dockflow rollback` or a
+plain `kubectl rollout undo`) would restore the *old* template pointing at the Secret, which by then already
+holds the *new* values — the rollback would look successful while serving the wrong configuration. Content
+naming avoids that: an old release's pod template always points at the Secret that matches it, for as long as
+that Secret is still referenced by a kept release.
+
+Every pod template that has an env Secret or at least one file mount also carries a
+`dockflow.shawiizz.dev/config-hash` annotation, which folds the env checksum and every mounted file's
+checksum into one value — this is what actually rolls the pods when only a file's content changes and the
+object name otherwise depends only on that content, and it is what `dockflow diagnose` and day-2 tooling
+read to say whether a running pod matches the current configuration.
+
+<Callout type="warning">
+  **A Secret or ConfigMap declared `external: true` is not read by Dockflow at all**, so it contributes
+  nothing to the config-hash: editing that object in the cluster (with `kubectl` or by hand) changes what the
+  running containers see without rolling a single pod, exactly like any other `envFrom`/`volumeMounts`
+  consumer of an object it does not own. This is a real limitation, not a bug — Dockflow has no way to observe
+  a change it was never told about. Restart the affected service explicitly after editing an external object:
+  `dockflow restart <env> <service>`.
+</Callout>
+
+## Exposure
+
+A service's `ports` and `expose` entries always produce a `ClusterIP` Service for pod-to-pod traffic — the
+translator names its ports after the **container** (target) port, so publishing a different host port never
+renames a live Service port. A service with **no** ports at all still gets a headless Service (`clusterIP:
+None`) so plain DNS lookups by service name keep working, the same guarantee Swarm gives every service
+whether or not it publishes anything.
+
+Published ports (`"H:C"`) become one more Service, controlled by `x-dockflow.publish`:
+
+| `x-dockflow.publish` | Result |
+|---|---|
+| `loadbalancer` (default) | a `type: LoadBalancer` Service; k3s's built-in ServiceLB answers on **every** node, the same reachability guarantee as the Swarm routing mesh |
+| `hostport` | the port is bound only on the node the pod actually runs on (`hostPort`); `host_ip` is honoured here |
+| `none` | the port stays inside the cluster (no load balancer, no host binding) |
+
+`network_mode: host`, `deploy.placement.max_replicas_per_node: 1` and a StatefulSet's governing Service
+(`<svc>-hl`) follow the same rules the [compose support table](/en/configuration/kubernetes/compose-support)
+lists in full, including which values are rejected. `x-dockflow.lb_source_ranges` restricts a load-balancer
+Service to a set of CIDRs.
+
+## Probes
+
+A compose `healthcheck` becomes readiness, liveness and (when `start_period` is set) a startup probe with
+timings converted from the Docker interval/timeout/retries/start-period arithmetic. This is intentionally
+**not** strict Swarm parity: Swarm also honours an image's own `HEALTHCHECK`, which the translator cannot see
+at render time (it never inspects image configuration), so **no compose healthcheck means no probes on k3s
+either**, exactly mirroring what a *file-declared* healthcheck does on Swarm. Use `x-dockflow.probes` to add
+an explicit HTTP or TCP check (or to pick which of readiness/liveness a compose healthcheck should become)
+without writing a `healthcheck:` block at all.
+
+A routed service (one with an active `traefik.*` router) that has no probes at all gets an informational
+diagnostic: Traefik starts routing to a pod as soon as its container starts, with no readiness gate.
+
+## Rollout and revert
+
+Kubernetes' own `kubectl rollout undo` only restores a workload's **pod template** — if a failed deploy also
+changed a Service or a route, undo leaves those at their new version, which can silently break traffic even
+though the pods "rolled back" successfully. Dockflow's automatic revert therefore does more than call
+`rollout undo`: on a failed **app**-role deploy it re-applies the *whole previous release's objects*
+(workloads, Services, routes — PersistentVolumeClaims excluded, a revert never re-applies a claim), and falls
+back to `rollout undo --to-revision=<n>` only for a workload that exists live but has no previous release
+artifact to restore. A first deploy that fails leaves the workloads in place for debugging rather than
+deleting them (there is nothing to revert to). A **manual** `dockflow rollback <env>` restores the **app**
+role only — accessories are never rolled back automatically, because re-applying an older accessory
+definition (a downgraded database image against data a newer version already migrated) is the one rollback
+step that can destroy data; the CLI says so and names the accessories that are still running the newer
+definition.
+
+A release stays recorded even when a deploy fails **after** the app was applied (a failing HTTP check, a
+fatal post-deploy hook, an apply whose outcome could not be confirmed): the cluster is really running that
+version, so the record says so instead of pointing at stale state.
+
+## x-dockflow reference
+
+`x-dockflow` is a Kubernetes-only extension block accepted on `services.<name>.x-dockflow` and on
+`volumes.<name>.x-dockflow`; it is rejected on Swarm and rejects unknown keys. The tables below are generated
+from the same schema the CLI validates against, so they can never drift from what a deploy actually accepts.
+
+{/* x-dockflow:begin */}
+
+### Service keys
+
+Kubernetes settings of a service (`services.<name>.x-dockflow`).
+
+| Key | Type | Description |
+|---|---|---|
+| `kind` | one of `deployment`, `statefulset` | Workload of a replicated service: `deployment` (the default) or `statefulset` (stable pod names, and one claim per replica for `per_replica` volumes). |
+| `publish` | one of `loadbalancer`, `hostport`, `none` | Exposure of the published ports: `loadbalancer` (the default: reachable on every node like the Swarm routing mesh), `hostport` (only on the node running the pod) or `none` (inside the cluster only). |
+| `lb_source_ranges` | list of IPv4 CIDR or IPv6 CIDR | CIDR ranges allowed to reach the published ports through the load balancer; absent or empty allows every source. |
+| `probes` | mapping | Which probes the healthcheck becomes, or an HTTP or TCP check used instead of its command. |
+| `probes.use` | one of `both`, `readiness`, `liveness`, `none` | Which Kubernetes probes the check produces: `both` (the default), `readiness`, `liveness` or `none`. |
+| `probes.http` | mapping | HTTP GET check used instead of the healthcheck command, with the healthcheck timings. |
+| `probes.http.path` | string, required | Request path, starting with `/`. |
+| `probes.http.port` | integer from 1 to 65535, required | Container port the request is sent to. |
+| `probes.http.scheme` | one of `HTTP`, `HTTPS` | `HTTP` (the default) or `HTTPS`. |
+| `probes.tcp` | mapping | TCP connection check used instead of the healthcheck command, with the healthcheck timings; exclusive with `http`. |
+| `probes.tcp.port` | integer from 1 to 65535, required | Container port the connection is opened to. |
+| `node_selector` | mapping of string to string | Node labels (servers.yml `node_labels`) a node must carry to run the pods. |
+| `tolerations` | list of mappings | Node taints the pods tolerate. |
+| `tolerations[].key` | string | Taint key the toleration matches; absent matches every key (requires `operator: Exists`). |
+| `tolerations[].operator` | one of `Equal`, `Exists` | `Equal` (the default) compares `value`; `Exists` matches any value. |
+| `tolerations[].value` | string | Taint value compared with `operator: Equal`. |
+| `tolerations[].effect` | one of `NoSchedule`, `PreferNoSchedule`, `NoExecute` | Taint effect the toleration matches; absent matches every effect. |
+| `tolerations[].toleration_seconds` | integer, at least 0 | How long a pod stays on a node after a `NoExecute` taint appears; requires `effect: NoExecute`. |
+| `fs_group` | integer from 0 to 2147483647 | Group that owns the files of mounted volumes; they are re-owned only when the volume root does not match. |
+| `pod_labels` | mapping of string to string | Extra labels on the pods, never part of the selector; the dockflow.shawiizz.dev/ and app.kubernetes.io/ prefixes are reserved. |
+
+### Volume keys
+
+Kubernetes settings of a top-level volume (`volumes.<name>.x-dockflow`).
+
+| Key | Type | Description |
+|---|---|---|
+| `size` | string | Requested capacity of the claim, such as `10Gi` (default `1Gi`). |
+| `storage_class` | string | Storage class of the claim (default: the distribution's class, `dockflow-local` on k3s). |
+| `access_mode` | one of `ReadWriteOnce`, `ReadWriteOncePod`, `ReadWriteMany` | Access mode of the claim: `ReadWriteOnce` (the default), `ReadWriteOncePod` or `ReadWriteMany`; on an external volume, the mode of the existing claim. |
+| `per_replica` | boolean | One claim per replica, created from the claim templates of a StatefulSet; every service mounting the volume needs `x-dockflow.kind: statefulset`. |
+
+{/* x-dockflow:end */}
+
+## Limitations
+
+- **Unmounted content is not copied into a fresh volume.** Docker's *copy-up* (seeding a new named volume
+  from whatever the image ships at the mount path) is a Docker Engine behaviour that Kubernetes' CSI/local
+  volume drivers do not perform, and the translator has no way to detect from the compose model alone whether
+  a given image would have populated the path. A named volume therefore always starts empty on k3s; seed it
+  from the container's entrypoint instead, or mount a subdirectory the image does not ship. `x-dockflow`
+  carries no flag for this because there is nothing to opt into — set `nocopy: true` on the compose mount only
+  to silence the informational diagnostic Dockflow prints for every named-volume mount (`--debug`), which is
+  not a warning that anything is wrong.
+- **An externally-managed Secret or ConfigMap does not roll pods when it changes** — see
+  [Secrets and ConfigMaps](#secrets-and-configmaps) above.
+- **A manual rollback restores the app role only** — see [Rollout and revert](#rollout-and-revert) above; the
+  [multi-host](/en/configuration/multi-host) and [backup](/en/configuration/backup) pages document two more
+  per-manager limitations specific to several control-plane nodes.
+- **`dockflow validate <env>` is a fully offline check**; it never opens an SSH connection. `dockflow deploy
+  --dry-run`, by contrast, **does** connect: it resolves a control-plane node and runs the live Helm plan
+  before printing what it would do, and only falls back to an offline summary (with a note) when no manager
+  answers.
+
+## See also
+
+- [Orchestrator](/en/configuration/orchestrator): choosing between Swarm and k3s, the support matrix
+- [Cluster setup](/en/configuration/kubernetes/setup): provisioning a k3s cluster
+- [Compose support table](/en/configuration/kubernetes/compose-support): every compose key, key by key
+- [Helm](/en/configuration/helm): deploying Helm charts alongside or instead of a compose project
+- [Volumes & Data](/en/configuration/volumes): PersistentVolumeClaims and data-safety guarantees

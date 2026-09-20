@@ -1,5 +1,6 @@
 [test]
 preload = ["./setup.ts"]
 
-# E2E tests are slow — generous timeout
-timeout = 300000
+# k3s lanes provision a real cluster per file/preload (dockflow setup k3s) on top of already-slow
+# scenario steps — more generous than the other suites' 300000.
+timeout = 600000

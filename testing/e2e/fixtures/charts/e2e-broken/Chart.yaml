@@ -1,0 +1,6 @@
+apiVersion: v2
+name: e2e-broken
+description: Dockflow e2e fixture chart — references an image that never resolves, for failure scenarios
+type: application
+version: 0.1.0
+appVersion: "1.0"

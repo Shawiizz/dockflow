@@ -58,10 +58,10 @@ my-project/
 | Field | Type | Description | Default |
 |---|---|---|---|
 | `project_name` | string | Unique project identifier (DNS-safe, required) | — |
-| `orchestrator` | `swarm` \| `k3s` | Deployment backend | `swarm` |
+| `orchestrator` | `swarm` \| `k3s` | Deployment backend — see [Orchestrator](/en/configuration/orchestrator) for the full support matrix | `swarm` |
 | `container_engine` | `docker` \| `podman` | Build engine (auto-detected if unset) | auto |
 | `registry` | object | Docker registry config | — |
-| `options` | object | `remote_build`, `image_auto_tag`, `enable_debug_logs` | — |
+| `options` | object | `remote_build` (refused on k3s), `image_auto_tag`, `enable_debug_logs` | — |
 | `stack_management` | object | `keep_releases`, `cleanup_on_failure` | — |
 | `health_checks` | object | Endpoint checks, timeouts, on-failure behavior | — |
 | `hooks` | object | Commands and scripts to run at each deploy phase ([reference](/en/configuration/hooks)) | — |
@@ -70,6 +70,7 @@ my-project/
 | `backup` | object | Backup config for accessories and services | — |
 | `templates` | array | Nunjucks template files to render before deploy | — |
 | `proxy` | object | Traefik + Let's Encrypt configuration | — |
+| `helm` | object | k3s only. Helm chart releases ([reference](/en/configuration/helm)) | — |
 | `notifications` | object | Webhook notifications on deploy events | — |
 | `uploads` | array | Files or directories to transfer to the servers ([reference](/en/configuration/upload)) | — |
 | `no_services` | boolean | Upload-only project, with no Docker services | `false` |
@@ -80,7 +81,9 @@ my-project/
 |---|---|---|---|
 | `servers` | object | Server definitions keyed by name (required) | — |
 | `servers.<name>.host` | string | Server hostname or IP | — |
-| `servers.<name>.role` | `manager` \| `worker` | Swarm role | `manager` |
+| `servers.<name>.role` | `manager` \| `worker` | Node role: Swarm manager/worker, or k3s server/agent | `manager` |
+| `servers.<name>.private_host` | string | k3s only. Address for cluster traffic (node IP, firewall sources, join address) | `host` |
+| `servers.<name>.node_labels` | object | k3s only. Kubernetes node labels applied by `dockflow setup k3s` | — |
 | `servers.<name>.tags` | string[] | Environment tags, e.g. `[production]` (required) | — |
 | `servers.<name>.user` | string | SSH user (overrides `defaults.user`) | — |
 | `servers.<name>.port` | number | SSH port (overrides `defaults.port`) | — |
@@ -178,3 +181,5 @@ services:
 - [Project Configuration](/en/configuration/config-file) — all `config.yml` fields in detail
 - [Servers & Connections](/en/configuration/servers) — all `servers.yml` fields in detail
 - [Docker Compose](/en/configuration/docker-compose) — compose file structure and Dockflow-specific behavior
+- [Orchestrator](/en/configuration/orchestrator) — choosing between Swarm and k3s
+- [Helm Charts](/en/configuration/helm) — the `helm` key, k3s only

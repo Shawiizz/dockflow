@@ -4,9 +4,19 @@ import { Callout, Steps, Tabs } from 'nextra/components'
 
 Dockflow can automatically provision HTTPS certificates and route traffic to your services using [Traefik](https://traefik.io) as a reverse proxy. Add a domain to your config and it works — no Nginx config to write, no Certbot to manage.
 
-<Callout type="info">
-  Traefik is deployed as a Docker Swarm service on your manager node. It watches your stack deployments and automatically obtains Let's Encrypt certificates via HTTP challenge.
-</Callout>
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
+    Traefik is deployed as a Docker Swarm service on your manager node. It watches your stack
+    deployments and automatically obtains Let's Encrypt certificates via HTTP challenge.
+  </Tabs.Tab>
+  <Tabs.Tab>
+    Traefik is a Dockflow-owned Helm release, `dockflow-traefik`, installed in the `dockflow-system`
+    namespace on a pinned chart version — it is **not** the Traefik that ships bundled with k3s,
+    which `dockflow setup k3s` disables (`--disable=traefik`) precisely to avoid two ingress
+    controllers fighting over ports 80/443. IngressRoute and Middleware objects generated from your
+    compose services and `proxy`/`x-dockflow` labels tell it what to route.
+  </Tabs.Tab>
+</Tabs>
 
 ## Minimal Configuration
 
@@ -21,10 +31,10 @@ proxy:
     production: my-app.example.com
 ```
 
-That's it. On the next `dockflow deploy production`, Dockflow will:
+That's it — the same `proxy` block works unchanged on both orchestrators. On the next `dockflow deploy production`, Dockflow will:
 
-1. Deploy Traefik on your manager node (if not already running)
-2. Inject Traefik routing labels into your app services
+1. Install or update Traefik (a Swarm service on the manager, or the `dockflow-traefik` Helm release in `dockflow-system`)
+2. Inject Traefik routing rules into your app services
 3. Traefik contacts Let's Encrypt and obtains the certificate
 4. HTTPS is live, HTTP automatically redirects to HTTPS
 
@@ -46,13 +56,18 @@ Each environment gets its own domain and certificate. Traefik handles renewals a
 ```yaml
 proxy:
   enabled: true
-  email: admin@example.com        # Required when enabled
+  email: admin@example.com        # Required when acme is not disabled
   domains:
     production: my-app.example.com
     staging: staging.my-app.example.com
   dashboard:
     enabled: true                  # Optional: expose Traefik dashboard
     domain: traefik.example.com
+  # k3s only, below
+  manage: true                    # false: use another stack's Traefik, never install/change it
+  default_ingress_class: false    # true: publish every classless Ingress in the cluster on 80/443
+  acme_ca_server: https://acme-staging-v02.api.letsencrypt.org/directory  # rehearse or a private CA
+  acme_ca_bundle: .dockflow/certs/private-ca.pem  # trusts acme_ca_server when it isn't publicly trusted
 ```
 
 | Field | Type | Description | Default |
@@ -63,6 +78,10 @@ proxy:
 | `domains` | map | Domain per environment | — |
 | `dashboard.enabled` | boolean | Expose the Traefik dashboard | `false` |
 | `dashboard.domain` | string | Domain for the dashboard. Required if `dashboard.enabled: true` | — |
+| `manage` | boolean | **k3s only.** `true`: this stack installs and updates the cluster's Traefik. `false`: this stack only uses whatever Traefik is already installed, and never mutates it — see [Several stacks, one Traefik](#several-stacks-one-traefik) | `true` |
+| `default_ingress_class` | boolean | **k3s only.** Make `traefik` the cluster's default `IngressClass`, so any `Ingress` object in any namespace (including ones from Helm charts) that omits `ingressClassName` is published on 80/443 | `false` |
+| `acme_ca_server` | string (https URL) | **k3s only.** ACME directory URL. Unset means Let's Encrypt production; point it at the staging directory to rehearse, or at a private CA | — |
+| `acme_ca_bundle` | string (path) | **k3s only.** PEM bundle trusting `acme_ca_server` when it is not publicly trusted; a project path under `.dockflow/` or listed in `templates` | — |
 
 <Callout type="warning">
   **Dashboard security** — The Traefik dashboard is exposed publicly when enabled. Restrict access with your firewall or add [Traefik middleware](https://doc.traefik.io/traefik/middlewares/http/basicauth/) for basic auth.
@@ -74,6 +93,8 @@ Set `acme: false` to run Traefik without HTTPS — useful for internal networks,
 
 ```yaml
 # .dockflow/config.yml
+project_name: "my-app"
+
 proxy:
   enabled: true
   acme: false
@@ -92,12 +113,24 @@ When `acme: false`:
 
 ## Requirements
 
-- Ports **80** and **443** must be open and reachable from the internet on your manager node
-- Your domain's DNS must point to your manager's IP before deploying
-- Your app service must expose a port in `docker-compose.yml` (Traefik reads this to know the container port)
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
+    - Ports **80** and **443** must be open and reachable from the internet on your manager node
+    - Your domain's DNS must point to your manager's IP before deploying
+    - Your app service must expose a port in `docker-compose.yml` (Traefik reads this to know the container port)
+  </Tabs.Tab>
+  <Tabs.Tab>
+    - Ports **80** and **443** must be open and reachable from the internet on the control-plane node
+      Traefik is placed on (see [Placement](#which-node-answers-80443) below)
+    - Your domain's DNS must point at that node's IP before deploying
+    - Your app service must expose a port in `docker-compose.yml`
+  </Tabs.Tab>
+</Tabs>
 
 ## How It Works
 
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
 <Steps>
 ### Traefik deployment
 
@@ -125,33 +158,162 @@ networks:
 
 Traefik performs an HTTP-01 ACME challenge with Let's Encrypt. The certificate is stored in a persistent Docker volume (`traefik-certs`) and renewed automatically before expiry.
 </Steps>
+  </Tabs.Tab>
+  <Tabs.Tab>
+<Steps>
+### Traefik release
+
+The stack whose `proxy.manage` is `true` (the default) installs or upgrades the `dockflow-traefik`
+Helm release in `dockflow-system` before its own objects are applied — one Traefik serves the whole
+cluster, however many Dockflow stacks route through it.
+
+### Routing objects
+
+Dockflow generates `traefik.io/v1alpha1` `IngressRoute` and `Middleware` objects from your compose
+services and `proxy`/`x-dockflow` labels, in your stack's own namespace — the same information the
+Swarm labels above carry, just as Kubernetes objects instead of service labels.
+
+### Certificate issuance
+
+Traefik performs an HTTP-01 ACME challenge with Let's Encrypt on entry point `web`. Certificates are
+stored on a PersistentVolumeClaim (`dockflow-traefik`, `dockflow-local`, `128Mi`) mounted at
+`/data/acme.json`, and renewed automatically before expiry.
+</Steps>
+
+### Which node answers 80/443
+
+Exactly one node runs Traefik (`updateStrategy: Recreate` — never two pods writing `acme.json` at
+once), so DNS must point at that node. Dockflow pins the placement deliberately instead of leaving
+it to the scheduler: it prefers the node already running Traefik, falls back to the first ready
+control-plane server in `servers.yml` order, and records the choice in the `dockflow-proxy`
+ConfigMap. A move (a node lost, a manual override) is a loud warning at deploy time, naming the old
+and new node, never a silent DNS mismatch. With `proxy.acme: true` the ACME PersistentVolumeClaim
+pins the node even harder — see [Recovering a lost ACME node](#recovering-a-lost-acme-node).
+
+<Callout type="info">
+  **High availability.** One node answering 80/443 is the Swarm-parity behaviour. Making ingress
+  itself highly available needs something in front of that node — a floating IP (keepalived/VRRP) or
+  several DNS A records with a short TTL, both pointing at nodes Dockflow can place Traefik on.
+</Callout>
+
+### `acme.json`: back it up, and recovering a lost node
+
+`acme.json` holds Traefik's ACME **account key** and every issued certificate. Let's Encrypt allows
+5 duplicate certificates per week and 5 failed validations per account/hostname per hour, so losing
+it is not free — take a copy after certificates are first issued, after every deploy that adds a
+domain, and on a schedule.
+
+**Copy out** (on a control-plane node; `dockflow ssh <env>` opens a shell there as the deploy user):
+
+```bash
+K="/usr/local/bin/k3s kubectl --kubeconfig=/var/lib/dockflow/kube/config -n dockflow-system"
+POD=$($K get pods -l app.kubernetes.io/name=traefik -o name | head -n 1)
+(umask 077 && $K exec "$POD" -- cat /data/acme.json > acme.json.backup)
+```
+
+Copy the resulting file off the node (`scp`) and keep it with your other secrets — it holds a
+private key.
+
+**Copy in** is *not* done through the running Traefik pod: Traefik keeps its ACME store in memory
+and rewrites `acme.json` on every renewal, which would silently overwrite a copy-in made underneath
+it. Instead, scale Traefik to 0, write the file through a short-lived helper pod on the same claim,
+then scale back up. The exact commands (and the full recovery procedure for a node that is gone for
+good) are printed by `dockflow helm status <env> --system` and `dockflow diagnose <env>` whenever
+the Traefik pod is `Pending` on a claim bound to a node that is not `Ready` — follow those, they
+name the actual node and PVC involved.
+
+#### Recovering a lost ACME node
+
+| Node holding the claim | What to do |
+|---|---|
+| `NotReady` or cordoned, expected back | Bring it back (`kubectl uncordon` after a drain); nothing else changes |
+| Gone for good but still registered | Remove it from the cluster and from `servers.yml`, then follow the row below |
+| Absent from the cluster | `dockflow helm uninstall <env> --system --volumes --force`, then `dockflow deploy <env>` — placement picks a new ready node and a fresh claim binds there; copy the backup in immediately, or Traefik issues fresh certificates |
+
+Toggling `proxy.acme` off keeps the claim (Helm's `resource-policy: keep`); toggling it back on
+re-adopts it, so certificates already issued are reused instead of re-requested.
+  </Tabs.Tab>
+</Tabs>
 
 ## Coexistence with Nginx
 
-Traefik and the [nginx plugin](/en/configuration/plugins#nginx) do not know about each other.
-Traefik is deployed as a Swarm service publishing ports 80 and 443, while the plugin installs a
-vhost for the host's nginx and reloads it. A host nginx listening on port 80 and Traefik
-publishing port 80 cannot both bind it.
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
+    Traefik and the [nginx plugin](/en/configuration/plugins#nginx) do not know about each other.
+    Traefik is deployed as a Swarm service publishing ports 80 and 443, while the plugin installs a
+    vhost for the host's nginx and reloads it. A host nginx listening on port 80 and Traefik
+    publishing port 80 cannot both bind it.
 
-Pick one: either drop the nginx plugin and route through Traefik labels, or leave
-`proxy.enabled: false` and serve through nginx.
+    Pick one: either drop the nginx plugin and route through Traefik labels, or leave
+    `proxy.enabled: false` and serve through nginx.
+  </Tabs.Tab>
+  <Tabs.Tab>
+    The same conflict exists on k3s, one level down: Traefik binds host ports 80/443 (`hostPort`) on
+    whichever node it is pinned to, and the [nginx plugin](/en/configuration/plugins#nginx) binds the
+    same host ports through the OS nginx on whatever node it is installed on. Dockflow does not
+    reconcile the two — pick one per node, or keep them on different nodes.
+
+    A compose service that tries to `ports: ["80:..."]` or `["443:..."]` while Traefik is enabled is
+    refused at validation time (`publishes 80/tcp, which is reserved on the nodes (Dockflow
+    Traefik)`) with a suggestion to route through Traefik labels instead.
+  </Tabs.Tab>
+</Tabs>
 
 ## Let's Encrypt Rate Limits
 
-Let's Encrypt enforces [rate limits](https://letsencrypt.org/docs/rate-limits/). During testing, avoid triggering repeated certificate requests for the same domain. Errors are reported in Traefik logs:
+Let's Encrypt enforces [rate limits](https://letsencrypt.org/docs/rate-limits/). During testing, avoid triggering repeated certificate requests for the same domain.
 
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
 ```bash
 # Check Traefik logs
 dockflow exec production traefik "traefik logs"
 # Or directly on the server
 docker service logs traefik_traefik
 ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+Traefik is not a compose service, so `dockflow logs` does not reach it — read its logs through a
+shell on a control-plane node instead:
+
+```bash
+dockflow ssh production
+K="/usr/local/bin/k3s kubectl --kubeconfig=/var/lib/dockflow/kube/config -n dockflow-system"
+$K logs -l app.kubernetes.io/name=traefik --tail=200
+```
+
+Use `proxy.acme_ca_server: https://acme-staging-v02.api.letsencrypt.org/directory` while rehearsing
+a new domain, so failed attempts count against the staging limits instead of production's.
+  </Tabs.Tab>
+</Tabs>
+
+## Several stacks, one Traefik
+
+On k3s, Traefik is cluster-wide while `proxy` is configured per project and per environment, so each
+stack is either **managing** (`proxy.manage: true`, the default — it installs and upgrades Traefik)
+or **consuming** (`proxy.manage: false` — it only emits routes for the Traefik another stack already
+installed, and never touches the release). Both roles can emit routes.
+
+A second stack, sharing the first one's Traefik instead of installing its own:
+
+```yaml
+proxy:
+  enabled: true
+  manage: false          # never installs/upgrades dockflow-traefik
+  domains:
+    production: admin.example.com
+```
+
+A consuming stack whose `proxy.acme` disagrees with the managing stack's is refused with a message
+naming both stacks; a stack that finds no managed Traefik at all when `manage: false` is refused too,
+with a suggestion to deploy the managing stack first (or flip `manage: true` here).
 
 ## Example: App with HTTPS
 
 <Tabs items={['config.yml', 'docker-compose.yml', 'servers.yml']}>
   <Tabs.Tab>
 ```yaml
+# .dockflow/config.yml
 project_name: "my-app"
 
 proxy:
@@ -172,6 +334,7 @@ health_checks:
   </Tabs.Tab>
   <Tabs.Tab>
 ```yaml
+# .dockflow/docker/docker-compose.yml
 services:
   app:
     image: my-app
@@ -186,12 +349,14 @@ services:
   </Tabs.Tab>
   <Tabs.Tab>
 ```yaml
+# .dockflow/servers.yml
 defaults:
   user: dockflow
 
 servers:
   main:
     role: manager
+    tags: [production]
     env:
       APP_ENV: production
 ```

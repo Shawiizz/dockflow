@@ -4,6 +4,14 @@ import { Callout } from 'nextra/components'
 
 Dockflow uses a standard `docker-compose.yml` file located at `.dockflow/docker/docker-compose.yml`. This file defines your application services, networks, and volumes.
 
+<Callout type="info">
+  On Swarm the file is handed to `docker stack deploy` mostly as written. On k3s it is **translated**
+  into Kubernetes objects — most compose keys map directly, some become something else, and a few are
+  rejected. See the [compose support table](/en/configuration/kubernetes/compose-support) for the
+  exact outcome of every key, and the [Kubernetes overview](/en/configuration/kubernetes) for how
+  services, naming, secrets and exposure map.
+</Callout>
+
 ## Basic Structure
 
 ```yaml
@@ -33,7 +41,7 @@ Environment variables can come from multiple sources:
 
 - **`servers.yml`** — defined per-environment or per-server (see [Servers & Connections](/en/configuration/servers))
 - **CI secrets** — override `servers.yml` values
-- **Nunjucks templating** — all files in `.dockflow/` are automatically rendered with Nunjucks. This is the only substitution Dockflow performs: shell-style `${VAR}` placeholders are **not** expanded, since the compose file is deployed with `docker stack deploy -c` without an env file.
+- **Nunjucks templating** — all files in `.dockflow/` are automatically rendered with Nunjucks. This is the only substitution Dockflow performs.
 
 ```yaml
 services:
@@ -52,6 +60,31 @@ services:
   `{{ env }}` and `{{ version }}` are always available in the render context — no need to declare them in `servers.yml`.
 </Callout>
 
+### `$` placeholders vs Nunjucks
+
+Compose itself understands `$VAR` and `${VAR}` shell-style placeholders, with `$$` as the escape for
+a literal `$`. Dockflow does not export a process environment for that substitution, so a stray
+`$VAR` never resolves to anything useful:
+
+- **On Swarm**, `dockflow validate` and `deploy` warn about every such placeholder it finds
+  (`line 12: $DB_HOST — Docker replaces it when deploying, and Dockflow gives it no value`) and
+  suggest the Nunjucks equivalent; Docker itself silently substitutes an empty string at deploy time.
+- **On k3s**, Dockflow performs the interpolation itself while rendering, so the same placeholder is
+  a hard `ConfigError` naming the exact key instead of a warning — nothing is silently emptied.
+
+```yaml
+services:
+  app:
+    environment:
+      DB_HOST: $DB_HOST                 # ❌ Docker/Dockflow placeholder, never resolves
+      DB_HOST: {{ current.env.db_host }} # ✅ Nunjucks — resolved at render time
+      PRICE: "$$19.99"                   # ✅ literal $ via the $$ escape
+```
+
+Use `{{ current.env.<var> }}` (or `{{ env }}` / `{{ version }}`) for anything you actually want
+substituted, and `$$` whenever a value must contain a literal `$` (a basic-auth htpasswd hash in a
+Traefik label, a price string, and so on).
+
 ## Automatic Image Tagging
 
 Dockflow automatically appends the environment and version to image names for isolation:
@@ -68,6 +101,23 @@ my-app → ghcr.io/myorg/my-app-production:1.0.0
 ```
 
 This behavior can be disabled with `image_auto_tag: false` in [config.yml](/en/configuration/config-file).
+
+<Callout type="info">
+  Auto-tagging only ever retags a service that has a `build:` section — a service that only
+  declares `image:` (a pulled, third-party image) is never renamed, on either orchestrator.
+</Callout>
+
+## YAML Parsing Notes
+
+- **Anchors and merge keys are resolved.** `<<: *common` is expanded into the file Dockflow sends,
+  not re-emitted as a merge key — write one anchor and reuse it across services, the deployed result
+  is the merged document.
+- **File modes are read as octal.** `mode: 0440` (on `secrets`/`configs` entries, or an
+  `x-dockflow` file mount) is parsed the way `chmod` reads it — as octal, not decimal. Writing the
+  value without the leading `0` (`mode: 440`) is read as the *decimal* number 440 and a warning
+  names the octal value you probably meant.
+- **Scalars keep their written text.** `PORT: 010` in `environment` or a label stays the string
+  `"010"` — Compose's own YAML rules apply, not a numeric reinterpretation.
 
 ## Deploy Configuration
 

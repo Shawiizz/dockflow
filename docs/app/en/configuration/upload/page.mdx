@@ -4,10 +4,19 @@ import { Callout, FileTree, Steps } from 'nextra/components'
 
 Transfer local files or directories to your servers before each deployment. Useful for configuration files that services reference via bind mounts.
 
+<Callout type="info">
+  Uploads work identically on Swarm and k3s: the same `uploads:` configuration, transferred to
+  **every node** of the environment before the compose file that references them is applied. What
+  changes on k3s is what a `docker-compose.yml` bind mount *becomes* — see
+  [Kubernetes (k3s) bind mounts](#kubernetes-k3s-bind-mounts) below.
+</Callout>
+
 ## Minimal example
 
 ```yaml
 # .dockflow/config.yml
+project_name: "my-app"
+
 uploads:
   - src: .dockflow/docker/mosquitto/
     dest: /opt/dockflow/mqtt/
@@ -50,7 +59,7 @@ Once permissions are confirmed, Docker images are built and distributed to the n
 Runs before any file is transferred — the place for anything the uploads, or a plugin's `post-upload` entries, depend on.
 
 ### Transfer to all nodes
-Files are transferred to the manager **and all worker nodes** in parallel, so bind mounts work regardless of which node runs the container. If the deployment fails at any point after this step, every uploaded file is restored to its previous version.
+Files are transferred to **every node of the environment** in parallel — managers and workers (Swarm), or every server and agent (k3s) — so bind mounts work regardless of which node runs the container or pod. If the deployment fails at any point after this step, every uploaded file is restored to its previous version.
 
 ### `post-upload` and `pre-deploy` hooks
 Both run after the transfer, so they can use the uploaded files directly — `systemctl daemon-reload` after uploading a systemd unit, for instance.
@@ -213,6 +222,29 @@ With `no_services: true`:
 
 <Callout type="warning">
   Without `no_services: true`, a missing `docker-compose.yml` is treated as a configuration error and the deployment fails. Only set this flag when the project genuinely has no Docker services — not as a workaround for a misconfigured compose path.
+</Callout>
+
+## Kubernetes (k3s) bind mounts
+
+A compose bind mount —
+
+```yaml
+services:
+  mqtt:
+    volumes:
+      - /opt/dockflow/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf
+```
+
+— becomes a Kubernetes `hostPath` mount on k3s: the container reads the path directly off the node
+it lands on. Because uploads already write to every node, the file is there wherever the pod is
+scheduled, exactly as the Swarm example above relies on the manager-and-workers transfer.
+
+<Callout type="warning">
+  The bind source must be **absolute**. A relative source (`./data:/container/path`) is refused on
+  k3s — there is no single "current directory" a `hostPath` could be relative to across nodes. Named
+  volumes are unaffected: they become PersistentVolumeClaims, not `hostPath` mounts. See
+  [Docker Compose](/en/configuration/docker-compose) and the
+  [compose support table](/en/configuration/kubernetes/compose-support) for the rest of the mapping.
 </Callout>
 
 ## See also

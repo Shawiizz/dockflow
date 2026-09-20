@@ -1,0 +1,6 @@
+apiVersion: e2e.dockflow.test/v1
+kind: E2EWidget
+metadata:
+  name: {{ .Release.Name }}-e2e-widget
+spec:
+  message: hello from e2e-crd

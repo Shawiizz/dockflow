@@ -86,6 +86,13 @@ Enables verbose logging for debugging deployment issues.
 
 Build Docker images on the server instead of in the CI/CD pipeline. See [Build Strategy](/en/configuration/build-strategy) for details.
 
+<Callout type="warning">
+  `remote_build: true` is refused at validation time when `orchestrator: k3s` — there is no single
+  server to build on, and shipping a build toolchain to a cluster node is out of scope. Build in CI
+  or locally, and let Dockflow distribute the image (see [Registry](/en/configuration/registry) and
+  [Container Engine](/en/configuration/container-engine#k3s-and-containerd)).
+</Callout>
+
 ## Stack Management
 
 ### `keep_releases`
@@ -175,6 +182,26 @@ proxy:
   email: admin@example.com
   domains:
     production: my-app.example.com
+```
+
+## Helm
+
+<Callout type="info">
+  k3s only. A `helm` key deploys Helm chart releases alongside your compose services — third-party
+  charts, operators, anything you'd otherwise `helm install` by hand. See
+  [Helm Charts](/en/configuration/helm) for the full reference.
+</Callout>
+
+```yaml
+helm:
+  timeout: 5m          # default --timeout for every release
+  releases:
+    - name: podinfo
+      chart: podinfo
+      repo: https://stefanprodan.github.io/podinfo
+      version: 6.15.0
+      values:
+        replicaCount: 2
 ```
 
 ## Deploy Lock

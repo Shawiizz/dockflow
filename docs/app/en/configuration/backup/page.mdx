@@ -4,11 +4,20 @@ import { Callout } from 'nextra/components'
 
 Dockflow provides built-in backup and restore for accessory databases, main stack services, and Docker volumes. Back up PostgreSQL, MySQL, MongoDB, Redis, Docker volumes, or any custom service with a single command.
 
+<Callout type="info">
+  The `backup` configuration, the CLI commands and the supported database types below are identical
+  on Swarm and k3s. See [Kubernetes mechanics](#kubernetes-k3s-mechanics) for what changes under the
+  hood, and its limitations, on k3s.
+</Callout>
+
 ## Configuration
 
 Add a `backup` section to your `.dockflow/config.yml`. Backup targets can be declared under `accessories` (for services in `accessories.yml`) or `services` (for services in your main `docker-compose.yml`):
 
-```yaml filename=".dockflow/config.yml"
+```yaml
+# .dockflow/config.yml
+project_name: "my-app"
+
 backup:
   retention_count: 10    # Backups to keep per service (default: 10)
   compression: gzip      # gzip or none (default: gzip)
@@ -169,7 +178,11 @@ backup:
 
 ### Redis
 
-Triggers `BGSAVE` and copies the RDB dump file. Restore writes the new dump file, issues `SHUTDOWN NOSAVE` to prevent Redis from overwriting it, then restarts the service (`docker service update --force` on Swarm, `kubectl rollout restart` on k3s).
+Triggers `BGSAVE` and copies the RDB dump file. Restore writes the new dump file, then issues
+`SHUTDOWN NOSAVE` so Redis exits without overwriting it — the container's own restart policy (Swarm
+`restart_policy`, or the pod's `restartPolicy` on k3s) brings the process back up, which then loads
+the freshly written RDB file. No explicit "restart the service" step is needed on either
+orchestrator: this is the same mechanism on both.
 
 ```yaml
 backup:
@@ -179,7 +192,7 @@ backup:
 ```
 
 <Callout type="info">
-  Redis restore automatically handles the full cycle: write the RDB file, shut down Redis without saving, and restart the service. This works regardless of the service's restart policy configuration.
+  Redis restore automatically handles the full cycle: write the RDB file, shut down Redis without saving, and let the container restart on its own. This works regardless of the service's restart policy configuration, as long as it restarts on exit at all.
 </Callout>
 
 ### Custom (Raw)
@@ -259,9 +272,47 @@ backup:
   The Docker host must be able to pull the `alpine` image (or have it cached). On air-gapped servers, ensure the image is available locally.
 </Callout>
 
+## Kubernetes (k3s) mechanics
+
+<Callout type="warning">
+  Redis with `appendonly yes` is refused on restore, on both orchestrators: Redis loads the AOF file
+  instead of the restored RDB dump, so the restore would silently do nothing. Disable AOF, or restore
+  by hand.
+</Callout>
+
+- **Dumps stream through `kubectl exec`** instead of `docker exec`; volume archives read and write
+  through a short-lived helper pod on the same claim, using the pinned Dockflow image.
+- **A volume restore scales the workload to 0** first (it overwrites files under a running
+  database) — a **database** restore (`postgres`, `mysql`, `mongodb`, `redis`) does not: it streams
+  into the running server process instead, so the service stays up throughout.
+- **Every restore is verified end to end before anything is overwritten** (K23): a truncated or
+  corrupted archive is refused and the current data is left untouched. With `compression: none`,
+  only `volume` archives and plain-text `postgres`/`mysql` dumps can still be verified this way;
+  `redis`, `mongodb`, `raw` and custom dump commands need `--force-unverified` to restore without
+  verification, and `backup create` warns when it writes such a backup.
+- **A restore writes exactly one replica.** A service with more than one desired replica is refused
+  before anything happens — bringing the other replicas back up on the same restored data would
+  produce replicas that disagree. Scale to 1, restore, scale back.
+- **Backups live on the control-plane node the command ran on**, not "the manager" as a fixed
+  concept — with several control-plane nodes, `backup create`/`restore` runs on whichever one the CLI
+  resolved for that deploy (see [Automatic Failover](/en/configuration/multi-host#automatic-failover)).
+
+<Callout type="error">
+  **Limitation: the backup index is per node, not in the cluster.** After a failover, `backup list`
+  on a different control-plane node does not see backups stored on the node that is now unreachable
+  — it warns, naming that node. `backup restore` without an explicit `--from <id>` refuses rather
+  than silently picking an older backup from a reachable node. Once the original node is back (or the
+  backup file is copied over), the missing history is visible again.
+</Callout>
+
+Helm release workloads (including Traefik's `acme.json` in `dockflow-system`) are not backup targets
+in v1 — back up `acme.json` with the [copy-out procedure](/en/configuration/proxy#acmejson-back-it-up-and-recovering-a-lost-node)
+on the proxy page instead.
+
 ## Storage
 
-Backups are stored on the manager server at:
+Backups are stored on the manager server (Swarm) or on the control-plane node the command ran on
+(k3s — see [Kubernetes mechanics](#kubernetes-k3s-mechanics) above) at:
 
 ```
 # Accessory backups

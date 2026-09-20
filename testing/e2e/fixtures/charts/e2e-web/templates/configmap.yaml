@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-e2e-web
+  labels:
+    app.kubernetes.io/name: e2e-web
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  message: {{ .Values.message | quote }}
