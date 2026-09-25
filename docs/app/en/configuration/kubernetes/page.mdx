@@ -34,8 +34,9 @@ still expects) would no longer resolve.
 | environment / secrets / configs | content-addressed Secret or ConfigMap name (below) | `web-env-3f9a1c2e` |
 
 Object metadata also carries a small set of annotations Dockflow reads back on later deploys, day-2 commands
-and backups: `dockflow.shawiizz.dev/compose-service`, `.../release` (the exact release version, on the
-release Secret and every app workload), and `.../config-hash` (below). None of this is meant to be edited by
+and backups: `dockflow.shawiizz.dev/compose-service`, `.../release` (the exact release version, on each
+release Secret), and `.../config-hash` (below). Nothing on a workload depends on the release version, so a
+deploy leaves an unchanged service untouched. None of this is meant to be edited by
 hand — a manifest applied outside Dockflow, or an object missing these labels, is treated as foreign and
 never adopted silently.
 
@@ -58,6 +59,13 @@ Every pod template that has an env Secret or at least one file mount also carrie
 checksum into one value — this is what actually rolls the pods when only a file's content changes and the
 object name otherwise depends only on that content, and it is what `dockflow diagnose` and day-2 tooling
 read to say whether a running pod matches the current configuration.
+
+Dockflow masks secret values as `***` wherever it prints what the cluster reports: kubectl and Helm errors,
+pod and event messages, the logs of a service that failed to roll out, and `--debug` output. It masks the
+content of every compose secret, registry and chart repository passwords, and the environment variables and
+Helm values whose name contains `pass`, `secret`, `token`, `key`, `credential` or `auth`. Other environment
+values are not masked, so an ordinary value such as `production` never turns into `***` inside a name. Output
+of your own commands (`dockflow exec`, `dockflow logs`) is printed as is.
 
 <Callout type="warning">
   **A Secret or ConfigMap declared `external: true` is not read by Dockflow at all**, so it contributes

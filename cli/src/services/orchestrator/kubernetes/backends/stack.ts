@@ -56,9 +56,11 @@ import { prune } from '../apply/prune';
 import { revert as executeRevert } from '../apply/revert';
 import type { PreviousRelease } from '../apply/revert-plan';
 import { composeServiceOf, isWorkload, podSpecOf, type Snapshot, templateRefs, type TemplateRefs } from '../apply/snapshot';
-import { K8S_REGISTRY_SECRET, K8S_REQUEST_TIMEOUT_S } from '../constants';
+import { K8S_REGISTRY_SECRET, K8S_REQUEST_TIMEOUT_S, LABELS } from '../constants';
 import type { Clock, KubernetesBundleDeps, SharedMemo } from '../deps';
 import type { K8sDistribution } from '../distribution';
+import { helmRedactions } from '../helm/resolve';
+import { isSensitiveKeyPath } from '../helm/values-yaml';
 import { namespaceFor } from '../naming';
 import { renderStackArtifact, type RenderEnvironment, type StackRender } from '../render';
 import type { Event, Namespace, Node } from '../resources/core';
@@ -188,6 +190,25 @@ function warnUndeployedChanges(rendered: readonly ManifestObject[], targets: rea
   }
 }
 
+/**
+ * What the Redactor must learn from the objects' Secrets before anything is applied, so kubectl
+ * stderr, pod messages and the logs of a failed rollout never print it: the content of every compose
+ * secret, and the env values under a sensitive-looking name (the rule `helm values` masks with). An
+ * ordinary value such as `production` is left out, or it would turn into *** inside every name.
+ */
+export function secretValuesOf(objects: readonly ManifestObject[]): string[] {
+  const values: string[] = [];
+  for (const object of objects) {
+    if (object.kind !== 'Secret') continue;
+    // an env Secret belongs to one service, a compose secret does not
+    const env = object.metadata.labels?.[LABELS.service] !== undefined;
+    for (const [key, encoded] of Object.entries(object.data ?? {})) {
+      if (!env || isSensitiveKeyPath(key)) values.push(Buffer.from(encoded, 'base64').toString('utf8'));
+    }
+  }
+  return values;
+}
+
 /** What `artifact.helm`/a receipt store: no credentials, the digest `upgradeInstall` actually installed from. */
 function toHelmRecord(release: ResolvedHelmRelease, result: HelmUpgradeResult): HelmReleaseRecord {
   const { auth: _auth, declaredDigest: _declaredDigest, ...rest } = release;
@@ -304,6 +325,7 @@ export class KubernetesStackBackend implements StackBackend {
     const cached = this.renders.get(key);
     if (cached && this.filesUnchanged(cached.fileDigests, input.files)) return cached.render;
     const render = renderStackArtifact(input, this.renderEnv);
+    this.redactor.add([...secretValuesOf(render.objects), ...helmRedactions(input.helm)]);
     const digests = input.files as Partial<RecordingFileResolver>;
     this.renders.set(key, { render, fileDigests: typeof digests.digests === 'function' ? digests.digests() : {} });
     return render;
@@ -584,6 +606,7 @@ export class KubernetesStackBackend implements StackBackend {
     if (foreign) {
       return err(new DeployError(`Release ${version} contains ${foreign.kind} ${foreign.metadata.name} outside namespace ${ns}`, ErrorCode.ROLLBACK_FAILED));
     }
+    this.redactor.add([...secretValuesOf(objects), ...helmRedactions(artifact.helm)]);
 
     try {
       await this.cluster.preflight(needsOf(objects, artifact.helm.length));

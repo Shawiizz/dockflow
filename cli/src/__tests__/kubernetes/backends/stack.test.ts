@@ -8,13 +8,14 @@
 
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import type { ResolvedHelmRelease, StackArtifact, StackRef } from '../../../services/orchestrator/interfaces';
-import { KubernetesStackBackend, type KubernetesStackBackendOptions } from '../../../services/orchestrator/kubernetes/backends/stack';
+import { KubernetesStackBackend, type KubernetesStackBackendOptions, secretValuesOf } from '../../../services/orchestrator/kubernetes/backends/stack';
 import { LABELS } from '../../../services/orchestrator/kubernetes/constants';
 import { createSharedMemo } from '../../../services/orchestrator/kubernetes/deps';
 import { helmSpecHash } from '../../../services/orchestrator/kubernetes/helm/resolve';
 import { k3sDistribution } from '../../../services/orchestrator/kubernetes/k3s/distribution';
 import { namespaceFor } from '../../../services/orchestrator/kubernetes/naming';
 import type { RenderEnvironment } from '../../../services/orchestrator/kubernetes/render';
+import type { ManifestObject } from '../../../services/orchestrator/kubernetes/resources/registry';
 import { withDigests } from '../../../services/orchestrator/file-resolver';
 import { canonicalJson, sha256Hex } from '../../../utils/hash';
 import { ErrorCode } from '../../../utils/errors';
@@ -280,6 +281,35 @@ describe('render', () => {
     const a = h.backend.render(input());
     const b = h.backend.render(input());
     expect(a.digest).toBe(b.digest);
+  });
+
+  it('teaches the Redactor the compose secrets and the sensitive-looking env values, never an ordinary one', () => {
+    const h = harness({ script: { strict: true } });
+    const compose = {
+      services: { web: { image: 'nginx:1.27', environment: { API_TOKEN: 'tok-9f3a1c2e77', NODE_ENV: 'production' }, secrets: ['tls_key'] } },
+      secrets: { tls_key: { file: 'tls.key' } },
+    };
+    h.backend.render(input({ compose, files: fileResolver({ 'tls.key': 'key-material-5b7d' }) }));
+    expect(h.redactor.redact('token tok-9f3a1c2e77, key key-material-5b7d')).toBe('token ***, key ***');
+    expect(h.redactor.redact(`namespace ${NS}`)).toBe(`namespace ${NS}`);
+  });
+});
+
+describe('secretValuesOf', () => {
+  const secret = (name: string, data: Record<string, string>, service: string | null): ManifestObject => ({
+    apiVersion: 'v1',
+    kind: 'Secret',
+    metadata: { name, namespace: NS, labels: service === null ? {} : { [LABELS.service]: service } },
+    data: Object.fromEntries(Object.entries(data).map(([key, value]) => [key, Buffer.from(value).toString('base64')])),
+  });
+
+  it('decodes every compose secret, only the sensitive-looking keys of an env Secret, and no ConfigMap', () => {
+    const objects: ManifestObject[] = [
+      secret('db-password-1a2b3c4d', { db_password: 'hunter2-hunter2' }, null),
+      secret('web-env-5e6f7a8b', { DB_PASSWORD: 'p4ss-w0rd-9', AUTH_TOKEN: 'tok-123456', LOG_FORMAT: 'json-lines' }, 'web'),
+      { apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: 'nginx-conf', namespace: NS }, data: { 'nginx.conf': 'listen 80;' } },
+    ];
+    expect(secretValuesOf(objects)).toEqual(['hunter2-hunter2', 'p4ss-w0rd-9', 'tok-123456']);
   });
 });
 

@@ -331,6 +331,16 @@ function normalizeProjectPath(file: string): string | null {
   return normalized;
 }
 
+/** What the Redactor must know of some releases: string leaves under a sensitive key path, chart repository passwords. */
+export function helmRedactions(releases: readonly { values: Record<string, unknown>; auth?: ResolvedHelmRelease['auth'] }[]): string[] {
+  const out = new Set<string>();
+  for (const release of releases) {
+    collectSensitive(release.values, '', out);
+    if (release.auth) out.add(release.auth.password);
+  }
+  return [...out];
+}
+
 function collectSensitive(value: unknown, keyPath: string, out: Set<string>): void {
   if (typeof value === 'string') {
     if (keyPath !== '' && isSensitiveKeyPath(keyPath)) out.add(value);

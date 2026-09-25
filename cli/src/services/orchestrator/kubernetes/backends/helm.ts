@@ -46,7 +46,7 @@ import {
   releaseOwnerFromLabels,
   splitChartString,
 } from '../helm/parse';
-import { helmSpecHash } from '../helm/resolve';
+import { helmRedactions, helmSpecHash } from '../helm/resolve';
 import { helmValuesStdin } from '../helm/values-yaml';
 import type { Namespace } from '../resources/core';
 import { chartDisplayOf, type ChartArchiveDeps, resolveChartArchive } from '../runtime/chart-archive';
@@ -270,6 +270,8 @@ export class KubernetesHelmBackend implements HelmBackend {
       allowChartDrift?: boolean;
     },
   ): Promise<HelmUpgradeResult> {
+    // a rollback re-installs from a stored record the render never saw
+    this.redactor.add(helmRedactions([release]));
     const now = this.clock.now();
     const { entry, observed, row } = await this.planOne(release, options.stackId, options.adopt === true, now);
     const display = chartDisplayOf(release.chart, release.version);
