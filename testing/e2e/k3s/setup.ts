@@ -10,7 +10,6 @@
  * - imported by `run.ts` itself, which calls `prepareLane` once before spawning any file.
  */
 
-import { existsSync } from "fs";
 import { join } from "path";
 import type { Lane } from "./lanes";
 import { LANES, LANE_NAMES, isLaneName } from "./lanes";
@@ -43,11 +42,14 @@ function tail(result: Pick<CLIResult, "stdout" | "stderr">): string {
   return (result.stderr.trim() || result.stdout.trim()).slice(-4000);
 }
 
-/** The host-platform binary the tests spawn: DOCKFLOW_E2E_BINARY, or built locally on demand. */
+/**
+ * The host-platform binary the tests spawn: DOCKFLOW_E2E_BINARY, or built locally. Always rebuilt (once
+ * per lane, like the Swarm suite's buildCLI): a dist/ binary left by an earlier run is the CLI as it was
+ * then, not the source under test.
+ */
 async function ensureCliBinary(): Promise<string> {
   if (process.env.DOCKFLOW_E2E_BINARY) return process.env.DOCKFLOW_E2E_BINARY;
   const path = join(CLI_DIR, "dist", getCliBinaryName());
-  if (existsSync(path)) return path;
   await exec(["bun", "install", "--frozen-lockfile"], { cwd: CLI_DIR, timeoutMs: 180_000 });
   const target = getCliBinaryName().replace("dockflow-", "").replace(/\.exe$/, "");
   await exec(["bun", "run", "build", target], { cwd: CLI_DIR, timeoutMs: 180_000 });
