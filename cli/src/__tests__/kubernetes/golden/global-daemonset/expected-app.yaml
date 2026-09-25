@@ -47,7 +47,7 @@ metadata:
     dockflow.shawiizz.dev/stack: dockflow-shop-production
 spec:
   minReadySeconds: 30
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: agent

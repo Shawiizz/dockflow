@@ -100,6 +100,8 @@ Build Docker images on the server instead of in the CI/CD pipeline. See [Build S
 
 Number of previous releases to retain on the server. Enables quick rollback and automatic cleanup of old releases and images.
 
+On k3s, the count includes the current release, and each workload keeps the old revisions of the releases retained besides it (`revisionHistoryLimit` = `keep_releases - 1`, at least 1). When a release is removed, the images only it used are removed from every node; an image a workload still referenced at that moment is removed by a later cleanup.
+
 ### `cleanup_on_failure`
 **Default:** `true`
 

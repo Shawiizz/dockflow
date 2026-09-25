@@ -801,6 +801,46 @@ describe('KubernetesImageBackend.collectGarbage', () => {
     });
     expect(h.containerd.refs('server_1')).not.toContain(i('web', '1.4.0'));
   });
+
+  describe('the repositories named for this environment are swept', () => {
+    const e = (service: string, version: string): string => `shop-${service}-production:${version}`;
+    const ie = (service: string, version: string): string => `dockflow.invalid/shop-${service}-production:${version}`;
+    const seedEnv = (c: Containerd): void => {
+      c.seed(
+        'server_1',
+        // left behind by an earlier cleanup, while a ReplicaSet still referenced it
+        imported(ie('web', '1.4.0'), fakeImageId('web-140')),
+        imported(ie('web', '1.4.1'), fakeImageId('web-141')),
+        imported(ie('web', '1.4.2'), fakeImageId('web-142')),
+        imported(ie('web', '1.4.3'), fakeImageId('web-143')),
+        // not a name Dockflow gave for this environment
+        imported(i('web', '1.3.0'), fakeImageId('web-130')),
+      );
+    };
+
+    it('an earlier tag no release and no workload references goes with the pruned release', async () => {
+      const h = setup({ kube: [inUseStep([])], seed: seedEnv });
+
+      await h.backend.collectGarbage([SERVER_1], [e('web', '1.4.1')], [e('web', '1.4.2'), e('web', '1.4.3')]);
+
+      expect(scripts(h, 'server_1').filter((s) => s.startsWith(N4))).toEqual([`${N4} '${ie('web', '1.4.0')}' '${ie('web', '1.4.1')}'`]);
+      expect(h.containerd.refs('server_1')).toEqual([ie('web', '1.4.2'), ie('web', '1.4.3'), i('web', '1.3.0')]);
+    });
+
+    it('a swept tag a workload template still references is kept', async () => {
+      const replicaSet = {
+        apiVersion: 'apps/v1',
+        kind: 'ReplicaSet',
+        metadata: { name: 'web-5c8f', namespace: NS },
+        spec: { template: { spec: { containers: [{ name: 'web', image: ie('web', '1.4.0') }] } } },
+      };
+      const h = setup({ kube: [inUseStep([replicaSet])], seed: seedEnv });
+
+      await h.backend.collectGarbage([SERVER_1], [e('web', '1.4.1')], [e('web', '1.4.2'), e('web', '1.4.3')]);
+
+      expect(h.containerd.refs('server_1')).toEqual([ie('web', '1.4.0'), ie('web', '1.4.2'), ie('web', '1.4.3'), i('web', '1.3.0')]);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

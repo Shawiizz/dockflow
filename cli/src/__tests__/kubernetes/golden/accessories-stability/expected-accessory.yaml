@@ -198,7 +198,7 @@ spec:
   minReadySeconds: 5
   progressDeadlineSeconds: 240
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: admin
@@ -265,7 +265,7 @@ spec:
   minReadySeconds: 5
   progressDeadlineSeconds: 240
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: postgres
@@ -373,7 +373,7 @@ spec:
   minReadySeconds: 5
   progressDeadlineSeconds: 240
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: redis

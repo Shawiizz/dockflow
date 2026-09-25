@@ -274,7 +274,7 @@ spec:
   minReadySeconds: 30
   progressDeadlineSeconds: 240
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: cache
@@ -349,7 +349,7 @@ spec:
   minReadySeconds: 15
   progressDeadlineSeconds: 240
   replicas: 2
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: web
@@ -517,7 +517,7 @@ spec:
     whenScaled: Retain
   podManagementPolicy: Parallel
   replicas: 2
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: queue
@@ -597,7 +597,7 @@ metadata:
     dockflow.shawiizz.dev/stack: dockflow-shop-production
 spec:
   minReadySeconds: 30
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: agent

@@ -177,7 +177,7 @@ spec:
   minReadySeconds: 30
   progressDeadlineSeconds: 240
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: api-v2
@@ -240,7 +240,7 @@ spec:
   minReadySeconds: 30
   progressDeadlineSeconds: 240
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: s-2fa
@@ -303,7 +303,7 @@ spec:
   minReadySeconds: 30
   progressDeadlineSeconds: 240
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: svc-name-with-seventy-characters-total-for-sa-efd327
@@ -366,7 +366,7 @@ spec:
   minReadySeconds: 30
   progressDeadlineSeconds: 240
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: web-app

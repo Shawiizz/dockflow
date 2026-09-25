@@ -96,7 +96,7 @@ spec:
     whenScaled: Retain
   podManagementPolicy: Parallel
   replicas: 3
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: queue

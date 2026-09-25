@@ -62,8 +62,13 @@ function siblingRoleOf(role: StackRole): StackRole {
   return role === 'app' ? 'accessory' : 'app';
 }
 
+/**
+ * The old revisions a workload keeps: the releases retention keeps besides the current one, and at
+ * least the one an automatic revert rolls back to. One more would keep a pruned release's image in
+ * use when its release is cleaned up.
+ */
 export function revisionHistoryLimitFor(keepReleases: number | undefined): number {
-  return Math.max(2, keepReleases ?? DEFAULT_KEEP_RELEASES);
+  return Math.max(1, (keepReleases ?? DEFAULT_KEEP_RELEASES) - 1);
 }
 
 /** What `artifact.helm` stores: no credentials, and the pinned chart digest as `chartSha256`. */

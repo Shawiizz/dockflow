@@ -261,7 +261,7 @@ spec:
     whenScaled: Retain
   podManagementPolicy: Parallel
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: ss-a
@@ -323,7 +323,7 @@ spec:
     whenScaled: Retain
   podManagementPolicy: Parallel
   replicas: 3
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: ss-b
@@ -389,7 +389,7 @@ spec:
     whenScaled: Retain
   podManagementPolicy: Parallel
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: ss-c
@@ -455,7 +455,7 @@ spec:
     whenScaled: Retain
   podManagementPolicy: Parallel
   replicas: 3
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: ss-d

@@ -127,7 +127,7 @@ spec:
   minReadySeconds: 30
   progressDeadlineSeconds: 240
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: delay-ratio
@@ -190,7 +190,7 @@ spec:
   minReadySeconds: 200
   progressDeadlineSeconds: 260
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: monitor-200
@@ -253,7 +253,7 @@ spec:
   minReadySeconds: 90
   progressDeadlineSeconds: 240
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: start-first-p2
@@ -316,7 +316,7 @@ spec:
   minReadySeconds: 30
   progressDeadlineSeconds: 240
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: stop-first-p0

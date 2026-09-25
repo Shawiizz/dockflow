@@ -107,7 +107,7 @@ describe('renderK3sOfflineCore — U-FLOW-08', () => {
     expect(input.traefikOnCluster).toBe(true);
     expect(input.serverNames).toEqual(['server_1', 'agent_1']);
     expect(env.keepReleases).toBe(7);
-    expect(RenderModule.revisionHistoryLimitFor(env.keepReleases)).toBe(7); // max(2, keep_releases ?? 3)
+    expect(RenderModule.revisionHistoryLimitFor(env.keepReleases)).toBe(6); // max(1, (keep_releases ?? 3) - 1)
     expect(K8S_PROGRESS_DEADLINE_S).toBeGreaterThan(0); // baked into renderStackArtifact itself, not RenderEnvironment
   });
 

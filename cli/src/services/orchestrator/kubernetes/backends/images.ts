@@ -93,6 +93,14 @@ export function toImportedRef(ref: string): string {
   return ref.startsWith(IMPORTED_PREFIX) ? ref : importedImageRef(ref);
 }
 
+/** `dockflow.invalid/web-production:1.4.2` -> `dockflow.invalid/web-production` */
+function repositoryOf(ref: string): string {
+  const at = ref.indexOf('@');
+  const name = at === -1 ? ref : ref.slice(0, at);
+  const colon = name.lastIndexOf(':');
+  return colon > name.lastIndexOf('/') ? name.slice(0, colon) : name;
+}
+
 /** What the removal rule may name (DV5): an imported reference made of plain characters. */
 export function isRemovableRef(ref: string): boolean {
   return ref.startsWith(IMPORTED_PREFIX) && IMPORTED_REST.test(ref.slice(IMPORTED_PREFIX.length));
@@ -438,9 +446,9 @@ export class KubernetesImageBackend implements ImageBackend {
       const protectedRefs = await this.imagesInUse();
       const current = this.options.releases ? await this.options.releases.currentCompose(this.target.stackName) : null;
       for (const image of composeImageRefs(current)) protectedRefs.add(canonicalImageRef(toImportedRef(image)));
-      const refs = candidates.filter((ref) => !protectedRefs.has(canonicalImageRef(ref)));
-      if (refs.length === 0) return;
-      const results = await settleEach(nodes, K8S_IMAGE_IMPORT_CONCURRENCY, (node) => this.removeOnNode(node, refs, 'Image cleanup'));
+      const refs = new Set(candidates.map(canonicalImageRef).filter((ref) => !protectedRefs.has(ref)));
+      if (refs.size === 0) return;
+      const results = await settleEach(nodes, K8S_IMAGE_IMPORT_CONCURRENCY, (node) => this.removeOnNode(node, (ref) => refs.has(ref), 'Image cleanup'));
       results.forEach((result, i) => {
         if (result.status === 'rejected') this.events.debug(this.nodeError(nodes[i], 'Image cleanup', result.reason).message);
       });
@@ -449,21 +457,31 @@ export class KubernetesImageBackend implements ImageBackend {
     }
   }
 
+  /**
+   * Removes the imported images the pruned releases used, and every other tag the node holds of a
+   * repository Dockflow named for this environment (`<image>-<env>`, image_auto_tag): an image a
+   * ReplicaSet still referenced when its release was pruned goes at a later cleanup. Nothing a kept
+   * release or a workload of the cluster references is removed.
+   */
   async collectGarbage(nodes: ClusterNodeRef[], removedReleaseImages: string[], keptReleaseImages: string[]): Promise<void> {
-    const kept = new Set(keptReleaseImages.map((image) => canonicalImageRef(toImportedRef(image))));
-    const candidates = unique(removedReleaseImages.map(toImportedRef)).filter(
-      (ref) => isRemovableRef(ref) && !kept.has(canonicalImageRef(ref)),
+    const imported = (images: readonly string[]): string[] => images.map((image) => canonicalImageRef(toImportedRef(image))).filter(isRemovableRef);
+    const kept = new Set(imported(keptReleaseImages));
+    const explicit = new Set(imported(removedReleaseImages).filter((ref) => !kept.has(ref)));
+    const swept = new Set(
+      imported([...removedReleaseImages, ...keptReleaseImages])
+        .map(repositoryOf)
+        .filter((repository) => repository.endsWith(`-${this.target.env}`)),
     );
-    if (candidates.length === 0 || nodes.length === 0) return;
+    if ((explicit.size === 0 && swept.size === 0) || nodes.length === 0) return;
     let inUse: Set<string>;
     try {
       inUse = await this.imagesInUse();
     } catch (error) {
       throw this.kubeFailure(error, 'list pods and workloads', false);
     }
-    const refs = candidates.filter((ref) => !inUse.has(canonicalImageRef(ref)));
-    if (refs.length === 0) return;
-    const results = await settleEach(nodes, K8S_IMAGE_IMPORT_CONCURRENCY, (node) => this.removeOnNode(node, refs, 'Image cleanup'));
+    const removable = (ref: string): boolean =>
+      isRemovableRef(ref) && !ref.includes('@') && !kept.has(ref) && !inUse.has(ref) && (explicit.has(ref) || swept.has(repositoryOf(ref)));
+    const results = await settleEach(nodes, K8S_IMAGE_IMPORT_CONCURRENCY, (node) => this.removeOnNode(node, removable, 'Image cleanup'));
     const failures = results.flatMap((result, i) =>
       result.status === 'rejected' ? [this.nodeError(nodes[i], 'Image cleanup', result.reason)] : [],
     );
@@ -651,11 +669,11 @@ export class KubernetesImageBackend implements ImageBackend {
     );
   }
 
-  /** Removes the references the node has; the distribution refuses anything but imported ones. */
-  private async removeOnNode(node: ClusterNodeRef, refs: readonly string[], what: string): Promise<void> {
+  /** Removes the (canonical) references the node holds that `select` picks; the distribution refuses anything but imported ones. */
+  private async removeOnNode(node: ClusterNodeRef, select: (ref: string) => boolean, what: string): Promise<void> {
     const shell = this.deps.nodeShell(node);
     const index = await this.readIndex(shell, what);
-    const present = refs.filter((ref) => index.byRef.has(canonicalImageRef(ref)));
+    const present = [...index.byRef.keys()].filter(select).sort();
     if (present.length === 0) return;
     const command = this.deps.distribution.removeImagesCommand(present);
     const result = await shell.run(`sudo -n ${command}`, { guardS: NODE_READ_GUARD_S });

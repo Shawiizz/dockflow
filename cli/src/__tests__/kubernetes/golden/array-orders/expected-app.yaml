@@ -78,7 +78,7 @@ spec:
     whenScaled: Retain
   podManagementPolicy: Parallel
   replicas: 2
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: worker

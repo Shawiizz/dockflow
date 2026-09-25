@@ -153,7 +153,7 @@ spec:
   minReadySeconds: 30
   progressDeadlineSeconds: 240
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: hc-none
@@ -216,7 +216,7 @@ spec:
   minReadySeconds: 30
   progressDeadlineSeconds: 240
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: hc-readiness
@@ -288,7 +288,7 @@ spec:
   minReadySeconds: 30
   progressDeadlineSeconds: 240
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: http-both
@@ -369,7 +369,7 @@ spec:
   minReadySeconds: 30
   progressDeadlineSeconds: 240
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: http-readiness
@@ -441,7 +441,7 @@ spec:
   minReadySeconds: 30
   progressDeadlineSeconds: 240
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: tcp-liveness

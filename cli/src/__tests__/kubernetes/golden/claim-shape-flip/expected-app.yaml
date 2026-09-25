@@ -124,7 +124,7 @@ spec:
   minReadySeconds: 30
   progressDeadlineSeconds: 240
   replicas: 1
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: web
@@ -194,7 +194,7 @@ spec:
     whenScaled: Retain
   podManagementPolicy: Parallel
   replicas: 2
-  revisionHistoryLimit: 3
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       dockflow.shawiizz.dev/service: queue

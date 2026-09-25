@@ -296,12 +296,12 @@ describe('renderStackArtifact (design-03 4)', () => {
     expect(find(registry.objects, 'Deployment', 'api').spec.template.spec.imagePullSecrets).toEqual([{ name: 'dockflow-registry' }]);
   });
 
-  test('revisionHistoryLimit = max(2, keep_releases), 3 when not configured', () => {
+  test('revisionHistoryLimit = max(1, keep_releases - 1): the old revisions of the kept releases', () => {
     const limit = (keepReleases: number | undefined): number | undefined =>
       (find(render({}, { keepReleases }).objects, 'Deployment', 'web') as Deployment).spec.revisionHistoryLimit;
     expect(DEFAULT_KEEP_RELEASES).toBe(3);
-    expect([limit(undefined), limit(1), limit(5)]).toEqual([3, 2, 5]);
-    expect(revisionHistoryLimitFor(0)).toBe(2);
+    expect([limit(undefined), limit(1), limit(2), limit(5)]).toEqual([2, 1, 1, 4]);
+    expect(revisionHistoryLimitFor(0)).toBe(1);
   });
 
   test('files are read through input.files only', () => {
