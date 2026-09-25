@@ -91,11 +91,19 @@ async function pullAndTag(ref: string, locked: string, arch: Arch): Promise<void
   await exec(["docker", "tag", locked, ref]);
 }
 
+/** `docker save --platform` exists from Docker 28; older CLIs reject the flag outright. */
+async function savesByPlatform(): Promise<boolean> {
+  const help = await tryExec(["docker", "save", "--help"]);
+  return help.stdout.includes("--platform");
+}
+
 async function dockerSave(refs: readonly string[], archive: string, arch: Arch, containerdStore: boolean): Promise<void> {
   const partial = `${archive}.part`;
   rmSync(partial, { force: true });
-  // The containerd image store keeps every platform of an index; save only the node's
-  const platform = containerdStore ? ["--platform", `linux/${arch}`] : [];
+  // The containerd image store keeps every platform of an index; save only the node's. Without the
+  // flag (Docker < 28) the index is still exported but only the content that was pulled comes with
+  // it, which pullAndTag limits to the node's platform.
+  const platform = containerdStore && (await savesByPlatform()) ? ["--platform", `linux/${arch}`] : [];
   try {
     await exec(["docker", "save", ...platform, "-o", partial, ...refs], { timeoutMs: 1_800_000 });
     renameSync(partial, archive);
