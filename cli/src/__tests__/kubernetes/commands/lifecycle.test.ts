@@ -16,6 +16,7 @@ import { registerLockAcquireCommand, runLockAcquire } from '../../../commands/lo
 import { runLockRelease } from '../../../commands/lock/release';
 import { runLockStatus } from '../../../commands/lock/status';
 import { __setOrchestratorOpenerForTests } from '../../../commands/shared/day2';
+import { Audit } from '../../../services/audit';
 import { HealthCheck } from '../../../services/health-check';
 import type { OrchestratorKind, ServiceInfo, StackRef, VolumeInfo } from '../../../services/orchestrator/interfaces';
 import type { DockflowConfig } from '../../../utils/config';
@@ -283,6 +284,23 @@ describe('rollback', () => {
     expect(methodOrder.indexOf('stack.rollbackService')).toBeLessThan(methodOrder.indexOf('lock.release'));
     expect(orchestrator.lockHolder(orchestrator.target.stackName)).toBeNull();
     expect(orchestrator.callsTo('releases.setCurrent')).toHaveLength(0);
+  });
+
+  it('design-06 3.13: single-service rollback records the audit entry while the lock is still held', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    orchestrator.program('stack.getServices', [service()]);
+    orchestrator.program('stack.rollbackService', { toVersion: '1.2.0' });
+    open(orchestrator);
+    const spy = spyOn(Audit.prototype, 'writeEntry').mockImplementation(async () => {
+      expect(orchestrator.lockHolder(orchestrator.target.stackName)).not.toBeNull();
+      return 'ok';
+    });
+
+    await runRollback('production', 'web', {});
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(orchestrator.lockHolder(orchestrator.target.stackName)).toBeNull();
+    spy.mockRestore();
   });
 
   it('a held lock is reported as DEPLOY_LOCKED', async () => {

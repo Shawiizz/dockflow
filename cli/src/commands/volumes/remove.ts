@@ -141,5 +141,9 @@ export function registerVolumesRemoveCommand(volumes: Command): void {
     .option('--namespace <ns>', 'Target a Helm release namespace of this stack')
     .option('-y, --yes', 'Skip confirmation prompt')
     .option('-s, --server <name>', 'Target manager (defaults to the first ready manager)')
-    .action(withErrorHandler(withResolvedEnv(runVolumesRemove)));
+    // Commander's action callback appends the Command instance as a trailing argument, which would
+    // otherwise clobber runVolumesRemove's test-only `getOrchestratorKind` default.
+    .action(
+      withErrorHandler(withResolvedEnv((env: string, names: string[], options: VolumesRemoveOptions) => runVolumesRemove(env, names, options))),
+    );
 }

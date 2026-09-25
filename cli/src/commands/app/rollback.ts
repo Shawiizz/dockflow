@@ -114,7 +114,8 @@ async function rollbackOneService(ctx: Day2Context, name: string): Promise<void>
 
   const startTime = Date.now();
   const spinner = createSpinner();
-  const { toVersion } = await withRollbackLock(ctx, `Rollback ${svc.name}`, undefined, async () => {
+  // design-06 3.13: audit/metrics/notify happen before the lock releases, same as the full rollback.
+  await withRollbackLock(ctx, `Rollback ${svc.name}`, undefined, async () => {
     spinner.start(`Rolling back ${svc.name}...`);
     const result = await ctx.orchestrator.stack.rollbackService(ctx.appRef, svc.name, { wait: true, timeoutS: CONTROL_WAIT_TIMEOUT_S });
     ctx.invalidate(ctx.appRef);
@@ -122,13 +123,11 @@ async function rollbackOneService(ctx: Day2Context, name: string): Promise<void>
       ? `Rolled back ${svc.name} to its definition in release ${result.toVersion}`
       : `Rolled back ${svc.name} to its previous definition`;
     spinner.succeed(message);
-    return result;
-  });
-
-  await recordRollback(ctx, {
-    version: 'service-rollback',
-    message: toVersion ? `Rolled back service ${svc.name} to release ${toVersion}` : `Rolled back service ${svc.name} in ${ctx.stackName}`,
-    startTime,
+    await recordRollback(ctx, {
+      version: 'service-rollback',
+      message: result.toVersion ? `Rolled back service ${svc.name} to release ${result.toVersion}` : `Rolled back service ${svc.name} in ${ctx.stackName}`,
+      startTime,
+    });
   });
 }
 

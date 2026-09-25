@@ -142,5 +142,7 @@ export function registerVolumesListCommand(volumes: Command): void {
     .option('--namespace <ns>', 'Target a Helm release namespace of this stack')
     .option('-j, --json', 'Output in JSON format')
     .option('-s, --server <name>', 'Target manager (defaults to the first ready manager)')
-    .action(withErrorHandler(withResolvedEnv(runVolumesList)));
+    // Commander's action callback appends the Command instance as a trailing argument, which would
+    // otherwise clobber runVolumesList's test-only `getOrchestratorKind` default.
+    .action(withErrorHandler(withResolvedEnv((env: string, options: VolumesListOptions) => runVolumesList(env, options))));
 }
