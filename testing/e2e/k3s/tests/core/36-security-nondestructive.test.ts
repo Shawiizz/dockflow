@@ -180,8 +180,13 @@ describe("E-36 secret handling and deploy identity (non-destructive)", () => {
 
   test("E-36-14: exec output and a --debug transcript never carry a kubectl/helm stdout payload", async () => {
     await withDump("E-36-14", async () => {
-      const envOutput = await runCLI(["exec", "e2e", "web", "--", "env"], { cwd: fixture.dir, timeoutMs: 30_000 });
-      expect(envOutput.stdout).not.toContain(SECRET_ENV_MARKER);
+      // exec's own debug transcript, not the container's output: `env` in the container prints
+      // SECRET_ENV because the compose file sets it, which is the user's data
+      const execDebug = await runCLI(["exec", "e2e", "web", "--", "true"], { cwd: fixture.dir, timeoutMs: 30_000, env: { DEBUG: "true" } });
+      expect(execDebug.exitCode).toBe(0);
+      const execOut = execDebug.stdout + execDebug.stderr;
+      expect(execOut).not.toContain(SECRET_ENV_MARKER);
+      expect(execOut).not.toMatch(/^apiVersion:/m);
 
       const debugDeploy = await runCLI(["deploy", "e2e", "1.0.2", "--debug"], { cwd: fixture.dir, timeoutMs: 240_000 });
       const out = debugDeploy.stdout + debugDeploy.stderr;
