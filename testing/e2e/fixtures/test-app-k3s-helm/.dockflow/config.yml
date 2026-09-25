@@ -1,0 +1,5 @@
+# Baseline for 51-helm-app.test.ts and 52-helm-accessory.test.ts (E-51-*, E-52-*): a compose app
+# with no Helm releases declared yet. Both test files rewrite this file with `fixture.write` as
+# their chain adds, changes and removes `helm.releases[]` entries; this checked-in copy is only the
+# starting state a fresh checkout shows.
+project_name: "helmapp"

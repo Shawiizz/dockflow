@@ -2,7 +2,9 @@
 
 import { Callout, Tabs } from 'nextra/components'
 
-Dockflow provides a comprehensive CLI for managing deployments and interacting with running services.
+Dockflow provides a comprehensive CLI for managing deployments and interacting with running services, on
+either Docker Swarm or k3s. Most commands behave identically on both orchestrators; where they differ, or
+where one orchestrator does not support a command at all, it is called out inline.
 
 ## Installation
 
@@ -42,7 +44,7 @@ The script detects your platform and architecture, downloads the binary, and add
 
 <Callout type="info">
   The CLI binary is self-contained and requires no external dependencies for most commands.
-  Use `dockflow setup` on the target Linux host, or `dockflow setup user@host` from any platform to configure a remote server via SSH.
+  Use `dockflow setup` on the target Linux host, or `dockflow setup user@host` from any platform to configure a remote server via SSH — or `dockflow setup k3s <env>` to install and manage a whole k3s cluster, see [Setup: Initialize k3s](#initialize--update-k3s).
 </Callout>
 
 ### Available Binaries
@@ -57,13 +59,53 @@ The script detects your platform and architecture, downloads the binary, and add
 
 ## Global Options
 
-These options are available on all commands:
+These options are available on every command, wherever they are written on the command line:
 
 | Option | Description |
 |--------|-------------|
 | `--no-color` | Disable colored output |
 | `--verbose` | Enable verbose output |
 | `-v, --version` | Show CLI version |
+
+## Orchestrator Support
+
+Not every command applies to both orchestrators — Helm and `dockflow volumes` are k3s-only,
+`options.remote_build` and `dockflow exec --user` are Swarm-only, and so on. A command (or a flag
+combination) that does not apply to the configured `orchestrator` **refuses before opening any SSH
+connection**: it prints one message naming what is unsupported and why, a suggestion for what to do
+instead, and exits with code `62`.
+
+| Refusal | Message | Suggestion |
+|---|---|---|
+| `dockflow exec --user <user>` on k3s | `dockflow exec --user is not supported with orchestrator: k3s: the Kubernetes exec API runs commands as the container user` | Set `user:` in `docker-compose.yml`, or run `dockflow exec <env> <service> -- su -s /bin/sh <user> -c '<command>'`. |
+| `options.remote_build: true` on k3s (`dockflow build`) | `options.remote_build is not supported with orchestrator: k3s (k3s nodes run containerd only); build locally or push to a registry` | Build locally (remove `options.remote_build`) or push to a registry. |
+| `dockflow helm *` on Swarm | `dockflow helm <subcommand> requires orchestrator: k3s` | Helm releases are only supported on Kubernetes. |
+| `dockflow volumes *` on Swarm | `dockflow volumes <subcommand> is not supported with orchestrator: swarm` | List Swarm volumes on a node with `dockflow ssh <env>`, then `docker volume ls`. |
+| `dockflow prune --networks` on k3s | `dockflow prune --networks is not supported with orchestrator: k3s: the pod network is managed by the cluster` | — |
+| `dockflow prune --volumes` on k3s | `dockflow prune --volumes is not supported with orchestrator: k3s: volumes are only deleted explicitly` | List them with `dockflow volumes list <env>`, then delete the ones you no longer need with `dockflow volumes rm <env> <name>`. |
+| `dockflow prune --containers` on k3s | `dockflow prune --containers is not supported with orchestrator: k3s: the kubelet removes exited containers itself` | Reclaim image space with `dockflow prune <env> --images --all`. |
+| any orchestrator command with `--server <worker>` | `--server` must name a manager (a k3s server), not a worker | — |
+
+### Exit codes
+
+Dockflow reserves the numeric codes below for its own failures; anything else is a bug or an
+environment problem. `dockflow exec`/`bash`/`shell` are the one exception — they pass a container's
+own exit code straight through as the process exit code, never wrapped as one of these.
+
+| Code | Meaning |
+|---|---|
+| `0` | Success |
+| `1`–`3` | Unknown / interrupted / a shelled-out command failed |
+| `10`–`12` | Config not found, config invalid, servers.yml not found |
+| `20`–`21` | Environment not found, no servers tagged for the environment |
+| `30`–`32` | SSH connection failed, key not found, authentication failed |
+| `40`–`43` | Runtime not available, stack/service/container not found |
+| `44` | `ORCHESTRATOR_UNAVAILABLE` — kubectl/helm/docker missing, kubeconfig unreadable, the API unreachable, or the deploy identity was rejected |
+| `50`–`53` | Deploy failed, deploy locked, rollback failed, health check failed |
+| `60` | `VALIDATION_FAILED` — a config, servers.yml or compose problem (also `dockflow validate`'s failing exit code) |
+| `61` | `INVALID_ARGUMENT` — a bad CLI argument, or `--server` naming a worker |
+| `62` | `UNSUPPORTED_OPERATION` — the command or flag does not exist on the configured orchestrator (see the table above) |
+| `70`–`73` | Backup failed, backup not found, restore failed, backup not configured |
 
 ## Connection Configuration
 
@@ -102,19 +144,34 @@ Deploy the application to the specified environment. In CI, both `env` and `vers
 
 | Option | Description |
 |--------|-------------|
-| `--only <list>` | Comma-separated list of services to deploy |
+| `--only <services>` | Comma-separated list of services (or app-role Helm releases on k3s) to deploy |
 | `--skip-build` | Skip the build phase |
 | `--force` | Force deployment even if locked |
-| `--accessories` | Deploy only accessories (force redeploy) |
+| `--accessories` | Deploy only accessories (force redeploy); no release record is written (K07) |
 | `--all` | Deploy app + force redeploy accessories |
 | `--skip-accessories` | Skip accessories check entirely |
-| `--no-failover` | Disable multi-manager failover (use first manager only) |
-| `--dry-run` | Show what would be deployed without executing |
-| `--branch <name>` | Override auto-detected git branch |
+| `--no-failover` | Disable multi-manager failover — use the first configured manager only |
+| `--dry-run` | Preview the deploy without applying anything. **Still connects**: it resolves a control-plane node, reads the live cluster/stack state and runs the Helm plan (DESIGN-CORE C25); when no manager answers it prints one dim line saying the live plan was skipped and continues with the offline part. For a check that never opens a connection at all, use [`dockflow validate <env>`](#validate) |
+| `--render` | With `--dry-run` on k3s: also print the rendered Kubernetes manifests, with every Secret's data replaced by `***` |
+| `--branch <branch>` | Override auto-detected git branch |
+| `--adopt <name>` | Take over a Helm release installed outside Dockflow (repeatable) |
+| `--rebind-volumes` | Accept a claim-shape change that repoints a service at another PersistentVolumeClaim, instead of refusing |
+| `-y, --yes` | Skip interactive confirmations |
 | `--debug` | Enable debug output |
 
 <Callout type="info">
   By default, Dockflow checks if `accessories.yml` has changed and automatically deploys accessories when needed. Use `--skip-accessories` to disable this.
+</Callout>
+
+<Callout type="warning">
+  **k3s failure semantics.** A deploy that fails **after** the app was applied — a failing HTTP check, a fatal
+  post-deploy hook, or an apply whose outcome could not be confirmed — keeps the release record: the cluster
+  really is running that version, so `dockflow status` says so instead of pointing at stale state. When the
+  configured `on_failure` is `rollback`, Dockflow re-applies the previous release's objects (Services, routes
+  and workloads — PersistentVolumeClaims are never re-applied by a revert) rather than only the pod template a
+  bare `kubectl rollout undo` would restore; a **first** deploy that fails leaves the workloads in place for
+  debugging instead of deleting them, since there is nothing to revert to. See
+  [Deployment](/en/deployment) for the full flow.
 </Callout>
 
 ```bash
@@ -122,7 +179,7 @@ dockflow deploy production 1.0.0          # Deploy specific version
 dockflow deploy staging                   # Auto-generated version
 dockflow deploy production --accessories  # Force redeploy accessories only
 dockflow deploy production --all          # Deploy app + accessories
-dockflow deploy production --dry-run      # Preview without executing
+dockflow deploy production --dry-run --render   # Preview and print manifests (k3s)
 ```
 
 ### Build
@@ -131,14 +188,14 @@ dockflow deploy production --dry-run      # Preview without executing
 dockflow build [env]
 ```
 
-Build Docker images locally without deploying. In CI, the environment is auto-detected from the git tag or branch name.
+Build Docker images locally without deploying. In CI, the environment is auto-detected from the git tag or branch name. Refused on k3s when `options.remote_build: true` — k3s nodes run containerd only and ship no image builder (see [Orchestrator Support](#orchestrator-support)).
 
 | Option | Description |
 |--------|-------------|
-| `--only <list>` | Comma-separated list of services to build |
+| `--only <services>` | Comma-separated list of services to build |
 | `--push` | Push images to registry after build |
 | `--skip-hooks` | Skip pre-build and post-build hooks |
-| `--branch <name>` | Override auto-detected git branch |
+| `--branch <branch>` | Override auto-detected git branch |
 | `--debug` | Enable debug output |
 
 ```bash
@@ -169,46 +226,56 @@ dockflow config [subcommand]
 
 Display and validate project configuration.
 
+```bash
+dockflow config show     # or just: dockflow config
+dockflow config validate # or: dockflow config check
+dockflow config path
+```
+
 | Subcommand | Description |
 |------------|-------------|
-| `show` (default) | Display current configuration |
-| `validate` (alias: `check`) | Validate configuration files against schemas |
-| `path` | Show configuration directory path |
+| `dockflow config show` (default) | Display current configuration |
+| `dockflow config validate` (alias: `check`) | Validate configuration files against schemas |
+| `dockflow config path` | Show configuration directory path |
 
 Validation also warns about unknown keys: a key the schema does not declare is silently ignored at runtime (typos never fail a deploy), so `validate` flags each one with a "did you mean" suggestion when a close match exists — e.g. `backup.retention` → `Did you mean "retention_count"?`.
 
 | Option | Applies to | Description |
 |--------|-----------|-------------|
-| `--json` | show, validate | Output as JSON |
+| `-j, --json` | show, validate | Output as JSON |
 | `--verbose` | validate | Show detailed validation output |
-
-```bash
-dockflow config                   # Show configuration
-dockflow config validate          # Validate config files
-dockflow config check             # Same as validate
-dockflow config path              # Show config directory
-```
 
 ### Validate
 
 ```bash
-dockflow validate
+dockflow validate [env]
 ```
 
-Validate `.dockflow` configuration files against their schemas. Runs entirely offline — no SSH connection, no server required — which makes it the fastest way to check a config before pushing.
+Validate `.dockflow` configuration files against their schemas. Runs entirely **offline** — no SSH
+connection, no server, no orchestrator target resolved, ever — which makes it the fastest way to check
+a config before pushing, and the one check `dockflow deploy --dry-run` is not (that one connects; see
+[Deploy](#deploy)).
 
-It checks `config.yml`, `servers.yml`, the presence of the compose file, and reports unknown keys with a "did you mean" suggestion. It also fails on shell-style `${VAR}` placeholders in the compose file, which Dockflow never substitutes (see [Docker Compose](/en/configuration/docker-compose)).
+It checks `config.yml`, `servers.yml`, the presence of the compose file, and reports unknown keys with
+a "did you mean" suggestion. It also fails on shell-style `${VAR}` placeholders in the compose file,
+which Dockflow never substitutes (see [Docker Compose](/en/configuration/docker-compose)).
+
+With an `<env>` argument and `orchestrator: k3s`, `validate` additionally renders both roles offline
+(the same normalize + translate pipeline a deploy uses, with a synthetic `0.0.0-validate` version) and
+reports every diagnostic the render would raise, plus the two topology rules that need no live node: an
+even number of managers (2, 4, ...) and two servers naming the same node. `validate` without an
+environment, or on Swarm, keeps today's output byte for byte.
 
 | Option | Description |
 |--------|-------------|
-| `--env <env>` | Also check that a specific environment exists in `servers.yml` |
+| `--debug` | Enable debug output |
 
 ```bash
 dockflow validate                 # Validate every configuration file
-dockflow validate --env production
+dockflow validate production      # Also render both k3s roles offline for this environment
 ```
 
-Exits `0` when everything is valid, `60` when a check fails.
+Exits `0` when everything is valid (warnings only still exit `0`), `60` (`VALIDATION_FAILED`) when a check fails.
 
 ### UI
 
@@ -216,7 +283,8 @@ Exits `0` when everything is valid, `60` when a check fails.
 dockflow ui
 ```
 
-Launch the Dockflow WebUI dashboard for visual management of services, topology, and logs.
+Launch the Dockflow WebUI dashboard for visual management of services, topology, and logs. See
+[Web Dashboard](/en/ui) for what each page can do on k3s.
 
 | Option | Description |
 |--------|-------------|
@@ -239,7 +307,8 @@ dockflow completion fish > ~/.config/fish/completions/dockflow.fish
 
 ## App Commands
 
-These commands interact with deployed services via SSH. Most accept `-s, --server <name>` to target a specific server (defaults to the first server for the environment).
+These commands interact with deployed services via SSH (Swarm) or the Kubernetes API (k3s). Most
+accept `-s, --server <name>` to target a specific manager (defaults to the first ready one).
 
 ### Logs
 
@@ -247,29 +316,36 @@ These commands interact with deployed services via SSH. Most accept `-s, --serve
 dockflow logs <env> [service]
 ```
 
-View logs from running services. On Swarm, only **currently running task replicas** are streamed by default — terminated and crashed replicas are excluded to avoid interleaved noise from past failures. Use `--all-tasks` to include them, or `--pick` to select one specific replica interactively.
+View logs from running services. On Swarm, only **currently running task replicas** are streamed by
+default — terminated and crashed replicas are excluded to avoid interleaved noise from past failures.
+On k3s, `--all-tasks` includes the previous container of a crashed and restarted pod (the equivalent
+of `kubectl logs --previous`), and `-c, --container <name>` selects one container of a multi-container
+pod. Use `--pick` to select one specific instance interactively.
 
 | Option | Description |
 |--------|-------------|
 | `-f, --follow` | Follow log output |
-| `-n, --tail <lines>` | Number of lines to show (default: 100) |
+| `-n, --tail <lines>` | Number of lines to show, or `all` (default: `100`) |
 | `-T, --timestamps` | Show timestamps |
-| `--since <time>` | Show logs since timestamp (e.g., `1h`, `2024-01-01`) |
-| `-s, --server <name>` | Target server |
-| `-a, --all-tasks` | Include logs from terminated/historical task replicas (Swarm only) |
-| `--pick` | Interactively pick which task replica to follow (Swarm only) |
+| `--since <time>` | Show logs since a duration (`1h`), a date, or a timestamp |
+| `-a, --all-tasks` | Include terminated/historical instances (Swarm) or a crashed pod's previous container (k3s) |
+| `--pick` | Interactively pick which instance to follow |
+| `-c, --container <name>` | Container of a multi-container pod (k3s) |
+| `--no-prefix` | Never prefix lines with the instance label |
+| `-s, --server <name>` | Target manager |
 
 ```bash
-dockflow logs production                 # All services, running replicas only
+dockflow logs production                 # All services, running instances only
 dockflow logs production app -f          # Follow specific service
 dockflow logs production app -n 500      # Last 500 lines
+dockflow logs production app -n all      # Every line
 dockflow logs production --since 1h      # Last hour
-dockflow logs production app --all-tasks # Include crashed/old replicas
-dockflow logs production app --pick      # Pick a replica from a list
+dockflow logs production app --all-tasks # Include crashed/old instances
+dockflow logs production app --pick      # Pick an instance from a list
 ```
 
 <Callout type="info">
-The `--pick` picker lists every task (running + history) with its current state, replica index, node, and any error message — useful for inspecting why a specific replica crashed.
+The `--pick` picker lists every instance (running + history) with its current state, index, node, and any error message — useful for inspecting why a specific replica crashed. A multi-replica service prefixes each line with its instance label, unless `--no-prefix` is passed.
 </Callout>
 
 ### Exec
@@ -278,36 +354,56 @@ The `--pick` picker lists every task (running + history) with its current state,
 dockflow exec <env> <service> [command...]
 ```
 
-Execute a command inside a running container (default: bash).
+Execute a command inside a running container (default: an interactive shell). Aliases: `bash`, `shell`.
+The command's own exit code is propagated as the CLI's exit code (never mapped onto one of Dockflow's
+own [exit codes](#exit-codes)), and every argument after the service name is passed through unchanged —
+quote a multi-word command as one argument for a shell to see it as intended (`dockflow exec production
+app "ls -la"`).
+
+`-u, --user <user>` is **refused on k3s** — the Kubernetes exec API always runs as the container's own
+user, with no override (see [Orchestrator Support](#orchestrator-support)).
 
 | Option | Description |
 |--------|-------------|
-| `-s, --server <name>` | Target server |
-| `-u, --user <user>` | Run as specified user |
-| `-w, --workdir <dir>` | Working directory inside container |
+| `-s, --server <name>` | Target manager |
+| `-u, --user <user>` | Run as the given user (Swarm only) |
+| `-w, --workdir <dir>` | Working directory inside the container |
+| `--sh` | Use `sh` for the interactive shell instead of `bash` |
+| `-e, --env <KEY=VALUE>` | Extra environment variable, repeatable |
+| `--pod <instance>` | Instance id from `dockflow ps` |
+| `--pick` | Interactively pick the instance |
+| `-c, --container <name>` | Container of a multi-container pod (k3s) |
+| `-T, --no-tty` | Never allocate a TTY |
 
 ```bash
 dockflow exec production app bash          # Interactive shell
-dockflow exec production app "ls -la"      # Run command
+dockflow exec production app "ls -la"      # Run a command
+dockflow bash production app --sh          # `bash` alias, sh instead of bash (Alpine containers)
 dockflow exec production db "psql -U user" # Database access
 ```
 
-### Bash
+### Copy
 
 ```bash
-dockflow bash <env> <service>
+dockflow cp <env> <src> <dest>
 ```
 
-Open an interactive shell in a container. Alias: `shell`.
+Copy files between the local machine and a container, in either direction — exactly one of `<src>`
+and `<dest>` must be `<service>:<path>`, the other a local path. Directory copies and Docker's
+trailing-`/.` "contents of" convention both work, on either orchestrator.
 
 | Option | Description |
 |--------|-------------|
-| `-s, --server <name>` | Target server |
-| `--sh` | Use sh instead of bash |
+| `-s, --server <name>` | Target manager |
+| `--accessories` | Target the accessories role instead of the app |
+| `--pod <instance>` | Instance id from `dockflow ps` |
+| `--pick` | Interactively pick the instance |
+| `-c, --container <name>` | Container of a multi-container pod (k3s) |
 
 ```bash
-dockflow bash production app              # Open bash shell
-dockflow shell production app --sh        # Use sh (Alpine containers)
+dockflow cp production web:/app/logs ./logs        # Copy out
+dockflow cp production ./config.json web:/app/     # Copy in
+dockflow cp production web:/app/data/. ./data      # Directory contents, not the directory itself
 ```
 
 ### Restart
@@ -316,11 +412,14 @@ dockflow shell production app --sh        # Use sh (Alpine containers)
 dockflow restart <env> [service]
 ```
 
-Force restart services (rolling update).
+Force restart services (a rolling update with no image change). Waits until the restarted service is
+ready again on both orchestrators, unless `--no-wait` is passed. A service already scaled to 0 is
+resumed instead of restarted.
 
 | Option | Description |
 |--------|-------------|
-| `-s, --server <name>` | Target server |
+| `-s, --server <name>` | Target manager |
+| `--no-wait` | Do not wait for the restart to complete |
 
 ```bash
 dockflow restart production           # All services
@@ -333,12 +432,14 @@ dockflow restart production app       # Specific service
 dockflow stop <env>
 ```
 
-Stop and remove the entire stack. Prompts for confirmation.
+Stop the stack: on Swarm, removes it; on k3s, scales every workload to 0 replicas. On both
+orchestrators, volumes, release history and accessories are **kept** — `stop` never deletes data, and a
+following `dockflow deploy` brings everything back. Prompts for confirmation unless `-y`.
 
 | Option | Description |
 |--------|-------------|
 | `-y, --yes` | Skip confirmation |
-| `-s, --server <name>` | Target server |
+| `-s, --server <name>` | Target manager |
 
 ### Scale
 
@@ -346,11 +447,14 @@ Stop and remove the entire stack. Prompts for confirmation.
 dockflow scale <env> <service> <replicas>
 ```
 
-Scale a service to a specified number of replicas.
+Scale a service to a specified number of replicas. Waits until the new replica count is ready on both
+orchestrators, unless `--no-wait`. A `global`/DaemonSet-mode service (one instance per node) cannot be
+scaled — its replica count follows the node count instead.
 
 | Option | Description |
 |--------|-------------|
-| `-s, --server <name>` | Target server |
+| `-s, --server <name>` | Target manager |
+| `--no-wait` | Do not wait for the scale to reach its target |
 
 ```bash
 dockflow scale production app 3      # Scale to 3 replicas
@@ -363,15 +467,20 @@ dockflow scale production worker 5   # Scale workers
 dockflow rollback <env> [service]
 ```
 
-Rollback a service to its previous version.
+Without a service name, rolls back the **whole release** to the previous version (restores the
+**app** role's objects only — see [Deployment](/en/deployment#rollback) for what that means for
+accessories). With a service name, rolls back that **one service** to its previous live revision
+instead, without touching the release record — the two forms use different mechanisms on k3s (a full
+release re-apply vs. `kubectl rollout undo`) and are not interchangeable.
 
 | Option | Description |
 |--------|-------------|
-| `-s, --server <name>` | Target server |
+| `-s, --server <name>` | Target manager |
+| `--allow-chart-drift` | Reinstall a Helm release even when its chart bytes changed upstream since it was recorded (full rollback only) |
 
 ```bash
-dockflow rollback production app     # Rollback specific service
-dockflow rollback production         # Rollback all services
+dockflow rollback production app     # Rollback one service to its previous revision
+dockflow rollback production         # Rollback the whole release
 ```
 
 ### PS
@@ -380,12 +489,14 @@ dockflow rollback production         # Rollback all services
 dockflow ps <env>
 ```
 
-List running containers for the stack.
+List running instances (containers on Swarm, pods on k3s) for the stack.
 
 | Option | Description |
 |--------|-------------|
-| `-s, --server <name>` | Target server |
-| `--tasks` | Show tasks instead of containers |
+| `-s, --server <name>` | Target manager |
+| `--tasks` | Show a detailed block per instance instead of one line per service |
+| `-a, --all` | Include terminated instances |
+| `-j, --json` | Output as JSON |
 
 ### Status
 
@@ -393,7 +504,7 @@ List running containers for the stack.
 dockflow status [env]
 ```
 
-Show deployment status. Without an argument, summarises every environment; with one, focuses on that environment.
+Show deployment status. Without an argument, summarises every environment; with one, focuses on that environment. Identical from every manager on k3s — release state, the deploy lock and `status` itself live in the cluster (see [Multi-host](/en/configuration/multi-host)).
 
 ```bash
 dockflow status               # All environments
@@ -410,23 +521,27 @@ Show the currently deployed application version.
 
 | Option | Description |
 |--------|-------------|
-| `-s, --server <name>` | Target server |
-| `--json` | Output as JSON |
+| `-s, --server <name>` | Target manager |
+| `-j, --json` | Output as JSON |
 
-### Audit
+### History (Audit)
 
 ```bash
-dockflow audit <env>
+dockflow history <env>
 ```
 
-Show deployment audit log (who deployed what and when).
+Show the deployment audit log (who deployed what and when). Alias: `audit`.
+
+<Callout type="warning">
+  Unlike release state, `history` reads the log files of **one manager** — the first one that answers, printed by the command — never the whole cluster. After a failover it shows only that manager's view; see [Multi-host](/en/configuration/multi-host#what-survives-a-failover) and `dockflow history-sync` below.
+</Callout>
 
 | Option | Description |
 |--------|-------------|
 | `-s, --server <name>` | Target server |
 | `-n, --lines <number>` | Number of entries to show (default: 20) |
 | `--all` | Show all entries |
-| `--json` | Output as JSON |
+| `-j, --json` | Output as JSON |
 
 ### History Sync
 
@@ -450,14 +565,15 @@ dockflow history-sync production
 dockflow metrics <env>
 ```
 
-Show deployment metrics and statistics.
+Show deployment metrics and statistics. Same per-manager caveat as `history` above: falls back from the
+first manager to the next reachable one, so a stopped first manager does not empty the output.
 
 | Option | Description |
 |--------|-------------|
 | `-s, --server <name>` | Target server |
 | `--history` | Show deployment history |
 | `-n, --lines <number>` | Number of history entries (default: 20) |
-| `--json` | Output as JSON |
+| `-j, --json` | Output as JSON |
 | `--prune` | Remove old metrics (keep last 1000) |
 
 ### Diagnose
@@ -466,7 +582,7 @@ Show deployment metrics and statistics.
 dockflow diagnose <env>
 ```
 
-Diagnose deployment issues and show why containers may not be starting.
+Diagnose deployment issues and show why containers or pods may not be starting.
 
 | Option | Description |
 |--------|-------------|
@@ -491,7 +607,8 @@ Show stack overview with services, replicas, and resource usage.
 dockflow ssh <env> [command...]
 ```
 
-Open an interactive SSH session or execute a command on the server.
+Open an interactive SSH session or execute a command on the server. Works the same on k3s — this opens
+a shell on the node itself, not a container (see [Exec](#exec) for that).
 
 | Option | Description |
 |--------|-------------|
@@ -508,125 +625,37 @@ dockflow ssh production "docker ps"        # Run remote command
 dockflow prune <env>
 ```
 
-Remove unused Docker resources from the server.
+Remove unused resources. On Swarm, every target (images, containers, volumes, networks) is supported.
+On k3s, only **images** are — containerd images imported by Dockflow stay pinned regardless, and
+`--containers`, `--volumes` and `--networks` are refused with a pointer to the k3s-native equivalent
+(see [Orchestrator Support](#orchestrator-support)); without `--all`, pruning k3s images is a
+documented no-op, since containerd keeps no dangling images and the kubelet reclaims unused ones under
+disk pressure.
 
 | Option | Description |
 |--------|-------------|
-| `-a, --all` | Remove all unused images, not just dangling |
+| `-a, --all` | Remove all unused images, not just dangling ones |
 | `--images` | Prune images only |
-| `--containers` | Prune containers only |
-| `--volumes` | Prune volumes only |
-| `--networks` | Prune networks only |
+| `--containers` | Prune containers only (Swarm only) |
+| `--volumes` | Prune volumes only (Swarm only — on k3s, delete volumes explicitly with [`dockflow volumes rm`](#volumes-remove)) |
+| `--networks` | Prune networks only (Swarm only) |
 | `-y, --yes` | Skip confirmation |
 | `-s, --server <name>` | Target server |
 
 <Callout type="warning">
-  The `--volumes` option permanently deletes data stored in unattached Docker volumes.
+  The `--volumes` option (Swarm) permanently deletes data stored in unattached Docker volumes.
 </Callout>
 
 ```bash
 dockflow prune production              # Prune all (with confirmation)
 dockflow prune production -y           # Skip confirmation
-dockflow prune production --images -a  # All unused images
+dockflow prune production --images -a  # All unused images, both orchestrators
 ```
-
-## List Commands
-
-### List Environments
-
-```bash
-dockflow list env
-```
-
-List available environments and their servers. Aliases: `envs`, `environments`.
-
-| Option | Description |
-|--------|-------------|
-| `--json` | Output as JSON |
-
-### List Services
-
-```bash
-dockflow list services <env>
-```
-
-List services in a deployed stack. Alias: `svc`.
-
-| Option | Description |
-|--------|-------------|
-| `-s, --server <name>` | Target server |
-| `-t, --tasks` | Show individual tasks for each service |
-| `--json` | Output as JSON |
-
-### List Images
-
-```bash
-dockflow list images <env>
-```
-
-Show application images on the server.
-
-| Option | Description |
-|--------|-------------|
-| `-s, --server <name>` | Target server |
-| `-a, --all` | Show all images, not just app images |
-
-## Plugins Commands
-
-### List Plugins
-
-```bash
-dockflow plugins list
-```
-
-List the built-in plugins and the project's own, with the inputs each one takes. A project plugin that replaces a built-in one is flagged, and a plugin whose manifest cannot be read is listed with its error. Works outside a project too, where only built-in plugins are shown. Alias: `ls`.
-
-| Option | Description |
-|--------|-------------|
-| `--json` | Output as JSON |
-
-See [Plugins](/en/configuration/plugins).
-
-## Lock Commands
-
-Manage deployment locks to prevent concurrent deployments.
-
-### Acquire Lock
-
-```bash
-dockflow lock acquire <env>
-```
-
-| Option | Description |
-|--------|-------------|
-| `-s, --server <name>` | Target server |
-| `-m, --message <msg>` | Lock reason |
-| `--force` | Force acquire even if already locked |
-
-### Lock Status
-
-```bash
-dockflow lock status <env>
-```
-
-| Option | Description |
-|--------|-------------|
-| `-s, --server <name>` | Target server |
-
-### Release Lock
-
-```bash
-dockflow lock release <env>
-```
-
-| Option | Description |
-|--------|-------------|
-| `-s, --server <name>` | Target server |
-| `--force` | Force release without confirmation |
 
 ## Accessories Commands
 
-Manage stateful services (databases, caches) with a separate lifecycle. Alias: `acc`. See [Accessories Configuration](/en/configuration/accessories) for setup.
+Manage stateful services (databases, caches) with a separate lifecycle. Alias: `acc`. See
+[Accessories](/en/configuration/accessories) for setup and the k3s change-detection semantics.
 
 ### Deploy Accessories
 
@@ -646,8 +675,8 @@ dockflow accessories list <env>     # or: dockflow acc ls <env>
 
 | Option | Description |
 |--------|-------------|
+| `-j, --json` | Output as JSON |
 | `-s, --server <name>` | Target server |
-| `--json` | Output as JSON |
 
 ### Accessories Logs
 
@@ -655,13 +684,19 @@ dockflow accessories list <env>     # or: dockflow acc ls <env>
 dockflow accessories logs <env> [service]
 ```
 
+Same option set as [`dockflow logs`](#logs), including `-c, --container` and `--all-tasks` on k3s.
+
 | Option | Description |
 |--------|-------------|
 | `-f, --follow` | Follow log output |
 | `-n, --tail <lines>` | Number of lines (default: 100) |
-| `--since <time>` | Show logs since timestamp |
 | `--timestamps` | Show timestamps |
-| `--raw` | Raw output without formatting |
+| `--since <time>` | Show logs since a duration, date or timestamp |
+| `-a, --all-tasks` | Include terminated instances / a crashed pod's previous container |
+| `--pick` | Interactively pick which instance to follow |
+| `-c, --container <name>` | Container of a multi-container pod (k3s) |
+| `--no-prefix` | Never prefix lines with the instance label |
+| `--raw` | No-op, kept for compatibility |
 | `-s, --server <name>` | Target server |
 
 ### Accessories Exec
@@ -670,12 +705,17 @@ dockflow accessories logs <env> [service]
 dockflow accessories exec <env> <service> [command...]
 ```
 
-Execute a command in an accessory container (default: sh).
+Execute a command in an accessory container (default: an interactive shell).
 
 | Option | Description |
 |--------|-------------|
-| `-u, --user <user>` | Run as specified user |
-| `--workdir <dir>` | Working directory |
+| `-u, --user <user>` | Run as the given user (Swarm only) |
+| `-w, --workdir <dir>` | Working directory inside the container |
+| `-e, --env <KEY=VALUE>` | Extra environment variable, repeatable |
+| `--pod <instance>` | Instance id from `dockflow ps` |
+| `--pick` | Interactively pick the instance |
+| `-c, --container <name>` | Container of a multi-container pod (k3s) |
+| `-T, --no-tty` | Never allocate a TTY |
 | `-s, --server <name>` | Target server |
 
 ```bash
@@ -691,7 +731,7 @@ dockflow accessories restart <env> [service]
 
 | Option | Description |
 |--------|-------------|
-| `--force` | Force restart even if updating |
+| `--force` | Force restart even if the service is updating (no-op) |
 | `-s, --server <name>` | Target server |
 
 ### Stop Accessories
@@ -701,6 +741,13 @@ dockflow accessories stop <env> [service]
 ```
 
 Scale accessories to 0 replicas (keeps volumes).
+
+<Callout type="warning">
+  On k3s, an accessory scaled to 0 with `stop` **stays at 0** across ordinary app deploys — change
+  detection skips a redeploy of `accessories.yml` when it hasn't changed, so nothing re-applies the
+  replica count (Swarm parity). Bring it back with `accessories restart` or a forced
+  `deploy --accessories`.
+</Callout>
 
 | Option | Description |
 |--------|-------------|
@@ -713,21 +760,28 @@ Scale accessories to 0 replicas (keeps volumes).
 dockflow accessories remove <env>    # or: dockflow acc rm <env>
 ```
 
-Remove the accessories stack entirely.
+Remove the accessories stack. On k3s, PersistentVolumeClaims are **never** deleted implicitly — without
+`-v, --volumes` the claims survive removal and are re-attached the next time the accessory is deployed.
 
 | Option | Description |
 |--------|-------------|
-| `-v, --volumes` | Also remove volumes (DESTRUCTIVE) |
-| `-y, --yes` | Skip confirmation |
+| `-v, --volumes` | Also remove associated volumes (DESTRUCTIVE) |
+| `-y, --yes` | Skip confirmation prompt (also skips the typed confirmation below, for CI) |
 | `-s, --server <name>` | Target server |
 
 <Callout type="error">
-  The `--volumes` flag permanently deletes all data. You will be prompted to type the environment name to confirm.
+  The `--volumes` flag permanently deletes all data. You will be prompted to type the environment name to confirm, unless `-y`/`--yes` is passed — the only way to skip that typed confirmation.
 </Callout>
+
+```bash
+dockflow accessories remove production           # Remove stack (keep volumes)
+dockflow accessories remove production --volumes # Remove stack AND volumes
+dockflow accessories remove production --volumes -y  # Skip prompt and typed confirmation (CI)
+```
 
 ## Backup Commands
 
-Backup and restore accessory databases. See [Backup & Restore](/en/configuration/backup) for the per-service configuration.
+Backup and restore accessory databases. See [Backup & Restore](/en/configuration/backup) for the per-service configuration and the k3s mechanics (helper pods, per-node backup index).
 
 ### Create Backup
 
@@ -754,11 +808,16 @@ dockflow bak create production postgres      # `bak` is an alias
 dockflow backup list <env> [service]
 ```
 
-List available backups.
+List available backups. Alias: `ls`.
+
+<Callout type="info">
+  On k3s the backup index is **per node** — see [Multi-host](/en/configuration/multi-host) and [Backup & Restore](/en/configuration/backup#limitations) for what happens after a failover.
+</Callout>
 
 | Option | Description |
 |--------|-------------|
 | `-j, --json` | Output in JSON format |
+| `--node <name>` | Limit to backup files on this server (manager or worker) |
 | `-s, --server <name>` | Target server |
 
 ```bash
@@ -772,11 +831,15 @@ dockflow backup ls production postgres       # `ls` is an alias
 dockflow backup restore <env> [service]
 ```
 
-Restore a service or accessory database from a backup. Restores the latest backup unless `--from` is given.
+Restore a service or accessory database from a backup. Restores the latest backup unless `--from` is
+given — on k3s, without an explicit `--from <id>`, a restore refuses rather than silently picking an
+older backup from a different, unreachable node. Refused when the target service runs more than one
+replica (R-23): restoring into several replicas at once would race.
 
 | Option | Description |
 |--------|-------------|
 | `--from <id>` | Backup ID or date prefix (default: latest) |
+| `--force-unverified` | Skip archive verification (unverifiable backups only) |
 | `-y, --yes` | Skip the confirmation prompt |
 | `-s, --server <name>` | Target server |
 
@@ -786,7 +849,7 @@ dockflow backup restore production postgres --from 2026-08-29
 ```
 
 <Callout type="warning">
-  Restoring overwrites the current database. You are prompted to confirm unless `--yes` is passed.
+  Restoring overwrites the current database. You are prompted to confirm unless `--yes` is passed. Every archive is verified against its checksum before anything is wiped, unless `--force-unverified` is passed for one that predates verification.
 </Callout>
 
 ### Prune Backups
@@ -800,12 +863,269 @@ Remove old backups, keeping the most recent N per service.
 | Option | Description |
 |--------|-------------|
 | `--keep <n>` | Number of backups to keep per service (default: `retention_count` from config, or 10) |
+| `--node <name>` | Limit to backup files on this server (manager or worker) |
 | `-y, --yes` | Skip the confirmation prompt |
 | `-s, --server <name>` | Target server |
 
 ```bash
 dockflow backup prune production --keep 5
 ```
+
+## Lock Commands
+
+Manage the deployment lock, which every mutating command acquires automatically to prevent concurrent deployments.
+
+### Acquire Lock
+
+```bash
+dockflow lock acquire <env>
+```
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Target server |
+| `-m, --message <message>` | Lock reason |
+| `--force` | Force acquire even if already locked |
+
+### Lock Status
+
+```bash
+dockflow lock status <env>
+```
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Target server |
+
+### Release Lock
+
+```bash
+dockflow lock release <env>
+```
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Target server |
+| `--force` | Force release without confirmation |
+
+## List Commands
+
+### List Environments
+
+```bash
+dockflow list env
+```
+
+List available environments and their servers. Aliases: `envs`, `environments`.
+
+| Option | Description |
+|--------|-------------|
+| `-j, --json` | Output as JSON |
+
+### List Services
+
+```bash
+dockflow list services <env>
+```
+
+List services in a deployed stack. Alias: `svc`.
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Target server |
+| `-t, --tasks` | Show individual instances for each service |
+| `-j, --json` | Output as JSON |
+
+### List Images
+
+```bash
+dockflow list images <env>
+```
+
+Show application images on the server.
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Target server |
+| `-a, --all` | Show all images, not just app images |
+
+## Volumes Commands
+
+k3s only — manage PersistentVolumeClaims. See [Volumes & Data](/en/configuration/volumes) for the
+reclaim-policy protocol these commands follow, and the data-safety table that applies to every command
+in this guide.
+
+### Volumes List
+
+```bash
+dockflow volumes list <env>
+```
+
+List PersistentVolumeClaims: name, role, the compose volume key, status, capacity, storage class, node
+and reclaim policy.
+
+| Option | Description |
+|--------|-------------|
+| `--role <role>` | Filter by role (`app` or `accessory`) |
+| `--system` | Target the Dockflow system namespace |
+| `--namespace <ns>` | Target a Helm release namespace of this stack |
+| `-j, --json` | Output in JSON format |
+| `-s, --server <name>` | Target manager |
+
+### Volumes Remove
+
+```bash
+dockflow volumes rm <env> <name...>
+```
+
+Delete one or more claims after a typed confirmation, refusing any claim currently mounted by a running
+pod. Follows the [reclaim protocol](/en/configuration/volumes#the-reclaim-protocol): volumes are
+processed one at a time, and a claim's original reclaim policy is restored if the command stops before
+it finished deleting.
+
+<Callout type="warning">
+  `-y` skips **both** the prompt and the typed confirmation, for CI. Without `-y`, a non-interactive
+  shell refuses rather than proceeding silently. **No API route or UI action ever deletes a volume**,
+  with or without a flag — this command is the only way.
+</Callout>
+
+| Option | Description |
+|--------|-------------|
+| `--system` | Target the Dockflow system namespace |
+| `--namespace <ns>` | Target a Helm release namespace of this stack |
+| `-y, --yes` | Skip confirmation prompt |
+| `-s, --server <name>` | Target manager |
+
+```bash
+dockflow volumes list production
+dockflow volumes list production --role accessory
+dockflow volumes rm production old-cache
+```
+
+## Helm Commands
+
+k3s only — manage Helm releases declared under `helm.releases` in `config.yml`. See
+[Helm](/en/configuration/helm) for the release lifecycle (resolution, apply order, rollback).
+
+### Helm List
+
+```bash
+dockflow helm list <env>
+```
+
+Every release Dockflow owns, plus declared releases not yet installed.
+
+| Option | Description |
+|--------|-------------|
+| `--role <role>` | Filter by role (`app` or `accessory`) |
+| `--json` | Output as JSON |
+| `-s, --server <name>` | Target manager |
+
+### Helm Status
+
+```bash
+dockflow helm status <env> [release]
+```
+
+Release, workloads and volumes of one release.
+
+| Option | Description |
+|--------|-------------|
+| `--system` | Target the Dockflow-owned Traefik release |
+| `--json` | Output as JSON |
+| `-s, --server <name>` | Target manager |
+
+### Helm History
+
+```bash
+dockflow helm history <env> [release]
+```
+
+Revision history, newest first.
+
+| Option | Description |
+|--------|-------------|
+| `--system` | Target the Dockflow-owned Traefik release |
+| `--max <n>` | Maximum revisions to list (default 20) |
+| `--json` | Output as JSON |
+| `-s, --server <name>` | Target manager |
+
+### Helm Values
+
+```bash
+dockflow helm values <env> [release]
+```
+
+The user-supplied values of a revision. Sensitive-looking keys are masked unless `--reveal` (which
+requires an interactive terminal).
+
+| Option | Description |
+|--------|-------------|
+| `--system` | Target the Dockflow-owned Traefik release |
+| `--revision <n>` | Revision to read (default: the deployed one) |
+| `--reveal` | Print sensitive values unmasked (requires a terminal) |
+| `--json` | Output as JSON |
+| `-s, --server <name>` | Target manager |
+
+### Helm Rollback
+
+```bash
+dockflow helm rollback <env> [releaseOrRevision] [revision]
+```
+
+Roll back a release to an earlier revision (the newest superseded one by default), restoring exactly
+the chart bytes that revision recorded. Refuses when the chart content on the repository has since
+changed, unless `dockflow rollback --allow-chart-drift` is used for a full release rollback.
+
+| Option | Description |
+|--------|-------------|
+| `--system` | Target the Dockflow-owned Traefik release (the first positional is then the revision) |
+| `--timeout <duration>` | Rollback timeout (default: the release's own timeout) |
+| `-y, --yes` | Skip confirmation prompt |
+| `-s, --server <name>` | Target manager |
+
+### Helm Uninstall
+
+```bash
+dockflow helm uninstall <env> [release]
+```
+
+Uninstall a release. Refused without `--volumes` or `--keep-volumes` when the release owns
+PersistentVolumeClaims — the same protection [Volumes & Data](/en/configuration/volumes) documents for
+`dockflow volumes rm`.
+
+| Option | Description |
+|--------|-------------|
+| `--system` | Target the Dockflow-owned Traefik release |
+| `--volumes` | Also delete the release volumes (DESTRUCTIVE) |
+| `--keep-volumes` | Keep the release volumes as ordinary released volumes |
+| `--force` | Skip the routes check (`--system` only) |
+| `--timeout <duration>` | Uninstall timeout (default: the release's own timeout) |
+| `-y, --yes` | Skip confirmation prompt |
+| `-s, --server <name>` | Target manager |
+
+```bash
+dockflow helm list production
+dockflow helm status production podinfo
+dockflow helm rollback production podinfo
+dockflow helm uninstall production podinfo --volumes
+```
+
+## Plugins Commands
+
+### List Plugins
+
+```bash
+dockflow plugins list
+```
+
+List the built-in plugins and the project's own, with the inputs each one takes. A project plugin that replaces a built-in one is flagged, and a plugin whose manifest cannot be read is listed with its error. Works outside a project too, where only built-in plugins are shown. Alias: `ls`. Plugins are host-level on both orchestrators — see [Plugins](/en/configuration/plugins) for how they interact with a k3s host.
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Output as JSON |
+
+See [Plugins](/en/configuration/plugins).
 
 ## Setup Commands
 
@@ -855,14 +1175,18 @@ Configure a server without prompts (Linux only, must run on target host). Pass f
 | `--password <password>` | Password for new user or sudo |
 | `--ssh-key <path>` | Path to existing SSH private key |
 | `--generate-key` | Generate new SSH key |
-| `--deploy-password <pw>` | Password for the deploy user created remotely (remote, with `--user`) |
+| `--deploy-password <password>` | Password for the deploy user created remotely (remote, with `--user`) |
 | `--skip-docker-install` | Skip Docker installation |
-| `--orchestrator <type>` | `swarm` (default) or `k3s` — k3s skips the Docker install |
+| `--orchestrator <type>` | `swarm` (default) or `k3s` — `k3s` skips the Docker install, since k3s brings its own containerd |
+| `--nginx` | Install Nginx |
 | `--portainer` | Install Portainer |
 | `--portainer-port <port>` | Portainer HTTP port (default: 9000) |
-| `--portainer-password <pw>` | Portainer admin password |
+| `--portainer-password <password>` | Portainer admin password |
 | `--portainer-domain <domain>` | Portainer domain name |
 | `-y, --yes` | Skip confirmations |
+| `--dev` | Build and upload the local CLI binary instead of downloading a release (development) |
+| `--node-name <name>` | Kubernetes node name (single-host k3s setup) |
+| `--private-host <ip>` | Private IP for cluster traffic (single-host k3s setup) |
 
 ### Initialize Swarm
 
@@ -870,15 +1194,59 @@ Configure a server without prompts (Linux only, must run on target host). Pass f
 dockflow setup swarm <env>
 ```
 
-Initialize a Docker Swarm cluster for an environment. Joins all servers configured in `servers.yml` into the Swarm.
+Initialize a Docker Swarm cluster for an environment. Joins every server configured in `servers.yml`
+(tagged with `<env>`) into the Swarm.
 
-### Initialize k3s
+### Initialize / update k3s
 
 ```bash
 dockflow setup k3s <env>
 ```
 
-Install and configure k3s on the target server for an environment.
+`dockflow setup k3s <env>` is a thin alias of `dockflow setup --orchestrator k3s --env <env>` — both
+forms accept every flag below, and both install, upgrade, repair drift in, and verify the **whole**
+cluster of the environment, not one node at a time. Re-running it is always safe. See
+[Cluster setup](/en/configuration/kubernetes/setup) for the full guide, the pinned versions, and the
+security model.
+
+<Callout type="warning">
+  **Breaking change.** This connects with a **bootstrap identity** (`--ssh-user`, default `root`, with
+  `-k/--key` or `--password`) — never the deploy key the previous `dockflow setup k3s` used. A cluster
+  from before this release, or set up by hand, has no Dockflow state and is refused: uninstall it
+  first and run this command fresh. There is no migration path.
+</Callout>
+
+| Option | Description |
+|--------|-------------|
+| `--env <env>` | Environment tag in `servers.yml` (equivalent to `setup k3s <env>`) |
+| `--ssh-user <user>` | Bootstrap SSH user, root or passwordless sudo (default: `root`) |
+| `-k, --key <path>` | Bootstrap SSH private key |
+| `--password <password>` | Bootstrap SSH password or key passphrase (prefer the interactive prompt: argv is visible in your process list and shell history) |
+| `--dry-run` | Inspect the nodes and print the plan without changing anything |
+| `-y, --yes` | Do not ask before restarts and upgrades |
+| `--upgrade` | Consent to upgrading k3s to the pinned version |
+| `--flannel-backend <backend>` | `vxlan` or `wireguard-native` (new clusters only) |
+| `--skip-firewall` | Do not change ufw/firewalld; print the required flows instead |
+| `--skip-network-check` | Skip the cross-node pod network check |
+| `--skip-reachability-check` | Skip the post-setup check for ports answering from outside the cluster |
+| `--insecure-host-key` | Do not verify or record SSH host keys (prints a warning per node) |
+| `--require-host-key` | Refuse to connect to a node with no recorded SSH host key |
+| `--convert-datastore` | Consent to the one-way SQLite-to-embedded-etcd conversion (adding a second manager to a single-server cluster) |
+| `--shared-cluster` | Allow nodes that already serve another Dockflow environment (shared cluster-admin) |
+| `--rotate-deploy-token` | Revoke and recreate the deploy identity token |
+| `--reset` | Uninstall k3s from the environment (see `--node`, `--delete-volumes`) |
+| `--node <key>` | With `--reset`: only this server (repeatable) |
+| `--delete-volumes` | With `--reset`: also delete volume data, datastore backups and the cluster token |
+| `--confirm <env>` | With `--reset` in a non-interactive session: the environment name, in place of the typed prompt |
+| `--dev` | Upload the locally built CLI instead of the release binary |
+
+```bash
+dockflow setup k3s production --ssh-user root --key ~/.ssh/bootstrap_ed25519
+dockflow setup k3s production --dry-run
+dockflow setup k3s production --upgrade -y
+dockflow setup k3s production --reset --node worker1
+dockflow setup --orchestrator k3s --env production --ssh-user root -k ~/.ssh/bootstrap_ed25519  # equivalent form
+```
 
 ### Check Dependencies
 
@@ -911,11 +1279,14 @@ Display connection string for an existing deployment user.
 **For setup commands (on target Linux host):**
 - Root access (local setup must run as root; remote setup escalates automatically)
 - SSH (`ssh`, `ssh-keygen`)
-- curl (downloads the Docker install script)
+- curl (downloads the Docker or k3s install script)
 
 Missing dependencies are installed automatically during setup.
 
 ## Full Workflow Example
+
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
 
 ```bash
 # 1. Setup server
@@ -963,3 +1334,58 @@ dockflow acc exec production postgres psql
 # 13. Cleanup
 dockflow prune production --images -a
 ```
+
+  </Tabs.Tab>
+  <Tabs.Tab>
+
+```bash
+# 1. Setup a whole cluster (one manager here; see Cluster setup for HA)
+dockflow setup k3s production --ssh-user root --key ~/.ssh/bootstrap_ed25519
+
+# 2. Save connection string(s)
+echo "PRODUCTION_MAIN_SERVER_CONNECTION=..." > .env.dockflow
+
+# 3. Initialize project (orchestrator: k3s in .dockflow/config.yml)
+dockflow init github
+
+# 4. Validate configuration (offline: config, servers.yml, both roles rendered)
+dockflow config validate
+dockflow validate production
+
+# 5. Deploy
+dockflow deploy production 1.0.0
+
+# 6. Monitor
+dockflow logs production -f
+dockflow details production
+dockflow ps production
+
+# 7. Volumes and Helm (k3s only)
+dockflow volumes list production
+dockflow helm list production
+
+# 8. Troubleshoot
+dockflow diagnose production
+dockflow exec production app bash
+dockflow ssh production
+
+# 9. Scale
+dockflow scale production app 3
+
+# 10. Rollback if needed
+dockflow rollback production app
+
+# 11. Manage accessories
+dockflow acc logs production postgres -f
+dockflow acc exec production postgres psql
+
+# 12. Cleanup (images only on k3s)
+dockflow prune production --images -a
+```
+
+  </Tabs.Tab>
+</Tabs>
+
+---
+
+**Next:** [Deployment](/en/deployment) — how the deploy flow works on each orchestrator.

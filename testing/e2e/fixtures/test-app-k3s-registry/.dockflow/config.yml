@@ -1,0 +1,17 @@
+project_name: "k3s-registry"
+
+stack_management:
+  keep_releases: 3
+  cleanup_on_failure: true
+
+# Anonymous registry (E-43-01..04): 43-registry.test.ts patches this section for the authenticated
+# and wrong-password scenarios (E-43-05, E-43-06), which need a separate namespace of credentials.
+registry:
+  type: custom
+  url: "localhost:35010"
+  enabled: true
+  # usesRegistry() requires a password to treat this as registry delivery (design-03 12.1 I-30); the
+  # anonymous registry on port 35010 does not check it.
+  password: "e2e-dummy"
+  additional_tags:
+    - "{env}-latest"

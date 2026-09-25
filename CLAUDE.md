@@ -119,9 +119,9 @@ Always throw these typed errors from commands. The `withErrorHandler` wrapper di
 
 | Shape | Suffix | Examples | Import style |
 |---|---|---|---|
-| Polymorphic abstraction (multiple impls) | `*Backend` | `StackBackend`, `ExecBackend`, `LogsBackend`, `HealthBackend`, `ProxyBackend`, `ContainerBackend` | `new SwarmStackBackend(conn)` via factory |
-| Stateful class (wraps a connection / holds state) | no suffix | `Audit`, `Lock`, `Release`, `Metrics`, `Backup`, `HealthCheck` | `new Lock(conn, stackName)` |
-| Pure module (stateless free functions) | no class | `compose.ts`, `build.ts`, `distribution.ts`, `hook.ts`, `notification.ts`, `history-sync.ts`, `k8s-manifest.ts` | `import * as Compose from '../services/compose'` |
+| Polymorphic abstraction (multiple impls) | `*Backend` | `StackBackend`, `ContainerBackend`, `ProxyBackend`, `ImageBackend`, `VolumeBackend`, `HelmBackend`, `BackupBackend`, `ClusterBackend` | `orchestrator.stack`/`.containers`/... via `createOrchestrator()` |
+| Stateful class (wraps a connection / holds state) | no suffix | `Audit`, `Metrics`, `Backup`, `HealthCheck` | `new Backup(orchestrator, ref)` |
+| Pure module (stateless free functions) | no class | `compose.ts`, `build.ts`, `distribution.ts`, `hook.ts`, `notification.ts`, `history-sync.ts` | `import * as Compose from '../services/compose'` |
 
 **Rules:**
 - Never append `Service` to anything new. The word is too vague — if the class wraps state, drop the suffix; if it's just functions, make it a module.
@@ -131,28 +131,58 @@ Always throw these typed errors from commands. The `withErrorHandler` wrapper di
 
 **Orchestrator abstraction** (`cli/src/services/orchestrator/`):
 
-The orchestrator layer abstracts Swarm vs k3s behind common interfaces. Config field `orchestrator: 'swarm' | 'k3s'` (default: `swarm`) selects the backend. Factory functions in `cli/src/services/orchestrator/factory.ts` create the right implementation:
+The orchestrator layer abstracts Swarm vs k3s behind one `Orchestrator` bundle (`interfaces.ts`):
+`stack` (`StackBackend`), `containers` (`ContainerBackend`), `proxy` (`ProxyBackend`), `images`
+(`ImageBackend`), `cluster` (`ClusterBackend`), `backups` (`BackupBackend`), `releases` (`ReleaseStore`),
+`volumes` (`VolumeBackend`, always present — Swarm's is read-only, `remove` throws
+`UnsupportedOperationError`), `helm` (`HelmBackend | null`, null unless `capabilities.helm`), and a
+`lock()` method returning a `LockStore`. There is no separate `HealthBackend` — health checks are
+`stack.checkHealth`. Config field `orchestrator: 'swarm' | 'k3s'` (default: `swarm`) selects the bundle;
+`factory.ts`'s `createOrchestrator` is the one switch every command goes through (via
+`openOrchestrator`), so no command ever constructs a backend directly or branches on the orchestrator
+kind itself.
 
-- `StackBackend` — stack lifecycle: deploy, remove, getServices, scale, rollback, list stacks
-  - `SwarmStackBackend` — uses `docker stack deploy`, `docker service` commands
-  - `K3sStackBackend` — uses `kubectl apply`, manages namespaces (`dockflow-{stackName}`)
-- `ContainerBackend` — exec/shell/copy/logs in containers
-  - `SwarmContainerBackend` — finds containers via `docker ps` across all nodes with `Promise.any()`
-  - `K3sContainerBackend` — finds pods via `kubectl get pods`, uses `kubectl exec`/`kubectl cp`
-- `HealthBackend` — internal health checks
-  - `SwarmHealthBackend` — inspects tasks via `docker service ps` + UpdateStatus
-  - `K3sHealthBackend` — checks pod status, detects CrashLoopBackOff
-- `ProxyBackend` — Traefik / ingress management
+- `orchestrator/swarm/` — one file per backend (`swarm-stack.ts`, `swarm-container.ts`, `swarm-proxy.ts`,
+  `swarm-images.ts`, `swarm-volumes.ts`, `swarm-backup.ts`, `swarm-cluster.ts`), assembled by
+  `swarm-orchestrator.ts`. Uses `docker stack deploy`, `docker service`/`docker ps` commands over SSH.
+- `orchestrator/kubernetes/` (`K/` in the design docs) — the k3s bundle, one directory per concern rather
+  than one file per backend:
+  - `model/`, `normalize/`, `translate/` — the pure compose → Kubernetes pipeline: `normalize/` turns a
+    parsed `docker-compose.yml` into an orchestrator-neutral `CanonicalStack`, `translate/` turns that into
+    Kubernetes API objects (`resources/`), `render.ts` composes both into one artifact plus its digest.
+  - `apply/` — the pure planners around a server-side apply (snapshot diffing, kind switches, Job
+    re-creation, prune/revert planning); `backends/stack.ts`'s `engine.ts` performs the reads and deletes
+    they plan.
+  - `backends/` — the `StackBackend`/`ContainerBackend`/`ImageBackend`/`VolumeBackend`/`BackupBackend`
+    implementations: `stack.ts` (deploy/apply/waitConvergence/revert/finalize — the only specification of
+    those verbs, `checkHealth` included), `stack-wait.ts`, `stack-day2.ts` (rollback/scale/restart/stop),
+    `containers.ts`, `volumes.ts`, `backup.ts`, `helm.ts`, `proxy.ts`.
+  - `helm/`, `runtime/` — Helm release resolution/values and the `kubectl`/`helm` process runners every
+    backend calls through (`runtime/kubectl.ts`, `runtime/helm.ts`); no backend shells out directly.
+  - `k3s/` — the one Kubernetes distribution Dockflow ships: pinned versions, `dockflow setup k3s`'s own
+    flow, the default `DistributionTraits` (`k3sDistribution`) the render pipeline is parameterized on.
+  - `status/` — day-2 read paths (pods, services, diagnose, logs) shared by commands and the API routes.
+  - `constants.ts`, `naming.ts`, `diagnostics.ts` (shared with Swarm via `orchestrator/diagnostics.ts`) —
+    names, labels and the one `DiagnosticSink` a render passes through both `normalize` and `translate`.
+
+  There is no single "compose to manifests" converter file — the pipeline above replaces the old
+  single-file `k8s-manifest.ts` translator entirely; that file and the old `k3s-stack.ts`/`k3s-container.ts`/
+  `k3s-proxy.ts` backends no longer exist.
+- `orchestrator/stores/` — `FileReleaseStore`/`FileLockStore` (Swarm: files on the manager) vs. the k3s
+  bundle's own release Secret + Lease store in `kubernetes/backends/`.
 
 **Stateful classes** (`cli/src/services/*.ts`, no Service suffix):
 - `Metrics` (`metrics.ts`) — deployment metrics read/write, connection-bound
-- `Lock` (`lock.ts`) — deployment lock management (acquire/release with stale detection)
-- `Backup` (`backup.ts`) — backup/restore for accessories, holds manager + worker connections
+- `Backup` (`backup.ts`) — backup/restore for accessories, wraps an `Orchestrator` bundle + `StackRef`
 - `Audit` (`audit.ts`) — deployment audit log entries on remote manager
-- `Release` (`release.ts`) — release directory management, rollback, cleanup of old releases
-- `HealthCheck` (`health-check.ts`) — HTTP endpoint checks with retry (uses HealthBackend internally)
+- `HealthCheck` (`health-check.ts`) — external HTTP endpoint checks with retry (`stack.checkHealth` covers the internal, orchestrator-specific check)
 
-Each stateful class exposes a matching factory (`createLock`, `createBackup`, …) where construction needs defaults from config.
+Each stateful class exposes a matching factory (`createBackup`, …) where construction needs defaults from
+config. The deploy lock and release management are **not** stateful classes any more — they moved into
+the orchestrator bundle so the same code works on both a manager's files (Swarm) and a cluster Secret +
+Lease (k3s): `orchestrator.lock(stackName)` returns a `LockStore` (`acquire`/`release`/`status`), and
+`services/release.ts` is a plain module (`rollbackRelease`, `cleanupReleases`, ...) over the bundle's
+`releases: ReleaseStore`.
 
 **Pure modules** (`cli/src/services/*.ts`, imported via `import * as`):
 - `compose.ts` — template rendering (Nunjucks), YAML load/serialize, Swarm/accessory deploy config injection, Traefik label injection, image tag updates
@@ -161,7 +191,9 @@ Each stateful class exposes a matching factory (`createLock`, `createBackup`, �
 - `hook.ts` — pre/post build/deploy hooks (local via `Bun.spawn`, remote via SSH)
 - `notification.ts` — HMAC-signed HTTP webhooks on deploy events
 - `history-sync.ts` — replicates audit/metrics to non-manager nodes
-- `k8s-manifest.ts` — Docker Compose → native Kubernetes manifests (Deployment + Service + PVC + IngressRoute, nodeSelector, probes)
+
+The k3s compose-to-Kubernetes translator lives under `orchestrator/kubernetes/` (`normalize/`,
+`translate/`, `render.ts`), not as a `services/*.ts` module — see *Orchestrator abstraction* above.
 
 **Container engine support:**
 
@@ -169,7 +201,7 @@ Config field `container_engine: 'docker' | 'podman'` (auto-detected if not set).
 
 Services and modules use the `Result<T, E>` type pattern (`ok()` / `err()`) from `cli/src/types/`.
 
-**Multi-node awareness:** Classes that need to find or operate on containers (`Backup`, `SwarmContainerBackend`) accept an `allConnections: SSHKeyConnection[]` parameter alongside the manager connection. This is required because in a multi-node Swarm, a container may run on any worker — not just the manager. Always pass `getAllNodeConnections(env)` when creating these.
+**Multi-node awareness:** A backend that needs to find or operate on a container (`SwarmContainerBackend`, `SwarmBackupBackend`) reads the node list off the `OrchestratorTarget` it is constructed with (`target.managers`/`.workers`/`.controlPlane`) rather than taking a separate connections parameter — a container may run on any worker in a multi-node Swarm, not just the manager, and the target already carries every node's connection. `Backup` and the other stateful classes wrap the `Orchestrator` bundle itself, so this is already handled underneath them. The one place that still reads every node directly, orchestrator-neutral, is `getAllNodeConnections(env)` (`utils/validation.ts`/`utils/servers.ts`) — used by `history`/`metrics`/the matching API routes for the "try the first manager, fall back to the next" pattern (see [Multi-host](/en/configuration/multi-host) and the [CLI reference](/en/cli#history-audit)'s per-manager caveat).
 
 ### Console Output
 
@@ -203,14 +235,18 @@ The `dockflow deploy` command executes entirely in TypeScript via ssh2:
 1. Load config, resolve server connections, acquire deployment lock
 2. Detect container engine (Docker or Podman, auto-detected or from config)
 3. Render Nunjucks templates (docker-compose, env files)
-4. Prepare compose: load YAML, update image tags, inject deploy defaults, inject Traefik labels
+4. Prepare compose: load YAML, update image tags, inject deploy defaults; on k3s, render (normalize +
+   translate, `orchestrator/kubernetes/render.ts`) both roles into one Kubernetes manifest artifact,
+   entirely in memory, before any remote call
 5. Build images (local or remote, Docker or Podman), distribute to nodes:
    - **Swarm**: base64 chunked transfer or registry push (`docker load`/`docker push`)
    - **k3s**: `k3s ctr images import` (containerd)
-6. Create release directory on manager, upload compose file
-7. Deploy:
+6. Create the release record — a directory on the manager (Swarm) or a Secret in the cluster (k3s) —
+   and upload the compose file or rendered manifests
+7. Apply:
    - **Swarm**: `docker stack deploy -c -` (accessories first with hash-based change detection)
-   - **k3s**: `K8sManifest.composeToManifests()` → `kubectl apply -f -`
+   - **k3s**: `kubectl apply --server-side -f -` (a pure planner decides kind switches and Job
+     re-creation first, `orchestrator/kubernetes/apply/`), then a fail-fast convergence wait
 8. Health checks: internal (orchestrator-specific backend) + HTTP endpoint checks
 9. Cleanup old releases, write audit/metrics, sync history to all nodes
 10. Release lock (always, even on failure)
@@ -258,24 +294,40 @@ Key values in `cli/src/constants.ts`: `DOCKFLOW_VERSION` (from package.json), `D
 
 ## E2E Tests
 
-Two independent suites under `testing/e2e/`, one per orchestrator, each with its own `bunfig.toml` preload (see `testing/e2e/README.md` for conventions):
+Three independent suites under `testing/e2e/` (see `testing/e2e/README.md` for the full layout and
+conventions), each owning its own cluster lifecycle:
 
 **Swarm suite** (`swarm/tests/01-09`): Docker-in-Docker with a manager (`dockflow-test-manager`, SSH port 32222) and worker (`dockflow-test-worker-1`, port 32223), compose project `dockflow-swarm`. Covers build, deploy, Traefik routing, backup/restore, remote build, HTTP health checks, automatic rollback on failed health checks (dedicated `test-app-rb` stack), uploads with rollback on failed deploys (dedicated `test-app-up` stack), exec/logs, and registry distribution (anonymous `registry:2` inside the manager at `localhost:35000`, dedicated `test-app-reg` stack pinned to the manager). The preload resets the cluster and pre-deploys the shared test-app.
 
-**k3s suite** (`k3s/tests/10`): k3s-in-Docker single node (`dockflow-test-k3s`, port 32224, Traefik enabled), compose project `dockflow-k3s`. Covers deploy, namespace creation, replicas, logs, exec, scale, IngressRoute generation, Traefik HTTP routing, and remote HTTP health checks through the ingress. The test file owns the cluster lifecycle.
+**k3s suite** (`k3s/`): systemd-in-Docker nodes running the real `dockflow setup k3s` in the preload, driven through a lane runner rather than plain `bun test` — a shared-cluster lane needs a fixed file order and stops at the first failing file (`bun run testing/e2e/k3s/run.ts <lane>`). `lanes.ts` maps each lane to its topology (`duo`, `trio`, `ha`, or none for a fresh-containers-per-file lane), test directory and time budget:
 
-**Setup suite** (`setup/tests/20`): host provisioning on a clean `ubuntu:24.04` container (`dockflow-test-setup`). Runs the cross-compiled Linux binary inside it: non-interactive `dockflow setup`, Docker install via get.docker.com, deploy user + docker group, `/var/lib/dockflow` permissions, and an idempotent re-run.
+| Lane | Topology | Covers |
+|---|---|---|
+| `k3s-core` | duo | render contract, basic deploy, compose coverage, headless DNS, non-destructive security checks |
+| `k3s-lifecycle` | duo | accessories volumes/protocol, rollback and post-apply failures |
+| `k3s-day2` | duo | logs/exec/cp/scale/restart/stop, API routes, backup |
+| `k3s-multinode` | trio | distribution to every node, placement, ServiceLB, registry, volumes pinned to a node, refusals |
+| `k3s-proxy-helm` | duo | Traefik, Helm app/accessory releases, Helm-only projects |
+| `k3s-ha` | ha (3 managers + 1 worker) | topology, failover, concurrent-deploy Lease contention |
+| `k3s-setup` | none (fresh containers per file) | single-host/cluster/partial-failure/validation/upgrade/firewall/rerun setup, identity recovery |
 
-Test helpers: `helpers/fixtures.ts` (temp-dir fixture copies — fixture templates in `fixtures/` are read-only, tests never write into the repo tree), `helpers/docker.ts` (Swarm assertions), `helpers/k8s.ts` (kubectl assertions), `helpers/cluster.ts` (cluster lifecycle for both).
+`nightly/` (not part of the gated matrix) runs the arm64 smoke test, the one file allowed to hit real
+upstream URLs, an offline-canary re-run, extended backup, WireGuard, and a soak test, each via
+`run.ts nightly --file <name>`.
 
-E2E tests run on Linux, WSL and Windows (Docker required). CI runs both suites as parallel matrix jobs.
+**Setup suite** (`setup/tests/20-21`): **bare-metal host provisioning**, unrelated to k3s cluster setup — a clean `ubuntu:24.04` container (`dockflow-test-setup`) running the cross-compiled Linux binary: non-interactive `dockflow setup`, Docker install via get.docker.com, deploy user + docker group, `/var/lib/dockflow` permissions, `dockflow init`, and an idempotent re-run. (`k3s/tests/setup/` above is the *cluster* setup lane — installing and upgrading k3s itself — a different thing this suite's name collides with only in English, not in the tree.)
+
+Test helpers: `helpers/fixtures.ts` (temp-dir fixture copies — fixture templates in `fixtures/` are read-only, tests never write into the repo tree), `helpers/cluster.ts` (topology start/stop for both orchestrators), `k3s/helpers/k8s.ts` (kubectl/helm assertions, the label contract), `k3s/helpers/leak-watch.ts` and `k3s/helpers/debug-dump.ts`.
+
+E2E tests run on Linux, WSL and Windows (Docker required) for Swarm and the bare-metal setup suite; the k3s suite additionally needs cgroup v2 and is prepared with the tools under `k3s/tools/` (pinned downloads, node image, charts) before its first run — see `testing/e2e/README.md`. CI runs the suites as parallel matrix jobs.
 
 ## CI/CD Workflows (`.github/workflows/`)
 
 - **publish-cli.yml** — Triggered by version tags. Runs typecheck + lint + unit tests, then builds multi-platform binaries (linux-x64/arm64, macos-x64/arm64, windows-x64), creates GitHub Release, publishes to npm (`@dockflow-tools/cli`).
+- **publish-mcp.yml** — Triggered by `mcp-*` tags. Tests and publishes `@dockflow-tools/mcp` (`packages/mcp-server/`) to npm via OIDC Provenance.
 - **cli-checks.yml** — Runs on push to main/develop and PRs. Typecheck (`tsc --noEmit`), Biome lint, and unit tests (`bun test src/`) in `cli/`.
 - **deploy-docs.yml** — Documentation site deployment. Installs CLI and runs `dockflow deploy` directly.
-- **e2e-tests.yml** — Runs on push to main/develop and PRs. Matrix of three parallel jobs (swarm, k3s, setup), each running `bun test tests/` in `testing/e2e/<suite>/`.
+- **e2e-tests.yml** — Runs on push to main/develop and PRs. Matrix of parallel jobs, one per e2e suite (`swarm`, `k3s`, `setup` today; the k3s job fans out across the lanes of the *E2E Tests* section above as that matrix is wired up).
 - **shell-lint.yml** — ShellCheck validation.
 
 CI/CD integration is handled entirely by the CLI itself — no reusable workflows or external templates needed. The CLI auto-detects environment and version from CI provider env vars (GitHub Actions, GitLab CI, Jenkins, Buildkite) when `dockflow deploy` or `dockflow build` are called without arguments. Users generate a standalone CI workflow via `dockflow init`.
@@ -290,7 +342,7 @@ CI secrets format: `{ENV}_{SERVER}_{CONNECTION}` = base64-encoded `user@host:por
 - **Config schema + interface parity**: Update both Zod schema and TypeScript interface when adding config fields.
 - **Error handling**: Throw typed `CLIError` subclasses from commands. Never catch-and-exit manually.
 - **Services for container ops**: Use the services layer (`cli/src/services/`) for orchestrator/container interactions, not raw SSH commands in command handlers.
-- **Orchestrator abstraction**: New commands that interact with stacks/containers must use the backend interfaces (`StackBackend`, `ContainerBackend`, `HealthBackend`, `ProxyBackend`) via the factory functions in `cli/src/services/orchestrator/factory.ts`. Never hardcode Swarm-specific or k3s-specific logic in command handlers.
+- **Orchestrator abstraction**: New commands that interact with stacks/containers must go through the `Orchestrator` bundle (`stack`, `containers`, `proxy`, `images`, `volumes`, `helm`, ...) returned by `openOrchestrator()`/`createOrchestrator()` in `cli/src/services/orchestrator/factory.ts`. Never hardcode Swarm-specific or k3s-specific logic in command handlers.
 - **Service naming**: Follow the three-tier convention (see *Services Layer*). `*Backend` for polymorphic interfaces, plain nouns for stateful classes, module imports for stateless functions. Never introduce a new `*Service` class.
 - **Multi-node services**: When creating `Backup` or `SwarmContainerBackend`, always pass `getAllNodeConnections(env)` so container lookups work on worker nodes too.
 - **New directory paths**: Add constants in `cli/src/constants.ts` and ensure the deploy command creates them on the remote host.
@@ -315,7 +367,7 @@ Every new user-facing feature **must** be documented before the task is consider
 
 ### Doc page structure
 
-New pages in `docs/app/configuration/` or `docs/app/` should follow this order:
+New pages in `docs/app/en/configuration/` or `docs/app/en/` should follow this order:
 1. **One-line intro** — what this feature does and why it matters
 2. **Minimal working example** — the simplest config that makes it work
 3. **All options** — table with field, type, description, default
@@ -334,6 +386,6 @@ New pages in `docs/app/configuration/` or `docs/app/` should follow this order:
 ### Navigation and index
 
 After creating a new page:
-1. Add its slug to `docs/app/configuration/_meta.ts` (or the relevant `_meta.ts`) so it appears in the sidebar
-2. Add a `<Cards.Card>` entry in the parent index page (`docs/app/configuration/page.mdx`)
+1. Add its slug to `docs/app/en/configuration/_meta.ts` (or the relevant `_meta.ts`) so it appears in the sidebar
+2. Add a `<Cards.Card>` entry in the parent index page (`docs/app/en/configuration/page.mdx`)
 3. Add the entry to `docs/scripts/generate-llms-txt.ts` so LLM context stays up to date

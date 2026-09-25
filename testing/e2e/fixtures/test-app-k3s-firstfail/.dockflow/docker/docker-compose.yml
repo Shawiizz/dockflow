@@ -1,0 +1,12 @@
+services:
+  web:
+    image: busybox:1.37
+    command: ["sh", "-c", "echo crashing on purpose; exit 1"]
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 2s
+        monitor: 5s
+      restart_policy:
+        condition: on-failure

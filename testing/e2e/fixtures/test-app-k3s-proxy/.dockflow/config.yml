@@ -1,0 +1,11 @@
+# Baseline for the k3s-proxy-helm lane's 50-proxy.test.ts (E-50-01). The test file rewrites this
+# file with `fixture.write` as the scenario moves through later rows (dashboard, ACME, host-port
+# conflicts, ...); this checked-in copy is only the starting state a fresh checkout shows.
+project_name: "shop"
+
+proxy:
+  enabled: true
+  email: "ops@example.com"
+  acme: false
+  domains:
+    e2e: "k3s.e2e.test"

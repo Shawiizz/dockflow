@@ -1,0 +1,24 @@
+# E-36-01..03, 09, 13, 14: a compose secret file (E2E_SECRET_FILE_7f3a9c) and an env secret
+# (E2E_SECRET_ENV_7f3a9c, E-36-09's crashing variant echoes it once and exits). busybox is baked
+# into every node (images.lock.json), so no build or registry is needed.
+services:
+  web:
+    image: busybox:1.37
+    command:
+      - sh
+      - -c
+      - 'if [ "$$MODE" = crash ]; then echo "leaked=$$SECRET_ENV"; exit 1; fi; mkdir -p /www && echo ok > /www/index.html && httpd -f -p 80 -h /www'
+    environment:
+      MODE: serve
+      SECRET_ENV: E2E_SECRET_ENV_7f3a9c
+    ports: ["8090:80"]
+    secrets:
+      - source: side_secret
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+secrets:
+  side_secret:
+    file: ./side_secret.txt

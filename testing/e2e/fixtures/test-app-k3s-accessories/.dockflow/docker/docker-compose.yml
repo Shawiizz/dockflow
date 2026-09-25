@@ -1,0 +1,4 @@
+services:
+  client:
+    image: redis:8-alpine
+    command: ["sleep", "36000"]

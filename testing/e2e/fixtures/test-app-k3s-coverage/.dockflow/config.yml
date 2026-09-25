@@ -1,0 +1,7 @@
+# E-32 (32-compose-coverage.test.ts): one deploy exercising every remaining compose/x-dockflow
+# feature at once. `on_failure: fail` (not rollback) so the jobcrash rows (E-32-10b) leave the failed
+# Job in place for the row's own assertions instead of unwinding the whole stack.
+project_name: k3s-coverage
+orchestrator: k3s
+health_checks:
+  on_failure: fail

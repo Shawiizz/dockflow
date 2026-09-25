@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: dockflow-e2e-backup
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # appendonly on: R-17 refuses a dump.rdb restore against it (design-06), so backup config type
+  # `redis` must back it up as an RDB snapshot the same way as any other redis accessory.
+  redis:
+    image: redis:8-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # per-replica claims, 2 replicas: the R-23 refusal case for a database backup (E-39-08).
+  pg2:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: dockflow-e2e-backup
+    x-dockflow:
+      kind: statefulset
+    deploy:
+      replicas: 2
+    volumes:
+      - pg2_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  pg_data:
+  redis_data:
+  pg2_data:
+    x-dockflow:
+      per_replica: true

@@ -73,6 +73,15 @@ describe("uploads", () => {
     }
   }, 240_000);
 
+  test("release files are mode 0600 (design-07 15)", async () => {
+    const mode = await dockerExec(MANAGER_CONTAINER, [
+      "sh",
+      "-c",
+      `stat -c %a '/var/lib/dockflow/stacks/${STACK_NAME}/${V1}/metadata.json'`,
+    ]);
+    expect(mode.trim()).toBe("600");
+  });
+
   test("successful deploy leaves no upload backups behind", async () => {
     for (const node of NODES) {
       const out = await dockerExec(node, [

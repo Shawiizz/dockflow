@@ -1,0 +1,25 @@
+services:
+  web:
+    image: k3s-day2-web
+    build:
+      context: ../..
+      dockerfile: .dockflow/docker/Dockerfile.web
+    deploy:
+      replicas: 3
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # boots once, then prints one line a second forever — enough to exercise --tail, --since, -f and
+  # a mid-run restart (its own PID 1 is killed by the test) without depending on request traffic.
+  ticker:
+    image: busybox:1.37
+    command: ['sh', '-c', 'echo "boot $$RANDOM"; i=0; while true; do i=$$((i+1)); echo "tick $$i"; sleep 1; done']
+
+  daemon:
+    image: busybox:1.37
+    command: ['sh', '-c', 'sleep 36000']
+    deploy:
+      mode: global

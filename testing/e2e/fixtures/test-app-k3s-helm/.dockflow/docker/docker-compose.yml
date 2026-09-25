@@ -1,0 +1,16 @@
+services:
+  web:
+    image: helm-e2e-app
+    build:
+      context: ../..
+      dockerfile: .dockflow/docker/Dockerfile.web
+    ports:
+      - "8082:80"
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 2s
+        monitor: 2s
+      restart_policy:
+        condition: on-failure

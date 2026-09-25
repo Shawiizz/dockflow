@@ -130,6 +130,15 @@ describe("automatic rollback on failed health check", () => {
     expect(target.trim()).toBe(`${RELEASES_DIR}/${V1}`);
   });
 
+  test("release files are mode 0600 (design-07 15)", async () => {
+    const mode = await dockerExec(MANAGER_CONTAINER, [
+      "sh",
+      "-c",
+      `stat -c %a '${RELEASES_DIR}/${V1}/metadata.json'`,
+    ]);
+    expect(mode.trim()).toBe("600");
+  });
+
   test("failed v2 release directory was removed", async () => {
     const out = await dockerExec(MANAGER_CONTAINER, [
       "sh",

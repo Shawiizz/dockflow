@@ -1,0 +1,16 @@
+project_name: k3s-rollback
+orchestrator: k3s
+
+stack_management:
+  keep_releases: 3
+  cleanup_on_failure: true
+
+health_checks:
+  on_failure: rollback
+  endpoints:
+    - name: web
+      url: "http://127.0.0.1:8085/"
+      remote: true
+      expected_status: 200
+      retries: 10
+      retry_delay: 3

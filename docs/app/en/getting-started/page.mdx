@@ -47,39 +47,57 @@ Dockflow deploys to a single server or a multi-node cluster — same workflow. A
 
 ## Setup Your Server
 
-You need a Debian/Ubuntu server with SSH access (root or sudo user).
-
-<Tabs items={['Interactive (Recommended)', 'Non-Interactive']}>
+<Tabs items={['Swarm', 'k3s']}>
   <Tabs.Tab>
-    If the CLI is installed **on the server**:
+    You need a Debian/Ubuntu server with SSH access (root or sudo user).
 
-    ```bash
-    dockflow setup
-    ```
+    <Tabs items={['Interactive (Recommended)', 'Non-Interactive']}>
+      <Tabs.Tab>
+        If the CLI is installed **on the server**:
 
-    If the CLI is installed **on your local machine**:
+        ```bash
+        dockflow setup
+        ```
 
-    ```bash
-    dockflow setup root@your-server-ip
-    ```
+        If the CLI is installed **on your local machine**:
 
-    The wizard handles everything: Docker installation, orchestrator setup (Swarm or k3s), SSH keys, and deployment user creation.
-    At the end, it generates a **connection string** — save it for later.
+        ```bash
+        dockflow setup root@your-server-ip
+        ```
+
+        The wizard handles everything: Docker installation, Swarm setup, SSH keys, and deployment user creation.
+        At the end, it generates a **connection string** — save it for later.
+      </Tabs.Tab>
+      <Tabs.Tab>
+        For automated provisioning (Terraform, CI, etc.). Must be run **on the target server**:
+
+        ```bash
+        dockflow setup \
+          --host $(hostname -I | awk '{print $1}') \
+          --user dockflow \
+          --password "your-secure-password" \
+          --generate-key \
+          --portainer \
+          --portainer-password "portainer-admin-password"
+        ```
+
+        See `dockflow setup --help` for all options.
+      </Tabs.Tab>
+    </Tabs>
   </Tabs.Tab>
   <Tabs.Tab>
-    For automated provisioning (Terraform, CI, etc.). Must be run **on the target server**:
+    List every server and agent of the environment in `servers.yml`, then install the whole cluster in one
+    command — `dockflow setup k3s <env>` connects with a **bootstrap identity** (root or passwordless sudo),
+    never the deploy key, and is safe to re-run to upgrade or repair drift:
 
     ```bash
-    dockflow setup \
-      --host $(hostname -I | awk '{print $1}') \
-      --user dockflow \
-      --password "your-secure-password" \
-      --generate-key \
-      --portainer \
-      --portainer-password "portainer-admin-password"
+    dockflow setup k3s production --ssh-user root --key ~/.ssh/bootstrap_ed25519
     ```
 
-    See `dockflow setup --help` for all options.
+    Set `orchestrator: k3s` in `.dockflow/config.yml` before deploying. See
+    [Cluster setup](/en/configuration/kubernetes/setup) for prerequisites, the full flag table, and the
+    security model, and the [Orchestrator](/en/configuration/orchestrator) page for the Swarm/k3s support
+    matrix.
   </Tabs.Tab>
 </Tabs>
 

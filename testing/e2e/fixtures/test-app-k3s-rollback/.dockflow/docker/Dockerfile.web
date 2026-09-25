@@ -1,0 +1,15 @@
+FROM busybox:1.37
+
+ARG MODE=ok
+ARG MARKER=V1
+ENV MODE=$MODE
+ENV MARKER=$MARKER
+
+RUN mkdir -p /www && echo "$MARKER" > /www/index.html
+
+EXPOSE 8080 3000
+
+# MODE=ok: serve MARKER on 8080. MODE=port3000: serve MARKER on 3000 (used together with a compose
+# port change to exercise the DV2 revert-restores-the-port regression). MODE=crash: exit immediately,
+# so the pod never becomes Ready (CrashLoopBackOff).
+CMD sh -c 'if [ "$MODE" = "crash" ]; then echo crashing on purpose; exit 1; elif [ "$MODE" = "port3000" ]; then exec httpd -f -p 3000 -h /www; else exec httpd -f -p 8080 -h /www; fi'

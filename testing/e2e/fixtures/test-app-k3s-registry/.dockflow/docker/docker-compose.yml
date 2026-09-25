@@ -1,0 +1,21 @@
+# Fixture for tests/multinode/43-registry.test.ts (E-43). `web` is built and pushed by Dockflow
+# itself; `whoami` has no `build:` so it is never retagged — the harness pushes it directly under
+# its literal name (E-43-03) and the service just references that tag.
+services:
+  web:
+    image: k3s-registry-web
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    deploy:
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+
+  # Deployed only by its own scenario, with `deploy --only whoami`.
+  whoami:
+    image: "localhost:35010/e2e/whoami:latest"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure

@@ -1,0 +1,24 @@
+services:
+  files:
+    image: busybox:1.37
+    command: ['sh', '-c', 'sleep 36000']
+    volumes:
+      - uploads:/uploads
+
+  # per-replica claims are the only way a stateful service runs more than one replica (D8/R-08);
+  # this is the R-23 "runs 2 replicas" case for a volume backup (E-39-08).
+  files2:
+    image: busybox:1.37
+    command: ['sh', '-c', 'sleep 36000']
+    x-dockflow:
+      kind: statefulset
+    deploy:
+      replicas: 2
+    volumes:
+      - uploads2:/uploads2
+
+volumes:
+  uploads:
+  uploads2:
+    x-dockflow:
+      per_replica: true

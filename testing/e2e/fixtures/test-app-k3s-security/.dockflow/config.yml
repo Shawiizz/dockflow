@@ -1,0 +1,12 @@
+# E-36 (36-security-nondestructive.test.ts): secret handling and the deploy identity, entirely
+# read-only against cluster-level state (K67 (a)). `on_failure: rollback` gives E-36-09 its automatic
+# HEALTH_CHECK_FAILED (53) on the crashing 1.0.1 variant.
+project_name: k3s-security
+orchestrator: k3s
+health_checks:
+  on_failure: rollback
+  endpoints:
+    - { name: web, url: "http://127.0.0.1:8090/", remote: true, expected_status: 200, retries: 10, retry_delay: 3 }
+hooks:
+  pre-deploy:
+    - script: .dockflow/hooks/pre-deploy.sh

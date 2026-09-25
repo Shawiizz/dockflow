@@ -1,0 +1,7 @@
+# Serves MARKER on / so curlFrom() can tell which build answers (E-31-07, E-31-17, E-31-20); the
+# healthcheck (docker-compose.yml) and the readiness/liveness probes it becomes (E-31-12) both hit
+# the same path. nginx:alpine is pre-pulled by the lane (images.lock.json, "fixture base image").
+FROM nginx:alpine
+ARG MARKER
+RUN echo "$MARKER" > /usr/share/nginx/html/index.html
+EXPOSE 80

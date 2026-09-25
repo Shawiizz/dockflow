@@ -1,0 +1,13 @@
+# Fixture for the k3s-day2 lane (37-day2, 38-api): a project with a multi-replica app service, a
+# service producing distinguishable log output, a global daemon, one accessory and, patched in by
+# 37-day2.test.ts before the first deploy, one Helm app release (E-37-06 needs both kinds of app
+# service on the same stack).
+project_name: k3s-day2
+orchestrator: k3s
+
+stack_management:
+  keep_releases: 3
+  cleanup_on_failure: true
+
+health_checks:
+  on_failure: fail

@@ -1,0 +1,19 @@
+services:
+  web:
+    image: k3s-rollback-web
+    build:
+      context: ../..
+      dockerfile: .dockflow/docker/Dockerfile.web
+      args:
+        MODE: ok
+        MARKER: V1
+    ports:
+      - "8085:8080"
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 2s
+        monitor: 5s
+      restart_policy:
+        condition: on-failure

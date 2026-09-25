@@ -1,0 +1,5 @@
+# E-30-04/05: a compose file with rejected keys (design-01 core schema rejections), used two ways —
+# once with the unroutable servers.yml shipped here (`validate` never dials out) and once with a
+# copy repointed at the lane's duo cluster (`deploy`, which must fail before any mutating call).
+project_name: k3s-invalid
+orchestrator: k3s

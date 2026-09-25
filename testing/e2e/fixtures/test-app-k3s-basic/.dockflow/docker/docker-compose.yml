@@ -1,0 +1,28 @@
+# design-07 17.1 31-deploy-basic.test.ts, verbatim (the test's patchCompose bumps MARKER/replicas/etc.
+# across the chain's later steps).
+services:
+  web:
+    image: k3s-basic-web
+    build: { context: ../.., dockerfile: .dockflow/docker/Dockerfile.web, args: { MARKER: K3S_BASIC_V1 } }
+    ports: ["8081:80"]
+    environment:
+      GREETING: "hello $$USER $$(literal)"
+      PORT_TEXT: 010
+      API_TOKEN: E2E_SECRET_TOKEN_7f3a9c
+    env_file: [./web.env]
+    secrets:
+      - source: api_key
+        mode: 0440
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    deploy:
+      replicas: 2
+  worker:
+    image: busybox:1.37
+    command: ["sh", "-c", "sleep 36000"]
+secrets:
+  api_key:
+    file: ./api_key.txt

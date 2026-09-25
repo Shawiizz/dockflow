@@ -1,0 +1,10 @@
+# E-50-09, E-50-13, E-50-14: a stack that never manages the cluster Traefik itself. The test file
+# rewrites the `proxy` block with `fixture.write` as the scenario moves between its three states
+# (disabled with stray labels / non-owning HTTP / a transient ACME-incompatible request); this is
+# the starting, proxy-disabled state.
+project_name: "shop-second"
+
+proxy:
+  enabled: false
+  domains:
+    e2e2: "staging.k3s.e2e.test"

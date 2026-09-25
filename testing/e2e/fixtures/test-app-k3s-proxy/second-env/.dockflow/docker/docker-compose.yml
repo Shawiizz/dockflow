@@ -1,0 +1,21 @@
+services:
+  web:
+    image: proxy-e2e-second-app
+    build:
+      context: ../..
+      dockerfile: .dockflow/docker/Dockerfile.web
+    ports:
+      - "8081:80"
+    # top-level `labels` (not `deploy.labels`): design-01 7.1 — Kubernetes reads `labels`, Swarm's
+    # Traefik provider reads `deploy.labels` only.
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.second-web.rule: "Host(`staging.k3s.e2e.test`)"
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 2s
+        monitor: 2s
+      restart_policy:
+        condition: on-failure

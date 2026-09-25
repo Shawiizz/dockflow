@@ -73,35 +73,84 @@ docker stack deploy -c docker-compose.yml my-app-production
 ```
   </Tabs.Tab>
   <Tabs.Tab>
-Dockflow converts your `docker-compose.yml` into native Kubernetes manifests and applies them:
+Dockflow **renders** your `docker-compose.yml` (and `accessories.yml`) into Kubernetes objects — pure,
+offline, in the CLI itself — then **server-side applies** them with a three-way strategic merge, the
+same mechanism `kubectl apply` uses, so a field an operator or another controller manages by hand is
+never overwritten by a stale one Dockflow no longer sets:
 
 ```
-kubectl apply -f - (Deployments, Services, PVCs, IngressRoutes)
+kubectl apply --server-side -f - (Deployments/StatefulSets, Services, PVCs, IngressRoutes, Secrets, ConfigMaps)
 ```
 
-Each compose service becomes a Deployment + ClusterIP Service inside a `dockflow-{project}-{env}` namespace.
+Each compose service becomes a workload (a Deployment, or a StatefulSet for `x-dockflow.kind:
+statefulset`) plus a ClusterIP Service, inside a `dockflow-{project}-{env}` namespace. Convergence is
+then watched **fail-fast**: the first pod failure that cannot self-resolve (`CrashLoopBackOff`,
+`ImagePullBackOff`, a scheduling failure, ...) ends the wait immediately rather than exhausting the full
+timeout window, so a broken deploy is reported in seconds, not minutes.
   </Tabs.Tab>
 </Tabs>
 
-Each deployment creates a new release directory on the server.
+Each deployment creates a new release record — a directory on the server (Swarm) or a Secret in the
+cluster (k3s, see [below](#releases-stored-in-the-cluster-k3s)).
 
 ### Health Verification
 
 After deployment, Dockflow verifies:
 
-1. **Internal checks**: Swarm reports services as healthy / k3s pods reach Running state (no CrashLoopBackOff)
+1. **Internal checks**: Swarm reports services as healthy / k3s pods converge fail-fast to Ready with no restart-count regression
 2. The correct image version is running
 3. External health check endpoints respond (if [configured](/en/configuration/config-file#health-checks))
 
 ### Rollback on Failure
 
+<Tabs items={['Swarm', 'k3s']}>
+  <Tabs.Tab>
 If health checks fail, Dockflow:
 
 1. Detects the rollback via Swarm status
 2. Waits for the previous version to stabilize
 3. Cleans up the failed release
 4. Reports the deployment as failed
+  </Tabs.Tab>
+  <Tabs.Tab>
+If convergence or a health check fails, Dockflow's **automatic revert** re-applies the previous
+release's objects (workloads, Services, routes) — deliberately more than a bare `kubectl rollout undo`,
+which restores only a workload's pod template and would leave a Service or route at its new,
+possibly-broken version. PersistentVolumeClaims are never re-applied by a revert. A workload that has
+no previous release artifact to restore falls back to `rollout undo --to-revision=<n>`. A **first**
+deploy that fails leaves the workloads in place for debugging instead of deleting them — there is
+nothing to revert to yet.
+  </Tabs.Tab>
+</Tabs>
 </Steps>
+
+## Releases Stored in the Cluster (k3s)
+
+On k3s, release history and the deploy lock live in the cluster itself — a Secret per release plus a
+Lease — not in files on one manager. Every manager therefore sees the identical release state and lock
+status (see [Multi-host](/en/configuration/multi-host) for the two things that are *not* cluster-wide:
+`history`/`audit`/`metrics` and backups).
+
+<Callout type="info">
+  **A release stays recorded even when the deploy fails after the app was applied** — a failing HTTP
+  check, a fatal post-deploy hook, or an apply whose outcome could not be confirmed. The cluster really
+  is running that version, so `dockflow status` reports it rather than pointing at stale state; the CLI
+  prints `Release 1.4.2 is deployed but the deploy reported a failure; current stays 1.4.2`. Nothing
+  removes the release record on this path — only a confirmed automatic revert does that.
+</Callout>
+
+## Rollback
+
+`dockflow rollback <env>` (no service name) rolls back the **whole release** — but on k3s it
+restores the **app** role only: accessories are never rolled back automatically, because re-applying
+an older accessory definition (a downgraded database image against data a newer version already
+migrated) is the one rollback step that can destroy data. When the app and accessories have drifted
+apart because of this, the command **warns and names the accessories still running the newer
+definition**, so the operator can decide by hand rather than have Dockflow guess.
+
+`dockflow rollback <env> <service>` rolls back **one service** to its previous live revision instead
+(`kubectl rollout undo` under the hood on k3s), without touching the release record at all — see the
+[CLI reference](/en/cli#rollback) for the full option list.
 
 ## Release Management
 
@@ -232,25 +281,32 @@ docker stack rm my-app-production
 ```
   </Tabs.Tab>
   <Tabs.Tab>
+`dockflow setup k3s` writes a **sudo-free** kubeconfig for the deploy identity at
+`/var/lib/dockflow/kube/config` on every manager — plain `kubectl`, no `sudo` needed, works the moment
+setup finishes:
+
 ```bash
-# View deployments
-kubectl get deployments -n dockflow-my-app-production
+# View workloads
+KUBECONFIG=/var/lib/dockflow/kube/config kubectl get deployments,statefulsets -n dockflow-my-app-production
 
 # View pods
-kubectl get pods -n dockflow-my-app-production
+KUBECONFIG=/var/lib/dockflow/kube/config kubectl get pods -n dockflow-my-app-production
 
 # View service logs
-kubectl logs -n dockflow-my-app-production -l app=web
+KUBECONFIG=/var/lib/dockflow/kube/config kubectl logs -n dockflow-my-app-production -l app.kubernetes.io/name=web
 
 # Scale a deployment
-kubectl scale deployment/web --replicas=3 -n dockflow-my-app-production
+KUBECONFIG=/var/lib/dockflow/kube/config kubectl scale deployment/web --replicas=3 -n dockflow-my-app-production
 
-# Rollback
-kubectl rollout undo deployment/web -n dockflow-my-app-production
+# Roll back one workload's pod template only (prefer `dockflow rollback`, which also restores Services and routes)
+KUBECONFIG=/var/lib/dockflow/kube/config kubectl rollout undo deployment/web -n dockflow-my-app-production
 
-# Remove everything
-kubectl delete namespace dockflow-my-app-production
+# Remove everything, including PersistentVolumeClaims (prefer `dockflow stop`, which keeps volumes)
+KUBECONFIG=/var/lib/dockflow/kube/config kubectl delete namespace dockflow-my-app-production
 ```
+
+Prefer the `dockflow` commands above them where one exists — they update the release record and respect
+the data-safety rules of [Volumes & Data](/en/configuration/volumes); raw `kubectl` does not.
   </Tabs.Tab>
 </Tabs>
 
@@ -268,11 +324,25 @@ Look for error messages in the task output.
   </Tabs.Tab>
   <Tabs.Tab>
 ```bash
-kubectl describe pods -n dockflow-my-app-production
-kubectl get events -n dockflow-my-app-production --sort-by='.lastTimestamp'
+dockflow diagnose production
+KUBECONFIG=/var/lib/dockflow/kube/config kubectl get events -n dockflow-my-app-production --sort-by='.lastTimestamp'
 ```
 
-Look for `CrashLoopBackOff`, `ImagePullBackOff`, or `Pending` states.
+`dockflow diagnose` groups the failure by its stable **reason**, the same one a failed convergence
+reports:
+
+| Reason | What it means |
+|---|---|
+| `CrashLoopBackOff`, `ContainerRestarted` | The container starts and exits repeatedly — check the app's own logs |
+| `ImagePullBackOff`, `ErrImagePull`, `ErrImageNeverPull`, `InvalidImageName` | The image could not be pulled or imported — check the registry, the pull secret, or that a local image was actually imported to every node |
+| `CreateContainerConfigError`, `CreateContainerError`, `RunContainerError` | A config problem the kubelet can see (a missing Secret key, an invalid security context, …) |
+| `OOMKilled` | The container exceeded its memory limit |
+| `Unschedulable`, `ReplicaFailure` | No node currently satisfies the pod's requests, node selector or tolerations |
+| `ProgressDeadlineExceeded` | The rollout did not finish within `progressDeadlineSeconds` |
+| `PvcPending` | A PersistentVolumeClaim never bound — check the storage class and node capacity |
+| `LoadBalancerPending` | A published-port Service never got a ServiceLB address, usually because another Service already holds that host port cluster-wide — the message names the conflicting Service and namespace |
+| `Paused`, `WorkloadDeleting` | The workload is mid-rollout-pause, or a previous delete has not finished yet |
+| `Timeout`, `TaskFailed`, `HelmFailed` | The wait itself timed out, a one-shot Job failed, or a Helm release failed to become ready |
   </Tabs.Tab>
 </Tabs>
 

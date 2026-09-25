@@ -1,0 +1,16 @@
+# E-50-12/E-50-16: an accessory with its own explicit Traefik router labels and no published port
+# (`expose`, not `ports`), so the default-route injection gate (non-empty `ports`) never fires for
+# it and its route exists only because of the labels below.
+services:
+  admin:
+    image: proxy-e2e-app
+    build:
+      context: ../..
+      dockerfile: .dockflow/docker/Dockerfile.web
+    expose:
+      - "80"
+    # top-level `labels` (not `deploy.labels`): design-01 7.1 — Kubernetes reads `labels`, Swarm's
+    # Traefik provider reads `deploy.labels` only.
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.admin.rule: "Host(`admin.k3s.e2e.test`)"

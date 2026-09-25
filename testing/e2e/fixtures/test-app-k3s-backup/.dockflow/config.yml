@@ -1,0 +1,28 @@
+# Fixture for the k3s-day2 lane's 39-backup.test.ts: three database types (postgres, redis
+# appendonly, a second postgres running two per-replica-claim StatefulSet pods for R-23) plus a
+# volume-backed app service (and its own 2-replica StatefulSet variant), each configured for backup.
+project_name: k3s-backup
+orchestrator: k3s
+
+stack_management:
+  keep_releases: 3
+  cleanup_on_failure: true
+
+health_checks:
+  on_failure: fail
+
+backup:
+  retention_count: 10
+  compression: gzip
+  services:
+    files:
+      type: volume
+    files2:
+      type: volume
+  accessories:
+    postgres:
+      type: postgres
+    redis:
+      type: redis
+    pg2:
+      type: postgres

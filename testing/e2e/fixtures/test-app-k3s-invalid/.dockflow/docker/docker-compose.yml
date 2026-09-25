@@ -1,0 +1,14 @@
+# Three keys the translator always rejects (design-01 core schema), independent of orchestrator or
+# cluster reachability: a top-level `include` (Dockflow deploys a single compose file), a Windows-only
+# resource field on a service, and an invalid volume name.
+include:
+  - other.yml
+
+services:
+  web:
+    image: nginx:alpine
+    cpu_count: 2
+    ports: ["8080:80"]
+
+volumes:
+  "bad name!":

@@ -1,0 +1,146 @@
+# design-07 17.1 32-compose-coverage.test.ts: one service per E-32 row (design-02 4-9's remaining
+# translate features), deployed together at 1.0.0. `jobcrash` (E-32-10b) is not here — the test
+# inserts it later with fixture.patchCompose so the baseline deploy stays green for every other row.
+# Every image is either baked into the node (busybox, nginx: images.lock.json) or built by no one
+# here, so the file needs no Dockerfile.
+services:
+  args:
+    image: busybox:1.37
+    command: ["sh", "-c", "printf '%s|' \"$0\" \"$1\" \"$2\"; sleep 36000", "a b", "$$(HOME)", "010"]
+
+  secure:
+    image: busybox:1.37
+    command: ["sh", "-c", "sleep 36000"]
+    user: "1000:1000"
+    group_add: [2000]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    read_only: true
+    tmpfs: [/tmp]
+    shm_size: 32m
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    init: true
+    stop_grace_period: 3s
+    hostname: coverage-host
+    extra_hosts:
+      - "legacy.internal:10.9.9.9"
+    dns_search: [example.internal]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 64M
+        reservations:
+          memory: 32M
+
+  probe:
+    image: nginx:alpine
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 5s
+      start_period: 20s
+      start_interval: 2s
+
+  httpprobe:
+    image: nginx:alpine
+    x-dockflow:
+      probes:
+        http: { path: /, port: 80 }
+
+  daemon:
+    image: busybox:1.37
+    command: ["sh", "-c", "sleep 36000"]
+    deploy:
+      mode: global
+
+  job:
+    image: busybox:1.37
+    command: ["echo", "done"]
+    deploy:
+      mode: replicated-job
+
+  on-manager:
+    image: busybox:1.37
+    command: ["sh", "-c", "sleep 36000"]
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
+  on-agent:
+    image: busybox:1.37
+    command: ["sh", "-c", "sleep 36000"]
+    deploy:
+      placement:
+        constraints:
+          - node.hostname == agent_1
+
+  hostport:
+    image: nginx:alpine
+    ports: ["18082:80"]
+    x-dockflow:
+      publish: hostport
+
+  nolb:
+    image: nginx:alpine
+    ports: ["18083:80"]
+    x-dockflow:
+      publish: none
+
+  dnsrr:
+    image: nginx:alpine
+    expose: ["80"]
+    deploy:
+      endpoint_mode: dnsrr
+      replicas: 2
+
+  db:
+    image: busybox:1.37
+    command: ["sh", "-c", "sleep 36000"]
+    x-dockflow:
+      kind: statefulset
+    volumes:
+      - type: volume
+        source: data
+        target: /data
+
+  aliased:
+    image: nginx:alpine
+    networks:
+      default:
+        aliases: [legacy-name]
+
+  udp:
+    image: busybox:1.37
+    command: ["sh", "-c", "sleep 36000"]
+    ports:
+      - "15353:53/udp"
+      - "19000-19001:9000-9001"
+
+  binder:
+    image: busybox:1.37
+    command: ["sh", "-c", "sleep 36000"]
+    volumes:
+      - /srv/e2e-coverage:/data:ro
+
+  named:
+    image: busybox:1.37
+    command: ["sh", "-c", "sleep 36000"]
+    volumes:
+      - cache:/cache
+
+  labels:
+    image: busybox:1.37
+    command: ["sh", "-c", "sleep 36000"]
+    labels:
+      "bad key!": x
+    logging:
+      driver: json-file
+
+# JOBCRASH_INSERT_POINT
+volumes:
+  data:
+    x-dockflow:
+      per_replica: true
+  cache: {}

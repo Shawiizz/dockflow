@@ -1,0 +1,17 @@
+services:
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: E2E_SECRET_PG_7f3a9c
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+volumes:
+  redis_data:
+  pg_data:

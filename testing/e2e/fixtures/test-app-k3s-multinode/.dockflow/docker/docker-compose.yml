@@ -1,0 +1,196 @@
+# Fixture for the k3s-multinode lane (design-07 17.4, E-40..E-45). One project shared by
+# 40-distribution, 41-placement, 42-servicelb and 44-volumes-nodes: each file deploys only the
+# services its own scenarios need with `deploy --only`, but every service here must render cleanly
+# on its own, since a render pass always covers the whole compose file. Scenarios that need a
+# render-time refusal (42-03, 42-06, 42-07, 44-02, 44-03) build their own patched copy instead of
+# adding an always-invalid service here.
+services:
+  # E-40-01..02: distribution to every trio node, and the no-transfer redeploy.
+  web:
+    image: k3s-multi-web
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    deploy:
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+
+  # E-40-03..04: pinned to agent-2 so the harness can remove its image there and watch it reappear.
+  on-agent2:
+    image: k3s-multi-onagent2
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - "node.hostname == agent_2"
+      restart_policy:
+        condition: on-failure
+
+  # E-40-05: redeployed with a broken build (see tests/multinode/40-distribution.test.ts).
+  crasher:
+    image: k3s-multi-crasher
+    build:
+      context: ../..
+      dockerfile: Dockerfile.crasher
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  # E-41-02
+  zone-b:
+    image: k3s-multi-zoneb
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    deploy:
+      replicas: 2
+      placement:
+        constraints:
+          - "node.labels.zone == b"
+
+  # E-41-03
+  spread:
+    image: k3s-multi-spread
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    deploy:
+      replicas: 4
+      placement:
+        preferences:
+          - spread: node.labels.zone
+
+  # E-41-04, reused as the coverage pattern for E-44-04 (guarantees one pod per trio node).
+  one-per-node:
+    image: k3s-multi-oneper
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    deploy:
+      replicas: 3
+      placement:
+        max_replicas_per_node: 1
+
+  # E-41-05
+  managers:
+    image: k3s-multi-managers
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - "node.role == manager"
+
+  # E-41-05
+  workers:
+    image: k3s-multi-workers
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    deploy:
+      replicas: 2
+      placement:
+        constraints:
+          - "node.role == worker"
+
+  # E-41-06
+  amd64:
+    image: k3s-multi-amd64
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - "node.platform.arch == x86_64"
+
+  # E-41-07: the harness taints agent-2 dedicated=db:NoSchedule before deploying this one.
+  tolerant:
+    image: k3s-multi-tolerant
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    deploy:
+      replicas: 1
+    x-dockflow:
+      node_selector:
+        zone: b
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: db
+          effect: NoSchedule
+
+  # E-42-01
+  lb1:
+    image: k3s-multi-lb1
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    ports:
+      - "18090:80"
+    deploy:
+      replicas: 1
+
+  # E-42-02
+  lb2:
+    image: k3s-multi-lb2
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    ports:
+      - "18091:80"
+    deploy:
+      replicas: 1
+    x-dockflow:
+      lb_source_ranges:
+        - "172.30.0.11/32"
+
+  # E-42-04: no proxy configured in config.yml, so 80/tcp is free on this cluster.
+  plain80:
+    image: k3s-multi-plain80
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    ports:
+      - "80:80"
+    deploy:
+      replicas: 1
+
+  # E-44-01: named volume, restarted repeatedly to prove the pod always returns to the PV's node.
+  pinned:
+    image: k3s-multi-pinned
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    volumes:
+      - pinned-data:/data
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  # E-44-04: one replica per trio node (one-per-node placement), reading the file `uploads:` copied
+  # to every node.
+  binder:
+    image: k3s-multi-binder
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    volumes:
+      - /srv/e2e-binder:/data:ro
+    deploy:
+      replicas: 3
+      placement:
+        max_replicas_per_node: 1
+
+volumes:
+  pinned-data: {}

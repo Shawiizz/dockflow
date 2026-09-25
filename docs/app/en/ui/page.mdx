@@ -4,6 +4,20 @@ import { Callout, Steps } from 'nextra/components'
 
 Dockflow includes a built-in web dashboard to manage deployments, monitor services, and interact with your infrastructure from the browser.
 
+## k3s support
+
+The dashboard was designed for Swarm first, and every page above works on k3s too — but a few actions
+have no Kubernetes equivalent (per-volume Docker disk usage figures, the Swarm-only placement UI on the
+Topology page's constraint editor) or are refused on purpose:
+
+<Callout type="warning">
+  An action a backend does not support answers **not supported** — HTTP 501 with a suggestion, the same
+  refusal the CLI prints, never a silent no-op or a stale success message. On either orchestrator,
+  **the UI never deletes volumes**: the delete path does not exist in the API route table at all, with
+  or without a confirmation flag. Use [`dockflow volumes rm`](/en/cli#volumes-remove) from a terminal
+  for that, which is deliberately not one click away in a browser.
+</Callout>
+
 ## Getting Started
 
 <Steps>

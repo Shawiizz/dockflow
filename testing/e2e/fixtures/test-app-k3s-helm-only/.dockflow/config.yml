@@ -1,0 +1,4 @@
+# Baseline for 53-helm-only.test.ts (E-53-01, E-53-02, E-53-04): deliberately no docker-compose.yml
+# anywhere under this project, so `services/compose.ts` finds no compose file and deploy.ts's
+# Helm-only path is the one under test. The test file rewrites `helm.releases[]` with `fixture.write`.
+project_name: "helmonly"

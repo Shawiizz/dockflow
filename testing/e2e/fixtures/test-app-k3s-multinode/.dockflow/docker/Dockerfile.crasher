@@ -1,0 +1,10 @@
+# Starts out healthy; 40-distribution.test.ts (E-40-05) patches the CMD to exit 1 in its own temp
+# fixture copy for the "broken build" deploy. Kept separate from Dockerfile.web so that patch cannot
+# affect any other service's image.
+FROM nginx:alpine
+
+COPY index.html /usr/share/nginx/html/index.html
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

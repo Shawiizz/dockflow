@@ -1,0 +1,11 @@
+project_name: "k3s-multi"
+
+stack_management:
+  keep_releases: 4
+  cleanup_on_failure: true
+
+# E-44-04 (binder): every node receives the file, so every replica of `binder`
+# (one per trio node, see docker-compose.yml) reads the same content.
+uploads:
+  - src: uploads/marker.txt
+    dest: /srv/e2e-binder/marker.txt

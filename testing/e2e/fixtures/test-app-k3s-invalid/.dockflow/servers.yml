@@ -1,0 +1,12 @@
+# E-30-04: an unroutable host (TEST-NET-1, RFC 5737) so a would-be SSH dial proves the offline render
+# never happens (the row's timing assertion). E-30-05 overwrites this file with the lane's real duo
+# topology before deploying the same rejected compose.
+defaults:
+  user: deploytest
+servers:
+  server_1:
+    host: 192.0.2.1
+    port: 32230
+    private_host: 192.0.2.1
+    role: manager
+    tags: [e2e]

@@ -60,6 +60,15 @@ describe("registry distribution", () => {
     expect(result.exitCode).toBe(0);
   }, 240_000);
 
+  test("release files are mode 0600 (design-07 15)", async () => {
+    const mode = await dockerExec(MANAGER_CONTAINER, [
+      "sh",
+      "-c",
+      `stat -c %a '/var/lib/dockflow/stacks/${STACK_NAME}/${VERSION}/metadata.json'`,
+    ]);
+    expect(mode.trim()).toBe("600");
+  });
+
   test("service runs the registry-prefixed image", async () => {
     await waitForService(SERVICE_NAME, "1/1", { timeoutMs: 90_000 });
 

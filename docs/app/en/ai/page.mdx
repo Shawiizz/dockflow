@@ -75,6 +75,9 @@ The `@dockflow-tools/mcp` package provides a [Model Context Protocol](https://mo
 | `list_pages` | List all available documentation pages with descriptions |
 | `search_docs` | Search documentation for a specific topic or keyword |
 | `get_page` | Get the full content of a specific documentation page |
+| `get_examples` | Full example projects (`simple`, `k3s`, `k3s-cluster`, `k3s-helm`, `k3s-helm-only`, `with-proxy`, ...) — pass no id to list every scenario |
+| `validate_config` | Validate a `config.yml`/`servers.yml` pair against the same rules `dockflow config validate` and `dockflow validate <env>` enforce, without installing the CLI |
+| `read_project_config` | Read the current project's `.dockflow/config.yml`, `servers.yml`, `docker-compose.yml` and `accessories.yml`, when run from inside a project |
 
 ### Example Usage
 
@@ -83,5 +86,9 @@ Once configured, you can ask your AI assistant questions like:
 - *"How do I configure multi-host deployment with Dockflow?"*
 - *"What are the available CLI commands?"*
 - *"Show me the accessories configuration reference"*
+- *"Give me a starting config.yml and servers.yml for a k3s cluster with three managers and two workers"*
+- *"Validate this config.yml against the k3s rules before I deploy"*
+- *"Show me an example of a Helm release with a private OCI chart"*
 
-The MCP server fetches documentation from the live site and caches it in memory for fast responses.
+The MCP server fetches documentation from the live site and caches it in memory for fast responses;
+`get_examples`, `validate_config` and `read_project_config` need no network access.
