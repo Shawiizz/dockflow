@@ -264,7 +264,8 @@ export async function imagesOnNode(node: NodeKey): Promise<NodeImage[]> {
   const images = isRecord(parsed) && Array.isArray(parsed.images) ? parsed.images.filter(isRecord) : [];
   const ctrOut = await exec([
     "docker", "exec", container, K3S_BIN, "ctr", "-n", "k8s.io", "images", "ls",
-    "-q", "labels.io.cri-containerd.pinned==pinned",
+    // containerd's filter grammar needs a label key with a "-" quoted
+    "-q", 'labels."io.cri-containerd.pinned"==pinned',
   ]);
   const pinnedRefs = new Set(ctrOut.split("\n").map((line) => line.trim()).filter(Boolean));
   const result: NodeImage[] = [];

@@ -266,12 +266,13 @@ describe("E-31 deploy-basic chain", () => {
       const status = await runCLI(["status", "e2e"], { cwd: fixture.dir, timeoutMs: 30_000 });
       expect(status.exitCode).toBe(0);
       expect(status.stdout).toContain("1.0.0");
+      // running/desired replicas over every service: web 2 + worker 1
+      expect(status.stdout).toContain("3/3");
 
       const version = await runCLI(["version", "e2e"], { cwd: fixture.dir, timeoutMs: 30_000 });
       expect(version.exitCode).toBe(0);
-      const out = version.stdout + version.stderr;
-      expect(out).toContain("1.0.0");
-      expect(out).toContain("2/2");
+      expect(version.stdout).toContain("1.0.0");
+      expect(version.stdout).toContain("web: k3s-basic-web-e2e:1.0.0");
     });
   });
 
