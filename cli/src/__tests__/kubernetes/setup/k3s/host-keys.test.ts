@@ -371,6 +371,33 @@ describe('HostKeyStore (design-05 3.5, K60)', () => {
     expect(decisions2[0].outcome).toBe('matched');
   });
 
+  it('HK3b a later connection of the same run matches the first-contact key silently', async () => {
+    const dir = tmpProjectDir();
+    const warnings: string[] = [];
+    const store = new HostKeyStore(dir, HK_ENV, { insecureHostKey: false, requireHostKey: false, interactive: false, onWarning: (m) => warnings.push(m) });
+    const decisions: HostKeyDecision[] = [];
+
+    for (let connection = 0; connection < 3; connection++) {
+      expect(await verify(store, hkNode('srv-1'), Buffer.from(ED25519_PUB_B64, 'base64'), (d) => decisions.push(d))).toBe(true);
+    }
+
+    expect(warnings.filter((w) => w.includes('first contact'))).toHaveLength(1);
+    expect(decisions).toEqual([{ key: 'srv-1', fingerprint: ED25519_FINGERPRINT, outcome: 'recorded' }]);
+  });
+
+  it('HK3c a different key later in the same run is refused, naming both fingerprints', async () => {
+    const dir = tmpProjectDir();
+    const store = new HostKeyStore(dir, HK_ENV, { insecureHostKey: false, requireHostKey: false, interactive: false });
+
+    expect(await verify(store, hkNode('srv-1'), Buffer.from(ED25519_PUB_B64, 'base64'))).toBe(true);
+    expect(await verify(store, hkNode('srv-1'), Buffer.from(ECDSA_PUB_B64, 'base64'))).toBe(false);
+
+    const error = store.takeError();
+    expect(error?.message).toBe('The SSH host key of srv-1 (10.0.0.10:22) changed during this run');
+    expect(error?.suggestion).toContain(ED25519_FINGERPRINT);
+    expect(error?.suggestion).toContain(ECDSA_FINGERPRINT);
+  });
+
   it('HK4 no pin, non-TTY, --password -> refused before any key is offered (2.1)', () => {
     const dir = tmpProjectDir();
     const store = new HostKeyStore(dir, HK_ENV, { insecureHostKey: false, requireHostKey: false, interactive: false });

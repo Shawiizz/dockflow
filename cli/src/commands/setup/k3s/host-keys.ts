@@ -180,6 +180,17 @@ export class HostKeyStore implements HostKeyVerification {
   private async decide(node: K3sNodeSpec, key: Buffer, onDecision: (decision: HostKeyDecision) => void): Promise<boolean> {
     const fingerprint = sshFingerprint(key);
     const pin = this.lookup(node);
+    // Setup opens several connections per node: a key first seen earlier in this run is the pin for
+    // the rest of it, so a later connection neither warns again nor accepts a different key.
+    const firstContact = pin === null ? this.pending.find((pending) => pending.key === node.key) : undefined;
+    if (firstContact !== undefined) {
+      if (firstContact.base64 === key.toString('base64')) return true;
+      this.lastError = {
+        message: `The SSH host key of ${node.key} (${node.ssh.host}:${node.ssh.port}) changed during this run`,
+        suggestion: `Compare the fingerprints out of band: first contact ${fingerprintOfPin(firstContact)}, now ${fingerprint}. Run setup again once the host is trusted.`,
+      };
+      return false;
+    }
     if (pin !== null) {
       if (pin.base64 === key.toString('base64')) {
         this.record({ key: node.key, fingerprint, outcome: 'matched' }, onDecision);
