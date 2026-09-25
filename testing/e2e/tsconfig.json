@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "noEmit": true,
+    "types": ["bun-types"],
+    "typeRoots": ["../../cli/node_modules/@types", "../../cli/node_modules"]
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", ".cache", ".artifacts"]
+}

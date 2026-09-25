@@ -1,14 +1,16 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import type { Deployment } from '../../../../services/orchestrator/kubernetes/resources/apps';
-import type { Node } from '../../../../services/orchestrator/kubernetes/resources/core';
+import type { DaemonSet, Deployment } from '../../../../services/orchestrator/kubernetes/resources/apps';
+import type { Node, Pod } from '../../../../services/orchestrator/kubernetes/resources/core';
 import type { StorageClass } from '../../../../services/orchestrator/kubernetes/resources/storage';
 import { Redactor } from '../../../../utils/redact';
 import { FakeCluster, type KubeObject } from '../../fakes/fake-cluster';
+import { FakeClock } from '../../fakes/fake-clock';
 import { FakeKubeExecutor, fakeNode, REST } from '../../fakes/fake-kube-executor';
 import { assertExecutorInvariants } from '../../support/invariants';
 import { chooseFirewallTool } from '../../../../commands/setup/k3s/firewall';
 import {
   applyNetcheckDaemonSet,
+  buildClusterVerification,
   type ConnectOutcome,
   type DeployIdentityProbe,
   evaluateComponentsList,
@@ -20,11 +22,13 @@ import {
   evaluateNodeReadiness,
   evaluateStorageClasses,
   evaluateTraefikAbsence,
+  type ExpectedNode,
   type ExposureProbeNode,
   netcheckDaemonSet,
   netcheckPlan,
   removeNetcheckDaemonSet,
   runExposureProbe,
+  runNetworkCheck,
 } from '../../../../commands/setup/k3s/verify';
 
 const KEY = 'server_1';
@@ -104,6 +108,20 @@ describe('evaluateNodeReadiness (16.1, V1, V2)', () => {
   it('missing the control-plane label', () => {
     const problem = evaluateNodeReadiness(node({ metadata: { name: 'srv-1', labels: {} } }), expectation());
     expect(problem?.message).toBe('Node srv-1 is missing the node-role.kubernetes.io/control-plane label');
+  });
+
+  it('V2 wrong ExternalIP', () => {
+    const problem = evaluateNodeReadiness(
+      node({
+        status: {
+          conditions: [{ type: 'Ready', status: 'True' }],
+          nodeInfo: { kubeletVersion: 'v1.36.4+k3s1' },
+          addresses: [{ type: 'InternalIP', address: '10.0.0.10' }, { type: 'ExternalIP', address: '203.0.113.5' }],
+        },
+      }),
+      expectation({ nodeExternalIp: '203.0.113.9' }),
+    );
+    expect(problem?.message).toBe('Node srv-1 has ExternalIP 203.0.113.5, expected 203.0.113.9');
   });
 });
 
@@ -265,6 +283,116 @@ describe('netcheck DaemonSet and ring plan (16.4, V7)', () => {
   });
 });
 
+describe('runNetworkCheck (16.4)', () => {
+  const AGENT = 'agent-1';
+  const SERVER = 'server-1';
+
+  function pod(name: string, nodeName: string, podIp: string): Pod {
+    return {
+      apiVersion: 'v1',
+      kind: 'Pod',
+      metadata: { name },
+      spec: { containers: [], nodeName },
+      status: { podIP: podIp, conditions: [{ type: 'Ready', status: 'True' }] },
+    };
+  }
+
+  function daemonSet(numberReady: number, desiredNumberScheduled: number): DaemonSet {
+    return {
+      apiVersion: 'apps/v1',
+      kind: 'DaemonSet',
+      metadata: { name: 'dockflow-netcheck', namespace: 'dockflow-system' },
+      spec: { selector: { matchLabels: {} }, template: { metadata: {}, spec: { containers: [] } } },
+      status: { numberReady, desiredNumberScheduled },
+    };
+  }
+
+  // reuses the redactor and the tracking array every describe block in this file shares
+  function scriptedNetcheckKube(script: ConstructorParameters<typeof FakeKubeExecutor>[0]['script']): FakeKubeExecutor {
+    const executor = new FakeKubeExecutor({ node: fakeNode(KEY), redactor, script });
+    kubes.push(executor);
+    return executor;
+  }
+
+  it('a single node is never checked (nothing cross-node to verify)', async () => {
+    const kube = scriptedNetcheckKube([]);
+    const result = await runNetworkCheck(kube, new FakeClock(), { nodeCount: 1, flannelBackend: 'vxlan' });
+    expect(result).toEqual({ ran: false, ok: true, failures: [] });
+  });
+
+  it('2 nodes, every wget and DNS lookup answers ok -> ran, ok, DaemonSet removed after', async () => {
+    const pods = [pod('netcheck-agent-1', AGENT, '10.42.1.5'), pod('netcheck-server-1', SERVER, '10.42.0.5')];
+    const kube = scriptedNetcheckKube([
+      { id: 'ds', args: ['get', 'daemonset', 'dockflow-netcheck', '-o', 'json'], respond: { json: { items: [daemonSet(2, 2)] } } },
+      { id: 'pods', args: ['get', 'pods', '-l', 'app.kubernetes.io/name=dockflow-netcheck', '-o', 'json'], respond: { json: { items: pods } } },
+      { id: 'wget-agent-to-server', args: ['exec', 'netcheck-agent-1', '--', 'wget', '-q', '-T', '3', '-O', '-', 'http://10.42.0.5:8080/'], respond: { exitCode: 0, stdout: 'dockflow-netcheck-ok', stderr: '' } },
+      { id: 'nslookup-agent', args: ['exec', 'netcheck-agent-1', '--', 'nslookup', 'kubernetes.default.svc.cluster.local'], respond: { exitCode: 0, stdout: '', stderr: '' } },
+      { id: 'wget-server-to-agent', args: ['exec', 'netcheck-server-1', '--', 'wget', '-q', '-T', '3', '-O', '-', 'http://10.42.1.5:8080/'], respond: { exitCode: 0, stdout: 'dockflow-netcheck-ok', stderr: '' } },
+      { id: 'nslookup-server', args: ['exec', 'netcheck-server-1', '--', 'nslookup', 'kubernetes.default.svc.cluster.local'], respond: { exitCode: 0, stdout: '', stderr: '' } },
+      { id: 'remove', args: ['delete', 'daemonset/dockflow-netcheck', '--ignore-not-found', '--wait=false'], respond: { exitCode: 0, stdout: '', stderr: '' } },
+    ]);
+    const result = await runNetworkCheck(kube, new FakeClock(), { nodeCount: 2, flannelBackend: 'vxlan' });
+    expect(result).toEqual({ ran: true, ok: true, failures: [] });
+  });
+
+  it('a pod cannot reach its ring neighbour -> podUnreachable, cleanup still runs', async () => {
+    const pods = [pod('netcheck-agent-1', AGENT, '10.42.1.5'), pod('netcheck-server-1', SERVER, '10.42.0.5')];
+    const kube = scriptedNetcheckKube([
+      { args: ['get', 'daemonset', 'dockflow-netcheck', '-o', 'json'], respond: { json: { items: [daemonSet(2, 2)] } } },
+      { args: ['get', 'pods', '-l', 'app.kubernetes.io/name=dockflow-netcheck', '-o', 'json'], respond: { json: { items: pods } } },
+      { args: ['exec', 'netcheck-agent-1', '--', 'wget', '-q', '-T', '3', '-O', '-', 'http://10.42.0.5:8080/'], respond: { exitCode: 1, stdout: '', stderr: 'wget: download timed out' } },
+      { args: ['exec', 'netcheck-agent-1', '--', 'nslookup', 'kubernetes.default.svc.cluster.local'], respond: { exitCode: 0, stdout: '', stderr: '' } },
+      { args: ['exec', 'netcheck-server-1', '--', 'wget', '-q', '-T', '3', '-O', '-', 'http://10.42.1.5:8080/'], respond: { exitCode: 0, stdout: 'dockflow-netcheck-ok', stderr: '' } },
+      { args: ['exec', 'netcheck-server-1', '--', 'nslookup', 'kubernetes.default.svc.cluster.local'], respond: { exitCode: 0, stdout: '', stderr: '' } },
+      { args: ['delete', 'daemonset/dockflow-netcheck', '--ignore-not-found', '--wait=false'], respond: { exitCode: 0, stdout: '', stderr: '' } },
+    ]);
+    const result = await runNetworkCheck(kube, new FakeClock(), { nodeCount: 2, flannelBackend: 'wireguard-native' });
+    expect(result.ran).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0]).toBe(`Pod network check failed: a pod on ${AGENT} cannot reach a pod on ${SERVER} (10.42.0.5:8080)`);
+  });
+
+  it('a DNS lookup fails -> dnsCheckFailed', async () => {
+    const pods = [pod('netcheck-agent-1', AGENT, '10.42.1.5'), pod('netcheck-server-1', SERVER, '10.42.0.5')];
+    const kube = scriptedNetcheckKube([
+      { args: ['get', 'daemonset', 'dockflow-netcheck', '-o', 'json'], respond: { json: { items: [daemonSet(2, 2)] } } },
+      { args: ['get', 'pods', '-l', 'app.kubernetes.io/name=dockflow-netcheck', '-o', 'json'], respond: { json: { items: pods } } },
+      { args: ['exec', 'netcheck-agent-1', '--', 'wget', '-q', '-T', '3', '-O', '-', 'http://10.42.0.5:8080/'], respond: { exitCode: 0, stdout: 'dockflow-netcheck-ok', stderr: '' } },
+      { args: ['exec', 'netcheck-agent-1', '--', 'nslookup', 'kubernetes.default.svc.cluster.local'], respond: { exitCode: 1, stdout: '', stderr: ';; connection timed out' } },
+      { args: ['exec', 'netcheck-server-1', '--', 'wget', '-q', '-T', '3', '-O', '-', 'http://10.42.1.5:8080/'], respond: { exitCode: 0, stdout: 'dockflow-netcheck-ok', stderr: '' } },
+      { args: ['exec', 'netcheck-server-1', '--', 'nslookup', 'kubernetes.default.svc.cluster.local'], respond: { exitCode: 0, stdout: '', stderr: '' } },
+      { args: ['delete', 'daemonset/dockflow-netcheck', '--ignore-not-found', '--wait=false'], respond: { exitCode: 0, stdout: '', stderr: '' } },
+    ]);
+    const result = await runNetworkCheck(kube, new FakeClock(), { nodeCount: 2, flannelBackend: 'vxlan' });
+    expect(result.ok).toBe(false);
+    expect(result.failures[0]).toBe(`Cluster DNS does not answer from ${AGENT}`);
+  });
+
+  it('the DaemonSet never becomes ready before the deadline -> netcheckTimeout naming the still-waiting pod, cleanup still runs', async () => {
+    const notReady: Pod = {
+      apiVersion: 'v1',
+      kind: 'Pod',
+      metadata: { name: 'netcheck-server-1' },
+      spec: { containers: [], nodeName: SERVER },
+      status: { conditions: [{ type: 'Ready', status: 'False' }], containerStatuses: [{ name: 'netcheck', ready: false, restartCount: 0, image: 'busybox', state: { waiting: { reason: 'ImagePullBackOff' } } }] },
+    };
+    const kube = scriptedNetcheckKube([
+      { args: ['get', 'daemonset', 'dockflow-netcheck', '-o', 'json'], respond: { json: { items: [daemonSet(1, 2)] } } },
+      { args: ['get', 'pods', '-l', 'app.kubernetes.io/name=dockflow-netcheck', '-o', 'json'], respond: { json: { items: [notReady] } } },
+      { args: ['delete', 'daemonset/dockflow-netcheck', '--ignore-not-found', '--wait=false'], respond: { exitCode: 0, stdout: '', stderr: '' } },
+    ]);
+    let error: Error | undefined;
+    try {
+      await runNetworkCheck(kube, new FakeClock(), { nodeCount: 2, flannelBackend: 'vxlan', timeoutS: 0 });
+    } catch (caught) {
+      error = caught as Error;
+    }
+    expect(error?.message).toContain('did not become ready within 0s');
+    expect(error?.message).toContain('netcheck-server-1 (ImagePullBackOff)');
+  });
+});
+
 describe('evaluateStorageClasses (16.2, V9)', () => {
   function sc(name: string, isDefault: boolean, reclaimPolicy: 'Retain' | 'Delete' = 'Retain', createdAt = '2026-01-01T00:00:00Z'): StorageClass {
     return {
@@ -280,6 +408,11 @@ describe('evaluateStorageClasses (16.2, V9)', () => {
     const { problem, storageClass } = evaluateStorageClasses([sc('dockflow-local', true), sc('local-path', false, 'Delete', '2025-01-01T00:00:00Z')], ENV);
     expect(problem).toBeNull();
     expect(storageClass.effectiveDefault).toBe(true);
+  });
+
+  it('an existing dockflow-local with the wrong reclaim policy -> error before the annotation is even checked', () => {
+    const { problem } = evaluateStorageClasses([sc('dockflow-local', true, 'Delete')], ENV);
+    expect(problem?.message).toBe(`StorageClass dockflow-local on ${ENV} has reclaimPolicy Delete, and Dockflow needs Retain`);
   });
 
   it('local-path still default -> error naming it and its reclaim policy', () => {
@@ -363,6 +496,11 @@ describe('evaluateDeployIdentityChecks (16.3, V8)', () => {
     expect(evaluateDeployIdentityChecks(probe({ whoami: 'someone-else' }))[0].message).toBe(`The deploy key does not log in as dockflow on ${KEY}`);
   });
 
+  it('kubeconfig file not owned by the deploy user or not 0600', () => {
+    const problems = evaluateDeployIdentityChecks(probe({ kubeconfigStat: { owner: 'someone-else', group: 'dockflow', mode: '600' } }));
+    expect(problems.some((p) => p.message.includes('Dockflow kubeconfig on'))).toBe(true);
+  });
+
   it('kubeconfig directory not 0700 (the new stat row)', () => {
     const problems = evaluateDeployIdentityChecks(probe({ kubeconfigDirStat: { owner: 'dockflow', group: 'dockflow', mode: '755' } }));
     expect(problems.some((p) => p.message.includes('kubeconfig directory'))).toBe(true);
@@ -395,6 +533,127 @@ describe('evaluateDeployIdentityChecks (16.3, V8)', () => {
   it('Helm version mismatch', () => {
     const problems = evaluateDeployIdentityChecks(probe({ helmVersion: 'v4.2.0' }));
     expect(problems.some((p) => p.message.includes('Helm'))).toBe(true);
+  });
+});
+
+describe('buildClusterVerification (16.2, finalize)', () => {
+  function expectedNode(overrides: Partial<ExpectedNode> = {}): ExpectedNode {
+    return { key: KEY, name: 'srv-1', kubeletVersion: 'v1.36.4+k3s1', controlPlane: true, etcdMember: true, ...overrides };
+  }
+
+  function readyNode(overrides: Partial<Node> = {}): Node {
+    return node(overrides);
+  }
+
+  function deployment(name: string, ready: boolean): Deployment {
+    return {
+      apiVersion: 'apps/v1',
+      kind: 'Deployment',
+      metadata: { name, generation: 1 },
+      spec: { replicas: 1, selector: { matchLabels: {} }, template: { metadata: {}, spec: { containers: [] } } },
+      status: { availableReplicas: ready ? 1 : 0, observedGeneration: 1 },
+    };
+  }
+
+  const DOCKFLOW_LOCAL_DEFAULT: StorageClass = {
+    apiVersion: 'storage.k8s.io/v1',
+    kind: 'StorageClass',
+    metadata: { name: 'dockflow-local', creationTimestamp: '2026-01-01T00:00:00Z', annotations: { 'storageclass.kubernetes.io/is-default-class': 'true' } },
+    provisioner: 'rancher.io/local-path',
+    reclaimPolicy: 'Retain',
+  };
+
+  const DEPLOYER_SA = { apiVersion: 'v1', kind: 'ServiceAccount', metadata: { name: 'dockflow-deployer', namespace: 'dockflow-system' } };
+  const DEPLOYER_CRB = {
+    apiVersion: 'rbac.authorization.k8s.io/v1',
+    kind: 'ClusterRoleBinding',
+    metadata: { name: 'dockflow-deployer' },
+    roleRef: { apiGroup: 'rbac.authorization.k8s.io', kind: 'ClusterRole', name: 'cluster-admin' },
+  };
+
+  function deployerToken(present: boolean): { apiVersion: string; kind: string; metadata: { name: string; namespace: string }; type: string; data?: { token: string } } {
+    return {
+      apiVersion: 'v1',
+      kind: 'Secret',
+      metadata: { name: 'dockflow-deployer-token', namespace: 'dockflow-system' },
+      type: 'kubernetes.io/service-account-token',
+      ...(present ? { data: { token: Buffer.from('t').toString('base64') } } : {}),
+    };
+  }
+
+  function scriptedVerificationKube(script: ConstructorParameters<typeof FakeKubeExecutor>[0]['script']): FakeKubeExecutor {
+    const executor = new FakeKubeExecutor({ node: fakeNode(KEY), redactor, script });
+    kubes.push(executor);
+    return executor;
+  }
+
+  it('a fully healthy cluster: only the optional metrics-server warning survives', async () => {
+    const kube = scriptedVerificationKube([
+      {
+        args: ['get', 'nodes', '-o', 'json'],
+        respond: { json: { items: [readyNode({ metadata: { name: 'srv-1', labels: { 'node-role.kubernetes.io/control-plane': 'true', 'node-role.kubernetes.io/etcd': 'true' } } })] } },
+      },
+      { args: ['get', 'deployments.apps', '-o', 'json'], respond: { json: { items: [deployment('coredns', true), deployment('local-path-provisioner', true)] } } },
+      { args: ['get', 'helmcharts.helm.cattle.io', '-o', 'json'], respond: { json: { items: [] } } },
+      { args: ['get', 'deployments.apps', 'traefik', '-o', 'json'], respond: { json: { items: [] } } },
+      { args: ['get', 'storageclass', '-o', 'json'], respond: { json: { items: [DOCKFLOW_LOCAL_DEFAULT] } } },
+      { args: ['get', 'serviceaccounts', 'dockflow-deployer', '-o', 'json'], respond: { json: { items: [DEPLOYER_SA] } } },
+      { args: ['get', 'secrets', 'dockflow-deployer-token', '-o', 'json'], respond: { json: { items: [deployerToken(true)] } } },
+      { args: ['get', 'clusterrolebindings', 'dockflow-deployer', '-o', 'json'], respond: { json: { items: [DEPLOYER_CRB] } } },
+    ]);
+    const result = await buildClusterVerification(kube, {
+      env: ENV,
+      expected: [expectedNode()],
+      etcdExpected: 1,
+      encryption: [{ key: KEY, status: { enabled: true, activeKey: 'XSalsa20-POLY1305 key', hashMatch: true } }],
+      networkCheck: { ran: false, ok: true, failures: [] },
+      clock: new FakeClock(),
+    });
+    expect(result.readyNodes).toBe(1);
+    expect(result.etcdMembers).toBe(1);
+    expect(result.unknownNodes).toEqual([]);
+    expect(result.storageClass.effectiveDefault).toBe(true);
+    expect(result.deployer).toEqual({ serviceAccount: true, binding: true, token: true });
+    expect(result.problems.filter((p) => p.severity === 'error')).toEqual([]);
+    expect(result.problems.some((p) => p.message.includes('metrics-server'))).toBe(true);
+  });
+
+  it('aggregates every failing row: unknown node, missing node, etcd mismatch, a down required component, bundled traefik, missing storage class, missing deployer objects, bad encryption, a failed network check', async () => {
+    const kube = scriptedVerificationKube([
+      {
+        args: ['get', 'nodes', '-o', 'json'],
+        respond: { json: { items: [readyNode({ metadata: { name: 'extra-1', labels: {} } })] } },
+      },
+      { args: ['get', 'deployments.apps', '-o', 'json'], respond: { json: { items: [deployment('coredns', false), deployment('local-path-provisioner', true)] } } },
+      { args: ['get', 'helmcharts.helm.cattle.io', '-o', 'json'], respond: { json: { items: [{ metadata: { name: 'traefik' } }] } } },
+      { args: ['get', 'deployments.apps', 'traefik', '-o', 'json'], respond: { json: { items: [] } } },
+      { args: ['get', 'storageclass', '-o', 'json'], respond: { json: { items: [] } } },
+      { args: ['get', 'serviceaccounts', 'dockflow-deployer', '-o', 'json'], respond: { json: { items: [] } } },
+      { args: ['get', 'secrets', 'dockflow-deployer-token', '-o', 'json'], respond: { json: { items: [] } } },
+      { args: ['get', 'clusterrolebindings', 'dockflow-deployer', '-o', 'json'], respond: { json: { items: [] } } },
+    ]);
+    const result = await buildClusterVerification(kube, {
+      env: ENV,
+      expected: [expectedNode()],
+      etcdExpected: 1,
+      encryption: [{ key: KEY, status: { enabled: false, activeKey: '', hashMatch: false } }],
+      networkCheck: { ran: true, ok: false, failures: ['Cluster DNS does not answer from server_1'] },
+      clock: new FakeClock(),
+      // coredns is down and never becomes ready in this fixture: a 0s budget takes the one fetch as final.
+      componentsTimeoutS: 0,
+    });
+    expect(result.unknownNodes).toEqual(['extra-1']);
+    expect(result.etcdMembers).toBe(0);
+    const errors = result.problems.filter((p) => p.severity === 'error').map((p) => p.message);
+    expect(errors.some((m) => m.includes('did not register as node'))).toBe(true);
+    expect(errors.some((m) => m.includes('etcd members were found'))).toBe(true);
+    expect(errors.some((m) => m.includes('coredns in kube-system is not available'))).toBe(true);
+    expect(errors.some((m) => m.includes('The bundled Traefik is present'))).toBe(true);
+    expect(errors.some((m) => m.includes(`StorageClass dockflow-local is missing on ${ENV}`))).toBe(true);
+    expect(errors.some((m) => m.includes('ServiceAccount dockflow-deployer is missing'))).toBe(true);
+    expect(errors.some((m) => m.includes('Secrets encryption is not active'))).toBe(true);
+    expect(errors.some((m) => m === 'Cluster DNS does not answer from server_1')).toBe(true);
+    expect(result.problems.some((p) => p.severity === 'warning' && p.message.includes('extra-1'))).toBe(true);
   });
 });
 

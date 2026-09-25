@@ -22,7 +22,13 @@ export interface Diagnostic {
 const compareCodeUnits = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 export class DiagnosticSink {
-  private readonly entries = new Map<string, Diagnostic>();
+  // explicit constructor: a field initializer alone compiles to a constructor the coverage
+  // instrumentation cannot mark as hit, which fails the 95% function gate (design-07 2.3) forever
+  private readonly entries: Map<string, Diagnostic>;
+
+  constructor() {
+    this.entries = new Map();
+  }
 
   error(code: string, path: string, message: string, hint?: string): void {
     this.add('error', code, path, message, hint);

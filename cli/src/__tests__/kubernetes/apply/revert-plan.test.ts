@@ -288,6 +288,40 @@ describe('planRevert', () => {
     expect(plan.scale).toEqual([{ service: 'redis', kind: 'Deployment', name: 'redis', replicas: 2 }]);
   });
 
+  it('sorts undone and scaled services by name when several are reverted together', () => {
+    const plan = planRevert(
+      input({
+        role: 'accessory',
+        changes: [
+          change('delta', 'Deployment', 'delta', { previousRevision: 'r3', previousRevisionNumber: 3, previousReplicas: 1 }),
+          change('beta', 'Deployment', 'beta', { previousRevision: 'r3', previousRevisionNumber: 3, previousReplicas: 1 }),
+          change('gamma', 'Deployment', 'gamma', { previousRevision: 'r3', previousRevisionNumber: 3, previousReplicas: 2 }),
+          change('alpha', 'Deployment', 'alpha', { previousRevision: 'r3', previousRevisionNumber: 3, previousReplicas: 2 }),
+        ],
+        before: snapshot(
+          live('Deployment', 'delta', { revision: 'r3', revisionNumber: 3 }),
+          live('Deployment', 'beta', { revision: 'r3', revisionNumber: 3 }),
+          live('Deployment', 'gamma', { revision: 'r3', revisionNumber: 3, replicas: 2 }),
+          live('Deployment', 'alpha', { revision: 'r3', revisionNumber: 3, replicas: 2 }),
+        ),
+        now: snapshot(
+          live('Deployment', 'delta', { revision: 'r4', revisionNumber: 4 }),
+          live('Deployment', 'beta', { revision: 'r4', revisionNumber: 4 }),
+          live('Deployment', 'gamma', { revision: 'r3', revisionNumber: 3, replicas: 4 }),
+          live('Deployment', 'alpha', { revision: 'r3', revisionNumber: 3, replicas: 4 }),
+        ),
+      }),
+    );
+    expect(plan.undo).toEqual([
+      { service: 'beta', kind: 'Deployment', name: 'beta', toRevision: 3 },
+      { service: 'delta', kind: 'Deployment', name: 'delta', toRevision: 3 },
+    ]);
+    expect(plan.scale).toEqual([
+      { service: 'alpha', kind: 'Deployment', name: 'alpha', replicas: 2 },
+      { service: 'gamma', kind: 'Deployment', name: 'gamma', replicas: 2 },
+    ]);
+  });
+
   it('a StatefulSet stuck mid-update is undone although currentRevision did not move (K17)', () => {
     const plan = planRevert(
       input({
@@ -316,6 +350,20 @@ describe('planRevert', () => {
       expect(names(plan.apply)).toEqual([]);
       expect(plan.services).toEqual(['worker']);
     }
+  });
+
+  it('sorts left-in-place services by name when several are left for different reasons', () => {
+    const plan = planRevert(
+      input({
+        role: 'accessory',
+        changes: [change('zulu', 'Deployment', 'zulu', { created: true }), change('echo', 'Deployment', 'echo')],
+        failureActions: { echo: 'pause' },
+      }),
+    );
+    expect(plan.leftInPlace).toEqual([
+      { service: 'echo', reason: 'failure-action' },
+      { service: 'zulu', reason: 'no-history' },
+    ]);
   });
 
   it('a change made only of a Job run is left in place', () => {
@@ -461,6 +509,35 @@ describe('planRevert', () => {
     expect(names(plan.apply)).toEqual(['Deployment/api']);
   });
 
+  it('sorts multiple deleteFirst entries by service name', () => {
+    const previous = [deployment('api', '1.4.1'), deployment('db', '1.4.1', { claims: ['pgdata'] }), pvc('pgdata')];
+    const applied = [
+      { ...deployment('api', '1.4.2'), kind: 'DaemonSet' } as ManifestObject,
+      statefulSet('db', '1.4.2', { claims: ['pgdata'] }),
+      pvc('pgdata'),
+    ];
+    const plan = planRevert(
+      input({
+        applied,
+        previous: { version: '1.4.1', objects: previous, helm: [] },
+        changes: [change('api', 'DaemonSet', 'api', { created: true }), change('db', 'StatefulSet', 'db', { created: true })],
+        disruptive: [{ service: 'db', from: 'Deployment', to: 'StatefulSet', deleted: { kind: 'Deployment', name: 'db' } }],
+        now: snapshot(
+          live('Deployment', 'api'),
+          live('DaemonSet', 'api'),
+          live('StatefulSet', 'db', { revision: 'db-aaa', pendingRevision: 'db-bbb' }),
+        ),
+        livePvcNames: ['pgdata'],
+      }),
+    );
+    expect(plan.deleteFirst).toEqual([
+      { kind: 'DaemonSet', name: 'api', service: 'api' },
+      { kind: 'StatefulSet', name: 'db', service: 'db' },
+    ]);
+    // db's stuck pod is covered by the deletion above, not reported again (K17)
+    expect(plan.statefulSetPods).toEqual([]);
+  });
+
   describe('StatefulSet forced rollback (K17)', () => {
     const previous = [statefulSet('queue', '1.4.1'), statefulSet('cache', '1.4.1')];
     const applied = [statefulSet('queue', '1.4.2', { image: 'registry.example.com/queue:2' }), statefulSet('cache', '1.4.2', { image: 'registry.example.com/cache:2' })];
@@ -504,6 +581,25 @@ describe('planRevert', () => {
         }),
       );
       expect(onlyCache.statefulSetPods).toEqual([]);
+    });
+
+    it('sorts several stuck pods by StatefulSet name', () => {
+      const bothStuck = snapshot(
+        live('StatefulSet', 'cache', { revision: 'cache-aaa', pendingRevision: 'cache-bbb' }),
+        live('StatefulSet', 'queue', { revision: 'queue-aaa', pendingRevision: 'queue-bbb' }),
+      );
+      const plan = planRevert(
+        input({
+          applied,
+          previous: { version: '1.4.1', objects: previous, helm: [] },
+          changes: [change('queue', 'StatefulSet', 'queue'), change('cache', 'StatefulSet', 'cache')],
+          now: bothStuck,
+        }),
+      );
+      expect(plan.statefulSetPods).toEqual([
+        { service: 'cache', statefulSet: 'cache', failedRevision: 'cache-bbb' },
+        { service: 'queue', statefulSet: 'queue', failedRevision: 'queue-bbb' },
+      ]);
     });
   });
 

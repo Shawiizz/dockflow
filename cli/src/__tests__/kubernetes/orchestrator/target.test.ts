@@ -99,6 +99,16 @@ describe('resolveOrchestratorTarget (U-TARGET-*)', () => {
     await expect(promise).rejects.toMatchObject({ code: ErrorCode.NO_SERVERS_FOR_ENV });
   });
 
+  it('--server names a valid, credentialed manager -> that manager, no probe', async () => {
+    cleanups.push(grantCredentials(['server_1', 'server_2', 'server_3']));
+    const target = await resolveOrchestratorTarget(ENV, config({ orchestrator: 'k3s' }), {
+      server: 'server_2',
+      servers: [server('server_1'), server('server_2'), server('server_3')],
+    });
+    expect(target.controlPlane.name).toBe('server_2');
+    expect(target.probes).toEqual([]);
+  });
+
   it('U-TARGET-03: three managers, first unreachable -> second chosen, probes in order, onProbe called 3 times', async () => {
     cleanups.push(grantCredentials(['server_1', 'server_2', 'server_3']));
     const clock = new FakeClock();
