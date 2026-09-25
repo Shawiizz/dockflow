@@ -207,9 +207,12 @@ options of `dockflow setup` (`--user`, `--host`, `--port`, `-k/--key`, `--genera
 `dockflow-local` is the only StorageClass Dockflow marks as default, and it enforces that, not merely hopes
 for it: setup patches k3s's own `local-path` class with `storageclass.kubernetes.io/is-default-class: "false"`
 and **re-asserts it on every run**, because k3s restores that annotation whenever it re-applies its own
-manifests on start. Verification lists every StorageClass and fails, naming the competing class, when
-anything other than `dockflow-local` carries the default annotation. See [Volumes & Data](/en/configuration/volumes)
-for the reclaim policy this buys.
+manifests on start. On a fresh cluster, setup waits for k3s to create `local-path` before creating
+`dockflow-local`, so `dockflow-local` stays the newer default, which is the one Kubernetes picks while k3s's
+annotation is back. Verification lists every StorageClass, enforces the patch once more when `local-path` is
+the only other default, and fails, naming the competing class, when anything other than `dockflow-local`
+still carries the default annotation. See [Volumes & Data](/en/configuration/volumes) for the reclaim policy
+this buys.
 
 ## Networking
 

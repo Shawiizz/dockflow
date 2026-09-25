@@ -680,6 +680,65 @@ describe('buildClusterVerification (16.2, finalize)', () => {
     expect(errors.some((m) => m === 'Cluster DNS does not answer from server_1')).toBe(true);
     expect(result.problems.some((p) => p.severity === 'warning' && p.message.includes('extra-1'))).toBe(true);
   });
+
+  describe('local-path re-marked default by a k3s manifest re-apply (F30)', () => {
+    function localPath(isDefault: boolean): StorageClass {
+      return {
+        apiVersion: 'storage.k8s.io/v1',
+        kind: 'StorageClass',
+        metadata: { name: 'local-path', creationTimestamp: '2025-12-01T00:00:00Z', annotations: { 'storageclass.kubernetes.io/is-default-class': String(isDefault) } },
+        provisioner: 'rancher.io/local-path',
+        reclaimPolicy: 'Delete',
+      };
+    }
+
+    function verificationKube(listsAfterPatch: readonly StorageClass[][]): FakeKubeExecutor {
+      const bothDefault = [DOCKFLOW_LOCAL_DEFAULT, localPath(true)];
+      return scriptedVerificationKube([
+        {
+          args: ['get', 'nodes', '-o', 'json'],
+          respond: { json: { items: [readyNode({ metadata: { name: 'srv-1', labels: { 'node-role.kubernetes.io/control-plane': 'true', 'node-role.kubernetes.io/etcd': 'true' } } })] } },
+        },
+        { args: ['get', 'deployments.apps', '-o', 'json'], respond: { json: { items: [deployment('coredns', true), deployment('local-path-provisioner', true)] } } },
+        { args: ['get', 'helmcharts.helm.cattle.io', '-o', 'json'], respond: { json: { items: [] } } },
+        { args: ['get', 'deployments.apps', 'traefik', '-o', 'json'], respond: { json: { items: [] } } },
+        { id: 'verify-read', args: ['get', 'storageclass', '-o', 'json'], respond: { json: { items: bothDefault } } },
+        { id: 'enforce-read', args: ['get', 'storageclass', '-o', 'json'], respond: { json: { items: bothDefault } } },
+        { id: 'enforce-patch', args: ['patch', 'storageclass', 'local-path', REST], respond: { exitCode: 0, stdout: '', stderr: '' } },
+        ...listsAfterPatch.map((items, index) => ({ id: `read-after-patch-${index}`, args: ['get', 'storageclass', '-o', 'json'], respond: { json: { items } } })),
+        { args: ['get', 'serviceaccounts', 'dockflow-deployer', '-o', 'json'], respond: { json: { items: [DEPLOYER_SA] } } },
+        { args: ['get', 'secrets', 'dockflow-deployer-token', '-o', 'json'], respond: { json: { items: [deployerToken(true)] } } },
+        { args: ['get', 'clusterrolebindings', 'dockflow-deployer', '-o', 'json'], respond: { json: { items: [DEPLOYER_CRB] } } },
+      ]);
+    }
+
+    function verify(kube: FakeKubeExecutor): ReturnType<typeof buildClusterVerification> {
+      return buildClusterVerification(kube, {
+        env: ENV,
+        expected: [expectedNode()],
+        etcdExpected: 1,
+        encryption: [{ key: KEY, status: { enabled: true, activeKey: 'XSalsa20-POLY1305 key', hashMatch: true } }],
+        networkCheck: { ran: false, ok: true, failures: [] },
+        clock: new FakeClock(),
+      });
+    }
+
+    it('is enforced once more, and a repair that holds passes', async () => {
+      const repaired = [DOCKFLOW_LOCAL_DEFAULT, localPath(false)];
+      const result = await verify(verificationKube([repaired, repaired]));
+      expect(result.problems.filter((p) => p.severity === 'error')).toEqual([]);
+      expect(result.storageClass.effectiveDefault).toBe(true);
+    });
+
+    it('still fails, naming local-path, when the state persists after the second enforcement', async () => {
+      const bothDefault = [DOCKFLOW_LOCAL_DEFAULT, localPath(true)];
+      const result = await verify(verificationKube([bothDefault, bothDefault]));
+      const errors = result.problems.filter((p) => p.severity === 'error').map((p) => p.message);
+      expect(errors).toEqual([
+        `StorageClass local-path on ${ENV} is also marked default, so a chart volume without storageClass could bind to it instead of dockflow-local (local-path reclaimPolicy Delete)`,
+      ]);
+    });
+  });
 });
 
 describe('runExposureProbe (16.5, V10)', () => {

@@ -53,7 +53,7 @@ import type { SetupProblem } from './messages';
 import type { Datastore, K3sNodeInspection, K3sNodePlan, K3sNodeRole, NodeOperation, NodeStateFile } from './plan';
 import { runNodeReset, type ResetReport } from './reset';
 import { parseNodePlan, parseNodeState } from './schema';
-import { applySystemObjects, assertSingleDefaultStorageClass, reconcileNodeLabels, type StorageDefaultResult } from './system';
+import { applySystemObjects, assertSingleDefaultStorageClass, reconcileNodeLabels, type StorageDefaultResult, waitForLocalPathClass } from './system';
 import { checkClusterTokens, generateAgentToken, TOKEN_DIRECTORY, tokenFilesFor, tokenFingerprint } from './tokens';
 import {
   applyNetcheckDaemonSet,
@@ -702,6 +702,7 @@ async function runControlPlane(runner: HostRunner, plan: K3sNodePlan, clock: Clo
   finishStep(steps, { id: 'helm', status: 'ok' });
 
   emitEvent('system-objects', 'start');
+  await waitForLocalPathClass(kube, clock, { env: plan.env });
   await applySystemObjects(kube, { env: plan.env });
   let token: string;
   if (plan.options.rotateDeployToken && node.role === 'server-init') {

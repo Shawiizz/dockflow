@@ -1,10 +1,17 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { applySystemObjects, assertSingleDefaultStorageClass, reconcileNodeLabels, systemManifest } from '../../../../commands/setup/k3s/system';
+import {
+  applySystemObjects,
+  assertSingleDefaultStorageClass,
+  reconcileNodeLabels,
+  systemManifest,
+  waitForLocalPathClass,
+} from '../../../../commands/setup/k3s/system';
 import { SetupStepError } from '../../../../commands/setup/k3s/host-runner';
 import { ANNOTATIONS, K8S_STORAGE_CLASS } from '../../../../services/orchestrator/kubernetes/constants';
 import { Redactor } from '../../../../utils/redact';
+import { FakeClock } from '../../fakes/fake-clock';
 import { FakeCluster, type KubeObject } from '../../fakes/fake-cluster';
-import { FakeKubeExecutor, fakeNode } from '../../fakes/fake-kube-executor';
+import { FakeKubeExecutor, fakeNode, type KubeStep } from '../../fakes/fake-kube-executor';
 import { assertExecutorInvariants } from '../../support/invariants';
 
 const KEY = 'server_1';
@@ -66,6 +73,51 @@ describe('system objects (S1, 11.1)', () => {
     }
     expect(error).toBeInstanceOf(SetupStepError);
     expect((error as SetupStepError).message).toBe(`StorageClass ${K8S_STORAGE_CLASS} on ${ENV} has reclaimPolicy Delete, and Dockflow needs Retain`);
+  });
+});
+
+describe('waitForLocalPathClass (F32)', () => {
+  const GET_LOCAL_PATH = ['get', 'storageclass', 'local-path', '-o', 'json'];
+  const LOCAL_PATH = { apiVersion: 'storage.k8s.io/v1', kind: 'StorageClass', metadata: { name: 'local-path' }, provisioner: 'rancher.io/local-path' };
+
+  function scriptedKube(script: KubeStep[], clock: FakeClock): FakeKubeExecutor {
+    const executor = new FakeKubeExecutor({ node: fakeNode(KEY), script, redactor, clock });
+    kubes.push(executor);
+    return executor;
+  }
+
+  it('returns at once when k3s already created local-path', async () => {
+    const kube = kubeFor(new FakeCluster());
+    await waitForLocalPathClass(kube, new FakeClock(), { env: ENV });
+  });
+
+  it('keeps polling until k3s creates local-path', async () => {
+    const clock = new FakeClock();
+    const kube = scriptedKube(
+      [
+        { args: GET_LOCAL_PATH, respond: { json: { items: [] } } },
+        { args: GET_LOCAL_PATH, respond: { json: { items: [] } } },
+        { args: GET_LOCAL_PATH, respond: { json: { items: [LOCAL_PATH] } } },
+      ],
+      clock,
+    );
+    const done = waitForLocalPathClass(kube, clock, { env: ENV });
+    await clock.runUntilIdle(60_000);
+    await done;
+  });
+
+  it('times out naming the class and the k3s component', async () => {
+    const clock = new FakeClock();
+    const kube = scriptedKube([{ args: GET_LOCAL_PATH, respond: { json: { items: [] } }, times: 'any' }], clock);
+    const outcome = waitForLocalPathClass(kube, clock, { env: ENV }).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    await clock.runUntilIdle(400_000);
+    const error = (await outcome) as SetupStepError;
+    expect(error).toBeInstanceOf(SetupStepError);
+    expect(error.message).toBe(`k3s did not create its StorageClass local-path on ${ENV} within 120s`);
+    expect(error.suggestion).toContain('local-storage');
   });
 });
 

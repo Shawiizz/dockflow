@@ -78,6 +78,8 @@ export const NODE_READY_UPGRADE_TIMEOUT_S = 300;
 export const DEPLOYER_TOKEN_TIMEOUT_S = 60;
 /** first boot pulls the CoreDNS, local-path and metrics-server images */
 export const SYSTEM_COMPONENTS_TIMEOUT_S = 300;
+/** k3s's deploy controller creates local-path a few seconds after the API answers */
+export const LOCAL_PATH_CLASS_TIMEOUT_S = 120;
 export const NETWORK_CHECK_TIMEOUT_S = 180;
 /**
  * How long each cross-node probe keeps retrying: on a fresh cluster CoreDNS and the Service rules

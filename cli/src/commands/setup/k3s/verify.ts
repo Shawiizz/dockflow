@@ -23,6 +23,7 @@ import {
 import { SetupStepError } from './host-runner';
 import type { SetupProblem } from './messages';
 import type { FlannelBackend } from './plan';
+import { assertSingleDefaultStorageClass } from './system';
 
 const KUBE_SYSTEM_NAMESPACE = 'kube-system';
 const NETWORK_CHECK_POLL_MS = 3000;
@@ -544,8 +545,13 @@ export async function buildClusterVerification(kube: KubeExecutor, options: Clus
   const traefikProblem = await evaluateTraefikAbsence(kube, options.env);
   if (traefikProblem !== null) addError(traefikProblem.message, traefikProblem.suggestion);
 
-  const classes = await kube.getJson<StorageClass>(['storageclass'], {});
-  const storage = evaluateStorageClasses(classes, options.env);
+  let storage = evaluateStorageClasses(await kube.getJson<StorageClass>(['storageclass'], {}), options.env);
+  const competing = storage.storageClass.defaults.filter((entry) => entry.name !== K8S_STORAGE_CLASS);
+  if (storage.problem !== null && competing.length === 1 && competing[0]?.name === LOCAL_PATH_STORAGE_CLASS) {
+    // k3s re-marks local-path default whenever it re-applies its manifests (F30): enforce once more
+    await assertSingleDefaultStorageClass(kube, { env: options.env });
+    storage = evaluateStorageClasses(await kube.getJson<StorageClass>(['storageclass'], {}), options.env);
+  }
   if (storage.problem !== null) addError(storage.problem.message, storage.problem.suggestion);
 
   const deployer = await evaluateDeployerObjects(kube);

@@ -447,6 +447,11 @@ describe('install, control-plane and reset (4.4, 4.5, 18.3): a node through its 
       cluster: new FakeCluster(),
       order: 'strict',
       script: [
+        {
+          id: 'get-local-path',
+          args: ['get', 'storageclass', 'local-path', '-o', 'json'],
+          respond: { json: { items: [{ apiVersion: 'storage.k8s.io/v1', kind: 'StorageClass', metadata: { name: 'local-path' }, provisioner: 'rancher.io/local-path' }] } },
+        },
         { id: 'apply-namespace', args: APPLY_ARGS, respond: { exitCode: 0, stdout: '', stderr: '' } },
         { id: 'get-storageclass-existing', args: ['get', 'storageclass', 'dockflow-local', '-o', 'json'], respond: { json: { items: [] } } },
         { id: 'apply-storageclass', args: APPLY_ARGS, respond: { exitCode: 0, stdout: '', stderr: '' } },

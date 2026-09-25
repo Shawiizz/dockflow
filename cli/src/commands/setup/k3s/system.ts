@@ -4,22 +4,48 @@
 // non-default patch on `local-path` is re-asserted here rather than written once.
 
 import { ANNOTATIONS, K8S_STORAGE_CLASS, K8S_SYSTEM_NAMESPACE, KUBE_KEYS } from '../../../services/orchestrator/kubernetes/constants';
+import type { Clock } from '../../../services/orchestrator/kubernetes/deps';
 import { dockflowStorageClass, nonDefaultStorageClassPatch } from '../../../services/orchestrator/kubernetes/k3s/storage-class';
 import { systemObjectLabels } from '../../../services/orchestrator/kubernetes/labels';
 import type { Namespace, Node } from '../../../services/orchestrator/kubernetes/resources/core';
 import type { StorageClass } from '../../../services/orchestrator/kubernetes/resources/storage';
 import type { KubeExecutor } from '../../../services/orchestrator/kubernetes/runtime/kubectl';
 import { emitObject } from '../../../services/orchestrator/kubernetes/yaml';
-import { LOCAL_PATH_STORAGE_CLASS } from './constants';
+import { LOCAL_PATH_CLASS_TIMEOUT_S, LOCAL_PATH_STORAGE_CLASS } from './constants';
 import { SetupStepError } from './host-runner';
 import { setupMessages, type SetupProblem } from './messages';
+
+const LOCAL_PATH_POLL_MS = 2000;
 
 export const systemMessages = {
   existingClassWrongPolicy: (env: string, actual: string): SetupProblem => ({
     message: `StorageClass ${K8S_STORAGE_CLASS} on ${env} has reclaimPolicy ${actual}, and Dockflow needs Retain`,
     suggestion: `Delete it after checking that no PersistentVolume uses it (\`kubectl get pv\`), then run setup again.`,
   }),
+  localPathMissing: (env: string, timeoutS: number): SetupProblem => ({
+    message: `k3s did not create its StorageClass ${LOCAL_PATH_STORAGE_CLASS} on ${env} within ${timeoutS}s`,
+    suggestion: `Dockflow volumes use the local-path provisioner k3s bundles: check that local-storage is not disabled in the k3s configuration, and look for deploy controller errors with \`journalctl -u k3s\`.`,
+  }),
 } as const;
+
+/**
+ * Waits for k3s's own `local-path` class. k3s creates it a few seconds after its API answers, and
+ * it is marked default when created: `dockflow-local` must come after it to be the most recently
+ * created default (F32), and `assertSingleDefaultStorageClass` must see it to patch it.
+ */
+export async function waitForLocalPathClass(kube: KubeExecutor, clock: Clock, options: { env: string; timeoutS?: number }): Promise<void> {
+  const timeoutS = options.timeoutS ?? LOCAL_PATH_CLASS_TIMEOUT_S;
+  const deadline = clock.now().getTime() + timeoutS * 1000;
+  for (;;) {
+    const found = await kube.getJson<StorageClass>(['storageclass'], { name: LOCAL_PATH_STORAGE_CLASS, allowNotFound: true });
+    if (found.length > 0) return;
+    if (clock.now().getTime() >= deadline) {
+      const problem = systemMessages.localPathMissing(options.env, timeoutS);
+      throw new SetupStepError(problem.message, problem.suggestion);
+    }
+    await clock.sleep(LOCAL_PATH_POLL_MS);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Namespace and StorageClass (11.1)
