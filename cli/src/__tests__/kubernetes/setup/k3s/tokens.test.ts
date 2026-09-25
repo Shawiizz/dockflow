@@ -164,6 +164,7 @@ describe('token handoff (T3, U-SETUP-PLAN-09 as corrected by design-05 22.1)', (
     dockerPresent: false,
     nmCloudSetupEnabled: false,
     wireguardAvailable: true,
+    cgroupVersion: 2,
     cgroupMemory: true,
     ntpSynchronized: true,
     deployUser: { exists: false, uid: null, home: null, keyAuthorized: false },

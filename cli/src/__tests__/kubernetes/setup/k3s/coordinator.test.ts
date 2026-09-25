@@ -177,6 +177,7 @@ function freshInspection(localIpv4: string[]): K3sNodeInspection {
     dockerPresent: false,
     nmCloudSetupEnabled: false,
     wireguardAvailable: true,
+    cgroupVersion: 2,
     cgroupMemory: true,
     ntpSynchronized: true,
     deployUser: { exists: false, uid: null, home: null, keyAuthorized: false },

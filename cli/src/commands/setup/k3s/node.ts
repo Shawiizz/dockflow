@@ -360,8 +360,18 @@ export async function inspect(runner: HostRunner, plan: K3sNodePlan): Promise<K3
   await runner.run(['ip', 'link', 'add', 'dockflow-wgtest', 'type', 'wireguard']);
   const wireguardCheck = await runner.run(['ip', 'link', 'del', 'dockflow-wgtest']);
   const wireguardAvailable = wireguardCheck.exitCode === 0;
-  const cgroupControllers = (await runner.readFile('/sys/fs/cgroup/cgroup.controllers'))?.toString('utf8') ?? '';
-  const cgroupMemory = cgroupControllers.split(/\s+/).includes('memory');
+  // cgroup.controllers only exists on the unified (v2) hierarchy; v1 lists its controllers in /proc/cgroups
+  const cgroupControllers = (await runner.readFile('/sys/fs/cgroup/cgroup.controllers'))?.toString('utf8') ?? null;
+  const cgroupVersion: 1 | 2 = cgroupControllers === null ? 1 : 2;
+  const cgroupMemory =
+    cgroupControllers !== null
+      ? cgroupControllers.split(/\s+/).includes('memory')
+      : ((await runner.readFile('/proc/cgroups'))?.toString('utf8') ?? '')
+          .split(/\r?\n/)
+          .some((line) => {
+            const [name, , , enabled] = line.trim().split(/\s+/);
+            return name === 'memory' && enabled === '1';
+          });
   const ntp = await runner.run(['timedatectl', 'show', '-p', 'NTPSynchronized', '--value']);
   const ntpSynchronized = ntp.exitCode === 0 ? ntp.stdout.trim() === 'yes' : null;
 
@@ -404,6 +414,7 @@ export async function inspect(runner: HostRunner, plan: K3sNodePlan): Promise<K3
     dockerPresent,
     nmCloudSetupEnabled,
     wireguardAvailable,
+    cgroupVersion,
     cgroupMemory,
     ntpSynchronized,
     deployUser: { exists: deployUserInfo !== null, uid: deployUserInfo?.uid ?? null, home: deployUserInfo?.home ?? null, keyAuthorized },

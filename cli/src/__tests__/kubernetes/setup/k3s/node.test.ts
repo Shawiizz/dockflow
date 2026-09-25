@@ -196,6 +196,33 @@ describe('inspect (4.1, N6)', () => {
     runner.assertDone();
   });
 
+  it('reads the memory controller from cgroup.controllers on a cgroup v2 host', async () => {
+    const runner = withInspectStubs(host());
+    runner.seedFile('/sys/fs/cgroup/cgroup.controllers', 'cpuset cpu io memory hugetlb pids rdma misc\n');
+    const result = await inspect(runner, inspectPlan());
+    expect(result.cgroupVersion).toBe(2);
+    expect(result.cgroupMemory).toBe(true);
+  });
+
+  it('a cgroup v2 host without the memory controller reads as memory disabled', async () => {
+    const runner = withInspectStubs(host());
+    runner.seedFile('/sys/fs/cgroup/cgroup.controllers', 'cpuset cpu io pids\n');
+    const result = await inspect(runner, inspectPlan());
+    expect(result.cgroupVersion).toBe(2);
+    expect(result.cgroupMemory).toBe(false);
+  });
+
+  it('a host without cgroup.controllers is cgroup v1, its memory controller read from /proc/cgroups', async () => {
+    const runner = withInspectStubs(host());
+    runner.seedFile(
+      '/proc/cgroups',
+      '#subsys_name\thierarchy\tnum_cgroups\tenabled\ncpuset\t1\t26\t1\nmemory\t5\t184\t1\npids\t12\t97\t1\n',
+    );
+    const result = await inspect(runner, inspectPlan());
+    expect(result.cgroupVersion).toBe(1);
+    expect(result.cgroupMemory).toBe(true);
+  });
+
   it('inspect takes the lock itself when run through the full step (no dry-run races a real run)', async () => {
     const runner = withInspectStubs(host());
     const result = await run(JSON.stringify(inspectPlan()), runner);
@@ -237,6 +264,7 @@ function freshLocalInspection(): K3sNodeInspection {
     dockerPresent: false,
     nmCloudSetupEnabled: false,
     wireguardAvailable: true,
+    cgroupVersion: 2,
     cgroupMemory: true,
     ntpSynchronized: true,
     deployUser: { exists: false, uid: null, home: null, keyAuthorized: false },

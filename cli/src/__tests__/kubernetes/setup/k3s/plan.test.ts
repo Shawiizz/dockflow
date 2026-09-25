@@ -147,6 +147,7 @@ function freshInspection(localIpv4: string[], patch?: (inspection: K3sNodeInspec
     dockerPresent: false,
     nmCloudSetupEnabled: false,
     wireguardAvailable: true,
+    cgroupVersion: 2,
     cgroupMemory: true,
     ntpSynchronized: true,
     deployUser: { exists: false, uid: null, home: null, keyAuthorized: false },
@@ -1052,6 +1053,15 @@ describe('finalizeClusterPlan: preflight rows of 4.1 (F9)', () => {
       setupMessages.missingCommands('srv-1', ['curl', 'sha256sum']),
     ],
     ['memory cgroup controller disabled', (i) => (i.cgroupMemory = false), setupMessages.cgroupMemory('srv-1')],
+    ['cgroup v1 host', (i) => (i.cgroupVersion = 1), setupMessages.cgroupV1('srv-1')],
+    [
+      'cgroup v1 is reported instead of the memory controller, whose fix is not a kernel flag there',
+      (i) => {
+        i.cgroupVersion = 1;
+        i.cgroupMemory = false;
+      },
+      setupMessages.cgroupV1('srv-1'),
+    ],
     ['Docker Swarm member', (i) => (i.swarmActive = true), setupMessages.swarmActive('srv-1')],
     [
       'nm-cloud-setup on RHEL 8.2',

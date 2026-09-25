@@ -134,6 +134,11 @@ export const setupMessages = {
     message: `The memory cgroup controller is disabled on ${key}`,
     suggestion: 'Add cgroup_memory=1 cgroup_enable=memory to the kernel command line and reboot.',
   }),
+  cgroupV1: (key: string): SetupProblem => ({
+    message: `${key} runs cgroup v1, which the kubelet refuses from Kubernetes 1.35`,
+    suggestion:
+      'Boot the host with cgroup v2: add systemd.unified_cgroup_hierarchy=1 to the kernel command line and reboot (on WSL, kernelCommandLine = cgroup_no_v1=all in .wslconfig, then wsl --shutdown).',
+  }),
   swarmActive: (key: string): SetupProblem => ({
     message: `${key} is part of a Docker Swarm; k3s and Swarm cannot share a host`,
     suggestion: `Run docker swarm leave --force on ${key} (or remove it from this environment).`,

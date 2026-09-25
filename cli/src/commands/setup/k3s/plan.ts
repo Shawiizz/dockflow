@@ -179,6 +179,8 @@ export interface K3sNodeInspection {
   dockerPresent: boolean;
   nmCloudSetupEnabled: boolean;
   wireguardAvailable: boolean;
+  /** 2 when /sys/fs/cgroup is the unified hierarchy */
+  cgroupVersion: 1 | 2;
   cgroupMemory: boolean;
   ntpSynchronized: boolean | null;
   deployUser: { exists: boolean; uid: number | null; home: string | null; keyAuthorized: boolean };
@@ -1001,7 +1003,9 @@ export function finalizeClusterPlan(
     if (inspection.commands.missing.length > 0 && inspection.commands.packageManager === null) {
       refuse(node.key, setupMessages.missingCommands(node.key, inspection.commands.missing));
     }
-    if (!inspection.cgroupMemory) refuse(node.key, setupMessages.cgroupMemory(node.key));
+    // v1 first: its memory controller is usually enabled, and the fix is the hierarchy, not a kernel flag
+    if (inspection.cgroupVersion === 1) refuse(node.key, setupMessages.cgroupV1(node.key));
+    else if (!inspection.cgroupMemory) refuse(node.key, setupMessages.cgroupMemory(node.key));
     if (inspection.swarmActive) refuse(node.key, setupMessages.swarmActive(node.key));
     if (inspection.nmCloudSetupEnabled && isRhelBefore84(inspection.os)) refuse(node.key, setupMessages.nmCloudSetup(node.key));
 

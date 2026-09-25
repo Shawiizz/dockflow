@@ -166,6 +166,7 @@ export const K3sNodeInspectionSchema = z.object({
   dockerPresent: z.boolean(),
   nmCloudSetupEnabled: z.boolean(),
   wireguardAvailable: z.boolean(),
+  cgroupVersion: z.union([z.literal(1), z.literal(2)]),
   cgroupMemory: z.boolean(),
   ntpSynchronized: z.boolean().nullable(),
   deployUser: z.object({ exists: z.boolean(), uid: z.number().int().nullable(), home: z.string().nullable(), keyAuthorized: z.boolean() }),
