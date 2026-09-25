@@ -10,7 +10,16 @@ import type { ClusterRoleBinding, Node, Pod, PodSecurityContext, SecurityContext
 import type { StorageClass } from '../../../services/orchestrator/kubernetes/resources/storage';
 import type { KubeExecutor } from '../../../services/orchestrator/kubernetes/runtime/kubectl';
 import { emitObject } from '../../../services/orchestrator/kubernetes/yaml';
-import { LOCAL_PATH_STORAGE_CLASS, NETCHECK_DAEMONSET, NETCHECK_CLEANUP_TIMEOUT_S, NETWORK_CHECK_TIMEOUT_S, REACHABILITY_PROBE_TIMEOUT_S, SYSTEM_COMPONENTS_TIMEOUT_S } from './constants';
+import {
+  LOCAL_PATH_STORAGE_CLASS,
+  NETCHECK_CLEANUP_TIMEOUT_S,
+  NETCHECK_DAEMONSET,
+  NETWORK_CHECK_RETRY_INTERVAL_MS,
+  NETWORK_CHECK_RETRY_S,
+  NETWORK_CHECK_TIMEOUT_S,
+  REACHABILITY_PROBE_TIMEOUT_S,
+  SYSTEM_COMPONENTS_TIMEOUT_S,
+} from './constants';
 import { SetupStepError } from './host-runner';
 import type { SetupProblem } from './messages';
 import type { FlannelBackend } from './plan';
@@ -263,6 +272,18 @@ export interface NetworkCheckOptions {
   nodeCount: number;
   flannelBackend: FlannelBackend;
   timeoutS?: number;
+  /** how long each probe retries before it counts as failed; default NETWORK_CHECK_RETRY_S */
+  retryS?: number;
+}
+
+/** Runs `probe` until it succeeds or `retryS` elapsed; the last attempt's outcome decides. */
+async function retryProbe(clock: Clock, retryS: number, probe: () => Promise<boolean>): Promise<boolean> {
+  const deadline = clock.now().getTime() + retryS * 1000;
+  for (;;) {
+    if (await probe()) return true;
+    if (clock.now().getTime() >= deadline) return false;
+    await clock.sleep(NETWORK_CHECK_RETRY_INTERVAL_MS);
+  }
 }
 
 /** The network check of 16.4: skipped on a single node (nothing cross-node to verify). */
@@ -270,19 +291,23 @@ export async function runNetworkCheck(kube: KubeExecutor, clock: Clock, options:
   if (options.nodeCount <= 1) return { ran: false, ok: true, failures: [] };
   try {
     const pods = await waitForNetcheckPods(kube, clock, options.nodeCount, options.timeoutS ?? NETWORK_CHECK_TIMEOUT_S);
+    const retryS = options.retryS ?? NETWORK_CHECK_RETRY_S;
     const failures: string[] = [];
     for (const step of netcheckPlan(pods.length)) {
       const pod = pods[step.podIndex];
       const podLabel = pod.spec.nodeName ?? pod.metadata.name;
       if (step.kind === 'nslookup') {
-        const { ok } = await execIn(kube, pod.metadata.name, ['nslookup', 'kubernetes.default.svc.cluster.local']);
-        if (!ok) failures.push(verifyMessages.dnsCheckFailed(podLabel).message);
+        const answered = await retryProbe(clock, retryS, async () => (await execIn(kube, pod.metadata.name, ['nslookup', 'kubernetes.default.svc.cluster.local'])).ok);
+        if (!answered) failures.push(verifyMessages.dnsCheckFailed(podLabel).message);
         continue;
       }
       const target = pods[step.targetIndex ?? 0];
       const ip = target.status?.podIP ?? '';
-      const { ok, stdout } = await execIn(kube, pod.metadata.name, ['wget', '-q', '-T', '3', '-O', '-', `http://${ip}:8080/`]);
-      if (!ok || stdout.trim() !== 'dockflow-netcheck-ok') {
+      const reached = await retryProbe(clock, retryS, async () => {
+        const { ok, stdout } = await execIn(kube, pod.metadata.name, ['wget', '-q', '-T', '3', '-O', '-', `http://${ip}:8080/`]);
+        return ok && stdout.trim() === 'dockflow-netcheck-ok';
+      });
+      if (!reached) {
         failures.push(verifyMessages.podUnreachable(podLabel, target.spec.nodeName ?? target.metadata.name, ip, options.flannelBackend).message);
       }
     }

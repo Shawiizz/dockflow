@@ -79,6 +79,12 @@ export const DEPLOYER_TOKEN_TIMEOUT_S = 60;
 /** first boot pulls the CoreDNS, local-path and metrics-server images */
 export const SYSTEM_COMPONENTS_TIMEOUT_S = 300;
 export const NETWORK_CHECK_TIMEOUT_S = 180;
+/**
+ * How long each cross-node probe keeps retrying: on a fresh cluster CoreDNS and the Service rules
+ * of a node that just joined lag the netcheck pods' own readiness by a few seconds.
+ */
+export const NETWORK_CHECK_RETRY_S = 60;
+export const NETWORK_CHECK_RETRY_INTERVAL_MS = 3000;
 export const DOWNLOAD_MAX_TIME_S = 900;
 export const REACHABILITY_PROBE_TIMEOUT_S = 3;
 export const NETCHECK_CLEANUP_TIMEOUT_S = 60;

@@ -346,7 +346,7 @@ describe('runNetworkCheck (16.4)', () => {
       { args: ['exec', 'netcheck-server-1', '--', 'nslookup', 'kubernetes.default.svc.cluster.local'], respond: { exitCode: 0, stdout: '', stderr: '' } },
       { args: ['delete', 'daemonset/dockflow-netcheck', '--ignore-not-found', '--wait=false'], respond: { exitCode: 0, stdout: '', stderr: '' } },
     ]);
-    const result = await runNetworkCheck(kube, new FakeClock(), { nodeCount: 2, flannelBackend: 'wireguard-native' });
+    const result = await runNetworkCheck(kube, new FakeClock(), { nodeCount: 2, flannelBackend: 'wireguard-native', retryS: 0 });
     expect(result.ran).toBe(true);
     expect(result.ok).toBe(false);
     expect(result.failures).toHaveLength(1);
@@ -364,9 +364,34 @@ describe('runNetworkCheck (16.4)', () => {
       { args: ['exec', 'netcheck-server-1', '--', 'nslookup', 'kubernetes.default.svc.cluster.local'], respond: { exitCode: 0, stdout: '', stderr: '' } },
       { args: ['delete', 'daemonset/dockflow-netcheck', '--ignore-not-found', '--wait=false'], respond: { exitCode: 0, stdout: '', stderr: '' } },
     ]);
-    const result = await runNetworkCheck(kube, new FakeClock(), { nodeCount: 2, flannelBackend: 'vxlan' });
+    const result = await runNetworkCheck(kube, new FakeClock(), { nodeCount: 2, flannelBackend: 'vxlan', retryS: 0 });
     expect(result.ok).toBe(false);
     expect(result.failures[0]).toBe(`Cluster DNS does not answer from ${AGENT}`);
+  });
+
+  it('a DNS lookup that answers within the retry window passes: CoreDNS lags the netcheck pods on a fresh cluster', async () => {
+    const pods = [pod('netcheck-agent-1', AGENT, '10.42.1.5'), pod('netcheck-server-1', SERVER, '10.42.0.5')];
+    let agentLookups = 0;
+    const kube = scriptedNetcheckKube([
+      { args: ['get', 'daemonset', 'dockflow-netcheck', '-o', 'json'], respond: { json: { items: [daemonSet(2, 2)] } } },
+      { args: ['get', 'pods', '-l', 'app.kubernetes.io/name=dockflow-netcheck', '-o', 'json'], respond: { json: { items: pods } } },
+      { args: ['exec', 'netcheck-agent-1', '--', 'wget', '-q', '-T', '3', '-O', '-', 'http://10.42.0.5:8080/'], respond: { exitCode: 0, stdout: 'dockflow-netcheck-ok', stderr: '' } },
+      {
+        args: ['exec', 'netcheck-agent-1', '--', 'nslookup', 'kubernetes.default.svc.cluster.local'],
+        times: 3,
+        respond: () => (++agentLookups < 3 ? { exitCode: 1, stdout: '', stderr: ';; connection timed out' } : { exitCode: 0, stdout: '', stderr: '' }),
+      },
+      { args: ['exec', 'netcheck-server-1', '--', 'wget', '-q', '-T', '3', '-O', '-', 'http://10.42.1.5:8080/'], respond: { exitCode: 0, stdout: 'dockflow-netcheck-ok', stderr: '' } },
+      { args: ['exec', 'netcheck-server-1', '--', 'nslookup', 'kubernetes.default.svc.cluster.local'], respond: { exitCode: 0, stdout: '', stderr: '' } },
+      { args: ['delete', 'daemonset/dockflow-netcheck', '--ignore-not-found', '--wait=false'], respond: { exitCode: 0, stdout: '', stderr: '' } },
+    ]);
+    const clock = new FakeClock();
+    const running = runNetworkCheck(kube, clock, { nodeCount: 2, flannelBackend: 'vxlan' });
+    await clock.runUntilIdle(60_000);
+    const result = await running;
+    expect(result).toEqual({ ran: true, ok: true, failures: [] });
+    expect(agentLookups).toBe(3);
+    expect(clock.sleeps).toEqual([3000, 3000]);
   });
 
   it('the DaemonSet never becomes ready before the deadline -> netcheckTimeout naming the still-waiting pod, cleanup still runs', async () => {
