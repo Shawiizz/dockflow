@@ -550,6 +550,18 @@ export function parseOnly(only: string): string[] {
 }
 
 /**
+ * The compose a deploy renders, shared by the deploy and its dry run: built images tagged for this
+ * version and, with --only, every other service kept at the image its current release runs.
+ */
+export async function composeForDeploy(ctx: DeployContext): Promise<ParsedCompose> {
+  const compose = Compose.loadFromString(ctx.composeContent);
+  Compose.updateImageTags(compose, ctx.config, ctx.env, ctx.deployVersion, ctx.options.only);
+  if (!ctx.options.only) return compose;
+  const current = await ctx.orchestrator.releases.currentCompose(ctx.stackName);
+  return current ? Compose.syncNonTargetedImageTags(compose, Compose.loadFromString(current), parseOnly(ctx.options.only)) : compose;
+}
+
+/**
  * Pure: the sibling file is normalized first (core 3 / K27) so the checks that need more than keys
  * (external volumes, aliases, published ports, middleware names) have their inputs. Diagnostics of
  * this pass are discarded: only the sibling's own render can report on its own compose file.

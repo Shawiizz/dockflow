@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { displayDeployDryRun, maskArtifactSecrets } from '../../../commands/deploy-dry-run';
 import type { DeployContext } from '../../../commands/deploy-context';
 import { emitManifests } from '../../../services/orchestrator/kubernetes/yaml';
-import type { StackArtifact } from '../../../services/orchestrator/interfaces';
+import type { StackArtifact, StackDeployInput } from '../../../services/orchestrator/interfaces';
 import { ComposeTranslationError, ErrorCode } from '../../../utils/errors';
 import * as output from '../../../utils/output';
 import { FakeOrchestrator } from '../fakes/fake-orchestrator';
@@ -166,6 +166,31 @@ describe('displayDeployDryRun — U-FLOW-07', () => {
       const rendered = recorded.raw.join('\n');
       expect(rendered).toContain('***');
       expect(rendered).not.toContain(secretValue);
+    });
+  });
+
+  describe('renders the images the deploy would run', () => {
+    const COMPOSE = 'services:\n  web:\n    image: shop-web\n    build: .\n  api:\n    image: shop-api\n    build: .\n  cache:\n    image: redis:7\n';
+
+    function renderedImages(orchestrator: FakeOrchestrator): Record<string, unknown> {
+      const [input] = orchestrator.callsTo('stack.render').map(([arg]) => arg as StackDeployInput).filter((arg) => arg.ref.role === 'app');
+      return Object.fromEntries(Object.entries(input?.compose.services ?? {}).map(([name, service]) => [name, service.image]));
+    }
+
+    it('built images carry the env and version tag', async () => {
+      const orchestrator = new FakeOrchestrator('k3s');
+      await displayDeployDryRun(fakeContext(orchestrator, { composeContent: COMPOSE }), []);
+      expect(renderedImages(orchestrator)).toEqual({ web: 'shop-web-production:1.4.2', api: 'shop-api-production:1.4.2', cache: 'redis:7' });
+    });
+
+    it('--only keeps every other built service at the image of the current release', async () => {
+      const orchestrator = new FakeOrchestrator('k3s');
+      orchestrator.seedRelease(orchestrator.target.stackName, {
+        version: '1.4.1',
+        compose: 'services:\n  web:\n    image: shop-web-production:1.4.1\n  api:\n    image: shop-api-production:1.4.1\n  cache:\n    image: redis:7\n',
+      });
+      await displayDeployDryRun(fakeContext(orchestrator, { composeContent: COMPOSE, options: { dryRun: true, only: 'web' } }), []);
+      expect(renderedImages(orchestrator)).toEqual({ web: 'shop-web-production:1.4.2', api: 'shop-api-production:1.4.1', cache: 'redis:7' });
     });
   });
 });

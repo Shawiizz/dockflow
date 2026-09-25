@@ -9,13 +9,12 @@ import { colors, printWarning, printDim, printDebug, printBlank, printRaw, print
 import type { HooksConfig, HookPhase } from '../utils/config';
 import { HOOK_PHASES } from '../utils/config';
 import { resolvePhaseEntries } from '../services/hook';
-import * as Compose from '../services/compose';
 import { ComposeTranslationError } from '../utils/errors';
 import { emitManifests, parseManifests } from '../services/orchestrator/kubernetes/yaml';
 import type { ManifestObject } from '../services/orchestrator/kubernetes/resources/registry';
 import type { HelmPlanEntry, ProxyPlan, StackArtifact, StackDeployInput } from '../services/orchestrator/interfaces';
 import type { DeployContext } from './deploy-context';
-import { buildAccessoriesInput, buildStackInput, declaredHelmNames, printArtifactDiagnostics, resolveImageDelivery } from './deploy-phases';
+import { buildAccessoriesInput, buildStackInput, composeForDeploy, declaredHelmNames, printArtifactDiagnostics, resolveImageDelivery } from './deploy-phases';
 
 // ---------------------------------------------------------------------------
 // --render: manifests with Secret.data values masked (design-03 3.6 point 3)
@@ -198,7 +197,7 @@ export async function displayDeployDryRun(ctx: DeployContext, pluginSummary: str
   printPluginsUploadsHooks(ctx, pluginSummary);
 
   // 1. Render both roles; a ComposeTranslationError is printed and the command exits non-zero.
-  const compose = Compose.loadFromString(ctx.composeContent);
+  const compose = await composeForDeploy(ctx);
   const delivery = resolveImageDelivery(ctx.config, compose);
 
   let appArtifact: StackArtifact;

@@ -71,6 +71,7 @@ import {
   checkUploadPermissions,
   cleanupBundle,
   commitUploads,
+  composeForDeploy,
   deployAccessories,
   deployApp,
   ensureRegistryAccess,
@@ -377,16 +378,9 @@ export async function execute(ctx: DeployContext): Promise<void> {
   process.once('SIGTERM', handleSignal);
 
   try {
-    let compose = Compose.loadFromString(ctx.composeContent);
-    Compose.updateImageTags(compose, ctx.config, ctx.env, ctx.deployVersion, ctx.options.only);
-
+    const compose = await composeForDeploy(ctx);
     const delivery = resolveImageDelivery(ctx.config, compose);
     warnRegistryWithoutPassword(ctx.config);
-
-    if (ctx.options.only) {
-      const current = await orch.releases.currentCompose(ctx.stackName);
-      if (current) compose = Compose.syncNonTargetedImageTags(compose, Compose.loadFromString(current), parseOnly(ctx.options.only));
-    }
 
     // 0. the one read the render needs (core K28): does a Dockflow-owned Traefik exist on the cluster?
     ctx.traefikOnCluster = await resolveTraefikOnCluster(ctx);
