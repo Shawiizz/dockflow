@@ -334,7 +334,7 @@ export async function helm(args: string[], node?: NodeKey): Promise<string> {
  * (`--dry-run --render` prints it framed by other CLI output — the image-delivery summary before it,
  * a blank line then the live plan after it).
  */
-function extractRenderedManifest(stdout: string): string {
+export function extractRenderedManifest(stdout: string): string {
   const lines = stdout.split(/\r?\n/);
   const start = lines.findIndex((line) => line.startsWith(ARTIFACT_FORMAT_LINE_PREFIX));
   if (start === -1) throw new Error(`--dry-run --render produced no ${ARTIFACT_FORMAT_LINE_PREFIX.trim()} header`);
@@ -360,6 +360,9 @@ function quantityValue(value: string): number | null {
 
 function leavesEqual(rendered: unknown, live: unknown): boolean {
   if (rendered === live) return true;
+  // The API server encodes omitempty integers without their zero (probe initialDelaySeconds); the
+  // apply still owns the field, which is why the renderer emits it (DESIGN-CORE 4.2 rule 8).
+  if (rendered === 0 && live === undefined) return true;
   if (typeof rendered === "string" && typeof live === "string") {
     const [a, b] = [quantityValue(rendered), quantityValue(live)];
     if (a !== null && b !== null) return a === b;
@@ -367,15 +370,14 @@ function leavesEqual(rendered: unknown, live: unknown): boolean {
   return false;
 }
 
-/** Every JSON-pointer leaf of `rendered` that differs from (or is missing in) `live`. `Secret.data` is skipped (masked as `***`). */
-function diffLeaves(rendered: unknown, live: unknown, path: string, kind: string, out: string[]): void {
-  if (kind === "Secret" && path === "/data") return;
+function diffLeaves(rendered: unknown, live: unknown, path: string, skip: ReadonlySet<string>, out: string[]): void {
+  if (skip.has(path)) return;
   if (Array.isArray(rendered)) {
     if (!Array.isArray(live)) {
       out.push(`${path}: rendered is an array, live is not`);
       return;
     }
-    rendered.forEach((entry, index) => diffLeaves(entry, live[index], `${path}/${index}`, kind, out));
+    rendered.forEach((entry, index) => diffLeaves(entry, live[index], `${path}/${index}`, skip, out));
     return;
   }
   if (isRecord(rendered)) {
@@ -383,10 +385,26 @@ function diffLeaves(rendered: unknown, live: unknown, path: string, kind: string
       out.push(`${path}: rendered is an object, live is not`);
       return;
     }
-    for (const key of Object.keys(rendered)) diffLeaves(rendered[key], live[key], `${path}/${key}`, kind, out);
+    for (const key of Object.keys(rendered)) diffLeaves(rendered[key], live[key], `${path}/${key}`, skip, out);
     return;
   }
   if (!leavesEqual(rendered, live)) out.push(`${path}: rendered ${JSON.stringify(rendered)} != live ${JSON.stringify(live)}`);
+}
+
+/**
+ * Every JSON-pointer leaf of the rendered object `rendered` that differs from (or is missing in)
+ * `live`, prefixed with `Kind/name` (quantities compared by value). `secretDataMasked` skips
+ * `Secret.data`, which `--dry-run --render` prints as `***`.
+ */
+export function renderedLeafMismatches(
+  rendered: { kind: string; metadata: { name: string } },
+  live: unknown,
+  opts: { secretDataMasked: boolean },
+): string[] {
+  const skip = new Set(opts.secretDataMasked && rendered.kind === "Secret" ? ["/data"] : []);
+  const out: string[] = [];
+  diffLeaves(rendered, live, "", skip, out);
+  return out.map((line) => `${rendered.kind}/${rendered.metadata.name}${line}`);
 }
 
 /**
@@ -414,7 +432,7 @@ export async function assertLiveMatchesRender(fixture: Fixture, version: string,
       mismatches.push(`${kind}/${name}${namespace ? ` in ${namespace}` : ""}: no live object`);
       continue;
     }
-    diffLeaves(rendered, live, `${kind}/${name}`, kind, mismatches);
+    mismatches.push(...renderedLeafMismatches(rendered, live, { secretDataMasked: true }));
   }
   if (mismatches.length > 0) throw new Error(`assertLiveMatchesRender(${version}): ${mismatches.length} mismatch(es):\n${mismatches.join("\n")}`);
 }

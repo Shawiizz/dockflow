@@ -11,7 +11,7 @@
 
 import { afterAll, describe, expect, test } from "bun:test";
 import { TRAEFIK_CHART_PIN } from "../../../../../cli/src/services/orchestrator/kubernetes/versions";
-import { ARTIFACT_FORMAT_LINE_PREFIX, parseManifests } from "../../../../../cli/src/services/orchestrator/kubernetes/yaml";
+import { parseManifests } from "../../../../../cli/src/services/orchestrator/kubernetes/yaml";
 import { isManifestKind, KIND_REGISTRY } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/registry";
 import { identity } from "../../../../../cli/src/__tests__/kubernetes/support/builders";
 import { discoverCases, readExpectedText, type GoldenCase } from "../../../../../cli/src/__tests__/kubernetes/support/golden";
@@ -19,7 +19,16 @@ import { runCLI } from "../../../helpers/cli";
 import { tryExec } from "../../../helpers/cluster";
 import { dumpDebug } from "../../../helpers/debug-dump";
 import { makeFixture } from "../../../helpers/fixtures";
-import { getJson, kubectl, leaseFor, nodeExec, nsFor, releaseSecrets } from "../../../helpers/k8s";
+import {
+  extractRenderedManifest,
+  getJson,
+  kubectl,
+  leaseFor,
+  nodeExec,
+  nsFor,
+  releaseSecrets,
+  renderedLeafMismatches,
+} from "../../../helpers/k8s";
 import { currentTopology, managersOf } from "../../../helpers/topology";
 
 const FILE = "30-render-contract.test.ts";
@@ -142,7 +151,7 @@ describe("core 8.9 e2e render contract", () => {
             { stdin: `${JSON.stringify(rendered)}\n` },
           );
           const server: unknown = JSON.parse(out);
-          diffLeaves(rendered, server, `${rendered.kind}/${rendered.metadata.name}`, rendered.kind, mismatches);
+          mismatches.push(...renderedLeafMismatches(rendered, server, { secretDataMasked: false }));
         }
       }
       expect(mismatches).toEqual([]);
@@ -246,61 +255,7 @@ describe("core 8.9 e2e render contract", () => {
   }, 60_000);
 });
 
-// ─── local helpers (duplicated in miniature from helpers/k8s.ts's private assertLiveMatchesRender:
-// that function compares against a LIVE object, this file compares against a dry-run response and a
-// twice-applied real object, so it is not the same helper) ──────────────────────────────────────
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-const QUANTITY_RE = /^(\d+(?:\.\d+)?)(m|Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$/;
-const BINARY_UNITS: Readonly<Record<string, number>> = { Ki: 2 ** 10, Mi: 2 ** 20, Gi: 2 ** 30, Ti: 2 ** 40, Pi: 2 ** 50, Ei: 2 ** 60 };
-const DECIMAL_UNITS: Readonly<Record<string, number>> = { k: 1e3, M: 1e6, G: 1e9, T: 1e12, P: 1e15, E: 1e18 };
-
-function quantityValue(value: string): number | null {
-  const match = QUANTITY_RE.exec(value.trim());
-  if (!match) return null;
-  const amount = Number.parseFloat(match[1] ?? "0");
-  const unit = match[2];
-  if (unit === "m") return amount;
-  if (unit && unit in BINARY_UNITS) return amount * (BINARY_UNITS[unit] as number) * 1000;
-  if (unit && unit in DECIMAL_UNITS) return amount * (DECIMAL_UNITS[unit] as number) * 1000;
-  return amount * 1000;
-}
-
-function leavesEqual(rendered: unknown, server: unknown): boolean {
-  if (rendered === server) return true;
-  // The API server encodes omitempty integers without their zero (probe initialDelaySeconds); the
-  // apply still owns the field, which is why the renderer emits it (DESIGN-CORE 4.2 rule 8).
-  if (rendered === 0 && server === undefined) return true;
-  if (typeof rendered === "string" && typeof server === "string") {
-    const [a, b] = [quantityValue(rendered), quantityValue(server)];
-    if (a !== null && b !== null) return a === b;
-  }
-  return false;
-}
-
-/** Every JSON-pointer leaf of `rendered` missing or different in `server` (quantities compared by value). */
-function diffLeaves(rendered: unknown, server: unknown, path: string, kind: string, out: string[]): void {
-  if (Array.isArray(rendered)) {
-    if (!Array.isArray(server)) {
-      out.push(`${path}: rendered is an array, server is not`);
-      return;
-    }
-    rendered.forEach((entry, index) => diffLeaves(entry, server[index], `${path}/${index}`, kind, out));
-    return;
-  }
-  if (isRecord(rendered)) {
-    if (!isRecord(server)) {
-      out.push(`${path}: rendered is an object, server is not`);
-      return;
-    }
-    for (const key of Object.keys(rendered)) diffLeaves(rendered[key], server[key], `${path}/${key}`, kind, out);
-    return;
-  }
-  if (!leavesEqual(rendered, server)) out.push(`${path}: rendered ${JSON.stringify(rendered)} != server ${JSON.stringify(server)}`);
-}
+// ─── local helpers ──────────────────────────────────────────────────
 
 interface MetaStamp {
   kind: string;
@@ -328,13 +283,4 @@ async function readMetaStamps(objects: readonly { kind: string; name: string; na
     });
   }
   return stamps;
-}
-
-/** Extracts the multi-doc YAML block right after `# dockflow-artifact:` (same shape as helpers/k8s.ts's private helper). */
-function extractRenderedManifest(stdout: string): string {
-  const lines = stdout.split(/\r?\n/);
-  const start = lines.findIndex((line) => line.startsWith(ARTIFACT_FORMAT_LINE_PREFIX));
-  if (start === -1) throw new Error(`--dry-run --render produced no ${ARTIFACT_FORMAT_LINE_PREFIX.trim()} header`);
-  const end = lines.findIndex((line, index) => index > start && line.trim() === "");
-  return lines.slice(start, end === -1 ? lines.length : end).join("\n");
 }
