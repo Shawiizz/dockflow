@@ -816,6 +816,9 @@ export class FakeHelmExecutor implements HelmExecutor {
   }
 
   private list(parsed: ParsedArgs): Raw {
+    // Helm 4 removed `list -a/--all`
+    if (parsed.flags.has('-a')) return failed("Error: unknown shorthand flag: 'a' in -a");
+    if (parsed.flags.has('--all')) return failed('Error: unknown flag: --all');
     const all = parsed.flags.has('-A') || parsed.flags.has('--all-namespaces');
     const namespace = this.namespaceOf(parsed);
     const selector = flag(parsed, '-l', '--selector');
@@ -824,14 +827,13 @@ export class FakeHelmExecutor implements HelmExecutor {
     const states = Object.entries(LIST_STATES)
       .filter(([name]) => parsed.flags.has(name))
       .flatMap(([, values]) => values);
-    const everyState = parsed.flags.has('-a') || parsed.flags.has('--all');
     const mask = states.length > 0 ? states : ['deployed', 'failed'];
     const rows = this.store
       .filter((release) => all || release.namespace === namespace)
       .filter((release) => pattern === null || pattern.test(release.name))
       .map((release) => ({ release, latest: release.latest }))
       .filter((row): row is { release: FakeHelmRelease; latest: FakeHelmRevision } => row.latest !== null)
-      .filter(({ latest }) => everyState || mask.includes(latest.status))
+      .filter(({ latest }) => mask.includes(latest.status))
       .filter(
         ({ release, latest }) =>
           selector === undefined ||

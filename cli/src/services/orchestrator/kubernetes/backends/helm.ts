@@ -51,7 +51,7 @@ import { helmValuesStdin } from '../helm/values-yaml';
 import type { Namespace } from '../resources/core';
 import { chartDisplayOf, type ChartArchiveDeps, resolveChartArchive } from '../runtime/chart-archive';
 import { classifyKubectlFailure, KubeError, kubeErrorToCliError, type KubeErrorContext } from '../runtime/errors';
-import type { HelmExecutor, HelmResult } from '../runtime/helm';
+import { HELM_LIST_EVERY_STATUS, type HelmExecutor, type HelmResult } from '../runtime/helm';
 import { type HelmCallContext, helmKubeErrorToCliError, helmResultToCliError } from '../runtime/helm-errors';
 import type { KubeExecutor } from '../runtime/kubectl';
 
@@ -172,11 +172,10 @@ export class KubernetesHelmBackend implements HelmBackend {
   // Reads shared by upgradeInstall, plan, status, list, ownerOf
   // -------------------------------------------------------------------------
 
-  /** `list [-A|-n <ns>] [-l <selector>] [--filter <re>] -a -o json` (every current status: a plain
-   * `helm list` shows only deployed and failed releases, so every read here adds `-a` to keep a
-   * `pending-*` or `uninstalling` release visible to planning and to `dockflow helm status`/`list`) */
+  /** `list <every status> [-A|-n <ns>] [-l <selector>] [--filter <re>] -o json`, so a `pending-*` or
+   * `uninstalling` release stays visible to planning and to `dockflow helm status`/`list` */
   private async helmListRaw(options: { namespace?: string; allNamespaces?: boolean; selector?: string; filter?: string }, release: string): Promise<HelmListRow[]> {
-    const args = ['list', '-a'];
+    const args = ['list', ...HELM_LIST_EVERY_STATUS];
     if (options.allNamespaces) args.push('-A');
     else if (options.namespace !== undefined) args.push('-n', options.namespace);
     if (options.selector !== undefined) args.push('-l', options.selector);

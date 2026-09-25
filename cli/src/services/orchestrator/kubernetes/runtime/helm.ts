@@ -45,6 +45,12 @@ export interface HelmExecutor {
   json<T>(args: string[]): Promise<T | null>;
 }
 
+/**
+ * `helm list` shows only deployed and failed releases unless told otherwise, and Helm 4 has no
+ * `-a`: every status is named, so a `pending-*` or `uninstalling` release stays visible.
+ */
+export const HELM_LIST_EVERY_STATUS: readonly string[] = ['--deployed', '--failed', '--pending', '--superseded', '--uninstalled', '--uninstalling'];
+
 /** every helm command string starts with this (INV-10) */
 export const HELM_ENV_PREFIX = `env HELM_CACHE_HOME=${HELM_HOME_DIR}/cache HELM_CONFIG_HOME=${HELM_HOME_DIR}/config HELM_DATA_HOME=${HELM_HOME_DIR}/data`;
 

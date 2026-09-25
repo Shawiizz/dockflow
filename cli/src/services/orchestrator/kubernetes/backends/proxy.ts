@@ -84,6 +84,7 @@ import type {
   Pod,
 } from '../resources/core';
 import { resolveTraefikChartArchive, type ChartArchive, type ChartArchiveDeps } from '../runtime/chart-archive';
+import { HELM_LIST_EVERY_STATUS } from '../runtime/helm';
 import { classifyHelmFailure, helmFailureDetail } from '../runtime/helm-errors';
 import { hostCommands } from '../runtime/host';
 import { parseNameList } from '../runtime/kubectl';
@@ -463,7 +464,7 @@ export class KubernetesProxyBackend implements ProxyBackend {
     const cp = this.deps.distribution.traits.controlPlaneNodeLabel;
     const [listResult, state, crdRows, deploymentRows, pods, nodes, pvcRows] = await Promise.all([
       this.deps.helm.run({
-        args: ['list', '-n', K8S_SYSTEM_NAMESPACE, '--filter', `^${K8S_PROXY_RELEASE}$`, '-a', '-o', 'json'],
+        args: ['list', ...HELM_LIST_EVERY_STATUS, '-n', K8S_SYSTEM_NAMESPACE, '--filter', `^${K8S_PROXY_RELEASE}$`, '-o', 'json'],
         mutating: false,
         timeoutS: K8S_REQUEST_TIMEOUT_S,
         allowFailure: true,
