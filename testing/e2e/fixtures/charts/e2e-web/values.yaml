@@ -1,2 +1,6 @@
 message: hello from e2e-web
 replicas: 1
+# Opt-in only (design-07 E-51-03): most e2e-web releases install/upgrade with no hook at all: a chart
+# hook is a Helm behaviour, not something a plain workload chart needs by default.
+hook:
+  enabled: false

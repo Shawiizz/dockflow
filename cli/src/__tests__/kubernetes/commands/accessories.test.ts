@@ -420,7 +420,7 @@ describe('accessories remove', () => {
     }
   });
 
-  it('--volumes -y removes with volumes deleted', async () => {
+  it('--volumes -y removes with volumes deleted and names each deleted volume', async () => {
     const orchestrator = new FakeOrchestrator('k3s');
     orchestrator.program('stack.getServices', [service()]);
     orchestrator.program('volumes.list', [volume()]);
@@ -428,14 +428,17 @@ describe('accessories remove', () => {
     const warn = silence('printWarning');
     const error = silence('printError');
     const info = silence('printInfo');
+    const raw = silence('printRaw');
 
     try {
       await runAccessoriesRemove('production', { volumes: true, yes: true });
       expect(orchestrator.callsTo('stack.remove')[0][1]).toEqual({ volumes: 'delete' });
+      expect(raw.mock.calls.some((call: unknown[]) => call[0] === 'Volume db-data: deleted')).toBe(true);
     } finally {
       warn.mockRestore();
       error.mockRestore();
       info.mockRestore();
+      raw.mockRestore();
     }
   });
 

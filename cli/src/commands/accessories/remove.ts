@@ -80,7 +80,10 @@ export async function runAccessoriesRemove(env: string, options: AccessoriesRemo
 
   printBlank();
   if (options.volumes) {
+    // stack.remove resolves only once every previewed volume is gone (a partial deletion throws
+    // instead, core C13), so the pre-deletion preview is also the accurate deleted list.
     printInfo(`Deleted ${volumesToDelete.length} volume(s)`);
+    for (const volume of volumesToDelete) printRaw(`Volume ${volume.name}: deleted`);
     return;
   }
   if (ctx.orchestrator.capabilities.volumes) {

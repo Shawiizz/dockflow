@@ -95,6 +95,8 @@ import {
  */
 interface DeployCliOptions extends DeployOptions {
   yes?: boolean;
+  /** deploy --server <name>: pin the control plane (core 6.6 step 2), same surface as every other orchestrator command */
+  server?: string;
 }
 
 function message(err: unknown): string {
@@ -239,12 +241,21 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   printBlank();
 
   const { config, orchestrator } = await openOrchestrator(env, {
+    server: options.server,
     failover: options.noFailover !== true,
     requireWorkerCredentials: true,
     onProbe: (p) => printDebug(`probe ${p.node}: ${p.status}${p.detail ? ` (${p.detail})` : ''}`),
   });
   const target = orchestrator.target;
   env = target.env;
+
+  // R-S2-04: printed once probing (if any) has already settled — `onProbe` above only fires after
+  // every candidate manager has answered, so there is no earlier point at which the count is known.
+  if (target.probes.length > 0) {
+    printInfo(`Checking ${target.probes.length} managers...`);
+    const chosen = target.probes.find((p) => p.node === target.controlPlane.name);
+    printInfo(`Using ${target.controlPlane.name} (${chosen?.status ?? 'ready'})`);
+  }
 
   if (config.options?.enable_debug_logs) setVerbose(true);
 
@@ -565,6 +576,7 @@ export function registerDeployCommand(program: Command): void {
     .option('--all', 'Deploy both application and accessories')
     .option('--skip-accessories', 'Skip accessories check entirely')
     .option('--no-failover', 'Disable multi-manager failover (use first manager only)')
+    .option('-s, --server <name>', 'Target server (defaults to first ready manager)')
     .option('--dry-run', 'Show what would be deployed without executing')
     .option('--render', 'With --dry-run: print the rendered manifests (secrets masked)')
     .option('--branch <branch>', 'Override auto-detected git branch')

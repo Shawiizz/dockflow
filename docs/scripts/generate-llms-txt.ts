@@ -80,7 +80,26 @@ function metaTitle(value: unknown): string | null {
 
 const hasPage = (relPath: string): boolean => existsSync(join(DOCS_DIR, relPath, 'page.mdx'));
 
-/** Build the page tree from the _meta nav files (ordered, titled, nested). */
+/**
+ * One node of the tree, recursing into its own `_meta.{ts,tsx}` however deep the nav goes (a section
+ * page can itself have sections, e.g. `configuration/kubernetes` -> `configuration/kubernetes/setup`)
+ * rather than assuming nav nesting stops at one level.
+ */
+async function buildNode(slug: string, path: string, title: string): Promise<PageEntry> {
+  const childMeta = await loadMeta(join(DOCS_DIR, path));
+  const children: PageEntry[] = [];
+  for (const [childSlug, childValue] of Object.entries(childMeta ?? {})) {
+    if (childSlug === 'index') continue; // the section's own page, not a child
+    const childTitle = metaTitle(childValue);
+    const childPath = `${path}/${childSlug}`;
+    if (childTitle && hasPage(childPath)) {
+      children.push(await buildNode(childSlug, childPath, childTitle));
+    }
+  }
+  return children.length > 0 ? { slug, title, path, children } : { slug, title, path };
+}
+
+/** Build the page tree from the _meta nav files (ordered, titled, nested to any depth). */
 async function buildStructure(): Promise<PageEntry[]> {
   const rootMeta = await loadMeta(DOCS_DIR);
   if (!rootMeta) throw new Error('app/_meta.{ts,tsx} not found');
@@ -89,21 +108,14 @@ async function buildStructure(): Promise<PageEntry[]> {
   for (const [slug, value] of Object.entries(rootMeta)) {
     const title = metaTitle(value);
     if (!title || !hasPage(slug)) continue;
-
-    const childMeta = await loadMeta(join(DOCS_DIR, slug));
-    const children: PageEntry[] = [];
-    for (const [childSlug, childValue] of Object.entries(childMeta ?? {})) {
-      if (childSlug === 'index') continue; // the section's own page, not a child
-      const childTitle = metaTitle(childValue);
-      const childPath = `${slug}/${childSlug}`;
-      if (childTitle && hasPage(childPath)) {
-        children.push({ slug: childSlug, title: childTitle, path: childPath });
-      }
-    }
-
-    result.push(children.length > 0 ? { slug, title, path: slug, children } : { slug, title, path: slug });
+    result.push(await buildNode(slug, slug, title));
   }
   return result;
+}
+
+/** Every entry of the tree, self before children, depth-first — the flat order the two generators want. */
+function flattenEntries(entries: readonly PageEntry[]): PageEntry[] {
+  return entries.flatMap((entry) => [entry, ...flattenEntries(entry.children ?? [])]);
 }
 
 /**
@@ -112,11 +124,7 @@ async function buildStructure(): Promise<PageEntry[]> {
  * The hidden home page (app/page.mdx) is intentionally excluded.
  */
 function assertComplete(structure: PageEntry[]): void {
-  const registered = new Set<string>();
-  for (const entry of structure) {
-    registered.add(entry.path);
-    entry.children?.forEach((c) => registered.add(c.path));
-  }
+  const registered = new Set(flattenEntries(structure).map((e) => e.path));
 
   const found: string[] = [];
   const walk = (dir: string, rel: string): void => {
@@ -293,25 +301,12 @@ function generateIndex(structure: PageEntry[]): string {
   for (const entry of structure) {
     lines.push(`## ${entry.title}`);
 
-    if (entry.children) {
-      // Section index page
-      const indexContent = readMdx(entry.path);
-      if (indexContent) {
-        const desc = getDescription(indexContent);
-        if (desc) lines.push(`- [${entry.title}](${BASE_URL}/${entry.slug}.md): ${desc}`);
-      }
-      for (const child of entry.children) {
-        const content = readMdx(child.path);
-        if (!content) continue;
-        const desc = getDescription(content);
-        lines.push(`- [${child.title}](${BASE_URL}/${child.path}.md): ${desc}`);
-      }
-    } else {
-      const content = readMdx(entry.path);
-      if (content) {
-        const desc = getDescription(content);
-        lines.push(`- [${entry.title}](${BASE_URL}/${entry.slug}.md): ${desc}`);
-      }
+    // The section's own page (if it has one) first, then every descendant at any depth.
+    for (const page of flattenEntries([entry])) {
+      const content = readMdx(page.path);
+      if (!content) continue;
+      const desc = getDescription(content);
+      if (desc) lines.push(`- [${page.title}](${BASE_URL}/${page.path}.md): ${desc}`);
     }
     lines.push('');
   }
@@ -339,12 +334,7 @@ function generateFull(structure: PageEntry[]): string {
   }
 
   for (const entry of structure) {
-    addPage(entry);
-    if (entry.children) {
-      for (const child of entry.children) {
-        addPage(child);
-      }
-    }
+    for (const page of flattenEntries([entry])) addPage(page);
   }
 
   return sections.join('\n');

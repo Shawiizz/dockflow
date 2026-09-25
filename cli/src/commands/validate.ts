@@ -6,7 +6,8 @@
  *
  * Exit codes:
  *   0 — all checks passed (warnings only still exit 0)
- *   60 — one or more validation errors (VALIDATION_FAILED)
+ *   11 — config.yml / dockflow.yml failed schema validation (CONFIG_INVALID, DESIGN-CORE 8.1)
+ *   60 — any other validation error: servers.yml, compose lint, or the k3s render (VALIDATION_FAILED)
  */
 
 import type { Command } from 'commander';
@@ -52,7 +53,7 @@ import {
 } from '../utils/output';
 import { loadSecrets } from '../utils/secrets';
 import { findShellPlaceholders, describeShellPlaceholders } from '../services/compose-lint';
-import { CLIError, ComposeTranslationError, ValidationError, withErrorHandler } from '../utils/errors';
+import { CLIError, ComposeTranslationError, ConfigError, ValidationError, withErrorHandler } from '../utils/errors';
 import { findUnknownConfigKeys, findUnknownServersKeys, findUnknownRootKeys, type UnknownKey } from '../schemas';
 
 /**
@@ -328,6 +329,9 @@ async function runValidate(env: string | undefined, options: ValidateOptions): P
   printBlank();
 
   let hasErrors = false;
+  // config.yml / servers.yml present but schema-invalid is CONFIG_INVALID (DESIGN-CORE 8.1), not the
+  // generic VALIDATION_FAILED every other section below falls back to.
+  let configInvalid = false;
 
   // ── 1. Project directory ────────────────────────────────────────────────────
 
@@ -353,6 +357,7 @@ async function runValidate(env: string | undefined, options: ValidateOptions): P
     config = loadConfig({ validate: true, silent: false });
     if (!config) {
       hasErrors = true;
+      configInvalid = true;
     } else {
       printSuccess(`${flat ? 'dockflow.yml' : 'config.yml'} — OK (project: ${colors.bold(config.project_name)})`);
       warnUnknownKeys(configPath, flat ? findUnknownRootKeys : findUnknownConfigKeys);
@@ -463,6 +468,9 @@ async function runValidate(env: string | undefined, options: ValidateOptions): P
 
   // ── 6. Result ───────────────────────────────────────────────────────────────
 
+  if (configInvalid) {
+    throw new ConfigError(`${flat ? 'dockflow.yml' : 'config.yml'} failed schema validation — fix the errors above before deploying.`);
+  }
   if (hasErrors) {
     throw new ValidationError('Configuration validation failed — fix the errors above before deploying.');
   }

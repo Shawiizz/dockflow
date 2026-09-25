@@ -56,12 +56,13 @@ async function ensureCliBinary(): Promise<string> {
 
 /**
  * The Linux binary shipped to the nodes (design-05's hidden `--binary`, K59): DOCKFLOW_E2E_BINARY
- * (CI: already the release artifact under test, linux-x64), the same file as `ensureCliBinary` on a
- * linux-x64 host, or a cross-build on Windows/macOS (16.12).
+ * (CI: already the release artifact under test), the same file as `ensureCliBinary` on any Linux
+ * host (x64 or arm64, matching the host's own arch, e.g. N-ARM-01's `ubuntu-24.04-arm` runner), or a
+ * cross-build to linux-x64 on Windows/macOS (16.12).
  */
 async function ensureLinuxBinary(): Promise<string> {
   if (process.env.DOCKFLOW_E2E_BINARY) return process.env.DOCKFLOW_E2E_BINARY;
-  if (process.platform === "linux" && process.arch === "x64") return ensureCliBinary();
+  if (process.platform === "linux") return ensureCliBinary();
   const path = join(CLI_DIR, "dist", "dockflow-linux-x64");
   await exec(["bun", "install", "--frozen-lockfile"], { cwd: CLI_DIR, timeoutMs: 180_000 });
   await exec(["bun", "run", "build", "linux-x64"], { cwd: CLI_DIR, timeoutMs: 180_000 });
