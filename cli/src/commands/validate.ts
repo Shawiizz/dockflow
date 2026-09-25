@@ -202,7 +202,10 @@ function renderRoleOffline(label: string, input: StackDeployInput, env: RenderEn
     return printDiagnostics(label, artifact.diagnostics);
   } catch (error) {
     if (error instanceof ComposeTranslationError) {
-      return printDiagnostics(label, error.diagnostics);
+      // the same headline deploy fails with, then every diagnostic in full
+      printError(error.message);
+      printDiagnostics(label, error.diagnostics);
+      return true;
     }
     throw error;
   }

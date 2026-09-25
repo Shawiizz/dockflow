@@ -141,6 +141,8 @@ describe('renderK3sOfflineCore — U-FLOW-08', () => {
     );
     expect(hasErrors).toBe(true);
     expect(recorded.error.length).toBeGreaterThan(0);
+    // E-30-04: validate names the file and the orchestrator the way deploy fails, then each diagnostic
+    expect(recorded.error[0]).toMatch(/^docker-compose\.yml cannot be deployed with orchestrator: k3s \(\d+ error\(s\)\)$/);
   });
 
   it('a warning-only diagnostic does not fail validation (exit 0 with warnings only)', () => {
