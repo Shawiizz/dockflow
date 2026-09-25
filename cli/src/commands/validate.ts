@@ -105,7 +105,9 @@ function printDiagnostics(file: string, diagnostics: readonly Diagnostic[]): boo
     } else if (d.severity === 'warning') {
       printWarning(`${file} ${d.path}: ${d.message}`);
     } else {
-      printDebug(`${file} ${d.path}: ${d.message}`);
+      // an info line is shown with --debug only, and so is its hint
+      printDebug(`${file} ${d.path}: ${d.message}${d.hint ? ` (${d.hint})` : ''}`);
+      continue;
     }
     if (d.hint) printDim(`  ${d.hint}`);
   }

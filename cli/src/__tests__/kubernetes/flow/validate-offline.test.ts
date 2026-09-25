@@ -160,6 +160,23 @@ describe('renderK3sOfflineCore — U-FLOW-08', () => {
     expect(hasErrors).toBe(false);
   });
 
+  it('an info diagnostic and its hint are debug output only', () => {
+    const hasErrors = renderK3sOfflineCore(
+      baseConfig(),
+      'production',
+      ['server_1'],
+      serversConfig(),
+      new Map(),
+      // a node-bound port disables surge: an info diagnostic with a hint
+      'services:\n  web:\n    image: nginx:1.27\n    ports: ["18082:80"]\n    x-dockflow:\n      publish: hostport\n',
+      '/project',
+      '/project',
+    );
+    expect(hasErrors).toBe(false);
+    expect(recorded.dim).toEqual([]);
+    expect(recorded.debug.some((line) => line.includes('services.web') && line.includes('('))).toBe(true);
+  });
+
   it('renders both roles when an accessories.yml was rendered alongside the app compose', () => {
     const rendered = new Map([['.dockflow/docker/accessories.yml', 'services:\n  redis:\n    image: redis:7\n']]);
     const captured = captureRenderCalls();
