@@ -271,6 +271,9 @@ function quantityValue(value: string): number | null {
 
 function leavesEqual(rendered: unknown, server: unknown): boolean {
   if (rendered === server) return true;
+  // The API server encodes omitempty integers without their zero (probe initialDelaySeconds); the
+  // apply still owns the field, which is why the renderer emits it (DESIGN-CORE 4.2 rule 8).
+  if (rendered === 0 && server === undefined) return true;
   if (typeof rendered === "string" && typeof server === "string") {
     const [a, b] = [quantityValue(rendered), quantityValue(server)];
     if (a !== null && b !== null) return a === b;
