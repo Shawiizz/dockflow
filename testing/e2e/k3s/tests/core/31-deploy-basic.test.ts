@@ -39,7 +39,8 @@ import { currentTopology } from "../../../helpers/topology";
 
 const FILE = "31-deploy-basic.test.ts";
 const NS = nsFor("k3s-basic");
-const IMAGE = (version: string) => `dockflow.invalid/k3s-basic-web:${version}`;
+// image_auto_tag names a built image <image>-<env>:<version>
+const IMAGE = (version: string) => `dockflow.invalid/k3s-basic-web-e2e:${version}`;
 
 async function withDump<T>(testName: string, fn: () => Promise<T>): Promise<T> {
   try {
@@ -108,7 +109,8 @@ describe("E-31 deploy-basic chain", () => {
       expect(labels[LABELS.part]).toBe("stack");
       const annotations = web?.metadata.annotations ?? {};
       expect(annotations[ANNOTATIONS.composeService]).toBe("web");
-      expect(annotations[ANNOTATIONS.release]).toBe("1.0.0");
+      // the version lives in the release record: on a Deployment it would move the generation on every deploy
+      expect(annotations[ANNOTATIONS.release]).toBeUndefined();
       expect(Object.keys(web?.spec.selector.matchLabels ?? {}).sort()).toEqual([LABELS.service, LABELS.stack].sort());
     });
   });
@@ -306,7 +308,8 @@ describe("E-31 deploy-basic chain", () => {
       const [before] = await getJson<Deployment>("deployments.apps", { ns: NS, name: "web" });
       const oldSecretName = before?.spec.template.spec.containers[0]?.envFrom?.[0]?.secretRef?.name ?? "";
 
-      fixture.patchCompose((text) => text.replace('GREETING: "hello $$USER $$(literal)"', 'GREETING: "hello again $$USER"'));
+      // a replacer function: a replacement string would turn $$ into $
+      fixture.patchCompose((text) => text.replace('GREETING: "hello $$USER $$(literal)"', () => 'GREETING: "hello again $$USER"'));
       const result = await deploy(fixture, "1.0.2");
       expect(result.exitCode).toBe(0);
       await waitWorkloadReady(NS, "deployment", "web", 2, 180_000);
