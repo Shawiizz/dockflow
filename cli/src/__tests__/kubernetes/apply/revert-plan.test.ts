@@ -8,7 +8,6 @@ import {
   isEmptyRevertPlan,
   planRevert,
   type RevertPlanInput,
-  withoutReleaseAnnotation,
 } from '../../../services/orchestrator/kubernetes/apply/revert-plan';
 import { emptySnapshot, type LiveWorkload, type Snapshot } from '../../../services/orchestrator/kubernetes/apply/snapshot';
 import { stateFor } from '../../../services/orchestrator/kubernetes/backends/stack-state';
@@ -27,10 +26,9 @@ const T0 = new Date('2026-09-17T10:00:00.000Z');
 // Builders
 // ---------------------------------------------------------------------------
 
-function metadata(name: string, service: string | null, version: string | null = null) {
+function metadata(name: string, service: string | null) {
   const annotations: Record<string, string> = {};
   if (service !== null) annotations[`${P}/compose-service`] = service;
-  if (version !== null) annotations[`${P}/release`] = version;
   return { name, namespace: NS, annotations };
 }
 
@@ -55,16 +53,16 @@ function podSpec(name: string, o: PodOptions): PodSpec {
   };
 }
 
-function deployment(name: string, version: string, o: PodOptions = {}): Deployment {
-  return { apiVersion: 'apps/v1', kind: 'Deployment', metadata: metadata(name, name, version), spec: { selector: {}, template: { metadata: {}, spec: podSpec(name, o) } } };
+function deployment(name: string, o: PodOptions = {}): Deployment {
+  return { apiVersion: 'apps/v1', kind: 'Deployment', metadata: metadata(name, name), spec: { selector: {}, template: { metadata: {}, spec: podSpec(name, o) } } };
 }
 
-function statefulSet(name: string, version: string, o: PodOptions = {}): StatefulSet {
-  return { apiVersion: 'apps/v1', kind: 'StatefulSet', metadata: metadata(name, name, version), spec: { selector: {}, template: { metadata: {}, spec: podSpec(name, o) } } };
+function statefulSet(name: string, o: PodOptions = {}): StatefulSet {
+  return { apiVersion: 'apps/v1', kind: 'StatefulSet', metadata: metadata(name, name), spec: { selector: {}, template: { metadata: {}, spec: podSpec(name, o) } } };
 }
 
-function job(name: string, service: string, version: string): Job {
-  return { apiVersion: 'batch/v1', kind: 'Job', metadata: metadata(name, service, version), spec: { template: { metadata: {}, spec: podSpec(service, {}) } } };
+function job(name: string, service: string): Job {
+  return { apiVersion: 'batch/v1', kind: 'Job', metadata: metadata(name, service), spec: { template: { metadata: {}, spec: podSpec(service, {}) } } };
 }
 
 function service(name: string, composeName: string, port: number): Service {
@@ -191,22 +189,22 @@ function example(): { previous: ManifestObject[]; applied: ManifestObject[] } {
   const previous: ManifestObject[] = [
     secret('web-env-1b2c3d4e'),
     service('web', 'web', 8080),
-    deployment('web', '1.4.1', { image: 'dockflow.invalid/shop-web-production:1.4.1', port: 8080, env: 'web-env-1b2c3d4e' }),
+    deployment('web', { image: 'dockflow.invalid/shop-web-production:1.4.1', port: 8080, env: 'web-env-1b2c3d4e' }),
     route('shop-production-web', 'web', 8080),
     secret('api-env-aaaa1111'),
     service('api', 'api', 9000),
-    deployment('api', '1.4.1', { port: 9000, env: 'api-env-aaaa1111' }),
+    deployment('api', { port: 9000, env: 'api-env-aaaa1111' }),
   ];
   const applied: ManifestObject[] = [
     secret('web-env-3f9a1c2e'),
     service('web', 'web', 3000),
-    deployment('web', '1.4.2', { image: 'dockflow.invalid/shop-web-production:1.4.2', port: 3000, env: 'web-env-3f9a1c2e' }),
+    deployment('web', { image: 'dockflow.invalid/shop-web-production:1.4.2', port: 3000, env: 'web-env-3f9a1c2e' }),
     route('shop-production-web', 'web', 3000),
     secret('api-env-aaaa1111'),
     service('api', 'api', 9000),
-    deployment('api', '1.4.2', { port: 9000, env: 'api-env-aaaa1111' }),
+    deployment('api', { port: 9000, env: 'api-env-aaaa1111' }),
     service('worker', 'worker', 7000),
-    deployment('worker', '1.4.2', { port: 7000 }),
+    deployment('worker', { port: 7000 }),
     route('shop-production-worker', 'worker', 7000),
   ];
   return { previous, applied };
@@ -225,7 +223,7 @@ describe('planRevert', () => {
       }),
     );
     expect(names(plan.apply)).toEqual(['Secret/web-env-1b2c3d4e', 'Service/web', 'Deployment/web', 'IngressRoute/shop-production-web']);
-    expect(plan.apply.find((o) => o.kind === 'Deployment')?.metadata.annotations?.[`${P}/release`]).toBe('1.4.1');
+    expect((plan.apply.find((o) => o.kind === 'Deployment') as Deployment | undefined)?.spec.template.spec.containers[0]?.image).toBe('dockflow.invalid/shop-web-production:1.4.1');
     expect(names(plan.remove)).toEqual(['IngressRoute/shop-production-worker', 'Deployment/worker', 'Service/worker']);
     expect(plan.services).toEqual(['web', 'worker']);
     expect(plan.watch).toEqual([{ service: 'web', kind: 'Deployment', name: 'web' }]);
@@ -236,11 +234,7 @@ describe('planRevert', () => {
     expect(plan.helm).toEqual([]);
   });
 
-  it('compares releases without the release annotation, which names the version and not a change', () => {
-    const stripped = withoutReleaseAnnotation(deployment('web', '1.4.2'));
-    expect(stripped.metadata.annotations).toEqual({ [`${P}/compose-service`]: 'web' });
-    const bare = withoutReleaseAnnotation(secret('web-env-3f9a1c2e'));
-    expect('annotations' in bare.metadata).toBe(false);
+  it('a service identical in both releases is left alone', () => {
     const { previous, applied } = example();
     const plan = planRevert(
       input({ applied, previous: { version: '1.4.1', objects: previous, helm: [] }, targets: ['api'] }),
@@ -367,10 +361,10 @@ describe('planRevert', () => {
   });
 
   it('a change made only of a Job run is left in place', () => {
-    const objects = [job('migrate-3f9a1c2e', 'migrate', '1.4.1')];
+    const objects = [job('migrate-3f9a1c2e', 'migrate')];
     const plan = planRevert(
       input({
-        applied: [job('migrate-3f9a1c2e', 'migrate', '1.4.2')],
+        applied: [job('migrate-3f9a1c2e', 'migrate')],
         previous: { version: '1.4.1', objects, helm: [] },
         changes: [change('migrate', 'Job', 'migrate-3f9a1c2e', { created: true })],
       }),
@@ -380,8 +374,8 @@ describe('planRevert', () => {
   });
 
   it('never re-applies a Job that still exists (K43)', () => {
-    const previous = [deployment('web', '1.4.1', { port: 8080 }), job('migrate-00000000', 'migrate', '1.4.1')];
-    const applied = [deployment('web', '1.4.2', { port: 3000 }), job('migrate-3f9a1c2e', 'migrate', '1.4.2')];
+    const previous = [deployment('web', { port: 8080 }), job('migrate-00000000', 'migrate')];
+    const applied = [deployment('web', { port: 3000 }), job('migrate-3f9a1c2e', 'migrate')];
     const plan = planRevert(
       input({
         applied,
@@ -395,8 +389,8 @@ describe('planRevert', () => {
   });
 
   it('restores a missing PVC and never re-applies an existing one (restore mode)', () => {
-    const previous = [deployment('web', '1.4.1', { claims: ['uploads', 'data'] }), pvc('uploads'), pvc('data')];
-    const applied = [deployment('web', '1.4.2', { claims: ['uploads', 'data'], image: 'registry.example.com/web:2' }), pvc('uploads'), pvc('data')];
+    const previous = [deployment('web', { claims: ['uploads', 'data'] }), pvc('uploads'), pvc('data')];
+    const applied = [deployment('web', { claims: ['uploads', 'data'], image: 'registry.example.com/web:2' }), pvc('uploads'), pvc('data')];
     const plan = planRevert(
       input({
         applied,
@@ -429,13 +423,13 @@ describe('planRevert', () => {
   describe('Middlewares (K46)', () => {
     function middlewareCase(failureActions: Record<string, FailureAction>) {
       const previous = [
-        deployment('web', '1.4.1'),
+        deployment('web'),
         route('shop-production-web', 'web', 80, ['admin-auth']),
         basicAuth('admin-auth', 'admin-auth-auth-secret-1111aaaa'),
         secret('admin-auth-auth-secret-1111aaaa'),
       ];
       const applied = [
-        deployment('web', '1.4.2'),
+        deployment('web'),
         route('shop-production-web', 'web', 80, ['admin-auth', 'rate-limit']),
         basicAuth('admin-auth', 'admin-auth-auth-secret-2222bbbb'),
         secret('admin-auth-auth-secret-2222bbbb'),
@@ -478,8 +472,8 @@ describe('planRevert', () => {
   });
 
   it('U-REVERT-03b: a disruptive kind switch deletes the live workload of the new kind first', () => {
-    const previous = [deployment('db', '1.4.1', { claims: ['pgdata'] }), pvc('pgdata')];
-    const applied = [statefulSet('db', '1.4.2', { claims: ['pgdata'] }), pvc('pgdata')];
+    const previous = [deployment('db', { claims: ['pgdata'] }), pvc('pgdata')];
+    const applied = [statefulSet('db', { claims: ['pgdata'] }), pvc('pgdata')];
     const plan = planRevert(
       input({
         applied,
@@ -499,8 +493,8 @@ describe('planRevert', () => {
   it('an overlapping switch deletes the new kind first and keeps the old workload', () => {
     const plan = planRevert(
       input({
-        applied: [{ ...deployment('api', '1.4.2'), kind: 'DaemonSet' } as ManifestObject],
-        previous: { version: '1.4.1', objects: [deployment('api', '1.4.1')], helm: [] },
+        applied: [{ ...deployment('api'), kind: 'DaemonSet' } as ManifestObject],
+        previous: { version: '1.4.1', objects: [deployment('api')], helm: [] },
         changes: [change('api', 'DaemonSet', 'api', { created: true })],
         now: snapshot(live('Deployment', 'api'), live('DaemonSet', 'api')),
       }),
@@ -510,10 +504,10 @@ describe('planRevert', () => {
   });
 
   it('sorts multiple deleteFirst entries by service name', () => {
-    const previous = [deployment('api', '1.4.1'), deployment('db', '1.4.1', { claims: ['pgdata'] }), pvc('pgdata')];
+    const previous = [deployment('api'), deployment('db', { claims: ['pgdata'] }), pvc('pgdata')];
     const applied = [
-      { ...deployment('api', '1.4.2'), kind: 'DaemonSet' } as ManifestObject,
-      statefulSet('db', '1.4.2', { claims: ['pgdata'] }),
+      { ...deployment('api'), kind: 'DaemonSet' } as ManifestObject,
+      statefulSet('db', { claims: ['pgdata'] }),
       pvc('pgdata'),
     ];
     const plan = planRevert(
@@ -539,8 +533,8 @@ describe('planRevert', () => {
   });
 
   describe('StatefulSet forced rollback (K17)', () => {
-    const previous = [statefulSet('queue', '1.4.1'), statefulSet('cache', '1.4.1')];
-    const applied = [statefulSet('queue', '1.4.2', { image: 'registry.example.com/queue:2' }), statefulSet('cache', '1.4.2', { image: 'registry.example.com/cache:2' })];
+    const previous = [statefulSet('queue'), statefulSet('cache')];
+    const applied = [statefulSet('queue', { image: 'registry.example.com/queue:2' }), statefulSet('cache', { image: 'registry.example.com/cache:2' })];
     const now = snapshot(
       live('StatefulSet', 'cache', { revision: 'cache-aaa', pendingRevision: 'cache-aaa' }),
       live('StatefulSet', 'queue', { revision: 'queue-aaa', pendingRevision: 'queue-bbb' }),

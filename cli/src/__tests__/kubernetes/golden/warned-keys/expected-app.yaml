@@ -464,7 +464,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: aliasnet
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -528,7 +527,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: deploymisc
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -592,7 +590,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: depmisc
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -656,7 +653,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: extvolref
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -724,7 +720,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: filesvc
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -835,7 +830,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: identity-misc
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -899,7 +893,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: netattach
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -963,7 +956,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: nethost
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -1029,7 +1021,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: netmisc
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -1096,7 +1087,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: other
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -1160,7 +1150,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: resmisc
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -1224,7 +1213,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: security-misc
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -1295,7 +1283,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: volmisc
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow

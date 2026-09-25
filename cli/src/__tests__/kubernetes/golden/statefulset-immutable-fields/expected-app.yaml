@@ -245,7 +245,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: ss-a
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -308,7 +307,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: ss-b
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -375,7 +373,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: ss-c
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -442,7 +439,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: ss-d
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow

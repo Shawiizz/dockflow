@@ -37,12 +37,12 @@ const rows: TranslateRow[] = [
   // -- T-WORK ----------------------------------------------------------------------------------
   {
     id: 'T-WORK-01',
-    title: 'app service -> the full label and annotation set, P/release: 1.4.2',
+    title: 'app service -> the full label and annotation set, no P/release',
     compose: 'image: nginx:1.27',
     expect: [
       { object: 'Deployment/web', pointer: '/metadata/labels', equals: serviceObjectLabels(IDENTITY, 'app', 'web') },
       { object: 'Deployment/web', pointer: `/metadata/annotations/${ANNOTATIONS.composeService.replace('/', '~1')}`, equals: 'web' },
-      { object: 'Deployment/web', pointer: `/metadata/annotations/${ANNOTATIONS.release.replace('/', '~1')}`, equals: '1.4.2' },
+      { object: 'Deployment/web', pointer: `/metadata/annotations/${ANNOTATIONS.release.replace('/', '~1')}`, absent: true },
     ],
   },
   {
@@ -393,22 +393,11 @@ const rows: TranslateRow[] = [
 
 runTranslateRows('translate/misc (T-WORK, T-SEC, T-NET, T-STOR, T-META)', rows);
 
-test('T-WORK-06 a version change only touches workload metadata; the pod template is byte-identical', () => {
+test('T-WORK-06 a version change leaves every object byte-identical', () => {
   const before = translateRow({ id: 'v1', title: 'v1', compose: 'image: nginx:1.27', normalize: { identity: { version: '1.4.2' } }, expect: [] });
   const after = translateRow({ id: 'v2', title: 'v2', compose: 'image: nginx:1.27', normalize: { identity: { version: '1.5.0' } }, expect: [] });
-  const templateOf = (objects: typeof before.objects) => {
-    const deployment = objects.find((o) => o.kind === 'Deployment');
-    if (deployment === undefined || deployment.kind !== 'Deployment') throw new Error('no Deployment object was produced');
-    return deployment.spec.template;
-  };
-  expect(templateOf(after.objects)).toEqual(templateOf(before.objects));
-  const releaseOf = (objects: typeof before.objects) => {
-    const deployment = objects.find((o) => o.kind === 'Deployment');
-    if (deployment === undefined || deployment.kind !== 'Deployment') throw new Error('no Deployment object was produced');
-    return deployment.metadata.annotations?.[ANNOTATIONS.release];
-  };
-  expect(releaseOf(before.objects)).toBe('1.4.2');
-  expect(releaseOf(after.objects)).toBe('1.5.0');
+  expect(before.objects.some((o) => o.kind === 'Deployment')).toBe(true);
+  expect(after.objects).toEqual(before.objects);
 });
 
 test('T-WORK-08 a Job whose template changes gets a new name; an unchanged template keeps the same name', () => {

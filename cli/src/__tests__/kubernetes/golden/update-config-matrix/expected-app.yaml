@@ -114,7 +114,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: delay-ratio
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -178,7 +177,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: monitor-200
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -242,7 +240,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: start-first-p2
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -306,7 +303,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: stop-first-p0
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow

@@ -140,7 +140,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: hc-none
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -204,7 +203,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: hc-readiness
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -277,7 +275,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: http-both
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -359,7 +356,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: http-readiness
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -432,7 +428,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: tcp-liveness
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow

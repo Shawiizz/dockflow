@@ -23,7 +23,6 @@ import type {
 } from '../../interfaces';
 import type { ApplyEngine } from '../apply/engine';
 import { closure } from '../apply/closure';
-import { withoutReleaseAnnotation } from '../apply/revert-plan';
 import { composeServiceOf, podSpecOf, templateRefs, type WorkloadObject } from '../apply/snapshot';
 import { ANNOTATIONS, deleteWaitS, K8S_ROLLBACK_SCAN_LIMIT } from '../constants';
 import { SEL_POD, SEL_ROLE } from '../labels';
@@ -247,9 +246,9 @@ function ownClosure(objects: readonly ManifestObject[], service: string): Manife
   return closure(objects, [service], { excludePvcs: true }).objects;
 }
 
-/** design-03 17's `digest`: the closure's canonical shape, the `P/release` annotation ignored. */
+/** design-03 17's `digest`: the closure's canonical shape. */
 function serviceDigest(objects: readonly ManifestObject[], service: string): string {
-  return sha256Hex(canonicalJson(ownClosure(objects, service).map(withoutReleaseAnnotation)));
+  return sha256Hex(canonicalJson(ownClosure(objects, service)));
 }
 
 /** the tuple a Helm record's rollback candidacy is compared on: chart, version, values checksum. */

@@ -77,14 +77,11 @@ function errors(r: Rendered): Diagnostic[] {
 function artifact(r: Rendered): Record<string, unknown>[] {
   const { svc, ctx, template } = r;
   const id = ctx.stack.identity;
-  const metadata = (name: string, workload: boolean): Record<string, unknown> => ({
+  const metadata = (name: string): Record<string, unknown> => ({
     name,
     namespace: ctx.namespace,
     labels: serviceObjectLabels(id, svc.role, svc.name),
-    annotations: {
-      [ANNOTATIONS.composeService]: svc.composeName,
-      ...(workload && svc.role === 'app' ? { [ANNOTATIONS.release]: id.version } : {}),
-    },
+    annotations: { [ANNOTATIONS.composeService]: svc.composeName },
   });
   const selector = { matchLabels: selectorLabels(id, svc.name) };
   const bindsNode = template.spec.hostNetwork === true || template.spec.containers.some((c) => (c.ports ?? []).some((p) => p.hostPort !== undefined));
@@ -94,7 +91,7 @@ function artifact(r: Rendered): Record<string, unknown>[] {
         {
           apiVersion: 'apps/v1',
           kind: 'Deployment',
-          metadata: metadata(svc.name, true),
+          metadata: metadata(svc.name),
           spec: {
             progressDeadlineSeconds: 240,
             replicas: svc.replicas,
@@ -110,7 +107,7 @@ function artifact(r: Rendered): Record<string, unknown>[] {
         {
           apiVersion: 'apps/v1',
           kind: 'DaemonSet',
-          metadata: metadata(svc.name, true),
+          metadata: metadata(svc.name),
           spec: { revisionHistoryLimit: 3, selector, template, updateStrategy: { type: 'RollingUpdate', rollingUpdate: { maxSurge: 0, maxUnavailable: 1 } } },
         },
       ];
@@ -119,7 +116,7 @@ function artifact(r: Rendered): Record<string, unknown>[] {
         {
           apiVersion: 'batch/v1',
           kind: 'Job',
-          metadata: metadata(`${svc.name}-0c1d2e3f`, true),
+          metadata: metadata(`${svc.name}-0c1d2e3f`),
           spec: { backoffLimit: 6, completions: svc.replicas, parallelism: svc.replicas, template },
         },
       ];
@@ -136,7 +133,7 @@ function artifact(r: Rendered): Record<string, unknown>[] {
         {
           apiVersion: 'apps/v1',
           kind: 'StatefulSet',
-          metadata: metadata(svc.name, true),
+          metadata: metadata(svc.name),
           spec: {
             persistentVolumeClaimRetentionPolicy: { whenDeleted: 'Retain', whenScaled: 'Retain' },
             podManagementPolicy: 'Parallel',
@@ -152,7 +149,7 @@ function artifact(r: Rendered): Record<string, unknown>[] {
         {
           apiVersion: 'v1',
           kind: 'Service',
-          metadata: metadata(`${svc.name}-hl`, false),
+          metadata: metadata(`${svc.name}-hl`),
           spec: { clusterIP: 'None', ports: [{ name: 'placeholder', port: 9, protocol: 'TCP' }], selector: selectorLabels(id, svc.name) },
         },
       ];

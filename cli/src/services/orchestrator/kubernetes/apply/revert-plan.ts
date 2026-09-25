@@ -75,15 +75,8 @@ function composeAnnotation(object: ManifestObject): string | undefined {
   return object.metadata.annotations?.[ANNOTATIONS.composeService];
 }
 
-/** An object as two releases are compared: the release annotation names the version, not a change. */
-export function withoutReleaseAnnotation(object: ManifestObject): ManifestObject {
-  const { annotations, ...metadata } = object.metadata;
-  const kept = Object.entries(annotations ?? {}).filter(([key]) => key !== ANNOTATIONS.release);
-  return { ...object, metadata: kept.length > 0 ? { ...metadata, annotations: Object.fromEntries(kept) } : metadata };
-}
-
 function fingerprint(objects: readonly ManifestObject[], service: string): string {
-  return canonicalJson(closure(objects, [service], { excludePvcs: true }).objects.map(withoutReleaseAnnotation));
+  return canonicalJson(closure(objects, [service], { excludePvcs: true }).objects);
 }
 
 /**
@@ -195,7 +188,7 @@ export function planRevert(input: RevertPlanInput): RevertPlan {
       if (m.kind !== 'Middleware') continue;
       const p = previousMiddlewares.get(m.metadata.name);
       if (!p) remove.set(keyOf(m.kind, m.metadata.name), refOf(m, null));
-      else if (canonicalJson(withoutReleaseAnnotation(p)) !== canonicalJson(withoutReleaseAnnotation(m))) restored.push(p);
+      else if (canonicalJson(p) !== canonicalJson(m)) restored.push(p);
     }
     for (const o of closeOver(previous.objects, restored, { excludePvcs: true })) addApply(o);
   }

@@ -145,16 +145,16 @@ function rollingAmounts(order: UpdateSpec['order'], parallelism: number): { maxS
 // Object parts
 // ---------------------------------------------------------------------------
 
+/**
+ * Nothing here depends on the release version: a Deployment's generation moves on any annotation
+ * change, so a version annotation would report every service as changed on every deploy.
+ */
 function workloadMetadata(svc: CanonicalService, name: string, ctx: TranslateContext): ObjectMeta {
-  const annotations: Record<string, string> = { ...svc.serviceLabels, [ANNOTATIONS.composeService]: svc.composeName };
-  // Never on accessories and never on the pod template, so an unchanged service neither rolls nor
-  // changes the accessories digest when only the release version moves (emission rule 9).
-  if (svc.role === 'app') annotations[ANNOTATIONS.release] = ctx.stack.identity.version;
   return {
     name,
     namespace: ctx.namespace,
     labels: serviceObjectLabels(ctx.stack.identity, svc.role, svc.name),
-    annotations,
+    annotations: { ...svc.serviceLabels, [ANNOTATIONS.composeService]: svc.composeName },
   };
 }
 

@@ -140,7 +140,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: always-pull
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -204,7 +203,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: digest-pin
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -268,7 +266,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: latest-tag
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -332,7 +329,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: pinned-tag
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow
@@ -396,7 +392,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: untagged
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-shop-production
     app.kubernetes.io/managed-by: dockflow

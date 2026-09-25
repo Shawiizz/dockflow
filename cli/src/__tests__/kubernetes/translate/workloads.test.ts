@@ -263,7 +263,7 @@ describe('Deployment (design-02 4.1)', () => {
       metadata: {
         name: 'web',
         namespace: NS,
-        annotations: { [`${P}/compose-service`]: 'web', [`${P}/release`]: '1.4.2' },
+        annotations: { [`${P}/compose-service`]: 'web' },
         labels: {
           'app.kubernetes.io/instance': NS,
           'app.kubernetes.io/managed-by': 'dockflow',
@@ -310,7 +310,6 @@ describe('Deployment (design-02 4.1)', () => {
     expect(workload?.metadata.annotations).toEqual({
       'com.example.team': 'payments',
       [ANNOTATIONS.composeService]: 'web',
-      [ANNOTATIONS.release]: '1.4.2',
     });
     expect(workload?.metadata.labels?.['com.example.team']).toBeUndefined();
   });
@@ -326,27 +325,23 @@ describe('Deployment (design-02 4.1)', () => {
   });
 });
 
-describe('P/release (emission rule 9)', () => {
+describe('release version (emission rule 9)', () => {
   const kinds: ServiceOverrides[] = [{}, { extension: { kind: 'statefulset' } }, { mode: 'global' }, { mode: 'replicated-job' }];
 
+  // A Deployment's generation moves on any annotation change: a workload that differs by version
+  // would be reported changed, and waited for, on every deploy.
   for (const overrides of kinds) {
-    test(`${overrides.mode ?? overrides.extension?.kind ?? 'deployment'}: on role app workloads only`, () => {
-      const app = valid({ svc: service(overrides) });
-      expect(app.metadata.annotations?.[ANNOTATIONS.release]).toBe('1.4.2');
-      const accessory = valid({ svc: service({ ...overrides, role: 'accessory' }) });
-      expect(accessory.metadata.annotations?.[ANNOTATIONS.release]).toBeUndefined();
-      expect(accessory.metadata.labels?.[`${P}/role`]).toBe('accessory');
-    });
+    for (const role of ['app', 'accessory'] as const) {
+      test(`${overrides.mode ?? overrides.extension?.kind ?? 'deployment'} (${role}): renders identically whatever the release version`, () => {
+        const svc = service({ ...overrides, role });
+        const render = (version: string) => {
+          const ctx = translateContext(canonicalStack({ role, identity: { version }, services: [svc] }));
+          return canonicalJson(buildWorkload(svc, podTemplate(svc, []), [], ctx));
+        };
+        expect(render('2.0.0')).toBe(render('1.4.2'));
+      });
+    }
   }
-
-  test('an accessory renders identically whatever the release version', () => {
-    const svc = service({ role: 'accessory', composeName: 'db' });
-    const render = (version: string) => {
-      const ctx = translateContext(canonicalStack({ role: 'accessory', identity: { version }, services: [svc] }));
-      return canonicalJson(buildWorkload(svc, podTemplate(svc, []), [], ctx));
-    };
-    expect(render('2.0.0')).toBe(render('1.4.2'));
-  });
 
   test('an app Job keeps its name across releases: the version is not part of its spec', () => {
     const svc = service({ mode: 'replicated-job', composeName: 'migrate' });
@@ -840,7 +835,7 @@ describe('Job (design-02 4.6)', () => {
     });
     expect(workload.metadata.name).toBe(jobNameFor('migrate', sha256Hex(canonicalJson(workload.spec))));
     expect(workload.metadata.name).toMatch(/^migrate-[0-9a-f]{8}$/);
-    expect(workload.metadata.annotations).toEqual({ [ANNOTATIONS.composeService]: 'migrate', [ANNOTATIONS.release]: '1.4.2' });
+    expect(workload.metadata.annotations).toEqual({ [ANNOTATIONS.composeService]: 'migrate' });
     expect(workload.metadata.labels).toEqual(serviceObjectLabels(ID, 'app', 'migrate'));
     expect(result.diagnostics).toEqual([]);
     expectValid(workload, svc);

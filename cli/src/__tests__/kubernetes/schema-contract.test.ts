@@ -78,7 +78,7 @@ function workloadMeta(name: string, service: string) {
   return {
     name,
     namespace: NS,
-    annotations: { [ANNOTATIONS.composeService]: service, [ANNOTATIONS.release]: RELEASE },
+    annotations: { [ANNOTATIONS.composeService]: service },
     labels: serviceLabels(service),
   };
 }
@@ -1174,13 +1174,11 @@ const SEMANTIC: Mutation[] = [
     },
   },
   {
-    id: 'S20-accessory-release',
+    id: 'S20-workload-release',
     rule: 'S20',
-    change: 'P/release on a role accessory workload',
+    change: 'P/release on workload metadata',
     mutate: (o) => {
-      const agent = find(o, 'DaemonSet', 'agent');
-      at(agent, 'metadata.labels')[LABELS.role] = 'accessory';
-      at(agent, 'spec.template.metadata.labels')[LABELS.role] = 'accessory';
+      at(web(o), 'metadata.annotations')[ANNOTATIONS.release] = RELEASE;
     },
   },
   {

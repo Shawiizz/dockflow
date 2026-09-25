@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { type Diagnostic, DiagnosticSink } from '../../../services/orchestrator/diagnostics';
-import { ANNOTATIONS } from '../../../services/orchestrator/kubernetes/constants';
 import type { CanonicalService, PortSpec, VolumeMountSpec } from '../../../services/orchestrator/kubernetes/model/types';
 import { isNormalizeCode } from '../../../services/orchestrator/kubernetes/normalize/keys';
 import type { Deployment, StatefulSet } from '../../../services/orchestrator/kubernetes/resources/apps';
@@ -118,19 +117,13 @@ describe('translateStack composition (design-02 1.1)', () => {
     expect(third.diagnostics).toEqual(first.diagnostics);
   });
 
-  test('accessory objects do not depend on the release version; app workloads carry it in P/release only', () => {
+  test('objects of either role do not depend on the release version', () => {
     const accessory = (version: string): string =>
       canonicalJson(translateChecked(canonicalStack({ role: 'accessory', identity: { version }, services: [canonicalService({ role: 'accessory', composeName: 'db' })] })).objects);
     expect(accessory('2.0.0')).toBe(accessory('1.0.0'));
 
-    const app = (version: string): ManifestObject[] => translateChecked(canonicalStack({ identity: { version } })).objects;
-    const [v1, v2] = [app('1.0.0'), app('2.0.0')];
-    expect(find(v1, 'Deployment', 'web').metadata.annotations?.[ANNOTATIONS.release]).toBe('1.0.0');
-    expect(find(v2, 'Deployment', 'web').metadata.annotations?.[ANNOTATIONS.release]).toBe('2.0.0');
-    const strip = (objects: ManifestObject[]): string =>
-      canonicalJson(objects).replaceAll('"1.0.0"', '"<v>"').replaceAll('"2.0.0"', '"<v>"');
-    expect(strip(v2)).toBe(strip(v1));
-    expect(canonicalJson(v1).split('"1.0.0"')).toHaveLength(2);
+    const app = (version: string): string => canonicalJson(translateChecked(canonicalStack({ identity: { version } })).objects);
+    expect(app('2.0.0')).toBe(app('1.0.0'));
   });
 });
 

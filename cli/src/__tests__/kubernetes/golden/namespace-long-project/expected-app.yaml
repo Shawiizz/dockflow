@@ -36,7 +36,6 @@ metadata:
   namespace: dockflow-project-with-sixty-three-characters-total-for-0add5693
   annotations:
     dockflow.shawiizz.dev/compose-service: web
-    dockflow.shawiizz.dev/release: 1.4.2
   labels:
     app.kubernetes.io/instance: dockflow-project-with-sixty-three-characters-total-for-0add5693
     app.kubernetes.io/managed-by: dockflow

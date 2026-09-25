@@ -82,7 +82,7 @@ function expectValidTemplate(svc: CanonicalService): void {
       name: svc.name,
       namespace: ctx.namespace,
       labels: serviceObjectLabels(id, svc.role, svc.name),
-      annotations: { [ANNOTATIONS.composeService]: svc.composeName, [ANNOTATIONS.release]: id.version },
+      annotations: { [ANNOTATIONS.composeService]: svc.composeName },
     },
     spec: {
       progressDeadlineSeconds: 240,

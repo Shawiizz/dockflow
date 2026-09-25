@@ -36,7 +36,6 @@ metadata:
   namespace: dockflow-shop-production
   annotations:
     dockflow.shawiizz.dev/compose-service: web
-    dockflow.shawiizz.dev/release: 1.4.2
     release-tier: stable
   labels:
     app.kubernetes.io/instance: dockflow-shop-production

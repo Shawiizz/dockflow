@@ -1099,12 +1099,10 @@ function checkOwnership(object: Json, env: RuleEnvironment): Finding[] {
   if (SERVICE_OBJECT_KINDS.has(kind) && (service ?? '') === '') findings.push(finding(childPath('metadata.labels', LABELS.service), 'is required on per-service objects'));
   if (service !== undefined && labels[LABELS.name] !== service) findings.push(finding(childPath('metadata.labels', LABELS.name), `must equal ${LABELS.service} (${service})`));
   const role = labels[LABELS.role];
-  const release = annotations[ANNOTATIONS.release];
-  if ((WORKLOAD_KINDS as readonly string[]).includes(kind)) {
-    if (role === 'app' && (release ?? '') === '') findings.push(finding(childPath('metadata.annotations', ANNOTATIONS.release), 'is required on role app workloads'));
-    if (role === 'accessory' && release !== undefined) findings.push(finding(childPath('metadata.annotations', ANNOTATIONS.release), 'is never emitted for role accessory'));
-  } else if (release !== undefined) {
-    findings.push(finding(childPath('metadata.annotations', ANNOTATIONS.release), 'is emitted on workload metadata only'));
+  // The version lives in the release record: on a Deployment's metadata it would move the generation
+  // of every service on every release (emission rule 9).
+  if (annotations[ANNOTATIONS.release] !== undefined) {
+    findings.push(finding(childPath('metadata.annotations', ANNOTATIONS.release), 'is never emitted on artifact objects'));
   }
   if (kind === 'PersistentVolumeClaim' && labels[LABELS.volume] !== nameOf(object)) {
     findings.push(finding(childPath('metadata.labels', LABELS.volume), `must equal the claim name ${nameOf(object)}`));

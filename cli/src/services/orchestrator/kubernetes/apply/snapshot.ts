@@ -347,7 +347,8 @@ export function diffSnapshots(
     // the apply failed before this object
     if (!a) continue;
     const b = recreated.some((r) => same(r, o)) ? undefined : before.workloads.find((w) => same(w, o));
-    // metadata-only updates never bump the generation
+    // a spec change moves the generation (and, on a Deployment, an annotation change: workload
+    // metadata carries none that changes between releases)
     if (b && b.generation === a.generation) continue;
     changes.push({
       service: a.service,

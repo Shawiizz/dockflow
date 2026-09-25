@@ -96,7 +96,7 @@ function podHost(svc: CanonicalService, envResult: EnvSecretResult | null, files
     metadata: {
       name: svc.name,
       namespace: NS,
-      annotations: { [ANNOTATIONS.composeService]: svc.composeName, [ANNOTATIONS.release]: ID.version },
+      annotations: { [ANNOTATIONS.composeService]: svc.composeName },
       labels: serviceObjectLabels(ID, 'app', svc.name),
     },
     spec: {
