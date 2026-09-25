@@ -11,7 +11,7 @@ import { PassThrough, type Readable } from 'stream';
 import tar from 'tar-stream';
 import { runCp } from '../../../commands/app/cp';
 import { __setOrchestratorOpenerForTests } from '../../../commands/shared/day2';
-import { ContainerPathError, probeContainerPath } from '../../../services/orchestrator/copy';
+import { ContainerPathError, NO_TAR_SUGGESTION, noTarError, probeContainerPath } from '../../../services/orchestrator/copy';
 import type { ServiceInfo } from '../../../services/orchestrator/interfaces';
 import type { DockflowConfig } from '../../../utils/config';
 import * as output from '../../../utils/output';
@@ -171,6 +171,87 @@ describe('cp in (local -> container)', () => {
 
     const getServicesCalls = orchestrator.callsTo('stack.getServices');
     expect(getServicesCalls[0][0]).toMatchObject({ role: 'accessory' });
+  });
+});
+
+describe('SRC/. copies the directory\'s contents, not the directory (design-06 3.3)', () => {
+  it('extracts entries directly into the local destination, skipping the top-entry rename', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    orchestrator.program('stack.getServices', [service()]);
+    orchestrator.program('containers.copyOut', (_ref, _target, path) => {
+      expect(path).toBe('/app/data/.');
+      const pack = tar.pack();
+      pack.entry({ name: 'sub/app.log' }, 'inner');
+      pack.finalize();
+      return toByteStream(pack);
+    });
+    open(orchestrator);
+
+    const destDir = makeTmpDir();
+    const success = spyOn(output, 'printSuccess').mockImplementation(() => {});
+    try {
+      await runCp('production', 'web:/app/data/.', destDir, {});
+    } finally {
+      success.mockRestore();
+    }
+
+    const calls = orchestrator.callsTo('containers.copyOut');
+    expect(calls[0][2]).toBe('/app/data/.');
+    expect(readFileSync(join(destDir, 'sub', 'app.log'), 'utf8')).toBe('inner');
+  });
+
+  it('refuses a destination ending with /.', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    open(orchestrator);
+
+    await expect(runCp('production', 'web:/app/data', './out/.', {})).rejects.toThrow('A destination must not end with /.');
+  });
+
+  it('refuses a non-directory local source ending with /.', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    orchestrator.program('stack.getServices', [service()]);
+    open(orchestrator);
+
+    const localDir = makeTmpDir();
+    const localFile = join(localDir, 'dump.sql');
+    await Bun.write(localFile, 'SELECT 1;');
+
+    await expect(runCp('production', `${localFile}/.`, 'web:/app/backup', {})).rejects.toThrow('ends with /. but is not a directory');
+  });
+});
+
+describe('cp in an image without tar (R-19)', () => {
+  it('propagates the ContainerPathError the backend raises when tar is missing', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    orchestrator.program('stack.getServices', [service()]);
+    orchestrator.program('containers.copyOut', noTarError('web'));
+    open(orchestrator);
+
+    const destDir = makeTmpDir();
+    let caught: unknown;
+    try {
+      await runCp('production', 'web:/app/logs/app.log', destDir, {});
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(ContainerPathError);
+    expect((caught as ContainerPathError).reason).toBe('no-tar');
+    expect((caught as ContainerPathError).message).toBe('Copying files requires tar in the container image of web');
+    expect((caught as ContainerPathError).suggestion).toBe(NO_TAR_SUGGESTION);
+  });
+
+  it('propagates the same error on the local -> container direction (the destination probe uses copyOut too)', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    orchestrator.program('stack.getServices', [service()]);
+    orchestrator.program('containers.copyOut', noTarError('web'));
+    open(orchestrator);
+
+    const localDir = makeTmpDir();
+    const localFile = join(localDir, 'dump.sql');
+    await Bun.write(localFile, 'SELECT 1;');
+
+    await expect(runCp('production', localFile, 'web:/app/dump.sql', {})).rejects.toBeInstanceOf(ContainerPathError);
   });
 });
 

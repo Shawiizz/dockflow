@@ -148,6 +148,18 @@ describe('logs', () => {
     await expect(runLogs('production', 'web', { tail: 'not-a-number' })).rejects.toThrow();
     expect(orchestrator.remoteWorkTripped).toBe(false);
   });
+
+  it('U-CMD-DAY2-01: --tail all reaches the backend as the string "all", not NaN', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    orchestrator.program('stack.getServices', [service()]);
+    open(orchestrator);
+
+    await runLogs('production', 'web', { tail: 'all' });
+
+    const calls = orchestrator.callsTo('containers.streamLogs');
+    const options = calls[0][2] as { tail: number | 'all' };
+    expect(options.tail).toBe('all');
+  });
 });
 
 describe('exec', () => {
