@@ -6,8 +6,10 @@
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 ENV DEBIAN_FRONTEND=noninteractive container=docker
-# ssh.socket is masked because ssh.service runs sshd as a daemon (the healthcheck tests the service);
-# the apt timers would update packages on the nodes during a lane
+# ssh.socket stays unmasked: on Ubuntu 24.04 ssh.service Requires= its same-named socket, so masking
+# it keeps sshd from ever starting. Enabling the service pulls the socket in and sshd takes over its
+# listening fds, so sshd still runs as one daemon (the healthcheck tests the service).
+# The apt timers would update packages on the nodes during a lane.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       systemd systemd-sysv dbus openssh-server sudo ca-certificates curl jq socat \
       iptables nftables iproute2 kmod conntrack ebtables ethtool util-linux mount \
@@ -15,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/* \
   && systemctl mask systemd-udevd.service systemd-udevd-kernel.socket systemd-udevd-control.socket \
        getty.target systemd-logind.service console-getty.service \
-       ssh.socket apt-daily.timer apt-daily-upgrade.timer \
+       apt-daily.timer apt-daily-upgrade.timer \
   && systemctl enable ssh.service \
   && systemctl set-default multi-user.target \
   && rm -f /etc/ssh/ssh_host_* /etc/machine-id
