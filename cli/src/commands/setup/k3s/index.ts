@@ -284,6 +284,14 @@ async function runOp(
   if (stripped.status !== 'ok') {
     printError(`${node.key}: ${stripped.error?.message ?? 'setup step failed'}`);
   }
+  // The step error only says verification failed: each failing check is in the verification itself.
+  for (const problem of stripped.verification?.problems ?? []) {
+    if (problem.severity === 'error') {
+      printError(`${node.key}: ${problem.message}${problem.suggestion ? ` — ${problem.suggestion}` : ''}`);
+    } else {
+      report.addWarning(node.key, problem.suggestion ? `${problem.message} (${problem.suggestion})` : problem.message);
+    }
+  }
   return { result: stripped, tokens };
 }
 
