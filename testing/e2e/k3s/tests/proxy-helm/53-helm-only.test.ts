@@ -10,10 +10,12 @@ import { runCLI } from "../../../helpers/cli";
 import { dumpDebug } from "../../../helpers/debug-dump";
 import { type Fixture, makeFixture } from "../../../helpers/fixtures";
 import { deleteStackCompletely, getJson, nsFor, waitWorkloadReady } from "../../../helpers/k8s";
+import { chartRepoUrl, SHARED_LANE } from "../../../helpers/topology";
 import type { ConfigMap } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/core";
 
 const FILE = "53-helm-only.test.ts";
 const ENV = "e2e";
+const PUBLIC_REPO = chartRepoUrl(SHARED_LANE.net, "public");
 const NS = nsFor("helmonly");
 const TRANSITION_NS = nsFor("helmtransition");
 
@@ -25,7 +27,7 @@ function helmOnlyConfig(): string {
     "  releases:",
     "    - name: web",
     "      chart: e2e-web",
-    "      repo: \"http://172.30.0.7:8080/public\"",
+    `      repo: "${PUBLIC_REPO}"`,
     "      version: \"0.1.0\"",
     "      values:",
     "        message: helm-only-v1",
@@ -45,7 +47,7 @@ function transitionConfigWithRelease(): string {
     "  releases:",
     "    - name: web2",
     "      chart: e2e-web",
-    "      repo: \"http://172.30.0.7:8080/public\"",
+    `      repo: "${PUBLIC_REPO}"`,
     "      version: \"0.1.0\"",
     "      values:",
     "        message: helm-only-transition",

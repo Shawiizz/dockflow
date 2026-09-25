@@ -135,13 +135,18 @@ data field printed unmasked, or a log line ever carries one.
 | | Address from the runner | Address from a node |
 |---|---|---|
 | Swarm manager / worker | `localhost:32222` / `:32223` | — |
-| k3s shared-lane nodes (duo: server-1, agent-1; trio adds agent-2; ha adds server-2/3) | `localhost:32230`-`32234` | `172.30.0.11`-`.22` |
-| k3s setup-lane nodes (fresh per file) | `localhost:32240`-`32249` | `172.31.0.11`-`.49` |
+| k3s shared-lane nodes (duo: server-1, agent-1; trio adds agent-2; ha adds server-2/3) | `localhost:32230`-`32234` | `10.197.30.11`-`.22` |
+| k3s setup-lane nodes (fresh per file) | `localhost:32240`-`32249` | `10.197.31.11`-`.49` |
 | e2e registry (anonymous / authenticated) | `localhost:35010` / `:35011` | same `localhost:*` (socat forwarder baked into the node image) |
-| e2e chart repository (`/public`, `/private`) | `localhost:35012` | `http://172.30.0.7:8080/{public,private}` |
+| e2e chart repository (`/public`, `/private`) | `localhost:35012` | `http://10.197.30.7:8080/{public,private}` |
 | Swarm registry, Traefik HTTP | `localhost:35000`, `:38080` | — |
 
 The Swarm and k3s suites use separate compose projects and networks and can run simultaneously.
+
+The k3s lane subnets (`10.197.30.0/24` shared, `10.197.31.0/24` setup) sit outside Docker's default
+address pools, so they do not collide with the networks of other compose projects on the machine.
+When a VPN or LAN already routes them, set `DOCKFLOW_E2E_NET` / `DOCKFLOW_E2E_SETUP_NET` to the first
+three octets of another /24 (fixtures write `@E2E_NET@` wherever they need a lane address).
 
 **The e2e registries** (`registry:3`, anonymous and htpasswd-authenticated) run as auxiliary
 containers on the lane network; a socat forwarder unit baked into every node image republishes them on

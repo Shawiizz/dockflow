@@ -152,7 +152,7 @@ services:
       replicas: 1
     x-dockflow:
       lb_source_ranges:
-        - "172.30.0.11/32"
+        - "@E2E_NET@.11/32"
 
   # E-42-04: no proxy configured in config.yml, so 80/tcp is free on this cluster.
   plain80:

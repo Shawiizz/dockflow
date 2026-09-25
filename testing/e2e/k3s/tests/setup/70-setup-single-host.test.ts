@@ -4,7 +4,7 @@
  * *inside* one bare node container rather than through the cluster coordinator — there is no SSH
  * transport in this mode, the binary provisions the machine it runs on (design-05 4.8).
  *
- * This file owns its own container (`setup-single`, 172.31.0.31) and destroys it in `afterAll`; no
+ * This file owns its own container (`setup-single`, <setup net>.31) and destroys it in `afterAll`; no
  * other setup-lane file may assume it is still there.
  */
 

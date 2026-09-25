@@ -1,6 +1,6 @@
 /**
  * N-ONLINE-01/02 (design-07 17.8): the only file allowed to hit real upstream URLs (16.1). Reuses the
- * shared lanes' `duo` topology/project so the pre-baked chart server address (172.30.0.7, packaged by
+ * shared lanes' `duo` topology/project so the pre-baked chart server address (`<net>.7`, packaged by
  * the lane preload) still resolves; the node-local content-addressed cache
  * (`/var/cache/dockflow/sha256`) is emptied before `setup k3s` runs, so k3s, `install.sh` and Helm are
  * downloaded for real from GitHub / get.helm.sh, and the proxy's Traefik chart from

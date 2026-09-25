@@ -8,9 +8,11 @@ import { runCLI } from "../../../helpers/cli";
 import { dumpDebug } from "../../../helpers/debug-dump";
 import { type Fixture, makeFixture } from "../../../helpers/fixtures";
 import { deleteStackCompletely, helm, nsFor, waitWorkloadReady } from "../../../helpers/k8s";
+import { chartRepoUrl, SHARED_LANE } from "../../../helpers/topology";
 
 const FILE = "52-helm-accessory.test.ts";
 const ENV = "e2e";
+const PUBLIC_REPO = chartRepoUrl(SHARED_LANE.net, "public");
 const NS = nsFor("helmapp");
 const RELEASE = "cache";
 
@@ -28,7 +30,7 @@ function configWithAccessory(message: string): string {
     "  releases:",
     `    - name: ${RELEASE}`,
     "      chart: e2e-web",
-    '      repo: "http://172.30.0.7:8080/public"',
+    `      repo: "${PUBLIC_REPO}"`,
     '      version: "0.1.0"',
     "      role: accessory",
     "      values:",

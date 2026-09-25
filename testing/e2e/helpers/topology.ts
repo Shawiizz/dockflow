@@ -16,22 +16,34 @@ export const TOPOLOGY_NAMES: readonly TopologyName[] = ["duo", "trio", "ha"];
 /** Where a set of node containers lives: compose project, /24 subnet and host SSH ports. */
 export interface NetworkPlan {
   readonly project: string;
-  /** first three octets of the /24 subnet, e.g. `172.30.0` */
+  /** first three octets of the /24 subnet, e.g. `10.197.30` */
   readonly net: string;
   readonly sshPorts: Readonly<Record<NodeKey, number>>;
 }
 
+// Outside Docker's default address pools (172.17-31.0.0/16, 192.168.0.0/16 in /20s), which a
+// machine with a few compose projects already fills, and clear of k3s's 10.42/10.43 pod and
+// service ranges. Override when a VPN or LAN already routes these.
+const lanePrefix = (variable: string, fallback: string): string => {
+  const value = process.env[variable];
+  if (value === undefined || value === "") return fallback;
+  if (!/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(value)) {
+    throw new Error(`${variable} must be the first three octets of a /24 subnet (such as 10.197.30), got ${value}`);
+  }
+  return value;
+};
+
 /** k3s-core, k3s-lifecycle, k3s-day2, k3s-multinode, k3s-proxy-helm and k3s-ha. */
 export const SHARED_LANE: NetworkPlan = {
   project: "dockflow-k3s",
-  net: "172.30.0",
+  net: lanePrefix("DOCKFLOW_E2E_NET", "10.197.30"),
   sshPorts: { server_1: 32230, server_2: 32231, server_3: 32232, agent_1: 32233, agent_2: 32234 },
 };
 
 /** k3s-setup: fresh containers per test file, SSH ports 32240-32249. */
 export const SETUP_LANE: NetworkPlan = {
   project: "dockflow-k3s-setup",
-  net: "172.31.0",
+  net: lanePrefix("DOCKFLOW_E2E_SETUP_NET", "10.197.31"),
   sshPorts: { server_1: 32240, server_2: 32241, server_3: 32242, agent_1: 32243, agent_2: 32244 },
 };
 

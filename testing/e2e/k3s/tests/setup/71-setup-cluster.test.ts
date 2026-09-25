@@ -1,6 +1,6 @@
 /**
  * Lane k3s-setup, E-71 (design-07 17.7; design-05 22.3 E3, E9, E10): a fresh 3-node cluster
- * (`setup-single`'s trio, on the setup lane's own network: 172.31.0.11/.21/.22) provisioned with the
+ * (`setup-single`'s trio, on the setup lane's own network: <net>.11/.21/.22) provisioned with the
  * real coordinator flow (`dockflow setup k3s e2e --ssh-user root --key <bootstrap> --binary <bin>
  * --yes`), and the token-leak, identity and firewall checks that only make sense on a cluster nobody
  * else is touching.

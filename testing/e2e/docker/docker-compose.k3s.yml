@@ -20,8 +20,8 @@ x-node: &node
     - /var/lib/kubelet
     - /var/log
   environment:
-    E2E_REGISTRY_ADDR: ${E2E_NET:-172.30.0}.5:5000
-    E2E_REGISTRY_AUTH_ADDR: ${E2E_NET:-172.30.0}.6:5000
+    E2E_REGISTRY_ADDR: ${E2E_NET:-10.197.30}.5:5000
+    E2E_REGISTRY_AUTH_ADDR: ${E2E_NET:-10.197.30}.6:5000
   extra_hosts:
     - "k3s.e2e.test:127.0.0.1"
     - "dashboard.k3s.e2e.test:127.0.0.1"
@@ -41,38 +41,38 @@ services:
     profiles: [duo, trio, ha]
     tmpfs: [/run, /run/lock, "/tmp:exec,mode=1777", "/var/lib/rancher/k3s/server/db:size=1g"]
     ports: ["${E2E_PORT_SERVER_1:-32230}:22"]
-    networks: { k3s: { ipv4_address: "${E2E_NET:-172.30.0}.11" } }
+    networks: { k3s: { ipv4_address: "${E2E_NET:-10.197.30}.11" } }
   server-2:
     <<: *node
     hostname: server-2
     profiles: [ha]
     tmpfs: [/run, /run/lock, "/tmp:exec,mode=1777", "/var/lib/rancher/k3s/server/db:size=1g"]
     ports: ["${E2E_PORT_SERVER_2:-32231}:22"]
-    networks: { k3s: { ipv4_address: "${E2E_NET:-172.30.0}.12" } }
+    networks: { k3s: { ipv4_address: "${E2E_NET:-10.197.30}.12" } }
   server-3:
     <<: *node
     hostname: server-3
     profiles: [ha]
     tmpfs: [/run, /run/lock, "/tmp:exec,mode=1777", "/var/lib/rancher/k3s/server/db:size=1g"]
     ports: ["${E2E_PORT_SERVER_3:-32232}:22"]
-    networks: { k3s: { ipv4_address: "${E2E_NET:-172.30.0}.13" } }
+    networks: { k3s: { ipv4_address: "${E2E_NET:-10.197.30}.13" } }
   agent-1:
     <<: *node
     hostname: agent-1
     profiles: [duo, trio, ha]
     ports: ["${E2E_PORT_AGENT_1:-32233}:22"]
-    networks: { k3s: { ipv4_address: "${E2E_NET:-172.30.0}.21" } }
+    networks: { k3s: { ipv4_address: "${E2E_NET:-10.197.30}.21" } }
   agent-2:
     <<: *node
     hostname: agent-2
     profiles: [trio]
     ports: ["${E2E_PORT_AGENT_2:-32234}:22"]
-    networks: { k3s: { ipv4_address: "${E2E_NET:-172.30.0}.22" } }
+    networks: { k3s: { ipv4_address: "${E2E_NET:-10.197.30}.22" } }
   registry:
     image: ${E2E_REGISTRY_IMAGE:-docker.io/library/registry:3}
     profiles: [duo, trio, ha]
     ports: ["${E2E_PORT_REGISTRY:-35010}:5000"]
-    networks: { k3s: { ipv4_address: "${E2E_NET:-172.30.0}.5" } }
+    networks: { k3s: { ipv4_address: "${E2E_NET:-10.197.30}.5" } }
   registry-auth:
     image: ${E2E_REGISTRY_IMAGE:-docker.io/library/registry:3}
     profiles: [duo, trio, ha]
@@ -82,7 +82,7 @@ services:
       REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
     volumes: ["../.cache/auth:/auth:ro"]
     ports: ["${E2E_PORT_REGISTRY_AUTH:-35011}:5000"]
-    networks: { k3s: { ipv4_address: "${E2E_NET:-172.30.0}.6" } }
+    networks: { k3s: { ipv4_address: "${E2E_NET:-10.197.30}.6" } }
   charts:
     image: ${E2E_NGINX_IMAGE:-docker.io/library/nginx:alpine}
     profiles: [duo, trio, ha]
@@ -91,12 +91,12 @@ services:
       - ../.cache/auth:/auth:ro
       - ./k3s-node/charts-nginx.conf:/etc/nginx/conf.d/default.conf:ro
     ports: ["${E2E_PORT_CHARTS:-35012}:8080"]
-    networks: { k3s: { ipv4_address: "${E2E_NET:-172.30.0}.7" } }
+    networks: { k3s: { ipv4_address: "${E2E_NET:-10.197.30}.7" } }
   outsider:
     image: ${E2E_NODE_IMAGE:-dockflow-e2e-k3s-node:local}
     profiles: [duo, trio, ha]
     entrypoint: ["sleep", "infinity"]
-    networks: { k3s: { ipv4_address: "${E2E_NET:-172.30.0}.99" } }
+    networks: { k3s: { ipv4_address: "${E2E_NET:-10.197.30}.99" } }
   # ACME test CA for the proxy lane (K49). Traefik points at it through proxy.acme_ca_server;
   # acme-dns (pebble-challtestsrv) answers the A query for the test domain with a node address, so
   # the HTTP-01 challenge lands on Traefik's own port 80. The certificate of Pebble's ACME API
@@ -106,20 +106,20 @@ services:
   acme:
     image: ${E2E_PEBBLE_IMAGE:-ghcr.io/letsencrypt/pebble:2.7.0}
     profiles: [duo, trio, ha]
-    command: ["-config", "/etc/pebble/pebble-config.json", "-dnsserver", "${E2E_NET:-172.30.0}.9:8053"]
+    command: ["-config", "/etc/pebble/pebble-config.json", "-dnsserver", "${E2E_NET:-10.197.30}.9:8053"]
     environment:
       PEBBLE_VA_NOSLEEP: "1"
     volumes: ["../fixtures/acme:/etc/pebble:ro"]
-    networks: { k3s: { ipv4_address: "${E2E_NET:-172.30.0}.8" } }
+    networks: { k3s: { ipv4_address: "${E2E_NET:-10.197.30}.8" } }
   acme-dns:
     image: ${E2E_PEBBLE_CHALLTESTSRV_IMAGE:-ghcr.io/letsencrypt/pebble-challtestsrv:2.7.0}
     profiles: [duo, trio, ha]
-    command: ["-http01", "", "-tlsalpn01", "", "-https01", "", "-defaultIPv4", "${E2E_NET:-172.30.0}.11"]
-    networks: { k3s: { ipv4_address: "${E2E_NET:-172.30.0}.9" } }
+    command: ["-http01", "", "-tlsalpn01", "", "-https01", "", "-defaultIPv4", "${E2E_NET:-10.197.30}.11"]
+    networks: { k3s: { ipv4_address: "${E2E_NET:-10.197.30}.9" } }
 
 networks:
   k3s:
     driver: bridge
     ipam:
       config:
-        - subnet: "${E2E_NET:-172.30.0}.0/24"
+        - subnet: "${E2E_NET:-10.197.30}.0/24"

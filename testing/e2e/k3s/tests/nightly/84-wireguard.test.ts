@@ -2,7 +2,7 @@
  * N-WG-01 (design-07 17.8): a cluster whose nodes only share a non-RFC1918 address
  * (198.51.100.0/24, TEST-NET-2) is "public" address mode (design-05 2.2), which forces the
  * `wireguard-native` flannel backend (D19) instead of `vxlan`. This needs a bridge network of its
- * own — the shared lanes' `172.30.0.0/24` is an RFC1918 range, so `servers.yml.private_host` on it
+ * own — the shared lanes' `/24` (10.197.30.0/24 by default) is an RFC1918 range, so `servers.yml.private_host` on it
  * would always read as "private" — so, unlike every other nightly file, this one does not reuse
  * `TOPOLOGIES.duo`/project `dockflow-k3s`; it builds its own topology on its own project and talks to
  * `helpers/k8s.ts` only through the plain `docker exec` plumbing below, since that module's assertion

@@ -9,7 +9,7 @@
  * compose files only.
  */
 
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { DEPLOY_USER, writeDockflowEnv, writeK3sDockflowEnv } from "./connection";
@@ -67,15 +67,34 @@ export function makeFixture(name: string, opts: FixtureOptions = {}): Fixture {
   const fixture = fixtureAt(dir);
 
   if (opts.cluster === "k3s") {
+    const topo = (): Topology =>
+      typeof opts.topology === "string" ? TOPOLOGIES[opts.topology] : (opts.topology ?? currentTopology());
+    substituteLaneNet(join(dir, ".dockflow"), () => topo().net);
     if (opts.topology !== undefined || !existsSync(join(dir, SERVERS_FILE))) {
-      const topo = typeof opts.topology === "string" ? TOPOLOGIES[opts.topology] : (opts.topology ?? currentTopology());
-      fixture.useNodes(topo, opts);
+      fixture.useNodes(topo(), opts);
     }
   } else {
     writeDockflowEnv(dir, opts.extraEnv);
   }
 
   return fixture;
+}
+
+/** Fixtures write `@E2E_NET@` where they need a lane address, since the lane subnet is configurable. */
+const LANE_NET_MARKER = "@E2E_NET@";
+
+/** `net` is only resolved when a file carries the marker: fixtures without it need no lane topology. */
+function substituteLaneNet(dir: string, net: () => string): void {
+  if (!existsSync(dir)) return;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      substituteLaneNet(full, net);
+    } else if (/\.(ya?ml|conf|json|env)$/.test(entry.name)) {
+      const text = readFileSync(full, "utf-8");
+      if (text.includes(LANE_NET_MARKER)) writeFileSync(full, text.replaceAll(LANE_NET_MARKER, net()));
+    }
+  }
 }
 
 function fixtureAt(dir: string): Fixture {

@@ -4,7 +4,7 @@
  * file. `nightly` provisions nothing itself (k3s/lanes.ts: `topology: null`), so this file is
  * responsible for its own cluster, exactly like a setup-lane file: it starts the shared lanes' own
  * `duo` topology (project `dockflow-k3s`) rather than a topology of its own, because the chart server
- * package-charts.ts baked at preload time already points at that project's fixed address (172.30.0.7).
+ * package-charts.ts baked at preload time already points at that project's fixed address (`<net>.7`).
  */
 
 import { afterAll, describe, expect, test } from "bun:test";
