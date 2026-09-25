@@ -1,0 +1,36 @@
+name: Kubernetes pins
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  pull_request:
+    paths:
+      - cli/src/services/orchestrator/kubernetes/versions.ts
+      - cli/src/services/orchestrator/kubernetes/k3s/versions.ts
+      - cli/scripts/pin-kubernetes.ts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version-file: .bun-version }
+      - run: cd cli && bun install --frozen-lockfile
+      - name: Re-download every pinned artifact and compare sha256
+        run: bun run cli/scripts/pin-kubernetes.ts --verify
+  updates:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version-file: .bun-version }
+      - run: cd cli && bun install --frozen-lockfile
+      - name: Report newer versions (no automatic PR; pins are reviewed, D2)
+        run: bun run cli/scripts/pin-kubernetes.ts --check-updates --markdown >> "$GITHUB_STEP_SUMMARY"

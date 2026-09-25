@@ -6,13 +6,16 @@ on:
       - '[0-9]+.[0-9]+.[0-9]+*'
   workflow_dispatch:
 
+concurrency:
+  group: publish-cli-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -21,7 +24,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version-file: .bun-version
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -38,7 +41,7 @@ jobs:
         run: |
           # Tag is already the version (2.0.0)
           VERSION=$GITHUB_REF_NAME
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "📦 Building CLI version: $VERSION"
 
       - name: Set version in package.json files
@@ -57,7 +60,7 @@ jobs:
       - name: Install CLI dependencies
         run: |
           cd cli
-          bun install
+          bun install --frozen-lockfile
 
       - name: Typecheck
         run: |
@@ -89,22 +92,61 @@ jobs:
           cd cli
           bun run scripts/build.ts
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - name: Checksums of the release binaries (K57 (c), design-05 F36)
+        run: |
+          cd cli/dist
+          sha256sum dockflow-* > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          grep -q ' dockflow-linux-x64$' SHA256SUMS && grep -q ' dockflow-linux-arm64$' SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
         with:
           name: dockflow-binaries-${{ steps.version.outputs.version }}
           path: cli/dist/*
+          retention-days: 7
+
+  # K67 (b): the release is gated on the same checks as main (coverage floor, generated docs
+  # region, message catalogue sync, Windows unit job, e2e harness typecheck/lint, MCP build and
+  # tests), not only on build's own typecheck/lint/unit tests. Runs in parallel with build.
+  checks:
+    uses: ./.github/workflows/cli-checks.yml
+    secrets: inherit
+
+  e2e:
+    needs: build
+    uses: ./.github/workflows/e2e-tests.yml
+    secrets: inherit
+    with:
+      suites: '["swarm","setup"]'
+      k3s_lanes: '["k3s-core","k3s-lifecycle","k3s-day2","k3s-multinode","k3s-proxy-helm","k3s-ha","k3s-setup"]'
+      binary_artifact: dockflow-binaries-${{ needs.build.outputs.version }}
+
+  release:
+    needs: [build, checks, e2e]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dockflow-binaries-${{ needs.build.outputs.version }}
+          path: cli/dist
+
+      - name: SHA256SUMS present and matching (release-blocking)
+        run: cd cli/dist && test -s SHA256SUMS && sha256sum -c SHA256SUMS
 
       - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          name: Dockflow ${{ steps.version.outputs.version }}
+          name: Dockflow ${{ needs.build.outputs.version }}
           tag_name: ${{ github.ref_name }}
           files: cli/dist/*
           generate_release_notes: true
           body: |
-            ## Dockflow ${{ steps.version.outputs.version }}
+            ## Dockflow ${{ needs.build.outputs.version }}
 
             ### Installation
 
@@ -142,18 +184,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # The setup suite runs the compiled binary, so it is the only one that can catch a
-  # packaging regression before the artifact reaches npm. swarm and k3s cover deployment
-  # behaviour and already run on every push to main.
-  e2e:
-    uses: ./.github/workflows/e2e-tests.yml
-    with:
-      suites: '["setup"]'
-
   publish-npm:
-    needs: [build, e2e]
-    runs-on: ubuntu-latest
+    needs: [build, release]
     if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 

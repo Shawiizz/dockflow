@@ -1,0 +1,196 @@
+name: E2E Nightly
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  properties:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version-file: .bun-version }
+      - run: cd cli && bun install --frozen-lockfile
+      - name: Long property runs
+        run: |
+          SEED=$(date -u +%Y%m%d)
+          echo "Property seed: $SEED" >> "$GITHUB_STEP_SUMMARY"
+          cd cli && DOCKFLOW_PROPERTY_RUNS=20000 DOCKFLOW_PROPERTY_SEED=$SEED bun test src/__tests__/kubernetes/property
+
+  arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [k3s-core, k3s-lifecycle]
+    env:
+      DOCKFLOW_E2E_LANE: ${{ matrix.lane }}
+      DOCKFLOW_E2E_NODE_IMAGE: dockflow-e2e-k3s-node:ci-arm64
+      DOCKFLOW_E2E_ARTIFACTS: ${{ github.workspace }}/testing/e2e/.artifacts
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare host kernel
+        run: |
+          sudo modprobe br_netfilter || true
+          sudo modprobe overlay || true
+          sudo modprobe wireguard || true
+          sudo sysctl -w fs.inotify.max_user_instances=1024 fs.inotify.max_user_watches=524288
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version-file: .bun-version }
+      - run: cd cli && bun install --frozen-lockfile
+      - run: bun run testing/e2e/k3s/tools/prepare-downloads.ts --arch arm64
+      - run: bun run testing/e2e/k3s/tools/prepare-images.ts --arch arm64
+      - run: bun run testing/e2e/k3s/tools/build-node-image.ts --arch arm64 --tag dockflow-e2e-k3s-node:ci-arm64
+      - name: Run lane
+        run: cd testing/e2e/k3s && bun run run.ts "${{ matrix.lane }}"
+      - name: Upload debug dumps
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-nightly-debug-arm64-${{ matrix.lane }}-${{ github.run_attempt }}
+          path: testing/e2e/.artifacts
+          retention-days: 7
+      - name: Teardown
+        if: always()
+        run: bun run testing/e2e/teardown.ts || true
+
+  compat:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        k3s: [minimum, latest]
+    env:
+      DOCKFLOW_E2E_NODE_IMAGE: dockflow-e2e-k3s-node:ci-compat
+      DOCKFLOW_E2E_ARTIFACTS: ${{ github.workspace }}/testing/e2e/.artifacts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version-file: .bun-version }
+      - run: cd cli && bun install --frozen-lockfile
+      - name: Re-pin k3s in the workspace (never committed)
+        run: |
+          VERSION=$(bun run cli/scripts/pin-kubernetes.ts --resolve-channel ${{ matrix.k3s }})
+          bun run cli/scripts/pin-kubernetes.ts --k3s "$VERSION" --no-docs
+          echo "Testing k3s $VERSION" >> "$GITHUB_STEP_SUMMARY"
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - name: Prepare host kernel
+        run: |
+          sudo modprobe br_netfilter || true
+          sudo modprobe overlay || true
+          sudo modprobe wireguard || true
+          sudo sysctl -w fs.inotify.max_user_instances=1024 fs.inotify.max_user_watches=524288
+      - run: bun run testing/e2e/k3s/tools/prepare-downloads.ts --arch amd64
+      - run: bun run testing/e2e/k3s/tools/prepare-images.ts --arch amd64
+      - run: bun run testing/e2e/k3s/tools/build-node-image.ts --arch amd64 --tag dockflow-e2e-k3s-node:ci-compat
+      - name: Run lane k3s-core
+        env:
+          DOCKFLOW_E2E_LANE: k3s-core
+        run: cd testing/e2e/k3s && bun run run.ts k3s-core
+      - name: Run lane k3s-lifecycle
+        env:
+          DOCKFLOW_E2E_LANE: k3s-lifecycle
+        run: cd testing/e2e/k3s && bun run run.ts k3s-lifecycle
+      - name: Upload debug dumps
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-nightly-debug-compat-${{ matrix.k3s }}-${{ github.run_attempt }}
+          path: testing/e2e/.artifacts
+          retention-days: 7
+      - name: Teardown
+        if: always()
+        run: bun run testing/e2e/teardown.ts || true
+
+  extended-node-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version-file: .bun-version }
+      - run: cd cli && bun install --frozen-lockfile
+      - name: Cache pinned downloads
+        uses: actions/cache@v4
+        with:
+          path: testing/e2e/.cache/downloads
+          key: e2e-downloads-amd64-${{ hashFiles('cli/src/services/orchestrator/kubernetes/k3s/versions.ts', 'cli/src/services/orchestrator/kubernetes/versions.ts') }}
+      - run: bun run testing/e2e/k3s/tools/prepare-downloads.ts --arch amd64
+      - run: bun run testing/e2e/k3s/tools/prepare-images.ts --arch amd64 --nightly
+      - run: bun run testing/e2e/k3s/tools/build-node-image.ts --arch amd64 --tag dockflow-e2e-k3s-node:ci-nightly --nightly --save testing/e2e/.cache/node-image.tar.zst
+      - uses: actions/upload-artifact@v4
+        with:
+          name: e2e-k3s-nightly-node-image
+          path: testing/e2e/.cache/node-image.tar.zst
+          retention-days: 1
+          compression-level: 0
+
+  extended:
+    name: E2E nightly (${{ matrix.file }})
+    needs: extended-node-image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        file: [81-online-sources, 82-offline-canary, 83-backup-extended, 84-wireguard, 85-soak]
+    env:
+      DOCKFLOW_E2E_NODE_IMAGE: dockflow-e2e-k3s-node:ci-nightly
+      DOCKFLOW_E2E_ARTIFACTS: ${{ github.workspace }}/testing/e2e/.artifacts
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - name: Prepare host kernel
+        run: |
+          sudo modprobe br_netfilter || true
+          sudo modprobe overlay || true
+          sudo modprobe wireguard || true
+          sudo sysctl -w fs.inotify.max_user_instances=1024 fs.inotify.max_user_watches=524288
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version-file: .bun-version }
+      - run: cd cli && bun install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: e2e-k3s-nightly-node-image
+          path: testing/e2e/.cache
+      - run: zstd -dc testing/e2e/.cache/node-image.tar.zst | docker load
+      - name: Run file
+        run: cd testing/e2e/k3s && bun run run.ts nightly --file "${{ matrix.file }}"
+      - name: Upload debug dumps
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-nightly-debug-${{ matrix.file }}-${{ github.run_attempt }}
+          path: testing/e2e/.artifacts
+          retention-days: 7
+      - name: Teardown
+        if: always()
+        run: bun run testing/e2e/teardown.ts || true
+
+  report:
+    needs: [properties, arm64, compat, extended]
+    if: failure()
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          NUMBER=$(gh issue list -R "${{ github.repository }}" --state open --search "Nightly e2e failure in:title" --json number -q '.[0].number')
+          if [ -n "$NUMBER" ]; then gh issue comment "$NUMBER" -R "${{ github.repository }}" --body "Failed again: $URL";
+          else gh issue create -R "${{ github.repository }}" --title "Nightly e2e failure" --body "First failure: $URL"; fi

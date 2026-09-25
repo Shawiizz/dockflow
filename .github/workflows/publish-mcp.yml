@@ -34,7 +34,7 @@ jobs:
             # Strip "mcp-" prefix from tag (mcp-1.0.2 → 1.0.2)
             VERSION="${GITHUB_REF_NAME#mcp-}"
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Publishing MCP server v$VERSION"
 
       - name: Install dependencies
@@ -42,6 +42,9 @@ jobs:
 
       - name: Build
         run: cd packages/mcp-server && npm run build
+
+      - name: Typecheck and test
+        run: cd packages/mcp-server && npm run typecheck:test && npm test
 
       - name: Set version
         run: cd packages/mcp-server && npm version ${{ steps.version.outputs.version }} --no-git-tag-version --allow-same-version
