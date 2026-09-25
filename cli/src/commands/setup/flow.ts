@@ -94,7 +94,10 @@ async function runNodeOperationLocally(plan: K3sNodePlan): Promise<NodeStepResul
     await runK3sNodeStep(Readable.from([JSON.stringify(plan)]), { runner: localHostRunner, clock: systemClock });
   } finally {
     process.stdout.write = originalWrite;
-    process.exitCode = previousExitCode;
+    // Bun leaves process.exitCode unchanged when assigned `undefined` once it already holds a
+    // number, so `undefined` can't stand for "no exit code" here: a stale non-zero previousExitCode
+    // would otherwise get faithfully restored over a step that just reported success.
+    process.exitCode = previousExitCode ?? 0;
   }
   const line = lines.find((entry) => entry.includes('dockflowNodeResult'));
   if (line === undefined) {

@@ -68,7 +68,9 @@ async function run(text: string, runner: FakeHostRunner): Promise<{ lines: unkno
       exitCode: process.exitCode,
     };
   } finally {
-    process.exitCode = previousExit;
+    // Bun (confirmed on 1.3.5) leaves process.exitCode unchanged when assigned `undefined` once it
+    // already holds a number, so `undefined` is unusable as the "restore to no exit code" sentinel.
+    process.exitCode = previousExit ?? 0;
     raw.mockRestore();
     err.mockRestore();
   }

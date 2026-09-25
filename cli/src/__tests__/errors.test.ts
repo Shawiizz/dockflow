@@ -107,7 +107,9 @@ describe('withErrorHandler', () => {
   });
 
   afterEach(() => {
-    process.exitCode = savedExitCode;
+    // Bun 1.3.5 treats `process.exitCode = undefined` as a no-op, so a bare restore
+    // leaves a stale non-zero code from the test below in place; 0 is the only safe reset.
+    process.exitCode = savedExitCode ?? 0;
   });
 
   it('passes an ExecExitError through as process.exitCode and returns normally', async () => {

@@ -118,7 +118,8 @@ describe('displayDeployDryRun — U-FLOW-07', () => {
     expect(recorded.dim.some((m) => m.includes('Fix the compose file'))).toBe(true);
     expect(process.exitCode).toBe(ErrorCode.VALIDATION_FAILED);
     expect(orchestrator.events).not.toContain('cluster.probe');
-    process.exitCode = previousExitCode;
+    // assigning `undefined` is a no-op on this Bun version, so fall back to 0
+    process.exitCode = previousExitCode ?? 0;
   });
 
   describe('--render', () => {
