@@ -6,7 +6,8 @@
 services:
   args:
     image: busybox:1.37
-    command: ["sh", "-c", "printf '%s|' \"$0\" \"$1\" \"$2\"; sleep 36000", "a b", "$$(HOME)", "010"]
+    # the echo ends the line: the runtime logs a line only once it is complete
+    command: ["sh", "-c", "printf '%s|' \"$0\" \"$1\" \"$2\"; echo; sleep 36000", "a b", "$$(HOME)", "010"]
 
   secure:
     image: busybox:1.37

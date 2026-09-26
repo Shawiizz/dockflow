@@ -109,7 +109,8 @@ describe("E-32 compose coverage", () => {
       expect(secure?.spec.template.spec.terminationGracePeriodSeconds).toBe(3);
       expect(secure?.spec.template.spec.hostname).toBe("coverage-host");
       const hosts = await runCLI(["exec", "e2e", "secure", "--", "cat", "/etc/hosts"], { cwd: fixture.dir, timeoutMs: 30_000 });
-      expect(hosts.stdout).toContain("10.9.9.9 legacy.internal");
+      // the kubelet separates hostAliases entries with a tab
+      expect(hosts.stdout).toMatch(/^10\.9\.9\.9\s+legacy\.internal$/m);
       const resolv = await runCLI(["exec", "e2e", "secure", "--", "cat", "/etc/resolv.conf"], { cwd: fixture.dir, timeoutMs: 30_000 });
       expect(resolv.stdout).toMatch(/search[^\n]*example\.internal/);
     });
@@ -193,26 +194,37 @@ describe("E-32 compose coverage", () => {
 
   test("E-32-10b: a failing replicated-job is re-run, not silently skipped, on the next unchanged deploy", async () => {
     await withDump("E-32-10b", async () => {
+      // A Job new in a failed version is removed by the revert; a failed run of the changed Job of a
+      // service the previous release had cannot be undone, so it stays in place for the next deploy.
       fixture.patchCompose((text) =>
         text.replace(
           "# JOBCRASH_INSERT_POINT",
-          ['  jobcrash:', '    image: busybox:1.37', '    command: ["sh", "-c", "exit 1"]', '    restart: "no"', "    deploy:", "      mode: replicated-job"].join(
+          ['  jobcrash:', '    image: busybox:1.37', '    command: ["sh", "-c", "exit 0"]', '    restart: "no"', "    deploy:", "      mode: replicated-job"].join(
             "\n",
           ),
         ),
       );
+      const passing = await deploy(fixture, "1.0.3");
+      expect(passing.exitCode).toBe(0);
 
-      const first = await deploy(fixture, "1.0.3");
+      fixture.patchCompose((text) => text.replace('command: ["sh", "-c", "exit 0"]', 'command: ["sh", "-c", "exit 1"]'));
+      const first = await deploy(fixture, "1.0.4");
       expect(first.exitCode).not.toBe(0);
-      const [firstJob] = await getJson<Job>("jobs.batch", { ns: NS, selector: `${LABELS.service}=jobcrash` });
-      const firstUid = firstJob?.metadata.uid;
-      expect(firstJob?.status?.failed).toBeGreaterThan(0);
+      const failed = await waitFor(
+        async () => {
+          const jobs = await getJson<Job>("jobs.batch", { ns: NS, selector: `${LABELS.service}=jobcrash` });
+          return jobs.find((job) => (job.status?.failed ?? 0) > 0);
+        },
+        { timeoutMs: 60_000, describe: "jobcrash's failed Job to stay in place" },
+      );
 
       // Same content: the redeploy must delete-and-recreate (not silently reuse) the failed Job.
-      const second = await deploy(fixture, "1.0.4");
+      const second = await deploy(fixture, "1.0.5");
       expect(second.stdout + second.stderr).toContain("failed in a previous deploy and is run again");
-      const [secondJob] = await getJson<Job>("jobs.batch", { ns: NS, selector: `${LABELS.service}=jobcrash` });
-      expect(secondJob?.metadata.uid).not.toBe(firstUid);
+      const jobs = await getJson<Job>("jobs.batch", { ns: NS, selector: `${LABELS.service}=jobcrash` });
+      const rerun = jobs.find((job) => job.metadata.name === failed.metadata.name);
+      expect(rerun).toBeDefined();
+      expect(rerun?.metadata.uid).not.toBe(failed.metadata.uid);
     });
   });
 
@@ -274,12 +286,16 @@ describe("E-32 compose coverage", () => {
     });
   });
 
-  test("E-32-16: a network alias resolves to the aliased Service's ClusterIP", async () => {
+  test("E-32-16: a network alias is a Service of its own in front of the aliased pods", async () => {
     await withDump("E-32-16", async () => {
       const [aliased] = await getJson<Service>("services", { ns: NS, name: "aliased" });
-      const result = await runCLI(["exec", "e2e", "args", "--", "getent", "hosts", "legacy-name"], { cwd: fixture.dir, timeoutMs: 30_000 });
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain(aliased?.spec.clusterIP ?? "\0no-cluster-ip\0");
+      const [alias] = await getJson<Service>("services", { ns: NS, name: "legacy-name" });
+      expect(alias?.spec.selector).toEqual(aliased?.spec.selector);
+      // busybox has no getent; its nslookup does not apply the search list
+      const lookup = await runCLI(["exec", "e2e", "args", "--", "nslookup", `legacy-name.${NS}.svc.cluster.local`], { cwd: fixture.dir, timeoutMs: 30_000 });
+      expect(lookup.stdout).toContain(alias?.spec.clusterIP ?? "\0no-cluster-ip\0");
+      const page = await runCLI(["exec", "e2e", "args", "--", "wget", "-qO-", "http://legacy-name/"], { cwd: fixture.dir, timeoutMs: 30_000 });
+      expect(page.exitCode).toBe(0);
     });
   });
 
@@ -325,9 +341,9 @@ describe("E-32 compose coverage", () => {
   test("E-32-20: an invalid label and a logging key each warn exactly once", async () => {
     await withDump("E-32-20", async () => {
       const rendered = await runCLI(["deploy", "e2e", "1.0.4", "--dry-run", "--render"], { cwd: fixture.dir, timeoutMs: 60_000 });
-      const out = rendered.stdout + rendered.stderr;
-      const labelWarnings = (out.match(/labels\.invalid-key/g) ?? []).length;
-      const loggingWarnings = (out.match(/\blogging\b/g) ?? []).length;
+      const lines = `${rendered.stdout}\n${rendered.stderr}`.split(/\r?\n/);
+      const labelWarnings = lines.filter((line) => line.includes("is not a valid Kubernetes annotation key")).length;
+      const loggingWarnings = lines.filter((line) => line.includes("logging is ignored")).length;
       expect(labelWarnings).toBe(1);
       expect(loggingWarnings).toBe(1);
     });
