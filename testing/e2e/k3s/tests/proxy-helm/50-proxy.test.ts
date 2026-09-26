@@ -287,10 +287,9 @@ describe("50-proxy", () => {
     test("E-50-07b: a Traefik restart keeps the same certificate", async () => {
       await withDump("E-50-07b", async () => {
         const rootPath = await pebbleRoot();
-        const before = await nodeExec(
-          "server_1",
-          `curl -s --cacert ${rootPath} https://${DOMAIN}/ -o /dev/null -w '%{certs}' 2>/dev/null; echo | openssl s_client -connect 127.0.0.1:443 -servername ${DOMAIN} 2>/dev/null | openssl x509 -noout -serial`,
-        );
+        const serialOfServed = `echo | openssl s_client -connect 127.0.0.1:443 -servername ${DOMAIN} 2>/dev/null | openssl x509 -noout -serial`;
+        const before = await nodeExec("server_1", serialOfServed);
+        expect(before.stdout.trim()).toMatch(/^serial=[0-9A-F]+$/);
         await kubectl(["rollout", "restart", `deployment/${K8S_PROXY_RELEASE}`, "-n", K8S_SYSTEM_NAMESPACE]);
         await kubectl(["rollout", "status", `deployment/${K8S_PROXY_RELEASE}`, "-n", K8S_SYSTEM_NAMESPACE, "--timeout=120s"]);
         await waitFor(
@@ -300,10 +299,7 @@ describe("50-proxy", () => {
           },
           { timeoutMs: 60_000, describe: "Traefik to serve again after the restart" },
         );
-        const after = await nodeExec(
-          "server_1",
-          `echo | openssl s_client -connect 127.0.0.1:443 -servername ${DOMAIN} 2>/dev/null | openssl x509 -noout -serial`,
-        );
+        const after = await nodeExec("server_1", serialOfServed);
         expect(after.stdout.trim()).toBe(before.stdout.trim());
       });
     }, 150_000);
