@@ -2,3 +2,4 @@
 # anywhere under this project, so `services/compose.ts` finds no compose file and deploy.ts's
 # Helm-only path is the one under test. The test file rewrites `helm.releases[]` with `fixture.write`.
 project_name: "helmonly"
+orchestrator: k3s

@@ -2,6 +2,7 @@
 # file with `fixture.write` as the scenario moves through later rows (dashboard, ACME, host-port
 # conflicts, ...); this checked-in copy is only the starting state a fresh checkout shows.
 project_name: "shop"
+orchestrator: k3s
 
 proxy:
   enabled: true

@@ -3,3 +3,4 @@
 # their chain adds, changes and removes `helm.releases[]` entries; this checked-in copy is only the
 # starting state a fresh checkout shows.
 project_name: "helmapp"
+orchestrator: k3s

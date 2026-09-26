@@ -1,4 +1,5 @@
 project_name: "k3s-multi"
+orchestrator: k3s
 
 stack_management:
   keep_releases: 4
