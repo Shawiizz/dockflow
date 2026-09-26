@@ -122,6 +122,13 @@ ghcr.io/your-org/my-app:production  # additional tag ({env} replaced)
 
 Available variables: `{version}`, `{env}`, `{branch}`, `{sha}`
 
+## How Images Are Pushed
+
+Images are built and pushed from the machine that runs `dockflow deploy` (your laptop or the CI
+runner). When `username` is set, Dockflow first runs `docker login` there (`podman login` with
+Podman), the password or token on stdin; without a username the registry is pushed to
+anonymously. A wrong password stops the deploy at that login, before anything reaches a server.
+
 ## How Nodes Pull From a Private Registry
 
 <Tabs items={['Swarm', 'k3s']}>
@@ -140,8 +147,9 @@ Available variables: `{version}`, `{env}`, `{branch}`, `{sha}`
 
 ## Troubleshooting
 
-**Authentication failed**: Test credentials manually with `docker login` (Swarm) — on k3s, check that
-`username`/`password` or `token` resolve to real values with `dockflow validate <env>`.
+**Authentication failed**: Test the same credentials with `docker login <url>` on the machine that
+deploys, and check that `username`/`password` or `token` resolve to real values with
+`dockflow validate <env>`.
 
 **Push denied**: Verify write access to the namespace.
 

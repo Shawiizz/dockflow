@@ -154,7 +154,7 @@ export interface ImageDelivery {
  *
  *     registryMode(config) = config.registry?.enabled === true
  *                         && !!config.registry.url
- *                         && !!config.registry.password
+ *                         && !!(config.registry.password || config.registry.token)
  *
  * A config with the URL set and the password missing (credentials are usually injected from CI
  * secrets) falls back to import; a user who wants registry mode without credentials gets a config

@@ -91,8 +91,10 @@ export function resolveImageDelivery(config: DockflowConfig, compose: ParsedComp
 /** Said once per deploy (and as a validate diagnostic): the fallback is deliberate, not silent. */
 export function warnRegistryWithoutPassword(config: DockflowConfig): void {
   const r = config.registry;
-  if (r?.enabled === true && !!r.url && !r.password) {
-    printWarning(`Registry ${r.url} is enabled but registry.password is not set; built images are distributed over SSH instead of pushed`);
+  if (r?.enabled === true && !!r.url && !Compose.registryPassword(config)) {
+    printWarning(
+      `Registry ${r.url} is enabled but neither registry.password nor registry.token is set; built images are distributed over SSH instead of pushed`,
+    );
   }
 }
 
@@ -103,7 +105,7 @@ export function warnRegistryWithoutPassword(config: DockflowConfig): void {
 export async function ensureRegistryAccess(ctx: DeployContext, appRef: StackRef): Promise<string | null> {
   if (!Compose.usesRegistry(ctx.config)) return null;
   const r = ctx.config.registry!;
-  return ctx.orchestrator.images.ensurePullSecret(appRef, { server: r.url!, username: r.username ?? '', password: r.password! });
+  return ctx.orchestrator.images.ensurePullSecret(appRef, { server: r.url!, username: r.username ?? '', password: Compose.registryPassword(ctx.config)! });
 }
 
 // ---------------------------------------------------------------------------
@@ -116,9 +118,10 @@ export interface BuildResult {
   delivery: ImageDelivery;
 }
 
+/** The push runs here, so the login does too; nodes pull through ensureRegistryAccess. */
 async function pushBuiltImages(ctx: DeployContext, images: string[], engine: ContainerRuntime): Promise<void> {
   const r = ctx.config.registry!;
-  await Distribution.registryLogin(ctx.target.controlPlane.connection, { url: r.url!, username: r.username, password: r.password! }, engine);
+  await Distribution.registryLoginLocal({ url: r.url!, username: r.username, password: Compose.registryPassword(ctx.config)! }, engine);
   await Distribution.pushImages(
     images,
     r.additional_tags?.length ? { tags: r.additional_tags, env: ctx.env, version: ctx.deployVersion, branch: ctx.branchName } : undefined,

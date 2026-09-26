@@ -6,6 +6,7 @@ import {
   loadFromString,
   serialize,
   updateImageTags,
+  registryPassword,
   usesRegistry,
   injectSwarmDefaults,
   stripBuildSections,
@@ -662,6 +663,13 @@ describe('usesRegistry', () => {
     expect(usesRegistry(withRegistry({ type: 'custom', enabled: false, url: 'registry.example.com', password: 'p' }))).toBe(false);
     expect(usesRegistry(withRegistry({ type: 'custom', url: 'registry.example.com', password: 'p' }))).toBe(false);
     expect(usesRegistry(withRegistry(undefined))).toBe(false);
+  });
+
+  it('accepts registry.token in place of the password (the GHCR and GitLab examples)', () => {
+    expect(usesRegistry(withRegistry({ type: 'ghcr', enabled: true, url: 'ghcr.io', username: 'ci', token: 't' }))).toBe(true);
+    expect(registryPassword(withRegistry({ type: 'ghcr', enabled: true, url: 'ghcr.io', token: 't' }))).toBe('t');
+    expect(registryPassword(withRegistry({ type: 'custom', enabled: true, url: 'r.example.com', password: 'p', token: 't' }))).toBe('p');
+    expect(registryPassword(withRegistry({ type: 'custom', enabled: true, url: 'r.example.com', password: '' }))).toBeUndefined();
   });
 });
 

@@ -475,12 +475,26 @@ export async function registryLoginOn<T extends DistributionTarget>(
   printDebug('Registry login successful');
 }
 
-export async function registryLogin(
-  connection: SSHKeyConnection,
-  config: RegistryLogin,
-  engine: ContainerRuntime = 'docker',
-): Promise<void> {
-  await registryLoginOn(sshTransferTransport, { name: connection.host, connection }, config, engine);
+/**
+ * `<engine> login` on this machine, which is the one that pushes, the password on stdin. Without a
+ * username, which `login --password-stdin` requires, the registry is pushed to anonymously.
+ */
+export async function registryLoginLocal(config: RegistryLogin, engine: ContainerRuntime = 'docker'): Promise<void> {
+  if (!config.username) return;
+  printDebug('Logging in to container registry...');
+  const proc = Bun.spawn([engine, 'login', config.url, '-u', config.username, '--password-stdin'], {
+    stdin: new Response(config.password).body!,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+  if (exitCode !== 0) {
+    throw new DeployError(
+      `Registry login to ${config.url} failed: ${firstTextLine(stderr) || firstTextLine(stdout) || `exit ${exitCode}`}`,
+      ErrorCode.DEPLOY_FAILED,
+      'Check registry.username and registry.password (or registry.token).',
+    );
+  }
 }
 
 async function pushSingleImage(

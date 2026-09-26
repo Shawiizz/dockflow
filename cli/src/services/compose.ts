@@ -808,14 +808,19 @@ export function serialize(compose: ParsedCompose): string {
 // Image tags
 // ---------------------------------------------------------------------------
 
+/** `registry.password`, or `registry.token`, which the GHCR and GitLab examples use instead. */
+export function registryPassword(config: DockflowConfig): string | undefined {
+  return config.registry?.password || config.registry?.token || undefined;
+}
+
 /**
  * Whether built images are pushed to the registry and pulled from it: enabled, with a URL AND a
- * password. The one registry predicate: the delivery mode, the push, the pull secret and the
- * image references must agree, or pods reference images nothing pushed.
+ * password (or token). The one registry predicate: the delivery mode, the push, the pull secret
+ * and the image references must agree, or pods reference images nothing pushed.
  */
 export function usesRegistry(config: DockflowConfig): boolean {
   const registry = config.registry;
-  return registry?.enabled === true && !!registry.url && !!registry.password;
+  return registry?.enabled === true && !!registry.url && !!registryPassword(config);
 }
 
 /**

@@ -90,8 +90,15 @@ describe('warnRegistryWithoutPassword', () => {
   it('enabled + url, no password -> warns once, naming the URL', () => {
     warnRegistryWithoutPassword(config({ registry: registry({ password: undefined }) }));
     expect(warnings).toEqual([
-      'Registry registry.example.com is enabled but registry.password is not set; built images are distributed over SSH instead of pushed',
+      'Registry registry.example.com is enabled but neither registry.password nor registry.token is set; built images are distributed over SSH instead of pushed',
     ]);
+  });
+
+  it('a token instead of the password -> silent, and registry mode', () => {
+    const cfg = config({ registry: registry({ password: undefined, token: 'ghp_token' }) });
+    warnRegistryWithoutPassword(cfg);
+    expect(warnings).toEqual([]);
+    expect(resolveImageDelivery(cfg, parsedCompose(BUILT_SERVICE)).mode).toBe('registry');
   });
 
   it('credentials complete -> silent', () => {

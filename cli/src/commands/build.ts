@@ -184,21 +184,9 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
   }
 
   // Push to registry if requested
-  if (options.push && config.registry?.enabled && config.registry.url && config.registry.password) {
+  if (options.push && config.registry && Compose.usesRegistry(config)) {
     printDim('Pushing images to registry...');
-    // Login locally for push
-    const proc = Bun.spawn(
-      ['docker', 'login', config.registry.url, '-u', config.registry.username || '', '--password-stdin'],
-      { stdin: new Response(config.registry.password).body!, stdout: 'pipe', stderr: 'pipe' },
-    );
-    const exitCode = await proc.exited;
-    if (exitCode !== 0) {
-      const stderr = await new Response(proc.stderr).text();
-      throw new ConfigError(
-        `Docker registry login failed (exit ${exitCode})${stderr ? ': ' + stderr.trim() : ''}`,
-        'Check your registry credentials in config.yml (registry.username, registry.password).',
-      );
-    }
+    await Distribution.registryLoginLocal({ url: config.registry.url!, username: config.registry.username, password: Compose.registryPassword(config)! });
     await Distribution.pushImages(result.images, config.registry.additional_tags?.length ? {
       tags: config.registry.additional_tags,
       env,
