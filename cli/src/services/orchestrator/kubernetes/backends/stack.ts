@@ -835,6 +835,8 @@ export class KubernetesStackBackend implements StackBackend {
     const currentRelease = namespaceObject
       ? await this.releases.currentVersion(`${ref.project}-${ref.env}`).catch(() => null)
       : null;
+    // this process rendered nothing: what logs and descriptions must never print is learned here
+    if (namespaceObject) await this.learnLiveSecrets(ns);
 
     const inventoryResult = await toResult(async () => (await this.inventory.read(ns)).primary);
     const revisions = inventoryResult.success ? await inventoryResult.data.revisions(null).catch(() => null) : null;
@@ -883,6 +885,16 @@ export class KubernetesStackBackend implements StackBackend {
       redactor: this.redactor,
     };
     return buildDiagnosticReport(input, now);
+  }
+
+  /** Teaches the Redactor the Dockflow Secrets live in `ns`, both roles; best effort, the report prints anyway. */
+  private async learnLiveSecrets(ns: string): Promise<void> {
+    try {
+      const secrets = await this.kubectl.getJson<ManifestObject>(['secrets'], { namespace: ns, selector: `${LABELS.hashed}=true` });
+      this.redactor.add(secretValuesOf(secrets));
+    } catch (error) {
+      printDebug(`Secret values could not be read for redaction: ${errorText(error)}`);
+    }
   }
 
   private async warningEvents(ns: string): Promise<Event[]> {

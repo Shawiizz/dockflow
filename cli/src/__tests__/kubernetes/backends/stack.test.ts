@@ -26,7 +26,7 @@ import { FakeClock } from '../fakes/fake-clock';
 import { FakeCluster, type KubeObject } from '../fakes/fake-cluster';
 import { fakeNode, FakeKubeExecutor } from '../fakes/fake-kube-executor';
 import { FakeHelmExecutor } from '../fakes/fake-helm-executor';
-import { FakeNodeShell } from '../fakes/fake-node-shell';
+import { FakeNodeShell, type NodeShellStep } from '../fakes/fake-node-shell';
 import { assertExecutorInvariants } from '../support/invariants';
 
 const PROJECT = 'shop';
@@ -56,6 +56,7 @@ interface HarnessOptions {
   script?: { strict: true };
   proxy?: KubernetesStackBackendOptions['proxy'];
   helmAuth?: KubernetesStackBackendOptions['helmAuth'];
+  nodeShell?: NodeShellStep[];
 }
 
 function harness(options: HarnessOptions = {}): Harness {
@@ -65,7 +66,7 @@ function harness(options: HarnessOptions = {}): Harness {
   const kube = options.script
     ? new FakeKubeExecutor({ redactor, clock, order: 'strict' })
     : new FakeKubeExecutor({ redactor, cluster, clock });
-  const nodeShell = new FakeNodeShell([], { redactor, interpretFileCommands: true });
+  const nodeShell = new FakeNodeShell(options.nodeShell ?? [], { redactor, interpretFileCommands: true });
   const helmExec = new FakeHelmExecutor({ redactor, node: kube.node, nodeShell, clock });
   const releases = new FakeReleaseStore();
   const preflightCalls: { routes: boolean; volumes: boolean; helm: boolean }[] = [];
@@ -290,6 +291,32 @@ describe('render', () => {
       secrets: { tls_key: { file: 'tls.key' } },
     };
     h.backend.render(input({ compose, files: fileResolver({ 'tls.key': 'key-material-5b7d' }) }));
+    expect(h.redactor.redact('token tok-9f3a1c2e77, key key-material-5b7d')).toBe('token ***, key ***');
+    expect(h.redactor.redact(`namespace ${NS}`)).toBe(`namespace ${NS}`);
+  });
+});
+
+describe('diagnose', () => {
+  it('teaches a fresh process the live Dockflow Secrets before printing logs or descriptions', async () => {
+    // the host facts of the report (disk and memory reads) are not what this row checks
+    const h = harness({ nodeShell: [{ id: 'host-facts', script: () => true, kind: 'run', times: 'any', optional: true, respond: { exitCode: 0, stdout: '' } }] });
+    const b64 = (value: string) => Buffer.from(value).toString('base64');
+    h.cluster.seed({ apiVersion: 'v1', kind: 'Namespace', metadata: { name: NS } });
+    h.cluster.seed({
+      apiVersion: 'v1',
+      kind: 'Secret',
+      metadata: { name: 'web-env-5e6f7a8b', namespace: NS, labels: { [LABELS.hashed]: 'true', [LABELS.service]: 'web' } },
+      data: { API_TOKEN: b64('tok-9f3a1c2e77'), NODE_ENV: b64('production') },
+    });
+    h.cluster.seed({
+      apiVersion: 'v1',
+      kind: 'Secret',
+      metadata: { name: 'tls-key-1a2b3c4d', namespace: NS, labels: { [LABELS.hashed]: 'true' } },
+      data: { tls_key: b64('key-material-5b7d') },
+    });
+
+    await h.backend.diagnose({ project: PROJECT, env: ENV, role: 'app' }, { verbose: false });
+
     expect(h.redactor.redact('token tok-9f3a1c2e77, key key-material-5b7d')).toBe('token ***, key ***');
     expect(h.redactor.redact(`namespace ${NS}`)).toBe(`namespace ${NS}`);
   });
