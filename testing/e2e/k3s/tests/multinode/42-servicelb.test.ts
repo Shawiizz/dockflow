@@ -11,7 +11,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { runCLI } from "../../../helpers/cli";
 import { curlFrom, deleteStackCompletely, nsFor } from "../../../helpers/k8s";
 import { dumpDebug } from "../../../helpers/debug-dump";
-import { type Fixture, makeFixture } from "../../../helpers/fixtures";
+import type { Fixture } from "../../../helpers/fixtures";
+import { multinodeFixture } from "./fixture";
 import { currentTopology, nodeFor } from "../../../helpers/topology";
 
 const ENV = "e2e";
@@ -34,7 +35,7 @@ describe("ServiceLB", () => {
 
   test("a published port reaches every node through ServiceLB", async () => {
     await withDump("reaches every node", async () => {
-      fixture = makeFixture("test-app-k3s-multinode", { cluster: "k3s" });
+      fixture = await multinodeFixture();
       const result = await runCLI(["deploy", ENV, "1.0.0", "--only", "lb1", "--yes"], { cwd: fixture.dir, timeoutMs: 180_000 });
       expect(result.exitCode).toBe(0);
 
@@ -64,7 +65,7 @@ describe("ServiceLB", () => {
 
   test("publishing the SSH host port is refused at render time", async () => {
     await withDump("22:80 refused", async () => {
-      const bad = makeFixture("test-app-k3s-multinode", { cluster: "k3s" });
+      const bad = await multinodeFixture();
       try {
         bad.patchCompose((text) =>
           text.replace(
@@ -113,7 +114,7 @@ describe("ServiceLB", () => {
 
   test("two projects publishing the same port collide only at convergence (LoadBalancerPending)", async () => {
     await withDump("cross-project port collision", async () => {
-      const second = makeFixture("test-app-k3s-multinode", { cluster: "k3s" });
+      const second = await multinodeFixture();
       try {
         second.write(
           ".dockflow/config.yml",
@@ -143,7 +144,7 @@ describe("ServiceLB", () => {
 
   test("the same collision against a Dockflow-owned Traefik is refused at render time", async () => {
     await withDump("traefik port collision", async () => {
-      const owner = makeFixture("test-app-k3s-multinode", { cluster: "k3s" });
+      const owner = await multinodeFixture();
       try {
         owner.write(
           ".dockflow/config.yml",

@@ -10,7 +10,8 @@ import { importedImageRef } from "../../../../../cli/src/services/orchestrator/k
 import type { Event } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/core";
 import { runCLI } from "../../../helpers/cli";
 import { dumpDebug } from "../../../helpers/debug-dump";
-import { type Fixture, makeFixture } from "../../../helpers/fixtures";
+import type { Fixture } from "../../../helpers/fixtures";
+import { multinodeFixture } from "./fixture";
 import { getJson, imagesOnNode, nodeExec, nsFor, podsForService, waitWorkloadReady } from "../../../helpers/k8s";
 import { currentTopology } from "../../../helpers/topology";
 
@@ -39,7 +40,7 @@ describe("image distribution", () => {
 
   test("a built image reaches every trio node, pinned", async () => {
     await withDump("distributes to every node", async () => {
-      fixture = makeFixture("test-app-k3s-multinode", { cluster: "k3s" });
+      fixture = await multinodeFixture();
       const result = await runCLI(["deploy", ENV, "1.0.0", "--only", "web", "--yes"], { cwd: fixture.dir, timeoutMs: 240_000 });
       expect(result.exitCode).toBe(0);
 

@@ -9,7 +9,8 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { runCLI } from "../../../helpers/cli";
 import { dumpDebug } from "../../../helpers/debug-dump";
-import { type Fixture, makeFixture } from "../../../helpers/fixtures";
+import type { Fixture } from "../../../helpers/fixtures";
+import { multinodeFixture } from "./fixture";
 import { deleteStackCompletely, nsFor, podsForService, waitWorkloadReady } from "../../../helpers/k8s";
 
 const ENV = "e2e";
@@ -41,7 +42,7 @@ describe("volumes and node pinning", () => {
 
   test("a pod with a named volume always returns to the PV's node", async () => {
     await withDump("pinned to PV node", async () => {
-      fixture = makeFixture("test-app-k3s-multinode", { cluster: "k3s" });
+      fixture = await multinodeFixture();
       const result = await runCLI(["deploy", ENV, "1.0.0", "--only", "pinned", "--yes"], { cwd: fixture.dir, timeoutMs: 180_000 });
       expect(result.exitCode).toBe(0);
       await waitWorkloadReady(NS, "deployment", "pinned", 1, 120_000);
@@ -62,7 +63,7 @@ describe("volumes and node pinning", () => {
 
   test("a ReadWriteOnce volume refuses more than one replica at render time (D8)", async () => {
     await withDump("rwo-replicas refusal", async () => {
-      const bad = makeFixture("test-app-k3s-multinode", { cluster: "k3s" });
+      const bad = await multinodeFixture();
       try {
         bad.patchCompose((text) => text.replace("pinned-data:/data\n    deploy:\n      replicas: 1\n", "pinned-data:/data\n    deploy:\n      replicas: 2\n"));
         const result = await runCLI(["deploy", ENV, "1.0.0", "--only", "pinned", "--yes"], { cwd: bad.dir, timeoutMs: 120_000 });
@@ -77,7 +78,7 @@ describe("volumes and node pinning", () => {
 
   test("a ReadWriteMany request the storage class cannot provision fails with PvcPending", async () => {
     await withDump("rwx PvcPending", async () => {
-      const rwx = makeFixture("test-app-k3s-multinode", { cluster: "k3s" });
+      const rwx = await multinodeFixture();
       try {
         rwx.write(
           ".dockflow/config.yml",

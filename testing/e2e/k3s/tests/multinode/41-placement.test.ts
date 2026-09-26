@@ -8,7 +8,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import type { Node } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/core";
 import { runCLI } from "../../../helpers/cli";
 import { dumpDebug } from "../../../helpers/debug-dump";
-import { type Fixture, makeFixture } from "../../../helpers/fixtures";
+import type { Fixture } from "../../../helpers/fixtures";
+import { multinodeFixture } from "./fixture";
 import { getJson, kubectl, nsFor, podsForService, waitWorkloadReady } from "../../../helpers/k8s";
 
 const ENV = "e2e";
@@ -50,7 +51,7 @@ describe("placement", () => {
 
   test("a node.labels constraint schedules only on the matching node", async () => {
     await withDump("zone-b constraint", async () => {
-      fixture = makeFixture("test-app-k3s-multinode", { cluster: "k3s" });
+      fixture = await multinodeFixture();
       const result = await runCLI(["deploy", ENV, "1.0.0", "--only", "zone-b", "--yes"], { cwd: fixture.dir, timeoutMs: 180_000 });
       expect(result.exitCode).toBe(0);
       await waitWorkloadReady(NS, "deployment", "zone-b", 2, 120_000);

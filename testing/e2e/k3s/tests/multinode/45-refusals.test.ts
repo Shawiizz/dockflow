@@ -11,7 +11,8 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { runCLI } from "../../../helpers/cli";
 import { dumpDebug } from "../../../helpers/debug-dump";
-import { type Fixture, makeFixture } from "../../../helpers/fixtures";
+import type { Fixture } from "../../../helpers/fixtures";
+import { multinodeFixture } from "./fixture";
 
 const ENV = "e2e";
 
@@ -33,7 +34,7 @@ describe("config refusals", () => {
 
   test("options.remote_build is refused on orchestrator: k3s", async () => {
     await withDump("remote_build refusal", async () => {
-      const fixture = makeFixture("test-app-k3s-multinode", { cluster: "k3s" });
+      const fixture = await multinodeFixture();
       fixtures.push(fixture);
       fixture.patchConfig((text) => `${text}\noptions:\n  remote_build: true\n`);
 
@@ -46,7 +47,7 @@ describe("config refusals", () => {
 
   test("a helm: section is refused off orchestrator: k3s", async () => {
     await withDump("helm requires k3s", async () => {
-      const fixture = makeFixture("test-app-k3s-multinode", { cluster: "k3s" });
+      const fixture = await multinodeFixture();
       fixtures.push(fixture);
       fixture.patchConfig(
         (text) =>
