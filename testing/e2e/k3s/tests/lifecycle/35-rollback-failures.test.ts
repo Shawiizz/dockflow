@@ -399,6 +399,11 @@ describe("rollback and failure handling (E-35)", () => {
   test("E-35-11 a release of the wrong artifact format is refused before any mutation", async () => {
     await withDump("E-35-11", async () => {
       const before = (await getJson<Deployment>("deployments.apps", { ns: NS, name: "web" }))[0]?.metadata.generation;
+      // `rollback` goes to the newest release older than current, so the legacy one is stamped just before it
+      const current = (await stateConfigMap(NS)).current;
+      const currentSecret = (await releaseSecrets(NS)).find((s) => s.metadata.annotations?.[ANNOTATIONS.release] === current);
+      const epoch = Number(currentSecret?.metadata.annotations?.[ANNOTATIONS.epoch]) - 1;
+      expect(Number.isFinite(epoch)).toBe(true);
 
       const { yaml } = buildReleaseSecret(
         { project: PROJECT, env: ENV },
@@ -417,25 +422,26 @@ describe("rollback and failure handling (E-35)", () => {
             project_name: PROJECT,
             version: "0.0.1-legacy",
             env: ENV,
-            timestamp: new Date().toISOString(),
-            epoch: Date.now(),
+            timestamp: new Date(epoch).toISOString(),
+            epoch,
             performer: "e2e-harness",
             branch: "main",
           },
         },
       );
       await kubectl(["create", "-f", "-"], { stdin: yaml });
+      try {
+        const result = await runCLI(["rollback", ENV], { cwd: dir(), timeoutMs: 60_000 });
+        expect(result.exitCode).toBe(52); // ROLLBACK_FAILED
+        expect(result.stdout + result.stderr).toContain(
+          "Release 0.0.1-legacy was produced for swarm-compose/1 and cannot be applied with orchestrator: k3s",
+        );
 
-      const result = await runCLI(["rollback", ENV], { cwd: dir(), timeoutMs: 60_000 });
-      expect(result.exitCode).toBe(52); // ROLLBACK_FAILED
-      expect(result.stdout + result.stderr).toContain(
-        "Release 0.0.1-legacy was produced for swarm-compose/1 and cannot be applied with orchestrator: k3s",
-      );
-
-      const after = (await getJson<Deployment>("deployments.apps", { ns: NS, name: "web" }))[0]?.metadata.generation;
-      expect(after).toBe(before);
-
-      await kubectl(["delete", "secret", "dockflow-release-0.0.1-legacy", "-n", NS, "--ignore-not-found"]);
+        const after = (await getJson<Deployment>("deployments.apps", { ns: NS, name: "web" }))[0]?.metadata.generation;
+        expect(after).toBe(before);
+      } finally {
+        await kubectl(["delete", "secret", "dockflow-release-0.0.1-legacy", "-n", NS, "--ignore-not-found"]);
+      }
     });
   }, 90_000);
 
@@ -443,12 +449,16 @@ describe("rollback and failure handling (E-35)", () => {
     await withDump("E-35-12", async () => {
       writeWebCompose(fixture, { mode: "ok", marker: "V14" });
       const first = runCLIInBackground(["deploy", ENV, "14.0.0-rb", "--yes"], { cwd: dir(), timeoutMs: 200_000 });
-      await waitFor(async () => ((await leaseFor(NS)) ? true : undefined), { timeoutMs: 30_000, describe: "the deploy Lease to appear" });
-
-      const status = await runCLI(["lock", "status", ENV], { cwd: dir(), timeoutMs: 30_000 });
+      let status: CLIResult;
+      let second: CLIResult;
+      try {
+        await waitFor(async () => ((await leaseFor(NS)) ? true : undefined), { timeoutMs: 30_000, describe: "the deploy Lease to appear" });
+        status = await runCLI(["lock", "status", ENV], { cwd: dir(), timeoutMs: 30_000 });
+        second = await runCLI(["deploy", ENV, "14.1.0-rb", "--yes"], { cwd: dir(), timeoutMs: 30_000 });
+      } finally {
+        await first.done; // it holds the lock the rest of the chain needs
+      }
       expect(status.stdout).toMatch(/Holder/);
-
-      const second = await runCLI(["deploy", ENV, "14.1.0-rb", "--yes"], { cwd: dir(), timeoutMs: 30_000 });
       expect(second.exitCode).toBe(51); // DEPLOY_LOCKED
       expect(second.stdout + second.stderr).toContain("Already locked by");
 
