@@ -62,8 +62,8 @@ describe("image distribution", () => {
       const result = await runCLI(["deploy", ENV, "1.0.1", "--only", "web", "--yes"], { cwd: fixture.dir, timeoutMs: 180_000 });
       expect(result.exitCode).toBe(0);
       // every node holds the 1.0.0 image under its old name: the new one is tagged there, nothing travels
-      for (const node of currentTopology().nodes) expect(result.stdout).toMatch(new RegExp(`already present on ${node.key} under another name, tagged`));
-      expect(result.stdout).not.toContain("imported on");
+      for (const node of currentTopology().nodes) expect(result.stdout + result.stderr).toMatch(new RegExp(`already present on ${node.key} under another name, tagged`));
+      expect(result.stdout + result.stderr).not.toContain("imported on");
       await waitWorkloadReady(NS, "deployment", "web", 3, 120_000);
     });
   }, 180_000);
@@ -104,8 +104,8 @@ describe("image distribution", () => {
 
       // agent-2 lost the name, not the content: every image of this fixture is one build of
       // Dockerfile.web, still held there under the web names, so it too is tagged and nothing travels
-      expect(result.stdout).toMatch(/already present on agent_2 under another name, tagged/);
-      expect(result.stdout).not.toContain("imported on");
+      expect(result.stdout + result.stderr).toMatch(/already present on agent_2 under another name, tagged/);
+      expect(result.stdout + result.stderr).not.toContain("imported on");
       for (const node of currentTopology().nodes) {
         const images = await imagesOnNode(node.key);
         expect(images.some((img) => img.ref === onAgent2Ref && img.pinned), `${node.key} holds ${onAgent2Ref}, pinned`).toBe(true);
