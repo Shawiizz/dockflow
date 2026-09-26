@@ -48,8 +48,11 @@ export const K3S_KUBECONFIG_MODE = '0600';
 /** directory holding the token files and state.json (C15) */
 export const K3S_DOCKFLOW_DIR_MODE = 0o700;
 export const K3S_SECRET_FILE_MODE = 0o600;
-/** the drop-in holds no secret, only the -file forms of the tokens */
-export const K3S_CONFIG_DROPIN_MODE = 0o600;
+/**
+ * The drop-in holds no secret, only the -file forms of the tokens, and every `k3s kubectl` reads it,
+ * the deploy user's included: unreadable, each call printed a permission-denied warning.
+ */
+export const K3S_CONFIG_DROPIN_MODE = 0o644;
 /** random bytes of the agent token Dockflow generates on the first server (6.1) */
 export const AGENT_TOKEN_BYTES = 32;
 /** comment of the authorized_keys line derived from the deploy key (2.1) */
