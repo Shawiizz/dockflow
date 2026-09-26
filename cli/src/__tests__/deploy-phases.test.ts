@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import type { DeployContext } from '../commands/deploy-context';
 import { activeNodes } from '../commands/deploy-context';
 import {
+  buildAccessoriesInput,
   buildAndDistribute,
   cleanupBundle,
   declaredHelmNames,
@@ -16,6 +17,7 @@ import {
   ensureRegistryAccess,
   fileBackupPath,
   filterUploads,
+  hasLiveAccessoryReleases,
   isControlPlaneLoss,
   parseOnly,
   printArtifactDiagnostics,
@@ -32,7 +34,7 @@ import type { Audit } from '../services/audit';
 import { HealthCheck } from '../services/health-check';
 import * as HistorySync from '../services/history-sync';
 import type { Metrics } from '../services/metrics';
-import type { DeployReceipt, ResolvedHelmRelease, StackArtifact, StackRef } from '../services/orchestrator/interfaces';
+import type { DeployReceipt, HelmReleaseStatus, ImageDelivery, ResolvedHelmRelease, StackArtifact, StackRef } from '../services/orchestrator/interfaces';
 import { KubeError } from '../services/orchestrator/kubernetes/runtime/errors';
 import { err, ok } from '../types/result';
 import type { UploadItem } from '../utils/config';
@@ -179,6 +181,48 @@ describe('declaredHelmNames', () => {
 
   it('no helm config at all -> empty', () => {
     expect(declaredHelmNames(config(), 'app')).toEqual([]);
+  });
+});
+
+describe('the accessory role without accessories.yml', () => {
+  const NONE: ImageDelivery = { built: [], mode: 'none', pullSecretName: null };
+  const withAccessoryRelease = config({
+    helm: { releases: [{ name: 'postgres', chart: 'postgresql', repo: 'https://charts.example.org', version: '16.7.4', role: 'accessory' }] },
+  });
+  const release = (name: string, role: HelmReleaseStatus['role']): HelmReleaseStatus => ({
+    name,
+    namespace: 'shop-production',
+    role,
+    revision: 1,
+    status: 'deployed',
+    chart: `${name}-1.0.0`,
+    appVersion: null,
+    updated: null,
+  });
+
+  it('runs with no compose service when an accessory Helm release is declared', () => {
+    const input = buildAccessoriesInput(fakeContext(new FakeOrchestrator('k3s'), { config: withAccessoryRelease }), NONE);
+    expect(input?.ref.role).toBe('accessory');
+    expect(input?.compose.services).toEqual({});
+    expect(input?.helm.map((r) => r.name)).toEqual(['postgres']);
+  });
+
+  it('runs when accessory releases are still installed, so the undeclared ones are reported', () => {
+    expect(buildAccessoriesInput(fakeContext(new FakeOrchestrator('k3s')), NONE)).toBeNull();
+    expect(buildAccessoriesInput(fakeContext(new FakeOrchestrator('k3s')), NONE, true)?.helmDeclared).toEqual([]);
+  });
+
+  it('asks the cluster only when nothing else runs the role, and counts accessory releases only', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    orchestrator.programOnce('helm.listAll', [release('search', 'app')]);
+    expect(await hasLiveAccessoryReleases(fakeContext(orchestrator))).toBe(false);
+    orchestrator.programOnce('helm.listAll', [release('search', 'app'), release('cache', 'accessory')]);
+    expect(await hasLiveAccessoryReleases(fakeContext(orchestrator))).toBe(true);
+
+    const declared = new FakeOrchestrator('k3s');
+    expect(await hasLiveAccessoryReleases(fakeContext(declared, { config: withAccessoryRelease }))).toBe(false);
+    expect(await hasLiveAccessoryReleases(fakeContext(declared, { skipAccessories: true }))).toBe(false);
+    expect(declared.events).toEqual([]);
   });
 });
 

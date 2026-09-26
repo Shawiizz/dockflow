@@ -651,12 +651,25 @@ export function buildStackInput(
   };
 }
 
-export function buildAccessoriesInput(ctx: DeployContext, delivery: ImageDelivery): StackDeployInput | null {
+/**
+ * `liveHelmReleases`: accessory-role Helm releases are installed (hasLiveAccessoryReleases). The role
+ * then runs without an accessories.yml too, as Helm-only apps do, so declared releases deploy and
+ * undeclared ones are reported (8.5).
+ */
+export function buildAccessoriesInput(ctx: DeployContext, delivery: ImageDelivery, liveHelmReleases = false): StackDeployInput | null {
   if (ctx.skipAccessories) return null;
-  const compose = loadAccessoriesCompose(ctx);
+  const helmOnly = declaredHelmNames(ctx.config, 'accessory').length > 0 || liveHelmReleases;
+  const compose = loadAccessoriesCompose(ctx) ?? (helmOnly ? Compose.emptyCompose() : null);
   if (!compose) return null;
   Compose.injectAccessoriesDefaults(compose, ctx.orchestrator.kind);
   return buildStackInput(ctx, 'accessory', compose, delivery, ctx.forceAccessories);
+}
+
+/** Only asked when nothing else runs the accessory role: no accessories.yml, no accessory release declared. */
+export async function hasLiveAccessoryReleases(ctx: DeployContext): Promise<boolean> {
+  if (ctx.skipAccessories || loadAccessoriesCompose(ctx) !== null || declaredHelmNames(ctx.config, 'accessory').length > 0) return false;
+  const live = (await ctx.orchestrator.helm?.listAll(namespaceFor(ctx.config.project_name, ctx.env))) ?? [];
+  return live.some((release) => release.role === 'accessory' && release.status !== 'uninstalled');
 }
 
 // ---------------------------------------------------------------------------

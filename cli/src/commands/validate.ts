@@ -262,8 +262,8 @@ export function renderK3sOfflineCore(
   const appInput = buildValidateInput(config, env, 'app', compose, accessoriesCompose, serverNames as string[], files, appHelm);
   hasErrors = renderRoleOffline('docker-compose.yml', appInput, renderEnv) || hasErrors;
 
-  if (accessoriesCompose) {
-    const accInput = buildValidateInput(config, env, 'accessory', accessoriesCompose, compose, serverNames as string[], files, accHelm);
+  if (accessoriesCompose || accHelm.length > 0) {
+    const accInput = buildValidateInput(config, env, 'accessory', accessoriesCompose ?? Compose.emptyCompose(), compose, serverNames as string[], files, accHelm);
     hasErrors = renderRoleOffline('accessories.yml', accInput, renderEnv) || hasErrors;
   }
 

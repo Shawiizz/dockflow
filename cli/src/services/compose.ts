@@ -1129,6 +1129,11 @@ export function hasServices(compose: ParsedCompose): boolean {
   return Object.keys(compose.services).length > 0;
 }
 
+/** A compose file without services: the role of Helm-only releases (design-04 3.11). */
+export function emptyCompose(): ParsedCompose {
+  return loadFromString('services: {}\n');
+}
+
 /**
  * Extract all image tags referenced in services.
  * Returns a deduplicated list.

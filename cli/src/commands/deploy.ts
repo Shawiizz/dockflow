@@ -68,6 +68,7 @@ import type { DeployContext, DeployOptions } from './deploy-context';
 import { activeNodes } from './deploy-context';
 import {
   buildAccessoriesInput,
+  hasLiveAccessoryReleases,
   buildAndDistribute,
   buildStackInput,
   checkUploadPermissions,
@@ -401,7 +402,7 @@ export async function execute(ctx: DeployContext): Promise<void> {
     const appArtifact = orch.stack.render(appInput);
     printArtifactDiagnostics(composeFileLabel(ctx), appArtifact);
 
-    const accInput = buildAccessoriesInput(ctx, delivery);
+    const accInput = buildAccessoriesInput(ctx, delivery, await hasLiveAccessoryReleases(ctx));
     const accArtifact = accInput ? orch.stack.render(accInput) : null;
     if (accInput && accArtifact) printArtifactDiagnostics(accessoriesFileLabel(ctx), accArtifact);
 
