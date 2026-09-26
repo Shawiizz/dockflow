@@ -24,6 +24,7 @@ export class FakeClock implements Clock {
   private current: number;
   private readonly sleepers: Sleeper[] = [];
   private readonly requested: number[] = [];
+  private readonly backgroundFlags: boolean[] = [];
   private seq = 0;
 
   constructor(start: Date = new Date(FAKE_CLOCK_START)) {
@@ -39,14 +40,20 @@ export class FakeClock implements Clock {
     return this.requested;
   }
 
+  /** for each requested sleep, in order, whether it was background work (never keeps the process alive) */
+  get background(): readonly boolean[] {
+    return this.backgroundFlags;
+  }
+
   /** sleepers still waiting for their time */
   get pending(): number {
     return this.sleepers.length;
   }
 
   /** resolves when the fake time reaches now+ms, or as soon as `signal` aborts; never waits for real time */
-  sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  sleep(ms: number, signal?: AbortSignal, options?: { background?: boolean }): Promise<void> {
     this.requested.push(ms);
+    this.backgroundFlags.push(options?.background === true);
     if (signal?.aborted || ms <= 0) return Promise.resolve();
     return new Promise<void>((resolve) => {
       const onAbort = (): void => {

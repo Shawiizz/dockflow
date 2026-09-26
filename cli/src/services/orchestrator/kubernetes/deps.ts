@@ -18,13 +18,14 @@ export interface Clock {
   /**
    * Resolves once `ms` have elapsed, or as soon as `signal` aborts (it never rejects). Local
    * guards pass a signal so a finished call does not leave a timer keeping the process alive.
+   * `background` work (lock renewal) never keeps the process alive at all: it ends with the command.
    */
-  sleep(ms: number, signal?: AbortSignal): Promise<void>;
+  sleep(ms: number, signal?: AbortSignal, options?: { background?: boolean }): Promise<void>;
 }
 
 export const systemClock: Clock = {
   now: () => new Date(),
-  sleep: (ms, signal) =>
+  sleep: (ms, signal, options) =>
     new Promise<void>((resolve) => {
       if (signal?.aborted) {
         resolve();
@@ -36,6 +37,7 @@ export const systemClock: Clock = {
         resolve();
       };
       const timer = setTimeout(finish, ms);
+      if (options?.background) timer.unref();
       signal?.addEventListener('abort', finish, { once: true });
     }),
 };

@@ -12,6 +12,7 @@ import { OrchestratorUnavailableError } from '../../../../utils/errors';
 import { printDebug, printWarning } from '../../../../utils/output';
 import { err, ok, type Result } from '../../../../types/result';
 import type { LockData, LockStatus, LockStore } from '../../interfaces';
+import { staleTakeoverMessage } from '../../lock-messages';
 import { ANNOTATIONS, K8S_LEASE_RENEW_INTERVAL_S, K8S_SYSTEM_NAMESPACE } from '../constants';
 import type { KubernetesBundleDeps } from '../deps';
 import { leaseLabels } from '../labels';
@@ -178,6 +179,7 @@ export class LeaseLockStore implements LockStore {
       try {
         const lease = await this.replace(leaseYaml(this.stackId, data, now, this.staleThresholdMinutes, { existing }));
         this.hold(lease, data);
+        printWarning(staleTakeoverMessage(currentData, minutes));
         return ok(data);
       } catch (error) {
         if (this.isReason(error, 'Conflict') || this.isReason(error, 'NotFound')) {
@@ -304,7 +306,8 @@ export class LeaseLockStore implements LockStore {
     this.renewing = (async () => {
       while (this.held) {
         this.renewalWait = new AbortController();
-        await this.deps.clock.sleep(K8S_LEASE_RENEW_INTERVAL_S * 1000, this.renewalWait.signal);
+        // background: a lock left held on purpose (`dockflow lock acquire`) must not keep the CLI running
+        await this.deps.clock.sleep(K8S_LEASE_RENEW_INTERVAL_S * 1000, this.renewalWait.signal, { background: true });
         if (!this.held) return;
         const now = this.deps.clock.now();
         const data: LockData = { ...this.held.data, started_at: now.toISOString(), timestamp: Math.floor(now.getTime() / 1000) };

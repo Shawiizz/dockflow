@@ -14,9 +14,10 @@ import { randomBytes } from 'crypto';
 import { LOCK_STALE_THRESHOLD_MINUTES } from '../../../constants';
 import { err, ok, type Result } from '../../../types/result';
 import { getPerformer } from '../../../utils/config';
-import { printDebug } from '../../../utils/output';
+import { printDebug, printWarning } from '../../../utils/output';
 import { shellQuote } from '../../../utils/ssh';
 import type { LockData, LockStatus, LockStore } from '../interfaces';
+import { staleTakeoverMessage } from '../lock-messages';
 import { assertStoreName, DOCKFLOW_STATE_ROOT, type StoreShell } from './file-release-store';
 
 const ACQUIRED = 'ACQUIRED';
@@ -103,7 +104,9 @@ export class FileLockStore implements LockStore {
 
       if (current.status.isStale) {
         const takeover = await this.shell.run(this.takeoverCommand(current.content ?? ''), content);
-        return takeover.stdout.trim() === ACQUIRED ? ok(lockData) : err(new Error(STALE_TAKEN));
+        if (takeover.stdout.trim() !== ACQUIRED) return err(new Error(STALE_TAKEN));
+        printWarning(staleTakeoverMessage(current.status.data ?? null, current.status.durationMinutes ?? null));
+        return ok(lockData);
       }
 
       return err(

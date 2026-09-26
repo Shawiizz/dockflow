@@ -321,6 +321,15 @@ describe('release', () => {
     expect(clock.pending).toBe(0);
   });
 
+  it('L7c: the wait between renewals is background work, so a lock kept on purpose (lock acquire) lets the CLI exit', async () => {
+    const { kube, clock } = harness();
+    await storeOf(kube, clock).acquire({ message: 'maintenance' });
+    await clock.advance(0);
+    const renewalWait = clock.sleeps.lastIndexOf(K8S_LEASE_RENEW_INTERVAL_S * 1000);
+    expect(renewalWait).toBeGreaterThanOrEqual(0);
+    expect(clock.background[renewalWait]).toBe(true);
+  });
+
   it('L8: release after a forced takeover reports the new holder and deletes nothing', async () => {
     const { kube, cluster, clock } = harness();
     const first = storeOf(kube, clock, { performer: 'alice' });

@@ -5,7 +5,7 @@
 // only asserts what both implementations must agree on through the `ReleaseStore`/`LockStore`
 // interfaces themselves.
 
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 import type { HelmReleaseRecord, LockStore, ReleaseInput, ReleaseMetadata, ReleaseStore, StackArtifact } from '../../../services/orchestrator/interfaces';
 import { ApplyEngine } from '../../../services/orchestrator/kubernetes/apply/engine';
 import { ClusterReleaseStore } from '../../../services/orchestrator/kubernetes/backends/release-store';
@@ -15,6 +15,7 @@ import { createSharedMemo, systemClock } from '../../../services/orchestrator/ku
 import { leaseNameFor } from '../../../services/orchestrator/kubernetes/naming';
 import { DeployError, ErrorCode } from '../../../utils/errors';
 import { canonicalJson, sha256Hex } from '../../../utils/hash';
+import * as output from '../../../utils/output';
 import { Redactor } from '../../../utils/redact';
 import { FakeClock } from '../fakes/fake-clock';
 import { FakeCluster } from '../fakes/fake-cluster';
@@ -398,13 +399,16 @@ for (const backend of [clusterLockBackend, fileLockBackend]) {
       }
     });
 
-    t('C-LOCK-03: a stale lock (clock advanced past the threshold) is acquired', async () => {
+    t('C-LOCK-03: a stale lock (clock advanced past the threshold) is acquired, saying whose it was', async () => {
       const harness = backend.open();
+      const warn = spyOn(output, 'printWarning').mockImplementation(() => {});
       try {
         await harness.holdStale('alice', 'Deploy', 31 * 60000);
         const result = await harness.open('bob').acquire();
         expect(result.success).toBe(true);
+        expect(warn).toHaveBeenCalledWith('Lock of alice (31 min old) is stale; taking it over');
       } finally {
+        warn.mockRestore();
         harness.cleanup();
       }
     });
