@@ -96,6 +96,11 @@ describe("headless Service DNS (C9)", () => {
       },
       { timeoutMs: 120_000, describe: "both dns-target pods to be Running" },
     );
+    // DNS answers lag the pods by a few seconds; the placeholder variant always resolves once settled
+    await waitFor(async () => ((await nslookup("placeholder")) >= 2 ? true : undefined), {
+      timeoutMs: 60_000,
+      describe: "the placeholder Service to resolve both pods",
+    });
   });
 
   afterAll(async () => {
