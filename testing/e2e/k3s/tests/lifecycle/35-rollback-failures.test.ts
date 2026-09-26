@@ -786,6 +786,8 @@ describe("workload-kind switches (E-35-19)", () => {
             "    image: busybox:1.37",
             '    command: ["sh", "-c", "sleep 36000"]',
             '    ports: ["18089:80"]',
+            // sh ignores SIGTERM: a short grace keeps the old pod's stop out of the timing below
+            "    stop_grace_period: 1s",
             "    x-dockflow:",
             "      publish: hostport",
             "",
@@ -803,10 +805,14 @@ describe("workload-kind switches (E-35-19)", () => {
             "    image: busybox:1.37",
             '    command: ["sh", "-c", "sleep 36000"]',
             '    ports: ["18089:80"]',
+            "    stop_grace_period: 1s",
             "    x-dockflow:",
             "      publish: hostport",
             "    deploy:",
             "      mode: global",
+            // Dockflow's default monitor (30 s) would become minReadySeconds and dominate the timing
+            "      update_config:",
+            "        monitor: 1s",
             "",
           ].join("\n"),
         );
@@ -814,7 +820,9 @@ describe("workload-kind switches (E-35-19)", () => {
         result = await runCLI(["deploy", ENV, "1.0.1", "--yes"], { cwd: f.dir, timeoutMs: 200_000 });
         const elapsedS = (Date.now() - started) / 1000;
         expect(result.exitCode).toBe(0);
-        expect(elapsedS).toBeLessThan(60); // never spends the 60s Unschedulable grace (F9)
+        // the old pod is gone before the DaemonSet's is created: the host port is never contended (F9)
+        expect(result.stdout + result.stderr).not.toMatch(/cannot be scheduled/);
+        expect(elapsedS).toBeLessThan(60);
         expect(result.stdout + result.stderr).toMatch(/Replacing Deployment\/edge with DaemonSet\/edge for service edge; its pods restart/);
         await waitWorkloadReady(ns2, "daemonset", "edge", 2);
         expect((await getJson<Deployment>("deployments.apps", { ns: ns2, name: "edge" })).length).toBe(0);
