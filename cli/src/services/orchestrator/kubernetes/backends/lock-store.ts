@@ -109,6 +109,8 @@ export class LeaseLockStore implements LockStore {
    */
   private lostLock = false;
   private renewing: Promise<void> | null = null;
+  /** the renewal request on the wire, resolving to its Lease (null when it failed); null between renewals */
+  private renewalInFlight: Promise<Lease | null> | null = null;
 
   constructor(
     private readonly deps: LeaseLockStoreDeps,
@@ -188,8 +190,13 @@ export class LeaseLockStore implements LockStore {
 
   async release(): Promise<Result<void, Error>> {
     try {
-      if (this.held) {
-        const holding = this.held.lease;
+      const held = this.held;
+      if (held) {
+        // Stop the renewal loop first, then let a renewal it already sent land: that renewal moves
+        // the resourceVersion, and a delete conditioned on the older one would fail and leave the
+        // Lease behind, no longer renewed.
+        this.held = null;
+        const holding = (await this.renewalInFlight) ?? held.lease;
         const body = JSON.stringify({
           apiVersion: 'v1',
           kind: 'DeleteOptions',
@@ -202,7 +209,6 @@ export class LeaseLockStore implements LockStore {
           allowFailure: true,
         });
         const reason = result.exitCode === 0 ? null : classifyKubectlFailure(result.exitCode, result.stderr);
-        this.held = null; // the loop exits at its next tick and never races this delete
         if (reason === null || reason === 'NotFound') return ok(undefined);
         if (reason === 'Conflict') {
           const current = await this.status();
@@ -298,10 +304,17 @@ export class LeaseLockStore implements LockStore {
         if (!this.held) return;
         const now = this.deps.clock.now();
         const data: LockData = { ...this.held.data, started_at: now.toISOString(), timestamp: Math.floor(now.getTime() / 1000) };
+        const attempt = this.replace(leaseYaml(this.stackId, data, now, this.staleThresholdMinutes, { existing: this.held.lease, renew: true }));
+        this.renewalInFlight = attempt.then(
+          (lease) => lease,
+          () => null,
+        );
         try {
-          const lease = await this.replace(leaseYaml(this.stackId, data, now, this.staleThresholdMinutes, { existing: this.held.lease, renew: true }));
+          const lease = await attempt;
+          if (!this.held) return; // released meanwhile: release() deletes this renewed Lease
           this.hold(lease, data); // new resourceVersion for the conditional release
         } catch (error) {
+          if (!this.held) return;
           if (this.isReason(error, 'Conflict') || this.isReason(error, 'NotFound')) {
             this.held = null; // someone forced a takeover
             this.lostLock = true;
@@ -309,6 +322,8 @@ export class LeaseLockStore implements LockStore {
             return;
           }
           printDebug(`Lock renewal failed: ${errorText(error)}`); // transient: try again next tick
+        } finally {
+          this.renewalInFlight = null;
         }
       }
     })();

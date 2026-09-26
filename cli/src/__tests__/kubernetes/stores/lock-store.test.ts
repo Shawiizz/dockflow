@@ -390,4 +390,47 @@ describe('renewal (K73)', () => {
     const released = await store.release();
     expect(released.success).toBe(true);
   });
+
+  it('L15: a release while a renewal is on the wire waits for it and deletes the renewed Lease', async () => {
+    const { kube, cluster, clock } = harness();
+    const store = storeOf(kube, clock, { performer: 'alice' });
+    await store.acquire({ version: '1.0.0' });
+
+    // the renewal reaches the API server before the delete does
+    const gate = (): { wait: Promise<void>; open: () => void } => {
+      let open: () => void = () => {};
+      const wait = new Promise<void>((resolve) => {
+        open = resolve;
+      });
+      return { wait, open };
+    };
+    const renewalGate = gate();
+    const deleteGate = gate();
+    const replace = kube.replace.bind(kube);
+    const run = kube.run.bind(kube);
+    const spies = [
+      spyOn(kube, 'replace').mockImplementation(async (manifest, options) => {
+        await renewalGate.wait;
+        return replace(manifest, options);
+      }),
+      spyOn(kube, 'run').mockImplementation(async (call) => {
+        if (call.args[0] === 'delete') await deleteGate.wait;
+        return run(call);
+      }),
+    ];
+    try {
+      await clock.advance(K8S_LEASE_RENEW_INTERVAL_S * 1000); // the renewal is sent and held at its gate
+      const releasing = store.release();
+      renewalGate.open();
+      await clock.advance(0); // the renewal lands: the Lease has a new resourceVersion
+      deleteGate.open();
+      const result = await releasing;
+
+      expect(result.success).toBe(true);
+      expect(leaseOf(cluster)).toBeUndefined();
+      expect(warnings).toEqual([]);
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
 });
