@@ -23,8 +23,8 @@ import { decodeRelease, deleteStackCompletely, leaseFor, nsFor, waitFor, withNod
 
 const FILE = "62-concurrency.test.ts";
 const PROJECT = "k3s-ha-concurrency";
+// the deploy Lease is named after the stack's namespace, like every other test's `leaseFor(NS)`
 const NS = nsFor(PROJECT);
-const STACK_ID = `${PROJECT}-e2e`; // target.ts: stackName = `${project}-${env}`
 
 interface BackupJson {
   id: string;
@@ -74,13 +74,13 @@ function haFixture(): Fixture {
     ".dockflow/docker/docker-compose.yml",
     ["services:", "  web:", "    image: nginx:alpine", '    ports: ["8080:80"]', ""].join("\n"),
   );
+  // appendonly off (the default): R-17 refuses a dump.rdb restore into an appendonly redis
   fixture.write(
     ".dockflow/docker/accessories.yml",
     [
       "services:",
       "  redis:",
       "    image: redis:8-alpine",
-      '    command: ["redis-server", "--appendonly", "yes"]',
       "    volumes:",
       "      - redis_data:/data",
       "volumes:",
@@ -180,7 +180,7 @@ describe("concurrency", () => {
     await withDump("E-62-04", async () => {
       const deploy = runCLIInBackground(["deploy", "e2e", "9.9.9-slow"], { cwd: fixture.dir, timeoutMs: 180_000 });
 
-      await waitFor(async () => ((await leaseFor(STACK_ID)) ? true : undefined), {
+      await waitFor(async () => ((await leaseFor(NS)) ? true : undefined), {
         timeoutMs: 30_000,
         describe: "the background deploy to hold the deploy Lease",
       });
@@ -193,7 +193,7 @@ describe("concurrency", () => {
       expect(finished.stderr).toContain("Lock release failed:");
       expect(finished.stderr).toContain("is now held by");
 
-      const lease = await leaseFor(STACK_ID);
+      const lease = await leaseFor(NS);
       expect(lease).not.toBeNull(); // the new holder's Lease was not deleted by the losing release
 
       const release = await runCLI(["lock", "release", "e2e", "--server", "server_2"], { cwd: fixture.dir, timeoutMs: 30_000 });
