@@ -697,6 +697,21 @@ describe('Backup.list and resolveBackup', () => {
     expect(prefix.success && prefix.data.id).toBe(OLDER);
   });
 
+  it('restoring the entry resolveBackup found asks no node for the listing again', async () => {
+    const k3s = twoNodes();
+    k3s.program('backups.restore', () => ({ exitCode: 0, stderr: '' }));
+    const engine = createBackup(k3s, ACCESSORY);
+    const resolved = await engine.resolveBackup('db', OLDER);
+    if (!resolved.success) throw resolved.error;
+    const listings = (): number => nodes.commands().filter((command) => command.includes(LIST)).length;
+    const before = listings();
+
+    const result = await engine.restore('db', resolved.data, POSTGRES, undefined, { forceUnverified: false });
+
+    expect(result.success).toBe(true);
+    expect(listings()).toBe(before);
+  });
+
   it('with every node answering, latest is the newest across nodes', async () => {
     const k3s = fake('k3s');
     nodes.on(LIST, listing(meta(k3s, { id: OLDER, timestamp: '2026-01-01T10:00:00.000Z' })), 'server_1');

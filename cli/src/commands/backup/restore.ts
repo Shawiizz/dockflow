@@ -73,7 +73,7 @@ export async function runBackupRestore(env: string, service: string | undefined,
   await withLock(ctx.lock(), { message: `Restore ${svc.name}` }, async () => {
     const spinner = createSpinner();
     spinner.start('Restoring backup...');
-    const result = await engine.restore(svc.name, backup.id, backupConfig, backup.compression, {
+    const result = await engine.restore(svc.name, backup, backupConfig, backup.compression, {
       forceUnverified: Boolean(options.forceUnverified),
     });
     if (!result.success) {

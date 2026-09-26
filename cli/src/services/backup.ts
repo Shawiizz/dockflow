@@ -573,11 +573,12 @@ export class Backup {
   /**
    * Restore a backup into the running service. Refuses a service with more than one desired
    * replica (R-23) before anything is read, and verifies the archive end to end on the node
-   * holding it before the backend is called.
+   * holding it before the backend is called. `backup` is an id to look up on every node, or the
+   * entry resolveBackup already found, so a node that does not answer is not waited for twice.
    */
   async restore(
     service: string,
-    backupId: string,
+    backup: string | BackupListEntry,
     config: BackupAccessoryConfig,
     compression?: 'gzip' | 'none',
     options: RestoreOptions = { forceUnverified: false },
@@ -586,16 +587,7 @@ export class Backup {
       const svc = (await this.orchestrator.stack.getServices(this.ref)).find((candidate) => candidate.name === service);
       if (svc) assertSingleReplica(svc, this.env);
 
-      const listed = await this.list(service);
-      if (!listed.success) return listed;
-      const entry = listed.data.entries.find((candidate) => candidate.id === backupId);
-      if (!entry) {
-        const names = listed.data.unreachable.map((node) => node.name).join(', ');
-        throw new BackupError(`Backup ${backupId} not found`, {
-          code: ErrorCode.BACKUP_NOT_FOUND,
-          suggestion: names ? `Bring ${names} back and retry; backups stored there are not listed.` : undefined,
-        });
-      }
+      const entry = typeof backup === 'string' ? await this.listedEntry(service, backup) : backup;
       if (entry.dbType !== config.type) {
         throw new BackupError(
           `Backup ${entry.id} is a ${entry.dbType} backup, but ${service} is configured with type ${config.type}`,
@@ -614,6 +606,19 @@ export class Backup {
     } catch (error) {
       return err(asError(error));
     }
+  }
+
+  /** the listed entry of a backup id; one that is not listed names the nodes that did not answer */
+  private async listedEntry(service: string, backupId: string): Promise<BackupListEntry> {
+    const listed = await this.list(service);
+    if (!listed.success) throw listed.error;
+    const entry = listed.data.entries.find((candidate) => candidate.id === backupId);
+    if (entry) return entry;
+    const names = listed.data.unreachable.map((node) => node.name).join(', ');
+    throw new BackupError(`Backup ${backupId} not found`, {
+      code: ErrorCode.BACKUP_NOT_FOUND,
+      suggestion: names ? `Bring ${names} back and retry; backups stored there are not listed.` : undefined,
+    });
   }
 
   /** the verification a restore runs before anything changes; `--force-unverified` only relaxes trailer and opaque */
