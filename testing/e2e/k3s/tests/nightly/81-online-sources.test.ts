@@ -61,8 +61,9 @@ const PODINFO_RELEASES = [
   "",
 ].join("\n");
 
+/** `ports` makes web the service the domain's default route goes to (design-01 7.5) */
 function composeYml(): string {
-  return ["services:", "  web:", "    image: docker.io/library/nginx:alpine", "    deploy:", "      replicas: 1", ""].join("\n");
+  return ["services:", "  web:", "    image: docker.io/library/nginx:alpine", '    ports: ["80"]', "    deploy:", "      replicas: 1", ""].join("\n");
 }
 
 interface PodLike {
