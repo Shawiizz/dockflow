@@ -6,7 +6,7 @@ import { ErrorCode } from '../../../../utils/errors';
 import { canonicalJson, sha256Hex } from '../../../../utils/hash';
 import type { HelmManifestObject, HelmPlanEntry, HelmReleaseRecord, HelmReleaseStatus, HelmStatus, ResolvedHelmRelease } from '../../interfaces';
 import { K8S_PROXY_RELEASE, K8S_SYSTEM_NAMESPACE, LABELS, TRAEFIK_TIMEOUT_S } from '../constants';
-import type { Event, Pod } from '../resources/core';
+import type { Event, Pod, Service } from '../resources/core';
 import { TRAEFIK_CHART_PIN, type TraefikChartPin } from '../versions';
 import {
   compareChartVersions,
@@ -971,8 +971,42 @@ export interface PodPortConflict {
   node: string;
 }
 
+export interface ServicePortConflict {
+  port: number;
+  namespace: string;
+  service: string;
+}
+
 function isProxyPod(pod: Pod): boolean {
   return pod.metadata.namespace === K8S_SYSTEM_NAMESPACE && pod.metadata.labels?.[LABELS.name] === 'traefik';
+}
+
+/**
+ * LoadBalancer Services other than Traefik's that publish a proxy port as TCP: their load balancer
+ * holds it on every node. Scanned before podPortConflicts, which would name the load-balancer pod.
+ */
+export function servicePortConflicts(services: readonly Service[], ports: readonly number[]): ServicePortConflict[] {
+  const out: ServicePortConflict[] = [];
+  for (const service of services) {
+    const namespace = service.metadata.namespace ?? 'default';
+    const isProxy = namespace === K8S_SYSTEM_NAMESPACE && service.metadata.labels?.[LABELS.name] === 'traefik';
+    if (service.spec.type !== 'LoadBalancer' || isProxy) continue;
+    for (const port of ports) {
+      if ((service.spec.ports ?? []).some((p) => p.port === port && (p.protocol ?? 'TCP') === 'TCP')) {
+        out.push({ port, namespace, service: service.metadata.name });
+      }
+    }
+  }
+  return out.sort((a, b) => a.port - b.port || compareText(a.namespace, b.namespace) || compareText(a.service, b.service));
+}
+
+export function servicePortRefusal(conflict: ServicePortConflict): ProxyRefusal {
+  return {
+    code: 'E-PX-SVCPORT',
+    errorCode: ErrorCode.DEPLOY_FAILED,
+    message: `Port ${conflict.port} is already published by service ${conflict.service} in namespace ${conflict.namespace}`,
+    suggestion: 'Change that published port or stop the stack that uses it, then deploy again.',
+  };
 }
 
 /**

@@ -47,6 +47,8 @@ import {
   type ProxyObservation,
   type ProxyState,
   schedulingFailures,
+  servicePortConflicts,
+  servicePortRefusal,
 } from '../helm/plan';
 import {
   acmeCaSecretName,
@@ -82,6 +84,7 @@ import type {
   PersistentVolumeClaim,
   PersistentVolumeReclaimPolicy,
   Pod,
+  Service,
 } from '../resources/core';
 import { resolveTraefikChartArchive, type ChartArchive, type ChartArchiveDeps } from '../runtime/chart-archive';
 import { HELM_LIST_EVERY_STATUS } from '../runtime/helm';
@@ -610,8 +613,12 @@ export class KubernetesProxyBackend implements ProxyBackend {
       const listeners = await hostCommands(this.deps.nodeShell(managerNode)).listeningPorts();
       if (listeners !== null) lines.push(...hostPortRefusals(listeners, ports, hostname!).map((refusal) => refusal.message));
     }
+    const services = await this.deps.kubectl.getJson<Service>(['services'], { allNamespaces: true });
+    const byService = servicePortConflicts(services, ports);
+    lines.push(...byService.map((conflict) => servicePortRefusal(conflict).message));
     const pods = await this.deps.kubectl.getJson<Pod>(['pods'], { allNamespaces: true });
-    lines.push(...podPortConflicts(pods, ports).map((conflict) => podPortRefusal(conflict).message));
+    const byPod = podPortConflicts(pods, ports).filter((conflict) => !byService.some((taken) => taken.port === conflict.port));
+    lines.push(...byPod.map((conflict) => podPortRefusal(conflict).message));
     return lines;
   }
 
@@ -623,6 +630,9 @@ export class KubernetesProxyBackend implements ProxyBackend {
       const refusals = hostPortRefusals(listeners, ports, placement.hostname);
       if (refusals.length > 0) throw proxyRefusalError(refusals[0]);
     }
+    const services = await this.deps.kubectl.getJson<Service>(['services'], { allNamespaces: true });
+    const taken = servicePortConflicts(services, ports);
+    if (taken.length > 0) throw proxyRefusalError(servicePortRefusal(taken[0]));
     const pods = await this.deps.kubectl.getJson<Pod>(['pods'], { allNamespaces: true });
     const conflicts = podPortConflicts(pods, ports);
     if (conflicts.length > 0) throw proxyRefusalError(podPortRefusal(conflicts[0]));

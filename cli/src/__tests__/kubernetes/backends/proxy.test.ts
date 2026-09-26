@@ -229,6 +229,23 @@ function acmeProxy(overrides: Record<string, unknown> = {}) {
   return { enabled: true, acme: true, email: 'ops@example.com', ...overrides } as never;
 }
 
+/** another stack's LoadBalancer Service on port 80 and the load-balancer pod that holds the port */
+function seedLoadBalancerOn80(cluster: FakeCluster): void {
+  cluster.seed({
+    apiVersion: 'v1',
+    kind: 'Service',
+    metadata: { name: 'web-lb', namespace: 'shop' },
+    spec: { type: 'LoadBalancer', ports: [{ port: 80, protocol: 'TCP', targetPort: 80 }] },
+  });
+  cluster.seed({
+    apiVersion: 'v1',
+    kind: 'Pod',
+    metadata: { name: 'svclb-web-lb-x1', namespace: 'kube-system' },
+    spec: { nodeName: SERVER_HOSTNAME, containers: [{ name: 'lb-tcp-80', image: 'lb', ports: [{ containerPort: 80, hostPort: 80, protocol: 'TCP' }] }] },
+    status: { phase: 'Running' },
+  });
+}
+
 /** the most recent `upgrade --install` call (a test may drive `ensure()` more than once) */
 function upgradeCall(h: Harness) {
   const upgrades = h.helm.calls.filter((call) => call.args[0] === 'upgrade');
@@ -439,6 +456,15 @@ describe('status()', () => {
     expect(status.conflicts).toEqual([`Port 80 is already published by pod kube-system/legacy-nginx on ${SERVER_HOSTNAME}`]);
   });
 
+  test('conflicts (2.10): a LoadBalancer Service on port 80 is reported once, by its name', async () => {
+    const h = harness();
+    await h.backend.ensure(httpOnlyProxy(), ENV, h.events);
+    seedLoadBalancerOn80(h.cluster);
+
+    const status = await h.backend.status();
+    expect(status.conflicts).toEqual(['Port 80 is already published by service web-lb in namespace shop']);
+  });
+
   test('conflicts (2.10): status() before anything is installed reports none, without scanning', async () => {
     const h = harness();
     const status = await h.backend.status();
@@ -586,6 +612,16 @@ describe('refusals before any Helm mutation', () => {
       status: { phase: 'Running' },
     });
     await expectCliError(h.backend.ensure(httpOnlyProxy(), ENV, h.events), { type: DeployError, message: /Port 80 is already published by pod kube-system\/legacy-nginx/ });
+    expect(h.helm.calls.some((call) => call.args[0] === 'upgrade')).toBe(false);
+  });
+
+  test('E-PX-SVCPORT: a LoadBalancer Service on port 80 blocks the install, named instead of its load-balancer pod', async () => {
+    const h = harness();
+    seedLoadBalancerOn80(h.cluster);
+    await expectCliError(h.backend.ensure(httpOnlyProxy(), ENV, h.events), {
+      type: DeployError,
+      message: /^Port 80 is already published by service web-lb in namespace shop$/,
+    });
     expect(h.helm.calls.some((call) => call.args[0] === 'upgrade')).toBe(false);
   });
 

@@ -23,9 +23,11 @@ import {
   proxyReleaseFrom,
   proxyStateData,
   schedulingFailures,
+  servicePortConflicts,
+  servicePortRefusal,
 } from '../../../services/orchestrator/kubernetes/helm/plan';
 import { buildTraefikValues, type ProxyWarning, type TraefikIntent } from '../../../services/orchestrator/kubernetes/helm/traefik-values';
-import type { Event, Pod } from '../../../services/orchestrator/kubernetes/resources/core';
+import type { Event, Pod, Service } from '../../../services/orchestrator/kubernetes/resources/core';
 import { ErrorCode } from '../../../utils/errors';
 import { canonicalJson, sha256Hex } from '../../../utils/hash';
 
@@ -815,6 +817,34 @@ describe('port conflicts (2.10)', () => {
       errorCode: ErrorCode.DEPLOY_FAILED,
       message: 'Port 80 is already published by pod kube-system/svclb-web-lb-x1 on server-2',
       suggestion: 'Remove that workload or its published port, then deploy again.',
+    });
+  });
+
+  test('servicePortConflicts: other LoadBalancer Services publishing 80/443 over TCP, Traefik excluded', () => {
+    const service = (namespace: string, name: string, type: 'LoadBalancer' | 'ClusterIP', ports: { port: number; protocol?: 'TCP' | 'UDP' }[], labels?: Record<string, string>): Service => ({
+      apiVersion: 'v1',
+      kind: 'Service',
+      metadata: { name, namespace, ...(labels ? { labels } : {}) },
+      spec: { type, ports: ports.map((p) => ({ port: p.port, protocol: p.protocol ?? 'TCP' })) },
+    });
+    const services = [
+      service('shop', 'web-lb', 'LoadBalancer', [{ port: 443 }, { port: 80 }]),
+      service('dockflow-system', 'dockflow-traefik', 'LoadBalancer', [{ port: 80 }], { 'app.kubernetes.io/name': 'traefik' }),
+      service('shop', 'web', 'ClusterIP', [{ port: 80 }]),
+      service('shop', 'quic-lb', 'LoadBalancer', [{ port: 443, protocol: 'UDP' }]),
+      service('apps', 'admin-lb', 'LoadBalancer', [{ port: 80 }]),
+    ];
+    const conflicts = servicePortConflicts(services, [80, 443]);
+    expect(conflicts).toEqual([
+      { port: 80, namespace: 'apps', service: 'admin-lb' },
+      { port: 80, namespace: 'shop', service: 'web-lb' },
+      { port: 443, namespace: 'shop', service: 'web-lb' },
+    ]);
+    expect(servicePortRefusal(conflicts[1])).toEqual({
+      code: 'E-PX-SVCPORT',
+      errorCode: ErrorCode.DEPLOY_FAILED,
+      message: 'Port 80 is already published by service web-lb in namespace shop',
+      suggestion: 'Change that published port or stop the stack that uses it, then deploy again.',
     });
   });
 
