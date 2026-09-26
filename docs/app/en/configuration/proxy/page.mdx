@@ -177,7 +177,10 @@ Swarm labels above carry, just as Kubernetes objects instead of service labels.
 
 Traefik performs an HTTP-01 ACME challenge with Let's Encrypt on entry point `web`. Certificates are
 stored on a PersistentVolumeClaim (`dockflow-traefik`, `dockflow-local`, `128Mi`) mounted at
-`/data/acme.json`, and renewed automatically before expiry.
+`/data/acme.json`, and renewed automatically before expiry. With `acme_ca_server` set, the file is
+`/data/acme-<ca host>-<hash>.json` instead: Traefik keeps serving a stored certificate until it
+nears expiry, even once the CA changed, so each CA keeps its own and switching from staging back to
+production issues trusted certificates at the next deploy.
 </Steps>
 
 ### Which node answers 80/443
@@ -283,7 +286,8 @@ $K logs -l app.kubernetes.io/name=traefik --tail=200
 ```
 
 Use `proxy.acme_ca_server: https://acme-staging-v02.api.letsencrypt.org/directory` while rehearsing
-a new domain, so failed attempts count against the staging limits instead of production's.
+a new domain, so failed attempts count against the staging limits instead of production's; remove it
+and deploy again to get production certificates.
   </Tabs.Tab>
 </Tabs>
 

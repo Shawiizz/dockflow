@@ -8,7 +8,7 @@ certificatesResolvers:
       email: ops@example.com
       httpChallenge:
         entryPoint: web
-      storage: /data/acme.json
+      storage: /data/acme-ca.example.com-14000-be56dc15.json
 commonLabels:
   dockflow.shawiizz.dev/part: system
 deployment:
@@ -16,7 +16,7 @@ deployment:
     - command:
         - sh
         - -c
-        - touch /data/acme.json && chmod 600 /data/acme.json
+        - touch /data/acme-ca.example.com-14000-be56dc15.json && chmod 600 /data/acme-ca.example.com-14000-be56dc15.json
       image: docker.io/traefik:v3.7.13
       imagePullPolicy: IfNotPresent
       name: acme-permissions

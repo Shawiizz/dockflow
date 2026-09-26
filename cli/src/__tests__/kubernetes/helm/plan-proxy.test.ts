@@ -26,7 +26,7 @@ import {
   servicePortConflicts,
   servicePortRefusal,
 } from '../../../services/orchestrator/kubernetes/helm/plan';
-import { buildTraefikValues, type ProxyWarning, type TraefikIntent } from '../../../services/orchestrator/kubernetes/helm/traefik-values';
+import { buildTraefikValues, type ProxyWarning, TRAEFIK_VALUES_REVISION, type TraefikIntent } from '../../../services/orchestrator/kubernetes/helm/traefik-values';
 import type { Event, Pod, Service } from '../../../services/orchestrator/kubernetes/resources/core';
 import { ErrorCode } from '../../../utils/errors';
 import { canonicalJson, sha256Hex } from '../../../utils/hash';
@@ -186,7 +186,7 @@ describe('proxy state', () => {
       owner: 'dockflow-shop-production',
       'owner-stack-name': 'shop-production',
       'chart-version': '41.6.0',
-      'values-revision': '3',
+      'values-revision': String(TRAEFIK_VALUES_REVISION),
       'values-sha256': sha256Hex(canonicalJson(desired)),
       'intent-sha256': intentSha256(value),
       'intent-fields': canonicalJson(intentFieldHashes(value)),
@@ -206,7 +206,7 @@ describe('proxy state', () => {
       owner: 'dockflow-shop-production',
       ownerStackName: 'shop-production',
       chartVersion: '41.6.0',
-      valuesRevision: 3,
+      valuesRevision: TRAEFIK_VALUES_REVISION,
       intentSha256: intentSha256(intent()),
       intentFields: intentFieldHashes(intent()),
       capabilities: { acme: true, redirectToHttps: true, dashboard: false, defaultIngressClass: false },
@@ -257,7 +257,7 @@ describe('observation helpers', () => {
 
   test('O8 selectors name only the proxy release and read labels', () => {
     expect(newerValuesRevisionSelector()).toBe(
-      'owner=helm,name=dockflow-traefik,status=deployed,dockflow.shawiizz.dev/values-revision,dockflow.shawiizz.dev/values-revision notin (1,2,3)',
+      `owner=helm,name=dockflow-traefik,status=deployed,dockflow.shawiizz.dev/values-revision,dockflow.shawiizz.dev/values-revision notin (${Array.from({ length: TRAEFIK_VALUES_REVISION }, (_, i) => i + 1).join(',')})`,
     );
     expect(missingValuesRevisionSelector()).toBe('owner=helm,name=dockflow-traefik,status=deployed,!dockflow.shawiizz.dev/values-revision');
   });
@@ -525,15 +525,15 @@ describe('planProxy, managing stack: never downgrade (M5)', () => {
   test('same chart with a newer values revision label -> keep-newer', () => {
     const plan = expectPlan(managing(intent(), { ...healthy(HTTP), deployedValuesNewer: true }), 'keep-newer');
     expect(plan.warnings[0].message).toBe(
-      'Traefik chart 41.6.0 with a newer values revision in dockflow-system is newer than this Dockflow release (41.6.0 with values revision 3), so the proxy is left unchanged',
+      `Traefik chart 41.6.0 with a newer values revision in dockflow-system is newer than this Dockflow release (41.6.0 with values revision ${TRAEFIK_VALUES_REVISION}), so the proxy is left unchanged`,
     );
   });
 
   test('label missing and the ConfigMap records a newer values revision -> keep-newer', () => {
     const observation = { ...healthy(HTTP), revisionLabelMissing: true };
-    observation.state = { ...(observation.state as ProxyState), valuesRevision: 4 };
+    observation.state = { ...(observation.state as ProxyState), valuesRevision: TRAEFIK_VALUES_REVISION + 1 };
     const plan = expectPlan(managing(intent(), observation), 'keep-newer');
-    expect(plan.warnings[0].message).toContain('41.6.0 with values revision 4');
+    expect(plan.warnings[0].message).toContain(`41.6.0 with values revision ${TRAEFIK_VALUES_REVISION + 1}`);
   });
 
   test('a newer ConfigMap schema -> keep-newer, with W-PX-NOT-READY when the pod is not ready', () => {
@@ -624,7 +624,7 @@ describe('planProxy, managing stack: conflicts, install and upgrades (M7-M9)', (
     observation.state = { ...(observation.state as ProxyState), valuesRevision: 2 };
     expect(managing(intent(), observation)).toEqual({
       kind: 'upgrade',
-      reasons: ['values revision 2 -> 3'],
+      reasons: [`values revision 2 -> ${TRAEFIK_VALUES_REVISION}`],
       warnings: [],
       applyCrds: false,
       recoverTo: null,
@@ -666,7 +666,7 @@ describe('planProxy, managing stack: conflicts, install and upgrades (M7-M9)', (
     const observation = { ...healthy(HTTP), state: null, revisionLabelMissing: true };
     observation.deployedValues = { ...desiredFor(intent()), global: {} };
     const plan = expectPlan(managing(intent(), observation), 'upgrade');
-    expect(plan.reasons).toEqual(['values revision 1 -> 3']);
+    expect(plan.reasons).toEqual([`values revision 1 -> ${TRAEFIK_VALUES_REVISION}`]);
     expect(plan.adoptState).toBe(true);
   });
 

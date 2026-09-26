@@ -16,6 +16,7 @@ import {
   planCrdApply,
   proxyHostPorts,
   proxyRefusalError,
+  acmeStoragePath,
   pvNodeHostname,
   resolvePlacement,
   runningTraefikNode,
@@ -251,7 +252,18 @@ describe('buildTraefikValues goldens', () => {
     const digest = sha256Hex(goldenFiles().map((file) => `${file}\n${canonicalJson(readGolden(file))}`).join('\n'));
     // A different output needs new goldens, this digest AND a TRAEFIK_VALUES_REVISION bump, or
     // deployed proxies never learn that their values changed (design-04 2.8.1).
-    expect({ revision: TRAEFIK_VALUES_REVISION, digest }).toEqual({ revision: 3, digest: TRAEFIK_VALUES_GOLDEN_SHA256 });
+    expect({ revision: TRAEFIK_VALUES_REVISION, digest }).toEqual({ revision: 4, digest: TRAEFIK_VALUES_GOLDEN_SHA256 });
+  });
+});
+
+describe('acmeStoragePath', () => {
+  test('Let’s Encrypt production keeps acme.json; every other CA, even on the same host, gets its own file', () => {
+    const staging = acmeStoragePath('https://acme-staging-v02.api.letsencrypt.org/directory');
+    const other = acmeStoragePath('https://ca.example.com:14000/acme/a/directory');
+    expect(acmeStoragePath(null)).toBe('/data/acme.json');
+    expect(staging).toBe('/data/acme-acme-staging-v02.api.letsencrypt.org-67f27506.json');
+    expect(other).toMatch(/^\/data\/acme-ca\.example\.com-14000-[0-9a-f]{8}\.json$/);
+    expect(acmeStoragePath('https://ca.example.com:14000/acme/b/directory')).not.toBe(other);
   });
 });
 

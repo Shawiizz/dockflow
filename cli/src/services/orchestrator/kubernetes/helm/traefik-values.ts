@@ -14,13 +14,13 @@ import { TRAEFIK_CHART_PIN, type TraefikChartPin } from '../versions';
 import { compareChartVersions } from './parse';
 
 /** Bumped whenever buildTraefikValues output changes for the same intent, placement and pin. */
-export const TRAEFIK_VALUES_REVISION = 3;
+export const TRAEFIK_VALUES_REVISION = 4;
 /**
  * sha256 of the values goldens (`__tests__/kubernetes/backends/proxy-values`) at this revision. The
  * golden test fails when the output changes and this still names the old goldens: bump the
  * revision together with it, so deployed proxies see the change (design-04 2.8.1).
  */
-export const TRAEFIK_VALUES_GOLDEN_SHA256 = 'dba8e08026f9e56d2a5b15843f34d32fc708516b1a247510afbe7cf6084de2a4';
+export const TRAEFIK_VALUES_GOLDEN_SHA256 = 'ff1636589ddc7e74d0c56948931ce8fed0b9892194e87f18b19567be2b8b7208';
 export const TRAEFIK_RUN_AS = 65532;
 
 /** The two CRDs Dockflow's routes need; their presence is O4 and their versions decide 2.5. */
@@ -143,6 +143,18 @@ export function proxyHostPorts(acme: boolean): number[] {
 }
 
 /**
+ * Let's Encrypt production keeps `/data/acme.json`; any other CA gets a file of its own. Traefik
+ * resets its account when the CA changes but keeps serving the stored certificates until they near
+ * expiry, so a switch from staging to production would otherwise serve untrusted certificates for
+ * two months.
+ */
+export function acmeStoragePath(caServer: string | null): string {
+  if (caServer === null) return '/data/acme.json';
+  const host = new URL(caServer).host.toLowerCase().replace(/[^a-z0-9.-]/g, '-');
+  return `/data/acme-${host}-${sha256Hex(caServer).slice(0, 8)}.json`;
+}
+
+/**
  * User values of the `dockflow-traefik` release. Sent as canonical JSON on stdin; the PEM text of
  * a CA bundle never enters them, only the name of the Secret that carries it.
  */
@@ -221,11 +233,12 @@ export function buildTraefikValues(
       storageClass: traits.defaultStorageClass,
       path: '/data',
     };
+    const storage = acmeStoragePath(intent.caServer);
     values.certificatesResolvers = {
       letsencrypt: {
         acme: {
           email: intent.email,
-          storage: '/data/acme.json',
+          storage,
           httpChallenge: { entryPoint: 'web' },
           ...(intent.caServer ? { caServer: intent.caServer } : {}),
         },
@@ -241,7 +254,7 @@ export function buildTraefikValues(
           image: imageRef,
           imagePullPolicy: 'IfNotPresent',
           // Traefik refuses an acme.json more open than 0600
-          command: ['sh', '-c', 'touch /data/acme.json && chmod 600 /data/acme.json'],
+          command: ['sh', '-c', `touch ${storage} && chmod 600 ${storage}`],
           securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ['ALL'] }, readOnlyRootFilesystem: true },
           volumeMounts: [{ name: 'data', mountPath: '/data' }],
         },
