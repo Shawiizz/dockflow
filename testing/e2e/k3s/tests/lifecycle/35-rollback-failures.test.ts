@@ -18,7 +18,7 @@ import { ANNOTATIONS } from "../../../../../cli/src/services/orchestrator/kubern
 import type { Deployment, StatefulSet } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/apps";
 import type { Job } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/batch";
 import type { Service } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/core";
-import { GRACEFUL_INTERRUPTS, runCLI, runCLIInBackground } from "../../../helpers/cli";
+import { type CLIResult, GRACEFUL_INTERRUPTS, runCLI, runCLIInBackground } from "../../../helpers/cli";
 import { dumpDebug } from "../../../helpers/debug-dump";
 import { type Fixture, makeFixture } from "../../../helpers/fixtures";
 import {
@@ -105,6 +105,20 @@ function writeWebCompose(f: Fixture, spec: WebSpec): void {
   if (spec.extraServices) parts.push(spec.extraServices);
   f.write(".dockflow/docker/docker-compose.yml", `${parts.join("\n")}\n`);
 }
+
+/** An HTTP check nothing answers, so a deploy of a variant fails it and `on_failure: rollback` applies. */
+const FAILING_CHECK = [
+  "health_checks:",
+  "  on_failure: rollback",
+  "  endpoints:",
+  "    - name: nothing",
+  '      url: "http://127.0.0.1:18095/"',
+  "      remote: true",
+  "      expected_status: 200",
+  "      retries: 2",
+  "      retry_delay: 1",
+  "",
+].join("\n");
 
 /** A copy of the fixture under another project; its services serve no :8085, so the chain's health check goes. */
 function variantOf(project: string): Fixture {
@@ -813,18 +827,34 @@ describe("accessories are not rolled back (E-35-20)", () => {
         const v1 = await runCLI(["deploy", ENV, "1.0.0", "--yes"], { cwd: f.dir, timeoutMs: 200_000 });
         expect(v1.exitCode).toBe(0);
 
-        f.write(".dockflow/docker/accessories.yml", "services:\n  cache:\n    image: redis:8-alpine\n    environment:\n      MARK: v2\n");
-        const v2 = await runCLI(["deploy", ENV, "1.0.1", "--yes"], { cwd: f.dir, timeoutMs: 200_000 });
-        expect(v2.exitCode).toBe(0);
         const warnPattern = /Accessories were not rolled back; 1 accessory service\(s\) still run the definition deployed after 1\.0\.0/;
-        expect(v2.stdout + v2.stderr).toMatch(warnPattern);
+        const restoreLine = "Restore them by checking out the accessories.yml of 1.0.0 and running `dockflow deploy e2e --accessories`";
+        const mark = async (): Promise<string> =>
+          (await runCLI(["accessories", "exec", ENV, "cache", "--", "printenv", "MARK"], { cwd: f.dir, timeoutMs: 30_000 })).stdout.trim();
 
+        // accessories change and the HTTP check fails: rollbackRelease takes the app back, says the accessories stay
+        f.write(".dockflow/docker/accessories.yml", "services:\n  cache:\n    image: redis:8-alpine\n    environment:\n      MARK: v2\n");
+        const original = f.read(".dockflow/config.yml");
+        f.write(".dockflow/config.yml", `${original}${FAILING_CHECK}`);
+        let v2: CLIResult;
+        try {
+          v2 = await runCLI(["deploy", ENV, "1.0.1", "--yes"], { cwd: f.dir, timeoutMs: 200_000 });
+        } finally {
+          f.write(".dockflow/config.yml", original);
+        }
+        expect(v2.exitCode).toBe(53);
+        expect(v2.stdout + v2.stderr).toMatch(warnPattern);
+        expect(v2.stdout + v2.stderr).toContain(restoreLine);
+        expect(await mark()).toBe("v2");
+
+        // a later healthy deploy, then a manual rollback to 1.0.0: the same warning, the accessories untouched
+        const v3 = await runCLI(["deploy", ENV, "1.0.2", "--yes"], { cwd: f.dir, timeoutMs: 200_000 });
+        expect(v3.exitCode).toBe(0);
+        expect(v3.stdout + v3.stderr).not.toMatch(warnPattern);
         const rollback = await runCLI(["rollback", ENV], { cwd: f.dir, timeoutMs: 200_000 });
         expect(rollback.exitCode).toBe(0);
         expect(rollback.stdout + rollback.stderr).toMatch(warnPattern);
-
-        const live = await runCLI(["accessories", "exec", ENV, "cache", "--", "printenv", "MARK"], { cwd: f.dir, timeoutMs: 30_000 });
-        expect(live.stdout.trim()).toBe("v2");
+        expect(await mark()).toBe("v2");
       } finally {
         await runCLI(["stop", ENV, "-y"], { cwd: f.dir, timeoutMs: 60_000 }).catch(() => {});
         await runCLI(["accessories", "remove", ENV, "-y"], { cwd: f.dir, timeoutMs: 60_000 }).catch(() => {});
