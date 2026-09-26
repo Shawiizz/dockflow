@@ -39,12 +39,13 @@ export async function runLockStatus(env: string, options: LockStatusOptions): Pr
 
   printBlank();
   if (data) {
+    // the details are the command's output, on stdout with their header (`lock status <env> | grep Holder`)
     printRaw(colors.bold('  Lock Details:'));
-    printDim(`    Stack:     ${data.stack}`);
-    printDim(`    Holder:    ${data.performer}`);
-    printDim(`    Started:   ${data.started_at}`);
-    printDim(`    Version:   ${data.version}`);
-    printDim(`    Duration:  ${durationMinutes} minutes`);
+    printRaw(colors.dim(`    Stack:     ${data.stack}`));
+    printRaw(colors.dim(`    Holder:    ${data.performer}`));
+    printRaw(colors.dim(`    Started:   ${data.started_at}`));
+    printRaw(colors.dim(`    Version:   ${data.version}`));
+    printRaw(colors.dim(`    Duration:  ${durationMinutes} minutes`));
     printBlank();
   }
 
