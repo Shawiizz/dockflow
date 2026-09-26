@@ -120,8 +120,8 @@ describe("E-74 setup-upgrade", () => {
       if (result.exitCode !== 0) throw new Error(`upgrade failed (exit ${result.exitCode}): ${result.stderr.slice(-4000) || result.stdout.slice(-4000)}`);
       expect(result.exitCode).toBe(0);
 
-      const serverIndex = result.stdout.indexOf(server1.key);
-      const agentIndex = result.stdout.indexOf(topo.nodes[1].key);
+      const serverIndex = result.stderr.indexOf(server1.key);
+      const agentIndex = result.stderr.indexOf(topo.nodes[1].key);
       expect(serverIndex).toBeGreaterThanOrEqual(0);
       expect(agentIndex).toBeGreaterThan(serverIndex);
 

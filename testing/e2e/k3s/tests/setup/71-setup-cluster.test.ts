@@ -99,11 +99,11 @@ describe("E-71 setup-cluster (fresh trio)", () => {
 
       if (result.exitCode !== 0) throw new Error(`setup k3s failed (exit ${result.exitCode}): ${result.stderr.slice(-4000) || result.stdout.slice(-4000)}`);
       expect(result.exitCode).toBe(0);
-      // E-71-01: summary lists the three nodes ready
-      for (const node of topo.nodes) expect(result.stdout).toContain(node.key);
+      // E-71-01: summary lists the three nodes ready (the table is on stderr, with every other decorative line)
+      for (const node of topo.nodes) expect(result.stderr).toContain(node.key);
 
-      // E-71-02: no K10... token in CLI stdout, and no leaked cmdline hit on any node
-      expect(result.stdout).not.toMatch(/K10[0-9a-f]{20,}/);
+      // E-71-02: no K10... token in the CLI's output, and no leaked cmdline hit on any node
+      expect(`${result.stdout}${result.stderr}`).not.toMatch(/K10[0-9a-f]{20,}/);
       expect(leaks).toEqual([]);
       for (const node of topo.nodes) {
         const journal = await mustRootExec(node.key, "journalctl -u k3s -u k3s-agent --no-pager -n 2000 2>/dev/null || true");

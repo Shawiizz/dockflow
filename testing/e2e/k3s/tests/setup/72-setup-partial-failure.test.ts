@@ -43,8 +43,8 @@ describe("E-72 setup-partial-failure", () => {
       const result = await runSetupK3s(fixture, { binary: resolveCliBinaryPath(), timeoutMs: 500_000 });
 
       expect(result.exitCode).not.toBe(0);
-      expect(result.stdout).not.toMatch(/is ready/);
-      const summary = result.stdout;
+      expect(`${result.stdout}${result.stderr}`).not.toMatch(/is ready/);
+      const summary = result.stderr;
       expect(summary).toMatch(new RegExp(`${server1.key}\\s+\\S+\\s+\\S+\\s+ok`));
       expect(summary).toMatch(new RegExp(`${agent1.key}\\s+\\S+\\s+\\S+\\s+ok`));
       expect(summary).toMatch(new RegExp(`${agent2.key}\\s+\\S+\\s+\\S+\\s+failed`));

@@ -103,7 +103,7 @@ describe("E-70 setup-single-host (local mode)", () => {
         throw new Error(`local setup failed (exit ${result.exitCode}):\n${result.stderr || result.stdout}`);
       }
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toMatch(/is running on this host|Setup Complete/);
+      expect(result.stderr).toMatch(/is running on this host|Setup Complete/);
     });
   });
 
