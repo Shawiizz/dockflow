@@ -146,10 +146,11 @@ describe("E-76-04 setup-rerun: pre-existing legacy sudo rules", () => {
       // nginx means no new user-scoped rule, so the file recognized as Dockflow's own is removed
       // outright); the later `legacy-sudoers` probe then finds nothing left to warn about, so —
       // unlike the nginx variant of design-05 22.3 E16 — the summary carries no legacy-rule warning.
-      expect(result.stdout).not.toMatch(/legacy/i);
+      expect(`${result.stdout}${result.stderr}`).not.toContain("Legacy root-equivalent sudo rules");
 
+      // README ships with the distribution's sudo package
       const listDir = await mustRootExec(node.container, "ls /etc/sudoers.d");
-      expect(listDir.split("\n").filter(Boolean)).toEqual(["dockflow-k3s"]);
+      expect(listDir.split("\n").filter((name) => name !== "" && name !== "README")).toEqual(["dockflow-k3s"]);
     });
   }, 600_000);
 });
