@@ -14,7 +14,7 @@ import { __setOrchestratorOpenerForTests } from '../../../commands/shared/day2';
 import { capabilitiesFor } from '../../../services/orchestrator/capabilities';
 import type { DiagnosticReport, InstanceInfo, InstanceTarget, ServiceInfo } from '../../../services/orchestrator/interfaces';
 import type { DockflowConfig } from '../../../utils/config';
-import { ExecExitError, OrchestratorUnavailableError } from '../../../utils/errors';
+import { ErrorCode, ExecExitError, OrchestratorUnavailableError } from '../../../utils/errors';
 import * as output from '../../../utils/output';
 import { FakeOrchestrator } from '../fakes/fake-orchestrator';
 
@@ -355,6 +355,24 @@ describe('status', () => {
       expect(warning.mock.calls.length).toBe(1);
     } finally {
       warning.mockRestore();
+    }
+  });
+
+  it('fails with the error of an environment named on the command line, instead of a row', async () => {
+    const unreachable = new OrchestratorUnavailableError('The Kubernetes API is not answering on server_1', 'Check the k3s service.');
+    __setOrchestratorOpenerForTests(async () => {
+      throw unreachable;
+    });
+    const raw = spyRaw();
+    const section = spySection();
+    const deps: StatusDeps = { availableEnvironments: () => ['production', 'staging'], managerCount: () => 1, budgetMs: () => 8000 };
+    try {
+      await expect(runStatus('production', deps)).rejects.toBe(unreachable);
+      expect(raw.mock.calls).toEqual([]);
+      await expect(runStatus('preview', deps)).rejects.toMatchObject({ code: ErrorCode.NO_SERVERS_FOR_ENV, message: 'Environment "preview" not found' });
+    } finally {
+      raw.mockRestore();
+      section.mockRestore();
     }
   });
 });

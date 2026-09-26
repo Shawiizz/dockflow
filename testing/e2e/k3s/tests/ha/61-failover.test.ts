@@ -6,12 +6,10 @@
  * line actually goes to, not the stream design-07's prose implies.
  *
  * Open dependency defects (see the package report; re-checked each package's current code above):
- *  - `cli/src/commands/app/status.ts` (P65) still has no `--server` flag and never exits non-zero
- *    (each environment's failure becomes a table cell, not a thrown error; design-06 3.7's own flow
- *    calls `openDay2(env, {})` with no server option at all), so it cannot stand in for DESIGN-CORE
- *    6.6's refusal contract design-07's E-61-05/06/08 rows assume. Those rows use `version` instead,
- *    which is built on the same `openDay2`/`resolveOrchestratorTarget` path and does throw with the
- *    right code.
+ *  - `cli/src/commands/app/status.ts` (P65) has no `--server` flag (design-06 3.7's own flow calls
+ *    `openDay2(env, {})` with no server option at all), so it cannot stand in for DESIGN-CORE 6.6's
+ *    refusal contract design-07's E-61-05/06/08 rows assume. Those rows use `version` instead, which
+ *    is built on the same `openDay2`/`resolveOrchestratorTarget` path and throws with the right code.
  *  - a control plane named directly with `--server` and then found unreachable (SSH channel lost)
  *    still surfaces as `OrchestratorUnavailableError` (exit 44: `runtime/kubectl.ts`'s "Unreachable"
  *    mapping), not the `ConnectionError` (exit 30) design-07 predicts for that case —

@@ -504,7 +504,7 @@ List running instances (containers on Swarm, pods on k3s) for the stack.
 dockflow status [env]
 ```
 
-Show deployment status. Without an argument, summarises every environment; with one, focuses on that environment. Identical from every manager on k3s — release state, the deploy lock and `status` itself live in the cluster (see [Multi-host](/en/configuration/multi-host)).
+Show deployment status. Without an argument, summarises every environment, and one that cannot be read shows as unavailable; with one, focuses on that environment, and fails with its error and exit code when it cannot be read, so scripts can rely on it. Identical from every manager on k3s — release state, the deploy lock and `status` itself live in the cluster (see [Multi-host](/en/configuration/multi-host)).
 
 ```bash
 dockflow status               # All environments
