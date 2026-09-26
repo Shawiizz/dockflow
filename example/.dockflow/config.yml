@@ -23,7 +23,7 @@ registry:
   # Full image name will be: {url}/{namespace}/{image}:{tag}
   namespace: ""
 
-  # Credentials (use CI secrets — add REGISTRY_USERNAME, REGISTRY_PASSWORD to your CI/CD)
+  # Credentials (CI secrets per environment, e.g. PRODUCTION_REGISTRY_USERNAME and PRODUCTION_REGISTRY_PASSWORD)
   # Resolved via Nunjucks: secrets from servers.yml env or CI are available as {{ current.env.xxx }}
   # For basic auth:
   username: "{{ current.env.registry_username }}"

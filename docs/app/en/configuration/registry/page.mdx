@@ -27,9 +27,9 @@ Add the following to `.dockflow/config.yml`:
       token: "{{ current.env.registry_token }}"
     ```
 
-    **CI/CD secrets required:**
-    - `REGISTRY_USERNAME` (GitHub actor)
-    - `REGISTRY_TOKEN` (GitHub token with `packages:write` scope)
+    **CI/CD secrets required** (here for `production`):
+    - `PRODUCTION_REGISTRY_USERNAME` (GitHub actor)
+    - `PRODUCTION_REGISTRY_TOKEN` (GitHub token with `packages:write` scope)
   </Tabs.Tab>
 
   <Tabs.Tab>
@@ -43,8 +43,8 @@ Add the following to `.dockflow/config.yml`:
       token: "{{ current.env.registry_token }}"
     ```
 
-    **CI/CD secrets required:**
-    - `REGISTRY_TOKEN` (`CI_JOB_TOKEN` is automatic in GitLab CI)
+    **CI/CD secrets required** (here for `production`):
+    - `PRODUCTION_REGISTRY_TOKEN` (set it to `$CI_JOB_TOKEN`, which GitLab CI provides)
   </Tabs.Tab>
 
   <Tabs.Tab>
@@ -58,9 +58,9 @@ Add the following to `.dockflow/config.yml`:
       password: "{{ current.env.registry_password }}"
     ```
 
-    **CI/CD secrets required:**
-    - `REGISTRY_USERNAME`
-    - `REGISTRY_PASSWORD`
+    **CI/CD secrets required** (here for `production`):
+    - `PRODUCTION_REGISTRY_USERNAME`
+    - `PRODUCTION_REGISTRY_PASSWORD`
   </Tabs.Tab>
 
   <Tabs.Tab>
@@ -74,14 +74,14 @@ Add the following to `.dockflow/config.yml`:
       password: "{{ current.env.registry_password }}"
     ```
 
-    **CI/CD secrets required:**
-    - `REGISTRY_USERNAME`
-    - `REGISTRY_PASSWORD`
+    **CI/CD secrets required** (here for `production`):
+    - `PRODUCTION_REGISTRY_USERNAME`
+    - `PRODUCTION_REGISTRY_PASSWORD`
   </Tabs.Tab>
 </Tabs>
 
 <Callout type="info">
-  Registry credentials use Nunjucks template syntax. Values from `servers.yml` env vars or CI secrets are available as `current.env.variable_name` (lowercased).
+  Registry credentials use Nunjucks template syntax. Values from `servers.yml` env vars or CI secrets are available as `current.env.variable_name` (lowercased). A secret is scoped to one environment by its prefix: `PRODUCTION_REGISTRY_PASSWORD` is `current.env.registry_password` when deploying to `production`, and a secret without the prefix never reaches `current.env` (see [Variable Overrides](/en/configuration/servers#variable-overrides)).
 </Callout>
 
 ## Configuration Reference
