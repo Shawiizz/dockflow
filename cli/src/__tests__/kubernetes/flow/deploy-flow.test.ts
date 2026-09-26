@@ -12,7 +12,8 @@ import type { Audit } from '../../../services/audit';
 import type { Metrics } from '../../../services/metrics';
 import { execute } from '../../../commands/deploy';
 import type { DeployContext } from '../../../commands/deploy-context';
-import { DeployError, ErrorCode } from '../../../utils/errors';
+import { err } from '../../../types/result';
+import { DeployError, ErrorCode, OrchestratorUnavailableError } from '../../../utils/errors';
 import * as output from '../../../utils/output';
 import { FakeOrchestrator } from '../fakes/fake-orchestrator';
 import { config, target } from '../support/builders';
@@ -381,6 +382,14 @@ describe('execute — U-FLOW-09 lock contention', () => {
     expect(thrown).toBeInstanceOf(DeployError);
     expect(thrown.code).toBe(ErrorCode.DEPLOY_LOCKED);
     expect(thrown.message).toContain('Already locked');
+  });
+
+  it('a control plane that does not answer keeps its own error, not DEPLOY_LOCKED', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    const unreachable = new OrchestratorUnavailableError('The Kubernetes API is not answering on server_1', 'Check the k3s service.');
+    orchestrator.program('lock.acquire', async () => err(unreachable));
+    const ctx = fakeContext(orchestrator, { target: soloTarget() });
+    expect(await execute(ctx).catch((e) => e)).toBe(unreachable);
   });
 });
 

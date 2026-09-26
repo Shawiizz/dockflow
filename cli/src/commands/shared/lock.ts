@@ -19,7 +19,10 @@ export interface WithLockOptions {
 
 export async function withLock<T>(lock: LockStore, options: WithLockOptions, action: (signal: AbortSignal) => Promise<T>): Promise<T> {
   const acquired = await lock.acquire(options.version !== undefined ? { message: options.message, version: options.version } : { message: options.message });
-  if (!acquired.success) throw new DeployError(acquired.error.message, ErrorCode.DEPLOY_LOCKED, options.lockedHint);
+  // a CLIError is the cluster failing to answer, anything else another holder: only that is DEPLOY_LOCKED
+  if (!acquired.success) {
+    throw acquired.error instanceof CLIError ? acquired.error : new DeployError(acquired.error.message, ErrorCode.DEPLOY_LOCKED, options.lockedHint);
+  }
 
   const interrupt = new AbortController();
   const stopHandling = onInterrupt(() => {

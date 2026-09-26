@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { withLock } from '../commands/shared/lock';
 import type { LockData, LockStore } from '../services/orchestrator/interfaces';
 import { err, ok } from '../types/result';
-import { DeployError, ErrorCode, InterruptedError } from '../utils/errors';
+import { DeployError, ErrorCode, InterruptedError, OrchestratorUnavailableError } from '../utils/errors';
 import { dispatchInterrupt, onInterrupt } from '../utils/interrupt';
 import * as output from '../utils/output';
 
@@ -10,12 +10,16 @@ const LOCK_DATA: LockData = { performer: 'me', started_at: '2026-09-26T00:00:00.
 
 class FakeLock implements LockStore {
   readonly events: string[] = [];
-  constructor(private readonly held: string | null = null) {}
+  constructor(
+    private readonly held: string | null = null,
+    private readonly unanswered: Error | null = null,
+  ) {}
   async status() {
     return ok({ locked: this.held !== null });
   }
   async acquire(options?: { message?: string; version?: string }) {
     this.events.push(`acquire ${options?.message}${options?.version ? ` ${options.version}` : ''}`);
+    if (this.unanswered) return err(this.unanswered);
     return this.held === null ? ok(LOCK_DATA) : err(new Error(`Already locked by ${this.held} (0 min ago)`));
   }
   async release() {
@@ -87,6 +91,12 @@ describe('withLock', () => {
     await expect(failure).rejects.toMatchObject({ code: ErrorCode.DEPLOY_LOCKED, message: 'Already locked by someone (0 min ago)', suggestion: 'Wait for it.' });
     expect(ran).toBe(false);
     expect(lock.events).toEqual(['acquire Stop']);
+  });
+
+  it('a cluster that does not answer keeps its own error, not DEPLOY_LOCKED', async () => {
+    const unreachable = new OrchestratorUnavailableError('The Kubernetes API is not answering on server_1', 'Check the k3s service.');
+    const failure = withLock(new FakeLock(null, unreachable), { message: 'Stop', lockedHint: 'Wait for it.' }, async () => {});
+    await expect(failure).rejects.toBe(unreachable);
   });
 
   it('Ctrl+C aborts the signal; the failure it causes exits INTERRUPTED with its own text, after the release', async () => {

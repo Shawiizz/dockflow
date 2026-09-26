@@ -353,7 +353,8 @@ export async function execute(ctx: DeployContext): Promise<void> {
   const orch = ctx.orchestrator;
   const lock = orch.lock(ctx.stackName, ctx.config.lock?.stale_threshold_minutes);
   const acquired = await lock.acquire({ version: ctx.deployVersion, force: ctx.options.force, message: `Deploy ${ctx.deployVersion}` });
-  if (!acquired.success) throw new DeployError(acquired.error.message, ErrorCode.DEPLOY_LOCKED);
+  // a CLIError is the cluster failing to answer, anything else another holder: only that is DEPLOY_LOCKED
+  if (!acquired.success) throw acquired.error instanceof CLIError ? acquired.error : new DeployError(acquired.error.message, ErrorCode.DEPLOY_LOCKED);
 
   const appRef: StackRef = { project: ctx.config.project_name, env: ctx.env, role: 'app' };
   const startTime = Date.now();

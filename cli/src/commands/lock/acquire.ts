@@ -25,7 +25,7 @@ export async function runLockAcquire(env: string, options: LockAcquireOptions): 
     const current = await lock.status();
     if (!current.success) {
       spinner.fail('Failed to check lock status');
-      throw new CLIError(current.error.message, ErrorCode.COMMAND_FAILED);
+      throw CLIError.from(current.error, ErrorCode.COMMAND_FAILED);
     }
 
     if (current.data.locked) {
@@ -46,7 +46,7 @@ export async function runLockAcquire(env: string, options: LockAcquireOptions): 
   const result = await lock.acquire({ message: options.message, force: options.force });
   if (!result.success) {
     spinner.fail('Failed to acquire lock');
-    throw new CLIError(result.error.message, ErrorCode.COMMAND_FAILED);
+    throw CLIError.from(result.error, ErrorCode.COMMAND_FAILED);
   }
 
   spinner.succeed(`Lock acquired for ${ctx.stackName}`);
