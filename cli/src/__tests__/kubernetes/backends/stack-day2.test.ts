@@ -745,6 +745,27 @@ describe('stop', () => {
     await stop(h.deps, ACC_REF, ['worker'], { wait: false, timeoutS: 60 });
     expect(h.kube.calls.slice(from2).some((c) => c.call.args[0] === 'patch')).toBe(false);
   });
+
+  it('a DaemonSet of a Helm release is warned about, never patched and never waited for', async () => {
+    const h = harness();
+    const agent: DaemonSet = {
+      apiVersion: 'apps/v1',
+      kind: 'DaemonSet',
+      metadata: { name: 'logs-agent', namespace: NS, labels: { 'app.kubernetes.io/managed-by': 'Helm' } },
+      spec: {
+        selector: { matchLabels: { app: 'logs-agent' } },
+        template: { metadata: { labels: { app: 'logs-agent' } }, spec: { containers: [{ name: 'agent', image: 'busybox:1.37' }] } },
+      },
+    };
+    await applyLive(h.kube, agent);
+    h.helm.seed({ name: 'logs', namespace: NS, role: 'app', manifest: [{ kind: 'DaemonSet', name: 'logs-agent', namespace: NS, keep: false, claimTemplates: [] }] });
+    const from = mark(h);
+
+    await stop(h.deps, APP_REF, null, { wait: true, timeoutS: 60 });
+
+    expect(h.kube.calls.slice(from).some((c) => c.call.args[0] === 'patch')).toBe(false);
+    expect(warnings).toEqual(['Helm release logs runs DaemonSet logs-agent on every node, which was not stopped']);
+  });
 });
 
 // ---------------------------------------------------------------------------

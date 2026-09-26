@@ -553,6 +553,11 @@ export async function stop(deps: StackDay2Deps, ref: StackRef, services: string[
     const helmTargets = await helmWorkloadTargets(deps, release);
     let stopped = false;
     for (const target of helmTargets) {
+      // a DaemonSet has no spec.replicas to scale: it runs on every node until the release goes
+      if (target.kind === 'DaemonSet') {
+        printWarning(`Helm release ${release.name} runs DaemonSet ${target.name} on every node, which was not stopped`);
+        continue;
+      }
       if (target.replicas === 0) continue;
       await patchWorkload(deps, target.namespace, target.kind, target.name, stopPatchBody(target.replicas));
       targets.push({ ...target, replicas: 0 });
