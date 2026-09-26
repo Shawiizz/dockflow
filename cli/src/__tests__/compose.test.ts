@@ -6,6 +6,7 @@ import {
   loadFromString,
   serialize,
   updateImageTags,
+  composeFileOptional,
   registryPassword,
   usesRegistry,
   injectSwarmDefaults,
@@ -663,6 +664,14 @@ describe('usesRegistry', () => {
     expect(usesRegistry(withRegistry({ type: 'custom', enabled: false, url: 'registry.example.com', password: 'p' }))).toBe(false);
     expect(usesRegistry(withRegistry({ type: 'custom', url: 'registry.example.com', password: 'p' }))).toBe(false);
     expect(usesRegistry(withRegistry(undefined))).toBe(false);
+  });
+
+  it('composeFileOptional: no_services projects and Helm-only apps need no compose file', () => {
+    const release = { name: 'web', chart: 'web', repo: 'https://charts.example.com', version: '1.0.0' };
+    expect(composeFileOptional({ project_name: 'demo' } as DockflowConfig)).toBe(false);
+    expect(composeFileOptional({ project_name: 'demo', no_services: true } as DockflowConfig)).toBe(true);
+    expect(composeFileOptional({ project_name: 'demo', helm: { releases: [release] } } as DockflowConfig)).toBe(true);
+    expect(composeFileOptional({ project_name: 'demo', helm: { releases: [{ ...release, role: 'accessory' }] } } as DockflowConfig)).toBe(false);
   });
 
   it('accepts registry.token in place of the password (the GHCR and GitLab examples)', () => {

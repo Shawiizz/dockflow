@@ -301,7 +301,7 @@ async function runK3sOfflineRender(rootConfig: DockflowConfig, env: string): Pro
     const result = Compose.renderAndResolveCompose(
       { env, version: '0.0.0-validate', branch: getCurrentBranch(), project_name: rootConfig.project_name, config: rootConfig },
       templateContext,
-      { uploadOnly: rootConfig.no_services === true },
+      { composeOptional: Compose.composeFileOptional(rootConfig) },
     );
     rendered = result.rendered;
     composeContent = result.composeContent;

@@ -296,7 +296,7 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   const { rendered, composeContent, composeDirPath, renderContext } = Compose.renderAndResolveCompose(
     { env, version: deployVersion, branch: branchName, project_name: config.project_name, config },
     templateContext,
-    { uploadOnly: config.no_services === true },
+    { composeOptional: Compose.composeFileOptional(config) },
   );
   const pluginsLoaded = await Plugin.loadConfigWithPlugins({ rendered, fallback: config, projectRoot, projectContext: renderContext });
   const finalConfig = pluginsLoaded.config;

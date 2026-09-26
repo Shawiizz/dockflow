@@ -374,10 +374,15 @@ function placeholderWarnings(
  * Eliminates the duplicate render→findCompose→getDirPath boilerplate
  * shared between deploy.ts and build.ts.
  */
+/** no_services projects and Helm-only apps (an app-role Helm release) need no compose file (design-04 3.11) */
+export function composeFileOptional(config: DockflowConfig): boolean {
+  return config.no_services === true || (config.helm?.releases ?? []).some((release) => (release.role ?? 'app') === 'app');
+}
+
 export function renderAndResolveCompose(
   ctx: ComposeRenderContext,
   templateContext?: TemplateContext | null,
-  options: { uploadOnly?: boolean } = {},
+  options: { composeOptional?: boolean } = {},
 ): RenderedComposeResult {
   const projectRoot = getProjectRoot();
 
@@ -392,7 +397,7 @@ export function renderAndResolveCompose(
 
   const originalComposePath = getComposePath();
   if (!originalComposePath) {
-    if (options.uploadOnly) {
+    if (options.composeOptional) {
       return {
         rendered,
         composeContent: 'services: {}\n',
