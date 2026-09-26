@@ -390,8 +390,10 @@ class Extraction {
  * modes keep their permission bits only.
  */
 export async function extractTar(stream: Readable, destDir: string, options: ExtractTarOptions = {}): Promise<ExtractTarResult> {
-  await fsp.mkdir(destDir, { recursive: true });
-  const extraction = new Extraction(await fsp.realpath(destDir), destDir, options.renameTopEntry ?? null);
+  // absolute first: Bun on Windows fails mkdir('.', { recursive: true }) with ENOENT (`cp svc:/f ./f`)
+  const root = resolve(destDir);
+  await fsp.mkdir(root, { recursive: true });
+  const extraction = new Extraction(await fsp.realpath(root), destDir, options.renameTopEntry ?? null);
   const extract = tar.extract();
   stream.on('error', (error) => extract.destroy(error));
   stream.pipe(extract);

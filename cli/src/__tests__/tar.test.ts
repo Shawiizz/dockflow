@@ -199,6 +199,19 @@ describe('extractTar', () => {
     expect(readFileSync(join(dest, 'app', 'sub', 'b.txt'), 'utf8')).toBe('wor');
   });
 
+  it('extracts into the working directory given as "." (cp svc:/file ./file)', async () => {
+    const dest = tempDir('cwd');
+    const cwd = process.cwd();
+    process.chdir(dest);
+    try {
+      const result = await extractTar(Readable.from([await archive([{ name: 'nginx.conf', content: 'events {}' }])]), '.', { renameTopEntry: 'out.conf' });
+      expect(result).toEqual({ files: 1, bytes: 9 });
+    } finally {
+      process.chdir(cwd);
+    }
+    expect(readFileSync(join(dest, 'out.conf'), 'utf8')).toBe('events {}');
+  });
+
   it('renames the top entry of every path', async () => {
     const { dest, run } = await extractInto(
       [
