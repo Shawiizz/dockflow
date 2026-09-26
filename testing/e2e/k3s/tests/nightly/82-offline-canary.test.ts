@@ -17,6 +17,7 @@ import { dumpDebug } from "../../../helpers/debug-dump";
 import { type Fixture, makeFixture } from "../../../helpers/fixtures";
 import { curlFrom, deleteStackCompletely, helm, nsFor, waitFor } from "../../../helpers/k8s";
 import { chartRepoUrl, SHARED_LANE, TOPOLOGIES } from "../../../helpers/topology";
+import { TRAEFIK_CHART_PIN } from "../../../../../cli/src/services/orchestrator/kubernetes/versions";
 
 const FILE = "82-offline-canary.test.ts";
 const PROJECT = "nightly-offline";
@@ -33,6 +34,28 @@ async function withDump<T>(testName: string, fn: () => Promise<T>): Promise<T> {
   } catch (error) {
     await dumpDebug(`${FILE}:${testName}`).catch(() => {});
     throw error;
+  }
+}
+
+/**
+ * Dockflow pins Traefik by its index digest, which a node image carries only when it was baked from
+ * Docker's containerd image store: the classic store saves the platform image alone, and an offline
+ * deploy then waits on a pull that cannot happen.
+ */
+async function assertTraefikBakedByDigest(): Promise<void> {
+  const digest = TRAEFIK_CHART_PIN.imageDigest;
+  if (!digest) return;
+  const blob = `blobs/sha256/${digest.replace(/^sha256:/, "")}`;
+  const listed = await tryExec([
+    "docker", "exec", TOPO.nodes[0].container, "sh", "-c",
+    `for archive in /var/lib/rancher/k3s/agent/images/e2e-images-*.tar; do tar -tf "$archive"; done | grep -Fqx '${blob}'`,
+  ]);
+  if (listed.exitCode !== 0) {
+    throw new Error(
+      `The node image lacks Traefik's index ${digest}: it was baked from Docker's classic image store. ` +
+        'Enable the containerd image store ("features": {"containerd-snapshotter": true} in /etc/docker/daemon.json), ' +
+        "then rebuild the node image with prepare-images.ts and build-node-image.ts.",
+    );
   }
 }
 
@@ -78,6 +101,7 @@ describe("nightly: offline canary", () => {
     await stopTopology();
     await startTopology(TOPO, { timeoutMs: 600_000 });
     process.env.DOCKFLOW_E2E_TOPOLOGY = TOPO.name;
+    await assertTraefikBakedByDigest();
     await blockEgress();
     egressBlocked = true;
 

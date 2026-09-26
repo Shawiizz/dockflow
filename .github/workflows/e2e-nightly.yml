@@ -131,6 +131,16 @@ jobs:
         with:
           path: testing/e2e/.cache/downloads
           key: e2e-downloads-amd64-${{ hashFiles('cli/src/services/orchestrator/kubernetes/k3s/versions.ts', 'cli/src/services/orchestrator/kubernetes/versions.ts') }}
+      # docker save keeps Traefik's index digest, which Dockflow pins, only from the containerd image
+      # store; 82-offline-canary cannot pull it with egress cut
+      - name: Use the containerd image store
+        run: |
+          CONF=/etc/docker/daemon.json
+          [ -f "$CONF" ] || echo '{}' | sudo tee "$CONF" > /dev/null
+          sudo jq '.features["containerd-snapshotter"] = true' "$CONF" | sudo tee "$CONF.new" > /dev/null
+          sudo mv "$CONF.new" "$CONF"
+          sudo systemctl restart docker
+          docker info --format '{{json .DriverStatus}}' | grep -q io.containerd.snapshotter
       - run: bun run testing/e2e/k3s/tools/prepare-downloads.ts --arch amd64
       - run: bun run testing/e2e/k3s/tools/prepare-images.ts --arch amd64 --nightly
       - run: bun run testing/e2e/k3s/tools/build-node-image.ts --arch amd64 --tag dockflow-e2e-k3s-node:ci-nightly --nightly --save testing/e2e/.cache/node-image.tar.zst
