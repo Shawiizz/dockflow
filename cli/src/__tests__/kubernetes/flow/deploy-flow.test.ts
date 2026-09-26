@@ -6,6 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import * as Build from '../../../services/build';
+import { HealthCheck } from '../../../services/health-check';
 import * as Hook from '../../../services/hook';
 import type { Audit } from '../../../services/audit';
 import type { Metrics } from '../../../services/metrics';
@@ -255,6 +256,29 @@ describe('execute — U-FLOW-03 health failure with on_failure: rollback, after 
 
     expect(orchestrator.storedReleases(orchestrator.target.stackName).current).toBe('1.4.1');
     expect(orchestrator.storedReleases(orchestrator.target.stackName).versions).not.toContain('1.4.2');
+  });
+});
+
+describe('execute — an HTTP health check failing after the deploy, on_failure: rollback (E-35-06)', () => {
+  it('rolls back through rollbackRelease; the error keeps the cause code and text and names the release', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    orchestrator.seedRelease(orchestrator.target.stackName, { version: '1.4.1' }, { current: true });
+    const cause = new DeployError('Health check web failed: HTTP 404 from http://127.0.0.1:8085/missing', ErrorCode.HEALTH_CHECK_FAILED, 'Check the endpoint.');
+    const check = spyOn(HealthCheck.prototype, 'checkHTTPEndpoints').mockImplementation(async () => {
+      throw cause;
+    });
+    const endpoints = [{ name: 'web', url: 'http://127.0.0.1:8085/missing' }];
+    const ctx = fakeContext(orchestrator, { config: config({ health_checks: { enabled: true, on_failure: 'rollback', endpoints } }), target: soloTarget() });
+
+    try {
+      const thrown = (await execute(ctx).catch((e) => e)) as DeployError;
+      expect(thrown.code).toBe(ErrorCode.HEALTH_CHECK_FAILED);
+      expect(thrown.message).toBe('Health check web failed: HTTP 404 from http://127.0.0.1:8085/missing; rolled back to 1.4.1');
+      expect(thrown.suggestion).toBe('Check the endpoint.');
+      expect(orchestrator.storedReleases(orchestrator.target.stackName).current).toBe('1.4.1');
+    } finally {
+      check.mockRestore();
+    }
   });
 });
 

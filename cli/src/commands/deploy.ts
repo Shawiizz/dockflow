@@ -33,6 +33,7 @@ import { detectCIEnvironment, resolveDeployParams } from '../utils/ci';
 import { getCurrentBranch } from '../utils/git';
 import { getLatestVersion, incrementVersion } from '../utils/version';
 import {
+  CLIError,
   ConfigError,
   DeployError,
   ErrorCode,
@@ -497,7 +498,11 @@ export async function execute(ctx: DeployContext): Promise<void> {
       DOCKFLOW_ROLLED_BACK_TO: rolledBackTo ?? ctx.revertedTo ?? '',
     }).catch((e) => printWarning(`on-failure hooks could not run: ${message(e)}`));
 
-    if (rolledBackTo) throw new DeployError(`Deployment failed and was rolled back to ${rolledBackTo}`, ErrorCode.DEPLOY_FAILED);
+    if (rolledBackTo) {
+      // the cause keeps its code (53 for a failed health check) and its text, as the native revert does
+      const cause = CLIError.from(err, ErrorCode.DEPLOY_FAILED);
+      throw new DeployError(`${cause.message}; rolled back to ${rolledBackTo}`, cause.code, cause.suggestion);
+    }
     throw err;
   } finally {
     stopHandlingInterrupts();
