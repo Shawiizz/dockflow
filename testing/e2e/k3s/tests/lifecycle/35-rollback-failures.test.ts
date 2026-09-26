@@ -533,14 +533,20 @@ describe("rollback and failure handling (E-35)", () => {
 
   test("E-35-14 manual lock acquire blocks a deploy until released", async () => {
     await withDump("E-35-14", async () => {
-      const acquired = await runCLI(["lock", "acquire", ENV, "-m", "maintenance"], { cwd: dir(), timeoutMs: 30_000 });
-      expect(acquired.exitCode).toBe(0);
+      let blocked: CLIResult;
+      let released: CLIResult;
+      try {
+        // the command returns while the lock stays held: nothing may keep it running (Lease renewal)
+        const acquired = await runCLI(["lock", "acquire", ENV, "-m", "maintenance"], { cwd: dir(), timeoutMs: 30_000 });
+        expect(acquired.exitCode).toBe(0);
+        expect(acquired.durationMs).toBeLessThan(20_000);
 
-      writeWebCompose(fixture, { mode: "ok", marker: "V17" });
-      const blocked = await runCLI(["deploy", ENV, "17.0.0-rb", "--yes"], { cwd: dir(), timeoutMs: 30_000 });
+        writeWebCompose(fixture, { mode: "ok", marker: "V17" });
+        blocked = await runCLI(["deploy", ENV, "17.0.0-rb", "--yes"], { cwd: dir(), timeoutMs: 30_000 });
+      } finally {
+        released = await runCLI(["lock", "release", ENV], { cwd: dir(), timeoutMs: 30_000 });
+      }
       expect(blocked.exitCode).toBe(51);
-
-      const released = await runCLI(["lock", "release", ENV], { cwd: dir(), timeoutMs: 30_000 });
       expect(released.exitCode).toBe(0);
 
       const deployed = await runCLI(["deploy", ENV, "17.0.0-rb", "--yes"], { cwd: dir(), timeoutMs: 200_000 });
