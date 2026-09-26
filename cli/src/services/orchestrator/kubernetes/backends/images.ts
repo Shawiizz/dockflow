@@ -86,6 +86,8 @@ const IN_USE_RESOURCES = [
   'daemonsets.apps',
   'jobs.batch',
 ];
+/** revision history: what a workload ran before, not what it runs */
+const HISTORY_RESOURCES = new Set(['replicasets.apps', 'controllerrevisions.apps']);
 const CONTAINER_LISTS = new Set(['containers', 'initContainers', 'ephemeralContainers']);
 
 /** The reference an image is imported under; one already imported is kept as it is. */
@@ -443,7 +445,9 @@ export class KubernetesImageBackend implements ImageBackend {
     try {
       const candidates = unique(images.map(toImportedRef)).filter(isRemovableRef);
       if (candidates.length === 0 || nodes.length === 0) return;
-      const protectedRefs = await this.imagesInUse();
+      // after the revert the failed revision stays as ReplicaSet/ControllerRevision history, which
+      // must not protect the very images it failed with; pods and live templates still do
+      const protectedRefs = await this.imagesInUse({ history: false });
       const current = this.options.releases ? await this.options.releases.currentCompose(this.target.stackName) : null;
       for (const image of composeImageRefs(current)) protectedRefs.add(canonicalImageRef(toImportedRef(image)));
       const refs = new Set(candidates.map(canonicalImageRef).filter((ref) => !protectedRefs.has(ref)));
@@ -688,9 +692,11 @@ export class KubernetesImageBackend implements ImageBackend {
   }
 
   /** Canonical references of every container image of the cluster (K44). */
-  private async imagesInUse(): Promise<Set<string>> {
+  /** Every image a pod or a pod template of the cluster references (K44); `history: false` leaves out old revisions. */
+  private async imagesInUse(options: { history: boolean } = { history: true }): Promise<Set<string>> {
+    const resources = options.history ? IN_USE_RESOURCES : IN_USE_RESOURCES.filter((r) => !HISTORY_RESOURCES.has(r));
     const call = {
-      ...getJsonCall(IN_USE_RESOURCES, { allNamespaces: true }),
+      ...getJsonCall(resources, { allNamespaces: true }),
       requestTimeoutS: IN_USE_TIMEOUT_S,
       guardS: IN_USE_TIMEOUT_S + K8S_GUARD_MARGIN_S,
     };

@@ -283,15 +283,22 @@ function pod(namespace: string, name: string, image: string): unknown {
   return { apiVersion: 'v1', kind: 'Pod', metadata: { name, namespace }, spec: { containers: [{ name: 'app', image }] } };
 }
 
-function inUseStep(items: unknown[]): KubeStep {
+/** K44 without the revision history (ReplicaSets, ControllerRevisions): the failure cleanup's read */
+const IN_USE_CURRENT = 'pods,deployments.apps,statefulsets.apps,daemonsets.apps,jobs.batch';
+
+function inUseStep(items: unknown[], resources: string = IN_USE): KubeStep {
   return {
     id: 'K44',
     method: 'run',
-    args: ['get', IN_USE, '--all-namespaces', '-o', 'json'],
+    args: ['get', resources, '--all-namespaces', '-o', 'json'],
     namespace: null,
     mutating: false,
     respond: { json: { apiVersion: 'v1', kind: 'List', items } },
   };
+}
+
+function currentInUseStep(items: unknown[]): KubeStep {
+  return inUseStep(items, IN_USE_CURRENT);
 }
 
 const imported = (ref: string, id: string, pinned = true): StoredImage => ({ ref, id, pinned });
@@ -663,7 +670,7 @@ describe('KubernetesImageBackend.remove', () => {
   };
 
   it('I7: keeps every image a pod of any namespace still uses', async () => {
-    const h = setup({ kube: [inUseStep([pod(NS, 'web-7c9f-abcde', WEB_P_IMPORTED)])], seed: seedBoth });
+    const h = setup({ kube: [currentInUseStep([pod(NS, 'web-7c9f-abcde', WEB_P_IMPORTED)])], seed: seedBoth });
 
     await h.backend.remove([WEB_P, WORKER_P], [SERVER_1]);
 
@@ -675,7 +682,7 @@ describe('KubernetesImageBackend.remove', () => {
   it('keeps the images of the current release', async () => {
     const reads: string[] = [];
     const h = setup({
-      kube: [inUseStep([])],
+      kube: [currentInUseStep([])],
       seed: seedBoth,
       backend: {
         releases: {
@@ -693,6 +700,16 @@ describe('KubernetesImageBackend.remove', () => {
     expect(h.containerd.refs('server_1')).toEqual([WEB_P_IMPORTED]);
   });
 
+  it('removes the image a reverted revision failed with, although its ReplicaSet stays as history (E-35-02)', async () => {
+    // K44 without history: the scaled-down ReplicaSet of the failed revision is never read, so it protects nothing
+    const h = setup({ kube: [currentInUseStep([pod(NS, 'web-6b8d-fghij', 'dockflow.invalid/shop-web-production:1.4.1')])], seed: seedBoth });
+
+    await h.backend.remove([WEB_P], [SERVER_1]);
+
+    expect(h.kube.calls[0].call.args[1]).toBe(IN_USE_CURRENT);
+    expect(h.containerd.refs('server_1')).toEqual([WORKER_P_IMPORTED]);
+  });
+
   it('U-BE-IMG-06: never names a reference outside the imported registry', async () => {
     const h = setup();
 
@@ -707,7 +724,7 @@ describe('KubernetesImageBackend.remove', () => {
   });
 
   it('is best effort: an unreadable cluster removes nothing and does not throw', async () => {
-    const h = setup({ kube: [{ ...inUseStep([]), respond: { error: 'Unreachable' } }], seed: seedBoth });
+    const h = setup({ kube: [{ ...currentInUseStep([]), respond: { error: 'Unreachable' } }], seed: seedBoth });
 
     await h.backend.remove([WEB_P], [SERVER_1]);
 
@@ -718,7 +735,7 @@ describe('KubernetesImageBackend.remove', () => {
 
   it('is best effort per node: a failed removal is reported as debug output only', async () => {
     const h = setup({
-      kube: [inUseStep([])],
+      kube: [currentInUseStep([])],
       seed: seedBoth,
       shell: [{ id: 'N4-busy', node: 'server_1', script: (s) => s.startsWith(N4), kind: 'run', respond: { exitCode: 1, stderr: 'ctr: image is in use\n' } }],
     });
