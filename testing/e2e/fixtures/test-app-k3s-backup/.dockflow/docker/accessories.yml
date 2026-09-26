@@ -12,6 +12,17 @@ services:
       retries: 10
       start_period: 10s
 
+  # appendonly off (the default): a dump.rdb restore round-trips, Redis loading it on its restart.
+  cache:
+    image: redis:8-alpine
+    volumes:
+      - cache_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   # appendonly on: R-17 refuses a dump.rdb restore against it (design-06), so backup config type
   # `redis` must back it up as an RDB snapshot the same way as any other redis accessory.
   redis:
@@ -45,6 +56,7 @@ services:
 
 volumes:
   pg_data:
+  cache_data:
   redis_data:
   pg2_data:
     x-dockflow:

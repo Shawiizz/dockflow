@@ -26,6 +26,15 @@ const HELPER_TOLERATIONS: Toleration[] = [
   { key: "CriticalAddonsOnly", operator: "Exists" },
 ];
 
+/** the DefaultTolerationSeconds admission plugin adds these to every pod that does not set them */
+const ADMISSION_DEFAULT_KEYS = new Set(["node.kubernetes.io/not-ready", "node.kubernetes.io/unreachable"]);
+
+function renderedTolerations(tolerations: readonly Toleration[] | undefined): Toleration[] {
+  return (tolerations ?? []).filter(
+    (t) => !(t.key !== undefined && ADMISSION_DEFAULT_KEYS.has(t.key) && t.effect === "NoExecute" && t.tolerationSeconds === 300),
+  );
+}
+
 interface BackupJson {
   id: string;
   service: string;
@@ -69,8 +78,8 @@ async function psql(sql: string, fixture: Fixture): Promise<string> {
   return result.stdout.trim();
 }
 
-async function redisCli(args: string[], fixture: Fixture): Promise<string> {
-  const result = await runCLI(["accessories", "exec", ENV, "redis", "--", "redis-cli", ...args], { cwd: fixture.dir, timeoutMs: 30_000 });
+async function redisCli(args: string[], fixture: Fixture, service = "redis"): Promise<string> {
+  const result = await runCLI(["accessories", "exec", ENV, service, "--", "redis-cli", ...args], { cwd: fixture.dir, timeoutMs: 30_000 });
   if (result.exitCode !== 0) throw new Error(`redis-cli ${args.join(" ")} failed: ${tail(result)}`);
   return result.stdout.trim();
 }
@@ -112,6 +121,7 @@ describe("backup and restore", () => {
       expect(result.exitCode).toBe(0);
     });
     await waitWorkloadReady(NS, "deployment", "postgres", 1, 180_000);
+    await waitWorkloadReady(NS, "deployment", "cache", 1, 180_000);
     await waitWorkloadReady(NS, "deployment", "redis", 1, 180_000);
     await waitWorkloadReady(NS, "statefulset", "pg2", 2, 180_000);
     await waitWorkloadReady(NS, "deployment", "files", 1, 120_000);
@@ -155,14 +165,14 @@ describe("backup and restore", () => {
     });
   }, 120_000);
 
-  test("E-39-03: redis (appendonly) backup create and restore round trip", async () => {
+  test("E-39-03: redis (appendonly off) backup create and restore round trip", async () => {
     await withDump("redis round trip", async () => {
-      await redisCli(["SET", "k", "before"], fixture);
-      const backup = await backupCreate("redis", fixture);
+      await redisCli(["SET", "k", "before"], fixture, "cache");
+      const backup = await backupCreate("cache", fixture);
       expect(backup.dbType).toBe("redis");
 
-      await redisCli(["SET", "k", "after"], fixture);
-      const restore = await runCLI(["backup", "restore", ENV, "redis", "--from", backup.id, "-y"], {
+      await redisCli(["SET", "k", "after"], fixture, "cache");
+      const restore = await runCLI(["backup", "restore", ENV, "cache", "--from", backup.id, "-y"], {
         cwd: fixture.dir,
         timeoutMs: 60_000,
       });
@@ -172,7 +182,7 @@ describe("backup and restore", () => {
       const value = await waitFor(
         async () => {
           try {
-            const got = await redisCli(["GET", "k"], fixture);
+            const got = await redisCli(["GET", "k"], fixture, "cache");
             return got === "before" ? got : undefined;
           } catch {
             return undefined;
@@ -181,6 +191,25 @@ describe("backup and restore", () => {
         { timeoutMs: 60_000, describe: "redis to answer GET k = before after the restore restart" },
       );
       expect(value).toBe("before");
+    });
+  }, 120_000);
+
+  test("E-39-03b: a redis restore with appendonly on is refused (R-17) and its data untouched", async () => {
+    await withDump("redis appendonly refusal", async () => {
+      await redisCli(["SET", "k", "before"], fixture);
+      const backup = await backupCreate("redis", fixture);
+      await redisCli(["SET", "k", "after"], fixture);
+
+      const restore = await runCLI(["backup", "restore", ENV, "redis", "--from", backup.id, "-y"], {
+        cwd: fixture.dir,
+        timeoutMs: 60_000,
+      });
+      expect(restore.exitCode).toBe(72); // RESTORE_FAILED
+      expect(restore.stdout + restore.stderr).toContain(
+        "Redis in service redis has appendonly enabled; a restored dump.rdb would be ignored at startup, so nothing was changed",
+      );
+      expect(restore.stdout + restore.stderr).not.toContain("DOCKFLOW_REFUSED");
+      expect(await redisCli(["GET", "k"], fixture)).toBe("after");
     });
   }, 120_000);
 
@@ -198,30 +227,29 @@ describe("backup and restore", () => {
         timeoutMs: 120_000,
       });
 
-      const [seenZero] = await Promise.all([
-        (async () => {
-          const series = await replicaSeries("files", 20_000);
-          return series.some((n) => n === 0);
-        })(),
-        (async () => {
-          let helper: Pod | undefined;
-          try {
-            helper = await waitFor(
-              async () => {
-                const helpers = await getJson<Pod>("pods", { ns: NS, selector: HELPER_SELECTOR });
-                return helpers.length > 0 ? helpers[0] : undefined;
-              },
-              { timeoutMs: 15_000, describe: "the volume-restore helper pod to appear" },
-            );
-          } catch {
+      let seenZero = false;
+      let helper: Pod | undefined;
+      try {
+        [seenZero, helper] = await Promise.all([
+          (async () => {
+            const series = await replicaSeries("files", 20_000);
+            return series.some((n) => n === 0);
+          })(),
+          waitFor(
+            async () => {
+              const helpers = await getJson<Pod>("pods", { ns: NS, selector: HELPER_SELECTOR });
+              return helpers.length > 0 ? helpers[0] : undefined;
+            },
+            { timeoutMs: 15_000, describe: "the volume-restore helper pod to appear" },
             // a fast restore can finish (and delete the helper) before this poll's first success;
-            // the replica-zero observation above is the primary assertion for "during a restore".
-            return;
-          }
-          expect(helper.spec.tolerations).toEqual(HELPER_TOLERATIONS);
-        })(),
-      ]);
+            // the replica-zero observation is the primary assertion for "during a restore"
+          ).catch(() => undefined),
+        ]);
+      } finally {
+        await handle.done; // it holds the lock and the files data the next tests read
+      }
       expect(seenZero).toBe(true);
+      if (helper) expect(renderedTolerations(helper.spec.tolerations)).toEqual(HELPER_TOLERATIONS);
 
       const result = await handle.done;
       if (result.exitCode !== 0) throw new Error(`backup restore files failed: ${tail(result)}`);
@@ -241,8 +269,8 @@ describe("backup and restore", () => {
       const result = await runCLI(["backup", "list", ENV, "--json"], { cwd: fixture.dir, timeoutMs: 30_000 });
       expect(result.exitCode).toBe(0);
       const body = JSON.parse(result.stdout) as BackupListJson;
-      expect(body.entries.length).toBe(3);
-      expect(new Set(body.entries.map((e) => e.service))).toEqual(new Set(["postgres", "redis", "files"]));
+      expect(body.entries.length).toBe(4);
+      expect(new Set(body.entries.map((e) => e.service))).toEqual(new Set(["postgres", "cache", "redis", "files"]));
     });
   });
 
