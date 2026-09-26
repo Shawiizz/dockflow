@@ -46,7 +46,7 @@ import type {
 } from '../../interfaces';
 import { CLIError, DeployError, ErrorCode, OrchestratorUnavailableError } from '../../../../utils/errors';
 import { canonicalJson, sha256Hex } from '../../../../utils/hash';
-import { printDebug, printInfo, printWarning } from '../../../../utils/output';
+import { outputEvents, printDebug, printInfo, printWarning } from '../../../../utils/output';
 import type { Redactor } from '../../../../utils/redact';
 import { type Result, err, ok } from '../../../../types/result';
 import { closure } from '../apply/closure';
@@ -298,10 +298,10 @@ export class KubernetesStackBackend implements StackBackend {
       clock: this.clock,
       distribution: this.distribution,
       memo: this.memo,
-      events: { step: printInfo, warn: printWarning },
+      events: outputEvents,
     });
     this.cluster = options.cluster;
-    this.helm = new KubernetesHelmBackend({ deps: options.deps, env: this.env });
+    this.helm = new KubernetesHelmBackend({ deps: options.deps, env: this.env, events: outputEvents });
     this.releases = options.releases;
     this.inventory = createInventoryReader({ kubectl: this.kubectl, helm: this.helm });
     this.proxy = options.proxy ?? null;

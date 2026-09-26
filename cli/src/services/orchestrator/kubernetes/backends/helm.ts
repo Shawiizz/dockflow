@@ -87,6 +87,8 @@ export interface HelmBackendOptions {
   deps: Pick<KubernetesBundleDeps, 'helm' | 'kubectl' | 'nodeShell' | 'clock' | 'redactor' | 'distribution'>;
   /** environment name, for messages and suggestions */
   env: string;
+  /** where upgradeInstall, uninstall and rollback report when the call names no sink */
+  events?: HelmEventSink;
 }
 
 export class KubernetesHelmBackend implements HelmBackend {
@@ -97,6 +99,7 @@ export class KubernetesHelmBackend implements HelmBackend {
   private readonly distribution: K8sDistribution;
   private readonly env: string;
   private readonly chartDeps: ChartArchiveDeps;
+  private readonly events: HelmEventSink | undefined;
 
   constructor(options: HelmBackendOptions) {
     this.helm = options.deps.helm;
@@ -106,6 +109,7 @@ export class KubernetesHelmBackend implements HelmBackend {
     this.distribution = options.deps.distribution;
     this.env = options.env;
     this.chartDeps = { helm: this.helm, shell: options.deps.nodeShell(this.helm.node) };
+    this.events = options.events;
   }
 
   // -------------------------------------------------------------------------
@@ -272,6 +276,7 @@ export class KubernetesHelmBackend implements HelmBackend {
   ): Promise<HelmUpgradeResult> {
     // a rollback re-installs from a stored record the render never saw
     this.redactor.add(helmRedactions([release]));
+    const events = options.events ?? this.events;
     const now = this.clock.now();
     const { entry, observed, row } = await this.planOne(release, options.stackId, options.adopt === true, now);
     const display = chartDisplayOf(release.chart, release.version);
@@ -299,20 +304,19 @@ export class KubernetesHelmBackend implements HelmBackend {
     }
 
     if (entry.rollbackTo !== undefined && observed !== null) {
-      options.events?.step(`Recovering Helm release ${release.name} (rollback to revision ${entry.rollbackTo})...`);
-      options.events?.warn(recoveryWarning(observed, entry.rollbackTo).message);
+      events?.step(`Recovering Helm release ${release.name} (rollback to revision ${entry.rollbackTo})...`);
+      events?.warn(recoveryWarning(observed, entry.rollbackTo).message);
       await this.performRollback(release.namespace, release.name, entry.rollbackTo, {
         timeoutS: release.timeoutS,
         historyMax: options.historyMax,
         description: `Dockflow recovery of ${release.name}`,
-        events: options.events,
       });
     }
 
     const previousRevision = previousRevisionOf(observed);
     const archive = await resolveChartArchive(this.chartDeps, release, release.declaredDigest, {
       allowDrift: options.allowChartDrift ?? false,
-      events: options.events,
+      events,
       env: this.env,
       distribution: this.distribution.traits.name,
     });
@@ -320,14 +324,14 @@ export class KubernetesHelmBackend implements HelmBackend {
     const context = this.helmContext(entry.reason === 'adopt' ? 'adopt' : 'upgrade', release.name, release.namespace, display, release.timeoutS, true);
 
     if (entry.reason === 'adopt') {
-      options.events?.step(`Taking over Helm release ${release.name} (${display})...`);
+      events?.step(`Taking over Helm release ${release.name} (${display})...`);
       await this.run(
         this.upgradeArgs(release, archive.path, options, ['--dry-run=server', '--hide-secret', '-o', 'json']),
         { stdin, mutating: true, timeoutS: release.timeoutS },
         context,
       );
     } else {
-      options.events?.step(`${entry.action === 'installed' ? 'Installing' : 'Upgrading'} Helm release ${release.name} (${display})...`);
+      events?.step(`${entry.action === 'installed' ? 'Installing' : 'Upgrading'} Helm release ${release.name} (${display})...`);
     }
     await this.run(this.upgradeArgs(release, archive.path, options), { stdin, mutating: true, timeoutS: release.timeoutS }, context);
 
@@ -374,7 +378,7 @@ export class KubernetesHelmBackend implements HelmBackend {
   }
 
   async uninstall(namespace: string, name: string, options: { timeoutS: number; keepHistory?: boolean; description?: string; events?: HelmEventSink }): Promise<void> {
-    options.events?.step(`Uninstalling Helm release ${name}...`);
+    (options.events ?? this.events)?.step(`Uninstalling Helm release ${name}...`);
     const args = [
       'uninstall',
       name,
@@ -394,7 +398,7 @@ export class KubernetesHelmBackend implements HelmBackend {
   }
 
   async rollback(namespace: string, name: string, revision: number, options: { timeoutS: number; historyMax?: number; description?: string; events?: HelmEventSink }): Promise<HelmReleaseStatus> {
-    options.events?.step(`Rolling back Helm release ${name} to revision ${revision}...`);
+    (options.events ?? this.events)?.step(`Rolling back Helm release ${name} to revision ${revision}...`);
     return this.performRollback(namespace, name, revision, options);
   }
 
@@ -402,7 +406,7 @@ export class KubernetesHelmBackend implements HelmBackend {
     namespace: string,
     name: string,
     revision: number,
-    options: { timeoutS: number; historyMax?: number; description?: string; events?: HelmEventSink },
+    options: { timeoutS: number; historyMax?: number; description?: string },
   ): Promise<HelmReleaseStatus> {
     const args = ['rollback', name, String(revision), '-n', namespace, '--wait=watcher', '--wait-for-jobs', '--timeout', `${options.timeoutS}s`];
     if (options.historyMax !== undefined) args.push('--history-max', String(options.historyMax));

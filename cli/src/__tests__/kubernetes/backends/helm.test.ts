@@ -5,7 +5,7 @@
 // fixtures here seed that label directly instead of an annotation.
 
 import { afterEach, describe, expect, test } from 'bun:test';
-import type { HelmReleaseRecord, ResolvedHelmRelease } from '../../../services/orchestrator/interfaces';
+import type { HelmEventSink, HelmReleaseRecord, ResolvedHelmRelease } from '../../../services/orchestrator/interfaces';
 import { KubernetesHelmBackend } from '../../../services/orchestrator/kubernetes/backends/helm';
 import { removeVolumesByProtocol, type VolumeTarget } from '../../../services/orchestrator/kubernetes/backends/volumes';
 import { LABELS } from '../../../services/orchestrator/kubernetes/constants';
@@ -63,7 +63,7 @@ afterEach(() => {
   }
 });
 
-function harness(options: { volumeDeletion?: boolean } = {}): Harness {
+function harness(options: { volumeDeletion?: boolean; events?: HelmEventSink } = {}): Harness {
   const redactor = new Redactor([]);
   const cluster = new FakeCluster();
   const kube = new FakeKubeExecutor({ redactor, cluster, node: NODE });
@@ -73,6 +73,7 @@ function harness(options: { volumeDeletion?: boolean } = {}): Harness {
   const backend = new KubernetesHelmBackend({
     deps: { helm, kubectl: kube, nodeShell: nodeShell.forNode, clock, redactor, distribution: kube.distribution },
     env: ENV,
+    events: options.events,
   });
   const h: Harness = { cluster, kube, helm, nodeShell, clock, backend, volumeDeletion: options.volumeDeletion ?? false };
   harnesses.push(h);
@@ -206,6 +207,25 @@ describe('upgradeInstall', () => {
     expect(upgrade?.stdin).toBe(`${canonicalJson(rel.values)}\n`);
     expect(upgrade?.args).toContain('--labels');
     expect(upgrade?.args[upgrade.args.indexOf('--labels') + 1]).toBe(`${LABELS.stack}=${NS},${LABELS.role}=accessory,${LABELS.specHash}=${helmSpecHash(rel)}`);
+  });
+
+  test('a call without a sink reports through the one the backend was built with, drift warning included', async () => {
+    const events = new Events();
+    const h = harness({ events: events.sink });
+    const sha256 = h.helm.chart({ name: 'postgresql', version: '16.7.4', repo: REPO });
+    // a stored record restored by `dockflow rollback --allow-chart-drift`, whose chart was republished
+    const rel = release({ name: 'search', declaredDigest: '0'.repeat(64) });
+
+    const result = await h.backend.upgradeInstall(rel, { historyMax: 5, stackId: NS, allowChartDrift: true });
+
+    expect(result.chartSha256).toBe(sha256);
+    expect(events.steps).toEqual([`Installing Helm release search (postgresql 16.7.4 from ${REPO})...`]);
+    expect(events.warnings).toEqual([
+      {
+        message: `The chart of Helm release search has digest ${sha256} instead of the recorded ${'0'.repeat(64)}, and \`--allow-chart-drift\` was given`,
+        suggestion: 'Record the new digest in `config.yml` once you trust it.',
+      },
+    ]);
   });
 
   test('U-BE-HELM-08: the skip predicate reads the P/spec-hash release LABEL (PD-3), never an annotation', async () => {

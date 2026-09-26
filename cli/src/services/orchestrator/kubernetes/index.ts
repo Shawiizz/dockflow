@@ -7,7 +7,7 @@
 
 import { usesRegistry } from '../../compose';
 import { getPerformer, loadServersConfig, type DockflowConfig } from '../../../utils/config';
-import { printInfo, printWarning } from '../../../utils/output';
+import { outputEvents, printWarning } from '../../../utils/output';
 import { Redactor } from '../../../utils/redact';
 import { capabilitiesFor } from '../capabilities';
 import type { Orchestrator, OrchestratorTarget, StackNaming } from '../interfaces';
@@ -93,7 +93,7 @@ export function createKubernetesOrchestrator(
     clock,
     distribution,
     memo,
-    events: { step: printInfo, warn: printWarning },
+    events: outputEvents,
   });
 
   const releases = new ClusterReleaseStore(
@@ -101,7 +101,7 @@ export function createKubernetesOrchestrator(
     { project: target.project, env: target.env },
   );
 
-  const helm = new KubernetesHelmBackend({ deps, env: target.env });
+  const helm = new KubernetesHelmBackend({ deps, env: target.env, events: outputEvents });
   const inventory = createInventoryReader({ kubectl: deps.kubectl, helm });
 
   const cluster = new KubernetesClusterBackend(

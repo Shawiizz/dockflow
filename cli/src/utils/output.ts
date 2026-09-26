@@ -63,6 +63,15 @@ export function printInfo(message: string): void {
   clack.log.info(message, STDERR_OPTS);
 }
 
+/** Where backends report progress (HelmEventSink): steps as info lines, a warning's suggestion dim under it. */
+export const outputEvents = {
+  step: printInfo,
+  warn(message: string, suggestion?: string): void {
+    printWarning(message);
+    if (suggestion) printDim(`  ${suggestion}`);
+  },
+};
+
 // === Debug output (verbose mode only, stderr) ===
 export function printDebug(message: string, context?: Record<string, unknown>): void {
   if (!isVerbose()) return;

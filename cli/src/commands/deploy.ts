@@ -25,6 +25,7 @@ import {
   setVerbose,
   isVerbose,
   createSpinner,
+  outputEvents,
 } from '../utils/output';
 import { onInterrupt, SIGINT_EXIT_CODE } from '../utils/interrupt';
 import { buildTemplateContext } from '../utils/servers';
@@ -424,7 +425,7 @@ export async function execute(ctx: DeployContext): Promise<void> {
     const anythingDeployed = ctx.deployApp || accInput !== null;
     if (ctx.config.proxy?.enabled && anythingDeployed) {
       await orch.proxy.plan(ctx.config.proxy, ctx.env, ctx.rendered);
-      await orch.proxy.ensure(ctx.config.proxy, ctx.env, undefined, ctx.rendered);
+      await orch.proxy.ensure(ctx.config.proxy, ctx.env, outputEvents, ctx.rendered);
     }
 
     await applyAdoptions(ctx, appInput);
