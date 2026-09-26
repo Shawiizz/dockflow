@@ -51,7 +51,7 @@ describe("config refusals", () => {
       fixtures.push(fixture);
       fixture.patchConfig(
         (text) =>
-          `${text}\norchestrator: swarm\n\nhelm:\n  releases:\n    - name: sample\n      chart: sample-chart\n      repo: "https://charts.example.com"\n      version: "1.0.0"\n`,
+          `${text.replace("orchestrator: k3s", "orchestrator: swarm")}\nhelm:\n  releases:\n    - name: sample\n      chart: sample-chart\n      repo: "https://charts.example.com"\n      version: "1.0.0"\n`,
       );
 
       const result = await runCLI(["validate", ENV], { cwd: fixture.dir, timeoutMs: 60_000 });
