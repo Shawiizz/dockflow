@@ -87,7 +87,7 @@ function configYml(): string {
   return [`project_name: ${PROJECT}`, "orchestrator: k3s", "stack_management:", "  keep_releases: 2", ""].join("\n");
 }
 
-/** `max_replicas_per_node: 1` (E-41-04's trait) pins the two replicas to the two different nodes deterministically. */
+/** `placement.max_replicas_per_node: 1` (E-41-04's trait) pins the two replicas to the two different nodes deterministically. */
 function composeYml(): string {
   return [
     "services:",
@@ -95,8 +95,8 @@ function composeYml(): string {
     "    image: docker.io/library/nginx:alpine",
     "    deploy:",
     "      replicas: 2",
-    "    x-dockflow:",
-    "      max_replicas_per_node: 1",
+    "      placement:",
+    "        max_replicas_per_node: 1",
     "",
   ].join("\n");
 }
