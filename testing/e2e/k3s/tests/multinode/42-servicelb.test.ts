@@ -129,7 +129,7 @@ describe("ServiceLB", () => {
         expect(result.exitCode).not.toBe(0);
         const combined = `${result.stdout}${result.stderr}`;
         // design-03's LoadBalancerPending wording, naming the project that holds the port
-        expect(combined).toMatch(/Published port 18092\/tcp of service collider cannot be bound: it is already used by service \S+ in namespace/);
+        expect(combined).toMatch(/Published port 18092\/TCP of service collider cannot be bound: it is already used by service \S+ in namespace/);
         expect(combined).toContain(nsFor("k3s-multi", ENV));
 
         const topo = currentTopology();
