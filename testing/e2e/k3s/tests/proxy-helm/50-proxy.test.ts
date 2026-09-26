@@ -17,7 +17,7 @@ import { PEBBLE_CA } from "../../../helpers/cluster";
 import { dumpDebug } from "../../../helpers/debug-dump";
 import { type Fixture, makeFixture } from "../../../helpers/fixtures";
 import { curlFrom, deleteStackCompletely, getJson, helm, kubectl, nodeExec, nsFor, waitFor, waitWorkloadReady } from "../../../helpers/k8s";
-import { auxAddress, currentTopology } from "../../../helpers/topology";
+import { auxAddress, currentTopology, nodeFor } from "../../../helpers/topology";
 import { K8S_PROXY_RELEASE, K8S_SYSTEM_NAMESPACE, LABELS } from "../../../../../cli/src/services/orchestrator/kubernetes/constants";
 import { TRAEFIK_CHART_PIN } from "../../../../../cli/src/services/orchestrator/kubernetes/versions";
 import type { Deployment } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/apps";
@@ -44,6 +44,8 @@ interface HelmListEntry {
   name: string;
   revision: number;
   status: string;
+  /** `<chart>-<version>` */
+  chart: string;
 }
 
 async function releaseEntry(name: string, ns = K8S_SYSTEM_NAMESPACE): Promise<HelmListEntry | undefined> {
@@ -123,9 +125,9 @@ describe("50-proxy", () => {
       await waitWorkloadReady(K8S_SYSTEM_NAMESPACE, "deployment", K8S_PROXY_RELEASE, 1);
       await waitWorkloadReady(NS, "deployment", "web", 1);
 
-      const status = await helm(["status", K8S_PROXY_RELEASE, "-n", K8S_SYSTEM_NAMESPACE]);
-      expect(status).toContain(`traefik-${TRAEFIK_CHART_PIN.version}`);
-      expect(status).toContain("STATUS: deployed");
+      const entry = await releaseEntry(K8S_PROXY_RELEASE);
+      expect(entry?.chart).toBe(`traefik-${TRAEFIK_CHART_PIN.version}`);
+      expect(entry?.status).toBe("deployed");
 
       const deployment = await traefikDeployment();
       const image = deployment?.spec.template.spec.containers.find((c: Container) => c.name === "traefik")?.image;
@@ -152,10 +154,14 @@ describe("50-proxy", () => {
     });
   }, 30_000);
 
-  test("E-50-04: the app answers on both nodes", async () => {
+  test("E-50-04: Traefik runs on the control-plane node, and the app answers through it from every node", async () => {
     await withDump("E-50-04", async () => {
+      // exactly one node answers 80/443: the first ready control-plane server (docs: proxy)
+      const server1 = nodeFor(currentTopology(), "server_1");
+      const [pod] = await getJson<Pod>("pods", { ns: K8S_SYSTEM_NAMESPACE, selector: "app.kubernetes.io/name=traefik" });
+      expect(pod?.spec.nodeName).toBe(server1.service);
       for (const node of ["server_1", "agent_1"] as const) {
-        const response = await curlFrom(node, "http://127.0.0.1/", { host: DOMAIN });
+        const response = await curlFrom(node, `http://${server1.ip}/`, { host: DOMAIN });
         expect(response.code).toBe(200);
         expect(response.body).toContain("DOCKFLOW_E2E_PROXY_APP_DEPLOYED");
       }
