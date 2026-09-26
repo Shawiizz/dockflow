@@ -21,10 +21,6 @@ metadata:
     dockflow.shawiizz.dev/stack: dockflow-shop-production
 spec:
   clusterIP: None
-  ports:
-    - name: placeholder
-      port: 9
-      protocol: TCP
   selector:
     dockflow.shawiizz.dev/service: both
     dockflow.shawiizz.dev/stack: dockflow-shop-production
@@ -47,10 +43,6 @@ metadata:
     dockflow.shawiizz.dev/stack: dockflow-shop-production
 spec:
   clusterIP: None
-  ports:
-    - name: placeholder
-      port: 9
-      protocol: TCP
   selector:
     dockflow.shawiizz.dev/service: limits-only
     dockflow.shawiizz.dev/stack: dockflow-shop-production
@@ -73,10 +65,6 @@ metadata:
     dockflow.shawiizz.dev/stack: dockflow-shop-production
 spec:
   clusterIP: None
-  ports:
-    - name: placeholder
-      port: 9
-      protocol: TCP
   selector:
     dockflow.shawiizz.dev/service: pids-limited
     dockflow.shawiizz.dev/stack: dockflow-shop-production
@@ -99,10 +87,6 @@ metadata:
     dockflow.shawiizz.dev/stack: dockflow-shop-production
 spec:
   clusterIP: None
-  ports:
-    - name: placeholder
-      port: 9
-      protocol: TCP
   selector:
     dockflow.shawiizz.dev/service: reservations-only
     dockflow.shawiizz.dev/stack: dockflow-shop-production

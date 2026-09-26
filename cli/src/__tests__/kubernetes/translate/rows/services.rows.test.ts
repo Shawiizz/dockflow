@@ -56,8 +56,9 @@ const rows: TranslateRow[] = [
   },
   {
     id: 'T-EXPO-04',
-    title: 'no ports, headlessServiceNeedsPort: true (k3s default) -> headless with the placeholder port',
+    title: 'no ports, headlessServiceNeedsPort: true -> headless with the placeholder port',
     compose: 'image: nginx:1.27',
+    options: { traits: { headlessServiceNeedsPort: true } },
     expect: [
       { kinds: ['Deployment/web', 'Service/web'] },
       { object: 'Service/web', pointer: '/spec/clusterIP', equals: 'None' },
@@ -66,7 +67,7 @@ const rows: TranslateRow[] = [
   },
   {
     id: 'T-EXPO-05',
-    title: 'no ports, headlessServiceNeedsPort: false -> headless, no ports key at all',
+    title: 'no ports, headlessServiceNeedsPort: false (k3s, verified by e2e E-33) -> headless, no ports key at all',
     compose: 'image: nginx:1.27',
     options: { traits: { headlessServiceNeedsPort: false } },
     expect: [

@@ -46,7 +46,7 @@ describe('k3sDistribution (U-DIST-01)', () => {
       clusterDnsNameservers: 1,
       helperImage: 'rancher/mirrored-library-busybox:1.37.0',
       imageStoreRoot: '/var/lib/rancher/k3s/agent/containerd',
-      headlessServiceNeedsPort: true,
+      headlessServiceNeedsPort: false,
       headlessPlaceholderPort: { port: 9, protocol: 'TCP' },
     });
   });

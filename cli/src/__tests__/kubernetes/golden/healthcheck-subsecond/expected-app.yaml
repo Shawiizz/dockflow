@@ -21,10 +21,6 @@ metadata:
     dockflow.shawiizz.dev/stack: dockflow-shop-production
 spec:
   clusterIP: None
-  ports:
-    - name: placeholder
-      port: 9
-      protocol: TCP
   selector:
     dockflow.shawiizz.dev/service: svc-custom-si
     dockflow.shawiizz.dev/stack: dockflow-shop-production
@@ -47,10 +43,6 @@ metadata:
     dockflow.shawiizz.dev/stack: dockflow-shop-production
 spec:
   clusterIP: None
-  ports:
-    - name: placeholder
-      port: 9
-      protocol: TCP
   selector:
     dockflow.shawiizz.dev/service: svc-default-si
     dockflow.shawiizz.dev/stack: dockflow-shop-production

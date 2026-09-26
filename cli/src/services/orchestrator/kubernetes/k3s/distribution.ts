@@ -69,7 +69,8 @@ export const k3sDistribution: K8sDistribution = {
     clusterDnsNameservers: 1,
     helperImage: K3S_HELPER_IMAGE,
     imageStoreRoot: K3S_IMAGE_STORE_ROOT,
-    headlessServiceNeedsPort: true,
+    // e2e E-33 on the pinned k3s: a port-less headless Service gets its EndpointSlices and A records
+    headlessServiceNeedsPort: false,
     headlessPlaceholderPort: { port: 9, protocol: 'TCP' },
     reservedHostPorts: K3S_RESERVED_HOST_PORTS,
   },

@@ -21,10 +21,6 @@ metadata:
     dockflow.shawiizz.dev/stack: dockflow-project-with-sixty-three-characters-total-for-0add5693
 spec:
   clusterIP: None
-  ports:
-    - name: placeholder
-      port: 9
-      protocol: TCP
   selector:
     dockflow.shawiizz.dev/service: web
     dockflow.shawiizz.dev/stack: dockflow-project-with-sixty-three-characters-total-for-0add5693

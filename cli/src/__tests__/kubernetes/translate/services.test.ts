@@ -184,7 +184,7 @@ describe('shape of the main Service (design-02 6.1, 6.2)', () => {
   });
 
   test('no port at all while headlessServiceNeedsPort: headless with the 9/TCP placeholder port (C9)', () => {
-    const t = translate([service()]);
+    const t = translate([service()], { traits: { headlessServiceNeedsPort: true } });
     expect(t.objects).toHaveLength(1);
     expect(t.get('web').spec).toEqual({
       clusterIP: 'None',
@@ -204,7 +204,7 @@ describe('shape of the main Service (design-02 6.1, 6.2)', () => {
   });
 
   test('the placeholder follows the trait: another port and protocol are used as given', () => {
-    const t = translate([service()], { traits: { headlessPlaceholderPort: { port: 7, protocol: 'UDP' } } });
+    const t = translate([service()], { traits: { headlessServiceNeedsPort: true, headlessPlaceholderPort: { port: 7, protocol: 'UDP' } } });
     expect(t.get('web').spec.ports).toEqual([{ name: 'placeholder', port: 7, protocol: 'UDP' }]);
   });
 
@@ -551,7 +551,7 @@ describe('aliases and the governing Service (design-02 6.4, 6.5)', () => {
   });
 
   test('a port-less StatefulSet: <svc>-hl carries the placeholder, or no port with the trait off', () => {
-    const on = translate([service({ extension: { kind: 'statefulset' } })]);
+    const on = translate([service({ extension: { kind: 'statefulset' } })], { traits: { headlessServiceNeedsPort: true } });
     expect(on.get('web-hl').spec.ports).toEqual([{ name: 'placeholder', port: 9, protocol: 'TCP' }]);
     const off = translate([service({ extension: { kind: 'statefulset' } })], { traits: { headlessServiceNeedsPort: false } });
     expect(off.get('web-hl').spec).toEqual({ clusterIP: 'None', selector: SELECTOR });
