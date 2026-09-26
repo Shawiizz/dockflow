@@ -113,10 +113,11 @@ services:
       - "../fixtures/acme/pebble-config.json:/etc/pebble/pebble-config.json:ro"
       - "../.cache/acme:/etc/pebble/certs:ro"
     networks: { k3s: { ipv4_address: "${E2E_NET:-10.197.30}.8" } }
+  # no AAAA answer: its default ::1 sends Pebble, which tries IPv6 first, to its own loopback
   acme-dns:
     image: ${E2E_PEBBLE_CHALLTESTSRV_IMAGE:-ghcr.io/letsencrypt/pebble-challtestsrv:2.7.0}
     profiles: [duo, trio, ha]
-    command: ["-http01", "", "-tlsalpn01", "", "-https01", "", "-defaultIPv4", "${E2E_NET:-10.197.30}.11"]
+    command: ["-http01", "", "-tlsalpn01", "", "-https01", "", "-defaultIPv4", "${E2E_NET:-10.197.30}.11", "-defaultIPv6", ""]
     networks: { k3s: { ipv4_address: "${E2E_NET:-10.197.30}.9" } }
 
 networks:
