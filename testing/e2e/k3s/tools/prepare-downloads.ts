@@ -100,6 +100,22 @@ export async function sha256File(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
+/** Streams the body to `path` and returns its sha256; Bun.write(path, response) hangs on large bodies on Linux. */
+async function writeBody(response: Response, path: string): Promise<string> {
+  if (!response.body) throw new Error(`${response.url} returned no body`);
+  const hash = createHash("sha256");
+  const writer = Bun.file(path).writer();
+  try {
+    for await (const chunk of response.body) {
+      hash.update(chunk);
+      writer.write(chunk);
+    }
+  } finally {
+    await writer.end();
+  }
+  return hash.digest("hex");
+}
+
 /** `<sha256>  <name>` lines, as sha256sum prints them. */
 export function parseChecksums(text: string): Map<string, string> {
   const sums = new Map<string, string>();
@@ -122,8 +138,7 @@ export async function downloadVerified(url: string, sha256: string, dest: string
   mkdirSync(TMP_DIR, { recursive: true });
   const tmp = join(TMP_DIR, `${sha256}.${process.pid}.part`);
   try {
-    await Bun.write(tmp, await fetchOk(url));
-    const actual = await sha256File(tmp);
+    const actual = await writeBody(await fetchOk(url), tmp);
     if (actual !== sha256) {
       throw new Error(`${what} failed verification: expected sha256 ${sha256}, got ${actual} from ${url}`);
     }
