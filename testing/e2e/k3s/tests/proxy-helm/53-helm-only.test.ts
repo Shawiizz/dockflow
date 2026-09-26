@@ -91,8 +91,8 @@ describe("53-helm-only", () => {
 
         const ps = await runCLI(["ps", ENV, "--json"], { cwd: fixture.dir, timeoutMs: 30_000 });
         expect(ps.exitCode).toBe(0);
-        const instances: Array<{ service: string }> = JSON.parse(ps.stdout);
-        expect(instances.some((instance) => instance.service === "web")).toBe(true);
+        const { items } = JSON.parse(ps.stdout) as { items: Array<{ service: string }> };
+        expect(items.some((instance) => instance.service === "web")).toBe(true);
       });
     }, 200_000);
 
