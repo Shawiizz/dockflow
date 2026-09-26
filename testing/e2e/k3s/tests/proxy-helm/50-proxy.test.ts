@@ -380,7 +380,7 @@ describe("50-proxy", () => {
 
       const response = await curlFrom("server_1", "http://127.0.0.1/", { host: `admin.${DOMAIN}` });
       expect(response.code).toBe(200);
-      expect(response.body).toContain("DOCKFLOW_E2E_PROXY_APP_DEPLOYED");
+      expect(response.body).toContain("DOCKFLOW_E2E_PROXY_ADMIN");
 
       const after = await releaseEntry(K8S_PROXY_RELEASE);
       expect(after?.revision).toBe(before?.revision);
