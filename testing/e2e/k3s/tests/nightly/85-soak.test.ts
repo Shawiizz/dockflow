@@ -106,10 +106,12 @@ describe("nightly: soak", () => {
           const healthy = cycle % 2 === 1;
           active.write(".dockflow/docker/docker-compose.yml", composeYml(healthy));
           const version = `1.0.${cycle}`;
-          await runCLI(["deploy", ENV, version], { cwd: active.dir, timeoutMs: 120_000 });
+          // above the product's own 300s convergence budget, so a slow revert is not killed midway
+          await runCLI(["deploy", ENV, version], { cwd: active.dir, timeoutMs: 330_000 });
 
           if (healthy && cycle % 5 === 0) {
-            await runCLI(["rollback", ENV, "-y"], { cwd: active.dir, timeoutMs: 120_000 });
+            const rollback = await runCLI(["rollback", ENV], { cwd: active.dir, timeoutMs: 330_000 });
+            expect(rollback.exitCode).toBe(0);
           }
 
           // No cycle may leave the deploy lock held: the next cycle's own deploy would otherwise
