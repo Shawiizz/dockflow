@@ -4,7 +4,7 @@
 import { DeployError } from '../../../../utils/errors';
 import { K8S_IMPORTED_IMAGE_REGISTRY, K8S_STORAGE_CLASS } from '../constants';
 import type { K8sDistribution, ReservedHostPort } from '../distribution';
-import { K3S_BINARY_PATH, K3S_IMAGE_COMMANDS } from './sudoers';
+import { K3S_BINARY_PATH, K3S_IMAGE_COMMANDS, K3S_PINNED_LABEL } from './sudoers';
 import { K3S_PIN } from './versions';
 
 export { K3S_BINARY_PATH } from './sudoers';
@@ -59,6 +59,15 @@ function removeImagesCommand(refs: string[]): string {
   return [K3S_IMAGE_COMMANDS.remove, ...refs.map((ref) => `'${ref}'`)].join(' ');
 }
 
+/** Tags only between images Dockflow imported: the sudoers rule allows any `ctr images tag` arguments. */
+function tagImageCommands(source: string, target: string): string[] {
+  const foreign = [source, target].find((ref) => !isImportedRef(ref));
+  if (foreign !== undefined) {
+    throw new DeployError(`Image ${JSON.stringify(foreign)} is not an image Dockflow imported (${IMPORTED_PREFIX}), so Dockflow does not tag it`);
+  }
+  return [`${K3S_IMAGE_COMMANDS.tag} '${source}' '${target}'`, `${K3S_IMAGE_COMMANDS.label} '${target}' ${K3S_PINNED_LABEL}`];
+}
+
 export const k3sDistribution: K8sDistribution = {
   traits: {
     name: 'k3s',
@@ -82,6 +91,7 @@ export const k3sDistribution: K8sDistribution = {
     byTargetDigest: K3S_IMAGE_COMMANDS.listByTargetDigest,
   }),
   removeImagesCommand,
+  tagImageCommands,
   pruneImagesCommand: () => K3S_IMAGE_COMMANDS.prune,
   localVolumeRoot: K3S_LOCAL_VOLUME_ROOT,
 };

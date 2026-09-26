@@ -316,7 +316,7 @@ user), bound to a ServiceAccount with **cluster-admin**.
 
 **Sudo rules**
 
-Setup writes `/etc/sudoers.d/dockflow-k3s` (mode `0440`, owned by `root`) with exactly **five**
+Setup writes `/etc/sudoers.d/dockflow-k3s` (mode `0440`, owned by `root`) with exactly **seven**
 commands — the only things a k3s node ever needs `sudo` for, all related to importing and
 inspecting locally built images in containerd:
 
@@ -326,10 +326,17 @@ Cmnd_Alias DOCKFLOW_K3S_IMAGES = /usr/local/bin/k3s ctr -n k8s.io images import 
     /usr/local/bin/k3s crictl images -o json, \
     /usr/local/bin/k3s ctr -n k8s.io images ls, \
     /usr/local/bin/k3s ctr -n k8s.io images rm *, \
-    /usr/local/bin/k3s crictl rmi --prune
+    /usr/local/bin/k3s crictl rmi --prune, \
+    /usr/local/bin/k3s ctr -n k8s.io images tag --force *, \
+    /usr/local/bin/k3s ctr -n k8s.io images label * io.cri-containerd.pinned\=pinned
 Defaults!DOCKFLOW_K3S_IMAGES !requiretty
 dockflow ALL=(root) NOPASSWD: DOCKFLOW_K3S_IMAGES
 ```
+
+The last two let a deploy give an image a node already holds a new name instead of sending it again:
+an unchanged service rebuilt under a new version travels nowhere. Dockflow only ever tags between
+images it imported itself (`dockflow.invalid/…`). A node set up by an older version lacks them and
+simply receives the image again, until `dockflow setup` is re-run.
 
 The nginx plugin's own rule, if used, still goes in the separate per-user file
 (`/etc/sudoers.d/<username>`) described in the Swarm tab — the two files are independent, so a k3s

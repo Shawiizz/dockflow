@@ -55,6 +55,11 @@ export interface K8sDistribution {
   /** JSON listings used for dedupe and `list images --all` */
   listImagesCommands(): { byConfigDigest: string; byTargetDigest: string };
   removeImagesCommand(refs: string[]): string;
+  /**
+   * Commands (each run with sudo -n, in order) giving an image the node already holds a second
+   * name, pinned like an import: an identical rebuild under a new version then travels nowhere.
+   */
+  tagImageCommands(source: string, target: string): string[];
   pruneImagesCommand(): string;
   /** directory where the distribution stores local volumes (VolumeInfo.hostPath) */
   localVolumeRoot: string;

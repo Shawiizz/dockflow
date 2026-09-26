@@ -17,19 +17,24 @@ const EXPECTED_DOCKFLOW = [
   '    /usr/local/bin/k3s crictl images -o json, \\',
   '    /usr/local/bin/k3s ctr -n k8s.io images ls, \\',
   '    /usr/local/bin/k3s ctr -n k8s.io images rm *, \\',
-  '    /usr/local/bin/k3s crictl rmi --prune',
+  '    /usr/local/bin/k3s crictl rmi --prune, \\',
+  '    /usr/local/bin/k3s ctr -n k8s.io images tag --force *, \\',
+  '    /usr/local/bin/k3s ctr -n k8s.io images label * io.cri-containerd.pinned\\=pinned',
   'Defaults!DOCKFLOW_K3S_IMAGES !requiretty',
   'dockflow ALL=(root) NOPASSWD: DOCKFLOW_K3S_IMAGES',
   '',
 ].join('\n');
 
-// DESIGN-CORE 8.7 sudo command table, as invoked after `sudo -n`.
+// DESIGN-CORE 8.7 sudo command table, as invoked after `sudo -n`, plus the tag and pin of an
+// image a node already holds under another name (an identical rebuild under a new version).
 const CORE_COMMANDS = [
   '/usr/local/bin/k3s ctr -n k8s.io images import --label io.cri-containerd.pinned=pinned -',
   '/usr/local/bin/k3s crictl images -o json',
   '/usr/local/bin/k3s ctr -n k8s.io images ls',
   '/usr/local/bin/k3s ctr -n k8s.io images rm *',
   '/usr/local/bin/k3s crictl rmi --prune',
+  '/usr/local/bin/k3s ctr -n k8s.io images tag --force *',
+  '/usr/local/bin/k3s ctr -n k8s.io images label * io.cri-containerd.pinned=pinned',
 ];
 
 function unescapeSudoers(text: string): string {
@@ -47,7 +52,7 @@ function aliasCommands(file: string): string[] {
 }
 
 describe('K3S_SUDO_COMMANDS', () => {
-  test('are the five commands of DESIGN-CORE 8.7, unescaped and in file order', () => {
+  test('are the commands of DESIGN-CORE 8.7 and the tag/pin pair, unescaped and in file order', () => {
     expect([...K3S_SUDO_COMMANDS]).toEqual(CORE_COMMANDS);
   });
 
@@ -68,14 +73,32 @@ describe('K3S_SUDO_COMMANDS', () => {
     const removePrefix = k3sDistribution
       .removeImagesCommand(['dockflow.invalid/shop-web:1.4.2'])
       .replace(/ 'dockflow\.invalid\/shop-web:1\.4\.2'$/, '');
+    const [tag, label] = k3sDistribution.tagImageCommands('dockflow.invalid/shop-web:1.4.1', 'dockflow.invalid/shop-web:1.4.2');
     expect([
       k3sDistribution.importImagesCommand(),
       lists.byConfigDigest,
       lists.byTargetDigest,
       `${removePrefix} *`,
       k3sDistribution.pruneImagesCommand(),
+      tag.replace(/ '\S+' '\S+'$/, ' *'),
+      label.replace(/ '\S+' /, ' * '),
     ]).toEqual([...K3S_SUDO_COMMANDS]);
     expect(removePrefix).toBe(K3S_IMAGE_COMMANDS.remove);
+  });
+});
+
+describe('tagImageCommands', () => {
+  test('tags one imported name onto another, then pins the new one', () => {
+    expect(k3sDistribution.tagImageCommands('dockflow.invalid/shop-web:1.4.1', 'dockflow.invalid/shop-web:1.4.2')).toEqual([
+      "/usr/local/bin/k3s ctr -n k8s.io images tag --force 'dockflow.invalid/shop-web:1.4.1' 'dockflow.invalid/shop-web:1.4.2'",
+      "/usr/local/bin/k3s ctr -n k8s.io images label 'dockflow.invalid/shop-web:1.4.2' io.cri-containerd.pinned=pinned",
+    ]);
+  });
+
+  test('refuses any name Dockflow did not import, source or target, since sudoers allows any', () => {
+    expect(() => k3sDistribution.tagImageCommands('docker.io/library/redis:8', 'dockflow.invalid/shop-web:1.4.2')).toThrow(/not an image Dockflow imported/);
+    expect(() => k3sDistribution.tagImageCommands('dockflow.invalid/shop-web:1.4.1', 'docker.io/rancher/mirrored-pause:3.6')).toThrow(/not an image Dockflow imported/);
+    expect(() => k3sDistribution.tagImageCommands('dockflow.invalid/a:1', "dockflow.invalid/b:1'; rm -rf / #")).toThrow(/not an image Dockflow imported/);
   });
 });
 

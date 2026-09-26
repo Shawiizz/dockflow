@@ -9,24 +9,33 @@ export const K3S_BINARY_PATH = '/usr/local/bin/k3s';
 
 const CTR_IMAGES = `${K3S_BINARY_PATH} ctr -n k8s.io images`;
 
+/** keeps kubelet image GC away from an imported image (DV5) */
+export const K3S_PINNED_LABEL = 'io.cri-containerd.pinned=pinned';
+
 /** Image commands as invoked after `sudo -n`, unescaped. */
 export const K3S_IMAGE_COMMANDS = {
-  /** reads a `docker save` tar on stdin; the pinned label keeps kubelet image GC away (DV5) */
-  import: `${CTR_IMAGES} import --label io.cri-containerd.pinned=pinned -`,
+  /** reads a `docker save` tar on stdin */
+  import: `${CTR_IMAGES} import --label ${K3S_PINNED_LABEL} -`,
   listByConfigDigest: `${K3S_BINARY_PATH} crictl images -o json`,
   listByTargetDigest: `${CTR_IMAGES} ls`,
   /** followed by the references; sudoers allows any, `removeImagesCommand` restricts them */
   remove: `${CTR_IMAGES} rm`,
   prune: `${K3S_BINARY_PATH} crictl rmi --prune`,
+  /** followed by a source and a target reference; sudoers allows any, `tagImageCommands` restricts them */
+  tag: `${CTR_IMAGES} tag --force`,
+  /** followed by the reference and the pinned label */
+  label: `${CTR_IMAGES} label`,
 } as const;
 
-/** The five commands of the sudoers file, in file order, unescaped. */
+/** The commands of the sudoers file, in file order, unescaped. */
 export const K3S_SUDO_COMMANDS: readonly string[] = Object.freeze([
   K3S_IMAGE_COMMANDS.import,
   K3S_IMAGE_COMMANDS.listByConfigDigest,
   K3S_IMAGE_COMMANDS.listByTargetDigest,
   `${K3S_IMAGE_COMMANDS.remove} *`,
   K3S_IMAGE_COMMANDS.prune,
+  `${K3S_IMAGE_COMMANDS.tag} *`,
+  `${K3S_IMAGE_COMMANDS.label} * ${K3S_PINNED_LABEL}`,
 ]);
 
 /** First line of the file; setup treats a file starting with it as Dockflow's (design-05 13.3). */

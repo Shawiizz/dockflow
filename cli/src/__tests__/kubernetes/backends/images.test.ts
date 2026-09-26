@@ -68,6 +68,8 @@ const N1 = 'sudo -n /usr/local/bin/k3s crictl images -o json';
 const N2 = 'sudo -n /usr/local/bin/k3s ctr -n k8s.io images ls';
 const N3 = 'gzip -dc | sudo -n /usr/local/bin/k3s ctr -n k8s.io images import --label io.cri-containerd.pinned=pinned -';
 const N4 = 'sudo -n /usr/local/bin/k3s ctr -n k8s.io images rm';
+/** tag an image the node holds under another name, then pin the new name */
+const TAG = 'sudo -n /usr/local/bin/k3s ctr -n k8s.io images tag --force';
 const PRUNE = 'sudo -n /usr/local/bin/k3s crictl rmi --prune';
 const DF = 'df -Pk /var/lib/rancher/k3s/agent/containerd';
 const IN_USE = 'pods,replicasets.apps,controllerrevisions.apps,deployments.apps,statefulsets.apps,daemonsets.apps,jobs.batch';
@@ -132,8 +134,21 @@ class Containerd {
       { id: 'N2', script: (s) => s === N2, kind: 'run', times: 'any', optional: true, respond: (call) => ({ exitCode: 0, stdout: this.storeTable(call.node) }) },
       { id: 'N3', script: (s) => s === N3, kind: 'channel', times: 'any', optional: true, respond: (call) => this.importCall(call) },
       { id: 'N4', script: (s) => s.startsWith(`${N4} `), kind: 'run', times: 'any', optional: true, respond: (call) => this.remove(call) },
+      { id: 'tag', script: (s) => s.startsWith(`${TAG} `), kind: 'run', times: 'any', optional: true, respond: (call) => this.tag(call) },
       { id: 'df', script: (s) => s === DF, kind: 'run', times: 'any', optional: true, respond: { exitCode: 0, stdout: DF_OUTPUT } },
     ];
+  }
+
+  /** `ctr images tag --force <source> <target> && ctr images label <target> <pinned>` */
+  private tag(call: NodeShellCall): NodeShellResponse {
+    const words = shellWords(call.script);
+    const at = words.indexOf('--force');
+    const [source, target] = [words[at + 1], words[at + 2]];
+    const image = this.images(call.node).find((stored) => stored.ref === source);
+    if (image === undefined) return { exitCode: 1, stderr: `ctr: image "${source}": not found` };
+    const kept = this.images(call.node).filter((stored) => stored.ref !== target);
+    this.stores.set(call.node, [...kept, { ref: target, id: image.id, pinned: true }]);
+    return { exitCode: 0, stdout: `${target}\n` };
   }
 
   private runtimeJson(node: string): string {
@@ -344,6 +359,44 @@ describe('KubernetesImageBackend.distribute', () => {
 
     expect(channels(h).map((call) => call.script)).toEqual([N3]);
     expect(h.containerd.images('agent_1')).toEqual([imported(WEB_IMPORTED, WEB_ID)]);
+  });
+
+  it('E-40-02: an identical rebuild under a new version is tagged where the node has it, nothing transferred', async () => {
+    const previous = 'dockflow.invalid/shop-web:1.4.1';
+    const h = setup({ seed: (c) => c.seed('agent_1', imported(previous, WEB_ID)) });
+
+    await h.backend.distribute([WEB], [AGENT_1]);
+
+    expect(channels(h)).toEqual([]);
+    expect(scripts(h, 'agent_1').filter((s) => s.startsWith(TAG))).toEqual([
+      `${TAG} '${previous}' '${WEB_IMPORTED}' && sudo -n /usr/local/bin/k3s ctr -n k8s.io images label '${WEB_IMPORTED}' io.cri-containerd.pinned=pinned`,
+    ]);
+    expect(h.containerd.images('agent_1')).toEqual([imported(previous, WEB_ID), imported(WEB_IMPORTED, WEB_ID)]);
+    expect(h.info).toEqual([`images: ${WEB_IMPORTED} already present on agent_1 under another name, tagged`]);
+  });
+
+  it('a node refusing the tag (sudoers from before it) gets the image imported instead', async () => {
+    const previous = 'dockflow.invalid/shop-web:1.4.1';
+    const h = setup({
+      seed: (c) => c.seed('agent_1', imported(previous, WEB_ID)),
+      shell: [{ id: 'tag-refused', script: (s) => s.startsWith(TAG), kind: 'run', respond: { exitCode: 1, stderr: 'sudo: a password is required\n' } }],
+    });
+
+    await h.backend.distribute([WEB], [AGENT_1]);
+
+    expect(channels(h).map((call) => call.script)).toEqual([N3]);
+    expect(h.containerd.refs('agent_1')).toContain(WEB_IMPORTED);
+    expect(h.info).toEqual([`images: ${WEB_IMPORTED} imported on agent_1`]);
+    expect(h.debug.some((line) => line.startsWith(`Tagging ${WEB_IMPORTED} on agent_1 failed, importing it instead`))).toBe(true);
+  });
+
+  it('never tags from an image Dockflow did not import, even with the same id', async () => {
+    const h = setup({ seed: (c) => c.seed('agent_1', imported('docker.io/library/shop-web:1.4.2', WEB_ID)) });
+
+    await h.backend.distribute([WEB], [AGENT_1]);
+
+    expect(scripts(h, 'agent_1').some((s) => s.startsWith(TAG))).toBe(false);
+    expect(channels(h).map((call) => call.script)).toEqual([N3]);
   });
 
   it('re-imports an image whose id differs from the local build', async () => {

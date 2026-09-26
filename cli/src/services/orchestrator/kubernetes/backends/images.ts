@@ -64,6 +64,11 @@ export function alreadyPresentLine(node: string, count: number): string {
   return `images: ${count} image(s) ${IMAGE_PHRASES.alreadyPresent} ${node}`;
 }
 
+/** an identical rebuild under a new name: tagged on the node, nothing transferred */
+export function taggedLine(node: string, refs: readonly string[]): string {
+  return `images: ${refs.join(', ')} ${IMAGE_PHRASES.alreadyPresent} ${node} under another name, tagged`;
+}
+
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
@@ -240,6 +245,23 @@ export function isPresent(index: NodeImageIndex, ref: string, localId: string): 
 
 function withAlgorithm(digest: string): string {
   return digest.includes(':') ? digest : `sha256:${digest}`;
+}
+
+/**
+ * Another imported reference the node already holds this local image under, if any (first in name
+ * order). `target` itself is never one: present but unpinned, it is imported again (DV5).
+ */
+export function importedNameOf(index: NodeImageIndex, localId: string, target: string): string | null {
+  if (localId === '') return null;
+  const id = withAlgorithm(localId);
+  const self = canonicalImageRef(target);
+  const names = [...index.byRef.keys()].filter((ref) => ref !== self && isRemovableRef(ref)).sort();
+  return (
+    names.find((ref) => {
+      const entry = index.byRef.get(ref);
+      return entry !== undefined && [entry.configDigest, entry.targetDigest].some((digest) => digest !== null && withAlgorithm(digest) === id);
+    }) ?? null
+  );
 }
 
 /** Canonical image references of every container and init container found in the objects (K44). */
@@ -589,11 +611,19 @@ export class KubernetesImageBackend implements ImageBackend {
       this.events.info(alreadyPresentLine(node.name, refs.length));
       return;
     }
+    // the node may hold the very same image under another name (an identical rebuild under a new
+    // version): a tag there replaces the transfer
+    const tagged: string[] = [];
+    const imported: string[] = [];
+    for (const ref of missing) {
+      const source = importedNameOf(before, localId(ref.imported), ref.imported);
+      if (source !== null && (await this.tagOnNode(shell, source, ref.imported))) tagged.push(ref.imported);
+      else imported.push(ref.imported);
+    }
     // one stream per node: references sharing an image id travel together
-    const imported = missing.map((ref) => ref.imported);
-    await this.importStream(shell, imported, engine);
+    if (imported.length > 0) await this.importStream(shell, imported, engine);
     const after = await this.readIndex(shell, 'Image import');
-    for (const ref of imported) {
+    for (const ref of [...tagged, ...imported]) {
       if (!isPresent(after, ref, localId(ref))) {
         throw new DeployError(
           `Image import on ${node.name} did not produce ${ref} with id ${shortId(localId(ref))}`,
@@ -602,7 +632,19 @@ export class KubernetesImageBackend implements ImageBackend {
         );
       }
     }
-    this.events.info(importedLine(node.name, imported));
+    if (tagged.length > 0) this.events.info(taggedLine(node.name, tagged));
+    if (imported.length > 0) this.events.info(importedLine(node.name, imported));
+  }
+
+  /** false when the node refuses (a sudoers file from before tagging was allowed): the caller imports instead */
+  private async tagOnNode(shell: NodeShell, source: string, target: string): Promise<boolean> {
+    const script = this.deps.distribution
+      .tagImageCommands(source, target)
+      .map((command) => `sudo -n ${command}`)
+      .join(' && ');
+    const result = await shell.run(script, { guardS: NODE_READ_GUARD_S });
+    if (result.exitCode !== 0) this.events.debug(`Tagging ${target} on ${shell.node.name} failed, importing it instead: ${stderrExcerpt(result.stderr)}`);
+    return result.exitCode === 0;
   }
 
   /** `docker save <refs> | gzip -1` into `gzip -dc | sudo -n <import>` on the node. */
