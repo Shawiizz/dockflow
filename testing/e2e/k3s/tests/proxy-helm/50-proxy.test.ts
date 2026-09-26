@@ -441,8 +441,9 @@ describe("50-proxy", () => {
       );
       const result = await runCLI(["deploy", ENV2, "1.0.0", "--force"], { cwd: second.dir, timeoutMs: 60_000 });
       expect(result.exitCode).not.toBe(0);
-      expect(result.stderr).toContain("E-PX-INCOMPATIBLE");
-      expect(result.stderr).not.toContain("E-PX-CONFLICT");
+      // E-PX-INCOMPATIBLE, not E-PX-CONFLICT (the catalogue ids are not printed)
+      expect(result.stderr).toContain("was installed without ACME");
+      expect(result.stderr).not.toContain("with different proxy settings");
       second.cleanup();
     });
   }, 90_000);
