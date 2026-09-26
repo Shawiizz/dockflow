@@ -191,7 +191,9 @@ class SetupReport {
     const row = this.rows.get(key);
     if (!row) return;
     row.result = result.status === 'ok' ? 'ok' : 'failed';
+    const preserved = result.reset?.preserved;
     if (result.error !== null) row.detail = result.error.message;
+    else if (preserved?.path) row.detail = `kept ${preserved.items.join(', ')} in ${preserved.path}`;
     for (const warning of result.warnings) this.addWarning(key, warning);
   }
 

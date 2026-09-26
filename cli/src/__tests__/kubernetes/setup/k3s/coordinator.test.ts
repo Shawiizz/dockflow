@@ -634,6 +634,20 @@ describe('runK3sReset', () => {
     transport.assertDone();
   });
 
+  it('CO16 names what each node kept and where, since a non-interactive reset asks nothing', async () => {
+    const servers = [srv('srv-1', { host: '10.0.0.10' })];
+    const preserved = { path: '/var/lib/dockflow-preserved/20260926T212632Z', items: ['storage', 'token'], bytes: 4096 };
+    const transport = new FakeSetupTransport({
+      nodes: { 'srv-1': { runner: freshHost('10.0.0.10'), operations: { reset: { kind: 'result', result: { reset: { preserved, removed: [], firewallRulesRemoved: 0 } } } } } },
+    });
+
+    const { error, dims } = await runReset(servers, transport);
+
+    expect(error).toBeUndefined();
+    expect(dims.some((line) => line.trimStart().startsWith('srv-1') && line.endsWith('kept storage, token in /var/lib/dockflow-preserved/20260926T212632Z'))).toBe(true);
+    transport.assertDone();
+  });
+
   it('CO16 refuses to reset the only server while an agent is not included', async () => {
     const servers = [srv('srv-1', { host: '10.0.0.10' }), srv('agent-1', { host: '10.0.0.11', role: 'worker' })];
     const nodes: Record<string, FakeSetupNode> = {

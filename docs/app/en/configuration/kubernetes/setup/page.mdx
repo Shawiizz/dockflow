@@ -276,10 +276,18 @@ deploy identity has no root on the nodes to do it itself.
 
 ## Uninstalling
 
-`--reset` removes what setup installed, but the underlying k3s binary is removed manually with the scripts
-k3s itself provides: `/usr/local/bin/k3s-uninstall.sh` on servers, `/usr/local/bin/k3s-agent-uninstall.sh` on
-agents. These scripts also remove the data under `/var/lib/rancher/k3s/storage` — export anything you need
-first (see [Volumes & Data](/en/configuration/volumes) and [Backup & Restore](/en/configuration/backup)).
+`dockflow setup k3s <env> --reset` uninstalls k3s from every node of the environment (or only the `--node`
+keys), agents first: it removes the firewall rules setup wrote, stops k3s, moves the data it keeps aside, runs
+k3s's own uninstall script (`k3s-uninstall.sh` on servers, `k3s-agent-uninstall.sh` on agents), then removes
+the sudoers rule, kubeconfig, Helm and download cache setup installed. The deploy user stays. A non-interactive
+session must repeat the environment name with `--confirm <env>`.
+
+Unless `--delete-volumes` is given, each node keeps a root-only `/var/lib/dockflow-preserved/<timestamp>/`,
+named in the DETAIL column of the summary: the volume data (`storage/`), the etcd snapshots and pre-upgrade
+SQLite copies Dockflow made, the cluster token and the secrets-encryption key, with a `README.txt` describing
+each. A cluster set up again afterwards starts empty: restore what you need from there (see
+[Volumes & Data](/en/configuration/volumes) and [Backup & Restore](/en/configuration/backup)), then delete the
+directory. A k3s that Dockflow did not install is refused; uninstall it by hand with the same scripts.
 
 ## See also
 
