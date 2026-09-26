@@ -249,7 +249,7 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
 
   const { config, orchestrator } = await openOrchestrator(env, {
     server: options.server,
-    failover: options.noFailover !== true,
+    failover: options.failover !== false,
     requireWorkerCredentials: true,
     onProbe: (p) => printDebug(`probe ${p.node}: ${p.status}${p.detail ? ` (${p.detail})` : ''}`),
   });

@@ -513,7 +513,7 @@ describe('cleanupBundle', () => {
   it('--no-failover: same bundle', async () => {
     const orchestrator = new FakeOrchestrator('k3s', { target: { managers: [nodeRef('server_1'), nodeRef('server_2')] } });
     const cause = new KubeError('Timeout', 'x', 'server_1', -1, '');
-    const ctx = fakeContext(orchestrator, { options: { noFailover: true } });
+    const ctx = fakeContext(orchestrator, { options: { failover: false } });
     const bundle = await cleanupBundle(ctx, new OrchestratorUnavailableError('x', undefined, cause));
     expect(bundle).toBe(orchestrator);
   });

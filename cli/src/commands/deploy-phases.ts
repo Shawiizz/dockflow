@@ -824,7 +824,7 @@ export function isControlPlaneLoss(error: unknown): boolean {
  * does not leave a Lease behind for 30 minutes.
  */
 export async function cleanupBundle(ctx: DeployContext, error: unknown): Promise<Orchestrator> {
-  if (!isControlPlaneLoss(error) || ctx.target.managers.length < 2 || ctx.options.noFailover) return ctx.orchestrator;
+  if (!isControlPlaneLoss(error) || ctx.target.managers.length < 2 || ctx.options.failover === false) return ctx.orchestrator;
   try {
     const reopened = await openOrchestrator(ctx.env, { failover: true, requireWorkerCredentials: false });
     if (reopened.orchestrator.target.controlPlane.name !== ctx.target.controlPlane.name) {

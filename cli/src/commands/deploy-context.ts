@@ -16,7 +16,8 @@ export interface DeployOptions {
   accessories?: boolean;
   all?: boolean;
   skipAccessories?: boolean;
-  noFailover?: boolean;
+  /** false with --no-failover: Commander names a negated option after the positive form */
+  failover?: boolean;
   dryRun?: boolean;
   branch?: string;
   /** deploy --adopt <name>: take over a Helm release installed outside Dockflow */
