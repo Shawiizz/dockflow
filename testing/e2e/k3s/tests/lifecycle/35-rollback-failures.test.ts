@@ -118,6 +118,23 @@ function dir(): string {
   return fixture.dir;
 }
 
+const CONFIG = ".dockflow/config.yml";
+
+function missingEndpoint(text: string): string {
+  return text.replace(`url: "http://127.0.0.1:8085/"`, `url: "http://127.0.0.1:8085/missing"`);
+}
+
+/** Runs `body` with a patched config.yml and puts the file back whatever happens, so one failure does not leak into the chain. */
+async function withConfig<T>(patch: (text: string) => string, body: () => Promise<T>): Promise<T> {
+  const original = fixture.read(CONFIG);
+  fixture.patchConfig(patch);
+  try {
+    return await body();
+  } finally {
+    fixture.write(CONFIG, original);
+  }
+}
+
 async function curlWeb(marker: string, timeoutMs = 30_000): Promise<void> {
   await waitFor(
     async () => {
@@ -176,7 +193,8 @@ describe("rollback and failure handling (E-35)", () => {
 
       expect(result.exitCode).toBe(53); // HEALTH_CHECK_FAILED
       const out = result.stdout + result.stderr;
-      expect(out).toMatch(/CrashLoopBackOff/);
+      // design-03 F7's wording; the kubelet reason itself is not printed
+      expect(out).toMatch(/Service web keeps crashing: container web restarted \d+ time\(s\), last exit code 1/);
       expect(out).toMatch(/reverted web to 1\.0\.0-rb/);
       expect(elapsedS).toBeLessThan(150);
 
@@ -226,7 +244,8 @@ describe("rollback and failure handling (E-35)", () => {
       writeWebCompose(fixture, { mode: "ok", marker: "V5", memoryReservation: "64G" });
       const result = await runCLI(["deploy", ENV, "5.0.0-rb", "--yes"], { cwd: dir(), timeoutMs: 200_000 });
       expect(result.exitCode).toBe(53);
-      expect(result.stdout + result.stderr).toMatch(/Unschedulable/);
+      // design-03 F9's wording, carrying the scheduler's own message
+      expect(result.stdout + result.stderr).toMatch(/Service web cannot be scheduled: .*Insufficient memory/);
       writeWebCompose(fixture, { mode: "ok", marker: "V1" });
       await curlWeb("V1");
     });
@@ -235,30 +254,25 @@ describe("rollback and failure handling (E-35)", () => {
   test("E-35-06 a failing HTTP endpoint path rolls the release back through rollbackRelease", async () => {
     await withDump("E-35-06", async () => {
       writeWebCompose(fixture, { mode: "ok", marker: "V6" });
-      fixture.patchConfig((text) => text.replace(`url: "http://127.0.0.1:8085/"`, `url: "http://127.0.0.1:8085/missing"`));
-      const result = await runCLI(["deploy", ENV, "6.0.0-rb", "--yes"], { cwd: dir(), timeoutMs: 200_000 });
+      const result = await withConfig(missingEndpoint, () => runCLI(["deploy", ENV, "6.0.0-rb", "--yes"], { cwd: dir(), timeoutMs: 200_000 }));
 
-      // design-07 E-35-06 states 53 (HEALTH_CHECK_FAILED, "rollbackRelease path"); if the running
-      // deploy.ts unconditionally rewrites this to DEPLOY_FAILED (50), see dependency_defects.
-      expect(result.exitCode).toBe(53);
-
+      expect(result.exitCode).toBe(53); // HEALTH_CHECK_FAILED, kept through the rollback
+      expect(result.stdout + result.stderr).toMatch(/; rolled back to 1\.0\.0-rb/);
       expect((await stateConfigMap(NS)).current).toBe("1.0.0-rb");
       const releases = await releaseSecrets(NS);
       expect(releases.map((s) => s.metadata.annotations?.[ANNOTATIONS.release])).not.toContain("6.0.0-rb");
       expect(await webImage()).toContain(":1.0.0-rb");
-
-      fixture.patchConfig((text) => text.replace(`url: "http://127.0.0.1:8085/missing"`, `url: "http://127.0.0.1:8085/"`));
       await curlWeb("V1");
     });
   }, 300_000);
 
   test("E-35-07 on_failure: fail keeps the failed version deployed and recorded", async () => {
     await withDump("E-35-07", async () => {
-      fixture.patchConfig((text) => text.replace("on_failure: rollback", "on_failure: fail"));
       writeWebCompose(fixture, { mode: "ok", marker: "V7" });
-      fixture.patchConfig((text) => text.replace(`url: "http://127.0.0.1:8085/"`, `url: "http://127.0.0.1:8085/missing"`));
-
-      const result = await runCLI(["deploy", ENV, "7.0.0-rb", "--yes"], { cwd: dir(), timeoutMs: 200_000 });
+      const result = await withConfig(
+        (text) => missingEndpoint(text.replace("on_failure: rollback", "on_failure: fail")),
+        () => runCLI(["deploy", ENV, "7.0.0-rb", "--yes"], { cwd: dir(), timeoutMs: 200_000 }),
+      );
       expect(result.exitCode).toBe(53);
 
       expect(await webImage()).toContain(":7.0.0-rb");
@@ -269,12 +283,10 @@ describe("rollback and failure handling (E-35)", () => {
         /Release 7\.0\.0-rb is deployed but the deploy reported a failure; current stays 7\.0\.0-rb/,
       );
 
-      fixture.patchConfig((text) => text.replace(`url: "http://127.0.0.1:8085/missing"`, `url: "http://127.0.0.1:8085/"`));
       const rollback = await runCLI(["rollback", ENV], { cwd: dir(), timeoutMs: 200_000 });
       expect(rollback.exitCode).toBe(0);
       expect(rollback.stdout + rollback.stderr).toMatch(/Rolled back to 1\.0\.0-rb/);
       await curlWeb("V1");
-      fixture.patchConfig((text) => text.replace("on_failure: fail", "on_failure: rollback"));
     });
   }, 400_000);
 

@@ -94,12 +94,12 @@ describe("automatic rollback on failed health check", () => {
       cwd: fixture.dir,
     });
 
-    // Exit code 50 = DEPLOY_FAILED ("Deployment failed and was rolled back to ...")
-    if (result.exitCode !== 50) {
+    // Exit code 53 = HEALTH_CHECK_FAILED: the failed check keeps its code, followed by "; rolled back to ..."
+    if (result.exitCode !== 53) {
       console.error("[rollback v2] STDOUT:", result.stdout.slice(-3000));
       console.error("[rollback v2] STDERR:", result.stderr.slice(-3000));
     }
-    expect(result.exitCode).toBe(50);
+    expect(result.exitCode).toBe(53);
     expect(result.stdout + result.stderr).toContain(`rolled back to ${V1}`);
   }, 300_000);
 
