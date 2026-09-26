@@ -232,7 +232,13 @@ export function createLocalHostRunner(): HostRunner {
     },
     async mkdir(path, options) {
       refuseSymlink(path);
-      mkdirSync(path, { recursive: true, mode: options.mode });
+      // The parents this creates get 0755 whatever the umask, as on a fresh k3s install: a 0700 leaf
+      // must not lock the directories above it (the deploy user's `k3s kubectl` reads under them).
+      const firstParent = mkdirSync(dirname(path), { recursive: true });
+      if (firstParent !== undefined) {
+        for (let dir = dirname(path); dir.length >= firstParent.length; dir = dirname(dir)) chmodSync(dir, 0o755);
+      }
+      if (mkdirSync(path, { recursive: true }) !== undefined) chmodSync(path, options.mode);
       applyOwner(path, options);
     },
     async readDir(path) {

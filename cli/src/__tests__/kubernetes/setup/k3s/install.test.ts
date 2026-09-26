@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { CURL_FLAGS, DOWNLOAD_CACHE_DIR, K3S_BINARY } from '../../../../commands/setup/k3s/constants';
@@ -106,6 +106,11 @@ describe('local HostRunner', () => {
       expect((await runner.readFile(`${dir}/lock`))?.toString()).toBe('4242\n');
       await runner.mkdir(`${dir}/a/b`, { mode: 0o700 });
       expect((await runner.stat(`${dir}/a/b`))?.type).toBe('directory');
+      if (process.platform !== 'win32') {
+        // a parent the call creates keeps 0755: a 0700 leaf must not lock the directories above it
+        expect(lstatSync(`${dir}/a`).mode & 0o777).toBe(0o755);
+        expect(lstatSync(`${dir}/a/b`).mode & 0o777).toBe(0o700);
+      }
       await writeFileAtomic(runner, `${dir}/a/b/state.json`, '{}\n', { mode: 0o600 });
       expect(await runner.readDir(`${dir}/a/b`)).toEqual(['state.json']);
       await runner.writeFile(`${dir}/a/b/state.json`, '{"v":2}\n', { mode: 0o600 });
