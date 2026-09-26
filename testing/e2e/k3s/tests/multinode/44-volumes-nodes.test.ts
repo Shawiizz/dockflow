@@ -82,7 +82,7 @@ describe("volumes and node pinning", () => {
       try {
         rwx.write(
           ".dockflow/config.yml",
-          'project_name: "k3s-multi-rwx"\n\nstack_management:\n  keep_releases: 1\n  cleanup_on_failure: true\n',
+          'project_name: "k3s-multi-rwx"\norchestrator: k3s\n\nstack_management:\n  keep_releases: 1\n  cleanup_on_failure: true\n',
         );
         rwx.write(
           ".dockflow/docker/docker-compose.yml",

@@ -59,7 +59,7 @@ async function ingressRoutesOf(ns: string): Promise<IngressRoute[]> {
 }
 
 function configYml(body: string): string {
-  return `project_name: "shop"\n\n${body}`;
+  return `project_name: "shop"\norchestrator: k3s\n\n${body}`;
 }
 
 /**
@@ -392,6 +392,7 @@ describe("50-proxy", () => {
         ".dockflow/config.yml",
         [
           'project_name: "shop-second"',
+          'orchestrator: k3s',
           "",
           "proxy:",
           "  enabled: true",
@@ -423,6 +424,7 @@ describe("50-proxy", () => {
         ".dockflow/config.yml",
         [
           'project_name: "shop-second"',
+          'orchestrator: k3s',
           "",
           "proxy:",
           "  enabled: true",

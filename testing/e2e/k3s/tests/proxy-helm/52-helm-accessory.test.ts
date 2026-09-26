@@ -25,6 +25,7 @@ interface HelmListEntry {
 function configWithAccessory(message: string): string {
   return [
     'project_name: "helmapp"',
+    'orchestrator: k3s',
     "",
     "helm:",
     "  releases:",
@@ -40,7 +41,7 @@ function configWithAccessory(message: string): string {
 }
 
 function configWithoutAccessory(): string {
-  return 'project_name: "helmapp"\n';
+  return 'project_name: "helmapp"\norchestrator: k3s\n';
 }
 
 async function withDump<T>(testName: string, fn: () => Promise<T>): Promise<T> {

@@ -22,6 +22,7 @@ const TRANSITION_NS = nsFor("helmtransition");
 function helmOnlyConfig(): string {
   return [
     "project_name: \"helmonly\"",
+    "orchestrator: k3s",
     "",
     "helm:",
     "  releases:",
@@ -42,6 +43,7 @@ function helmOnlyConfigV2(): string {
 function transitionConfigWithRelease(): string {
   return [
     "project_name: \"helmtransition\"",
+    "orchestrator: k3s",
     "",
     "helm:",
     "  releases:",

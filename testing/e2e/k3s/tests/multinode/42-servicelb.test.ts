@@ -118,7 +118,7 @@ describe("ServiceLB", () => {
       try {
         second.write(
           ".dockflow/config.yml",
-          'project_name: "k3s-multi-collide"\n\nstack_management:\n  keep_releases: 2\n  cleanup_on_failure: true\n',
+          'project_name: "k3s-multi-collide"\norchestrator: k3s\n\nstack_management:\n  keep_releases: 2\n  cleanup_on_failure: true\n',
         );
         // collides with lb1's current port (moved to 18092 by the previous test)
         second.write(
@@ -128,7 +128,8 @@ describe("ServiceLB", () => {
         const result = await runCLI(["deploy", ENV, "1.0.0", "--yes"], { cwd: second.dir, timeoutMs: 180_000 });
         expect(result.exitCode).not.toBe(0);
         const combined = `${result.stdout}${result.stderr}`;
-        expect(combined).toContain("LoadBalancerPending");
+        // design-03's LoadBalancerPending wording, naming the project that holds the port
+        expect(combined).toMatch(/Published port 18092\/tcp of service collider cannot be bound: it is already used by service \S+ in namespace/);
         expect(combined).toContain(nsFor("k3s-multi", ENV));
 
         const topo = currentTopology();
@@ -150,6 +151,7 @@ describe("ServiceLB", () => {
           ".dockflow/config.yml",
           [
             'project_name: "k3s-proxy-owner"',
+            'orchestrator: k3s',
             "",
             "stack_management:",
             "  keep_releases: 1",

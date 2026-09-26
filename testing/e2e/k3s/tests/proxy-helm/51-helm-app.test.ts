@@ -46,7 +46,7 @@ interface ReleaseSpec {
 
 /** Builds config.yml's `helm.releases[]` from a small description, so each row only states its diff. */
 function configYml(releases: readonly ReleaseSpec[], extraTop: readonly string[] = []): string {
-  const lines: string[] = [`project_name: "${PROJECT}"`, "", ...extraTop];
+  const lines: string[] = [`project_name: "${PROJECT}"`, "orchestrator: k3s", "", ...extraTop];
   if (releases.length === 0) return `${lines.join("\n")}\n`;
   lines.push("helm:", "  releases:");
   for (const r of releases) {
