@@ -24,7 +24,7 @@ backup:
   accessories:
     postgres:
       type: postgres
-      dump_options: "--no-owner --clean"
+      dump_options: "--no-owner"
     redis:
       type: redis
   services:
@@ -143,14 +143,14 @@ dockflow backup prune production --keep 5      # Override retention count
 
 ### PostgreSQL
 
-Uses `pg_dump` and `psql`. Credentials are automatically read from the container's `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` environment variables.
+Uses `pg_dump` and `psql`. Credentials are automatically read from the container's `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` environment variables. Dumps are taken with `--clean --if-exists`, so a restore drops and recreates every object the dump holds: its tables come back exactly as they were, instead of receiving the backed-up rows next to the current ones. Objects created after the backup and absent from it are left alone.
 
 ```yaml
 backup:
   accessories:
     postgres:
       type: postgres
-      dump_options: "--no-owner --clean --if-exists"
+      dump_options: "--no-owner"
 ```
 
 ### MySQL
@@ -167,7 +167,7 @@ backup:
 
 ### MongoDB
 
-Uses `mongodump --archive` and `mongorestore --archive`. Credentials are read from `MONGO_INITDB_ROOT_USERNAME`, `MONGO_INITDB_ROOT_PASSWORD`, and `MONGO_INITDB_DATABASE`.
+Uses `mongodump --archive` and `mongorestore --archive --drop`: each collection of the archive replaces the live one rather than being merged into it. Credentials are read from `MONGO_INITDB_ROOT_USERNAME`, `MONGO_INITDB_ROOT_PASSWORD`, and `MONGO_INITDB_DATABASE`.
 
 ```yaml
 backup:
