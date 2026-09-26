@@ -235,7 +235,7 @@ describe('helmErrorToCliError', () => {
         'Helm release web would take over objects it does not own (the detail)',
         'Rename the conflicting objects or the release, because Dockflow never passes `--take-ownership`.',
       ],
-      ['RepoUnreachable', 'server_1 cannot reach https://charts.example.com', 'Check outbound HTTPS from the control-plane node.'],
+      ['RepoUnreachable', 'server_1 cannot reach https://charts.example.com (the detail)', 'Check outbound HTTPS from the control-plane node.'],
     ];
     for (const [reason, message, suggestion] of rows) {
       await expectCliError(mapped(reason), { type: DeployError, code: ErrorCode.DEPLOY_FAILED, message, suggestion });

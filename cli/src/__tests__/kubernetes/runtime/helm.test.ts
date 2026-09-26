@@ -257,6 +257,23 @@ describe('redaction and output', () => {
     expect(result.stderr).not.toContain(PASSWORD);
   });
 
+  it('a failed repo update puts the cause Helm printed on stdout ahead of stderr, redacted', async () => {
+    const stdout = [
+      'Hang tight while we grab the latest from your chart repositories...',
+      '...Unable to get an update from the "dockflow-repo" chart repository (https://charts.example.com):',
+      `\tfailed to fetch https://charts.example.com/index.yaml?token=${PASSWORD} : 401 Unauthorized`,
+      '',
+    ].join('\n');
+    const stderr = 'Error: failed to update the following repositories: [https://charts.example.com]\n';
+    const { helm } = setup([{ command: /'repo' 'update'/, respond: { exitCode: 1, stdout, stderr } }], [PASSWORD]);
+    const result = await helm.run({ args: ['repo', 'update', 'dockflow-repo'], mutating: false, timeoutS: 120, allowFailure: true });
+    expect(result).toEqual({
+      exitCode: 1,
+      stdout,
+      stderr: `failed to fetch https://charts.example.com/index.yaml?token=*** : 401 Unauthorized\n${stderr}`,
+    });
+  });
+
   it('U-RT-H-14: the stdout of get manifest is returned and never printed, --debug included', async () => {
     const manifest = `---\napiVersion: v1\nkind: Secret\nmetadata:\n  name: web-db\ndata:\n  password: ${Buffer.from(PASSWORD).toString('base64')}\n`;
     const { helm } = setup([{ command: /'get' 'manifest'/, respond: { exitCode: 0, stdout: manifest } }], [PASSWORD]);

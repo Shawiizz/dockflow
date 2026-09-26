@@ -34,7 +34,7 @@ export interface HelmCall {
 export interface HelmResult {
   exitCode: number;
   stdout: string;
-  /** redacted */
+  /** redacted, see helmStderr */
   stderr: string;
 }
 
@@ -86,6 +86,19 @@ export function helmCommand(call: Pick<HelmCall, 'args' | 'env'>): string {
   parts.push(HELM_BIN_PATH, `--kubeconfig=${K8S_KUBECONFIG_PATH}`);
   for (const arg of call.args) parts.push(shellQuote(arg));
   return parts.join(' ');
+}
+
+/** `...Unable to get an update from the "<name>" chart repository (<url>):`, then the cause tab-indented */
+const REPO_UPDATE_FAILURE = /^\.\.\.Unable to get an update from .*\n((?:\t.*\n?)+)/gm;
+
+/**
+ * The stderr of a result, before redaction. A failed `repo update` prints why a repository failed
+ * on stdout and only the failed URLs on stderr, so those causes come first.
+ */
+export function helmStderr(args: readonly string[], raw: { exitCode: number; stdout: string; stderr: string }): string {
+  if (raw.exitCode === 0 || args[0] !== 'repo' || args[1] !== 'update') return raw.stderr;
+  const causes = [...raw.stdout.matchAll(REPO_UPDATE_FAILURE)].map((match) => (match[1] ?? '').replace(/^\t/gm, '').trimEnd());
+  return [...causes, raw.stderr].join('\n');
 }
 
 /**
@@ -166,7 +179,7 @@ class SshHelmExecutor implements HelmExecutor {
       printDebug(`helm ${debugArgs} on ${this.node.name}: ${error instanceof KubeError ? error.reason : 'failed'}`);
       throw error;
     }
-    const result: HelmResult = { exitCode: raw.exitCode, stdout: raw.stdout, stderr: this.redactor.redact(raw.stderr) };
+    const result: HelmResult = { exitCode: raw.exitCode, stdout: raw.stdout, stderr: this.redactor.redact(helmStderr(call.args, raw)) };
     printDebug(`helm ${debugArgs} on ${this.node.name}: exit ${result.exitCode}`);
     if (result.exitCode !== 0 && !call.allowFailure) throw this.failure(what, result);
     return result;

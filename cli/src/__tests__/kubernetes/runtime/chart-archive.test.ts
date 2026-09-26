@@ -16,6 +16,7 @@ import {
   resolveTraefikChartArchive,
 } from '../../../services/orchestrator/kubernetes/runtime/chart-archive';
 import { KubeError, NO_EXIT_CODE } from '../../../services/orchestrator/kubernetes/runtime/errors';
+import { helmFailureDetail } from '../../../services/orchestrator/kubernetes/runtime/helm-errors';
 import { helmTempDirCommand } from '../../../services/orchestrator/kubernetes/runtime/host';
 import { TRAEFIK_CHART_PIN } from '../../../services/orchestrator/kubernetes/versions';
 import { ConfigError, DeployError, ErrorCode } from '../../../utils/errors';
@@ -301,6 +302,39 @@ describe('resolveChartArchive: credentials', () => {
     done();
   });
 
+  // Helm prints why the index could not be downloaded on stdout; stderr only lists the failed URL
+  function repoUpdateFailure(cause: string): HelmStep {
+    return {
+      args: ['repo', 'update', CHART_REPO_ALIAS],
+      respond: {
+        exitCode: 1,
+        stdout: `Hang tight while we grab the latest from your chart repositories...\n...Unable to get an update from the "${CHART_REPO_ALIAS}" chart repository (${REPO}):\n\t${cause}\n`,
+        stderr: `Error: failed to update the following repositories: [${REPO}]\n`,
+      },
+    };
+  }
+
+  it('maps credentials refused while updating the repository index, before any pull', async () => {
+    const { helm, deps, fs, done } = setup([repoUpdateFailure(`failed to fetch ${REPO}/index.yaml : 401 Unauthorized`)]);
+    await expectCliError(resolveChartArchive(deps, repoRelease({ auth: { username: 'deploy', password: PASSWORD } }), null, OPTIONS), {
+      type: ConfigError,
+      message: `The chart repository rejected the credentials for redis 20.1.0 from ${REPO}`,
+    });
+    expect(helm.calls.map((call) => call.args[0])).toEqual(['repo']);
+    expect(fs.exists(TMP)).toBe(false);
+    done();
+  });
+
+  it('names the TLS error of an authenticated repository whose certificate is not trusted', async () => {
+    const cause = `Get "${REPO}/index.yaml": tls: failed to verify certificate: x509: certificate signed by unknown authority`;
+    const { deps, done } = setup([repoUpdateFailure(cause)]);
+    await expectCliError(resolveChartArchive(deps, repoRelease({ auth: { username: 'deploy', password: PASSWORD } }), null, OPTIONS), {
+      type: DeployError,
+      message: `server_1 cannot reach ${REPO} (${cause}; failed to update the following repositories: [${REPO}])`,
+    });
+    done();
+  });
+
   it('logs in to an OCI registry with --password-stdin and a per-call registry config (U-RT-H-05)', async () => {
     const { helm, shell, deps, done } = setup();
     const sha = helm.chart({ name: 'search', version: '2.4.1', oci: OCI_REF });
@@ -373,7 +407,7 @@ describe('resolveChartArchive: failures', () => {
       await expectCliError(resolveChartArchive(deps, repoRelease(), null, OPTIONS), {
         type: DeployError,
         code: ErrorCode.DEPLOY_FAILED,
-        message: `server_1 cannot reach ${REPO}`,
+        message: `server_1 cannot reach ${REPO} (${helmFailureDetail(stderr)})`,
         suggestion: 'Check outbound HTTPS from the control-plane node.',
       });
       expect(fs.exists(TMP)).toBe(false);

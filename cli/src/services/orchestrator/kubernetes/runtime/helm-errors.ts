@@ -209,7 +209,7 @@ export function helmErrorToCliError(reason: HelmFailureReason, context: HelmFail
       return new ConfigError(`The chart repository rejected the credentials for ${chart}`, `Check \`helm.releases[].auth\` of ${release}.`);
     case 'RepoUnreachable':
       return new DeployError(
-        `${node} cannot reach ${context.repository ?? chart}`,
+        `${node} cannot reach ${context.repository ?? chart}${within}`,
         ErrorCode.DEPLOY_FAILED,
         'Check outbound HTTPS from the control-plane node.',
       );

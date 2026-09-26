@@ -17,6 +17,7 @@ import {
   type HelmExecutor,
   type HelmResult,
   helmCommand,
+  helmStderr,
 } from '../../../services/orchestrator/kubernetes/runtime/helm';
 import { firstLine } from '../../../services/orchestrator/kubernetes/runtime/kubectl';
 import { HELM_PIN } from '../../../services/orchestrator/kubernetes/versions';
@@ -512,7 +513,7 @@ export class FakeHelmExecutor implements HelmExecutor {
       recorded.step = 'model';
       raw = this.execute(call);
     }
-    const result: HelmResult = { exitCode: raw.exitCode, stdout: raw.stdout, stderr: this.redactor.redact(raw.stderr) };
+    const result: HelmResult = { exitCode: raw.exitCode, stdout: raw.stdout, stderr: this.redactor.redact(helmStderr(call.args, raw)) };
     recorded.result = result;
     if (result.exitCode !== 0 && !call.allowFailure) throw this.failure(`helm ${describeArgs(call.args)}`, result);
     return result;
