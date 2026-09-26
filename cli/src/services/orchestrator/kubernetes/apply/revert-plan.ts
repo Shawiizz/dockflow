@@ -111,10 +111,17 @@ export function planRevert(input: RevertPlanInput): RevertPlan {
   // services of the failed receipt whose objects differ from the previous release (a service only
   // in `previous` was not touched: prune has not run, so it still runs unchanged)
   const appliedServices = [...new Set(input.applied.map(composeAnnotation).filter((s): s is string => s !== undefined))];
+  // A Job whose content-hashed name was live before the apply is never re-applied (K43): missing
+  // from `applied`, it is the previous release's Job, kept as it was.
+  const liveJobs = new Set(input.before.workloads.filter((w) => w.kind === 'Job').map((w) => w.name));
+  const appliedJobs = new Set(input.applied.filter((o) => o.kind === 'Job').map((o) => o.metadata.name));
+  const previousAsApplied = (previous?.objects ?? []).filter(
+    (o) => !(o.kind === 'Job' && liveJobs.has(o.metadata.name) && !appliedJobs.has(o.metadata.name)),
+  );
   const changedByArtifact = new Set(
     previous === null
       ? []
-      : appliedServices.filter(inScope).filter((s) => fingerprint(input.applied, s) !== fingerprint(previous.objects, s)),
+      : appliedServices.filter(inScope).filter((s) => fingerprint(input.applied, s) !== fingerprint(previousAsApplied, s)),
   );
   const changedServices = [...new Set([...input.changes.map((c) => c.service), ...changedByArtifact])]
     .filter(inScope)

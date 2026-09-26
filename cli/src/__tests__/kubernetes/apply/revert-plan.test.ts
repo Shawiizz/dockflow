@@ -388,6 +388,22 @@ describe('planRevert', () => {
     expect(plan.deleteFirst).toEqual([]);
   });
 
+  it('a Job kept live and unchanged (so never re-applied) does not make its service look changed', () => {
+    const previous = [deployment('web', { port: 8080 }), job('migrate-3f9a1c2e', 'migrate'), service('migrate-hl', 'migrate', 9)];
+    // the engine dropped the live Job from what it applied (K43); its headless Service was applied
+    const applied = [deployment('web', { port: 3000 }), service('migrate-hl', 'migrate', 9)];
+    const plan = planRevert(
+      input({
+        applied,
+        previous: { version: '1.4.1', objects: previous, helm: [] },
+        changes: [change('web', 'Deployment', 'web')],
+        before: snapshot(live('Deployment', 'web'), live('Job', 'migrate-3f9a1c2e', { service: 'migrate' })),
+        now: snapshot(live('Deployment', 'web'), live('Job', 'migrate-3f9a1c2e', { service: 'migrate' })),
+      }),
+    );
+    expect(plan.services).toEqual(['web']);
+  });
+
   it('restores a missing PVC and never re-applies an existing one (restore mode)', () => {
     const previous = [deployment('web', { claims: ['uploads', 'data'] }), pvc('uploads'), pvc('data')];
     const applied = [deployment('web', { claims: ['uploads', 'data'], image: 'registry.example.com/web:2' }), pvc('uploads'), pvc('data')];
