@@ -26,6 +26,7 @@ import type { NodeStepResult } from './node';
 import {
   buildClusterPlan,
   buildNodePlan,
+  datastoreBackupFor,
   finalizeClusterPlan,
   installSequence,
   type FirewallTool,
@@ -40,6 +41,7 @@ import {
   type NodeOperation,
   type PlanWarning,
   type Refusal,
+  sqliteCopyPath,
 } from './plan';
 import type { ClusterTokens } from './tokens';
 import {
@@ -48,7 +50,7 @@ import {
   type BinaryResolver,
   type SetupTransport,
 } from './transport';
-import { NODE_STEP_GUARD_S, SETUP_PARALLEL_NODES } from './constants';
+import { K3S_SQLITE_DB_DIR, NODE_STEP_GUARD_S, SETUP_PARALLEL_NODES } from './constants';
 import {
   evaluateDeployIdentityChecks,
   runExposureProbe,
@@ -465,11 +467,8 @@ async function confirmDisruptive(cluster: K3sResolvedCluster, options: K3sSetupO
   if (convertNodes.length > 0) {
     if (!options.interactive) return; // refused earlier during preflight without --convert-datastore
     for (const node of convertNodes) {
-      const path = `/var/lib/rancher/k3s/server/db-dockflow-pre-<slug>`;
-      const accepted = await confirm(
-        `${node.key} converts from SQLite to embedded etcd. This cannot be undone without resetting the node. A copy of the datastore is kept at ${path}. Continue?`,
-        false,
-      );
+      const backup = datastoreBackupFor(cluster, node.key);
+      const accepted = await confirm(setupMessages.convertConfirm(node.key, backup === null ? K3S_SQLITE_DB_DIR : sqliteCopyPath(backup.name)), false);
       if (!accepted) {
         printInfo(setupMessages.setupCancelled);
         throw new SetupCancelled();
@@ -631,7 +630,9 @@ export async function runK3sClusterSetup(env: string, bootstrap: BootstrapIdenti
     const { servers: orderedServers, agents } = installSequence(plan);
     for (const server of orderedServers) {
       const installPlan = buildNodePlan({ operation: 'install', node: server.key, arch: transport.archOf(server.key), plan, cluster, tokens, firewallTool: firewallTools.get(server.key) ?? null });
-      const { result: installResult, tokens: issued } = await runOp(transport, server, 'install', installPlan, NODE_STEP_GUARD_S.install, redactor, report, () => {});
+      const { result: installResult, tokens: issued } = await runOp(transport, server, 'install', installPlan, NODE_STEP_GUARD_S.install, redactor, report, (step, status, detail) => {
+        if (step === 'datastore-backup' && status === 'ok' && detail) printInfo(`${server.key}: ${detail}`);
+      });
       if (installResult.status !== 'ok') throw new ServerStepFailed(server.key);
       if (server.role === 'server-init' && cluster.fresh) {
         if (issued === null) throw new CLIError(`${server.key} bootstrapped the cluster but issued no tokens`, ErrorCode.COMMAND_FAILED);

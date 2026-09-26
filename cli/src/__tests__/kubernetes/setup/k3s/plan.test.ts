@@ -29,6 +29,7 @@ import {
   localNodeNameFor,
   type PlanWarning,
   parseK3sVersion,
+  sqliteCopyPath,
   validateK3sFlags,
 } from '../../../../commands/setup/k3s/plan';
 import { parseNodeInspection, parseNodePlan, parseNodeState } from '../../../../commands/setup/k3s/schema';
@@ -1284,7 +1285,7 @@ describe('buildNodePlan', () => {
       joinUrl: 'https://10.0.0.10:6443',
       action: { kind: 'install' },
       firewallTool: 'ufw',
-      takeEtcdSnapshot: false,
+      datastoreBackup: null,
       proxyPorts: { http: false, https: false },
     });
     expect(install.cluster?.network.nodeIp).toBe('10.0.0.11');
@@ -1308,11 +1309,13 @@ describe('buildNodePlan', () => {
   it('marks the first server to upgrade on an etcd cluster for the snapshot (15.3)', () => {
     const upgrading = finalizeClusterPlan(planOf(EXAMPLE_C), installedCluster(EXAMPLE_C, {}, 'v1.35.8+k3s1'));
     expect(firstUpgradingServer(upgrading)).toBe('srv-1');
-    const snapshots = ['srv-1', 'srv-2', 'srv-3', 'worker-1'].map(
-      (key) => buildNodePlan({ operation: 'install', node: key, arch: 'amd64', plan: upgrading.plan, cluster: upgrading }).cluster?.takeEtcdSnapshot,
+    const backups = ['srv-1', 'srv-2', 'srv-3', 'worker-1'].map(
+      (key) => buildNodePlan({ operation: 'install', node: key, arch: 'amd64', plan: upgrading.plan, cluster: upgrading }).cluster?.datastoreBackup,
     );
-    expect(snapshots).toEqual([true, false, false, false]);
+    const name = `dockflow-pre-${K3S_PIN.version.replace('+', '-')}`;
+    expect(backups).toEqual([{ kind: 'etcd-snapshot', name }, null, null, null]);
     expect(firstUpgradingServer(cluster)).toBeNull();
+    expect(sqliteCopyPath(name)).toBe(`/var/lib/rancher/k3s/server/db-${name}`);
   });
 
   it('needs the resolved cluster for every operation but inspect, and a node of the plan', () => {

@@ -50,7 +50,7 @@ import {
 } from './install';
 import { hostKubeExecutor } from './kube';
 import type { SetupProblem } from './messages';
-import type { Datastore, K3sNodeInspection, K3sNodePlan, K3sNodeRole, NodeOperation, NodeStateFile } from './plan';
+import { type Datastore, type DatastoreBackup, type K3sNodeInspection, type K3sNodePlan, type K3sNodeRole, type NodeOperation, type NodeStateFile, sqliteCopyPath } from './plan';
 import { runNodeReset, type ResetReport } from './reset';
 import { parseNodePlan, parseNodeState } from './schema';
 import { applySystemObjects, assertSingleDefaultStorageClass, reconcileNodeLabels, type StorageDefaultResult, waitForLocalPathClass } from './system';
@@ -586,6 +586,34 @@ async function writeNodeState(runner: HostRunner, plan: K3sNodePlan, dropinSha25
   await writeFileAtomic(runner, K3S_NODE_STATE_FILE, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600, uid: 0, gid: 0 });
 }
 
+/**
+ * 15.3 / 15.4: an etcd snapshot (k3s running), or a copy of the SQLite `db` directory taken with
+ * k3s stopped (pods keep running); returns where it went. A copy an earlier attempt of the same
+ * change completed is kept: the datastore may have moved on since.
+ */
+async function backUpDatastore(runner: HostRunner, backup: DatastoreBackup, key: string): Promise<string> {
+  const retry = `Check \`journalctl -u k3s -n 100\` on ${key}, then run setup again; nothing was changed on ${key}.`;
+  if (backup.kind === 'etcd-snapshot') {
+    await runChecked(runner, [K3S_BINARY, 'etcd-snapshot', 'save', '--name', backup.name], {
+      message: (detail) => `The etcd snapshot of ${key} failed: ${detail}`,
+      suggestion: retry,
+    });
+    return `etcd snapshot ${backup.name} saved under ${K3S_SQLITE_DB_DIR}/snapshots/`;
+  }
+  const target = sqliteCopyPath(backup.name);
+  if ((await runner.stat(target)) !== null) return `SQLite datastore copy kept at ${target}`;
+  await runChecked(runner, ['systemctl', 'stop', 'k3s'], { message: (detail) => `Stopping k3s on ${key} failed: ${detail}`, suggestion: retry });
+  const partial = `${target}.partial`;
+  await runner.remove(partial, { recursive: true });
+  await runChecked(runner, ['cp', '-a', K3S_SQLITE_DB_DIR, partial], {
+    message: (detail) => `Copying the SQLite datastore of ${key} failed: ${detail}`,
+    suggestion: `Free disk space under ${K3S_SQLITE_DB_DIR} on ${key}, then run setup again.`,
+  });
+  await runner.chmod(partial, 0o700);
+  await runner.rename(partial, target);
+  return `SQLite datastore copied to ${target}`;
+}
+
 async function runInstall(runner: HostRunner, plan: K3sNodePlan, clock: Clock, redactor: Redactor): Promise<{ steps: StepResult[]; tokens: { server: string; agent: string } | null }> {
   const node = plan.node;
   const cluster = plan.cluster;
@@ -593,12 +621,20 @@ async function runInstall(runner: HostRunner, plan: K3sNodePlan, clock: Clock, r
   const steps: StepResult[] = [];
   const kind = cluster.action.kind;
   const freshInstall = kind === 'install' || kind === 'repair';
+  // an upgrade replaces the binary and re-runs install.sh too; it only skips what a join needs (15.3)
+  const replacesBinary = freshInstall || kind === 'upgrade';
 
   emitEvent('verify-cache', 'start');
-  if (freshInstall) {
+  if (replacesBinary) {
     await downloadToCache(runner, k3sBinaryComponent(plan.pins.k3s.version, plan.pins.k3s.binary), node.key);
   }
-  finishStep(steps, { id: 'verify-cache', status: freshInstall ? 'ok' : 'skip' });
+  finishStep(steps, { id: 'verify-cache', status: replacesBinary ? 'ok' : 'skip' });
+
+  // before the binary, the config or the datastore changes
+  emitEvent('datastore-backup', 'start');
+  const backup = cluster.datastoreBackup;
+  const saved = backup === null ? undefined : await backUpDatastore(runner, backup, node.key);
+  finishStep(steps, { id: 'datastore-backup', status: backup === null ? 'skip' : 'ok', detail: saved });
 
   emitEvent('tokens', 'start');
   let generatedAgentToken: string | null = null;
@@ -632,7 +668,7 @@ async function runInstall(runner: HostRunner, plan: K3sNodePlan, clock: Clock, r
     finishStep(steps, { id: 'config', status: 'skip' });
   }
 
-  if (freshInstall) {
+  if (replacesBinary) {
     emitEvent('binary', 'start');
     await installK3sBinary(runner, k3sBinaryComponent(plan.pins.k3s.version, plan.pins.k3s.binary), node.key);
     finishStep(steps, { id: 'binary', status: 'ok' });
@@ -650,7 +686,7 @@ async function runInstall(runner: HostRunner, plan: K3sNodePlan, clock: Clock, r
   }
   if (freshInstall) finishStep(steps, { id: 'join-probe', status: node.role === 'server-init' ? 'skip' : 'ok' });
 
-  if (freshInstall) {
+  if (replacesBinary) {
     emitEvent('install-script', 'start');
     await runInstallScript(runner, installScriptComponent(plan.pins.k3s.version, plan.pins.k3s.installScript), node.role, node.key, { redactor });
     finishStep(steps, { id: 'install-script', status: 'ok' });

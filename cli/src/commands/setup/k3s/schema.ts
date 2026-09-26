@@ -72,7 +72,9 @@ const ClusterSchema = z.strictObject({
   nodes: z.array(
     z.strictObject({ key: SERVER_KEY, nodeName: NODE_NAME, role: ROLE, nodeIp: IPV4.nullable(), nodeLabels: LABELS }),
   ),
-  takeEtcdSnapshot: z.boolean(),
+  datastoreBackup: z
+    .strictObject({ kind: z.enum(['etcd-snapshot', 'sqlite-copy']), name: z.string().regex(/^dockflow-pre-[A-Za-z0-9._-]+$/) })
+    .nullable(),
 });
 
 export const K3sNodePlanSchema = z

@@ -3,7 +3,15 @@ import { Readable } from 'node:stream';
 import { DOCKFLOW_VERSION } from '../../../../constants';
 import { K3S_SERVER_AGENT_TOKEN, K3S_SERVER_CA, K3S_SERVER_TOKEN, SETUP_LOCK_FILE } from '../../../../commands/setup/k3s/constants';
 import { inspect, runK3sNodeStep } from '../../../../commands/setup/k3s/node';
-import { buildLocalPlan, buildNodePlan, finalizeClusterPlan, type K3sNodeInspection, type K3sNodePlan, type NodeOperation } from '../../../../commands/setup/k3s/plan';
+import {
+  buildLocalPlan,
+  buildNodePlan,
+  type DatastoreBackup,
+  finalizeClusterPlan,
+  type K3sNodeInspection,
+  type K3sNodePlan,
+  type NodeOperation,
+} from '../../../../commands/setup/k3s/plan';
 import { sha256Hex } from '../../../../utils/hash';
 import * as output from '../../../../utils/output';
 import { FakeCluster } from '../../fakes/fake-cluster';
@@ -526,6 +534,74 @@ describe('install, control-plane and reset (4.4, 4.5, 18.3): a node through its 
     const resetBody = resetResult.lines.at(-1) as { dockflowNodeResult: { status: string; reset: { removed: string[] } | null } };
     expect(resetBody.dockflowNodeResult.status).toBe('ok');
     expect(resetBody.dockflowNodeResult.reset?.removed.length).toBeGreaterThan(0);
+  });
+});
+
+describe('install as an upgrade (15.3, 15.4)', () => {
+  const NAME = 'dockflow-pre-v1.36.4-k3s1';
+  const COPY = `/var/lib/rancher/k3s/server/db-${NAME}`;
+
+  function upgradePlan(backup: DatastoreBackup | null): K3sNodePlan {
+    const base = wireBootstrapPlan('install', bootstrapCluster());
+    const cluster = base.cluster as NonNullable<K3sNodePlan['cluster']>;
+    return { ...base, cluster: { ...cluster, action: { ...cluster.action, kind: 'upgrade', fromVersion: 'v1.35.8+k3s1' }, datastoreBackup: backup } };
+  }
+
+  function upgradeHost(): FakeHostRunner {
+    // wait-service's readyz probe is answered by a cluster
+    const kube = new FakeKubeExecutor({ node: fakeNode(KEY), redactor: new Redactor(), cluster: new FakeCluster(), order: 'any' });
+    kubeExecutors.push(kube);
+    const runner = host({ kube });
+    seedBootstrapCache(runner);
+    runner.services.set('k3s', [{ activeState: 'active', subState: 'running' }]);
+    return runner;
+  }
+
+  const commands = (runner: FakeHostRunner): string[] => runner.calls.map((call) => call.argv.join(' '));
+
+  it('saves an etcd snapshot first, then replaces the binary and re-runs install.sh', async () => {
+    const runner = upgradeHost().on(['/usr/local/bin/k3s', 'etcd-snapshot', 'save', '--name', NAME], { exitCode: 0 });
+
+    const result = await run(JSON.stringify(upgradePlan({ kind: 'etcd-snapshot', name: NAME })), runner);
+
+    expect(result.exitCode).toBe(0);
+    const order = commands(runner);
+    const snapshot = order.indexOf(`/usr/local/bin/k3s etcd-snapshot save --name ${NAME}`);
+    const installScript = order.findIndex((command) => command.startsWith('sh '));
+    expect(snapshot).toBeGreaterThan(-1);
+    expect(installScript).toBeGreaterThan(snapshot);
+    expect((await runner.readFile('/usr/local/bin/k3s'))?.equals(BOOTSTRAP_K3S_BYTES)).toBe(true);
+  });
+
+  it('copies the SQLite datastore with k3s stopped, keeps the copy 0700 and reuses it on a later attempt', async () => {
+    const runner = upgradeHost();
+    runner.seedFile('/var/lib/rancher/k3s/server/db/state.db', 'sqlite-bytes');
+    runner.on(['cp', '-a', '/var/lib/rancher/k3s/server/db', `${COPY}.partial`], ({ runner: node }) => {
+      node.seedDir(`${COPY}.partial`, { mode: 0o755 });
+      node.seedFile(`${COPY}.partial/state.db`, 'sqlite-bytes');
+      return { exitCode: 0 };
+    });
+
+    const first = await run(JSON.stringify(upgradePlan({ kind: 'sqlite-copy', name: NAME })), runner);
+
+    expect(first.exitCode).toBe(0);
+    const order = commands(runner);
+    expect(order.indexOf('systemctl stop k3s')).toBeGreaterThan(-1);
+    expect(order.indexOf('systemctl stop k3s')).toBeLessThan(order.findIndex((command) => command.startsWith('cp -a')));
+    expect((await runner.stat(COPY))?.mode).toBe(0o700);
+    expect(await runner.stat(`${COPY}.partial`)).toBeNull();
+
+    const again = await run(JSON.stringify(upgradePlan({ kind: 'sqlite-copy', name: NAME })), runner);
+    expect(again.exitCode).toBe(0);
+    expect(runner.calls.filter((call) => call.argv[0] === 'cp')).toHaveLength(1);
+  });
+
+  it('a node without a backup to take changes nothing but its binary, config and unit', async () => {
+    const runner = upgradeHost();
+    const result = await run(JSON.stringify(upgradePlan(null)), runner);
+    expect(result.exitCode).toBe(0);
+    expect(commands(runner).some((command) => command.includes('etcd-snapshot') || command.startsWith('cp ') || command === 'systemctl stop k3s')).toBe(false);
+    expect((await runner.readFile('/usr/local/bin/k3s'))?.equals(BOOTSTRAP_K3S_BYTES)).toBe(true);
   });
 });
 

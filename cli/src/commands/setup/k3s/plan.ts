@@ -19,6 +19,7 @@ import {
   DEPLOY_KEY_COMMENT,
   FLANNEL_IFACE,
   K3S_API_PORT,
+  K3S_SQLITE_DB_DIR,
   LOCAL_PATH_STORAGE_CLASS,
   SERVER_MIN_CPUS,
   SERVER_MIN_MEMORY_BYTES,
@@ -282,8 +283,8 @@ export interface K3sNodePlan {
     firewallTool: FirewallTool | null;
     /** every plan node, for labels and verification */
     nodes: K3sPlanNodeSummary[];
-    /** the first server to upgrade saves an etcd snapshot first (15.3) */
-    takeEtcdSnapshot: boolean;
+    /** what the node saves before its binary or datastore changes (15.3, 15.4) */
+    datastoreBackup: DatastoreBackup | null;
   };
   pins: {
     k3s: { version: string; binary: DownloadPin; installScript: DownloadPin };
@@ -1136,6 +1137,30 @@ export function firstUpgradingServer(cluster: K3sResolvedCluster): string | null
   return servers.find((node) => cluster.actions[node.key]?.kind === 'upgrade')?.key ?? null;
 }
 
+/** An etcd snapshot, or a copy of the SQLite `db` directory taken with k3s stopped; named `dockflow-pre-<to version>`. */
+export interface DatastoreBackup {
+  kind: 'etcd-snapshot' | 'sqlite-copy';
+  name: string;
+}
+
+/**
+ * 15.3 / 15.4: the first server to upgrade saves its datastore before its binary changes, and the
+ * SQLite server a conversion to etcd changes saves its `db` directory first; every other node, none.
+ */
+export function datastoreBackupFor(cluster: K3sResolvedCluster, key: string): DatastoreBackup | null {
+  const action = cluster.actions[key];
+  if (action === undefined) return null;
+  const name = `dockflow-pre-${action.toVersion.replace(/[^A-Za-z0-9._-]/g, '-')}`;
+  if (action.kind === 'convert-to-etcd') return { kind: 'sqlite-copy', name };
+  if (action.kind !== 'upgrade' || firstUpgradingServer(cluster) !== key) return null;
+  return { kind: cluster.datastore === 'etcd' ? 'etcd-snapshot' : 'sqlite-copy', name };
+}
+
+/** Where a `sqlite-copy` backup lives: beside the `db` directory it copies (`db-dockflow-pre-<version>`). */
+export function sqliteCopyPath(name: string): string {
+  return `${K3S_SQLITE_DB_DIR}-${name}`;
+}
+
 function pinOf(download: DownloadPin): DownloadPin {
   return { url: download.url, sha256: download.sha256 };
 }
@@ -1187,7 +1212,7 @@ export function buildNodePlan(request: NodePlanRequest): K3sNodePlan {
         nodeIp: cluster.network[n.key]?.nodeIp ?? null,
         nodeLabels: { ...n.nodeLabels },
       })),
-      takeEtcdSnapshot: cluster.datastore === 'etcd' && firstUpgradingServer(cluster) === node.key,
+      datastoreBackup: datastoreBackupFor(cluster, node.key),
     };
   }
   return nodePlan;
