@@ -146,7 +146,7 @@ async function printLivePlan(ctx: DeployContext, appInput: StackDeployInput, acc
       if (accInput && accInput.helm.length > 0) printHelmPlan('accessory', await orch.helm.plan(accInput.helm, stackId));
     }
     if (ctx.config.proxy?.enabled) {
-      printProxyPlan(await orch.proxy.plan(ctx.config.proxy, ctx.env));
+      printProxyPlan(await orch.proxy.plan(ctx.config.proxy, ctx.env, ctx.rendered));
     }
   } catch (error) {
     printDim(`  Live plan skipped: ${error instanceof Error ? error.message : String(error)}`);

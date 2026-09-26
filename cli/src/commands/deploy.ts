@@ -373,6 +373,7 @@ export async function execute(ctx: DeployContext): Promise<void> {
       } else if (ctx.applyStarted) {
         printWarning(`Version ${ctx.deployVersion} was applied but its state is unknown; run dockflow status ${ctx.env}`);
       }
+      await orch.proxy.releaseLock?.().catch(() => {});
       await lock.release().catch(() => {});
     })().finally(() => process.exit(SIGINT_EXIT_CODE));
   };
@@ -419,8 +420,8 @@ export async function execute(ctx: DeployContext): Promise<void> {
     // 3. proxy before anything that can render routes (K09), whenever anything is deployed
     const anythingDeployed = ctx.deployApp || accInput !== null;
     if (ctx.config.proxy?.enabled && anythingDeployed) {
-      await orch.proxy.plan(ctx.config.proxy, ctx.env);
-      await orch.proxy.ensure(ctx.config.proxy, ctx.env);
+      await orch.proxy.plan(ctx.config.proxy, ctx.env, ctx.rendered);
+      await orch.proxy.ensure(ctx.config.proxy, ctx.env, undefined, ctx.rendered);
     }
 
     await applyAdoptions(ctx, appInput);

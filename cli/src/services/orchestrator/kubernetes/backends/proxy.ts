@@ -9,7 +9,7 @@ import { parseAllDocuments } from 'yaml';
 import { DOCKFLOW_VERSION } from '../../../../constants';
 import type { ProxyConfig } from '../../../../utils/config';
 import { getPerformer } from '../../../../utils/config';
-import { DeployError, ErrorCode, OrchestratorUnavailableError } from '../../../../utils/errors';
+import { ConfigError, DeployError, ErrorCode, OrchestratorUnavailableError } from '../../../../utils/errors';
 import { canonicalJson } from '../../../../utils/hash';
 import type { ClusterNodeRef, HelmEventSink, ProxyBackend, ProxyEnsureResult, ProxyPlan, ProxyStatus } from '../../interfaces';
 import {
@@ -29,6 +29,7 @@ import {
 } from '../constants';
 import type { KubernetesBundleDeps } from '../deps';
 import { historyFacts, isPendingStatus, parseDeployedValues, parseHelmHistory, parseHelmList } from '../helm/parse';
+import { normalizeProjectPath } from '../helm/resolve';
 import {
   capabilitiesFromValues,
   classlessIngressWarning,
@@ -204,12 +205,6 @@ export interface ProxyBackendOptions {
   managers: readonly ClusterNodeRef[];
   project: string;
   env: string;
-  /**
-   * Resolves `proxy.acme_ca_bundle` (a project-relative path) to its rendered PEM text. Reading and
-   * rendering project files belongs to the render pipeline (PD-1); this backend only consumes the
-   * result, exactly as `buildTraefikValues` only consumes the intent it is handed.
-   */
-  resolveCaBundle?: (path: string) => Promise<string>;
   /** `LockData.performer`; default: `user@host` of this machine */
   performer?: string;
   dockflowVersion?: string;
@@ -222,23 +217,19 @@ export class KubernetesProxyBackend implements ProxyBackend {
   private readonly managers: readonly ClusterNodeRef[];
   private readonly project: string;
   private readonly env: string;
-  private readonly resolveCaBundleFile: (path: string) => Promise<string>;
   private readonly performer: string;
   private readonly dockflowVersion: string;
   private readonly pin: TraefikChartPin;
   private readonly hostnameToServer: ReadonlyMap<string, string>;
   private readonly chartDeps: ChartArchiveDeps;
+  /** the proxy lease an ensure() in flight holds; released once, by ensure() or by releaseLock() */
+  private heldLock: LeaseLockStore | null = null;
 
   constructor(options: ProxyBackendOptions) {
     this.deps = options.deps;
     this.managers = options.managers;
     this.project = options.project;
     this.env = options.env;
-    this.resolveCaBundleFile =
-      options.resolveCaBundle ??
-      (() => {
-        throw new Error('This KubernetesProxyBackend has no resolveCaBundle configured');
-      });
     this.performer = options.performer ?? getPerformer();
     this.dockflowVersion = options.dockflowVersion ?? DOCKFLOW_VERSION;
     this.pin = options.pin ?? TRAEFIK_CHART_PIN;
@@ -250,8 +241,8 @@ export class KubernetesProxyBackend implements ProxyBackend {
   // ProxyBackend
   // -------------------------------------------------------------------------
 
-  async plan(proxy: ProxyConfig, env: string): Promise<ProxyPlan> {
-    const intent = await this.intentFrom(proxy);
+  async plan(proxy: ProxyConfig, env: string, rendered?: ReadonlyMap<string, string>): Promise<ProxyPlan> {
+    const intent = this.intentFrom(proxy, rendered);
     const manage = proxy.manage !== false;
     const me = this.meOf(env);
     const planned = await this.planOnce(intent, manage, me, env);
@@ -277,8 +268,8 @@ export class KubernetesProxyBackend implements ProxyBackend {
     };
   }
 
-  async ensure(proxy: ProxyConfig, env: string, events?: HelmEventSink): Promise<ProxyEnsureResult> {
-    const intent = await this.intentFrom(proxy);
+  async ensure(proxy: ProxyConfig, env: string, events?: HelmEventSink, rendered?: ReadonlyMap<string, string>): Promise<ProxyEnsureResult> {
+    const intent = this.intentFrom(proxy, rendered);
     const manage = proxy.manage !== false;
     const me = this.meOf(env);
 
@@ -296,6 +287,7 @@ export class KubernetesProxyBackend implements ProxyBackend {
       PROXY_LOCK_STACK_ID,
     );
     await this.acquireWaiting(lock, me.stackName, env);
+    this.heldLock = lock;
     try {
       planned = await this.planOnce(intent, manage, me, env); // double check under the lock
       if (planned.plan.kind === 'refuse') throw proxyRefusalError(planned.plan.refusal);
@@ -358,8 +350,20 @@ export class KubernetesProxyBackend implements ProxyBackend {
       planned = { ...planned, observation: await this.observe(me.stackId) };
       return this.finish(planned, true, events);
     } finally {
-      await lock.release();
+      await this.releaseHeld(lock);
     }
+  }
+
+  /** An interrupted deploy exits before ensure() unwinds: without this the lease blocks every deploy until it goes stale. */
+  async releaseLock(): Promise<void> {
+    if (this.heldLock) await this.releaseHeld(this.heldLock);
+  }
+
+  /** A second release() of the same store would run the unconditional manual delete: release at most once. */
+  private async releaseHeld(lock: LeaseLockStore): Promise<void> {
+    if (this.heldLock !== lock) return;
+    this.heldLock = null;
+    await lock.release();
   }
 
   async status(): Promise<ProxyStatus> {
@@ -377,9 +381,16 @@ export class KubernetesProxyBackend implements ProxyBackend {
     return { stackId: namespaceFor(this.project, env), stackName: `${this.project}-${env}` };
   }
 
-  private async intentFrom(proxy: ProxyConfig): Promise<TraefikIntent> {
-    const caBundleText = proxy.acme_ca_bundle ? await this.resolveCaBundleFile(proxy.acme_ca_bundle) : null;
-    return traefikIntentFrom(proxy, caBundleText);
+  /** `proxy.acme_ca_bundle` comes from the rendered project files (PD-1): this backend never reads the project itself */
+  private intentFrom(proxy: ProxyConfig, rendered: ReadonlyMap<string, string> | undefined): TraefikIntent {
+    const bundle = proxy.acme_ca_bundle;
+    if (!bundle) return traefikIntentFrom(proxy, null);
+    const key = normalizeProjectPath(bundle);
+    const text = key === null ? undefined : rendered?.get(key);
+    if (text === undefined) {
+      throw new ConfigError(`proxy.acme_ca_bundle ${bundle} was not found among the project files`, 'Put the PEM file under .dockflow/, or list it in `templates:`.');
+    }
+    return traefikIntentFrom(proxy, text);
   }
 
   private serverKeyFor(hostname: string): string {

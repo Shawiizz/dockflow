@@ -10,7 +10,7 @@ import { namespaceFor, nodeNameFor } from '../../../services/orchestrator/kubern
 import type { HelmCall, HelmExecutor, HelmResult } from '../../../services/orchestrator/kubernetes/runtime/helm';
 import { TRAEFIK_CHART_PIN, type TraefikChartPin } from '../../../services/orchestrator/kubernetes/versions';
 import { canonicalJson } from '../../../utils/hash';
-import { DeployError, ErrorCode } from '../../../utils/errors';
+import { ConfigError, DeployError, ErrorCode } from '../../../utils/errors';
 import { Redactor } from '../../../utils/redact';
 import { FakeCluster, type KubeObject } from '../fakes/fake-cluster';
 import { FakeClock } from '../fakes/fake-clock';
@@ -120,14 +120,14 @@ function syncTraefikWorkload(cluster: FakeCluster, stdin: string): void {
  * Wraps FakeHelmExecutor so a successful `upgrade --install dockflow-traefik` also converges the
  * cluster the way a real chart install would (see above). Every other call is unchanged.
  */
-function helmSyncingProxyDeployment(helm: FakeHelmExecutor, cluster: FakeCluster): HelmExecutor {
+function helmSyncingProxyDeployment(helm: FakeHelmExecutor, cluster: FakeCluster, upgradeGate?: Promise<void>): HelmExecutor {
   return {
     node: helm.node,
     async run(call: HelmCall): Promise<HelmResult> {
+      const install = call.args[0] === 'upgrade' && call.args[1] === '--install' && call.args[2] === 'dockflow-traefik';
+      if (install && upgradeGate) await upgradeGate;
       const result = await helm.run(call);
-      if (result.exitCode === 0 && call.args[0] === 'upgrade' && call.args[1] === '--install' && call.args[2] === 'dockflow-traefik') {
-        syncTraefikWorkload(cluster, call.stdin ?? '');
-      }
+      if (result.exitCode === 0 && install) syncTraefikWorkload(cluster, call.stdin ?? '');
       return result;
     },
     json<T>(args: string[]): Promise<T | null> {
@@ -183,7 +183,8 @@ interface HarnessOptions {
   kubeScript?: KubeStep[];
   nodeScript?: NodeShellStep[];
   managers?: readonly ReturnType<typeof fakeNode>[];
-  caBundles?: Record<string, string>;
+  /** the Traefik `upgrade --install` waits for it: an install in flight */
+  upgradeGate?: Promise<void>;
   /** values the shared Redactor masks, so a helm failure's stderr can be asserted redacted (U-BE-PROXY-06) */
   redactorSecrets?: string[];
 }
@@ -201,20 +202,21 @@ function harness(options: HarnessOptions = {}): Harness {
   const sha256 = helm.chart({ name: TRAEFIK_CHART_PIN.chart, version: TRAEFIK_CHART_PIN.version, repo: TRAEFIK_CHART_PIN.repo, appVersion: TRAEFIK_CHART_PIN.appVersion, crds: CRDS_YAML, bytes: chartBytes });
   const pin: TraefikChartPin = { ...TRAEFIK_CHART_PIN, sha256 };
   const managers = options.managers ?? MANAGERS;
-  const caBundles = options.caBundles ?? {};
   const backend = new KubernetesProxyBackend({
-    deps: { kubectl: kube, helm: helmSyncingProxyDeployment(helm, cluster), nodeShell: nodeShell.forNode, clock, redactor, distribution: kube.distribution },
+    deps: {
+      kubectl: kube,
+      helm: helmSyncingProxyDeployment(helm, cluster, options.upgradeGate),
+      nodeShell: nodeShell.forNode,
+      clock,
+      redactor,
+      distribution: kube.distribution,
+    },
     managers,
     project: PROJECT,
     env: ENV,
     pin,
     performer: 'alice',
     dockflowVersion: '9.9.9',
-    resolveCaBundle: async (path: string) => {
-      const text = caBundles[path];
-      if (text === undefined) throw new Error(`no fake CA bundle registered for ${path}`);
-      return text;
-    },
   });
   const h: Harness = { cluster, kube, helm, nodeShell, clock, pin, backend, events: new RecordingEvents(), chartBytes };
   harnesses.push(h);
@@ -360,8 +362,9 @@ describe('ACME', () => {
 
   test('U-BE-PROXY-12: proxy.acme_ca_bundle applies a Secret before the Helm call and references it by name', async () => {
     const bundle = '-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----\n';
-    const h = harness({ caBundles: { 'ca/root.pem': bundle } });
-    await h.backend.ensure(acmeProxy({ acme_ca_server: 'https://ca.example.com/dir', acme_ca_bundle: 'ca/root.pem' }), ENV, h.events);
+    const h = harness();
+    const rendered = new Map([['.dockflow/acme/root.pem', bundle]]);
+    await h.backend.ensure(acmeProxy({ acme_ca_server: 'https://ca.example.com/dir', acme_ca_bundle: './.dockflow/acme/root.pem' }), ENV, h.events, rendered);
 
     const values = stdinValues(h);
     const volumes = values.volumes as { name: string; type: string }[];
@@ -376,6 +379,40 @@ describe('ACME', () => {
 
     // the PEM text itself never enters the values
     expect(canonicalJson(values)).not.toContain('BEGIN CERTIFICATE');
+  });
+
+  test('releaseLock() frees the lease of an install in flight, which ensure() then does not release again', async () => {
+    let openGate = (): void => {};
+    const h = harness({ upgradeGate: new Promise<void>((resolve) => (openGate = resolve)) });
+    const leases = () => h.cluster.list('Lease', { namespace: K8S_SYSTEM_NAMESPACE });
+    const leaseDeletes = () => h.kube.calls.filter((c) => c.commandString.includes('delete') && c.commandString.includes('lease')).length;
+    const running = h.backend.ensure(httpOnlyProxy(), ENV, h.events);
+    for (let i = 0; i < 200 && leases().length === 0; i++) await Bun.sleep(1);
+    expect(leases()).toHaveLength(1);
+
+    await h.backend.releaseLock();
+    expect(leases()).toEqual([]);
+    openGate();
+    await running;
+    expect(leases()).toEqual([]);
+    expect(leaseDeletes()).toBe(1);
+  });
+
+  test('releaseLock() with no ensure() in flight touches nothing', async () => {
+    const h = harness();
+    await h.backend.releaseLock();
+    expect(h.kube.calls).toEqual([]);
+  });
+
+  test('a proxy.acme_ca_bundle missing from the rendered files is a config error before any Helm call', async () => {
+    const h = harness();
+    const proxy = acmeProxy({ acme_ca_server: 'https://ca.example.com/dir', acme_ca_bundle: '.dockflow/acme/root.pem' });
+    await expectCliError(h.backend.ensure(proxy, ENV, h.events, new Map()), {
+      type: ConfigError,
+      message: 'proxy.acme_ca_bundle .dockflow/acme/root.pem was not found among the project files',
+    });
+    await expectCliError(h.backend.plan(proxy, ENV), { type: ConfigError, message: /was not found among the project files/ });
+    expect(h.helm.calls).toEqual([]);
   });
 });
 

@@ -116,8 +116,6 @@ export function createKubernetesOrchestrator(
     project: target.project,
     env: target.env,
     performer: getPerformer(),
-    // Resolving `proxy.acme_ca_bundle` needs the per-deploy rendered file map (PD-1); the deploy
-    // flow that has it feeds the text back in when it calls ensure(), not the bundle factory.
   });
 
   const images = new KubernetesImageBackend(deps, target, {

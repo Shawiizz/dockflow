@@ -322,8 +322,8 @@ function readValuesFile(input: HelmResolveInput, file: string, path: string, dia
   return parsed.diagnostics.some((d) => d.severity === 'error') ? null : parsed.values;
 }
 
-/** POSIX-normalized project-relative path; null when absolute or escaping the project root */
-function normalizeProjectPath(file: string): string | null {
+/** POSIX-normalized project-relative path, the key format of the rendered map; null when absolute or escaping the project root */
+export function normalizeProjectPath(file: string): string | null {
   const slashed = file.replace(/\\/g, '/');
   if (slashed.startsWith('/') || /^[A-Za-z]:/.test(slashed)) return null;
   const normalized = posix.normalize(slashed);

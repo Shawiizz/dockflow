@@ -650,10 +650,15 @@ export interface HelmEventSink {
 }
 
 export interface ProxyBackend {
-  /** read-only plan; `deploy --dry-run` and `proxy status` use it */
-  plan(proxy: ProxyConfig, env: string): Promise<ProxyPlan>;
+  /**
+   * read-only plan; `deploy --dry-run` and `proxy status` use it. `rendered` is the deploy's rendered
+   * project files (PD-1), where `proxy.acme_ca_bundle` is read.
+   */
+  plan(proxy: ProxyConfig, env: string, rendered?: ReadonlyMap<string, string>): Promise<ProxyPlan>;
   /** idempotent; no disruption when the effective configuration is unchanged */
-  ensure(proxy: ProxyConfig, env: string, events?: HelmEventSink): Promise<ProxyEnsureResult>;
+  ensure(proxy: ProxyConfig, env: string, events?: HelmEventSink, rendered?: ReadonlyMap<string, string>): Promise<ProxyEnsureResult>;
+  /** releases the lock an ensure() in flight holds; an interrupted deploy calls it before exiting */
+  releaseLock?(): Promise<void>;
   status(): Promise<ProxyStatus>;
   /**
    * Counts what still depends on this proxy cluster-wide: IngressRoutes outside the system
