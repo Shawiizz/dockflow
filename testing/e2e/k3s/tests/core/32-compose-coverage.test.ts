@@ -291,9 +291,12 @@ describe("E-32 compose coverage", () => {
       const [aliased] = await getJson<Service>("services", { ns: NS, name: "aliased" });
       const [alias] = await getJson<Service>("services", { ns: NS, name: "legacy-name" });
       expect(alias?.spec.selector).toEqual(aliased?.spec.selector);
+      // aliased declares no port, so both Services are headless: the alias names the pods themselves
+      const [pod] = await getJson<Pod>("pods", { ns: NS, selector: `${LABELS.service}=aliased` });
+      const expected = alias?.spec.clusterIP === "None" ? pod?.status?.podIP : alias?.spec.clusterIP;
       // busybox has no getent; its nslookup does not apply the search list
       const lookup = await runCLI(["exec", "e2e", "args", "--", "nslookup", `legacy-name.${NS}.svc.cluster.local`], { cwd: fixture.dir, timeoutMs: 30_000 });
-      expect(lookup.stdout).toContain(alias?.spec.clusterIP ?? "\0no-cluster-ip\0");
+      expect(lookup.stdout).toContain(expected ?? "\0no-address\0");
       const page = await runCLI(["exec", "e2e", "args", "--", "wget", "-qO-", "http://legacy-name/"], { cwd: fixture.dir, timeoutMs: 30_000 });
       expect(page.exitCode).toBe(0);
     });

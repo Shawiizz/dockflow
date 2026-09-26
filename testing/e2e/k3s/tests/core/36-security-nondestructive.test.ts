@@ -187,6 +187,8 @@ describe("E-36 secret handling and deploy identity (non-destructive)", () => {
       const execOut = execDebug.stdout + execDebug.stderr;
       expect(execOut).not.toContain(SECRET_ENV_MARKER);
       expect(execOut).not.toMatch(/^apiVersion:/m);
+      // the deploy user's k3s kubectl reads the k3s config: none of it may be locked away from it
+      expect(execOut).not.toContain("permission denied");
 
       const debugDeploy = await runCLI(["deploy", "e2e", "1.0.2", "--debug"], { cwd: fixture.dir, timeoutMs: 240_000 });
       const out = debugDeploy.stdout + debugDeploy.stderr;
