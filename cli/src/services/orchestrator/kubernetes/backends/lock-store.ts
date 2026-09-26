@@ -111,6 +111,8 @@ export class LeaseLockStore implements LockStore {
   private renewing: Promise<void> | null = null;
   /** the renewal request on the wire, resolving to its Lease (null when it failed); null between renewals */
   private renewalInFlight: Promise<Lease | null> | null = null;
+  /** ends the wait between renewals on release: a pending 60 s timer would keep the process alive after the command */
+  private renewalWait: AbortController | null = null;
 
   constructor(
     private readonly deps: LeaseLockStoreDeps,
@@ -196,6 +198,7 @@ export class LeaseLockStore implements LockStore {
         // the resourceVersion, and a delete conditioned on the older one would fail and leave the
         // Lease behind, no longer renewed.
         this.held = null;
+        this.renewalWait?.abort();
         const holding = (await this.renewalInFlight) ?? held.lease;
         const body = JSON.stringify({
           apiVersion: 'v1',
@@ -300,7 +303,8 @@ export class LeaseLockStore implements LockStore {
   private startRenewal(): void {
     this.renewing = (async () => {
       while (this.held) {
-        await this.deps.clock.sleep(K8S_LEASE_RENEW_INTERVAL_S * 1000);
+        this.renewalWait = new AbortController();
+        await this.deps.clock.sleep(K8S_LEASE_RENEW_INTERVAL_S * 1000, this.renewalWait.signal);
         if (!this.held) return;
         const now = this.deps.clock.now();
         const data: LockData = { ...this.held.data, started_at: now.toISOString(), timestamp: Math.floor(now.getTime() / 1000) };

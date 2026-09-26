@@ -310,6 +310,17 @@ describe('release', () => {
     expect(body.preconditions.resourceVersion).toBeTruthy();
   });
 
+  it('L7b: release ends the wait between renewals, so no timer keeps the process alive after the command', async () => {
+    const { kube, clock } = harness();
+    const store = storeOf(kube, clock);
+    await store.acquire({ version: '1.0.0' });
+    await clock.advance(0);
+    expect(clock.pending).toBe(1);
+    await store.release();
+    await clock.advance(0);
+    expect(clock.pending).toBe(0);
+  });
+
   it('L8: release after a forced takeover reports the new holder and deletes nothing', async () => {
     const { kube, cluster, clock } = harness();
     const first = storeOf(kube, clock, { performer: 'alice' });
