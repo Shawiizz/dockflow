@@ -20,6 +20,8 @@ const REGISTRY = E2E_REGISTRY;
 const AUTH_REGISTRY = E2E_REGISTRY_AUTH;
 const AUTH_USER = E2E_REGISTRY_USER;
 const AUTH_PASSWORD = E2E_REGISTRY_PASSWORD;
+/** the compose image `k3s-registry-web`, suffixed with the environment as every built image is */
+const WEB_IMAGE = `k3s-registry-web-${ENV}`;
 
 interface Catalog {
   repositories: string[];
@@ -57,7 +59,7 @@ describe("registry delivery", () => {
       expect(result.stdout + result.stderr).not.toContain("imported on");
 
       const catalog = (await (await fetch(`http://${REGISTRY}/v2/_catalog`)).json()) as Catalog;
-      expect(catalog.repositories).toContain("k3s-registry-web");
+      expect(catalog.repositories).toContain(WEB_IMAGE);
     });
   }, 240_000);
 
@@ -68,7 +70,7 @@ describe("registry delivery", () => {
       expect(pods.length).toBe(3);
       for (const pod of pods) {
         const container = pod.spec.containers[0];
-        expect(container?.image).toBe(`${REGISTRY}/k3s-registry-web:1.0.0`);
+        expect(container?.image).toBe(`${REGISTRY}/${WEB_IMAGE}:1.0.0`);
         expect(container?.imagePullPolicy).toBe("IfNotPresent");
         expect(pod.status?.phase).toBe("Running");
       }
@@ -95,7 +97,7 @@ describe("registry delivery", () => {
 
   test("additional_tags reach the registry", async () => {
     await withDump("additional tags", async () => {
-      const tags = (await (await fetch(`http://${REGISTRY}/v2/k3s-registry-web/tags/list`)).json()) as TagList;
+      const tags = (await (await fetch(`http://${REGISTRY}/v2/${WEB_IMAGE}/tags/list`)).json()) as TagList;
       expect(tags.tags).toContain("1.0.0");
       expect(tags.tags).toContain(`${ENV}-latest`);
     });
@@ -151,7 +153,7 @@ describe("registry delivery", () => {
       expect(combined).toMatch(new RegExp(`Registry login to ${AUTH_REGISTRY} failed: .*(unauthorized|denied)`, "i"));
 
       const pods = await podsForService(authedNs, "web");
-      for (const pod of pods) expect(pod.spec.containers[0]?.image).toBe(`${AUTH_REGISTRY}/k3s-registry-web:1.0.0`);
+      for (const pod of pods) expect(pod.spec.containers[0]?.image).toBe(`${AUTH_REGISTRY}/${WEB_IMAGE}:1.0.0`);
     });
   }, 180_000);
 });
