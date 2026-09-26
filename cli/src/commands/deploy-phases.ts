@@ -338,13 +338,14 @@ export async function checkUploadPermissions(ctx: DeployContext): Promise<void> 
 
 export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPlan> {
   const backupBaseDir = `${DOCKFLOW_UPLOAD_BACKUPS_DIR}/${ctx.stackName}/${ctx.deployVersion}`;
+  const filtered = filterUploadsByService(ctx);
+  // nothing touches a node, so commit and rollback must not connect to any (a down node would fail them)
+  if (filtered.length === 0) return { hosts: [], backupBaseDir };
+
   const plan: UploadRollbackPlan = {
     hosts: activeNodes(ctx.target).map((n) => ({ name: n.name, conn: n.connection, backedUp: [], created: [], backedUpDirs: [], createdDirs: [] })),
     backupBaseDir,
   };
-
-  const filtered = filterUploadsByService(ctx);
-  if (filtered.length === 0) return plan;
 
   for (const upload of filtered) {
     const srcAbs = resolvePath(ctx.projectRoot, upload.src);

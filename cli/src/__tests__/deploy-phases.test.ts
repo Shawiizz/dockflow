@@ -27,6 +27,7 @@ import {
   runPostRollbackHealthChecks,
   runWithConcurrency,
   settles,
+  uploadFiles,
   uploadName,
   uploadOwnedDir,
 } from '../commands/deploy-phases';
@@ -621,6 +622,13 @@ describe('resolveFileDestPath', () => {
 
   it('no trailing slash -> dest used verbatim (rename allowed)', () => {
     expect(resolveFileDestPath('/etc/app/renamed.yml', 'config.yml')).toBe('/etc/app/renamed.yml');
+  });
+});
+
+describe('uploadFiles', () => {
+  it('plans no host without uploads, so commit and rollback never connect to a node', async () => {
+    const plan = await uploadFiles(fakeContext(new FakeOrchestrator('k3s')));
+    expect(plan.hosts).toEqual([]);
   });
 });
 
