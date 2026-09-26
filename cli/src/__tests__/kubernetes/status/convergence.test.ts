@@ -150,7 +150,7 @@ describe('Deployment rollout (W1, U-STATUS-CONV-01/02)', () => {
     w.status = { ...w.status, replicas: 4 };
     expect(evaluate(web, snap, contextOf('rollout-complete')).verdict).toMatchObject({
       state: 'progressing',
-      summary: '1 old pod(s) terminating',
+      summary: '1 old pod(s) pending termination',
     });
   });
 
@@ -306,6 +306,36 @@ describe('fail-fast classifier (design-03 9.4)', () => {
     expect(failed.suggestion).toBe('Run `dockflow logs production web_app`.');
     const accessory = expectFailed(evaluate(webApp, snapshotOf(scenario), contextOf(scenario, { role: 'accessory' })).verdict);
     expect(accessory.suggestion).toBe('Run `dockflow accessories logs production web_app`.');
+  });
+
+  it('F7 when the kubelet keeps the crashed container terminated through its back-off (k3s 1.36)', () => {
+    const scenario = 'crashloop';
+    const snap = snapshotOf(scenario);
+    const status = firstPod(snap).status?.containerStatuses?.[0];
+    if (!status) throw new Error('no container status');
+    status.state = { terminated: { exitCode: 2, reason: 'Error', startedAt: '2026-01-01T00:16:13Z', finishedAt: '2026-01-01T00:16:13Z' } };
+    const failed = expectFailed(evaluate(target('Deployment', 'web_app', 'web-app', 1), snap, contextOf(scenario)).verdict);
+    expect(failed.failure).toMatchObject({
+      reason: 'CrashLoopBackOff',
+      message: 'Service web_app keeps crashing: container web-app restarted 3 time(s), last exit code 2 (Error)',
+      instance: 'web-app-p2xkk2fn8m-zbc2k',
+    });
+  });
+
+  it('a completed init container is not a crash loop; a failed one that is retried is', () => {
+    const scenario = 'crashloop';
+    const snap = snapshotOf(scenario);
+    const pod = firstPod(snap);
+    pod.spec.initContainers = [{ name: 'migrate', image: 'busybox:1.37' }];
+    const main = pod.status?.containerStatuses?.[0];
+    if (!main || !pod.status) throw new Error('no container status');
+    main.state = { waiting: { reason: 'PodInitializing' } };
+    pod.status.initContainerStatuses = [{ name: 'migrate', image: 'busybox:1.37', ready: true, restartCount: 0, state: { terminated: { exitCode: 0, reason: 'Completed' } } }];
+    const webApp = target('Deployment', 'web_app', 'web-app', 1);
+    expect(evaluate(webApp, snap, contextOf(scenario)).verdict.state).toBe('progressing');
+
+    pod.status.initContainerStatuses[0].state = { terminated: { exitCode: 1, reason: 'Error' } };
+    expect(expectFailed(evaluate(webApp, snap, contextOf(scenario)).verdict).failure.reason).toBe('CrashLoopBackOff');
   });
 
   it('F7 without a last state reports an unknown exit code', () => {
@@ -654,7 +684,7 @@ describe('the two gates, Deployment (K16)', () => {
     });
     expect(verdicts.map((v) => v.state)).toEqual(['progressing', 'progressing', 'converged']);
     expect(verdicts[0]).toMatchObject({ summary: 'waiting for the controller' });
-    expect(verdicts[1]).toMatchObject({ summary: '1 old pod(s) terminating' });
+    expect(verdicts[1]).toMatchObject({ summary: '1 old pod(s) pending termination' });
   });
 });
 
@@ -868,6 +898,19 @@ describe('Jobs (U-STATUS-CONV-12)', () => {
   it('a Job pod in CrashLoopBackOff fails the wait', () => {
     const failed = expectFailed(evaluate(target('Job', 'migrate', 'migrate-ab6158d4', 1), running('crashing'), contextOf('job-complete')).verdict);
     expect(failed.failure).toMatchObject({ reason: 'CrashLoopBackOff', instance: 'migrate-ab6158d4-jqsjt' });
+  });
+
+  it('an exited container of a restartPolicy Never pod is left to the Job conditions, not read as a crash loop', () => {
+    const snap = running('running');
+    const pod = firstPod(snap);
+    pod.spec.restartPolicy = 'Never';
+    const status = pod.status?.containerStatuses?.[0];
+    if (!status) throw new Error('no container status');
+    status.state = { terminated: { exitCode: 1, reason: 'Error' } };
+    expect(evaluate(target('Job', 'migrate', 'migrate-ab6158d4', 1), snap, contextOf('job-complete')).verdict).toMatchObject({
+      state: 'progressing',
+      summary: '1 running, 0 succeeded',
+    });
   });
 });
 

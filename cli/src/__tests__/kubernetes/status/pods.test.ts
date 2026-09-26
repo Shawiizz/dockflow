@@ -259,6 +259,16 @@ describe('podDisplayStatus', () => {
     expect(podDisplayStatus(gated)).toEqual({ status: 'Pending (Unschedulable)', severity: 'warning' });
   });
 
+  it('a crashed container kept terminated through its back-off shows its exit, like kubectl (k3s 1.36)', () => {
+    const crashed = makePod({
+      phase: 'Running',
+      containerStatuses: [container('web', { ready: false, restartCount: 5, state: { terminated: { exitCode: 1, reason: 'Error' } } })],
+    });
+    expect(podDisplayStatus(crashed)).toEqual({ status: 'Error', severity: 'error' });
+    const noReason = makePod({ phase: 'Running', containerStatuses: [container('web', { ready: false, state: { terminated: { exitCode: 3 } } })] });
+    expect(podDisplayStatus(noReason)).toEqual({ status: 'ExitCode:3', severity: 'error' });
+  });
+
   it('Running (not ready) with an OOMKilled last state is an error', () => {
     const pod = makePod({
       phase: 'Running',

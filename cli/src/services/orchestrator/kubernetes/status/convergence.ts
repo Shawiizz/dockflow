@@ -452,6 +452,16 @@ interface Signal {
   claims: ClaimRef[];
 }
 
+/** Whether the kubelet starts this container again after the exit it reports. */
+function restartsAfterExit(pod: Pod, status: ContainerStatus, exitCode: number): boolean {
+  const init = pod.status?.initContainerStatuses?.includes(status) ?? false;
+  // a native sidecar (an init container with restartPolicy Always) restarts like a regular container
+  if (init && (containerSpec(pod, status.name) as { restartPolicy?: string } | undefined)?.restartPolicy === 'Always') return true;
+  const policy = pod.spec.restartPolicy ?? 'Always';
+  if (init) return exitCode !== 0 && policy !== 'Never';
+  return policy === 'Always' || (policy === 'OnFailure' && exitCode !== 0);
+}
+
 function containerSignal(service: string, pod: Pod, status: ContainerStatus, context: EvaluationContext): Signal | null {
   const c = status.name;
   const spec = containerSpec(pod, c);
@@ -474,7 +484,10 @@ function containerSignal(service: string, pod: Pod, status: ContainerStatus, con
     );
   }
   const waiting = status.state?.waiting;
-  const reason = waiting?.reason;
+  // some kubelets (k3s 1.36) keep a crashed container `terminated` through its back-off instead of
+  // waiting with reason CrashLoopBackOff; one that will be started again is that same crash loop
+  const exited = status.state?.terminated;
+  const reason = exited !== undefined && restartsAfterExit(pod, status, exited.exitCode) ? 'CrashLoopBackOff' : waiting?.reason;
   const detail = oneLine(waiting?.message ?? reason ?? '');
   switch (reason) {
     case 'ErrImageNeverPull':
@@ -518,7 +531,7 @@ function containerSignal(service: string, pod: Pod, status: ContainerStatus, con
     case 'CrashLoopBackOff':
       return signal(
         'CrashLoopBackOff',
-        `Service ${service} keeps crashing: container ${c} restarted ${status.restartCount} time(s), last exit code ${exitText(status.lastState?.terminated)}`,
+        `Service ${service} keeps crashing: container ${c} restarted ${status.restartCount} time(s), last exit code ${exitText(exited ?? status.lastState?.terminated)}`,
         logsSuggestion(service, context),
       );
     default:
@@ -620,7 +633,7 @@ function progressOf(w: RolledWorkload): { converged: boolean; summary: string } 
       const replicas = w.status?.replicas ?? 0;
       const available = w.status?.availableReplicas ?? 0;
       if (updated < desired) return { converged: false, summary: `${updated}/${desired} updated` };
-      if (replicas > updated) return { converged: false, summary: `${replicas - updated} old pod(s) terminating` };
+      if (replicas > updated) return { converged: false, summary: `${replicas - updated} old pod(s) pending termination` };
       if (available < updated) return { converged: false, summary: `${available}/${desired} ready` };
       return { converged: true, summary: `${desired}/${desired} ready` };
     }

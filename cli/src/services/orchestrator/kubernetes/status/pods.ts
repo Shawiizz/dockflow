@@ -341,6 +341,9 @@ export function podDisplayStatus(pod: Pod): PodStatusView {
     }
     case 'Running': {
       if (allContainersReady(pod)) return { status: STATUS_RUNNING, severity: 'ok' };
+      // a crashed container some kubelets (k3s 1.36) keep `terminated` through its back-off: kubectl shows its exit
+      const crashed = containers.find((c) => c.state?.terminated !== undefined && c.state.terminated.exitCode !== 0)?.state?.terminated;
+      if (crashed) return { status: crashed.reason ?? `ExitCode:${crashed.exitCode}`, severity: 'error' };
       const oomKilled = containers.some((c) => c.restartCount > 0 && c.lastState?.terminated?.reason === 'OOMKilled');
       return { status: STATUS_RUNNING_NOT_READY, severity: oomKilled ? 'error' : 'warning' };
     }

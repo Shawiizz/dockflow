@@ -815,7 +815,7 @@ describe('waitConvergence', () => {
     expect(reporter.spinner).toEqual([
       'start: Waiting for web...',
       'update: Waiting: web waiting for the controller (0s)',
-      'update: Waiting: web 1 old pod(s) terminating (2s)',
+      'update: Waiting: web 1 old pod(s) pending termination (2s)',
       'succeed: web ready (5s)',
     ]);
   });
