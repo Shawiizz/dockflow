@@ -125,7 +125,8 @@ export function buildDumpScript(config: BackupAccessoryConfig, compression: 'gzi
   const opts = options(config.dump_options);
   switch (type) {
     case 'postgres':
-      return `${PG_PRELUDE}${exec}pg_dump ${PG_USER}${opts} ${PG_DATABASE}${end}`;
+      // --clean: a restore replaces what the dump holds instead of adding its rows to the live ones
+      return `${PG_PRELUDE}${exec}pg_dump ${PG_USER} --clean --if-exists${opts} ${PG_DATABASE}${end}`;
     case 'mysql':
       return (
         `${MYSQL_PRELUDE}if [ -n "\${MYSQL_DATABASE:-}" ]; then set -- "$MYSQL_DATABASE"; else set -- --all-databases; fi; ` +
@@ -156,7 +157,8 @@ export function buildRestoreScript(config: BackupAccessoryConfig): string {
         `exec mysql -u"$DF_USER"${opts} "$@"`
       );
     case 'mongodb':
-      return `${MONGO_ARGS}exec mongorestore "$@"${opts}`;
+      // --drop: each collection of the archive replaces the live one instead of being merged into it
+      return `${MONGO_ARGS}exec mongorestore "$@" --drop${opts}`;
     case 'redis':
       return REDIS_APPENDONLY_GUARD + REDIS_RESTORE;
   }

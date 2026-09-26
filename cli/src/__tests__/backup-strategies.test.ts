@@ -54,25 +54,25 @@ const cfg = (config: BackupAccessoryConfig): BackupAccessoryConfig => config;
 describe('buildDumpScript', () => {
   it('postgres: credentials and database from the container environment, database defaulting to the user', () => {
     expect(buildDumpScript(cfg({ type: 'postgres' }), 'gzip')).toBe(
-      'export PGPASSWORD="${POSTGRES_PASSWORD:-}"; exec pg_dump -U "${POSTGRES_USER:-postgres}" "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"',
+      'export PGPASSWORD="${POSTGRES_PASSWORD:-}"; exec pg_dump -U "${POSTGRES_USER:-postgres}" --clean --if-exists "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"',
     );
   });
 
   it('postgres: dump_options inserted verbatim before the database', () => {
     expect(buildDumpScript(cfg({ type: 'postgres', dump_options: '--no-owner --clean' }), 'gzip')).toBe(
-      'export PGPASSWORD="${POSTGRES_PASSWORD:-}"; exec pg_dump -U "${POSTGRES_USER:-postgres}" --no-owner --clean "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"',
+      'export PGPASSWORD="${POSTGRES_PASSWORD:-}"; exec pg_dump -U "${POSTGRES_USER:-postgres}" --clean --if-exists --no-owner --clean "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"',
     );
   });
 
   it('postgres, compression none: no exec, and the trailer written only after pg_dump succeeded', () => {
     expect(buildDumpScript(cfg({ type: 'postgres' }), 'none')).toBe(
-      `export PGPASSWORD="\${POSTGRES_PASSWORD:-}"; pg_dump -U "\${POSTGRES_USER:-postgres}" "\${POSTGRES_DB:-\${POSTGRES_USER:-postgres}}"${TRAILER}`,
+      `export PGPASSWORD="\${POSTGRES_PASSWORD:-}"; pg_dump -U "\${POSTGRES_USER:-postgres}" --clean --if-exists "\${POSTGRES_DB:-\${POSTGRES_USER:-postgres}}"${TRAILER}`,
     );
   });
 
   it('postgres, compression none with a custom format: no trailer (it would corrupt the archive)', () => {
     expect(buildDumpScript(cfg({ type: 'postgres', dump_options: '-Fc' }), 'none')).toBe(
-      'export PGPASSWORD="${POSTGRES_PASSWORD:-}"; exec pg_dump -U "${POSTGRES_USER:-postgres}" -Fc "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"',
+      'export PGPASSWORD="${POSTGRES_PASSWORD:-}"; exec pg_dump -U "${POSTGRES_USER:-postgres}" --clean --if-exists -Fc "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"',
     );
   });
 
@@ -144,8 +144,8 @@ describe('buildRestoreScript', () => {
   });
 
   it('mongodb', () => {
-    expect(buildRestoreScript(cfg({ type: 'mongodb' }))).toBe(`${MONGO_ARGS}exec mongorestore "$@"`);
-    expect(buildRestoreScript(cfg({ type: 'mongodb', restore_options: '--drop' }))).toBe(`${MONGO_ARGS}exec mongorestore "$@" --drop`);
+    expect(buildRestoreScript(cfg({ type: 'mongodb' }))).toBe(`${MONGO_ARGS}exec mongorestore "$@" --drop`);
+    expect(buildRestoreScript(cfg({ type: 'mongodb', restore_options: '--gzip' }))).toBe(`${MONGO_ARGS}exec mongorestore "$@" --drop --gzip`);
   });
 
   it('redis: appendonly refusal first, then the staged RDB', () => {
@@ -629,11 +629,11 @@ describe.if(SH !== null)('in-container scripts, executed', () => {
     const dump = buildDumpScript(cfg({ type: 'postgres' }), 'gzip');
     expect(run(dump, { POSTGRES_USER: 'app', POSTGRES_PASSWORD: 'pg-secret' })).toEqual({
       cmd: 'pg_dump',
-      args: ['-U', 'app', 'app'],
+      args: ['-U', 'app', '--clean', '--if-exists', 'app'],
       env: { PGPASSWORD: 'pg-secret', MYSQL_PWD: '<unset>' },
     });
-    expect(run(dump, { POSTGRES_USER: 'app', POSTGRES_DB: 'shop' }).args).toEqual(['-U', 'app', 'shop']);
-    expect(run(dump, {})).toEqual({ cmd: 'pg_dump', args: ['-U', 'postgres', 'postgres'], env: { PGPASSWORD: '', MYSQL_PWD: '<unset>' } });
+    expect(run(dump, { POSTGRES_USER: 'app', POSTGRES_DB: 'shop' }).args).toEqual(['-U', 'app', '--clean', '--if-exists', 'shop']);
+    expect(run(dump, {})).toEqual({ cmd: 'pg_dump', args: ['-U', 'postgres', '--clean', '--if-exists', 'postgres'], env: { PGPASSWORD: '', MYSQL_PWD: '<unset>' } });
     expect(run(buildRestoreScript(cfg({ type: 'postgres' })), { POSTGRES_DB: 'shop' })).toMatchObject({ cmd: 'psql', args: ['-U', 'postgres', 'shop'] });
   });
 
@@ -681,7 +681,7 @@ describe.if(SH !== null)('in-container scripts, executed', () => {
       cmd: 'mongodump',
       args: ['--archive', '--username=root', '--authenticationDatabase=admin', `--password=${password}`, '--db=shop'],
     });
-    expect(run(buildRestoreScript(cfg({ type: 'mongodb' })), {})).toMatchObject({ cmd: 'mongorestore', args: ['--archive'] });
+    expect(run(buildRestoreScript(cfg({ type: 'mongodb' })), {})).toMatchObject({ cmd: 'mongorestore', args: ['--archive', '--drop'] });
   });
 
   it('redis restore with appendonly yes: exit 3, the marker on stderr, stdin drained', () => {
