@@ -387,8 +387,14 @@ export async function execute(ctx: DeployContext): Promise<void> {
 
     // 1. render both roles BEFORE any remote mutation (m14/K73)
     let appInput = buildStackInput(ctx, 'app', compose, delivery);
+    const previousHelm = ctx.options.only || appInput.helm.length > 0 ? await previousArtifactHelm(ctx) : null;
     if (ctx.options.only) {
-      appInput = { ...appInput, helm: syncNonTargetedHelmRecords(appInput.helm, await previousArtifactHelm(ctx), parseOnly(ctx.options.only)) };
+      appInput = { ...appInput, helm: syncNonTargetedHelmRecords(appInput.helm, previousHelm, parseOnly(ctx.options.only)) };
+    }
+    // The release record is written before the apply, so the chart bytes it names are fixed now:
+    // a chart republished under an unchanged version is refused instead of installed (3.4.4).
+    if (orch.helm && appInput.helm.length > 0) {
+      appInput = { ...appInput, helm: await orch.helm.pinCharts(appInput.helm, previousHelm ?? [], { allowChartDrift: false }) };
     }
     const appArtifact = orch.stack.render(appInput);
     printArtifactDiagnostics(composeFileLabel(ctx), appArtifact);

@@ -151,6 +151,24 @@ describe('execute — U-FLOW-01 happy path', () => {
   });
 });
 
+describe('execute — chart bytes pinned before the release record (design-04 3.4.4)', () => {
+  it('pins the app Helm releases before the render, which records the pinned digest', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    const pinned = 'a'.repeat(64);
+    orchestrator.program('helm.pinCharts', (releases) => releases.map((release) => ({ ...release, declaredDigest: pinned })));
+    const ctx = fakeContext(orchestrator, {
+      config: config({ helm: { releases: [{ name: 'search', chart: 'search', repo: 'https://charts.example.org', version: '2.4.1', role: 'app' }] } }),
+      target: soloTarget(),
+    });
+
+    await execute(ctx);
+
+    assertSubsequence(orchestrator.events, ['helm.pinCharts', 'stack.render:app', 'releases.create:1.4.2']);
+    const [input] = orchestrator.callsTo('stack.render').map(([arg]) => arg as { ref: { role: string }; helm: { declaredDigest: string | null }[] }).filter((arg) => arg.ref.role === 'app');
+    expect(input?.helm.map((release) => release.declaredDigest)).toEqual([pinned]);
+  });
+});
+
 describe('execute — U-FLOW-02 accessories skipped / proxy before accessories', () => {
   it('no accessories.yml: no waitConvergence:accessory, no finalize:accessory', async () => {
     const orchestrator = new FakeOrchestrator('k3s');
