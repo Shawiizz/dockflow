@@ -110,6 +110,7 @@ async function build() {
       console.log(`   ✅ dist/${output}`);
     } catch (error) {
       console.error(`   ❌ Failed to build for ${name}:`, error);
+      process.exitCode = 1;
     }
   }
 
