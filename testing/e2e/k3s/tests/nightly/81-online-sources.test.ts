@@ -77,7 +77,8 @@ function podReady(pod: PodLike): boolean {
 async function waitHelmReleaseReady(release: string, timeoutMs = 180_000): Promise<void> {
   await waitFor(
     async () => {
-      const pods = await getJson<PodLike>("pods", { ns: NS, selector: `app.kubernetes.io/instance=${release}` });
+      // podinfo labels its pods with app.kubernetes.io/name=<release> only, no instance label
+      const pods = await getJson<PodLike>("pods", { ns: NS, selector: `app.kubernetes.io/name=${release}` });
       return pods.length > 0 && pods.every(podReady) ? true : undefined;
     },
     { timeoutMs, describe: `helm release ${release} pods to be Ready` },
