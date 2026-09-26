@@ -32,7 +32,8 @@ import {
   sqliteCopyPath,
   validateK3sFlags,
 } from '../../../../commands/setup/k3s/plan';
-import { parseNodeInspection, parseNodePlan, parseNodeState } from '../../../../commands/setup/k3s/schema';
+import { K3sNodeSpecSchema, parseNodeInspection, parseNodePlan, parseNodeState } from '../../../../commands/setup/k3s/schema';
+import { localDeployPublicKey } from '../../../../commands/setup/flow';
 import { K3S_PIN } from '../../../../services/orchestrator/kubernetes/k3s/versions';
 import { M } from '../../../../services/orchestrator/messages';
 import type { ResolvedServer } from '../../../../types/servers';
@@ -594,6 +595,14 @@ describe('buildLocalPlan (P10, 4.8)', () => {
     expect(localNodeNameFor('main')).toBe('main');
   });
 
+  it('takes the deploy key line the node plan accepts, whatever comment the key file carries', () => {
+    // a generated key is commented dockflow-<user>; the plan only accepts dockflow-deploy
+    const line = localDeployPublicKey(keyFile('deploy_ed25519'), 'web-1');
+    expect(line).toEndWith(' dockflow-deploy');
+    expect(K3sNodeSpecSchema.shape.deployPublicKey.safeParse(line).success).toBe(true);
+    expect(() => localDeployPublicKey(keyFile('deploy_encrypted'), 'web-1')).toThrow(ConfigError);
+  });
+
   it('resolves like a single fresh server', () => {
     const plan = buildLocalPlan({
       nodeName: 'main',
@@ -917,6 +926,17 @@ describe('finalizeClusterPlan: the node action table of 4.2 (F5)', () => {
     expect(cluster.refusals[0].message).toBe('k3s is already installed on srv-1 but not by Dockflow');
     const unitOnly = decide({ 'srv-1': freshInspection(['10.0.0.10'], (i) => (i.k3s.unit = 'k3s')) });
     expect(messagesOf(unitOnly)).toEqual([setupMessages.unmanagedK3s('srv-1', ENV).message]);
+  });
+
+  it('2b k3s present with the Dockflow drop-in but no state.json -> repair (an install that stopped midway)', () => {
+    const cluster = decide({
+      'srv-1': freshInspection(['10.0.0.10'], (i) => {
+        i.k3s.binaryVersion = `k3s version ${PIN} (1a2b3c4d)`;
+        i.k3s.dropin = { 'secrets-encryption': true };
+      }),
+    });
+    expect(cluster.refusals).toEqual([]);
+    expect(cluster.actions['srv-1']).toEqual({ kind: 'repair', changedKeys: [], fromVersion: PIN, toVersion: PIN });
   });
 
   it('3 state.json present, binary missing -> repair', () => {

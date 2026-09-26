@@ -9,7 +9,7 @@ import { K8S_KUBECONFIG_DIR } from '../../services/orchestrator/kubernetes/const
 import { K3S_PIN } from '../../services/orchestrator/kubernetes/k3s/versions';
 import { systemClock } from '../../services/orchestrator/kubernetes/deps';
 import { printSection, printSuccess, printWarning, printInfo, printBlank, printRaw } from '../../utils/output';
-import { CLIError, ErrorCode } from '../../utils/errors';
+import { CLIError, ConfigError, ErrorCode } from '../../utils/errors';
 import { checkDependencies, installDependencies, detectPackageManager } from './dependencies';
 import { provisionHost } from './provision';
 import { configureServiceAccess } from './user';
@@ -18,7 +18,7 @@ import { nodeArch } from './k3s/install';
 import { setupMessages } from './k3s/messages';
 import { inspect, runK3sNodeStep, type ControlPlaneReport, type NodeStepResult } from './k3s/node';
 import { localHostRunner } from './k3s/host-runner';
-import { buildLocalPlan, buildNodePlan, finalizeClusterPlan, type K3sClusterPlan, type K3sNodePlan, type NodeOperation } from './k3s/plan';
+import { buildLocalPlan, buildNodePlan, deployPublicKeyFor, finalizeClusterPlan, type K3sClusterPlan, type K3sNodePlan, type NodeOperation } from './k3s/plan';
 import type { HostConfig } from './types';
 
 /**
@@ -167,6 +167,17 @@ function printK3sLocalSummary(config: HostConfig, plan: K3sClusterPlan, controlP
 }
 
 /**
+ * The deploy key's line in the local node plan: derived from the private key, like the cluster
+ * flow's, since the plan only accepts the dockflow-deploy comment and a key file carries its own.
+ */
+export function localDeployPublicKey(privateKey: string, nodeName: string): string {
+  const derived = deployPublicKeyFor(privateKey);
+  if ('line' in derived) return derived.line;
+  const problem = setupMessages.deployKeyUnparseable(nodeName, derived.error);
+  throw new ConfigError(problem.message, problem.suggestion);
+}
+
+/**
  * Provision the host, install and start k3s on it when the orchestrator is k3s, finalize service
  * access for the deploy user, and display the connection information. Common tail of both setup
  * flows.
@@ -178,12 +189,10 @@ export async function completeSetup(config: HostConfig): Promise<void> {
   let k3sControlPlane: ControlPlaneReport | null = null;
 
   if (config.orchestrator === 'k3s' && config.k3s) {
-    const publicKeyPath = `${config.privateKeyPath}.pub`;
-    const deployPublicKey = fs.existsSync(publicKeyPath) ? fs.readFileSync(publicKeyPath, 'utf-8').trim() : null;
     k3sPlan = buildLocalPlan({
       nodeName: config.k3s.nodeName,
       deployUser: config.deployUser,
-      deployPublicKey,
+      deployPublicKey: localDeployPublicKey(fs.readFileSync(config.privateKeyPath, 'utf-8'), config.k3s.nodeName),
       privateHost: config.k3s.privateHost,
       publicHost: config.publicHost,
       requestedBackend: config.k3s.flannelBackend,

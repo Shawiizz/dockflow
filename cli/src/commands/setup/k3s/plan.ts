@@ -939,6 +939,9 @@ export function finalizeClusterPlan(
     const family = node.role === 'agent' ? 'agent' : 'server';
 
     if (k3s.binaryVersion === null && k3s.unit === null && state === null) decided = action('install');
+    // an install writes the Dockflow drop-in before the binary and the state file last, so a drop-in
+    // without a state is a Dockflow install that stopped midway (a node that could not join, say)
+    else if (state === null && k3s.dropin !== null) decided = action('repair');
     else if (state === null) problems.push(setupMessages.unmanagedK3s(node.key, env));
     else if (k3s.binaryVersion === null) decided = action('repair');
     else if (state.role !== family) problems.push(setupMessages.roleChanged(node.key, state.role, family === 'agent' ? 'worker' : 'manager', env));
