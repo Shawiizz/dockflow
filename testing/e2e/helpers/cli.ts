@@ -68,7 +68,8 @@ export function recentCliInvocations(): readonly Invocation[] {
 }
 
 function spawnCli(args: string[], opts: RunCLIOptions) {
-  const binary = resolveCliBinaryPath();
+  // a call's own DOCKFLOW_E2E_BINARY picks the binary it runs (E-74 coordinates with an older build)
+  const binary = opts.env?.DOCKFLOW_E2E_BINARY || resolveCliBinaryPath();
   return Bun.spawn([binary, ...args], {
     cwd: opts.cwd,
     stdout: "pipe",
