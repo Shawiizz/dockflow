@@ -52,7 +52,7 @@ describe("registry delivery", () => {
       fixture = makeFixture("test-app-k3s-registry", { cluster: "k3s" });
       const result = await runCLI(["deploy", ENV, "1.0.0", "--only", "web", "--yes"], { cwd: fixture.dir, timeoutMs: 240_000 });
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).not.toContain("imported on");
+      expect(result.stdout + result.stderr).not.toContain("imported on");
 
       const catalog = (await (await fetch(`http://${REGISTRY}/v2/_catalog`)).json()) as Catalog;
       expect(catalog.repositories).toContain("k3s-registry-web");
