@@ -5,7 +5,7 @@
  */
 
 import { ok, err, type Result } from '../../../types/result';
-import { CLIError, DeployError, ErrorCode } from '../../../utils/errors';
+import { CLIError, DeployError, ErrorCode, InterruptedError } from '../../../utils/errors';
 import { canonicalJson, sha256Hex } from '../../../utils/hash';
 import { createTimedSpinner, printDebug, printInfo, printWarning } from '../../../utils/output';
 import { shellQuote } from '../../../utils/ssh';
@@ -755,12 +755,16 @@ export class SwarmStackBackend implements StackBackend {
    * Removes the role's stack. Volumes go only with `delete`. Removing the accessories also
    * forgets their hash, otherwise the next deploy would skip them as unchanged.
    */
-  async remove(ref: StackRef, options: { volumes: 'retain' | 'delete' }): Promise<void> {
+  async remove(ref: StackRef, options: { volumes: 'retain' | 'delete'; signal?: AbortSignal }): Promise<void> {
     const scope = this.naming.scope(ref);
     if (ref.role === 'accessory') await this.ops.removeStackAndDrain(scope);
     else await this.ops.removeStackAndWait(scope);
-
-    if (options.volumes === 'delete') await this.ops.removeStackVolumes(scope);
+    // with its services gone the role must not be skipped as unchanged next deploy, whatever happens to its volumes
     if (ref.role === 'accessory') await this.ops.clearAccessoriesHash(stackNameOf(ref));
+
+    if (options.volumes === 'delete') {
+      if (options.signal?.aborted) throw new InterruptedError('Removal interrupted before any volume was deleted', 'Run the command again to delete them.');
+      await this.ops.removeStackVolumes(scope);
+    }
   }
 }

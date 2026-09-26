@@ -983,7 +983,7 @@ export class KubernetesStackBackend implements StackBackend {
     }
   }
 
-  async remove(ref: StackRef, options: { volumes: 'retain' | 'delete' }): Promise<void> {
+  async remove(ref: StackRef, options: { volumes: 'retain' | 'delete'; signal?: AbortSignal }): Promise<void> {
     try {
       await day2Remove(this.day2Deps(), ref, options);
     } finally {

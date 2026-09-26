@@ -206,6 +206,8 @@ describe('runVolumesRemove', () => {
     expect(orchestrator.events).toContain('lock.acquire');
     expect(orchestrator.events.indexOf('lock.acquire')).toBeLessThan(orchestrator.events.indexOf('volumes.remove'));
     expect(orchestrator.events.indexOf('volumes.remove')).toBeLessThan(orchestrator.events.indexOf('lock.release'));
+    // Ctrl+C reaches the protocol, which stops between two volumes
+    expect(orchestrator.callsTo('volumes.remove')[0][2]).toEqual({ signal: expect.any(AbortSignal) });
   });
 
   it('the ACME claim warning is printed for `--system dockflow-traefik` before the confirmation', async () => {

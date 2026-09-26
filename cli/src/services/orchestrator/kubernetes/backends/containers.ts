@@ -17,6 +17,7 @@ import {
   UnsupportedOperationError,
   ValidationError,
 } from '../../../../utils/errors';
+import { onInterrupt } from '../../../../utils/interrupt';
 import { printDim } from '../../../../utils/output';
 import { requireCapabilityFor } from '../../capabilities';
 import { ContainerPathError, containerTarArgs, noTarError } from '../../copy';
@@ -189,12 +190,7 @@ function localZone(at: Date): number {
 /** registers a Ctrl+C listener; returns its removal */
 export type InterruptSource = (onInterrupt: () => void) => () => void;
 
-export const processInterrupts: InterruptSource = (onInterrupt) => {
-  process.once('SIGINT', onInterrupt);
-  return () => {
-    process.removeListener('SIGINT', onInterrupt);
-  };
-};
+export const processInterrupts: InterruptSource = (handler) => onInterrupt(handler);
 
 function containerStatusOf(pod: Pod, container: string): ContainerStatus | undefined {
   return pod.status?.containerStatuses?.find((status) => status.name === container);

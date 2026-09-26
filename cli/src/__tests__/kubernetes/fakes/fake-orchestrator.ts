@@ -594,8 +594,8 @@ export class FakeOrchestrator implements Orchestrator {
   private volumeBackend(): VolumeBackend {
     return {
       list: (scope) => this.remote('volumes.list', 'volumes.list', [scope], () => []),
-      remove: (scope, names) =>
-        this.remote('volumes.remove', 'volumes.remove', [scope, names], () => ({
+      remove: (scope, names, options) =>
+        this.remote('volumes.remove', 'volumes.remove', options === undefined ? [scope, names] : [scope, names, options], () => ({
           deleted: names.map((claim) => ({ claim, volume: null })),
           restored: [],
           restoreFailed: [],

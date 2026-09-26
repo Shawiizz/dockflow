@@ -18,8 +18,9 @@ import { statefulSetClaimPattern } from '../../services/orchestrator/kubernetes/
 import { parseDurationMs } from '../../services/orchestrator/kubernetes/model/units';
 import { DEFAULT_KEEP_RELEASES } from '../../services/orchestrator/kubernetes/render';
 import { type DockflowConfig, type HelmReleaseConfig, loadConfig } from '../../utils/config';
-import { CLIError, DeployError, ErrorCode, ValidationError } from '../../utils/errors';
+import { CLIError, ErrorCode, ValidationError } from '../../utils/errors';
 import { confirmPrompt, dangerousConfirmPrompt } from '../../utils/prompts';
+import { withLock } from '../shared/lock';
 
 // ---------------------------------------------------------------------------
 // Context
@@ -209,18 +210,10 @@ export async function confirmOrThrow(options: { yes?: boolean; typed?: string; m
 // Lock (design-04 3.12.6 step 9, 3.12.7 step 6)
 // ---------------------------------------------------------------------------
 
-/** Acquires the stack's deploy lock (or the shared proxy lease for `--system`), runs `action`, releases it in `finally`. */
-export async function withHelmLock<T>(ctx: HelmCommandContext, options: { system: boolean; message: string }, action: () => Promise<T>): Promise<T> {
+/** The stack's deploy lock (or the shared proxy lease for `--system`) around `action`; Ctrl+C lets Helm finish, then releases it. */
+export function withHelmLock<T>(ctx: HelmCommandContext, options: { system: boolean; message: string }, action: () => Promise<T>): Promise<T> {
   const lock = ctx.orchestrator.lock(ctx.stackId, ctx.config.lock?.stale_threshold_minutes, options.system ? K8S_PROXY_LOCK_NAME : undefined);
-  const acquired = await lock.acquire({ message: options.message });
-  if (!acquired.success) {
-    throw new DeployError(acquired.error.message, ErrorCode.DEPLOY_LOCKED);
-  }
-  try {
-    return await action();
-  } finally {
-    await lock.release();
-  }
+  return withLock(lock, { message: options.message }, () => action());
 }
 
 // ---------------------------------------------------------------------------

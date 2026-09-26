@@ -412,7 +412,7 @@ describe('accessories remove', () => {
       expect(methodOrder).toContain('lock.acquire');
       expect(methodOrder.indexOf('lock.acquire')).toBeLessThan(methodOrder.indexOf('stack.remove'));
       expect(methodOrder.indexOf('stack.remove')).toBeLessThan(methodOrder.indexOf('lock.release'));
-      expect(orchestrator.callsTo('stack.remove')[0][1]).toEqual({ volumes: 'retain' });
+      expect(orchestrator.callsTo('stack.remove')[0][1]).toEqual({ volumes: 'retain', signal: expect.any(AbortSignal) });
       expect(orchestrator.lockHolder(orchestrator.target.stackName)).toBeNull();
     } finally {
       warn.mockRestore();
@@ -432,7 +432,7 @@ describe('accessories remove', () => {
 
     try {
       await runAccessoriesRemove('production', { volumes: true, yes: true });
-      expect(orchestrator.callsTo('stack.remove')[0][1]).toEqual({ volumes: 'delete' });
+      expect(orchestrator.callsTo('stack.remove')[0][1]).toEqual({ volumes: 'delete', signal: expect.any(AbortSignal) });
       expect(success).toHaveBeenCalledWith('Deleted 1 volume(s)');
       expect(raw.mock.calls.some((call: unknown[]) => call[0] === 'Volume db-data: deleted')).toBe(true);
     } finally {
@@ -455,7 +455,7 @@ describe('accessories remove', () => {
     try {
       await runAccessoriesRemove('production', { volumes: true, yes: true });
       expect(orchestrator.callsTo('stack.getServices').length).toBe(0);
-      expect(orchestrator.callsTo('stack.remove')[0][1]).toEqual({ volumes: 'delete' });
+      expect(orchestrator.callsTo('stack.remove')[0][1]).toEqual({ volumes: 'delete', signal: expect.any(AbortSignal) });
       expect(raw.mock.calls.some((call: unknown[]) => call[0] === 'Volume pg-data: deleted')).toBe(true);
       expect(orchestrator.lockHolder(orchestrator.target.stackName)).toBeNull();
     } finally {

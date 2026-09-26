@@ -22,8 +22,10 @@ dockflow lock release production
 The `dockflow deploy --force` flag overrides locks when needed.
 
 <Callout type="info">
-  Locks also apply automatically during deployments and expire after the [configured threshold](/en/configuration/config-file#deploy-lock).
+  Locks also apply automatically during deployments and the commands that change a stack (`stop`, `rollback`, `accessories remove`, `volumes rm`, `backup restore`, `helm`), and expire after the [configured threshold](/en/configuration/config-file#deploy-lock).
 </Callout>
+
+Ctrl+C stops such a command at a safe point, then releases its lock: a volume deletion finishes the volume in progress and names the ones it kept, and a restore runs to the end rather than leave the data half-written. A second Ctrl+C exits at once and leaves the lock until it expires or `dockflow lock release` removes it.
 
 ## Selective Deployment
 

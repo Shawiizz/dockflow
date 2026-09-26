@@ -17,7 +17,6 @@ import { loadConfig } from './config';
 export enum ErrorCode {
   // General errors (1-9)
   UNKNOWN = 1,
-  INTERRUPTED = 2,
   COMMAND_FAILED = 3,
   
   // Configuration errors (10-19)
@@ -57,6 +56,9 @@ export enum ErrorCode {
   BACKUP_NOT_FOUND = 71,
   RESTORE_FAILED = 72,
   BACKUP_CONFIG_MISSING = 73,
+
+  // Ctrl+C: 128 + SIGINT, what a shell reports for a command stopped by it
+  INTERRUPTED = 130,
 }
 
 /**
@@ -94,6 +96,14 @@ export class ConfigError extends CLIError {
   constructor(message: string, suggestion?: string) {
     super(message, ErrorCode.CONFIG_INVALID, suggestion);
     this.name = 'ConfigError';
+  }
+}
+
+/** A command stopped at a safe point after Ctrl+C; the message says what it did and did not do. */
+export class InterruptedError extends CLIError {
+  constructor(message: string, suggestion?: string) {
+    super(message, ErrorCode.INTERRUPTED, suggestion);
+    this.name = 'InterruptedError';
   }
 }
 

@@ -481,9 +481,10 @@ export interface StackBackend {
    * Remove the role's workloads, Services, routes and hashed objects; volumes only with 'delete'
    * (D7) and then strictly by the protocol of C13. Removing a role also clears that role's change
    * detection state (k3s: the `accessories-digest` key; Swarm: the hash file), otherwise the next
-   * `deploy --accessories` skips as unchanged.
+   * `deploy --accessories` skips as unchanged. An aborted `signal` stops the removal before its
+   * volumes, or between two of them, never partway through one (InterruptedError).
    */
-  remove(ref: StackRef, options: { volumes: 'retain' | 'delete' }): Promise<void>;
+  remove(ref: StackRef, options: { volumes: 'retain' | 'delete'; signal?: AbortSignal }): Promise<void>;
 }
 
 /**
@@ -783,9 +784,9 @@ export interface VolumeBackend {
    * The caller has confirmed. Refuses in-use volumes. Deletes data by the protocol of C13 and
    * nothing else: one volume at a time, the PV's original policy recorded and restored in a
    * try/finally. Never patches a set of PVs up front. Returns what happened, by name, so the
-   * command can print it.
+   * command can print it. An aborted `signal` stops before the next volume.
    */
-  remove(scope: VolumeScope, names: string[]): Promise<VolumeRemovalReport>;
+  remove(scope: VolumeScope, names: string[], options?: { signal?: AbortSignal }): Promise<VolumeRemovalReport>;
   /**
    * Patches each named PersistentVolume's reclaim policy to Retain, without touching its claim; a PV
    * already Retain is left alone. Only ever strengthens retention, so it needs none of `remove`'s

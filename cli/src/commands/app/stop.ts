@@ -5,11 +5,12 @@
  */
 
 import type { Command } from 'commander';
-import { DeployError, ErrorCode, withServicesRequired } from '../../utils/errors';
+import { withServicesRequired } from '../../utils/errors';
 import { createSpinner, printBlank, printInfo, printNote, printWarning } from '../../utils/output';
 import { confirmPrompt } from '../../utils/prompts';
 import { withResolvedEnv } from '../../utils/validation';
 import { openDay2 } from '../shared/day2';
+import { withLock } from '../shared/lock';
 
 export interface StopCommandOptions {
   yes?: boolean;
@@ -35,19 +36,11 @@ export async function runStop(env: string, options: StopCommandOptions): Promise
     }
   }
 
-  const lock = ctx.lock();
-  const acquired = await lock.acquire({ message: 'Stop' });
-  if (!acquired.success) {
-    throw new DeployError(acquired.error.message, ErrorCode.DEPLOY_LOCKED);
-  }
-
   const spinner = createSpinner();
-  spinner.start(`Stopping stack ${ctx.stackName}...`);
-  try {
-    await ctx.orchestrator.stack.remove(ctx.appRef, { volumes: 'retain' });
-  } finally {
-    await lock.release();
-  }
+  await withLock(ctx.lock(), { message: 'Stop' }, async (signal) => {
+    spinner.start(`Stopping stack ${ctx.stackName}...`);
+    await ctx.orchestrator.stack.remove(ctx.appRef, { volumes: 'retain', signal });
+  });
   ctx.invalidate(ctx.appRef);
   spinner.succeed(`Stack ${ctx.stackName} stopped`);
 

@@ -6,11 +6,12 @@
 
 import type { Command } from 'commander';
 import { assertSingleReplica, createBackup } from '../../services/backup';
-import { DeployError, ErrorCode, ValidationError, withErrorHandler } from '../../utils/errors';
+import { ValidationError, withErrorHandler } from '../../utils/errors';
 import { colors, createSpinner, printBlank, printInfo, printIntro, printOutro, printRaw, printWarning } from '../../utils/output';
 import { dangerousConfirmPrompt } from '../../utils/prompts';
 import { withResolvedEnv } from '../../utils/validation';
 import { openDay2, resolveService } from '../shared/day2';
+import { withLock } from '../shared/lock';
 import { getBackupServiceNames, nounForSource, refForSource, requireBackupConfig } from './utils';
 
 export interface BackupRestoreOptions {
@@ -68,11 +69,8 @@ export async function runBackupRestore(env: string, service: string | undefined,
   }
 
   printBlank();
-  const lock = ctx.lock();
-  const acquired = await lock.acquire({ message: `Restore ${svc.name}` });
-  if (!acquired.success) throw new DeployError(acquired.error.message, ErrorCode.DEPLOY_LOCKED);
-
-  try {
+  // a restore stopped halfway would leave the data half-written, so Ctrl+C lets it finish
+  await withLock(ctx.lock(), { message: `Restore ${svc.name}` }, async () => {
     const spinner = createSpinner();
     spinner.start('Restoring backup...');
     const result = await engine.restore(svc.name, backup.id, backupConfig, backup.compression, {
@@ -83,9 +81,7 @@ export async function runBackupRestore(env: string, service: string | undefined,
       throw result.error;
     }
     spinner.succeed('Restore completed');
-  } finally {
-    await lock.release();
-  }
+  });
 
   printBlank();
   printOutro(

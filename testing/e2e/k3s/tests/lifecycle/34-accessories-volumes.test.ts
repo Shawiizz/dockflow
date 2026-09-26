@@ -17,12 +17,13 @@ import { releaseSecretName } from "../../../../../cli/src/services/orchestrator/
 import type { VolumeInfo } from "../../../../../cli/src/services/orchestrator/interfaces";
 import type { Deployment } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/apps";
 import type { PersistentVolume, PersistentVolumeClaim } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/core";
-import { runCLI, runCLIInBackground } from "../../../helpers/cli";
+import { type CLIResult, GRACEFUL_INTERRUPTS, runCLI, runCLIInBackground } from "../../../helpers/cli";
 import { dumpDebug } from "../../../helpers/debug-dump";
 import { type Fixture, makeFixture } from "../../../helpers/fixtures";
 import {
   deleteStackCompletely,
   getJson,
+  leaseFor,
   nodeExec,
   nsFor,
   podUids,
@@ -61,6 +62,34 @@ async function getPvc(name: string): Promise<PersistentVolumeClaim | undefined> 
 async function getPv(name: string): Promise<PersistentVolume | undefined> {
   const [p] = await getJson<PersistentVolume>("persistentvolumes", { name });
   return p;
+}
+
+async function boundPv(claim: string): Promise<PersistentVolume | undefined> {
+  const volumeName = (await getPvc(claim))?.spec?.volumeName;
+  return volumeName ? getPv(volumeName) : undefined;
+}
+
+/**
+ * Deploys the accessories, starts `accessories remove --volumes` and sends `signal` the moment its
+ * first claim is gone: that volume's data is still being reclaimed, the next one not started.
+ */
+async function interruptRemoval(version: string, signal: "SIGINT" | "SIGKILL"): Promise<{ result: CLIResult; gone: string; survivor: string }> {
+  const prepared = await runCLI(["deploy", ENV, version, "--accessories", "--yes"], { cwd: fixtureDir(), timeoutMs: 180_000 });
+  expect(prepared.exitCode).toBe(0);
+  await waitWorkloadReady(NS, "deployment", "redis", 1);
+  await waitWorkloadReady(NS, "deployment", "postgres", 1);
+
+  const handle = runCLIInBackground(["accessories", "remove", ENV, "--volumes", "-y"], { cwd: fixtureDir(), timeoutMs: 120_000 });
+  const gone = await waitFor(
+    async () => {
+      for (const claim of ["pg-data", "redis-data"]) if (!(await getPvc(claim))) return claim;
+      return undefined;
+    },
+    { timeoutMs: 60_000, intervalMs: 200, describe: "the first accessory claim to be deleted" },
+  );
+  handle.kill(signal);
+  const result = await handle.done;
+  return { result, gone, survivor: gone === "pg-data" ? "redis-data" : "pg-data" };
 }
 
 async function accessoriesGet(key: string): Promise<string> {
@@ -386,46 +415,45 @@ describe("accessories volumes and protocol (E-34)", () => {
     });
   }, 240_000);
 
-  test("E-34-21 SIGINT mid-removal restores the untouched PV's policy; a second run completes", async () => {
+  test.skipIf(!GRACEFUL_INTERRUPTS)("E-34-21 Ctrl+C mid-removal finishes the volume in progress, keeps the next one Retain and releases the lock", async () => {
     await withDump("E-34-21", async () => {
-      const prepared = await runCLI(["deploy", ENV, "1.0.7", "--accessories", "--yes"], { cwd: fixtureDir(), timeoutMs: 180_000 });
-      expect(prepared.exitCode).toBe(0);
-      await waitWorkloadReady(NS, "deployment", "redis", 1);
-      await waitWorkloadReady(NS, "deployment", "postgres", 1);
+      const { result, gone, survivor } = await interruptRemoval("1.0.7", "SIGINT");
 
-      const handle = runCLIInBackground(["accessories", "remove", ENV, "--volumes", "-y"], {
-        cwd: fixtureDir(),
-        timeoutMs: 120_000,
-      });
-
-      // wait until at least one of the two claims is gone (its deletion has started), then interrupt
-      await waitFor(
-        async () => {
-          const remaining = (await Promise.all(["redis-data", "pg-data"].map((c) => getPvc(c)))).filter(Boolean);
-          return remaining.length < 2 ? true : undefined;
-        },
-        { timeoutMs: 60_000, intervalMs: 200, describe: "one accessory claim's deletion to start" },
-      );
-      handle.kill();
-      await handle.done.catch(() => {});
-
-      // whichever claim is still there was never touched, so its PV is still Retain
-      for (const claim of ["redis-data", "pg-data"]) {
-        const pvc = await getPvc(claim);
-        if (pvc?.spec?.volumeName) {
-          const pv = await getPv(pvc.spec.volumeName);
-          expect(pv?.spec?.persistentVolumeReclaimPolicy).toBe("Retain");
-        }
-      }
-
-      const survivingClaim = (await getPvc("redis-data")) ? "redis-data" : "pg-data";
+      expect(result.exitCode).toBe(130);
+      // the last line names the volumes it removed and the ones it left
+      expect(result.stderr).toContain(`Deleted ${gone}; kept ${survivor}. Run the command again to delete the rest.`);
+      const pv = await boundPv(survivor);
+      expect(pv?.spec?.persistentVolumeReclaimPolicy).toBe("Retain");
+      expect(pv?.metadata.annotations?.[ANNOTATIONS.reclaimPolicyBefore]).toBeUndefined();
+      expect(await leaseFor(NS)).toBeNull();
 
       const second = await runCLI(["accessories", "remove", ENV, "--volumes", "-y"], { cwd: fixtureDir(), timeoutMs: 180_000 });
       expect(second.exitCode).toBe(0);
+      expect(second.stdout).toContain(`Volume ${survivor}: deleted`);
       expect(await getPvc("redis-data")).toBeUndefined();
       expect(await getPvc("pg-data")).toBeUndefined();
-      // the second run's last line names the one volume it still had left to remove
-      expect(second.stdout).toContain(`Volume ${survivingClaim}: deleted`);
+    });
+  }, 300_000);
+
+  test("E-34-21k a removal killed outright keeps the lock; the next listing repairs its evidence, and after lock release a second run completes", async () => {
+    await withDump("E-34-21k", async () => {
+      const { gone, survivor } = await interruptRemoval("1.0.8", "SIGKILL");
+
+      // a PV only goes to Delete once its own claim is gone, so the survivor's never did
+      expect((await boundPv(survivor))?.spec?.persistentVolumeReclaimPolicy).toBe("Retain");
+
+      const refused = await runCLI(["accessories", "remove", ENV, "--volumes", "-y"], { cwd: fixtureDir(), timeoutMs: 60_000 });
+      expect(refused.exitCode).toBe(51); // DEPLOY_LOCKED: nothing released the killed run's lock
+      expect(refused.stderr).toContain(`Volume ${survivor}: reclaim policy restored to Retain; a previous volume deletion was interrupted`);
+      expect((await boundPv(survivor))?.metadata.annotations?.[ANNOTATIONS.reclaimPolicyBefore]).toBeUndefined();
+
+      const released = await runCLI(["lock", "release", ENV], { cwd: fixtureDir(), timeoutMs: 30_000 });
+      expect(released.exitCode).toBe(0);
+      const second = await runCLI(["accessories", "remove", ENV, "--volumes", "-y"], { cwd: fixtureDir(), timeoutMs: 180_000 });
+      expect(second.exitCode).toBe(0);
+      expect(second.stdout).toContain(`Volume ${survivor}: deleted`);
+      expect(await getPvc(gone)).toBeUndefined();
+      expect(await getPvc(survivor)).toBeUndefined();
     });
   }, 300_000);
 

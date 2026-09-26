@@ -7,11 +7,12 @@
 import type { Command } from 'commander';
 import { formatReplicas } from '../../services/orchestrator/format';
 import type { VolumeInfo, VolumeScope } from '../../services/orchestrator/interfaces';
-import { DeployError, ErrorCode, withServicesRequired } from '../../utils/errors';
+import { withServicesRequired } from '../../utils/errors';
 import { colors, createSpinner, printBlank, printError, printInfo, printNote, printRaw, printSuccess, printWarning } from '../../utils/output';
 import { confirmPrompt, dangerousConfirmPrompt } from '../../utils/prompts';
 import { withResolvedEnv } from '../../utils/validation';
 import { type Day2Context, openDay2 } from '../shared/day2';
+import { withLock } from '../shared/lock';
 import { accessoriesNotDeployed } from './utils';
 
 export interface AccessoriesRemoveOptions {
@@ -62,21 +63,19 @@ export async function runAccessoriesRemove(env: string, options: AccessoriesRemo
   }
   printBlank();
 
-  const lock = ctx.lock();
-  const acquired = await lock.acquire({ message: 'Remove accessories' });
-  if (!acquired.success) {
-    throw new DeployError(acquired.error.message, ErrorCode.DEPLOY_LOCKED, `Wait for it to finish, or release it with \`dockflow lock release ${env}\`.`);
-  }
-
-  const spinner = createSpinner();
-  spinner.start('Removing accessories...');
-  try {
-    await ctx.orchestrator.stack.remove(ref, { volumes: options.volumes ? 'delete' : 'retain' });
+  const lockedHint = `Wait for it to finish, or release it with \`dockflow lock release ${env}\`.`;
+  await withLock(ctx.lock(), { message: 'Remove accessories', lockedHint }, async (signal) => {
+    const spinner = createSpinner();
+    spinner.start('Removing accessories...');
+    try {
+      await ctx.orchestrator.stack.remove(ref, { volumes: options.volumes ? 'delete' : 'retain', signal });
+    } catch (error) {
+      spinner.fail('Accessories were not fully removed');
+      throw error;
+    }
     ctx.invalidate(ref);
     spinner.succeed('Accessories removed');
-  } finally {
-    await lock.release();
-  }
+  });
 
   printBlank();
   if (options.volumes) {

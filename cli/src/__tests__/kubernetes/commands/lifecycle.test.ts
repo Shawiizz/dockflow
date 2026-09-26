@@ -341,7 +341,7 @@ describe('stop', () => {
     const methodOrder = orchestrator.calls.map((call) => call.method);
     expect(methodOrder.indexOf('lock.acquire')).toBeLessThan(methodOrder.indexOf('stack.remove'));
     expect(methodOrder.indexOf('stack.remove')).toBeLessThan(methodOrder.indexOf('lock.release'));
-    expect(orchestrator.callsTo('stack.remove')[0][1]).toEqual({ volumes: 'retain' });
+    expect(orchestrator.callsTo('stack.remove')[0][1]).toEqual({ volumes: 'retain', signal: expect.any(AbortSignal) });
     expect(orchestrator.lockHolder(orchestrator.target.stackName)).toBeNull();
   });
 

@@ -42,6 +42,8 @@ export interface VolumeProtocolOptions {
   env: string;
   /** each PVC delete and PV wait; derived by the caller from the grace periods involved (DESIGN-CORE 8.6) */
   waitS?: number;
+  /** Ctrl+C: the volume in progress is finished, the next one is not started */
+  signal?: AbortSignal;
 }
 
 export interface VolumeProtocolReport extends VolumeRemovalReport {
@@ -59,8 +61,9 @@ export class VolumeRemovalError extends DeployError {
     suggestion: string,
     readonly report: VolumeProtocolReport,
     readonly failure: unknown,
+    code: ErrorCode = ErrorCode.DEPLOY_FAILED,
   ) {
-    super(message, ErrorCode.DEPLOY_FAILED, suggestion);
+    super(message, code, suggestion);
     this.name = 'VolumeRemovalError';
   }
 }
@@ -149,7 +152,7 @@ function emptyReport(): VolumeProtocolReport {
 // The protocol (DESIGN-CORE C13)
 // ---------------------------------------------------------------------------
 
-type Step = 'record' | 'claim' | 'policy' | 'wait';
+type Step = 'record' | 'claim' | 'policy' | 'wait' | 'interrupt';
 
 interface PlannedVolume {
   /** the claim, or the PV when there is none */
@@ -338,9 +341,17 @@ async function restoreAll(kubectl: KubeExecutor, plan: readonly PlannedVolume[],
   }
 }
 
+/** `Deleted a, b; kept c, d.` — what an interrupted run did and left, by claim */
+function interruptedOutcome(plan: readonly PlannedVolume[], report: VolumeProtocolReport): string {
+  const deleted = report.deleted.map((d) => d.claim);
+  const kept = plan.filter((entry) => !deleted.includes(entry.label)).map((entry) => entry.label);
+  return deleted.length > 0 ? `Deleted ${deleted.join(', ')}; kept ${kept.join(', ')}.` : `Kept ${kept.join(', ')}.`;
+}
+
 function failureMessage(failure: StepFailure, waitS: number): string {
   const label = failure.volume.label;
   const cause = failure.error;
+  if (failure.step === 'interrupt') return `Volume deletion interrupted before ${label}`;
   if (cause instanceof KubeError && cause.exitCode === NO_EXIT_CODE) {
     return `Deleting volume ${label} was interrupted (${cause.message}); its outcome is unknown`;
   }
@@ -357,9 +368,10 @@ function failureMessage(failure: StepFailure, waitS: number): string {
 }
 
 function failureSuggestion(failure: StepFailure, plan: readonly PlannedVolume[], report: VolumeProtocolReport, env: string): string {
+  const interrupted = failure.step === 'interrupt';
   const lines: string[] = [];
-  if (report.deleted.length > 0) lines.push(`Deleted before the failure: ${report.deleted.map((d) => d.claim).join(', ')}.`);
-  if (report.restored.length > 0) lines.push(`Kept, with the reclaim policy restored: ${report.restored.join(', ')}.`);
+  if (!interrupted && report.deleted.length > 0) lines.push(`Deleted before the failure: ${report.deleted.map((d) => d.claim).join(', ')}.`);
+  if (!interrupted && report.restored.length > 0) lines.push(`Kept, with the reclaim policy restored: ${report.restored.join(', ')}.`);
   for (const failed of report.restoreFailed) {
     const recorded = plan.find((entry) => entry.volume === failed.volume)?.recorded ?? 'Retain';
     lines.push(
@@ -367,11 +379,10 @@ function failureSuggestion(failure: StepFailure, plan: readonly PlannedVolume[],
     );
   }
   for (const kept of report.keptOnLostNode) lines.push(`${lostNodeLine(kept)}.`);
-  lines.push(
-    failure.step === 'wait'
-      ? `Check the storage provisioner with \`dockflow diagnose ${env}\`, then run the command again to delete the released volume.`
-      : `Check the cluster with \`dockflow diagnose ${env}\`, then run the command again.`,
-  );
+  if (interrupted) lines.push(`${interruptedOutcome(plan, report)} Run the command again to delete the rest.`);
+  else if (failure.step === 'wait') {
+    lines.push(`Check the storage provisioner with \`dockflow diagnose ${env}\`, then run the command again to delete the released volume.`);
+  } else lines.push(`Check the cluster with \`dockflow diagnose ${env}\`, then run the command again.`);
   return lines.join('\n');
 }
 
@@ -408,7 +419,10 @@ export async function removeVolumesByProtocol(
         throw new StepFailure('record', entry, error);
       }
     }
-    for (const entry of plan) await removeOne(kubectl, entry, { namespace: options.namespace, waitS }, report);
+    for (const entry of plan) {
+      if (options.signal?.aborted) throw new StepFailure('interrupt', entry, new Error('interrupted'));
+      await removeOne(kubectl, entry, { namespace: options.namespace, waitS }, report);
+    }
   } catch (error) {
     if (!(error instanceof StepFailure)) throw error;
     failure = error;
@@ -416,7 +430,8 @@ export async function removeVolumesByProtocol(
     await restoreAll(kubectl, plan, report);
   }
   if (failure !== null) {
-    throw new VolumeRemovalError(failureMessage(failure, waitS), failureSuggestion(failure, plan, report, options.env), report, failure.error);
+    const code = failure.step === 'interrupt' ? ErrorCode.INTERRUPTED : ErrorCode.DEPLOY_FAILED;
+    throw new VolumeRemovalError(failureMessage(failure, waitS), failureSuggestion(failure, plan, report, options.env), report, failure.error, code);
   }
   return report;
 }
@@ -477,7 +492,7 @@ export class KubernetesVolumeBackend implements VolumeBackend {
     return this.rows(state, scope.role).map((row) => row.info);
   }
 
-  async remove(scope: VolumeScope, names: string[]): Promise<VolumeProtocolReport> {
+  async remove(scope: VolumeScope, names: string[], options: { signal?: AbortSignal } = {}): Promise<VolumeProtocolReport> {
     if (names.length === 0) return emptyReport();
     const state = await this.read(scope);
     await this.repair(state, scope.env);
@@ -503,7 +518,7 @@ export class KubernetesVolumeBackend implements VolumeBackend {
     );
     let report: VolumeProtocolReport;
     try {
-      report = await removeVolumesByProtocol(this.deps, targets, { namespace: state.namespace, env: scope.env, waitS });
+      report = await removeVolumesByProtocol(this.deps, targets, { namespace: state.namespace, env: scope.env, waitS, signal: options.signal });
     } catch (error) {
       throw this.cliError(error, scope, 'delete volumes');
     }

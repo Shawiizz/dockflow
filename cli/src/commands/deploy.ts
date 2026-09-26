@@ -26,6 +26,7 @@ import {
   isVerbose,
   createSpinner,
 } from '../utils/output';
+import { onInterrupt, SIGINT_EXIT_CODE } from '../utils/interrupt';
 import { buildTemplateContext } from '../utils/servers';
 import { confirmPrompt } from '../utils/prompts';
 import { detectCIEnvironment, resolveDeployParams } from '../utils/ci';
@@ -372,10 +373,9 @@ export async function execute(ctx: DeployContext): Promise<void> {
         printWarning(`Version ${ctx.deployVersion} was applied but its state is unknown; run dockflow status ${ctx.env}`);
       }
       await lock.release().catch(() => {});
-    })().finally(() => process.exit(130));
+    })().finally(() => process.exit(SIGINT_EXIT_CODE));
   };
-  process.once('SIGINT', handleSignal);
-  process.once('SIGTERM', handleSignal);
+  const stopHandlingInterrupts = onInterrupt(handleSignal);
 
   try {
     const compose = await composeForDeploy(ctx);
@@ -500,8 +500,7 @@ export async function execute(ctx: DeployContext): Promise<void> {
     if (rolledBackTo) throw new DeployError(`Deployment failed and was rolled back to ${rolledBackTo}`, ErrorCode.DEPLOY_FAILED);
     throw err;
   } finally {
-    process.off('SIGINT', handleSignal);
-    process.off('SIGTERM', handleSignal);
+    stopHandlingInterrupts();
     const durationMs = Date.now() - startTime;
     const status = deployFailed ? 'failed' : 'success';
 

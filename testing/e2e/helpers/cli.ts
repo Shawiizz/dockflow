@@ -113,10 +113,18 @@ export async function runCLI(args: string[], opts: RunCLIOptions): Promise<CLIRe
   return result;
 }
 
+/**
+ * Whether `kill("SIGINT")` reaches the CLI as a Ctrl+C it can clean up after. On Windows a child
+ * cannot be sent one: Bun's kill terminates it outright, like SIGKILL, so the tests of the interrupt
+ * path run on Linux and macOS only.
+ */
+export const GRACEFUL_INTERRUPTS = process.platform !== "win32";
+
 export interface CLIBackgroundHandle {
   /** resolves once the process exits (also records the result as the last invocation, 16.11) */
   readonly done: Promise<CLIResult>;
-  kill(): void;
+  /** SIGINT by default, the Ctrl+C a user sends (see GRACEFUL_INTERRUPTS); SIGKILL for a CLI that dies outright */
+  kill(signal?: "SIGINT" | "SIGKILL"): void;
 }
 
 /**
@@ -131,5 +139,5 @@ export function runCLIInBackground(args: string[], opts: RunCLIOptions): CLIBack
     lastInvocation = { args, result };
     return result;
   });
-  return { done, kill: () => proc.kill() };
+  return { done, kill: (signal = "SIGINT") => proc.kill(signal) };
 }

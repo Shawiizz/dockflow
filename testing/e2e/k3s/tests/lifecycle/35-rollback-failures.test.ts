@@ -18,7 +18,7 @@ import { ANNOTATIONS } from "../../../../../cli/src/services/orchestrator/kubern
 import type { Deployment, StatefulSet } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/apps";
 import type { Job } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/batch";
 import type { Service } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/core";
-import { runCLI, runCLIInBackground } from "../../../helpers/cli";
+import { GRACEFUL_INTERRUPTS, runCLI, runCLIInBackground } from "../../../helpers/cli";
 import { dumpDebug } from "../../../helpers/debug-dump";
 import { type Fixture, makeFixture } from "../../../helpers/fixtures";
 import {
@@ -271,7 +271,7 @@ describe("rollback and failure handling (E-35)", () => {
     });
   }, 400_000);
 
-  test("E-35-07b SIGINT during apply leaves the record's state-unknown message and releases the lock", async () => {
+  test.skipIf(!GRACEFUL_INTERRUPTS)("E-35-07b SIGINT during apply leaves the record's state-unknown message and releases the lock", async () => {
     await withDump("E-35-07b", async () => {
       writeWebCompose(fixture, { mode: "ok", marker: "V7B" });
       const handle = runCLIInBackground(["deploy", ENV, "7.1.0-rb", "--yes"], { cwd: dir(), timeoutMs: 120_000 });
@@ -294,8 +294,11 @@ describe("rollback and failure handling (E-35)", () => {
       expect(releases.map((s) => s.metadata.annotations?.[ANNOTATIONS.release])).toContain("7.1.0-rb");
       expect((await stateConfigMap(NS)).current).toBe("7.1.0-rb");
       expect(await leaseFor(NS)).toBeNull();
+    });
+  }, 300_000);
 
-      // bring the stack back to a known-good version for the rest of the chain
+  test("E-35-07c a known-good 7.2.0-rb for the rest of the chain", async () => {
+    await withDump("E-35-07c", async () => {
       writeWebCompose(fixture, { mode: "ok", marker: "V7C" });
       const fix = await runCLI(["deploy", ENV, "7.2.0-rb", "--yes"], { cwd: dir(), timeoutMs: 200_000 });
       expect(fix.exitCode).toBe(0);

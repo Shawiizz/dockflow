@@ -7,7 +7,7 @@
 // here (rollbackService's outcome, stop's Helm warning), everything else returns data or throws.
 
 import { CONVERGENCE_INTERVAL_S } from '../../../../constants';
-import { CLIError, DeployError, ErrorCode, UnsupportedOperationError } from '../../../../utils/errors';
+import { CLIError, DeployError, ErrorCode, InterruptedError, UnsupportedOperationError } from '../../../../utils/errors';
 import { canonicalJson, sha256Hex } from '../../../../utils/hash';
 import { printDebug, printInfo, printWarning } from '../../../../utils/output';
 import type {
@@ -386,12 +386,12 @@ export async function exists(deps: StackDay2Deps, ref: StackRef): Promise<boolea
  * only from `remove`, after the role's workloads are already gone, so `deleteWaitS([])` (the floor)
  * is the right budget: nothing is still using these claims.
  */
-export async function deleteRoleVolumes(deps: StackDay2Deps, ref: StackRef, roleSel: string): Promise<void> {
+export async function deleteRoleVolumes(deps: StackDay2Deps, ref: StackRef, roleSel: string, signal?: AbortSignal): Promise<void> {
   const namespace = namespaceFor(ref.project, ref.env);
   const claims = await deps.kubectl.getJson<PersistentVolumeClaim>(['persistentvolumeclaims'], { namespace, selector: roleSel });
   if (claims.length === 0) return;
   const targets: VolumeTarget[] = claims.map((claim) => ({ claim: claim.metadata.name, volume: claim.spec.volumeName ?? null }));
-  await removeVolumesByProtocol(deps, targets, { namespace, env: ref.env, waitS: deleteWaitS([]) });
+  await removeVolumesByProtocol(deps, targets, { namespace, env: ref.env, waitS: deleteWaitS([]), signal });
 }
 
 // ---------------------------------------------------------------------------
@@ -402,9 +402,10 @@ export async function deleteRoleVolumes(deps: StackDay2Deps, ref: StackRef, role
  * Ordered deletion (design-03 8.4 / K25): Helm releases of the role, routes (`--wait=false`, so
  * traffic stops first), workloads (foreground, waited), Services/Secrets/ConfigMaps, then volumes
  * when asked. The namespace, release Secrets, `dockflow-state`, the registry Secret, the other role
- * and PVCs (unless `volumes: 'delete'`) are kept by design.
+ * and PVCs (unless `volumes: 'delete'`) are kept by design. Ctrl+C (`signal`) lets the workloads go
+ * and stops before the volumes, or between two of them.
  */
-export async function remove(deps: StackDay2Deps, ref: StackRef, options: { volumes: 'retain' | 'delete' }): Promise<void> {
+export async function remove(deps: StackDay2Deps, ref: StackRef, options: { volumes: 'retain' | 'delete'; signal?: AbortSignal }): Promise<void> {
   const namespace = namespaceFor(ref.project, ref.env);
   if ((await deps.engine.assertNamespaceOwner(ref)) === 'missing') return;
   const podSel = SEL_POD(namespace, ref.role);
@@ -479,11 +480,15 @@ export async function remove(deps: StackDay2Deps, ref: StackRef, options: { volu
     mutating: true,
   });
 
-  // 6. volumes
-  if (options.volumes === 'delete') await deleteRoleVolumes(deps, ref, roleSel);
-
-  // 7. accessories change detection: a removed role must not be skipped as unchanged next deploy
+  // 6. accessories change detection: with its workloads gone, the role must not be skipped as
+  //    unchanged next deploy, whatever happens to its volumes
   if (ref.role === 'accessory') await deps.releases.writeAccessoriesDigest(namespace, null);
+
+  // 7. volumes
+  if (options.volumes === 'delete') {
+    if (options.signal?.aborted) throw new InterruptedError('Removal interrupted before any volume was deleted', 'Run the command again to delete them.');
+    await deleteRoleVolumes(deps, ref, roleSel, options.signal);
+  }
 }
 
 // ---------------------------------------------------------------------------

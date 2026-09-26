@@ -58,7 +58,7 @@ import type { ObjectMeta } from '../../../services/orchestrator/kubernetes/resou
 import { namespaceObject } from '../../../services/orchestrator/kubernetes/translate/namespace';
 import { artifactDigest, emitManifests } from '../../../services/orchestrator/kubernetes/yaml';
 import { canonicalJson, sha256Hex } from '../../../utils/hash';
-import { DeployError, ErrorCode, UnsupportedOperationError } from '../../../utils/errors';
+import { DeployError, ErrorCode, InterruptedError, UnsupportedOperationError } from '../../../utils/errors';
 import * as output from '../../../utils/output';
 import { Redactor } from '../../../utils/redact';
 import { FakeClock } from '../fakes/fake-clock';
@@ -561,7 +561,7 @@ describe('remove', () => {
     h.cluster.seed([...bound('redis-data'), ...bound('pg-data')]);
     const from = mark(h);
     // the fake ReleaseStore has no kubectl call of its own; record the kube call count at the
-    // moment it fires so the digest write can be placed after every volume call below
+    // moment it fires so the digest write can be placed among the calls below
     let kubeCallsWhenDigestWritten = -1;
     const originalWrite = h.releases.writeAccessoriesDigest.bind(h.releases);
     h.releases.writeAccessoriesDigest = async (stackName, digest) => {
@@ -581,9 +581,55 @@ describe('remove', () => {
     expect(h.cluster.get('PersistentVolumeClaim', 'pg-data', NS)).toBeUndefined();
     expect(h.cluster.get('PersistentVolume', 'pv-redis-data')).toBeUndefined();
     expect(h.cluster.get('PersistentVolume', 'pv-pg-data')).toBeUndefined();
-    // accessories change detection cleared after everything else
+    // accessories change detection cleared once the workloads are gone, before any volume is touched
     expect(h.releases.digestCalls).toEqual([{ stackName: NS, digest: null }]);
-    expect(kubeCallsWhenDigestWritten).toBe(h.kube.calls.length);
+    const beforeDigest = h.kube.calls.slice(0, kubeCallsWhenDigestWritten).map((c) => c.call.args);
+    expect(beforeDigest.some((a) => a[0] === 'delete' && a[1] === 'services,secrets,configmaps')).toBe(true);
+    expect(pvSteps(beforeDigest)).toEqual([]);
+  });
+
+  it('S2-int: Ctrl+C before the volumes keeps every one of them and still clears the digest', async () => {
+    const h = harness();
+    h.cluster.seed([...bound('pg-data')]);
+    const interrupt = new AbortController();
+    interrupt.abort();
+    const from = mark(h);
+
+    await expectCliError(drive(h.clock, remove(h.deps, ACC_REF, { volumes: 'delete', signal: interrupt.signal })), {
+      type: InterruptedError,
+      message: 'Removal interrupted before any volume was deleted',
+    });
+    expect(pvSteps(callsSince(h, from))).toEqual([]);
+    expect(h.cluster.get('PersistentVolumeClaim', 'pg-data', NS)).toBeDefined();
+    expect(h.releases.digestCalls).toEqual([{ stackName: NS, digest: null }]);
+  });
+
+  it('S2-int2: Ctrl+C during a volume finishes it, keeps the next one with its policy restored, and says which', async () => {
+    const h = harness();
+    h.cluster.seed([...bound('redis-data'), ...bound('pg-data')]);
+    const interrupt = new AbortController();
+    const originalRun = h.kube.run.bind(h.kube);
+    h.kube.run = async (call) => {
+      if (call.args[0] === 'wait' && call.args[2]?.startsWith('persistentvolumes/')) interrupt.abort();
+      return originalRun(call);
+    };
+    const from = mark(h);
+
+    const error = await expectCliError(drive(h.clock, remove(h.deps, ACC_REF, { volumes: 'delete', signal: interrupt.signal })), {
+      type: VolumeRemovalError,
+      message: /^Volume deletion interrupted before (redis-data|pg-data)$/,
+    });
+    const steps = pvSteps(callsSince(h, from));
+    const first = steps[0]?.split(' ')[1] ?? '';
+    const second = first === 'redis-data' ? 'pg-data' : 'redis-data';
+    expect(steps).toEqual([`claim ${first}`, `Delete pv-${first}`, `gone pv-${first}`]);
+    expect(error.code).toBe(ErrorCode.INTERRUPTED);
+    expect(error.suggestion?.split('\n').at(-1)).toBe(`Deleted ${first}; kept ${second}. Run the command again to delete the rest.`);
+    expect(h.cluster.get('PersistentVolume', `pv-${first}`)).toBeUndefined();
+    expect(h.cluster.get('PersistentVolumeClaim', second, NS)).toBeDefined();
+    expect(reclaimPolicyOf(h, `pv-${second}`)).toBe('Retain');
+    const pv = h.cluster.get('PersistentVolume', `pv-${second}`);
+    expect((pv?.metadata as ObjectMeta | undefined)?.annotations?.[ANNOTATIONS.reclaimPolicyBefore]).toBeUndefined();
   });
 
   it('S2b: a failing claim delete leaves the PV untouched and names the volume', async () => {

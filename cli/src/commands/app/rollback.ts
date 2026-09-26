@@ -10,7 +10,6 @@ import { CONTROL_WAIT_TIMEOUT_S } from '../../constants';
 import { Audit } from '../../services/audit';
 import { Metrics } from '../../services/metrics';
 import * as Notification from '../../services/notification';
-import type { LockStore } from '../../services/orchestrator/interfaces';
 import { rollbackRelease } from '../../services/release';
 import { getPerformer } from '../../utils/config';
 import { CLIError, DeployError, ErrorCode, UnsupportedOperationError, withErrorHandler } from '../../utils/errors';
@@ -18,6 +17,7 @@ import { createSpinner, printSuccess } from '../../utils/output';
 import { withResolvedEnv } from '../../utils/validation';
 import { runPostRollbackHealthChecks } from '../deploy-phases';
 import { type Day2Context, openDay2, resolveService } from '../shared/day2';
+import { withLock } from '../shared/lock';
 
 export interface RollbackCommandOptions {
   server?: string;
@@ -57,19 +57,9 @@ async function recordRollback(ctx: Day2Context, params: { version: string; messa
   ]);
 }
 
-/** Acquires the deploy lock, runs `action`, releases it in `finally` (design-06 2.8). */
-async function withRollbackLock<T>(ctx: Day2Context, message: string, version: string | undefined, action: () => Promise<T>): Promise<T> {
-  const lock: LockStore = ctx.lock();
-  const acquireOptions: Parameters<LockStore['acquire']>[0] = version !== undefined ? { message, version } : { message };
-  const acquired = await lock.acquire(acquireOptions);
-  if (!acquired.success) {
-    throw new DeployError(acquired.error.message, ErrorCode.DEPLOY_LOCKED);
-  }
-  try {
-    return await action();
-  } finally {
-    await lock.release();
-  }
+/** The deploy lock around a rollback (design-06 2.8); Ctrl+C lets the re-apply finish, then releases it. */
+function withRollbackLock<T>(ctx: Day2Context, message: string, version: string | undefined, action: () => Promise<T>): Promise<T> {
+  return withLock(ctx.lock(), version !== undefined ? { message, version } : { message }, () => action());
 }
 
 async function rollbackFullStack(ctx: Day2Context, options: RollbackCommandOptions): Promise<void> {

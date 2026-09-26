@@ -12,6 +12,7 @@ import { Client as SSHClient } from 'ssh2';
 import type { ClientChannel, ConnectConfig } from 'ssh2';
 import type { ConnectionInfo, SSHExecResult } from '../types';
 import { isKeyConnection } from '../types';
+import { installSignalHandlers } from './interrupt';
 import { normalizePrivateKey } from './ssh-keys';
 import { DEFAULT_SSH_PORT, SSH_READY_TIMEOUT_MS, SSH_KEEPALIVE_INTERVAL_MS, SSH_KEEPALIVE_COUNT_MAX, SSH_CONNECT_RETRIES, SSH_CONNECT_RETRY_BASE_DELAY_MS } from '../constants';
 import { printDebug } from './output';
@@ -72,10 +73,9 @@ function ensureExitHandler(): void {
   if (exitHandlerRegistered) return;
   exitHandlerRegistered = true;
 
-  const cleanup = () => { closeAllConnections(); };
-  process.on('exit', cleanup);
-  process.on('SIGINT', () => { cleanup(); process.exit(130); });
-  process.on('SIGTERM', () => { cleanup(); process.exit(143); });
+  process.on('exit', () => { closeAllConnections(); });
+  // a signal exits through process.exit (and so the hook above) unless a command registered its cleanup
+  installSignalHandlers();
 }
 
 /**

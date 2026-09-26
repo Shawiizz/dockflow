@@ -9,11 +9,12 @@ import { requireCapabilityFor } from '../../services/orchestrator/capabilities';
 import { K8S_SYSTEM_NAMESPACE } from '../../services/orchestrator/kubernetes/constants';
 import type { OrchestratorKind, VolumeInfo, VolumeScope } from '../../services/orchestrator/interfaces';
 import { loadConfig } from '../../utils/config';
-import { DeployError, ErrorCode, ValidationError, withErrorHandler } from '../../utils/errors';
+import { ValidationError, withErrorHandler } from '../../utils/errors';
 import { colors, printBlank, printInfo, printIntro, printOutro, printRaw, printSuccess, printWarning } from '../../utils/output';
 import { dangerousConfirmPrompt } from '../../utils/prompts';
 import { withResolvedEnv } from '../../utils/validation';
 import { openDay2 } from '../shared/day2';
+import { withLock } from '../shared/lock';
 
 export interface VolumesRemoveOptions {
   system?: boolean;
@@ -107,12 +108,8 @@ export async function runVolumesRemove(
   }
 
   printBlank();
-  const lock = ctx.lock();
-  const acquired = await lock.acquire({ message: `Delete volumes ${names.join(', ')}` });
-  if (!acquired.success) throw new DeployError(acquired.error.message, ErrorCode.DEPLOY_LOCKED);
-
-  try {
-    const report = await ctx.orchestrator.volumes.remove(scope, names);
+  await withLock(ctx.lock(), { message: `Delete volumes ${names.join(', ')}` }, async (signal) => {
+    const report = await ctx.orchestrator.volumes.remove(scope, names, { signal });
     printSuccess(`Deleted ${report.deleted.length} volume(s)`);
     for (const deleted of report.deleted) printRaw(`Volume ${deleted.claim}: deleted`);
     for (const restored of report.restored) {
@@ -124,9 +121,7 @@ export async function runVolumesRemove(
           `Restore it with \`dockflow ssh ${env}\`, then \`k3s kubectl patch pv ${failed.volume} --type=merge -p '{"spec":{"persistentVolumeReclaimPolicy":"Retain"}}'\`.`,
       );
     }
-  } finally {
-    await lock.release();
-  }
+  });
 
   printBlank();
   printOutro('Volumes removed');

@@ -967,11 +967,32 @@ describe('SwarmStackBackend mutations', () => {
 
     await backend.remove(accessoryRef, { volumes: 'delete' });
 
+    // the hash goes as soon as the services are gone, so a failed volume removal cannot leave it behind
     expect(ssh.commands()).toEqual([
       "docker stack rm 'shop-production-accessories'",
       `docker stack ps 'shop-production-accessories' 2>&1 | grep -v "Nothing found" | wc -l`,
+      "rm -rf '/var/lib/dockflow/accessories/shop-production'",
       "docker volume ls --filter 'label=com.docker.stack.namespace=shop-production-accessories' --format '{{.Name}}'",
       "docker volume rm 'shop-production-accessories_db-data'",
+    ]);
+  });
+
+  it('an interrupt after the services went keeps the volumes and still forgets the hash', async () => {
+    const ssh = new ScriptedSsh()
+      .on(/^docker stack rm 'shop-production-accessories'$/, {})
+      .on(/^docker stack ps 'shop-production-accessories' 2>&1/, { stdout: '0\n' })
+      .on(/^rm -rf /, {});
+    const { backend } = setup(ssh);
+    const interrupt = new AbortController();
+    interrupt.abort();
+
+    await expect(backend.remove(accessoryRef, { volumes: 'delete', signal: interrupt.signal })).rejects.toMatchObject({
+      code: ErrorCode.INTERRUPTED,
+      message: 'Removal interrupted before any volume was deleted',
+    });
+    expect(ssh.commands()).toEqual([
+      "docker stack rm 'shop-production-accessories'",
+      `docker stack ps 'shop-production-accessories' 2>&1 | grep -v "Nothing found" | wc -l`,
       "rm -rf '/var/lib/dockflow/accessories/shop-production'",
     ]);
   });
