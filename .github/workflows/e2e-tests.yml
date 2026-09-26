@@ -16,7 +16,7 @@ on:
         description: JSON array of k3s lanes
         type: string
         required: false
-        default: '["k3s-core","k3s-lifecycle","k3s-day2","k3s-multinode","k3s-proxy-helm","k3s-ha","k3s-setup"]'
+        default: '["k3s-core","k3s-lifecycle","k3s-rollback","k3s-day2","k3s-multinode","k3s-proxy-helm","k3s-ha","k3s-setup"]'
       binary_artifact:
         description: Artifact of the calling run containing dockflow-linux-x64; empty builds from source
         type: string
@@ -161,7 +161,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lane: ${{ fromJSON(inputs.k3s_lanes || '["k3s-core","k3s-lifecycle","k3s-day2","k3s-multinode","k3s-proxy-helm","k3s-ha","k3s-setup"]') }}
+        lane: ${{ fromJSON(inputs.k3s_lanes || '["k3s-core","k3s-lifecycle","k3s-rollback","k3s-day2","k3s-multinode","k3s-proxy-helm","k3s-ha","k3s-setup"]') }}
     env:
       DOCKFLOW_E2E_LANE: ${{ matrix.lane }}
       DOCKFLOW_E2E_NODE_IMAGE: dockflow-e2e-k3s-node:ci

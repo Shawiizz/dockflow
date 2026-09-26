@@ -16,7 +16,8 @@ e2e/
     images.lock.json, tools/  # pinned image digests; download/image/chart/binary preparation
     tests/
       core/       #   k3s-core      (duo)   30 render-contract … 36 security-nondestructive
-      lifecycle/  #   k3s-lifecycle (duo)   34 accessories-volumes, 35 rollback-failures
+      lifecycle/  #   k3s-lifecycle (duo)   34 accessories-volumes
+      rollback/   #   k3s-rollback  (duo)   35 rollback-failures
       day2/       #   k3s-day2      (duo)   37 day2 … 39 backup
       multinode/  #   k3s-multinode (trio)  40 distribution … 45 refusals
       proxy-helm/ #   k3s-proxy-helm (duo)  50 proxy … 53 helm-only
@@ -82,7 +83,7 @@ published; `dockflow setup k3s`'s hidden `--binary` ships that same Linux binary
    `DOCKFLOW_E2E_REUSE=1` reuses an already-healthy one instead);
 2. runs `<dir>/*.test.ts` in file-name order (never bun's inode order), each in its own `bun test`
    process, with a leak watcher for `E2E_SECRET_` around it;
-3. on a shared-cluster lane (`k3s-core`, `k3s-lifecycle`, `k3s-day2`, `k3s-multinode`,
+3. on a shared-cluster lane (`k3s-core`, `k3s-lifecycle`, `k3s-rollback`, `k3s-day2`, `k3s-multinode`,
    `k3s-proxy-helm`, `k3s-ha`), stops at the **first failing file**: a broken shared cluster produces
    one honest failure and one debug dump instead of a cascade of unrelated failures in the files after
    it. The `k3s-setup` lane gives every file fresh containers of its own, so it always runs every file.
@@ -90,7 +91,8 @@ published; `dockflow setup k3s`'s hidden `--binary` ships that same Linux binary
 | Lane | Topology | Nodes | Directory | Budget |
 |---|---|---|---|---|
 | `k3s-core` | duo | server-1, agent-1 | `tests/core` | 25 min |
-| `k3s-lifecycle` | duo | server-1, agent-1 | `tests/lifecycle` | 28 min |
+| `k3s-lifecycle` | duo | server-1, agent-1 | `tests/lifecycle` | 12 min |
+| `k3s-rollback` | duo | server-1, agent-1 | `tests/rollback` | 35 min |
 | `k3s-day2` | duo | server-1, agent-1 | `tests/day2` | 25 min |
 | `k3s-multinode` | trio | server-1, agent-1, agent-2 | `tests/multinode` | 25 min |
 | `k3s-proxy-helm` | duo | server-1, agent-1 | `tests/proxy-helm` | 28 min |
@@ -107,7 +109,7 @@ optionally `topology`) to have `servers.yml`/`.env.dockflow` generated for the r
 
 **No file in a shared-cluster lane damages cluster-level state.** The kubeconfig, the k3s service, the
 deploy identity, `dockflow-system`, the StorageClass, the sudoers file and the node set stay untouched
-by every k3s-core/lifecycle/day2/multinode/proxy-helm test — the lane preload installs a guard
+by every k3s-core/lifecycle/rollback/day2/multinode/proxy-helm test — the lane preload installs a guard
 (`helpers/cluster.ts`) that fails a test calling `nodeExec`/harness `kubectl delete` in a way that
 would break them. A scenario that needs one of those broken belongs in `k3s-setup`, whose files get
 their own containers. The `ha` lane's one exception is node availability (its whole subject): use

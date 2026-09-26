@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lane: [k3s-core, k3s-lifecycle]
+        lane: [k3s-core, k3s-lifecycle, k3s-rollback]
     env:
       DOCKFLOW_E2E_LANE: ${{ matrix.lane }}
       DOCKFLOW_E2E_NODE_IMAGE: dockflow-e2e-k3s-node:ci-arm64
@@ -103,6 +103,10 @@ jobs:
         env:
           DOCKFLOW_E2E_LANE: k3s-lifecycle
         run: cd testing/e2e/k3s && bun run run.ts k3s-lifecycle
+      - name: Run lane k3s-rollback
+        env:
+          DOCKFLOW_E2E_LANE: k3s-rollback
+        run: cd testing/e2e/k3s && bun run run.ts k3s-rollback
       - name: Upload debug dumps
         if: failure()
         uses: actions/upload-artifact@v4

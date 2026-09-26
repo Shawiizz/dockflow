@@ -1,5 +1,5 @@
 /**
- * Lane k3s-lifecycle, design-07 17.2 E-35-*: automatic revert on a failed deploy, the release-record
+ * Lane k3s-rollback, design-07 17.2 E-35-*: automatic revert on a failed deploy, the release-record
  * invariant (K08/PD-8) across every failure shape, the deploy lock (stale takeover, contention),
  * workload-kind switches (K15) and the accessories-not-rolled-back warning (D7).
  *

@@ -304,7 +304,8 @@ conventions), each owning its own cluster lifecycle:
 | Lane | Topology | Covers |
 |---|---|---|
 | `k3s-core` | duo | render contract, basic deploy, compose coverage, headless DNS, non-destructive security checks |
-| `k3s-lifecycle` | duo | accessories volumes/protocol, rollback and post-apply failures |
+| `k3s-lifecycle` | duo | accessories volumes/protocol |
+| `k3s-rollback` | duo | rollback and post-apply failures, the deploy lock |
 | `k3s-day2` | duo | logs/exec/cp/scale/restart/stop, API routes, backup |
 | `k3s-multinode` | trio | distribution to every node, placement, ServiceLB, registry, volumes pinned to a node, refusals |
 | `k3s-proxy-helm` | duo | Traefik, Helm app/accessory releases, Helm-only projects |

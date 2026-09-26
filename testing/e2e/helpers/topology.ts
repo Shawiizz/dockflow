@@ -33,7 +33,7 @@ const lanePrefix = (variable: string, fallback: string): string => {
   return value;
 };
 
-/** k3s-core, k3s-lifecycle, k3s-day2, k3s-multinode, k3s-proxy-helm and k3s-ha. */
+/** k3s-core, k3s-lifecycle, k3s-rollback, k3s-day2, k3s-multinode, k3s-proxy-helm and k3s-ha. */
 export const SHARED_LANE: NetworkPlan = {
   project: "dockflow-k3s",
   net: lanePrefix("DOCKFLOW_E2E_NET", "10.197.30"),
