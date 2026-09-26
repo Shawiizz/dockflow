@@ -114,18 +114,22 @@ describe("E-71 setup-cluster (fresh trio)", () => {
     });
   }, 600_000);
 
-  test("E-71-03: agent and server token files, differing and correctly permissioned", async () => {
+  test("E-71-03: agents hold the agent token, never the server token, in root-only files", async () => {
     await withDump("E-71-03", async () => {
       const serverStat = await statOn(server1.key, "/etc/rancher/k3s/dockflow/agent-token");
       expect(serverStat).toEqual({ owner: "root", group: "root", mode: "600" });
-      const serverAgentToken = (await mustRootExec(server1.key, "cat /etc/rancher/k3s/dockflow/agent-token")).trim();
+      const agentTokenOnServer = (await mustRootExec(server1.key, "cat /etc/rancher/k3s/dockflow/agent-token")).trim();
+      const serverToken = (await mustRootExec(server1.key, "cat /var/lib/rancher/k3s/server/token")).trim();
+      expect(agentTokenOnServer.length).toBeGreaterThan(0);
+      // compared as booleans, so that a failure never prints a token
+      expect(agentTokenOnServer === serverToken).toBe(false);
 
       for (const agent of [agent1, agent2]) {
         const stat = await statOn(agent.key, "/etc/rancher/k3s/dockflow/token");
         expect(stat).toEqual({ owner: "root", group: "root", mode: "600" });
         const agentToken = (await mustRootExec(agent.key, "cat /etc/rancher/k3s/dockflow/token")).trim();
-        expect(agentToken).not.toBe(serverAgentToken);
-        expect(agentToken.length).toBeGreaterThan(0);
+        expect(agentToken === agentTokenOnServer).toBe(true);
+        expect(agentToken === serverToken).toBe(false);
       }
     });
   });

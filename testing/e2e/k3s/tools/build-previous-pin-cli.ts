@@ -22,7 +22,9 @@ import { CACHE_DIR, exec } from "../../helpers/cluster";
 const E2E_DIR = join(import.meta.dir, "..", "..");
 const REPO_ROOT = join(E2E_DIR, "..", "..");
 const REAL_CLI_DIR = join(REPO_ROOT, "cli");
-const BUILD_ROOT = join(CACHE_DIR, "previous-pin-src");
+const BUILD_DIR = join(CACHE_DIR, "previous-pin-src");
+/** cli/ keeps its place under a copy of the root package.json, which src/constants.ts imports */
+const BUILD_ROOT = join(BUILD_DIR, "cli");
 const OUT_DIR = join(CACHE_DIR, "previous-pin");
 
 function log(message: string): void {
@@ -54,8 +56,9 @@ export const K3S_PIN = ${JSON.stringify({ version: pin.version, minimumServerVer
  * are reinstalled/rebuilt there), so the real source tree is never written to.
  */
 function copyCliSource(): void {
-  rmSync(BUILD_ROOT, { recursive: true, force: true });
+  rmSync(BUILD_DIR, { recursive: true, force: true });
   mkdirSync(BUILD_ROOT, { recursive: true });
+  cpSync(join(REPO_ROOT, "package.json"), join(BUILD_DIR, "package.json"));
   cpSync(REAL_CLI_DIR, BUILD_ROOT, {
     recursive: true,
     filter: (src) => {

@@ -166,7 +166,8 @@ describe("E-73 setup-validation", () => {
 
   test("E-73-05: a closed bootstrap SSH port is refused, naming the unreachable node", async () => {
     await withDump("E-73-05", async () => {
-      const fixture = makeFixture("test-app-k3s-cluster");
+      // the deploy keys of both nodes in .env.dockflow, so that setup gets as far as connecting
+      const fixture = makeFixture("test-app-k3s-cluster", { cluster: "k3s", topology: topo });
       fixture.write(
         ".dockflow/servers.yml",
         [

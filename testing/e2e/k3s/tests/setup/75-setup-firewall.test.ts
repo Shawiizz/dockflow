@@ -113,7 +113,8 @@ describe("E-75 setup-firewall", () => {
         "--max-time", "5", `https://${server1.ip}:6443/readyz`,
       ]);
       expect(fromPeer.exitCode).toBe(0);
-      expect(fromPeer.stdout.trim()).toBe("200");
+      // the API server answered: 401, since k3s serves no anonymous requests, not a timeout
+      expect(fromPeer.stdout.trim()).toBe("401");
     });
   }, 60_000);
 
