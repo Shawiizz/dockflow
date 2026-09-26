@@ -18,7 +18,7 @@ import { getServerPrivateKey } from '../../../utils/servers/ci-secrets';
 import { resolveServersForEnvironment } from '../../../utils/servers/resolver';
 import { loadSecrets } from '../../../utils/secrets';
 import { confirm, prompt } from '../prompts';
-import { chooseFirewallTool, firewallColumn, type FirewallStatus } from './firewall';
+import { chooseFirewallTool, firewallColumn, firewallReason, formatManualFlows, manualFlowClusterOf, type FirewallStatus } from './firewall';
 import { HostKeyStore, type HostKeyDecision, type HostKeyVerification } from './host-keys';
 import { installMessages, type NodeBinary, resolveNodeBinary } from './install';
 import { type SetupProblem, setupMessages } from './messages';
@@ -161,8 +161,9 @@ interface ReportRow {
 
 class SetupReport {
   readonly rows = new Map<string, ReportRow>();
-  readonly warnings: { node: string | null; message: string }[] = [];
-  exposure: string[] = [];
+  readonly warnings: { node: string | null; message: string; suggestion: string | null }[] = [];
+  /** the flows to allow in a provider firewall when a node has no managed firewall (14.4) */
+  manualFlows: string | null = null;
 
   constructor(plan: K3sClusterPlan) {
     for (const node of plan.nodes) {
@@ -194,8 +195,8 @@ class SetupReport {
     for (const warning of result.warnings) this.addWarning(key, warning);
   }
 
-  addWarning(node: string | null, message: string): void {
-    this.warnings.push({ node, message });
+  addWarning(node: string | null, message: string, suggestion: string | null = null): void {
+    this.warnings.push({ node, message, suggestion });
   }
 
   get failedNodes(): string[] {
@@ -203,22 +204,19 @@ class SetupReport {
   }
 
   render(): string {
-    const lines: string[] = [];
-    lines.push('  NODE       ROLE          ACTION     RESULT   FIREWALL    HOST KEY            DETAIL');
-    for (const row of this.rows.values()) {
-      lines.push(
-        `  ${row.key.padEnd(10)} ${row.role.padEnd(13)} ${row.action.padEnd(10)} ${row.result.padEnd(8)} ${row.firewall.padEnd(11)} ${row.hostKey.padEnd(19)} ${row.detail}`,
-      );
-    }
+    const header = ['NODE', 'ROLE', 'ACTION', 'RESULT', 'FIREWALL', 'HOST KEY', 'DETAIL'];
+    const rows = [...this.rows.values()].map((row) => [row.key, row.role, row.action, row.result, row.firewall, row.hostKey, row.detail]);
+    const widths = header.map((title, column) => Math.max(title.length, ...rows.map((cells) => cells[column].length)));
+    const line = (cells: readonly string[]): string => `  ${cells.map((cell, column) => cell.padEnd(widths[column])).join('  ')}`.trimEnd();
+    const lines = [line(header), ...rows.map(line)];
     if (this.warnings.length > 0) {
-      lines.push('');
-      lines.push('Warnings:');
-      for (const warning of this.warnings) lines.push(`  ${warning.node ?? 'cluster'}  ${warning.message}`);
+      const scopeWidth = Math.max(...this.warnings.map((warning) => (warning.node ?? 'cluster').length));
+      lines.push('', 'Warnings:');
+      for (const warning of this.warnings) lines.push(`  ${(warning.node ?? 'cluster').padEnd(scopeWidth)}  ${warning.message}`);
+      const suggestions = new Set(this.warnings.map((warning) => warning.suggestion).filter((s): s is string => s !== null));
+      for (const suggestion of suggestions) lines.push(`  ${suggestion}`);
     }
-    if (this.exposure.length > 0) {
-      lines.push('');
-      for (const line of this.exposure) lines.push(`  ${line}`);
-    }
+    if (this.manualFlows !== null) lines.push('', this.manualFlows);
     return lines.join('\n');
   }
 }
@@ -276,7 +274,7 @@ async function runOp(
       node,
       operation,
       `The setup step on ${node.key} stopped unexpectedly (exit ${outcome.exitCode}): ${tail.join(' ') || 'no output'}`,
-      'Run with --debug and try again.',
+      'Fix the cause shown above, then run setup again: nodes that already completed are left alone.',
       tail,
     );
   }
@@ -434,12 +432,10 @@ function defaultConnectProbe(): ConnectProbe {
     });
 }
 
-async function probeExposure(cluster: K3sResolvedCluster, options: K3sSetupOptions, connectProbe: ConnectProbe = defaultConnectProbe()): Promise<string[]> {
+async function probeExposure(cluster: K3sResolvedCluster, options: K3sSetupOptions, connectProbe: ConnectProbe = defaultConnectProbe()): Promise<SetupProblem[]> {
   if (options.skipReachabilityCheck) return [];
   const nodes: ExposureProbeNode[] = cluster.plan.nodes.map((node) => {
     const network = cluster.network[node.key];
-    const managed = chooseFirewallTool({ ufw: 'absent', firewalld: 'absent' }, { skipFirewall: options.skipFirewall, key: node.key });
-    void managed;
     return {
       key: node.key,
       addr: network?.publicIp ?? network?.nodeExternalIp ?? null,
@@ -447,8 +443,7 @@ async function probeExposure(cluster: K3sResolvedCluster, options: K3sSetupOptio
       etcdMember: cluster.datastore === 'etcd' && node.role !== 'agent',
     };
   });
-  const problems = await runExposureProbe(nodes, connectProbe, { env: cluster.plan.env, isPrivate: (addr) => isPrivateAddress(addr) });
-  return problems.map((p) => p.message);
+  return runExposureProbe(nodes, connectProbe, { env: cluster.plan.env, isPrivate: (addr) => isPrivateAddress(addr) });
 }
 
 function isPrivateAddress(addr: string): boolean {
@@ -581,6 +576,7 @@ export async function runK3sClusterSetup(env: string, bootstrap: BootstrapIdenti
     upgradeInfo = { actions: cluster.actions, totalUpgrading: installSequence(plan).servers.filter((s) => cluster.actions[s.key]?.kind === 'upgrade').length };
     const firewallTools = new Map<string, FirewallTool | null>();
     const refusals: Refusal[] = [...cluster.refusals];
+    const unmanaged: { key: string; reason: string }[] = [];
     for (const node of plan.nodes) {
       const inspection = inspections[node.key];
       const status: FirewallStatus = inspection?.firewall ?? { ufw: 'absent', firewalld: 'absent' };
@@ -588,12 +584,14 @@ export async function runK3sClusterSetup(env: string, bootstrap: BootstrapIdenti
       if (chosen.success) {
         firewallTools.set(node.key, chosen.data);
         report.setFirewall(node.key, firewallColumn(status, chosen.data, options.skipFirewall));
+        if (chosen.data === null) unmanaged.push({ key: node.key, reason: firewallReason(status, options.skipFirewall) });
       } else {
         refusals.push({ node: node.key, message: chosen.error.message, suggestion: chosen.error.suggestion });
       }
       report.setAction(node.key, cluster.actions[node.key]?.kind ?? 'noop');
     }
-    for (const warning of cluster.warnings as readonly PlanWarning[]) report.addWarning(warning.node, warning.message);
+    if (unmanaged.length > 0) report.manualFlows = formatManualFlows(manualFlowClusterOf(cluster), unmanaged);
+    for (const warning of cluster.warnings as readonly PlanWarning[]) report.addWarning(warning.node, warning.message, warning.suggestion);
 
     printBlank();
     for (const node of plan.nodes) printDim(`${node.key}  ${node.role}  ${cluster.actions[node.key]?.kind ?? 'noop'}`);
@@ -670,8 +668,7 @@ export async function runK3sClusterSetup(env: string, bootstrap: BootstrapIdenti
       }
     });
 
-    report.exposure = await probeExposure(cluster, options, deps.connectProbe);
-    for (const line of report.exposure) report.addWarning('cluster', line);
+    for (const problem of await probeExposure(cluster, options, deps.connectProbe)) report.addWarning('cluster', problem.message, problem.suggestion);
 
     if (report.failedNodes.length > 0) {
       throw new CLIError(`k3s setup of ${env} failed on ${report.failedNodes.join(', ')}`, ErrorCode.COMMAND_FAILED, 'See the node rows above for the failing step.');

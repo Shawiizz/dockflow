@@ -44,7 +44,7 @@ export const verifyMessages = {
   }),
   exposed: (label: string, key: string, addr: string, port: number, env: string): SetupProblem => ({
     message: `The ${label} of ${key} answers on ${addr}:${port} from outside the cluster`,
-    suggestion: `Deny ${port} from every address except the other nodes in your provider firewall, then check again with \`dockflow setup k3s ${env} --dry-run\`.`,
+    suggestion: `Restrict these ports to the other nodes in your provider firewall, then re-run \`dockflow setup k3s ${env}\` to probe them again.`,
   }),
 } as const;
 

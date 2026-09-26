@@ -181,7 +181,7 @@ export const setupMessages = {
   /** `reason` names an installed-but-idle tool or `--skip-firewall`, null when no tool is installed */
   noFirewall: (key: string, env: string, reason: string | null): SetupProblem => ({
     message: `No host firewall is managed on ${key}, so 6443, 10250, 2379-2380 and 8472 stay open unless your provider firewall blocks them${reason === null ? '' : ` (${reason})`}`,
-    suggestion: `Allow only the flows printed at the end of this run and deny those ports from every other source, then re-check with \`dockflow setup k3s ${env} --dry-run\`.`,
+    suggestion: `Allow only the flows printed below and deny those ports from every other source, then re-run \`dockflow setup k3s ${env}\` to probe them again.`,
   }),
   netcheckLeftOver: (env: string): SetupProblem => ({
     message: `A dockflow-netcheck DaemonSet from an interrupted setup is still running on ${env}`,

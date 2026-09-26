@@ -279,14 +279,16 @@ describe('install.sh (4.4, I4, U-SETUP-INSTALL-05)', () => {
     runner.assertDone();
   });
 
-  it('a failure carries the last 30 lines, redacted, and the --debug hint; --debug keeps every line', async () => {
+  it('a failure carries the last 30 lines, redacted, and the journalctl hint; debug keeps every line', async () => {
     const runner = host();
     runner.seedCache(SCRIPT_BYTES);
     const lines = Array.from({ length: 40 }, (_, i) => `line ${i + 1}${i === 39 ? ` token ${TOKEN}` : ''}`);
     runner.installScript = { exitCode: 1, stdout: `${lines.join('\n')}\n` };
     const error = await failure(runInstallScript(runner, SCRIPT, 'server-init', KEY, { redactor }));
     expect(error.message).toBe('The k3s install script failed on server_1 (exit 1)');
-    expect(error.suggestion).toBe('Run the setup again with --debug to see the full output.');
+    expect(error.suggestion).toBe(
+      'Read the script output above; if the k3s service failed to start, `journalctl -u k3s -n 100` on server_1 (`-u k3s-agent` on an agent) says why.',
+    );
     expect(error.logTail).toHaveLength(30);
     expect(error.logTail[0]).toBe('line 11');
     expect(error.logTail.at(-1)).toBe('line 40 token ***');

@@ -79,7 +79,7 @@ export const installMessages = {
   }),
   installScriptFailed: (key: string, exitCode: number): SetupProblem => ({
     message: `The k3s install script failed on ${key} (exit ${exitCode})`,
-    suggestion: 'Run the setup again with --debug to see the full output.',
+    suggestion: `Read the script output above; if the k3s service failed to start, \`journalctl -u k3s -n 100\` on ${key} (\`-u k3s-agent\` on an agent) says why.`,
   }),
   serviceTimeout: (key: string, timeoutS: number, state: ServiceState): string =>
     `k3s on ${key} did not become ready within ${timeoutS}s (${state.activeState}/${state.subState}, ${state.restarts} restarts)`,
