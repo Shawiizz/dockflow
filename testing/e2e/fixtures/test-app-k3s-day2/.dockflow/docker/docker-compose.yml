@@ -6,6 +6,11 @@ services:
       dockerfile: .dockflow/docker/Dockerfile.web
     deploy:
       replicas: 3
+      # Dockflow's defaults (delay 10s, monitor 30s) take minutes per rollout of 3 replicas; the
+      # lane restarts these services several times and tests what restarts, not how slowly
+      update_config:
+        delay: 1s
+        monitor: 2s
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
       interval: 5s
@@ -18,9 +23,17 @@ services:
   ticker:
     image: busybox:1.37
     command: ['sh', '-c', 'trap "exit 143" TERM; echo "boot $$RANDOM"; i=0; while true; do i=$$((i+1)); echo "tick $$i"; sleep 1; done']
+    deploy:
+      update_config:
+        delay: 1s
+        monitor: 2s
 
   daemon:
     image: busybox:1.37
     command: ['sh', '-c', 'sleep 36000']
+    stop_grace_period: 1s
     deploy:
       mode: global
+      update_config:
+        delay: 1s
+        monitor: 2s
