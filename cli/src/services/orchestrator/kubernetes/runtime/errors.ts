@@ -62,7 +62,8 @@ const RULES: Rule[] = [
     matches: (_exitCode, stderr) => stderr.includes(K8S_KUBECONFIG_PATH) && /no such file|permission denied/i.test(stderr),
   },
   { reason: 'CertificateMismatch', matches: has('x509:') },
-  { reason: 'Unauthorized', matches: has('(Unauthorized)', 'You must be logged in') },
+  // client-go's own words for a 401, e.g. when kubectl apply downloads the OpenAPI schema first
+  { reason: 'Unauthorized', matches: has('(Unauthorized)', 'You must be logged in', 'the server has asked for the client to provide credentials') },
   {
     reason: 'Unreachable',
     matches: has('connection refused', 'Unable to connect to the server', 'dial tcp', 'The connection to the server'),

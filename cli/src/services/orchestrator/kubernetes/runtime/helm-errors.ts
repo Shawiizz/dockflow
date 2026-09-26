@@ -35,8 +35,8 @@ const NOT_READY_LINE = /resource \S+ not ready\. status: .*/;
 /** the API server is dialled on loopback or on its well-known port 6443; a chart repository is not */
 const API_DIAL = /dial tcp (?:(?:127\.\d+\.\d+\.\d+|\[::1\]|localhost)[:\s]|(?:\[[0-9a-fA-F:.]+\]|[^\s:[]+):6443\b)/;
 
-/** Helm's and client-go's own words for "the API server did not answer" */
-const CLUSTER_UNREACHABLE = ['Kubernetes cluster unreachable', 'Unable to connect to the server', 'The connection to the server'];
+/** Helm's and client-go's own words for "the API server did not answer", lowercased: Helm 4 lowercased its own */
+const CLUSTER_UNREACHABLE = ['kubernetes cluster unreachable', 'unable to connect to the server', 'the connection to the server'];
 
 type Matcher = (exitCode: number, stderr: string) => boolean;
 
@@ -96,7 +96,8 @@ function clusterUnreachable(exitCode: number, stderr: string): KubeErrorReason {
 
 export function classifyHelmFailure(exitCode: number, stderr: string): HelmFailureReason {
   if (exitCode === 127 || HELM_MISSING.test(stderr)) return 'ToolMissing';
-  if (CLUSTER_UNREACHABLE.some((text) => stderr.includes(text))) return clusterUnreachable(exitCode, stderr);
+  const lower = stderr.toLowerCase();
+  if (CLUSTER_UNREACHABLE.some((text) => lower.includes(text))) return clusterUnreachable(exitCode, stderr);
   return RULES.find((rule) => rule.matches(exitCode, stderr))?.reason ?? classifyKubectlFailure(exitCode, stderr);
 }
 

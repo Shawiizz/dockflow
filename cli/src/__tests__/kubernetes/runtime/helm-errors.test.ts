@@ -183,6 +183,14 @@ describe('classifyHelmFailure', () => {
       'CertificateMismatch',
     );
   });
+
+  it('reads Helm 4, which lowercased its wrapper, the same way', () => {
+    // helm list against a deploy identity whose token Secret was deleted (E-77-03)
+    expect(classifyHelmFailure(1, 'Error: kubernetes cluster unreachable: the server has asked for the client to provide credentials\n')).toBe('Unauthorized');
+    expect(classifyHelmFailure(1, 'Error: kubernetes cluster unreachable: Get "https://127.0.0.1:6443/version": dial tcp 127.0.0.1:6443: connect: connection refused\n')).toBe(
+      'Unreachable',
+    );
+  });
 });
 
 describe('helmFailureDetail', () => {
