@@ -163,6 +163,7 @@ helm baked into the node image and indexed into `.cache/charts/{public,private}`
 `charts` auxiliary container.
 
 **ACME never talks to Let's Encrypt in CI** (K49): the `acme` auxiliary container runs Pebble
-(`fixtures/acme/`) with a certificate issued by a dedicated test CA (`pebble.minica.pem`); projects
-point `proxy.acme_ca_server` at it and `proxy.acme_ca_bundle` at that CA. Only the manual real-machine
+(`fixtures/acme/pebble-config.json`) with a certificate for its address on each lane network, issued
+by a throwaway CA the harness generates into `.cache/acme/` on first use (`pebble.minica.pem`);
+projects point `proxy.acme_ca_server` at it and `proxy.acme_ca_bundle` at that CA. Only the manual real-machine
 checklist (design-07 21) uses Let's Encrypt production, with a staging rehearsal first.

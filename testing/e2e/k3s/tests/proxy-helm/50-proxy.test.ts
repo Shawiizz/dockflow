@@ -11,7 +11,9 @@
  */
 
 import { afterAll, describe, expect, test } from "bun:test";
+import { readFileSync } from "fs";
 import { runCLI, runCLIInBackground } from "../../../helpers/cli";
+import { PEBBLE_CA } from "../../../helpers/cluster";
 import { dumpDebug } from "../../../helpers/debug-dump";
 import { type Fixture, makeFixture } from "../../../helpers/fixtures";
 import { curlFrom, deleteStackCompletely, getJson, helm, kubectl, nodeExec, nsFor, waitFor, waitWorkloadReady } from "../../../helpers/k8s";
@@ -208,6 +210,7 @@ describe("50-proxy", () => {
 
     test("E-50-07: ACME on with Pebble issues and serves a real certificate", async () => {
       await withDump("E-50-07", async () => {
+        fixture.write(".dockflow/acme/pebble.minica.pem", readFileSync(PEBBLE_CA, "utf-8"));
         fixture.write(
           ".dockflow/config.yml",
           configYml(
