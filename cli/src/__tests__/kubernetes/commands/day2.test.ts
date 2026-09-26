@@ -314,6 +314,28 @@ describe('status', () => {
     }
   });
 
+  it('clears its budget timer once the environment answered, so the process exits with the table', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    orchestrator.program('releases.current', null);
+    orchestrator.program('stack.getServices', []);
+    open(orchestrator);
+    const raw = spyRaw();
+    const section = spySection();
+    const set = spyOn(globalThis, 'setTimeout');
+    const clear = spyOn(globalThis, 'clearTimeout');
+    try {
+      await runStatus(undefined, { availableEnvironments: () => ['production'], managerCount: () => 3, budgetMs: () => 61_000 });
+      const budgetTimers = set.mock.calls.flatMap((call, index) => (call[1] === 61_000 ? [set.mock.results[index]?.value as ReturnType<typeof setTimeout>] : []));
+      expect(budgetTimers).toHaveLength(1);
+      expect(clear.mock.calls.map((call) => call[0])).toContain(budgetTimers[0]);
+    } finally {
+      set.mockRestore();
+      clear.mockRestore();
+      raw.mockRestore();
+      section.mockRestore();
+    }
+  });
+
   it('reports "no manager configured" without opening the orchestrator', async () => {
     const orchestrator = new FakeOrchestrator('k3s');
     orchestrator.forbidRemoteWork();

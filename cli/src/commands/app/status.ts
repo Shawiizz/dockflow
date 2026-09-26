@@ -26,8 +26,13 @@ interface EnvStatus {
 
 const TIMEOUT = Symbol('status-timeout');
 
-function timeout(ms: number): Promise<typeof TIMEOUT> {
-  return new Promise((resolve) => setTimeout(() => resolve(TIMEOUT), ms));
+/** `cancel` must run once the race settles: a pending timer keeps the process alive until it fires. */
+function timeout(ms: number): { expired: Promise<typeof TIMEOUT>; cancel(): void } {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<typeof TIMEOUT>((resolve) => {
+    timer = setTimeout(() => resolve(TIMEOUT), ms);
+  });
+  return { expired, cancel: () => clearTimeout(timer) };
 }
 
 /** What `status` reads before it can call `openDay2`, so tests never touch this checkout's own servers.yml. */
@@ -52,8 +57,9 @@ async function getEnvStatus(env: string, deps: StatusDeps): Promise<EnvStatus> {
   }
 
   const budgetMs = deps.budgetMs(managers);
+  const budget = timeout(budgetMs);
   try {
-    const raced = await Promise.race([openDay2(env, {}), timeout(budgetMs)]);
+    const raced = await Promise.race([openDay2(env, {}), budget.expired]);
     if (raced === TIMEOUT) return unavailable('timeout', new ConnectionError(`${env} did not answer within ${budgetMs / 1000}s`));
     const ctx = raced;
     const [meta, services] = await Promise.all([
@@ -69,6 +75,8 @@ async function getEnvStatus(env: string, deps: StatusDeps): Promise<EnvStatus> {
     const failure = CLIError.from(error, ErrorCode.CONNECTION_FAILED);
     if (/No SSH credentials/.test(failure.message)) return unavailable('host not set (CI secret missing?)', failure);
     return unavailable(failure.message, failure);
+  } finally {
+    budget.cancel();
   }
 }
 
