@@ -3,19 +3,26 @@
  * reaches every node on a published port, `lb_source_ranges` is enforced, the SSH host port is
  * refused at render time, an unmanaged port with no proxy works, changing a published port frees the
  * old one, a same-port collision between two projects is caught only at convergence
- * (LoadBalancerPending), and the same collision against a Dockflow-owned Traefik is caught at render
- * time instead.
+ * (LoadBalancerPending), Traefik is not installed while another stack's load balancer holds port 80,
+ * and the same collision against a Dockflow-owned Traefik is caught at render time instead.
  */
 
 import { afterAll, describe, expect, test } from "bun:test";
 import { runCLI } from "../../../helpers/cli";
-import { curlFrom, deleteStackCompletely, nsFor } from "../../../helpers/k8s";
+import { curlFrom, deleteStackCompletely, getJson, nsFor, waitFor } from "../../../helpers/k8s";
 import { dumpDebug } from "../../../helpers/debug-dump";
 import type { Fixture } from "../../../helpers/fixtures";
 import { multinodeFixture } from "./fixture";
 import { currentTopology, nodeFor } from "../../../helpers/topology";
+import type { Pod } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/core";
 
 const ENV = "e2e";
+const NS = nsFor("k3s-multi", ENV);
+
+async function hostPortHolders(port: number): Promise<string[]> {
+  const pods = await getJson<Pod>("pods");
+  return pods.filter((pod) => pod.spec.containers.some((c) => (c.ports ?? []).some((p) => p.hostPort === port))).map((pod) => pod.metadata.name);
+}
 
 async function withDump<T>(name: string, fn: () => Promise<T>): Promise<T> {
   try {
@@ -130,7 +137,7 @@ describe("ServiceLB", () => {
         const combined = `${result.stdout}${result.stderr}`;
         // design-03's LoadBalancerPending wording, naming the project that holds the port
         expect(combined).toMatch(/Published port 18092\/TCP of service collider cannot be bound: it is already used by service \S+ in namespace/);
-        expect(combined).toContain(nsFor("k3s-multi", ENV));
+        expect(combined).toContain(NS);
 
         const topo = currentTopology();
         const server1 = nodeFor(topo, "server_1");
@@ -169,7 +176,18 @@ describe("ServiceLB", () => {
           ".dockflow/docker/docker-compose.yml",
           'services:\n  proxied:\n    image: k3s-multi-proxied\n    build:\n      context: ../..\n      dockerfile: Dockerfile.web\n    deploy:\n      replicas: 1\n',
         );
-        const install = await runCLI(["deploy", ENV, "1.0.0", "--yes"], { cwd: owner.dir, timeoutMs: 300_000 });
+        // plain80 still publishes 80 through the load balancer, so Traefik cannot take it yet
+        const blocked = await runCLI(["deploy", ENV, "1.0.0", "--yes"], { cwd: owner.dir, timeoutMs: 300_000 });
+        expect(blocked.exitCode).toBe(50);
+        expect(`${blocked.stdout}${blocked.stderr}`).toContain(`Port 80 is already published by service plain80-lb in namespace ${NS}`);
+
+        await deleteStackCompletely(NS);
+        await waitFor(async () => ((await hostPortHolders(80)).length === 0 ? true : undefined), {
+          timeoutMs: 120_000,
+          describe: "the load balancer to release port 80",
+        });
+
+        const install = await runCLI(["deploy", ENV, "1.0.1", "--yes"], { cwd: owner.dir, timeoutMs: 300_000 });
         expect(install.exitCode).toBe(0);
 
         const collide = await runCLI(["deploy", ENV, "1.0.2", "--only", "plain80", "--yes"], { cwd: fixture.dir, timeoutMs: 120_000 });
@@ -183,5 +201,5 @@ describe("ServiceLB", () => {
         owner.cleanup();
       }
     });
-  }, 420_000);
+  }, 600_000);
 });
