@@ -826,6 +826,24 @@ describe('ApplyEngine', () => {
   });
 
   describe('server dry-run and apply (design-03 5.5)', () => {
+    it('removes the stop annotation of a workload the apply brings back (E-34-10)', async () => {
+      const h = harness();
+      await deploy(h, [deployment('redis')]);
+      h.cluster.tick(2);
+      // what `accessories stop` does
+      await h.kube.run({
+        args: ['patch', 'deployments.apps/redis', '--type=merge', '-p', JSON.stringify({ metadata: { annotations: { [ANNOTATIONS.replicasBeforeStop]: '1' } }, spec: { replicas: 0 } })],
+        namespace: NS,
+        mutating: true,
+      });
+
+      await deploy(h, [deployment('redis')]);
+
+      const redis = live(h, 'deployments.apps', 'redis') as { metadata: ObjectMeta; spec: { replicas?: number } } | undefined;
+      expect(redis?.spec.replicas).toBe(1);
+      expect(redis?.metadata.annotations?.[ANNOTATIONS.replicasBeforeStop]).toBeUndefined();
+    });
+
     it('leaves the cluster untouched when the dry-run is rejected (U-APPLY-04, SD5)', async () => {
       const h = harness();
       await h.engine.ensureNamespace(REF);

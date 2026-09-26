@@ -629,6 +629,23 @@ export class ApplyEngine {
     }
   }
 
+  /**
+   * `stop` records P/replicas-before-stop through a merge patch, so the server-side apply that
+   * brings the workload back owns spec.replicas but not that annotation: it is removed here, or the
+   * running workload would keep saying it was stopped.
+   */
+  private async clearStopAnnotations(namespace: string, before: Snapshot, applied: readonly ManifestObject[]): Promise<void> {
+    for (const o of applied) {
+      if ((o.kind !== 'Deployment' && o.kind !== 'StatefulSet') || (o.spec.replicas ?? 1) === 0) continue;
+      if (!before.workloads.some((w) => w.kind === o.kind && w.name === o.metadata.name && w.stopAnnotated)) continue;
+      await this.kubectl.run({
+        args: ['patch', `${KIND_REGISTRY[o.kind].resource}/${o.metadata.name}`, '--type=merge', '-p', JSON.stringify({ metadata: { annotations: { [ANNOTATIONS.replicasBeforeStop]: null } } })],
+        namespace,
+        mutating: true,
+      });
+    }
+  }
+
   private async replaceTimeout(
     ref: StackRef,
     namespace: string,
@@ -726,6 +743,7 @@ export class ApplyEngine {
         options.onApplyProgress?.({ kind: 'reverted', revert: reverted });
         throw partialApplyError(namespace, error, reverted, { env: ref.env, distribution: this.distribution.traits.name });
       }
+      await this.clearStopAnnotations(namespace, before, toApply);
     }
 
     const after = await this.snapshot(namespace, ref.role);

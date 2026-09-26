@@ -91,6 +91,8 @@ export interface LiveWorkload {
   paused: boolean;
   /** metadata.deletionTimestamp is set */
   deleting: boolean;
+  /** carries P/replicas-before-stop: `stop` scaled it to 0 (absent when not) */
+  stopAnnotated?: boolean;
   /** Jobs only: terminal state from conditions, and status.active ?? 0 */
   job: { finished: 'complete' | 'failed' | null; active: number } | null;
   /**
@@ -271,6 +273,7 @@ function toLiveWorkload(workload: WorkloadObject, revisions: readonly Controller
     graceSeconds: spec?.terminationGracePeriodSeconds ?? 30,
     paused: workload.kind === 'Deployment' && workload.spec.paused === true,
     deleting: workload.metadata.deletionTimestamp !== undefined,
+    ...(workload.metadata.annotations?.[ANNOTATIONS.replicasBeforeStop] !== undefined ? { stopAnnotated: true } : {}),
     job: workload.kind === 'Job' ? jobState(workload) : null,
     claimTemplates: claimTemplatesOfWorkload(workload),
     refs: templateRefs(spec),
