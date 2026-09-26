@@ -209,7 +209,8 @@ export function planRevert(input: RevertPlanInput): RevertPlan {
     }
   }
 
-  const disruptive = new Set(input.disruptive.map((d) => d.service));
+  // kind switches only: a re-run Job (`from: null`) cannot be undone, the failed run stays for its logs
+  const disruptive = new Set(input.disruptive.filter((d) => d.from !== null).map((d) => d.service));
   const deleteFirst: LiveObjectRef[] = [];
   for (const service of restore) {
     const restored = [...apply.values()].filter((o) => isWorkload(o) && composeServiceOf(o) === service);

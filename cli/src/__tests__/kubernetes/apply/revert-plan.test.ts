@@ -487,6 +487,24 @@ describe('planRevert', () => {
     expect(plan.remove).toEqual([]);
   });
 
+  it('a failed re-run of a Job is left in place: it is not a kind switch to undo', () => {
+    // the previous release ran migrate-00000000; the failed version's migrate-3f9a1c2e was re-run and failed again
+    const previous = [job('migrate-00000000', 'migrate')];
+    const applied = [job('migrate-3f9a1c2e', 'migrate')];
+    const workloads = [live('Job', 'migrate-00000000', { service: 'migrate' }), live('Job', 'migrate-3f9a1c2e', { service: 'migrate' })];
+    const plan = planRevert(
+      input({
+        applied,
+        previous: { version: '1.4.1', objects: previous, helm: [] },
+        changes: [change('migrate', 'Job', 'migrate-3f9a1c2e', { created: true })],
+        disruptive: [{ service: 'migrate', from: null, to: 'Job', deleted: { kind: 'Job', name: 'migrate-3f9a1c2e' } }],
+        before: snapshot(...workloads),
+        now: snapshot(...workloads),
+      }),
+    );
+    expect(plan.deleteFirst).toEqual([]);
+  });
+
   it('U-REVERT-03b: a disruptive kind switch deletes the live workload of the new kind first', () => {
     const previous = [deployment('db', { claims: ['pgdata'] }), pvc('pgdata')];
     const applied = [statefulSet('db', { claims: ['pgdata'] }), pvc('pgdata')];
