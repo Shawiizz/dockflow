@@ -7,7 +7,7 @@
 
 import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
-import { lastCliInvocation } from "./cli";
+import { recentCliInvocations } from "./cli";
 import { tryExec } from "./cluster";
 import { helm, kubectl } from "./k8s";
 import { currentTopology, type Topology } from "./topology";
@@ -74,13 +74,17 @@ async function dumpCluster(dir: string): Promise<void> {
 }
 
 function dumpLastCliInvocation(dir: string): void {
-  const invocation = lastCliInvocation();
-  if (!invocation) return;
-  const { args, result } = invocation;
+  const invocations = recentCliInvocations();
+  if (invocations.length === 0) return;
   write(
     dir,
     "last-cli-invocation.txt",
-    `dockflow ${args.join(" ")}\nexit ${result.exitCode} (${result.durationMs}ms)\n\n--- stdout ---\n${result.stdout}\n\n--- stderr ---\n${result.stderr}\n`,
+    invocations
+      .map(
+        ({ args, result }) =>
+          `dockflow ${args.join(" ")}\nexit ${result.exitCode} (${result.durationMs}ms)\n\n--- stdout ---\n${result.stdout}\n\n--- stderr ---\n${result.stderr}\n`,
+      )
+      .join("\n========== earlier invocation ==========\n\n"),
   );
 }
 

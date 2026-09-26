@@ -50,11 +50,21 @@ interface Invocation {
   readonly result: CLIResult;
 }
 
-/** The most recent runCLI/runCLIInBackground result, read by debug-dump.ts on a failure (16.11). */
-let lastInvocation: Invocation | undefined;
+/**
+ * The most recent runCLI/runCLIInBackground results, read by debug-dump.ts on a failure (16.11).
+ * More than one, so a cleanup command run in a `finally` does not hide the one that failed.
+ */
+const recentInvocations: Invocation[] = [];
+const KEPT_INVOCATIONS = 3;
 
-export function lastCliInvocation(): Invocation | undefined {
-  return lastInvocation;
+function record(invocation: Invocation): void {
+  recentInvocations.push(invocation);
+  if (recentInvocations.length > KEPT_INVOCATIONS) recentInvocations.shift();
+}
+
+/** Newest first. */
+export function recentCliInvocations(): readonly Invocation[] {
+  return [...recentInvocations].reverse();
 }
 
 function spawnCli(args: string[], opts: RunCLIOptions) {
@@ -109,7 +119,7 @@ export async function runCLI(args: string[], opts: RunCLIOptions): Promise<CLIRe
   const started = Date.now();
   const proc = spawnCli(args, opts);
   const result = await collect(proc, args, timeoutMs, started);
-  lastInvocation = { args, result };
+  record({ args, result });
   return result;
 }
 
@@ -136,7 +146,7 @@ export function runCLIInBackground(args: string[], opts: RunCLIOptions): CLIBack
   const started = Date.now();
   const proc = spawnCli(args, opts);
   const done = collect(proc, args, timeoutMs, started).then((result) => {
-    lastInvocation = { args, result };
+    record({ args, result });
     return result;
   });
   return { done, kill: (signal = "SIGINT") => proc.kill(signal) };
