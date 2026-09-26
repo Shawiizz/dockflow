@@ -206,10 +206,12 @@ async function applyAdoptions(ctx: DeployContext, appInput: StackDeployInput): P
   if (!names?.length || !helm) return;
 
   const historyMax = Math.max(5, (ctx.config.stack_management?.keep_releases ?? 3) + 2);
+  // the id the ownership labels carry, as for every other Helm call: the stack name is not it
+  const stackId = ctx.orchestrator.naming.scope({ project: ctx.config.project_name, env: ctx.env, role: 'app' });
   for (const release of appInput.helm.filter((r) => names.includes(r.name))) {
     const result = await helm.upgradeInstall(release, {
       historyMax,
-      stackId: ctx.stackName,
+      stackId,
       description: `Dockflow ${ctx.deployVersion}`,
       adopt: true,
     });

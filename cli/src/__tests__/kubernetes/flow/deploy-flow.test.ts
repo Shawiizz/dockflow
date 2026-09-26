@@ -170,6 +170,25 @@ describe('execute — chart bytes pinned before the release record (design-04 3.
   });
 });
 
+describe('execute — --adopt (design-04 3.7.4)', () => {
+  it('takes the release over with the stack id every Helm ownership label carries, not the stack name', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    const ctx = fakeContext(orchestrator, {
+      config: config({ helm: { releases: [{ name: 'search', chart: 'search', repo: 'https://charts.example.org', version: '2.4.1', role: 'app' }] } }),
+      // `yes` is a deploy CLI flag outside DeployOptions (deploy.ts); the preview asks for it
+      options: { adopt: ['search'], yes: true } as DeployContext['options'],
+      target: soloTarget(),
+    });
+
+    await execute(ctx);
+
+    const [call] = orchestrator.callsTo('helm.upgradeInstall');
+    const stackId = orchestrator.naming.scope({ project: ctx.config.project_name, env: ctx.env, role: 'app' });
+    expect((call?.[1] as { stackId: string }).stackId).toBe(stackId);
+    expect(stackId).not.toBe(ctx.stackName);
+  });
+});
+
 describe('execute — U-FLOW-02 accessories skipped / proxy before accessories', () => {
   it('no accessories.yml: no waitConvergence:accessory, no finalize:accessory', async () => {
     const orchestrator = new FakeOrchestrator('k3s');
