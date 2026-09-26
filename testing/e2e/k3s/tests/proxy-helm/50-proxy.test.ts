@@ -34,7 +34,7 @@ import { K8S_PROXY_RELEASE, K8S_SYSTEM_NAMESPACE, LABELS } from "../../../../../
 import { TRAEFIK_CHART_PIN } from "../../../../../cli/src/services/orchestrator/kubernetes/versions";
 import type { Deployment } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/apps";
 import type { IngressRoute, IngressRouteRoute, Middleware } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/traefik";
-import type { Container, PersistentVolumeClaim, Pod, Secret } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/core";
+import type { PersistentVolumeClaim, Pod, Secret } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/core";
 
 const FILE = "50-proxy.test.ts";
 const ENV = "e2e";
@@ -136,8 +136,10 @@ describe("50-proxy", () => {
       expect(entry?.status).toBe("deployed");
 
       const deployment = await traefikDeployment();
-      const image = deployment?.spec.template.spec.containers.find((c: Container) => c.name === "traefik")?.image;
-      expect(image).toBe(`docker.io/traefik:${TRAEFIK_CHART_PIN.appVersion}`);
+      // the chart's only container (named after the release), its image pinned by digest when the pin has one
+      const image = deployment?.spec.template.spec.containers[0]?.image;
+      const pinned = TRAEFIK_CHART_PIN.imageDigest;
+      expect(image).toBe(pinned ? `docker.io/traefik@${pinned}` : `docker.io/traefik:${TRAEFIK_CHART_PIN.appVersion}`);
     });
   }, 220_000);
 
