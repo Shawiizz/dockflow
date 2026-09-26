@@ -113,7 +113,14 @@ function fixtureAt(dir: string): Fixture {
 
   return {
     dir,
-    cleanup: () => rmSync(dir, { recursive: true, force: true }),
+    cleanup: () => {
+      try {
+        // Windows can hold a just-used directory for a moment (a scanner, a CLI killed on timeout)
+        rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+      } catch {
+        // a temp copy left behind fails nothing
+      }
+    },
     path,
     read,
     write,

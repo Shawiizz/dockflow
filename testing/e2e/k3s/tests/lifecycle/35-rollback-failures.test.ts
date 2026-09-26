@@ -676,7 +676,8 @@ describe("workload-kind switches (E-35-19)", () => {
         result = await runCLI(["deploy", ENV, "1.0.1", "--yes"], { cwd: f.dir, timeoutMs: 60_000 });
         expect(result.exitCode).toBe(50); // DEPLOY_FAILED
         expect(result.stdout + result.stderr).toMatch(/changes from Deployment to StatefulSet/);
-        expect(result.stdout + result.stderr).toContain("shared_data");
+        // the claim's name, the one `volumes list` shows and the suggested `volumes rm` takes
+        expect(result.stdout + result.stderr).toContain("would stop using volume shared-data");
 
         const stillDeployment = await getJson<Deployment>("deployments.apps", { ns: ns2, name: "web" });
         expect(stillDeployment[0]?.metadata.generation).toBe(generationBefore);
