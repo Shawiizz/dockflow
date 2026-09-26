@@ -2,3 +2,4 @@
 # declares an app-role Helm release, redeploying into the same namespace to trigger the prune
 # refusal (U-PRUNE-07) before removing the compose workloads and retrying.
 project_name: "helmtransition"
+orchestrator: k3s

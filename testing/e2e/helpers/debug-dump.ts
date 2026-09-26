@@ -49,6 +49,8 @@ const CLUSTER_COMMANDS: ReadonlyArray<{ file: string; args: string[] }> = [
   { file: "events.txt", args: ["get", "events", "-A", "--sort-by=.lastTimestamp"] },
   { file: "pods-describe.txt", args: ["describe", "pods", "-A"] },
   { file: "secrets.txt", args: ["get", "secrets", "-A", "-o", "custom-columns=NS:.metadata.namespace,NAME:.metadata.name,TYPE:.type"] },
+  // ACME, routing and certificate errors only show here
+  { file: "traefik-logs.txt", args: ["logs", "-n", "dockflow-system", "deployment/dockflow-traefik", "--tail=300", "--all-containers"] },
 ];
 
 async function dumpNode(dir: string, node: Topology["nodes"][number]): Promise<void> {

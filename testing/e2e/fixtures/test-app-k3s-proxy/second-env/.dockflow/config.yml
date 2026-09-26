@@ -3,6 +3,7 @@
 # (disabled with stray labels / non-owning HTTP / a transient ACME-incompatible request); this is
 # the starting, proxy-disabled state.
 project_name: "shop-second"
+orchestrator: k3s
 
 proxy:
   enabled: false

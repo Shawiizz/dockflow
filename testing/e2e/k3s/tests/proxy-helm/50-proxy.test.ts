@@ -4,10 +4,9 @@
  * stack (K21).
  *
  * A handful of design-04 4.3 sub-checks this row set does not spell out byte for byte are adapted
- * rather than skipped (noted inline): dashboard auth credentials are not derivable from the harness,
- * so the dashboard check accepts either a served page or a basic-auth challenge; the literal
- * 2 640 s stale `pending-install` wait of design-04 4.4 is a test-machine-only scenario, so E-50-15
- * here waits only for the ordinary "operation in progress" refusal before recovering.
+ * rather than skipped (noted inline): the literal 2 640 s stale `pending-install` wait of design-04
+ * 4.4 is a test-machine-only scenario, so E-50-15 here waits only for the ordinary "operation in
+ * progress" refusal before recovering.
  */
 
 import { afterAll, describe, expect, test } from "bun:test";
@@ -206,10 +205,9 @@ describe("50-proxy", () => {
       const afterEntry = await releaseEntry(K8S_PROXY_RELEASE);
       expect(afterEntry?.revision).toBe((beforeEntry?.revision ?? 0) + 1);
 
-      const response = await curlFrom("server_1", "http://127.0.0.1/", { host: `dashboard.${DOMAIN}` });
-      // No harness credential exists for the owner-auth challenge: a served page or a 401 challenge
-      // both prove the dashboard route exists and is live.
-      expect([200, 401]).toContain(response.code);
+      // served without auth, as the proxy docs warn; `/` only redirects to /dashboard/
+      const response = await curlFrom("server_1", "http://127.0.0.1/dashboard/", { host: `dashboard.${DOMAIN}` });
+      expect(response.code).toBe(200);
     });
   }, 180_000);
 
@@ -266,8 +264,11 @@ describe("50-proxy", () => {
         expect(headers.stdout).toMatch(/HTTP\/\S+ 30[18]/);
         expect(headers.stdout).toMatch(/[Ll]ocation:\s*https:\/\//);
 
+        // the app's default route: the admin accessory's own router asks for no resolver
         const routes = await ingressRoutesOf(NS);
-        const secure = routes.find((r) => r.spec.entryPoints?.includes("websecure"));
+        const secure = routes.find(
+          (r) => r.spec.entryPoints?.includes("websecure") && r.spec.routes.some((rt: IngressRouteRoute) => rt.match.includes(`\`${DOMAIN}\``)),
+        );
         expect(secure?.spec.tls?.certResolver).toBeTruthy();
 
         const rootPath = await pebbleRoot();
