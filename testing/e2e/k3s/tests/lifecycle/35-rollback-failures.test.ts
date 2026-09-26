@@ -526,7 +526,9 @@ describe("rollback and failure handling (E-35)", () => {
       const codes = [ra.exitCode, rb.exitCode].sort((x, y) => x - y);
       expect(codes).toEqual([0, 51]);
       const loser = ra.exitCode === 51 ? ra : rb;
-      expect(loser.stdout + loser.stderr).toContain("Lock was stale but another deploy acquired it first");
+      // the loser either lost the replace of the stale Lease, or started late enough to read the
+      // winner's fresh one: process start-up decides which, the store contract (C-LOCK-07) pins the first
+      expect(loser.stdout + loser.stderr).toMatch(/Lock was stale but another deploy acquired it first|Already locked by /);
       expect(await leaseFor(NS)).toBeNull();
     });
   }, 300_000);
