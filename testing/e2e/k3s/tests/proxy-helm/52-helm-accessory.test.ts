@@ -7,7 +7,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { runCLI } from "../../../helpers/cli";
 import { dumpDebug } from "../../../helpers/debug-dump";
 import { type Fixture, makeFixture } from "../../../helpers/fixtures";
-import { deleteStackCompletely, helm, nsFor, waitWorkloadReady } from "../../../helpers/k8s";
+import { deleteStackCompletely, type HelmReleaseEntry, helmList, nsFor, waitWorkloadReady } from "../../../helpers/k8s";
 import { chartRepoUrl, SHARED_LANE } from "../../../helpers/topology";
 
 const FILE = "52-helm-accessory.test.ts";
@@ -15,12 +15,6 @@ const ENV = "e2e";
 const PUBLIC_REPO = chartRepoUrl(SHARED_LANE.net, "public");
 const NS = nsFor("helmapp");
 const RELEASE = "cache";
-
-interface HelmListEntry {
-  name: string;
-  revision: number;
-  updated: string;
-}
 
 function configWithAccessory(message: string): string {
   return [
@@ -53,10 +47,8 @@ async function withDump<T>(testName: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
-async function releaseEntry(): Promise<HelmListEntry> {
-  const raw = await helm(["list", "-n", NS, "-o", "json"]);
-  const entries: HelmListEntry[] = JSON.parse(raw);
-  const entry = entries.find((candidate) => candidate.name === RELEASE);
+async function releaseEntry(): Promise<HelmReleaseEntry> {
+  const entry = (await helmList(NS)).find((candidate) => candidate.name === RELEASE);
   if (!entry) throw new Error(`Helm release ${RELEASE} not found in ${NS}`);
   return entry;
 }

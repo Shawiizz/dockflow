@@ -62,7 +62,8 @@ export interface Fixture {
  * env file for the target cluster there.
  */
 export function makeFixture(name: string, opts: FixtureOptions = {}): Fixture {
-  const dir = mkdtempSync(join(tmpdir(), `dockflow-e2e-${name}-`));
+  // a nested fixture (`test-app-k3s-proxy/second-env`) must not make the prefix a subdirectory
+  const dir = mkdtempSync(join(tmpdir(), `dockflow-e2e-${name.replace(/[\\/]/g, "-")}-`));
   cpSync(join(FIXTURES_DIR, name), dir, { recursive: true });
   const fixture = fixtureAt(dir);
 

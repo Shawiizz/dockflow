@@ -15,7 +15,18 @@ import { CHARTS_DIR } from "../../../helpers/cluster";
 import { runCLI } from "../../../helpers/cli";
 import { dumpDebug } from "../../../helpers/debug-dump";
 import { type Fixture, makeFixture } from "../../../helpers/fixtures";
-import { decodeRelease, deleteStackCompletely, getJson, helm, nodeExec, nsFor, P, waitWorkloadReady } from "../../../helpers/k8s";
+import {
+  decodeRelease,
+  deleteStackCompletely,
+  getJson,
+  type HelmReleaseEntry,
+  helm,
+  helmList,
+  nodeExec,
+  nsFor,
+  P,
+  waitWorkloadReady,
+} from "../../../helpers/k8s";
 import { watchProcesses } from "../../../helpers/leak-watch";
 import { chartRepoUrl, E2E_CHARTS_PASSWORD, E2E_CHARTS_USER, SHARED_LANE } from "../../../helpers/topology";
 import { K8S_MANAGED_BY, LABELS } from "../../../../../cli/src/services/orchestrator/kubernetes/constants";
@@ -77,19 +88,8 @@ async function withDump<T>(testName: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
-interface HelmListEntry {
-  name: string;
-  revision: number;
-  chart: string;
-  status: string;
-}
-
-async function listReleases(ns = NS): Promise<HelmListEntry[]> {
-  return JSON.parse(await helm(["list", "-n", ns, "-o", "json"]));
-}
-
-async function findRelease(name: string, ns = NS): Promise<HelmListEntry | undefined> {
-  return (await listReleases(ns)).find((entry) => entry.name === name);
+async function findRelease(name: string, ns = NS): Promise<HelmReleaseEntry | undefined> {
+  return (await helmList(ns)).find((entry) => entry.name === name);
 }
 
 async function configMapMessage(releaseName: string): Promise<string | undefined> {
@@ -125,8 +125,8 @@ describe("51-helm-app", () => {
 
       const entry = await findRelease("web");
       expect(entry?.revision).toBe(1);
-      const roleLabelled = await helm(["list", "-n", NS, "-l", `${P}/stack=${NS},${P}/role=app`, "-o", "json"]);
-      expect(JSON.parse(roleLabelled).some((e: HelmListEntry) => e.name === "web")).toBe(true);
+      const roleLabelled = await helmList(NS, ["-l", `${P}/stack=${NS},${P}/role=app`]);
+      expect(roleLabelled.some((e) => e.name === "web")).toBe(true);
 
       const decoded = await decodeRelease(NS, "1.0.0");
       const record = decoded.metadata.helm?.find((r) => r.name === "web");

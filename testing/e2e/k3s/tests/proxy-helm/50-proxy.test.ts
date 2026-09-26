@@ -16,7 +16,19 @@ import { runCLI, runCLIInBackground } from "../../../helpers/cli";
 import { PEBBLE_CA } from "../../../helpers/cluster";
 import { dumpDebug } from "../../../helpers/debug-dump";
 import { type Fixture, makeFixture } from "../../../helpers/fixtures";
-import { curlFrom, deleteStackCompletely, getJson, helm, kubectl, nodeExec, nsFor, waitFor, waitWorkloadReady } from "../../../helpers/k8s";
+import {
+  curlFrom,
+  deleteStackCompletely,
+  getJson,
+  type HelmReleaseEntry,
+  helm,
+  helmList,
+  kubectl,
+  nodeExec,
+  nsFor,
+  waitFor,
+  waitWorkloadReady,
+} from "../../../helpers/k8s";
 import { auxAddress, currentTopology, nodeFor } from "../../../helpers/topology";
 import { K8S_PROXY_RELEASE, K8S_SYSTEM_NAMESPACE, LABELS } from "../../../../../cli/src/services/orchestrator/kubernetes/constants";
 import { TRAEFIK_CHART_PIN } from "../../../../../cli/src/services/orchestrator/kubernetes/versions";
@@ -40,17 +52,8 @@ async function withDump<T>(testName: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
-interface HelmListEntry {
-  name: string;
-  revision: number;
-  status: string;
-  /** `<chart>-<version>` */
-  chart: string;
-}
-
-async function releaseEntry(name: string, ns = K8S_SYSTEM_NAMESPACE): Promise<HelmListEntry | undefined> {
-  const raw = await helm(["list", "-n", ns, "-o", "json"]);
-  return (JSON.parse(raw) as HelmListEntry[]).find((entry) => entry.name === name);
+async function releaseEntry(name: string, ns = K8S_SYSTEM_NAMESPACE): Promise<HelmReleaseEntry | undefined> {
+  return (await helmList(ns)).find((entry) => entry.name === name);
 }
 
 async function traefikDeployment(): Promise<Deployment | undefined> {
@@ -110,10 +113,13 @@ describe("50-proxy", () => {
   let fixture: Fixture;
 
   afterAll(async () => {
+    // the shared-lane guard keeps dockflow-system itself: Traefik goes the way a user removes it
+    if (fixture) {
+      await runCLI(["helm", "uninstall", ENV, "--system", "--volumes", "--force", "--yes"], { cwd: fixture.dir, timeoutMs: 180_000 }).catch(() => {});
+    }
     fixture?.cleanup();
     await deleteStackCompletely(NS);
     await deleteStackCompletely(NS2);
-    await kubectl(["delete", "namespace", K8S_SYSTEM_NAMESPACE, "--ignore-not-found=true", "--wait=false"], { allowFailure: true });
   });
 
   test("E-50-01: deploy installs the cluster Traefik from the cached chart", async () => {
@@ -358,12 +364,13 @@ describe("50-proxy", () => {
       const middlewares = await getJson<Middleware>("middlewares", { ns: NS });
       expect(middlewares.some((m) => (m.spec.stripPrefix as { prefixes?: string[] } | undefined)?.prefixes?.includes("/api"))).toBe(true);
 
-      const response = await curlFrom("server_1", "http://127.0.0.1/api/x", { host: DOMAIN });
+      // only the stripped path exists on the app: /api/index.html answers 200 only through the middleware
+      const response = await curlFrom("server_1", "http://127.0.0.1/api/index.html", { host: DOMAIN });
       expect(response.code).toBe(200);
       await waitFor(
         async () => {
           const logs = await kubectl(["logs", "deployment/web", "-n", NS, "--tail=100"], { allowFailure: true });
-          return logs.includes("GET /x ") ? true : undefined;
+          return logs.includes("GET /index.html ") ? true : undefined;
         },
         { timeoutMs: 20_000, describe: "nginx access log to show the stripped path" },
       );

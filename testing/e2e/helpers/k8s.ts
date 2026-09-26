@@ -328,6 +328,23 @@ export async function helm(args: string[], node?: NodeKey): Promise<string> {
   return result.stdout;
 }
 
+export interface HelmReleaseEntry {
+  name: string;
+  namespace: string;
+  /** a number here: `helm list -o json` prints it as a string */
+  revision: number;
+  status: string;
+  /** `<chart>-<version>` */
+  chart: string;
+  updated: string;
+}
+
+/** `helm list -o json` in `ns`; `extraArgs` such as a label selector go before the output flag */
+export async function helmList(ns: string, extraArgs: readonly string[] = []): Promise<HelmReleaseEntry[]> {
+  const entries = JSON.parse(await helm(["list", "-n", ns, ...extraArgs, "-o", "json"])) as (Omit<HelmReleaseEntry, "revision"> & { revision: string | number })[];
+  return entries.map((entry) => ({ ...entry, revision: Number(entry.revision) }));
+}
+
 // ─── render vs live ─────────────────────────────────────────────────
 
 /**
