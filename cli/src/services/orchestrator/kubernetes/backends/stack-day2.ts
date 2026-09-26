@@ -660,8 +660,9 @@ export async function scale(deps: StackDay2Deps, ref: StackRef, service: string,
     deps,
   );
   if (result.status !== 'done') {
+    const within = result.status === 'timeout' ? ` within ${options.timeoutS}s` : '';
     throw new DeployError(
-      `Service ${service} did not reach ${replicas} ready replica(s) within ${options.timeoutS}s (${waitFailureDetail(result)})`,
+      `Service ${service} did not reach ${replicas} ready replica(s)${within} (${waitFailureDetail(result)})`,
       ErrorCode.DEPLOY_FAILED,
       `Run \`dockflow diagnose ${ref.env}\`.`,
     );
@@ -768,10 +769,8 @@ export async function restart(deps: StackDay2Deps, ref: StackRef, service: strin
     deps,
   );
   if (result.status !== 'done') {
-    throw new DeployError(
-      `Restart of ${namesOf(targets)} did not complete within ${options.timeoutS}s: ${waitFailureDetail(result)}`,
-      ErrorCode.DEPLOY_FAILED,
-      `Run \`dockflow diagnose ${ref.env}\`.`,
-    );
+    // a failure seen early says so; only a real timeout mentions the budget
+    const outcome = result.status === 'timeout' ? `did not complete within ${options.timeoutS}s` : 'failed';
+    throw new DeployError(`Restart of ${namesOf(targets)} ${outcome}: ${waitFailureDetail(result)}`, ErrorCode.DEPLOY_FAILED, `Run \`dockflow diagnose ${ref.env}\`.`);
   }
 }
