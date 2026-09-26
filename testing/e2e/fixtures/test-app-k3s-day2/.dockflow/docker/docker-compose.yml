@@ -13,10 +13,11 @@ services:
       retries: 3
 
   # boots once, then prints one line a second forever — enough to exercise --tail, --since, -f and
-  # a mid-run restart (its own PID 1 is killed by the test) without depending on request traffic.
+  # a mid-run restart without depending on request traffic. The test sends its PID 1 a TERM, which a
+  # PID 1 without a handler ignores: the trap turns it into an exit, and the kubelet restarts it.
   ticker:
     image: busybox:1.37
-    command: ['sh', '-c', 'echo "boot $$RANDOM"; i=0; while true; do i=$$((i+1)); echo "tick $$i"; sleep 1; done']
+    command: ['sh', '-c', 'trap "exit 143" TERM; echo "boot $$RANDOM"; i=0; while true; do i=$$((i+1)); echo "tick $$i"; sleep 1; done']
 
   daemon:
     image: busybox:1.37
