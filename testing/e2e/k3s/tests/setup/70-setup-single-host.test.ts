@@ -163,7 +163,8 @@ describe("E-70 setup-single-host (local mode)", () => {
       const sa = await kubectlOn(["get", "serviceaccount", K8S_DEPLOYER_SERVICE_ACCOUNT, "-n", K8S_SYSTEM_NAMESPACE, "-o", "name"]);
       expect(sa.trim()).toBe(`serviceaccount/${K8S_DEPLOYER_SERVICE_ACCOUNT}`);
       const crb = await kubectlOn(["get", "clusterrolebinding", K8S_DEPLOYER_CLUSTER_ROLE_BINDING, "-o", "name"]);
-      expect(crb.trim()).toBe(`clusterrolebinding/${K8S_DEPLOYER_CLUSTER_ROLE_BINDING}`);
+      // -o name qualifies a resource outside the core group with its API group
+      expect(crb.trim()).toBe(`clusterrolebinding.rbac.authorization.k8s.io/${K8S_DEPLOYER_CLUSTER_ROLE_BINDING}`);
       const secret = await kubectlOn(["get", "secret", K8S_DEPLOYER_TOKEN_SECRET, "-n", K8S_SYSTEM_NAMESPACE, "-o", "name"]);
       expect(secret.trim()).toBe(`secret/${K8S_DEPLOYER_TOKEN_SECRET}`);
     });
