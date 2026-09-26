@@ -367,7 +367,7 @@ describe("accessories volumes and protocol (E-34)", () => {
 
       expect(result.exitCode).toBe(0);
       expect(sawTwoDeletePvs).toBe(false);
-      expect(result.stdout).toMatch(/Deleted \d+ volume/);
+      expect(result.stderr).toMatch(/Deleted \d+ volume/);
       expect(result.stdout).toContain("Volume redis-data: deleted");
       expect(result.stdout).toContain("Volume pg-data: deleted");
 
@@ -441,8 +441,7 @@ describe("accessories volumes and protocol (E-34)", () => {
         const before = (await releaseSecrets(nsFor("k3s-acc-collide", ENV))).length;
         const result = await runCLI(["deploy", ENV, "1.0.0", "--debug", "--yes"], { cwd: variant.dir, timeoutMs: 60_000 });
         expect(result.exitCode).toBe(60);
-        expect(result.stdout + result.stderr).toContain("redis");
-        expect(result.stdout + result.stderr).toMatch(/role-collision/i);
+        expect(result.stdout + result.stderr).toContain("redis is declared in both docker-compose.yml and accessories.yml");
         expect((await releaseSecrets(nsFor("k3s-acc-collide", ENV))).length).toBe(before);
       } finally {
         variant.cleanup();

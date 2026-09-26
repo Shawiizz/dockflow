@@ -8,11 +8,11 @@ import type { Command } from 'commander';
 import { formatReplicas } from '../../services/orchestrator/format';
 import type { VolumeInfo, VolumeScope } from '../../services/orchestrator/interfaces';
 import { DeployError, ErrorCode, withServicesRequired } from '../../utils/errors';
-import { colors, createSpinner, printBlank, printError, printInfo, printNote, printRaw, printWarning } from '../../utils/output';
+import { colors, createSpinner, printBlank, printError, printInfo, printNote, printRaw, printSuccess, printWarning } from '../../utils/output';
 import { confirmPrompt, dangerousConfirmPrompt } from '../../utils/prompts';
 import { withResolvedEnv } from '../../utils/validation';
 import { type Day2Context, openDay2 } from '../shared/day2';
-import { requireAccessories } from './utils';
+import { accessoriesNotDeployed } from './utils';
 
 export interface AccessoriesRemoveOptions {
   server?: string;
@@ -27,21 +27,21 @@ function volumeScope(ctx: Day2Context): VolumeScope {
 export async function runAccessoriesRemove(env: string, options: AccessoriesRemoveOptions): Promise<void> {
   const ctx = await openDay2(env, { server: options.server });
   const ref = ctx.accessoryRef;
-  const services = await requireAccessories(ctx);
+  const volumesToDelete: VolumeInfo[] = options.volumes ? await ctx.orchestrator.volumes.list(volumeScope(ctx)) : [];
+  const deployed = await ctx.orchestrator.stack.exists(ref);
+  // --volumes still finishes a removal interrupted after the services went but before every volume did
+  if (!deployed && volumesToDelete.length === 0) throw accessoriesNotDeployed(env);
+  const services = deployed ? await ctx.orchestrator.stack.getServices(ref) : [];
 
   if (services.length > 0) {
     printWarning('The following services will be removed:');
     for (const service of services) printRaw(`  ${colors.info(service.name)} ${colors.dim(`(${formatReplicas(service)})`)}`);
   }
 
-  let volumesToDelete: VolumeInfo[] = [];
-  if (options.volumes) {
-    volumesToDelete = await ctx.orchestrator.volumes.list(volumeScope(ctx));
-    if (volumesToDelete.length > 0) {
-      printBlank();
-      printError('The following volumes will be PERMANENTLY DELETED:');
-      for (const volume of volumesToDelete) printRaw(`  ${colors.error(volume.name)}`);
-    }
+  if (volumesToDelete.length > 0) {
+    printBlank();
+    printError('The following volumes will be PERMANENTLY DELETED:');
+    for (const volume of volumesToDelete) printRaw(`  ${colors.error(volume.name)}`);
   }
 
   printBlank();
@@ -82,7 +82,7 @@ export async function runAccessoriesRemove(env: string, options: AccessoriesRemo
   if (options.volumes) {
     // stack.remove resolves only once every previewed volume is gone (a partial deletion throws
     // instead, core C13), so the pre-deletion preview is also the accurate deleted list.
-    printInfo(`Deleted ${volumesToDelete.length} volume(s)`);
+    printSuccess(`Deleted ${volumesToDelete.length} volume(s)`);
     for (const volume of volumesToDelete) printRaw(`Volume ${volume.name}: deleted`);
     return;
   }

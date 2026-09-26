@@ -9,15 +9,13 @@ import type { ServiceInfo } from '../../services/orchestrator/interfaces';
 import { CLIError, ErrorCode } from '../../utils/errors';
 import type { Day2Context } from '../shared/day2';
 
+export function accessoriesNotDeployed(env: string): CLIError {
+  return new CLIError('Accessories not deployed yet', ErrorCode.STACK_NOT_FOUND, `Deploy them with: \`dockflow deploy ${env} --accessories\`.`);
+}
+
 /** `exists(accessoryRef)` or `STACK_NOT_FOUND` (today's text); returns the accessory services when deployed. */
 export async function requireAccessories(ctx: Day2Context): Promise<ServiceInfo[]> {
   const deployed = await ctx.orchestrator.stack.exists(ctx.accessoryRef);
-  if (!deployed) {
-    throw new CLIError(
-      'Accessories not deployed yet',
-      ErrorCode.STACK_NOT_FOUND,
-      `Deploy them with: \`dockflow deploy ${ctx.env} --accessories\`.`,
-    );
-  }
+  if (!deployed) throw accessoriesNotDeployed(ctx.env);
   return ctx.orchestrator.stack.getServices(ctx.accessoryRef);
 }

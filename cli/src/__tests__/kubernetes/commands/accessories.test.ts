@@ -427,19 +427,54 @@ describe('accessories remove', () => {
     open(orchestrator);
     const warn = silence('printWarning');
     const error = silence('printError');
-    const info = silence('printInfo');
+    const success = silence('printSuccess');
     const raw = silence('printRaw');
 
     try {
       await runAccessoriesRemove('production', { volumes: true, yes: true });
       expect(orchestrator.callsTo('stack.remove')[0][1]).toEqual({ volumes: 'delete' });
+      expect(success).toHaveBeenCalledWith('Deleted 1 volume(s)');
       expect(raw.mock.calls.some((call: unknown[]) => call[0] === 'Volume db-data: deleted')).toBe(true);
     } finally {
       warn.mockRestore();
       error.mockRestore();
-      info.mockRestore();
+      success.mockRestore();
       raw.mockRestore();
     }
+  });
+
+  it('--volumes -y finishes an interrupted removal: services gone, the volumes left behind are deleted', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    orchestrator.program('stack.exists', false);
+    orchestrator.program('volumes.list', [volume({ name: 'pg-data' })]);
+    open(orchestrator);
+    const error = silence('printError');
+    const success = silence('printSuccess');
+    const raw = silence('printRaw');
+
+    try {
+      await runAccessoriesRemove('production', { volumes: true, yes: true });
+      expect(orchestrator.callsTo('stack.getServices').length).toBe(0);
+      expect(orchestrator.callsTo('stack.remove')[0][1]).toEqual({ volumes: 'delete' });
+      expect(raw.mock.calls.some((call: unknown[]) => call[0] === 'Volume pg-data: deleted')).toBe(true);
+      expect(orchestrator.lockHolder(orchestrator.target.stackName)).toBeNull();
+    } finally {
+      error.mockRestore();
+      success.mockRestore();
+      raw.mockRestore();
+    }
+  });
+
+  it('--volumes with neither services nor volumes left is still refused as not deployed', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    orchestrator.program('stack.exists', false);
+    open(orchestrator);
+
+    await expect(runAccessoriesRemove('production', { volumes: true, yes: true })).rejects.toMatchObject({
+      code: ErrorCode.STACK_NOT_FOUND,
+    });
+    expect(orchestrator.callsTo('lock.acquire').length).toBe(0);
+    expect(orchestrator.callsTo('stack.remove').length).toBe(0);
   });
 
   it('a held lock is reported as DEPLOY_LOCKED', async () => {
