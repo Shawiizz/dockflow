@@ -9,6 +9,7 @@
  */
 
 import { afterAll, describe, expect, test } from "bun:test";
+import { createHash } from "crypto";
 import { readFileSync, writeFileSync } from "fs";
 import { gunzipSync, gzipSync } from "zlib";
 import { CHARTS_DIR } from "../../../helpers/cluster";
@@ -31,6 +32,7 @@ import { watchProcesses } from "../../../helpers/leak-watch";
 import { chartRepoUrl, E2E_CHARTS_PASSWORD, E2E_CHARTS_USER, SHARED_LANE } from "../../../helpers/topology";
 import { K8S_MANAGED_BY, LABELS } from "../../../../../cli/src/services/orchestrator/kubernetes/constants";
 import { releaseSecretName } from "../../../../../cli/src/services/orchestrator/kubernetes/naming";
+import { chartCachePath } from "../../../../../cli/src/services/orchestrator/kubernetes/runtime/chart-archive";
 import type { ConfigMap, Namespace, PersistentVolumeClaim, Pod } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/core";
 import type { Job } from "../../../../../cli/src/services/orchestrator/kubernetes/resources/batch";
 
@@ -40,6 +42,9 @@ const PROJECT = "helmapp";
 const NS = nsFor(PROJECT);
 const PUBLIC_REPO = chartRepoUrl(SHARED_LANE.net, "public");
 const PRIVATE_REPO = chartRepoUrl(SHARED_LANE.net, "private");
+// a secret named <ENV>_<KEY> in .env.dockflow is `current.env.<key>` for that environment
+const PRIVATE_AUTH = { username: E2E_CHARTS_USER, passwordKey: "charts_password" };
+const PRIVATE_AUTH_SECRET = `${ENV.toUpperCase()}_CHARTS_PASSWORD`;
 
 interface ReleaseSpec {
   name: string;
@@ -50,7 +55,8 @@ interface ReleaseSpec {
   namespace?: string;
   timeout?: string;
   values?: Readonly<Record<string, string>>;
-  auth?: { username: string; passwordEnvVar: string };
+  /** `passwordKey` is a `current.env` key */
+  auth?: { username: string; passwordKey: string };
   /** opts into e2e-web's post-install/post-upgrade hook Job (E-51-03, fixture chart flag) */
   hookEnabled?: boolean;
 }
@@ -68,8 +74,7 @@ function configYml(releases: readonly ReleaseSpec[], extraTop: readonly string[]
     if (r.namespace) lines.push(`      namespace: ${r.namespace}`);
     if (r.timeout) lines.push(`      timeout: ${r.timeout}`);
     if (r.auth) {
-      // templates see servers.yml and .env.dockflow variables lowercased
-      lines.push("      auth:", `        username: "${r.auth.username}"`, `        password: "{{ current.env.${r.auth.passwordEnvVar.toLowerCase()} }}"`);
+      lines.push("      auth:", `        username: "${r.auth.username}"`, `        password: "{{ current.env.${r.auth.passwordKey} }}"`);
     }
     if (r.values || r.hookEnabled) {
       lines.push("      values:");
@@ -115,7 +120,7 @@ describe("51-helm-app", () => {
 
   test("E-51-01: first install", async () => {
     await withDump("E-51-01", async () => {
-      fixture = makeFixture("test-app-k3s-helm", { cluster: "k3s", extraEnv: { CHARTS_PASSWORD: E2E_CHARTS_PASSWORD } });
+      fixture = makeFixture("test-app-k3s-helm", { cluster: "k3s", extraEnv: { [PRIVATE_AUTH_SECRET]: E2E_CHARTS_PASSWORD } });
       fixture.write(
         ".dockflow/config.yml",
         configYml([{ name: "web", chart: "e2e-web", repo: PUBLIC_REPO, version: "0.1.0", values: { message: "hello" } }]),
@@ -273,11 +278,11 @@ describe("51-helm-app", () => {
             repo: PRIVATE_REPO,
             version: "0.1.0",
             values: { message: "private-repo" },
-            auth: { username: E2E_CHARTS_USER, passwordEnvVar: "CHARTS_PASSWORD" },
+            auth: PRIVATE_AUTH,
           },
         ]),
-        // the auth password is read from .env.dockflow (CHARTS_PASSWORD, set on the fixture in
-        // E-51-01), never written into config.yml as plaintext
+        // the auth password is read from .env.dockflow (set on the fixture in E-51-01), never
+        // written into config.yml as plaintext
       );
 
       const watch = watchProcesses(["server_1", "agent_1"], [/E2E_SECRET_/]);
@@ -307,7 +312,7 @@ describe("51-helm-app", () => {
             repo: PRIVATE_REPO,
             version: "0.1.0",
             values: { message: "private-repo" },
-            auth: { username: E2E_CHARTS_USER, passwordEnvVar: "CHARTS_PASSWORD" },
+            auth: PRIVATE_AUTH,
           },
           { name: "crd", chart: "e2e-crd", repo: PUBLIC_REPO, version: "0.1.0", namespace: "e2e-operator" },
         ]),
@@ -373,6 +378,13 @@ describe("51-helm-app", () => {
       return gzipSync(tar, { level: 1 });
     }
 
+    /** A rollback reuses the node's cached archive while it still has its pinned digest; drop it to force a pull. */
+    async function evictCachedChart(archive: Buffer): Promise<void> {
+      const sha256 = createHash("sha256").update(archive).digest("hex");
+      const evicted = await nodeExec("server_1", `rm -f ${chartCachePath(sha256)}`);
+      expect(evicted.exitCode).toBe(0);
+    }
+
     test("a corrupted archive refuses the rollback that needs it, and restoring it succeeds", async () => {
       await withDump("E-51-14", async () => {
         fixture.write(
@@ -390,6 +402,7 @@ describe("51-helm-app", () => {
 
         const original = readFileSync(tgzPath());
         try {
+          await evictCachedChart(original);
           writeFileSync(tgzPath(), driftBytes(original));
 
           const refused = await runCLI(["rollback", ENV], { cwd: fixture.dir, timeoutMs: 120_000 });
@@ -412,18 +425,29 @@ describe("51-helm-app", () => {
     // has no such flag — a normal deploy never accepts drifted bytes).
     test("`--allow-chart-drift` re-pins the release to the drifted bytes", async () => {
       await withDump("E-51-14 override", async () => {
+        // current is 1.0.9 again, whose predecessor is not a public e2e-web release: a newer version
+        // makes 1.0.10 the rollback target
+        fixture.write(
+          ".dockflow/config.yml",
+          configYml([{ name: "web", chart: "e2e-web", repo: PUBLIC_REPO, version: "0.1.0", values: { message: "pinned-v3" } }]),
+        );
+        const third = await runCLI(["deploy", ENV, "1.0.11", "--force"], { cwd: fixture.dir, timeoutMs: 180_000 });
+        expect(third.exitCode).toBe(0);
+
         const original = readFileSync(tgzPath());
         try {
+          await evictCachedChart(original);
           writeFileSync(tgzPath(), driftBytes(original));
           const overridden = await runCLI(["rollback", ENV, "--allow-chart-drift"], { cwd: fixture.dir, timeoutMs: 180_000 });
           expect(overridden.exitCode).toBe(0);
           expect(`${overridden.stdout}${overridden.stderr}`).toContain("--allow-chart-drift");
           await waitWorkloadReady(NS, "deployment", "web-e2e-web", 1);
+          expect(await configMapMessage("web")).toBe("pinned-v2");
         } finally {
           writeFileSync(tgzPath(), original);
         }
       });
-    }, 220_000);
+    }, 400_000);
   });
 
   test("E-51-15: the history budget survives a failed revision", async () => {
