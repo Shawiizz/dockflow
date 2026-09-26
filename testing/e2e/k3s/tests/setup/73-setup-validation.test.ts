@@ -166,30 +166,10 @@ describe("E-73 setup-validation", () => {
 
   test("E-73-05: a closed bootstrap SSH port is refused, naming the unreachable node", async () => {
     await withDump("E-73-05", async () => {
-      // the deploy keys of both nodes in .env.dockflow, so that setup gets as far as connecting
-      const fixture = makeFixture("test-app-k3s-cluster", { cluster: "k3s", topology: topo });
-      fixture.write(
-        ".dockflow/servers.yml",
-        [
-          "defaults:",
-          "  user: deploytest",
-          "servers:",
-          "  server_1:",
-          `    host: localhost`,
-          `    port: ${server1.sshPort}`,
-          `    private_host: ${server1.ip}`,
-          "    role: manager",
-          `    tags: [${ENV}]`,
-          "  agent_1:",
-          "    host: localhost",
-          // nothing listens on this host port on the runner: simulates a closed bootstrap SSH port
-          "    port: 1",
-          `    private_host: ${agent1.ip}`,
-          "    role: worker",
-          `    tags: [${ENV}]`,
-          "",
-        ].join("\n"),
-      );
+      // servers.yml and the connection secrets both give agent_1 a port nothing listens on (a
+      // connection secret's host and port win over servers.yml's): a closed bootstrap SSH port
+      const fixture = makeFixture("test-app-k3s-cluster");
+      fixture.useNodes([server1, { ...agent1, sshPort: 1 }], { envs: [ENV] });
       const result = await runSetup(fixture, ["--dry-run"]);
       expect(result.exitCode).not.toBe(0);
       expect(result.stderr + result.stdout).toContain("agent_1");

@@ -182,8 +182,9 @@ describe("E-70 setup-single-host (local mode)", () => {
       expect(stat?.mode).toBe("440");
       const visudo = await rootExec("visudo -cf /etc/sudoers.d/dockflow-k3s");
       expect(visudo.exitCode).toBe(0);
+      // exec trims its output, the trailing newline included
       const content = await mustRootExec("cat /etc/sudoers.d/dockflow-k3s");
-      expect(content).toBe(renderK3sSudoers(DEPLOY_USER));
+      expect(content).toBe(renderK3sSudoers(DEPLOY_USER).trimEnd());
     });
   });
 
