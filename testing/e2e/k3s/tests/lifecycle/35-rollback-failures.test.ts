@@ -106,6 +106,13 @@ function writeWebCompose(f: Fixture, spec: WebSpec): void {
   f.write(".dockflow/docker/docker-compose.yml", `${parts.join("\n")}\n`);
 }
 
+/** A copy of the fixture under another project; its services serve no :8085, so the chain's health check goes. */
+function variantOf(project: string): Fixture {
+  const f = makeFixture("test-app-k3s-rollback", { cluster: "k3s" });
+  f.patchConfig((text) => text.replace(`project_name: ${PROJECT}`, `project_name: ${project}`).replace(/\nhealth_checks:[\s\S]*$/, "\n"));
+  return f;
+}
+
 let fixture: Fixture;
 function dir(): string {
   return fixture.dir;
@@ -566,9 +573,8 @@ describe("workload-kind switches (E-35-19)", () => {
   test("E-35-19a Deployment -> StatefulSet replaces in place, mounting the same claim", async () => {
     await withDump("E-35-19a", async () => {
       const ns2 = nsFor("k3s-rb-kind-a", ENV);
-      const f = makeFixture("test-app-k3s-rollback", { cluster: "k3s" });
+      const f = variantOf("k3s-rb-kind-a");
       try {
-        f.patchConfig((text) => text.replace(`project_name: ${PROJECT}`, "project_name: k3s-rb-kind-a"));
         f.write(
           ".dockflow/docker/docker-compose.yml",
           [
@@ -621,9 +627,8 @@ describe("workload-kind switches (E-35-19)", () => {
   test("E-35-19b a per-replica switch that would strand the old shared claim is refused before mutation", async () => {
     await withDump("E-35-19b", async () => {
       const ns2 = nsFor("k3s-rb-kind-b", ENV);
-      const f = makeFixture("test-app-k3s-rollback", { cluster: "k3s" });
+      const f = variantOf("k3s-rb-kind-b");
       try {
-        f.patchConfig((text) => text.replace(`project_name: ${PROJECT}`, "project_name: k3s-rb-kind-b"));
         f.write(
           ".dockflow/docker/docker-compose.yml",
           [
@@ -674,9 +679,8 @@ describe("workload-kind switches (E-35-19)", () => {
   test("E-35-19c a DaemonSet-to-replicated switch overlaps, then prunes the DaemonSet", async () => {
     await withDump("E-35-19c", async () => {
       const ns2 = nsFor("k3s-rb-kind-c", ENV);
-      const f = makeFixture("test-app-k3s-rollback", { cluster: "k3s" });
+      const f = variantOf("k3s-rb-kind-c");
       try {
-        f.patchConfig((text) => text.replace(`project_name: ${PROJECT}`, "project_name: k3s-rb-kind-c"));
         f.write(
           ".dockflow/docker/docker-compose.yml",
           ["services:", "  daemon:", "    image: busybox:1.37", '    command: ["sh", "-c", "sleep 36000"]', "    deploy:", "      mode: global", ""].join(
@@ -708,9 +712,8 @@ describe("workload-kind switches (E-35-19)", () => {
   test("E-35-19d a Deployment-to-replicated-job switch replaces cleanly", async () => {
     await withDump("E-35-19d", async () => {
       const ns2 = nsFor("k3s-rb-kind-d", ENV);
-      const f = makeFixture("test-app-k3s-rollback", { cluster: "k3s" });
+      const f = variantOf("k3s-rb-kind-d");
       try {
-        f.patchConfig((text) => text.replace(`project_name: ${PROJECT}`, "project_name: k3s-rb-kind-d"));
         f.write(".dockflow/docker/docker-compose.yml", 'services:\n  once:\n    image: busybox:1.37\n    command: ["sh", "-c", "sleep 36000"]\n');
         let result = await runCLI(["deploy", ENV, "1.0.0", "--yes"], { cwd: f.dir, timeoutMs: 200_000 });
         expect(result.exitCode).toBe(0);
@@ -736,9 +739,8 @@ describe("workload-kind switches (E-35-19)", () => {
   test("E-35-19e a host-port Deployment switching to deploy.mode: global replaces without an Unschedulable wait", async () => {
     await withDump("E-35-19e", async () => {
       const ns2 = nsFor("k3s-rb-kind-e", ENV);
-      const f = makeFixture("test-app-k3s-rollback", { cluster: "k3s" });
+      const f = variantOf("k3s-rb-kind-e");
       try {
-        f.patchConfig((text) => text.replace(`project_name: ${PROJECT}`, "project_name: k3s-rb-kind-e"));
         f.write(
           ".dockflow/docker/docker-compose.yml",
           [
@@ -791,9 +793,8 @@ describe("accessories are not rolled back (E-35-20)", () => {
   test("E-35-20 a rollback after an accessories change warns instead of touching them", async () => {
     await withDump("E-35-20", async () => {
       const ns2 = nsFor("k3s-rb-accwarn", ENV);
-      const f = makeFixture("test-app-k3s-rollback", { cluster: "k3s" });
+      const f = variantOf("k3s-rb-accwarn");
       try {
-        f.patchConfig((text) => text.replace(`project_name: ${PROJECT}`, "project_name: k3s-rb-accwarn"));
         f.write(".dockflow/docker/docker-compose.yml", 'services:\n  web:\n    image: busybox:1.37\n    command: ["sh", "-c", "sleep 36000"]\n');
         f.write(".dockflow/docker/accessories.yml", "services:\n  cache:\n    image: redis:8-alpine\n    environment:\n      MARK: v1\n");
         const v1 = await runCLI(["deploy", ENV, "1.0.0", "--yes"], { cwd: f.dir, timeoutMs: 200_000 });
