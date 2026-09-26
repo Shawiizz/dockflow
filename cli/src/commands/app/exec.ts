@@ -57,7 +57,7 @@ export async function runExec(
   const plan = planExec(command, planOptions, process);
 
   const ctx = await openDay2(env, { server: options.server });
-  const { service: svc, workload } = await resolveService(ctx, ctx.appRef, service, { allowWorkload: true });
+  const { service: svc, workload } = await resolveService(ctx, ctx.appRef, service, { allowWorkload: true, accessoryCommand: 'exec' });
 
   const target: InstanceTarget = {
     service: svc.name,

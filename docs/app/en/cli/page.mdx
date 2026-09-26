@@ -363,6 +363,10 @@ app "ls -la"`).
 `-u, --user <user>` is **refused on k3s** — the Kubernetes exec API always runs as the container's own
 user, with no override (see [Orchestrator Support](#orchestrator-support)).
 
+`exec`, `logs` and `restart` target services of `docker-compose.yml`; for a service of `accessories.yml`
+(a database, a cache) use `dockflow accessories exec`, `logs` or `restart`. Naming an accessory here fails
+with the command to run instead.
+
 | Option | Description |
 |--------|-------------|
 | `-s, --server <name>` | Target manager |
@@ -379,7 +383,8 @@ user, with no override (see [Orchestrator Support](#orchestrator-support)).
 dockflow exec production app bash          # Interactive shell
 dockflow exec production app "ls -la"      # Run a command
 dockflow bash production app --sh          # `bash` alias, sh instead of bash (Alpine containers)
-dockflow exec production db "psql -U user" # Database access
+dockflow exec production db "psql -U user" # Database access (db in docker-compose.yml)
+dockflow accessories exec production postgres "psql -U postgres"   # an accessory
 ```
 
 ### Copy

@@ -36,7 +36,7 @@ export async function runLogs(env: string, service: string | undefined, options:
   const ref = ctx.appRef;
 
   let svc: ServiceInfo | null = service
-    ? (await resolveService(ctx, ref, service, { allowWorkload: false, pickHint: true })).service
+    ? (await resolveService(ctx, ref, service, { allowWorkload: false, pickHint: true, accessoryCommand: 'logs' })).service
     : null;
 
   let instance: string | undefined;

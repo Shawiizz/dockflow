@@ -21,7 +21,7 @@ export interface RestartCommandOptions {
 
 export async function runRestart(env: string, service: string | undefined, options: RestartCommandOptions): Promise<void> {
   const ctx = await openDay2(env, { server: options.server });
-  const svc = service ? (await resolveService(ctx, ctx.appRef, service)).service : null;
+  const svc = service ? (await resolveService(ctx, ctx.appRef, service, { accessoryCommand: 'restart' })).service : null;
   const wasStopped = svc !== null && svc.replicas.desired === 0;
 
   const spinner = createSpinner();

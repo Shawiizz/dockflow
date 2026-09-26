@@ -15,7 +15,7 @@ import {
   resolveService,
 } from '../commands/shared/day2';
 import { capabilitiesFor } from '../services/orchestrator/capabilities';
-import type { InstanceInfo, ServiceInfo } from '../services/orchestrator/interfaces';
+import type { InstanceInfo, ServiceInfo, StackRef } from '../services/orchestrator/interfaces';
 import type { DockflowConfig } from '../utils/config';
 import { CLIError, UnsupportedOperationError, ValidationError } from '../utils/errors';
 import { FakeOrchestrator } from './kubernetes/fakes/fake-orchestrator';
@@ -122,6 +122,20 @@ describe('resolveService', () => {
 
     expect(caught).toBeInstanceOf(ValidationError);
     expect((caught as ValidationError).suggestion).toContain('--pick');
+  });
+
+  it('names an accessory given to an app command, and the accessories command to run instead', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    const postgres = service({ name: 'postgres', nativeName: 'postgres', role: 'accessory' });
+    orchestrator.program('stack.getServices', (ref: StackRef) => (ref.role === 'app' ? [service()] : [postgres]));
+    const ctx = buildDay2Context('production', baseConfig(), orchestrator);
+
+    await expect(resolveService(ctx, ctx.appRef, 'postgres', { accessoryCommand: 'exec' })).rejects.toMatchObject({
+      message: "'postgres' is an accessory of production, not a service of the app",
+      suggestion: 'Run `dockflow accessories exec production postgres`.',
+    });
+    await expect(resolveService(ctx, ctx.appRef, 'postgres')).rejects.toMatchObject({ suggestion: 'This command works on app services only.' });
+    await expect(resolveService(ctx, ctx.appRef, 'cache', { accessoryCommand: 'exec' })).rejects.toMatchObject({ suggestion: 'Available services: web.' });
   });
 
   it('uses the accessory wording when nothing matches', async () => {

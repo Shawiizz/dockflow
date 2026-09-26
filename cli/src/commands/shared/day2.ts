@@ -149,6 +149,8 @@ export interface ResolveServiceOptions {
   noun: 'service' | 'accessory';
   /** `logs` appends the `--pick` hint to the workload-without-allowWorkload refusal */
   pickHint?: boolean;
+  /** the `dockflow accessories` subcommand an app command points to when the name is an accessory */
+  accessoryCommand?: string;
 }
 
 const DEFAULT_RESOLVE_OPTIONS: ResolveServiceOptions = { allowHelm: true, allowWorkload: false, noun: 'service' };
@@ -220,6 +222,16 @@ export async function resolveService(
     }
   }
 
+  if (!hit && ref.role === 'app') {
+    const accessories = await getServicesMemoized(ctx, ctx.accessoryRef).catch(() => []);
+    if (accessories.some((s) => s.name === raw || s.nativeName === raw)) {
+      throw new CLIError(
+        `'${raw}' is an accessory of ${ctx.env}, not a service of the app`,
+        ErrorCode.SERVICE_NOT_FOUND,
+        opts.accessoryCommand ? `Run \`dockflow accessories ${opts.accessoryCommand} ${ctx.env} ${raw}\`.` : 'This command works on app services only.',
+      );
+    }
+  }
   if (!hit) throw notFoundError(ctx, ref, raw, opts, services);
 
   if (hit.kind === 'helm' && !opts.allowHelm) {
