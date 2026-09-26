@@ -8,7 +8,7 @@
 
 import { DeployError, ErrorCode } from '../../../../utils/errors';
 import type { RevertResult, StackDeployInput, StackRef, StackRole, WorkloadChange } from '../../interfaces';
-import { ANNOTATIONS, deleteWaitS, K8S_MANAGED_BY, LABELS } from '../constants';
+import { ANNOTATIONS, deleteWaitS, K8S_MANAGED_BY, KUBE_KEYS, LABELS } from '../constants';
 import { type Clock, memoize, type SharedMemo } from '../deps';
 import type { K8sDistribution } from '../distribution';
 import { SEL_POD, SEL_ROLE } from '../labels';
@@ -600,19 +600,29 @@ export class ApplyEngine {
     const namespace = namespaceFor(ref.project, ref.env);
     const live = targets.flatMap((t) => before.workloads.filter((w) => w.kind === t.kind && w.name === t.name));
     const waitS = deleteWaitS(live);
-    const selector = SEL_POD(namespace, ref.role, unique(targets.map((t) => serviceOfTarget(t, before))));
+    const others = targets.filter((t) => t.kind !== 'Job');
+    const jobs = targets.filter((t) => t.kind === 'Job').map((t) => t.name);
+    const selectors = [
+      ...(others.length > 0 ? [SEL_POD(namespace, ref.role, unique(others.map((t) => serviceOfTarget(t, before))))] : []),
+      // the service's other Jobs keep their finished pods until prune: only the replaced Job's are awaited
+      ...(jobs.length > 0 ? [`${KUBE_KEYS.jobName} in (${[...jobs].sort().join(',')})`] : []),
+    ];
+    let selector = selectors[0];
     try {
       await this.kubectl.delete(
         targets.map((t) => `${KIND_REGISTRY[t.kind].resource}/${t.name}`),
         { namespace, wait: true, timeoutS: waitS, ignoreNotFound: true, cascade: 'foreground' },
       );
-      await this.kubectl.run({
-        args: ['wait', '--for=delete', 'pods', '-l', selector, `--timeout=${waitS}s`],
-        namespace,
-        mutating: false,
-        requestTimeoutS: null,
-        guardS: waitS + WAIT_GUARD_MARGIN_S,
-      });
+      for (const next of selectors) {
+        selector = next;
+        await this.kubectl.run({
+          args: ['wait', '--for=delete', 'pods', '-l', selector, `--timeout=${waitS}s`],
+          namespace,
+          mutating: false,
+          requestTimeoutS: null,
+          guardS: waitS + WAIT_GUARD_MARGIN_S,
+        });
+      }
     } catch (error) {
       if (!(error instanceof KubeError) || error.reason !== 'Timeout') throw error;
       throw await this.replaceTimeout(ref, namespace, targets, before, selector, waitS);

@@ -160,6 +160,7 @@ describe('U-CONST-01 DESIGN-CORE 5.1 values', () => {
       arch: 'kubernetes.io/arch',
       podTemplateHash: 'pod-template-hash',
       controllerRevisionHash: 'controller-revision-hash',
+      jobName: 'batch.kubernetes.io/job-name',
       deploymentRevision: 'deployment.kubernetes.io/revision',
       defaultStorageClass: 'storageclass.kubernetes.io/is-default-class',
       serviceAccountName: 'kubernetes.io/service-account.name',

@@ -86,6 +86,8 @@ export const KUBE_KEYS = {
   arch: 'kubernetes.io/arch',
   podTemplateHash: 'pod-template-hash',
   controllerRevisionHash: 'controller-revision-hash',
+  /** set by the Job controller on the pods of one Job */
+  jobName: 'batch.kubernetes.io/job-name',
   deploymentRevision: 'deployment.kubernetes.io/revision',
   defaultStorageClass: 'storageclass.kubernetes.io/is-default-class',
   serviceAccountName: 'kubernetes.io/service-account.name',

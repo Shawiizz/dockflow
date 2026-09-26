@@ -793,6 +793,23 @@ describe('ApplyEngine', () => {
       ]);
       expect(outcome.disruptive).toEqual([{ service: 'migrate', from: null, to: 'Job', deleted: { kind: 'Job', name: 'migrate-3f9a1c2e' } }]);
       expect(h.steps).toEqual(['Job migrate failed in a previous deploy and is run again']);
+      expect(calls.find((call) => callId(call) === 'K38')?.call.args).toEqual(['wait', '--for=delete', 'pods', '-l', 'batch.kubernetes.io/job-name in (migrate-3f9a1c2e)', '--timeout=120s']);
+    });
+
+    it('re-runs a failed Job while an earlier finished Job of the service keeps its pod', async () => {
+      const h = harness();
+      await deploy(h, [job('migrate-00000000', 'migrate')]);
+      h.cluster.tick(5);
+      expect(jobState(h, 'migrate-00000000')).toBe('Complete');
+      h.cluster.behave('registry.example.com/shop/migrate:1', { kind: 'crashloop', exitCode: 1 });
+      await deploy(h, [job('migrate-3f9a1c2e', 'migrate')]);
+      h.cluster.tick(5);
+      expect(jobState(h, 'migrate-3f9a1c2e')).toBe('Failed');
+
+      const outcome = await deploy(h, [job('migrate-3f9a1c2e', 'migrate')]);
+
+      expect(outcome.changes.map((c) => `${c.kind}/${c.name} created=${c.created}`)).toEqual(['Job/migrate-3f9a1c2e created=true']);
+      expect(jobState(h, 'migrate-00000000')).toBe('Complete');
     });
 
     it('leaves a still-active Job alone, with a warning (SD29)', async () => {
