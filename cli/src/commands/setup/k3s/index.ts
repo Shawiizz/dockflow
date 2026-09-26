@@ -539,7 +539,7 @@ async function resolveBinaryFor(options: Pick<K3sSetupOptions, 'binary' | 'dev'>
 
 export async function runK3sClusterSetup(env: string, bootstrap: BootstrapIdentity, options: K3sSetupOptions, deps: K3sClusterSetupDeps = {}): Promise<void> {
   loadSecrets();
-  const config = deps.config !== undefined ? deps.config : loadConfig();
+  const config = deps.config !== undefined ? deps.config : loadConfig({ strict: true });
   const servers = deps.servers ?? resolveServersForEnvironment(env);
   const deployKeys = deps.deployKeys ?? (await collectDeployKeys(env, servers));
 
@@ -725,7 +725,7 @@ async function inspectForReset(transport: SetupTransport, plan: K3sClusterPlan, 
 
 export async function runK3sReset(env: string, bootstrap: BootstrapIdentity, options: K3sResetOptions, deps: K3sClusterSetupDeps = {}): Promise<void> {
   loadSecrets();
-  const config = deps.config !== undefined ? deps.config : loadConfig();
+  const config = deps.config !== undefined ? deps.config : loadConfig({ strict: true });
   const servers = deps.servers ?? resolveServersForEnvironment(env);
   const deployKeys = deps.deployKeys ?? (await collectDeployKeys(env, servers));
 

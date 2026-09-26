@@ -9,7 +9,7 @@ import { loadServersConfig } from '../config';
 
 let _config: ServersConfig | null | undefined;
 function getConfig(): ServersConfig | null {
-  if (_config === undefined) _config = loadServersConfig();
+  if (_config === undefined) _config = loadServersConfig({ strict: true });
   return _config;
 }
 import { parseConnectionString } from '../connection-parser';

@@ -11,13 +11,14 @@ import type { ServersConfig } from '../types';
 import type { BackupDbType } from '../api/types';
 export type { BackupDbType };
 import { printError, printRaw } from './output';
+import { ConfigError } from './errors';
 import {
   validateConfig as validateConfigSchema,
   validateServersConfig as validateServersSchema,
   validateRootConfig,
   formatValidationErrors,
 } from '../schemas';
-import type { RootConfig } from '../schemas';
+import type { RootConfig, ValidationIssue } from '../schemas';
 
 /**
  * Dockflow configuration schema
@@ -329,6 +330,8 @@ export function getLayout(): ProjectLayout {
 
 // undefined = not yet loaded, null = absent/invalid, RootConfig = loaded and valid
 let _rootConfigCache: RootConfig | null | undefined = undefined;
+/** why an existing dockflow.yml was rejected, thrown by strict loads */
+let _rootConfigRejection: ConfigError | null = null;
 
 /**
  * Load and cache dockflow.yml if present.
@@ -348,11 +351,13 @@ function loadRootConfig(projectRoot: string): RootConfig | null {
     const result = validateRootConfig(parsed);
     if (!result.success) {
       printRaw(formatValidationErrors(result.error, 'dockflow.yml'));
+      _rootConfigRejection = invalidFileError('dockflow.yml', result.error);
       return (_rootConfigCache = null);
     }
     return (_rootConfigCache = result.data);
   } catch (error) {
     printError(`Error reading dockflow.yml: ${error}`);
+    _rootConfigRejection = unreadableFileError('dockflow.yml', error);
     return (_rootConfigCache = null);
   }
 }
@@ -377,6 +382,17 @@ export interface LoadConfigOptions {
   silent?: boolean;
   /** Parse from string instead of reading from disk */
   content?: string;
+  /** An existing file that is unreadable or fails validation throws a ConfigError instead of returning null */
+  strict?: boolean;
+}
+
+function invalidFileError(fileName: string, issues: ValidationIssue[]): ConfigError {
+  const lines = issues.map((issue) => `  ${issue.path}: ${issue.message}`);
+  return new ConfigError(`${fileName} is invalid:\n${lines.join('\n')}`, `Fix ${fileName}; \`dockflow config validate\` checks it without deploying.`);
+}
+
+function unreadableFileError(fileName: string, error: unknown): ConfigError {
+  return new ConfigError(`${fileName} cannot be read: ${error instanceof Error ? error.message : String(error)}`);
 }
 
 /**
@@ -385,7 +401,7 @@ export interface LoadConfigOptions {
  * @returns Loaded config or null if not found/invalid
  */
 export function loadConfig(options: LoadConfigOptions = {}): DockflowConfig | null {
-  const { validate = true, silent = false, content: rawContent } = options;
+  const { validate = true, silent = false, strict = false, content: rawContent } = options;
 
   // When content is provided directly (e.g. dockflow config validate), skip file detection
   if (rawContent === undefined) {
@@ -396,50 +412,42 @@ export function loadConfig(options: LoadConfigOptions = {}): DockflowConfig | nu
         const { servers: _s, defaults: _d, env: _e, ...configPart } = rootConfig;
         return configPart as DockflowConfig;
       }
+      if (strict && _rootConfigRejection) throw _rootConfigRejection;
       return null;
     }
     if (!existsSync(layout.configPath)) return null;
   }
 
-  let content: string;
-  if (rawContent !== undefined) {
-    content = rawContent;
-  } else {
-    content = readFileSync(getLayout().configPath, 'utf-8');
-  }
+  // A rendered dockflow.yml carries the servers too: keep the config part.
+  const rendersRoot = rawContent !== undefined && getLayout().type === 'flat';
+  const fileName = rendersRoot ? 'dockflow.yml' : 'config.yml';
 
+  let parsed: unknown;
   try {
-    const parsed = parseYaml(content);
-
-    // A rendered dockflow.yml carries the servers too: keep the config part.
-    if (rawContent !== undefined && getLayout().type === 'flat') {
-      const result = validateRootConfig(parsed);
-      if (!result.success) {
-        if (!silent) printRaw(formatValidationErrors(result.error, 'dockflow.yml'));
-        return null;
-      }
-      const { servers: _s, defaults: _d, env: _e, ...configPart } = result.data;
-      return configPart as DockflowConfig;
-    }
-
-    if (validate) {
-      const result = validateConfigSchema(parsed);
-      if (!result.success) {
-        if (!silent) {
-          printRaw(formatValidationErrors(result.error, 'config.yml'));
-        }
-        return null;
-      }
-      return result.data as DockflowConfig;
-    }
-
-    return parsed as DockflowConfig;
+    parsed = parseYaml(rawContent ?? readFileSync(getLayout().configPath, 'utf-8'));
   } catch (error) {
-    if (!silent) {
-      printError(`Error reading config.yml: ${error}`);
-    }
+    if (strict) throw unreadableFileError(fileName, error);
+    if (!silent) printError(`Error reading ${fileName}: ${error}`);
     return null;
   }
+
+  if (rendersRoot) {
+    const result = validateRootConfig(parsed);
+    if (!result.success) {
+      if (strict) throw invalidFileError(fileName, result.error);
+      if (!silent) printRaw(formatValidationErrors(result.error, fileName));
+      return null;
+    }
+    const { servers: _s, defaults: _d, env: _e, ...configPart } = result.data;
+    return configPart as DockflowConfig;
+  }
+
+  if (!validate) return parsed as DockflowConfig;
+  const result = validateConfigSchema(parsed);
+  if (result.success) return result.data as DockflowConfig;
+  if (strict) throw invalidFileError(fileName, result.error);
+  if (!silent) printRaw(formatValidationErrors(result.error, fileName));
+  return null;
 }
 
 /**
@@ -448,7 +456,7 @@ export function loadConfig(options: LoadConfigOptions = {}): DockflowConfig | nu
  * @returns Loaded config or null if not found/invalid
  */
 export function loadServersConfig(options: LoadConfigOptions = {}): ServersConfig | null {
-  const { validate = true, silent = false } = options;
+  const { validate = true, silent = false, strict = false } = options;
 
   const layout = getLayout();
   if (layout.type === 'flat') {
@@ -456,33 +464,27 @@ export function loadServersConfig(options: LoadConfigOptions = {}): ServersConfi
     if (rootConfig) {
       return { servers: rootConfig.servers, defaults: rootConfig.defaults, env: rootConfig.env } as ServersConfig;
     }
+    if (strict && _rootConfigRejection) throw _rootConfigRejection;
     return null;
   }
 
   if (!existsSync(layout.serversPath)) return null;
 
+  let parsed: unknown;
   try {
-    const content = readFileSync(layout.serversPath, 'utf-8');
-    const parsed = parseYaml(content);
-
-    if (validate) {
-      const result = validateServersSchema(parsed);
-      if (!result.success) {
-        if (!silent) {
-          printRaw(formatValidationErrors(result.error, 'servers.yml'));
-        }
-        return null;
-      }
-      return result.data as ServersConfig;
-    }
-
-    return parsed as ServersConfig;
+    parsed = parseYaml(readFileSync(layout.serversPath, 'utf-8'));
   } catch (error) {
-    if (!silent) {
-      printError(`Error reading servers.yml: ${error}`);
-    }
+    if (strict) throw unreadableFileError('servers.yml', error);
+    if (!silent) printError(`Error reading servers.yml: ${error}`);
     return null;
   }
+
+  if (!validate) return parsed as ServersConfig;
+  const result = validateServersSchema(parsed);
+  if (result.success) return result.data as ServersConfig;
+  if (strict) throw invalidFileError('servers.yml', result.error);
+  if (!silent) printRaw(formatValidationErrors(result.error, 'servers.yml'));
+  return null;
 }
 
 /**

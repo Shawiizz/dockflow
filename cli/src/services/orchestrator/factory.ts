@@ -32,7 +32,7 @@ export interface OpenedOrchestrator {
  */
 export async function openOrchestrator(env: string, options?: ResolveTargetOptions): Promise<OpenedOrchestrator> {
   loadSecrets();
-  const config = loadConfig();
+  const config = loadConfig({ strict: true });
   if (!config) throw new ConfigError('No config.yml found', 'Run `dockflow init` to create a project configuration.');
   const resolvedEnv = resolveEnvironmentPrefix(env);
   const target = await resolveOrchestratorTarget(resolvedEnv, config, options);
