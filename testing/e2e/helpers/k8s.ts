@@ -190,15 +190,17 @@ function serviceForNode(node: NodeKey): "k3s" | "k3s-agent" {
   return nodeFor(currentTopology(), node).role === "manager" ? "k3s" : "k3s-agent";
 }
 
-async function readyz(server: NodeKey): Promise<boolean> {
-  const result = await nodeExec(server, "curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1:6443/readyz", { user: "root" });
-  return result.exitCode === 0 && result.stdout.trim() === "200";
+/** k3s serves its API without anonymous access (401), so /readyz is read with the server's own admin kubeconfig. */
+export async function apiserverReady(server: NodeKey): Promise<boolean> {
+  const result = await nodeExec(server, "k3s kubectl get --raw=/readyz --request-timeout=5s", { user: "root" });
+  return result.exitCode === 0 && result.stdout.trim() === "ok";
 }
 
 /**
  * ha lane only (16.9): the one way to take a node down in a shared-cluster lane. Restores it and
  * waits until every server answers /readyz and every node is Ready before returning; a failure to
  * recover within 3 minutes fails the file instead of leaving the cluster half-broken for later files.
+ * When both the scenario and the recovery fail, the error names both.
  */
 export async function withNodeDown<T>(node: NodeKey, how: "stop-k3s" | "pause", fn: () => Promise<T>): Promise<T> {
   const topo = currentTopology();
@@ -207,22 +209,35 @@ export async function withNodeDown<T>(node: NodeKey, how: "stop-k3s" | "pause", 
     const service = serviceForNode(node);
     if (how === "stop-k3s") await nodeExec(node, `systemctl stop ${service}`, { user: "root" });
     else await exec(["docker", "pause", target.container]);
+    let outcome: { ok: true; value: T } | { ok: false; error: unknown };
     try {
-      return await fn();
-    } finally {
+      outcome = { ok: true, value: await fn() };
+    } catch (error) {
+      outcome = { ok: false, error };
+    }
+    try {
       if (how === "stop-k3s") await nodeExec(node, `systemctl start ${service}`, { user: "root" });
       else await exec(["docker", "unpause", target.container]);
       await waitFor(async () => (await allServersReady(topo)) ? true : undefined, {
         timeoutMs: 180_000,
-        describe: `every server of ${topo.name} to answer 200 on /readyz after restoring ${node}`,
+        describe: `every server of ${topo.name} to report ready on /readyz after restoring ${node}`,
       });
       await waitForNodesReady(topo, 180_000);
+    } catch (recovery) {
+      if (outcome.ok) throw recovery;
+      throw new Error(`${messageOf(recovery)}; the scenario itself had failed first: ${messageOf(outcome.error)}`);
     }
+    if (!outcome.ok) throw outcome.error;
+    return outcome.value;
   });
 }
 
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 async function allServersReady(topo: Topology): Promise<boolean> {
-  const results = await Promise.all(managersOf(topo).map((server) => readyz(server.key)));
+  const results = await Promise.all(managersOf(topo).map((server) => apiserverReady(server.key)));
   return results.every(Boolean);
 }
 

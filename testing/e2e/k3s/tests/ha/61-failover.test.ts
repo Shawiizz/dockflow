@@ -28,8 +28,8 @@ import { runCLI } from "../../../helpers/cli";
 import { allowingNodeDown, waitForNodesReady } from "../../../helpers/cluster";
 import { dumpDebug } from "../../../helpers/debug-dump";
 import { type Fixture, makeFixture } from "../../../helpers/fixtures";
-import { decodeRelease, deleteStackCompletely, nodeExec, nsFor, waitFor, withNodeDown } from "../../../helpers/k8s";
-import { currentTopology, managersOf, type NodeKey } from "../../../helpers/topology";
+import { apiserverReady, decodeRelease, deleteStackCompletely, nodeExec, nsFor, waitFor, withNodeDown } from "../../../helpers/k8s";
+import { currentTopology, managersOf } from "../../../helpers/topology";
 
 const FILE = "61-failover.test.ts";
 const PROJECT = "k3s-ha-failover";
@@ -71,11 +71,6 @@ function haFixture(): Fixture {
  * lines are worth matching on either stream without pinning the exact split (E-30/31's own pattern). */
 function out(result: { stdout: string; stderr: string }): string {
   return result.stdout + result.stderr;
-}
-
-async function readyz(server: NodeKey): Promise<boolean> {
-  const result = await nodeExec(server, "curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1:6443/readyz");
-  return result.exitCode === 0 && result.stdout.trim() === "200";
 }
 
 describe("failover", () => {
@@ -183,9 +178,9 @@ describe("failover", () => {
           for (const server of managers) expect(result.stderr).toContain(server.key);
         } finally {
           for (const server of managers) await nodeExec(server.key, "systemctl start k3s", { user: "root" });
-          await waitFor(async () => ((await Promise.all(managers.map((server) => readyz(server.key)))).every(Boolean) ? true : undefined), {
+          await waitFor(async () => ((await Promise.all(managers.map((server) => apiserverReady(server.key)))).every(Boolean) ? true : undefined), {
             timeoutMs: 180_000,
-            describe: "every server of the ha topology to answer 200 on /readyz",
+            describe: "every server of the ha topology to report ready on /readyz",
           });
           await waitForNodesReady(topo, 180_000);
         }
