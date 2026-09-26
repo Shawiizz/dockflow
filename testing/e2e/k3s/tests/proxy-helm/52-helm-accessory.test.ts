@@ -68,7 +68,7 @@ describe("52-helm-accessory", () => {
 
       const first = await runCLI(["deploy", ENV, "1.0.0", "--all", "--force"], { cwd: fixture.dir, timeoutMs: 180_000 });
       expect(first.exitCode).toBe(0);
-      await waitWorkloadReady(NS, "deployment", "web", 1);
+      await waitWorkloadReady(NS, "deployment", "site", 1);
       await waitWorkloadReady(NS, "deployment", `${RELEASE}-e2e-web`, 1);
       const afterFirst = await releaseEntry();
       expect(afterFirst.revision).toBe(1);

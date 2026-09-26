@@ -1,5 +1,7 @@
+# `site`, not `web`: 51-helm-app names its Helm release web, and a release may not share a
+# compose service's name
 services:
-  web:
+  site:
     image: helm-e2e-app
     build:
       context: ../..
