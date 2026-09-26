@@ -204,7 +204,8 @@ export const E2E_REGISTRY_PASSWORD = "E2E_SECRET_REGISTRY_7f3a9c";
 export const E2E_CHARTS_USER = "e2e";
 export const E2E_CHARTS_PASSWORD = "E2E_SECRET_CHARTS_7f3a9c";
 
-/** Chart repository URL as the nodes see it (plain HTTP, `private` needs basic auth). */
+/** Chart repository URL as the nodes see it: `public` over plain HTTP, `private` over HTTPS with basic auth. */
 export function chartRepoUrl(net: string, access: "public" | "private"): string {
-  return `http://${auxAddress(net, "charts")}:8080/${access}`;
+  const host = auxAddress(net, "charts");
+  return access === "public" ? `http://${host}:8080/public` : `https://${host}:8443/private`;
 }

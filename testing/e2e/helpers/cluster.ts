@@ -14,6 +14,7 @@ import { type CLIResult, getCliBinaryName, runCLI } from "./cli";
 import { BOOTSTRAP_KEY_PATH, MANAGER_CONTAINER, WORKER_CONTAINER } from "./connection";
 import {
   auxAddress,
+  type AuxService,
   E2E_CHARTS_PASSWORD,
   E2E_CHARTS_USER,
   E2E_REGISTRY_PASSWORD,
@@ -32,11 +33,9 @@ const DOCKER_DIR = join(E2E_DIR, "docker");
 export const CACHE_DIR = join(E2E_DIR, ".cache");
 export const AUTH_DIR = join(CACHE_DIR, "auth");
 export const CHARTS_DIR = join(CACHE_DIR, "charts");
-const ACME_DIR = join(CACHE_DIR, "acme");
-/** CA of Pebble's ACME API certificate, which fixtures pass as `proxy.acme_ca_bundle` */
-export const PEBBLE_CA = join(ACME_DIR, "pebble.minica.pem");
-const PEBBLE_CERT = join(ACME_DIR, "pebble-cert.pem");
-const PEBBLE_KEY = join(ACME_DIR, "pebble-key.pem");
+const TLS_DIR = join(CACHE_DIR, "tls");
+/** The throwaway CA of the e2e TLS servers; fixtures pass it as `proxy.acme_ca_bundle` */
+export const E2E_CA = join(TLS_DIR, "ca.pem");
 export const K3S_COMPOSE_FILE = join(DOCKER_DIR, "docker-compose.k3s.yml");
 const BUILD_NODE_IMAGE_TOOL = join(E2E_DIR, "k3s", "tools", "build-node-image.ts");
 const PEBBLE_CONFIG = join(E2E_DIR, "fixtures", "acme", "pebble-config.json");
@@ -370,43 +369,63 @@ async function htpasswdMatches(file: string, user: string, password: string): Pr
   }
 }
 
-const PEBBLE_CERT_SCRIPT = `set -e
-umask 022
-openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 3650 -subj "/CN=Dockflow e2e Pebble CA" \\
-  -addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCertSign,cRLSign -keyout /tmp/ca.key -out /out/pebble.minica.pem
-openssl req -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -subj "/CN=Dockflow e2e Pebble" -keyout /out/pebble-key.pem -out /tmp/pebble.csr
-printf 'subjectAltName=%s\\nbasicConstraints=CA:FALSE\\nextendedKeyUsage=serverAuth\\n' "$SANS" > /tmp/pebble.ext
-openssl x509 -req -in /tmp/pebble.csr -CA /out/pebble.minica.pem -CAkey /tmp/ca.key -set_serial "0x$(openssl rand -hex 8)" -days 3650 \\
-  -extfile /tmp/pebble.ext -out /out/pebble-cert.pem
-chmod 644 /out/pebble-key.pem`;
+/** TLS servers of the auxiliary containers: Pebble's ACME API, and the chart repository's /private */
+const TLS_SERVERS: ReadonlyArray<{ name: string; service: AuxService }> = [
+  { name: "pebble", service: "acme" },
+  { name: "charts", service: "charts" },
+];
 
-function pebbleCertCovers(addresses: readonly string[]): boolean {
-  if (![PEBBLE_CA, PEBBLE_CERT, PEBBLE_KEY].every((path) => existsSync(path))) return false;
-  const cert = new X509Certificate(readFileSync(PEBBLE_CERT));
-  return addresses.every((address) => cert.checkIP(address) !== undefined);
+/** $SERVERS: `<name>=<subjectAltName>` entries, space separated */
+const TEST_CERTS_SCRIPT = `set -e
+umask 022
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 3650 -subj "/CN=Dockflow e2e test CA" \\
+  -addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCertSign,cRLSign -keyout /tmp/ca.key -out /out/ca.pem
+for server in $SERVERS; do
+  name=\${server%%=*}
+  printf 'subjectAltName=%s\\nbasicConstraints=CA:FALSE\\nextendedKeyUsage=serverAuth\\n' "\${server#*=}" > /tmp/$name.ext
+  openssl req -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -subj "/CN=Dockflow e2e $name" -keyout /out/$name-key.pem -out /tmp/$name.csr
+  openssl x509 -req -in /tmp/$name.csr -CA /out/ca.pem -CAkey /tmp/ca.key -set_serial "0x$(openssl rand -hex 8)" -days 3650 \\
+    -extfile /tmp/$name.ext -out /out/$name-cert.pem
+  chmod 644 /out/$name-key.pem
+done`;
+
+function testCertsCover(servers: readonly { name: string; addresses: readonly string[] }[]): boolean {
+  if (!existsSync(E2E_CA)) return false;
+  return servers.every(({ name, addresses }) => {
+    const cert = join(TLS_DIR, `${name}-cert.pem`);
+    if (!existsSync(cert) || !existsSync(join(TLS_DIR, `${name}-key.pem`))) return false;
+    const x509 = new X509Certificate(readFileSync(cert));
+    return addresses.every((address) => x509.checkIP(address) !== undefined);
+  });
 }
 
 /**
- * Pebble serves its ACME API over TLS on the acme address of every lane network. Its certificate
- * and throwaway CA are generated with the node image's openssl, once per machine and again when a
- * lane network changes; the CA key never leaves the container.
+ * A throwaway CA and a certificate per TLS server, valid for its address on every lane network,
+ * generated with the node image's openssl once per machine and again when a lane network changes.
+ * The CA key never leaves the container.
  */
-async function ensurePebbleCert(): Promise<void> {
-  const addresses = [SHARED_LANE, SETUP_LANE].map((plan) => auxAddress(plan.net, "acme"));
-  if (pebbleCertCovers(addresses)) return;
-  mkdirSync(ACME_DIR, { recursive: true });
-  log(`[k3s] Generating the Pebble test certificate for ${addresses.join(", ")}...`);
+async function ensureTestCerts(): Promise<void> {
+  const servers = TLS_SERVERS.map(({ name, service }) => ({ name, addresses: [SHARED_LANE, SETUP_LANE].map((plan) => auxAddress(plan.net, service)) }));
+  if (testCertsCover(servers)) return;
+  mkdirSync(TLS_DIR, { recursive: true });
+  log(`[k3s] Generating the e2e test CA and the certificates of ${servers.map((server) => server.name).join(", ")}...`);
+  const entries = servers.map(({ name, addresses }) => `${name}=${addresses.map((address) => `IP:${address}`).join(",")}`);
   await exec(
-    [
-      "docker", "run", "--rm",
-      "--entrypoint", "sh",
-      "-e", `SANS=${addresses.map((address) => `IP:${address}`).join(",")}`,
-      "-v", `${ACME_DIR}:/out`,
-      nodeImage(),
-      "-c", PEBBLE_CERT_SCRIPT,
-    ],
+    ["docker", "run", "--rm", "--entrypoint", "sh", "-e", `SERVERS=${entries.join(" ")}`, "-v", `${TLS_DIR}:/out`, nodeImage(), "-c", TEST_CERTS_SCRIPT],
     { timeoutMs: 60_000 },
   );
+}
+
+/** Nodes trust the e2e CA, as a company's hosts trust its internal CA: Helm pulls /private over HTTPS. */
+async function trustTestCa(nodes: readonly TopologyNode[]): Promise<void> {
+  await ensureTestCerts();
+  const ca = readFileSync(E2E_CA, "utf-8");
+  for (const node of nodes) {
+    await exec(["docker", "exec", "-i", node.container, "sh", "-c", "cat > /usr/local/share/ca-certificates/dockflow-e2e.crt && update-ca-certificates >/dev/null"], {
+      input: ca,
+      timeoutMs: 60_000,
+    });
+  }
 }
 
 async function prepareHostFiles(): Promise<void> {
@@ -416,7 +435,7 @@ async function prepareHostFiles(): Promise<void> {
   if (!existsSync(PEBBLE_CONFIG)) {
     throw new Error(`${PEBBLE_CONFIG} is missing; the acme container of every k3s topology mounts it`);
   }
-  await ensurePebbleCert();
+  await ensureTestCerts();
 }
 
 // ─── k3s topologies ────────────────────────────────────────────────
@@ -467,6 +486,7 @@ export async function startTopology(topo: Topology, opts: { timeoutMs?: number }
     throw new Error(`Topology ${topo.name} did not start: ${errorText(error)}\n${ps.stdout}`);
   }
   await waitForNodes(topo.nodes);
+  await trustTestCa(topo.nodes);
   log(`[k3s] Topology ${topo.name} is up: ${topo.nodes.map((node) => `${node.key} localhost:${node.sshPort}`).join(", ")}.`);
 }
 
@@ -534,6 +554,7 @@ export async function startStandaloneNode(plan: NetworkPlan, node: TopologyNode,
     nodeImage(),
   ], { timeoutMs: 180_000 });
   await waitForNodes([node], opts.timeoutMs);
+  await trustTestCa([node]);
 }
 
 async function standaloneNetwork(plan: NetworkPlan): Promise<string> {

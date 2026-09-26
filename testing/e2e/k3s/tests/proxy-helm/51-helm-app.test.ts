@@ -68,7 +68,8 @@ function configYml(releases: readonly ReleaseSpec[], extraTop: readonly string[]
     if (r.namespace) lines.push(`      namespace: ${r.namespace}`);
     if (r.timeout) lines.push(`      timeout: ${r.timeout}`);
     if (r.auth) {
-      lines.push("      auth:", `        username: "${r.auth.username}"`, `        password: "{{ current.env.${r.auth.passwordEnvVar} }}"`);
+      // templates see servers.yml and .env.dockflow variables lowercased
+      lines.push("      auth:", `        username: "${r.auth.username}"`, `        password: "{{ current.env.${r.auth.passwordEnvVar.toLowerCase()} }}"`);
     }
     if (r.values || r.hookEnabled) {
       lines.push("      values:");

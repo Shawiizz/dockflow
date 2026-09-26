@@ -38,10 +38,17 @@ function log(message: string): void {
   process.stdout.write(`${message}\n`);
 }
 
+/** as the host user where there is one (Linux), so tests can rewrite the archives (E-51-14) */
+const HOST_USER = process.getuid && process.getgid ? ["--user", `${process.getuid()}:${process.getgid()}`] : [];
+
 async function harnessHelm(args: string[]): Promise<void> {
   await exec(
     [
       "docker", "run", "--rm",
+      ...HOST_USER,
+      "-e", "HELM_CACHE_HOME=/tmp/helm/cache",
+      "-e", "HELM_CONFIG_HOME=/tmp/helm/config",
+      "-e", "HELM_DATA_HOME=/tmp/helm/data",
       "--entrypoint", "/opt/e2e/bin/helm",
       "-v", `${FIXTURES_CHARTS_DIR}:/src:ro`,
       "-v", `${CHARTS_OUT_DIR}:/out`,
@@ -56,8 +63,11 @@ async function harnessHelm(args: string[]): Promise<void> {
 export async function packageCharts(net: string = SHARED_LANE.net): Promise<void> {
   const publicDir = join(CHARTS_OUT_DIR, "public");
   const privateDir = join(CHARTS_OUT_DIR, "private");
-  mkdirSync(publicDir, { recursive: true });
-  mkdirSync(privateDir, { recursive: true });
+  // earlier runs may have left files a root container wrote
+  for (const dir of [publicDir, privateDir]) {
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+  }
 
   for (const { chart, versions } of CHART_SOURCES) {
     if (!existsSync(join(FIXTURES_CHARTS_DIR, chart, "Chart.yaml"))) {
@@ -73,7 +83,6 @@ export async function packageCharts(net: string = SHARED_LANE.net): Promise<void
   // rather than repackaged, so both directories always agree byte for byte.
   for (const entry of readdirSync(publicDir)) {
     if (!entry.endsWith(".tgz")) continue;
-    rmSync(join(privateDir, entry), { force: true });
     await Bun.write(join(privateDir, entry), Bun.file(join(publicDir, entry)));
   }
 
