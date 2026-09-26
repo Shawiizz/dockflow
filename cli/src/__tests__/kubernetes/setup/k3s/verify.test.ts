@@ -730,6 +730,34 @@ describe('buildClusterVerification (16.2, finalize)', () => {
       expect(result.storageClass.effectiveDefault).toBe(true);
     });
 
+    it('local-path recreated after dockflow-local: dockflow-local is recreated, then verification passes', async () => {
+      const newerLocalPath = { ...localPath(false), metadata: { ...localPath(false).metadata, creationTimestamp: '2026-02-01T00:00:00Z' } };
+      const recreated = { ...DOCKFLOW_LOCAL_DEFAULT, metadata: { ...DOCKFLOW_LOCAL_DEFAULT.metadata, creationTimestamp: '2026-02-01T00:05:00Z' } };
+      const before = [DOCKFLOW_LOCAL_DEFAULT, newerLocalPath];
+      const after = [recreated, newerLocalPath];
+      const kube = scriptedVerificationKube([
+        {
+          args: ['get', 'nodes', '-o', 'json'],
+          respond: { json: { items: [readyNode({ metadata: { name: 'srv-1', labels: { 'node-role.kubernetes.io/control-plane': 'true', 'node-role.kubernetes.io/etcd': 'true' } } })] } },
+        },
+        { args: ['get', 'deployments.apps', '-o', 'json'], respond: { json: { items: [deployment('coredns', true), deployment('local-path-provisioner', true)] } } },
+        { args: ['get', 'helmcharts.helm.cattle.io', '-o', 'json'], respond: { json: { items: [] } } },
+        { args: ['get', 'deployments.apps', 'traefik', '-o', 'json'], respond: { json: { items: [] } } },
+        { id: 'verify-read', args: ['get', 'storageclass', '-o', 'json'], respond: { json: { items: before } } },
+        { id: 'enforce-read', args: ['get', 'storageclass', '-o', 'json'], respond: { json: { items: before } } },
+        { id: 'enforce-delete', args: ['delete', 'storageclass/dockflow-local', REST], respond: { exitCode: 0, stdout: '', stderr: '' } },
+        { id: 'enforce-apply', args: ['apply', REST], respond: { exitCode: 0, stdout: '', stderr: '' } },
+        { id: 'enforce-after', args: ['get', 'storageclass', '-o', 'json'], respond: { json: { items: after } } },
+        { id: 'verify-again', args: ['get', 'storageclass', '-o', 'json'], respond: { json: { items: after } } },
+        { args: ['get', 'serviceaccounts', 'dockflow-deployer', '-o', 'json'], respond: { json: { items: [DEPLOYER_SA] } } },
+        { args: ['get', 'secrets', 'dockflow-deployer-token', '-o', 'json'], respond: { json: { items: [deployerToken(true)] } } },
+        { args: ['get', 'clusterrolebindings', 'dockflow-deployer', '-o', 'json'], respond: { json: { items: [DEPLOYER_CRB] } } },
+      ]);
+      const result = await verify(kube);
+      expect(result.problems.filter((p) => p.severity === 'error')).toEqual([]);
+      expect(result.storageClass.effectiveDefault).toBe(true);
+    });
+
     it('still fails, naming local-path, when the state persists after the second enforcement', async () => {
       const bothDefault = [DOCKFLOW_LOCAL_DEFAULT, localPath(true)];
       const result = await verify(verificationKube([bothDefault, bothDefault]));

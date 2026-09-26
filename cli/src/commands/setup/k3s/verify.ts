@@ -356,6 +356,16 @@ function defaultsOf(classes: readonly StorageClass[]): { name: string; createdAt
     .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
 }
 
+/** What `storage-default` repairs after k3s re-applied local-storage: local-path is the only other default, or newer than dockflow-local. */
+function reappliedLocalPath(classes: readonly StorageClass[]): boolean {
+  const competing = defaultsOf(classes).filter((entry) => entry.name !== K8S_STORAGE_CLASS);
+  if (competing.length > 0) return competing.length === 1 && competing[0]?.name === LOCAL_PATH_STORAGE_CLASS;
+  const createdAt = (name: string): string | undefined => classes.find((sc) => sc.metadata.name === name)?.metadata.creationTimestamp;
+  const localPath = createdAt(LOCAL_PATH_STORAGE_CLASS);
+  const dockflowLocal = createdAt(K8S_STORAGE_CLASS);
+  return localPath !== undefined && dockflowLocal !== undefined && localPath > dockflowLocal;
+}
+
 /** The read-only mirror of `system.ts`'s `assertSingleDefaultStorageClass` (16.2, V9). */
 export function evaluateStorageClasses(classes: readonly StorageClass[], env: string): { storageClass: StorageClassVerification; problem: SetupProblem | null } {
   const byName = new Map(classes.map((sc) => [sc.metadata.name, sc]));
@@ -545,10 +555,10 @@ export async function buildClusterVerification(kube: KubeExecutor, options: Clus
   const traefikProblem = await evaluateTraefikAbsence(kube, options.env);
   if (traefikProblem !== null) addError(traefikProblem.message, traefikProblem.suggestion);
 
-  let storage = evaluateStorageClasses(await kube.getJson<StorageClass>(['storageclass'], {}), options.env);
-  const competing = storage.storageClass.defaults.filter((entry) => entry.name !== K8S_STORAGE_CLASS);
-  if (storage.problem !== null && competing.length === 1 && competing[0]?.name === LOCAL_PATH_STORAGE_CLASS) {
-    // k3s re-marks local-path default whenever it re-applies its manifests (F30): enforce once more
+  const classes = await kube.getJson<StorageClass>(['storageclass'], {});
+  let storage = evaluateStorageClasses(classes, options.env);
+  if (storage.problem !== null && reappliedLocalPath(classes)) {
+    // k3s re-marks local-path default, or recreates it, whenever it re-applies its manifests (F30): enforce once more
     await assertSingleDefaultStorageClass(kube, { env: options.env });
     storage = evaluateStorageClasses(await kube.getJson<StorageClass>(['storageclass'], {}), options.env);
   }
