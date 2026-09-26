@@ -175,6 +175,8 @@ export async function buildAndDistribute(ctx: DeployContext, compose: ParsedComp
         target.renderedOverrides = Build.getOverridesForTarget(ctx.rendered, target, ctx.projectRoot);
         target.platform = platform;
         target.engine = engine;
+        // what a registry push carries stays; an image shipped to the nodes keeps one id per content
+        target.noDefaultAttestations = delivery.mode !== 'registry';
       }
 
       ({ images } = await Build.buildAll(targets));

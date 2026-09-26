@@ -33,6 +33,11 @@ export interface BuildTarget {
   engine?: 'docker' | 'podman';
   /** Build-time variables passed via --build-arg (values already resolved from secrets) */
   args?: Record<string, string>;
+  /**
+   * Leave out BuildKit's default provenance attestation. It differs on every build, so an image
+   * shipped with `docker save` would get a new id each time and be sent to every node again.
+   */
+  noDefaultAttestations?: boolean;
 }
 
 export interface BuildResult {
@@ -255,6 +260,11 @@ export function getBuildTargets(
   return targets;
 }
 
+/** The builder's environment: BUILDX_NO_DEFAULT_ATTESTATIONS is ignored by the legacy builder and podman. */
+export function buildEnv(target: Pick<BuildTarget, 'noDefaultAttestations'>, env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return target.noDefaultAttestations ? { ...env, BUILDX_NO_DEFAULT_ATTESTATIONS: '1' } : env;
+}
+
 /**
  * Build a single Docker image locally via tar-stdin.
  */
@@ -277,6 +287,7 @@ export async function buildImage(target: BuildTarget): Promise<void> {
     stdin: new Blob([new Uint8Array(tar)]).stream(),
     stdout: 'pipe',
     stderr: 'pipe',
+    env: buildEnv(target),
   });
 
   const log = createTaskLog(`Building ${target.tag}`);
