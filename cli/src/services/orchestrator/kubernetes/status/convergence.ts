@@ -543,6 +543,9 @@ export function pvcPendingMessage(service: string, claim: string, detail: string
   return `Service ${service} is waiting for volume ${claim}: ${detail}`;
 }
 
+/** kube-scheduler's reason when a claim of an Immediate storage class never binds: the claim is the cause (F10), not placement */
+const UNBOUND_IMMEDIATE_CLAIMS = 'unbound immediate PersistentVolumeClaims';
+
 function podSignals(service: string, pod: Pod, snap: PollSnapshot, context: EvaluationContext): { signals: Signal[]; needsPvcs: boolean } {
   const signals: Signal[] = [];
   for (const status of statusesOf(pod)) {
@@ -571,7 +574,8 @@ function podSignals(service: string, pod: Pod, snap: PollSnapshot, context: Eval
   }
 
   const scheduled = condition(pod.status?.conditions, 'PodScheduled');
-  if (scheduled?.status === 'False' && scheduled.reason === 'Unschedulable') {
+  const waitsForClaims = needsPvcs && (scheduled?.message ?? '').includes(UNBOUND_IMMEDIATE_CLAIMS);
+  if (scheduled?.status === 'False' && scheduled.reason === 'Unschedulable' && !waitsForClaims) {
     signals.push({
       key: `${uidOf(pod)}/Unschedulable`,
       reason: 'Unschedulable',

@@ -404,6 +404,35 @@ describe('fail-fast classifier (design-03 9.4)', () => {
     expect(failed.suggestion).toBe('Check the volume with `dockflow volumes list production`.');
   });
 
+  /** the pvc-pending-rwx pod, rejected by the scheduler with `message` */
+  function unschedulableClaimPod(message: string, options: { pvcs?: boolean } = {}): PollSnapshot {
+    const snap = snapshotOf('pvc-pending-rwx', options);
+    const pod = firstPod(snap);
+    const others = (pod.status?.conditions ?? []).filter((c) => c.type !== 'PodScheduled');
+    pod.status = { ...pod.status, conditions: [...others, { type: 'PodScheduled', status: 'False', reason: 'Unschedulable', message }] };
+    return snap;
+  }
+
+  it('F10 wins over F9 when the scheduler blames an unbound Immediate claim', () => {
+    const message = '0/3 nodes are available: pod has unbound immediate PersistentVolumeClaims. not found';
+    const context = contextOf('pvc-pending-rwx');
+    const withoutPvcs = evaluate(web, unschedulableClaimPod(message), context, EMPTY, T0);
+    expect(withoutPvcs.verdict).toMatchObject({ state: 'progressing', needsPvcs: true });
+    expect(withoutPvcs.state.firstSeen).toEqual({});
+    const first = evaluate(web, unschedulableClaimPod(message, { pvcs: true }), context, withoutPvcs.state, at(3));
+    expect(evaluate(web, unschedulableClaimPod(message, { pvcs: true }), context, first.state, at(60)).verdict.state).toBe('progressing');
+    const failed = expectFailed(evaluate(web, unschedulableClaimPod(message, { pvcs: true }), context, first.state, at(63)).verdict);
+    expect(failed.failure).toMatchObject({ reason: 'PvcPending', message: `Service web is waiting for volume shared: ${NO_PROVISIONING_EVENT}` });
+  });
+
+  it('F9 still fails a claim-holding pod the scheduler rejects for its placement', () => {
+    const message = "0/3 nodes are available: 3 node(s) didn't match Pod's node affinity/selector.";
+    const context = contextOf('pvc-pending-rwx');
+    const first = evaluate(web, unschedulableClaimPod(message), context, EMPTY, T0);
+    const failed = expectFailed(evaluate(web, unschedulableClaimPod(message), context, first.state, at(60)).verdict);
+    expect(failed.failure).toMatchObject({ reason: 'Unschedulable', message: `Service web cannot be scheduled: ${message}` });
+  });
+
   it('F10 a Bound claim is not a signal', () => {
     const scenario = 'pvc-pending-rwx';
     const snap = snapshotOf(scenario, { pvcs: true });
