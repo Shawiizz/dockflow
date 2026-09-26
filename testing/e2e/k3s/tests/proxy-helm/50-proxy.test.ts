@@ -324,7 +324,8 @@ describe("50-proxy", () => {
       const second = makeFixture("test-app-k3s-proxy/second-env", { cluster: "k3s", envs: [ENV2] });
       const result = await runCLI(["deploy", ENV2, "1.0.0", "--force"], { cwd: second.dir, timeoutMs: 150_000 });
       expect(result.exitCode).toBe(0);
-      expect(`${result.stdout}${result.stderr}`).toContain("routing.proxy-disabled");
+      // routing.proxy-disabled, printed by its message (diagnostic codes are not)
+      expect(`${result.stdout}${result.stderr}`).toContain("Traefik labels have no effect because proxy.enabled is false");
       const routes = await ingressRoutesOf(NS2);
       expect(routes).toEqual([]);
       const after = await releaseEntry(K8S_PROXY_RELEASE);
