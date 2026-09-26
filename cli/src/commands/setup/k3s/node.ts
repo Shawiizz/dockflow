@@ -151,13 +151,16 @@ function baseResult(plan: K3sNodePlan): NodeStepResult {
   };
 }
 
+/** where result and progress lines go while a node step runs: stdout, unless NodeStepDeps.writeLine replaces it */
+let writeLine: (line: string) => void = (line) => printRaw(line);
+
 function emit(result: NodeStepResult): void {
-  printRaw(JSON.stringify({ dockflowNodeResult: result }));
+  writeLine(JSON.stringify({ dockflowNodeResult: result }));
 }
 
 /** Live per-step progress (3.4): one line per step, `start` before the work and the outcome after. */
 function emitEvent(step: string, status: 'start' | 'ok' | 'skip' | 'warn', detail?: string): void {
-  printRaw(JSON.stringify({ dockflowNodeEvent: detail === undefined ? { step, status } : { step, status, detail } }));
+  writeLine(JSON.stringify({ dockflowNodeEvent: detail === undefined ? { step, status } : { step, status, detail } }));
 }
 
 /** Records a step in the result and mirrors it as a progress event; `failed` is reported only in the final result (3.4 status enum has no `failed`). */
@@ -910,6 +913,8 @@ async function runOperation(runner: HostRunner, clock: Clock, redactor: Redactor
 export interface NodeStepDeps {
   runner?: HostRunner;
   clock?: Clock;
+  /** receives the result and progress lines instead of stdout, for a step run in-process (local setup) */
+  writeLine?: (line: string) => void;
 }
 
 /**
@@ -918,6 +923,16 @@ export interface NodeStepDeps {
  * prints exactly one `{"dockflowNodeResult": ...}` line before exiting 0 (ok) or 1 (failed/refused).
  */
 export async function runK3sNodeStep(stdin: NodeJS.ReadableStream, deps: NodeStepDeps = {}): Promise<void> {
+  const previousWriteLine = writeLine;
+  if (deps.writeLine) writeLine = deps.writeLine;
+  try {
+    await runNodeStep(stdin, deps);
+  } finally {
+    writeLine = previousWriteLine;
+  }
+}
+
+async function runNodeStep(stdin: NodeJS.ReadableStream, deps: NodeStepDeps): Promise<void> {
   const runner = deps.runner ?? localHostRunner;
   const clock = deps.clock ?? systemClock;
 

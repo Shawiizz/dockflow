@@ -76,24 +76,17 @@ export async function ensureSetupDependencies(
 /**
  * Runs one node-step operation the same way the cluster coordinator does over SSH — through
  * `runK3sNodeStep`, the protocol design-05 3.4 defines — but in-process, against the real
- * `HostRunner` of this machine. `runK3sNodeStep` speaks its result as a single stdout line rather
- * than a return value (3.4: the wire protocol is the same whether the node is local or remote), so
- * this captures that line by intercepting `process.stdout.write` for the duration of the call and
- * restores it immediately after, success or failure.
+ * `HostRunner` of this machine. `runK3sNodeStep` speaks its result as a single line rather than a
+ * return value (3.4: the wire protocol is the same whether the node is local or remote); here its
+ * lines go to a collector instead of stdout.
  */
 async function runNodeOperationLocally(plan: K3sNodePlan): Promise<NodeStepResult> {
-  const originalWrite = process.stdout.write.bind(process.stdout);
   const lines: string[] = [];
-  process.stdout.write = ((chunk: string | Uint8Array): boolean => {
-    lines.push(chunk.toString());
-    return true;
-  }) as typeof process.stdout.write;
   const previousExitCode = process.exitCode;
   process.exitCode = undefined;
   try {
-    await runK3sNodeStep(Readable.from([JSON.stringify(plan)]), { runner: localHostRunner, clock: systemClock });
+    await runK3sNodeStep(Readable.from([JSON.stringify(plan)]), { runner: localHostRunner, clock: systemClock, writeLine: (line) => lines.push(line) });
   } finally {
-    process.stdout.write = originalWrite;
     // Bun leaves process.exitCode unchanged when assigned `undefined` once it already holds a
     // number, so `undefined` can't stand for "no exit code" here: a stale non-zero previousExitCode
     // would otherwise get faithfully restored over a step that just reported success.

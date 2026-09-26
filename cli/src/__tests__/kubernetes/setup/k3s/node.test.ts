@@ -166,6 +166,25 @@ describe('runK3sNodeStep protocol (3.4)', () => {
     expect(body.dockflowNodeResult.operation).toBe('inspect');
     for (const line of result.lines) expect(JSON.stringify(line)).not.toContain('super secret install.sh chatter');
   });
+
+  it('an in-process step (local setup) hands its lines to writeLine, never to stdout', async () => {
+    const runner = withInspectStubs(host());
+    const raw = spyOn(output, 'printRaw').mockImplementation(() => {});
+    const collected: string[] = [];
+    const previousExit = process.exitCode;
+    try {
+      await runK3sNodeStep(stdinOf(JSON.stringify(inspectPlan())), { runner, writeLine: (line) => collected.push(line) });
+      expect(raw).not.toHaveBeenCalled();
+      expect(collected.map((line) => Object.keys(JSON.parse(line)))).toEqual([['dockflowNodeResult']]);
+
+      // the next step run from stdout (a remote node) writes there again
+      await runK3sNodeStep(stdinOf(JSON.stringify(inspectPlan())), { runner: withInspectStubs(host()) });
+      expect(raw).toHaveBeenCalledTimes(1);
+    } finally {
+      process.exitCode = previousExit ?? 0;
+      raw.mockRestore();
+    }
+  });
 });
 
 describe('inspect (4.1, N6)', () => {
