@@ -797,7 +797,8 @@ export class KubernetesContainerBackend implements ContainerBackend {
       }
       pods = [hit];
     } else {
-      pods = all.filter((p) => isLogTarget(p.pod, options.includeTerminated));
+      // a Job's pods have all terminated once it ran: its logs are those runs
+      pods = all.filter((p) => isLogTarget(p.pod, options.includeTerminated || p.owner.kind === 'Job'));
     }
     // only a whole-role follow waits for pods to appear
     if (pods.length === 0 && scope !== null) {

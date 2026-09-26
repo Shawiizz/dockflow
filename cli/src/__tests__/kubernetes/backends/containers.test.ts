@@ -915,6 +915,23 @@ describe('logs', () => {
     expect(out.lines).toHaveLength(12);
   });
 
+  it("a Job's finished runs are its logs, without --all-tasks", async () => {
+    const jobName = 'migrate-3f9a1c2e';
+    const job: Obj = {
+      apiVersion: 'batch/v1',
+      kind: 'Job',
+      metadata: { name: jobName, namespace: NS, uid: `uid-${jobName}`, labels: composeLabels('app', 'migrate'), annotations: { [`${P}/compose-service`]: 'migrate' } },
+      spec: { template: template(['migrate']) },
+    };
+    const pod = podObject(`${jobName}-abcde`, { kind: 'Job', name: jobName }, templateLabels('app', 'migrate'), ['migrate'], { phase: 'Succeeded' });
+    const status = pod.status as { containerStatuses: { state: unknown }[] };
+    status.containerStatuses[0].state = { terminated: { exitCode: 0, reason: 'Completed', startedAt: START, finishedAt: START } };
+    const h = harness([job, pod], [logsStep(`${jobName}-abcde`, ['--timestamps', '--tail=100'], result(0, '2026-09-17T10:00:00Z done\n'), 'migrate')]);
+    const out = collector();
+    await h.backend.streamLogs(APP, 'migrate', LOGS, out.sink);
+    expect(out.lines.map((l) => l.text)).toEqual(['done']);
+  });
+
   it('a service without a readable pod is CONTAINER_NOT_FOUND; the whole role without pods only warns', async () => {
     const h = harness([deployment('web'), webPod('fffff', { phase: 'Failed' })]);
     const error = (await failure(h.backend.streamLogs(APP, 'web', LOGS, collector().sink))) as CLIError;
