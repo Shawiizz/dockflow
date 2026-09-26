@@ -1,7 +1,7 @@
 /**
  * k3s-multinode / 43-registry (design-07 17.4 E-43): registry image delivery skips the SSH import
  * path, a pre-pushed image is used directly, additional tags reach the registry, an authenticated
- * registry leaks no credential, and a wrong password fails fast and reverts.
+ * registry leaks no credential, and a wrong password is refused by the login before any deploy.
  */
 
 import { afterAll, describe, expect, test } from "bun:test";
@@ -45,6 +45,8 @@ describe("registry delivery", () => {
     fixture?.cleanup();
     if (authedFixture) await deleteStackCompletely(nsFor("k3s-registry-auth", ENV)).catch(() => {});
     authedFixture?.cleanup();
+    // the deploy logged this machine's engine in to push
+    await exec(["docker", "logout", AUTH_REGISTRY]).catch(() => {});
   });
 
   test("anonymous registry deploy skips the SSH import path", async () => {
@@ -138,15 +140,15 @@ describe("registry delivery", () => {
     });
   }, 300_000);
 
-  test("a wrong registry password fails fast and reverts", async () => {
-    await withDump("wrong password reverts", async () => {
+  test("a wrong registry password is refused by the login, before anything is deployed", async () => {
+    await withDump("wrong password refused", async () => {
       const authedNs = nsFor("k3s-registry-auth", ENV);
       authedFixture.patchConfig((text) => text.replace(`password: "${AUTH_PASSWORD}"`, 'password: "wrong-password"'));
 
       const result = await runCLI(["deploy", ENV, "1.0.1", "--only", "web", "--yes"], { cwd: authedFixture.dir, timeoutMs: 180_000 });
-      expect(result.exitCode).toBe(53);
+      expect(result.exitCode).toBe(50);
       const combined = `${result.stdout}${result.stderr}`;
-      expect(combined).toMatch(/unauthorized|auth|denied/i);
+      expect(combined).toMatch(new RegExp(`Registry login to ${AUTH_REGISTRY} failed: .*(unauthorized|denied)`, "i"));
 
       const pods = await podsForService(authedNs, "web");
       for (const pod of pods) expect(pod.spec.containers[0]?.image).toBe(`${AUTH_REGISTRY}/k3s-registry-web:1.0.0`);
