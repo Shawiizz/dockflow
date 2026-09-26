@@ -61,7 +61,9 @@ describe("image distribution", () => {
     await withDump("no-transfer redeploy", async () => {
       const result = await runCLI(["deploy", ENV, "1.0.1", "--only", "web", "--yes"], { cwd: fixture.dir, timeoutMs: 180_000 });
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("already present on");
+      // every node holds the 1.0.0 image under its old name: the new one is tagged there, nothing travels
+      for (const node of currentTopology().nodes) expect(result.stdout).toMatch(new RegExp(`already present on ${node.key} under another name, tagged`));
+      expect(result.stdout).not.toContain("imported on");
       await waitWorkloadReady(NS, "deployment", "web", 3, 120_000);
     });
   }, 180_000);
@@ -79,8 +81,9 @@ describe("image distribution", () => {
       const restart = await runCLI(["restart", ENV, "on-agent2"], { cwd: fixture.dir, timeoutMs: 120_000 });
       expect(restart.exitCode).not.toBe(0);
       const combined = `${restart.stdout}${restart.stderr}`;
-      expect(combined).toMatch(/ErrImagePull|ImagePullBackOff/);
-      expect(combined).toContain("agent_2");
+      // design-03 F3's wording for an imported image a node lacks, seen at once rather than timed out
+      expect(combined).toContain(`cannot start: image ${onAgent2Ref} was not imported on node agent_2`);
+      expect(combined).not.toContain("did not complete within");
 
       const pods = await podsForService(NS, "on-agent2");
       const events = await getJson<Event>("events", { ns: NS });
@@ -99,11 +102,13 @@ describe("image distribution", () => {
       expect(result.exitCode).toBe(0);
       await waitWorkloadReady(NS, "deployment", "on-agent2", 1, 120_000);
 
-      const topo = currentTopology();
-      for (const node of topo.nodes) {
+      // agent-2 lost the name, not the content: every image of this fixture is one build of
+      // Dockerfile.web, still held there under the web names, so it too is tagged and nothing travels
+      expect(result.stdout).toMatch(/already present on agent_2 under another name, tagged/);
+      expect(result.stdout).not.toContain("imported on");
+      for (const node of currentTopology().nodes) {
         const images = await imagesOnNode(node.key);
-        const has = images.some((img) => img.ref === onAgent2Ref);
-        expect(has, `${node.key} image presence for ${onAgent2Ref}`).toBe(node.key === "agent_2");
+        expect(images.some((img) => img.ref === onAgent2Ref && img.pinned), `${node.key} holds ${onAgent2Ref}, pinned`).toBe(true);
       }
     });
   }, 180_000);
