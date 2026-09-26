@@ -255,6 +255,29 @@ describe('sshExecChannelDedicated (design-05 3.5): never the pool', () => {
   });
 });
 
+describe('closeAllConnections: a handshake in progress', () => {
+  it('is abandoned at once, not retried until its timeouts run out (a down node kept each command alive ~30s)', async () => {
+    const silentSockets = new Set<Socket>();
+    const silent = createServer((socket) => {
+      // accepts TCP and never speaks SSH, as a host that went down behind a provider network can
+      silentSockets.add(socket);
+      socket.on('error', () => {});
+    });
+    const port = await listen(silent);
+    try {
+      const pending = rejectionOf(sshExec({ ...conn, port }, 'never-runs'));
+      await Bun.sleep(100);
+      const closedAt = Date.now();
+      closeAllConnections();
+      expect(await pending).toBeInstanceOf(Error);
+      expect(Date.now() - closedAt).toBeLessThan(1000);
+    } finally {
+      for (const socket of silentSockets) socket.destroy();
+      await new Promise<void>((resolve) => silent.close(() => resolve()));
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // HostKeyStore (design-05 3.5, K60): the setup transport's host-key verifier and pin store.
 // Exercised directly (no SSH server needed): `verifierFor` returns the exact `(key, callback)`

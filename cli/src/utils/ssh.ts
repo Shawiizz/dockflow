@@ -26,6 +26,8 @@ interface PoolEntry {
   state: PoolEntryState;
   /** Shared promise — all concurrent callers await the same handshake */
   readyPromise: Promise<SSHClient>;
+  /** Abandons the handshake and its retries (closeAllConnections), which would otherwise keep the process alive */
+  abort: AbortController;
 }
 
 // ─── Pool state (module-level singleton) ──────────────────────
@@ -165,11 +167,24 @@ function buildConnectConfig(conn: ConnectionInfo, keepalive: boolean): ConnectCo
 /**
  * Attempt a single SSH connection. Returns a connected client or throws.
  */
-function attemptConnect(conn: ConnectionInfo, keepalive: boolean): Promise<SSHClient> {
+function attemptConnect(conn: ConnectionInfo, keepalive: boolean, signal?: AbortSignal): Promise<SSHClient> {
   return new Promise<SSHClient>((resolve, reject) => {
     const client = new SSHClient();
-    client.on('ready', () => resolve(client));
+    const abandon = (): void => {
+      client.destroy();
+      reject(new Error(`SSH connection to ${conn.host} was abandoned: every connection is being closed`));
+    };
+    if (signal?.aborted) {
+      abandon();
+      return;
+    }
+    signal?.addEventListener('abort', abandon, { once: true });
+    client.on('ready', () => {
+      signal?.removeEventListener('abort', abandon);
+      resolve(client);
+    });
     client.on('error', (err) => {
+      signal?.removeEventListener('abort', abandon);
       try { client.end(); } catch { /* ignore */ }
       reject(err);
     });
@@ -177,28 +192,42 @@ function attemptConnect(conn: ConnectionInfo, keepalive: boolean): Promise<SSHCl
   });
 }
 
+/** Resolves after `ms`, or as soon as `signal` aborts. */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener('abort', done, { once: true });
+  });
+}
+
 /**
  * Connect to an SSH host with exponential backoff retry on transient errors.
- * Auth failures are NOT retried.
+ * Auth failures are NOT retried, and nothing is once `signal` aborts.
  */
 async function connectWithRetry(
   conn: ConnectionInfo,
   keepalive: boolean,
+  signal?: AbortSignal,
   retries = SSH_CONNECT_RETRIES,
   baseDelayMs = SSH_CONNECT_RETRY_BASE_DELAY_MS,
 ): Promise<SSHClient> {
   let lastErr: unknown;
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      return await attemptConnect(conn, keepalive);
+      return await attemptConnect(conn, keepalive, signal);
     } catch (err) {
       lastErr = err;
-      if (attempt < retries && isRetryableConnectionError(err)) {
+      if (attempt < retries && !signal?.aborted && isRetryableConnectionError(err)) {
         const delay = baseDelayMs * Math.pow(2, attempt - 1);
         printDebug(
           `SSH connection to ${conn.host} failed (attempt ${attempt}/${retries}), retrying in ${delay}ms: ${err instanceof Error ? err.message : String(err)}`,
         );
-        await Bun.sleep(delay);
+        await sleep(delay, signal);
       } else {
         break;
       }
@@ -234,7 +263,8 @@ async function getPooledClient(conn: ConnectionInfo): Promise<SSHClient> {
   }
 
   // Build the ready promise using retry-aware connect
-  const readyPromise = connectWithRetry(conn, true).then((client) => {
+  const abort = new AbortController();
+  const readyPromise = connectWithRetry(conn, true, abort.signal).then((client) => {
     // Register close handler so stale entries are evicted
     client.on('close', () => {
       const entry = pool.get(key);
@@ -261,6 +291,7 @@ async function getPooledClient(conn: ConnectionInfo): Promise<SSHClient> {
     client: placeholderClient,
     state: 'connecting',
     readyPromise,
+    abort,
   };
   pool.set(key, entry);
 
@@ -749,6 +780,7 @@ function openUnbufferedChannelOnClient(
  */
 export function closeAllConnections(): void {
   for (const [, entry] of pool) {
+    entry.abort.abort();
     try {
       if (entry.state !== 'closed') {
         entry.client.destroy();
