@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Recorder for the kubectl and metrics fixtures of design-07 3.11 (PD-12). Run by hand against a
- * running lane cluster, never inside a package:
+ * Recorder for the kubectl, metrics and helm fixtures of design-07 3.11 (PD-12). Run by hand against
+ * a running lane cluster, never inside a package:
  *
  *   bun run testing/e2e/k3s/tools/record-kubectl-fixtures.ts --lane k3s-core (--scenario <name>[,<name>...] | --all)
  *
@@ -13,6 +13,10 @@
  * per capture. All the captures of a scenario are scrubbed with one set of maps, checked with the
  * `scrubViolations` of `cli/src/__tests__/kubernetes/support/kubectl-fixtures.ts` (the rules
  * `fixtures-meta.test.ts` enforces), and only then written.
+ *
+ * A helm scenario brings the releases of its namespace to their state with the harness helm of
+ * server-1 and the arguments of Dockflow's Helm backend, then keeps what `helm list`, `helm
+ * history`, `helm get` and `kubectl get secrets` print, under the same scrub rules.
  */
 
 import { createHash } from "crypto";
@@ -36,13 +40,18 @@ import {
   RESOURCE_KINDS,
   scrubViolations,
 } from "../../../../cli/src/__tests__/kubernetes/support/kubectl-fixtures";
+import { helmHistoryMaxFor } from "../../../../cli/src/commands/helm/utils";
 import { loadFromString } from "../../../../cli/src/services/compose";
 import { DiagnosticSink } from "../../../../cli/src/services/orchestrator/diagnostics";
 import { createFileResolver } from "../../../../cli/src/services/orchestrator/file-resolver";
-import type { StackRole } from "../../../../cli/src/services/orchestrator/interfaces";
+import type { ResolvedHelmRelease, StackRole } from "../../../../cli/src/services/orchestrator/interfaces";
 import { buildHelperPod } from "../../../../cli/src/services/orchestrator/kubernetes/backends/backup";
+import { helmUninstallArgs, helmUpgradeArgs } from "../../../../cli/src/services/orchestrator/kubernetes/backends/helm";
 import { K8S_PROGRESS_DEADLINE_S, LABELS } from "../../../../cli/src/services/orchestrator/kubernetes/constants";
 import type { DistributionTraits } from "../../../../cli/src/services/orchestrator/kubernetes/distribution";
+import { specRevisionsSelector } from "../../../../cli/src/services/orchestrator/kubernetes/helm/parse";
+import { helmSpecHash } from "../../../../cli/src/services/orchestrator/kubernetes/helm/resolve";
+import { helmValuesStdin } from "../../../../cli/src/services/orchestrator/kubernetes/helm/values-yaml";
 import { k3sDistribution } from "../../../../cli/src/services/orchestrator/kubernetes/k3s/distribution";
 import { K3S_PIN } from "../../../../cli/src/services/orchestrator/kubernetes/k3s/versions";
 import { namespaceLabels } from "../../../../cli/src/services/orchestrator/kubernetes/labels";
@@ -53,15 +62,17 @@ import type { DaemonSet, Deployment, StatefulSet } from "../../../../cli/src/ser
 import type { Job } from "../../../../cli/src/services/orchestrator/kubernetes/resources/batch";
 import type { Container, PersistentVolumeClaim } from "../../../../cli/src/services/orchestrator/kubernetes/resources/core";
 import type { ManifestObject } from "../../../../cli/src/services/orchestrator/kubernetes/resources/registry";
+import { HELM_LIST_EVERY_STATUS } from "../../../../cli/src/services/orchestrator/kubernetes/runtime/helm";
 import { translateStack } from "../../../../cli/src/services/orchestrator/kubernetes/translate";
 import { HELM_PIN } from "../../../../cli/src/services/orchestrator/kubernetes/versions";
+import type { DockflowConfig } from "../../../../cli/src/utils/config";
+import { canonicalJson, sha256Hex } from "../../../../cli/src/utils/hash";
+import { tryExec } from "../../helpers/cluster";
 import { getJson, kubectl, waitFor, withNodeDown } from "../../helpers/k8s";
-import { TOPOLOGIES } from "../../helpers/topology";
+import { chartRepoUrl, currentTopology, managersOf, TOPOLOGIES } from "../../helpers/topology";
 import { isLaneName, LANES, type LaneName } from "../lanes";
 
-// NOTE: the three helm scenarios (helm-list, helm-status-failed, helm-history-rollback) and the
-// kubectl-stderr samples are not recorded yet; `cli/src/__tests__/kubernetes/fixtures/helm/**`
-// keeps its synthetic content until this tool records them too.
+// NOTE: the kubectl-stderr samples are not recorded yet.
 
 function log(message: string): void {
   process.stdout.write(`${message}\n`);
@@ -593,15 +604,19 @@ async function waitCondition(resource: string, ns: string, name: string, type: s
   );
 }
 
-/**
- * A fresh namespace per recording, labelled as Dockflow labels a stack namespace: a re-run never
- * captures the objects or events of an earlier attempt, nor its volumes, which dockflow-local
- * retains after their claims are gone.
- */
-async function ensureNamespace(ns: string): Promise<void> {
+/** Deletes a namespace and the volumes of its claims, which dockflow-local retains after the claims are gone. */
+async function removeNamespace(ns: string): Promise<void> {
   await kubectl(["delete", "namespace", ns, "--ignore-not-found", "--wait=true", "--timeout=180s"], { allowFailure: true });
   const stale = (await getJson<Json>("persistentvolumes")).filter((pv) => claimedFrom(ns, pv)).map((pv) => stringField(metadataOf(pv), "name"));
   if (stale.length > 0) await kubectl(["delete", "persistentvolume", ...stale, "--wait=true", "--timeout=120s"], { allowFailure: true });
+}
+
+/**
+ * A fresh namespace per recording, labelled as Dockflow labels a stack namespace: a re-run never
+ * captures the objects, events or volumes of an earlier attempt.
+ */
+async function ensureNamespace(ns: string): Promise<void> {
+  await removeNamespace(ns);
   await apply([{ apiVersion: "v1", kind: "Namespace", metadata: { name: ns, labels: namespaceLabels(identityOf(ns)) } }]);
 }
 
@@ -1195,6 +1210,368 @@ async function record(scenario: Scenario): Promise<void> {
   writeRecording(scenario, captures, metrics);
 }
 
+// ─── helm scenarios ─────────────────────────────────────────────────
+
+/** harness helm baked into the node image (design-07 16.4), against k3s's admin kubeconfig */
+const HARNESS_HELM = "/opt/e2e/bin/helm";
+const K3S_ADMIN_KUBECONFIG = "/etc/rancher/k3s/k3s.yaml";
+/** where the chart archives are pulled on the node, as a deploy pulls them into its cache first */
+const CHART_DIR = "/tmp/dockflow-fixture-charts";
+/** the history a default config.yml keeps: max(5, keep_releases + 2) */
+const HELM_HISTORY_MAX = helmHistoryMaxFor({} as DockflowConfig);
+/** helm.timeout default (5m) */
+const HELM_TIMEOUT_S = 300;
+
+function shellQuote(arg: string): string {
+  return `'${arg.replace(/'/g, `'\\''`)}'`;
+}
+
+/** as a shell reads it back: the arguments with spaces or shell characters quoted */
+function commandLine(args: readonly string[]): string {
+  return args.map((arg) => (/^[\w@%+=:,./^$-]+$/.test(arg) ? arg : shellQuote(arg))).join(" ");
+}
+
+interface HelmRun {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+/** One output file of a helm scenario: `<file>: <command>` in meta.json. */
+interface HelmCapture {
+  file: string;
+  command: string;
+  text: string;
+}
+
+/**
+ * The releases of a helm scenario, installed, upgraded and uninstalled with the arguments the
+ * Dockflow Helm backend builds (`helmUpgradeArgs`, `helmUninstallArgs`), values on stdin.
+ */
+class HelmRecording {
+  readonly captures: HelmCapture[] = [];
+
+  constructor(
+    readonly ns: string,
+    private readonly container: string,
+    private readonly repo: string,
+  ) {}
+
+  async helm(args: readonly string[], stdin?: string): Promise<HelmRun> {
+    const command = ["docker", "exec", ...(stdin === undefined ? [] : ["-i"]), this.container, HARNESS_HELM, "--kubeconfig", K3S_ADMIN_KUBECONFIG, ...args];
+    return tryExec(command, { ...(stdin === undefined ? {} : { input: stdin }), timeoutMs: 300_000 });
+  }
+
+  async helmOk(args: readonly string[], stdin?: string): Promise<string> {
+    const result = await this.helm(args, stdin);
+    if (result.exitCode !== 0) throw new Error(`harness helm ${args.join(" ")} failed (exit ${result.exitCode}): ${(result.stderr || result.stdout).trim()}`);
+    return result.stdout;
+  }
+
+  /** a release as the backend resolves one from config.yml, with its chart archive on the node */
+  async release(
+    name: string,
+    role: StackRole,
+    chart: string,
+    version: string,
+    values: Record<string, unknown> = {},
+    options: { namespace?: string; timeoutS?: number } = {},
+  ): Promise<{ release: ResolvedHelmRelease; archive: string }> {
+    const archive = `${CHART_DIR}/${chart}-${version}.tgz`;
+    await tryExec(["docker", "exec", this.container, "mkdir", "-p", CHART_DIR]);
+    await this.helmOk(["pull", chart, "--repo", this.repo, "--version", version, "-d", CHART_DIR]);
+    const release: ResolvedHelmRelease = {
+      name,
+      role,
+      namespace: options.namespace ?? this.ns,
+      chart: { kind: "repo", repo: this.repo, chart },
+      version,
+      values,
+      valuesSha256: sha256Hex(canonicalJson(values)),
+      timeoutS: options.timeoutS ?? HELM_TIMEOUT_S,
+      auth: null,
+      declaredDigest: null,
+    };
+    return { release, archive };
+  }
+
+  upgradeArgs(release: ResolvedHelmRelease, archive: string, rollbackOnFailure = true): string[] {
+    const args = helmUpgradeArgs(release, archive, { historyMax: HELM_HISTORY_MAX, stackId: this.ns });
+    return rollbackOnFailure ? args : args.filter((arg) => arg !== "--rollback-on-failure");
+  }
+
+  /** `helm upgrade --install` as a deploy runs it, which must succeed */
+  async upgrade(target: { release: ResolvedHelmRelease; archive: string }): Promise<void> {
+    await this.helmOk(this.upgradeArgs(target.release, target.archive), helmValuesStdin(target.release.values));
+  }
+
+  /** the same upgrade, which must fail; without --rollback-on-failure when asked. Returns its stderr. */
+  async failingUpgrade(target: { release: ResolvedHelmRelease; archive: string }, rollbackOnFailure: boolean): Promise<string> {
+    const result = await this.helm(this.upgradeArgs(target.release, target.archive, rollbackOnFailure), helmValuesStdin(target.release.values));
+    if (result.exitCode === 0) throw new Error(`The upgrade of ${target.release.name} to ${target.archive} did not fail`);
+    return result.stderr;
+  }
+
+  /** the same upgrade, SIGKILLed while it waits for its resources: the release stays pending-* */
+  async upgradeKilled(target: { release: ResolvedHelmRelease; archive: string }, afterS: number): Promise<void> {
+    const helm = [HARNESS_HELM, "--kubeconfig", K3S_ADMIN_KUBECONFIG, ...this.upgradeArgs(target.release, target.archive)].map(shellQuote).join(" ");
+    // a background job reads /dev/null unless told otherwise: fd 3 keeps the values docker exec feeds
+    const script = `exec 3<&0; ${helm} <&3 & pid=$!; sleep ${afterS}; kill -9 $pid; wait $pid; exit 0`;
+    await tryExec(["docker", "exec", "-i", this.container, "sh", "-c", script], { input: helmValuesStdin(target.release.values), timeoutMs: (afterS + 60) * 1000 });
+  }
+
+  async uninstall(namespace: string, name: string, keepHistory: boolean): Promise<void> {
+    await this.helmOk(helmUninstallArgs(namespace, name, { timeoutS: HELM_TIMEOUT_S, keepHistory }));
+  }
+
+  /** runs a read and keeps its stdout as `file` */
+  async captureHelm(file: string, args: readonly string[]): Promise<void> {
+    this.captures.push({ file, command: `helm ${commandLine(args)}`, text: await this.helmOk(args) });
+  }
+
+  async captureKubectl(file: string, args: readonly string[]): Promise<void> {
+    this.captures.push({ file, command: `kubectl ${commandLine(args)}`, text: await kubectl(args) });
+  }
+
+  captureText(file: string, command: string, text: string): void {
+    this.captures.push({ file, command, text });
+  }
+
+  async status(namespace: string, name: string): Promise<string | undefined> {
+    const rows = JSON.parse(await this.helmOk(["list", ...HELM_LIST_EVERY_STATUS, "-n", namespace, "--filter", `^${name}$`, "-o", "json"])) as { status: string }[];
+    return rows[0]?.status;
+  }
+}
+
+/** RFC 3339 (`helm history`) and Go's time.String (`helm list`), with their nanoseconds */
+const HELM_TIME_RE = /(\d{4})-(\d{2})-(\d{2})(T| )(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2}| [+-]\d{4} [A-Za-z]+)/g;
+const NS_PER_S = 1_000_000_000n;
+const SCRUBBED_START_NS = BigInt(SCRUBBED_START.getTime()) * 1_000_000n;
+
+function helmTimeNs(groups: readonly string[]): bigint {
+  const [year, month, day, , hour, minute, second, fraction, zone] = groups;
+  const seconds = BigInt(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)) / 1000);
+  const offset = zone.trim();
+  let offsetS = 0n;
+  if (offset !== "Z") {
+    const digits = offset.slice(1, 6).replace(":", "");
+    const minutes = Number(digits.slice(0, 2)) * 60 + Number(digits.slice(2, 4));
+    offsetS = BigInt((offset.startsWith("-") ? -1 : 1) * minutes * 60);
+  }
+  return (seconds - offsetS) * NS_PER_S + BigInt((fraction ?? "").padEnd(9, "0"));
+}
+
+/** in UTC and in the source's own layout, trailing zeros of the fraction dropped as Go prints them */
+function formatHelmTime(ns: bigint, goLayout: boolean): string {
+  const iso = new Date(Number(ns / NS_PER_S) * 1000).toISOString();
+  const fraction = (ns % NS_PER_S).toString().padStart(9, "0").replace(/0+$/, "");
+  const clock = `${iso.slice(11, 19)}${fraction ? `.${fraction}` : ""}`;
+  return goLayout ? `${iso.slice(0, 10)} ${clock} +0000 UTC` : `${iso.slice(0, 10)}T${clock}Z`;
+}
+
+function helmMatches(text: string): RegExpMatchArray[] {
+  return [...text.matchAll(HELM_TIME_RE)];
+}
+
+/**
+ * The helm scrub (3.11 rules, at nanosecond precision so `helm list` and `helm history` keep their
+ * own layout): every time shifted by one offset that puts the earliest at 2026-01-01T00:00:00Z,
+ * every UUID mapped. Helm prints no node address nor object uid in these reads.
+ */
+function scrubHelmCaptures(captures: readonly HelmCapture[]): HelmCapture[] {
+  let earliest: bigint | null = null;
+  for (const capture of captures) {
+    for (const match of helmMatches(capture.text)) {
+      const ns = helmTimeNs(match.slice(1));
+      if (earliest === null || ns < earliest) earliest = ns;
+    }
+  }
+  const shift = earliest === null ? 0n : SCRUBBED_START_NS - earliest;
+  const uids = new Map<string, string>();
+  return captures.map((capture) => {
+    const shifted = capture.text.replace(HELM_TIME_RE, (...args: string[]) => formatHelmTime(helmTimeNs(args.slice(1, 10)) + shift, args[4] === " "));
+    const text = shifted.replace(UUID_RE, (uuid) => {
+      const known = uids.get(uuid);
+      if (known) return known;
+      const assigned = `00000000-0000-4000-8000-${String(uids.size + 1).padStart(12, "0")}`;
+      uids.set(uuid, assigned);
+      return assigned;
+    });
+    return { ...capture, text };
+  });
+}
+
+/** a later revision older than the one before it: the clock was stepped back during the recording */
+function revisionsOutOfOrder(capture: HelmCapture): boolean {
+  if (!capture.command.startsWith("helm history ")) return false;
+  const times = (JSON.parse(capture.text) as { updated: string }[]).map(({ updated }) => {
+    const [match] = helmMatches(updated);
+    if (!match) throw new Error(`helm history printed the time ${updated}, which the scrub does not read`);
+    return helmTimeNs(match.slice(1));
+  });
+  return times.some((ns, i) => i > 0 && ns < times[i - 1]);
+}
+
+function writeHelmRecording(scenario: HelmScenario, recording: HelmRecording, helmVersion: string): void {
+  const stepped = recording.captures.filter(revisionsOutOfOrder);
+  if (stepped.length > 0) {
+    throw new Error(`${scenario.name}: ${stepped.map((c) => c.file).join(", ")} lists revisions out of time order; the clock was stepped back, record again`);
+  }
+  const captures = scrubHelmCaptures(recording.captures);
+  const files: FixtureFile[] = captures.map(({ file, text }) => {
+    if (!file.endsWith(".json")) return { path: file, text };
+    const json: unknown = JSON.parse(text);
+    if (formatCompactJson(json) !== text) throw new Error(`${scenario.name}/${file}: helm printed JSON in a layout formatCompactJson does not reproduce`);
+    return { path: file, text, json };
+  });
+  const violations = scrubViolations(files);
+  if (violations.length > 0) {
+    throw new Error(`Recording of ${scenario.name} did not scrub cleanly:\n${violations.map((v) => `  - ${v}`).join("\n")}`);
+  }
+  const dir = join(FIXTURES_ROOT, "helm", scenario.name);
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  for (const file of files) writeFileSync(join(dir, file.path), file.text);
+  const steps = [...scenario.steps, ...captures.map(({ file, command }) => `${file}: ${command}`)];
+  const meta = { recordedOn: today(), k3sVersion: K3S_PIN.version, helmVersion, steps };
+  writeFileSync(join(dir, "meta.json"), `${JSON.stringify(meta, null, 2)}\n`);
+  log(`[record] helm/${scenario.name}: ${files.length} file(s), written to ${dir}`);
+}
+
+interface HelmScenario {
+  name: string;
+  /** how the releases reach their state; the capture steps are added from what was read */
+  steps: string[];
+  run(recording: HelmRecording): Promise<void>;
+}
+
+const HELM_STEP = "Releases are installed and upgraded with the arguments of Dockflow's Helm backend (helmUpgradeArgs: values on stdin, --rollback-on-failure, --wait=watcher, --history-max 5, labels stack/role/spec-hash), from chart archives pulled from the e2e chart repository";
+
+/** fails the recording unless `name` reached `status` */
+async function expectStatus(recording: HelmRecording, namespace: string, name: string, status: string): Promise<void> {
+  const actual = await recording.status(namespace, name);
+  if (actual !== status) throw new Error(`Helm release ${namespace}/${name} is ${actual ?? "absent"}, not ${status}`);
+}
+
+const HELM_SCENARIOS: HelmScenario[] = [
+  {
+    name: "helm-status-failed",
+    steps: [
+      HELM_STEP,
+      "kubectl create namespace fixture-helm-status-failed",
+      "release broken (app): e2e-web 0.1.0",
+      "upgrade of broken to e2e-broken 0.1.0 (its image never resolves) with --timeout 60s and without --rollback-on-failure, as an upgrade made outside Dockflow leaves it: revision 2 failed, revision 1 still deployed",
+    ],
+    async run(recording) {
+      const ns = recording.ns;
+      await recording.upgrade(await recording.release("broken", "app", "e2e-web", "0.1.0"));
+      const broken = await recording.release("broken", "app", "e2e-broken", "0.1.0", {}, { timeoutS: 60 });
+      recording.captureText("upgrade-stderr.txt", `stderr of helm ${commandLine(recording.upgradeArgs(broken.release, broken.archive, false))}`, await recording.failingUpgrade(broken, false));
+      await expectStatus(recording, ns, "broken", "failed");
+      await recording.captureHelm("list.json", ["list", ...HELM_LIST_EVERY_STATUS, "-n", ns, "--filter", "^broken$", "-o", "json"]);
+      await recording.captureHelm("history.json", ["history", "broken", "-n", ns, "--max", "20", "-o", "json"]);
+    },
+  },
+  {
+    name: "helm-history-rollback",
+    steps: [
+      HELM_STEP,
+      "kubectl create namespace fixture-helm-history-rollback",
+      "release web (app): e2e-web 0.1.0",
+      "upgrade of web to e2e-broken 0.1.0 with --timeout 60s: it fails and --rollback-on-failure rolls it back (revisions superseded, failed, deployed)",
+    ],
+    async run(recording) {
+      const ns = recording.ns;
+      await recording.upgrade(await recording.release("web", "app", "e2e-web", "0.1.0"));
+      const broken = await recording.release("web", "app", "e2e-broken", "0.1.0", {}, { timeoutS: 60 });
+      recording.captureText("upgrade-stderr.txt", `stderr of helm ${commandLine(recording.upgradeArgs(broken.release, broken.archive))}`, await recording.failingUpgrade(broken, true));
+      await expectStatus(recording, ns, "web", "deployed");
+      await recording.captureHelm("list.json", ["list", ...HELM_LIST_EVERY_STATUS, "-n", ns, "--filter", "^web$", "-o", "json"]);
+      await recording.captureHelm("history.json", ["history", "web", "-n", ns, "--max", "20", "-o", "json"]);
+      await recording.captureKubectl("release-secrets.txt", ["get", "secrets", "-n", ns, "-l", "owner=helm,name=web", "-o", "name"]);
+    },
+  },
+  {
+    name: "helm-list",
+    steps: [
+      HELM_STEP,
+      "kubectl create namespace fixture-helm-list (the stack); fixture-helm-list-data is created by the install of data (--create-namespace)",
+      "data (accessory, namespace fixture-helm-list-data): e2e-pvc 0.1.0 without values",
+      "search (app): e2e-web 0.1.0 with message, then 0.2.0 with message and replicas 2, then 0.2.0 with another message, then the spec of revision 2 again (revision 4, same spec-hash as revision 2)",
+      "cache (app): e2e-web 0.1.0, then e2e-broken 0.1.0 with --timeout 60s and without --rollback-on-failure: failed",
+      "queue (accessory): e2e-broken 0.1.0, the install SIGKILLed during its wait: pending-install",
+      "reports (app): e2e-web 0.1.0, then 0.2.0, then e2e-broken 0.1.0 SIGKILLed during its wait: pending-upgrade",
+      "archive (accessory): e2e-web 0.1.0, then helm uninstall --keep-history with the arguments of helmUninstallArgs: uninstalled",
+    ],
+    async run(recording) {
+      const ns = recording.ns;
+      const dataNs = `${ns}-data`;
+      await recording.upgrade(await recording.release("data", "accessory", "e2e-pvc", "0.1.0", {}, { namespace: dataNs }));
+
+      const searchV2 = { message: "hello from search", replicas: 2 };
+      await recording.upgrade(await recording.release("search", "app", "e2e-web", "0.1.0", { message: "hello from search" }));
+      const second = await recording.release("search", "app", "e2e-web", "0.2.0", searchV2);
+      await recording.upgrade(second);
+      await recording.upgrade(await recording.release("search", "app", "e2e-web", "0.2.0", { message: "hello again from search", replicas: 2 }));
+      await recording.upgrade(await recording.release("search", "app", "e2e-web", "0.2.0", searchV2));
+
+      await recording.upgrade(await recording.release("cache", "app", "e2e-web", "0.1.0"));
+      await recording.failingUpgrade(await recording.release("cache", "app", "e2e-broken", "0.1.0", {}, { timeoutS: 60 }), false);
+
+      await recording.upgradeKilled(await recording.release("queue", "accessory", "e2e-broken", "0.1.0"), 8);
+
+      await recording.upgrade(await recording.release("reports", "app", "e2e-web", "0.1.0"));
+      await recording.upgrade(await recording.release("reports", "app", "e2e-web", "0.2.0"));
+      await recording.upgradeKilled(await recording.release("reports", "app", "e2e-broken", "0.1.0"), 8);
+
+      await recording.upgrade(await recording.release("archive", "accessory", "e2e-web", "0.1.0"));
+      await recording.uninstall(ns, "archive", true);
+
+      for (const [namespace, name, status] of [
+        [dataNs, "data", "deployed"],
+        [ns, "search", "deployed"],
+        [ns, "cache", "failed"],
+        [ns, "queue", "pending-install"],
+        [ns, "reports", "pending-upgrade"],
+        [ns, "archive", "uninstalled"],
+      ] as const) {
+        await expectStatus(recording, namespace, name, status);
+      }
+
+      const stack = `${LABELS.stack}=${ns}`;
+      await recording.captureHelm("list-all.json", ["list", ...HELM_LIST_EVERY_STATUS, "-A", "-l", stack, "-o", "json"]);
+      await recording.captureHelm("list-default.json", ["list", "-A", "-l", stack, "-o", "json"]);
+      await recording.captureHelm("list-app.json", ["list", ...HELM_LIST_EVERY_STATUS, "-A", "-l", `${stack},${LABELS.role}=app`, "-o", "json"]);
+      await recording.captureHelm("list-accessory.json", ["list", ...HELM_LIST_EVERY_STATUS, "-A", "-l", `${stack},${LABELS.role}=accessory`, "-o", "json"]);
+      await recording.captureHelm("list-filter.json", ["list", ...HELM_LIST_EVERY_STATUS, "-n", ns, "--filter", "^search$", "-o", "json"]);
+      await recording.captureHelm("list-empty.json", ["list", ...HELM_LIST_EVERY_STATUS, "-n", ns, "--filter", "^absent$", "-o", "json"]);
+      await recording.captureHelm("values-search.json", ["get", "values", "search", "-n", ns, "-o", "json"]);
+      await recording.captureHelm("values-data.json", ["get", "values", "data", "-n", dataNs, "-o", "json"]);
+      await recording.captureHelm("manifest-search.yaml", ["get", "manifest", "search", "-n", ns]);
+      await recording.captureHelm("manifest-data.yaml", ["get", "manifest", "data", "-n", dataNs]);
+      await recording.captureKubectl("release-secrets.txt", ["get", "secrets", "-n", ns, "-l", specRevisionsSelector("search", helmSpecHash(second.release)), "-o", "name"]);
+    },
+  },
+];
+
+const HELM_SCENARIO_NAMES = new Set(HELM_SCENARIOS.map((s) => s.name));
+
+async function recordHelm(scenario: HelmScenario): Promise<void> {
+  const ns = fixtureNamespace(scenario.name);
+  log(`[record] ${scenario.name}: bringing the releases of ${ns} to their state...`);
+  await removeNamespace(`${ns}-data`);
+  await ensureNamespace(ns);
+  const topo = currentTopology();
+  const server = managersOf(topo)[0];
+  if (!server) throw new Error(`Topology ${topo.name} has no server node`);
+  const recording = new HelmRecording(ns, server.container, chartRepoUrl(topo.net, "public"));
+  const version = (await recording.helmOk(["version", "--template", "{{.Version}}"])).trim();
+  const minor = (v: string) => v.replace(/^v/, "").split(".").slice(0, 2).join(".");
+  if (minor(version) !== minor(HELM_PIN.version)) throw new Error(`The harness helm is ${version}, the pin ${HELM_PIN.version}: rebuild the node image`);
+  await scenario.run(recording);
+  writeHelmRecording(scenario, recording, version);
+}
+
 // ─── entry point ────────────────────────────────────────────────────
 
 const USAGE = "Usage: bun run testing/e2e/k3s/tools/record-kubectl-fixtures.ts --lane <lane> (--scenario <name>[,<name>...] | --all)";
@@ -1210,13 +1587,15 @@ function parseArgs(argv: string[]): Args {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--lane") lane = argv[++i];
     else if (argv[i] === "--scenario") scenarios.push(...(argv[++i] ?? "").split(",").filter(Boolean));
-    else if (argv[i] === "--all") scenarios = SCENARIOS.map((s) => s.name);
+    else if (argv[i] === "--all") scenarios = [...SCENARIO_NAMES, ...HELM_SCENARIO_NAMES];
     else throw new Error(`Unknown argument ${argv[i]}\n${USAGE}`);
   }
   if (!lane || !isLaneName(lane)) throw new Error(`--lane must be one of ${Object.keys(LANES).join(", ")}\n${USAGE}`);
   if (scenarios.length === 0) throw new Error(`Pass --scenario <name> or --all\n${USAGE}`);
-  const unknown = scenarios.filter((name) => !SCENARIO_NAMES.has(name));
-  if (unknown.length > 0) throw new Error(`Unknown scenario ${unknown.join(", ")}; known: ${DESIGN_SCENARIOS.kubectl.join(", ")}`);
+  const unknown = scenarios.filter((name) => !SCENARIO_NAMES.has(name) && !HELM_SCENARIO_NAMES.has(name));
+  if (unknown.length > 0) {
+    throw new Error(`Unknown scenario ${unknown.join(", ")}; known: ${[...DESIGN_SCENARIOS.kubectl, ...DESIGN_SCENARIOS.helm].join(", ")}`);
+  }
   return { lane, scenarios };
 }
 
@@ -1230,6 +1609,8 @@ async function main(): Promise<void> {
   for (const name of args.scenarios) {
     const scenario = SCENARIOS.find((s) => s.name === name);
     if (scenario) await record(scenario);
+    const helmScenario = HELM_SCENARIOS.find((s) => s.name === name);
+    if (helmScenario) await recordHelm(helmScenario);
   }
   log(`[record] done: ${args.scenarios.length} scenario(s).`);
 }

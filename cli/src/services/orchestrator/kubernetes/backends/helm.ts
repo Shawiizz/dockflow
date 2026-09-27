@@ -4,10 +4,9 @@
 // runtime/chart-archive.ts; values travel on stdin only (DESIGN-CORE 8.4 R2); every mutating call is
 // announced through HelmEventSink before it runs (backends never print, DESIGN-CORE 1.1).
 //
-// `helm list` only shows the deployed/failed releases of a namespace unless a state flag says
-// otherwise (verified fact, recorded in fixtures/helm/helm-list/meta.json): every listing this file
-// issues therefore adds `-a`, so a release stuck `pending-*` or `uninstalling` is still observed by
-// planning and by `dockflow helm status`/`list`, instead of silently vanishing from both.
+// Every listing this file issues names every status (HELM_LIST_EVERY_STATUS), so a release stuck
+// `pending-*` or `uninstalling` is observed by planning and by `dockflow helm status`/`list`
+// whatever the default of the pinned Helm (4.3 lists every status; fixtures/helm/helm-list).
 
 import { DOCKFLOW_VERSION } from '../../../../constants';
 import { canonicalJson, sha256Hex } from '../../../../utils/hash';
@@ -81,6 +80,62 @@ interface HelmListRow {
   chart: string;
   appVersion: string | null;
   updated: string | null;
+}
+
+/**
+ * `helm upgrade --install` of a release as every deploy runs it (3.5): values on stdin, rollback on
+ * failure, and the ownership and spec-hash labels on the release storage.
+ */
+export function helmUpgradeArgs(
+  release: ResolvedHelmRelease,
+  archivePath: string,
+  options: { historyMax: number; stackId: string; description?: string },
+  extra: string[] = [],
+): string[] {
+  const args = ['upgrade', '--install', release.name, archivePath, '-n', release.namespace];
+  if (release.namespace !== options.stackId) args.push('--create-namespace');
+  args.push(
+    '--values',
+    '-',
+    '--reset-values',
+    '--rollback-on-failure',
+    '--wait=watcher',
+    '--wait-for-jobs',
+    '--timeout',
+    `${release.timeoutS}s`,
+    '--history-max',
+    String(options.historyMax),
+    '--force-conflicts',
+    '--description',
+    options.description ?? `Dockflow ${DOCKFLOW_VERSION}`,
+    '--labels',
+    `${LABELS.stack}=${options.stackId},${LABELS.role}=${release.role},${LABELS.specHash}=${helmSpecHash(release)}`,
+  );
+  args.push(...extra);
+  return args;
+}
+
+/** `helm uninstall` of a release as every uninstall runs it. */
+export function helmUninstallArgs(
+  namespace: string,
+  name: string,
+  options: { timeoutS: number; keepHistory?: boolean; description?: string },
+): string[] {
+  const args = [
+    'uninstall',
+    name,
+    '-n',
+    namespace,
+    '--wait=watcher',
+    '--cascade=foreground',
+    '--timeout',
+    `${options.timeoutS}s`,
+    '--ignore-not-found',
+    '--description',
+    options.description ?? 'Dockflow uninstall',
+  ];
+  if (options.keepHistory) args.push('--keep-history');
+  return args;
 }
 
 export interface HelmBackendOptions {
@@ -326,14 +381,14 @@ export class KubernetesHelmBackend implements HelmBackend {
     if (entry.reason === 'adopt') {
       events?.step(`Taking over Helm release ${release.name} (${display})...`);
       await this.run(
-        this.upgradeArgs(release, archive.path, options, ['--dry-run=server', '--hide-secret', '-o', 'json']),
+        helmUpgradeArgs(release, archive.path, options, ['--dry-run=server', '--hide-secret', '-o', 'json']),
         { stdin, mutating: true, timeoutS: release.timeoutS },
         context,
       );
     } else {
       events?.step(`${entry.action === 'installed' ? 'Installing' : 'Upgrading'} Helm release ${release.name} (${display})...`);
     }
-    await this.run(this.upgradeArgs(release, archive.path, options), { stdin, mutating: true, timeoutS: release.timeoutS }, context);
+    await this.run(helmUpgradeArgs(release, archive.path, options), { stdin, mutating: true, timeoutS: release.timeoutS }, context);
 
     const status = await this.status(release.namespace, release.name);
     if (status === null) {
@@ -348,53 +403,10 @@ export class KubernetesHelmBackend implements HelmBackend {
     };
   }
 
-  private upgradeArgs(
-    release: ResolvedHelmRelease,
-    archivePath: string,
-    options: { historyMax: number; stackId: string; description?: string },
-    extra: string[] = [],
-  ): string[] {
-    const args = ['upgrade', '--install', release.name, archivePath, '-n', release.namespace];
-    if (release.namespace !== options.stackId) args.push('--create-namespace');
-    args.push(
-      '--values',
-      '-',
-      '--reset-values',
-      '--rollback-on-failure',
-      '--wait=watcher',
-      '--wait-for-jobs',
-      '--timeout',
-      `${release.timeoutS}s`,
-      '--history-max',
-      String(options.historyMax),
-      '--force-conflicts',
-      '--description',
-      options.description ?? `Dockflow ${DOCKFLOW_VERSION}`,
-      '--labels',
-      `${LABELS.stack}=${options.stackId},${LABELS.role}=${release.role},${LABELS.specHash}=${helmSpecHash(release)}`,
-    );
-    args.push(...extra);
-    return args;
-  }
-
   async uninstall(namespace: string, name: string, options: { timeoutS: number; keepHistory?: boolean; description?: string; events?: HelmEventSink }): Promise<void> {
     (options.events ?? this.events)?.step(`Uninstalling Helm release ${name}...`);
-    const args = [
-      'uninstall',
-      name,
-      '-n',
-      namespace,
-      '--wait=watcher',
-      '--cascade=foreground',
-      '--timeout',
-      `${options.timeoutS}s`,
-      '--ignore-not-found',
-      '--description',
-      options.description ?? 'Dockflow uninstall',
-    ];
-    if (options.keepHistory) args.push('--keep-history');
     const context = this.helmContext('uninstall', name, namespace, name, options.timeoutS, true);
-    await this.run(args, { mutating: true, timeoutS: options.timeoutS }, context);
+    await this.run(helmUninstallArgs(namespace, name, options), { mutating: true, timeoutS: options.timeoutS }, context);
   }
 
   async rollback(namespace: string, name: string, revision: number, options: { timeoutS: number; historyMax?: number; description?: string; events?: HelmEventSink }): Promise<HelmReleaseStatus> {
