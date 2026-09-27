@@ -73,6 +73,9 @@ const RULES: { reason: HelmFailureReason; matches: Matcher }[] = [
   { reason: 'Pending', matches: has('another operation (install/upgrade/rollback) is in progress') },
   { reason: 'UninstalledOnFailure', matches: has('has been uninstalled due to rollback-on-failure') },
   { reason: 'RolledBack', matches: has('has been rolled back due to rollback-on-failure') },
+  // a policy of the cluster refused an object, or its webhook could not be called: the `dial tcp`
+  // or deadline of that call is neither the chart repository nor a readiness wait
+  { reason: 'AdmissionDenied', matches: (exitCode, stderr) => classifyKubectlFailure(exitCode, stderr) === 'AdmissionDenied' },
   { reason: 'NotReady', matches: has('not ready. status:') },
   { reason: 'Timeout', matches: has('context deadline exceeded', 'timed out waiting for the condition') },
   { reason: 'Ownership', matches: has('invalid ownership metadata', 'exists and cannot be imported into the current release') },

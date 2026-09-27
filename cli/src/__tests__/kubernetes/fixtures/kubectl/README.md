@@ -29,6 +29,15 @@ Each helm scenario installs, upgrades and uninstalls releases of the e2e charts
 Dockflow's Helm backend (`helmUpgradeArgs`, `helmUninstallArgs`, values on stdin); a release is
 left `pending-*` by killing its upgrade during the wait.
 
+The stderr samples of `kubectl-stderr/` (scenario `kubectl-stderr`, `record-kubectl-stderr.ts`) are
+what the commands Dockflow sends print, built with `runtime/kubectl.ts`'s own builders and run by
+bash on the node as over SSH, once their condition holds: the ClusterRoleBinding of the deploy
+identity removed, the Dockflow kubeconfig swapped (unknown token, another CA, no API server), an
+admission webhook the recorder serves itself, a ValidatingAdmissionPolicy, PodSecurity, a namespace
+kept terminating by a finalizer, a container without a shell, a node before setup. Each condition
+is undone afterwards. `kubectl-stderr/meta.json` names the condition and the command of every file;
+a sample classified as its directory's reason is what `runtime/errors.test.ts` checks.
+
 What the recordings show that hand-written fixtures did not: pods carry `metadata.generation`,
 `status.observedGeneration` and `conditions[].observedGeneration`; Deployments and ReplicaSets
 report `terminatingReplicas`; a StatefulSet omits `readyReplicas` at 0; and a crash-looping
@@ -50,6 +59,9 @@ kubectl/<scenario>/<capture>/<resource>.json  later captures of the same scenari
 helm/<scenario>/meta.json
 helm/<scenario>/<file>.{json,yaml,txt}        each file named by the meta.json step that captured it
 metrics/<scenario>.json                       kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/<ns>/pods
+kubectl-stderr/<KubeErrorReason>/<n>.txt      stderr samples, at least two per reason
+kubectl-stderr/exec/<name>.txt                container runtime start failures of kubectl exec
+kubectl-stderr/meta.json                      one step `<file>: <condition>; stderr of <command>` per sample
 ```
 
 Every capture directory holds the same 13 files, empty Lists included:
@@ -132,7 +144,10 @@ its metrics read, checked on every read:
   no other IPv4 address remains outside `10.43.0.0/16` and loopback;
 - container and image IDs -> `containerd://<first 12 hex of the sha256 of the original>`; the
   machine ID and kernel version of a node are replaced;
-- any string containing `E2E_SECRET_` fails the recording.
+- any string containing `E2E_SECRET_` fails the recording;
+- stderr samples: klog headers -> `E0101 00:00:00.000000       1`, the id of an exec -> a hash of
+  the sample's path, the resourceVersions of a failed precondition -> `1`, `2`, and the lane's
+  addresses -> `192.0.2.<n>` (the recorder's own host as `192.0.2.1`).
 
 ## Serialization
 

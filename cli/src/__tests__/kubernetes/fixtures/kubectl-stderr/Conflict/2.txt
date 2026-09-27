@@ -1,1 +1,1 @@
-Error from server (Conflict): Operation cannot be fulfilled on leases.coordination.k8s.io "lock-dockflow-shop-production": Precondition failed: UID in precondition: 00000000-0000-4000-8000-000000000001, UID in object meta: 00000000-0000-4000-8000-000000000002
+Error from server (Conflict): Operation cannot be fulfilled on Lease.coordination.k8s.io "lock-dockflow-shop-production": the UID in the precondition (00000000-0000-4000-8000-000000000001) does not match the UID in record (00000000-0000-4000-8000-000000000002). The object might have been deleted and then recreated

@@ -1,2 +1,1 @@
-E0917 10:00:00.000000    4312 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:6443/api?timeout=30s\": dial tcp 127.0.0.1:6443: connect: connection refused"
-The connection to the server 127.0.0.1:6443 was refused - did you specify the right host or port?
+error: error validating "STDIN": error validating data: failed to download openapi: Get "https://127.0.0.1:6443/openapi/v2?timeout=2m0s": dial tcp 127.0.0.1:6443: connect: connection refused; if you choose to ignore these errors, turn validation off with --validate=false

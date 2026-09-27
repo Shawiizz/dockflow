@@ -1,1 +1,1 @@
-OCI runtime exec failed: exec failed: unable to start container process: exec: "/bin/bash": stat /bin/bash: no such file or directory: unknown
+error: Internal error occurred: Internal error occurred: error executing command in container: failed to exec in container: failed to start exec "e1fc7f8c98266a3a3031568ceb9fbb0ffa6d8750b356bf8b358e77156227aae3": OCI runtime exec failed: exec failed: unable to start container process: exec: "/bin/bash": stat /bin/bash: no such file or directory

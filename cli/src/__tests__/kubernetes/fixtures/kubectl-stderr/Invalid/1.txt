@@ -1,1 +1,1 @@
-Error from server (Invalid): Deployment.apps "web" is invalid: spec.template.spec.containers[0].image: Required value
+The Deployment "web" is invalid: spec.template.spec.containers[0].image: Required value

@@ -1,0 +1,2 @@
+Error from server (Forbidden): services "web" is forbidden: unable to create new content in namespace dockflow-shop-preview because it is being terminated
+Error from server (Forbidden): deployments.apps "web" is forbidden: unable to create new content in namespace dockflow-shop-preview because it is being terminated

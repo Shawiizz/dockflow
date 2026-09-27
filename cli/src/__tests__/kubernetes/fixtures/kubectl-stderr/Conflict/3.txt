@@ -1,0 +1,1 @@
+Error from server (Conflict): Operation cannot be fulfilled on Lease.coordination.k8s.io "lock-dockflow-shop-production": the ResourceVersion in the precondition (1) does not match the ResourceVersion in record (2). The object might have been modified

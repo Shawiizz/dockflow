@@ -9,6 +9,7 @@ import {
   stderrExcerpt,
 } from '../../../services/orchestrator/kubernetes/runtime/errors';
 import { CLIError, DeployError, ErrorCode, OrchestratorUnavailableError } from '../../../utils/errors';
+import { metaErrors, scrubViolations } from '../support/kubectl-fixtures';
 
 const SAMPLES = join(import.meta.dir, '..', 'fixtures', 'kubectl-stderr');
 
@@ -26,6 +27,7 @@ const REASONS: KubeErrorReason[] = [
   'Immutable',
   'Invalid',
   'AdmissionDenied',
+  'NamespaceTerminating',
   'Timeout',
   'Unknown',
 ];
@@ -44,17 +46,30 @@ const RERUN_SETUP = 'Re-run `dockflow setup k3s production`.';
 /**
  * Container runtime failures of `kubectl exec`: not a `KubeErrorReason` of their own (the API call
  * succeeded), so they sit beside the reason directories. The container backend classifies them into
- * its own refusals by the runtime's quoted form; re-recorded on the test machine like every sample.
+ * its own refusals by the runtime's quoted form.
  */
 const EXEC_DIR = 'exec';
-const EXEC_SAMPLES = ['named-shell-stat.txt', 'sh-not-found.txt', 'sh-stat.txt', 'tar-not-found.txt'];
+const EXEC_SAMPLES = ['named-shell-stat.txt', 'sh-not-found.txt', 'tar-not-found.txt'];
+
+function sampleFiles(): string[] {
+  return [...REASONS, EXEC_DIR].flatMap((dir) => readdirSync(join(SAMPLES, dir)).map((file) => `${dir}/${file}`));
+}
 
 describe('classifyKubectlFailure', () => {
-  it('has at least two recorded-shape samples for every reason and no other directory', () => {
-    expect(readdirSync(SAMPLES).sort()).toEqual([...REASONS, EXEC_DIR].sort());
+  it('has at least two recorded samples for every reason and nothing else', () => {
+    expect(readdirSync(SAMPLES).sort()).toEqual([...REASONS, EXEC_DIR, 'meta.json'].sort());
     for (const reason of REASONS) {
       expect(readdirSync(join(SAMPLES, reason)).filter((file) => file.endsWith('.txt')).length).toBeGreaterThanOrEqual(2);
     }
+  });
+
+  it('every sample is a recording named by meta.json, and scrubbed', () => {
+    const meta = JSON.parse(readFileSync(join(SAMPLES, 'meta.json'), 'utf8')) as { steps: string[] };
+    expect(metaErrors(meta, 'kubectl')).toEqual([]);
+    const files = sampleFiles();
+    expect(files.filter((file) => !meta.steps.some((step) => step.startsWith(`${file}: `)))).toEqual([]);
+    expect(meta.steps.length).toBe(files.length);
+    expect(scrubViolations(files.map((path) => ({ path, text: readFileSync(join(SAMPLES, path), 'utf8') })))).toEqual([]);
   });
 
   for (const reason of REASONS) {
@@ -87,8 +102,27 @@ describe('classifyKubectlFailure', () => {
   });
 
   it('keeps admission denials, which the API serves as (Forbidden), apart from RBAC refusals', () => {
-    expect(classifyKubectlFailure(1, sample('AdmissionDenied', '1.txt'))).toBe('AdmissionDenied');
+    expect(classifyKubectlFailure(1, sample('AdmissionDenied', '2.txt'))).toBe('AdmissionDenied');
     expect(classifyKubectlFailure(1, sample('Forbidden', '1.txt'))).toBe('Forbidden');
+  });
+
+  it('a ValidatingAdmissionPolicy denial is served as "is invalid" but is no Dockflow bug', () => {
+    expect(sample('AdmissionDenied', '3.txt')).toContain(' is invalid: ');
+    expect(classifyKubectlFailure(1, sample('AdmissionDenied', '3.txt'))).toBe('AdmissionDenied');
+  });
+
+  it('a webhook the API server cannot call is the cluster policy failing, not the API server or the kubeconfig', () => {
+    expect(sample('AdmissionDenied', '4.txt')).toContain('connection refused');
+    expect(classifyKubectlFailure(1, sample('AdmissionDenied', '4.txt'))).toBe('AdmissionDenied');
+    expect(sample('AdmissionDenied', '5.txt')).toContain('context deadline exceeded');
+    expect(classifyKubectlFailure(1, sample('AdmissionDenied', '5.txt'))).toBe('AdmissionDenied');
+    const badCertificate = `Error from server (InternalError): Internal error occurred: failed calling webhook "images.policy.example.com": failed to call webhook: Post "https://192.0.2.1:9443/deny?timeout=10s": tls: failed to verify certificate: x509: certificate signed by unknown authority\n`;
+    expect(classifyKubectlFailure(1, badCertificate)).toBe('AdmissionDenied');
+  });
+
+  it('a namespace being deleted refuses new objects as (Forbidden), which is no RBAC problem', () => {
+    expect(sample('NamespaceTerminating', '1.txt')).toContain('(Forbidden)');
+    expect(classifyKubectlFailure(1, sample('NamespaceTerminating', '1.txt'))).toBe('NamespaceTerminating');
   });
 
   it('tells a missing kubeconfig from another missing file', () => {
@@ -198,6 +232,31 @@ describe('kubeErrorToCliError', () => {
       suggestion: undefined,
     },
     {
+      reason: 'AdmissionDenied',
+      file: '3.txt',
+      type: DeployError,
+      code: ErrorCode.DEPLOY_FAILED,
+      message:
+        'Cluster policy rejected deployments web: images from registry.example.com/untrusted are not allowed; nothing was changed',
+      suggestion: undefined,
+    },
+    {
+      reason: 'AdmissionDenied',
+      file: '4.txt',
+      type: DeployError,
+      code: ErrorCode.DEPLOY_FAILED,
+      message:
+        'Cluster policy rejected an object: failed calling webhook "images.policy.example.com": failed to call webhook: Post "https://192.0.2.1:9/deny?timeout=10s": dial tcp 192.0.2.1:9: connect: connection refused; nothing was changed',
+      suggestion: undefined,
+    },
+    {
+      reason: 'NamespaceTerminating',
+      type: DeployError,
+      code: ErrorCode.DEPLOY_FAILED,
+      message: 'Namespace dockflow-shop-preview is being deleted, so nothing new can be created in it',
+      suggestion: 'Wait until the deletion has finished, then run the command again.',
+    },
+    {
       reason: 'Invalid',
       type: DeployError,
       code: ErrorCode.VALIDATION_FAILED,
@@ -209,6 +268,14 @@ describe('kubeErrorToCliError', () => {
       type: DeployError,
       code: ErrorCode.DEPLOY_FAILED,
       message: 'leases.coordination.k8s.io lock-dockflow-shop-production was modified concurrently',
+      suggestion: 'Retry the command.',
+    },
+    {
+      reason: 'Conflict',
+      file: '2.txt',
+      type: DeployError,
+      code: ErrorCode.DEPLOY_FAILED,
+      message: 'Lease.coordination.k8s.io lock-dockflow-shop-production was modified concurrently',
       suggestion: 'Retry the command.',
     },
     {
@@ -283,10 +350,12 @@ describe('kubeErrorToCliError', () => {
     expect(stderrExcerpt('\n a \n\n b \n', 1)).toBe('a');
   });
 
-  it('U-RT-E-07: Invalid is VALIDATION_FAILED with the bug-report suggestion', () => {
+  it('U-RT-E-07: Invalid is VALIDATION_FAILED with the bug-report suggestion, every field the API server listed', () => {
     const mapped = kubeErrorToCliError(kubeError('Invalid', sample('Invalid', '2.txt')), { ...CONTEXT, mutating: true });
     expect(mapped.code).toBe(ErrorCode.VALIDATION_FAILED);
-    expect(mapped.message).toBe('Kubernetes rejected Service web: spec.ports[0].port: Invalid value: 70000: must be between 1 and 65535, inclusive');
+    expect(mapped.message).toBe(
+      'Kubernetes rejected Service web: spec.ports[0].port: Invalid value: 70000: must be between 1 and 65535, inclusive; spec.ports[0].targetPort: Invalid value: 70000: must be between 1 and 65535, inclusive',
+    );
     expect(mapped.suggestion).toBe(
       'Report this as a Dockflow bug with the output of `dockflow deploy production --dry-run --render`.',
     );

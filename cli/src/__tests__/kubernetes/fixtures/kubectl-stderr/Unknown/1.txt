@@ -1,1 +1,1 @@
-Error from server (BadRequest): the server rejected our request for an unknown reason
+error: container sidecar is not valid for pod web-wqzngtc4bm-6wf88 out of: web

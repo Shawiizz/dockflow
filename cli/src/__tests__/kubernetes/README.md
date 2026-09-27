@@ -132,8 +132,8 @@ extra warnings or errors fail it. Every rendered object is validated against the
 kubectl, scrubbed (uids, timestamps, resource versions, node names, IPs, container ids); `meta.json`
 names the k3s version and the steps that reproduce the condition. `fixtures-meta.test.ts` fails when
 a scenario's k3s minor differs from the pin or when a scrub rule is broken. Helm outputs live in
-`fixtures/helm/<scenario>/`, metrics bodies in `fixtures/metrics/`, and at least two stderr samples
-per `KubeErrorReason` in `fixtures/kubectl-stderr/<reason>/`.
+`fixtures/helm/<scenario>/`, metrics bodies in `fixtures/metrics/`, and at least two recorded stderr
+samples per `KubeErrorReason` in `fixtures/kubectl-stderr/<reason>/`.
 
 To re-record against a running lane cluster:
 

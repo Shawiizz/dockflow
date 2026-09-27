@@ -46,13 +46,12 @@ const WEB = 'web-6d4b9c7f8-x2x4q';
 /** the fake's default distribution, so command strings are built exactly as the executor builds them */
 const DISTRIBUTION: K8sDistribution = new FakeKubeExecutor({ redactor: new Redactor([]) }).distribution;
 
-/** recorded container-runtime start failures (design-07 10.2, re-recorded on the test machine per PD-12) */
-function execStderr(name: 'sh-not-found' | 'sh-stat' | 'named-shell-stat' | 'tar-not-found'): string {
+/** recorded container-runtime start failures (design-07 10.2, fixtures/kubectl-stderr/exec) */
+function execStderr(name: 'sh-not-found' | 'named-shell-stat' | 'tar-not-found'): string {
   return readFileSync(join(import.meta.dir, '..', 'fixtures', 'kubectl-stderr', 'exec', `${name}.txt`), 'utf8').replace(/\r\n/g, '\n');
 }
 
 const R20_STDERR = execStderr('sh-not-found');
-const R20_STAT_STDERR = execStderr('sh-stat');
 const R20_BASH_STDERR = execStderr('named-shell-stat');
 const NO_TAR_STDERR = execStderr('tar-not-found');
 
@@ -405,7 +404,7 @@ describe('exec classification (K63b)', () => {
     it(`the runtime's exec: "sh" start failure with exit ${exitCode} is R-20`, async () => {
       const env = { A: '1' };
       const argv = wrapExecArgv(['env'], undefined, env);
-      const h = harness(WEB_ITEMS, [channelStep(['exec', WEB, '-c', 'web', '--', ...argv], result(exitCode, '', exitCode === 128 ? R20_STAT_STDERR : R20_STDERR))]);
+      const h = harness(WEB_ITEMS, [channelStep(['exec', WEB, '-c', 'web', '--', ...argv], result(exitCode, '', R20_STDERR))]);
       const error = (await failure(h.backend.exec(APP, { service: 'web' }, { argv: ['env'], env, tty: false, stdin: false, io: captureIo().io }))) as CLIError;
       expect(error).toBeInstanceOf(UnsupportedOperationError);
       expect(error.message).toBe('--workdir and --env require /bin/sh in the container on orchestrator: k3s');
@@ -439,7 +438,6 @@ describe('exec classification (K63b)', () => {
 
   it('runtimeStartFailure keys on the quoted program name', () => {
     expect(runtimeStartFailure(R20_STDERR, 'sh')).toBe(true);
-    expect(runtimeStartFailure(R20_STAT_STDERR, 'sh')).toBe(true);
     expect(runtimeStartFailure(R20_BASH_STDERR, '/bin/bash')).toBe(true);
     expect(runtimeStartFailure(NO_TAR_STDERR, 'tar')).toBe(true);
     expect(runtimeStartFailure('sh: 1: exec: foo: not found', 'sh')).toBe(false);

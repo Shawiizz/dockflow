@@ -1,1 +1,1 @@
-Error from server (Forbidden): error when creating "STDIN": namespaces is forbidden: User "system:serviceaccount:dockflow-system:dockflow-deployer" cannot create resource "namespaces" in API group "" at the cluster scope
+Error from server (Forbidden): namespaces "dockflow-shop-demo" is forbidden: User "system:serviceaccount:dockflow-system:dockflow-deployer" cannot patch resource "namespaces" in API group "" in the namespace "dockflow-shop-demo"

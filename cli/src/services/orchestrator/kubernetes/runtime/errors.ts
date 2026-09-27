@@ -18,6 +18,7 @@ export type KubeErrorReason =
   | 'Immutable'
   | 'Invalid'
   | 'AdmissionDenied'
+  | 'NamespaceTerminating'
   | 'Timeout'
   | 'Unknown';
 
@@ -53,13 +54,20 @@ interface Rule {
 const has = (...needles: string[]) => (_exitCode: number, stderr: string): boolean =>
   needles.some((needle) => stderr.includes(needle));
 
-// First match wins. AdmissionDenied is tested before Forbidden because webhook and PodSecurity
-// denials are served as `(Forbidden)` too, and they are not an RBAC problem of the deploy identity.
+// First match wins. AdmissionDenied comes first among the server's answers: a webhook that cannot
+// be called fails with its own `dial tcp`, `x509:` or deadline, which are no fault of the API server
+// or of the kubeconfig; a policy denial is served as `(Forbidden)` or as `is invalid`, and neither
+// is an RBAC problem of the deploy identity or a Dockflow bug. A namespace being deleted refuses new
+// objects as `(Forbidden)` too.
 const RULES: Rule[] = [
   { reason: 'ToolMissing', matches: (exitCode, stderr) => exitCode === 127 || SHELL_MISSING_TOOL.test(stderr) },
   {
     reason: 'KubeconfigMissing',
     matches: (_exitCode, stderr) => stderr.includes(K8S_KUBECONFIG_PATH) && /no such file|permission denied/i.test(stderr),
+  },
+  {
+    reason: 'AdmissionDenied',
+    matches: has('admission webhook', 'failed calling webhook', 'denied the request', "ValidatingAdmissionPolicy '", 'violates PodSecurity'),
   },
   { reason: 'CertificateMismatch', matches: has('x509:') },
   // client-go's own words for a 401, e.g. when kubectl apply downloads the OpenAPI schema first
@@ -68,7 +76,7 @@ const RULES: Rule[] = [
     reason: 'Unreachable',
     matches: has('connection refused', 'Unable to connect to the server', 'dial tcp', 'The connection to the server'),
   },
-  { reason: 'AdmissionDenied', matches: has('admission webhook', 'denied the request', 'violates PodSecurity') },
+  { reason: 'NamespaceTerminating', matches: has('because it is being terminated') },
   { reason: 'Forbidden', matches: has('(Forbidden)') },
   { reason: 'NoKindMatch', matches: has('no matches for kind') },
   {
@@ -120,9 +128,10 @@ interface ObjectRef {
 }
 
 function objectOf(stderr: string): ObjectRef | null {
-  const invalid = /([A-Z][A-Za-z0-9]*)(?:\.[a-z0-9.-]+)? "([^"]+)" is invalid/.exec(stderr);
+  // `The Deployment "web" is invalid`, or the resource name a policy denial prints: `The deployments "web" is invalid`
+  const invalid = /([A-Za-z][A-Za-z0-9]*)(?:\.[a-z0-9.-]+)? "([^"]+)" is invalid/.exec(stderr);
   if (invalid) return { kind: invalid[1], name: invalid[2] };
-  const conflict = /Operation cannot be fulfilled on ([a-z0-9.-]+) "([^"]+)"/.exec(stderr);
+  const conflict = /Operation cannot be fulfilled on ([A-Za-z0-9.-]+) "([^"]+)"/.exec(stderr);
   if (conflict) return { kind: conflict[1], name: conflict[2] };
   const plain = /([a-z0-9.-]+) "([^"]+)" (?:not found|already exists|is forbidden)/.exec(stderr);
   if (plain) return { kind: plain[1], name: plain[2] };
@@ -142,20 +151,32 @@ function strippedFirstLine(stderr: string): string {
     .replace(/^error: /, '');
 }
 
+/** the `* <field>: <reason>` lines the API server prints under `is invalid:` when several fields fail */
+function fieldErrors(stderr: string): string[] {
+  return stderr
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('* '))
+    .map((line) => line.slice(2));
+}
+
 function invalidDetail(stderr: string): string {
-  const match = / is invalid: (.+)/.exec(stderr);
-  return match ? match[1].trim() : strippedFirstLine(stderr);
+  const inline = / is invalid: (.+)/.exec(stderr)?.[1].trim();
+  if (inline) return inline;
+  const fields = fieldErrors(stderr);
+  return fields.length > 0 ? fields.join('; ') : strippedFirstLine(stderr);
 }
 
 function admissionDetail(stderr: string): string {
-  const webhook = /denied the request: (.+)/.exec(stderr);
-  if (webhook) return webhook[1].trim();
-  const podSecurity = /(violates PodSecurity .+)/.exec(stderr);
-  return podSecurity ? podSecurity[1].trim() : strippedFirstLine(stderr);
+  // a webhook, then a ValidatingAdmissionPolicy (`with binding '<b>' denied request: <message>`)
+  const denial = /denied (?:the )?request: (.+)/.exec(stderr);
+  if (denial) return denial[1].trim();
+  const other = /(violates PodSecurity .+|failed calling webhook .+)/.exec(stderr);
+  return other ? other[1].trim() : strippedFirstLine(stderr);
 }
 
 function immutableField(stderr: string): string {
-  const match = / is invalid: \[?([A-Za-z0-9_.[\]-]+): /.exec(stderr);
+  const match = / is invalid: \[?([A-Za-z0-9_.[\]-]+): /.exec(stderr) ?? /^\* ([A-Za-z0-9_.[\]-]+): /m.exec(stderr);
   return match ? match[1] : 'a field';
 }
 
@@ -210,6 +231,15 @@ export function kubeErrorToCliError(error: KubeError, context: KubeErrorContext)
         `Cluster policy rejected ${subject(objectOf(stderr), 'an object')}: ${admissionDetail(stderr)}; nothing was changed`,
         ErrorCode.DEPLOY_FAILED,
       );
+    case 'NamespaceTerminating': {
+      // updates of objects that are still there go through; only new ones are refused
+      const namespace = /in namespace (\S+) because it is being terminated/.exec(stderr)?.[1];
+      return new DeployError(
+        `Namespace ${namespace ?? 'of the stack'} is being deleted, so nothing new can be created in it`,
+        ErrorCode.DEPLOY_FAILED,
+        'Wait until the deletion has finished, then run the command again.',
+      );
+    }
     case 'Invalid':
       return new DeployError(
         `Kubernetes rejected ${subject(objectOf(stderr), 'an object')}: ${invalidDetail(stderr)}`,

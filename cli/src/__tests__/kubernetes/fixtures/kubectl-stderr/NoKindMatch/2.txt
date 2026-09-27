@@ -1,1 +1,4 @@
-error: unable to recognize "STDIN": no matches for kind "Middleware" in version "traefik.io/v1alpha1"
+resource mapping not found for name: "web-strip" namespace: "dockflow-shop-production" from "STDIN": no matches for kind "Middleware" in version "traefik.io/v1alpha1"
+ensure CRDs are installed first
+resource mapping not found for name: "web" namespace: "dockflow-shop-production" from "STDIN": no matches for kind "IngressRoute" in version "traefik.io/v1alpha1"
+ensure CRDs are installed first

@@ -1,1 +1,1 @@
-Error from server (Invalid): Service "db" is invalid: spec.clusterIPs[0]: Invalid value: []string{"None"}: may not change once set
+The Service "db" is invalid: spec.clusterIPs[0]: Invalid value: ["None"]: may not change once set

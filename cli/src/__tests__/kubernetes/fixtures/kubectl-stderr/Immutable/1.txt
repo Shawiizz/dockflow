@@ -1,1 +1,1 @@
-Error from server (Invalid): Deployment.apps "web" is invalid: spec.selector: Invalid value: v1.LabelSelector{MatchLabels:map[string]string{"dockflow.shawiizz.dev/role":"app", "dockflow.shawiizz.dev/service":"web", "dockflow.shawiizz.dev/stack":"dockflow-shop-production"}, MatchExpressions:[]v1.LabelSelectorRequirement(nil)}: field is immutable
+The Deployment "web" is invalid: spec.selector: Invalid value: {"matchLabels":{"dockflow.shawiizz.dev/role":"app","dockflow.shawiizz.dev/service":"web","dockflow.shawiizz.dev/stack":"dockflow-shop-production"}}: field is immutable

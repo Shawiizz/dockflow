@@ -1,1 +1,0 @@
-error: error validating "STDIN": error validating data: failed to download openapi: the server has asked for the client to provide credentials; if you choose to ignore these errors, turn validation off with --validate=false

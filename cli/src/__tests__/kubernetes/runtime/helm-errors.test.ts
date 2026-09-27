@@ -163,7 +163,8 @@ describe('classifyHelmFailure', () => {
   it('falls back to the kubectl classifier for every recorded kubectl stderr sample', () => {
     const root = join(import.meta.dir, '..', 'fixtures', 'kubectl-stderr');
     let checked = 0;
-    for (const reason of readdirSync(root).sort()) {
+    const reasons = readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+    for (const reason of reasons.map((entry) => entry.name).sort()) {
       for (const file of readdirSync(join(root, reason)).sort()) {
         const stderr = readFileSync(join(root, reason, file), 'utf8').replace(/\r\n/g, '\n');
         const exitCode = reason === 'ToolMissing' ? 127 : 1;
@@ -182,6 +183,16 @@ describe('classifyHelmFailure', () => {
     const otherManager = 'Error: UPGRADE FAILED: Get "https://10.0.0.11:6443/api/v1/namespaces": dial tcp 10.0.0.11:6443: i/o timeout\n';
     expect(classifyHelmFailure(1, otherManager)).toBe('Unreachable');
     expect(classifyHelmFailure(1, 'Error: Get "https://charts.example.com/index.yaml": dial tcp 203.0.113.7:443: connect: connection refused\n')).toBe('RepoUnreachable');
+  });
+
+  it('a webhook the API server cannot call during an upgrade is the cluster policy, not the chart repository', () => {
+    const webhook = readFileSync(join(import.meta.dir, '..', 'fixtures', 'kubectl-stderr', 'AdmissionDenied', '4.txt'), 'utf8').trim();
+    const refused = `Error: UPGRADE FAILED: failed to create resource: ${webhook.replace(/^Error from server \(InternalError\): /, '')}\n`;
+    expect(classifyHelmFailure(1, refused)).toBe('AdmissionDenied');
+    // what Helm did about it still comes first
+    expect(classifyHelmFailure(1, `Error: UPGRADE FAILED: release web failed, and has been rolled back due to rollback-on-failure being set: ${webhook}\n`)).toBe(
+      'RolledBack',
+    );
   });
 
   it('classifies an unreachable cluster by the kubectl rules, whatever the wrapper says', () => {

@@ -1,1 +1,6 @@
+E0101 00:00:00.000000       1 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:6443/api?timeout=30s\": dial tcp 127.0.0.1:6443: connect: connection refused"
+E0101 00:00:00.000000       1 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:6443/api?timeout=30s\": dial tcp 127.0.0.1:6443: connect: connection refused"
+E0101 00:00:00.000000       1 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:6443/api?timeout=30s\": dial tcp 127.0.0.1:6443: connect: connection refused"
+E0101 00:00:00.000000       1 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:6443/api?timeout=30s\": dial tcp 127.0.0.1:6443: connect: connection refused"
+E0101 00:00:00.000000       1 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://127.0.0.1:6443/api?timeout=30s\": dial tcp 127.0.0.1:6443: connect: connection refused"
 The connection to the server 127.0.0.1:6443 was refused - did you specify the right host or port?

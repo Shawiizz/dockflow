@@ -1,1 +1,6 @@
-Unable to connect to the server: dial tcp 10.0.0.11:6443: i/o timeout
+E0101 00:00:00.000000       1 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://192.0.2.1:6443/api?timeout=30s\": context deadline exceeded"
+E0101 00:00:00.000000       1 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://192.0.2.1:6443/api?timeout=30s\": net/http: request canceled while waiting for connection (Client.Timeout exceeded while awaiting headers)"
+E0101 00:00:00.000000       1 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://192.0.2.1:6443/api?timeout=30s\": context deadline exceeded"
+E0101 00:00:00.000000       1 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://192.0.2.1:6443/api?timeout=30s\": net/http: request canceled while waiting for connection (Client.Timeout exceeded while awaiting headers)"
+E0101 00:00:00.000000       1 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://192.0.2.1:6443/api?timeout=30s\": context deadline exceeded"
+Unable to connect to the server: context deadline exceeded

@@ -1,1 +1,1 @@
-Error from server (AlreadyExists): error when creating "STDIN": secrets "dockflow-release-1-4-2" already exists
+Error from server (AlreadyExists): error when creating "STDIN": secrets "dockflow-release-1.4.2" already exists

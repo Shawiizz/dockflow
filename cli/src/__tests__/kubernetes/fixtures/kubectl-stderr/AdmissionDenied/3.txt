@@ -1,0 +1,1 @@
+The deployments "web" is invalid: : ValidatingAdmissionPolicy 'untrusted-images' with binding 'untrusted-images' denied request: images from registry.example.com/untrusted are not allowed
