@@ -59,7 +59,7 @@ export function proxyRefusalError(refusal: ProxyRefusal): DeployError {
 /** Everything in proxy config that shapes the cluster-wide Traefik (proxy.domains does not: routes do). */
 export interface TraefikIntent {
   acme: boolean;
-  /** null when acme is false, and for a stack that does not manage the proxy */
+  /** null when unset (Let's Encrypt no longer needs a contact), when acme is false, and for a stack that does not manage the proxy */
   email: string | null;
   /** null = Let's Encrypt production (the chart emits no caServer) */
   caServer: string | null;
@@ -79,12 +79,6 @@ export function traefikIntentFrom(proxy: ProxyConfig, caBundle: string | null): 
   const acme = proxy.acme !== false;
   const manage = proxy.manage !== false;
   const email = acme && manage ? (proxy.email ?? null) : null;
-  if (acme && manage && !email) {
-    throw new ConfigError(
-      'proxy.email is required when this stack manages Traefik with ACME',
-      'Set `proxy.email`, set `proxy.acme: false` for HTTP-only routing, or set `proxy.manage: false` to use the Traefik another stack manages.',
-    );
-  }
   const enabled = proxy.dashboard?.enabled === true;
   const domain = enabled ? (proxy.dashboard?.domain ?? '') : null;
   if (domain !== null && !HOST_NAME_RE.test(domain)) {
@@ -237,7 +231,7 @@ export function buildTraefikValues(
     values.certificatesResolvers = {
       letsencrypt: {
         acme: {
-          email: intent.email,
+          ...(intent.email ? { email: intent.email } : {}),
           storage,
           httpChallenge: { entryPoint: 'web' },
           ...(intent.caServer ? { caServer: intent.caServer } : {}),

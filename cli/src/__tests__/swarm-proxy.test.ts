@@ -37,6 +37,13 @@ describe('SwarmProxyBackend.generateCompose', () => {
     expect(SwarmProxyBackend.generateCompose(dashboard, 'abc')).toContain('"dockflow.config-hash=abc"');
     expect(SwarmProxyBackend.generateCompose(base)).not.toContain('dockflow.config-hash');
   });
+
+  it('registers the ACME account with no contact when proxy.email is unset', () => {
+    const { email: _email, ...noEmail } = base;
+    const compose = SwarmProxyBackend.generateCompose(noEmail as ProxyConfig);
+    expect(compose).not.toContain('acme.email');
+    expect(compose).toContain('--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json');
+  });
 });
 
 // ---------------------------------------------------------------------------

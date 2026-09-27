@@ -261,7 +261,7 @@ export const ProxyConfigSchema = z.object({
     'Enable automatic HTTPS routing via Traefik'
   ),
   email: z.string().email().optional().describe(
-    'Email address for Let\'s Encrypt certificate notifications (required when enabled)'
+    'Contact address of the Let\'s Encrypt account (optional; without it Traefik registers a new account each time it restarts)'
   ),
   acme: z.boolean().optional().default(true).describe(
     'Enable ACME/Let\'s Encrypt TLS certificates. Set to false for HTTP-only (dev/test environments)'
@@ -289,10 +289,6 @@ export const ProxyConfigSchema = z.object({
     'that omit ingressClassName are published on 80/443'
   ),
 }).superRefine((proxy, ctx) => {
-  // A stack that does not manage the proxy never registers an ACME account
-  if (proxy.enabled && proxy.acme !== false && proxy.manage !== false && !proxy.email) {
-    ctx.addIssue({ code: 'custom', message: 'proxy.email is required when proxy.enabled is true and acme is not disabled' });
-  }
   if (proxy.manage === false && !proxy.enabled) {
     ctx.addIssue({ code: 'custom', message: M.proxyManageNeedsEnabled, path: ['manage'] });
   }

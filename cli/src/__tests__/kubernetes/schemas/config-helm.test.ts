@@ -409,9 +409,9 @@ describe('config.yml proxy keys for Kubernetes (design-04 2.3.1)', () => {
     ]);
   });
 
-  it('a stack that does not manage the proxy needs no email', () => {
+  it('no stack needs an email, managing ACME or not (Let’s Encrypt accounts may have no contact)', () => {
     expect(issuesOf(DockflowConfigSchema, config({ proxy: { enabled: true, manage: false } }))).toEqual([]);
-    expect(issuesOf(DockflowConfigSchema, config({ proxy: { enabled: true } })).map((i) => i.path)).toEqual(['proxy']);
+    expect(issuesOf(DockflowConfigSchema, config({ proxy: { enabled: true } }))).toEqual([]);
     expect(issuesOf(DockflowConfigSchema, config({ proxy: { enabled: true, acme: false } }))).toEqual([]);
   });
 

@@ -241,10 +241,6 @@ function checkProxy(proxy: unknown, orchestrator: Orchestrator | undefined, temp
     if (proxy[key] !== undefined && typeof proxy[key] !== 'boolean') issues.add(at(key), 'must be true or false');
   }
 
-  // A stack that does not manage the proxy never registers an ACME account
-  if (proxy.enabled === true && proxy.acme !== false && proxy.manage !== false && !proxy.email) {
-    issues.add(['proxy'], 'proxy.email is required when proxy.enabled is true and acme is not disabled');
-  }
   if (proxy.manage === false && proxy.enabled !== true) issues.add(at('manage'), M.proxyManageNeedsEnabled);
 
   const server = proxy.acme_ca_server;

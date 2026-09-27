@@ -434,11 +434,10 @@
     options:
       remote_build: true
 
-- name: proxy email missing
+- name: proxy with ACME and no email
   file: config
-  cliValid: false
-  mcpErrors:
-    - "proxy: proxy.email is required when proxy.enabled is true and acme is not disabled"
+  cliValid: true
+  mcpErrors: []
   yaml: |
     project_name: shop
     proxy:

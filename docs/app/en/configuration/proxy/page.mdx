@@ -56,7 +56,7 @@ Each environment gets its own domain and certificate. Traefik handles renewals a
 ```yaml
 proxy:
   enabled: true
-  email: admin@example.com        # Required when acme is not disabled
+  email: admin@example.com        # Optional contact of the Let's Encrypt account
   domains:
     production: my-app.example.com
     staging: staging.my-app.example.com
@@ -73,7 +73,7 @@ proxy:
 | Field | Type | Description | Default |
 |---|---|---|---|
 | `enabled` | boolean | Enable Traefik proxy | `false` |
-| `email` | string | Email for Let's Encrypt notifications. Required when `acme` is not disabled | — |
+| `email` | string | Contact address of the Let's Encrypt account. Optional: Let's Encrypt no longer needs one, but without it Traefik registers a new account each time it restarts (Let's Encrypt allows 10 new accounts per IP address every 3 hours) | — |
 | `acme` | boolean | Enable ACME/Let's Encrypt TLS. Set to `false` for HTTP-only mode | `true` |
 | `domains` | map | Domain per environment | — |
 | `dashboard.enabled` | boolean | Expose the Traefik dashboard | `false` |
@@ -104,7 +104,7 @@ proxy:
 
 When `acme: false`:
 - Port 443 and the HTTPS redirect are disabled — Traefik only listens on port 80
-- No Let's Encrypt certificate is requested — `email` is not required
+- No Let's Encrypt certificate is requested — `email` is ignored
 - Routing labels use `entrypoints=web` instead of `websecure`
 
 <Callout type="warning">

@@ -132,18 +132,13 @@ describe('traefikIntentFrom', () => {
     expect(traefikIntentFrom({ enabled: true, email: 'ops@example.com' }, null)).toEqual(intent());
   });
 
-  test('a managing ACME stack without e-mail is refused with the exact ConfigError', () => {
-    let error: unknown;
-    try {
-      traefikIntentFrom({ enabled: true }, null);
-    } catch (caught) {
-      error = caught;
-    }
-    expect(error).toBeInstanceOf(ConfigError);
-    expect((error as ConfigError).message).toBe('proxy.email is required when this stack manages Traefik with ACME');
-    expect((error as ConfigError).suggestion).toBe(
-      'Set `proxy.email`, set `proxy.acme: false` for HTTP-only routing, or set `proxy.manage: false` to use the Traefik another stack manages.',
-    );
+  test('a managing ACME stack without e-mail registers its account with no contact', () => {
+    const noEmail = traefikIntentFrom({ enabled: true }, null);
+    expect(noEmail).toEqual(intent({ email: null }));
+    expect(at(buildTraefikValues(noEmail, TRAITS, PLACEMENT, PIN), 'certificatesResolvers', 'letsencrypt', 'acme')).toEqual({
+      storage: '/data/acme.json',
+      httpChallenge: { entryPoint: 'web' },
+    });
   });
 
   test('a consuming stack needs no e-mail and never carries one', () => {

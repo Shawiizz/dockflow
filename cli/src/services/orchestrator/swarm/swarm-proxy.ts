@@ -204,7 +204,7 @@ export class SwarmProxyBackend implements ProxyBackend {
         '--entrypoints.websecure.address=:443',
         '--entrypoints.web.http.redirections.entrypoint.to=websecure',
         '--entrypoints.web.http.redirections.entrypoint.scheme=https',
-        `--certificatesresolvers.letsencrypt.acme.email=${proxyConfig.email}`,
+        ...(proxyConfig.email ? [`--certificatesresolvers.letsencrypt.acme.email=${proxyConfig.email}`] : []),
         '--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json',
         '--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web',
       );
