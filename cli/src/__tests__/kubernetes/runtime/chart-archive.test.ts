@@ -295,7 +295,7 @@ describe('resolveChartArchive: credentials', () => {
     ]);
     await expectCliError(resolveChartArchive(deps, repoRelease({ auth: { username: 'deploy', password: PASSWORD } }), null, OPTIONS), {
       type: ConfigError,
-      message: `The chart repository rejected the credentials for redis 20.1.0 from ${REPO}`,
+      message: `The chart repository refused access to redis 20.1.0 from ${REPO}`,
       suggestion: 'Check `helm.releases[].auth` of cache.',
     });
     expect(fs.exists(TMP)).toBe(false);
@@ -318,7 +318,7 @@ describe('resolveChartArchive: credentials', () => {
     const { helm, deps, fs, done } = setup([repoUpdateFailure(`failed to fetch ${REPO}/index.yaml : 401 Unauthorized`)]);
     await expectCliError(resolveChartArchive(deps, repoRelease({ auth: { username: 'deploy', password: PASSWORD } }), null, OPTIONS), {
       type: ConfigError,
-      message: `The chart repository rejected the credentials for redis 20.1.0 from ${REPO}`,
+      message: `The chart repository refused access to redis 20.1.0 from ${REPO}`,
     });
     expect(helm.calls.map((call) => call.args[0])).toEqual(['repo']);
     expect(fs.exists(TMP)).toBe(false);
@@ -363,7 +363,7 @@ describe('resolveChartArchive: credentials', () => {
     ]);
     await expectCliError(resolveChartArchive(deps, ociRelease({ auth: { username: 'deploy', password: PASSWORD } }), null, OPTIONS), {
       type: ConfigError,
-      message: `The chart repository rejected the credentials for ${OCI_REF} 2.4.1`,
+      message: `The chart repository refused access to ${OCI_REF} 2.4.1`,
     });
     expect(helm.calls.map((call) => call.args[0])).toEqual(['registry']);
     expect(fs.exists(TMP)).toBe(false);

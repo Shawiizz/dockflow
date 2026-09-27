@@ -29,8 +29,11 @@ function escapeRegExp(text: string): string {
 /** `env` quotes the path it could not run, `sh` does not */
 const HELM_MISSING = new RegExp(`${escapeRegExp(HELM_BIN_PATH)}'?: (?:No such file or directory|not found)`);
 
-/** one kstatus line of the watcher: `resource <kind>/<ns>/<name> not ready. status: <s>, message: <m>` */
-const NOT_READY_LINE = /resource \S+ not ready\. status: .*/;
+/**
+ * one kstatus line of the watcher: `resource <kind>/<ns>/<name> not ready. status: <s>, message: <m>`,
+ * or `still exists` while an uninstall waits for the object to go
+ */
+const WATCHER_LINE = /resource \S+ (?:not ready|still exists)\. status: .*/;
 
 /** the API server is dialled on loopback or on its well-known port 6443; a chart repository is not */
 const API_DIAL = /dial tcp (?:(?:127\.\d+\.\d+\.\d+|\[::1\]|localhost)[:\s]|(?:\[[0-9a-fA-F:.]+\]|[^\s:[]+):6443\b)/;
@@ -55,12 +58,19 @@ const chartNotFound: Matcher = (_exitCode, stderr) =>
 // Cluster-side rejections use the same words as a registry: an admission webhook "denied the
 // request", the API server answers "(Unauthorized)", an unreadable kubeconfig is "permission
 // denied". A registry says `denied: <message>`. The others fall through to the kubectl classifier.
+// An OCI registry that wants credentials none were given for: `basic credential not found`.
 const repoAuth: Matcher = (_exitCode, stderr) => {
   const lower = stderr.toLowerCase();
-  if (/\b40[13]\b/.test(stderr) || lower.includes('authentication required')) return true;
+  if (/\b40[13]\b/.test(stderr) || lower.includes('authentication required') || lower.includes('basic credential not found')) return true;
   if (lower.includes('unauthorized') && !lower.includes('(unauthorized)')) return true;
   return /(?:^|[\s:])denied: /m.test(lower);
 };
+
+// Go's template errors: `template: <file>:<line>:<col>: executing "<file>" at <...>: ...` up to Helm
+// 3, one line each for the position, the `executing` action and the cause in Helm 4
+// (fixtures/helm-stderr/RenderError)
+const renderError: Matcher = (_exitCode, stderr) =>
+  stderr.includes('execution error at (') || stderr.includes('parse error at (') || stderr.includes('template: ') || /\bexecuting "[^"]+" at </.test(stderr);
 
 const repoUnreachable: Matcher = (_exitCode, stderr) => {
   if (stderr.includes('is not a valid chart repository or cannot be reached')) return true;
@@ -82,7 +92,7 @@ const RULES: { reason: HelmFailureReason; matches: Matcher }[] = [
   { reason: 'ChartNotFound', matches: chartNotFound },
   { reason: 'RepoAuth', matches: repoAuth },
   { reason: 'RepoUnreachable', matches: repoUnreachable },
-  { reason: 'RenderError', matches: has('execution error at (', 'parse error at (', 'template: ') },
+  { reason: 'RenderError', matches: renderError },
   { reason: 'ValuesSchema', matches: has("values don't meet the specifications of the schema") },
   { reason: 'ReleaseNotFound', matches: has('release: not found') },
 ];
@@ -129,20 +139,24 @@ function unwrap(line: string): string {
 }
 
 /**
- * At most 5 lines on one line, `Error: ` prefixes and Helm's wrappers removed. When the watcher
- * reported resources that are not ready, those lines are the detail: they name what did not start.
+ * At most 5 lines on one line, `Error: ` prefixes and Helm's wrappers removed; a line ending with a
+ * colon goes on in the next one (Helm 4's template and schema errors). When the watcher reported
+ * resources, those lines are the detail: they name what did not start, or did not go.
  * The optional Redactor is applied on top of the executor's own redaction.
  */
 export function helmFailureDetail(stderr: string, redactor?: Redactor): string {
-  const lines = stderr
-    .split(/\r?\n/)
-    .map(unwrap)
-    .filter((line) => line.length > 0);
-  const notReady = lines.flatMap((line) => {
-    const match = NOT_READY_LINE.exec(line);
+  const lines: string[] = [];
+  for (const line of stderr.split(/\r?\n/).map(unwrap)) {
+    if (line.length === 0) continue;
+    const last = lines.at(-1);
+    if (last?.endsWith(':')) lines[lines.length - 1] = `${last} ${line}`;
+    else lines.push(line);
+  }
+  const watched = lines.flatMap((line) => {
+    const match = WATCHER_LINE.exec(line);
     return match ? [match[0]] : [];
   });
-  const detail = (notReady.length > 0 ? notReady : lines).slice(0, DETAIL_LINES).join('; ');
+  const detail = (watched.length > 0 ? watched : lines).slice(0, DETAIL_LINES).join('; ');
   return redactor ? redactor.redact(detail) : detail;
 }
 
@@ -196,6 +210,14 @@ export function helmErrorToCliError(reason: HelmFailureReason, context: HelmFail
     // resources the watcher saw not ready before --timeout: the Timeout message with those lines
     case 'NotReady':
     case 'Timeout':
+      // an uninstall waits for its objects to be gone (fixtures/helm-stderr/Timeout)
+      if (context.operation === 'uninstall') {
+        return new DeployError(
+          `Helm release ${release} was not removed within ${timeoutS}s${within}`,
+          ErrorCode.DEPLOY_FAILED,
+          'Run the command again once the objects still being deleted are gone.',
+        );
+      }
       return new DeployError(
         `Helm release ${release} did not become ready within ${timeoutS}s${within}`,
         ErrorCode.DEPLOY_FAILED,
@@ -210,7 +232,8 @@ export function helmErrorToCliError(reason: HelmFailureReason, context: HelmFail
     case 'ChartNotFound':
       return new ConfigError(`Chart ${chart} was not found`, `Check \`chart\`, \`repo\` and \`version\` of ${release} in config.yml.`);
     case 'RepoAuth':
-      return new ConfigError(`The chart repository rejected the credentials for ${chart}`, `Check \`helm.releases[].auth\` of ${release}.`);
+      // wrong credentials, or none where the repository wants some
+      return new ConfigError(`The chart repository refused access to ${chart}`, `Check \`helm.releases[].auth\` of ${release}.`);
     case 'RepoUnreachable':
       return new DeployError(
         `${node} cannot reach ${context.repository ?? chart}${within}`,

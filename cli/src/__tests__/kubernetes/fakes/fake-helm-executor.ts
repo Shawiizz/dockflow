@@ -748,13 +748,14 @@ export class FakeHelmExecutor implements HelmExecutor {
     const detail = detailOf(failure);
     this.supersede(release);
     release.revisions.push({ ...revision, status: 'failed', description: `${installing ? 'Release' : 'Upgrade'} "${name}" failed: ${detail}` });
+    // `upgrade --install` of a new release does not wrap the install's error (fixtures/helm-stderr)
     if (installing) {
       if (rollbackOnFailure) {
         this.store.splice(this.store.indexOf(release), 1);
-        return failed(`Error: INSTALL FAILED: release ${name} failed, and has been uninstalled due to rollback-on-failure being set: ${detail}`);
+        return failed(`Error: release ${name} failed, and has been uninstalled due to rollback-on-failure being set: ${detail}`);
       }
       this.trim(release, parsed);
-      return failed(`Error: INSTALL FAILED: ${detail}`);
+      return failed(`Error: ${detail}`);
     }
     if (rollbackOnFailure && previous) {
       release.revisions.push({

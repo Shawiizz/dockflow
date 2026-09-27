@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { HELM_CHARTS_DIR } from '../../../services/orchestrator/kubernetes/constants';
 import {
@@ -30,94 +30,88 @@ import { FakeHelmExecutor } from '../fakes/fake-helm-executor';
 import { REST } from '../fakes/fake-kube-executor';
 import { FakeNodeShell } from '../fakes/fake-node-shell';
 import { assertExecutorInvariants } from '../support/invariants';
-import { readHelmFixture } from '../support/kubectl-fixtures';
+import { metaErrors, readHelmFixture, scrubViolations } from '../support/kubectl-fixtures';
 import { expectCliError } from '../support/matchers';
 
 const NS = 'dockflow-shop-production';
 const SECRET = 'values-db-password-4411';
 const CHART = 'redis 20.1.0 from https://charts.example.com';
 
+const FIXTURES = join(import.meta.dir, '..', 'fixtures');
+const HELM_STDERR = join(FIXTURES, 'helm-stderr');
+
 /** the reasons of the design-04 3.5.5 table; the rest come from the kubectl classifier */
 type TableReason = Exclude<HelmFailureReason, KubeErrorReason> | 'ToolMissing' | 'Timeout';
 
-/** a recorded upgrade stderr of fixtures/helm, as the executor hands it over */
-function recordedStderr(scenario: string): string {
-  return helmStderr(['upgrade'], { exitCode: 1, stdout: '', stderr: readHelmFixture(scenario, 'upgrade-stderr.txt') });
+const TABLE_REASONS: TableReason[] = [
+  'ToolMissing',
+  'Pending',
+  'UninstalledOnFailure',
+  'RolledBack',
+  'NotReady',
+  'Timeout',
+  'Ownership',
+  'ChartNotFound',
+  'RepoAuth',
+  'RepoUnreachable',
+  'RenderError',
+  'ValuesSchema',
+  'ReleaseNotFound',
+];
+
+interface Sample {
+  /** the recording, under fixtures/ */
+  file: string;
+  exitCode: number;
+  /** as the executor hands it over (helmStderr) */
+  stderr: string;
 }
 
-// Synthetic stderr in the shapes helm v4.3.0 prints, but for the two recorded upgrade failures.
-const SAMPLES: Record<TableReason, { exitCode: number; stderr: string }[]> = {
-  ToolMissing: [
-    { exitCode: 127, stderr: 'sh: 1: /usr/local/lib/dockflow/bin/helm: not found\n' },
-    { exitCode: 127, stderr: "env: '/usr/local/lib/dockflow/bin/helm': No such file or directory\n" },
-    { exitCode: 1, stderr: "env: '/usr/local/lib/dockflow/bin/helm': No such file or directory\n" },
-  ],
-  Pending: [{ exitCode: 1, stderr: 'Error: UPGRADE FAILED: another operation (install/upgrade/rollback) is in progress\n' }],
-  UninstalledOnFailure: [
-    {
-      exitCode: 1,
-      stderr: `Error: INSTALL FAILED: release web failed, and has been uninstalled due to rollback-on-failure being set: resource Deployment/${NS}/web not ready. status: InProgress, message: Available: 0/1\ncontext deadline exceeded\n`,
-    },
-    {
-      exitCode: 1,
-      stderr: 'Error: INSTALL FAILED: release web failed, and has been uninstalled due to rollback-on-failure being set: failed pre-install: 1 error occurred:\n\t* job web-migrate failed: BackoffLimitExceeded\n',
-    },
-  ],
-  RolledBack: [{ exitCode: 1, stderr: recordedStderr('helm-history-rollback') }],
-  NotReady: [{ exitCode: 1, stderr: recordedStderr('helm-status-failed') }],
-  Timeout: [
-    { exitCode: 1, stderr: 'Error: UPGRADE FAILED: context deadline exceeded\n' },
-    { exitCode: 1, stderr: 'Error: UPGRADE FAILED: post-upgrade hooks failed: timed out waiting for the condition\n' },
-  ],
-  Ownership: [
-    {
-      exitCode: 1,
-      stderr: `Error: INSTALL FAILED: unable to continue with install: ConfigMap "web-config" in namespace "${NS}" exists and cannot be imported into the current release: invalid ownership metadata; label validation error: missing key "app.kubernetes.io/managed-by": must be set to "Helm"\n`,
-    },
-  ],
-  ChartNotFound: [
-    { exitCode: 1, stderr: 'Error: chart "redis" version "9.9.9" not found in https://charts.example.com repository\n' },
-    { exitCode: 1, stderr: 'Error: failed to perform "FetchReference" on source: registry.example.com/charts/search:9.9.9: not found\n' },
-    { exitCode: 1, stderr: "Error: chart \"redis\" matching 9.9.9 not found in dockflow-repo index. (try 'helm repo update'): no chart version found for redis-9.9.9\n" },
-    { exitCode: 1, stderr: 'Error: no chart name found\n' },
-  ],
-  RepoAuth: [
-    { exitCode: 1, stderr: 'Error: failed to fetch https://charts.example.com/private/redis-20.1.0.tgz : 401 Unauthorized\n' },
-    {
-      exitCode: 1,
-      stderr: 'Error: looks like "https://charts.example.com/private" is not a valid chart repository or cannot be reached: failed to fetch https://charts.example.com/private/index.yaml : 401 Unauthorized\n',
-    },
-    { exitCode: 1, stderr: 'Error: login attempt to https://registry.example.com/v2/ failed with status: 401 Unauthorized\n' },
-    {
-      exitCode: 1,
-      stderr: 'Error: failed to authorize: failed to fetch anonymous token: unexpected status from GET request to https://registry.example.com/token?scope=repository%3Acharts%2Fsearch%3Apull: 403 Forbidden\n',
-    },
-    { exitCode: 1, stderr: 'Error: unauthorized: authentication required\n' },
-    { exitCode: 1, stderr: 'Error: denied: requested access to the resource is denied\n' },
-  ],
-  RepoUnreachable: [
-    {
-      exitCode: 1,
-      stderr: 'Error: looks like "https://charts.example.com" is not a valid chart repository or cannot be reached: Get "https://charts.example.com/index.yaml": dial tcp: lookup charts.example.com on 127.0.0.53:53: no such host\n',
-    },
-    { exitCode: 1, stderr: 'Error: Get "https://registry.example.com/v2/": dial tcp 203.0.113.7:443: i/o timeout\n' },
-  ],
-  RenderError: [
-    {
-      exitCode: 1,
-      stderr: 'Error: UPGRADE FAILED: template: web/templates/deployment.yaml:21:28: executing "web/templates/deployment.yaml" at <.Values.image.tag>: nil pointer evaluating interface {}.tag\n',
-    },
-    { exitCode: 1, stderr: 'Error: INSTALL FAILED: execution error at (web/templates/secret.yaml:4:11): password is required\n' },
-    { exitCode: 1, stderr: 'Error: UPGRADE FAILED: parse error at (web/templates/_helpers.tpl:12): unexpected "}" in operand\n' },
-  ],
-  ValuesSchema: [
-    {
-      exitCode: 1,
-      stderr: "Error: INSTALL FAILED: values don't meet the specifications of the schema(s) in the following chart(s):\nweb:\n- replicaCount: Invalid type. Expected: integer, given: string\n",
-    },
-  ],
-  ReleaseNotFound: [{ exitCode: 1, stderr: 'Error: release: not found\n' }],
-};
+function readText(path: string): string {
+  return readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
+}
+
+/** a sample of fixtures/helm-stderr; the one kept with its stdout is a failed `repo update` */
+function recorded(file: string): Sample {
+  const stdout = join(HELM_STDERR, file.replace(/\.txt$/, '.stdout.txt'));
+  const repoUpdate = existsSync(stdout);
+  const raw = { exitCode: 1, stdout: repoUpdate ? readText(stdout) : '', stderr: readText(join(HELM_STDERR, file)) };
+  return { file: `helm-stderr/${file}`, exitCode: 1, stderr: helmStderr(repoUpdate ? ['repo', 'update'] : [], raw) };
+}
+
+/** the upgrade stderr of a fixtures/helm scenario */
+function recordedUpgrade(scenario: string): Sample {
+  const raw = { exitCode: 1, stdout: '', stderr: readHelmFixture(scenario, 'upgrade-stderr.txt') };
+  return { file: `helm/${scenario}/upgrade-stderr.txt`, exitCode: 1, stderr: helmStderr(['upgrade'], raw) };
+}
+
+/** the directories of fixtures/helm-stderr, each named after the reason its samples are classified as */
+const RECORDED_REASONS = readdirSync(HELM_STDERR, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name as HelmFailureReason)
+  .sort();
+
+function sampleFiles(reason: HelmFailureReason): string[] {
+  const dir = join(HELM_STDERR, reason);
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((file) => /^\d+\.txt$/.test(file))
+    .sort()
+    .map((file) => `${reason}/${file}`);
+}
+
+/** helm missing on a node before setup, recorded with the kubectl samples */
+const HELM_MISSING = 'kubectl-stderr/ToolMissing/3.txt';
+
+/** the recordings of `reason`: its directory of fixtures/helm-stderr, and the upgrades of fixtures/helm */
+function samplesOf(reason: HelmFailureReason): Sample[] {
+  const samples = sampleFiles(reason).map(recorded);
+  if (reason === 'RolledBack') return [recordedUpgrade('helm-history-rollback'), ...samples];
+  if (reason === 'NotReady') return [recordedUpgrade('helm-status-failed'), ...samples];
+  // the path in the text is enough, whatever exit code the transport reports
+  if (reason === 'ToolMissing') return [127, 1].map((exitCode) => ({ file: HELM_MISSING, exitCode, stderr: readText(join(FIXTURES, HELM_MISSING)) }));
+  return samples;
+}
 
 function context(overrides: Partial<HelmCallContext> = {}): HelmCallContext {
   return {
@@ -140,24 +134,48 @@ function mapped(reason: HelmFailureReason, detail = 'the detail', overrides: Par
 }
 
 describe('classifyHelmFailure', () => {
-  for (const [reason, samples] of Object.entries(SAMPLES)) {
+  it('has a recording for every reason of the table', () => {
+    expect(TABLE_REASONS.filter((reason) => samplesOf(reason).length === 0)).toEqual([]);
+  });
+
+  it('every sample of fixtures/helm-stderr is a recording named by meta.json, and scrubbed', () => {
+    const meta = JSON.parse(readText(join(HELM_STDERR, 'meta.json'))) as { steps: string[] };
+    expect(metaErrors(meta, 'helm')).toEqual([]);
+    const files = RECORDED_REASONS.flatMap(sampleFiles);
+    expect(files.filter((file) => !meta.steps.some((step) => step.startsWith(`${file}: `)))).toEqual([]);
+    expect(meta.steps.length).toBe(files.length);
+    const texts = RECORDED_REASONS.flatMap((reason) => readdirSync(join(HELM_STDERR, reason)).map((file) => `${reason}/${file}`));
+    expect(scrubViolations(texts.map((path) => ({ path, text: readText(join(HELM_STDERR, path)) })))).toEqual([]);
+  });
+
+  for (const reason of [...new Set<HelmFailureReason>([...TABLE_REASONS, ...RECORDED_REASONS])]) {
     it(`classifies every ${reason} sample`, () => {
-      for (const sample of samples) expect(classifyHelmFailure(sample.exitCode, sample.stderr)).toBe(reason as HelmFailureReason);
+      for (const { file, exitCode, stderr } of samplesOf(reason)) {
+        expect({ file, reason: classifyHelmFailure(exitCode, stderr) }).toEqual({ file, reason });
+      }
     });
   }
 
-  it('classifies the recorded failures the same with the log line Helm prints first', () => {
-    expect(classifyHelmFailure(1, readHelmFixture('helm-history-rollback', 'upgrade-stderr.txt'))).toBe('RolledBack');
-    expect(classifyHelmFailure(1, readHelmFixture('helm-status-failed', 'upgrade-stderr.txt'))).toBe('NotReady');
+  it('classifies the recordings the same with the log lines Helm prints first', () => {
+    // a failed repo update is left out: its causes are on stdout, which only helmStderr adds
+    const raw = RECORDED_REASONS.flatMap((reason) => sampleFiles(reason).map((file) => ({ file, reason, stderr: readText(join(HELM_STDERR, file)) }))).filter(
+      ({ file }) => !existsSync(join(HELM_STDERR, file.replace(/\.txt$/, '.stdout.txt'))),
+    );
+    for (const [scenario, reason] of [
+      ['helm-history-rollback', 'RolledBack'],
+      ['helm-status-failed', 'NotReady'],
+    ] as const) {
+      raw.push({ file: `helm/${scenario}/upgrade-stderr.txt`, reason, stderr: readHelmFixture(scenario, 'upgrade-stderr.txt') });
+    }
+    for (const { file, reason, stderr } of raw) expect({ file, reason: classifyHelmFailure(1, stderr) }).toEqual({ file, reason });
   });
 
-  it('prefers UninstalledOnFailure and RolledBack over the NotReady lines they carry', () => {
-    const [uninstalled] = SAMPLES.UninstalledOnFailure;
-    expect(uninstalled.stderr).toContain('not ready. status:');
-    expect(classifyHelmFailure(1, uninstalled.stderr)).toBe('UninstalledOnFailure');
-    const [rolledBack] = SAMPLES.RolledBack;
-    expect(rolledBack.stderr).toContain('not ready. status:');
-    expect(classifyHelmFailure(1, rolledBack.stderr)).toBe('RolledBack');
+  it('prefers UninstalledOnFailure and RolledBack over the not-ready lines they carry', () => {
+    for (const reason of ['UninstalledOnFailure', 'RolledBack'] as const) {
+      const carriers = samplesOf(reason).filter((sample) => sample.stderr.includes('not ready. status:'));
+      expect(carriers.length).toBeGreaterThan(0);
+      for (const { file, stderr } of carriers) expect({ file, reason: classifyHelmFailure(1, stderr) }).toEqual({ file, reason });
+    }
   });
 
   it('falls back to the kubectl classifier for every recorded kubectl stderr sample', () => {
@@ -175,56 +193,63 @@ describe('classifyHelmFailure', () => {
     expect(checked).toBeGreaterThan(20);
   });
 
-  it('leaves cluster-side rejections to the kubectl classifier although they use registry words', () => {
-    const webhook = 'Error: UPGRADE FAILED: failed to create resource: admission webhook "validate.example.com" denied the request: replicas must be at most 3\n';
-    expect(classifyHelmFailure(1, webhook)).toBe('AdmissionDenied');
+  it('leaves the API server dialled during an operation to the kubectl classifier', () => {
+    // on loopback, or on port 6443 of another manager: not a chart repository
     const apiDial = `Error: UPGRADE FAILED: Get "https://127.0.0.1:6443/apis/apps/v1/namespaces/${NS}/deployments/web": dial tcp 127.0.0.1:6443: connect: connection refused\n`;
     expect(classifyHelmFailure(1, apiDial)).toBe('Unreachable');
     const otherManager = 'Error: UPGRADE FAILED: Get "https://10.0.0.11:6443/api/v1/namespaces": dial tcp 10.0.0.11:6443: i/o timeout\n';
     expect(classifyHelmFailure(1, otherManager)).toBe('Unreachable');
-    expect(classifyHelmFailure(1, 'Error: Get "https://charts.example.com/index.yaml": dial tcp 203.0.113.7:443: connect: connection refused\n')).toBe('RepoUnreachable');
   });
 
-  it('a webhook the API server cannot call during an upgrade is the cluster policy, not the chart repository', () => {
-    const webhook = readFileSync(join(import.meta.dir, '..', 'fixtures', 'kubectl-stderr', 'AdmissionDenied', '4.txt'), 'utf8').trim();
-    const refused = `Error: UPGRADE FAILED: failed to create resource: ${webhook.replace(/^Error from server \(InternalError\): /, '')}\n`;
-    expect(classifyHelmFailure(1, refused)).toBe('AdmissionDenied');
-    // what Helm did about it still comes first
-    expect(classifyHelmFailure(1, `Error: UPGRADE FAILED: release web failed, and has been rolled back due to rollback-on-failure being set: ${webhook}\n`)).toBe(
-      'RolledBack',
-    );
+  it('a webhook the API server cannot call is the cluster policy, not the chart repository', () => {
+    const unanswered = recorded('AdmissionDenied/2.txt').stderr;
+    expect(unanswered).toContain('dial tcp');
+    expect(classifyHelmFailure(1, unanswered)).toBe('AdmissionDenied');
+    // what Helm did about a refusal still comes first
+    const removed = recorded('UninstalledOnFailure/3.txt').stderr;
+    expect(removed).toContain('denied the request');
+    expect(classifyHelmFailure(1, removed)).toBe('UninstalledOnFailure');
   });
 
-  it('classifies an unreachable cluster by the kubectl rules, whatever the wrapper says', () => {
-    const refused = 'Error: INSTALLATION FAILED: Kubernetes cluster unreachable: Get "https://127.0.0.1:6443/version": dial tcp 127.0.0.1:6443: connect: connection refused\n';
-    expect(classifyHelmFailure(1, refused)).toBe('Unreachable');
-    expect(classifyHelmFailure(1, 'Error: Kubernetes cluster unreachable: Get "https://127.0.0.1:6443/version": context deadline exceeded\n')).toBe('Unreachable');
-    expect(classifyHelmFailure(1, 'Error: Kubernetes cluster unreachable: the server has asked for the client to provide credentials\n')).toBe('Unauthorized');
-    expect(classifyHelmFailure(1, 'Error: Kubernetes cluster unreachable: Get "https://127.0.0.1:6443/version": tls: failed to verify certificate: x509: certificate signed by unknown authority\n')).toBe(
-      'CertificateMismatch',
-    );
-  });
-
-  it('reads Helm 4, which lowercased its wrapper, the same way', () => {
-    // helm list against a deploy identity whose token Secret was deleted (E-77-03)
-    expect(classifyHelmFailure(1, 'Error: kubernetes cluster unreachable: the server has asked for the client to provide credentials\n')).toBe('Unauthorized');
-    expect(classifyHelmFailure(1, 'Error: kubernetes cluster unreachable: Get "https://127.0.0.1:6443/version": dial tcp 127.0.0.1:6443: connect: connection refused\n')).toBe(
-      'Unreachable',
-    );
+  it('classifies an unreachable cluster by the kubectl rules, whatever the wrapper carries', () => {
+    // `kubernetes cluster unreachable: ...` holds words of the chart rules: dial tcp, a deadline
+    for (const reason of ['Unreachable', 'Unauthorized', 'CertificateMismatch'] as const) {
+      for (const { file, stderr } of samplesOf(reason)) {
+        expect({ file, wrapped: stderr.includes('Error: kubernetes cluster unreachable: ') }).toEqual({ file, wrapped: true });
+        expect({ file, reason: classifyHelmFailure(1, stderr) }).toEqual({ file, reason });
+      }
+    }
   });
 });
 
 describe('helmFailureDetail', () => {
-  it('keeps the not-ready lines when the watcher reported some', () => {
-    expect(helmFailureDetail(SAMPLES.RolledBack[0].stderr)).toBe(
+  it('keeps the lines of the watcher when it reported some', () => {
+    expect(helmFailureDetail(samplesOf('RolledBack')[0].stderr)).toBe(
       'resource Deployment/fixture-helm-history-rollback/web-e2e-broken not ready. status: InProgress, message: Available: 0/1',
     );
-    expect(helmFailureDetail(SAMPLES.UninstalledOnFailure[0].stderr)).toBe(`resource Deployment/${NS}/web not ready. status: InProgress, message: Available: 0/1`);
+    expect(helmFailureDetail(recorded('UninstalledOnFailure/1.txt').stderr)).toBe(`resource Deployment/${NS}/cache-e2e-broken not ready. status: InProgress, message: Available: 0/1`);
+    expect(helmFailureDetail(recorded('UninstalledOnFailure/2.txt').stderr)).toBe(`resource Job/${NS}/jobs-e2e-web-hook not ready. status: Failed, message: Job Failed. failed: 1/1`);
+    // an uninstall waits for its objects to be gone
+    expect(helmFailureDetail(recorded('Timeout/1.txt').stderr)).toBe(`resource ConfigMap/${NS}/stuck-e2e-web still exists. status: Terminating, message: Resource scheduled for deletion`);
   });
 
-  it("removes `Error: ` prefixes and Helm's wrappers, and joins the lines", () => {
-    expect(helmFailureDetail(SAMPLES.UninstalledOnFailure[1].stderr)).toBe('failed pre-install: 1 error occurred:; * job web-migrate failed: BackoffLimitExceeded');
+  it("removes `Error: ` prefixes and Helm's wrappers", () => {
+    expect(helmFailureDetail(recorded('UninstalledOnFailure/3.txt').stderr)).toBe(
+      'server-side apply failed for object dockflow-shop-staging/api-e2e-web apps/v1, Kind=Deployment: admission webhook "images.policy.example.com" denied the request: images from registry.example.com/untrusted are not allowed',
+    );
+    expect(helmFailureDetail(recorded('Ownership/2.txt').stderr)).toBe(
+      `unable to continue with install: ConfigMap "web-e2e-web" in namespace "${NS}" exists and cannot be imported into the current release: invalid ownership metadata; annotation validation error: key "meta.helm.sh/release-name" must equal "web": current value is "search"`,
+    );
     expect(helmFailureDetail('Error: UPGRADE FAILED: Error: context deadline exceeded\n')).toBe('context deadline exceeded');
+  });
+
+  it('goes on in the next line after a colon, as Helm 4 splits template and schema errors', () => {
+    expect(helmFailureDetail(recorded('RenderError/1.txt').stderr)).toBe(
+      'e2e-web/templates/hook-job.yaml:1:14; executing "e2e-web/templates/hook-job.yaml" at <.Values.hook.enabled>: nil pointer evaluating interface {}.enabled',
+    );
+    expect(helmFailureDetail(recorded('ValuesSchema/1.txt').stderr)).toBe(
+      "values don't meet the specifications of the schema(s) in the following chart(s): e2e-pvc: - at '/storage': got number, want string",
+    );
   });
 
   it('keeps at most 5 lines and redacts them', () => {
@@ -271,6 +296,15 @@ describe('helmErrorToCliError', () => {
     }
   });
 
+  it('says an uninstall that timed out did not remove the release, and names what is left', async () => {
+    await expectCliError(helmResultToCliError(recorded('Timeout/1.txt'), context({ operation: 'uninstall', release: 'stuck', timeoutS: 15 })), {
+      type: DeployError,
+      code: ErrorCode.DEPLOY_FAILED,
+      message: `Helm release stuck was not removed within 15s (resource ConfigMap/${NS}/stuck-e2e-web still exists. status: Terminating, message: Resource scheduled for deletion)`,
+      suggestion: 'Run the command again once the objects still being deleted are gone.',
+    });
+  });
+
   it('maps chart and credential problems to ConfigError', async () => {
     await expectCliError(mapped('ChartNotFound'), {
       type: ConfigError,
@@ -281,7 +315,7 @@ describe('helmErrorToCliError', () => {
     await expectCliError(mapped('RepoAuth'), {
       type: ConfigError,
       code: ErrorCode.CONFIG_INVALID,
-      message: `The chart repository rejected the credentials for ${CHART}`,
+      message: `The chart repository refused access to ${CHART}`,
       suggestion: 'Check `helm.releases[].auth` of web.',
     });
   });
@@ -338,7 +372,7 @@ describe('helmErrorToCliError', () => {
 
 describe('helmResultToCliError and helmKubeErrorToCliError', () => {
   it('classifies, extracts the detail and maps a failed result in one call', async () => {
-    await expectCliError(helmResultToCliError(SAMPLES.RolledBack[0], context()), {
+    await expectCliError(helmResultToCliError(samplesOf('RolledBack')[0], context()), {
       type: DeployError,
       message:
         'Helm release web failed to upgrade and was rolled back to its previous revision (resource Deployment/fixture-helm-history-rollback/web-e2e-broken not ready. status: InProgress, message: Available: 0/1)',
@@ -358,7 +392,7 @@ describe('helmResultToCliError and helmKubeErrorToCliError', () => {
   it('maps a lost transport with the kubectl table and reclassifies a failed exit with the Helm rules', async () => {
     const lost = new KubeError('Unreachable', 'Lost the SSH connection to server_1 during helm upgrade: read ECONNRESET', 'server_1', NO_EXIT_CODE, '');
     await expectCliError(helmKubeErrorToCliError(lost, context()), { type: OrchestratorUnavailableError, message: 'The Kubernetes API is not answering on server_1' });
-    const pending = SAMPLES.Pending[0];
+    const pending = recorded('Pending/1.txt');
     const thrown = new KubeError(classifyKubectlFailure(1, pending.stderr), 'helm upgrade failed on server_2 (exit 1)', 'server_2', 1, pending.stderr);
     await expectCliError(helmKubeErrorToCliError(thrown, context()), { message: 'Helm release web has an operation in progress' });
   });
