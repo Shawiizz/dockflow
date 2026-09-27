@@ -17,11 +17,12 @@
  * A helm scenario brings the releases of its namespace to their state with the harness helm of
  * server-1 and the arguments of Dockflow's Helm backend, then keeps what `helm list`, `helm
  * history`, `helm get` and `kubectl get secrets` print, under the same scrub rules.
+ *
+ * `kubectl-stderr` records the stderr samples of fixtures/kubectl-stderr (record-kubectl-stderr.ts).
  */
 
 import { createHash } from "crypto";
 import { mkdirSync, rmSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
 import { dirname, join } from "path";
 import {
   CAPTURED_RESOURCES,
@@ -29,8 +30,6 @@ import {
   CLUSTER_RESOURCES,
   DESIGN_SCENARIOS,
   FIXTURE_PROJECT,
-  FIXTURE_RELEASE,
-  FIXTURE_SERVERS,
   FIXTURES_ROOT,
   type FixtureFile,
   fixtureNamespace,
@@ -41,29 +40,21 @@ import {
   scrubViolations,
 } from "../../../../cli/src/__tests__/kubernetes/support/kubectl-fixtures";
 import { helmHistoryMaxFor } from "../../../../cli/src/commands/helm/utils";
-import { loadFromString } from "../../../../cli/src/services/compose";
-import { DiagnosticSink } from "../../../../cli/src/services/orchestrator/diagnostics";
-import { createFileResolver } from "../../../../cli/src/services/orchestrator/file-resolver";
 import type { ResolvedHelmRelease, StackRole } from "../../../../cli/src/services/orchestrator/interfaces";
 import { buildHelperPod } from "../../../../cli/src/services/orchestrator/kubernetes/backends/backup";
 import { helmUninstallArgs, helmUpgradeArgs } from "../../../../cli/src/services/orchestrator/kubernetes/backends/helm";
-import { K8S_PROGRESS_DEADLINE_S, LABELS } from "../../../../cli/src/services/orchestrator/kubernetes/constants";
-import type { DistributionTraits } from "../../../../cli/src/services/orchestrator/kubernetes/distribution";
+import { LABELS } from "../../../../cli/src/services/orchestrator/kubernetes/constants";
 import { specRevisionsSelector } from "../../../../cli/src/services/orchestrator/kubernetes/helm/parse";
 import { helmSpecHash } from "../../../../cli/src/services/orchestrator/kubernetes/helm/resolve";
 import { helmValuesStdin } from "../../../../cli/src/services/orchestrator/kubernetes/helm/values-yaml";
 import { k3sDistribution } from "../../../../cli/src/services/orchestrator/kubernetes/k3s/distribution";
 import { K3S_PIN } from "../../../../cli/src/services/orchestrator/kubernetes/k3s/versions";
 import { namespaceLabels } from "../../../../cli/src/services/orchestrator/kubernetes/labels";
-import type { StackIdentity } from "../../../../cli/src/services/orchestrator/kubernetes/model/types";
-import { normalizeStack } from "../../../../cli/src/services/orchestrator/kubernetes/normalize";
-import { revisionHistoryLimitFor } from "../../../../cli/src/services/orchestrator/kubernetes/render";
 import type { DaemonSet, Deployment, StatefulSet } from "../../../../cli/src/services/orchestrator/kubernetes/resources/apps";
 import type { Job } from "../../../../cli/src/services/orchestrator/kubernetes/resources/batch";
 import type { Container, PersistentVolumeClaim } from "../../../../cli/src/services/orchestrator/kubernetes/resources/core";
 import type { ManifestObject } from "../../../../cli/src/services/orchestrator/kubernetes/resources/registry";
 import { HELM_LIST_EVERY_STATUS } from "../../../../cli/src/services/orchestrator/kubernetes/runtime/helm";
-import { translateStack } from "../../../../cli/src/services/orchestrator/kubernetes/translate";
 import { HELM_PIN } from "../../../../cli/src/services/orchestrator/kubernetes/versions";
 import type { DockflowConfig } from "../../../../cli/src/utils/config";
 import { canonicalJson, sha256Hex } from "../../../../cli/src/utils/hash";
@@ -71,8 +62,8 @@ import { tryExec } from "../../helpers/cluster";
 import { getJson, kubectl, waitFor, withNodeDown } from "../../helpers/k8s";
 import { chartRepoUrl, currentTopology, managersOf, TOPOLOGIES } from "../../helpers/topology";
 import { isLaneName, LANES, type LaneName } from "../lanes";
-
-// NOTE: the kubectl-stderr samples are not recorded yet.
+import { apply, identityOf, render } from "./fixture-render";
+import { recordKubectlStderr } from "./record-kubectl-stderr";
 
 function log(message: string): void {
   process.stdout.write(`${message}\n`);
@@ -97,57 +88,6 @@ function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-// ─── rendering with Dockflow's own normalizer and translator ─────────
-
-/** servers.yml keys of the recording lane; `node.hostname == agent_1` pins a pod to node agent-1 */
-const SERVER_NAMES = Object.values(FIXTURE_SERVERS);
-
-function identityOf(ns: string): StackIdentity {
-  return { project: FIXTURE_PROJECT, env: "production", stackName: `${FIXTURE_PROJECT}-production`, namespace: ns, version: FIXTURE_RELEASE };
-}
-
-interface RenderOptions {
-  role?: StackRole;
-  traits?: Partial<DistributionTraits>;
-}
-
-/** The objects a deploy of `compose` applies for `role`, rendered into `ns`: render.ts without the artifact. */
-function render(ns: string, compose: string, options: RenderOptions = {}): ManifestObject[] {
-  const role = options.role ?? "app";
-  const file = role === "app" ? "docker-compose.yml" : "accessories.yml";
-  const traits: DistributionTraits = { ...structuredClone(k3sDistribution.traits), ...options.traits };
-  const sink = new DiagnosticSink();
-  const refuse = (): never => {
-    const errors = sink.list().filter((d) => d.severity === "error");
-    throw new Error(`The ${file} of ${ns} does not render:\n${errors.map((d) => `  - ${d.path}: ${d.message}`).join("\n")}`);
-  };
-  const { stack } = normalizeStack({
-    compose: loadFromString(compose, file),
-    role,
-    identity: identityOf(ns),
-    proxy: undefined,
-    sibling: { services: [], volumes: [], middlewares: [] },
-    serverNames: [...SERVER_NAMES],
-    imageDelivery: "import",
-    files: createFileResolver(new Map(), tmpdir()),
-    traits,
-    sink,
-  });
-  if (sink.hasErrors()) refuse();
-  const { objects } = translateStack(stack, {
-    pullSecretName: null,
-    revisionHistoryLimit: revisionHistoryLimitFor(undefined),
-    progressDeadlineS: K8S_PROGRESS_DEADLINE_S,
-    traits,
-    extraReservedHostPorts: [{ port: 22, protocol: "TCP", reason: "SSH" }],
-    traefikOnCluster: false,
-    serverNames: [...SERVER_NAMES],
-    sink,
-  });
-  if (sink.hasErrors()) refuse();
-  return objects;
-}
-
 type Workload = Deployment | StatefulSet | DaemonSet | Job;
 
 function isWorkload(object: ManifestObject): object is Workload {
@@ -170,12 +110,6 @@ function deploymentOf(objects: readonly ManifestObject[], name: string): Deploym
   const workload = workloadOf(objects, name);
   if (workload.kind !== "Deployment") throw new Error(`Workload ${name} is a ${workload.kind}, not a Deployment`);
   return workload;
-}
-
-/** Applied as a deploy applies (runtime/kubectl.ts): server-side, field manager dockflow. */
-async function apply(objects: readonly object[]): Promise<void> {
-  const list = { apiVersion: "v1", kind: "List", items: objects };
-  await kubectl(["apply", "--server-side", "--field-manager=dockflow", "--force-conflicts", "-f", "-"], { stdin: JSON.stringify(list) });
 }
 
 async function rolloutStatus(ns: string, target: string, timeoutS: number): Promise<void> {
@@ -1574,6 +1508,9 @@ async function recordHelm(scenario: HelmScenario): Promise<void> {
 
 // ─── entry point ────────────────────────────────────────────────────
 
+/** every sample of fixtures/kubectl-stderr, recorded by record-kubectl-stderr.ts in one pass */
+const STDERR_SCENARIO = "kubectl-stderr";
+
 const USAGE = "Usage: bun run testing/e2e/k3s/tools/record-kubectl-fixtures.ts --lane <lane> (--scenario <name>[,<name>...] | --all)";
 
 interface Args {
@@ -1587,14 +1524,14 @@ function parseArgs(argv: string[]): Args {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--lane") lane = argv[++i];
     else if (argv[i] === "--scenario") scenarios.push(...(argv[++i] ?? "").split(",").filter(Boolean));
-    else if (argv[i] === "--all") scenarios = [...SCENARIO_NAMES, ...HELM_SCENARIO_NAMES];
+    else if (argv[i] === "--all") scenarios = [...SCENARIO_NAMES, ...HELM_SCENARIO_NAMES, STDERR_SCENARIO];
     else throw new Error(`Unknown argument ${argv[i]}\n${USAGE}`);
   }
   if (!lane || !isLaneName(lane)) throw new Error(`--lane must be one of ${Object.keys(LANES).join(", ")}\n${USAGE}`);
   if (scenarios.length === 0) throw new Error(`Pass --scenario <name> or --all\n${USAGE}`);
-  const unknown = scenarios.filter((name) => !SCENARIO_NAMES.has(name) && !HELM_SCENARIO_NAMES.has(name));
+  const unknown = scenarios.filter((name) => !SCENARIO_NAMES.has(name) && !HELM_SCENARIO_NAMES.has(name) && name !== STDERR_SCENARIO);
   if (unknown.length > 0) {
-    throw new Error(`Unknown scenario ${unknown.join(", ")}; known: ${[...DESIGN_SCENARIOS.kubectl, ...DESIGN_SCENARIOS.helm].join(", ")}`);
+    throw new Error(`Unknown scenario ${unknown.join(", ")}; known: ${[...DESIGN_SCENARIOS.kubectl, ...DESIGN_SCENARIOS.helm, STDERR_SCENARIO].join(", ")}`);
   }
   return { lane, scenarios };
 }
@@ -1611,6 +1548,7 @@ async function main(): Promise<void> {
     if (scenario) await record(scenario);
     const helmScenario = HELM_SCENARIOS.find((s) => s.name === name);
     if (helmScenario) await recordHelm(helmScenario);
+    if (name === STDERR_SCENARIO) await recordKubectlStderr();
   }
   log(`[record] done: ${args.scenarios.length} scenario(s).`);
 }
