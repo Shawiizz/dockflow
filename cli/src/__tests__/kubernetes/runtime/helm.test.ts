@@ -274,6 +274,22 @@ describe('redaction and output', () => {
     });
   });
 
+  it('drops the log lines Helm 4 prints before its error, unless nothing else is left', async () => {
+    const notReady = `resource Deployment/${NS}/web not ready. status: InProgress, message: Available: 0/1`;
+    const error = `Error: UPGRADE FAILED: ${notReady}\ncontext deadline exceeded\n`;
+    const logOnly = 'level=WARN msg="uninstall failed" name=web\n';
+    const { helm } = setup([
+      { command: /'upgrade'/, respond: { exitCode: 1, stderr: `level=WARN msg="upgrade failed" name=web error="${notReady}\\ncontext deadline exceeded"\n${error}` } },
+      { command: /'uninstall'/, respond: { exitCode: 1, stderr: logOnly } },
+    ]);
+    const failure = await helm.run({ args: ['upgrade', '--install', 'web', TGZ, '-n', NS], stdin: '{}\n', mutating: true, timeoutS: 300 }).catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(KubeError);
+    expect((failure as KubeError).stderr).toBe(error);
+    expect((failure as KubeError).message).toBe(`helm upgrade failed on server_1 (exit 1): Error: UPGRADE FAILED: ${notReady}`);
+    const uninstall = await helm.run({ args: ['uninstall', 'web', '-n', NS], mutating: true, timeoutS: 300, allowFailure: true });
+    expect(uninstall.stderr).toBe(logOnly);
+  });
+
   it('U-RT-H-14: the stdout of get manifest is returned and never printed, --debug included', async () => {
     const manifest = `---\napiVersion: v1\nkind: Secret\nmetadata:\n  name: web-db\ndata:\n  password: ${Buffer.from(PASSWORD).toString('base64')}\n`;
     const { helm } = setup([{ command: /'get' 'manifest'/, respond: { exitCode: 0, stdout: manifest } }], [PASSWORD]);

@@ -46,8 +46,8 @@ export interface HelmExecutor {
 }
 
 /**
- * `helm list` shows only deployed and failed releases unless told otherwise, and Helm 4 has no
- * `-a`: every status is named, so a `pending-*` or `uninstalling` release stays visible.
+ * Every status, named. Helm 4 lists them all by default and has no `-a` (fixtures/helm/helm-list),
+ * but a `pending-*` or `uninstalling` release must stay visible whatever the default becomes.
  */
 export const HELM_LIST_EVERY_STATUS: readonly string[] = ['--deployed', '--failed', '--pending', '--superseded', '--uninstalled', '--uninstalling'];
 
@@ -91,14 +91,27 @@ export function helmCommand(call: Pick<HelmCall, 'args' | 'env'>): string {
 /** `...Unable to get an update from the "<name>" chart repository (<url>):`, then the cause tab-indented */
 const REPO_UPDATE_FAILURE = /^\.\.\.Unable to get an update from .*\n((?:\t.*\n?)+)/gm;
 
+/** a line of Helm 4's own log (`level=WARN msg="upgrade failed" name=web error="..."`) */
+const HELM_LOG_LINE = /^(?:time=\S+ )?level=(?:DEBUG|INFO|WARN|ERROR) msg=/;
+
 /**
- * The stderr of a result, before redaction. A failed `repo update` prints why a repository failed
- * on stdout and only the failed URLs on stderr, so those causes come first.
+ * Helm 4 logs a failure before it prints the error (`Error: UPGRADE FAILED: ...`), which says it
+ * again: the log lines go, unless nothing else is left.
+ */
+function withoutLogLines(stderr: string): string {
+  const kept = stderr.split('\n').filter((line) => !HELM_LOG_LINE.test(line));
+  return kept.some((line) => line.trim() !== '') ? kept.join('\n') : stderr;
+}
+
+/**
+ * The stderr of a result, before redaction, without Helm's log lines. A failed `repo update` prints
+ * why a repository failed on stdout and only the failed URLs on stderr, so those causes come first.
  */
 export function helmStderr(args: readonly string[], raw: { exitCode: number; stdout: string; stderr: string }): string {
-  if (raw.exitCode === 0 || args[0] !== 'repo' || args[1] !== 'update') return raw.stderr;
+  const stderr = withoutLogLines(raw.stderr);
+  if (raw.exitCode === 0 || args[0] !== 'repo' || args[1] !== 'update') return stderr;
   const causes = [...raw.stdout.matchAll(REPO_UPDATE_FAILURE)].map((match) => (match[1] ?? '').replace(/^\t/gm, '').trimEnd());
-  return [...causes, raw.stderr].join('\n');
+  return [...causes, stderr].join('\n');
 }
 
 /**
