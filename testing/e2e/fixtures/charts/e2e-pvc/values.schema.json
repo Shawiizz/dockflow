@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "storage": { "type": "string", "description": "size of the claim, a Kubernetes quantity such as 64Mi" }
+  }
+}

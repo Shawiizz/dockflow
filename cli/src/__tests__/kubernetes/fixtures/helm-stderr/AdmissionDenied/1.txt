@@ -1,0 +1,2 @@
+level=WARN msg="Rollback \"web\" failed: server-side apply failed for object dockflow-shop-staging/web-e2e-web apps/v1, Kind=Deployment: admission webhook \"images.policy.example.com\" denied the request: images from registry.example.com/untrusted are not allowed"
+Error: server-side apply failed for object dockflow-shop-staging/web-e2e-web apps/v1, Kind=Deployment: admission webhook "images.policy.example.com" denied the request: images from registry.example.com/untrusted are not allowed

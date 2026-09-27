@@ -138,6 +138,19 @@ export function helmUninstallArgs(
   return args;
 }
 
+/** `helm rollback` of a release to `revision` as `dockflow rollback` runs it. */
+export function helmRollbackArgs(
+  namespace: string,
+  name: string,
+  revision: number,
+  options: { timeoutS: number; historyMax?: number; description?: string },
+): string[] {
+  const args = ['rollback', name, String(revision), '-n', namespace, '--wait=watcher', '--wait-for-jobs', '--timeout', `${options.timeoutS}s`];
+  if (options.historyMax !== undefined) args.push('--history-max', String(options.historyMax));
+  args.push('--force-conflicts', '--description', options.description ?? `Dockflow rollback to revision ${revision}`);
+  return args;
+}
+
 export interface HelmBackendOptions {
   deps: Pick<KubernetesBundleDeps, 'helm' | 'kubectl' | 'nodeShell' | 'clock' | 'redactor' | 'distribution'>;
   /** environment name, for messages and suggestions */
@@ -420,11 +433,8 @@ export class KubernetesHelmBackend implements HelmBackend {
     revision: number,
     options: { timeoutS: number; historyMax?: number; description?: string },
   ): Promise<HelmReleaseStatus> {
-    const args = ['rollback', name, String(revision), '-n', namespace, '--wait=watcher', '--wait-for-jobs', '--timeout', `${options.timeoutS}s`];
-    if (options.historyMax !== undefined) args.push('--history-max', String(options.historyMax));
-    args.push('--force-conflicts', '--description', options.description ?? `Dockflow rollback to revision ${revision}`);
     const context = this.helmContext('rollback', name, namespace, name, options.timeoutS, true);
-    await this.run(args, { mutating: true, timeoutS: options.timeoutS }, context);
+    await this.run(helmRollbackArgs(namespace, name, revision, options), { mutating: true, timeoutS: options.timeoutS }, context);
     const status = await this.status(namespace, name);
     if (status === null) {
       throw new DeployError(`Helm release ${name} was not found in namespace ${namespace} after rolling back to revision ${revision}`, ErrorCode.ROLLBACK_FAILED);

@@ -1,0 +1,2 @@
+level=WARN msg="upgrade failed" name=worker error="post-upgrade hooks failed: resource Job/dockflow-shop-production/worker-e2e-web-hook not ready. status: Failed, message: Job Failed. failed: 1/1"
+Error: UPGRADE FAILED: release worker failed, and has been rolled back due to rollback-on-failure being set: post-upgrade hooks failed: resource Job/dockflow-shop-production/worker-e2e-web-hook not ready. status: Failed, message: Job Failed. failed: 1/1

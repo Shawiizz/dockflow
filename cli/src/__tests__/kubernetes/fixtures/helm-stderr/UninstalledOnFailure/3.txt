@@ -1,0 +1,1 @@
+Error: release api failed, and has been uninstalled due to rollback-on-failure being set: server-side apply failed for object dockflow-shop-staging/api-e2e-web apps/v1, Kind=Deployment: admission webhook "images.policy.example.com" denied the request: images from registry.example.com/untrusted are not allowed

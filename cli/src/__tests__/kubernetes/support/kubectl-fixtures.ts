@@ -199,11 +199,14 @@ const NODE_NAME_KEYS = new Set([
 ]);
 const CLUSTER_KINDS = new Set(['Node', 'PersistentVolume', 'Namespace', 'StorageClass']);
 
-/** pod and service CIDRs of k3s, the documentation range for hosts, loopback and the unspecified address */
+/**
+ * pod and service CIDRs of k3s, the documentation range for hosts, loopback (where a node's DNS
+ * resolver listens: 127.0.0.53, or 127.0.0.11 in a container) and the unspecified address
+ */
 function allowedIp(a: number, b: number, c: number, d: number): boolean {
   if (a === 10 && (b === 42 || b === 43)) return true;
   if (a === 192 && b === 0 && c === 2) return true;
-  return (a === 127 && b === 0 && c === 0 && d === 1) || (a === 0 && b === 0 && c === 0 && d === 0);
+  return a === 127 || (a === 0 && b === 0 && c === 0 && d === 0);
 }
 
 interface ObjectKey {

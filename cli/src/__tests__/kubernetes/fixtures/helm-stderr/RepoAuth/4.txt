@@ -1,0 +1,1 @@
+Error: failed to perform "FetchReference" on source: GET "https://192.0.2.40:5000/v2/charts/e2e-web/manifests/0.1.0": basic credential not found

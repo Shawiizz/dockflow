@@ -1,0 +1,3 @@
+Error: e2e-web/templates/hook-job.yaml:1:14
+  executing "e2e-web/templates/hook-job.yaml" at <.Values.hook.enabled>:
+    nil pointer evaluating interface {}.enabled

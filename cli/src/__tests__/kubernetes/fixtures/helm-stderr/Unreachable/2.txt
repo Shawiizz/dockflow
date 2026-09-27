@@ -1,0 +1,1 @@
+Error: kubernetes cluster unreachable: Get "https://192.0.2.1:6443/version": dial tcp 192.0.2.1:6443: i/o timeout

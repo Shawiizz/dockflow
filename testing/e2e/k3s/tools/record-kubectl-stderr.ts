@@ -54,12 +54,13 @@ function log(message: string): void {
 
 const STDERR_ROOT = join(FIXTURES_ROOT, "kubectl-stderr");
 /** the stack namespace of project shop, environment production */
-const NS = namespaceFor(FIXTURE_PROJECT, "production");
+export const NS = namespaceFor(FIXTURE_PROJECT, "production");
 /** where admission policies and webhooks apply, so they never touch the other samples */
-const POLICY_NS = namespaceFor(FIXTURE_PROJECT, "staging");
+export const POLICY_NS = namespaceFor(FIXTURE_PROJECT, "staging");
 /** a namespace kept terminating by a finalizer */
 const TERMINATING_NS = namespaceFor(FIXTURE_PROJECT, "preview");
-const HOLD_FINALIZER = "example.com/hold";
+/** a finalizer nothing removes but this recorder */
+export const HOLD_FINALIZER = "example.com/hold";
 const DENIAL = "images from registry.example.com/untrusted are not allowed";
 const WEBHOOK_PORT = 9443;
 const UNTRUSTED_IMAGE = "registry.example.com/untrusted/web:1";
@@ -67,14 +68,15 @@ const HEADER = { format: "k8s-manifests/1", stackName: `${FIXTURE_PROJECT}-produ
 
 // ─── running what Dockflow runs ───────────────────────────────────
 
-interface Run {
+export interface Run {
   /** as the node's shell received it */
   command: string;
   exitCode: number;
+  stdout: string;
   stderr: string;
 }
 
-interface Nodes {
+export interface Nodes {
   server: string;
   agent: string;
   /** the host address the nodes reach this process on */
@@ -82,10 +84,16 @@ interface Nodes {
   net: string;
 }
 
-async function onNode(container: string, command: string, options: { stdin?: string; user?: string; timeoutMs?: number } = {}): Promise<Run> {
+export function nodesOf(topo: Topology): Nodes {
+  const server = managersOf(topo)[0];
+  if (!server) throw new Error(`Topology ${topo.name} has no server node`);
+  return { server: server.container, agent: nodeFor(topo, "agent_1").container, host: `${topo.net}.1`, net: topo.net };
+}
+
+export async function onNode(container: string, command: string, options: { stdin?: string; user?: string; timeoutMs?: number } = {}): Promise<Run> {
   const args = ["docker", "exec", ...(options.stdin === undefined ? [] : ["-i"]), ...(options.user ? ["--user", options.user] : []), container, "bash", "-c", command];
   const result = await tryExec(args, { ...(options.stdin === undefined ? {} : { input: options.stdin }), timeoutMs: options.timeoutMs ?? 300_000 });
-  return { command, exitCode: result.exitCode, stderr: result.stderr };
+  return { command, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
 }
 
 /** the kubectl command Dockflow sends for `call`, run where `container` is */
@@ -99,7 +107,7 @@ async function shell(container: string, script: string, stdin?: string): Promise
   if (run.exitCode !== 0) throw new Error(`${script} failed on ${container} (exit ${run.exitCode}): ${run.stderr.trim()}`);
 }
 
-async function readOnNode(container: string, path: string): Promise<string> {
+export async function readOnNode(container: string, path: string): Promise<string> {
   return exec(["docker", "exec", container, "cat", path]);
 }
 
@@ -109,27 +117,35 @@ function stackManifests(objects: ManifestObject[]): string {
 
 // ─── samples ──────────────────────────────────────────────────────
 
-interface Sample {
+export interface Sample {
   file: string;
   /** the condition, for meta.json */
   how: string;
   run: Run;
+  /** stdout is kept too (`<n>.stdout.txt`): a failed `helm repo update` prints its causes there */
+  withStdout: boolean;
 }
 
-class Samples {
+export class Samples {
   readonly kept: Sample[] = [];
 
-  keep(file: string, how: string, run: Run): void {
+  constructor(private readonly classify: (run: Run) => string = (run) => classifyKubectlFailure(run.exitCode, run.stderr)) {}
+
+  keep(file: string, how: string, run: Run, options: { withStdout?: boolean } = {}): void {
     if (run.exitCode === 0 || run.stderr.trim() === "") {
       throw new Error(`${file}: ${run.command} did not fail (exit ${run.exitCode}): ${run.stderr.trim()}`);
     }
-    this.kept.push({ file, how, run });
-    log(`[stderr] ${file}: exit ${run.exitCode}, classified ${classifyKubectlFailure(run.exitCode, run.stderr)}`);
+    this.kept.push({ file, how, run, withStdout: options.withStdout ?? false });
+    const lines = run.stderr.trim().split("\n");
+    log(`[stderr] ${file}: exit ${run.exitCode}, classified ${this.classify(run)}: ${lines.find((line) => line.startsWith("Error")) ?? lines.at(-1)}`);
   }
 }
 
-/** kubeconfig swapped in at Dockflow's path for `fn`, the original put back (or none, as before) */
-async function withKubeconfig<T>(container: string, content: string, fn: () => Promise<T>): Promise<T> {
+/**
+ * kubeconfig swapped in at Dockflow's path for `fn`, the original put back (or none, as before); an
+ * existing file keeps its owner and mode, so the deploy user still reads it
+ */
+export async function withKubeconfig<T>(container: string, content: string, fn: () => Promise<T>): Promise<T> {
   const saved = `${K8S_KUBECONFIG_PATH}.recorder-original`;
   await shell(container, `if [ -f ${K8S_KUBECONFIG_PATH} ]; then cp -p ${K8S_KUBECONFIG_PATH} ${saved}; fi; mkdir -p ${dirname(K8S_KUBECONFIG_PATH)}`);
   try {
@@ -140,13 +156,13 @@ async function withKubeconfig<T>(container: string, content: string, fn: () => P
   }
 }
 
-function replaceField(kubeconfig: string, field: string, value: string): string {
+export function replaceField(kubeconfig: string, field: string, value: string): string {
   const pattern = new RegExp(`^(\\s*${field}: ).*$`, "m");
   if (!pattern.test(kubeconfig)) throw new Error(`The Dockflow kubeconfig has no ${field}`);
   return kubeconfig.replace(pattern, `$1${value}`);
 }
 
-async function deleteNamespace(ns: string): Promise<void> {
+export async function deleteNamespace(ns: string): Promise<void> {
   // a finalizer this recorder left would keep the namespace terminating forever
   const held = await getJson<{ metadata: { name: string; finalizers?: string[] } }>("configmaps", { ns }).catch(() => []);
   for (const cm of held.filter((c) => c.metadata.finalizers?.includes(HOLD_FINALIZER))) {
@@ -218,13 +234,13 @@ function objectOf<T extends ManifestObject>(objects: ManifestObject[], kind: str
 
 // ─── the admission webhook this process serves ────────────────────
 
-interface Webhook {
+export interface Webhook {
   url(path: string): string;
   caBundle: string;
   stop(): void;
 }
 
-async function startWebhook(host: string): Promise<Webhook> {
+export async function startWebhook(host: string): Promise<Webhook> {
   const dir = mkdtempSync(join(tmpdir(), "dockflow-webhook-"));
   const cert = join(dir, "cert.pem");
   const key = join(dir, "key.pem");
@@ -275,7 +291,8 @@ function webhookConfiguration(url: string, caBundle: string, timeoutSeconds: num
   };
 }
 
-async function withWebhook<T>(url: string, caBundle: string, timeoutSeconds: number, fn: () => Promise<T>): Promise<T> {
+/** a ValidatingWebhookConfiguration for the Deployments of POLICY_NS, removed once `fn` settles */
+export async function withWebhook<T>(url: string, caBundle: string, timeoutSeconds: number, fn: () => Promise<T>): Promise<T> {
   await kubectl(["apply", "-f", "-"], { stdin: JSON.stringify(webhookConfiguration(url, caBundle, timeoutSeconds)) });
   try {
     return await fn();
@@ -607,19 +624,22 @@ async function recordIdentity(nodes: Nodes, samples: Samples): Promise<void> {
   samples.keep("KubeconfigMissing/2.txt", "the SSH user cannot read the Dockflow kubeconfig", await dockflow(server, getJsonCall(["deployments"], { namespace: NS }), { user: "ubuntu" }));
 }
 
-async function recordToolMissing(nodes: Nodes, samples: Samples): Promise<void> {
-  // a node before `dockflow setup`: the image the e2e nodes start from
+/**
+ * `command` run by `shellName` in a node before `dockflow setup` (the image the e2e nodes start
+ * from); sshd starts the login shell by its bare name, and so does this.
+ */
+async function inFreshNode(nodes: Nodes, shellName: "sh" | "bash", command: string): Promise<Run> {
   const image = (await exec(["docker", "inspect", "-f", "{{.Config.Image}}", nodes.server])).trim();
+  const result = await tryExec(["docker", "run", "--rm", "--entrypoint", shellName, image, "-c", command]);
+  return { command: `${shellName} -c '${command}'`, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
+}
+
+async function recordToolMissing(nodes: Nodes, samples: Samples): Promise<void> {
   const kubectlLine = kubectlCommand(k3sDistribution, getJsonCall(["namespaces"], { name: NS }));
   const helmLine = helmCommand({ args: ["list", "-n", NS, "-o", "json"] });
-  // sshd starts the login shell by its bare name, and so does this
-  const inFreshNode = async (shellName: "sh" | "bash", command: string): Promise<Run> => {
-    const result = await tryExec(["docker", "run", "--rm", "--entrypoint", shellName, image, "-c", command]);
-    return { command: `${shellName} -c '${command}'`, exitCode: result.exitCode, stderr: result.stderr };
-  };
-  samples.keep("ToolMissing/1.txt", "k3s is not installed (a shell that is dash)", await inFreshNode("sh", kubectlLine));
-  samples.keep("ToolMissing/2.txt", "k3s is not installed (a shell that is bash)", await inFreshNode("bash", kubectlLine));
-  samples.keep("ToolMissing/3.txt", `helm is not installed at ${HELM_BIN_PATH}`, await inFreshNode("bash", helmLine));
+  samples.keep("ToolMissing/1.txt", "k3s is not installed (a shell that is dash)", await inFreshNode(nodes, "sh", kubectlLine));
+  samples.keep("ToolMissing/2.txt", "k3s is not installed (a shell that is bash)", await inFreshNode(nodes, "bash", kubectlLine));
+  samples.keep("ToolMissing/3.txt", `helm is not installed at ${HELM_BIN_PATH}`, await inFreshNode(nodes, "bash", helmLine));
 }
 
 // ─── scrub and write ──────────────────────────────────────────────
@@ -645,6 +665,11 @@ function numbered(map: Map<string, string>, key: string, make: (n: number) => st
   return value;
 }
 
+/** the per-call directory of runtime/host.ts's helmTempDir: `mktemp -d <HELM_TMP_DIR>/call.XXXXXXXXXX` */
+const HELM_CALL_DIR = /(\/call\.)[A-Za-z0-9]{10}\b/g;
+/** an archive of Dockflow's chart cache, whose digest changes each time the e2e charts are packaged */
+const CACHED_CHART = /(\/sha256-)[0-9a-f]{64}(\.tgz)/g;
+
 function scrubber(topo: Topology): (file: string, text: string) => string {
   const uids = new Map<string, string>();
   const versions = new Map<string, string>();
@@ -660,33 +685,40 @@ function scrubber(topo: Topology): (file: string, text: string) => string {
       .replace(EXEC_ID, () => `failed to start exec "${sha256Hex(`${file}:exec`)}"`)
       .replace(RESOURCE_VERSION, (_match, head: string, version: string) => `${head}${numbered(versions, version, String)})`)
       .replace(POD_NAME, (_match, base: string, hash: string) => `${base}-${stableChars(`${file}:${base}:hash`, hash.length)}-${stableChars(`${file}:${base}:pod`, 5)}`)
+      .replace(HELM_CALL_DIR, "$1AbCdEfGhIj")
+      .replace(CACHED_CHART, `$1${"0".repeat(64)}$2`)
       .replace(lane, (_match, octet: string) => `192.0.2.${octets.get(octet) ?? octet}`);
 }
 
-function writeSamples(samples: readonly Sample[], topo: Topology): void {
+/**
+ * Scrubs the samples, checks them with scrubViolations, then writes `<file>` (stderr), `<n>.stdout.txt`
+ * where stdout is kept, and meta.json (`meta` adds its keys between k3sVersion and steps).
+ */
+export function writeSampleSet(root: string, samples: readonly Sample[], topo: Topology, meta: Record<string, string> = {}): void {
   const scrub = scrubber(topo);
-  const files: FixtureFile[] = samples.map(({ file, run }) => ({ path: file, text: scrub(file, run.stderr) }));
+  const files: FixtureFile[] = samples.flatMap(({ file, run, withStdout }) => [
+    { path: file, text: scrub(file, run.stderr) },
+    ...(withStdout ? [{ path: file.replace(/\.txt$/, ".stdout.txt"), text: scrub(file, run.stdout) }] : []),
+  ]);
   const violations = scrubViolations(files);
-  if (violations.length > 0) throw new Error(`The kubectl stderr samples did not scrub cleanly:\n${violations.map((v) => `  - ${v}`).join("\n")}`);
-  rmSync(STDERR_ROOT, { recursive: true, force: true });
+  if (violations.length > 0) throw new Error(`The samples of ${root} did not scrub cleanly:\n${violations.map((v) => `  - ${v}`).join("\n")}`);
+  rmSync(root, { recursive: true, force: true });
   for (const file of files) {
-    const path = join(STDERR_ROOT, file.path);
+    const path = join(root, file.path);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, file.text);
   }
   const steps = [...samples]
     .sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0))
-    .map(({ file, how, run }) => `${file}: ${how}; stderr of ${scrub(file, run.command)}`);
-  const meta = { recordedOn: new Date().toISOString().slice(0, 10), k3sVersion: K3S_PIN.version, steps };
-  writeFileSync(join(STDERR_ROOT, "meta.json"), `${JSON.stringify(meta, null, 2)}\n`);
-  log(`[stderr] ${files.length} sample(s) written to ${STDERR_ROOT}`);
+    .map(({ file, how, run, withStdout }) => `${file}: ${how}; ${withStdout ? "stderr and stdout" : "stderr"} of ${scrub(file, run.command)}`);
+  const content = { recordedOn: new Date().toISOString().slice(0, 10), k3sVersion: K3S_PIN.version, ...meta, steps };
+  writeFileSync(join(root, "meta.json"), `${JSON.stringify(content, null, 2)}\n`);
+  log(`[stderr] ${samples.length} sample(s) written to ${root}`);
 }
 
 export async function recordKubectlStderr(): Promise<void> {
   const topo = currentTopology();
-  const server = managersOf(topo)[0];
-  if (!server) throw new Error(`Topology ${topo.name} has no server node`);
-  const nodes: Nodes = { server: server.container, agent: nodeFor(topo, "agent_1").container, host: `${topo.net}.1`, net: topo.net };
+  const nodes = nodesOf(topo);
   for (const ns of [NS, POLICY_NS, TERMINATING_NS]) await deleteNamespace(ns);
   await kubectl(["delete", "lease", leaseNameFor(NS), "-n", K8S_SYSTEM_NAMESPACE, "--ignore-not-found"], { allowFailure: true });
 
@@ -707,5 +739,5 @@ export async function recordKubectlStderr(): Promise<void> {
     for (const ns of [NS, POLICY_NS, TERMINATING_NS]) await deleteNamespace(ns);
     await kubectl(["delete", "lease", leaseNameFor(NS), "-n", K8S_SYSTEM_NAMESPACE, "--ignore-not-found"], { allowFailure: true });
   }
-  writeSamples(samples.kept, topo);
+  writeSampleSet(STDERR_ROOT, samples.kept, topo);
 }

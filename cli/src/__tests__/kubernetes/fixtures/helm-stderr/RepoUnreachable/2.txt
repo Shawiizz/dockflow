@@ -1,0 +1,1 @@
+Error: looks like "https://charts.shop.invalid/stable" is not a valid chart repository or cannot be reached: Get "https://charts.shop.invalid/stable/index.yaml": dial tcp: lookup charts.shop.invalid on 127.0.0.11:53: no such host

@@ -1,0 +1,2 @@
+Error: uninstallation completed with 1 error(s): resource ConfigMap/dockflow-shop-production/stuck-e2e-web still exists. status: Terminating, message: Resource scheduled for deletion
+context deadline exceeded

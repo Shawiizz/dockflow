@@ -4,3 +4,5 @@ replicas: 1
 # hook is a Helm behaviour, not something a plain workload chart needs by default.
 hook:
   enabled: false
+  # what the hook Job runs: the fixture recorder makes a hook fail with it
+  command: echo hook-ran

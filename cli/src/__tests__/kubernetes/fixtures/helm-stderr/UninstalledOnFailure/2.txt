@@ -1,0 +1,1 @@
+Error: release jobs failed, and has been uninstalled due to rollback-on-failure being set: failed post-install: resource Job/dockflow-shop-production/jobs-e2e-web-hook not ready. status: Failed, message: Job Failed. failed: 1/1

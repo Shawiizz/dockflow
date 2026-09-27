@@ -38,6 +38,21 @@ kept terminating by a finalizer, a container without a shell, a node before setu
 is undone afterwards. `kubectl-stderr/meta.json` names the condition and the command of every file;
 a sample classified as its directory's reason is what `runtime/errors.test.ts` checks.
 
+The stderr samples of `helm-stderr/` (scenario `helm-stderr`, `record-helm-stderr.ts`) are what the
+helm of Dockflow prints for the calls Dockflow makes: the Helm backend's `upgrade --install`,
+`rollback` and `uninstall`, the chart puller's `pull`, `repo update` and `registry login`, and
+`list`, `history` and `get values`, run as the deploy user on `server-1` with the call directories
+and the chart cache of `runtime/host.ts`. Their conditions: a first install still waiting, pods that
+never start and a hook that fails (the release removed or rolled back by `--rollback-on-failure`), a
+finalizer an uninstall waits on, objects made by hand or owned by another release, values a template
+or the values schema refuses, a chart or version missing from an HTTP repository, a repository with
+credentials or an OCI registry, wrong or missing credentials, an address nothing listens on, a name
+that does not resolve, an admission webhook that refuses a rollback or does not answer, and a cluster
+that is down or refuses the deploy identity. The OCI cases use a TLS registry the recorder starts,
+whose CA `server-1` trusts while it runs. A failed `repo update` is kept with its stdout
+(`<n>.stdout.txt`), where Helm prints the cause. `runtime/helm-errors.test.ts` checks that every
+sample, as the executor hands it over (`helmStderr`), is classified as its directory's reason.
+
 What the recordings show that hand-written fixtures did not: pods carry `metadata.generation`,
 `status.observedGeneration` and `conditions[].observedGeneration`; Deployments and ReplicaSets
 report `terminatingReplicas`; a StatefulSet omits `readyReplicas` at 0; and a crash-looping
@@ -45,7 +60,13 @@ container, an OOM-killed one or a failing init container is mostly reported `ter
 `Error` or `OOMKilled`) between its restarts rather than `waiting` in `CrashLoopBackOff`. Helm 4
 logs a failure (`level=WARN msg="upgrade failed" ...`) before it prints the error, lists every
 status when no status flag is given, adds `rollback_revision` to the history row of a rollback,
-and dates a failed revision when its upgrade started.
+and dates a failed revision when its upgrade started. It also prints a template error on three lines
+(position, `executing` action, cause) without Helm 3's `template:` prefix, does not wrap the error
+of the first install of `upgrade --install` in `INSTALLATION FAILED`, applies server-side (a rollback
+a webhook refuses fails with `server-side apply failed for object ...`), names the objects an
+uninstall still waits for (`still exists. status: Terminating`), and says `basic credential not
+found` when an OCI registry wants credentials none were given for. `--dry-run=server` renders
+against the cluster but sends no object, so no admission webhook sees the dry run of an adoption.
 
 Event lists hold what the namespace had at capture time, minus the events of an earlier incarnation
 of a recreated object.
@@ -62,6 +83,9 @@ metrics/<scenario>.json                       kubectl get --raw /apis/metrics.k8
 kubectl-stderr/<KubeErrorReason>/<n>.txt      stderr samples, at least two per reason
 kubectl-stderr/exec/<name>.txt                container runtime start failures of kubectl exec
 kubectl-stderr/meta.json                      one step `<file>: <condition>; stderr of <command>` per sample
+helm-stderr/<HelmFailureReason>/<n>.txt       helm stderr samples, by the reason they are classified as
+helm-stderr/<HelmFailureReason>/<n>.stdout.txt the stdout of a failed `repo update`
+helm-stderr/meta.json                         one step per sample, as in kubectl-stderr, and helmVersion
 ```
 
 Every capture directory holds the same 13 files, empty Lists included:
@@ -147,7 +171,8 @@ its metrics read, checked on every read:
 - any string containing `E2E_SECRET_` fails the recording;
 - stderr samples: klog headers -> `E0101 00:00:00.000000       1`, the id of an exec -> a hash of
   the sample's path, the resourceVersions of a failed precondition -> `1`, `2`, and the lane's
-  addresses -> `192.0.2.<n>` (the recorder's own host as `192.0.2.1`).
+  addresses -> `192.0.2.<n>` (the recorder's own host as `192.0.2.1`), a Helm call directory ->
+  `call.AbCdEfGhIj`, a chart of the chart cache -> `sha256-<64 zeros>.tgz`.
 
 ## Serialization
 

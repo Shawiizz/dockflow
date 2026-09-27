@@ -6,4 +6,4 @@ metadata:
     app.kubernetes.io/name: e2e-web
     app.kubernetes.io/instance: {{ .Release.Name }}
 data:
-  message: {{ .Values.message | quote }}
+  message: {{ required "message is required" .Values.message | quote }}

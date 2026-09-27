@@ -18,7 +18,8 @@
  * server-1 and the arguments of Dockflow's Helm backend, then keeps what `helm list`, `helm
  * history`, `helm get` and `kubectl get secrets` print, under the same scrub rules.
  *
- * `kubectl-stderr` records the stderr samples of fixtures/kubectl-stderr (record-kubectl-stderr.ts).
+ * `kubectl-stderr` records the stderr samples of fixtures/kubectl-stderr (record-kubectl-stderr.ts),
+ * `helm-stderr` those of fixtures/helm-stderr (record-helm-stderr.ts).
  */
 
 import { createHash } from "crypto";
@@ -63,6 +64,7 @@ import { getJson, kubectl, waitFor, withNodeDown } from "../../helpers/k8s";
 import { chartRepoUrl, currentTopology, managersOf, TOPOLOGIES } from "../../helpers/topology";
 import { isLaneName, LANES, type LaneName } from "../lanes";
 import { apply, identityOf, render } from "./fixture-render";
+import { recordHelmStderr } from "./record-helm-stderr";
 import { recordKubectlStderr } from "./record-kubectl-stderr";
 
 function log(message: string): void {
@@ -1508,8 +1510,12 @@ async function recordHelm(scenario: HelmScenario): Promise<void> {
 
 // ─── entry point ────────────────────────────────────────────────────
 
-/** every sample of fixtures/kubectl-stderr, recorded by record-kubectl-stderr.ts in one pass */
-const STDERR_SCENARIO = "kubectl-stderr";
+/** every sample of fixtures/<name>, recorded in one pass */
+const STDERR_SCENARIOS: ReadonlyMap<string, () => Promise<void>> = new Map([
+  ["kubectl-stderr", recordKubectlStderr],
+  ["helm-stderr", recordHelmStderr],
+]);
+const STDERR_SCENARIO_NAMES = [...STDERR_SCENARIOS.keys()];
 
 const USAGE = "Usage: bun run testing/e2e/k3s/tools/record-kubectl-fixtures.ts --lane <lane> (--scenario <name>[,<name>...] | --all)";
 
@@ -1524,14 +1530,14 @@ function parseArgs(argv: string[]): Args {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--lane") lane = argv[++i];
     else if (argv[i] === "--scenario") scenarios.push(...(argv[++i] ?? "").split(",").filter(Boolean));
-    else if (argv[i] === "--all") scenarios = [...SCENARIO_NAMES, ...HELM_SCENARIO_NAMES, STDERR_SCENARIO];
+    else if (argv[i] === "--all") scenarios = [...SCENARIO_NAMES, ...HELM_SCENARIO_NAMES, ...STDERR_SCENARIO_NAMES];
     else throw new Error(`Unknown argument ${argv[i]}\n${USAGE}`);
   }
   if (!lane || !isLaneName(lane)) throw new Error(`--lane must be one of ${Object.keys(LANES).join(", ")}\n${USAGE}`);
   if (scenarios.length === 0) throw new Error(`Pass --scenario <name> or --all\n${USAGE}`);
-  const unknown = scenarios.filter((name) => !SCENARIO_NAMES.has(name) && !HELM_SCENARIO_NAMES.has(name) && name !== STDERR_SCENARIO);
+  const unknown = scenarios.filter((name) => !SCENARIO_NAMES.has(name) && !HELM_SCENARIO_NAMES.has(name) && !STDERR_SCENARIOS.has(name));
   if (unknown.length > 0) {
-    throw new Error(`Unknown scenario ${unknown.join(", ")}; known: ${[...DESIGN_SCENARIOS.kubectl, ...DESIGN_SCENARIOS.helm, STDERR_SCENARIO].join(", ")}`);
+    throw new Error(`Unknown scenario ${unknown.join(", ")}; known: ${[...DESIGN_SCENARIOS.kubectl, ...DESIGN_SCENARIOS.helm, ...STDERR_SCENARIO_NAMES].join(", ")}`);
   }
   return { lane, scenarios };
 }
@@ -1548,7 +1554,7 @@ async function main(): Promise<void> {
     if (scenario) await record(scenario);
     const helmScenario = HELM_SCENARIOS.find((s) => s.name === name);
     if (helmScenario) await recordHelm(helmScenario);
-    if (name === STDERR_SCENARIO) await recordKubectlStderr();
+    await STDERR_SCENARIOS.get(name)?.();
   }
   log(`[record] done: ${args.scenarios.length} scenario(s).`);
 }
