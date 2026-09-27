@@ -16,6 +16,7 @@ import {
   type InventoryObject,
   type InventoryView,
   isCurrentRevision,
+  latestCrashIsPreviousRun,
   nodeToServerMap,
   orderInstances,
   orderInstanceTable,
@@ -479,7 +480,8 @@ describe('toInstanceInfo', () => {
       restarts: 3,
       current: true,
       startedAt: '2026-01-01T00:00:59Z',
-      error: 'Error (exit 1) at 2026-01-01T00:01:11Z',
+      // the exit of the run the container is still stopped in, not the one before it
+      error: 'Error (exit 1) at 2026-01-01T00:01:32Z',
       containers: ['web-app'],
     });
   });
@@ -521,9 +523,21 @@ describe('toInstanceInfo', () => {
     expect(podErrorText(all)).toBe('back-off');
     const noWaiting = makePod({ phase: 'Running', conditions: [scheduled], containerStatuses: [container('web', { lastState: { terminated } })] });
     expect(podErrorText(noWaiting)).toBe('Error (exit 1) at 2026-01-01T00:16:13Z');
+    // stopped between restarts (k3s 1.36): the run it is stopped in is the latest exit
+    const stopped = { exitCode: 2, reason: 'Error', finishedAt: '2026-01-01T00:16:43Z' };
+    const between = makePod({ phase: 'Running', containerStatuses: [container('web', { state: { terminated: stopped }, lastState: { terminated } })] });
+    expect(podErrorText(between)).toBe('Error (exit 2) at 2026-01-01T00:16:43Z');
     const onlyScheduling = makePod({ phase: 'Pending', conditions: [scheduled] });
     expect(podErrorText(onlyScheduling)).toBe('no node fits');
     expect(podErrorText(makePod(running()))).toBeNull();
+  });
+
+  it('reads the latest crash with --previous only once the restarted container runs again', () => {
+    const restarted = (state: ContainerStatus['state']) => container('web', { restartCount: 3, state });
+    expect(latestCrashIsPreviousRun(restarted({ running: {} }))).toBe(true);
+    expect(latestCrashIsPreviousRun(restarted({ terminated: { exitCode: 1, reason: 'Error' } }))).toBe(false);
+    expect(latestCrashIsPreviousRun(restarted({ waiting: { reason: 'CrashLoopBackOff' } }))).toBe(false);
+    expect(latestCrashIsPreviousRun(container('web', { state: { running: {} } }))).toBe(false);
   });
 
   it('uses the eviction message of an evicted pod', () => {

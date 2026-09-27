@@ -9,7 +9,7 @@ import { ANNOTATIONS, K8S_MANAGED_BY, KUBE_KEYS, LABELS, PARTS } from '../consta
 import { nodeNameFor } from '../naming';
 import type { ControllerRevision, DaemonSet, Deployment, ReplicaSet, StatefulSet } from '../resources/apps';
 import type { Job } from '../resources/batch';
-import type { Container, ContainerStatus, PersistentVolumeClaim, Pod, Service } from '../resources/core';
+import type { Container, ContainerStateTerminated, ContainerStatus, PersistentVolumeClaim, Pod, Service } from '../resources/core';
 import type { Condition, ObjectMeta } from '../resources/meta';
 
 // ---------------------------------------------------------------------------
@@ -421,6 +421,15 @@ export function nodeToServerMap(serverKeys: Iterable<string>): Map<string, strin
   return map;
 }
 
+/**
+ * Whether the latest crash of a container is its `logs --previous`: only once it restarted and runs
+ * again. A dead container, `terminated` or `waiting` in back-off, serves that run without the flag,
+ * which would show the run before it (kubelet validateContainerLogStatus).
+ */
+export function latestCrashIsPreviousRun(status: ContainerStatus): boolean {
+  return status.restartCount > 0 && status.state?.running !== undefined;
+}
+
 function allContainerStatuses(pod: Pod): ContainerStatus[] {
   return [...(pod.status?.initContainerStatuses ?? []), ...(pod.status?.containerStatuses ?? [])];
 }
@@ -432,20 +441,21 @@ function terminationText(t: { reason?: string; exitCode: number; finishedAt?: st
 
 /**
  * First of: a waiting message; the pod's own message when the kubelet set a reason (eviction);
- * the last termination of a container; the scheduler's message. Redacted.
+ * the latest failed termination of a container; the scheduler's message. Redacted.
  */
 export function podErrorText(pod: Pod): string | null {
   const statuses = allContainerStatuses(pod);
   const waiting = statuses.find((c) => c.state?.waiting?.message)?.state?.waiting?.message;
   if (waiting) return waiting;
   if (pod.status?.reason && pod.status.message) return pod.status.message;
+  const failed = (t: ContainerStateTerminated | undefined): t is ContainerStateTerminated =>
+    t !== undefined && (t.exitCode !== 0 || t.reason === 'OOMKilled');
   for (const c of statuses) {
-    const last = c.lastState?.terminated;
-    if (last && (last.exitCode !== 0 || last.reason === 'OOMKilled')) return terminationText(last);
-  }
-  for (const c of statuses) {
+    // a crash-looping container kept `terminated` between restarts (k3s 1.36) holds its latest exit in `state`
     const current = c.state?.terminated;
-    if (current && current.exitCode !== 0) return terminationText(current);
+    if (failed(current)) return terminationText(current);
+    const last = c.lastState?.terminated;
+    if (failed(last)) return terminationText(last);
   }
   const scheduled = podCondition(pod, 'PodScheduled');
   if (scheduled?.status === 'False' && scheduled.message) return scheduled.message;

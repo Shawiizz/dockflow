@@ -22,6 +22,7 @@ import {
   type InventoryView,
   isHelperPod,
   isUnscheduled,
+  latestCrashIsPreviousRun,
   orderInstanceTable,
   podCondition,
   podDisplayStatus,
@@ -234,7 +235,7 @@ export interface CrashLogTarget {
   pod: string;
   container: string;
   label: string;
-  /** read `--previous` first (the container restarted) */
+  /** read `--previous` first (the container restarted and runs again) */
   previous: boolean;
 }
 
@@ -256,7 +257,7 @@ export function crashLogTargets(inventory: InventoryView): CrashLogTarget[] {
     const statuses = [...(pod.status?.initContainerStatuses ?? []), ...(pod.status?.containerStatuses ?? [])];
     for (const c of statuses) {
       if (c.restartCount === 0 && c.state?.waiting?.reason !== 'CrashLoopBackOff') continue;
-      targets.push({ pod: pod.metadata.name, container: c.name, label, previous: c.restartCount > 0 });
+      targets.push({ pod: pod.metadata.name, container: c.name, label, previous: latestCrashIsPreviousRun(c) });
       if (targets.length === CRASH_LOG_CONTAINERS) return targets;
     }
   }
@@ -580,14 +581,26 @@ function claimLine(claim: PersistentVolumeClaim, ctx: Context): { level: Diagnos
   return { level: 'warning', text: `${name} ${phase ?? 'Pending'}` };
 }
 
-/** Compose service the claim was rendered for (label `P/service`), so suggestions can name it. */
+/**
+ * Compose service of a claim, so suggestions can name it: the `P/service` label a StatefulSet
+ * claim gets from its selector, else the one service whose pods mount it (a top-level volume
+ * carries no service label, as several services may share it).
+ */
 function claimService(claim: PersistentVolumeClaim, inventory: InventoryView): string | undefined {
   const serviceName = claim.metadata.labels?.[LABELS.service];
-  if (serviceName === undefined) return undefined;
-  for (const record of inventory.composeWorkloads.values()) {
-    if (record.serviceName === serviceName) return record.service;
+  if (serviceName !== undefined) {
+    for (const record of inventory.composeWorkloads.values()) {
+      if (record.serviceName === serviceName) return record.service;
+    }
+    return undefined;
   }
-  return undefined;
+  const services = new Set<string>();
+  for (const pod of inventory.pods) {
+    if (!(pod.spec.volumes ?? []).some((v) => v.persistentVolumeClaim?.claimName === claim.metadata.name)) continue;
+    const owner = podOwner(pod, inventory);
+    if (owner) services.add(owner.service);
+  }
+  return services.size === 1 ? [...services][0] : undefined;
 }
 
 function volumesSection(ctx: Context, inventory: InventoryView, entries: readonly PodEntry[]): void {

@@ -270,8 +270,8 @@ describe('pod errors', () => {
 
   it('reports a crash-looping pod by its compose label (U-STATUS-DIAG-01)', () => {
     const report = diagnose('crashloop');
-    // k3s 1.36 keeps the container terminated between restarts: no waiting message, its previous exit is the error
-    const message = 'Error (exit 1) at 2026-01-01T00:01:11Z';
+    // k3s 1.36 keeps the container terminated between restarts: its latest exit is the error
+    const message = 'Error (exit 1) at 2026-01-01T00:01:32Z';
     expect(linesOf(report, 'Pod Errors')).toEqual([
       ['error', 'web_app.dqwf8 (pod web-app-fbf7d977d-dqwf8 on server_1)'],
       ['plain', '  State: Error (restarts 3)'],
@@ -320,14 +320,20 @@ describe('pod errors', () => {
 
   it('picks crash-log and describe targets', () => {
     const inventory = inventoryOf('crashloop');
+    // stopped after its crash: the plain log is that run, `--previous` would be the one before
     expect(crashLogTargets(inventory)).toEqual([
-      { pod: 'web-app-fbf7d977d-dqwf8', container: 'web-app', label: 'web_app.dqwf8', previous: true },
+      { pod: 'web-app-fbf7d977d-dqwf8', container: 'web-app', label: 'web_app.dqwf8', previous: false },
     ]);
     expect(describeTargets(inventory)).toEqual([{ pod: 'web-app-fbf7d977d-dqwf8', label: 'web_app.dqwf8' }]);
     expect(crashLogTargets(inventoryOf('rollout-complete'))).toEqual([]);
     expect(describeTargets(inventoryOf('rollout-complete'))).toEqual([]);
 
     const base = podOf(inventory, 'web-app-fbf7d977d-dqwf8');
+    const [status] = base.status?.containerStatuses ?? [];
+    if (!status) throw new Error('no container status');
+    const runsAgain = withPods(inventory, [{ ...base, status: { ...base.status, containerStatuses: [{ ...status, state: { running: {} } }] } }]);
+    expect(crashLogTargets(runsAgain).map((t) => t.previous)).toEqual([true]);
+
     const many = Array.from({ length: 7 }, (_, i) => ({ ...base, metadata: { ...base.metadata, name: `web-app-fbf7d977d-c${i}` } }));
     const crowded = withPods(inventory, many);
     expect(crashLogTargets(crowded).map((t) => t.pod)).toEqual(many.slice(0, CRASH_LOG_CONTAINERS).map((p) => p.metadata.name));
@@ -459,8 +465,8 @@ describe('pending pods', () => {
 describe('volumes', () => {
   it('reports a Pending claim and its ProvisioningFailed event', () => {
     const report = diagnose('pvc-pending-rwx');
-    // a top-level volume has no service label, several services may share it
-    const fallback = 'Inspect it with `dockflow logs production <service> --all-tasks` and `dockflow diagnose production --verbose`.';
+    // a top-level volume has no service label: the one service mounting it is named
+    const fallback = 'Inspect it with `dockflow logs production web --all-tasks` and `dockflow diagnose production --verbose`.';
     expect(linesOf(report, 'Volumes')).toEqual([['warning', 'shared Pending']]);
     expect(issuesOf(report, 'Volume')).toEqual([
       { severity: 'warning', category: 'Volume', message: 'Volume shared is not bound', suggestion: fallback },
@@ -472,6 +478,34 @@ describe('volumes', () => {
         suggestion: fallback,
       },
     ]);
+  });
+
+  it('names no service for a claim several services mount', () => {
+    const items = loadKubectlResources<InventoryObject>('pvc-pending-rwx', INVENTORY_RESOURCES).items;
+    const web = items.find((i): i is Deployment => i.kind === 'Deployment');
+    const pod = items.find((i): i is Pod => i.kind === 'Pod');
+    if (!web || !pod) throw new Error('no web Deployment or pod');
+    const api: Deployment = {
+      ...web,
+      metadata: {
+        ...web.metadata,
+        name: 'api',
+        labels: { ...web.metadata.labels, [`${P}/service`]: 'api' },
+        annotations: { ...web.metadata.annotations, [`${P}/compose-service`]: 'api' },
+      },
+    };
+    const apiPod: Pod = {
+      ...pod,
+      metadata: {
+        ...pod.metadata,
+        name: 'api-5c9d8f7b6-x2x4q',
+        labels: { ...pod.metadata.labels, [`${P}/service`]: 'api', 'pod-template-hash': '5c9d8f7b6' },
+        ownerReferences: [{ apiVersion: 'apps/v1', kind: 'ReplicaSet', name: 'api-5c9d8f7b6', uid: 'rs-api', controller: true }],
+      },
+    };
+    const shared = buildInventoryView(fixtureNamespace('pvc-pending-rwx'), [...items, api, apiPod], []);
+    const generic = 'Inspect it with `dockflow logs production <service> --all-tasks` and `dockflow diagnose production --verbose`.';
+    expect(issuesOf(diagnose('pvc-pending-rwx', { inventory: ok(shared) }), 'Volume').map((i) => i.suggestion)).toEqual([generic, generic]);
   });
 
   it('shows bound claims with the compose volume name, capacity and node', () => {

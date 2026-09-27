@@ -54,6 +54,7 @@ import {
   type WatchTarget,
   watchTarget,
 } from '../status/convergence';
+import { latestCrashIsPreviousRun } from '../status/pods';
 import type { ReceiptState } from './stack-state';
 
 // ---------------------------------------------------------------------------
@@ -295,7 +296,7 @@ async function debugLogs(failed: readonly FailedVerdict[], snap: PollSnapshot, n
     const failing = statusesOf(pod).filter((s) => !s.ready && s.state?.terminated?.exitCode !== 0);
     for (const status of failing) {
       const args = ['logs', pod.metadata.name, '-c', status.name, `--tail=${K8S_DEBUG_LOG_LINES}`];
-      if (status.restartCount > 0) args.push('--previous');
+      if (latestCrashIsPreviousRun(status)) args.push('--previous');
       try {
         const result = await deps.kubectl.run({ args, namespace, mutating: false, allowFailure: true });
         if (result.exitCode !== 0) continue;

@@ -510,8 +510,9 @@ describe('waitConvergence', () => {
     expect(reporter.spinner.at(-1)).toBe(`fail: ${failure.message}`);
   });
 
-  it('W3 with --debug, the failing container logs are read with --previous and reported redacted', async () => {
+  it('W3 with --debug, the failing container logs are read and reported redacted', async () => {
     const clock = new FakeClock();
+    // the recorded container is stopped after its crash: the plain log is that run
     const exec = scripted(
       [
         k12(['web-app'], fixture('crashloop')),
@@ -519,7 +520,7 @@ describe('waitConvergence', () => {
         {
           id: 'K14',
           method: 'run',
-          args: ['logs', 'web-app-fbf7d977d-dqwf8', '-c', 'web-app', '--tail=20', '--previous'],
+          args: ['logs', 'web-app-fbf7d977d-dqwf8', '-c', 'web-app', '--tail=20'],
           namespace: NS,
           mutating: false,
           respond: { exitCode: 0, stdout: `booting\nDB_PASSWORD=${SECRET}\n\nfatal: cannot reach the database\n`, stderr: '' },
@@ -541,6 +542,32 @@ describe('waitConvergence', () => {
       '  DB_PASSWORD=***',
       '  fatal: cannot reach the database',
     ]);
+  });
+
+  it('W3 a container that runs again after its crash is read with --previous', async () => {
+    const clock = new FakeClock();
+    const objects = items('oom-killed');
+    firstStatus(findPod(objects, 'web-764ff46d98-k4v5k')).state = { running: { startedAt: '2026-01-01T00:07:40Z' } };
+    const exec = scripted(
+      [
+        k12(['web'], list(...objects)),
+        k13(list()),
+        {
+          id: 'K14',
+          method: 'run',
+          args: ['logs', 'web-764ff46d98-k4v5k', '-c', 'web', '--tail=20', '--previous'],
+          namespace: NS,
+          mutating: false,
+          respond: { exitCode: 0, stdout: 'allocating\n', stderr: '' },
+        },
+      ],
+      clock,
+    );
+    const reporter = new RecordingReporter();
+    const result = await drive(clock, waitConvergence(subject([change('web', 'Deployment', 'web', 1)]), WAIT, depsFor(exec, clock, reporter, { debug: true })));
+    exec.assertDone();
+    expect(result.failures.map((f) => f.reason)).toEqual(['OOMKilled']);
+    expect(reporter.debugs).toEqual(['Last log lines of web-764ff46d98-k4v5k/web:', '  allocating']);
   });
 
   it('W4 an image missing on a worker fails immediately with F3 and the servers.yml node name', async () => {
