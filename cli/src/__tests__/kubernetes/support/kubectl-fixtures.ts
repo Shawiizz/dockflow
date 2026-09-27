@@ -1,7 +1,6 @@
 // Recorded kubectl, helm and metrics output of design-07 3.11, read only through this module (3.0
-// rule 5). The kubectl and metrics scenarios are recorded on a duo cluster by
-// testing/e2e/k3s/tools/record-kubectl-fixtures.ts; the helm ones are still synthetic, authored in
-// the exact layout helm prints and already scrubbed. Every read validates the whole file set of its
+// rule 5). Every scenario is recorded on a duo cluster by
+// testing/e2e/k3s/tools/record-kubectl-fixtures.ts. Every read validates the whole file set of its
 // scenario against the scrub rules first and refuses content that breaks them.
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -94,10 +93,8 @@ export function fixtureNamespace(scenario: string): string {
 export type FixtureKind = 'kubectl' | 'helm';
 
 export interface FixtureMeta {
-  /** authored by hand in the recorder's output format; replaced by a recording on the test machine */
-  synthetic?: true;
   /** date of the recording (YYYY-MM-DD) */
-  recordedOn?: string;
+  recordedOn: string;
   k3sVersion: string;
   /** helm scenarios only */
   helmVersion?: string;
@@ -142,7 +139,7 @@ export function formatCompactJson(value: unknown): string {
 // Meta
 // ---------------------------------------------------------------------------
 
-const META_KEYS = new Set(['synthetic', 'recordedOn', 'k3sVersion', 'helmVersion', 'steps']);
+const META_KEYS = new Set(['recordedOn', 'k3sVersion', 'helmVersion', 'steps']);
 
 export function metaErrors(value: unknown, kind: FixtureKind): string[] {
   if (!isRecord(value)) return ['meta.json is not an object'];
@@ -157,14 +154,8 @@ export function metaErrors(value: unknown, kind: FixtureKind): string[] {
   if (!Array.isArray(steps) || steps.length === 0 || !steps.every((s) => typeof s === 'string' && s.trim() !== '')) {
     errors.push('steps must be a non-empty list of non-empty strings');
   }
-  const synthetic = value.synthetic;
-  const recordedOn = value.recordedOn;
-  if (synthetic !== undefined && synthetic !== true) errors.push('synthetic must be true when present');
-  if (recordedOn !== undefined && (typeof recordedOn !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(recordedOn))) {
+  if (typeof value.recordedOn !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.recordedOn)) {
     errors.push('recordedOn must be a YYYY-MM-DD date');
-  }
-  if ((synthetic === undefined) === (recordedOn === undefined)) {
-    errors.push('exactly one of synthetic and recordedOn must be set');
   }
   if (kind === 'helm') {
     if (typeof value.helmVersion !== 'string' || !/^v\d+\.\d+\.\d+$/.test(value.helmVersion)) {

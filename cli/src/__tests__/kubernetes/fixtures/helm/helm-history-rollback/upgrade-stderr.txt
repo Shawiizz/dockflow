@@ -1,2 +1,3 @@
+level=WARN msg="upgrade failed" name=web error="resource Deployment/fixture-helm-history-rollback/web-e2e-broken not ready. status: InProgress, message: Available: 0/1\ncontext deadline exceeded"
 Error: UPGRADE FAILED: release web failed, and has been rolled back due to rollback-on-failure being set: resource Deployment/fixture-helm-history-rollback/web-e2e-broken not ready. status: InProgress, message: Available: 0/1
 context deadline exceeded

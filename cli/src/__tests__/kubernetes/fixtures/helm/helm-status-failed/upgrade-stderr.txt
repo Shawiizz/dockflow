@@ -1,2 +1,3 @@
+level=WARN msg="upgrade failed" name=broken error="resource Deployment/fixture-helm-status-failed/broken-e2e-broken not ready. status: InProgress, message: Available: 0/1\ncontext deadline exceeded"
 Error: UPGRADE FAILED: resource Deployment/fixture-helm-status-failed/broken-e2e-broken not ready. status: InProgress, message: Available: 0/1
 context deadline exceeded

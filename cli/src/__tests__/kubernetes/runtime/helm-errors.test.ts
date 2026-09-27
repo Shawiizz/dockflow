@@ -8,6 +8,7 @@ import {
   type KubeErrorReason,
   NO_EXIT_CODE,
 } from '../../../services/orchestrator/kubernetes/runtime/errors';
+import { helmStderr } from '../../../services/orchestrator/kubernetes/runtime/helm';
 import {
   classifyHelmFailure,
   type HelmCallContext,
@@ -39,8 +40,12 @@ const CHART = 'redis 20.1.0 from https://charts.example.com';
 /** the reasons of the design-04 3.5.5 table; the rest come from the kubectl classifier */
 type TableReason = Exclude<HelmFailureReason, KubeErrorReason> | 'ToolMissing' | 'Timeout';
 
-// Synthetic stderr in the shapes helm v4.3.0 prints, until the test machine records them (PD-12).
-// The two recorded-shape fixtures of fixtures/helm are read through the fixture loader.
+/** a recorded upgrade stderr of fixtures/helm, as the executor hands it over */
+function recordedStderr(scenario: string): string {
+  return helmStderr(['upgrade'], { exitCode: 1, stdout: '', stderr: readHelmFixture(scenario, 'upgrade-stderr.txt') });
+}
+
+// Synthetic stderr in the shapes helm v4.3.0 prints, but for the two recorded upgrade failures.
 const SAMPLES: Record<TableReason, { exitCode: number; stderr: string }[]> = {
   ToolMissing: [
     { exitCode: 127, stderr: 'sh: 1: /usr/local/lib/dockflow/bin/helm: not found\n' },
@@ -58,8 +63,8 @@ const SAMPLES: Record<TableReason, { exitCode: number; stderr: string }[]> = {
       stderr: 'Error: INSTALL FAILED: release web failed, and has been uninstalled due to rollback-on-failure being set: failed pre-install: 1 error occurred:\n\t* job web-migrate failed: BackoffLimitExceeded\n',
     },
   ],
-  RolledBack: [{ exitCode: 1, stderr: readHelmFixture('helm-history-rollback', 'upgrade-stderr.txt') }],
-  NotReady: [{ exitCode: 1, stderr: readHelmFixture('helm-status-failed', 'upgrade-stderr.txt') }],
+  RolledBack: [{ exitCode: 1, stderr: recordedStderr('helm-history-rollback') }],
+  NotReady: [{ exitCode: 1, stderr: recordedStderr('helm-status-failed') }],
   Timeout: [
     { exitCode: 1, stderr: 'Error: UPGRADE FAILED: context deadline exceeded\n' },
     { exitCode: 1, stderr: 'Error: UPGRADE FAILED: post-upgrade hooks failed: timed out waiting for the condition\n' },
@@ -140,6 +145,11 @@ describe('classifyHelmFailure', () => {
       for (const sample of samples) expect(classifyHelmFailure(sample.exitCode, sample.stderr)).toBe(reason as HelmFailureReason);
     });
   }
+
+  it('classifies the recorded failures the same with the log line Helm prints first', () => {
+    expect(classifyHelmFailure(1, readHelmFixture('helm-history-rollback', 'upgrade-stderr.txt'))).toBe('RolledBack');
+    expect(classifyHelmFailure(1, readHelmFixture('helm-status-failed', 'upgrade-stderr.txt'))).toBe('NotReady');
+  });
 
   it('prefers UninstalledOnFailure and RolledBack over the NotReady lines they carry', () => {
     const [uninstalled] = SAMPLES.UninstalledOnFailure;

@@ -9,8 +9,8 @@ the layout, the versions, the rules and the condition each scenario is named aft
 
 ## Status
 
-The kubectl and metrics scenarios are **recorded** (`"recordedOn"` in `meta.json`) on the `duo`
-cluster of lane `k3s-core` by `testing/e2e/k3s/tools/record-kubectl-fixtures.ts`:
+Every scenario is **recorded** (`"recordedOn"` in `meta.json`) on the `duo` cluster of lane
+`k3s-core` by `testing/e2e/k3s/tools/record-kubectl-fixtures.ts`:
 
 ```
 bun run testing/e2e/k3s/tools/record-kubectl-fixtures.ts --lane k3s-core --all
@@ -24,14 +24,19 @@ labels, annotations, selectors and pod template Dockflow produces. What no compo
 generated names and uids are scrubbed to stable values (below), so an unchanged scenario records the
 same names.
 
-The helm scenarios are still **synthetic** (`"synthetic": true`): authored in the exact layout
-helm v4 prints, already scrubbed, until the recorder records them too.
+Each helm scenario installs, upgrades and uninstalls releases of the e2e charts
+(`testing/e2e/fixtures/charts`) with the harness helm of `server-1` and the arguments of
+Dockflow's Helm backend (`helmUpgradeArgs`, `helmUninstallArgs`, values on stdin); a release is
+left `pending-*` by killing its upgrade during the wait.
 
 What the recordings show that hand-written fixtures did not: pods carry `metadata.generation`,
 `status.observedGeneration` and `conditions[].observedGeneration`; Deployments and ReplicaSets
 report `terminatingReplicas`; a StatefulSet omits `readyReplicas` at 0; and a crash-looping
 container, an OOM-killed one or a failing init container is mostly reported `terminated` (reason
-`Error` or `OOMKilled`) between its restarts rather than `waiting` in `CrashLoopBackOff`.
+`Error` or `OOMKilled`) between its restarts rather than `waiting` in `CrashLoopBackOff`. Helm 4
+logs a failure (`level=WARN msg="upgrade failed" ...`) before it prints the error, lists every
+status when no status flag is given, adds `rollback_revision` to the history row of a rollback,
+and dates a failed revision when its upgrade started.
 
 Event lists hold what the namespace had at capture time, minus the events of an earlier incarnation
 of a recreated object.
@@ -96,9 +101,9 @@ for example `crashloop/pods` or `daemonset-rolling/completed/daemonsets.apps` (`
 
 | Helm scenario | Content |
 |---|---|
-| `helm-list` | `list` with and without `-a` (without it Helm hides pending and uninstalled releases), per role, `--filter`, empty; `get values` (map and `null`); `get manifest`; `-o name` release Secrets |
+| `helm-list` | six releases of stack `fixture-helm-list`, `deployed`, `failed`, `pending-install`, `pending-upgrade` and `uninstalled` (`data` in namespace `fixture-helm-list-data`): `list` naming every status and naming none, per role, `--filter`, empty; `get values` (a map, and `null` for a release installed without values); `get manifest`; the release Secrets of one spec-hash (revisions 2 and 4) |
 | `helm-status-failed` | a failed upgrade without `--rollback-on-failure`: list, history (revision 1 stays `deployed`), stderr |
-| `helm-history-rollback` | a failed upgrade rolled back by `--rollback-on-failure`: history `superseded`, `failed`, `deployed`, stderr |
+| `helm-history-rollback` | a failed upgrade rolled back by `--rollback-on-failure`: history `superseded`, `failed`, `deployed`, release Secrets, stderr |
 
 ## meta.json
 
@@ -106,8 +111,7 @@ for example `crashloop/pods` or `daemonset-rolling/completed/daemonsets.apps` (`
 { "recordedOn": "2026-09-27", "k3sVersion": "v1.36.4+k3s1", "steps": ["how the recorder reproduces the condition"] }
 ```
 
-Exactly one of `synthetic: true` and `recordedOn`; helm scenarios add `helmVersion` and one step
-`<file>: <command>` per captured file. `fixtures-meta.test.ts` fails when the k3s minor differs from
+Helm scenarios add `helmVersion` and one step `<file>: <command>` per captured file. `fixtures-meta.test.ts` fails when the k3s minor differs from
 `K3S_PIN.version` (or the helm minor from `HELM_PIN.version`): bumping a pin to a new minor forces a
 re-recording.
 
@@ -121,7 +125,8 @@ its metrics read, checked on every read:
   UUID remains;
 - generated names (a `generateName` followed by the 5 random characters the API server adds) ->
   the same prefix with 5 characters derived from the scenario and the creation order, in every text;
-- timestamps -> `2026-01-01T00:00:00Z` plus the original offset from the earliest one, in UTC;
+- timestamps -> `2026-01-01T00:00:00Z` plus the original offset from the earliest one, in UTC
+  (helm: to the nanosecond, in the RFC 3339 of `history` and the Go layout of `list`);
 - `resourceVersion` -> sequential numbers; `managedFields` removed;
 - node names -> `server-1`, `agent-1`, ...; pod IPs -> `10.42.<n>.<m>`, host IPs -> `192.0.2.<n>`;
   no other IPv4 address remains outside `10.43.0.0/16` and loopback;

@@ -7,10 +7,9 @@ metadata:
   labels:
     app.kubernetes.io/name: e2e-web
     app.kubernetes.io/instance: search
-    app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: e2e-web-0.2.0
 data:
   message: "hello from search"
+
 ---
 # Source: e2e-web/templates/service.yaml
 apiVersion: v1
@@ -20,16 +19,14 @@ metadata:
   labels:
     app.kubernetes.io/name: e2e-web
     app.kubernetes.io/instance: search
-    app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: e2e-web-0.2.0
 spec:
   selector:
     app.kubernetes.io/name: e2e-web
     app.kubernetes.io/instance: search
   ports:
-    - name: http
-      port: 80
+    - port: 80
       targetPort: 80
+
 ---
 # Source: e2e-web/templates/deployment.yaml
 apiVersion: apps/v1
@@ -39,8 +36,6 @@ metadata:
   labels:
     app.kubernetes.io/name: e2e-web
     app.kubernetes.io/instance: search
-    app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: e2e-web-0.2.0
 spec:
   replicas: 2
   selector:
@@ -61,10 +56,14 @@ spec:
             - containerPort: 80
           volumeMounts:
             - name: message
-              mountPath: /usr/share/nginx/html/message
-              subPath: message
+              mountPath: /usr/share/nginx/html/index.html
+              subPath: index.html
       volumes:
         - name: message
           configMap:
             name: search-e2e-web
+            items:
+              - key: message
+                path: index.html
+
 

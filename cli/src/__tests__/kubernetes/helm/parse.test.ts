@@ -1,6 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import {
   compareChartVersions,
   deployedSpecSelector,
@@ -23,13 +21,7 @@ import {
 } from '../../../services/orchestrator/kubernetes/helm/parse';
 import { DeployError } from '../../../utils/errors';
 import { Redactor } from '../../../utils/redact';
-
-/** Recorded helm output (fixtures/helm, design-07 3.11): read as data, the way the backend receives stdout. */
-function helmFixture(scenario: string, file: string): string {
-  return readFileSync(join(import.meta.dir, '..', 'fixtures', 'helm', scenario, file), 'utf8');
-}
-
-const helmJson = (scenario: string, file: string): unknown => JSON.parse(helmFixture(scenario, file));
+import { loadHelmFixture, readHelmFixture } from '../support/kubectl-fixtures';
 
 describe('parseHelmTime', () => {
   test.each([
@@ -67,13 +59,13 @@ describe('parseHelmStatus', () => {
 
 describe('parseHelmList', () => {
   test('recorded list: revision strings, every status, Go times', () => {
-    const rows = parseHelmList(helmJson('helm-list', 'list-all.json'));
+    const rows = parseHelmList(loadHelmFixture('helm-list', 'list-all.json'));
     expect(rows.map((row) => [row.name, row.namespace, row.revision, row.status, row.chart])).toEqual([
-      ['archive', 'fixture-helm-list', 2, 'uninstalled', 'e2e-web-0.1.0'],
+      ['archive', 'fixture-helm-list', 1, 'uninstalled', 'e2e-web-0.1.0'],
       ['cache', 'fixture-helm-list', 2, 'failed', 'e2e-broken-0.1.0'],
       ['data', 'fixture-helm-list-data', 1, 'deployed', 'e2e-pvc-0.1.0'],
-      ['queue', 'fixture-helm-list', 1, 'pending-install', 'e2e-web-0.1.0'],
-      ['reports', 'fixture-helm-list', 3, 'pending-upgrade', 'e2e-web-0.2.0'],
+      ['queue', 'fixture-helm-list', 1, 'pending-install', 'e2e-broken-0.1.0'],
+      ['reports', 'fixture-helm-list', 3, 'pending-upgrade', 'e2e-broken-0.1.0'],
       ['search', 'fixture-helm-list', 4, 'deployed', 'e2e-web-0.2.0'],
     ]);
     expect(rows[5]).toEqual({
@@ -83,14 +75,14 @@ describe('parseHelmList', () => {
       revision: 4,
       status: 'deployed',
       chart: 'e2e-web-0.2.0',
-      appVersion: '1.0.0',
-      updated: '2026-01-01T00:20:00.528Z',
+      appVersion: '1.0',
+      updated: '2026-01-01T00:00:27.088Z',
     });
     expect(rows[2].updated).toBe('2026-01-01T00:00:00.000Z');
   });
 
   test('an empty list, null output and malformed rows', () => {
-    expect(parseHelmList(helmJson('helm-list', 'list-empty.json'))).toEqual([]);
+    expect(parseHelmList(loadHelmFixture('helm-list', 'list-empty.json'))).toEqual([]);
     expect(parseHelmList(null)).toEqual([]);
     expect(
       parseHelmList([
@@ -105,10 +97,10 @@ describe('parseHelmList', () => {
 
 describe('parseHelmHistory', () => {
   test('recorded history, newest first, RFC 3339 times', () => {
-    const rows = parseHelmHistory(helmJson('helm-history-rollback', 'history.json'), { name: 'web', namespace: 'fixture-helm-history-rollback' });
+    const rows = parseHelmHistory(loadHelmFixture('helm-history-rollback', 'history.json'), { name: 'web', namespace: 'fixture-helm-history-rollback' });
     expect(rows.map((row) => [row.revision, row.status, row.chart, row.updated])).toEqual([
-      [3, 'deployed', 'e2e-web-0.1.0', '2026-01-01T00:03:11.740Z'],
-      [2, 'failed', 'e2e-broken-0.1.0', '2026-01-01T00:02:10.207Z'],
+      [3, 'deployed', 'e2e-web-0.1.0', '2026-01-01T00:01:02.911Z'],
+      [2, 'failed', 'e2e-broken-0.1.0', '2026-01-01T00:00:03.358Z'],
       [1, 'superseded', 'e2e-web-0.1.0', '2026-01-01T00:00:00.000Z'],
     ]);
     expect(rows[0]).toMatchObject({ name: 'web', namespace: 'fixture-helm-history-rollback', role: null, description: 'Rollback to 1' });
@@ -123,7 +115,7 @@ describe('parseHelmHistory', () => {
   });
 
   test('historyFacts: last deployed revision and pending time', () => {
-    const failed = parseHelmHistory(helmJson('helm-status-failed', 'history.json'), { name: 'broken', namespace: 'ns' });
+    const failed = parseHelmHistory(loadHelmFixture('helm-status-failed', 'history.json'), { name: 'broken', namespace: 'ns' });
     expect(historyFacts(failed)).toEqual({ lastDeployedRevision: 1, pendingSince: null });
     expect(
       historyFacts([
@@ -142,8 +134,8 @@ describe('parseHelmHistory', () => {
 
 describe('parseDeployedValues', () => {
   test('null output is no values, a map is kept, anything else is an error', () => {
-    expect(parseDeployedValues(helmJson('helm-list', 'values-data.json'))).toEqual({});
-    expect(parseDeployedValues(helmJson('helm-list', 'values-search.json'))).toEqual({ message: 'hello from search', replicaCount: 2 });
+    expect(parseDeployedValues(loadHelmFixture('helm-list', 'values-data.json'))).toEqual({});
+    expect(parseDeployedValues(loadHelmFixture('helm-list', 'values-search.json'))).toEqual({ message: 'hello from search', replicas: 2 });
     expect(() => parseDeployedValues(['a'])).toThrow(DeployError);
     expect(() => parseDeployedValues('secret-text')).toThrow('The deployed values of a Helm release are not a map');
   });
@@ -189,7 +181,7 @@ describe('chart strings and versions', () => {
 
 describe('Helm storage Secrets', () => {
   test('parseReleaseSecretNames: recorded list, names with dots and dashes, noise lines', () => {
-    expect(parseReleaseSecretNames(helmFixture('helm-history-rollback', 'release-secrets.txt'))).toEqual([
+    expect(parseReleaseSecretNames(readHelmFixture('helm-history-rollback', 'release-secrets.txt'))).toEqual([
       { name: 'web', revision: 1 },
       { name: 'web', revision: 2 },
       { name: 'web', revision: 3 },
@@ -232,7 +224,7 @@ describe('Helm storage Secrets', () => {
 
 describe('parseManifestObjects', () => {
   test('recorded manifest: a PVC without keep and a Deployment', () => {
-    expect(parseManifestObjects(helmFixture('helm-list', 'manifest-data.yaml'))).toEqual([
+    expect(parseManifestObjects(readHelmFixture('helm-list', 'manifest-data.yaml'))).toEqual([
       { kind: 'PersistentVolumeClaim', name: 'data-e2e-pvc', namespace: null, keep: false, claimTemplates: [] },
       { kind: 'Deployment', name: 'data-e2e-pvc', namespace: null, keep: false, claimTemplates: [] },
     ]);

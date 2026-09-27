@@ -1,12 +1,14 @@
 {
-  "synthetic": true,
+  "recordedOn": "2026-09-27",
   "k3sVersion": "v1.36.4+k3s1",
   "helmVersion": "v4.3.0",
   "steps": [
+    "Releases are installed and upgraded with the arguments of Dockflow's Helm backend (helmUpgradeArgs: values on stdin, --rollback-on-failure, --wait=watcher, --history-max 5, labels stack/role/spec-hash), from chart archives pulled from the e2e chart repository",
     "kubectl create namespace fixture-helm-history-rollback",
-    "helm upgrade --install web e2e-web-0.1.0.tgz -n fixture-helm-history-rollback --wait=watcher --timeout 120s",
-    "upgrade-stderr.txt: stderr of helm upgrade --install web e2e-broken-0.1.0.tgz -n fixture-helm-history-rollback --rollback-on-failure --wait=watcher --timeout 60s",
-    "list.json: helm list -n fixture-helm-history-rollback --filter ^web$ -o json",
+    "release web (app): e2e-web 0.1.0",
+    "upgrade of web to e2e-broken 0.1.0 with --timeout 60s: it fails and --rollback-on-failure rolls it back (revisions superseded, failed, deployed)",
+    "upgrade-stderr.txt: stderr of helm upgrade --install web /tmp/dockflow-fixture-charts/e2e-broken-0.1.0.tgz -n fixture-helm-history-rollback --values - --reset-values --rollback-on-failure --wait=watcher --wait-for-jobs --timeout 60s --history-max 5 --force-conflicts --description 'Dockflow 0.0.0-dev' --labels dockflow.shawiizz.dev/stack=fixture-helm-history-rollback,dockflow.shawiizz.dev/role=app,dockflow.shawiizz.dev/spec-hash=212ba3d1b44776fda370f90d6e853be3",
+    "list.json: helm list --deployed --failed --pending --superseded --uninstalled --uninstalling -n fixture-helm-history-rollback --filter ^web$ -o json",
     "history.json: helm history web -n fixture-helm-history-rollback --max 20 -o json",
     "release-secrets.txt: kubectl get secrets -n fixture-helm-history-rollback -l owner=helm,name=web -o name"
   ]

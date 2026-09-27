@@ -1,12 +1,14 @@
 {
-  "synthetic": true,
+  "recordedOn": "2026-09-27",
   "k3sVersion": "v1.36.4+k3s1",
   "helmVersion": "v4.3.0",
   "steps": [
+    "Releases are installed and upgraded with the arguments of Dockflow's Helm backend (helmUpgradeArgs: values on stdin, --rollback-on-failure, --wait=watcher, --history-max 5, labels stack/role/spec-hash), from chart archives pulled from the e2e chart repository",
     "kubectl create namespace fixture-helm-status-failed",
-    "helm upgrade --install broken e2e-web-0.1.0.tgz -n fixture-helm-status-failed --wait=watcher --timeout 120s",
-    "upgrade-stderr.txt: stderr of helm upgrade --install broken e2e-broken-0.1.0.tgz -n fixture-helm-status-failed --wait=watcher --timeout 60s (no --rollback-on-failure)",
-    "list.json: helm list -n fixture-helm-status-failed --filter ^broken$ -o json",
+    "release broken (app): e2e-web 0.1.0",
+    "upgrade of broken to e2e-broken 0.1.0 (its image never resolves) with --timeout 60s and without --rollback-on-failure, as an upgrade made outside Dockflow leaves it: revision 2 failed, revision 1 still deployed",
+    "upgrade-stderr.txt: stderr of helm upgrade --install broken /tmp/dockflow-fixture-charts/e2e-broken-0.1.0.tgz -n fixture-helm-status-failed --values - --reset-values --wait=watcher --wait-for-jobs --timeout 60s --history-max 5 --force-conflicts --description 'Dockflow 0.0.0-dev' --labels dockflow.shawiizz.dev/stack=fixture-helm-status-failed,dockflow.shawiizz.dev/role=app,dockflow.shawiizz.dev/spec-hash=e0fdd92b10e80436136eedabb8773f9a",
+    "list.json: helm list --deployed --failed --pending --superseded --uninstalled --uninstalling -n fixture-helm-status-failed --filter ^broken$ -o json",
     "history.json: helm history broken -n fixture-helm-status-failed --max 20 -o json"
   ]
 }

@@ -86,7 +86,6 @@ describe('kubectl fixtures', () => {
   test.each(kubectlScenarios)('%s: meta.json is valid and its k3s minor equals the pin', (scenario) => {
     const meta = store.meta('kubectl', scenario);
     expect(minor(meta.k3sVersion)).toBe(minor(K3S_PIN.version));
-    if (meta.synthetic) expect(meta.k3sVersion).toBe(K3S_PIN.version);
   });
 
   test.each(kubectlScenarios)('%s: every capture holds one List per captured resource, laid out as kubectl prints it', (scenario) => {
@@ -394,32 +393,27 @@ describe('serialization of the recorded tools', () => {
 describe('meta.json rules', () => {
   const steps = ['kubectl create namespace fixture-x', 'capture'];
 
-  test('a synthetic scenario is accepted', () => {
-    expect(metaErrors({ synthetic: true, k3sVersion: K3S_PIN.version, steps }, 'kubectl')).toEqual([]);
-    expect(loadFixtureMeta('helm', 'helm-list').synthetic).toBe(true);
-  });
+  const recordedOn = '2026-09-17';
 
   test('a recorded scenario is accepted', () => {
-    expect(metaErrors({ k3sVersion: 'v1.36.4+k3s1', recordedOn: '2026-09-17', steps }, 'kubectl')).toEqual([]);
-    expect(metaErrors({ k3sVersion: 'v1.36.4+k3s1', recordedOn: '2026-09-17', helmVersion: 'v4.3.0', steps }, 'helm')).toEqual([]);
+    expect(metaErrors({ k3sVersion: 'v1.36.4+k3s1', recordedOn, steps }, 'kubectl')).toEqual([]);
+    expect(metaErrors({ k3sVersion: 'v1.36.4+k3s1', recordedOn, helmVersion: 'v4.3.0', steps }, 'helm')).toEqual([]);
     expect(loadFixtureMeta('kubectl', 'crashloop').recordedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(loadFixtureMeta('helm', 'helm-list').recordedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  test('exactly one of synthetic and recordedOn', () => {
-    const both = { synthetic: true, recordedOn: '2026-09-17', k3sVersion: K3S_PIN.version, steps };
-    expect(metaErrors(both, 'kubectl')).toContain('exactly one of synthetic and recordedOn must be set');
-    expect(metaErrors({ k3sVersion: K3S_PIN.version, steps }, 'kubectl')).toContain('exactly one of synthetic and recordedOn must be set');
-    expect(metaErrors({ synthetic: false, k3sVersion: K3S_PIN.version, steps }, 'kubectl')).toContain('synthetic must be true when present');
+  test('every fixture is a recording', () => {
+    expect(metaErrors({ k3sVersion: K3S_PIN.version, steps }, 'kubectl')).toContain('recordedOn must be a YYYY-MM-DD date');
+    expect(metaErrors({ k3sVersion: K3S_PIN.version, recordedOn: '17/09/2026', steps }, 'kubectl')).toContain('recordedOn must be a YYYY-MM-DD date');
+    expect(metaErrors({ synthetic: true, k3sVersion: K3S_PIN.version, recordedOn, steps }, 'kubectl')).toContain('unknown key synthetic');
   });
 
   test('versions, steps and unknown keys', () => {
-    expect(metaErrors({ synthetic: true, k3sVersion: '1.36', steps }, 'kubectl')).toContain('k3sVersion must look like v1.36.4+k3s1');
-    expect(metaErrors({ synthetic: true, k3sVersion: K3S_PIN.version, steps: [] }, 'kubectl')).toContain(
-      'steps must be a non-empty list of non-empty strings',
-    );
-    expect(metaErrors({ synthetic: true, k3sVersion: K3S_PIN.version, steps, note: 'x' }, 'kubectl')).toContain('unknown key note');
-    expect(metaErrors({ synthetic: true, k3sVersion: K3S_PIN.version, steps }, 'helm')).toContain('helmVersion must look like v4.3.0');
-    expect(metaErrors({ synthetic: true, k3sVersion: K3S_PIN.version, helmVersion: 'v4.3.0', steps }, 'kubectl')).toContain(
+    expect(metaErrors({ recordedOn, k3sVersion: '1.36', steps }, 'kubectl')).toContain('k3sVersion must look like v1.36.4+k3s1');
+    expect(metaErrors({ recordedOn, k3sVersion: K3S_PIN.version, steps: [] }, 'kubectl')).toContain('steps must be a non-empty list of non-empty strings');
+    expect(metaErrors({ recordedOn, k3sVersion: K3S_PIN.version, steps, note: 'x' }, 'kubectl')).toContain('unknown key note');
+    expect(metaErrors({ recordedOn, k3sVersion: K3S_PIN.version, steps }, 'helm')).toContain('helmVersion must look like v4.3.0');
+    expect(metaErrors({ recordedOn, k3sVersion: K3S_PIN.version, helmVersion: 'v4.3.0', steps }, 'kubectl')).toContain(
       'helmVersion belongs to helm scenarios only',
     );
     expect(metaErrors([], 'kubectl')).toEqual(['meta.json is not an object']);
@@ -648,7 +642,9 @@ describe('loader', () => {
   test('helm and metrics fixtures load as recorded', () => {
     const history = loadHelmFixture<{ revision: number; status: string }[]>('helm-history-rollback', 'history');
     expect(history.map((h) => h.status)).toEqual(['superseded', 'failed', 'deployed']);
-    expect(readHelmFixture('helm-status-failed', 'upgrade-stderr.txt')).toStartWith('Error: UPGRADE FAILED: ');
+    const stderr = readHelmFixture('helm-status-failed', 'upgrade-stderr.txt');
+    expect(stderr).toStartWith('level=WARN msg="upgrade failed" name=broken ');
+    expect(stderr).toContain('\nError: UPGRADE FAILED: ');
     expect(loadMetricsFixture<{ kind: string }>('metrics-top').kind).toBe('PodMetricsList');
   });
 

@@ -1,20 +1,26 @@
 {
-  "synthetic": true,
+  "recordedOn": "2026-09-27",
   "k3sVersion": "v1.36.4+k3s1",
   "helmVersion": "v4.3.0",
   "steps": [
-    "kubectl create namespace fixture-helm-list and fixture-helm-list-data",
-    "install with harness helm, every release labelled dockflow.shawiizz.dev/stack=fixture-helm-list and dockflow.shawiizz.dev/role=<role>: data (e2e-pvc 0.1.0, accessory, namespace fixture-helm-list-data); search (e2e-web, app, four revisions ending on 0.2.0 with values message and replicaCount, revision 4 re-applying the spec of revision 2); cache (e2e-web 0.1.0 then an upgrade to e2e-broken 0.1.0 with --wait --timeout 60s, left failed); queue (e2e-web 0.1.0, accessory, install killed with SIGKILL during --wait, left pending-install); reports (e2e-web, app, upgrade killed during --wait, left pending-upgrade); archive (e2e-web 0.1.0, accessory, then helm uninstall --keep-history)",
-    "list-all.json: helm list -A -a -l dockflow.shawiizz.dev/stack=fixture-helm-list -o json",
-    "list-default.json: helm list -A -l dockflow.shawiizz.dev/stack=fixture-helm-list -o json (no -a: only deployed and failed releases)",
-    "list-app.json: helm list -A -a -l dockflow.shawiizz.dev/stack=fixture-helm-list,dockflow.shawiizz.dev/role=app -o json",
-    "list-accessory.json: helm list -A -a -l dockflow.shawiizz.dev/stack=fixture-helm-list,dockflow.shawiizz.dev/role=accessory -o json",
-    "list-filter.json: helm list -n fixture-helm-list --filter ^search$ -o json",
-    "list-empty.json: helm list -n fixture-helm-list --filter ^absent$ -o json",
+    "Releases are installed and upgraded with the arguments of Dockflow's Helm backend (helmUpgradeArgs: values on stdin, --rollback-on-failure, --wait=watcher, --history-max 5, labels stack/role/spec-hash), from chart archives pulled from the e2e chart repository",
+    "kubectl create namespace fixture-helm-list (the stack); fixture-helm-list-data is created by the install of data (--create-namespace)",
+    "data (accessory, namespace fixture-helm-list-data): e2e-pvc 0.1.0 without values",
+    "search (app): e2e-web 0.1.0 with message, then 0.2.0 with message and replicas 2, then 0.2.0 with another message, then the spec of revision 2 again (revision 4, same spec-hash as revision 2)",
+    "cache (app): e2e-web 0.1.0, then e2e-broken 0.1.0 with --timeout 60s and without --rollback-on-failure: failed",
+    "queue (accessory): e2e-broken 0.1.0, the install SIGKILLed during its wait: pending-install",
+    "reports (app): e2e-web 0.1.0, then 0.2.0, then e2e-broken 0.1.0 SIGKILLed during its wait: pending-upgrade",
+    "archive (accessory): e2e-web 0.1.0, then helm uninstall --keep-history with the arguments of helmUninstallArgs: uninstalled",
+    "list-all.json: helm list --deployed --failed --pending --superseded --uninstalled --uninstalling -A -l dockflow.shawiizz.dev/stack=fixture-helm-list -o json",
+    "list-default.json: helm list -A -l dockflow.shawiizz.dev/stack=fixture-helm-list -o json",
+    "list-app.json: helm list --deployed --failed --pending --superseded --uninstalled --uninstalling -A -l dockflow.shawiizz.dev/stack=fixture-helm-list,dockflow.shawiizz.dev/role=app -o json",
+    "list-accessory.json: helm list --deployed --failed --pending --superseded --uninstalled --uninstalling -A -l dockflow.shawiizz.dev/stack=fixture-helm-list,dockflow.shawiizz.dev/role=accessory -o json",
+    "list-filter.json: helm list --deployed --failed --pending --superseded --uninstalled --uninstalling -n fixture-helm-list --filter ^search$ -o json",
+    "list-empty.json: helm list --deployed --failed --pending --superseded --uninstalled --uninstalling -n fixture-helm-list --filter ^absent$ -o json",
     "values-search.json: helm get values search -n fixture-helm-list -o json",
-    "values-data.json: helm get values data -n fixture-helm-list-data -o json (installed without values)",
+    "values-data.json: helm get values data -n fixture-helm-list-data -o json",
     "manifest-search.yaml: helm get manifest search -n fixture-helm-list",
     "manifest-data.yaml: helm get manifest data -n fixture-helm-list-data",
-    "release-secrets.txt: kubectl get secrets -n fixture-helm-list -l \"owner=helm,name=search,status in (deployed,superseded),dockflow.shawiizz.dev/spec-hash=bd40bee78a12f71d77653d3178f8a4ab\" -o name"
+    "release-secrets.txt: kubectl get secrets -n fixture-helm-list -l 'owner=helm,name=search,status in (deployed,superseded),dockflow.shawiizz.dev/spec-hash=64bcc84564d5e00c56def301984dd389' -o name"
   ]
 }

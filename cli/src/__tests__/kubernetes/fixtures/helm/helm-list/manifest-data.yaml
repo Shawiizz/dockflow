@@ -7,15 +7,13 @@ metadata:
   labels:
     app.kubernetes.io/name: e2e-pvc
     app.kubernetes.io/instance: data
-    app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: e2e-pvc-0.1.0
 spec:
-  accessModes:
-    - ReadWriteOnce
+  accessModes: ["ReadWriteOnce"]
   storageClassName: dockflow-local
   resources:
     requests:
-      storage: 1Gi
+      storage: 64Mi
+
 ---
 # Source: e2e-pvc/templates/deployment.yaml
 apiVersion: apps/v1
@@ -25,12 +23,8 @@ metadata:
   labels:
     app.kubernetes.io/name: e2e-pvc
     app.kubernetes.io/instance: data
-    app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: e2e-pvc-0.1.0
 spec:
   replicas: 1
-  strategy:
-    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: e2e-pvc
@@ -42,9 +36,9 @@ spec:
         app.kubernetes.io/instance: data
     spec:
       containers:
-        - name: data
+        - name: writer
           image: busybox:1.37
-          command: ["sh", "-c", "sleep 3600"]
+          command: ["sh", "-c", "echo pvc-ready > /data/ready; sleep 36000"]
           volumeMounts:
             - name: data
               mountPath: /data
@@ -52,4 +46,5 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: data-e2e-pvc
+
 
