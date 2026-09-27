@@ -45,6 +45,15 @@ function newestFirst(list: readonly ReleaseMetadata[]): ReleaseMetadata[] {
   return [...list].sort((a, b) => b.epoch - a.epoch || compareText(b.version, a.version));
 }
 
+/**
+ * The epoch of a new release: the time it is deployed, but always after every stored release, which
+ * another machine may have written with its clock ahead of this one. Deploys are serialized by the
+ * deploy lock, so the history, ordered by epoch, then keeps the order of the deploys.
+ */
+export function releaseEpoch(now: Date, stored: readonly ReleaseMetadata[]): number {
+  return stored.reduce((epoch, release) => Math.max(epoch, release.epoch + 1), Math.floor(now.getTime() / 1000));
+}
+
 /** The newest `keep` releases by epoch, plus current when it is older; everything else is removed. */
 export function selectRetention(
   list: readonly ReleaseMetadata[],

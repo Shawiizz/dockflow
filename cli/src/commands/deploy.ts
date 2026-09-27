@@ -50,7 +50,7 @@ import * as Notification from '../services/notification';
 import * as Plugin from '../services/plugin';
 import * as Hook from '../services/hook';
 import { remoteHookContext } from '../services/hook';
-import { rollbackRelease, cleanupReleases } from '../services/release';
+import { rollbackRelease, cleanupReleases, releaseEpoch } from '../services/release';
 import { openOrchestrator } from '../services/orchestrator/factory';
 import { chartDisplay, checkAdoptNames, checkOnlyNames, syncNonTargetedHelmRecords } from '../services/orchestrator/kubernetes/helm/resolve';
 import { valuesDiff, formatValuesDiff } from '../services/orchestrator/kubernetes/helm/values-diff';
@@ -435,12 +435,14 @@ export async function execute(ctx: DeployContext): Promise<void> {
     // the symlink/`previous` to restore.
     const [releaseOutcome, accessoriesOutcome] = await Promise.allSettled([
       ctx.deployApp
-        ? orch.releases.create(ctx.stackName, {
-            version: ctx.deployVersion,
-            compose: Compose.serialize(compose),
-            artifact: appArtifact,
-            metadata: buildReleaseMetadata(ctx, orch, appArtifact, accArtifact),
-          })
+        ? orch.releases.list(ctx.stackName).then((stored) =>
+            orch.releases.create(ctx.stackName, {
+              version: ctx.deployVersion,
+              compose: Compose.serialize(compose),
+              artifact: appArtifact,
+              metadata: buildReleaseMetadata(ctx, orch, appArtifact, accArtifact, stored),
+            }),
+          )
         : orch.releases.currentVersion(ctx.stackName).then((v) => ({ previous: v })),
       deployAccessories(ctx, accInput),
     ]);
@@ -540,14 +542,20 @@ function chartLabel(chart: HelmChartSource): string {
   return chart.kind === 'oci' ? chart.ref : `${chart.repo}#${chart.chart}`;
 }
 
-function buildReleaseMetadata(ctx: DeployContext, orch: Orchestrator, appArtifact: StackArtifact, accArtifact: StackArtifact | null): ReleaseMetadata {
+function buildReleaseMetadata(
+  ctx: DeployContext,
+  orch: Orchestrator,
+  appArtifact: StackArtifact,
+  accArtifact: StackArtifact | null,
+  stored: readonly ReleaseMetadata[],
+): ReleaseMetadata {
   const now = new Date();
   return {
     project_name: ctx.config.project_name,
     version: ctx.deployVersion,
     env: ctx.env,
     timestamp: now.toISOString(),
-    epoch: Math.floor(now.getTime() / 1000),
+    epoch: releaseEpoch(now, stored),
     performer: getPerformer(),
     branch: ctx.branchName,
     orchestrator: orch.kind,

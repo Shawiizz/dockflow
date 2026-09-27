@@ -133,10 +133,8 @@ describe('execute — U-FLOW-01 happy path', () => {
       'images.distribute',
       'proxy.plan',
       'proxy.ensure',
+      'releases.list',
       'releases.create:1.4.2',
-      'stack.deploy:accessory',
-      'stack.waitConvergence:accessory',
-      'stack.finalize:accessory',
       'stack.deploy:app',
       'stack.waitConvergence:app',
       'stack.checkHealth:app',
@@ -145,6 +143,8 @@ describe('execute — U-FLOW-01 happy path', () => {
       'images.collectGarbage',
       'lock.release',
     ]);
+    // the accessories deploy beside the release write
+    assertSubsequence(orchestrator.events, ['proxy.ensure', 'stack.deploy:accessory', 'stack.waitConvergence:accessory', 'stack.finalize:accessory', 'stack.deploy:app']);
     expect(orchestrator.storedReleases(orchestrator.target.stackName).current).toBe('1.4.2');
     expect(recorded.error).toEqual([]);
 
@@ -187,6 +187,20 @@ describe('execute — --adopt (design-04 3.7.4)', () => {
     const stackId = orchestrator.naming.scope({ project: ctx.config.project_name, env: ctx.env, role: 'app' });
     expect((call?.[1] as { stackId: string }).stackId).toBe(stackId);
     expect(stackId).not.toBe(ctx.stackName);
+  });
+});
+
+describe('execute — the release history keeps the order of the deploys', () => {
+  it('a release written by a machine whose clock was ahead stays behind the next deploy', async () => {
+    const orchestrator = new FakeOrchestrator('k3s');
+    const stack = orchestrator.target.stackName;
+    orchestrator.seedRelease(stack, { version: '1.4.0', epoch: 1 }, { current: false });
+    orchestrator.seedRelease(stack, { version: '1.4.1', epoch: Math.floor(Date.now() / 1000) + 3600 }, { current: true });
+
+    await execute(fakeContext(orchestrator, { target: soloTarget() }));
+
+    expect(orchestrator.storedReleases(stack).versions).toEqual(['1.4.2', '1.4.1', '1.4.0']);
+    assertSubsequence(orchestrator.events, ['lock.acquire', 'releases.list', 'releases.create:1.4.2']);
   });
 });
 

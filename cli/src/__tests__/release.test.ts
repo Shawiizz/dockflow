@@ -3,6 +3,7 @@ import type { DeployReceipt, ReleaseMetadata, RevertResult, StackRef } from '../
 import {
   composeImages,
   importedImages,
+  releaseEpoch,
   rollbackRelease,
   selectRetention,
   selectRollbackTarget,
@@ -114,6 +115,27 @@ describe('selectRollbackTarget', () => {
     expect(selectRollbackTarget(list, '1.0.0', null)).toBeNull();
     expect(selectRollbackTarget([meta('1.0.0', 1)], null, null)).toBeNull();
     expect(selectRollbackTarget([], null, null)).toBeNull();
+  });
+});
+
+describe('releaseEpoch', () => {
+  const t0 = Date.UTC(2026, 0, 1) / 1000;
+  const now = new Date((t0 + 100.5) * 1000);
+
+  it('is the deploy time in seconds when every stored release is older', () => {
+    expect(releaseEpoch(now, [])).toBe(t0 + 100);
+    expect(releaseEpoch(now, [meta('1.0.0', t0 + 99)])).toBe(t0 + 100);
+  });
+
+  it('comes after a release written by a machine whose clock was ahead, or in the same second', () => {
+    expect(releaseEpoch(now, [meta('1.0.0', t0), meta('1.0.1', t0 + 160)])).toBe(t0 + 161);
+    expect(releaseEpoch(now, [meta('1.0.1', t0 + 100)])).toBe(t0 + 101);
+  });
+
+  it('keeps the order of the deploys for the rollback target', () => {
+    const stored = [meta('1.0.0', t0), meta('1.0.1', t0 + 160)];
+    const list = [...stored, meta('1.0.2', releaseEpoch(now, stored))];
+    expect(selectRollbackTarget(list, '1.0.2', null)?.version).toBe('1.0.1');
   });
 });
 
