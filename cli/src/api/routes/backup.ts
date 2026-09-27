@@ -10,6 +10,7 @@
 import { resolveService, type Day2Context } from '../../commands/shared/day2';
 import { configuredSources, nounForSource, requireBackupConfig, requireBackupSource, type BackupSource } from '../../commands/backup/utils';
 import { createBackup, type Backup, type BackupBaseEntry, type BackupListEntry } from '../../services/backup';
+import { newestBackupFirst } from '../../services/backup-strategies';
 import type { StackRef } from '../../services/orchestrator/interfaces';
 import { DeployError, ErrorCode } from '../../utils/errors';
 import { errorResponse, jsonResponse, withOrchestrator, type ApiContext } from './_helpers';
@@ -100,7 +101,7 @@ async function listBackups(url: URL): Promise<Response> {
         entries.push(...result.data.entries);
         for (const node of result.data.unreachable) unreachableNodes.add(node.name);
       }
-      entries.sort((a, b) => (a.timestamp < b.timestamp ? 1 : a.timestamp > b.timestamp ? -1 : 0));
+      entries.sort(newestBackupFirst);
 
       return jsonResponse({
         backups: entries.map(toBackupEntry),

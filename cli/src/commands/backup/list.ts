@@ -5,6 +5,7 @@
 
 import type { Command } from 'commander';
 import { createBackup, type BackupListEntry } from '../../services/backup';
+import { newestBackupFirst } from '../../services/backup-strategies';
 import type { ClusterNodeRef } from '../../services/orchestrator/interfaces';
 import { withErrorHandler } from '../../utils/errors';
 import { colors, formatRelativeTime, printBlank, printDim, printInfo, printIntro, printJSON, printRaw, printWarning } from '../../utils/output';
@@ -32,7 +33,7 @@ async function collect(
     entries.push(...result.data.entries);
     for (const candidate of result.data.unreachable) unreachable.set(`${candidate.connection.host}:${candidate.connection.port}`, candidate);
   }
-  entries.sort((a, b) => (a.timestamp < b.timestamp ? 1 : a.timestamp > b.timestamp ? -1 : 0));
+  entries.sort(newestBackupFirst);
   return { entries, unreachable: [...unreachable.values()] };
 }
 

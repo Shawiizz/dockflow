@@ -245,12 +245,16 @@ describe('Backup.backup', () => {
     const path = `${DIR}/${metadata.id}.sql.gz`;
 
     expect(k3s.callsTo('backups.dump')).toEqual([[ACCESSORY, { service: 'db' }, buildDumpScript(POSTGRES, 'gzip'), path, { gzip: true }]]);
+    const listing = `find '${DIR}' -name '*.meta.json' 2>/dev/null | sort -r | while IFS= read -r f; do echo '${SEPARATOR}'; cat "$f"; done`;
     expect(nodes.calls.map((call) => [call.node, call.via, call.command])).toEqual([
       ['server_1', 'exec', buildVerifyScript(path, 'gzip', 'gzip')],
       ['server_1', 'exec', `stat -c %s '${path}' 2>/dev/null || echo 0`],
+      ['server_1', 'exec', listing],
+      ['agent_1', 'exec', listing],
       ['server_1', 'channel', `umask 077 && cat > '${DIR}/${metadata.id}.meta.json'`],
     ]);
-    expect(JSON.parse(nodes.calls[2].input)).toEqual(metadata);
+    expect(JSON.parse(nodes.calls[4].input)).toEqual(metadata);
+    expect(metadata.epochMs).toBe(Date.parse(metadata.timestamp));
     expect(metadata).toMatchObject({
       service: 'db',
       dbType: 'postgres',
@@ -264,6 +268,21 @@ describe('Backup.backup', () => {
     });
     expect(metadata.id).toMatch(/^\d{8}-\d{6}-[0-9a-f]{4}$/);
     expect(printed.filter((line) => line.level === 'warning')).toEqual([]);
+  });
+
+  it('sorts after every stored backup of the service, one taken by a machine whose clock was ahead included', async () => {
+    const k3s = fake('k3s');
+    const ahead = meta(k3s, { id: '20260101-120000-cccc', timestamp: '2099-01-01T00:00:00.000Z' }, 'agent_1');
+    nodes.on('stat -c %s', { stdout: '2048\n' });
+    nodes.on(LIST, listing(ahead), 'agent_1');
+    const result = await createBackup(k3s, ACCESSORY).backup('db', POSTGRES, 'gzip');
+    if (!result.success) throw result.error;
+
+    expect(result.data.epochMs).toBe(Date.parse(ahead.timestamp) + 1);
+    expect(Date.parse(result.data.timestamp)).toBeLessThan(Date.parse(ahead.timestamp));
+    nodes.on(LIST, listing(result.data), 'server_1');
+    const latest = await createBackup(k3s, ACCESSORY).resolveBackup('db');
+    expect(latest.success && latest.data.id).toBe(result.data.id);
   });
 
   it('a dump failing its verification is removed and reported, and no metadata is written', async () => {

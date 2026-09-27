@@ -126,6 +126,8 @@ dockflow backup restore production postgres --from 20260309-143052-a3f1  # Speci
 dockflow backup restore production postgres --yes        # Skip confirmation
 ```
 
+The latest backup is the one taken last, even when the machines that took the backups disagree on the time: each new backup is ordered after the ones already stored.
+
 <Callout type="error">
   Restore **overwrites** the current database. You will be prompted to type the environment name to confirm.
 </Callout>

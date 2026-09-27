@@ -19,6 +19,7 @@ import { formatBytes, printDebug, printInfo, printWarning } from '../utils/outpu
 import { shellQuote, sshExec, sshExecChannel } from '../utils/ssh';
 import {
   type ArchiveIntegrity,
+  backupEpochMs,
   backupScopeName,
   buildBackupDir,
   buildDataFilePath,
@@ -28,6 +29,7 @@ import {
   DB_TYPES,
   findBackupMatch,
   integrityOf,
+  newestBackupFirst,
   parseRestoreRefusal,
   selectBackupsToPrune,
   stripRefusalMarker,
@@ -51,6 +53,8 @@ export interface BackupBaseEntry {
   service: string;
   dbType: BackupDbType;
   timestamp: string;
+  /** the order of the backup (backupEpochMs); absent in metadata written before it, the timestamp orders them */
+  epochMs?: number;
   size: string;
   sizeBytes: number;
   compression: 'gzip' | 'none';
@@ -334,6 +338,12 @@ export class Backup {
     return meta;
   }
 
+  /** the backups of `service` stored on the nodes that answer, which the new one must sort after */
+  private async storedBackups(service: string): Promise<BackupListEntry[]> {
+    const listed = await this.list(service);
+    return listed.success ? listed.data.entries : [];
+  }
+
   private metadata(
     id: string,
     service: string,
@@ -342,12 +352,15 @@ export class Backup {
     node: ClusterNodeRef,
     sizeBytes: number,
     durationMs: number,
+    stored: readonly BackupListEntry[],
   ): BackupMetadata {
+    const now = new Date();
     return {
       id,
       service,
       dbType,
-      timestamp: new Date().toISOString(),
+      timestamp: now.toISOString(),
+      epochMs: backupEpochMs(now, stored),
       size: formatBytes(sizeBytes),
       sizeBytes,
       compression,
@@ -404,7 +417,7 @@ export class Backup {
 
     const durationMs = Date.now() - started;
     const sizeBytes = await this.fileSize(file);
-    const metadata = this.metadata(id, service, config.type, compression, file.node, sizeBytes, durationMs);
+    const metadata = this.metadata(id, service, config.type, compression, file.node, sizeBytes, durationMs, await this.storedBackups(service));
     try {
       await this.writeMetadata(file.node, dir, metadata);
     } catch (error) {
@@ -455,7 +468,7 @@ export class Backup {
     const sizes = await Promise.all(files.map((file) => this.fileSize(file)));
     const total = sizes.reduce((sum, size) => sum + size, 0);
     const metadata: BackupMetadata = {
-      ...this.metadata(id, service, 'volume', compression, files[0].node, total, durationMs),
+      ...this.metadata(id, service, 'volume', compression, files[0].node, total, durationMs, await this.storedBackups(service)),
       volumes: volumes.map((volume, index) => ({
         name: volume.name,
         sizeBytes: sizes[index],
@@ -517,6 +530,7 @@ export class Backup {
             service: meta.service,
             dbType: meta.dbType,
             timestamp: meta.timestamp,
+            epochMs: typeof meta.epochMs === 'number' ? meta.epochMs : undefined,
             size: meta.size,
             sizeBytes: meta.sizeBytes,
             compression: meta.compression,
@@ -528,7 +542,7 @@ export class Backup {
         }
       }
 
-      entries.sort((a, b) => (a.timestamp < b.timestamp ? 1 : a.timestamp > b.timestamp ? -1 : 0));
+      entries.sort(newestBackupFirst);
       return ok({ entries, unreachable });
     } catch (error) {
       return err(asError(error));
