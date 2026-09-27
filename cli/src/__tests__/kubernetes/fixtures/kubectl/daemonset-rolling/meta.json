@@ -1,12 +1,11 @@
 {
-  "synthetic": true,
+  "recordedOn": "2026-09-27",
   "k3sVersion": "v1.36.4+k3s1",
   "steps": [
-    "kubectl create namespace fixture-daemonset-rolling",
-    "kubectl apply: DaemonSet agent (busybox:1.37 running sleep 3600, RollingUpdate maxUnavailable 1 maxSurge 0) on server-1 and agent-1",
-    "kubectl rollout status daemonset/agent --timeout=120s",
-    "update the template to sleep 7200 with a readiness probe exec true, initialDelaySeconds 30",
-    "wait until updatedNumberScheduled is 1 and numberUnavailable is 1, then capture into the scenario directory",
-    "kubectl rollout status daemonset/agent --timeout=180s, then capture into completed/"
+    "Dockflow renders the compose file into namespace fixture-<scenario> (project shop, release 1.4.2, servers server_1 and agent_1) and applies it server-side as a deploy does",
+    "docker-compose.yml: service agent, busybox:1.37, command sleep 3600, deploy.mode global, update_config parallelism 1 order stop-first (one pod on server-1, one on agent-1)",
+    "kubectl rollout status daemonset/agent, then render and apply the same service with command sleep 7200",
+    "capture into the scenario directory once updatedNumberScheduled is 1 and numberUnavailable is 1 (the new pod inside its minReadySeconds)",
+    "kubectl rollout status daemonset/agent, then capture into completed/"
   ]
 }

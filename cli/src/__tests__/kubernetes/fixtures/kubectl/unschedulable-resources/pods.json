@@ -9,8 +9,8 @@
                     "dockflow.shawiizz.dev/compose-service": "web",
                     "kubectl.kubernetes.io/default-container": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "generateName": "web-8k689hhgsx-",
+                "creationTimestamp": "2026-01-01T00:07:42Z",
+                "generateName": "web-6db8d4bf7-",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-unschedulable-resources",
@@ -18,9 +18,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-unschedulable-resources",
-                    "pod-template-hash": "8k689hhgsx"
+                    "pod-template-hash": "6db8d4bf7"
                 },
-                "name": "web-8k689hhgsx-rvc8f",
+                "name": "web-6db8d4bf7-jhghd",
                 "namespace": "fixture-unschedulable-resources",
                 "ownerReferences": [
                     {
@@ -28,21 +28,20 @@
                         "blockOwnerDeletion": true,
                         "controller": true,
                         "kind": "ReplicaSet",
-                        "name": "web-8k689hhgsx",
+                        "name": "web-6db8d4bf7",
                         "uid": "00000000-0000-4000-8000-000000000002"
                     }
                 ],
-                "resourceVersion": "5",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "spec": {
                 "automountServiceAccountToken": false,
                 "containers": [
                     {
-                        "command": [
-                            "sh",
-                            "-c",
-                            "sleep 3600"
+                        "args": [
+                            "sleep",
+                            "36000"
                         ],
                         "image": "busybox:1.37",
                         "imagePullPolicy": "IfNotPresent",
@@ -83,14 +82,39 @@
                         "operator": "Exists",
                         "tolerationSeconds": 300
                     }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchExpressions": [
+                                {
+                                    "key": "pod-template-hash",
+                                    "operator": "In",
+                                    "values": [
+                                        "6db8d4bf7"
+                                    ]
+                                }
+                            ],
+                            "matchLabels": {
+                                "dockflow.shawiizz.dev/service": "web",
+                                "dockflow.shawiizz.dev/stack": "fixture-unschedulable-resources"
+                            }
+                        },
+                        "matchLabelKeys": [
+                            "pod-template-hash"
+                        ],
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "ScheduleAnyway"
+                    }
                 ]
             },
             "status": {
                 "conditions": [
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
-                        "message": "0/2 nodes are available: 2 Insufficient memory. preemption: 0/2 nodes are available: 2 No preemption victims found for incoming pod.",
+                        "lastTransitionTime": "2026-01-01T00:07:42Z",
+                        "message": "0/2 nodes are available: 2 Insufficient memory. no new claims to deallocate, preemption: 0/2 nodes are available: 2 Preemption is not helpful for scheduling.",
                         "observedGeneration": 1,
                         "reason": "Unschedulable",
                         "status": "False",

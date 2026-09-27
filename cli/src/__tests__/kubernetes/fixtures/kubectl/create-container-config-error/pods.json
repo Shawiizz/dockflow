@@ -7,10 +7,11 @@
             "metadata": {
                 "annotations": {
                     "dockflow.shawiizz.dev/compose-service": "web",
+                    "dockflow.shawiizz.dev/config-hash": "6205e24797716d4a113ca6ccb45a9151966dd8ccd09a371fd37878878a40ca2c",
                     "kubectl.kubernetes.io/default-container": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "generateName": "web-z67tgvktnp-",
+                "creationTimestamp": "2026-01-01T00:07:17Z",
+                "generateName": "web-7558dd9f88-",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-create-container-config-error",
@@ -18,9 +19,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-create-container-config-error",
-                    "pod-template-hash": "z67tgvktnp"
+                    "pod-template-hash": "7558dd9f88"
                 },
-                "name": "web-z67tgvktnp-s8578",
+                "name": "web-7558dd9f88-2nghn",
                 "namespace": "fixture-create-container-config-error",
                 "ownerReferences": [
                     {
@@ -28,26 +29,25 @@
                         "blockOwnerDeletion": true,
                         "controller": true,
                         "kind": "ReplicaSet",
-                        "name": "web-z67tgvktnp",
+                        "name": "web-7558dd9f88",
                         "uid": "00000000-0000-4000-8000-000000000002"
                     }
                 ],
-                "resourceVersion": "5",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "spec": {
                 "automountServiceAccountToken": false,
                 "containers": [
                     {
-                        "command": [
-                            "sh",
-                            "-c",
-                            "sleep 3600"
+                        "args": [
+                            "sleep",
+                            "36000"
                         ],
                         "envFrom": [
                             {
                                 "secretRef": {
-                                    "name": "web-env"
+                                    "name": "web-env-d521dbe6"
                                 }
                             }
                         ],
@@ -62,6 +62,9 @@
                 "dnsPolicy": "ClusterFirst",
                 "enableServiceLinks": false,
                 "nodeName": "server-1",
+                "nodeSelector": {
+                    "kubernetes.io/hostname": "server-1"
+                },
                 "preemptionPolicy": "PreemptLowerPriority",
                 "priority": 0,
                 "restartPolicy": "Always",
@@ -87,27 +90,52 @@
                         "operator": "Exists",
                         "tolerationSeconds": 300
                     }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchExpressions": [
+                                {
+                                    "key": "pod-template-hash",
+                                    "operator": "In",
+                                    "values": [
+                                        "7558dd9f88"
+                                    ]
+                                }
+                            ],
+                            "matchLabels": {
+                                "dockflow.shawiizz.dev/service": "web",
+                                "dockflow.shawiizz.dev/stack": "fixture-create-container-config-error"
+                            }
+                        },
+                        "matchLabelKeys": [
+                            "pod-template-hash"
+                        ],
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "ScheduleAnyway"
+                    }
                 ]
             },
             "status": {
                 "conditions": [
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:01Z",
+                        "lastTransitionTime": "2026-01-01T00:07:18Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodReadyToStartContainers"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:07:30Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "Initialized"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:07:30Z",
                         "message": "containers with unready status: [web]",
                         "observedGeneration": 1,
                         "reason": "ContainersNotReady",
@@ -116,7 +144,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:07:30Z",
                         "message": "containers with unready status: [web]",
                         "observedGeneration": 1,
                         "reason": "ContainersNotReady",
@@ -125,7 +153,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:07:17Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodScheduled"
@@ -142,7 +170,7 @@
                         "started": false,
                         "state": {
                             "waiting": {
-                                "message": "secret \"web-env\" not found",
+                                "message": "secret \"web-env-d521dbe6\" not found",
                                 "reason": "CreateContainerConfigError"
                             }
                         }
@@ -156,14 +184,15 @@
                 ],
                 "observedGeneration": 1,
                 "phase": "Pending",
-                "podIP": "10.42.0.10",
+                "podIP": "10.42.0.15",
                 "podIPs": [
                     {
-                        "ip": "10.42.0.10"
+                        "ip": "10.42.0.15"
                     }
                 ],
                 "qosClass": "BestEffort",
-                "startTime": "2026-01-01T00:15:00Z"
+                "resources": {},
+                "startTime": "2026-01-01T00:07:30Z"
             }
         }
     ],

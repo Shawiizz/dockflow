@@ -1,6 +1,139 @@
 {
     "apiVersion": "v1",
-    "items": [],
+    "items": [
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "annotations": {
+                    "dockflow.shawiizz.dev/compose-service": "db"
+                },
+                "creationTimestamp": "2026-01-01T00:18:23Z",
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-metrics-top",
+                    "app.kubernetes.io/managed-by": "dockflow",
+                    "app.kubernetes.io/name": "db",
+                    "app.kubernetes.io/part-of": "shop",
+                    "dockflow.shawiizz.dev/part": "stack",
+                    "dockflow.shawiizz.dev/role": "accessory",
+                    "dockflow.shawiizz.dev/service": "db",
+                    "dockflow.shawiizz.dev/stack": "fixture-metrics-top"
+                },
+                "name": "db",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "38",
+                "uid": "00000000-0000-4000-8000-000000000009"
+            },
+            "spec": {
+                "clusterIP": "None",
+                "clusterIPs": [
+                    "None"
+                ],
+                "internalTrafficPolicy": "Cluster",
+                "ipFamilies": [
+                    "IPv4"
+                ],
+                "ipFamilyPolicy": "SingleStack",
+                "selector": {
+                    "dockflow.shawiizz.dev/service": "db",
+                    "dockflow.shawiizz.dev/stack": "fixture-metrics-top"
+                },
+                "sessionAffinity": "None",
+                "type": "ClusterIP"
+            },
+            "status": {
+                "loadBalancer": {}
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "annotations": {
+                    "dockflow.shawiizz.dev/compose-service": "db"
+                },
+                "creationTimestamp": "2026-01-01T00:18:23Z",
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-metrics-top",
+                    "app.kubernetes.io/managed-by": "dockflow",
+                    "app.kubernetes.io/name": "db",
+                    "app.kubernetes.io/part-of": "shop",
+                    "dockflow.shawiizz.dev/part": "stack",
+                    "dockflow.shawiizz.dev/role": "accessory",
+                    "dockflow.shawiizz.dev/service": "db",
+                    "dockflow.shawiizz.dev/stack": "fixture-metrics-top"
+                },
+                "name": "db-hl",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "39",
+                "uid": "00000000-0000-4000-8000-000000000010"
+            },
+            "spec": {
+                "clusterIP": "None",
+                "clusterIPs": [
+                    "None"
+                ],
+                "internalTrafficPolicy": "Cluster",
+                "ipFamilies": [
+                    "IPv4"
+                ],
+                "ipFamilyPolicy": "SingleStack",
+                "selector": {
+                    "dockflow.shawiizz.dev/service": "db",
+                    "dockflow.shawiizz.dev/stack": "fixture-metrics-top"
+                },
+                "sessionAffinity": "None",
+                "type": "ClusterIP"
+            },
+            "status": {
+                "loadBalancer": {}
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "annotations": {
+                    "dockflow.shawiizz.dev/compose-service": "web"
+                },
+                "creationTimestamp": "2026-01-01T00:18:23Z",
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-metrics-top",
+                    "app.kubernetes.io/managed-by": "dockflow",
+                    "app.kubernetes.io/name": "web",
+                    "app.kubernetes.io/part-of": "shop",
+                    "dockflow.shawiizz.dev/part": "stack",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "web",
+                    "dockflow.shawiizz.dev/stack": "fixture-metrics-top"
+                },
+                "name": "web",
+                "namespace": "fixture-metrics-top",
+                "resourceVersion": "40",
+                "uid": "00000000-0000-4000-8000-000000000011"
+            },
+            "spec": {
+                "clusterIP": "None",
+                "clusterIPs": [
+                    "None"
+                ],
+                "internalTrafficPolicy": "Cluster",
+                "ipFamilies": [
+                    "IPv4"
+                ],
+                "ipFamilyPolicy": "SingleStack",
+                "selector": {
+                    "dockflow.shawiizz.dev/service": "web",
+                    "dockflow.shawiizz.dev/stack": "fixture-metrics-top"
+                },
+                "sessionAffinity": "None",
+                "type": "ClusterIP"
+            },
+            "status": {
+                "loadBalancer": {}
+            }
+        }
+    ],
     "kind": "List",
     "metadata": {
         "resourceVersion": ""

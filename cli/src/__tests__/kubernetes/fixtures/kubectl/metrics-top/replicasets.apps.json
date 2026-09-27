@@ -9,10 +9,9 @@
                     "deployment.kubernetes.io/desired-replicas": "2",
                     "deployment.kubernetes.io/max-replicas": "3",
                     "deployment.kubernetes.io/revision": "1",
-                    "dockflow.shawiizz.dev/compose-service": "web",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:18:23Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-metrics-top",
@@ -20,9 +19,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-metrics-top",
-                    "pod-template-hash": "782lrz9hsf"
+                    "pod-template-hash": "758947d665"
                 },
-                "name": "web-782lrz9hsf",
+                "name": "web-758947d665",
                 "namespace": "fixture-metrics-top",
                 "ownerReferences": [
                     {
@@ -34,16 +33,17 @@
                         "uid": "00000000-0000-4000-8000-000000000001"
                     }
                 ],
-                "resourceVersion": "2",
-                "uid": "00000000-0000-4000-8000-000000000002"
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "replicas": 2,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "web",
                         "dockflow.shawiizz.dev/stack": "fixture-metrics-top",
-                        "pod-template-hash": "782lrz9hsf"
+                        "pod-template-hash": "758947d665"
                     }
                 },
                 "template": {
@@ -58,7 +58,7 @@
                             "dockflow.shawiizz.dev/role": "app",
                             "dockflow.shawiizz.dev/service": "web",
                             "dockflow.shawiizz.dev/stack": "fixture-metrics-top",
-                            "pod-template-hash": "782lrz9hsf"
+                            "pod-template-hash": "758947d665"
                         }
                     },
                     "spec": {
@@ -68,19 +68,12 @@
                                 "image": "nginx:1.27-alpine",
                                 "imagePullPolicy": "IfNotPresent",
                                 "name": "web",
-                                "ports": [
-                                    {
-                                        "containerPort": 80,
-                                        "name": "tcp-80",
-                                        "protocol": "TCP"
-                                    }
-                                ],
                                 "resources": {
                                     "limits": {
                                         "memory": "128Mi"
                                     },
                                     "requests": {
-                                        "memory": "128Mi"
+                                        "memory": "0"
                                     }
                                 },
                                 "terminationMessagePath": "/dev/termination-log",
@@ -96,7 +89,23 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 10
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "web",
+                                        "dockflow.shawiizz.dev/stack": "fixture-metrics-top"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
@@ -105,7 +114,8 @@
                 "fullyLabeledReplicas": 2,
                 "observedGeneration": 1,
                 "readyReplicas": 2,
-                "replicas": 2
+                "replicas": 2,
+                "terminatingReplicas": 0
             }
         }
     ],

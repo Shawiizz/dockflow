@@ -9,10 +9,9 @@
                     "deployment.kubernetes.io/desired-replicas": "1",
                     "deployment.kubernetes.io/max-replicas": "2",
                     "deployment.kubernetes.io/revision": "1",
-                    "dockflow.shawiizz.dev/compose-service": "web",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:06:45Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-image-pull-backoff",
@@ -20,9 +19,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-image-pull-backoff",
-                    "pod-template-hash": "h7fqpf2pgw"
+                    "pod-template-hash": "679ff8548"
                 },
-                "name": "web-h7fqpf2pgw",
+                "name": "web-679ff8548",
                 "namespace": "fixture-image-pull-backoff",
                 "ownerReferences": [
                     {
@@ -38,12 +37,13 @@
                 "uid": "00000000-0000-4000-8000-000000000002"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "replicas": 1,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "web",
                         "dockflow.shawiizz.dev/stack": "fixture-image-pull-backoff",
-                        "pod-template-hash": "h7fqpf2pgw"
+                        "pod-template-hash": "679ff8548"
                     }
                 },
                 "template": {
@@ -58,7 +58,7 @@
                             "dockflow.shawiizz.dev/role": "app",
                             "dockflow.shawiizz.dev/service": "web",
                             "dockflow.shawiizz.dev/stack": "fixture-image-pull-backoff",
-                            "pod-template-hash": "h7fqpf2pgw"
+                            "pod-template-hash": "679ff8548"
                         }
                     },
                     "spec": {
@@ -75,6 +75,9 @@
                         ],
                         "dnsPolicy": "ClusterFirst",
                         "enableServiceLinks": false,
+                        "nodeSelector": {
+                            "kubernetes.io/hostname": "server-1"
+                        },
                         "restartPolicy": "Always",
                         "schedulerName": "default-scheduler",
                         "securityContext": {
@@ -82,14 +85,31 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 10
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "web",
+                                        "dockflow.shawiizz.dev/stack": "fixture-image-pull-backoff"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
             "status": {
                 "fullyLabeledReplicas": 1,
                 "observedGeneration": 1,
-                "replicas": 1
+                "replicas": 1,
+                "terminatingReplicas": 0
             }
         }
     ],

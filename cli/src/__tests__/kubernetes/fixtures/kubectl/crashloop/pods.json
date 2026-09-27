@@ -9,8 +9,8 @@
                     "dockflow.shawiizz.dev/compose-service": "web_app",
                     "kubectl.kubernetes.io/default-container": "web-app"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "generateName": "web-app-p2xkk2fn8m-",
+                "creationTimestamp": "2026-01-01T00:00:59Z",
+                "generateName": "web-app-fbf7d977d-",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-crashloop",
@@ -18,9 +18,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web-app",
                     "dockflow.shawiizz.dev/stack": "fixture-crashloop",
-                    "pod-template-hash": "p2xkk2fn8m"
+                    "pod-template-hash": "fbf7d977d"
                 },
-                "name": "web-app-p2xkk2fn8m-zbc2k",
+                "name": "web-app-fbf7d977d-dqwf8",
                 "namespace": "fixture-crashloop",
                 "ownerReferences": [
                     {
@@ -28,18 +28,18 @@
                         "blockOwnerDeletion": true,
                         "controller": true,
                         "kind": "ReplicaSet",
-                        "name": "web-app-p2xkk2fn8m",
+                        "name": "web-app-fbf7d977d",
                         "uid": "00000000-0000-4000-8000-000000000002"
                     }
                 ],
-                "resourceVersion": "5",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "spec": {
                 "automountServiceAccountToken": false,
                 "containers": [
                     {
-                        "command": [
+                        "args": [
                             "sh",
                             "-c",
                             "exit 1"
@@ -55,6 +55,9 @@
                 "dnsPolicy": "ClusterFirst",
                 "enableServiceLinks": false,
                 "nodeName": "server-1",
+                "nodeSelector": {
+                    "kubernetes.io/hostname": "server-1"
+                },
                 "preemptionPolicy": "PreemptLowerPriority",
                 "priority": 0,
                 "restartPolicy": "Always",
@@ -80,27 +83,52 @@
                         "operator": "Exists",
                         "tolerationSeconds": 300
                     }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchExpressions": [
+                                {
+                                    "key": "pod-template-hash",
+                                    "operator": "In",
+                                    "values": [
+                                        "fbf7d977d"
+                                    ]
+                                }
+                            ],
+                            "matchLabels": {
+                                "dockflow.shawiizz.dev/service": "web-app",
+                                "dockflow.shawiizz.dev/stack": "fixture-crashloop"
+                            }
+                        },
+                        "matchLabelKeys": [
+                            "pod-template-hash"
+                        ],
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "ScheduleAnyway"
+                    }
                 ]
             },
             "status": {
                 "conditions": [
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:01Z",
+                        "lastTransitionTime": "2026-01-01T00:00:59Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodReadyToStartContainers"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:00:59Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "Initialized"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:01:44Z",
                         "message": "containers with unready status: [web-app]",
                         "observedGeneration": 1,
                         "reason": "ContainersNotReady",
@@ -109,7 +137,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:01:44Z",
                         "message": "containers with unready status: [web-app]",
                         "observedGeneration": 1,
                         "reason": "ContainersNotReady",
@@ -118,7 +146,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:00:59Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodScheduled"
@@ -126,26 +154,40 @@
                 ],
                 "containerStatuses": [
                     {
-                        "containerID": "containerd://065894e86b4f",
+                        "containerID": "containerd://a06dd538b7d3",
                         "image": "docker.io/library/busybox:1.37",
-                        "imageID": "containerd://6053936389b8",
+                        "imageID": "containerd://36b932e7ed7b",
                         "lastState": {
                             "terminated": {
-                                "containerID": "containerd://065894e86b4f",
+                                "containerID": "containerd://4bc3a084f3ac",
                                 "exitCode": 1,
-                                "finishedAt": "2026-01-01T00:16:13Z",
+                                "finishedAt": "2026-01-01T00:01:11Z",
                                 "reason": "Error",
-                                "startedAt": "2026-01-01T00:16:13Z"
+                                "startedAt": "2026-01-01T00:01:11Z"
                             }
                         },
                         "name": "web-app",
                         "ready": false,
+                        "resources": {},
                         "restartCount": 3,
                         "started": false,
                         "state": {
-                            "waiting": {
-                                "message": "back-off 1m20s restarting failed container=web-app pod=web-app-p2xkk2fn8m-zbc2k_fixture-crashloop(00000000-0000-4000-8000-000000000004)",
-                                "reason": "CrashLoopBackOff"
+                            "terminated": {
+                                "containerID": "containerd://a06dd538b7d3",
+                                "exitCode": 1,
+                                "finishedAt": "2026-01-01T00:01:32Z",
+                                "reason": "Error",
+                                "startedAt": "2026-01-01T00:01:32Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    10
+                                ],
+                                "uid": 0
                             }
                         }
                     }
@@ -158,14 +200,15 @@
                 ],
                 "observedGeneration": 1,
                 "phase": "Running",
-                "podIP": "10.42.0.10",
+                "podIP": "10.42.0.6",
                 "podIPs": [
                     {
-                        "ip": "10.42.0.10"
+                        "ip": "10.42.0.6"
                     }
                 ],
                 "qosClass": "BestEffort",
-                "startTime": "2026-01-01T00:15:00Z"
+                "resources": {},
+                "startTime": "2026-01-01T00:00:59Z"
             }
         }
     ],

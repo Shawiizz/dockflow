@@ -9,8 +9,8 @@
                     "dockflow.shawiizz.dev/compose-service": "web",
                     "kubectl.kubernetes.io/default-container": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "generateName": "web-dgnq2qql9c-",
+                "creationTimestamp": "2026-01-01T00:07:06Z",
+                "generateName": "web-676dcfbd47-",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-err-image-never-pull",
@@ -18,9 +18,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-err-image-never-pull",
-                    "pod-template-hash": "dgnq2qql9c"
+                    "pod-template-hash": "676dcfbd47"
                 },
-                "name": "web-dgnq2qql9c-f55cv",
+                "name": "web-676dcfbd47-p9gx9",
                 "namespace": "fixture-err-image-never-pull",
                 "ownerReferences": [
                     {
@@ -28,12 +28,12 @@
                         "blockOwnerDeletion": true,
                         "controller": true,
                         "kind": "ReplicaSet",
-                        "name": "web-dgnq2qql9c",
+                        "name": "web-676dcfbd47",
                         "uid": "00000000-0000-4000-8000-000000000002"
                     }
                 ],
-                "resourceVersion": "5",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "spec": {
                 "automountServiceAccountToken": false,
@@ -50,6 +50,9 @@
                 "dnsPolicy": "ClusterFirst",
                 "enableServiceLinks": false,
                 "nodeName": "server-1",
+                "nodeSelector": {
+                    "kubernetes.io/hostname": "server-1"
+                },
                 "preemptionPolicy": "PreemptLowerPriority",
                 "priority": 0,
                 "restartPolicy": "Always",
@@ -75,27 +78,52 @@
                         "operator": "Exists",
                         "tolerationSeconds": 300
                     }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchExpressions": [
+                                {
+                                    "key": "pod-template-hash",
+                                    "operator": "In",
+                                    "values": [
+                                        "676dcfbd47"
+                                    ]
+                                }
+                            ],
+                            "matchLabels": {
+                                "dockflow.shawiizz.dev/service": "web",
+                                "dockflow.shawiizz.dev/stack": "fixture-err-image-never-pull"
+                            }
+                        },
+                        "matchLabelKeys": [
+                            "pod-template-hash"
+                        ],
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "ScheduleAnyway"
+                    }
                 ]
             },
             "status": {
                 "conditions": [
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:01Z",
+                        "lastTransitionTime": "2026-01-01T00:07:06Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodReadyToStartContainers"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:07:06Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "Initialized"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:07:06Z",
                         "message": "containers with unready status: [web]",
                         "observedGeneration": 1,
                         "reason": "ContainersNotReady",
@@ -104,7 +132,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:07:06Z",
                         "message": "containers with unready status: [web]",
                         "observedGeneration": 1,
                         "reason": "ContainersNotReady",
@@ -113,7 +141,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:07:06Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodScheduled"
@@ -144,14 +172,15 @@
                 ],
                 "observedGeneration": 1,
                 "phase": "Pending",
-                "podIP": "10.42.0.10",
+                "podIP": "10.42.0.13",
                 "podIPs": [
                     {
-                        "ip": "10.42.0.10"
+                        "ip": "10.42.0.13"
                     }
                 ],
                 "qosClass": "BestEffort",
-                "startTime": "2026-01-01T00:15:00Z"
+                "resources": {},
+                "startTime": "2026-01-01T00:07:06Z"
             }
         }
     ],

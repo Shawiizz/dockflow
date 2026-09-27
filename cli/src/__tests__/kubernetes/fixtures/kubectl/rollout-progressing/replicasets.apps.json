@@ -9,10 +9,9 @@
                     "deployment.kubernetes.io/desired-replicas": "3",
                     "deployment.kubernetes.io/max-replicas": "4",
                     "deployment.kubernetes.io/revision": "1",
-                    "dockflow.shawiizz.dev/compose-service": "web",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:02:34Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-rollout-progressing",
@@ -20,9 +19,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-rollout-progressing",
-                    "pod-template-hash": "b4phj422s5"
+                    "pod-template-hash": "84f986cb8c"
                 },
-                "name": "web-b4phj422s5",
+                "name": "web-84f986cb8c",
                 "namespace": "fixture-rollout-progressing",
                 "ownerReferences": [
                     {
@@ -38,12 +37,13 @@
                 "uid": "00000000-0000-4000-8000-000000000002"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "replicas": 3,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "web",
                         "dockflow.shawiizz.dev/stack": "fixture-rollout-progressing",
-                        "pod-template-hash": "b4phj422s5"
+                        "pod-template-hash": "84f986cb8c"
                     }
                 },
                 "template": {
@@ -58,7 +58,7 @@
                             "dockflow.shawiizz.dev/role": "app",
                             "dockflow.shawiizz.dev/service": "web",
                             "dockflow.shawiizz.dev/stack": "fixture-rollout-progressing",
-                            "pod-template-hash": "b4phj422s5"
+                            "pod-template-hash": "84f986cb8c"
                         }
                     },
                     "spec": {
@@ -83,9 +83,9 @@
                                         "scheme": "HTTP"
                                     },
                                     "initialDelaySeconds": 60,
-                                    "periodSeconds": 5,
+                                    "periodSeconds": 30,
                                     "successThreshold": 1,
-                                    "timeoutSeconds": 1
+                                    "timeoutSeconds": 30
                                 },
                                 "resources": {},
                                 "terminationMessagePath": "/dev/termination-log",
@@ -101,7 +101,23 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 10
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "web",
+                                        "dockflow.shawiizz.dev/stack": "fixture-rollout-progressing"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
@@ -110,7 +126,8 @@
                 "fullyLabeledReplicas": 3,
                 "observedGeneration": 1,
                 "readyReplicas": 3,
-                "replicas": 3
+                "replicas": 3,
+                "terminatingReplicas": 0
             }
         },
         {
@@ -121,10 +138,9 @@
                     "deployment.kubernetes.io/desired-replicas": "3",
                     "deployment.kubernetes.io/max-replicas": "4",
                     "deployment.kubernetes.io/revision": "2",
-                    "dockflow.shawiizz.dev/compose-service": "web",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:18:00Z",
+                "creationTimestamp": "2026-01-01T00:04:25Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-rollout-progressing",
@@ -132,9 +148,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-rollout-progressing",
-                    "pod-template-hash": "htj6sx4lpn"
+                    "pod-template-hash": "96d55d8c4"
                 },
-                "name": "web-htj6sx4lpn",
+                "name": "web-96d55d8c4",
                 "namespace": "fixture-rollout-progressing",
                 "ownerReferences": [
                     {
@@ -150,12 +166,13 @@
                 "uid": "00000000-0000-4000-8000-000000000003"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "replicas": 1,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "web",
                         "dockflow.shawiizz.dev/stack": "fixture-rollout-progressing",
-                        "pod-template-hash": "htj6sx4lpn"
+                        "pod-template-hash": "96d55d8c4"
                     }
                 },
                 "template": {
@@ -170,7 +187,7 @@
                             "dockflow.shawiizz.dev/role": "app",
                             "dockflow.shawiizz.dev/service": "web",
                             "dockflow.shawiizz.dev/stack": "fixture-rollout-progressing",
-                            "pod-template-hash": "htj6sx4lpn"
+                            "pod-template-hash": "96d55d8c4"
                         }
                     },
                     "spec": {
@@ -195,9 +212,9 @@
                                         "scheme": "HTTP"
                                     },
                                     "initialDelaySeconds": 60,
-                                    "periodSeconds": 5,
+                                    "periodSeconds": 30,
                                     "successThreshold": 1,
-                                    "timeoutSeconds": 1
+                                    "timeoutSeconds": 30
                                 },
                                 "resources": {},
                                 "terminationMessagePath": "/dev/termination-log",
@@ -213,14 +230,31 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 10
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "web",
+                                        "dockflow.shawiizz.dev/stack": "fixture-rollout-progressing"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
             "status": {
                 "fullyLabeledReplicas": 1,
                 "observedGeneration": 1,
-                "replicas": 1
+                "replicas": 1,
+                "terminatingReplicas": 0
             }
         }
     ],

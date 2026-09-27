@@ -7,10 +7,9 @@
             "metadata": {
                 "annotations": {
                     "deployment.kubernetes.io/revision": "1",
-                    "dockflow.shawiizz.dev/compose-service": "web",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:15:50Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-terminating-pods",
@@ -28,9 +27,10 @@
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "progressDeadlineSeconds": 240,
                 "replicas": 2,
-                "revisionHistoryLimit": 3,
+                "revisionHistoryLimit": 2,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "web",
@@ -62,7 +62,7 @@
                         "automountServiceAccountToken": false,
                         "containers": [
                             {
-                                "command": [
+                                "args": [
                                     "sh",
                                     "-c",
                                     "trap '' TERM; sleep 3600"
@@ -84,34 +84,51 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 300
+                        "terminationGracePeriodSeconds": 300,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "web",
+                                        "dockflow.shawiizz.dev/stack": "fixture-terminating-pods"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
             "status": {
-                "availableReplicas": 2,
+                "availableReplicas": 1,
                 "conditions": [
                     {
-                        "lastTransitionTime": "2026-01-01T00:15:03Z",
-                        "lastUpdateTime": "2026-01-01T00:15:03Z",
-                        "message": "Deployment has minimum availability.",
-                        "reason": "MinimumReplicasAvailable",
-                        "status": "True",
-                        "type": "Available"
-                    },
-                    {
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
-                        "lastUpdateTime": "2026-01-01T00:15:03Z",
-                        "message": "ReplicaSet \"web-qw9jpb6slq\" has successfully progressed.",
+                        "lastTransitionTime": "2026-01-01T00:15:50Z",
+                        "lastUpdateTime": "2026-01-01T00:16:21Z",
+                        "message": "ReplicaSet \"web-585567c7ff\" has successfully progressed.",
                         "reason": "NewReplicaSetAvailable",
                         "status": "True",
                         "type": "Progressing"
+                    },
+                    {
+                        "lastTransitionTime": "2026-01-01T00:16:22Z",
+                        "lastUpdateTime": "2026-01-01T00:16:22Z",
+                        "message": "Deployment does not have minimum availability.",
+                        "reason": "MinimumReplicasUnavailable",
+                        "status": "False",
+                        "type": "Available"
                     }
                 ],
                 "observedGeneration": 1,
                 "readyReplicas": 2,
                 "replicas": 2,
                 "terminatingReplicas": 1,
+                "unavailableReplicas": 1,
                 "updatedReplicas": 2
             }
         }

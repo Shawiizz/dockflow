@@ -7,10 +7,9 @@
             "metadata": {
                 "annotations": {
                     "deployment.kubernetes.io/revision": "1",
-                    "dockflow.shawiizz.dev/compose-service": "web",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:07:11Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-invalid-image-name",
@@ -28,9 +27,10 @@
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "progressDeadlineSeconds": 240,
                 "replicas": 1,
-                "revisionHistoryLimit": 3,
+                "revisionHistoryLimit": 2,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "web",
@@ -62,6 +62,10 @@
                         "automountServiceAccountToken": false,
                         "containers": [
                             {
+                                "args": [
+                                    "sleep",
+                                    "36000"
+                                ],
                                 "image": "UPPER/Case:bad tag",
                                 "imagePullPolicy": "IfNotPresent",
                                 "name": "web",
@@ -72,6 +76,9 @@
                         ],
                         "dnsPolicy": "ClusterFirst",
                         "enableServiceLinks": false,
+                        "nodeSelector": {
+                            "kubernetes.io/hostname": "server-1"
+                        },
                         "restartPolicy": "Always",
                         "schedulerName": "default-scheduler",
                         "securityContext": {
@@ -79,24 +86,40 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 10
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "web",
+                                        "dockflow.shawiizz.dev/stack": "fixture-invalid-image-name"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
             "status": {
                 "conditions": [
                     {
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
-                        "lastUpdateTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:07:11Z",
+                        "lastUpdateTime": "2026-01-01T00:07:11Z",
                         "message": "Deployment does not have minimum availability.",
                         "reason": "MinimumReplicasUnavailable",
                         "status": "False",
                         "type": "Available"
                     },
                     {
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
-                        "lastUpdateTime": "2026-01-01T00:15:01Z",
-                        "message": "ReplicaSet \"web-stwzqdsq9f\" is progressing.",
+                        "lastTransitionTime": "2026-01-01T00:07:11Z",
+                        "lastUpdateTime": "2026-01-01T00:07:12Z",
+                        "message": "ReplicaSet \"web-7d7d576cc9\" is progressing.",
                         "reason": "ReplicaSetUpdated",
                         "status": "True",
                         "type": "Progressing"
@@ -104,6 +127,7 @@
                 ],
                 "observedGeneration": 1,
                 "replicas": 1,
+                "terminatingReplicas": 0,
                 "unavailableReplicas": 1,
                 "updatedReplicas": 1
             }

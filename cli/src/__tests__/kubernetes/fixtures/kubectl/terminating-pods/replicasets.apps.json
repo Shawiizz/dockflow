@@ -9,10 +9,9 @@
                     "deployment.kubernetes.io/desired-replicas": "2",
                     "deployment.kubernetes.io/max-replicas": "3",
                     "deployment.kubernetes.io/revision": "1",
-                    "dockflow.shawiizz.dev/compose-service": "web",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:15:50Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-terminating-pods",
@@ -20,9 +19,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-terminating-pods",
-                    "pod-template-hash": "qw9jpb6slq"
+                    "pod-template-hash": "585567c7ff"
                 },
-                "name": "web-qw9jpb6slq",
+                "name": "web-585567c7ff",
                 "namespace": "fixture-terminating-pods",
                 "ownerReferences": [
                     {
@@ -38,12 +37,13 @@
                 "uid": "00000000-0000-4000-8000-000000000002"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "replicas": 2,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "web",
                         "dockflow.shawiizz.dev/stack": "fixture-terminating-pods",
-                        "pod-template-hash": "qw9jpb6slq"
+                        "pod-template-hash": "585567c7ff"
                     }
                 },
                 "template": {
@@ -58,14 +58,14 @@
                             "dockflow.shawiizz.dev/role": "app",
                             "dockflow.shawiizz.dev/service": "web",
                             "dockflow.shawiizz.dev/stack": "fixture-terminating-pods",
-                            "pod-template-hash": "qw9jpb6slq"
+                            "pod-template-hash": "585567c7ff"
                         }
                     },
                     "spec": {
                         "automountServiceAccountToken": false,
                         "containers": [
                             {
-                                "command": [
+                                "args": [
                                     "sh",
                                     "-c",
                                     "trap '' TERM; sleep 3600"
@@ -87,12 +87,28 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 300
+                        "terminationGracePeriodSeconds": 300,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "web",
+                                        "dockflow.shawiizz.dev/stack": "fixture-terminating-pods"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
             "status": {
-                "availableReplicas": 2,
+                "availableReplicas": 1,
                 "fullyLabeledReplicas": 2,
                 "observedGeneration": 1,
                 "readyReplicas": 2,

@@ -7,7 +7,7 @@
             "endpoints": [
                 {
                     "addresses": [
-                        "10.42.1.10"
+                        "10.42.1.21"
                     ],
                     "conditions": {
                         "ready": true,
@@ -17,18 +17,18 @@
                     "nodeName": "agent-1",
                     "targetRef": {
                         "kind": "Pod",
-                        "name": "api-bg5g5vghlb-27kgr",
+                        "name": "api-847f8bf66c-5ghhb",
                         "namespace": "fixture-multi-container",
-                        "uid": "00000000-0000-4000-8000-000000000004"
+                        "uid": "00000000-0000-4000-8000-000000000003"
                     }
                 }
             ],
             "kind": "EndpointSlice",
             "metadata": {
                 "annotations": {
-                    "endpoints.kubernetes.io/last-change-trigger-time": "2026-01-01T00:15:03Z"
+                    "endpoints.kubernetes.io/last-change-trigger-time": "2026-01-01T00:15:18Z"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:15:17Z",
                 "generateName": "api-",
                 "generation": 2,
                 "labels": {
@@ -43,7 +43,7 @@
                     "endpointslice.kubernetes.io/managed-by": "endpointslice-controller.k8s.io",
                     "kubernetes.io/service-name": "api"
                 },
-                "name": "api-lqhlz",
+                "name": "api-t4crr",
                 "namespace": "fixture-multi-container",
                 "ownerReferences": [
                     {
@@ -52,11 +52,11 @@
                         "controller": true,
                         "kind": "Service",
                         "name": "api",
-                        "uid": "00000000-0000-4000-8000-000000000013"
+                        "uid": "00000000-0000-4000-8000-000000000004"
                     }
                 ],
-                "resourceVersion": "23",
-                "uid": "00000000-0000-4000-8000-000000000014"
+                "resourceVersion": "18",
+                "uid": "00000000-0000-4000-8000-000000000005"
             },
             "ports": [
                 {

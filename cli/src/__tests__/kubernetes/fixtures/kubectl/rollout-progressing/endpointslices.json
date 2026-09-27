@@ -7,24 +7,7 @@
             "endpoints": [
                 {
                     "addresses": [
-                        "10.42.0.10"
-                    ],
-                    "conditions": {
-                        "ready": true,
-                        "serving": true,
-                        "terminating": false
-                    },
-                    "nodeName": "server-1",
-                    "targetRef": {
-                        "kind": "Pod",
-                        "name": "web-b4phj422s5-gs8jf",
-                        "namespace": "fixture-rollout-progressing",
-                        "uid": "00000000-0000-4000-8000-000000000005"
-                    }
-                },
-                {
-                    "addresses": [
-                        "10.42.1.10"
+                        "10.42.1.4"
                     ],
                     "conditions": {
                         "ready": true,
@@ -34,14 +17,31 @@
                     "nodeName": "agent-1",
                     "targetRef": {
                         "kind": "Pod",
-                        "name": "web-b4phj422s5-j8mhb",
+                        "name": "web-84f986cb8c-gck2j",
                         "namespace": "fixture-rollout-progressing",
-                        "uid": "00000000-0000-4000-8000-000000000011"
+                        "uid": "00000000-0000-4000-8000-000000000005"
                     }
                 },
                 {
                     "addresses": [
-                        "10.42.0.11"
+                        "10.42.1.3"
+                    ],
+                    "conditions": {
+                        "ready": true,
+                        "serving": true,
+                        "terminating": false
+                    },
+                    "nodeName": "agent-1",
+                    "targetRef": {
+                        "kind": "Pod",
+                        "name": "web-84f986cb8c-wfss7",
+                        "namespace": "fixture-rollout-progressing",
+                        "uid": "00000000-0000-4000-8000-000000000006"
+                    }
+                },
+                {
+                    "addresses": [
+                        "10.42.0.7"
                     ],
                     "conditions": {
                         "ready": true,
@@ -51,14 +51,14 @@
                     "nodeName": "server-1",
                     "targetRef": {
                         "kind": "Pod",
-                        "name": "web-b4phj422s5-6lnzl",
+                        "name": "web-84f986cb8c-7frtn",
                         "namespace": "fixture-rollout-progressing",
-                        "uid": "00000000-0000-4000-8000-000000000017"
+                        "uid": "00000000-0000-4000-8000-000000000004"
                     }
                 },
                 {
                     "addresses": [
-                        "10.42.1.11"
+                        "10.42.1.5"
                     ],
                     "conditions": {
                         "ready": false,
@@ -68,20 +68,20 @@
                     "nodeName": "agent-1",
                     "targetRef": {
                         "kind": "Pod",
-                        "name": "web-htj6sx4lpn-ff4rl",
+                        "name": "web-96d55d8c4-l67lt",
                         "namespace": "fixture-rollout-progressing",
-                        "uid": "00000000-0000-4000-8000-000000000024"
+                        "uid": "00000000-0000-4000-8000-000000000007"
                     }
                 }
             ],
             "kind": "EndpointSlice",
             "metadata": {
                 "annotations": {
-                    "endpoints.kubernetes.io/last-change-trigger-time": "2026-01-01T00:18:01Z"
+                    "endpoints.kubernetes.io/last-change-trigger-time": "2026-01-01T00:04:25Z"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:02:34Z",
                 "generateName": "web-",
-                "generation": 5,
+                "generation": 8,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-rollout-progressing",
                     "app.kubernetes.io/managed-by": "dockflow",
@@ -94,7 +94,7 @@
                     "endpointslice.kubernetes.io/managed-by": "endpointslice-controller.k8s.io",
                     "kubernetes.io/service-name": "web"
                 },
-                "name": "web-7nxtr",
+                "name": "web-v5fvb",
                 "namespace": "fixture-rollout-progressing",
                 "ownerReferences": [
                     {
@@ -103,11 +103,11 @@
                         "controller": true,
                         "kind": "Service",
                         "name": "web",
-                        "uid": "00000000-0000-4000-8000-000000000030"
+                        "uid": "00000000-0000-4000-8000-000000000008"
                     }
                 ],
-                "resourceVersion": "53",
-                "uid": "00000000-0000-4000-8000-000000000031"
+                "resourceVersion": "47",
+                "uid": "00000000-0000-4000-8000-000000000009"
             },
             "ports": [
                 {

@@ -7,10 +7,9 @@
             "metadata": {
                 "annotations": {
                     "deployment.kubernetes.io/revision": "1",
-                    "dockflow.shawiizz.dev/compose-service": "web",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:16:27Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-evicted-pod",
@@ -28,9 +27,10 @@
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "progressDeadlineSeconds": 240,
                 "replicas": 1,
-                "revisionHistoryLimit": 3,
+                "revisionHistoryLimit": 2,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "web",
@@ -62,7 +62,7 @@
                         "automountServiceAccountToken": false,
                         "containers": [
                             {
-                                "command": [
+                                "args": [
                                     "sh",
                                     "-c",
                                     "dd if=/dev/zero of=/tmp/fill bs=1M count=64; sleep 3600"
@@ -73,9 +73,6 @@
                                 "resources": {
                                     "limits": {
                                         "ephemeral-storage": "16Mi"
-                                    },
-                                    "requests": {
-                                        "ephemeral-storage": "16Mi"
                                     }
                                 },
                                 "terminationMessagePath": "/dev/termination-log",
@@ -84,6 +81,9 @@
                         ],
                         "dnsPolicy": "ClusterFirst",
                         "enableServiceLinks": false,
+                        "nodeSelector": {
+                            "kubernetes.io/hostname": "server-1"
+                        },
                         "restartPolicy": "Always",
                         "schedulerName": "default-scheduler",
                         "securityContext": {
@@ -91,26 +91,41 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 10
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "web",
+                                        "dockflow.shawiizz.dev/stack": "fixture-evicted-pod"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
             "status": {
-                "availableReplicas": 1,
                 "conditions": [
                     {
-                        "lastTransitionTime": "2026-01-01T00:15:48Z",
-                        "lastUpdateTime": "2026-01-01T00:15:48Z",
-                        "message": "Deployment has minimum availability.",
-                        "reason": "MinimumReplicasAvailable",
-                        "status": "True",
+                        "lastTransitionTime": "2026-01-01T00:16:27Z",
+                        "lastUpdateTime": "2026-01-01T00:16:27Z",
+                        "message": "Deployment does not have minimum availability.",
+                        "reason": "MinimumReplicasUnavailable",
+                        "status": "False",
                         "type": "Available"
                     },
                     {
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
-                        "lastUpdateTime": "2026-01-01T00:15:03Z",
-                        "message": "ReplicaSet \"web-kvz7hg45z8\" has successfully progressed.",
-                        "reason": "NewReplicaSetAvailable",
+                        "lastTransitionTime": "2026-01-01T00:16:27Z",
+                        "lastUpdateTime": "2026-01-01T00:16:42Z",
+                        "message": "ReplicaSet \"web-6dc46b7976\" is progressing.",
+                        "reason": "ReplicaSetUpdated",
                         "status": "True",
                         "type": "Progressing"
                     }
@@ -118,6 +133,8 @@
                 "observedGeneration": 1,
                 "readyReplicas": 1,
                 "replicas": 1,
+                "terminatingReplicas": 0,
+                "unavailableReplicas": 1,
                 "updatedReplicas": 1
             }
         }

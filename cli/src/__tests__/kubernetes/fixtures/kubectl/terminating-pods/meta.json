@@ -1,12 +1,10 @@
 {
-  "synthetic": true,
+  "recordedOn": "2026-09-27",
   "k3sVersion": "v1.36.4+k3s1",
   "steps": [
-    "kubectl create namespace fixture-terminating-pods",
-    "kubectl apply: Deployment web (2 replicas, busybox:1.37 running sh -c \"trap '' TERM; sleep 3600\", terminationGracePeriodSeconds 300)",
-    "kubectl rollout status deployment/web --timeout=120s",
-    "kubectl delete pod <first pod> --wait=false",
-    "wait until the replacement pod is Ready while the deleted pod is still Terminating",
-    "capture the namespace resources and the cluster nodes and persistentvolumes"
+    "Dockflow renders the compose file into namespace fixture-<scenario> (project shop, release 1.4.2, servers server_1 and agent_1) and applies it server-side as a deploy does",
+    "docker-compose.yml: service web, busybox:1.37, command sh -c \"trap '' TERM; sleep 3600\", stop_grace_period 300s, deploy.replicas 2",
+    "kubectl rollout status deployment/web, then kubectl delete pod <the pod on server-1> --wait=false",
+    "capture once the replacement pod is Ready while the deleted pod is still Terminating"
   ]
 }

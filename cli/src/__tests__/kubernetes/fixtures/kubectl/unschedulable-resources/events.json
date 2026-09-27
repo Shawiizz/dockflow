@@ -4,33 +4,29 @@
         {
             "action": "Scheduling",
             "apiVersion": "v1",
-            "eventTime": "2026-01-01T00:15:00.318207Z",
+            "eventTime": "2026-01-01T00:07:42.041Z",
             "firstTimestamp": null,
             "involvedObject": {
                 "apiVersion": "v1",
                 "kind": "Pod",
-                "name": "web-8k689hhgsx-rvc8f",
+                "name": "web-6db8d4bf7-jhghd",
                 "namespace": "fixture-unschedulable-resources",
-                "resourceVersion": "8",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "4",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "kind": "Event",
             "lastTimestamp": null,
-            "message": "0/2 nodes are available: 2 Insufficient memory. preemption: 0/2 nodes are available: 2 No preemption victims found for incoming pod.",
+            "message": "0/2 nodes are available: 2 Insufficient memory. no new claims to deallocate, preemption: 0/2 nodes are available: 2 Preemption is not helpful for scheduling.",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web-8k689hhgsx-rvc8f.18867323a63d0107",
+                "creationTimestamp": "2026-01-01T00:07:42Z",
+                "name": "web-6db8d4bf7-jhghd.18d9253955ec23c5",
                 "namespace": "fixture-unschedulable-resources",
-                "resourceVersion": "9",
-                "uid": "00000000-0000-4000-8000-000000000006"
+                "resourceVersion": "5",
+                "uid": "00000000-0000-4000-8000-000000000008"
             },
             "reason": "FailedScheduling",
             "reportingComponent": "default-scheduler",
             "reportingInstance": "default-scheduler-server-1",
-            "series": {
-                "count": 3,
-                "lastObservedTime": "2026-01-01T00:16:00.527331Z"
-            },
             "source": {},
             "type": "Warning"
         },
@@ -38,24 +34,24 @@
             "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "firstTimestamp": "2026-01-01T00:07:42Z",
             "involvedObject": {
                 "apiVersion": "apps/v1",
                 "kind": "ReplicaSet",
-                "name": "web-8k689hhgsx",
+                "name": "web-6db8d4bf7",
                 "namespace": "fixture-unschedulable-resources",
                 "resourceVersion": "6",
                 "uid": "00000000-0000-4000-8000-000000000002"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:00Z",
-            "message": "Created pod: web-8k689hhgsx-rvc8f",
+            "lastTimestamp": "2026-01-01T00:07:42Z",
+            "message": "Created pod: web-6db8d4bf7-jhghd",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web-8k689hhgsx.18867323a4fb9805",
+                "creationTimestamp": "2026-01-01T00:07:42Z",
+                "name": "web-6db8d4bf7.18d9253955e7e3a0",
                 "namespace": "fixture-unschedulable-resources",
                 "resourceVersion": "7",
-                "uid": "00000000-0000-4000-8000-000000000005"
+                "uid": "00000000-0000-4000-8000-000000000009"
             },
             "reason": "SuccessfulCreate",
             "reportingComponent": "replicaset-controller",
@@ -69,24 +65,24 @@
             "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "firstTimestamp": "2026-01-01T00:07:41Z",
             "involvedObject": {
                 "apiVersion": "apps/v1",
                 "kind": "Deployment",
                 "name": "web",
                 "namespace": "fixture-unschedulable-resources",
-                "resourceVersion": "3",
+                "resourceVersion": "8",
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:00Z",
-            "message": "Scaled up replica set web-8k689hhgsx from 0 to 1",
+            "lastTimestamp": "2026-01-01T00:07:41Z",
+            "message": "Scaled up replica set web-6db8d4bf7 from 0 to 1",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web.18867323ad0ec7ef",
+                "creationTimestamp": "2026-01-01T00:07:41Z",
+                "name": "web.18d9253952437162",
                 "namespace": "fixture-unschedulable-resources",
-                "resourceVersion": "4",
-                "uid": "00000000-0000-4000-8000-000000000003"
+                "resourceVersion": "9",
+                "uid": "00000000-0000-4000-8000-000000000010"
             },
             "reason": "ScalingReplicaSet",
             "reportingComponent": "deployment-controller",

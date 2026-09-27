@@ -9,10 +9,9 @@
                     "deployment.kubernetes.io/desired-replicas": "1",
                     "deployment.kubernetes.io/max-replicas": "2",
                     "deployment.kubernetes.io/revision": "1",
-                    "dockflow.shawiizz.dev/compose-service": "web",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:10:06Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-pvc-pending-rwx",
@@ -20,9 +19,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-pvc-pending-rwx",
-                    "pod-template-hash": "5hrbmx46j5"
+                    "pod-template-hash": "776897c7f5"
                 },
-                "name": "web-5hrbmx46j5",
+                "name": "web-776897c7f5",
                 "namespace": "fixture-pvc-pending-rwx",
                 "ownerReferences": [
                     {
@@ -31,19 +30,20 @@
                         "controller": true,
                         "kind": "Deployment",
                         "name": "web",
-                        "uid": "00000000-0000-4000-8000-000000000002"
+                        "uid": "00000000-0000-4000-8000-000000000001"
                     }
                 ],
-                "resourceVersion": "3",
-                "uid": "00000000-0000-4000-8000-000000000003"
+                "resourceVersion": "2",
+                "uid": "00000000-0000-4000-8000-000000000002"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "replicas": 1,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "web",
                         "dockflow.shawiizz.dev/stack": "fixture-pvc-pending-rwx",
-                        "pod-template-hash": "5hrbmx46j5"
+                        "pod-template-hash": "776897c7f5"
                     }
                 },
                 "template": {
@@ -58,17 +58,16 @@
                             "dockflow.shawiizz.dev/role": "app",
                             "dockflow.shawiizz.dev/service": "web",
                             "dockflow.shawiizz.dev/stack": "fixture-pvc-pending-rwx",
-                            "pod-template-hash": "5hrbmx46j5"
+                            "pod-template-hash": "776897c7f5"
                         }
                     },
                     "spec": {
                         "automountServiceAccountToken": false,
                         "containers": [
                             {
-                                "command": [
-                                    "sh",
-                                    "-c",
-                                    "sleep 3600"
+                                "args": [
+                                    "sleep",
+                                    "36000"
                                 ],
                                 "image": "busybox:1.37",
                                 "imagePullPolicy": "IfNotPresent",
@@ -79,7 +78,7 @@
                                 "volumeMounts": [
                                     {
                                         "mountPath": "/data",
-                                        "name": "shared"
+                                        "name": "pvc-shared"
                                     }
                                 ]
                             }
@@ -94,9 +93,25 @@
                             }
                         },
                         "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "web",
+                                        "dockflow.shawiizz.dev/stack": "fixture-pvc-pending-rwx"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ],
                         "volumes": [
                             {
-                                "name": "shared",
+                                "name": "pvc-shared",
                                 "persistentVolumeClaim": {
                                     "claimName": "shared"
                                 }
@@ -108,7 +123,8 @@
             "status": {
                 "fullyLabeledReplicas": 1,
                 "observedGeneration": 1,
-                "replicas": 1
+                "replicas": 1,
+                "terminatingReplicas": 0
             }
         }
     ],

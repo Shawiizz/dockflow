@@ -9,10 +9,9 @@
                     "deployment.kubernetes.io/desired-replicas": "1",
                     "deployment.kubernetes.io/max-replicas": "2",
                     "deployment.kubernetes.io/revision": "1",
-                    "dockflow.shawiizz.dev/compose-service": "web",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:16:27Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-evicted-pod",
@@ -20,9 +19,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-evicted-pod",
-                    "pod-template-hash": "kvz7hg45z8"
+                    "pod-template-hash": "6dc46b7976"
                 },
-                "name": "web-kvz7hg45z8",
+                "name": "web-6dc46b7976",
                 "namespace": "fixture-evicted-pod",
                 "ownerReferences": [
                     {
@@ -38,12 +37,13 @@
                 "uid": "00000000-0000-4000-8000-000000000002"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "replicas": 1,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "web",
                         "dockflow.shawiizz.dev/stack": "fixture-evicted-pod",
-                        "pod-template-hash": "kvz7hg45z8"
+                        "pod-template-hash": "6dc46b7976"
                     }
                 },
                 "template": {
@@ -58,14 +58,14 @@
                             "dockflow.shawiizz.dev/role": "app",
                             "dockflow.shawiizz.dev/service": "web",
                             "dockflow.shawiizz.dev/stack": "fixture-evicted-pod",
-                            "pod-template-hash": "kvz7hg45z8"
+                            "pod-template-hash": "6dc46b7976"
                         }
                     },
                     "spec": {
                         "automountServiceAccountToken": false,
                         "containers": [
                             {
-                                "command": [
+                                "args": [
                                     "sh",
                                     "-c",
                                     "dd if=/dev/zero of=/tmp/fill bs=1M count=64; sleep 3600"
@@ -76,9 +76,6 @@
                                 "resources": {
                                     "limits": {
                                         "ephemeral-storage": "16Mi"
-                                    },
-                                    "requests": {
-                                        "ephemeral-storage": "16Mi"
                                     }
                                 },
                                 "terminationMessagePath": "/dev/termination-log",
@@ -87,6 +84,9 @@
                         ],
                         "dnsPolicy": "ClusterFirst",
                         "enableServiceLinks": false,
+                        "nodeSelector": {
+                            "kubernetes.io/hostname": "server-1"
+                        },
                         "restartPolicy": "Always",
                         "schedulerName": "default-scheduler",
                         "securityContext": {
@@ -94,16 +94,32 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 10
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "web",
+                                        "dockflow.shawiizz.dev/stack": "fixture-evicted-pod"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
             "status": {
-                "availableReplicas": 1,
                 "fullyLabeledReplicas": 1,
                 "observedGeneration": 1,
                 "readyReplicas": 1,
-                "replicas": 1
+                "replicas": 1,
+                "terminatingReplicas": 0
             }
         }
     ],

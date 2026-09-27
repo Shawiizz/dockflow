@@ -1,7 +1,8 @@
 // Recorded kubectl, helm and metrics output of design-07 3.11, read only through this module (3.0
-// rule 5). Until the test machine re-records them (PD-12) the scenarios are synthetic: authored in
-// the exact layout kubectl v1.36 prints and already scrubbed. Every read validates the whole file
-// set of its scenario against the scrub rules first and refuses content that breaks them.
+// rule 5). The kubectl and metrics scenarios are recorded on a duo cluster by
+// testing/e2e/k3s/tools/record-kubectl-fixtures.ts; the helm ones are still synthetic, authored in
+// the exact layout helm prints and already scrubbed. Every read validates the whole file set of its
+// scenario against the scrub rules first and refuses content that breaks them.
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
@@ -82,7 +83,7 @@ export const DESIGN_SCENARIOS = {
 /** Scrubbed node names of the recording lane (duo) and the servers.yml keys they stand for. */
 export const FIXTURE_SERVERS: Readonly<Record<string, string>> = { 'server-1': 'server_1', 'agent-1': 'agent_1' };
 
-/** `app.kubernetes.io/part-of` and `P/release` values the scenarios carry. */
+/** Project (`app.kubernetes.io/part-of`) and release the scenarios are rendered for. */
 export const FIXTURE_PROJECT = 'shop';
 export const FIXTURE_RELEASE = '1.4.2';
 
@@ -562,6 +563,26 @@ export class FixtureStore {
     return combined;
   }
 
+  /**
+   * The newest timestamp of a capture: the moment it was read, as closely as its content tells. A
+   * `deletionTimestamp` is left out: it is the end of a grace period, which can lie ahead.
+   */
+  captureTime(scenario: string, capture = ''): Date {
+    let newest = 0;
+    const visit = (value: unknown, key: string | null): void => {
+      if (typeof value === 'string') {
+        if (key === 'deletionTimestamp') return;
+        for (const match of value.matchAll(RFC3339)) newest = Math.max(newest, Date.parse(match[0]));
+      } else if (Array.isArray(value)) {
+        for (const item of value) visit(item, key);
+      } else if (isRecord(value)) {
+        for (const [k, v] of Object.entries(value)) visit(v, k);
+      }
+    };
+    for (const resource of CAPTURED_RESOURCES) visit(this.list(scenario, resource, capture), null);
+    return new Date(newest);
+  }
+
   helmText(scenario: string, file: string): string {
     this.assertScrubbed(`helm/${scenario}`, () => this.fileSet('helm', scenario));
     return this.read(join(this.scenarioDir('helm', scenario), safeSegments(file)));
@@ -635,6 +656,11 @@ export function loadKubectlList<T = unknown>(scenario: string, resource: Capture
 
 export function loadKubectlResources<T = unknown>(scenario: string, resources: readonly CapturedResource[], capture = ''): KubeList<T> {
   return store.resources<T>(scenario, resources, capture);
+}
+
+/** The newest timestamp of a kubectl capture, the `now` of a test that reads its ages. */
+export function fixtureCaptureTime(scenario: string, capture = ''): Date {
+  return store.captureTime(scenario, capture);
 }
 
 export function readHelmFixture(scenario: string, file: string): string {

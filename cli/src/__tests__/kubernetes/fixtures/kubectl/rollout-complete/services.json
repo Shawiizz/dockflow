@@ -8,7 +8,7 @@
                 "annotations": {
                     "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:21:07Z",
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-rollout-complete",
                     "app.kubernetes.io/managed-by": "dockflow",
@@ -21,13 +21,13 @@
                 },
                 "name": "web",
                 "namespace": "fixture-rollout-complete",
-                "resourceVersion": "93",
-                "uid": "00000000-0000-4000-8000-000000000053"
+                "resourceVersion": "89",
+                "uid": "00000000-0000-4000-8000-000000000007"
             },
             "spec": {
-                "clusterIP": "10.43.160.225",
+                "clusterIP": "10.43.199.171",
                 "clusterIPs": [
-                    "10.43.160.225"
+                    "10.43.199.171"
                 ],
                 "internalTrafficPolicy": "Cluster",
                 "ipFamilies": [
@@ -60,7 +60,7 @@
                 "annotations": {
                     "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:21:08Z",
                 "finalizers": [
                     "service.kubernetes.io/load-balancer-cleanup"
                 ],
@@ -76,14 +76,14 @@
                 },
                 "name": "web-lb",
                 "namespace": "fixture-rollout-complete",
-                "resourceVersion": "95",
-                "uid": "00000000-0000-4000-8000-000000000055"
+                "resourceVersion": "74",
+                "uid": "00000000-0000-4000-8000-000000000008"
             },
             "spec": {
                 "allocateLoadBalancerNodePorts": false,
-                "clusterIP": "10.43.155.35",
+                "clusterIP": "10.43.237.67",
                 "clusterIPs": [
-                    "10.43.155.35"
+                    "10.43.237.67"
                 ],
                 "externalTrafficPolicy": "Cluster",
                 "internalTrafficPolicy": "Cluster",
@@ -93,7 +93,7 @@
                 "ipFamilyPolicy": "SingleStack",
                 "ports": [
                     {
-                        "name": "tcp-8080",
+                        "name": "tcp-80",
                         "port": 8080,
                         "protocol": "TCP",
                         "targetPort": 80

@@ -2,27 +2,213 @@
     "apiVersion": "v1",
     "items": [
         {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:11:17Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "PersistentVolumeClaim",
+                "name": "data-db-0",
+                "namespace": "fixture-statefulset-stuck",
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000006"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:11:17Z",
+            "message": "Waiting for a volume to be created either by the external provisioner 'rancher.io/local-path' or manually by the system administrator. If volume creation is delayed, please verify that the provisioner is running and correctly registered.",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:11:17Z",
+                "name": "data-db-0.18d9256b89920acf",
+                "namespace": "fixture-statefulset-stuck",
+                "resourceVersion": "7",
+                "uid": "00000000-0000-4000-8000-000000000016"
+            },
+            "reason": "ExternalProvisioning",
+            "reportingComponent": "persistentvolume-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "persistentvolume-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:11:17Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "PersistentVolumeClaim",
+                "name": "data-db-0",
+                "namespace": "fixture-statefulset-stuck",
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000006"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:11:17Z",
+            "message": "External provisioner is provisioning volume for claim \"fixture-statefulset-stuck/data-db-0\"",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:11:17Z",
+                "name": "data-db-0.18d9256b89bafb95",
+                "namespace": "fixture-statefulset-stuck",
+                "resourceVersion": "8",
+                "uid": "00000000-0000-4000-8000-000000000017"
+            },
+            "reason": "Provisioning",
+            "reportingComponent": "rancher.io/local-path_local-path-provisioner-77b9867795-6bx9z_00000000-0000-4000-8000-000000000018",
+            "reportingInstance": "",
+            "source": {
+                "component": "rancher.io/local-path_local-path-provisioner-77b9867795-6bx9z_00000000-0000-4000-8000-000000000018"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:11:20Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "PersistentVolumeClaim",
+                "name": "data-db-0",
+                "namespace": "fixture-statefulset-stuck",
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000006"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:11:20Z",
+            "message": "Successfully provisioned volume pvc-00000000-0000-4000-8000-000000000006",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:11:20Z",
+                "name": "data-db-0.18d9256c43d71701",
+                "namespace": "fixture-statefulset-stuck",
+                "resourceVersion": "9",
+                "uid": "00000000-0000-4000-8000-000000000019"
+            },
+            "reason": "ProvisioningSucceeded",
+            "reportingComponent": "rancher.io/local-path_local-path-provisioner-77b9867795-6bx9z_00000000-0000-4000-8000-000000000018",
+            "reportingInstance": "",
+            "source": {
+                "component": "rancher.io/local-path_local-path-provisioner-77b9867795-6bx9z_00000000-0000-4000-8000-000000000018"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 2,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:11:17Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "PersistentVolumeClaim",
+                "name": "data-db-1",
+                "namespace": "fixture-statefulset-stuck",
+                "resourceVersion": "10",
+                "uid": "00000000-0000-4000-8000-000000000007"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:11:17Z",
+            "message": "Waiting for a volume to be created either by the external provisioner 'rancher.io/local-path' or manually by the system administrator. If volume creation is delayed, please verify that the provisioner is running and correctly registered.",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:11:17Z",
+                "name": "data-db-1.18d9256b89c5a589",
+                "namespace": "fixture-statefulset-stuck",
+                "resourceVersion": "11",
+                "uid": "00000000-0000-4000-8000-000000000020"
+            },
+            "reason": "ExternalProvisioning",
+            "reportingComponent": "persistentvolume-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "persistentvolume-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:11:17Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "PersistentVolumeClaim",
+                "name": "data-db-1",
+                "namespace": "fixture-statefulset-stuck",
+                "resourceVersion": "10",
+                "uid": "00000000-0000-4000-8000-000000000007"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:11:17Z",
+            "message": "External provisioner is provisioning volume for claim \"fixture-statefulset-stuck/data-db-1\"",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:11:17Z",
+                "name": "data-db-1.18d9256b89f2c0dc",
+                "namespace": "fixture-statefulset-stuck",
+                "resourceVersion": "12",
+                "uid": "00000000-0000-4000-8000-000000000021"
+            },
+            "reason": "Provisioning",
+            "reportingComponent": "rancher.io/local-path_local-path-provisioner-77b9867795-6bx9z_00000000-0000-4000-8000-000000000018",
+            "reportingInstance": "",
+            "source": {
+                "component": "rancher.io/local-path_local-path-provisioner-77b9867795-6bx9z_00000000-0000-4000-8000-000000000018"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 1,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:11:20Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "PersistentVolumeClaim",
+                "name": "data-db-1",
+                "namespace": "fixture-statefulset-stuck",
+                "resourceVersion": "10",
+                "uid": "00000000-0000-4000-8000-000000000007"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:11:20Z",
+            "message": "Successfully provisioned volume pvc-00000000-0000-4000-8000-000000000007",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:11:20Z",
+                "name": "data-db-1.18d9256c43da2409",
+                "namespace": "fixture-statefulset-stuck",
+                "resourceVersion": "13",
+                "uid": "00000000-0000-4000-8000-000000000022"
+            },
+            "reason": "ProvisioningSucceeded",
+            "reportingComponent": "rancher.io/local-path_local-path-provisioner-77b9867795-6bx9z_00000000-0000-4000-8000-000000000018",
+            "reportingInstance": "",
+            "source": {
+                "component": "rancher.io/local-path_local-path-provisioner-77b9867795-6bx9z_00000000-0000-4000-8000-000000000018"
+            },
+            "type": "Normal"
+        },
+        {
             "action": "Binding",
             "apiVersion": "v1",
-            "eventTime": "2026-01-01T00:15:00.106300Z",
+            "eventTime": "2026-01-01T00:11:21.034Z",
             "firstTimestamp": null,
             "involvedObject": {
                 "apiVersion": "v1",
                 "kind": "Pod",
                 "name": "db-0",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "16",
-                "uid": "00000000-0000-4000-8000-000000000009"
+                "resourceVersion": "14",
+                "uid": "00000000-0000-4000-8000-000000000004"
             },
             "kind": "Event",
             "lastTimestamp": null,
             "message": "Successfully assigned fixture-statefulset-stuck/db-0 to server-1",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "db-0.18867323a058b89d",
+                "creationTimestamp": "2026-01-01T00:11:21Z",
+                "name": "db-0.18d9256c52e955e2",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "17",
-                "uid": "00000000-0000-4000-8000-000000000012"
+                "resourceVersion": "15",
+                "uid": "00000000-0000-4000-8000-000000000023"
             },
             "reason": "Scheduled",
             "reportingComponent": "default-scheduler",
@@ -34,25 +220,25 @@
             "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "firstTimestamp": "2026-01-01T00:11:21Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.containers{db}",
                 "kind": "Pod",
                 "name": "db-0",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "18",
-                "uid": "00000000-0000-4000-8000-000000000009"
+                "resourceVersion": "16",
+                "uid": "00000000-0000-4000-8000-000000000004"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:01Z",
-            "message": "Container image \"busybox:1.37\" already present on machine",
+            "lastTimestamp": "2026-01-01T00:11:21Z",
+            "message": "Container image \"busybox:1.37\" already present on machine and can be accessed by the pod",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:01Z",
-                "name": "db-0.18867323ca389d19",
+                "creationTimestamp": "2026-01-01T00:11:21Z",
+                "name": "db-0.18d9256c6e3da20f",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "19",
-                "uid": "00000000-0000-4000-8000-000000000013"
+                "resourceVersion": "17",
+                "uid": "00000000-0000-4000-8000-000000000024"
             },
             "reason": "Pulled",
             "reportingComponent": "kubelet",
@@ -67,25 +253,25 @@
             "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "firstTimestamp": "2026-01-01T00:11:21Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.containers{db}",
                 "kind": "Pod",
                 "name": "db-0",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "20",
-                "uid": "00000000-0000-4000-8000-000000000009"
+                "resourceVersion": "16",
+                "uid": "00000000-0000-4000-8000-000000000004"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:01Z",
-            "message": "Created container: db",
+            "lastTimestamp": "2026-01-01T00:11:21Z",
+            "message": "Container created",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:01Z",
-                "name": "db-0.18867323eb001ea1",
+                "creationTimestamp": "2026-01-01T00:11:21Z",
+                "name": "db-0.18d9256c6fc08ad2",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "21",
-                "uid": "00000000-0000-4000-8000-000000000014"
+                "resourceVersion": "18",
+                "uid": "00000000-0000-4000-8000-000000000025"
             },
             "reason": "Created",
             "reportingComponent": "kubelet",
@@ -100,25 +286,25 @@
             "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "firstTimestamp": "2026-01-01T00:11:21Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.containers{db}",
                 "kind": "Pod",
                 "name": "db-0",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "22",
-                "uid": "00000000-0000-4000-8000-000000000009"
+                "resourceVersion": "16",
+                "uid": "00000000-0000-4000-8000-000000000004"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:02Z",
-            "message": "Started container db",
+            "lastTimestamp": "2026-01-01T00:11:21Z",
+            "message": "Container started",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:02Z",
-                "name": "db-0.188673240ac2635e",
+                "creationTimestamp": "2026-01-01T00:11:21Z",
+                "name": "db-0.18d9256c740b1f13",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "23",
-                "uid": "00000000-0000-4000-8000-000000000015"
+                "resourceVersion": "19",
+                "uid": "00000000-0000-4000-8000-000000000026"
             },
             "reason": "Started",
             "reportingComponent": "kubelet",
@@ -132,7 +318,7 @@
         {
             "action": "Binding",
             "apiVersion": "v1",
-            "eventTime": "2026-01-01T00:20:02.101414Z",
+            "eventTime": "2026-01-01T00:11:32.968Z",
             "firstTimestamp": null,
             "involvedObject": {
                 "apiVersion": "v1",
@@ -140,17 +326,17 @@
                 "name": "db-1",
                 "namespace": "fixture-statefulset-stuck",
                 "resourceVersion": "27",
-                "uid": "00000000-0000-4000-8000-000000000016"
+                "uid": "00000000-0000-4000-8000-000000000005"
             },
             "kind": "Event",
             "lastTimestamp": null,
             "message": "Successfully assigned fixture-statefulset-stuck/db-1 to agent-1",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:20:02Z",
-                "name": "db-1.18867369fe61384d",
+                "creationTimestamp": "2026-01-01T00:11:32Z",
+                "name": "db-1.18d9256f1a3945ad",
                 "namespace": "fixture-statefulset-stuck",
                 "resourceVersion": "28",
-                "uid": "00000000-0000-4000-8000-000000000018"
+                "uid": "00000000-0000-4000-8000-000000000033"
             },
             "reason": "Scheduled",
             "reportingComponent": "default-scheduler",
@@ -160,29 +346,29 @@
         },
         {
             "apiVersion": "v1",
-            "count": 4,
+            "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:20:03Z",
+            "firstTimestamp": "2026-01-01T00:11:33Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.containers{db}",
                 "kind": "Pod",
                 "name": "db-1",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "31",
-                "uid": "00000000-0000-4000-8000-000000000016"
+                "resourceVersion": "29",
+                "uid": "00000000-0000-4000-8000-000000000005"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:21:14Z",
-            "message": "Created container: db",
+            "lastTimestamp": "2026-01-01T00:11:33Z",
+            "message": "Pulling image \"busybox:1.36\"",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:20:03Z",
-                "name": "db-1.1886736a16d2b225",
+                "creationTimestamp": "2026-01-01T00:11:33Z",
+                "name": "db-1.18d9256f3415caa8",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "32",
-                "uid": "00000000-0000-4000-8000-000000000020"
+                "resourceVersion": "30",
+                "uid": "00000000-0000-4000-8000-000000000034"
             },
-            "reason": "Created",
+            "reason": "Pulling",
             "reportingComponent": "kubelet",
             "reportingInstance": "agent-1",
             "source": {
@@ -193,9 +379,9 @@
         },
         {
             "apiVersion": "v1",
-            "count": 4,
+            "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:20:03Z",
+            "firstTimestamp": "2026-01-01T00:11:35Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.containers{db}",
@@ -203,17 +389,17 @@
                 "name": "db-1",
                 "namespace": "fixture-statefulset-stuck",
                 "resourceVersion": "29",
-                "uid": "00000000-0000-4000-8000-000000000016"
+                "uid": "00000000-0000-4000-8000-000000000005"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:21:14Z",
-            "message": "Container image \"busybox:1.36\" already present on machine",
+            "lastTimestamp": "2026-01-01T00:11:35Z",
+            "message": "Successfully pulled image \"busybox:1.36\" in 2.197s (2.197s including waiting). Image size: 2217006 bytes.",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:20:03Z",
-                "name": "db-1.1886736a32d0a620",
+                "creationTimestamp": "2026-01-01T00:11:35Z",
+                "name": "db-1.18d9256fb72051b7",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "30",
-                "uid": "00000000-0000-4000-8000-000000000019"
+                "resourceVersion": "31",
+                "uid": "00000000-0000-4000-8000-000000000035"
             },
             "reason": "Pulled",
             "reportingComponent": "kubelet",
@@ -228,25 +414,58 @@
             "apiVersion": "v1",
             "count": 4,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:20:04Z",
+            "firstTimestamp": "2026-01-01T00:11:35Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.containers{db}",
                 "kind": "Pod",
                 "name": "db-1",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "33",
-                "uid": "00000000-0000-4000-8000-000000000016"
+                "resourceVersion": "29",
+                "uid": "00000000-0000-4000-8000-000000000005"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:21:14Z",
-            "message": "Started container db",
+            "lastTimestamp": "2026-01-01T00:12:17Z",
+            "message": "Container created",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:20:04Z",
-                "name": "db-1.1886736a555514c8",
+                "creationTimestamp": "2026-01-01T00:11:35Z",
+                "name": "db-1.18d9256fb8842b6d",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "34",
-                "uid": "00000000-0000-4000-8000-000000000021"
+                "resourceVersion": "32",
+                "uid": "00000000-0000-4000-8000-000000000036"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 4,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:11:35Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{db}",
+                "kind": "Pod",
+                "name": "db-1",
+                "namespace": "fixture-statefulset-stuck",
+                "resourceVersion": "29",
+                "uid": "00000000-0000-4000-8000-000000000005"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:12:17Z",
+            "message": "Container started",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:11:35Z",
+                "name": "db-1.18d9256fbc906ee5",
+                "namespace": "fixture-statefulset-stuck",
+                "resourceVersion": "33",
+                "uid": "00000000-0000-4000-8000-000000000037"
             },
             "reason": "Started",
             "reportingComponent": "kubelet",
@@ -259,27 +478,60 @@
         },
         {
             "apiVersion": "v1",
-            "count": 7,
+            "count": 3,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:20:05Z",
+            "firstTimestamp": "2026-01-01T00:11:35Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.containers{db}",
                 "kind": "Pod",
                 "name": "db-1",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "35",
-                "uid": "00000000-0000-4000-8000-000000000016"
+                "resourceVersion": "29",
+                "uid": "00000000-0000-4000-8000-000000000005"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:21:27Z",
-            "message": "Back-off restarting failed container db in pod db-1_fixture-statefulset-stuck(00000000-0000-4000-8000-000000000016)",
+            "lastTimestamp": "2026-01-01T00:12:17Z",
+            "message": "Container image \"busybox:1.36\" already present on machine and can be accessed by the pod",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:20:05Z",
-                "name": "db-1.1886736aa3d26085",
+                "creationTimestamp": "2026-01-01T00:11:35Z",
+                "name": "db-1.18d9256fcc89be12",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "36",
-                "uid": "00000000-0000-4000-8000-000000000022"
+                "resourceVersion": "34",
+                "uid": "00000000-0000-4000-8000-000000000038"
+            },
+            "reason": "Pulled",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "agent-1",
+            "source": {
+                "component": "kubelet",
+                "host": "agent-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 4,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:11:36Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{db}",
+                "kind": "Pod",
+                "name": "db-1",
+                "namespace": "fixture-statefulset-stuck",
+                "resourceVersion": "29",
+                "uid": "00000000-0000-4000-8000-000000000005"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:12:18Z",
+            "message": "Back-off restarting failed container db in pod db-1_fixture-statefulset-stuck(00000000-0000-4000-8000-000000000005)",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:11:36Z",
+                "name": "db-1.18d9257008575b03",
+                "namespace": "fixture-statefulset-stuck",
+                "resourceVersion": "35",
+                "uid": "00000000-0000-4000-8000-000000000039"
             },
             "reason": "BackOff",
             "reportingComponent": "kubelet",
@@ -294,88 +546,57 @@
             "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "firstTimestamp": "2026-01-01T00:11:18Z",
             "involvedObject": {
                 "apiVersion": "apps/v1",
                 "kind": "StatefulSet",
                 "name": "db",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "14",
+                "resourceVersion": "36",
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:00Z",
-            "message": "create Pod db-0 in StatefulSet db successful",
+            "lastTimestamp": "2026-01-01T00:11:18Z",
+            "message": "Create Pod db-0 in StatefulSet db successful",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "db.1886732392934f06",
-                "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "15",
-                "uid": "00000000-0000-4000-8000-000000000011"
-            },
-            "reason": "SuccessfulCreate",
-            "reportingComponent": "statefulset-controller",
-            "reportingInstance": "",
-            "source": {
-                "component": "statefulset-controller"
-            },
-            "type": "Normal"
-        },
-        {
-            "apiVersion": "v1",
-            "count": 1,
-            "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:00Z",
-            "involvedObject": {
-                "apiVersion": "apps/v1",
-                "kind": "StatefulSet",
-                "name": "db",
-                "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "12",
-                "uid": "00000000-0000-4000-8000-000000000001"
-            },
-            "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:00Z",
-            "message": "create Claim data-db-0 Pod db-0 in StatefulSet db success",
-            "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "db.18867323adf60232",
-                "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "13",
-                "uid": "00000000-0000-4000-8000-000000000010"
-            },
-            "reason": "SuccessfulCreate",
-            "reportingComponent": "statefulset-controller",
-            "reportingInstance": "",
-            "source": {
-                "component": "statefulset-controller"
-            },
-            "type": "Normal"
-        },
-        {
-            "apiVersion": "v1",
-            "count": 1,
-            "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:20:00Z",
-            "involvedObject": {
-                "apiVersion": "apps/v1",
-                "kind": "StatefulSet",
-                "name": "db",
+                "creationTimestamp": "2026-01-01T00:11:18Z",
+                "name": "db.18d9256b9f66ee82",
                 "namespace": "fixture-statefulset-stuck",
                 "resourceVersion": "37",
+                "uid": "00000000-0000-4000-8000-000000000040"
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "statefulset-controller",
+            "reportingInstance": "",
+            "source": {
+                "component": "statefulset-controller"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 2,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:11:18Z",
+            "involvedObject": {
+                "apiVersion": "apps/v1",
+                "kind": "StatefulSet",
+                "name": "db",
+                "namespace": "fixture-statefulset-stuck",
+                "resourceVersion": "36",
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:20:00Z",
-            "message": "delete Pod db-1 in StatefulSet db successful",
+            "lastTimestamp": "2026-01-01T00:11:32Z",
+            "message": "Create Pod db-1 in StatefulSet db successful",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:20:00Z",
-                "name": "db.188673695c6a963e",
+                "creationTimestamp": "2026-01-01T00:11:18Z",
+                "name": "db.18d9256b9f989a17",
                 "namespace": "fixture-statefulset-stuck",
                 "resourceVersion": "38",
-                "uid": "00000000-0000-4000-8000-000000000023"
+                "uid": "00000000-0000-4000-8000-000000000041"
             },
-            "reason": "SuccessfulDelete",
+            "reason": "SuccessfulCreate",
             "reportingComponent": "statefulset-controller",
             "reportingInstance": "",
             "source": {
@@ -387,26 +608,26 @@
             "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:20:02Z",
+            "firstTimestamp": "2026-01-01T00:11:21Z",
             "involvedObject": {
                 "apiVersion": "apps/v1",
                 "kind": "StatefulSet",
                 "name": "db",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "25",
+                "resourceVersion": "39",
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:20:02Z",
-            "message": "create Pod db-1 in StatefulSet db successful",
+            "lastTimestamp": "2026-01-01T00:11:21Z",
+            "message": "Delete Pod db-1 in StatefulSet db successful",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:20:02Z",
-                "name": "db.18867369ed97f323",
+                "creationTimestamp": "2026-01-01T00:11:21Z",
+                "name": "db.18d9256c895cb9f5",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "26",
-                "uid": "00000000-0000-4000-8000-000000000017"
+                "resourceVersion": "40",
+                "uid": "00000000-0000-4000-8000-000000000042"
             },
-            "reason": "SuccessfulCreate",
+            "reason": "SuccessfulDelete",
             "reportingComponent": "statefulset-controller",
             "reportingInstance": "",
             "source": {

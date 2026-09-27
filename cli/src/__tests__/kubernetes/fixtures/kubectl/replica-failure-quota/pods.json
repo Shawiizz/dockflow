@@ -9,8 +9,8 @@
                     "dockflow.shawiizz.dev/compose-service": "web",
                     "kubectl.kubernetes.io/default-container": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "generateName": "web-lbvqsx2s79-",
+                "creationTimestamp": "2026-01-01T00:11:12Z",
+                "generateName": "web-ddff555b9-",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-replica-failure-quota",
@@ -18,9 +18,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-replica-failure-quota",
-                    "pod-template-hash": "lbvqsx2s79"
+                    "pod-template-hash": "ddff555b9"
                 },
-                "name": "web-lbvqsx2s79-b7g5s",
+                "name": "web-ddff555b9-7mqlz",
                 "namespace": "fixture-replica-failure-quota",
                 "ownerReferences": [
                     {
@@ -28,21 +28,20 @@
                         "blockOwnerDeletion": true,
                         "controller": true,
                         "kind": "ReplicaSet",
-                        "name": "web-lbvqsx2s79",
+                        "name": "web-ddff555b9",
                         "uid": "00000000-0000-4000-8000-000000000002"
                     }
                 ],
-                "resourceVersion": "5",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "spec": {
                 "automountServiceAccountToken": false,
                 "containers": [
                     {
-                        "command": [
-                            "sh",
-                            "-c",
-                            "sleep 3600"
+                        "args": [
+                            "sleep",
+                            "36000"
                         ],
                         "image": "busybox:1.37",
                         "imagePullPolicy": "IfNotPresent",
@@ -55,6 +54,9 @@
                 "dnsPolicy": "ClusterFirst",
                 "enableServiceLinks": false,
                 "nodeName": "agent-1",
+                "nodeSelector": {
+                    "kubernetes.io/hostname": "agent-1"
+                },
                 "preemptionPolicy": "PreemptLowerPriority",
                 "priority": 0,
                 "restartPolicy": "Always",
@@ -80,41 +82,66 @@
                         "operator": "Exists",
                         "tolerationSeconds": 300
                     }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchExpressions": [
+                                {
+                                    "key": "pod-template-hash",
+                                    "operator": "In",
+                                    "values": [
+                                        "ddff555b9"
+                                    ]
+                                }
+                            ],
+                            "matchLabels": {
+                                "dockflow.shawiizz.dev/service": "web",
+                                "dockflow.shawiizz.dev/stack": "fixture-replica-failure-quota"
+                            }
+                        },
+                        "matchLabelKeys": [
+                            "pod-template-hash"
+                        ],
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "ScheduleAnyway"
+                    }
                 ]
             },
             "status": {
                 "conditions": [
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:01Z",
+                        "lastTransitionTime": "2026-01-01T00:11:12Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodReadyToStartContainers"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:11:12Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "Initialized"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:03Z",
+                        "lastTransitionTime": "2026-01-01T00:11:12Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "Ready"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:03Z",
+                        "lastTransitionTime": "2026-01-01T00:11:12Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "ContainersReady"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:11:12Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodScheduled"
@@ -122,17 +149,28 @@
                 ],
                 "containerStatuses": [
                     {
-                        "containerID": "containerd://2bdbf9bf0272",
+                        "containerID": "containerd://3fcd1c143974",
                         "image": "docker.io/library/busybox:1.37",
-                        "imageID": "containerd://6053936389b8",
+                        "imageID": "containerd://36b932e7ed7b",
                         "lastState": {},
                         "name": "web",
                         "ready": true,
+                        "resources": {},
                         "restartCount": 0,
                         "started": true,
                         "state": {
                             "running": {
-                                "startedAt": "2026-01-01T00:15:02Z"
+                                "startedAt": "2026-01-01T00:11:12Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    10
+                                ],
+                                "uid": 0
                             }
                         }
                     }
@@ -145,14 +183,15 @@
                 ],
                 "observedGeneration": 1,
                 "phase": "Running",
-                "podIP": "10.42.1.10",
+                "podIP": "10.42.1.13",
                 "podIPs": [
                     {
-                        "ip": "10.42.1.10"
+                        "ip": "10.42.1.13"
                     }
                 ],
                 "qosClass": "BestEffort",
-                "startTime": "2026-01-01T00:15:00Z"
+                "resources": {},
+                "startTime": "2026-01-01T00:11:12Z"
             }
         }
     ],

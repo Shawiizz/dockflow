@@ -9,21 +9,21 @@
                     "dockflow.shawiizz.dev/compose-service": "migrate",
                     "kubectl.kubernetes.io/default-container": "migrate"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "generateName": "migrate-aefdcfd1-",
+                "creationTimestamp": "2026-01-01T00:14:24Z",
+                "generateName": "migrate-0a492d34-",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-job-failed",
                     "app.kubernetes.io/name": "migrate",
                     "batch.kubernetes.io/controller-uid": "00000000-0000-4000-8000-000000000001",
-                    "batch.kubernetes.io/job-name": "migrate-aefdcfd1",
+                    "batch.kubernetes.io/job-name": "migrate-0a492d34",
                     "controller-uid": "00000000-0000-4000-8000-000000000001",
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "migrate",
                     "dockflow.shawiizz.dev/stack": "fixture-job-failed",
-                    "job-name": "migrate-aefdcfd1"
+                    "job-name": "migrate-0a492d34"
                 },
-                "name": "migrate-aefdcfd1-6wjcc",
+                "name": "migrate-0a492d34-5kk6n",
                 "namespace": "fixture-job-failed",
                 "ownerReferences": [
                     {
@@ -31,7 +31,7 @@
                         "blockOwnerDeletion": true,
                         "controller": true,
                         "kind": "Job",
-                        "name": "migrate-aefdcfd1",
+                        "name": "migrate-0a492d34",
                         "uid": "00000000-0000-4000-8000-000000000001"
                     }
                 ],
@@ -42,7 +42,7 @@
                 "automountServiceAccountToken": false,
                 "containers": [
                     {
-                        "command": [
+                        "args": [
                             "sh",
                             "-c",
                             "exit 1"
@@ -58,6 +58,9 @@
                 "dnsPolicy": "ClusterFirst",
                 "enableServiceLinks": false,
                 "nodeName": "agent-1",
+                "nodeSelector": {
+                    "kubernetes.io/hostname": "agent-1"
+                },
                 "preemptionPolicy": "PreemptLowerPriority",
                 "priority": 0,
                 "restartPolicy": "Never",
@@ -89,22 +92,21 @@
                 "conditions": [
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:05Z",
+                        "lastTransitionTime": "2026-01-01T00:14:26Z",
                         "observedGeneration": 1,
                         "status": "False",
                         "type": "PodReadyToStartContainers"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:14:24Z",
                         "observedGeneration": 1,
-                        "reason": "PodFailed",
                         "status": "True",
                         "type": "Initialized"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:05Z",
+                        "lastTransitionTime": "2026-01-01T00:14:25Z",
                         "observedGeneration": 1,
                         "reason": "PodFailed",
                         "status": "False",
@@ -112,7 +114,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:05Z",
+                        "lastTransitionTime": "2026-01-01T00:14:25Z",
                         "observedGeneration": 1,
                         "reason": "PodFailed",
                         "status": "False",
@@ -120,7 +122,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:14:24Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodScheduled"
@@ -128,21 +130,32 @@
                 ],
                 "containerStatuses": [
                     {
-                        "containerID": "containerd://aef3751cdaff",
+                        "containerID": "containerd://20c1c5025ac7",
                         "image": "docker.io/library/busybox:1.37",
-                        "imageID": "containerd://6053936389b8",
+                        "imageID": "containerd://36b932e7ed7b",
                         "lastState": {},
                         "name": "migrate",
                         "ready": false,
+                        "resources": {},
                         "restartCount": 0,
                         "started": false,
                         "state": {
                             "terminated": {
-                                "containerID": "containerd://aef3751cdaff",
+                                "containerID": "containerd://20c1c5025ac7",
                                 "exitCode": 1,
-                                "finishedAt": "2026-01-01T00:15:04Z",
+                                "finishedAt": "2026-01-01T00:14:25Z",
                                 "reason": "Error",
-                                "startedAt": "2026-01-01T00:15:02Z"
+                                "startedAt": "2026-01-01T00:14:25Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    10
+                                ],
+                                "uid": 0
                             }
                         }
                     }
@@ -155,14 +168,15 @@
                 ],
                 "observedGeneration": 1,
                 "phase": "Failed",
-                "podIP": "10.42.1.10",
+                "podIP": "10.42.1.20",
                 "podIPs": [
                     {
-                        "ip": "10.42.1.10"
+                        "ip": "10.42.1.20"
                     }
                 ],
                 "qosClass": "BestEffort",
-                "startTime": "2026-01-01T00:15:00Z"
+                "resources": {},
+                "startTime": "2026-01-01T00:14:24Z"
             }
         }
     ],

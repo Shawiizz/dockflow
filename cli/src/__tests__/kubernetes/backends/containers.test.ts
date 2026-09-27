@@ -732,7 +732,7 @@ describe('stats (K63a)', () => {
       helmPod('search-api', 'search', 'ccccc'),
       helmDeployment('cache', 'cache'),
       helmPod('cache', 'cache', 'ddddd'),
-      helperPod('dockflow-helper-archive-3f9a2c1b'),
+      helperPod('dockflow-helper-backup-3f9a2c1b'),
     ];
     const metrics = {
       kind: 'PodMetricsList',
@@ -743,7 +743,7 @@ describe('stats (K63a)', () => {
         podMetrics('db-0', { db: { cpu: '5m', memory: '1048576' } }),
         podMetrics('search-api-7c9d8-ccccc', { 'search-api': { cpu: '104311n', memory: '412Ki' } }),
         podMetrics('cache-7c9d8-ddddd', { cache: { cpu: '2', memory: '1G' } }),
-        podMetrics('dockflow-helper-archive-3f9a2c1b', { archive: { cpu: '0', memory: '240Ki' } }),
+        podMetrics('dockflow-helper-backup-3f9a2c1b', { archive: { cpu: '0', memory: '240Ki' } }),
         podMetrics('stranger-1', { stranger: { cpu: '1m', memory: '1Mi' } }),
       ],
     };
@@ -762,21 +762,22 @@ describe('stats (K63a)', () => {
   });
 
   it('U-BE-CONT-10: the recorded metrics-top fixture', async () => {
-    const hash = '782lrz9hsf';
+    const hash = '758947d665';
     const items: Obj[] = [
       deployment('web'),
-      composePod('web', 'app', hash, '6dfnp'),
-      composePod('web', 'app', hash, '7fvrw'),
-      statefulSet('db', 'accessory', { update: 'db-f45wdkz2dv', current: 'db-f45wdkz2dv' }),
-      statefulPod('db', 'accessory', 0, 'db-f45wdkz2dv'),
-      helperPod('dockflow-helper-archive-3f9a2c1b'),
+      composePod('web', 'app', hash, 'jr6dl'),
+      composePod('web', 'app', hash, 'pk8pg'),
+      statefulSet('db', 'accessory', { update: 'db-86b475c9d6', current: 'db-86b475c9d6' }),
+      statefulPod('db', 'accessory', 0, 'db-86b475c9d6'),
+      helperPod('dockflow-helper-backup-3f9a2c1b'),
     ];
     const h = harness(items, [metricsStep({ fixture: 'metrics/metrics-top' })]);
+    // idle nginx: metrics-server reports cpu "0"
     expect((await h.backend.stats(APP)).map((row) => [row.instance, row.cpuMilli, row.memoryBytes, row.netIO, row.blockIO])).toEqual([
-      [`web-${hash}-6dfnp`, 0.987204, 4059136, null, null],
-      [`web-${hash}-7fvrw`, 1.523871, 4280320, null, null],
+      [`web-${hash}-jr6dl`, 0, 15319040, null, null],
+      [`web-${hash}-pk8pg`, 0, 15409152, null, null],
     ]);
-    expect((await h.backend.stats(ACC)).map((row) => [row.service, row.cpuMilli, row.memoryBytes])).toEqual([['db', 0.104311, 421888]]);
+    expect((await h.backend.stats(ACC)).map((row) => [row.service, row.cpuMilli, row.memoryBytes])).toEqual([['db', 3.59337, 344064]]);
   });
 
   for (const [label, stderr] of [

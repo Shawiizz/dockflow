@@ -1,12 +1,11 @@
 {
-  "synthetic": true,
+  "recordedOn": "2026-09-27",
   "k3sVersion": "v1.36.4+k3s1",
   "steps": [
-    "kubectl create namespace fixture-rollout-progressing",
-    "kubectl apply: Deployment web (3 replicas, nginx:1.27-alpine, readiness probe httpGet / on port 80 with initialDelaySeconds 60 and periodSeconds 5, strategy RollingUpdate maxSurge 1 maxUnavailable 0) and ClusterIP Service web (port 80)",
-    "kubectl rollout status deployment/web --timeout=180s",
-    "kubectl set image deployment/web web=nginx:1.28-alpine",
-    "wait until the new ReplicaSet has one pod Running with Ready=False (before its first readiness probe)",
-    "capture the namespace resources and the cluster nodes and persistentvolumes"
+    "Dockflow renders the compose file into namespace fixture-<scenario> (project shop, release 1.4.2, servers server_1 and agent_1) and applies it server-side as a deploy does",
+    "docker-compose.yml: service web, nginx:1.27-alpine, expose 80, deploy.replicas 3, x-dockflow.probes use readiness with http / on port 80",
+    "patch: the readiness probe waits initialDelaySeconds 60, so a new pod stays Running and not Ready for a minute",
+    "kubectl rollout status deployment/web, then render and apply the same service with nginx:1.28-alpine",
+    "capture once the new ReplicaSet has one pod Running with Ready=False"
   ]
 }

@@ -1,12 +1,11 @@
 {
-  "synthetic": true,
+  "recordedOn": "2026-09-27",
   "k3sVersion": "v1.36.4+k3s1",
   "steps": [
-    "kubectl create namespace fixture-statefulset-stuck",
-    "kubectl apply: accessory StatefulSet db (2 replicas, podManagementPolicy Parallel, RollingUpdate, busybox:1.37 running sleep, volumeClaimTemplates data 1Gi ReadWriteOnce on dockflow-local) and headless Service db-hl with the placeholder port 9",
-    "kubectl rollout status statefulset/db --timeout=180s",
-    "update the template to busybox:1.36 running sh -c 'exit 1'",
-    "wait until db-1 runs the update revision and reports CrashLoopBackOff with restartCount 3 (db-0 stays on the current revision)",
-    "capture the namespace resources and the cluster nodes and persistentvolumes"
+    "Dockflow renders the compose file into namespace fixture-<scenario> (project shop, release 1.4.2, servers server_1 and agent_1) and applies it server-side as a deploy does",
+    "accessories.yml: service db, busybox:1.37, command sleep 36000, deploy.replicas 2, x-dockflow.kind statefulset, volume data (x-dockflow.per_replica) at /data",
+    "the claims data-db-0 and data-db-1 are created first from the claim template, with the selected-node annotation the scheduler would set (server-1, agent-1), which pins each ordinal to a node",
+    "kubectl rollout status statefulset/db, then render and apply the same service with busybox:1.36 and command sh -c \"exit 1\"",
+    "capture once db-1, on the update revision, restarted 3 times (db-0 stays on the current revision)"
   ]
 }

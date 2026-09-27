@@ -8,7 +8,7 @@
                 "annotations": {
                     "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:02:34Z",
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-rollout-progressing",
                     "app.kubernetes.io/managed-by": "dockflow",
@@ -21,13 +21,13 @@
                 },
                 "name": "web",
                 "namespace": "fixture-rollout-progressing",
-                "resourceVersion": "52",
-                "uid": "00000000-0000-4000-8000-000000000030"
+                "resourceVersion": "46",
+                "uid": "00000000-0000-4000-8000-000000000008"
             },
             "spec": {
-                "clusterIP": "10.43.52.31",
+                "clusterIP": "10.43.145.54",
                 "clusterIPs": [
-                    "10.43.52.31"
+                    "10.43.145.54"
                 ],
                 "internalTrafficPolicy": "Cluster",
                 "ipFamilies": [

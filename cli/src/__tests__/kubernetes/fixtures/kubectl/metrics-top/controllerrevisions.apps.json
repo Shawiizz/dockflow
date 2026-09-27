@@ -24,10 +24,9 @@
                             "automountServiceAccountToken": false,
                             "containers": [
                                 {
-                                    "command": [
-                                        "sh",
-                                        "-c",
-                                        "sleep 3600"
+                                    "args": [
+                                        "sleep",
+                                        "36000"
                                     ],
                                     "image": "busybox:1.37",
                                     "imagePullPolicy": "IfNotPresent",
@@ -37,7 +36,7 @@
                                             "memory": "256Mi"
                                         },
                                         "requests": {
-                                            "memory": "256Mi"
+                                            "memory": "0"
                                         }
                                     },
                                     "terminationMessagePath": "/dev/termination-log",
@@ -46,6 +45,9 @@
                             ],
                             "dnsPolicy": "ClusterFirst",
                             "enableServiceLinks": false,
+                            "nodeSelector": {
+                                "kubernetes.io/hostname": "server-1"
+                            },
                             "restartPolicy": "Always",
                             "schedulerName": "default-scheduler",
                             "securityContext": {
@@ -53,20 +55,39 @@
                                     "type": "RuntimeDefault"
                                 }
                             },
-                            "terminationGracePeriodSeconds": 10
+                            "terminationGracePeriodSeconds": 10,
+                            "topologySpreadConstraints": [
+                                {
+                                    "labelSelector": {
+                                        "matchLabels": {
+                                            "dockflow.shawiizz.dev/service": "db",
+                                            "dockflow.shawiizz.dev/stack": "fixture-metrics-top"
+                                        }
+                                    },
+                                    "maxSkew": 1,
+                                    "topologyKey": "kubernetes.io/hostname",
+                                    "whenUnsatisfiable": "ScheduleAnyway"
+                                }
+                            ]
                         }
                     }
                 }
             },
             "kind": "ControllerRevision",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "annotations": {
+                    "dockflow.shawiizz.dev/compose-service": "db"
+                },
+                "creationTimestamp": "2026-01-01T00:18:23Z",
                 "labels": {
-                    "controller.kubernetes.io/hash": "f45wdkz2dv",
+                    "app.kubernetes.io/instance": "fixture-metrics-top",
+                    "app.kubernetes.io/name": "db",
+                    "controller.kubernetes.io/hash": "86b475c9d6",
+                    "dockflow.shawiizz.dev/role": "accessory",
                     "dockflow.shawiizz.dev/service": "db",
                     "dockflow.shawiizz.dev/stack": "fixture-metrics-top"
                 },
-                "name": "db-f45wdkz2dv",
+                "name": "db-86b475c9d6",
                 "namespace": "fixture-metrics-top",
                 "ownerReferences": [
                     {
@@ -75,11 +96,11 @@
                         "controller": true,
                         "kind": "StatefulSet",
                         "name": "db",
-                        "uid": "00000000-0000-4000-8000-000000000016"
+                        "uid": "00000000-0000-4000-8000-000000000002"
                     }
                 ],
-                "resourceVersion": "28",
-                "uid": "00000000-0000-4000-8000-000000000017"
+                "resourceVersion": "4",
+                "uid": "00000000-0000-4000-8000-000000000004"
             },
             "revision": 1
         }

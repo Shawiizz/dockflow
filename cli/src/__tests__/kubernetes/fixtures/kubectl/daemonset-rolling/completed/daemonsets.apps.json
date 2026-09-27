@@ -7,10 +7,9 @@
             "metadata": {
                 "annotations": {
                     "deprecated.daemonset.template.generation": "2",
-                    "dockflow.shawiizz.dev/compose-service": "agent",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "agent"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:12:21Z",
                 "generation": 2,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-daemonset-rolling",
@@ -24,11 +23,12 @@
                 },
                 "name": "agent",
                 "namespace": "fixture-daemonset-rolling",
-                "resourceVersion": "2",
+                "resourceVersion": "36",
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "spec": {
-                "revisionHistoryLimit": 3,
+                "minReadySeconds": 30,
+                "revisionHistoryLimit": 2,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "agent",
@@ -53,26 +53,13 @@
                         "automountServiceAccountToken": false,
                         "containers": [
                             {
-                                "command": [
-                                    "sh",
-                                    "-c",
-                                    "sleep 7200"
+                                "args": [
+                                    "sleep",
+                                    "7200"
                                 ],
                                 "image": "busybox:1.37",
                                 "imagePullPolicy": "IfNotPresent",
                                 "name": "agent",
-                                "readinessProbe": {
-                                    "exec": {
-                                        "command": [
-                                            "true"
-                                        ]
-                                    },
-                                    "failureThreshold": 3,
-                                    "initialDelaySeconds": 30,
-                                    "periodSeconds": 5,
-                                    "successThreshold": 1,
-                                    "timeoutSeconds": 1
-                                },
                                 "resources": {},
                                 "terminationMessagePath": "/dev/termination-log",
                                 "terminationMessagePolicy": "File"

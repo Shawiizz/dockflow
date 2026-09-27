@@ -9,8 +9,8 @@
                     "dockflow.shawiizz.dev/compose-service": "api",
                     "kubectl.kubernetes.io/default-container": "api"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "generateName": "api-bg5g5vghlb-",
+                "creationTimestamp": "2026-01-01T00:15:18Z",
+                "generateName": "api-847f8bf66c-",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-multi-container",
@@ -18,9 +18,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "api",
                     "dockflow.shawiizz.dev/stack": "fixture-multi-container",
-                    "pod-template-hash": "bg5g5vghlb"
+                    "pod-template-hash": "847f8bf66c"
                 },
-                "name": "api-bg5g5vghlb-27kgr",
+                "name": "api-847f8bf66c-5ghhb",
                 "namespace": "fixture-multi-container",
                 "ownerReferences": [
                     {
@@ -28,12 +28,12 @@
                         "blockOwnerDeletion": true,
                         "controller": true,
                         "kind": "ReplicaSet",
-                        "name": "api-bg5g5vghlb",
+                        "name": "api-847f8bf66c",
                         "uid": "00000000-0000-4000-8000-000000000002"
                     }
                 ],
-                "resourceVersion": "5",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "spec": {
                 "automountServiceAccountToken": false,
@@ -55,9 +55,8 @@
                     },
                     {
                         "command": [
-                            "sh",
-                            "-c",
-                            "sleep 3600"
+                            "sleep",
+                            "36000"
                         ],
                         "image": "busybox:1.37",
                         "imagePullPolicy": "IfNotPresent",
@@ -70,6 +69,9 @@
                 "dnsPolicy": "ClusterFirst",
                 "enableServiceLinks": false,
                 "nodeName": "agent-1",
+                "nodeSelector": {
+                    "kubernetes.io/hostname": "agent-1"
+                },
                 "preemptionPolicy": "PreemptLowerPriority",
                 "priority": 0,
                 "restartPolicy": "Always",
@@ -95,41 +97,66 @@
                         "operator": "Exists",
                         "tolerationSeconds": 300
                     }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchExpressions": [
+                                {
+                                    "key": "pod-template-hash",
+                                    "operator": "In",
+                                    "values": [
+                                        "847f8bf66c"
+                                    ]
+                                }
+                            ],
+                            "matchLabels": {
+                                "dockflow.shawiizz.dev/service": "api",
+                                "dockflow.shawiizz.dev/stack": "fixture-multi-container"
+                            }
+                        },
+                        "matchLabelKeys": [
+                            "pod-template-hash"
+                        ],
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "ScheduleAnyway"
+                    }
                 ]
             },
             "status": {
                 "conditions": [
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:01Z",
+                        "lastTransitionTime": "2026-01-01T00:15:18Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodReadyToStartContainers"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:15:18Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "Initialized"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:03Z",
+                        "lastTransitionTime": "2026-01-01T00:15:18Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "Ready"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:03Z",
+                        "lastTransitionTime": "2026-01-01T00:15:18Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "ContainersReady"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:15:18Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodScheduled"
@@ -137,32 +164,63 @@
                 ],
                 "containerStatuses": [
                     {
-                        "containerID": "containerd://2869d1343a36",
+                        "containerID": "containerd://0dd4388ed025",
                         "image": "docker.io/library/nginx:1.27-alpine",
-                        "imageID": "containerd://6ec7a834e3e3",
+                        "imageID": "containerd://2325398ff128",
                         "lastState": {},
                         "name": "api",
                         "ready": true,
+                        "resources": {},
                         "restartCount": 0,
                         "started": true,
                         "state": {
                             "running": {
-                                "startedAt": "2026-01-01T00:15:02Z"
+                                "startedAt": "2026-01-01T00:15:18Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    1,
+                                    2,
+                                    3,
+                                    4,
+                                    6,
+                                    10,
+                                    11,
+                                    20,
+                                    26,
+                                    27
+                                ],
+                                "uid": 0
                             }
                         }
                     },
                     {
-                        "containerID": "containerd://aa38b49b5ed6",
+                        "containerID": "containerd://d61948ddde94",
                         "image": "docker.io/library/busybox:1.37",
-                        "imageID": "containerd://6053936389b8",
+                        "imageID": "containerd://36b932e7ed7b",
                         "lastState": {},
                         "name": "log-shipper",
                         "ready": true,
+                        "resources": {},
                         "restartCount": 0,
                         "started": true,
                         "state": {
                             "running": {
-                                "startedAt": "2026-01-01T00:15:02Z"
+                                "startedAt": "2026-01-01T00:15:18Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    10
+                                ],
+                                "uid": 0
                             }
                         }
                     }
@@ -175,14 +233,15 @@
                 ],
                 "observedGeneration": 1,
                 "phase": "Running",
-                "podIP": "10.42.1.10",
+                "podIP": "10.42.1.21",
                 "podIPs": [
                     {
-                        "ip": "10.42.1.10"
+                        "ip": "10.42.1.21"
                     }
                 ],
                 "qosClass": "BestEffort",
-                "startTime": "2026-01-01T00:15:00Z"
+                "resources": {},
+                "startTime": "2026-01-01T00:15:18Z"
             }
         }
     ],

@@ -9,10 +9,9 @@
                     "deployment.kubernetes.io/desired-replicas": "3",
                     "deployment.kubernetes.io/max-replicas": "4",
                     "deployment.kubernetes.io/revision": "1",
-                    "dockflow.shawiizz.dev/compose-service": "web",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:11:12Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-replica-failure-quota",
@@ -20,9 +19,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-replica-failure-quota",
-                    "pod-template-hash": "lbvqsx2s79"
+                    "pod-template-hash": "ddff555b9"
                 },
-                "name": "web-lbvqsx2s79",
+                "name": "web-ddff555b9",
                 "namespace": "fixture-replica-failure-quota",
                 "ownerReferences": [
                     {
@@ -38,12 +37,13 @@
                 "uid": "00000000-0000-4000-8000-000000000002"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "replicas": 3,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "web",
                         "dockflow.shawiizz.dev/stack": "fixture-replica-failure-quota",
-                        "pod-template-hash": "lbvqsx2s79"
+                        "pod-template-hash": "ddff555b9"
                     }
                 },
                 "template": {
@@ -58,17 +58,16 @@
                             "dockflow.shawiizz.dev/role": "app",
                             "dockflow.shawiizz.dev/service": "web",
                             "dockflow.shawiizz.dev/stack": "fixture-replica-failure-quota",
-                            "pod-template-hash": "lbvqsx2s79"
+                            "pod-template-hash": "ddff555b9"
                         }
                     },
                     "spec": {
                         "automountServiceAccountToken": false,
                         "containers": [
                             {
-                                "command": [
-                                    "sh",
-                                    "-c",
-                                    "sleep 3600"
+                                "args": [
+                                    "sleep",
+                                    "36000"
                                 ],
                                 "image": "busybox:1.37",
                                 "imagePullPolicy": "IfNotPresent",
@@ -80,6 +79,9 @@
                         ],
                         "dnsPolicy": "ClusterFirst",
                         "enableServiceLinks": false,
+                        "nodeSelector": {
+                            "kubernetes.io/hostname": "agent-1"
+                        },
                         "restartPolicy": "Always",
                         "schedulerName": "default-scheduler",
                         "securityContext": {
@@ -87,16 +89,31 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 10
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "web",
+                                        "dockflow.shawiizz.dev/stack": "fixture-replica-failure-quota"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
             "status": {
-                "availableReplicas": 1,
                 "conditions": [
                     {
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
-                        "message": "pods \"web-lbvqsx2s79-zbdkv\" is forbidden: exceeded quota: pods, requested: pods=1, used: pods=1, limited: pods=1",
+                        "lastTransitionTime": "2026-01-01T00:11:12Z",
+                        "message": "pods \"web-ddff555b9-pjk2t\" is forbidden: exceeded quota: pods, requested: pods=1, used: pods=1, limited: pods=1",
                         "reason": "FailedCreate",
                         "status": "True",
                         "type": "ReplicaFailure"
@@ -105,7 +122,8 @@
                 "fullyLabeledReplicas": 1,
                 "observedGeneration": 1,
                 "readyReplicas": 1,
-                "replicas": 1
+                "replicas": 1,
+                "terminatingReplicas": 0
             }
         }
     ],

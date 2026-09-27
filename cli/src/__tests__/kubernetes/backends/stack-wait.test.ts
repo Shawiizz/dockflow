@@ -500,9 +500,9 @@ describe('waitConvergence', () => {
     expect(result.status).toBe('failed');
     expect(result.failures).toHaveLength(1);
     const [failure] = result.failures;
-    expect(failure).toMatchObject({ service: 'web_app', reason: 'CrashLoopBackOff', instance: 'web-app-p2xkk2fn8m-zbc2k', node: 'server_1' });
+    expect(failure).toMatchObject({ service: 'web_app', reason: 'CrashLoopBackOff', instance: 'web-app-fbf7d977d-dqwf8', node: 'server_1' });
     expect(failure.message.startsWith('Service web_app keeps crashing: container web-app restarted 3 time(s), last exit code 1 (Error)')).toBe(true);
-    expect(failure.message).toContain(' (events: BackOff: Back-off restarting failed container web-app in pod web-app-p2xkk2fn8m-zbc2k');
+    expect(failure.message).toContain(' (events: BackOff: Back-off restarting failed container web-app in pod web-app-fbf7d977d-dqwf8');
     expect(result.message).toBe(failure.message);
     expect(result.suggestion).toBe('Run `dockflow logs production web_app`.');
     expect(exec.calls.some((c) => c.call.args[0] === 'logs')).toBe(false);
@@ -519,7 +519,7 @@ describe('waitConvergence', () => {
         {
           id: 'K14',
           method: 'run',
-          args: ['logs', 'web-app-p2xkk2fn8m-zbc2k', '-c', 'web-app', '--tail=20', '--previous'],
+          args: ['logs', 'web-app-fbf7d977d-dqwf8', '-c', 'web-app', '--tail=20', '--previous'],
           namespace: NS,
           mutating: false,
           respond: { exitCode: 0, stdout: `booting\nDB_PASSWORD=${SECRET}\n\nfatal: cannot reach the database\n`, stderr: '' },
@@ -536,7 +536,7 @@ describe('waitConvergence', () => {
     exec.assertDone();
     expect(result.status).toBe('failed');
     expect(reporter.debugs).toEqual([
-      'Last log lines of web-app-p2xkk2fn8m-zbc2k/web-app:',
+      'Last log lines of web-app-fbf7d977d-dqwf8/web-app:',
       '  booting',
       '  DB_PASSWORD=***',
       '  fatal: cannot reach the database',
@@ -546,7 +546,7 @@ describe('waitConvergence', () => {
   it('W4 an image missing on a worker fails immediately with F3 and the servers.yml node name', async () => {
     const clock = new FakeClock();
     const objects = items('image-pull-backoff', WORKLOAD_RESOURCES);
-    const broken = findPod(objects, 'web-h7fqpf2pgw-hhx68');
+    const broken = findPod(objects, 'web-679ff8548-l5hvb');
     const imported = 'dockflow.invalid/shop-web-production:1.4.2';
     broken.spec.nodeName = 'agent-1';
     broken.spec.containers[0].image = imported;
@@ -562,7 +562,7 @@ describe('waitConvergence', () => {
         service: 'web',
         reason: 'ErrImagePull',
         message: `Service web cannot start: image ${imported} was not imported on node agent_1`,
-        instance: 'web-h7fqpf2pgw-hhx68',
+        instance: 'web-679ff8548-l5hvb',
         node: 'agent_1',
       },
     ]);
@@ -612,7 +612,7 @@ describe('waitConvergence', () => {
     const result = await drive(clock, waitConvergence(subject([change('web', 'Deployment', 'web', 2)]), WAIT, depsFor(exec, clock, new RecordingReporter())));
     exec.assertDone();
     expect(result.status).toBe('failed');
-    expect(result.failures[0]).toMatchObject({ reason: 'CreateContainerConfigError', message: 'Service web cannot create container web: secret "web-env" not found' });
+    expect(result.failures[0]).toMatchObject({ reason: 'CreateContainerConfigError', message: 'Service web cannot create container web: secret "web-env-d521dbe6" not found' });
     // seen at 0, gone at 2, seen again from 5: 19 - 5 < 15, so it fails at 24 (not at 19)
     expect(clock.sleeps).toEqual([2000, 3000, 4000, 5000, 5000, 5000]);
   });
@@ -642,7 +642,7 @@ describe('waitConvergence', () => {
     exec.assertDone();
     expect(result.status).toBe('failed');
     expect(result.failures[0].reason).toBe('ProgressDeadlineExceeded');
-    expect(result.failures[0].message.startsWith('Service web made no progress for 30s: ')).toBe(true);
+    expect(result.failures[0].message.startsWith('Service web made no progress for 45s: ')).toBe(true);
     expect(result.failures[0].message).toContain('(events: Unhealthy: Readiness probe failed:');
     expect(result.suggestion).toBe('Run `dockflow logs production web`.');
   });
@@ -652,11 +652,11 @@ describe('waitConvergence', () => {
     const unhealthy: Event = {
       apiVersion: 'v1',
       kind: 'Event',
-      metadata: { name: 'web-htj6sx4lpn-ff4rl.1', namespace: NS },
+      metadata: { name: 'web-96d55d8c4-l67lt.1', namespace: NS },
       type: 'Warning',
       reason: 'Unhealthy',
       message: 'Readiness probe failed: HTTP probe failed with statuscode: 503',
-      involvedObject: { kind: 'Pod', name: 'web-htj6sx4lpn-ff4rl', uid: '00000000-0000-4000-8000-000000000024' },
+      involvedObject: { kind: 'Pod', name: 'web-96d55d8c4-l67lt', uid: '00000000-0000-4000-8000-000000000007' },
       lastTimestamp: '2026-01-01T00:18:30Z',
     };
     const exec = scripted([k12(['web'], fixture('rollout-progressing'), { times: 'any' }), k13(list(unhealthy))], clock);
@@ -758,7 +758,7 @@ describe('waitConvergence', () => {
   it('W13 a failed Job fails with TaskFailed', async () => {
     const clock = new FakeClock();
     const exec = scripted([k12(['migrate'], fixture('job-failed')), k13({ fixture: 'job-failed/events' })], clock);
-    const result = await drive(clock, waitConvergence(subject([change('migrate', 'Job', 'migrate-aefdcfd1', 1)]), WAIT, depsFor(exec, clock, new RecordingReporter())));
+    const result = await drive(clock, waitConvergence(subject([change('migrate', 'Job', 'migrate-0a492d34', 1)]), WAIT, depsFor(exec, clock, new RecordingReporter())));
     exec.assertDone();
     expect(result.status).toBe('failed');
     expect(result.failures[0].reason).toBe('TaskFailed');
@@ -1041,7 +1041,7 @@ describe('checkHealth', () => {
     const reporter = new RecordingReporter();
     const deps = depsFor(exec, clock, reporter);
     const web = [change('web', 'Deployment', 'web', 2)];
-    for (const target of [subject([change('migrate', 'Job', 'migrate-aefdcfd1', 1)]), subject(web, { skipped: true }), subject(web, { known: false })]) {
+    for (const target of [subject([change('migrate', 'Job', 'migrate-0a492d34', 1)]), subject(web, { skipped: true }), subject(web, { known: false })]) {
       expect(await drive(clock, checkHealth(target, HEALTH, deps))).toEqual({ healthy: true, rolledBack: false, failures: [] });
     }
     exec.assertDone();
@@ -1064,7 +1064,7 @@ describe('checkHealth', () => {
   it('H2 a restart inside the window is ContainerRestarted', async () => {
     const clock = new FakeClock();
     const restarted = items('rollout-complete');
-    const status = firstStatus(findPod(restarted, 'web-fbldgxtr82-cvpjp'));
+    const status = firstStatus(findPod(restarted, 'web-b655d585b-7jdgc'));
     status.restartCount = 1;
     status.lastState = { terminated: { exitCode: 137, reason: 'Error' } };
     const exec = scripted(
@@ -1079,8 +1079,8 @@ describe('checkHealth', () => {
       {
         service: 'web',
         reason: 'ContainerRestarted',
-        message: 'Service web restarted during the health window: container web in pod web-fbldgxtr82-cvpjp (last exit code 137, Error)',
-        instance: 'web-fbldgxtr82-cvpjp',
+        message: 'Service web restarted during the health window: container web in pod web-b655d585b-7jdgc (last exit code 137, Error)',
+        instance: 'web-b655d585b-7jdgc',
         node: 'server_1',
       },
     ]);
@@ -1168,8 +1168,8 @@ describe('checkHealth', () => {
       {
         service: 'web',
         reason: 'Timeout',
-        message: 'Service web is not healthy after 12s: pod web-htj6sx4lpn-ff4rl is Running (not ready)',
-        instance: 'web-htj6sx4lpn-ff4rl',
+        message: 'Service web is not healthy after 12s: pod web-96d55d8c4-l67lt is Running (not ready)',
+        instance: 'web-96d55d8c4-l67lt',
         node: 'agent_1',
       },
     ]);
@@ -1248,7 +1248,7 @@ describe('pollInventoryUntil', () => {
     expect(result.status).toBe('timeout');
     if (result.status !== 'timeout') return;
     expect(result.pending).toHaveLength(1);
-    expect(inventorySummary(result.pending[0])).toBe('pod web-htj6sx4lpn-ff4rl is Running (not ready)');
+    expect(inventorySummary(result.pending[0])).toBe('pod web-96d55d8c4-l67lt is Running (not ready)');
     expect(clock.sleeps).toEqual([2000, 3000, 1000]);
   });
 

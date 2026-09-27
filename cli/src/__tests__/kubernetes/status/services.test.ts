@@ -167,7 +167,7 @@ describe('workloadReplicas', () => {
   });
 
   it('DaemonSet: numberReady over desiredNumberScheduled', () => {
-    expect(workloadReplicas(recordOf(inventoryOf('daemonset-rolling'), 'agent').object)).toEqual({ running: 1, desired: 2 });
+    expect(workloadReplicas(recordOf(inventoryOf('daemonset-rolling'), 'agent').object)).toEqual({ running: 2, desired: 2 });
     const empty: DaemonSet = {
       apiVersion: 'apps/v1',
       kind: 'DaemonSet',
@@ -367,7 +367,7 @@ describe('toServiceInfos', () => {
       { name: 'db', nativeName: 'db', mode: 'replicated', role: 'accessory', replicas: { running: 1, desired: 2 }, state: 'degraded' },
     ]);
     expect(toServiceInfos(inventoryOf('daemonset-rolling'), 'app', [])).toMatchObject([
-      { name: 'agent', mode: 'global', replicas: { running: 1, desired: 2 }, state: 'converging' },
+      { name: 'agent', mode: 'global', replicas: { running: 2, desired: 2 }, state: 'converging' },
     ]);
     // the Job object name carries its template checksum; the native name is the service's
     expect(toServiceInfos(inventoryOf('job-complete'), 'app', [])).toMatchObject([

@@ -4,25 +4,25 @@
         {
             "action": "Binding",
             "apiVersion": "v1",
-            "eventTime": "2026-01-01T00:15:00.204118Z",
+            "eventTime": "2026-01-01T00:07:06.007Z",
             "firstTimestamp": null,
             "involvedObject": {
                 "apiVersion": "v1",
                 "kind": "Pod",
-                "name": "web-dgnq2qql9c-f55cv",
+                "name": "web-676dcfbd47-p9gx9",
                 "namespace": "fixture-err-image-never-pull",
-                "resourceVersion": "8",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "4",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "kind": "Event",
             "lastTimestamp": null,
-            "message": "Successfully assigned fixture-err-image-never-pull/web-dgnq2qql9c-f55cv to server-1",
+            "message": "Successfully assigned fixture-err-image-never-pull/web-676dcfbd47-p9gx9 to server-1",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web-dgnq2qql9c-f55cv.188673239a8d854c",
+                "creationTimestamp": "2026-01-01T00:07:06Z",
+                "name": "web-676dcfbd47-p9gx9.18d92530f222c50d",
                 "namespace": "fixture-err-image-never-pull",
-                "resourceVersion": "9",
-                "uid": "00000000-0000-4000-8000-000000000006"
+                "resourceVersion": "5",
+                "uid": "00000000-0000-4000-8000-000000000008"
             },
             "reason": "Scheduled",
             "reportingComponent": "default-scheduler",
@@ -32,27 +32,27 @@
         },
         {
             "apiVersion": "v1",
-            "count": 6,
+            "count": 2,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "firstTimestamp": "2026-01-01T00:07:06Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.containers{web}",
                 "kind": "Pod",
-                "name": "web-dgnq2qql9c-f55cv",
+                "name": "web-676dcfbd47-p9gx9",
                 "namespace": "fixture-err-image-never-pull",
-                "resourceVersion": "10",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:55Z",
+            "lastTimestamp": "2026-01-01T00:07:06Z",
             "message": "Container image \"dockflow.invalid/shop-web:1.4.2\" is not present with pull policy of Never",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:01Z",
-                "name": "web-dgnq2qql9c-f55cv.18867323c03d39b3",
+                "creationTimestamp": "2026-01-01T00:07:06Z",
+                "name": "web-676dcfbd47-p9gx9.18d92530fb2351c2",
                 "namespace": "fixture-err-image-never-pull",
-                "resourceVersion": "11",
-                "uid": "00000000-0000-4000-8000-000000000007"
+                "resourceVersion": "7",
+                "uid": "00000000-0000-4000-8000-000000000009"
             },
             "reason": "ErrImageNeverPull",
             "reportingComponent": "kubelet",
@@ -65,27 +65,27 @@
         },
         {
             "apiVersion": "v1",
-            "count": 6,
+            "count": 2,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "firstTimestamp": "2026-01-01T00:07:06Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.containers{web}",
                 "kind": "Pod",
-                "name": "web-dgnq2qql9c-f55cv",
+                "name": "web-676dcfbd47-p9gx9",
                 "namespace": "fixture-err-image-never-pull",
-                "resourceVersion": "12",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:55Z",
+            "lastTimestamp": "2026-01-01T00:07:06Z",
             "message": "Error: ErrImageNeverPull",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:01Z",
-                "name": "web-dgnq2qql9c-f55cv.18867323d5e3e946",
+                "creationTimestamp": "2026-01-01T00:07:06Z",
+                "name": "web-676dcfbd47-p9gx9.18d92530fb23d5af",
                 "namespace": "fixture-err-image-never-pull",
-                "resourceVersion": "13",
-                "uid": "00000000-0000-4000-8000-000000000008"
+                "resourceVersion": "8",
+                "uid": "00000000-0000-4000-8000-000000000010"
             },
             "reason": "Failed",
             "reportingComponent": "kubelet",
@@ -100,24 +100,24 @@
             "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "firstTimestamp": "2026-01-01T00:07:06Z",
             "involvedObject": {
                 "apiVersion": "apps/v1",
                 "kind": "ReplicaSet",
-                "name": "web-dgnq2qql9c",
+                "name": "web-676dcfbd47",
                 "namespace": "fixture-err-image-never-pull",
-                "resourceVersion": "6",
+                "resourceVersion": "9",
                 "uid": "00000000-0000-4000-8000-000000000002"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:00Z",
-            "message": "Created pod: web-dgnq2qql9c-f55cv",
+            "lastTimestamp": "2026-01-01T00:07:06Z",
+            "message": "Created pod: web-676dcfbd47-p9gx9",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web-dgnq2qql9c.188673238a173dad",
+                "creationTimestamp": "2026-01-01T00:07:06Z",
+                "name": "web-676dcfbd47.18d92530f1f88789",
                 "namespace": "fixture-err-image-never-pull",
-                "resourceVersion": "7",
-                "uid": "00000000-0000-4000-8000-000000000005"
+                "resourceVersion": "10",
+                "uid": "00000000-0000-4000-8000-000000000011"
             },
             "reason": "SuccessfulCreate",
             "reportingComponent": "replicaset-controller",
@@ -131,24 +131,24 @@
             "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "firstTimestamp": "2026-01-01T00:07:05Z",
             "involvedObject": {
                 "apiVersion": "apps/v1",
                 "kind": "Deployment",
                 "name": "web",
                 "namespace": "fixture-err-image-never-pull",
-                "resourceVersion": "3",
+                "resourceVersion": "11",
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:00Z",
-            "message": "Scaled up replica set web-dgnq2qql9c from 0 to 1",
+            "lastTimestamp": "2026-01-01T00:07:05Z",
+            "message": "Scaled up replica set web-676dcfbd47 from 0 to 1",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web.1886732385b1949c",
+                "creationTimestamp": "2026-01-01T00:07:05Z",
+                "name": "web.18d92530e43abca9",
                 "namespace": "fixture-err-image-never-pull",
-                "resourceVersion": "4",
-                "uid": "00000000-0000-4000-8000-000000000003"
+                "resourceVersion": "12",
+                "uid": "00000000-0000-4000-8000-000000000012"
             },
             "reason": "ScalingReplicaSet",
             "reportingComponent": "deployment-controller",

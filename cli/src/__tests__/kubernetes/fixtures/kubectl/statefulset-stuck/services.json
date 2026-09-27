@@ -8,7 +8,51 @@
                 "annotations": {
                     "dockflow.shawiizz.dev/compose-service": "db"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:11:18Z",
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-statefulset-stuck",
+                    "app.kubernetes.io/managed-by": "dockflow",
+                    "app.kubernetes.io/name": "db",
+                    "app.kubernetes.io/part-of": "shop",
+                    "dockflow.shawiizz.dev/part": "stack",
+                    "dockflow.shawiizz.dev/role": "accessory",
+                    "dockflow.shawiizz.dev/service": "db",
+                    "dockflow.shawiizz.dev/stack": "fixture-statefulset-stuck"
+                },
+                "name": "db",
+                "namespace": "fixture-statefulset-stuck",
+                "resourceVersion": "43",
+                "uid": "00000000-0000-4000-8000-000000000008"
+            },
+            "spec": {
+                "clusterIP": "None",
+                "clusterIPs": [
+                    "None"
+                ],
+                "internalTrafficPolicy": "Cluster",
+                "ipFamilies": [
+                    "IPv4"
+                ],
+                "ipFamilyPolicy": "SingleStack",
+                "selector": {
+                    "dockflow.shawiizz.dev/service": "db",
+                    "dockflow.shawiizz.dev/stack": "fixture-statefulset-stuck"
+                },
+                "sessionAffinity": "None",
+                "type": "ClusterIP"
+            },
+            "status": {
+                "loadBalancer": {}
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "annotations": {
+                    "dockflow.shawiizz.dev/compose-service": "db"
+                },
+                "creationTimestamp": "2026-01-01T00:11:18Z",
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-statefulset-stuck",
                     "app.kubernetes.io/managed-by": "dockflow",
@@ -21,8 +65,8 @@
                 },
                 "name": "db-hl",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "4",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "44",
+                "uid": "00000000-0000-4000-8000-000000000009"
             },
             "spec": {
                 "clusterIP": "None",
@@ -34,14 +78,6 @@
                     "IPv4"
                 ],
                 "ipFamilyPolicy": "SingleStack",
-                "ports": [
-                    {
-                        "name": "placeholder",
-                        "port": 9,
-                        "protocol": "TCP",
-                        "targetPort": 9
-                    }
-                ],
                 "selector": {
                     "dockflow.shawiizz.dev/service": "db",
                     "dockflow.shawiizz.dev/stack": "fixture-statefulset-stuck"

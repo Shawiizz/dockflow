@@ -9,10 +9,9 @@
                     "deployment.kubernetes.io/desired-replicas": "1",
                     "deployment.kubernetes.io/max-replicas": "2",
                     "deployment.kubernetes.io/revision": "1",
-                    "dockflow.shawiizz.dev/compose-service": "api",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "api"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:15:17Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-multi-container",
@@ -20,9 +19,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "api",
                     "dockflow.shawiizz.dev/stack": "fixture-multi-container",
-                    "pod-template-hash": "bg5g5vghlb"
+                    "pod-template-hash": "847f8bf66c"
                 },
-                "name": "api-bg5g5vghlb",
+                "name": "api-847f8bf66c",
                 "namespace": "fixture-multi-container",
                 "ownerReferences": [
                     {
@@ -38,12 +37,13 @@
                 "uid": "00000000-0000-4000-8000-000000000002"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "replicas": 1,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "api",
                         "dockflow.shawiizz.dev/stack": "fixture-multi-container",
-                        "pod-template-hash": "bg5g5vghlb"
+                        "pod-template-hash": "847f8bf66c"
                     }
                 },
                 "template": {
@@ -58,7 +58,7 @@
                             "dockflow.shawiizz.dev/role": "app",
                             "dockflow.shawiizz.dev/service": "api",
                             "dockflow.shawiizz.dev/stack": "fixture-multi-container",
-                            "pod-template-hash": "bg5g5vghlb"
+                            "pod-template-hash": "847f8bf66c"
                         }
                     },
                     "spec": {
@@ -81,9 +81,8 @@
                             },
                             {
                                 "command": [
-                                    "sh",
-                                    "-c",
-                                    "sleep 3600"
+                                    "sleep",
+                                    "36000"
                                 ],
                                 "image": "busybox:1.37",
                                 "imagePullPolicy": "IfNotPresent",
@@ -95,6 +94,9 @@
                         ],
                         "dnsPolicy": "ClusterFirst",
                         "enableServiceLinks": false,
+                        "nodeSelector": {
+                            "kubernetes.io/hostname": "agent-1"
+                        },
                         "restartPolicy": "Always",
                         "schedulerName": "default-scheduler",
                         "securityContext": {
@@ -102,7 +104,23 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 10
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "api",
+                                        "dockflow.shawiizz.dev/stack": "fixture-multi-container"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
@@ -111,7 +129,8 @@
                 "fullyLabeledReplicas": 1,
                 "observedGeneration": 1,
                 "readyReplicas": 1,
-                "replicas": 1
+                "replicas": 1,
+                "terminatingReplicas": 0
             }
         }
     ],

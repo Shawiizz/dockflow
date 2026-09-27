@@ -9,8 +9,8 @@
                     "dockflow.shawiizz.dev/compose-service": "web",
                     "kubectl.kubernetes.io/default-container": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "generateName": "web-6vhcgnkhkx-",
+                "creationTimestamp": "2026-01-01T00:08:55Z",
+                "generateName": "web-78b8956bb6-",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-unschedulable-node-selector",
@@ -18,9 +18,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-unschedulable-node-selector",
-                    "pod-template-hash": "6vhcgnkhkx"
+                    "pod-template-hash": "78b8956bb6"
                 },
-                "name": "web-6vhcgnkhkx-7bhjr",
+                "name": "web-78b8956bb6-scbkl",
                 "namespace": "fixture-unschedulable-node-selector",
                 "ownerReferences": [
                     {
@@ -28,21 +28,20 @@
                         "blockOwnerDeletion": true,
                         "controller": true,
                         "kind": "ReplicaSet",
-                        "name": "web-6vhcgnkhkx",
+                        "name": "web-78b8956bb6",
                         "uid": "00000000-0000-4000-8000-000000000002"
                     }
                 ],
-                "resourceVersion": "5",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "spec": {
                 "automountServiceAccountToken": false,
                 "containers": [
                     {
-                        "command": [
-                            "sh",
-                            "-c",
-                            "sleep 3600"
+                        "args": [
+                            "sleep",
+                            "36000"
                         ],
                         "image": "busybox:1.37",
                         "imagePullPolicy": "IfNotPresent",
@@ -82,14 +81,39 @@
                         "operator": "Exists",
                         "tolerationSeconds": 300
                     }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchExpressions": [
+                                {
+                                    "key": "pod-template-hash",
+                                    "operator": "In",
+                                    "values": [
+                                        "78b8956bb6"
+                                    ]
+                                }
+                            ],
+                            "matchLabels": {
+                                "dockflow.shawiizz.dev/service": "web",
+                                "dockflow.shawiizz.dev/stack": "fixture-unschedulable-node-selector"
+                            }
+                        },
+                        "matchLabelKeys": [
+                            "pod-template-hash"
+                        ],
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "ScheduleAnyway"
+                    }
                 ]
             },
             "status": {
                 "conditions": [
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
-                        "message": "0/2 nodes are available: 2 node(s) didn't match Pod's node affinity/selector. preemption: 0/2 nodes are available: 2 Preemption is not helpful for scheduling.",
+                        "lastTransitionTime": "2026-01-01T00:08:55Z",
+                        "message": "0/2 nodes are available: 2 node(s) didn't match Pod's node affinity/selector. no new claims to deallocate, preemption: 0/2 nodes are available: 2 Preemption is not helpful for scheduling.",
                         "observedGeneration": 1,
                         "reason": "Unschedulable",
                         "status": "False",

@@ -281,8 +281,8 @@ describe('pod metrics', () => {
     reader.invalidate(NS);
     expect(await reader.podMetrics(NS)).toBe(first);
     expect(podMetricsPath(NS)).toBe(`/apis/metrics.k8s.io/v1beta1/namespaces/${NS}/pods`);
-    expect(first.map((m) => m.metadata.name)).toEqual(['db-0', 'dockflow-helper-archive-3f9a2c1b', 'web-782lrz9hsf-6dfnp', 'web-782lrz9hsf-7fvrw']);
-    expect(first[2].containers).toEqual([{ name: 'web', usage: { cpu: '987204n', memory: '3964Ki' } }]);
+    expect(first.map((m) => m.metadata.name)).toEqual(['db-0', 'dockflow-helper-backup-3f9a2c1b', 'web-758947d665-jr6dl', 'web-758947d665-pk8pg']);
+    expect(first[2].containers).toEqual([{ name: 'web', usage: { cpu: '0', memory: '14960Ki' } }]);
   });
 
   it('output that is not JSON is a KubeError, and is read again next time', async () => {

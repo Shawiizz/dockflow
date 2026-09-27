@@ -1,13 +1,10 @@
 {
-  "synthetic": true,
+  "recordedOn": "2026-09-27",
   "k3sVersion": "v1.36.4+k3s1",
   "steps": [
-    "kubectl create namespace fixture-node-not-ready",
-    "kubectl apply: Deployment web (2 replicas, busybox:1.37 running sleep, one pod on each node)",
-    "kubectl rollout status deployment/web --timeout=120s",
-    "systemctl stop k3s-agent on agent-1",
-    "wait until node agent-1 reports Ready=Unknown (node-monitor-grace-period, about 50 seconds)",
-    "capture the namespace resources and the cluster nodes and persistentvolumes",
-    "systemctl start k3s-agent on agent-1 (the whole outage lasts about 60 seconds)"
+    "Dockflow renders the compose file into namespace fixture-<scenario> (project shop, release 1.4.2, servers server_1 and agent_1) and applies it server-side as a deploy does",
+    "docker-compose.yml: service web, busybox:1.37, command sleep 36000, deploy.replicas 2, deploy.placement.max_replicas_per_node 1 (one pod on each node)",
+    "kubectl rollout status deployment/web, then systemctl stop k3s-agent on agent-1",
+    "capture once node agent-1 reports Ready=Unknown (node-monitor-grace-period, about 50 seconds), then systemctl start k3s-agent"
   ]
 }

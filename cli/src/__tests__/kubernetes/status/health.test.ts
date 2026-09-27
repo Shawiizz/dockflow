@@ -115,7 +115,7 @@ describe('stability window (H1)', () => {
   it('a pod that stops being Ready restarts the window', () => {
     const polls = [
       { snap: snapshotOf(scenario), now: at(0) },
-      { snap: unready(snapshotOf(scenario), 'web-fbldgxtr82-m958d'), now: at(5) },
+      { snap: unready(snapshotOf(scenario), 'web-b655d585b-vnpn8'), now: at(5) },
       { snap: snapshotOf(scenario), now: at(10) },
       { snap: snapshotOf(scenario), now: at(15) },
       { snap: snapshotOf(scenario), now: at(20) },
@@ -142,7 +142,7 @@ describe('restarts during the window (H2, U-STATUS-HEALTH-01)', () => {
   it('a restart count above the baseline is ContainerRestarted', () => {
     const polls = [
       { snap: snapshotOf(scenario), now: at(0) },
-      { snap: restarted(snapshotOf(scenario), 'web-fbldgxtr82-m958d', 1), now: at(5) },
+      { snap: restarted(snapshotOf(scenario), 'web-b655d585b-vnpn8', 1), now: at(5) },
     ];
     const { steps, last } = run([web], polls, contextOf(scenario));
     expect(steps).toEqual(['pending', 'unhealthy']);
@@ -151,32 +151,32 @@ describe('restarts during the window (H2, U-STATUS-HEALTH-01)', () => {
     expect(last.failed[0].failure).toEqual({
       service: 'web',
       reason: 'ContainerRestarted',
-      message: 'Service web restarted during the health window: container web in pod web-fbldgxtr82-m958d (last exit code 137, Error)',
-      instance: 'web-fbldgxtr82-m958d',
+      message: 'Service web restarted during the health window: container web in pod web-b655d585b-vnpn8 (last exit code 137, Error)',
+      instance: 'web-b655d585b-vnpn8',
       node: 'agent_1',
     });
     expect(last.failed[0].suggestion).toBe('Run `dockflow logs production web`.');
-    expect(last.failed[0].ownerUids).toEqual(['00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000003']);
+    expect(last.failed[0].ownerUids).toEqual(['00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002']);
   });
 
   it('restarts before every pod was first Ready set the baseline, they are not failures', () => {
     const polls = [
-      { snap: unready(restarted(snapshotOf(scenario), 'web-fbldgxtr82-m958d', 2), 'web-fbldgxtr82-m958d'), now: at(0) },
-      { snap: restarted(snapshotOf(scenario), 'web-fbldgxtr82-m958d', 2), now: at(5) },
-      { snap: restarted(snapshotOf(scenario), 'web-fbldgxtr82-m958d', 2), now: at(10) },
-      { snap: restarted(snapshotOf(scenario), 'web-fbldgxtr82-m958d', 2), now: at(15) },
+      { snap: unready(restarted(snapshotOf(scenario), 'web-b655d585b-vnpn8', 2), 'web-b655d585b-vnpn8'), now: at(0) },
+      { snap: restarted(snapshotOf(scenario), 'web-b655d585b-vnpn8', 2), now: at(5) },
+      { snap: restarted(snapshotOf(scenario), 'web-b655d585b-vnpn8', 2), now: at(10) },
+      { snap: restarted(snapshotOf(scenario), 'web-b655d585b-vnpn8', 2), now: at(15) },
     ];
     const { steps, last } = run([web], polls, contextOf(scenario));
     expect(steps).toEqual(['pending', 'pending', 'pending', 'healthy']);
-    expect(last.progress.baseline?.['00000000-0000-4000-8000-000000000024/web']).toBe(2);
+    expect(last.progress.baseline?.['00000000-0000-4000-8000-000000000005/web']).toBe(2);
   });
 
   it('restart counts are reported per pod and container', () => {
     const evaluation = evaluateHealth([web], snapshotOf(scenario), null, { firstSeen: {} }, T0, contextOf(scenario));
     expect(evaluation.restartCounts).toEqual({
-      '00000000-0000-4000-8000-000000000024/web': 0,
-      '00000000-0000-4000-8000-000000000034/web': 0,
-      '00000000-0000-4000-8000-000000000044/web': 0,
+      '00000000-0000-4000-8000-000000000004/web': 0,
+      '00000000-0000-4000-8000-000000000005/web': 0,
+      '00000000-0000-4000-8000-000000000006/web': 0,
     });
     expect(evaluation.allReady).toBe(true);
     expect(evaluation.notReady).toEqual([]);
@@ -184,19 +184,19 @@ describe('restarts during the window (H2, U-STATUS-HEALTH-01)', () => {
 
   it('a restart without a recorded last state reports an unknown exit code', () => {
     const snap = snapshotOf(scenario);
-    const status = podNamed(snap, 'web-fbldgxtr82-m958d').status?.containerStatuses?.[0];
+    const status = podNamed(snap, 'web-b655d585b-vnpn8').status?.containerStatuses?.[0];
     if (!status) throw new Error('no container status');
     status.restartCount = 1;
     const evaluation = evaluateHealth(
       [web],
       snap,
-      { '00000000-0000-4000-8000-000000000024/web': 0 },
+      { '00000000-0000-4000-8000-000000000005/web': 0 },
       { firstSeen: {} },
       T0,
       contextOf(scenario),
     );
     expect(evaluation.failures[0].failure.message).toBe(
-      'Service web restarted during the health window: container web in pod web-fbldgxtr82-m958d (last exit code unknown)',
+      'Service web restarted during the health window: container web in pod web-b655d585b-vnpn8 (last exit code unknown)',
     );
   });
 });
@@ -206,7 +206,7 @@ describe('fail-fast signals during the window', () => {
     const scenario = 'crashloop';
     const { last } = run([deployment('web_app', 'web-app', 1)], [{ snap: snapshotOf(scenario), now: T0 }], contextOf(scenario));
     if (last.status !== 'unhealthy') throw new Error(`expected unhealthy, got ${last.status}`);
-    expect(last.failed[0].failure).toMatchObject({ service: 'web_app', reason: 'CrashLoopBackOff', instance: 'web-app-p2xkk2fn8m-zbc2k' });
+    expect(last.failed[0].failure).toMatchObject({ service: 'web_app', reason: 'CrashLoopBackOff', instance: 'web-app-fbf7d977d-dqwf8' });
   });
 
   it('a signal with a grace fails only once the grace has passed', () => {
@@ -229,13 +229,13 @@ describe('deadline (U-STATUS-HEALTH timeouts)', () => {
       {
         service: 'web',
         reason: 'Timeout',
-        message: 'Service web is not healthy after 120s: pod web-cgxn45bv8v-ptd9t is Running (not ready)',
-        instance: 'web-cgxn45bv8v-ptd9t',
+        message: 'Service web is not healthy after 120s: pod web-56fd5fd7bf-42nbx is Running (not ready)',
+        instance: 'web-56fd5fd7bf-42nbx',
         node: 'agent_1',
       },
     ]);
     expect(last.failed[0].suggestion).toBe('Run `dockflow diagnose production`.');
-    expect(last.failed[0].podUids).toEqual(['00000000-0000-4000-8000-000000000010']);
+    expect(last.failed[0].podUids).toEqual(['00000000-0000-4000-8000-000000000003']);
   });
 
   it('fewer current pods than replicas at the deadline is a Timeout with the count', () => {
@@ -287,7 +287,7 @@ describe('pods that do not count', () => {
 
   it('Job targets are not part of the health check', () => {
     const scenario = 'job-failed';
-    const job: WatchTarget = { service: 'migrate', kind: 'Job', name: 'migrate-aefdcfd1', serviceLabel: 'migrate', generation: 1 };
+    const job: WatchTarget = { service: 'migrate', kind: 'Job', name: 'migrate-0a492d34', serviceLabel: 'migrate', generation: 1 };
     const evaluation = evaluateHealth([job], snapshotOf(scenario), null, { firstSeen: {} }, T0, contextOf(scenario));
     expect(evaluation).toEqual({ failures: [], allReady: true, restartCounts: {}, notReady: [], state: { firstSeen: {} } });
   });
@@ -296,7 +296,8 @@ describe('pods that do not count', () => {
     const agent: WatchTarget = { service: 'agent', kind: 'DaemonSet', name: 'agent', serviceLabel: 'agent', generation: 2 };
     const rolling = evaluateHealth([agent], snapshotOf('daemonset-rolling'), null, { firstSeen: {} }, T0, contextOf('daemonset-rolling'));
     expect(rolling.allReady).toBe(false);
-    expect(rolling.notReady).toMatchObject([{ kind: 'pod', service: 'agent' }]);
+    // mid-rollout: agent-1 still runs the previous revision, so one current pod of two
+    expect(rolling.notReady).toMatchObject([{ kind: 'count', service: 'agent', ready: 1, desired: 2 }]);
     const completed = pollSnapshot(loadKubectlResources<PollObject>('daemonset-rolling', POLL_RESOURCES, 'completed').items);
     expect(evaluateHealth([agent], completed, null, { firstSeen: {} }, T0, contextOf('daemonset-rolling')).allReady).toBe(true);
   });

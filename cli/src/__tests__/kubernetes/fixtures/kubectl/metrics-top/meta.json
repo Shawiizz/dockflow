@@ -1,11 +1,12 @@
 {
-  "synthetic": true,
+  "recordedOn": "2026-09-27",
   "k3sVersion": "v1.36.4+k3s1",
   "steps": [
-    "kubectl create namespace fixture-metrics-top",
-    "kubectl apply: app Deployment web (2 replicas, nginx:1.27-alpine, memory limit 128Mi), accessory StatefulSet db (1 replica, busybox:1.37 running sleep, memory limit 256Mi) and helper pod dockflow-helper-archive-3f9a2c1b (label dockflow.shawiizz.dev/part=helper)",
-    "wait until every pod is Ready and metrics-server has scraped them (kubectl top pods lists all four)",
-    "capture the namespace resources and the cluster nodes and persistentvolumes",
+    "Dockflow renders the compose file into namespace fixture-<scenario> (project shop, release 1.4.2, servers server_1 and agent_1) and applies it server-side as a deploy does",
+    "docker-compose.yml: service web, nginx:1.27-alpine, deploy.replicas 2, deploy.resources.limits.memory 128M",
+    "accessories.yml: service db, busybox:1.37, command sleep 36000, deploy.resources.limits.memory 256M, x-dockflow.kind statefulset, placed on server_1",
+    "the backup helper pod dockflow-helper-backup-3f9a2c1b of service db, as backups create it (backends/backup.ts buildHelperPod), on server-1",
+    "capture once every pod is Ready and kubectl top pods lists all four",
     "kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/fixture-metrics-top/pods > metrics/metrics-top.json"
   ]
 }

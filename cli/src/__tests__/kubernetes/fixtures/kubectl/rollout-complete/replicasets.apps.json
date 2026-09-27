@@ -8,21 +8,20 @@
                 "annotations": {
                     "deployment.kubernetes.io/desired-replicas": "3",
                     "deployment.kubernetes.io/max-replicas": "4",
-                    "deployment.kubernetes.io/revision": "1",
-                    "dockflow.shawiizz.dev/compose-service": "web",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "deployment.kubernetes.io/revision": "2",
+                    "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "generation": 4,
+                "creationTimestamp": "2026-01-01T00:22:08Z",
+                "generation": 3,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-rollout-complete",
                     "app.kubernetes.io/name": "web",
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-rollout-complete",
-                    "pod-template-hash": "72rsqnp9vq"
+                    "pod-template-hash": "b655d585b"
                 },
-                "name": "web-72rsqnp9vq",
+                "name": "web-b655d585b",
                 "namespace": "fixture-rollout-complete",
                 "ownerReferences": [
                     {
@@ -38,121 +37,13 @@
                 "uid": "00000000-0000-4000-8000-000000000002"
             },
             "spec": {
-                "replicas": 0,
-                "selector": {
-                    "matchLabels": {
-                        "dockflow.shawiizz.dev/service": "web",
-                        "dockflow.shawiizz.dev/stack": "fixture-rollout-complete",
-                        "pod-template-hash": "72rsqnp9vq"
-                    }
-                },
-                "template": {
-                    "metadata": {
-                        "annotations": {
-                            "dockflow.shawiizz.dev/compose-service": "web",
-                            "kubectl.kubernetes.io/default-container": "web"
-                        },
-                        "labels": {
-                            "app.kubernetes.io/instance": "fixture-rollout-complete",
-                            "app.kubernetes.io/name": "web",
-                            "dockflow.shawiizz.dev/role": "app",
-                            "dockflow.shawiizz.dev/service": "web",
-                            "dockflow.shawiizz.dev/stack": "fixture-rollout-complete",
-                            "pod-template-hash": "72rsqnp9vq"
-                        }
-                    },
-                    "spec": {
-                        "automountServiceAccountToken": false,
-                        "containers": [
-                            {
-                                "image": "nginx:1.27-alpine",
-                                "imagePullPolicy": "IfNotPresent",
-                                "name": "web",
-                                "ports": [
-                                    {
-                                        "containerPort": 80,
-                                        "name": "tcp-80",
-                                        "protocol": "TCP"
-                                    }
-                                ],
-                                "readinessProbe": {
-                                    "failureThreshold": 3,
-                                    "httpGet": {
-                                        "path": "/",
-                                        "port": 80,
-                                        "scheme": "HTTP"
-                                    },
-                                    "initialDelaySeconds": 60,
-                                    "periodSeconds": 5,
-                                    "successThreshold": 1,
-                                    "timeoutSeconds": 1
-                                },
-                                "resources": {},
-                                "terminationMessagePath": "/dev/termination-log",
-                                "terminationMessagePolicy": "File"
-                            }
-                        ],
-                        "dnsPolicy": "ClusterFirst",
-                        "enableServiceLinks": false,
-                        "restartPolicy": "Always",
-                        "schedulerName": "default-scheduler",
-                        "securityContext": {
-                            "seccompProfile": {
-                                "type": "RuntimeDefault"
-                            }
-                        },
-                        "terminationGracePeriodSeconds": 10
-                    }
-                }
-            },
-            "status": {
-                "observedGeneration": 4,
-                "replicas": 0
-            }
-        },
-        {
-            "apiVersion": "apps/v1",
-            "kind": "ReplicaSet",
-            "metadata": {
-                "annotations": {
-                    "deployment.kubernetes.io/desired-replicas": "3",
-                    "deployment.kubernetes.io/max-replicas": "4",
-                    "deployment.kubernetes.io/revision": "2",
-                    "dockflow.shawiizz.dev/compose-service": "web",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
-                },
-                "creationTimestamp": "2026-01-01T00:18:00Z",
-                "generation": 3,
-                "labels": {
-                    "app.kubernetes.io/instance": "fixture-rollout-complete",
-                    "app.kubernetes.io/name": "web",
-                    "dockflow.shawiizz.dev/role": "app",
-                    "dockflow.shawiizz.dev/service": "web",
-                    "dockflow.shawiizz.dev/stack": "fixture-rollout-complete",
-                    "pod-template-hash": "fbldgxtr82"
-                },
-                "name": "web-fbldgxtr82",
-                "namespace": "fixture-rollout-complete",
-                "ownerReferences": [
-                    {
-                        "apiVersion": "apps/v1",
-                        "blockOwnerDeletion": true,
-                        "controller": true,
-                        "kind": "Deployment",
-                        "name": "web",
-                        "uid": "00000000-0000-4000-8000-000000000001"
-                    }
-                ],
-                "resourceVersion": "3",
-                "uid": "00000000-0000-4000-8000-000000000003"
-            },
-            "spec": {
+                "minReadySeconds": 30,
                 "replicas": 3,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "web",
                         "dockflow.shawiizz.dev/stack": "fixture-rollout-complete",
-                        "pod-template-hash": "fbldgxtr82"
+                        "pod-template-hash": "b655d585b"
                     }
                 },
                 "template": {
@@ -167,7 +58,7 @@
                             "dockflow.shawiizz.dev/role": "app",
                             "dockflow.shawiizz.dev/service": "web",
                             "dockflow.shawiizz.dev/stack": "fixture-rollout-complete",
-                            "pod-template-hash": "fbldgxtr82"
+                            "pod-template-hash": "b655d585b"
                         }
                     },
                     "spec": {
@@ -191,10 +82,9 @@
                                         "port": 80,
                                         "scheme": "HTTP"
                                     },
-                                    "initialDelaySeconds": 60,
-                                    "periodSeconds": 5,
+                                    "periodSeconds": 30,
                                     "successThreshold": 1,
-                                    "timeoutSeconds": 1
+                                    "timeoutSeconds": 30
                                 },
                                 "resources": {},
                                 "terminationMessagePath": "/dev/termination-log",
@@ -210,7 +100,23 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 10
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "web",
+                                        "dockflow.shawiizz.dev/stack": "fixture-rollout-complete"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
@@ -219,7 +125,133 @@
                 "fullyLabeledReplicas": 3,
                 "observedGeneration": 3,
                 "readyReplicas": 3,
-                "replicas": 3
+                "replicas": 3,
+                "terminatingReplicas": 0
+            }
+        },
+        {
+            "apiVersion": "apps/v1",
+            "kind": "ReplicaSet",
+            "metadata": {
+                "annotations": {
+                    "deployment.kubernetes.io/desired-replicas": "3",
+                    "deployment.kubernetes.io/max-replicas": "4",
+                    "deployment.kubernetes.io/revision": "1",
+                    "dockflow.shawiizz.dev/compose-service": "web"
+                },
+                "creationTimestamp": "2026-01-01T00:21:07Z",
+                "generation": 4,
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-rollout-complete",
+                    "app.kubernetes.io/name": "web",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "web",
+                    "dockflow.shawiizz.dev/stack": "fixture-rollout-complete",
+                    "pod-template-hash": "c8998f889"
+                },
+                "name": "web-c8998f889",
+                "namespace": "fixture-rollout-complete",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Deployment",
+                        "name": "web",
+                        "uid": "00000000-0000-4000-8000-000000000001"
+                    }
+                ],
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000003"
+            },
+            "spec": {
+                "minReadySeconds": 30,
+                "replicas": 0,
+                "selector": {
+                    "matchLabels": {
+                        "dockflow.shawiizz.dev/service": "web",
+                        "dockflow.shawiizz.dev/stack": "fixture-rollout-complete",
+                        "pod-template-hash": "c8998f889"
+                    }
+                },
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "dockflow.shawiizz.dev/compose-service": "web",
+                            "kubectl.kubernetes.io/default-container": "web"
+                        },
+                        "labels": {
+                            "app.kubernetes.io/instance": "fixture-rollout-complete",
+                            "app.kubernetes.io/name": "web",
+                            "dockflow.shawiizz.dev/role": "app",
+                            "dockflow.shawiizz.dev/service": "web",
+                            "dockflow.shawiizz.dev/stack": "fixture-rollout-complete",
+                            "pod-template-hash": "c8998f889"
+                        }
+                    },
+                    "spec": {
+                        "automountServiceAccountToken": false,
+                        "containers": [
+                            {
+                                "image": "nginx:1.27-alpine",
+                                "imagePullPolicy": "IfNotPresent",
+                                "name": "web",
+                                "ports": [
+                                    {
+                                        "containerPort": 80,
+                                        "name": "tcp-80",
+                                        "protocol": "TCP"
+                                    }
+                                ],
+                                "readinessProbe": {
+                                    "failureThreshold": 3,
+                                    "httpGet": {
+                                        "path": "/",
+                                        "port": 80,
+                                        "scheme": "HTTP"
+                                    },
+                                    "periodSeconds": 30,
+                                    "successThreshold": 1,
+                                    "timeoutSeconds": 30
+                                },
+                                "resources": {},
+                                "terminationMessagePath": "/dev/termination-log",
+                                "terminationMessagePolicy": "File"
+                            }
+                        ],
+                        "dnsPolicy": "ClusterFirst",
+                        "enableServiceLinks": false,
+                        "restartPolicy": "Always",
+                        "schedulerName": "default-scheduler",
+                        "securityContext": {
+                            "seccompProfile": {
+                                "type": "RuntimeDefault"
+                            }
+                        },
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "web",
+                                        "dockflow.shawiizz.dev/stack": "fixture-rollout-complete"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
+                    }
+                }
+            },
+            "status": {
+                "observedGeneration": 4,
+                "replicas": 0,
+                "terminatingReplicas": 0
             }
         }
     ],

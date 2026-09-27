@@ -9,10 +9,9 @@
                     "deployment.kubernetes.io/desired-replicas": "1",
                     "deployment.kubernetes.io/max-replicas": "2",
                     "deployment.kubernetes.io/revision": "1",
-                    "dockflow.shawiizz.dev/compose-service": "cache",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "cache"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:25:18Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-headless-no-ports",
@@ -20,9 +19,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "cache",
                     "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports",
-                    "pod-template-hash": "hwgfx9bvlh"
+                    "pod-template-hash": "645cc4ff9"
                 },
-                "name": "cache-hwgfx9bvlh",
+                "name": "cache-645cc4ff9",
                 "namespace": "fixture-headless-no-ports",
                 "ownerReferences": [
                     {
@@ -31,19 +30,20 @@
                         "controller": true,
                         "kind": "Deployment",
                         "name": "cache",
-                        "uid": "00000000-0000-4000-8000-000000000018"
+                        "uid": "00000000-0000-4000-8000-000000000001"
                     }
                 ],
-                "resourceVersion": "30",
-                "uid": "00000000-0000-4000-8000-000000000019"
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "replicas": 1,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "cache",
                         "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports",
-                        "pod-template-hash": "hwgfx9bvlh"
+                        "pod-template-hash": "645cc4ff9"
                     }
                 },
                 "template": {
@@ -58,17 +58,16 @@
                             "dockflow.shawiizz.dev/role": "app",
                             "dockflow.shawiizz.dev/service": "cache",
                             "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports",
-                            "pod-template-hash": "hwgfx9bvlh"
+                            "pod-template-hash": "645cc4ff9"
                         }
                     },
                     "spec": {
                         "automountServiceAccountToken": false,
                         "containers": [
                             {
-                                "command": [
-                                    "sh",
-                                    "-c",
-                                    "sleep 3600"
+                                "args": [
+                                    "sleep",
+                                    "36000"
                                 ],
                                 "image": "busybox:1.37",
                                 "imagePullPolicy": "IfNotPresent",
@@ -80,6 +79,9 @@
                         ],
                         "dnsPolicy": "ClusterFirst",
                         "enableServiceLinks": false,
+                        "nodeSelector": {
+                            "kubernetes.io/hostname": "agent-1"
+                        },
                         "restartPolicy": "Always",
                         "schedulerName": "default-scheduler",
                         "securityContext": {
@@ -87,7 +89,23 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 10
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "cache",
+                                        "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
@@ -96,7 +114,8 @@
                 "fullyLabeledReplicas": 1,
                 "observedGeneration": 1,
                 "readyReplicas": 1,
-                "replicas": 1
+                "replicas": 1,
+                "terminatingReplicas": 0
             }
         },
         {
@@ -107,10 +126,9 @@
                     "deployment.kubernetes.io/desired-replicas": "2",
                     "deployment.kubernetes.io/max-replicas": "3",
                     "deployment.kubernetes.io/revision": "1",
-                    "dockflow.shawiizz.dev/compose-service": "worker",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "worker"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:25:18Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-headless-no-ports",
@@ -118,9 +136,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "worker",
                     "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports",
-                    "pod-template-hash": "gr4tmskc6t"
+                    "pod-template-hash": "84d86c8ddf"
                 },
-                "name": "worker-gr4tmskc6t",
+                "name": "worker-84d86c8ddf",
                 "namespace": "fixture-headless-no-ports",
                 "ownerReferences": [
                     {
@@ -129,19 +147,20 @@
                         "controller": true,
                         "kind": "Deployment",
                         "name": "worker",
-                        "uid": "00000000-0000-4000-8000-000000000001"
+                        "uid": "00000000-0000-4000-8000-000000000002"
                     }
                 ],
-                "resourceVersion": "2",
-                "uid": "00000000-0000-4000-8000-000000000002"
+                "resourceVersion": "4",
+                "uid": "00000000-0000-4000-8000-000000000004"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "replicas": 2,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "worker",
                         "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports",
-                        "pod-template-hash": "gr4tmskc6t"
+                        "pod-template-hash": "84d86c8ddf"
                     }
                 },
                 "template": {
@@ -156,17 +175,16 @@
                             "dockflow.shawiizz.dev/role": "app",
                             "dockflow.shawiizz.dev/service": "worker",
                             "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports",
-                            "pod-template-hash": "gr4tmskc6t"
+                            "pod-template-hash": "84d86c8ddf"
                         }
                     },
                     "spec": {
                         "automountServiceAccountToken": false,
                         "containers": [
                             {
-                                "command": [
-                                    "sh",
-                                    "-c",
-                                    "sleep 3600"
+                                "args": [
+                                    "sleep",
+                                    "36000"
                                 ],
                                 "image": "busybox:1.37",
                                 "imagePullPolicy": "IfNotPresent",
@@ -185,7 +203,23 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 10
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "worker",
+                                        "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
@@ -194,7 +228,8 @@
                 "fullyLabeledReplicas": 2,
                 "observedGeneration": 1,
                 "readyReplicas": 2,
-                "replicas": 2
+                "replicas": 2,
+                "terminatingReplicas": 0
             }
         }
     ],

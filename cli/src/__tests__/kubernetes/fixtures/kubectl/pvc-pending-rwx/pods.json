@@ -9,8 +9,8 @@
                     "dockflow.shawiizz.dev/compose-service": "web",
                     "kubectl.kubernetes.io/default-container": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "generateName": "web-5hrbmx46j5-",
+                "creationTimestamp": "2026-01-01T00:10:06Z",
+                "generateName": "web-776897c7f5-",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-pvc-pending-rwx",
@@ -18,9 +18,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-pvc-pending-rwx",
-                    "pod-template-hash": "5hrbmx46j5"
+                    "pod-template-hash": "776897c7f5"
                 },
-                "name": "web-5hrbmx46j5-fl6xj",
+                "name": "web-776897c7f5-khslt",
                 "namespace": "fixture-pvc-pending-rwx",
                 "ownerReferences": [
                     {
@@ -28,21 +28,20 @@
                         "blockOwnerDeletion": true,
                         "controller": true,
                         "kind": "ReplicaSet",
-                        "name": "web-5hrbmx46j5",
-                        "uid": "00000000-0000-4000-8000-000000000003"
+                        "name": "web-776897c7f5",
+                        "uid": "00000000-0000-4000-8000-000000000002"
                     }
                 ],
-                "resourceVersion": "6",
-                "uid": "00000000-0000-4000-8000-000000000005"
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "spec": {
                 "automountServiceAccountToken": false,
                 "containers": [
                     {
-                        "command": [
-                            "sh",
-                            "-c",
-                            "sleep 3600"
+                        "args": [
+                            "sleep",
+                            "36000"
                         ],
                         "image": "busybox:1.37",
                         "imagePullPolicy": "IfNotPresent",
@@ -53,7 +52,7 @@
                         "volumeMounts": [
                             {
                                 "mountPath": "/data",
-                                "name": "shared"
+                                "name": "pvc-shared"
                             }
                         ]
                     }
@@ -86,9 +85,34 @@
                         "tolerationSeconds": 300
                     }
                 ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchExpressions": [
+                                {
+                                    "key": "pod-template-hash",
+                                    "operator": "In",
+                                    "values": [
+                                        "776897c7f5"
+                                    ]
+                                }
+                            ],
+                            "matchLabels": {
+                                "dockflow.shawiizz.dev/service": "web",
+                                "dockflow.shawiizz.dev/stack": "fixture-pvc-pending-rwx"
+                            }
+                        },
+                        "matchLabelKeys": [
+                            "pod-template-hash"
+                        ],
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "ScheduleAnyway"
+                    }
+                ],
                 "volumes": [
                     {
-                        "name": "shared",
+                        "name": "pvc-shared",
                         "persistentVolumeClaim": {
                             "claimName": "shared"
                         }
@@ -96,6 +120,7 @@
                 ]
             },
             "status": {
+                "nominatedNodeName": "agent-1",
                 "phase": "Pending",
                 "qosClass": "BestEffort"
             }

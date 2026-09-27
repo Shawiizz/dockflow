@@ -8,7 +8,7 @@
                 "annotations": {
                     "dockflow.shawiizz.dev/compose-service": "db"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:11:18Z",
                 "generation": 2,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-statefulset-stuck",
@@ -26,13 +26,14 @@
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "spec": {
+                "minReadySeconds": 5,
                 "persistentVolumeClaimRetentionPolicy": {
                     "whenDeleted": "Retain",
                     "whenScaled": "Retain"
                 },
                 "podManagementPolicy": "Parallel",
                 "replicas": 2,
-                "revisionHistoryLimit": 3,
+                "revisionHistoryLimit": 2,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "db",
@@ -58,7 +59,7 @@
                         "automountServiceAccountToken": false,
                         "containers": [
                             {
-                                "command": [
+                                "args": [
                                     "sh",
                                     "-c",
                                     "exit 1"
@@ -86,13 +87,23 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 10
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "db",
+                                        "dockflow.shawiizz.dev/stack": "fixture-statefulset-stuck"
+                                    }
+                                },
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 },
                 "updateStrategy": {
-                    "rollingUpdate": {
-                        "partition": 0
-                    },
                     "type": "RollingUpdate"
                 },
                 "volumeClaimTemplates": [
@@ -106,11 +117,9 @@
                             "labels": {
                                 "app.kubernetes.io/instance": "fixture-statefulset-stuck",
                                 "app.kubernetes.io/managed-by": "dockflow",
-                                "app.kubernetes.io/name": "db",
                                 "app.kubernetes.io/part-of": "shop",
                                 "dockflow.shawiizz.dev/part": "stack",
                                 "dockflow.shawiizz.dev/role": "accessory",
-                                "dockflow.shawiizz.dev/service": "db",
                                 "dockflow.shawiizz.dev/stack": "fixture-statefulset-stuck",
                                 "dockflow.shawiizz.dev/volume": "data"
                             },
@@ -138,11 +147,11 @@
                 "availableReplicas": 1,
                 "collisionCount": 0,
                 "currentReplicas": 1,
-                "currentRevision": "db-lnhplfcs9h",
+                "currentRevision": "db-5946c4d4d7",
                 "observedGeneration": 2,
                 "readyReplicas": 1,
                 "replicas": 2,
-                "updateRevision": "db-cd56qgh65c",
+                "updateRevision": "db-6c4645cd5b",
                 "updatedReplicas": 1
             }
         }

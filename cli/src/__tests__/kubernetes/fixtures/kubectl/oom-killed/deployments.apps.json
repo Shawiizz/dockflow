@@ -7,10 +7,9 @@
             "metadata": {
                 "annotations": {
                     "deployment.kubernetes.io/revision": "1",
-                    "dockflow.shawiizz.dev/compose-service": "web",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:07:22Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-oom-killed",
@@ -28,9 +27,10 @@
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "progressDeadlineSeconds": 240,
                 "replicas": 1,
-                "revisionHistoryLimit": 3,
+                "revisionHistoryLimit": 2,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "web",
@@ -62,7 +62,7 @@
                         "automountServiceAccountToken": false,
                         "containers": [
                             {
-                                "command": [
+                                "args": [
                                     "sh",
                                     "-c",
                                     "head -c 64m /dev/zero | tail"
@@ -75,7 +75,7 @@
                                         "memory": "16Mi"
                                     },
                                     "requests": {
-                                        "memory": "16Mi"
+                                        "memory": "0"
                                     }
                                 },
                                 "terminationMessagePath": "/dev/termination-log",
@@ -84,6 +84,9 @@
                         ],
                         "dnsPolicy": "ClusterFirst",
                         "enableServiceLinks": false,
+                        "nodeSelector": {
+                            "kubernetes.io/hostname": "agent-1"
+                        },
                         "restartPolicy": "Always",
                         "schedulerName": "default-scheduler",
                         "securityContext": {
@@ -91,24 +94,40 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 10
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "web",
+                                        "dockflow.shawiizz.dev/stack": "fixture-oom-killed"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
             "status": {
                 "conditions": [
                     {
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
-                        "lastUpdateTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:07:22Z",
+                        "lastUpdateTime": "2026-01-01T00:07:22Z",
                         "message": "Deployment does not have minimum availability.",
                         "reason": "MinimumReplicasUnavailable",
                         "status": "False",
                         "type": "Available"
                     },
                     {
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
-                        "lastUpdateTime": "2026-01-01T00:15:02Z",
-                        "message": "ReplicaSet \"web-qlwq4g8hrz\" is progressing.",
+                        "lastTransitionTime": "2026-01-01T00:07:22Z",
+                        "lastUpdateTime": "2026-01-01T00:07:36Z",
+                        "message": "ReplicaSet \"web-764ff46d98\" is progressing.",
                         "reason": "ReplicaSetUpdated",
                         "status": "True",
                         "type": "Progressing"
@@ -116,6 +135,7 @@
                 ],
                 "observedGeneration": 1,
                 "replicas": 1,
+                "terminatingReplicas": 0,
                 "unavailableReplicas": 1,
                 "updatedReplicas": 1
             }

@@ -1,6 +1,84 @@
 {
     "apiVersion": "v1",
-    "items": [],
+    "items": [
+        {
+            "addressType": "IPv4",
+            "apiVersion": "discovery.k8s.io/v1",
+            "endpoints": [
+                {
+                    "addresses": [
+                        "10.42.1.26"
+                    ],
+                    "conditions": {
+                        "ready": false,
+                        "serving": false,
+                        "terminating": false
+                    },
+                    "nodeName": "agent-1",
+                    "targetRef": {
+                        "kind": "Pod",
+                        "name": "web-56fd5fd7bf-42nbx",
+                        "namespace": "fixture-node-not-ready",
+                        "uid": "00000000-0000-4000-8000-000000000003"
+                    }
+                },
+                {
+                    "addresses": [
+                        "10.42.0.39"
+                    ],
+                    "conditions": {
+                        "ready": true,
+                        "serving": true,
+                        "terminating": false
+                    },
+                    "nodeName": "server-1",
+                    "targetRef": {
+                        "kind": "Pod",
+                        "name": "web-56fd5fd7bf-jxrpc",
+                        "namespace": "fixture-node-not-ready",
+                        "uid": "00000000-0000-4000-8000-000000000004"
+                    }
+                }
+            ],
+            "kind": "EndpointSlice",
+            "metadata": {
+                "annotations": {
+                    "endpoints.kubernetes.io/last-change-trigger-time": "2026-01-01T00:20:22Z"
+                },
+                "creationTimestamp": "2026-01-01T00:18:58Z",
+                "generateName": "web-",
+                "generation": 4,
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-node-not-ready",
+                    "app.kubernetes.io/managed-by": "dockflow",
+                    "app.kubernetes.io/name": "web",
+                    "app.kubernetes.io/part-of": "shop",
+                    "dockflow.shawiizz.dev/part": "stack",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "web",
+                    "dockflow.shawiizz.dev/stack": "fixture-node-not-ready",
+                    "endpointslice.kubernetes.io/managed-by": "endpointslice-controller.k8s.io",
+                    "kubernetes.io/service-name": "web",
+                    "service.kubernetes.io/headless": ""
+                },
+                "name": "web-8lxpb",
+                "namespace": "fixture-node-not-ready",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Service",
+                        "name": "web",
+                        "uid": "00000000-0000-4000-8000-000000000005"
+                    }
+                ],
+                "resourceVersion": "25",
+                "uid": "00000000-0000-4000-8000-000000000006"
+            },
+            "ports": null
+        }
+    ],
     "kind": "List",
     "metadata": {
         "resourceVersion": ""

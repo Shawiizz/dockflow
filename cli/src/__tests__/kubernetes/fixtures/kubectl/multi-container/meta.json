@@ -1,10 +1,10 @@
 {
-  "synthetic": true,
+  "recordedOn": "2026-09-27",
   "k3sVersion": "v1.36.4+k3s1",
   "steps": [
-    "kubectl create namespace fixture-multi-container",
-    "kubectl apply: Deployment api (1 replica, containers api nginx:1.27-alpine and log-shipper busybox:1.37 running sleep, annotation kubectl.kubernetes.io/default-container: api) and ClusterIP Service api (port 80)",
-    "kubectl rollout status deployment/api --timeout=120s",
-    "capture the namespace resources and the cluster nodes and persistentvolumes"
+    "Dockflow renders the compose file into namespace fixture-<scenario> (project shop, release 1.4.2, servers server_1 and agent_1) and applies it server-side as a deploy does",
+    "docker-compose.yml: service api, nginx:1.27-alpine, expose 80, placed on agent_1 (Dockflow sets kubectl.kubernetes.io/default-container: api)",
+    "patch: a second container log-shipper, busybox:1.37, command sleep 36000",
+    "kubectl rollout status deployment/api, then capture"
   ]
 }

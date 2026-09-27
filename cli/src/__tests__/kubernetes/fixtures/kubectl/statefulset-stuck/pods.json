@@ -9,14 +9,14 @@
                     "dockflow.shawiizz.dev/compose-service": "db",
                     "kubectl.kubernetes.io/default-container": "db"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:11:18Z",
                 "generateName": "db-",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-statefulset-stuck",
                     "app.kubernetes.io/name": "db",
                     "apps.kubernetes.io/pod-index": "0",
-                    "controller-revision-hash": "db-lnhplfcs9h",
+                    "controller-revision-hash": "db-5946c4d4d7",
                     "dockflow.shawiizz.dev/role": "accessory",
                     "dockflow.shawiizz.dev/service": "db",
                     "dockflow.shawiizz.dev/stack": "fixture-statefulset-stuck",
@@ -34,17 +34,16 @@
                         "uid": "00000000-0000-4000-8000-000000000001"
                     }
                 ],
-                "resourceVersion": "11",
-                "uid": "00000000-0000-4000-8000-000000000009"
+                "resourceVersion": "4",
+                "uid": "00000000-0000-4000-8000-000000000004"
             },
             "spec": {
                 "automountServiceAccountToken": false,
                 "containers": [
                     {
-                        "command": [
-                            "sh",
-                            "-c",
-                            "sleep 3600"
+                        "args": [
+                            "sleep",
+                            "36000"
                         ],
                         "image": "busybox:1.37",
                         "imagePullPolicy": "IfNotPresent",
@@ -91,6 +90,19 @@
                         "tolerationSeconds": 300
                     }
                 ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchLabels": {
+                                "dockflow.shawiizz.dev/service": "db",
+                                "dockflow.shawiizz.dev/stack": "fixture-statefulset-stuck"
+                            }
+                        },
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "ScheduleAnyway"
+                    }
+                ],
                 "volumes": [
                     {
                         "name": "data",
@@ -104,35 +116,35 @@
                 "conditions": [
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:01Z",
+                        "lastTransitionTime": "2026-01-01T00:11:21Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodReadyToStartContainers"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:11:21Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "Initialized"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:04Z",
+                        "lastTransitionTime": "2026-01-01T00:11:21Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "Ready"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:04Z",
+                        "lastTransitionTime": "2026-01-01T00:11:21Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "ContainersReady"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:11:21Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodScheduled"
@@ -140,19 +152,36 @@
                 ],
                 "containerStatuses": [
                     {
-                        "containerID": "containerd://7f70b6ae2b3c",
+                        "containerID": "containerd://82e05afda0c3",
                         "image": "docker.io/library/busybox:1.37",
-                        "imageID": "containerd://6053936389b8",
+                        "imageID": "containerd://36b932e7ed7b",
                         "lastState": {},
                         "name": "db",
                         "ready": true,
+                        "resources": {},
                         "restartCount": 0,
                         "started": true,
                         "state": {
                             "running": {
-                                "startedAt": "2026-01-01T00:15:03Z"
+                                "startedAt": "2026-01-01T00:11:21Z"
                             }
-                        }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    10
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/data",
+                                "name": "data"
+                            }
+                        ]
                     }
                 ],
                 "hostIP": "192.0.2.11",
@@ -163,14 +192,15 @@
                 ],
                 "observedGeneration": 1,
                 "phase": "Running",
-                "podIP": "10.42.0.10",
+                "podIP": "10.42.0.17",
                 "podIPs": [
                     {
-                        "ip": "10.42.0.10"
+                        "ip": "10.42.0.17"
                     }
                 ],
                 "qosClass": "BestEffort",
-                "startTime": "2026-01-01T00:15:00Z"
+                "resources": {},
+                "startTime": "2026-01-01T00:11:21Z"
             }
         },
         {
@@ -181,14 +211,14 @@
                     "dockflow.shawiizz.dev/compose-service": "db",
                     "kubectl.kubernetes.io/default-container": "db"
                 },
-                "creationTimestamp": "2026-01-01T00:20:02Z",
+                "creationTimestamp": "2026-01-01T00:11:32Z",
                 "generateName": "db-",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-statefulset-stuck",
                     "app.kubernetes.io/name": "db",
                     "apps.kubernetes.io/pod-index": "1",
-                    "controller-revision-hash": "db-cd56qgh65c",
+                    "controller-revision-hash": "db-6c4645cd5b",
                     "dockflow.shawiizz.dev/role": "accessory",
                     "dockflow.shawiizz.dev/service": "db",
                     "dockflow.shawiizz.dev/stack": "fixture-statefulset-stuck",
@@ -206,14 +236,14 @@
                         "uid": "00000000-0000-4000-8000-000000000001"
                     }
                 ],
-                "resourceVersion": "24",
-                "uid": "00000000-0000-4000-8000-000000000016"
+                "resourceVersion": "5",
+                "uid": "00000000-0000-4000-8000-000000000005"
             },
             "spec": {
                 "automountServiceAccountToken": false,
                 "containers": [
                     {
-                        "command": [
+                        "args": [
                             "sh",
                             "-c",
                             "exit 1"
@@ -263,6 +293,19 @@
                         "tolerationSeconds": 300
                     }
                 ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchLabels": {
+                                "dockflow.shawiizz.dev/service": "db",
+                                "dockflow.shawiizz.dev/stack": "fixture-statefulset-stuck"
+                            }
+                        },
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "ScheduleAnyway"
+                    }
+                ],
                 "volumes": [
                     {
                         "name": "data",
@@ -276,21 +319,21 @@
                 "conditions": [
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:20:03Z",
+                        "lastTransitionTime": "2026-01-01T00:11:33Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodReadyToStartContainers"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:20:02Z",
+                        "lastTransitionTime": "2026-01-01T00:11:32Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "Initialized"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:20:02Z",
+                        "lastTransitionTime": "2026-01-01T00:12:18Z",
                         "message": "containers with unready status: [db]",
                         "observedGeneration": 1,
                         "reason": "ContainersNotReady",
@@ -299,7 +342,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:20:02Z",
+                        "lastTransitionTime": "2026-01-01T00:12:18Z",
                         "message": "containers with unready status: [db]",
                         "observedGeneration": 1,
                         "reason": "ContainersNotReady",
@@ -308,7 +351,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:20:02Z",
+                        "lastTransitionTime": "2026-01-01T00:11:32Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodScheduled"
@@ -316,28 +359,48 @@
                 ],
                 "containerStatuses": [
                     {
-                        "containerID": "containerd://5e8c571f18b0",
+                        "containerID": "containerd://91968f3af443",
                         "image": "docker.io/library/busybox:1.36",
-                        "imageID": "containerd://acd2b9d0f045",
+                        "imageID": "containerd://9da553ece67b",
                         "lastState": {
                             "terminated": {
-                                "containerID": "containerd://5e8c571f18b0",
+                                "containerID": "containerd://2fa5a4948bb0",
                                 "exitCode": 1,
-                                "finishedAt": "2026-01-01T00:21:15Z",
+                                "finishedAt": "2026-01-01T00:11:47Z",
                                 "reason": "Error",
-                                "startedAt": "2026-01-01T00:21:15Z"
+                                "startedAt": "2026-01-01T00:11:47Z"
                             }
                         },
                         "name": "db",
                         "ready": false,
+                        "resources": {},
                         "restartCount": 3,
                         "started": false,
                         "state": {
-                            "waiting": {
-                                "message": "back-off 1m20s restarting failed container=db pod=db-1_fixture-statefulset-stuck(00000000-0000-4000-8000-000000000016)",
-                                "reason": "CrashLoopBackOff"
+                            "terminated": {
+                                "containerID": "containerd://91968f3af443",
+                                "exitCode": 1,
+                                "finishedAt": "2026-01-01T00:12:17Z",
+                                "reason": "Error",
+                                "startedAt": "2026-01-01T00:12:17Z"
                             }
-                        }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    10
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/data",
+                                "name": "data"
+                            }
+                        ]
                     }
                 ],
                 "hostIP": "192.0.2.12",
@@ -348,14 +411,15 @@
                 ],
                 "observedGeneration": 1,
                 "phase": "Running",
-                "podIP": "10.42.1.10",
+                "podIP": "10.42.1.16",
                 "podIPs": [
                     {
-                        "ip": "10.42.1.10"
+                        "ip": "10.42.1.16"
                     }
                 ],
                 "qosClass": "BestEffort",
-                "startTime": "2026-01-01T00:20:02Z"
+                "resources": {},
+                "startTime": "2026-01-01T00:11:32Z"
             }
         }
     ],

@@ -26,10 +26,11 @@ import {
 } from '../../../services/orchestrator/kubernetes/status/pods';
 import { err, ok } from '../../../types/result';
 import { Redactor } from '../../../utils/redact';
-import { FIXTURE_SERVERS, fixtureNamespace, loadKubectlList, loadKubectlResources } from '../support/kubectl-fixtures';
+import { FIXTURE_SERVERS, fixtureCaptureTime, fixtureNamespace, loadKubectlList, loadKubectlResources } from '../support/kubectl-fixtures';
 
 const P = 'dockflow.shawiizz.dev';
-const NOW = new Date('2026-01-01T00:20:00Z');
+/** `now` of the hand-built events, all read with the rollout-complete capture */
+const NOW = fixtureCaptureTime('rollout-complete');
 const SERVERS = nodeToServerMap(Object.values(FIXTURE_SERVERS));
 const SECRET = 's3cr3t-token-value';
 const INVENTORY_RESOURCES = [
@@ -93,8 +94,9 @@ function diagnoseInput(scenario: string, overrides: Partial<DiagnoseInput> = {})
   };
 }
 
+/** read as `dockflow diagnose` would have read it right after the capture */
 function diagnose(scenario: string, overrides: Partial<DiagnoseInput> = {}): DiagnosticReport {
-  return buildDiagnosticReport(diagnoseInput(scenario, overrides), NOW);
+  return buildDiagnosticReport(diagnoseInput(scenario, overrides), fixtureCaptureTime(scenario));
 }
 
 function titles(report: DiagnosticReport): string[] {
@@ -202,7 +204,15 @@ describe('healthy stack', () => {
     expect(linesOf(report, 'Pod Errors')).toEqual([['ok', 'No pod errors found']]);
     expect(linesOf(report, 'Pending Pods')).toEqual([['plain', 'No pending pods']]);
     expect(linesOf(report, 'Volumes')).toEqual([['plain', 'No volumes']]);
-    expect(linesOf(report, 'Warning Events')).toEqual([['plain', 'No warning events in the last 15 minutes']]);
+    // each new pod's first readiness probe runs before nginx listens: warnings of the rollout, no issue
+    const refused = (ip: string) => `Unhealthy: Readiness probe failed: Get "http://${ip}:80/": dial tcp ${ip}:80: connect: connection refused`;
+    expect(linesOf(report, 'Warning Events')).toEqual([
+      ['warning', `43s Pod/web-b655d585b-vnpn8 ${refused('10.42.1.31')}`],
+      ['warning', `1m Pod/web-b655d585b-7jdgc ${refused('10.42.0.60')}`],
+      ['warning', `1m Pod/web-b655d585b-zjqjv ${refused('10.42.1.30')}`],
+      ['warning', `2m Pod/web-c8998f889-l8mjc ${refused('10.42.0.50')}`],
+      ['warning', `2m Pod/web-c8998f889-mm4gg ${refused('10.42.1.28')}`],
+    ]);
     expect(linesOf(report, 'Cluster Nodes')).toEqual([
       ['ok', 'agent_1 Ready (worker) v1.36.4+k3s1'],
       ['ok', 'server_1 Ready (manager) v1.36.4+k3s1'],
@@ -227,7 +237,7 @@ describe('healthy stack', () => {
   });
 
   it('lists helper pods in their own section', () => {
-    expect(linesOf(diagnose('metrics-top'), 'Helper Pods')).toEqual([['dim', 'dockflow-helper-archive-3f9a2c1b: Running']]);
+    expect(linesOf(diagnose('metrics-top'), 'Helper Pods')).toEqual([['dim', 'dockflow-helper-backup-3f9a2c1b: Running']]);
   });
 
   it('names accessory and Helm rows in Services', () => {
@@ -260,14 +270,14 @@ describe('pod errors', () => {
 
   it('reports a crash-looping pod by its compose label (U-STATUS-DIAG-01)', () => {
     const report = diagnose('crashloop');
-    const message =
-      'back-off 1m20s restarting failed container=web-app pod=web-app-p2xkk2fn8m-zbc2k_fixture-crashloop(00000000-0000-4000-8000-000000000004)';
+    // k3s 1.36 keeps the container terminated between restarts: no waiting message, its previous exit is the error
+    const message = 'Error (exit 1) at 2026-01-01T00:01:11Z';
     expect(linesOf(report, 'Pod Errors')).toEqual([
-      ['error', 'web_app.zbc2k (pod web-app-p2xkk2fn8m-zbc2k on server_1)'],
-      ['plain', '  State: CrashLoopBackOff (restarts 3)'],
+      ['error', 'web_app.dqwf8 (pod web-app-fbf7d977d-dqwf8 on server_1)'],
+      ['plain', '  State: Error (restarts 3)'],
       ['plain', `  Error: ${message}`],
     ]);
-    expect(issuesOf(report, 'Pod')).toEqual([{ severity: 'error', category: 'Pod', message: `web_app.zbc2k: ${message}`, suggestion: crashSuggestion }]);
+    expect(issuesOf(report, 'Pod')).toEqual([{ severity: 'error', category: 'Pod', message: `web_app.dqwf8: ${message}`, suggestion: crashSuggestion }]);
     expect(issuesOf(report, 'Replicas')).toEqual([
       { severity: 'error', category: 'Replicas', message: "Service 'web_app' has 0/1 replicas", suggestion: 'Check the pod errors below.' },
     ]);
@@ -275,7 +285,7 @@ describe('pod errors', () => {
     expect(linesOf(report, 'Warning Events')).toEqual([
       [
         'warning',
-        '3m Pod/web-app-p2xkk2fn8m-zbc2k BackOff: Back-off restarting failed container web-app in pod web-app-p2xkk2fn8m-zbc2k_fixture-crashloop(00000000-0000-4000-8000-000000000004)',
+        '0s Pod/web-app-fbf7d977d-dqwf8 BackOff: Back-off restarting failed container web-app in pod web-app-fbf7d977d-dqwf8_fixture-crashloop(00000000-0000-4000-8000-000000000003)',
       ],
     ]);
     expect(titles(report)).not.toContain('Crash Logs');
@@ -286,17 +296,17 @@ describe('pod errors', () => {
     const lines = Array.from({ length: 25 }, (_, i) => `line ${i + 1} ${i === 24 ? SECRET : ''}`.trim());
     const report = diagnose('crashloop', {
       verbose: true,
-      crashLogs: [{ label: 'web_app.zbc2k', container: 'web-app', previous: true, lines }],
-      descriptions: [{ label: 'web_app.zbc2k', text: `Name: web-app-p2xkk2fn8m-zbc2k\nEnvironment:\n  TOKEN: ${SECRET}\n\n` }],
+      crashLogs: [{ label: 'web_app.dqwf8', container: 'web-app', previous: true, lines }],
+      descriptions: [{ label: 'web_app.dqwf8', text: `Name: web-app-fbf7d977d-dqwf8\nEnvironment:\n  TOKEN: ${SECRET}\n\n` }],
     });
     const crash = linesOf(report, 'Crash Logs');
     expect(crash[0]).toEqual(['dim', '(container output, may contain sensitive data)']);
-    expect(crash[1]).toEqual(['dim', 'web_app.zbc2k (previous run):']);
+    expect(crash[1]).toEqual(['dim', 'web_app.dqwf8 (previous run):']);
     expect(crash.slice(2).map(([, text]) => text)).toEqual(lines.slice(5).map((l) => `    ${l}`));
     // container output is user-requested and not redacted; describe output is
     expect(linesOf(report, 'Describe')).toEqual([
-      ['dim', 'web_app.zbc2k:'],
-      ['plain', '    Name: web-app-p2xkk2fn8m-zbc2k'],
+      ['dim', 'web_app.dqwf8:'],
+      ['plain', '    Name: web-app-fbf7d977d-dqwf8'],
       ['plain', '    Environment:'],
       ['plain', '      TOKEN: ***'],
     ]);
@@ -311,14 +321,14 @@ describe('pod errors', () => {
   it('picks crash-log and describe targets', () => {
     const inventory = inventoryOf('crashloop');
     expect(crashLogTargets(inventory)).toEqual([
-      { pod: 'web-app-p2xkk2fn8m-zbc2k', container: 'web-app', label: 'web_app.zbc2k', previous: true },
+      { pod: 'web-app-fbf7d977d-dqwf8', container: 'web-app', label: 'web_app.dqwf8', previous: true },
     ]);
-    expect(describeTargets(inventory)).toEqual([{ pod: 'web-app-p2xkk2fn8m-zbc2k', label: 'web_app.zbc2k' }]);
+    expect(describeTargets(inventory)).toEqual([{ pod: 'web-app-fbf7d977d-dqwf8', label: 'web_app.dqwf8' }]);
     expect(crashLogTargets(inventoryOf('rollout-complete'))).toEqual([]);
     expect(describeTargets(inventoryOf('rollout-complete'))).toEqual([]);
 
-    const base = podOf(inventory, 'web-app-p2xkk2fn8m-zbc2k');
-    const many = Array.from({ length: 7 }, (_, i) => ({ ...base, metadata: { ...base.metadata, name: `web-app-p2xkk2fn8m-c${i}` } }));
+    const base = podOf(inventory, 'web-app-fbf7d977d-dqwf8');
+    const many = Array.from({ length: 7 }, (_, i) => ({ ...base, metadata: { ...base.metadata, name: `web-app-fbf7d977d-c${i}` } }));
     const crowded = withPods(inventory, many);
     expect(crashLogTargets(crowded).map((t) => t.pod)).toEqual(many.slice(0, CRASH_LOG_CONTAINERS).map((p) => p.metadata.name));
     expect(describeTargets(crowded)).toHaveLength(3);
@@ -329,13 +339,13 @@ describe('pod errors', () => {
     expect(issuesOf(report, 'Pod')).toMatchObject([
       {
         severity: 'error',
-        message: 'web.f55cv: Container image "dockflow.invalid/shop-web:1.4.2" is not present with pull policy of Never',
+        message: 'web.p9gx9: Container image "dockflow.invalid/shop-web:1.4.2" is not present with pull policy of Never',
         suggestion: 'The image built by Dockflow is missing on that node; import it again with: `dockflow deploy production`.',
       },
     ]);
 
     const inventory = inventoryOf('image-pull-backoff');
-    const pod = podOf(inventory, 'web-h7fqpf2pgw-hhx68');
+    const pod = podOf(inventory, 'web-679ff8548-l5hvb');
     const imported: Pod = {
       ...pod,
       status: {
@@ -378,14 +388,14 @@ describe('pod errors', () => {
   it('reports an evicted pod with the eviction message', () => {
     const report = diagnose('evicted-pod');
     const [first] = issuesOf(report, 'Pod');
-    expect(first?.message).toStartWith('web.lwht6: ');
+    expect(first?.message).toStartWith('web.hxqlb: ');
     expect(linesOf(report, 'Pod Errors')[1]).toEqual(['plain', '  State: Evicted (restarts 0)']);
   });
 
   it('shows at most 10 failing pods', () => {
     const inventory = inventoryOf('crashloop');
-    const base = podOf(inventory, 'web-app-p2xkk2fn8m-zbc2k');
-    const pods = Array.from({ length: 12 }, (_, i) => ({ ...base, metadata: { ...base.metadata, name: `web-app-p2xkk2fn8m-x${String(i).padStart(2, '0')}` } }));
+    const base = podOf(inventory, 'web-app-fbf7d977d-dqwf8');
+    const pods = Array.from({ length: 12 }, (_, i) => ({ ...base, metadata: { ...base.metadata, name: `web-app-fbf7d977d-x${String(i).padStart(2, '0')}` } }));
     const report = diagnose('crashloop', { inventory: ok(withPods(inventory, pods)) });
     expect(issuesOf(report, 'Pod')).toHaveLength(10);
     expect(linesOf(report, 'Pod Errors').at(-1)).toEqual(['dim', '... and 2 more']);
@@ -393,7 +403,7 @@ describe('pod errors', () => {
 
   it('redacts pod errors and event messages', () => {
     const inventory = inventoryOf('crashloop');
-    const pod = podOf(inventory, 'web-app-p2xkk2fn8m-zbc2k');
+    const pod = podOf(inventory, 'web-app-fbf7d977d-dqwf8');
     const leaking: Pod = {
       ...pod,
       status: {
@@ -409,18 +419,18 @@ describe('pod errors', () => {
         ],
       },
     };
-    const events = [event('web-app-p2xkk2fn8m-zbc2k', 'Failed', `Error: value ${SECRET} rejected`, { last: minutesAgo(1) })];
+    const events = [event('web-app-fbf7d977d-dqwf8', 'Failed', `Error: value ${SECRET} rejected`, { last: minutesAgo(1) })];
     const report = diagnose('crashloop', { inventory: ok(withPods(inventory, [leaking])), events: ok(events) });
     expect(JSON.stringify(report)).not.toContain(SECRET);
-    expect(issuesOf(report, 'Pod')[0]?.message).toBe("web_app.zbc2k: couldn't find key *** in Secret");
+    expect(issuesOf(report, 'Pod')[0]?.message).toBe("web_app.dqwf8: couldn't find key *** in Secret");
   });
 });
 
 describe('pending pods', () => {
   it('reports FailedScheduling with Insufficient memory as a Scheduling warning', () => {
     const report = diagnose('unschedulable-resources');
-    const message = '0/2 nodes are available: 2 Insufficient memory. preemption: 0/2 nodes are available: 2 No preemption victims found for incoming pod.';
-    expect(linesOf(report, 'Pending Pods')).toEqual([['pending', `web.rvc8f: ${message}`]]);
+    const message = '0/2 nodes are available: 2 Insufficient memory. no new claims to deallocate, preemption: 0/2 nodes are available: 2 Preemption is not helpful for scheduling.';
+    expect(linesOf(report, 'Pending Pods')).toEqual([['pending', `web.jhghd: ${message}`]]);
     expect(linesOf(report, 'Pod Errors')).toEqual([['ok', 'No pod errors found']]);
     expect(issuesOf(report, 'Scheduling')).toEqual([
       {
@@ -441,7 +451,7 @@ describe('pending pods', () => {
 
   it('lists a scheduled pod still waiting without a Scheduling issue', () => {
     const report = diagnose('pvc-pending-rwx');
-    expect(linesOf(report, 'Pending Pods')).toEqual([['pending', 'web.fl6xj: Pending']]);
+    expect(linesOf(report, 'Pending Pods')).toEqual([['pending', 'web.khslt: Pending']]);
     expect(issuesOf(report, 'Scheduling')).toEqual([]);
   });
 });
@@ -449,7 +459,8 @@ describe('pending pods', () => {
 describe('volumes', () => {
   it('reports a Pending claim and its ProvisioningFailed event', () => {
     const report = diagnose('pvc-pending-rwx');
-    const fallback = 'Inspect it with `dockflow logs production web --all-tasks` and `dockflow diagnose production --verbose`.';
+    // a top-level volume has no service label, several services may share it
+    const fallback = 'Inspect it with `dockflow logs production <service> --all-tasks` and `dockflow diagnose production --verbose`.';
     expect(linesOf(report, 'Volumes')).toEqual([['warning', 'shared Pending']]);
     expect(issuesOf(report, 'Volume')).toEqual([
       { severity: 'warning', category: 'Volume', message: 'Volume shared is not bound', suggestion: fallback },
@@ -511,12 +522,12 @@ describe('volumes', () => {
 describe('rollouts', () => {
   it('reports ProgressDeadlineExceeded with the deadline', () => {
     const report = diagnose('progress-deadline-exceeded');
-    expect(linesOf(report, 'Rollouts')).toEqual([['error', 'web: ProgressDeadlineExceeded (30s)']]);
+    expect(linesOf(report, 'Rollouts')).toEqual([['error', 'web: ProgressDeadlineExceeded (45s)']]);
     expect(issuesOf(report, 'Rollout')).toEqual([
       {
         severity: 'error',
         category: 'Rollout',
-        message: 'Service web did not finish its rollout within 30s',
+        message: 'Service web did not finish its rollout within 45s',
         suggestion: 'Read the Pod Errors section above; the rollout did not progress.',
       },
     ]);
@@ -524,7 +535,7 @@ describe('rollouts', () => {
 
   it('reports ReplicaFailure with the condition message', () => {
     const report = diagnose('replica-failure-quota');
-    const message = 'pods "web-lbvqsx2s79-zbdkv" is forbidden: exceeded quota: pods, requested: pods=1, used: pods=1, limited: pods=1';
+    const message = 'pods "web-ddff555b9-pjk2t" is forbidden: exceeded quota: pods, requested: pods=1, used: pods=1, limited: pods=1';
     expect(linesOf(report, 'Rollouts')).toEqual([['error', `web: ReplicaFailure: ${message}`]]);
     expect(issuesOf(report, 'Rollout')).toEqual([
       { severity: 'error', category: 'Rollout', message: `Service web: ${message}`, suggestion: KUBERNETES_FALLBACK_SUGGESTION.replaceAll('<env>', 'production').replace('<service>', 'web') },
@@ -646,7 +657,7 @@ describe('Proxy', () => {
 describe('Warning Events', () => {
   // 17 events inside the 15-minute window (one dated by eventTime only), 3 older ones
   const recent = Array.from({ length: 16 }, (_, i) => event(`web-${i}`, 'BackOff', `back-off ${i}`, { last: minutesAgo(i * 0.9) }));
-  const microTime = event('web-mt', 'Unhealthy', `Readiness probe failed: ${SECRET}`, { eventTime: '2026-01-01T00:19:30.000001Z' });
+  const microTime = event('web-mt', 'Unhealthy', `Readiness probe failed: ${SECRET}`, { eventTime: minutesAgo(0.5).replace(/Z$/, '001Z') });
   const old = [20, 30, 40].map((m) => event(`web-old-${m}`, 'BackOff', `old ${m}`, { last: minutesAgo(m) }));
   const events = [...old, ...recent.slice(8), microTime, ...recent.slice(0, 8)];
 

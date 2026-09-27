@@ -13,14 +13,13 @@
                     "volume.kubernetes.io/selected-node": "server-1",
                     "volume.kubernetes.io/storage-provisioner": "rancher.io/local-path"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:11:17Z",
                 "finalizers": [
                     "kubernetes.io/pvc-protection"
                 ],
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-statefulset-stuck",
                     "app.kubernetes.io/managed-by": "dockflow",
-                    "app.kubernetes.io/name": "db",
                     "app.kubernetes.io/part-of": "shop",
                     "dockflow.shawiizz.dev/part": "stack",
                     "dockflow.shawiizz.dev/role": "accessory",
@@ -30,8 +29,8 @@
                 },
                 "name": "data-db-0",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "5",
-                "uid": "00000000-0000-4000-8000-000000000005"
+                "resourceVersion": "41",
+                "uid": "00000000-0000-4000-8000-000000000006"
             },
             "spec": {
                 "accessModes": [
@@ -44,7 +43,7 @@
                 },
                 "storageClassName": "dockflow-local",
                 "volumeMode": "Filesystem",
-                "volumeName": "pvc-00000000-0000-4000-8000-000000000005"
+                "volumeName": "pvc-00000000-0000-4000-8000-000000000006"
             },
             "status": {
                 "accessModes": [
@@ -68,14 +67,13 @@
                     "volume.kubernetes.io/selected-node": "agent-1",
                     "volume.kubernetes.io/storage-provisioner": "rancher.io/local-path"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:11:17Z",
                 "finalizers": [
                     "kubernetes.io/pvc-protection"
                 ],
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-statefulset-stuck",
                     "app.kubernetes.io/managed-by": "dockflow",
-                    "app.kubernetes.io/name": "db",
                     "app.kubernetes.io/part-of": "shop",
                     "dockflow.shawiizz.dev/part": "stack",
                     "dockflow.shawiizz.dev/role": "accessory",
@@ -85,8 +83,8 @@
                 },
                 "name": "data-db-1",
                 "namespace": "fixture-statefulset-stuck",
-                "resourceVersion": "6",
-                "uid": "00000000-0000-4000-8000-000000000006"
+                "resourceVersion": "42",
+                "uid": "00000000-0000-4000-8000-000000000007"
             },
             "spec": {
                 "accessModes": [
@@ -99,7 +97,7 @@
                 },
                 "storageClassName": "dockflow-local",
                 "volumeMode": "Filesystem",
-                "volumeName": "pvc-00000000-0000-4000-8000-000000000006"
+                "volumeName": "pvc-00000000-0000-4000-8000-000000000007"
             },
             "status": {
                 "accessModes": [

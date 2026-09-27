@@ -1,10 +1,9 @@
 {
-  "synthetic": true,
+  "recordedOn": "2026-09-27",
   "k3sVersion": "v1.36.4+k3s1",
   "steps": [
-    "kubectl create namespace fixture-err-image-never-pull",
-    "kubectl apply: Deployment web (1 replica, image dockflow.invalid/shop-web:1.4.2 with imagePullPolicy Never, never imported on the nodes)",
-    "wait until the container reports waiting reason ErrImageNeverPull",
-    "capture the namespace resources and the cluster nodes and persistentvolumes"
+    "Dockflow renders the compose file into namespace fixture-<scenario> (project shop, release 1.4.2, servers server_1 and agent_1) and applies it server-side as a deploy does",
+    "docker-compose.yml: service web built by Dockflow (build ., image shop-web:1.4.2, pull_policy never), never imported on the nodes, placed on server_1",
+    "capture once the container waits with reason ErrImageNeverPull"
   ]
 }

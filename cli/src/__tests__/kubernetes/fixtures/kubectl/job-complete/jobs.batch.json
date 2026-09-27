@@ -6,10 +6,9 @@
             "kind": "Job",
             "metadata": {
                 "annotations": {
-                    "dockflow.shawiizz.dev/compose-service": "migrate",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "migrate"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:14:17Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-job-complete",
@@ -21,7 +20,7 @@
                     "dockflow.shawiizz.dev/service": "migrate",
                     "dockflow.shawiizz.dev/stack": "fixture-job-complete"
                 },
-                "name": "migrate-ab6158d4",
+                "name": "migrate-8d802302",
                 "namespace": "fixture-job-complete",
                 "resourceVersion": "1",
                 "uid": "00000000-0000-4000-8000-000000000001"
@@ -49,19 +48,19 @@
                             "app.kubernetes.io/instance": "fixture-job-complete",
                             "app.kubernetes.io/name": "migrate",
                             "batch.kubernetes.io/controller-uid": "00000000-0000-4000-8000-000000000001",
-                            "batch.kubernetes.io/job-name": "migrate-ab6158d4",
+                            "batch.kubernetes.io/job-name": "migrate-8d802302",
                             "controller-uid": "00000000-0000-4000-8000-000000000001",
                             "dockflow.shawiizz.dev/role": "app",
                             "dockflow.shawiizz.dev/service": "migrate",
                             "dockflow.shawiizz.dev/stack": "fixture-job-complete",
-                            "job-name": "migrate-ab6158d4"
+                            "job-name": "migrate-8d802302"
                         }
                     },
                     "spec": {
                         "automountServiceAccountToken": false,
                         "containers": [
                             {
-                                "command": [
+                                "args": [
                                     "sh",
                                     "-c",
                                     "exit 0"
@@ -76,6 +75,9 @@
                         ],
                         "dnsPolicy": "ClusterFirst",
                         "enableServiceLinks": false,
+                        "nodeSelector": {
+                            "kubernetes.io/hostname": "agent-1"
+                        },
                         "restartPolicy": "Never",
                         "schedulerName": "default-scheduler",
                         "securityContext": {
@@ -88,19 +90,19 @@
                 }
             },
             "status": {
-                "completionTime": "2026-01-01T00:15:06Z",
+                "completionTime": "2026-01-01T00:14:20Z",
                 "conditions": [
                     {
-                        "lastProbeTime": "2026-01-01T00:15:06Z",
-                        "lastTransitionTime": "2026-01-01T00:15:06Z",
+                        "lastProbeTime": "2026-01-01T00:14:20Z",
+                        "lastTransitionTime": "2026-01-01T00:14:20Z",
                         "message": "Reached expected number of succeeded pods",
                         "reason": "CompletionsReached",
                         "status": "True",
                         "type": "SuccessCriteriaMet"
                     },
                     {
-                        "lastProbeTime": "2026-01-01T00:15:06Z",
-                        "lastTransitionTime": "2026-01-01T00:15:06Z",
+                        "lastProbeTime": "2026-01-01T00:14:20Z",
+                        "lastTransitionTime": "2026-01-01T00:14:20Z",
                         "message": "Reached expected number of succeeded pods",
                         "reason": "CompletionsReached",
                         "status": "True",
@@ -108,7 +110,7 @@
                     }
                 ],
                 "ready": 0,
-                "startTime": "2026-01-01T00:15:00Z",
+                "startTime": "2026-01-01T00:14:17Z",
                 "succeeded": 1,
                 "terminating": 0,
                 "uncountedTerminatedPods": {}

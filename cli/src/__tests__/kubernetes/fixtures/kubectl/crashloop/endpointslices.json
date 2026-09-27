@@ -1,6 +1,64 @@
 {
     "apiVersion": "v1",
-    "items": [],
+    "items": [
+        {
+            "addressType": "IPv4",
+            "apiVersion": "discovery.k8s.io/v1",
+            "endpoints": [
+                {
+                    "addresses": [
+                        "10.42.0.6"
+                    ],
+                    "conditions": {
+                        "ready": false,
+                        "serving": false,
+                        "terminating": false
+                    },
+                    "nodeName": "server-1",
+                    "targetRef": {
+                        "kind": "Pod",
+                        "name": "web-app-fbf7d977d-dqwf8",
+                        "namespace": "fixture-crashloop",
+                        "uid": "00000000-0000-4000-8000-000000000003"
+                    }
+                }
+            ],
+            "kind": "EndpointSlice",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:00:59Z",
+                "generateName": "web-app-",
+                "generation": 9,
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-crashloop",
+                    "app.kubernetes.io/managed-by": "dockflow",
+                    "app.kubernetes.io/name": "web-app",
+                    "app.kubernetes.io/part-of": "shop",
+                    "dockflow.shawiizz.dev/part": "stack",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "web-app",
+                    "dockflow.shawiizz.dev/stack": "fixture-crashloop",
+                    "endpointslice.kubernetes.io/managed-by": "endpointslice-controller.k8s.io",
+                    "kubernetes.io/service-name": "web-app",
+                    "service.kubernetes.io/headless": ""
+                },
+                "name": "web-app-9rlgq",
+                "namespace": "fixture-crashloop",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Service",
+                        "name": "web-app",
+                        "uid": "00000000-0000-4000-8000-000000000004"
+                    }
+                ],
+                "resourceVersion": "16",
+                "uid": "00000000-0000-4000-8000-000000000005"
+            },
+            "ports": null
+        }
+    ],
     "kind": "List",
     "metadata": {
         "resourceVersion": ""

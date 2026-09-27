@@ -24,7 +24,106 @@
                             "automountServiceAccountToken": false,
                             "containers": [
                                 {
-                                    "command": [
+                                    "args": [
+                                        "sleep",
+                                        "36000"
+                                    ],
+                                    "image": "busybox:1.37",
+                                    "imagePullPolicy": "IfNotPresent",
+                                    "name": "db",
+                                    "resources": {},
+                                    "terminationMessagePath": "/dev/termination-log",
+                                    "terminationMessagePolicy": "File",
+                                    "volumeMounts": [
+                                        {
+                                            "mountPath": "/data",
+                                            "name": "data"
+                                        }
+                                    ]
+                                }
+                            ],
+                            "dnsPolicy": "ClusterFirst",
+                            "enableServiceLinks": false,
+                            "restartPolicy": "Always",
+                            "schedulerName": "default-scheduler",
+                            "securityContext": {
+                                "seccompProfile": {
+                                    "type": "RuntimeDefault"
+                                }
+                            },
+                            "terminationGracePeriodSeconds": 10,
+                            "topologySpreadConstraints": [
+                                {
+                                    "labelSelector": {
+                                        "matchLabels": {
+                                            "dockflow.shawiizz.dev/service": "db",
+                                            "dockflow.shawiizz.dev/stack": "fixture-statefulset-stuck"
+                                        }
+                                    },
+                                    "maxSkew": 1,
+                                    "topologyKey": "kubernetes.io/hostname",
+                                    "whenUnsatisfiable": "ScheduleAnyway"
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "kind": "ControllerRevision",
+            "metadata": {
+                "annotations": {
+                    "dockflow.shawiizz.dev/compose-service": "db"
+                },
+                "creationTimestamp": "2026-01-01T00:11:18Z",
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-statefulset-stuck",
+                    "app.kubernetes.io/name": "db",
+                    "controller.kubernetes.io/hash": "5946c4d4d7",
+                    "dockflow.shawiizz.dev/role": "accessory",
+                    "dockflow.shawiizz.dev/service": "db",
+                    "dockflow.shawiizz.dev/stack": "fixture-statefulset-stuck"
+                },
+                "name": "db-5946c4d4d7",
+                "namespace": "fixture-statefulset-stuck",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "StatefulSet",
+                        "name": "db",
+                        "uid": "00000000-0000-4000-8000-000000000001"
+                    }
+                ],
+                "resourceVersion": "2",
+                "uid": "00000000-0000-4000-8000-000000000002"
+            },
+            "revision": 1
+        },
+        {
+            "apiVersion": "apps/v1",
+            "data": {
+                "spec": {
+                    "template": {
+                        "$patch": "replace",
+                        "metadata": {
+                            "annotations": {
+                                "dockflow.shawiizz.dev/compose-service": "db",
+                                "kubectl.kubernetes.io/default-container": "db"
+                            },
+                            "labels": {
+                                "app.kubernetes.io/instance": "fixture-statefulset-stuck",
+                                "app.kubernetes.io/name": "db",
+                                "dockflow.shawiizz.dev/role": "accessory",
+                                "dockflow.shawiizz.dev/service": "db",
+                                "dockflow.shawiizz.dev/stack": "fixture-statefulset-stuck"
+                            }
+                        },
+                        "spec": {
+                            "automountServiceAccountToken": false,
+                            "containers": [
+                                {
+                                    "args": [
                                         "sh",
                                         "-c",
                                         "exit 1"
@@ -52,20 +151,39 @@
                                     "type": "RuntimeDefault"
                                 }
                             },
-                            "terminationGracePeriodSeconds": 10
+                            "terminationGracePeriodSeconds": 10,
+                            "topologySpreadConstraints": [
+                                {
+                                    "labelSelector": {
+                                        "matchLabels": {
+                                            "dockflow.shawiizz.dev/service": "db",
+                                            "dockflow.shawiizz.dev/stack": "fixture-statefulset-stuck"
+                                        }
+                                    },
+                                    "maxSkew": 1,
+                                    "topologyKey": "kubernetes.io/hostname",
+                                    "whenUnsatisfiable": "ScheduleAnyway"
+                                }
+                            ]
                         }
                     }
                 }
             },
             "kind": "ControllerRevision",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:20:00Z",
+                "annotations": {
+                    "dockflow.shawiizz.dev/compose-service": "db"
+                },
+                "creationTimestamp": "2026-01-01T00:11:21Z",
                 "labels": {
-                    "controller.kubernetes.io/hash": "cd56qgh65c",
+                    "app.kubernetes.io/instance": "fixture-statefulset-stuck",
+                    "app.kubernetes.io/name": "db",
+                    "controller.kubernetes.io/hash": "6c4645cd5b",
+                    "dockflow.shawiizz.dev/role": "accessory",
                     "dockflow.shawiizz.dev/service": "db",
                     "dockflow.shawiizz.dev/stack": "fixture-statefulset-stuck"
                 },
-                "name": "db-cd56qgh65c",
+                "name": "db-6c4645cd5b",
                 "namespace": "fixture-statefulset-stuck",
                 "ownerReferences": [
                     {
@@ -81,87 +199,6 @@
                 "uid": "00000000-0000-4000-8000-000000000003"
             },
             "revision": 2
-        },
-        {
-            "apiVersion": "apps/v1",
-            "data": {
-                "spec": {
-                    "template": {
-                        "$patch": "replace",
-                        "metadata": {
-                            "annotations": {
-                                "dockflow.shawiizz.dev/compose-service": "db",
-                                "kubectl.kubernetes.io/default-container": "db"
-                            },
-                            "labels": {
-                                "app.kubernetes.io/instance": "fixture-statefulset-stuck",
-                                "app.kubernetes.io/name": "db",
-                                "dockflow.shawiizz.dev/role": "accessory",
-                                "dockflow.shawiizz.dev/service": "db",
-                                "dockflow.shawiizz.dev/stack": "fixture-statefulset-stuck"
-                            }
-                        },
-                        "spec": {
-                            "automountServiceAccountToken": false,
-                            "containers": [
-                                {
-                                    "command": [
-                                        "sh",
-                                        "-c",
-                                        "sleep 3600"
-                                    ],
-                                    "image": "busybox:1.37",
-                                    "imagePullPolicy": "IfNotPresent",
-                                    "name": "db",
-                                    "resources": {},
-                                    "terminationMessagePath": "/dev/termination-log",
-                                    "terminationMessagePolicy": "File",
-                                    "volumeMounts": [
-                                        {
-                                            "mountPath": "/data",
-                                            "name": "data"
-                                        }
-                                    ]
-                                }
-                            ],
-                            "dnsPolicy": "ClusterFirst",
-                            "enableServiceLinks": false,
-                            "restartPolicy": "Always",
-                            "schedulerName": "default-scheduler",
-                            "securityContext": {
-                                "seccompProfile": {
-                                    "type": "RuntimeDefault"
-                                }
-                            },
-                            "terminationGracePeriodSeconds": 10
-                        }
-                    }
-                }
-            },
-            "kind": "ControllerRevision",
-            "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "labels": {
-                    "controller.kubernetes.io/hash": "lnhplfcs9h",
-                    "dockflow.shawiizz.dev/service": "db",
-                    "dockflow.shawiizz.dev/stack": "fixture-statefulset-stuck"
-                },
-                "name": "db-lnhplfcs9h",
-                "namespace": "fixture-statefulset-stuck",
-                "ownerReferences": [
-                    {
-                        "apiVersion": "apps/v1",
-                        "blockOwnerDeletion": true,
-                        "controller": true,
-                        "kind": "StatefulSet",
-                        "name": "db",
-                        "uid": "00000000-0000-4000-8000-000000000001"
-                    }
-                ],
-                "resourceVersion": "2",
-                "uid": "00000000-0000-4000-8000-000000000002"
-            },
-            "revision": 1
         }
     ],
     "kind": "List",

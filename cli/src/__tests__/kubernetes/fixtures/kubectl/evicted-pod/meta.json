@@ -1,10 +1,10 @@
 {
-  "synthetic": true,
+  "recordedOn": "2026-09-27",
   "k3sVersion": "v1.36.4+k3s1",
   "steps": [
-    "kubectl create namespace fixture-evicted-pod",
-    "kubectl apply: Deployment web (1 replica, busybox:1.37 running sh -c 'dd if=/dev/zero of=/tmp/fill bs=1M count=64; sleep 3600', ephemeral-storage limit 16Mi)",
-    "wait until the first pod is Failed with reason Evicted and its replacement is Running",
-    "capture the namespace resources and the cluster nodes and persistentvolumes"
+    "Dockflow renders the compose file into namespace fixture-<scenario> (project shop, release 1.4.2, servers server_1 and agent_1) and applies it server-side as a deploy does",
+    "docker-compose.yml: service web, busybox:1.37, command sh -c \"dd if=/dev/zero of=/tmp/fill bs=1M count=64; sleep 3600\", placed on server_1",
+    "patch: resources.limits.ephemeral-storage 16Mi, which no compose key sets",
+    "capture once the first pod is Failed with reason Evicted and its replacement is Running"
   ]
 }

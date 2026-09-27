@@ -7,7 +7,7 @@
             "endpoints": [
                 {
                     "addresses": [
-                        "10.42.0.10"
+                        "10.42.0.17"
                     ],
                     "conditions": {
                         "ready": true,
@@ -19,12 +19,12 @@
                         "kind": "Pod",
                         "name": "db-0",
                         "namespace": "fixture-statefulset-stuck",
-                        "uid": "00000000-0000-4000-8000-000000000009"
+                        "uid": "00000000-0000-4000-8000-000000000004"
                     }
                 },
                 {
                     "addresses": [
-                        "10.42.1.10"
+                        "10.42.1.16"
                     ],
                     "conditions": {
                         "ready": false,
@@ -36,18 +36,97 @@
                         "kind": "Pod",
                         "name": "db-1",
                         "namespace": "fixture-statefulset-stuck",
-                        "uid": "00000000-0000-4000-8000-000000000016"
+                        "uid": "00000000-0000-4000-8000-000000000005"
                     }
                 }
             ],
             "kind": "EndpointSlice",
             "metadata": {
                 "annotations": {
-                    "endpoints.kubernetes.io/last-change-trigger-time": "2026-01-01T00:20:02Z"
+                    "endpoints.kubernetes.io/last-change-trigger-time": "2026-01-01T00:12:18Z"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:11:18Z",
+                "generateName": "db-",
+                "generation": 13,
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-statefulset-stuck",
+                    "app.kubernetes.io/managed-by": "dockflow",
+                    "app.kubernetes.io/name": "db",
+                    "app.kubernetes.io/part-of": "shop",
+                    "dockflow.shawiizz.dev/part": "stack",
+                    "dockflow.shawiizz.dev/role": "accessory",
+                    "dockflow.shawiizz.dev/service": "db",
+                    "dockflow.shawiizz.dev/stack": "fixture-statefulset-stuck",
+                    "endpointslice.kubernetes.io/managed-by": "endpointslice-controller.k8s.io",
+                    "kubernetes.io/service-name": "db",
+                    "service.kubernetes.io/headless": ""
+                },
+                "name": "db-dj7hv",
+                "namespace": "fixture-statefulset-stuck",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Service",
+                        "name": "db",
+                        "uid": "00000000-0000-4000-8000-000000000008"
+                    }
+                ],
+                "resourceVersion": "45",
+                "uid": "00000000-0000-4000-8000-000000000010"
+            },
+            "ports": null
+        },
+        {
+            "addressType": "IPv4",
+            "apiVersion": "discovery.k8s.io/v1",
+            "endpoints": [
+                {
+                    "addresses": [
+                        "10.42.0.17"
+                    ],
+                    "conditions": {
+                        "ready": true,
+                        "serving": true,
+                        "terminating": false
+                    },
+                    "hostname": "db-0",
+                    "nodeName": "server-1",
+                    "targetRef": {
+                        "kind": "Pod",
+                        "name": "db-0",
+                        "namespace": "fixture-statefulset-stuck",
+                        "uid": "00000000-0000-4000-8000-000000000004"
+                    }
+                },
+                {
+                    "addresses": [
+                        "10.42.1.16"
+                    ],
+                    "conditions": {
+                        "ready": false,
+                        "serving": false,
+                        "terminating": false
+                    },
+                    "hostname": "db-1",
+                    "nodeName": "agent-1",
+                    "targetRef": {
+                        "kind": "Pod",
+                        "name": "db-1",
+                        "namespace": "fixture-statefulset-stuck",
+                        "uid": "00000000-0000-4000-8000-000000000005"
+                    }
+                }
+            ],
+            "kind": "EndpointSlice",
+            "metadata": {
+                "annotations": {
+                    "endpoints.kubernetes.io/last-change-trigger-time": "2026-01-01T00:12:18Z"
+                },
+                "creationTimestamp": "2026-01-01T00:11:18Z",
                 "generateName": "db-hl-",
-                "generation": 6,
+                "generation": 13,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-statefulset-stuck",
                     "app.kubernetes.io/managed-by": "dockflow",
@@ -61,7 +140,7 @@
                     "kubernetes.io/service-name": "db-hl",
                     "service.kubernetes.io/headless": ""
                 },
-                "name": "db-hl-tc75x",
+                "name": "db-hl-h4wj6",
                 "namespace": "fixture-statefulset-stuck",
                 "ownerReferences": [
                     {
@@ -70,19 +149,13 @@
                         "controller": true,
                         "kind": "Service",
                         "name": "db-hl",
-                        "uid": "00000000-0000-4000-8000-000000000004"
+                        "uid": "00000000-0000-4000-8000-000000000009"
                     }
                 ],
-                "resourceVersion": "39",
-                "uid": "00000000-0000-4000-8000-000000000024"
+                "resourceVersion": "46",
+                "uid": "00000000-0000-4000-8000-000000000011"
             },
-            "ports": [
-                {
-                    "name": "placeholder",
-                    "port": 9,
-                    "protocol": "TCP"
-                }
-            ]
+            "ports": null
         }
     ],
     "kind": "List",

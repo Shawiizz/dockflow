@@ -4,25 +4,25 @@
         {
             "action": "Binding",
             "apiVersion": "v1",
-            "eventTime": "2026-01-01T00:15:00.106300Z",
+            "eventTime": "2026-01-01T00:00:59.378Z",
             "firstTimestamp": null,
             "involvedObject": {
                 "apiVersion": "v1",
                 "kind": "Pod",
-                "name": "web-app-p2xkk2fn8m-zbc2k",
+                "name": "web-app-fbf7d977d-dqwf8",
                 "namespace": "fixture-crashloop",
-                "resourceVersion": "8",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "4",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "kind": "Event",
             "lastTimestamp": null,
-            "message": "Successfully assigned fixture-crashloop/web-app-p2xkk2fn8m-zbc2k to server-1",
+            "message": "Successfully assigned fixture-crashloop/web-app-fbf7d977d-dqwf8 to server-1",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web-app-p2xkk2fn8m-zbc2k.188673237b3659ec",
+                "creationTimestamp": "2026-01-01T00:00:59Z",
+                "name": "web-app-fbf7d977d-dqwf8.18d924db95569bbf",
                 "namespace": "fixture-crashloop",
-                "resourceVersion": "9",
-                "uid": "00000000-0000-4000-8000-000000000006"
+                "resourceVersion": "5",
+                "uid": "00000000-0000-4000-8000-000000000008"
             },
             "reason": "Scheduled",
             "reportingComponent": "default-scheduler",
@@ -34,58 +34,25 @@
             "apiVersion": "v1",
             "count": 4,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "firstTimestamp": "2026-01-01T00:00:59Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.containers{web-app}",
                 "kind": "Pod",
-                "name": "web-app-p2xkk2fn8m-zbc2k",
+                "name": "web-app-fbf7d977d-dqwf8",
                 "namespace": "fixture-crashloop",
-                "resourceVersion": "12",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:16:12Z",
-            "message": "Created container: web-app",
+            "lastTimestamp": "2026-01-01T00:01:32Z",
+            "message": "Container image \"busybox:1.37\" already present on machine and can be accessed by the pod",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:01Z",
-                "name": "web-app-p2xkk2fn8m-zbc2k.18867323cb6cbfa8",
+                "creationTimestamp": "2026-01-01T00:00:59Z",
+                "name": "web-app-fbf7d977d-dqwf8.18d924dba03203a4",
                 "namespace": "fixture-crashloop",
-                "resourceVersion": "13",
-                "uid": "00000000-0000-4000-8000-000000000008"
-            },
-            "reason": "Created",
-            "reportingComponent": "kubelet",
-            "reportingInstance": "server-1",
-            "source": {
-                "component": "kubelet",
-                "host": "server-1"
-            },
-            "type": "Normal"
-        },
-        {
-            "apiVersion": "v1",
-            "count": 4,
-            "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:01Z",
-            "involvedObject": {
-                "apiVersion": "v1",
-                "fieldPath": "spec.containers{web-app}",
-                "kind": "Pod",
-                "name": "web-app-p2xkk2fn8m-zbc2k",
-                "namespace": "fixture-crashloop",
-                "resourceVersion": "10",
-                "uid": "00000000-0000-4000-8000-000000000004"
-            },
-            "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:16:12Z",
-            "message": "Container image \"busybox:1.37\" already present on machine",
-            "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:01Z",
-                "name": "web-app-p2xkk2fn8m-zbc2k.18867323cdd22ed6",
-                "namespace": "fixture-crashloop",
-                "resourceVersion": "11",
-                "uid": "00000000-0000-4000-8000-000000000007"
+                "resourceVersion": "7",
+                "uid": "00000000-0000-4000-8000-000000000009"
             },
             "reason": "Pulled",
             "reportingComponent": "kubelet",
@@ -100,25 +67,58 @@
             "apiVersion": "v1",
             "count": 4,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "firstTimestamp": "2026-01-01T00:00:59Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.containers{web-app}",
                 "kind": "Pod",
-                "name": "web-app-p2xkk2fn8m-zbc2k",
+                "name": "web-app-fbf7d977d-dqwf8",
                 "namespace": "fixture-crashloop",
-                "resourceVersion": "14",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:16:12Z",
-            "message": "Started container web-app",
+            "lastTimestamp": "2026-01-01T00:01:32Z",
+            "message": "Container created",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:02Z",
-                "name": "web-app-p2xkk2fn8m-zbc2k.1886732422e1845d",
+                "creationTimestamp": "2026-01-01T00:00:59Z",
+                "name": "web-app-fbf7d977d-dqwf8.18d924dba3b0d282",
                 "namespace": "fixture-crashloop",
-                "resourceVersion": "15",
-                "uid": "00000000-0000-4000-8000-000000000009"
+                "resourceVersion": "8",
+                "uid": "00000000-0000-4000-8000-000000000010"
+            },
+            "reason": "Created",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Normal"
+        },
+        {
+            "apiVersion": "v1",
+            "count": 4,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:00:59Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web-app}",
+                "kind": "Pod",
+                "name": "web-app-fbf7d977d-dqwf8",
+                "namespace": "fixture-crashloop",
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000003"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:01:44Z",
+            "message": "Container started",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:00:59Z",
+                "name": "web-app-fbf7d977d-dqwf8.18d924dba72ef3cb",
+                "namespace": "fixture-crashloop",
+                "resourceVersion": "9",
+                "uid": "00000000-0000-4000-8000-000000000011"
             },
             "reason": "Started",
             "reportingComponent": "kubelet",
@@ -131,27 +131,27 @@
         },
         {
             "apiVersion": "v1",
-            "count": 7,
+            "count": 4,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:03Z",
+            "firstTimestamp": "2026-01-01T00:01:01Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.containers{web-app}",
                 "kind": "Pod",
-                "name": "web-app-p2xkk2fn8m-zbc2k",
+                "name": "web-app-fbf7d977d-dqwf8",
                 "namespace": "fixture-crashloop",
-                "resourceVersion": "16",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:16:25Z",
-            "message": "Back-off restarting failed container web-app in pod web-app-p2xkk2fn8m-zbc2k_fixture-crashloop(00000000-0000-4000-8000-000000000004)",
+            "lastTimestamp": "2026-01-01T00:01:44Z",
+            "message": "Back-off restarting failed container web-app in pod web-app-fbf7d977d-dqwf8_fixture-crashloop(00000000-0000-4000-8000-000000000003)",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:03Z",
-                "name": "web-app-p2xkk2fn8m-zbc2k.188673242f371627",
+                "creationTimestamp": "2026-01-01T00:01:01Z",
+                "name": "web-app-fbf7d977d-dqwf8.18d924dc0693bbcb",
                 "namespace": "fixture-crashloop",
-                "resourceVersion": "17",
-                "uid": "00000000-0000-4000-8000-000000000010"
+                "resourceVersion": "10",
+                "uid": "00000000-0000-4000-8000-000000000012"
             },
             "reason": "BackOff",
             "reportingComponent": "kubelet",
@@ -166,24 +166,24 @@
             "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "firstTimestamp": "2026-01-01T00:00:59Z",
             "involvedObject": {
                 "apiVersion": "apps/v1",
                 "kind": "ReplicaSet",
-                "name": "web-app-p2xkk2fn8m",
+                "name": "web-app-fbf7d977d",
                 "namespace": "fixture-crashloop",
-                "resourceVersion": "6",
+                "resourceVersion": "11",
                 "uid": "00000000-0000-4000-8000-000000000002"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:00Z",
-            "message": "Created pod: web-app-p2xkk2fn8m-zbc2k",
+            "lastTimestamp": "2026-01-01T00:00:59Z",
+            "message": "Created pod: web-app-fbf7d977d-dqwf8",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web-app-p2xkk2fn8m.18867323a5b6ff28",
+                "creationTimestamp": "2026-01-01T00:00:59Z",
+                "name": "web-app-fbf7d977d.18d924db952c85ed",
                 "namespace": "fixture-crashloop",
-                "resourceVersion": "7",
-                "uid": "00000000-0000-4000-8000-000000000005"
+                "resourceVersion": "12",
+                "uid": "00000000-0000-4000-8000-000000000013"
             },
             "reason": "SuccessfulCreate",
             "reportingComponent": "replicaset-controller",
@@ -197,24 +197,24 @@
             "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "firstTimestamp": "2026-01-01T00:00:59Z",
             "involvedObject": {
                 "apiVersion": "apps/v1",
                 "kind": "Deployment",
                 "name": "web-app",
                 "namespace": "fixture-crashloop",
-                "resourceVersion": "3",
+                "resourceVersion": "13",
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:00Z",
-            "message": "Scaled up replica set web-app-p2xkk2fn8m from 0 to 1",
+            "lastTimestamp": "2026-01-01T00:00:59Z",
+            "message": "Scaled up replica set web-app-fbf7d977d from 0 to 1",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web-app.18867323aacc787d",
+                "creationTimestamp": "2026-01-01T00:00:59Z",
+                "name": "web-app.18d924db8abe3a27",
                 "namespace": "fixture-crashloop",
-                "resourceVersion": "4",
-                "uid": "00000000-0000-4000-8000-000000000003"
+                "resourceVersion": "14",
+                "uid": "00000000-0000-4000-8000-000000000014"
             },
             "reason": "ScalingReplicaSet",
             "reportingComponent": "deployment-controller",

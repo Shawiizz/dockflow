@@ -9,8 +9,8 @@
                     "dockflow.shawiizz.dev/compose-service": "web",
                     "kubectl.kubernetes.io/default-container": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "generateName": "web-gwx9gxmmlm-",
+                "creationTimestamp": "2026-01-01T00:14:31Z",
+                "generateName": "web-7b6d4fd7fb-",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-init-container-crash",
@@ -18,9 +18,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-init-container-crash",
-                    "pod-template-hash": "gwx9gxmmlm"
+                    "pod-template-hash": "7b6d4fd7fb"
                 },
-                "name": "web-gwx9gxmmlm-8j722",
+                "name": "web-7b6d4fd7fb-9s54r",
                 "namespace": "fixture-init-container-crash",
                 "ownerReferences": [
                     {
@@ -28,12 +28,12 @@
                         "blockOwnerDeletion": true,
                         "controller": true,
                         "kind": "ReplicaSet",
-                        "name": "web-gwx9gxmmlm",
+                        "name": "web-7b6d4fd7fb",
                         "uid": "00000000-0000-4000-8000-000000000002"
                     }
                 ],
-                "resourceVersion": "5",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "spec": {
                 "automountServiceAccountToken": false,
@@ -42,13 +42,6 @@
                         "image": "nginx:1.27-alpine",
                         "imagePullPolicy": "IfNotPresent",
                         "name": "web",
-                        "ports": [
-                            {
-                                "containerPort": 80,
-                                "name": "tcp-80",
-                                "protocol": "TCP"
-                            }
-                        ],
                         "resources": {},
                         "terminationMessagePath": "/dev/termination-log",
                         "terminationMessagePolicy": "File"
@@ -72,6 +65,9 @@
                     }
                 ],
                 "nodeName": "server-1",
+                "nodeSelector": {
+                    "kubernetes.io/hostname": "server-1"
+                },
                 "preemptionPolicy": "PreemptLowerPriority",
                 "priority": 0,
                 "restartPolicy": "Always",
@@ -97,20 +93,45 @@
                         "operator": "Exists",
                         "tolerationSeconds": 300
                     }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchExpressions": [
+                                {
+                                    "key": "pod-template-hash",
+                                    "operator": "In",
+                                    "values": [
+                                        "7b6d4fd7fb"
+                                    ]
+                                }
+                            ],
+                            "matchLabels": {
+                                "dockflow.shawiizz.dev/service": "web",
+                                "dockflow.shawiizz.dev/stack": "fixture-init-container-crash"
+                            }
+                        },
+                        "matchLabelKeys": [
+                            "pod-template-hash"
+                        ],
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "ScheduleAnyway"
+                    }
                 ]
             },
             "status": {
                 "conditions": [
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:01Z",
+                        "lastTransitionTime": "2026-01-01T00:14:32Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodReadyToStartContainers"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:14:31Z",
                         "message": "containers with incomplete status: [init]",
                         "observedGeneration": 1,
                         "reason": "ContainersNotInitialized",
@@ -119,7 +140,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:14:31Z",
                         "message": "containers with unready status: [web]",
                         "observedGeneration": 1,
                         "reason": "ContainersNotReady",
@@ -128,7 +149,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:14:31Z",
                         "message": "containers with unready status: [web]",
                         "observedGeneration": 1,
                         "reason": "ContainersNotReady",
@@ -137,7 +158,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:14:31Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodScheduled"
@@ -167,40 +188,55 @@
                 ],
                 "initContainerStatuses": [
                     {
-                        "containerID": "containerd://4944da321ae3",
+                        "containerID": "containerd://483aa6b9bfae",
                         "image": "docker.io/library/busybox:1.37",
-                        "imageID": "containerd://6053936389b8",
+                        "imageID": "containerd://36b932e7ed7b",
                         "lastState": {
                             "terminated": {
-                                "containerID": "containerd://4944da321ae3",
+                                "containerID": "containerd://e89f42ff46e7",
                                 "exitCode": 1,
-                                "finishedAt": "2026-01-01T00:16:13Z",
+                                "finishedAt": "2026-01-01T00:14:46Z",
                                 "reason": "Error",
-                                "startedAt": "2026-01-01T00:16:13Z"
+                                "startedAt": "2026-01-01T00:14:46Z"
                             }
                         },
                         "name": "init",
                         "ready": false,
+                        "resources": {},
                         "restartCount": 3,
                         "started": false,
                         "state": {
-                            "waiting": {
-                                "message": "back-off 1m20s restarting failed container=init pod=web-gwx9gxmmlm-8j722_fixture-init-container-crash(00000000-0000-4000-8000-000000000004)",
-                                "reason": "CrashLoopBackOff"
+                            "terminated": {
+                                "containerID": "containerd://483aa6b9bfae",
+                                "exitCode": 1,
+                                "finishedAt": "2026-01-01T00:15:11Z",
+                                "reason": "Error",
+                                "startedAt": "2026-01-01T00:15:11Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    10
+                                ],
+                                "uid": 0
                             }
                         }
                     }
                 ],
                 "observedGeneration": 1,
                 "phase": "Pending",
-                "podIP": "10.42.0.10",
+                "podIP": "10.42.0.20",
                 "podIPs": [
                     {
-                        "ip": "10.42.0.10"
+                        "ip": "10.42.0.20"
                     }
                 ],
                 "qosClass": "BestEffort",
-                "startTime": "2026-01-01T00:15:00Z"
+                "resources": {},
+                "startTime": "2026-01-01T00:14:31Z"
             }
         }
     ],

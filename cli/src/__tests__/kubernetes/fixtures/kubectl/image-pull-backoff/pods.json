@@ -9,8 +9,8 @@
                     "dockflow.shawiizz.dev/compose-service": "web",
                     "kubectl.kubernetes.io/default-container": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "generateName": "web-h7fqpf2pgw-",
+                "creationTimestamp": "2026-01-01T00:06:45Z",
+                "generateName": "web-679ff8548-",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-image-pull-backoff",
@@ -18,9 +18,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-image-pull-backoff",
-                    "pod-template-hash": "h7fqpf2pgw"
+                    "pod-template-hash": "679ff8548"
                 },
-                "name": "web-h7fqpf2pgw-hhx68",
+                "name": "web-679ff8548-l5hvb",
                 "namespace": "fixture-image-pull-backoff",
                 "ownerReferences": [
                     {
@@ -28,12 +28,12 @@
                         "blockOwnerDeletion": true,
                         "controller": true,
                         "kind": "ReplicaSet",
-                        "name": "web-h7fqpf2pgw",
+                        "name": "web-679ff8548",
                         "uid": "00000000-0000-4000-8000-000000000002"
                     }
                 ],
-                "resourceVersion": "5",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "spec": {
                 "automountServiceAccountToken": false,
@@ -50,6 +50,9 @@
                 "dnsPolicy": "ClusterFirst",
                 "enableServiceLinks": false,
                 "nodeName": "server-1",
+                "nodeSelector": {
+                    "kubernetes.io/hostname": "server-1"
+                },
                 "preemptionPolicy": "PreemptLowerPriority",
                 "priority": 0,
                 "restartPolicy": "Always",
@@ -75,27 +78,52 @@
                         "operator": "Exists",
                         "tolerationSeconds": 300
                     }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchExpressions": [
+                                {
+                                    "key": "pod-template-hash",
+                                    "operator": "In",
+                                    "values": [
+                                        "679ff8548"
+                                    ]
+                                }
+                            ],
+                            "matchLabels": {
+                                "dockflow.shawiizz.dev/service": "web",
+                                "dockflow.shawiizz.dev/stack": "fixture-image-pull-backoff"
+                            }
+                        },
+                        "matchLabelKeys": [
+                            "pod-template-hash"
+                        ],
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "ScheduleAnyway"
+                    }
                 ]
             },
             "status": {
                 "conditions": [
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:01Z",
+                        "lastTransitionTime": "2026-01-01T00:06:46Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodReadyToStartContainers"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:06:46Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "Initialized"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:06:46Z",
                         "message": "containers with unready status: [web]",
                         "observedGeneration": 1,
                         "reason": "ContainersNotReady",
@@ -104,7 +132,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:06:46Z",
                         "message": "containers with unready status: [web]",
                         "observedGeneration": 1,
                         "reason": "ContainersNotReady",
@@ -113,7 +141,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:06:46Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodScheduled"
@@ -130,7 +158,7 @@
                         "started": false,
                         "state": {
                             "waiting": {
-                                "message": "Back-off pulling image \"localhost:35010/e2e/missing:1\": ErrImagePull: failed to pull and unpack image \"localhost:35010/e2e/missing:1\": failed to resolve reference \"localhost:35010/e2e/missing:1\": failed to do request: Head \"http://localhost:35010/v2/e2e/missing/manifests/1\": dial tcp 127.0.0.1:35010: connect: connection refused",
+                                "message": "Back-off pulling image \"localhost:35010/e2e/missing:1\": ErrImagePull: rpc error: code = NotFound desc = failed to pull and unpack image \"localhost:35010/e2e/missing:1\": failed to resolve reference \"localhost:35010/e2e/missing:1\": localhost:35010/e2e/missing:1: not found",
                                 "reason": "ImagePullBackOff"
                             }
                         }
@@ -144,14 +172,15 @@
                 ],
                 "observedGeneration": 1,
                 "phase": "Pending",
-                "podIP": "10.42.0.10",
+                "podIP": "10.42.0.12",
                 "podIPs": [
                     {
-                        "ip": "10.42.0.10"
+                        "ip": "10.42.0.12"
                     }
                 ],
                 "qosClass": "BestEffort",
-                "startTime": "2026-01-01T00:15:00Z"
+                "resources": {},
+                "startTime": "2026-01-01T00:06:46Z"
             }
         }
     ],

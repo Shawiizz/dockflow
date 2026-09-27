@@ -7,7 +7,7 @@
             "endpoints": [
                 {
                     "addresses": [
-                        "10.42.1.11"
+                        "10.42.1.33"
                     ],
                     "conditions": {
                         "ready": true,
@@ -17,20 +17,20 @@
                     "nodeName": "agent-1",
                     "targetRef": {
                         "kind": "Pod",
-                        "name": "cache-hwgfx9bvlh-qjjt9",
+                        "name": "cache-645cc4ff9-j5wkz",
                         "namespace": "fixture-headless-no-ports",
-                        "uid": "00000000-0000-4000-8000-000000000021"
+                        "uid": "00000000-0000-4000-8000-000000000005"
                     }
                 }
             ],
             "kind": "EndpointSlice",
             "metadata": {
                 "annotations": {
-                    "endpoints.kubernetes.io/last-change-trigger-time": "2026-01-01T00:15:03Z"
+                    "endpoints.kubernetes.io/last-change-trigger-time": "2026-01-01T00:25:19Z"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "generateName": "cache-hl-",
-                "generation": 3,
+                "creationTimestamp": "2026-01-01T00:25:18Z",
+                "generateName": "cache-",
+                "generation": 2,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-headless-no-ports",
                     "app.kubernetes.io/managed-by": "dockflow",
@@ -41,10 +41,10 @@
                     "dockflow.shawiizz.dev/service": "cache",
                     "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports",
                     "endpointslice.kubernetes.io/managed-by": "endpointslice-controller.k8s.io",
-                    "kubernetes.io/service-name": "cache-hl",
+                    "kubernetes.io/service-name": "cache",
                     "service.kubernetes.io/headless": ""
                 },
-                "name": "cache-hl-sjftz",
+                "name": "cache-gvglx",
                 "namespace": "fixture-headless-no-ports",
                 "ownerReferences": [
                     {
@@ -52,20 +52,14 @@
                         "blockOwnerDeletion": true,
                         "controller": true,
                         "kind": "Service",
-                        "name": "cache-hl",
-                        "uid": "00000000-0000-4000-8000-000000000027"
+                        "name": "cache",
+                        "uid": "00000000-0000-4000-8000-000000000008"
                     }
                 ],
-                "resourceVersion": "45",
-                "uid": "00000000-0000-4000-8000-000000000028"
+                "resourceVersion": "37",
+                "uid": "00000000-0000-4000-8000-000000000010"
             },
-            "ports": [
-                {
-                    "name": "placeholder",
-                    "port": 9,
-                    "protocol": "TCP"
-                }
-            ]
+            "ports": null
         },
         {
             "addressType": "IPv4",
@@ -73,24 +67,7 @@
             "endpoints": [
                 {
                     "addresses": [
-                        "10.42.0.10"
-                    ],
-                    "conditions": {
-                        "ready": true,
-                        "serving": true,
-                        "terminating": false
-                    },
-                    "nodeName": "server-1",
-                    "targetRef": {
-                        "kind": "Pod",
-                        "name": "worker-gr4tmskc6t-j9w9k",
-                        "namespace": "fixture-headless-no-ports",
-                        "uid": "00000000-0000-4000-8000-000000000004"
-                    }
-                },
-                {
-                    "addresses": [
-                        "10.42.1.10"
+                        "10.42.1.32"
                     ],
                     "conditions": {
                         "ready": true,
@@ -100,19 +77,33 @@
                     "nodeName": "agent-1",
                     "targetRef": {
                         "kind": "Pod",
-                        "name": "worker-gr4tmskc6t-b6fcd",
+                        "name": "worker-84d86c8ddf-zxpd5",
                         "namespace": "fixture-headless-no-ports",
-                        "uid": "00000000-0000-4000-8000-000000000010"
+                        "uid": "00000000-0000-4000-8000-000000000007"
+                    }
+                },
+                {
+                    "addresses": [
+                        "10.42.0.74"
+                    ],
+                    "conditions": {
+                        "ready": true,
+                        "serving": true,
+                        "terminating": false
+                    },
+                    "nodeName": "server-1",
+                    "targetRef": {
+                        "kind": "Pod",
+                        "name": "worker-84d86c8ddf-75j2f",
+                        "namespace": "fixture-headless-no-ports",
+                        "uid": "00000000-0000-4000-8000-000000000006"
                     }
                 }
             ],
             "kind": "EndpointSlice",
             "metadata": {
-                "annotations": {
-                    "endpoints.kubernetes.io/last-change-trigger-time": "2026-01-01T00:15:03Z"
-                },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "generateName": "worker-hl-",
+                "creationTimestamp": "2026-01-01T00:25:18Z",
+                "generateName": "worker-",
                 "generation": 3,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-headless-no-ports",
@@ -124,10 +115,10 @@
                     "dockflow.shawiizz.dev/service": "worker",
                     "dockflow.shawiizz.dev/stack": "fixture-headless-no-ports",
                     "endpointslice.kubernetes.io/managed-by": "endpointslice-controller.k8s.io",
-                    "kubernetes.io/service-name": "worker-hl",
+                    "kubernetes.io/service-name": "worker",
                     "service.kubernetes.io/headless": ""
                 },
-                "name": "worker-hl-rx8h2",
+                "name": "worker-7jgcx",
                 "namespace": "fixture-headless-no-ports",
                 "ownerReferences": [
                     {
@@ -135,12 +126,12 @@
                         "blockOwnerDeletion": true,
                         "controller": true,
                         "kind": "Service",
-                        "name": "worker-hl",
-                        "uid": "00000000-0000-4000-8000-000000000016"
+                        "name": "worker",
+                        "uid": "00000000-0000-4000-8000-000000000009"
                     }
                 ],
-                "resourceVersion": "28",
-                "uid": "00000000-0000-4000-8000-000000000017"
+                "resourceVersion": "38",
+                "uid": "00000000-0000-4000-8000-000000000011"
             },
             "ports": null
         }

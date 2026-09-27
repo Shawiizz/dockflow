@@ -8,7 +8,7 @@
                 "annotations": {
                     "dockflow.shawiizz.dev/compose-service": "api"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:15:17Z",
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-multi-container",
                     "app.kubernetes.io/managed-by": "dockflow",
@@ -21,13 +21,13 @@
                 },
                 "name": "api",
                 "namespace": "fixture-multi-container",
-                "resourceVersion": "22",
-                "uid": "00000000-0000-4000-8000-000000000013"
+                "resourceVersion": "17",
+                "uid": "00000000-0000-4000-8000-000000000004"
             },
             "spec": {
-                "clusterIP": "10.43.28.128",
+                "clusterIP": "10.43.136.182",
                 "clusterIPs": [
-                    "10.43.28.128"
+                    "10.43.136.182"
                 ],
                 "internalTrafficPolicy": "Cluster",
                 "ipFamilies": [

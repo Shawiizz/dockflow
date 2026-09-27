@@ -4,25 +4,25 @@
         {
             "action": "Binding",
             "apiVersion": "v1",
-            "eventTime": "2026-01-01T00:15:00.204118Z",
+            "eventTime": "2026-01-01T00:07:12.008Z",
             "firstTimestamp": null,
             "involvedObject": {
                 "apiVersion": "v1",
                 "kind": "Pod",
-                "name": "web-stwzqdsq9f-xqfnm",
+                "name": "web-7d7d576cc9-lpc4w",
                 "namespace": "fixture-invalid-image-name",
-                "resourceVersion": "8",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "4",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "kind": "Event",
             "lastTimestamp": null,
-            "message": "Successfully assigned fixture-invalid-image-name/web-stwzqdsq9f-xqfnm to server-1",
+            "message": "Successfully assigned fixture-invalid-image-name/web-7d7d576cc9-lpc4w to server-1",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web-stwzqdsq9f-xqfnm.18867323acd19edf",
+                "creationTimestamp": "2026-01-01T00:07:12Z",
+                "name": "web-7d7d576cc9-lpc4w.18d9253257d21aeb",
                 "namespace": "fixture-invalid-image-name",
-                "resourceVersion": "9",
-                "uid": "00000000-0000-4000-8000-000000000006"
+                "resourceVersion": "5",
+                "uid": "00000000-0000-4000-8000-000000000008"
             },
             "reason": "Scheduled",
             "reportingComponent": "default-scheduler",
@@ -32,60 +32,27 @@
         },
         {
             "apiVersion": "v1",
-            "count": 6,
+            "count": 2,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "firstTimestamp": "2026-01-01T00:07:12Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.containers{web}",
                 "kind": "Pod",
-                "name": "web-stwzqdsq9f-xqfnm",
+                "name": "web-7d7d576cc9-lpc4w",
                 "namespace": "fixture-invalid-image-name",
-                "resourceVersion": "12",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:55Z",
-            "message": "Error: InvalidImageName",
+            "lastTimestamp": "2026-01-01T00:07:12Z",
+            "message": "Failed to apply default image tag \"UPPER/Case:bad tag\": couldn't parse image name \"UPPER/Case:bad tag\": invalid reference format: repository name (Case) must be lowercase",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:01Z",
-                "name": "web-stwzqdsq9f-xqfnm.18867323be7e8e55",
+                "creationTimestamp": "2026-01-01T00:07:12Z",
+                "name": "web-7d7d576cc9-lpc4w.18d9253263fd0491",
                 "namespace": "fixture-invalid-image-name",
-                "resourceVersion": "13",
-                "uid": "00000000-0000-4000-8000-000000000008"
-            },
-            "reason": "Failed",
-            "reportingComponent": "kubelet",
-            "reportingInstance": "server-1",
-            "source": {
-                "component": "kubelet",
-                "host": "server-1"
-            },
-            "type": "Warning"
-        },
-        {
-            "apiVersion": "v1",
-            "count": 6,
-            "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:01Z",
-            "involvedObject": {
-                "apiVersion": "v1",
-                "fieldPath": "spec.containers{web}",
-                "kind": "Pod",
-                "name": "web-stwzqdsq9f-xqfnm",
-                "namespace": "fixture-invalid-image-name",
-                "resourceVersion": "10",
-                "uid": "00000000-0000-4000-8000-000000000004"
-            },
-            "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:55Z",
-            "message": "Failed to apply default image tag \"UPPER/Case:bad tag\": couldn't parse image name \"UPPER/Case:bad tag\": invalid reference format",
-            "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:01Z",
-                "name": "web-stwzqdsq9f-xqfnm.18867323db085db2",
-                "namespace": "fixture-invalid-image-name",
-                "resourceVersion": "11",
-                "uid": "00000000-0000-4000-8000-000000000007"
+                "resourceVersion": "7",
+                "uid": "00000000-0000-4000-8000-000000000009"
             },
             "reason": "InspectFailed",
             "reportingComponent": "kubelet",
@@ -98,26 +65,59 @@
         },
         {
             "apiVersion": "v1",
+            "count": 2,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:07:12Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{web}",
+                "kind": "Pod",
+                "name": "web-7d7d576cc9-lpc4w",
+                "namespace": "fixture-invalid-image-name",
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000003"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:07:12Z",
+            "message": "Error: InvalidImageName",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:07:12Z",
+                "name": "web-7d7d576cc9-lpc4w.18d9253263fe18d2",
+                "namespace": "fixture-invalid-image-name",
+                "resourceVersion": "8",
+                "uid": "00000000-0000-4000-8000-000000000010"
+            },
+            "reason": "Failed",
+            "reportingComponent": "kubelet",
+            "reportingInstance": "server-1",
+            "source": {
+                "component": "kubelet",
+                "host": "server-1"
+            },
+            "type": "Warning"
+        },
+        {
+            "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "firstTimestamp": "2026-01-01T00:07:12Z",
             "involvedObject": {
                 "apiVersion": "apps/v1",
                 "kind": "ReplicaSet",
-                "name": "web-stwzqdsq9f",
+                "name": "web-7d7d576cc9",
                 "namespace": "fixture-invalid-image-name",
-                "resourceVersion": "6",
+                "resourceVersion": "9",
                 "uid": "00000000-0000-4000-8000-000000000002"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:00Z",
-            "message": "Created pod: web-stwzqdsq9f-xqfnm",
+            "lastTimestamp": "2026-01-01T00:07:12Z",
+            "message": "Created pod: web-7d7d576cc9-lpc4w",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web-stwzqdsq9f.188673237d652fa7",
+                "creationTimestamp": "2026-01-01T00:07:12Z",
+                "name": "web-7d7d576cc9.18d9253257a6afce",
                 "namespace": "fixture-invalid-image-name",
-                "resourceVersion": "7",
-                "uid": "00000000-0000-4000-8000-000000000005"
+                "resourceVersion": "10",
+                "uid": "00000000-0000-4000-8000-000000000011"
             },
             "reason": "SuccessfulCreate",
             "reportingComponent": "replicaset-controller",
@@ -131,24 +131,24 @@
             "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "firstTimestamp": "2026-01-01T00:07:11Z",
             "involvedObject": {
                 "apiVersion": "apps/v1",
                 "kind": "Deployment",
                 "name": "web",
                 "namespace": "fixture-invalid-image-name",
-                "resourceVersion": "3",
+                "resourceVersion": "11",
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:00Z",
-            "message": "Scaled up replica set web-stwzqdsq9f from 0 to 1",
+            "lastTimestamp": "2026-01-01T00:07:11Z",
+            "message": "Scaled up replica set web-7d7d576cc9 from 0 to 1",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web.188673239fbdc9a2",
+                "creationTimestamp": "2026-01-01T00:07:11Z",
+                "name": "web.18d925323128e2d6",
                 "namespace": "fixture-invalid-image-name",
-                "resourceVersion": "4",
-                "uid": "00000000-0000-4000-8000-000000000003"
+                "resourceVersion": "12",
+                "uid": "00000000-0000-4000-8000-000000000012"
             },
             "reason": "ScalingReplicaSet",
             "reportingComponent": "deployment-controller",

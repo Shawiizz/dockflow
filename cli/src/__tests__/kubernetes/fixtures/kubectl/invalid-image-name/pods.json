@@ -9,8 +9,8 @@
                     "dockflow.shawiizz.dev/compose-service": "web",
                     "kubectl.kubernetes.io/default-container": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "generateName": "web-stwzqdsq9f-",
+                "creationTimestamp": "2026-01-01T00:07:12Z",
+                "generateName": "web-7d7d576cc9-",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-invalid-image-name",
@@ -18,9 +18,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-invalid-image-name",
-                    "pod-template-hash": "stwzqdsq9f"
+                    "pod-template-hash": "7d7d576cc9"
                 },
-                "name": "web-stwzqdsq9f-xqfnm",
+                "name": "web-7d7d576cc9-lpc4w",
                 "namespace": "fixture-invalid-image-name",
                 "ownerReferences": [
                     {
@@ -28,17 +28,21 @@
                         "blockOwnerDeletion": true,
                         "controller": true,
                         "kind": "ReplicaSet",
-                        "name": "web-stwzqdsq9f",
+                        "name": "web-7d7d576cc9",
                         "uid": "00000000-0000-4000-8000-000000000002"
                     }
                 ],
-                "resourceVersion": "5",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "spec": {
                 "automountServiceAccountToken": false,
                 "containers": [
                     {
+                        "args": [
+                            "sleep",
+                            "36000"
+                        ],
                         "image": "UPPER/Case:bad tag",
                         "imagePullPolicy": "IfNotPresent",
                         "name": "web",
@@ -50,6 +54,9 @@
                 "dnsPolicy": "ClusterFirst",
                 "enableServiceLinks": false,
                 "nodeName": "server-1",
+                "nodeSelector": {
+                    "kubernetes.io/hostname": "server-1"
+                },
                 "preemptionPolicy": "PreemptLowerPriority",
                 "priority": 0,
                 "restartPolicy": "Always",
@@ -75,27 +82,52 @@
                         "operator": "Exists",
                         "tolerationSeconds": 300
                     }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchExpressions": [
+                                {
+                                    "key": "pod-template-hash",
+                                    "operator": "In",
+                                    "values": [
+                                        "7d7d576cc9"
+                                    ]
+                                }
+                            ],
+                            "matchLabels": {
+                                "dockflow.shawiizz.dev/service": "web",
+                                "dockflow.shawiizz.dev/stack": "fixture-invalid-image-name"
+                            }
+                        },
+                        "matchLabelKeys": [
+                            "pod-template-hash"
+                        ],
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "ScheduleAnyway"
+                    }
                 ]
             },
             "status": {
                 "conditions": [
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:01Z",
+                        "lastTransitionTime": "2026-01-01T00:07:12Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodReadyToStartContainers"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:07:12Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "Initialized"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:07:12Z",
                         "message": "containers with unready status: [web]",
                         "observedGeneration": 1,
                         "reason": "ContainersNotReady",
@@ -104,7 +136,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:07:12Z",
                         "message": "containers with unready status: [web]",
                         "observedGeneration": 1,
                         "reason": "ContainersNotReady",
@@ -113,7 +145,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:07:12Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodScheduled"
@@ -130,7 +162,7 @@
                         "started": false,
                         "state": {
                             "waiting": {
-                                "message": "Failed to apply default image tag \"UPPER/Case:bad tag\": couldn't parse image name \"UPPER/Case:bad tag\": invalid reference format",
+                                "message": "Failed to apply default image tag \"UPPER/Case:bad tag\": couldn't parse image name \"UPPER/Case:bad tag\": invalid reference format: repository name (Case) must be lowercase",
                                 "reason": "InvalidImageName"
                             }
                         }
@@ -144,14 +176,15 @@
                 ],
                 "observedGeneration": 1,
                 "phase": "Pending",
-                "podIP": "10.42.0.10",
+                "podIP": "10.42.0.14",
                 "podIPs": [
                     {
-                        "ip": "10.42.0.10"
+                        "ip": "10.42.0.14"
                     }
                 ],
                 "qosClass": "BestEffort",
-                "startTime": "2026-01-01T00:15:00Z"
+                "resources": {},
+                "startTime": "2026-01-01T00:07:12Z"
             }
         }
     ],

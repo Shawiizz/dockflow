@@ -1,6 +1,51 @@
 {
     "apiVersion": "v1",
-    "items": [],
+    "items": [
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "annotations": {
+                    "dockflow.shawiizz.dev/compose-service": "agent"
+                },
+                "creationTimestamp": "2026-01-01T00:12:21Z",
+                "labels": {
+                    "app.kubernetes.io/instance": "fixture-daemonset-rolling",
+                    "app.kubernetes.io/managed-by": "dockflow",
+                    "app.kubernetes.io/name": "agent",
+                    "app.kubernetes.io/part-of": "shop",
+                    "dockflow.shawiizz.dev/part": "stack",
+                    "dockflow.shawiizz.dev/role": "app",
+                    "dockflow.shawiizz.dev/service": "agent",
+                    "dockflow.shawiizz.dev/stack": "fixture-daemonset-rolling"
+                },
+                "name": "agent",
+                "namespace": "fixture-daemonset-rolling",
+                "resourceVersion": "32",
+                "uid": "00000000-0000-4000-8000-000000000006"
+            },
+            "spec": {
+                "clusterIP": "None",
+                "clusterIPs": [
+                    "None"
+                ],
+                "internalTrafficPolicy": "Cluster",
+                "ipFamilies": [
+                    "IPv4"
+                ],
+                "ipFamilyPolicy": "SingleStack",
+                "selector": {
+                    "dockflow.shawiizz.dev/service": "agent",
+                    "dockflow.shawiizz.dev/stack": "fixture-daemonset-rolling"
+                },
+                "sessionAffinity": "None",
+                "type": "ClusterIP"
+            },
+            "status": {
+                "loadBalancer": {}
+            }
+        }
+    ],
     "kind": "List",
     "metadata": {
         "resourceVersion": ""

@@ -12,6 +12,7 @@ import type {
 } from '../../services/orchestrator/kubernetes/resources/apps';
 import type { Job } from '../../services/orchestrator/kubernetes/resources/batch';
 import type {
+  ContainerStatus,
   Event,
   Node,
   PersistentVolumeClaim,
@@ -191,14 +192,15 @@ const SHOWS: Record<string, (scenario: string) => void> = {
     const lb = list<Service>(s, 'services').find((svc) => svc.spec.type === 'LoadBalancer');
     expect(lb?.status?.loadBalancer?.ingress?.length).toBeGreaterThan(0);
   },
-  crashloop: (s) => waitingReason(s, 'CrashLoopBackOff'),
+  crashloop: (s) => crashLooping(list<Pod>(s, 'pods')[0].status?.containerStatuses?.[0]),
   'image-pull-backoff': (s) => waitingReason(s, 'ImagePullBackOff'),
   'err-image-never-pull': (s) => waitingReason(s, 'ErrImageNeverPull'),
   'invalid-image-name': (s) => waitingReason(s, 'InvalidImageName'),
   'create-container-config-error': (s) => waitingReason(s, 'CreateContainerConfigError'),
   'oom-killed': (s) => {
     const [pod] = list<Pod>(s, 'pods');
-    expect(pod.status?.containerStatuses?.[0].lastState?.terminated?.reason).toBe('OOMKilled');
+    const status = pod.status?.containerStatuses?.[0];
+    expect([status?.lastState?.terminated?.reason, status?.state?.terminated?.reason]).toContain('OOMKilled');
   },
   'unschedulable-resources': (s) => unschedulable(s, /Insufficient memory/),
   'unschedulable-node-selector': (s) => unschedulable(s, /didn't match Pod's node affinity\/selector/),
@@ -222,7 +224,8 @@ const SHOWS: Record<string, (scenario: string) => void> = {
     const [sts] = list<StatefulSet>(s, 'statefulsets.apps');
     expect(sts.status?.updateRevision).not.toBe(sts.status?.currentRevision);
     const updated = list<Pod>(s, 'pods').filter((p) => p.metadata.labels?.['controller-revision-hash'] === sts.status?.updateRevision);
-    expect(updated.map((p) => p.status?.containerStatuses?.[0].state?.waiting?.reason)).toEqual(['CrashLoopBackOff']);
+    expect(updated.map((p) => p.metadata.name)).toEqual(['db-1']);
+    crashLooping(updated[0].status?.containerStatuses?.[0]);
   },
   'daemonset-rolling': (s) => {
     const [mid] = list<DaemonSet>(s, 'daemonsets.apps');
@@ -241,7 +244,7 @@ const SHOWS: Record<string, (scenario: string) => void> = {
   },
   'init-container-crash': (s) => {
     const [pod] = list<Pod>(s, 'pods');
-    expect(pod.status?.initContainerStatuses?.[0].state?.waiting?.reason).toBe('CrashLoopBackOff');
+    crashLooping(pod.status?.initContainerStatuses?.[0]);
   },
   'multi-container': (s) => {
     const [pod] = list<Pod>(s, 'pods');
@@ -270,6 +273,12 @@ const SHOWS: Record<string, (scenario: string) => void> = {
 function waitingReason(scenario: string, reason: string): void {
   const [pod] = list<Pod>(scenario, 'pods');
   expect(pod.status?.containerStatuses?.[0].state?.waiting?.reason).toBe(reason);
+}
+
+/** Restarted 3 times and backing off: k3s 1.36 keeps the container `terminated` most of that time, else `waiting` in CrashLoopBackOff. */
+function crashLooping(status: ContainerStatus | undefined): void {
+  expect(status?.restartCount).toBeGreaterThanOrEqual(3);
+  expect(status?.state?.waiting?.reason === 'CrashLoopBackOff' || status?.state?.terminated !== undefined).toBe(true);
 }
 
 function unschedulable(scenario: string, message: RegExp): void {
@@ -387,12 +396,13 @@ describe('meta.json rules', () => {
 
   test('a synthetic scenario is accepted', () => {
     expect(metaErrors({ synthetic: true, k3sVersion: K3S_PIN.version, steps }, 'kubectl')).toEqual([]);
-    expect(loadFixtureMeta('kubectl', 'crashloop').synthetic).toBe(true);
+    expect(loadFixtureMeta('helm', 'helm-list').synthetic).toBe(true);
   });
 
   test('a recorded scenario is accepted', () => {
     expect(metaErrors({ k3sVersion: 'v1.36.4+k3s1', recordedOn: '2026-09-17', steps }, 'kubectl')).toEqual([]);
     expect(metaErrors({ k3sVersion: 'v1.36.4+k3s1', recordedOn: '2026-09-17', helmVersion: 'v4.3.0', steps }, 'helm')).toEqual([]);
+    expect(loadFixtureMeta('kubectl', 'crashloop').recordedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   test('exactly one of synthetic and recordedOn', () => {
@@ -486,10 +496,17 @@ describe('scrub checker', () => {
       }),
       /timestamp 2026-01-01T02:15:00\+02:00 is not shifted/,
     );
+    // server-1 registered at midnight: its creation and first condition transitions are the earliest
+    const midnight = '2026-01-01T00:00:00Z';
+    const late = (value: unknown): unknown => {
+      if (value === midnight) return '2026-01-01T00:00:05Z';
+      if (Array.isArray(value)) return value.map(late);
+      if (value !== null && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, late(v)]));
+      return value;
+    };
     expectViolation(
       mutate('nodes.json', (nodes) => {
-        const server = nodes.find((n) => field(n, 'metadata').name === 'server-1');
-        if (server) field(server, 'metadata').creationTimestamp = '2026-01-01T00:00:05Z';
+        nodes.splice(0, nodes.length, ...nodes.map((n) => late(n) as JsonRecord));
       }),
       /earliest timestamp 2026-01-01T00:00:05Z is not 2026-01-01T00:00:00Z/,
     );

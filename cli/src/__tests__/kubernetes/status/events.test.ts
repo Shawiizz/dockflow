@@ -139,8 +139,8 @@ describe('attachEvents', () => {
       service: 'web_app',
       reason: 'CrashLoopBackOff',
       message:
-        'Service web_app keeps crashing: container web-app restarted 3 time(s), last exit code 1 (Error) (events: BackOff: Back-off restarting failed container web-app in pod web-app-p2xkk2fn8m-zbc2k_fixture-crashloop(00000000-0000-4000-8000-000000000004))',
-      instance: 'web-app-p2xkk2fn8m-zbc2k',
+        'Service web_app keeps crashing: container web-app restarted 3 time(s), last exit code 1 (Error) (events: BackOff: Back-off restarting failed container web-app in pod web-app-fbf7d977d-dqwf8_fixture-crashloop(00000000-0000-4000-8000-000000000003))',
+      instance: 'web-app-fbf7d977d-dqwf8',
       node: 'server_1',
     });
   });
@@ -150,7 +150,10 @@ describe('attachEvents', () => {
     const target = deployment('web', 'web', 1);
     const evaluation = evaluateConvergence([target], [], snapshotOf(scenario), { firstSeen: {} }, T0, contextOf(scenario));
     const enriched = enrichFailure(expectFailed(evaluation.verdicts[targetKey(target)]), eventsOf(scenario), NO_SECRETS);
-    expect(enriched.message).toContain('(events: FailedCreate: Error creating: pods "web-lbvqsx2s79-zbdkv" is forbidden');
+    // the event recorder folds repeated rejections into one "combined" event, the newest
+    expect(enriched.message).toContain(
+      '(events: FailedCreate: (combined from similar events): Error creating: pods "web-ddff555b9-jrptc" is forbidden',
+    );
     expect(enriched.message.match(/FailedCreate/g)).toHaveLength(3);
   });
 
@@ -222,7 +225,7 @@ describe('redaction (U-STATUS-CONV-16)', () => {
     const first = evaluateConvergence([target], [], snap, { firstSeen: {} }, T0, context);
     const later = evaluateConvergence([target], [], snap, first.state, new Date(T0.getTime() + 15_000), context);
     const verdict = expectFailed(later.verdicts[targetKey(target)]);
-    const events = [event('00000000-0000-4000-8000-000000000004', 'Failed', 'Error: czNjcjN0LXZhbHVl rejected', { lastTimestamp: '2026-01-01T00:16:00Z' })];
+    const events = [event('00000000-0000-4000-8000-000000000003', 'Failed', 'Error: czNjcjN0LXZhbHVl rejected', { lastTimestamp: '2026-01-01T00:16:00Z' })];
     const enriched = enrichFailure(verdict, events, new Redactor(['s3cr3t-value']));
     expect(enriched.message).toBe('Service web cannot create container web: invalid value *** for DB_PASSWORD (events: Failed: Error: *** rejected)');
   });

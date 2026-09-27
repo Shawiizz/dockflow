@@ -165,8 +165,8 @@ describe('parsePrefixedLine', () => {
   });
 
   it('keeps dashes in the container name and `] ` inside the message', () => {
-    expect(parsePrefixedLine('[pod/api-bg5g5vghlb-27kgr/log-shipper] 2026-01-01T00:15:00Z [info] ] shipped')).toEqual({
-      pod: 'api-bg5g5vghlb-27kgr',
+    expect(parsePrefixedLine('[pod/api-847f8bf66c-5ghhb/log-shipper] 2026-01-01T00:15:00Z [info] ] shipped')).toEqual({
+      pod: 'api-847f8bf66c-5ghhb',
       container: 'log-shipper',
       timestamp: '2026-01-01T00:15:00Z',
       text: '[info] ] shipped',
@@ -193,18 +193,18 @@ describe('parsePrefixedLine', () => {
 
 describe('isLogCandidate', () => {
   it('keeps pods with a started container, a crash-looping one included', () => {
-    expect(isLogCandidate(podNamed('rollout-complete', 'web-fbldgxtr82-cvpjp'), false)).toBe(true);
-    expect(isLogCandidate(podNamed('crashloop', 'web-app-p2xkk2fn8m-zbc2k'), false)).toBe(true);
+    expect(isLogCandidate(podNamed('rollout-complete', 'web-b655d585b-7jdgc'), false)).toBe(true);
+    expect(isLogCandidate(podNamed('crashloop', 'web-app-fbf7d977d-dqwf8'), false)).toBe(true);
   });
 
   it('leaves out terminating pods and pods whose container never started', () => {
-    expect(isLogCandidate(podNamed('terminating-pods', 'web-qw9jpb6slq-6sb4b'), true)).toBe(false);
-    expect(isLogCandidate(podNamed('unschedulable-resources', 'web-8k689hhgsx-rvc8f'), true)).toBe(false);
-    expect(isLogCandidate(podNamed('image-pull-backoff', 'web-h7fqpf2pgw-hhx68'), true)).toBe(false);
+    expect(isLogCandidate(podNamed('terminating-pods', 'web-585567c7ff-pbh4z'), true)).toBe(false);
+    expect(isLogCandidate(podNamed('unschedulable-resources', 'web-6db8d4bf7-jhghd'), true)).toBe(false);
+    expect(isLogCandidate(podNamed('image-pull-backoff', 'web-679ff8548-l5hvb'), true)).toBe(false);
   });
 
   it('keeps finished pods only with includeTerminated', () => {
-    const done = podNamed('job-complete', 'migrate-ab6158d4-jqsjt');
+    const done = podNamed('job-complete', 'migrate-8d802302-rcg26');
     expect(isLogCandidate(done, false)).toBe(false);
     expect(isLogCandidate(done, true)).toBe(true);
   });

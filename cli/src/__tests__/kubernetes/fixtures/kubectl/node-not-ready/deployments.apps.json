@@ -7,10 +7,9 @@
             "metadata": {
                 "annotations": {
                     "deployment.kubernetes.io/revision": "1",
-                    "dockflow.shawiizz.dev/compose-service": "web",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:18:58Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-node-not-ready",
@@ -28,9 +27,10 @@
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "progressDeadlineSeconds": 240,
                 "replicas": 2,
-                "revisionHistoryLimit": 3,
+                "revisionHistoryLimit": 2,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "web",
@@ -59,13 +59,30 @@
                         }
                     },
                     "spec": {
+                        "affinity": {
+                            "podAntiAffinity": {
+                                "requiredDuringSchedulingIgnoredDuringExecution": [
+                                    {
+                                        "labelSelector": {
+                                            "matchLabels": {
+                                                "dockflow.shawiizz.dev/service": "web",
+                                                "dockflow.shawiizz.dev/stack": "fixture-node-not-ready"
+                                            }
+                                        },
+                                        "matchLabelKeys": [
+                                            "pod-template-hash"
+                                        ],
+                                        "topologyKey": "kubernetes.io/hostname"
+                                    }
+                                ]
+                            }
+                        },
                         "automountServiceAccountToken": false,
                         "containers": [
                             {
-                                "command": [
-                                    "sh",
-                                    "-c",
-                                    "sleep 3600"
+                                "args": [
+                                    "sleep",
+                                    "36000"
                                 ],
                                 "image": "busybox:1.37",
                                 "imagePullPolicy": "IfNotPresent",
@@ -84,7 +101,23 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 10
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "web",
+                                        "dockflow.shawiizz.dev/stack": "fixture-node-not-ready"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
@@ -92,25 +125,26 @@
                 "availableReplicas": 1,
                 "conditions": [
                     {
-                        "lastTransitionTime": "2026-01-01T00:17:50Z",
-                        "lastUpdateTime": "2026-01-01T00:17:50Z",
+                        "lastTransitionTime": "2026-01-01T00:18:58Z",
+                        "lastUpdateTime": "2026-01-01T00:19:29Z",
+                        "message": "ReplicaSet \"web-56fd5fd7bf\" has successfully progressed.",
+                        "reason": "NewReplicaSetAvailable",
+                        "status": "True",
+                        "type": "Progressing"
+                    },
+                    {
+                        "lastTransitionTime": "2026-01-01T00:20:22Z",
+                        "lastUpdateTime": "2026-01-01T00:20:22Z",
                         "message": "Deployment does not have minimum availability.",
                         "reason": "MinimumReplicasUnavailable",
                         "status": "False",
                         "type": "Available"
-                    },
-                    {
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
-                        "lastUpdateTime": "2026-01-01T00:15:03Z",
-                        "message": "ReplicaSet \"web-cgxn45bv8v\" has successfully progressed.",
-                        "reason": "NewReplicaSetAvailable",
-                        "status": "True",
-                        "type": "Progressing"
                     }
                 ],
                 "observedGeneration": 1,
                 "readyReplicas": 1,
                 "replicas": 2,
+                "terminatingReplicas": 0,
                 "unavailableReplicas": 1,
                 "updatedReplicas": 2
             }

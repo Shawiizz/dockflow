@@ -7,10 +7,9 @@
             "metadata": {
                 "annotations": {
                     "deployment.kubernetes.io/revision": "2",
-                    "dockflow.shawiizz.dev/compose-service": "web",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:21:07Z",
                 "generation": 2,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-rollout-complete",
@@ -28,9 +27,10 @@
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "progressDeadlineSeconds": 240,
                 "replicas": 3,
-                "revisionHistoryLimit": 3,
+                "revisionHistoryLimit": 2,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "web",
@@ -79,10 +79,9 @@
                                         "port": 80,
                                         "scheme": "HTTP"
                                     },
-                                    "initialDelaySeconds": 60,
-                                    "periodSeconds": 5,
+                                    "periodSeconds": 30,
                                     "successThreshold": 1,
-                                    "timeoutSeconds": 1
+                                    "timeoutSeconds": 30
                                 },
                                 "resources": {},
                                 "terminationMessagePath": "/dev/termination-log",
@@ -98,7 +97,23 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 10
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "web",
+                                        "dockflow.shawiizz.dev/stack": "fixture-rollout-complete"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
@@ -106,17 +121,17 @@
                 "availableReplicas": 3,
                 "conditions": [
                     {
-                        "lastTransitionTime": "2026-01-01T00:16:02Z",
-                        "lastUpdateTime": "2026-01-01T00:16:02Z",
+                        "lastTransitionTime": "2026-01-01T00:22:08Z",
+                        "lastUpdateTime": "2026-01-01T00:22:08Z",
                         "message": "Deployment has minimum availability.",
                         "reason": "MinimumReplicasAvailable",
                         "status": "True",
                         "type": "Available"
                     },
                     {
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
-                        "lastUpdateTime": "2026-01-01T00:21:09Z",
-                        "message": "ReplicaSet \"web-fbldgxtr82\" has successfully progressed.",
+                        "lastTransitionTime": "2026-01-01T00:21:07Z",
+                        "lastUpdateTime": "2026-01-01T00:23:52Z",
+                        "message": "ReplicaSet \"web-b655d585b\" has successfully progressed.",
                         "reason": "NewReplicaSetAvailable",
                         "status": "True",
                         "type": "Progressing"
@@ -125,6 +140,7 @@
                 "observedGeneration": 2,
                 "readyReplicas": 3,
                 "replicas": 3,
+                "terminatingReplicas": 0,
                 "updatedReplicas": 3
             }
         }

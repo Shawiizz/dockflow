@@ -7,16 +7,19 @@
             "metadata": {
                 "annotations": {
                     "alpha.kubernetes.io/provided-node-ip": "192.0.2.12",
-                    "flannel.alpha.coreos.com/backend-data": "{\"VNI\":1,\"VtepMAC\":\"02:42:c0:00:02:0c\"}",
+                    "flannel.alpha.coreos.com/backend-data": "{\"VNI\":1,\"VtepMAC\":\"be:8c:37:d3:d2:7a\"}",
                     "flannel.alpha.coreos.com/backend-type": "vxlan",
                     "flannel.alpha.coreos.com/kube-subnet-manager": "true",
                     "flannel.alpha.coreos.com/public-ip": "192.0.2.12",
                     "k3s.io/hostname": "agent-1",
                     "k3s.io/internal-ip": "192.0.2.12",
+                    "k3s.io/node-args": "[\"agent\",\"--node-ip\",\"192.0.2.12\",\"--node-name\",\"agent-1\",\"--server\",\"https://192.0.2.11:6443\",\"--token-file\",\"/etc/rancher/k3s/dockflow/token\"]",
+                    "k3s.io/node-config-hash": "5QW2IRSW7J6KQQZR6Q2GBB7MP4HL4NWICJON7HIBHJHJSV4GU6LQ====",
+                    "k3s.io/node-env": "{}",
                     "node.alpha.kubernetes.io/ttl": "0",
                     "volumes.kubernetes.io/controller-managed-attach-detach": "true"
                 },
-                "creationTimestamp": "2026-01-01T00:00:40Z",
+                "creationTimestamp": "2026-01-01T00:00:18Z",
                 "finalizers": [
                     "wrangler.cattle.io/node"
                 ],
@@ -30,8 +33,8 @@
                     "node.kubernetes.io/instance-type": "k3s"
                 },
                 "name": "agent-1",
-                "resourceVersion": "30",
-                "uid": "00000000-0000-4000-8000-000000000020"
+                "resourceVersion": "26",
+                "uid": "00000000-0000-4000-8000-000000000007"
             },
             "spec": {
                 "podCIDR": "10.42.1.0/24",
@@ -43,12 +46,12 @@
                     {
                         "effect": "NoSchedule",
                         "key": "node.kubernetes.io/unreachable",
-                        "timeAdded": "2026-01-01T00:17:50Z"
+                        "timeAdded": "2026-01-01T00:20:22Z"
                     },
                     {
                         "effect": "NoExecute",
                         "key": "node.kubernetes.io/unreachable",
-                        "timeAdded": "2026-01-01T00:17:55Z"
+                        "timeAdded": "2026-01-01T00:20:22Z"
                     }
                 ]
             },
@@ -64,49 +67,49 @@
                     }
                 ],
                 "allocatable": {
-                    "cpu": "4",
-                    "ephemeral-storage": "61255492742",
+                    "cpu": "20",
+                    "ephemeral-storage": "1027046117185",
                     "hugepages-1Gi": "0",
                     "hugepages-2Mi": "0",
-                    "memory": "16261528Ki",
+                    "memory": "16226676Ki",
                     "pods": "110"
                 },
                 "capacity": {
-                    "cpu": "4",
-                    "ephemeral-storage": "62969360Ki",
+                    "cpu": "20",
+                    "ephemeral-storage": "1055762868Ki",
                     "hugepages-1Gi": "0",
                     "hugepages-2Mi": "0",
-                    "memory": "16261528Ki",
+                    "memory": "16226676Ki",
                     "pods": "110"
                 },
                 "conditions": [
                     {
-                        "lastHeartbeatTime": "2026-01-01T00:16:55Z",
-                        "lastTransitionTime": "2026-01-01T00:17:50Z",
+                        "lastHeartbeatTime": "2026-01-01T00:17:37Z",
+                        "lastTransitionTime": "2026-01-01T00:20:22Z",
                         "message": "Kubelet stopped posting node status.",
                         "reason": "NodeStatusUnknown",
                         "status": "Unknown",
                         "type": "MemoryPressure"
                     },
                     {
-                        "lastHeartbeatTime": "2026-01-01T00:16:55Z",
-                        "lastTransitionTime": "2026-01-01T00:17:50Z",
+                        "lastHeartbeatTime": "2026-01-01T00:17:37Z",
+                        "lastTransitionTime": "2026-01-01T00:20:22Z",
                         "message": "Kubelet stopped posting node status.",
                         "reason": "NodeStatusUnknown",
                         "status": "Unknown",
                         "type": "DiskPressure"
                     },
                     {
-                        "lastHeartbeatTime": "2026-01-01T00:16:55Z",
-                        "lastTransitionTime": "2026-01-01T00:17:50Z",
+                        "lastHeartbeatTime": "2026-01-01T00:17:37Z",
+                        "lastTransitionTime": "2026-01-01T00:20:22Z",
                         "message": "Kubelet stopped posting node status.",
                         "reason": "NodeStatusUnknown",
                         "status": "Unknown",
                         "type": "PIDPressure"
                     },
                     {
-                        "lastHeartbeatTime": "2026-01-01T00:16:55Z",
-                        "lastTransitionTime": "2026-01-01T00:17:50Z",
+                        "lastHeartbeatTime": "2026-01-01T00:17:37Z",
+                        "lastTransitionTime": "2026-01-01T00:20:22Z",
                         "message": "Kubelet stopped posting node status.",
                         "reason": "NodeStatusUnknown",
                         "status": "Unknown",
@@ -118,65 +121,152 @@
                         "Port": 10250
                     }
                 },
+                "declaredFeatures": [
+                    "ExtendWebSocketsToKubelet",
+                    "InPlacePodLevelResourcesVerticalScaling",
+                    "InPlacePodVerticalScalingInitContainers",
+                    "RestartAllContainersOnContainerExits"
+                ],
                 "features": {
                     "supplementalGroupsPolicy": true
                 },
                 "images": [
                     {
                         "names": [
+                            "docker.io/library/postgres@sha256:c96680fd9f59882f4f57d290864afab36cffe52fd38ac67fed1209e153d343fb",
+                            "docker.io/library/postgres:17-alpine"
+                        ],
+                        "sizeBytes": 300031738
+                    },
+                    {
+                        "names": [
+                            "docker.io/library/traefik@sha256:14da79d20b49b0492f1f6aa3c5d6116997bfb7a63ba8a11c5056c9f583ca91ad",
+                            "docker.io/library/traefik:v3.7.13"
+                        ],
+                        "sizeBytes": 195573237
+                    },
+                    {
+                        "names": [
+                            "docker.io/library/redis@sha256:faf30cc14237c4d479262d132ba6ffe77483c91a11d6830a543816f8cbb4ae12",
+                            "docker.io/library/redis:8-alpine"
+                        ],
+                        "sizeBytes": 119450581
+                    },
+                    {
+                        "names": [
+                            "docker.io/rancher/klipper-helm@sha256:5425a2b4613d2458dbdff99218e8d487ebb59c20e7a941f061c0777070f0aac1",
+                            "docker.io/rancher/klipper-helm:v0.13.3-build20260727"
+                        ],
+                        "sizeBytes": 74172006
+                    },
+                    {
+                        "names": [
+                            "docker.io/library/nginx@sha256:8c7ff3541dc06af8bac5238d9ac19672dbb31537e9099be8bac956734f99dfc2",
+                            "docker.io/library/nginx:alpine"
+                        ],
+                        "sizeBytes": 64308693
+                    },
+                    {
+                        "names": [
+                            "docker.io/rancher/mirrored-library-traefik@sha256:4299bbed850421258fc5448c2e0e6ad350981d4d335a68de11b92448aedbefe5",
+                            "docker.io/rancher/mirrored-library-traefik:3.7.8"
+                        ],
+                        "sizeBytes": 54509210
+                    },
+                    {
+                        "names": [
+                            "docker.io/library/nginx@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236",
                             "docker.io/library/nginx:1.28-alpine"
                         ],
-                        "sizeBytes": 21540871
+                        "sizeBytes": 25976042
                     },
                     {
                         "names": [
+                            "docker.io/rancher/mirrored-coredns-coredns@sha256:900f9c109f7a33545d3c811516e8376df9019147b750f5ce3e254468769176ea",
+                            "docker.io/rancher/mirrored-coredns-coredns:1.14.6"
+                        ],
+                        "sizeBytes": 23758055
+                    },
+                    {
+                        "names": [
+                            "docker.io/rancher/mirrored-metrics-server@sha256:d9862115e7c7881280d3d75ca26bda8ffc0fc213315979575bf23ce9826205c0",
+                            "docker.io/rancher/mirrored-metrics-server:v0.9.0"
+                        ],
+                        "sizeBytes": 23258428
+                    },
+                    {
+                        "names": [
+                            "docker.io/library/nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
                             "docker.io/library/nginx:1.27-alpine"
                         ],
-                        "sizeBytes": 21268937
+                        "sizeBytes": 20984244
                     },
                     {
                         "names": [
-                            "docker.io/rancher/mirrored-coredns-coredns:1.13.1"
+                            "docker.io/rancher/local-path-provisioner@sha256:e757967a5ec338f6a9b371c5a9688bedaa8c3578ea3dd4db329ea0084be0a86f",
+                            "docker.io/rancher/local-path-provisioner:v0.0.37"
                         ],
-                        "sizeBytes": 22446107
+                        "sizeBytes": 15066012
                     },
                     {
                         "names": [
-                            "docker.io/rancher/mirrored-metrics-server:v0.8.0"
+                            "docker.io/rancher/klipper-lb@sha256:910944bb0bd94f060a82a56ca1ea1c577d3e49b3473a093a47a985f32e92d94a",
+                            "docker.io/rancher/klipper-lb:v0.4.17"
                         ],
-                        "sizeBytes": 19472136
+                        "sizeBytes": 5280144
                     },
                     {
                         "names": [
+                            "docker.io/library/busybox@sha256:14ae3bac722131d06d5042b29a3aef42ebc03cd89aeba5cc8ce1ac01e8e092f9",
                             "docker.io/library/busybox:1.37"
                         ],
-                        "sizeBytes": 2156519
+                        "sizeBytes": 4660059
                     },
                     {
                         "names": [
+                            "docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
                             "docker.io/library/busybox:1.36"
                         ],
-                        "sizeBytes": 2159143
+                        "sizeBytes": 2217006
                     },
                     {
                         "names": [
-                            "docker.io/rancher/mirrored-pause:3.6"
+                            "docker.io/rancher/mirrored-library-busybox@sha256:101b4afd76732482eff9b95cae5f94bcf295e521fbec4e01b69c5421f3f3f3e5",
+                            "docker.io/rancher/mirrored-library-busybox:1.37.0"
                         ],
-                        "sizeBytes": 301463
+                        "sizeBytes": 2151353
+                    },
+                    {
+                        "names": [
+                            "docker.io/rancher/mirrored-pause@sha256:f548e0e8e3dc1896ca956272154dde3314e8cc4fde0a57577ee9fa1c63f5baf4",
+                            "docker.io/rancher/mirrored-pause:3.10.2"
+                        ],
+                        "sizeBytes": 320805
                     }
                 ],
                 "nodeInfo": {
                     "architecture": "amd64",
                     "bootID": "00000000-0000-4000-8000-000000000021",
-                    "containerRuntimeVersion": "containerd://2.1.5-k3s1",
-                    "kernelVersion": "6.8.0-85-generic",
+                    "containerRuntimeVersion": "containerd://2.3.4-k3s1.36",
+                    "kernelVersion": "6.8.0-generic",
+                    "kubeProxyVersion": "",
                     "kubeletVersion": "v1.36.4+k3s1",
-                    "machineID": "f0e2a24f5dc45e152800508bee80d38b",
+                    "machineID": "00000000000000000000000000000000",
                     "operatingSystem": "linux",
-                    "osImage": "Debian GNU/Linux 13 (trixie)",
+                    "osImage": "Ubuntu 24.04.5 LTS",
+                    "swap": {
+                        "capacity": 4294967296
+                    },
                     "systemUUID": "00000000-0000-4000-8000-000000000022"
                 },
                 "runtimeHandlers": [
+                    {
+                        "features": {
+                            "recursiveReadOnlyMounts": true,
+                            "userNamespaces": true
+                        },
+                        "name": ""
+                    },
                     {
                         "features": {
                             "recursiveReadOnlyMounts": true,
@@ -186,10 +276,10 @@
                     },
                     {
                         "features": {
-                            "recursiveReadOnlyMounts": true,
-                            "userNamespaces": true
+                            "recursiveReadOnlyMounts": false,
+                            "userNamespaces": false
                         },
-                        "name": ""
+                        "name": "runhcs-wcow-process"
                     }
                 ]
             }
@@ -200,12 +290,16 @@
             "metadata": {
                 "annotations": {
                     "alpha.kubernetes.io/provided-node-ip": "192.0.2.11",
-                    "flannel.alpha.coreos.com/backend-data": "{\"VNI\":1,\"VtepMAC\":\"02:42:c0:00:02:0b\"}",
+                    "flannel.alpha.coreos.com/backend-data": "{\"VNI\":1,\"VtepMAC\":\"4e:46:85:46:66:ea\"}",
                     "flannel.alpha.coreos.com/backend-type": "vxlan",
                     "flannel.alpha.coreos.com/kube-subnet-manager": "true",
                     "flannel.alpha.coreos.com/public-ip": "192.0.2.11",
+                    "k3s.io/encryption-config-hash": "start-66d81da145e87e351320e611bc55645dd333626acb94ede8b0d387afaf85e152",
                     "k3s.io/hostname": "server-1",
                     "k3s.io/internal-ip": "192.0.2.11",
+                    "k3s.io/node-args": "[\"server\",\"--agent-token-file\",\"/etc/rancher/k3s/dockflow/agent-token\",\"--disable\",\"traefik\",\"--flannel-backend\",\"vxlan\",\"--node-ip\",\"192.0.2.11\",\"--node-name\",\"server-1\",\"--secrets-encryption\",\"true\",\"--secrets-encryption-provider\",\"secretbox\",\"--write-kubeconfig-mode\",\"0600\"]",
+                    "k3s.io/node-config-hash": "27Z4D2ISVYK4TQWKZG6EV5ZSLVIGMTHZX3VUS55USVOT5NDDWFAA====",
+                    "k3s.io/node-env": "{}",
                     "node.alpha.kubernetes.io/ttl": "0",
                     "volumes.kubernetes.io/controller-managed-attach-detach": "true"
                 },
@@ -221,12 +315,11 @@
                     "kubernetes.io/hostname": "server-1",
                     "kubernetes.io/os": "linux",
                     "node-role.kubernetes.io/control-plane": "true",
-                    "node-role.kubernetes.io/master": "true",
                     "node.kubernetes.io/instance-type": "k3s"
                 },
                 "name": "server-1",
-                "resourceVersion": "29",
-                "uid": "00000000-0000-4000-8000-000000000017"
+                "resourceVersion": "27",
+                "uid": "00000000-0000-4000-8000-000000000008"
             },
             "spec": {
                 "podCIDR": "10.42.0.0/24",
@@ -247,49 +340,49 @@
                     }
                 ],
                 "allocatable": {
-                    "cpu": "4",
-                    "ephemeral-storage": "61255492742",
+                    "cpu": "20",
+                    "ephemeral-storage": "1027046117185",
                     "hugepages-1Gi": "0",
                     "hugepages-2Mi": "0",
-                    "memory": "16261528Ki",
+                    "memory": "16226676Ki",
                     "pods": "110"
                 },
                 "capacity": {
-                    "cpu": "4",
-                    "ephemeral-storage": "62969360Ki",
+                    "cpu": "20",
+                    "ephemeral-storage": "1055762868Ki",
                     "hugepages-1Gi": "0",
                     "hugepages-2Mi": "0",
-                    "memory": "16261528Ki",
+                    "memory": "16226676Ki",
                     "pods": "110"
                 },
                 "conditions": [
                     {
-                        "lastHeartbeatTime": "2026-01-01T00:17:58Z",
-                        "lastTransitionTime": "2026-01-01T00:00:06Z",
+                        "lastHeartbeatTime": "2026-01-01T00:18:09Z",
+                        "lastTransitionTime": "2026-01-01T00:00:00Z",
                         "message": "kubelet has sufficient memory available",
                         "reason": "KubeletHasSufficientMemory",
                         "status": "False",
                         "type": "MemoryPressure"
                     },
                     {
-                        "lastHeartbeatTime": "2026-01-01T00:17:58Z",
-                        "lastTransitionTime": "2026-01-01T00:00:06Z",
+                        "lastHeartbeatTime": "2026-01-01T00:18:09Z",
+                        "lastTransitionTime": "2026-01-01T00:00:00Z",
                         "message": "kubelet has no disk pressure",
                         "reason": "KubeletHasNoDiskPressure",
                         "status": "False",
                         "type": "DiskPressure"
                     },
                     {
-                        "lastHeartbeatTime": "2026-01-01T00:17:58Z",
-                        "lastTransitionTime": "2026-01-01T00:00:06Z",
+                        "lastHeartbeatTime": "2026-01-01T00:18:09Z",
+                        "lastTransitionTime": "2026-01-01T00:00:00Z",
                         "message": "kubelet has sufficient PID available",
                         "reason": "KubeletHasSufficientPID",
                         "status": "False",
                         "type": "PIDPressure"
                     },
                     {
-                        "lastHeartbeatTime": "2026-01-01T00:17:58Z",
-                        "lastTransitionTime": "2026-01-01T00:00:12Z",
+                        "lastHeartbeatTime": "2026-01-01T00:18:09Z",
+                        "lastTransitionTime": "2026-01-01T00:00:00Z",
                         "message": "kubelet is posting ready status",
                         "reason": "KubeletReady",
                         "status": "True",
@@ -301,65 +394,145 @@
                         "Port": 10250
                     }
                 },
+                "declaredFeatures": [
+                    "ExtendWebSocketsToKubelet",
+                    "InPlacePodLevelResourcesVerticalScaling",
+                    "InPlacePodVerticalScalingInitContainers",
+                    "RestartAllContainersOnContainerExits"
+                ],
                 "features": {
                     "supplementalGroupsPolicy": true
                 },
                 "images": [
                     {
                         "names": [
+                            "docker.io/library/postgres@sha256:c96680fd9f59882f4f57d290864afab36cffe52fd38ac67fed1209e153d343fb",
+                            "docker.io/library/postgres:17-alpine"
+                        ],
+                        "sizeBytes": 300031738
+                    },
+                    {
+                        "names": [
+                            "docker.io/library/traefik@sha256:14da79d20b49b0492f1f6aa3c5d6116997bfb7a63ba8a11c5056c9f583ca91ad",
+                            "docker.io/library/traefik:v3.7.13"
+                        ],
+                        "sizeBytes": 195573237
+                    },
+                    {
+                        "names": [
+                            "docker.io/library/redis@sha256:faf30cc14237c4d479262d132ba6ffe77483c91a11d6830a543816f8cbb4ae12",
+                            "docker.io/library/redis:8-alpine"
+                        ],
+                        "sizeBytes": 119450581
+                    },
+                    {
+                        "names": [
+                            "docker.io/rancher/klipper-helm@sha256:5425a2b4613d2458dbdff99218e8d487ebb59c20e7a941f061c0777070f0aac1",
+                            "docker.io/rancher/klipper-helm:v0.13.3-build20260727"
+                        ],
+                        "sizeBytes": 74172006
+                    },
+                    {
+                        "names": [
+                            "docker.io/library/nginx@sha256:8c7ff3541dc06af8bac5238d9ac19672dbb31537e9099be8bac956734f99dfc2",
+                            "docker.io/library/nginx:alpine"
+                        ],
+                        "sizeBytes": 64308693
+                    },
+                    {
+                        "names": [
+                            "docker.io/rancher/mirrored-library-traefik@sha256:4299bbed850421258fc5448c2e0e6ad350981d4d335a68de11b92448aedbefe5",
+                            "docker.io/rancher/mirrored-library-traefik:3.7.8"
+                        ],
+                        "sizeBytes": 54509210
+                    },
+                    {
+                        "names": [
+                            "docker.io/library/nginx@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236",
                             "docker.io/library/nginx:1.28-alpine"
                         ],
-                        "sizeBytes": 21540871
+                        "sizeBytes": 25976042
                     },
                     {
                         "names": [
+                            "docker.io/rancher/mirrored-coredns-coredns@sha256:900f9c109f7a33545d3c811516e8376df9019147b750f5ce3e254468769176ea",
+                            "docker.io/rancher/mirrored-coredns-coredns:1.14.6"
+                        ],
+                        "sizeBytes": 23758055
+                    },
+                    {
+                        "names": [
+                            "docker.io/rancher/mirrored-metrics-server@sha256:d9862115e7c7881280d3d75ca26bda8ffc0fc213315979575bf23ce9826205c0",
+                            "docker.io/rancher/mirrored-metrics-server:v0.9.0"
+                        ],
+                        "sizeBytes": 23258428
+                    },
+                    {
+                        "names": [
+                            "docker.io/library/nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
                             "docker.io/library/nginx:1.27-alpine"
                         ],
-                        "sizeBytes": 21268937
+                        "sizeBytes": 20984244
                     },
                     {
                         "names": [
-                            "docker.io/rancher/mirrored-coredns-coredns:1.13.1"
+                            "docker.io/rancher/local-path-provisioner@sha256:e757967a5ec338f6a9b371c5a9688bedaa8c3578ea3dd4db329ea0084be0a86f",
+                            "docker.io/rancher/local-path-provisioner:v0.0.37"
                         ],
-                        "sizeBytes": 22446107
+                        "sizeBytes": 15066012
                     },
                     {
                         "names": [
-                            "docker.io/rancher/mirrored-metrics-server:v0.8.0"
+                            "docker.io/rancher/klipper-lb@sha256:910944bb0bd94f060a82a56ca1ea1c577d3e49b3473a093a47a985f32e92d94a",
+                            "docker.io/rancher/klipper-lb:v0.4.17"
                         ],
-                        "sizeBytes": 19472136
+                        "sizeBytes": 5280144
                     },
                     {
                         "names": [
+                            "docker.io/library/busybox@sha256:14ae3bac722131d06d5042b29a3aef42ebc03cd89aeba5cc8ce1ac01e8e092f9",
                             "docker.io/library/busybox:1.37"
                         ],
-                        "sizeBytes": 2156519
+                        "sizeBytes": 4660059
                     },
                     {
                         "names": [
-                            "docker.io/library/busybox:1.36"
+                            "docker.io/rancher/mirrored-library-busybox@sha256:101b4afd76732482eff9b95cae5f94bcf295e521fbec4e01b69c5421f3f3f3e5",
+                            "docker.io/rancher/mirrored-library-busybox:1.37.0"
                         ],
-                        "sizeBytes": 2159143
+                        "sizeBytes": 2151353
                     },
                     {
                         "names": [
-                            "docker.io/rancher/mirrored-pause:3.6"
+                            "docker.io/rancher/mirrored-pause@sha256:f548e0e8e3dc1896ca956272154dde3314e8cc4fde0a57577ee9fa1c63f5baf4",
+                            "docker.io/rancher/mirrored-pause:3.10.2"
                         ],
-                        "sizeBytes": 301463
+                        "sizeBytes": 320805
                     }
                 ],
                 "nodeInfo": {
                     "architecture": "amd64",
-                    "bootID": "00000000-0000-4000-8000-000000000018",
-                    "containerRuntimeVersion": "containerd://2.1.5-k3s1",
-                    "kernelVersion": "6.8.0-85-generic",
+                    "bootID": "00000000-0000-4000-8000-000000000021",
+                    "containerRuntimeVersion": "containerd://2.3.4-k3s1.36",
+                    "kernelVersion": "6.8.0-generic",
+                    "kubeProxyVersion": "",
                     "kubeletVersion": "v1.36.4+k3s1",
-                    "machineID": "18223b680d4e8bbe49c78464f7410003",
+                    "machineID": "00000000000000000000000000000000",
                     "operatingSystem": "linux",
-                    "osImage": "Debian GNU/Linux 13 (trixie)",
-                    "systemUUID": "00000000-0000-4000-8000-000000000019"
+                    "osImage": "Ubuntu 24.04.5 LTS",
+                    "swap": {
+                        "capacity": 4294967296
+                    },
+                    "systemUUID": "00000000-0000-4000-8000-000000000022"
                 },
                 "runtimeHandlers": [
+                    {
+                        "features": {
+                            "recursiveReadOnlyMounts": true,
+                            "userNamespaces": true
+                        },
+                        "name": ""
+                    },
                     {
                         "features": {
                             "recursiveReadOnlyMounts": true,
@@ -369,10 +542,10 @@
                     },
                     {
                         "features": {
-                            "recursiveReadOnlyMounts": true,
-                            "userNamespaces": true
+                            "recursiveReadOnlyMounts": false,
+                            "userNamespaces": false
                         },
-                        "name": ""
+                        "name": "runhcs-wcow-process"
                     }
                 ]
             }

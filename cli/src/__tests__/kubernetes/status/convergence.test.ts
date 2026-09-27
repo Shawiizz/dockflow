@@ -43,6 +43,9 @@ const POLL_RESOURCES = [
 
 const T0 = new Date('2026-01-01T00:16:30.000Z');
 
+/** the crash-looping pod of the crashloop recording */
+const CRASHLOOP_POD = 'web-app-fbf7d977d-dqwf8';
+
 function at(seconds: number): Date {
   return new Date(T0.getTime() + seconds * 1000);
 }
@@ -141,7 +144,7 @@ describe('Deployment rollout (W1, U-STATUS-CONV-01/02)', () => {
   it('only the pods of the new ReplicaSet are current', () => {
     const snap = snapshotOf('rollout-progressing');
     const pods = currentPods(firstDeployment(snap), snap) ?? [];
-    expect(pods.map((p) => p.metadata.name)).toEqual(['web-htj6sx4lpn-ff4rl']);
+    expect(pods.map((p) => p.metadata.name)).toEqual(['web-96d55d8c4-l67lt']);
   });
 
   it('old pods still counted by the Deployment keep it progressing', () => {
@@ -172,11 +175,11 @@ describe('fail-fast classifier (design-03 9.4)', () => {
       service: 'web',
       reason: 'ErrImageNeverPull',
       message: 'Service web cannot start: image dockflow.invalid/shop-web:1.4.2 is not present on node server_1 and its pull policy is Never',
-      instance: 'web-dgnq2qql9c-f55cv',
+      instance: 'web-676dcfbd47-p9gx9',
       node: 'server_1',
     });
     expect(failed.suggestion).toBe('Remove pull_policy: never from services.web, or make sure the image exists on every node.');
-    expect(failed.podUids).toEqual(['00000000-0000-4000-8000-000000000004']);
+    expect(failed.podUids).toEqual(['00000000-0000-4000-8000-000000000003']);
     expect(failed.ownerUids).toEqual(['00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002']);
   });
 
@@ -224,7 +227,7 @@ describe('fail-fast classifier (design-03 9.4)', () => {
       service: 'web',
       reason: 'ImagePullBackOff',
       message: `Service web cannot pull image localhost:35010/e2e/missing:1 on node server_1: ${waiting}`,
-      instance: 'web-h7fqpf2pgw-hhx68',
+      instance: 'web-679ff8548-l5hvb',
       node: 'server_1',
     });
     expect(failed.suggestion).toBe('Check that the tag exists and that the registry credentials in config.yml are valid.');
@@ -253,7 +256,7 @@ describe('fail-fast classifier (design-03 9.4)', () => {
     const first = evaluate(web, snapshotOf(scenario), context, EMPTY, T0);
     expect(evaluate(web, snapshotOf(scenario), context, first.state, at(14)).verdict.state).toBe('progressing');
     const failed = expectFailed(evaluate(web, snapshotOf(scenario), context, first.state, at(15)).verdict);
-    expect(failed.failure.message).toBe('Service web cannot create container web: secret "web-env" not found');
+    expect(failed.failure.message).toBe('Service web cannot create container web: secret "web-env-d521dbe6" not found');
     expect(failed.suggestion).toBe('Run `dockflow diagnose production`.');
   });
 
@@ -261,7 +264,7 @@ describe('fail-fast classifier (design-03 9.4)', () => {
     const scenario = 'create-container-config-error';
     const context = contextOf(scenario);
     const first = evaluate(web, snapshotOf(scenario), context, EMPTY, T0);
-    expect(Object.keys(first.state.firstSeen)).toEqual(['00000000-0000-4000-8000-000000000004/web/CreateContainerConfigError']);
+    expect(Object.keys(first.state.firstSeen)).toEqual(['00000000-0000-4000-8000-000000000003/web/CreateContainerConfigError']);
     const running = snapshotOf(scenario);
     const status = firstPod(running).status?.containerStatuses?.[0];
     if (!status) throw new Error('no container status');
@@ -300,7 +303,7 @@ describe('fail-fast classifier (design-03 9.4)', () => {
       service: 'web_app',
       reason: 'CrashLoopBackOff',
       message: 'Service web_app keeps crashing: container web-app restarted 3 time(s), last exit code 1 (Error)',
-      instance: 'web-app-p2xkk2fn8m-zbc2k',
+      instance: CRASHLOOP_POD,
       node: 'server_1',
     });
     expect(failed.suggestion).toBe('Run `dockflow logs production web_app`.');
@@ -308,17 +311,18 @@ describe('fail-fast classifier (design-03 9.4)', () => {
     expect(accessory.suggestion).toBe('Run `dockflow accessories logs production web_app`.');
   });
 
-  it('F7 when the kubelet keeps the crashed container terminated through its back-off (k3s 1.36)', () => {
+  it('F7 when the kubelet reports the back-off as waiting in CrashLoopBackOff', () => {
     const scenario = 'crashloop';
     const snap = snapshotOf(scenario);
     const status = firstPod(snap).status?.containerStatuses?.[0];
     if (!status) throw new Error('no container status');
-    status.state = { terminated: { exitCode: 2, reason: 'Error', startedAt: '2026-01-01T00:16:13Z', finishedAt: '2026-01-01T00:16:13Z' } };
+    status.state = { waiting: { reason: 'CrashLoopBackOff', message: 'back-off 40s restarting failed container=web-app' } };
+    status.lastState = { terminated: { exitCode: 2, reason: 'Error' } };
     const failed = expectFailed(evaluate(target('Deployment', 'web_app', 'web-app', 1), snap, contextOf(scenario)).verdict);
     expect(failed.failure).toMatchObject({
       reason: 'CrashLoopBackOff',
       message: 'Service web_app keeps crashing: container web-app restarted 3 time(s), last exit code 2 (Error)',
-      instance: 'web-app-p2xkk2fn8m-zbc2k',
+      instance: CRASHLOOP_POD,
     });
   });
 
@@ -343,6 +347,7 @@ describe('fail-fast classifier (design-03 9.4)', () => {
     const snap = snapshotOf(scenario);
     const status = firstPod(snap).status?.containerStatuses?.[0];
     if (!status) throw new Error('no container status');
+    status.state = { waiting: { reason: 'CrashLoopBackOff' } };
     status.lastState = {};
     const failed = expectFailed(evaluate(target('Deployment', 'web_app', 'web-app', 1), snap, contextOf(scenario)).verdict);
     expect(failed.failure.message).toBe('Service web_app keeps crashing: container web-app restarted 3 time(s), last exit code unknown');
@@ -398,9 +403,9 @@ describe('fail-fast classifier (design-03 9.4)', () => {
     expect(failed.failure).toMatchObject({
       reason: 'PvcPending',
       message: `Service web is waiting for volume shared: ${NO_PROVISIONING_EVENT}`,
-      instance: 'web-5hrbmx46j5-fl6xj',
+      instance: 'web-776897c7f5-khslt',
     });
-    expect(failed.claims).toEqual([{ name: 'shared', uid: '00000000-0000-4000-8000-000000000001' }]);
+    expect(failed.claims).toEqual([{ name: 'shared', uid: '00000000-0000-4000-8000-000000000004' }]);
     expect(failed.suggestion).toBe('Check the volume with `dockflow volumes list production`.');
   });
 
@@ -449,7 +454,7 @@ describe('fail-fast classifier (design-03 9.4)', () => {
       service: 'web',
       reason: 'ReplicaFailure',
       message:
-        'Service web cannot create pods: pods "web-lbvqsx2s79-zbdkv" is forbidden: exceeded quota: pods, requested: pods=1, used: pods=1, limited: pods=1',
+        'Service web cannot create pods: pods "web-ddff555b9-pjk2t" is forbidden: exceeded quota: pods, requested: pods=1, used: pods=1, limited: pods=1',
     });
     expect(failed.ownerUids).toContain('00000000-0000-4000-8000-000000000002');
     expect(failed.suggestion).toBe('Run `dockflow diagnose production`.');
@@ -461,15 +466,15 @@ describe('fail-fast classifier (design-03 9.4)', () => {
     expect(failed.failure).toEqual({
       service: 'web',
       reason: 'ProgressDeadlineExceeded',
-      message: 'Service web made no progress for 30s: 0/1 updated pod(s) ready',
+      message: 'Service web made no progress for 45s: 0/1 updated pod(s) ready',
     });
     expect(failed.suggestion).toBe('Run `dockflow logs production web`.');
-    expect(failed.podUids).toEqual(['00000000-0000-4000-8000-000000000004']);
+    expect(failed.podUids).toEqual(['00000000-0000-4000-8000-000000000003']);
   });
 
   it('F13 a failed Job is TaskFailed (W13, U-STATUS-CONV-12)', () => {
     const scenario = 'job-failed';
-    const migrate = target('Job', 'migrate', 'migrate-aefdcfd1', 1);
+    const migrate = target('Job', 'migrate', 'migrate-0a492d34', 1);
     const failed = expectFailed(evaluate(migrate, snapshotOf(scenario), contextOf(scenario)).verdict);
     expect(failed.failure).toEqual({
       service: 'migrate',
@@ -494,7 +499,7 @@ describe('fail-fast classifier (design-03 9.4)', () => {
       message: 'Service web did not become ready within 300s: 1/3 updated',
     });
     expect(step.failed[0].suggestion).toBe('Run `dockflow diagnose production`.');
-    expect(step.failed[0].podUids).toEqual(['00000000-0000-4000-8000-000000000024']);
+    expect(step.failed[0].podUids).toEqual(['00000000-0000-4000-8000-000000000007']);
   });
 
   it('F15 a paused Deployment fails right after gate 1 (W19)', () => {
@@ -601,7 +606,7 @@ describe('-lb Service targets (K19, F14b)', () => {
     const [failed] = timeoutVerdicts(evaluation, [], [webLb], context);
     expect(failed.failure.reason).toBe('LoadBalancerPending');
     expect(failed.loadBalancer?.name).toBe('web-lb');
-    expect(failed.ownerUids).toEqual(['00000000-0000-4000-8000-000000000055']);
+    expect(failed.ownerUids).toEqual(['00000000-0000-4000-8000-000000000008']);
   });
 });
 
@@ -810,9 +815,9 @@ describe('the two gates, DaemonSet (K16, U-STATUS-CONV-11)', () => {
   it('the newest ControllerRevision hash selects the current pods', () => {
     const snap = snapshotOf(scenario);
     const pods = currentPods(snap.daemonSets[0], snap) ?? [];
-    expect(pods.map((p) => p.metadata.name)).toEqual(['agent-nhfnb']);
+    expect(pods.map((p) => p.metadata.name)).toEqual(['agent-gwt4s']);
     for (const revision of snap.controllerRevisions) delete revision.metadata.labels;
-    expect((currentPods(snap.daemonSets[0], snap) ?? []).map((p) => p.metadata.name)).toEqual(['agent-nhfnb']);
+    expect((currentPods(snap.daemonSets[0], snap) ?? []).map((p) => p.metadata.name)).toEqual(['agent-gwt4s']);
   });
 
   it('an updateStrategy-only change (new generation, no new revision) converges', () => {
@@ -857,7 +862,7 @@ describe('the two gates, DaemonSet (K16, U-STATUS-CONV-11)', () => {
 
   it('a crash-looping pod of the previous revision is ignored', () => {
     const snap = snapshotOf(scenario);
-    const old = podNamed(snap, 'agent-8szr6');
+    const old = podNamed(snap, 'agent-gg8cw');
     old.status = {
       phase: 'Running',
       conditions: [{ type: 'Ready', status: 'False' }],
@@ -872,7 +877,7 @@ describe('the two gates, DaemonSet (K16, U-STATUS-CONV-11)', () => {
 describe('Jobs (U-STATUS-CONV-12)', () => {
   it('Complete converges', () => {
     const scenario = 'job-complete';
-    const migrate = target('Job', 'migrate', 'migrate-ab6158d4', 1);
+    const migrate = target('Job', 'migrate', 'migrate-8d802302', 1);
     expect(evaluate(migrate, snapshotOf(scenario), contextOf(scenario)).verdict).toEqual({ state: 'converged', summary: 'completed' });
   });
 
@@ -881,7 +886,7 @@ describe('Jobs (U-STATUS-CONV-12)', () => {
     const snap = snapshotOf(scenario);
     const job = snap.jobs[0];
     job.status = { ...job.status, conditions: job.status?.conditions?.filter((c) => c.type === 'SuccessCriteriaMet') };
-    expect(evaluate(target('Job', 'migrate', 'migrate-ab6158d4', 1), snap, contextOf(scenario)).verdict.state).toBe('converged');
+    expect(evaluate(target('Job', 'migrate', 'migrate-8d802302', 1), snap, contextOf(scenario)).verdict.state).toBe('converged');
   });
 
   it('FailureTarget alone is TaskFailed', () => {
@@ -889,7 +894,7 @@ describe('Jobs (U-STATUS-CONV-12)', () => {
     const snap = snapshotOf(scenario);
     const job = snap.jobs[0];
     job.status = { ...job.status, conditions: job.status?.conditions?.filter((c) => c.type === 'FailureTarget') };
-    const failed = expectFailed(evaluate(target('Job', 'migrate', 'migrate-aefdcfd1', 1), snap, contextOf(scenario)).verdict);
+    const failed = expectFailed(evaluate(target('Job', 'migrate', 'migrate-0a492d34', 1), snap, contextOf(scenario)).verdict);
     expect(failed.failure.reason).toBe('TaskFailed');
   });
 
@@ -915,7 +920,7 @@ describe('Jobs (U-STATUS-CONV-12)', () => {
   }
 
   it('a running Job reports its pods; Jobs have no generation gate', () => {
-    const migrate = target('Job', 'migrate', 'migrate-ab6158d4', 1);
+    const migrate = target('Job', 'migrate', 'migrate-8d802302', 1);
     const snap = running('running');
     delete snap.jobs[0].metadata.generation;
     expect(evaluate(migrate, snap, contextOf('job-complete')).verdict).toMatchObject({
@@ -925,8 +930,8 @@ describe('Jobs (U-STATUS-CONV-12)', () => {
   });
 
   it('a Job pod in CrashLoopBackOff fails the wait', () => {
-    const failed = expectFailed(evaluate(target('Job', 'migrate', 'migrate-ab6158d4', 1), running('crashing'), contextOf('job-complete')).verdict);
-    expect(failed.failure).toMatchObject({ reason: 'CrashLoopBackOff', instance: 'migrate-ab6158d4-jqsjt' });
+    const failed = expectFailed(evaluate(target('Job', 'migrate', 'migrate-8d802302', 1), running('crashing'), contextOf('job-complete')).verdict);
+    expect(failed.failure).toMatchObject({ reason: 'CrashLoopBackOff', instance: 'migrate-8d802302-rcg26' });
   });
 
   it('an exited container of a restartPolicy Never pod is left to the Job conditions, not read as a crash loop', () => {
@@ -936,7 +941,7 @@ describe('Jobs (U-STATUS-CONV-12)', () => {
     const status = pod.status?.containerStatuses?.[0];
     if (!status) throw new Error('no container status');
     status.state = { terminated: { exitCode: 1, reason: 'Error' } };
-    expect(evaluate(target('Job', 'migrate', 'migrate-ab6158d4', 1), snap, contextOf('job-complete')).verdict).toMatchObject({
+    expect(evaluate(target('Job', 'migrate', 'migrate-8d802302', 1), snap, contextOf('job-complete')).verdict).toMatchObject({
       state: 'progressing',
       summary: '1 running, 0 succeeded',
     });
@@ -961,8 +966,9 @@ describe('status counters omitted by Kubernetes (?? 0)', () => {
     const scenario = 'statefulset-stuck';
     const snap = snapshotOf(scenario);
     const sts = snap.statefulSets[0];
+    const revision = sts.status?.updateRevision;
     sts.spec.replicas = 0;
-    sts.status = { observedGeneration: 2, updateRevision: 'db-cd56qgh65c', currentRevision: 'db-cd56qgh65c' };
+    sts.status = { observedGeneration: 2, updateRevision: revision, currentRevision: revision };
     snap.pods = [];
     expect(evaluate(target('StatefulSet', 'db', 'db', 2), snap, contextOf(scenario)).verdict.state).toBe('converged');
   });

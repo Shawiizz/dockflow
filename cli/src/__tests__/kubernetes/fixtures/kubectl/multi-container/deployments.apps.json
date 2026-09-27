@@ -7,10 +7,9 @@
             "metadata": {
                 "annotations": {
                     "deployment.kubernetes.io/revision": "1",
-                    "dockflow.shawiizz.dev/compose-service": "api",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "api"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:15:17Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-multi-container",
@@ -28,9 +27,10 @@
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "progressDeadlineSeconds": 240,
                 "replicas": 1,
-                "revisionHistoryLimit": 3,
+                "revisionHistoryLimit": 2,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "api",
@@ -78,9 +78,8 @@
                             },
                             {
                                 "command": [
-                                    "sh",
-                                    "-c",
-                                    "sleep 3600"
+                                    "sleep",
+                                    "36000"
                                 ],
                                 "image": "busybox:1.37",
                                 "imagePullPolicy": "IfNotPresent",
@@ -92,6 +91,9 @@
                         ],
                         "dnsPolicy": "ClusterFirst",
                         "enableServiceLinks": false,
+                        "nodeSelector": {
+                            "kubernetes.io/hostname": "agent-1"
+                        },
                         "restartPolicy": "Always",
                         "schedulerName": "default-scheduler",
                         "securityContext": {
@@ -99,7 +101,23 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 10
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "api",
+                                        "dockflow.shawiizz.dev/stack": "fixture-multi-container"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
@@ -107,17 +125,17 @@
                 "availableReplicas": 1,
                 "conditions": [
                     {
-                        "lastTransitionTime": "2026-01-01T00:15:03Z",
-                        "lastUpdateTime": "2026-01-01T00:15:03Z",
+                        "lastTransitionTime": "2026-01-01T00:15:48Z",
+                        "lastUpdateTime": "2026-01-01T00:15:48Z",
                         "message": "Deployment has minimum availability.",
                         "reason": "MinimumReplicasAvailable",
                         "status": "True",
                         "type": "Available"
                     },
                     {
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
-                        "lastUpdateTime": "2026-01-01T00:15:03Z",
-                        "message": "ReplicaSet \"api-bg5g5vghlb\" has successfully progressed.",
+                        "lastTransitionTime": "2026-01-01T00:15:17Z",
+                        "lastUpdateTime": "2026-01-01T00:15:48Z",
+                        "message": "ReplicaSet \"api-847f8bf66c\" has successfully progressed.",
                         "reason": "NewReplicaSetAvailable",
                         "status": "True",
                         "type": "Progressing"
@@ -126,6 +144,7 @@
                 "observedGeneration": 1,
                 "readyReplicas": 1,
                 "replicas": 1,
+                "terminatingReplicas": 0,
                 "updatedReplicas": 1
             }
         }

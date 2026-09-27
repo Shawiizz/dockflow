@@ -1,11 +1,10 @@
 {
-  "synthetic": true,
+  "recordedOn": "2026-09-27",
   "k3sVersion": "v1.36.4+k3s1",
   "steps": [
-    "kubectl create namespace fixture-replica-failure-quota",
-    "kubectl create quota pods --hard=pods=1 -n fixture-replica-failure-quota",
-    "kubectl apply: Deployment web (3 replicas, busybox:1.37 running sleep)",
-    "wait until the Deployment reports condition ReplicaFailure=True",
-    "capture the namespace resources and the cluster nodes and persistentvolumes"
+    "Dockflow renders the compose file into namespace fixture-<scenario> (project shop, release 1.4.2, servers server_1 and agent_1) and applies it server-side as a deploy does",
+    "kubectl create quota pods --hard=pods=1 in the namespace",
+    "docker-compose.yml: service web, busybox:1.37, command sleep 36000, deploy.replicas 3, placed on agent_1",
+    "capture once the Deployment reports ReplicaFailure=True"
   ]
 }

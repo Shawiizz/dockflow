@@ -4,25 +4,25 @@
         {
             "action": "Binding",
             "apiVersion": "v1",
-            "eventTime": "2026-01-01T00:15:00.118307Z",
+            "eventTime": "2026-01-01T00:14:31.785Z",
             "firstTimestamp": null,
             "involvedObject": {
                 "apiVersion": "v1",
                 "kind": "Pod",
-                "name": "web-gwx9gxmmlm-8j722",
+                "name": "web-7b6d4fd7fb-9s54r",
                 "namespace": "fixture-init-container-crash",
-                "resourceVersion": "8",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "4",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "kind": "Event",
             "lastTimestamp": null,
-            "message": "Successfully assigned fixture-init-container-crash/web-gwx9gxmmlm-8j722 to server-1",
+            "message": "Successfully assigned fixture-init-container-crash/web-7b6d4fd7fb-9s54r to server-1",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web-gwx9gxmmlm-8j722.188673238c314448",
+                "creationTimestamp": "2026-01-01T00:14:31Z",
+                "name": "web-7b6d4fd7fb-9s54r.18d92598bc961a7a",
                 "namespace": "fixture-init-container-crash",
-                "resourceVersion": "9",
-                "uid": "00000000-0000-4000-8000-000000000006"
+                "resourceVersion": "5",
+                "uid": "00000000-0000-4000-8000-000000000008"
             },
             "reason": "Scheduled",
             "reportingComponent": "default-scheduler",
@@ -34,25 +34,25 @@
             "apiVersion": "v1",
             "count": 4,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "firstTimestamp": "2026-01-01T00:14:32Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.initContainers{init}",
                 "kind": "Pod",
-                "name": "web-gwx9gxmmlm-8j722",
+                "name": "web-7b6d4fd7fb-9s54r",
                 "namespace": "fixture-init-container-crash",
-                "resourceVersion": "10",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:16:13Z",
-            "message": "Container image \"busybox:1.37\" already present on machine",
+            "lastTimestamp": "2026-01-01T00:15:11Z",
+            "message": "Container image \"busybox:1.37\" already present on machine and can be accessed by the pod",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:01Z",
-                "name": "web-gwx9gxmmlm-8j722.18867323bc73929a",
+                "creationTimestamp": "2026-01-01T00:14:32Z",
+                "name": "web-7b6d4fd7fb-9s54r.18d92598ca0d6b46",
                 "namespace": "fixture-init-container-crash",
-                "resourceVersion": "11",
-                "uid": "00000000-0000-4000-8000-000000000007"
+                "resourceVersion": "7",
+                "uid": "00000000-0000-4000-8000-000000000009"
             },
             "reason": "Pulled",
             "reportingComponent": "kubelet",
@@ -67,25 +67,25 @@
             "apiVersion": "v1",
             "count": 4,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "firstTimestamp": "2026-01-01T00:14:32Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.initContainers{init}",
                 "kind": "Pod",
-                "name": "web-gwx9gxmmlm-8j722",
+                "name": "web-7b6d4fd7fb-9s54r",
                 "namespace": "fixture-init-container-crash",
-                "resourceVersion": "12",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:16:13Z",
-            "message": "Created container: init",
+            "lastTimestamp": "2026-01-01T00:15:11Z",
+            "message": "Container created",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:01Z",
-                "name": "web-gwx9gxmmlm-8j722.18867323c836e58e",
+                "creationTimestamp": "2026-01-01T00:14:32Z",
+                "name": "web-7b6d4fd7fb-9s54r.18d92598cb1992bb",
                 "namespace": "fixture-init-container-crash",
-                "resourceVersion": "13",
-                "uid": "00000000-0000-4000-8000-000000000008"
+                "resourceVersion": "8",
+                "uid": "00000000-0000-4000-8000-000000000010"
             },
             "reason": "Created",
             "reportingComponent": "kubelet",
@@ -100,25 +100,25 @@
             "apiVersion": "v1",
             "count": 4,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:02Z",
+            "firstTimestamp": "2026-01-01T00:14:32Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.initContainers{init}",
                 "kind": "Pod",
-                "name": "web-gwx9gxmmlm-8j722",
+                "name": "web-7b6d4fd7fb-9s54r",
                 "namespace": "fixture-init-container-crash",
-                "resourceVersion": "14",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:16:13Z",
-            "message": "Started container init",
+            "lastTimestamp": "2026-01-01T00:15:11Z",
+            "message": "Container started",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:02Z",
-                "name": "web-gwx9gxmmlm-8j722.188673241cbb9b82",
+                "creationTimestamp": "2026-01-01T00:14:32Z",
+                "name": "web-7b6d4fd7fb-9s54r.18d92598cf5a75aa",
                 "namespace": "fixture-init-container-crash",
-                "resourceVersion": "15",
-                "uid": "00000000-0000-4000-8000-000000000009"
+                "resourceVersion": "9",
+                "uid": "00000000-0000-4000-8000-000000000011"
             },
             "reason": "Started",
             "reportingComponent": "kubelet",
@@ -131,27 +131,27 @@
         },
         {
             "apiVersion": "v1",
-            "count": 7,
+            "count": 3,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:03Z",
+            "firstTimestamp": "2026-01-01T00:14:33Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.initContainers{init}",
                 "kind": "Pod",
-                "name": "web-gwx9gxmmlm-8j722",
+                "name": "web-7b6d4fd7fb-9s54r",
                 "namespace": "fixture-init-container-crash",
-                "resourceVersion": "16",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:16:25Z",
-            "message": "Back-off restarting failed container init in pod web-gwx9gxmmlm-8j722_fixture-init-container-crash(00000000-0000-4000-8000-000000000004)",
+            "lastTimestamp": "2026-01-01T00:15:12Z",
+            "message": "Back-off restarting failed container init in pod web-7b6d4fd7fb-9s54r_fixture-init-container-crash(00000000-0000-4000-8000-000000000003)",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:03Z",
-                "name": "web-gwx9gxmmlm-8j722.18867324359d2122",
+                "creationTimestamp": "2026-01-01T00:14:33Z",
+                "name": "web-7b6d4fd7fb-9s54r.18d925991847dd7f",
                 "namespace": "fixture-init-container-crash",
-                "resourceVersion": "17",
-                "uid": "00000000-0000-4000-8000-000000000010"
+                "resourceVersion": "10",
+                "uid": "00000000-0000-4000-8000-000000000012"
             },
             "reason": "BackOff",
             "reportingComponent": "kubelet",
@@ -166,24 +166,24 @@
             "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "firstTimestamp": "2026-01-01T00:14:31Z",
             "involvedObject": {
                 "apiVersion": "apps/v1",
                 "kind": "ReplicaSet",
-                "name": "web-gwx9gxmmlm",
+                "name": "web-7b6d4fd7fb",
                 "namespace": "fixture-init-container-crash",
-                "resourceVersion": "6",
+                "resourceVersion": "11",
                 "uid": "00000000-0000-4000-8000-000000000002"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:00Z",
-            "message": "Created pod: web-gwx9gxmmlm-8j722",
+            "lastTimestamp": "2026-01-01T00:14:31Z",
+            "message": "Created pod: web-7b6d4fd7fb-9s54r",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web-gwx9gxmmlm.188673238e37cf6a",
+                "creationTimestamp": "2026-01-01T00:14:31Z",
+                "name": "web-7b6d4fd7fb.18d92598bc6eb269",
                 "namespace": "fixture-init-container-crash",
-                "resourceVersion": "7",
-                "uid": "00000000-0000-4000-8000-000000000005"
+                "resourceVersion": "12",
+                "uid": "00000000-0000-4000-8000-000000000013"
             },
             "reason": "SuccessfulCreate",
             "reportingComponent": "replicaset-controller",
@@ -197,24 +197,24 @@
             "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "firstTimestamp": "2026-01-01T00:14:31Z",
             "involvedObject": {
                 "apiVersion": "apps/v1",
                 "kind": "Deployment",
                 "name": "web",
                 "namespace": "fixture-init-container-crash",
-                "resourceVersion": "3",
+                "resourceVersion": "13",
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:00Z",
-            "message": "Scaled up replica set web-gwx9gxmmlm from 0 to 1",
+            "lastTimestamp": "2026-01-01T00:14:31Z",
+            "message": "Scaled up replica set web-7b6d4fd7fb from 0 to 1",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web.1886732394f44ca1",
+                "creationTimestamp": "2026-01-01T00:14:31Z",
+                "name": "web.18d92598b7558027",
                 "namespace": "fixture-init-container-crash",
-                "resourceVersion": "4",
-                "uid": "00000000-0000-4000-8000-000000000003"
+                "resourceVersion": "14",
+                "uid": "00000000-0000-4000-8000-000000000014"
             },
             "reason": "ScalingReplicaSet",
             "reportingComponent": "deployment-controller",

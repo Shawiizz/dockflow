@@ -7,10 +7,9 @@
             "metadata": {
                 "annotations": {
                     "deployment.kubernetes.io/revision": "1",
-                    "dockflow.shawiizz.dev/compose-service": "web",
-                    "dockflow.shawiizz.dev/release": "1.4.2"
+                    "dockflow.shawiizz.dev/compose-service": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:06:45Z",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-image-pull-backoff",
@@ -28,9 +27,10 @@
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "spec": {
+                "minReadySeconds": 30,
                 "progressDeadlineSeconds": 240,
                 "replicas": 1,
-                "revisionHistoryLimit": 3,
+                "revisionHistoryLimit": 2,
                 "selector": {
                     "matchLabels": {
                         "dockflow.shawiizz.dev/service": "web",
@@ -72,6 +72,9 @@
                         ],
                         "dnsPolicy": "ClusterFirst",
                         "enableServiceLinks": false,
+                        "nodeSelector": {
+                            "kubernetes.io/hostname": "server-1"
+                        },
                         "restartPolicy": "Always",
                         "schedulerName": "default-scheduler",
                         "securityContext": {
@@ -79,24 +82,40 @@
                                 "type": "RuntimeDefault"
                             }
                         },
-                        "terminationGracePeriodSeconds": 10
+                        "terminationGracePeriodSeconds": 10,
+                        "topologySpreadConstraints": [
+                            {
+                                "labelSelector": {
+                                    "matchLabels": {
+                                        "dockflow.shawiizz.dev/service": "web",
+                                        "dockflow.shawiizz.dev/stack": "fixture-image-pull-backoff"
+                                    }
+                                },
+                                "matchLabelKeys": [
+                                    "pod-template-hash"
+                                ],
+                                "maxSkew": 1,
+                                "topologyKey": "kubernetes.io/hostname",
+                                "whenUnsatisfiable": "ScheduleAnyway"
+                            }
+                        ]
                     }
                 }
             },
             "status": {
                 "conditions": [
                     {
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
-                        "lastUpdateTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:06:45Z",
+                        "lastUpdateTime": "2026-01-01T00:06:45Z",
                         "message": "Deployment does not have minimum availability.",
                         "reason": "MinimumReplicasUnavailable",
                         "status": "False",
                         "type": "Available"
                     },
                     {
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
-                        "lastUpdateTime": "2026-01-01T00:15:01Z",
-                        "message": "ReplicaSet \"web-h7fqpf2pgw\" is progressing.",
+                        "lastTransitionTime": "2026-01-01T00:06:45Z",
+                        "lastUpdateTime": "2026-01-01T00:06:46Z",
+                        "message": "ReplicaSet \"web-679ff8548\" is progressing.",
                         "reason": "ReplicaSetUpdated",
                         "status": "True",
                         "type": "Progressing"
@@ -104,6 +123,7 @@
                 ],
                 "observedGeneration": 1,
                 "replicas": 1,
+                "terminatingReplicas": 0,
                 "unavailableReplicas": 1,
                 "updatedReplicas": 1
             }

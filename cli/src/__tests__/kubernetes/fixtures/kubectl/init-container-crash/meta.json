@@ -1,10 +1,10 @@
 {
-  "synthetic": true,
+  "recordedOn": "2026-09-27",
   "k3sVersion": "v1.36.4+k3s1",
   "steps": [
-    "kubectl create namespace fixture-init-container-crash",
-    "kubectl apply: Deployment web (1 replica, init container init running busybox:1.37 sh -c 'exit 1', container web nginx:1.27-alpine)",
-    "wait until the init container reports CrashLoopBackOff with restartCount 3",
-    "capture the namespace resources and the cluster nodes and persistentvolumes"
+    "Dockflow renders the compose file into namespace fixture-<scenario> (project shop, release 1.4.2, servers server_1 and agent_1) and applies it server-side as a deploy does",
+    "docker-compose.yml: service web, nginx:1.27-alpine, placed on server_1",
+    "patch: init container init, busybox:1.37, command sh -c \"exit 1\"",
+    "capture once the init container restarted 3 times"
   ]
 }

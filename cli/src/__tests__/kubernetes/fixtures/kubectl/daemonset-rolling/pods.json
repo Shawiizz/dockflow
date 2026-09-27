@@ -9,19 +9,19 @@
                     "dockflow.shawiizz.dev/compose-service": "agent",
                     "kubectl.kubernetes.io/default-container": "agent"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
+                "creationTimestamp": "2026-01-01T00:12:21Z",
                 "generateName": "agent-",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-daemonset-rolling",
                     "app.kubernetes.io/name": "agent",
-                    "controller-revision-hash": "4k8s4fj55b",
+                    "controller-revision-hash": "596c8577df",
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "agent",
                     "dockflow.shawiizz.dev/stack": "fixture-daemonset-rolling",
                     "pod-template-generation": "1"
                 },
-                "name": "agent-8szr6",
+                "name": "agent-gg8cw",
                 "namespace": "fixture-daemonset-rolling",
                 "ownerReferences": [
                     {
@@ -33,7 +33,7 @@
                         "uid": "00000000-0000-4000-8000-000000000001"
                     }
                 ],
-                "resourceVersion": "5",
+                "resourceVersion": "4",
                 "uid": "00000000-0000-4000-8000-000000000004"
             },
             "spec": {
@@ -59,10 +59,9 @@
                 "automountServiceAccountToken": false,
                 "containers": [
                     {
-                        "command": [
-                            "sh",
-                            "-c",
-                            "sleep 3600"
+                        "args": [
+                            "sleep",
+                            "3600"
                         ],
                         "image": "busybox:1.37",
                         "imagePullPolicy": "IfNotPresent",
@@ -124,35 +123,35 @@
                 "conditions": [
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:01Z",
+                        "lastTransitionTime": "2026-01-01T00:12:21Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodReadyToStartContainers"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:12:21Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "Initialized"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:33Z",
+                        "lastTransitionTime": "2026-01-01T00:12:21Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "Ready"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:33Z",
+                        "lastTransitionTime": "2026-01-01T00:12:21Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "ContainersReady"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:12:21Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodScheduled"
@@ -160,17 +159,28 @@
                 ],
                 "containerStatuses": [
                     {
-                        "containerID": "containerd://b4dbc40aa101",
+                        "containerID": "containerd://b1c2ac847a90",
                         "image": "docker.io/library/busybox:1.37",
-                        "imageID": "containerd://6053936389b8",
+                        "imageID": "containerd://36b932e7ed7b",
                         "lastState": {},
                         "name": "agent",
                         "ready": true,
+                        "resources": {},
                         "restartCount": 0,
                         "started": true,
                         "state": {
                             "running": {
-                                "startedAt": "2026-01-01T00:15:02Z"
+                                "startedAt": "2026-01-01T00:12:21Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    10
+                                ],
+                                "uid": 0
                             }
                         }
                     }
@@ -183,14 +193,15 @@
                 ],
                 "observedGeneration": 1,
                 "phase": "Running",
-                "podIP": "10.42.1.21",
+                "podIP": "10.42.1.17",
                 "podIPs": [
                     {
-                        "ip": "10.42.1.21"
+                        "ip": "10.42.1.17"
                     }
                 ],
                 "qosClass": "BestEffort",
-                "startTime": "2026-01-01T00:15:00Z"
+                "resources": {},
+                "startTime": "2026-01-01T00:12:21Z"
             }
         },
         {
@@ -201,19 +212,19 @@
                     "dockflow.shawiizz.dev/compose-service": "agent",
                     "kubectl.kubernetes.io/default-container": "agent"
                 },
-                "creationTimestamp": "2026-01-01T00:17:01Z",
+                "creationTimestamp": "2026-01-01T00:13:02Z",
                 "generateName": "agent-",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-daemonset-rolling",
                     "app.kubernetes.io/name": "agent",
-                    "controller-revision-hash": "kv7sn5blmk",
+                    "controller-revision-hash": "5977749cdf",
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "agent",
                     "dockflow.shawiizz.dev/stack": "fixture-daemonset-rolling",
                     "pod-template-generation": "2"
                 },
-                "name": "agent-nhfnb",
+                "name": "agent-gwt4s",
                 "namespace": "fixture-daemonset-rolling",
                 "ownerReferences": [
                     {
@@ -225,7 +236,7 @@
                         "uid": "00000000-0000-4000-8000-000000000001"
                     }
                 ],
-                "resourceVersion": "6",
+                "resourceVersion": "5",
                 "uid": "00000000-0000-4000-8000-000000000005"
             },
             "spec": {
@@ -251,26 +262,13 @@
                 "automountServiceAccountToken": false,
                 "containers": [
                     {
-                        "command": [
-                            "sh",
-                            "-c",
-                            "sleep 7200"
+                        "args": [
+                            "sleep",
+                            "7200"
                         ],
                         "image": "busybox:1.37",
                         "imagePullPolicy": "IfNotPresent",
                         "name": "agent",
-                        "readinessProbe": {
-                            "exec": {
-                                "command": [
-                                    "true"
-                                ]
-                            },
-                            "failureThreshold": 3,
-                            "initialDelaySeconds": 30,
-                            "periodSeconds": 5,
-                            "successThreshold": 1,
-                            "timeoutSeconds": 1
-                        },
                         "resources": {},
                         "terminationMessagePath": "/dev/termination-log",
                         "terminationMessagePolicy": "File"
@@ -328,39 +326,35 @@
                 "conditions": [
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:17:02Z",
+                        "lastTransitionTime": "2026-01-01T00:13:02Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodReadyToStartContainers"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:17:01Z",
+                        "lastTransitionTime": "2026-01-01T00:13:02Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "Initialized"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:17:01Z",
-                        "message": "containers with unready status: [agent]",
+                        "lastTransitionTime": "2026-01-01T00:13:02Z",
                         "observedGeneration": 1,
-                        "reason": "ContainersNotReady",
-                        "status": "False",
+                        "status": "True",
                         "type": "Ready"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:17:01Z",
-                        "message": "containers with unready status: [agent]",
+                        "lastTransitionTime": "2026-01-01T00:13:02Z",
                         "observedGeneration": 1,
-                        "reason": "ContainersNotReady",
-                        "status": "False",
+                        "status": "True",
                         "type": "ContainersReady"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:17:01Z",
+                        "lastTransitionTime": "2026-01-01T00:13:02Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodScheduled"
@@ -368,17 +362,28 @@
                 ],
                 "containerStatuses": [
                     {
-                        "containerID": "containerd://58177f6cb685",
+                        "containerID": "containerd://0b74c87c2dbd",
                         "image": "docker.io/library/busybox:1.37",
-                        "imageID": "containerd://6053936389b8",
+                        "imageID": "containerd://36b932e7ed7b",
                         "lastState": {},
                         "name": "agent",
-                        "ready": false,
+                        "ready": true,
+                        "resources": {},
                         "restartCount": 0,
                         "started": true,
                         "state": {
                             "running": {
-                                "startedAt": "2026-01-01T00:17:03Z"
+                                "startedAt": "2026-01-01T00:13:02Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    10
+                                ],
+                                "uid": 0
                             }
                         }
                     }
@@ -391,14 +396,15 @@
                 ],
                 "observedGeneration": 1,
                 "phase": "Running",
-                "podIP": "10.42.0.22",
+                "podIP": "10.42.0.19",
                 "podIPs": [
                     {
-                        "ip": "10.42.0.22"
+                        "ip": "10.42.0.19"
                     }
                 ],
                 "qosClass": "BestEffort",
-                "startTime": "2026-01-01T00:17:01Z"
+                "resources": {},
+                "startTime": "2026-01-01T00:13:02Z"
             }
         }
     ],

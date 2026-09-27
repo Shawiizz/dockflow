@@ -4,25 +4,25 @@
         {
             "action": "Binding",
             "apiVersion": "v1",
-            "eventTime": "2026-01-01T00:15:00.204118Z",
+            "eventTime": "2026-01-01T00:07:17.887Z",
             "firstTimestamp": null,
             "involvedObject": {
                 "apiVersion": "v1",
                 "kind": "Pod",
-                "name": "web-z67tgvktnp-s8578",
+                "name": "web-7558dd9f88-2nghn",
                 "namespace": "fixture-create-container-config-error",
-                "resourceVersion": "8",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "4",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "kind": "Event",
             "lastTimestamp": null,
-            "message": "Successfully assigned fixture-create-container-config-error/web-z67tgvktnp-s8578 to server-1",
+            "message": "Successfully assigned fixture-create-container-config-error/web-7558dd9f88-2nghn to server-1",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web-z67tgvktnp-s8578.1886732381159da5",
+                "creationTimestamp": "2026-01-01T00:07:17Z",
+                "name": "web-7558dd9f88-2nghn.18d92533b63d45a4",
                 "namespace": "fixture-create-container-config-error",
-                "resourceVersion": "9",
-                "uid": "00000000-0000-4000-8000-000000000006"
+                "resourceVersion": "5",
+                "uid": "00000000-0000-4000-8000-000000000008"
             },
             "reason": "Scheduled",
             "reportingComponent": "default-scheduler",
@@ -32,27 +32,27 @@
         },
         {
             "apiVersion": "v1",
-            "count": 6,
+            "count": 2,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "firstTimestamp": "2026-01-01T00:07:18Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.containers{web}",
                 "kind": "Pod",
-                "name": "web-z67tgvktnp-s8578",
+                "name": "web-7558dd9f88-2nghn",
                 "namespace": "fixture-create-container-config-error",
-                "resourceVersion": "10",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:55Z",
-            "message": "Container image \"busybox:1.37\" already present on machine",
+            "lastTimestamp": "2026-01-01T00:07:18Z",
+            "message": "Container image \"busybox:1.37\" already present on machine and can be accessed by the pod",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:01Z",
-                "name": "web-z67tgvktnp-s8578.18867323e4152947",
+                "creationTimestamp": "2026-01-01T00:07:18Z",
+                "name": "web-7558dd9f88-2nghn.18d92533c324e0dc",
                 "namespace": "fixture-create-container-config-error",
-                "resourceVersion": "11",
-                "uid": "00000000-0000-4000-8000-000000000007"
+                "resourceVersion": "7",
+                "uid": "00000000-0000-4000-8000-000000000009"
             },
             "reason": "Pulled",
             "reportingComponent": "kubelet",
@@ -65,27 +65,27 @@
         },
         {
             "apiVersion": "v1",
-            "count": 6,
+            "count": 2,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "firstTimestamp": "2026-01-01T00:07:18Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "fieldPath": "spec.containers{web}",
                 "kind": "Pod",
-                "name": "web-z67tgvktnp-s8578",
+                "name": "web-7558dd9f88-2nghn",
                 "namespace": "fixture-create-container-config-error",
-                "resourceVersion": "12",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:55Z",
-            "message": "Error: secret \"web-env\" not found",
+            "lastTimestamp": "2026-01-01T00:07:18Z",
+            "message": "Error: secret \"web-env-d521dbe6\" not found",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:01Z",
-                "name": "web-z67tgvktnp-s8578.18867323e620da44",
+                "creationTimestamp": "2026-01-01T00:07:18Z",
+                "name": "web-7558dd9f88-2nghn.18d92533c327acfd",
                 "namespace": "fixture-create-container-config-error",
-                "resourceVersion": "13",
-                "uid": "00000000-0000-4000-8000-000000000008"
+                "resourceVersion": "8",
+                "uid": "00000000-0000-4000-8000-000000000010"
             },
             "reason": "Failed",
             "reportingComponent": "kubelet",
@@ -100,24 +100,24 @@
             "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "firstTimestamp": "2026-01-01T00:07:17Z",
             "involvedObject": {
                 "apiVersion": "apps/v1",
                 "kind": "ReplicaSet",
-                "name": "web-z67tgvktnp",
+                "name": "web-7558dd9f88",
                 "namespace": "fixture-create-container-config-error",
-                "resourceVersion": "6",
+                "resourceVersion": "9",
                 "uid": "00000000-0000-4000-8000-000000000002"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:00Z",
-            "message": "Created pod: web-z67tgvktnp-s8578",
+            "lastTimestamp": "2026-01-01T00:07:17Z",
+            "message": "Created pod: web-7558dd9f88-2nghn",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web-z67tgvktnp.188673237b4aa32b",
+                "creationTimestamp": "2026-01-01T00:07:17Z",
+                "name": "web-7558dd9f88.18d92533b61a2b34",
                 "namespace": "fixture-create-container-config-error",
-                "resourceVersion": "7",
-                "uid": "00000000-0000-4000-8000-000000000005"
+                "resourceVersion": "10",
+                "uid": "00000000-0000-4000-8000-000000000011"
             },
             "reason": "SuccessfulCreate",
             "reportingComponent": "replicaset-controller",
@@ -131,24 +131,24 @@
             "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "firstTimestamp": "2026-01-01T00:07:17Z",
             "involvedObject": {
                 "apiVersion": "apps/v1",
                 "kind": "Deployment",
                 "name": "web",
                 "namespace": "fixture-create-container-config-error",
-                "resourceVersion": "3",
+                "resourceVersion": "11",
                 "uid": "00000000-0000-4000-8000-000000000001"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:00Z",
-            "message": "Scaled up replica set web-z67tgvktnp from 0 to 1",
+            "lastTimestamp": "2026-01-01T00:07:17Z",
+            "message": "Scaled up replica set web-7558dd9f88 from 0 to 1",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web.188673237e43d450",
+                "creationTimestamp": "2026-01-01T00:07:17Z",
+                "name": "web.18d925338aabcfee",
                 "namespace": "fixture-create-container-config-error",
-                "resourceVersion": "4",
-                "uid": "00000000-0000-4000-8000-000000000003"
+                "resourceVersion": "12",
+                "uid": "00000000-0000-4000-8000-000000000012"
             },
             "reason": "ScalingReplicaSet",
             "reportingComponent": "deployment-controller",

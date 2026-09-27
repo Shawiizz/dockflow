@@ -9,8 +9,8 @@
                     "dockflow.shawiizz.dev/compose-service": "web",
                     "kubectl.kubernetes.io/default-container": "web"
                 },
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "generateName": "web-qlwq4g8hrz-",
+                "creationTimestamp": "2026-01-01T00:07:35Z",
+                "generateName": "web-764ff46d98-",
                 "generation": 1,
                 "labels": {
                     "app.kubernetes.io/instance": "fixture-oom-killed",
@@ -18,9 +18,9 @@
                     "dockflow.shawiizz.dev/role": "app",
                     "dockflow.shawiizz.dev/service": "web",
                     "dockflow.shawiizz.dev/stack": "fixture-oom-killed",
-                    "pod-template-hash": "qlwq4g8hrz"
+                    "pod-template-hash": "764ff46d98"
                 },
-                "name": "web-qlwq4g8hrz-bqtf5",
+                "name": "web-764ff46d98-k4v5k",
                 "namespace": "fixture-oom-killed",
                 "ownerReferences": [
                     {
@@ -28,18 +28,18 @@
                         "blockOwnerDeletion": true,
                         "controller": true,
                         "kind": "ReplicaSet",
-                        "name": "web-qlwq4g8hrz",
+                        "name": "web-764ff46d98",
                         "uid": "00000000-0000-4000-8000-000000000002"
                     }
                 ],
-                "resourceVersion": "5",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "3",
+                "uid": "00000000-0000-4000-8000-000000000003"
             },
             "spec": {
                 "automountServiceAccountToken": false,
                 "containers": [
                     {
-                        "command": [
+                        "args": [
                             "sh",
                             "-c",
                             "head -c 64m /dev/zero | tail"
@@ -52,7 +52,7 @@
                                 "memory": "16Mi"
                             },
                             "requests": {
-                                "memory": "16Mi"
+                                "memory": "0"
                             }
                         },
                         "terminationMessagePath": "/dev/termination-log",
@@ -62,6 +62,9 @@
                 "dnsPolicy": "ClusterFirst",
                 "enableServiceLinks": false,
                 "nodeName": "agent-1",
+                "nodeSelector": {
+                    "kubernetes.io/hostname": "agent-1"
+                },
                 "preemptionPolicy": "PreemptLowerPriority",
                 "priority": 0,
                 "restartPolicy": "Always",
@@ -87,27 +90,55 @@
                         "operator": "Exists",
                         "tolerationSeconds": 300
                     }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchExpressions": [
+                                {
+                                    "key": "pod-template-hash",
+                                    "operator": "In",
+                                    "values": [
+                                        "764ff46d98"
+                                    ]
+                                }
+                            ],
+                            "matchLabels": {
+                                "dockflow.shawiizz.dev/service": "web",
+                                "dockflow.shawiizz.dev/stack": "fixture-oom-killed"
+                            }
+                        },
+                        "matchLabelKeys": [
+                            "pod-template-hash"
+                        ],
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "ScheduleAnyway"
+                    }
                 ]
             },
             "status": {
+                "allocatedResources": {
+                    "memory": "0"
+                },
                 "conditions": [
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:01Z",
+                        "lastTransitionTime": "2026-01-01T00:07:23Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodReadyToStartContainers"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:07:35Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "Initialized"
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:07:37Z",
                         "message": "containers with unready status: [web]",
                         "observedGeneration": 1,
                         "reason": "ContainersNotReady",
@@ -116,7 +147,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:07:37Z",
                         "message": "containers with unready status: [web]",
                         "observedGeneration": 1,
                         "reason": "ContainersNotReady",
@@ -125,7 +156,7 @@
                     },
                     {
                         "lastProbeTime": null,
-                        "lastTransitionTime": "2026-01-01T00:15:00Z",
+                        "lastTransitionTime": "2026-01-01T00:07:35Z",
                         "observedGeneration": 1,
                         "status": "True",
                         "type": "PodScheduled"
@@ -133,26 +164,50 @@
                 ],
                 "containerStatuses": [
                     {
-                        "containerID": "containerd://c5b0fad230a0",
+                        "allocatedResources": {
+                            "memory": "0"
+                        },
+                        "containerID": "containerd://e8b6656e4db9",
                         "image": "docker.io/library/busybox:1.37",
-                        "imageID": "containerd://6053936389b8",
+                        "imageID": "containerd://36b932e7ed7b",
                         "lastState": {
                             "terminated": {
-                                "containerID": "containerd://c5b0fad230a0",
+                                "containerID": "containerd://fcf314a615b0",
                                 "exitCode": 137,
-                                "finishedAt": "2026-01-01T00:15:33Z",
+                                "finishedAt": "2026-01-01T00:07:24Z",
                                 "reason": "OOMKilled",
-                                "startedAt": "2026-01-01T00:15:33Z"
+                                "startedAt": "2026-01-01T00:07:24Z"
                             }
                         },
                         "name": "web",
                         "ready": false,
+                        "resources": {
+                            "limits": {
+                                "memory": "16Mi"
+                            },
+                            "requests": {
+                                "memory": "0"
+                            }
+                        },
                         "restartCount": 2,
                         "started": false,
                         "state": {
-                            "waiting": {
-                                "message": "back-off 40s restarting failed container=web pod=web-qlwq4g8hrz-bqtf5_fixture-oom-killed(00000000-0000-4000-8000-000000000004)",
-                                "reason": "CrashLoopBackOff"
+                            "terminated": {
+                                "containerID": "containerd://e8b6656e4db9",
+                                "exitCode": 137,
+                                "finishedAt": "2026-01-01T00:07:37Z",
+                                "reason": "OOMKilled",
+                                "startedAt": "2026-01-01T00:07:36Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0,
+                                    10
+                                ],
+                                "uid": 0
                             }
                         }
                     }
@@ -165,14 +220,22 @@
                 ],
                 "observedGeneration": 1,
                 "phase": "Running",
-                "podIP": "10.42.1.10",
+                "podIP": "10.42.1.11",
                 "podIPs": [
                     {
-                        "ip": "10.42.1.10"
+                        "ip": "10.42.1.11"
                     }
                 ],
                 "qosClass": "Burstable",
-                "startTime": "2026-01-01T00:15:00Z"
+                "resources": {
+                    "limits": {
+                        "memory": "16Mi"
+                    },
+                    "requests": {
+                        "memory": "0"
+                    }
+                },
+                "startTime": "2026-01-01T00:07:35Z"
             }
         }
     ],

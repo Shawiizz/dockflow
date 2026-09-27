@@ -5,24 +5,24 @@
             "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "firstTimestamp": "2026-01-01T00:10:06Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "kind": "PersistentVolumeClaim",
                 "name": "shared",
                 "namespace": "fixture-pvc-pending-rwx",
-                "resourceVersion": "9",
-                "uid": "00000000-0000-4000-8000-000000000001"
+                "resourceVersion": "4",
+                "uid": "00000000-0000-4000-8000-000000000004"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:00Z",
+            "lastTimestamp": "2026-01-01T00:10:06Z",
             "message": "waiting for first consumer to be created before binding",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "shared.188673238c4e4d1b",
+                "creationTimestamp": "2026-01-01T00:10:06Z",
+                "name": "shared.18d9255b056ef5b2",
                 "namespace": "fixture-pvc-pending-rwx",
-                "resourceVersion": "10",
-                "uid": "00000000-0000-4000-8000-000000000008"
+                "resourceVersion": "5",
+                "uid": "00000000-0000-4000-8000-000000000009"
             },
             "reason": "WaitForFirstConsumer",
             "reportingComponent": "persistentvolume-controller",
@@ -36,24 +36,24 @@
             "apiVersion": "v1",
             "count": 6,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "firstTimestamp": "2026-01-01T00:10:06Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "kind": "PersistentVolumeClaim",
                 "name": "shared",
                 "namespace": "fixture-pvc-pending-rwx",
-                "resourceVersion": "11",
-                "uid": "00000000-0000-4000-8000-000000000001"
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000004"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:16:16Z",
+            "lastTimestamp": "2026-01-01T00:11:02Z",
             "message": "Waiting for a volume to be created either by the external provisioner 'rancher.io/local-path' or manually by the system administrator. If volume creation is delayed, please verify that the provisioner is running and correctly registered.",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:01Z",
-                "name": "shared.18867323d228f548",
+                "creationTimestamp": "2026-01-01T00:10:06Z",
+                "name": "shared.18d9255b0713f2ac",
                 "namespace": "fixture-pvc-pending-rwx",
-                "resourceVersion": "12",
-                "uid": "00000000-0000-4000-8000-000000000009"
+                "resourceVersion": "7",
+                "uid": "00000000-0000-4000-8000-000000000010"
             },
             "reason": "ExternalProvisioning",
             "reportingComponent": "persistentvolume-controller",
@@ -65,88 +65,88 @@
         },
         {
             "apiVersion": "v1",
-            "count": 5,
+            "count": 3,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:01Z",
+            "firstTimestamp": "2026-01-01T00:10:06Z",
             "involvedObject": {
                 "apiVersion": "v1",
                 "kind": "PersistentVolumeClaim",
                 "name": "shared",
                 "namespace": "fixture-pvc-pending-rwx",
-                "resourceVersion": "15",
-                "uid": "00000000-0000-4000-8000-000000000001"
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000004"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:16:16Z",
-            "message": "failed to provision volume with StorageClass \"dockflow-local\": NodePath only supports ReadWriteOnce and ReadWriteOncePod (1.22+) access modes",
-            "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:01Z",
-                "name": "shared.18867323d3853bc4",
-                "namespace": "fixture-pvc-pending-rwx",
-                "resourceVersion": "16",
-                "uid": "00000000-0000-4000-8000-000000000011"
-            },
-            "reason": "ProvisioningFailed",
-            "reportingComponent": "rancher.io/local-path_local-path-provisioner-5cf85fd84d-8wm2q_00000000-0000-4000-8000-000000000007",
-            "reportingInstance": "",
-            "source": {
-                "component": "rancher.io/local-path_local-path-provisioner-5cf85fd84d-8wm2q_00000000-0000-4000-8000-000000000007"
-            },
-            "type": "Warning"
-        },
-        {
-            "apiVersion": "v1",
-            "count": 5,
-            "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:01Z",
-            "involvedObject": {
-                "apiVersion": "v1",
-                "kind": "PersistentVolumeClaim",
-                "name": "shared",
-                "namespace": "fixture-pvc-pending-rwx",
-                "resourceVersion": "13",
-                "uid": "00000000-0000-4000-8000-000000000001"
-            },
-            "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:16:16Z",
+            "lastTimestamp": "2026-01-01T00:10:51Z",
             "message": "External provisioner is provisioning volume for claim \"fixture-pvc-pending-rwx/shared\"",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:01Z",
-                "name": "shared.18867323daf85db9",
+                "creationTimestamp": "2026-01-01T00:10:06Z",
+                "name": "shared.18d9255b075aa001",
                 "namespace": "fixture-pvc-pending-rwx",
-                "resourceVersion": "14",
-                "uid": "00000000-0000-4000-8000-000000000010"
+                "resourceVersion": "8",
+                "uid": "00000000-0000-4000-8000-000000000011"
             },
             "reason": "Provisioning",
-            "reportingComponent": "rancher.io/local-path_local-path-provisioner-5cf85fd84d-8wm2q_00000000-0000-4000-8000-000000000007",
+            "reportingComponent": "rancher.io/local-path_local-path-provisioner-77b9867795-6bx9z_00000000-0000-4000-8000-000000000012",
             "reportingInstance": "",
             "source": {
-                "component": "rancher.io/local-path_local-path-provisioner-5cf85fd84d-8wm2q_00000000-0000-4000-8000-000000000007"
+                "component": "rancher.io/local-path_local-path-provisioner-77b9867795-6bx9z_00000000-0000-4000-8000-000000000012"
             },
             "type": "Normal"
         },
         {
             "apiVersion": "v1",
+            "count": 3,
+            "eventTime": null,
+            "firstTimestamp": "2026-01-01T00:10:06Z",
+            "involvedObject": {
+                "apiVersion": "v1",
+                "kind": "PersistentVolumeClaim",
+                "name": "shared",
+                "namespace": "fixture-pvc-pending-rwx",
+                "resourceVersion": "6",
+                "uid": "00000000-0000-4000-8000-000000000004"
+            },
+            "kind": "Event",
+            "lastTimestamp": "2026-01-01T00:10:51Z",
+            "message": "failed to provision volume with StorageClass \"dockflow-local\": NodePath only supports ReadWriteOnce and ReadWriteOncePod (1.22+) access modes",
+            "metadata": {
+                "creationTimestamp": "2026-01-01T00:10:06Z",
+                "name": "shared.18d9255b075c6055",
+                "namespace": "fixture-pvc-pending-rwx",
+                "resourceVersion": "9",
+                "uid": "00000000-0000-4000-8000-000000000013"
+            },
+            "reason": "ProvisioningFailed",
+            "reportingComponent": "rancher.io/local-path_local-path-provisioner-77b9867795-6bx9z_00000000-0000-4000-8000-000000000012",
+            "reportingInstance": "",
+            "source": {
+                "component": "rancher.io/local-path_local-path-provisioner-77b9867795-6bx9z_00000000-0000-4000-8000-000000000012"
+            },
+            "type": "Warning"
+        },
+        {
+            "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "firstTimestamp": "2026-01-01T00:10:06Z",
             "involvedObject": {
                 "apiVersion": "apps/v1",
                 "kind": "ReplicaSet",
-                "name": "web-5hrbmx46j5",
+                "name": "web-776897c7f5",
                 "namespace": "fixture-pvc-pending-rwx",
-                "resourceVersion": "7",
-                "uid": "00000000-0000-4000-8000-000000000003"
+                "resourceVersion": "10",
+                "uid": "00000000-0000-4000-8000-000000000002"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:00Z",
-            "message": "Created pod: web-5hrbmx46j5-fl6xj",
+            "lastTimestamp": "2026-01-01T00:10:06Z",
+            "message": "Created pod: web-776897c7f5-khslt",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web-5hrbmx46j5.188673239cf826b8",
+                "creationTimestamp": "2026-01-01T00:10:06Z",
+                "name": "web-776897c7f5.18d9255b06495d1f",
                 "namespace": "fixture-pvc-pending-rwx",
-                "resourceVersion": "8",
-                "uid": "00000000-0000-4000-8000-000000000006"
+                "resourceVersion": "11",
+                "uid": "00000000-0000-4000-8000-000000000014"
             },
             "reason": "SuccessfulCreate",
             "reportingComponent": "replicaset-controller",
@@ -160,24 +160,24 @@
             "apiVersion": "v1",
             "count": 1,
             "eventTime": null,
-            "firstTimestamp": "2026-01-01T00:15:00Z",
+            "firstTimestamp": "2026-01-01T00:10:06Z",
             "involvedObject": {
                 "apiVersion": "apps/v1",
                 "kind": "Deployment",
                 "name": "web",
                 "namespace": "fixture-pvc-pending-rwx",
-                "resourceVersion": "4",
-                "uid": "00000000-0000-4000-8000-000000000002"
+                "resourceVersion": "12",
+                "uid": "00000000-0000-4000-8000-000000000001"
             },
             "kind": "Event",
-            "lastTimestamp": "2026-01-01T00:15:00Z",
-            "message": "Scaled up replica set web-5hrbmx46j5 from 0 to 1",
+            "lastTimestamp": "2026-01-01T00:10:06Z",
+            "message": "Scaled up replica set web-776897c7f5 from 0 to 1",
             "metadata": {
-                "creationTimestamp": "2026-01-01T00:15:00Z",
-                "name": "web.18867323949c98b2",
+                "creationTimestamp": "2026-01-01T00:10:06Z",
+                "name": "web.18d9255b05f8c58f",
                 "namespace": "fixture-pvc-pending-rwx",
-                "resourceVersion": "5",
-                "uid": "00000000-0000-4000-8000-000000000004"
+                "resourceVersion": "13",
+                "uid": "00000000-0000-4000-8000-000000000015"
             },
             "reason": "ScalingReplicaSet",
             "reportingComponent": "deployment-controller",

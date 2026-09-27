@@ -1,10 +1,10 @@
 {
-  "synthetic": true,
+  "recordedOn": "2026-09-27",
   "k3sVersion": "v1.36.4+k3s1",
   "steps": [
-    "kubectl create namespace fixture-create-container-config-error",
-    "kubectl apply: Deployment web (1 replica, busybox:1.37, envFrom secretRef web-env, a Secret that does not exist)",
-    "wait until the container reports waiting reason CreateContainerConfigError",
-    "capture the namespace resources and the cluster nodes and persistentvolumes"
+    "Dockflow renders the compose file into namespace fixture-<scenario> (project shop, release 1.4.2, servers server_1 and agent_1) and applies it server-side as a deploy does",
+    "docker-compose.yml: service web, busybox:1.37, command sleep 36000, environment APP_ENV=production, placed on server_1",
+    "everything is applied except the env Secret the pod reads",
+    "capture once the container waits with reason CreateContainerConfigError"
   ]
 }

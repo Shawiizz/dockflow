@@ -282,24 +282,26 @@ describe('podDisplayStatus', () => {
   });
 
   it('matches the kubectl printer on the recorded scenarios (U-STATUS-PODS-01)', () => {
+    // k3s 1.36 keeps a crash-looping container terminated between restarts, which kubectl prints as its exit reason
     const cases: [string, string, string, InstanceInfo['severity']][] = [
-      ['crashloop', 'web-app-p2xkk2fn8m-zbc2k', 'CrashLoopBackOff', 'error'],
-      ['init-container-crash', 'web-gwx9gxmmlm-8j722', 'Init:CrashLoopBackOff', 'error'],
-      ['terminating-pods', 'web-qw9jpb6slq-6sb4b', 'Terminating', 'warning'],
-      ['terminating-pods', 'web-qw9jpb6slq-gmnrj', 'Running', 'ok'],
-      ['evicted-pod', 'web-kvz7hg45z8-lwht6', 'Evicted', 'error'],
-      ['evicted-pod', 'web-kvz7hg45z8-bz4r2', 'Running', 'ok'],
-      ['oom-killed', 'web-qlwq4g8hrz-bqtf5', 'CrashLoopBackOff', 'error'],
-      ['unschedulable-resources', 'web-8k689hhgsx-rvc8f', 'Pending (Unschedulable)', 'error'],
-      ['pvc-pending-rwx', 'web-5hrbmx46j5-fl6xj', 'Pending', 'warning'],
-      ['job-complete', 'migrate-ab6158d4-jqsjt', 'Completed', 'ok'],
-      ['job-failed', 'migrate-aefdcfd1-6wjcc', 'Error', 'error'],
-      ['rollout-progressing', 'web-htj6sx4lpn-ff4rl', 'Running (not ready)', 'warning'],
-      ['multi-container', 'api-bg5g5vghlb-27kgr', 'Running', 'ok'],
-      ['err-image-never-pull', 'web-dgnq2qql9c-f55cv', 'ErrImageNeverPull', 'error'],
-      ['image-pull-backoff', 'web-h7fqpf2pgw-hhx68', 'ImagePullBackOff', 'error'],
-      ['create-container-config-error', 'web-z67tgvktnp-s8578', 'CreateContainerConfigError', 'error'],
-      ['invalid-image-name', 'web-stwzqdsq9f-xqfnm', 'InvalidImageName', 'error'],
+      ['crashloop', 'web-app-fbf7d977d-dqwf8', 'Error', 'error'],
+      ['init-container-crash', 'web-7b6d4fd7fb-9s54r', 'Init:Error', 'error'],
+      ['terminating-pods', 'web-585567c7ff-pbh4z', 'Terminating', 'warning'],
+      ['terminating-pods', 'web-585567c7ff-9lsc7', 'Running', 'ok'],
+      ['evicted-pod', 'web-6dc46b7976-hxqlb', 'Evicted', 'error'],
+      ['evicted-pod', 'web-6dc46b7976-pvc46', 'Running', 'ok'],
+      ['oom-killed', 'web-764ff46d98-k4v5k', 'OOMKilled', 'error'],
+      ['statefulset-stuck', 'db-1', 'Error', 'error'],
+      ['unschedulable-resources', 'web-6db8d4bf7-jhghd', 'Pending (Unschedulable)', 'error'],
+      ['pvc-pending-rwx', 'web-776897c7f5-khslt', 'Pending', 'warning'],
+      ['job-complete', 'migrate-8d802302-rcg26', 'Completed', 'ok'],
+      ['job-failed', 'migrate-0a492d34-5kk6n', 'Error', 'error'],
+      ['rollout-progressing', 'web-96d55d8c4-l67lt', 'Running (not ready)', 'warning'],
+      ['multi-container', 'api-847f8bf66c-5ghhb', 'Running', 'ok'],
+      ['err-image-never-pull', 'web-676dcfbd47-p9gx9', 'ErrImageNeverPull', 'error'],
+      ['image-pull-backoff', 'web-679ff8548-l5hvb', 'ImagePullBackOff', 'error'],
+      ['create-container-config-error', 'web-7558dd9f88-2nghn', 'CreateContainerConfigError', 'error'],
+      ['invalid-image-name', 'web-7d7d576cc9-lpc4w', 'InvalidImageName', 'error'],
     ];
     for (const [scenario, name, status, severity] of cases) {
       expect({ scenario, ...podDisplayStatus(podNamed(scenario, name)) }).toEqual({ scenario, status, severity });
@@ -309,15 +311,15 @@ describe('podDisplayStatus', () => {
 
 describe('owning workload', () => {
   it('finds a Deployment through its ReplicaSet name without reading ReplicaSets', () => {
-    expect(podController(podNamed('crashloop', 'web-app-p2xkk2fn8m-zbc2k'))).toEqual({ kind: 'Deployment', name: 'web-app' });
+    expect(podController(podNamed('crashloop', 'web-app-fbf7d977d-dqwf8'))).toEqual({ kind: 'Deployment', name: 'web-app' });
     expect(podController(podNamed('statefulset-stuck', 'db-0'))).toEqual({ kind: 'StatefulSet', name: 'db' });
-    expect(podController(podNamed('daemonset-rolling', 'agent-8szr6'))).toEqual({ kind: 'DaemonSet', name: 'agent' });
-    expect(podController(podNamed('job-complete', 'migrate-ab6158d4-jqsjt'))).toEqual({ kind: 'Job', name: 'migrate-ab6158d4' });
+    expect(podController(podNamed('daemonset-rolling', 'agent-gg8cw'))).toEqual({ kind: 'DaemonSet', name: 'agent' });
+    expect(podController(podNamed('job-complete', 'migrate-8d802302-rcg26'))).toEqual({ kind: 'Job', name: 'migrate-8d802302' });
   });
 
   it('excludes helper pods and pods without a controller', () => {
     const inventory = inventoryOf('metrics-top');
-    const helper = podNamed('metrics-top', 'dockflow-helper-archive-3f9a2c1b');
+    const helper = podNamed('metrics-top', 'dockflow-helper-backup-3f9a2c1b');
     expect(podOwner(helper, inventory)).toBeNull();
     const bare = makePod(running());
     bare.metadata.ownerReferences = [];
@@ -326,7 +328,7 @@ describe('owning workload', () => {
 
   it('maps compose pods to the compose name and role', () => {
     const inventory = inventoryOf('crashloop');
-    const owner = podOwner(podNamed('crashloop', 'web-app-p2xkk2fn8m-zbc2k'), inventory);
+    const owner = podOwner(podNamed('crashloop', 'web-app-fbf7d977d-dqwf8'), inventory);
     expect(owner).toMatchObject({ source: 'compose', service: 'web_app', role: 'app', kind: 'Deployment', name: 'web-app', serviceName: 'web-app' });
   });
 });
@@ -415,10 +417,10 @@ describe('isCurrentRevision', () => {
     if (!workload) throw new Error('no web');
     const current = podsOf('rollout-progressing').map((p) => [p.metadata.name, isCurrentRevision(p, workload, revisions)]);
     expect(current).toEqual([
-      ['web-b4phj422s5-6lnzl', false],
-      ['web-b4phj422s5-gs8jf', false],
-      ['web-b4phj422s5-j8mhb', false],
-      ['web-htj6sx4lpn-ff4rl', true],
+      ['web-84f986cb8c-7frtn', false],
+      ['web-84f986cb8c-gck2j', false],
+      ['web-84f986cb8c-wfss7', false],
+      ['web-96d55d8c4-l67lt', true],
     ]);
   });
 
@@ -450,42 +452,41 @@ describe('isCurrentRevision', () => {
     const workload = inventory.composeWorkloads.get('agent');
     if (!workload) throw new Error('no agent');
     const revisions = revisionsOf('daemonset-rolling');
-    expect(isCurrentRevision(podNamed('daemonset-rolling', 'agent-nhfnb'), workload, revisions)).toBe(true);
-    expect(isCurrentRevision(podNamed('daemonset-rolling', 'agent-8szr6'), workload, revisions)).toBe(false);
+    expect(isCurrentRevision(podNamed('daemonset-rolling', 'agent-gwt4s'), workload, revisions)).toBe(true);
+    expect(isCurrentRevision(podNamed('daemonset-rolling', 'agent-gg8cw'), workload, revisions)).toBe(false);
   });
 
   it('a Job pod is always current', () => {
     const inventory = inventoryOf('job-complete');
     const workload = inventory.composeWorkloads.get('migrate');
     if (!workload) throw new Error('no migrate');
-    expect(isCurrentRevision(podNamed('job-complete', 'migrate-ab6158d4-jqsjt'), workload, revisionsOf('job-complete'))).toBe(true);
+    expect(isCurrentRevision(podNamed('job-complete', 'migrate-8d802302-rcg26'), workload, revisionsOf('job-complete'))).toBe(true);
   });
 });
 
 describe('toInstanceInfo', () => {
   it('maps a recorded pod (U-STATUS-PODS-04)', () => {
     const inventory = inventoryOf('crashloop');
-    const info = toInstanceInfo(podNamed('crashloop', 'web-app-p2xkk2fn8m-zbc2k'), inventory, revisionsOf('crashloop'), SERVERS, NO_SECRETS);
+    const info = toInstanceInfo(podNamed('crashloop', 'web-app-fbf7d977d-dqwf8'), inventory, revisionsOf('crashloop'), SERVERS, NO_SECRETS);
     expect(info).toEqual({
-      id: 'web-app-p2xkk2fn8m-zbc2k',
-      label: 'web_app.zbc2k',
+      id: 'web-app-fbf7d977d-dqwf8',
+      label: 'web_app.dqwf8',
       service: 'web_app',
       node: 'server_1',
-      status: 'CrashLoopBackOff',
+      status: 'Error',
       severity: 'error',
       ready: false,
       restarts: 3,
       current: true,
-      startedAt: '2026-01-01T00:15:00Z',
-      error:
-        'back-off 1m20s restarting failed container=web-app pod=web-app-p2xkk2fn8m-zbc2k_fixture-crashloop(00000000-0000-4000-8000-000000000004)',
+      startedAt: '2026-01-01T00:00:59Z',
+      error: 'Error (exit 1) at 2026-01-01T00:01:11Z',
       containers: ['web-app'],
     });
   });
 
   it('maps the node to its servers.yml key (agent_1 <- agent-1) and keeps an unknown node', () => {
     const inventory = inventoryOf('multi-container');
-    const pod = podNamed('multi-container', 'api-bg5g5vghlb-27kgr');
+    const pod = podNamed('multi-container', 'api-847f8bf66c-5ghhb');
     expect(toInstanceInfo(pod, inventory, null, SERVERS, NO_SECRETS)?.node).toBe('agent_1');
     expect(toInstanceInfo(pod, inventory, null, nodeToServerMap(['server_1']), NO_SECRETS)?.node).toBe('agent-1');
     expect(toInstanceInfo(pod, inventory, null, SERVERS, NO_SECRETS)?.containers).toEqual(['api', 'log-shipper']);
@@ -493,14 +494,14 @@ describe('toInstanceInfo', () => {
 
   it('has no node and no start time while unscheduled', () => {
     const inventory = inventoryOf('unschedulable-resources');
-    const info = toInstanceInfo(podNamed('unschedulable-resources', 'web-8k689hhgsx-rvc8f'), inventory, null, SERVERS, NO_SECRETS);
+    const info = toInstanceInfo(podNamed('unschedulable-resources', 'web-6db8d4bf7-jhghd'), inventory, null, SERVERS, NO_SECRETS);
     expect(info).toMatchObject({ node: null, startedAt: null, status: 'Pending (Unschedulable)' });
     expect(info?.error).toContain('Insufficient memory');
   });
 
   it('sums restarts over init and app containers', () => {
     const inventory = inventoryOf('multi-container');
-    const pod = podNamed('multi-container', 'api-bg5g5vghlb-27kgr');
+    const pod = podNamed('multi-container', 'api-847f8bf66c-5ghhb');
     pod.status = {
       ...pod.status,
       initContainerStatuses: [container('init', { restartCount: 1, state: { terminated: { exitCode: 0 } } })],
@@ -532,7 +533,7 @@ describe('toInstanceInfo', () => {
 
   it('redacts the error with the bundle Redactor', () => {
     const inventory = inventoryOf('crashloop');
-    const pod = podNamed('crashloop', 'web-app-p2xkk2fn8m-zbc2k');
+    const pod = podNamed('crashloop', 'web-app-fbf7d977d-dqwf8');
     pod.status = { ...pod.status, containerStatuses: [waiting('CreateContainerConfigError', 'bad value s3cr3t-token-value in env')] };
     const info = toInstanceInfo(pod, inventory, null, SERVERS, new Redactor(['s3cr3t-token-value']));
     expect(info?.error).toBe('bad value *** in env');
@@ -546,7 +547,7 @@ describe('toInstanceInfo', () => {
 
   it('returns null for a helper pod', () => {
     const inventory = inventoryOf('metrics-top');
-    expect(toInstanceInfo(podNamed('metrics-top', 'dockflow-helper-archive-3f9a2c1b'), inventory, null, SERVERS, NO_SECRETS)).toBeNull();
+    expect(toInstanceInfo(podNamed('metrics-top', 'dockflow-helper-backup-3f9a2c1b'), inventory, null, SERVERS, NO_SECRETS)).toBeNull();
   });
 
   it('names a chart pod after its Helm release', () => {
@@ -555,8 +556,8 @@ describe('toInstanceInfo', () => {
     ]);
     // the compose index would claim it first; drop it to model a chart-owned Deployment
     const chartOnly: InventoryView = { ...inventory, composeWorkloads: new Map() };
-    const info = toInstanceInfo(podNamed('multi-container', 'api-bg5g5vghlb-27kgr'), chartOnly, null, SERVERS, NO_SECRETS);
-    expect(info).toMatchObject({ service: 'search', label: 'search.27kgr' });
+    const info = toInstanceInfo(podNamed('multi-container', 'api-847f8bf66c-5ghhb'), chartOnly, null, SERVERS, NO_SECRETS);
+    expect(info).toMatchObject({ service: 'search', label: 'search.5ghhb' });
   });
 });
 
@@ -564,7 +565,7 @@ describe('instancesFor', () => {
   it('filters by role and leaves helper pods out', () => {
     const inventory = inventoryOf('metrics-top');
     const app = instancesFor(inventory, { role: 'app' }, null, SERVERS, NO_SECRETS);
-    expect(app.map((i) => i.id)).toEqual(['web-782lrz9hsf-6dfnp', 'web-782lrz9hsf-7fvrw']);
+    expect(app.map((i) => i.id)).toEqual(['web-758947d665-jr6dl', 'web-758947d665-pk8pg']);
     const accessory = instancesFor(inventory, { role: 'accessory' }, null, SERVERS, NO_SECRETS);
     expect(accessory.map((i) => [i.id, i.label, i.node])).toEqual([['db-0', 'db.0', 'server_1']]);
   });
@@ -704,7 +705,7 @@ describe('instance order and selection', () => {
 });
 
 describe('selectContainer (U-STATUS-PODS-03)', () => {
-  const multi = podNamed('multi-container', 'api-bg5g5vghlb-27kgr');
+  const multi = podNamed('multi-container', 'api-847f8bf66c-5ghhb');
 
   it('takes the requested container, else refuses a missing one', () => {
     expect(selectContainer(multi, 'log-shipper', 'api')).toBe('log-shipper');
@@ -715,7 +716,7 @@ describe('selectContainer (U-STATUS-PODS-03)', () => {
       error = e;
     }
     expect(error).toBeInstanceOf(ValidationError);
-    expect((error as ValidationError).message).toBe('Container nope is not part of pod api-bg5g5vghlb-27kgr');
+    expect((error as ValidationError).message).toBe('Container nope is not part of pod api-847f8bf66c-5ghhb');
     expect((error as ValidationError).suggestion).toBe('Choose one of: `api, log-shipper`.');
   });
 
@@ -745,7 +746,7 @@ describe('instanceLabel', () => {
   it('uses the StatefulSet ordinal, else the last 5 characters', () => {
     expect(instanceLabel({ id: 'db-0', service: 'db' }, 'db')).toBe('db.0');
     expect(instanceLabel({ id: 'web-6d4b9c7f8-x2x4q', service: 'web' }, 'web')).toBe('web.x2x4q');
-    expect(instanceLabel({ id: 'web-app-p2xkk2fn8m-zbc2k', service: 'web_app' }, 'web-app')).toBe('web_app.zbc2k');
+    expect(instanceLabel({ id: 'web-app-fbf7d977d-dqwf8', service: 'web_app' }, 'web-app')).toBe('web_app.dqwf8');
     expect(instanceLabel({ id: 'web-worker', service: 'web' }, 'web')).toBe('web.orker');
     expect(instanceLabel({ id: 'db-12a', service: 'db' }, 'db')).toBe('db.b-12a');
   });

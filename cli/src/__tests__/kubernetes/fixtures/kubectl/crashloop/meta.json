@@ -1,10 +1,9 @@
 {
-  "synthetic": true,
+  "recordedOn": "2026-09-27",
   "k3sVersion": "v1.36.4+k3s1",
   "steps": [
-    "kubectl create namespace fixture-crashloop",
-    "kubectl apply: Deployment web-app of compose service web_app (1 replica, busybox:1.37 running sh -c 'exit 1', Dockflow labels and annotations)",
-    "wait until the pod reports CrashLoopBackOff with restartCount 3",
-    "capture the namespace resources and the cluster nodes and persistentvolumes"
+    "Dockflow renders the compose file into namespace fixture-<scenario> (project shop, release 1.4.2, servers server_1 and agent_1) and applies it server-side as a deploy does",
+    "docker-compose.yml: service web_app (object web-app), busybox:1.37, command sh -c \"exit 1\", placed on server_1",
+    "capture once the container restarted 3 times"
   ]
 }
