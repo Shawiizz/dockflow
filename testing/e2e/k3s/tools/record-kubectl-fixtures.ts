@@ -1,76 +1,234 @@
 #!/usr/bin/env bun
 /**
- * Recorder for the kubectl/helm fixtures of design-07 3.11 (PD-12). Run by hand against a running
- * lane cluster — never inside a package; the test machine phase re-records them (design-07 0.5):
+ * Recorder for the kubectl and metrics fixtures of design-07 3.11 (PD-12). Run by hand against a
+ * running lane cluster, never inside a package:
  *
- *   bun run testing/e2e/k3s/tools/record-kubectl-fixtures.ts --lane k3s-core [--scenario <name> | --all]
+ *   bun run testing/e2e/k3s/tools/record-kubectl-fixtures.ts --lane k3s-core (--scenario <name>[,<name>...] | --all)
  *
- * Each scenario creates its condition with harness kubectl in namespace `fixture-<scenario>`, waits
- * for it, then captures the namespaced and cluster resources of 3.11 as JSON Lists, scrubbed before
- * writing. The scrub rules, directory layout and meta format are not re-specified here: this tool
- * writes exactly what `cli/src/__tests__/kubernetes/support/kubectl-fixtures.ts` (P09) already reads
- * and verifies, reusing its constants directly, and self-checks every recording with the same
- * `scrubViolations` function `fixtures-meta.test.ts` uses before declaring it written.
- *
- * The scenario recipes mirror the `steps` already authored (by hand) in each scenario's existing
- * synthetic `meta.json` — this tool reproduces those same conditions against a real cluster instead
- * of a human typing them once. A recipe that no longer reproduces the condition on a later k3s pin
- * is exactly what a maintainer re-running this on the test machine is expected to fix.
+ * Each scenario renders its compose file with Dockflow's own normalizer and translator, into
+ * namespace `fixture-<scenario>` of project `shop` release `1.4.2`, and applies the objects the
+ * way a deploy does (server-side, field manager `dockflow`). A few scenarios then change what no
+ * compose file can express (an init container, a quota); their steps say so. Once the condition
+ * holds, the namespaced and cluster resources of 3.11 are read in one kubectl call per scope, once
+ * per capture. All the captures of a scenario are scrubbed with one set of maps, checked with the
+ * `scrubViolations` of `cli/src/__tests__/kubernetes/support/kubectl-fixtures.ts` (the rules
+ * `fixtures-meta.test.ts` enforces), and only then written.
  */
 
 import { createHash } from "crypto";
-import { mkdirSync, writeFileSync } from "fs";
-import { join } from "path";
+import { mkdirSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { dirname, join } from "path";
 import {
   CAPTURED_RESOURCES,
+  type CapturedResource,
   CLUSTER_RESOURCES,
   DESIGN_SCENARIOS,
+  FIXTURE_PROJECT,
+  FIXTURE_RELEASE,
+  FIXTURE_SERVERS,
   FIXTURES_ROOT,
   type FixtureFile,
   fixtureNamespace,
+  formatCompactJson,
   formatKubectlJson,
   NAMESPACED_RESOURCES,
+  RESOURCE_KINDS,
   scrubViolations,
 } from "../../../../cli/src/__tests__/kubernetes/support/kubectl-fixtures";
-import { HELM_PIN } from "../../../../cli/src/services/orchestrator/kubernetes/versions";
+import { loadFromString } from "../../../../cli/src/services/compose";
+import { DiagnosticSink } from "../../../../cli/src/services/orchestrator/diagnostics";
+import { createFileResolver } from "../../../../cli/src/services/orchestrator/file-resolver";
+import type { StackRole } from "../../../../cli/src/services/orchestrator/interfaces";
+import { buildHelperPod } from "../../../../cli/src/services/orchestrator/kubernetes/backends/backup";
+import { K8S_PROGRESS_DEADLINE_S, LABELS } from "../../../../cli/src/services/orchestrator/kubernetes/constants";
+import type { DistributionTraits } from "../../../../cli/src/services/orchestrator/kubernetes/distribution";
+import { k3sDistribution } from "../../../../cli/src/services/orchestrator/kubernetes/k3s/distribution";
 import { K3S_PIN } from "../../../../cli/src/services/orchestrator/kubernetes/k3s/versions";
+import { namespaceLabels } from "../../../../cli/src/services/orchestrator/kubernetes/labels";
+import type { StackIdentity } from "../../../../cli/src/services/orchestrator/kubernetes/model/types";
+import { normalizeStack } from "../../../../cli/src/services/orchestrator/kubernetes/normalize";
+import { revisionHistoryLimitFor } from "../../../../cli/src/services/orchestrator/kubernetes/render";
+import type { DaemonSet, Deployment, StatefulSet } from "../../../../cli/src/services/orchestrator/kubernetes/resources/apps";
+import type { Job } from "../../../../cli/src/services/orchestrator/kubernetes/resources/batch";
+import type { Container, PersistentVolumeClaim } from "../../../../cli/src/services/orchestrator/kubernetes/resources/core";
+import type { ManifestObject } from "../../../../cli/src/services/orchestrator/kubernetes/resources/registry";
+import { translateStack } from "../../../../cli/src/services/orchestrator/kubernetes/translate";
+import { HELM_PIN } from "../../../../cli/src/services/orchestrator/kubernetes/versions";
 import { getJson, kubectl, waitFor, withNodeDown } from "../../helpers/k8s";
-import { isLaneName, LANES, type LaneName } from "../lanes";
 import { TOPOLOGIES } from "../../helpers/topology";
+import { isLaneName, LANES, type LaneName } from "../lanes";
 
-// NOTE: this tool currently records the 24 kubectl scenarios of design-07 3.11's table. The three
-// helm scenarios (helm-list, helm-status-failed, helm-history-rollback) and the kubectl-stderr
-// samples are not implemented yet; `cli/src/__tests__/kubernetes/fixtures/helm/**` keeps its
-// synthetic content until a follow-up extends this tool to record them too.
+// NOTE: the three helm scenarios (helm-list, helm-status-failed, helm-history-rollback) and the
+// kubectl-stderr samples are not recorded yet; `cli/src/__tests__/kubernetes/fixtures/helm/**`
+// keeps its synthetic content until this tool records them too.
 
 function log(message: string): void {
   process.stdout.write(`${message}\n`);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+type Json = Record<string, unknown>;
+
+function isRecord(value: unknown): value is Json {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// ─── scrub transform (writes what support/kubectl-fixtures.ts's scrubViolations verifies) ─────────
+function metadataOf(item: Json): Json {
+  return isRecord(item.metadata) ? item.metadata : {};
+}
+
+function stringField(record: Json, key: string): string {
+  const value = record[key];
+  return typeof value === "string" ? value : "";
+}
+
+function compareStrings(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+// ─── rendering with Dockflow's own normalizer and translator ─────────
+
+/** servers.yml keys of the recording lane; `node.hostname == agent_1` pins a pod to node agent-1 */
+const SERVER_NAMES = Object.values(FIXTURE_SERVERS);
+
+function identityOf(ns: string): StackIdentity {
+  return { project: FIXTURE_PROJECT, env: "production", stackName: `${FIXTURE_PROJECT}-production`, namespace: ns, version: FIXTURE_RELEASE };
+}
+
+interface RenderOptions {
+  role?: StackRole;
+  traits?: Partial<DistributionTraits>;
+}
+
+/** The objects a deploy of `compose` applies for `role`, rendered into `ns`: render.ts without the artifact. */
+function render(ns: string, compose: string, options: RenderOptions = {}): ManifestObject[] {
+  const role = options.role ?? "app";
+  const file = role === "app" ? "docker-compose.yml" : "accessories.yml";
+  const traits: DistributionTraits = { ...structuredClone(k3sDistribution.traits), ...options.traits };
+  const sink = new DiagnosticSink();
+  const refuse = (): never => {
+    const errors = sink.list().filter((d) => d.severity === "error");
+    throw new Error(`The ${file} of ${ns} does not render:\n${errors.map((d) => `  - ${d.path}: ${d.message}`).join("\n")}`);
+  };
+  const { stack } = normalizeStack({
+    compose: loadFromString(compose, file),
+    role,
+    identity: identityOf(ns),
+    proxy: undefined,
+    sibling: { services: [], volumes: [], middlewares: [] },
+    serverNames: [...SERVER_NAMES],
+    imageDelivery: "import",
+    files: createFileResolver(new Map(), tmpdir()),
+    traits,
+    sink,
+  });
+  if (sink.hasErrors()) refuse();
+  const { objects } = translateStack(stack, {
+    pullSecretName: null,
+    revisionHistoryLimit: revisionHistoryLimitFor(undefined),
+    progressDeadlineS: K8S_PROGRESS_DEADLINE_S,
+    traits,
+    extraReservedHostPorts: [{ port: 22, protocol: "TCP", reason: "SSH" }],
+    traefikOnCluster: false,
+    serverNames: [...SERVER_NAMES],
+    sink,
+  });
+  if (sink.hasErrors()) refuse();
+  return objects;
+}
+
+type Workload = Deployment | StatefulSet | DaemonSet | Job;
+
+function isWorkload(object: ManifestObject): object is Workload {
+  return object.kind === "Deployment" || object.kind === "StatefulSet" || object.kind === "DaemonSet" || object.kind === "Job";
+}
+
+function workloadOf(objects: readonly ManifestObject[], name?: string): Workload {
+  const found = objects.filter(isWorkload).find((object) => name === undefined || object.metadata.name === name);
+  if (!found) throw new Error(`The render has no workload${name ? ` ${name}` : ""}`);
+  return found;
+}
+
+function containerOf(workload: Workload): Container {
+  const [container] = workload.spec.template.spec.containers;
+  if (!container) throw new Error(`Workload ${workload.metadata.name} has no container`);
+  return container;
+}
+
+function deploymentOf(objects: readonly ManifestObject[], name: string): Deployment {
+  const workload = workloadOf(objects, name);
+  if (workload.kind !== "Deployment") throw new Error(`Workload ${name} is a ${workload.kind}, not a Deployment`);
+  return workload;
+}
+
+/** Applied as a deploy applies (runtime/kubectl.ts): server-side, field manager dockflow. */
+async function apply(objects: readonly object[]): Promise<void> {
+  const list = { apiVersion: "v1", kind: "List", items: objects };
+  await kubectl(["apply", "--server-side", "--field-manager=dockflow", "--force-conflicts", "-f", "-"], { stdin: JSON.stringify(list) });
+}
+
+async function rolloutStatus(ns: string, target: string, timeoutS: number): Promise<void> {
+  await kubectl(["rollout", "status", target, "-n", ns, `--timeout=${timeoutS}s`]);
+}
+
+// ─── capture ────────────────────────────────────────────────────────
+
+interface RawCapture {
+  /** '' for the scenario directory, else its subdirectory (`completed`) */
+  name: string;
+  lists: Record<CapturedResource, Json[]>;
+}
+
+const RESOURCE_OF_KIND = new Map<string, CapturedResource>(CAPTURED_RESOURCES.map((resource) => [RESOURCE_KINDS[resource].kind, resource]));
+
+/** PersistentVolumes claimed from `ns`: the only ones a scenario keeps of the cluster-wide list. */
+function claimedFrom(ns: string, pv: unknown): boolean {
+  return isRecord(pv) && isRecord(pv.spec) && isRecord(pv.spec.claimRef) && pv.spec.claimRef.namespace === ns;
+}
+
+/** One `kubectl get <r1>,<r2>,... -o json`: every resource of a scope read at the same moment. */
+async function readItems(ns: string | null, resources: readonly string[]): Promise<Json[]> {
+  const args = ["get", resources.join(","), ...(ns ? ["-n", ns] : []), "-o", "json"];
+  const parsed: unknown = JSON.parse(await kubectl(args));
+  return isRecord(parsed) && Array.isArray(parsed.items) ? parsed.items.filter(isRecord) : [];
+}
+
+async function readCapture(ns: string, name: string): Promise<RawCapture> {
+  const items = [...(await readItems(ns, NAMESPACED_RESOURCES)), ...(await readItems(null, CLUSTER_RESOURCES))];
+  const lists = Object.fromEntries(CAPTURED_RESOURCES.map((resource) => [resource, [] as Json[]])) as Record<CapturedResource, Json[]>;
+  for (const item of items) {
+    const resource = typeof item.kind === "string" ? RESOURCE_OF_KIND.get(item.kind) : undefined;
+    if (!resource) throw new Error(`Unexpected ${String(item.kind)} in the capture of ${ns}`);
+    // the cluster-wide list also holds the volumes of every other scenario
+    if (resource === "persistentvolumes" && !claimedFrom(ns, item)) continue;
+    lists[resource].push(item);
+  }
+  return { name, lists };
+}
+
+// ─── scrub (writes what support/kubectl-fixtures.ts's scrubViolations verifies) ────────────────
 
 interface ScrubMaps {
+  scenario: string;
   uid: Map<string, string>;
   resourceVersion: Map<string, string>;
   hostIp: Map<string, string>;
+  /** generated object name -> its stable replacement */
+  names: Map<string, string>;
+  /** stable names handed out per generateName prefix */
+  generated: Map<string, number>;
+  /** a known prefix followed by the 5 random characters of a generated name, anywhere in a text */
+  namePattern: RegExp | null;
   shiftMs: number;
 }
 
 const RFC3339_RE = /(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2})/g;
 const SCRUBBED_START = new Date("2026-01-01T00:00:00Z");
 
-function nextUid(maps: ScrubMaps): string {
-  return `00000000-0000-4000-8000-${String(maps.uid.size).padStart(12, "0")}`;
-}
-
 function scrubUid(maps: ScrubMaps, value: string): string {
   const existing = maps.uid.get(value);
   if (existing) return existing;
-  const assigned = nextUid(maps);
+  const assigned = `00000000-0000-4000-8000-${String(maps.uid.size + 1).padStart(12, "0")}`;
   maps.uid.set(value, assigned);
   return assigned;
 }
@@ -95,13 +253,12 @@ function scrubHostIp(maps: ScrubMaps, value: string): string {
  * Node addresses first, servers before agents, so server-1 is 192.0.2.11 and agent-1 192.0.2.12 as
  * the fixture conventions say, whatever order kubectl listed them in.
  */
-function mapNodeIps(nodes: unknown, maps: ScrubMaps): void {
-  const items = isRecord(nodes) && Array.isArray(nodes.items) ? nodes.items.filter(isRecord) : [];
-  const rank = (item: Record<string, unknown>): string => {
-    const name = isRecord(item.metadata) && typeof item.metadata.name === "string" ? item.metadata.name : "";
+function mapNodeIps(nodes: readonly Json[], maps: ScrubMaps): void {
+  const rank = (item: Json): string => {
+    const name = stringField(metadataOf(item), "name");
     return `${name.startsWith("server") ? 0 : 1}${name}`;
   };
-  for (const item of [...items].sort((a, b) => (rank(a) < rank(b) ? -1 : 1))) {
+  for (const item of [...nodes].sort((a, b) => compareStrings(rank(a), rank(b)))) {
     const addresses = isRecord(item.status) && Array.isArray(item.status.addresses) ? item.status.addresses.filter(isRecord) : [];
     for (const address of addresses) {
       if ((address.type === "InternalIP" || address.type === "ExternalIP") && typeof address.address === "string") {
@@ -125,6 +282,40 @@ function replaceHostIps(value: string, maps: ScrubMaps): string {
     out = out.replace(new RegExp(`(?<![\\d.])${raw.replace(/\./g, "\\.")}(?![\\d.])`, "g"), scrubbed);
   }
   return out;
+}
+
+/** The alphabet of the random suffix the API server appends to a generateName (apimachinery utilrand). */
+const GENERATED_ALPHABET = "bcdfghjklmnpqrstvwxz2456789";
+const GENERATED_SUFFIX = `[${GENERATED_ALPHABET}]{5}`;
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * The same stable replacement for a generated name every time it appears, so a new recording of
+ * an unchanged scenario names its pods as the previous one did: the n-th name handed out for a
+ * prefix gets 5 characters derived from the scenario, the prefix and n.
+ */
+function stableName(maps: ScrubMaps, prefix: string, original: string): string {
+  const existing = maps.names.get(original);
+  if (existing) return existing;
+  const taken = new Set(maps.names.values());
+  for (let attempt = 0; ; attempt++) {
+    const index = maps.generated.get(prefix) ?? 0;
+    maps.generated.set(prefix, index + 1);
+    const digest = createHash("sha256").update(`${maps.scenario}/${prefix}/${index}/${attempt}`).digest();
+    const suffix = Array.from(digest.subarray(0, 5), (byte) => GENERATED_ALPHABET[byte % GENERATED_ALPHABET.length]).join("");
+    const name = `${prefix}${suffix}`;
+    if (taken.has(name)) continue;
+    maps.names.set(original, name);
+    return name;
+  }
+}
+
+function replaceGeneratedNames(value: string, maps: ScrubMaps): string {
+  if (!maps.namePattern) return value;
+  return value.replace(maps.namePattern, (match: string, prefix: string) => stableName(maps, prefix, match));
 }
 
 /** What identifies the recording machine rather than the cluster state: never kept. */
@@ -169,11 +360,11 @@ function scrubValue(value: unknown, key: string | null, parentKey: string | null
     if ((key === "containerID" || key === "imageID") && value !== "") return scrubContainerRuntimeId(value);
     const hostIpField = key === "hostIP" || (key === "ip" && (parentKey === "hostIPs" || parentKey === "ingress"));
     if (hostIpField) return scrubHostIp(maps, value);
-    return replaceUuids(replaceHostIps(shiftTimestamps(value, maps.shiftMs), maps), maps);
+    return replaceGeneratedNames(replaceUuids(replaceHostIps(shiftTimestamps(value, maps.shiftMs), maps), maps), maps);
   }
   if (Array.isArray(value)) return value.map((item) => scrubValue(item, key, parentKey, maps));
   if (isRecord(value)) {
-    const out: Record<string, unknown> = {};
+    const out: Json = {};
     for (const [k, v] of Object.entries(value)) {
       if (k === "managedFields") continue; // dropped entirely (3.11)
       out[k] = scrubValue(v, k, key, maps);
@@ -183,86 +374,160 @@ function scrubValue(value: unknown, key: string | null, parentKey: string | null
   return value;
 }
 
+/** Kinds whose objects prefix the generated names of others: pods of a ReplicaSet, Job or DaemonSet, slices of a Service. */
+const PREFIXING_KINDS = new Set(["ReplicaSet", "Job", "DaemonSet", "Service"]);
+
+/**
+ * One set of maps for every capture of a scenario and its metrics read: the uids, the host
+ * addresses, the time shift and the generated names are the same wherever an object reappears.
+ * Uids are handed out in resource order and by stable name, so they do not depend on the random
+ * names the cluster chose or on how many events it kept.
+ */
+function scrubMapsFor(scenario: string, captures: readonly RawCapture[], metrics: unknown): ScrubMaps {
+  const earliest: { date: Date | null } = { date: null };
+  for (const capture of captures) collectEarliest(capture.lists, earliest);
+  collectEarliest(metrics, earliest);
+  const maps: ScrubMaps = {
+    scenario,
+    uid: new Map(),
+    resourceVersion: new Map(),
+    hostIp: new Map(),
+    names: new Map(),
+    generated: new Map(),
+    namePattern: null,
+    shiftMs: earliest.date ? SCRUBBED_START.getTime() - earliest.date.getTime() : 0,
+  };
+
+  const prefixes = new Set<string>();
+  for (const capture of captures) {
+    const generatedItems: Json[] = [];
+    for (const resource of CAPTURED_RESOURCES) {
+      for (const item of capture.lists[resource]) {
+        const meta = metadataOf(item);
+        const name = stringField(meta, "name");
+        const generateName = stringField(meta, "generateName");
+        if (generateName !== "") {
+          prefixes.add(generateName);
+          if (new RegExp(`^${escapeRegExp(generateName)}${GENERATED_SUFFIX}$`).test(name)) generatedItems.push(item);
+        }
+        if (typeof item.kind === "string" && PREFIXING_KINDS.has(item.kind) && name !== "") prefixes.add(`${name}-`);
+      }
+    }
+    // creation order, then node: the order a rerun of the scenario reproduces
+    const orderKey = (item: Json): string => {
+      const meta = metadataOf(item);
+      const node = isRecord(item.spec) ? stringField(item.spec, "nodeName") : "";
+      return `${stringField(meta, "creationTimestamp")}\u0000${node}\u0000${stringField(meta, "name")}`;
+    };
+    for (const item of generatedItems.sort((a, b) => compareStrings(orderKey(a), orderKey(b)))) {
+      const meta = metadataOf(item);
+      stableName(maps, stringField(meta, "generateName"), stringField(meta, "name"));
+    }
+  }
+  if (prefixes.size > 0) {
+    const alternatives = [...prefixes].sort((a, b) => b.length - a.length || compareStrings(a, b)).map(escapeRegExp);
+    maps.namePattern = new RegExp(`(?<![A-Za-z0-9-])(${alternatives.join("|")})${GENERATED_SUFFIX}(?![A-Za-z0-9-])`, "g");
+  }
+
+  for (const capture of captures) {
+    for (const resource of CAPTURED_RESOURCES) {
+      if (resource === "events") continue;
+      for (const item of sortedByStableName(capture.lists[resource], maps)) {
+        const uid = stringField(metadataOf(item), "uid");
+        if (uid !== "") scrubUid(maps, uid);
+      }
+    }
+  }
+  const [first] = captures;
+  if (first) mapNodeIps(first.lists.nodes, maps);
+  return maps;
+}
+
+function stableNameOf(item: Json, maps: ScrubMaps): string {
+  const name = stringField(metadataOf(item), "name");
+  return maps.names.get(name) ?? name;
+}
+
+function sortedByStableName(items: readonly Json[], maps: ScrubMaps): Json[] {
+  return [...items].sort((a, b) => compareStrings(stableNameOf(a, maps), stableNameOf(b, maps)));
+}
+
 const CLUSTER_SCOPED_KINDS = new Set(["Node", "PersistentVolume", "Namespace", "StorageClass"]);
 
 /**
  * Drops the events of an earlier incarnation of an object the capture holds under the same name (a
- * StatefulSet pod recreated as db-0 again): their involvedObject uid is the old pod's, which the
+ * StatefulSet pod recreated as db-1 again): their involvedObject uid is the old pod's, which the
  * fixture rules read as an inconsistent scrub. Event lists are representative subsets anyway.
  */
-function dropStaleEvents(scrubbed: Record<string, unknown>): void {
+function dropStaleEvents(lists: Record<CapturedResource, Json[]>): void {
   const uids = new Map<string, string>();
-  for (const list of Object.values(scrubbed)) {
-    const items = isRecord(list) && Array.isArray(list.items) ? list.items.filter(isRecord) : [];
+  for (const items of Object.values(lists)) {
     for (const item of items) {
-      const meta = isRecord(item.metadata) ? item.metadata : {};
+      const meta = metadataOf(item);
       if (typeof item.kind === "string" && typeof meta.name === "string" && typeof meta.uid === "string") {
-        uids.set(`${item.kind}/${typeof meta.namespace === "string" ? meta.namespace : ""}/${meta.name}`, meta.uid);
+        uids.set(`${item.kind}/${stringField(meta, "namespace")}/${meta.name}`, meta.uid);
       }
     }
   }
-  const events = scrubbed.events;
-  if (!isRecord(events) || !Array.isArray(events.items)) return;
-  events.items = events.items.filter((event) => {
-    const target = isRecord(event) && isRecord(event.involvedObject) ? event.involvedObject : null;
+  lists.events = lists.events.filter((event) => {
+    const target = isRecord(event.involvedObject) ? event.involvedObject : null;
     if (!target || typeof target.kind !== "string") return true;
-    const namespace = CLUSTER_SCOPED_KINDS.has(target.kind) ? "" : typeof target.namespace === "string" ? target.namespace : "";
+    const namespace = CLUSTER_SCOPED_KINDS.has(target.kind) ? "" : stringField(target, "namespace");
     const current = uids.get(`${target.kind}/${namespace}/${String(target.name)}`);
     return current === undefined || current === target.uid;
   });
 }
 
-// ─── capture pipeline ───────────────────────────────────────────────
-
-const EMPTY_LIST = { apiVersion: "v1", kind: "List", items: [], metadata: { resourceVersion: "" } };
-
-async function rawGet(ns: string | null, resource: string): Promise<unknown> {
-  const args = ns ? ["get", resource, "-n", ns, "-o", "json"] : ["get", resource, "-o", "json"];
-  const text = await kubectl(args, { allowFailure: true });
-  return text.trim() ? JSON.parse(text) : EMPTY_LIST;
+function scrubCapture(capture: RawCapture, maps: ScrubMaps): Record<CapturedResource, Json[]> {
+  const out = {} as Record<CapturedResource, Json[]>;
+  for (const resource of CAPTURED_RESOURCES) {
+    const scrubbed = sortedByStableName(capture.lists[resource], maps).map((item) => scrubValue(item, null, null, maps) as Json);
+    // kubectl lists a namespace in name order; the stable names keep that order
+    out[resource] = scrubbed.sort((a, b) => compareStrings(stringField(metadataOf(a), "name"), stringField(metadataOf(b), "name")));
+  }
+  dropStaleEvents(out);
+  return out;
 }
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-async function captureScenario(name: string, steps: readonly string[]): Promise<void> {
-  const ns = fixtureNamespace(name);
-  const raw: Record<string, unknown> = {};
-  for (const resource of NAMESPACED_RESOURCES) raw[resource] = await rawGet(ns, resource);
-  for (const resource of CLUSTER_RESOURCES) raw[resource] = await rawGet(null, resource);
-  // the cluster-wide list also holds the volumes of every other scenario recorded before this one
-  const pvs = raw.persistentvolumes;
-  if (isRecord(pvs) && Array.isArray(pvs.items)) pvs.items = pvs.items.filter((pv) => claimedFrom(ns, pv));
-
-  const earliest: { date: Date | null } = { date: null };
-  for (const value of Object.values(raw)) collectEarliest(value, earliest);
-  const shiftMs = earliest.date ? SCRUBBED_START.getTime() - earliest.date.getTime() : 0;
-  const maps: ScrubMaps = { uid: new Map(), resourceVersion: new Map(), hostIp: new Map(), shiftMs };
-  mapNodeIps(raw.nodes, maps);
-
-  const scrubbed: Record<string, unknown> = {};
-  for (const [resource, value] of Object.entries(raw)) scrubbed[resource] = scrubValue(value, null, null, maps);
-  dropStaleEvents(scrubbed);
-
-  const dir = join(FIXTURES_ROOT, "kubectl", name);
-  mkdirSync(dir, { recursive: true });
+/** Scrubs every capture and the metrics read with one set of maps, checks the file set, then writes it. */
+function writeRecording(scenario: Scenario, captures: readonly RawCapture[], metrics: unknown): void {
+  const maps = scrubMapsFor(scenario.name, captures, metrics);
   const files: FixtureFile[] = [];
-  for (const resource of CAPTURED_RESOURCES) {
-    const text = formatKubectlJson(scrubbed[resource]);
-    files.push({ path: `${resource}.json`, text, json: scrubbed[resource] });
+  for (const capture of captures) {
+    const lists = scrubCapture(capture, maps);
+    for (const resource of CAPTURED_RESOURCES) {
+      const list = { apiVersion: "v1", items: lists[resource], kind: "List", metadata: { resourceVersion: "" } };
+      files.push({ path: `${capture.name ? `${capture.name}/` : ""}${resource}.json`, text: formatKubectlJson(list), json: list });
+    }
+  }
+  const metricsPath = `metrics/${scenario.name}.json`;
+  if (metrics !== null) {
+    const scrubbed = scrubValue(metrics, null, null, maps);
+    files.push({ path: metricsPath, text: formatCompactJson(scrubbed), json: scrubbed });
   }
   const violations = scrubViolations(files);
   if (violations.length > 0) {
-    throw new Error(`Recording of ${name} did not scrub cleanly:\n${violations.map((v) => `  - ${v}`).join("\n")}`);
+    throw new Error(`Recording of ${scenario.name} did not scrub cleanly:\n${violations.map((v) => `  - ${v}`).join("\n")}`);
   }
-  for (const file of files) writeFileSync(join(dir, file.path), file.text);
-  const meta = { recordedOn: today(), k3sVersion: K3S_PIN.version, steps: [...steps] };
+
+  const dir = join(FIXTURES_ROOT, "kubectl", scenario.name);
+  rmSync(dir, { recursive: true, force: true });
+  for (const file of files) {
+    const path = file.path === metricsPath ? join(FIXTURES_ROOT, file.path) : join(dir, file.path);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, file.text);
+  }
+  const meta = { recordedOn: today(), k3sVersion: K3S_PIN.version, steps: [...scenario.steps] };
   writeFileSync(join(dir, "meta.json"), `${JSON.stringify(meta, null, 2)}\n`);
-  log(`[record] kubectl/${name}: written to ${dir}`);
+  const pods = captures.map((c) => c.lists.pods.length).join("+");
+  log(`[record] kubectl/${scenario.name}: ${captures.length} capture(s), ${pods} pod(s), written to ${dir}`);
 }
 
-// ─── wait helpers over the condition each scenario creates ─────────
+// ─── waits over the condition each scenario creates ────────────────
 
 interface ContainerStatusLike {
   restartCount: number;
@@ -271,343 +536,256 @@ interface ContainerStatusLike {
 }
 
 interface PodLike {
+  metadata: { name: string; deletionTimestamp?: string };
+  spec?: { nodeName?: string };
   status?: {
     conditions?: { type: string; status: string }[];
     containerStatuses?: ContainerStatusLike[];
     initContainerStatuses?: ContainerStatusLike[];
     phase?: string;
+    reason?: string;
   };
 }
 
-async function waitContainerWaiting(ns: string, selector: string, reason: string, timeoutMs = 120_000): Promise<void> {
-  await waitFor(
-    async () => {
-      const pods = await getJson<PodLike>("pods", { ns, selector });
-      const hit = pods.some((pod) => (pod.status?.containerStatuses ?? []).some((c) => c.state?.waiting?.reason === reason));
-      return hit ? true : undefined;
-    },
-    { timeoutMs, describe: `a pod in ${ns} to report waiting reason ${reason}` },
-  );
+function serviceSelector(service: string): string {
+  return `${LABELS.service}=${service}`;
 }
 
-async function waitContainerTerminated(ns: string, selector: string, reason: string, minRestarts: number, timeoutMs = 180_000): Promise<void> {
-  await waitFor(
-    async () => {
-      const pods = await getJson<PodLike>("pods", { ns, selector });
-      const hit = pods.some(
-        (pod) =>
-          (pod.status?.containerStatuses ?? []).some((c) => c.restartCount >= minRestarts && c.lastState?.terminated?.reason === reason) ||
-          (pod.status?.containerStatuses ?? []).some((c) => c.state?.waiting?.reason === "CrashLoopBackOff" && c.restartCount >= minRestarts),
-      );
-      return hit ? true : undefined;
-    },
-    { timeoutMs, describe: `a pod in ${ns} to report ${reason} with restartCount >= ${minRestarts}` },
-  );
+async function waitPods(ns: string, service: string, describe: string, test: (pods: PodLike[]) => boolean, timeoutMs = 180_000): Promise<void> {
+  await waitFor(async () => (test(await getJson<PodLike>("pods", { ns, selector: serviceSelector(service) })) ? true : undefined), {
+    timeoutMs,
+    describe: `${describe} (${ns})`,
+  });
+}
+
+function waitingReason(reason: string): (pods: PodLike[]) => boolean {
+  return (pods) => pods.some((pod) => (pod.status?.containerStatuses ?? []).some((c) => c.state?.waiting?.reason === reason));
+}
+
+/**
+ * A container restarted `restarts` times and back-off pending: kubelet 1.36 mostly keeps it
+ * `terminated` between restarts, sometimes `waiting` in CrashLoopBackOff; either is recorded as seen.
+ */
+function crashLooping(restarts: number, init = false): (pods: PodLike[]) => boolean {
+  return (pods) =>
+    pods.some((pod) =>
+      ((init ? pod.status?.initContainerStatuses : pod.status?.containerStatuses) ?? []).some(
+        (c) => c.restartCount >= restarts && (c.state?.waiting?.reason === "CrashLoopBackOff" || c.state?.terminated !== undefined),
+      ),
+    );
+}
+
+function podReady(pod: PodLike): boolean {
+  return (pod.status?.conditions ?? []).some((c) => c.type === "Ready" && c.status === "True");
 }
 
 interface ConditionLike {
-  status?: { conditions?: { type: string; status: string; reason?: string }[] };
+  status?: { conditions?: { type: string; status: string }[] };
 }
 
-async function waitCondition(
-  resource: string,
-  ns: string,
-  name: string,
-  type: string,
-  status: "True" | "False",
-  timeoutMs = 180_000,
-): Promise<void> {
+async function waitCondition(resource: string, ns: string, name: string, type: string, status: "True" | "False", timeoutMs = 180_000): Promise<void> {
   await waitFor(
     async () => {
       const [obj] = await getJson<ConditionLike>(resource, { ns, name });
-      const condition = obj?.status?.conditions?.find((c) => c.type === type);
-      return condition?.status === status ? true : undefined;
+      return obj?.status?.conditions?.find((c) => c.type === type)?.status === status ? true : undefined;
     },
     { timeoutMs, describe: `${resource} ${ns}/${name} to report condition ${type}=${status}` },
   );
 }
 
-async function applyYaml(ns: string, yaml: string): Promise<void> {
-  await kubectl(["apply", "-n", ns, "-f", "-"], { stdin: yaml });
-}
-
-/** PersistentVolumes claimed from `ns`: the only ones a scenario's capture keeps. */
-function claimedFrom(ns: string, pv: unknown): boolean {
-  return isRecord(pv) && isRecord(pv.spec) && isRecord(pv.spec.claimRef) && pv.spec.claimRef.namespace === ns;
-}
-
 /**
- * A fresh namespace per recording: a re-run never captures the objects or events of an earlier
- * attempt, nor its volumes, which dockflow-local retains after their claims are gone.
+ * A fresh namespace per recording, labelled as Dockflow labels a stack namespace: a re-run never
+ * captures the objects or events of an earlier attempt, nor its volumes, which dockflow-local
+ * retains after their claims are gone.
  */
 async function ensureNamespace(ns: string): Promise<void> {
   await kubectl(["delete", "namespace", ns, "--ignore-not-found", "--wait=true", "--timeout=180s"], { allowFailure: true });
-  const pvs = await rawGet(null, "persistentvolumes");
-  const stale = (isRecord(pvs) && Array.isArray(pvs.items) ? pvs.items : [])
-    .filter((pv) => claimedFrom(ns, pv))
-    .map((pv) => String((pv as { metadata: { name: string } }).metadata.name));
+  const stale = (await getJson<Json>("persistentvolumes")).filter((pv) => claimedFrom(ns, pv)).map((pv) => stringField(metadataOf(pv), "name"));
   if (stale.length > 0) await kubectl(["delete", "persistentvolume", ...stale, "--wait=true", "--timeout=120s"], { allowFailure: true });
-  await kubectl(["create", "namespace", ns]);
+  await apply([{ apiVersion: "v1", kind: "Namespace", metadata: { name: ns, labels: namespaceLabels(identityOf(ns)) } }]);
 }
 
-// ─── scenario recipes (steps text matches the existing synthetic meta.json of each scenario) ──────
+// ─── scenarios ──────────────────────────────────────────────────────
+
+interface ScenarioContext {
+  ns: string;
+  /** reads the namespace and the cluster resources now, as capture `name` ('' = the scenario directory) */
+  capture(name?: string): Promise<void>;
+  /** `kubectl get --raw` of the metrics API for the namespace: `metrics/<scenario>.json` */
+  captureMetrics(): Promise<void>;
+}
 
 interface Scenario {
   name: string;
+  /** how the recording reproduces the condition: meta.json `steps` */
   steps: string[];
-  run: (ns: string) => Promise<void>;
+  /** creates the condition; captures once at the end unless it captured itself */
+  run(ctx: ScenarioContext): Promise<void>;
 }
 
-const AGENT_NODE = "agent-1";
+const RENDER_STEP = "Dockflow renders the compose file into namespace fixture-<scenario> (project shop, release 1.4.2, servers server_1 and agent_1) and applies it server-side as a deploy does";
 
-function busyboxDeployment(opts: {
-  name: string;
-  ns: string;
-  image?: string;
-  command?: string[];
-  replicas?: number;
-  extraContainerFields?: string;
-  extraPodFields?: string;
-  extraSpecFields?: string;
-}): string {
-  const image = opts.image ?? "busybox:1.37";
-  const command = opts.command ? `\n          command: ${JSON.stringify(opts.command)}` : "";
-  return `
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ${opts.name}
-  namespace: ${opts.ns}
-  labels: { app: ${opts.name} }
-spec:
-  replicas: ${opts.replicas ?? 1}
-  selector: { matchLabels: { app: ${opts.name} } }
-  template:
-    metadata:
-      labels: { app: ${opts.name} }
-    spec:
-${opts.extraSpecFields ?? ""}
-      containers:
-        - name: ${opts.name}
-          image: ${image}${command}
-${opts.extraContainerFields ?? ""}
-${opts.extraPodFields ?? ""}
-`;
+function placedOn(server: string): string {
+  return `      placement:\n        constraints: ["node.hostname == ${server}"]\n`;
 }
 
 const SCENARIOS: Scenario[] = [
   {
     name: "rollout-progressing",
     steps: [
-      "kubectl create namespace fixture-rollout-progressing",
-      "kubectl apply: Deployment web (3 replicas, nginx:1.27-alpine, readiness probe httpGet / on port 80 with initialDelaySeconds 60 and periodSeconds 5, strategy RollingUpdate maxSurge 1 maxUnavailable 0) and ClusterIP Service web (port 80)",
-      "kubectl rollout status deployment/web --timeout=180s",
-      "kubectl set image deployment/web web=nginx:1.28-alpine",
-      "wait until the new ReplicaSet has one pod Running with Ready=False (before its first readiness probe)",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      "docker-compose.yml: service web, nginx:1.27-alpine, expose 80, deploy.replicas 3, x-dockflow.probes use readiness with http / on port 80",
+      "patch: the readiness probe waits initialDelaySeconds 60, so a new pod stays Running and not Ready for a minute",
+      "kubectl rollout status deployment/web, then render and apply the same service with nginx:1.28-alpine",
+      "capture once the new ReplicaSet has one pod Running with Ready=False",
     ],
-    async run(ns) {
-      const yaml = `
-apiVersion: apps/v1
-kind: Deployment
-metadata: { name: web, namespace: ${ns}, labels: { app: web } }
-spec:
-  replicas: 3
-  strategy: { type: RollingUpdate, rollingUpdate: { maxSurge: 1, maxUnavailable: 0 } }
-  selector: { matchLabels: { app: web } }
-  template:
-    metadata: { labels: { app: web } }
-    spec:
-      containers:
-        - name: web
-          image: nginx:1.27-alpine
-          ports: [{ containerPort: 80 }]
-          readinessProbe: { httpGet: { path: /, port: 80 }, initialDelaySeconds: 60, periodSeconds: 5 }
----
-apiVersion: v1
-kind: Service
-metadata: { name: web, namespace: ${ns} }
-spec: { selector: { app: web }, ports: [{ port: 80, targetPort: 80 }] }
-`;
-      await applyYaml(ns, yaml);
-      await kubectl(["rollout", "status", "deployment/web", "-n", ns, "--timeout=180s"]);
-      await kubectl(["set", "image", "deployment/web", "web=nginx:1.28-alpine", "-n", ns]);
-      await waitFor(
-        async () => {
-          const pods = await getJson<PodLike>("pods", { ns, selector: "app=web" });
-          const hit = pods.some(
-            (pod) =>
-              pod.status?.phase === "Running" &&
-              (pod.status.conditions ?? []).some((c) => c.type === "Ready" && c.status === "False"),
-          );
-          return hit ? true : undefined;
-        },
-        { timeoutMs: 60_000, describe: "a new web pod Running with Ready=False" },
+    async run({ ns }) {
+      const revision = (tag: string): ManifestObject[] => {
+        const objects = render(
+          ns,
+          `services:\n  web:\n    image: nginx:${tag}\n    expose: ["80"]\n    deploy:\n      replicas: 3\n    x-dockflow:\n      probes:\n        use: readiness\n        http:\n          path: /\n          port: 80\n`,
+        );
+        const probe = containerOf(deploymentOf(objects, "web")).readinessProbe;
+        if (!probe) throw new Error("web renders without a readiness probe");
+        probe.initialDelaySeconds = 60;
+        return objects;
+      };
+      await apply(revision("1.27-alpine"));
+      await rolloutStatus(ns, "deployment/web", 300);
+      await apply(revision("1.28-alpine"));
+      await waitPods(ns, "web", "a new web pod Running with Ready=False", (pods) =>
+        pods.some((pod) => pod.status?.phase === "Running" && !podReady(pod)),
       );
     },
   },
   {
     name: "rollout-complete",
     steps: [
-      "kubectl create namespace fixture-rollout-complete",
-      "kubectl apply: Deployment web (3 replicas, nginx:1.27-alpine, readiness probe httpGet / on port 80 with initialDelaySeconds 60 and periodSeconds 5, strategy RollingUpdate maxSurge 1 maxUnavailable 0) and ClusterIP Service web (port 80) and LoadBalancer Service web-lb (port 8080 to 80)",
-      "kubectl rollout status deployment/web --timeout=180s",
-      "kubectl set image deployment/web web=nginx:1.28-alpine",
-      "kubectl rollout status deployment/web --timeout=300s, then re-apply the same manifests unchanged (generation stays 2)",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      'docker-compose.yml: service web, nginx:1.27-alpine, ports "8080:80", deploy.replicas 3, x-dockflow.probes use readiness with http / on port 80',
+      "kubectl rollout status deployment/web, then render and apply the same service with nginx:1.28-alpine",
+      "kubectl rollout status deployment/web, apply the same objects again (generation stays 2)",
+      "capture once the pods of revision 1 are gone",
     ],
-    async run(ns) {
-      const yaml = `
-apiVersion: apps/v1
-kind: Deployment
-metadata: { name: web, namespace: ${ns}, labels: { app: web } }
-spec:
-  replicas: 3
-  strategy: { type: RollingUpdate, rollingUpdate: { maxSurge: 1, maxUnavailable: 0 } }
-  selector: { matchLabels: { app: web } }
-  template:
-    metadata: { labels: { app: web } }
-    spec:
-      containers:
-        - name: web
-          image: nginx:1.28-alpine
-          ports: [{ containerPort: 80 }]
-          readinessProbe: { httpGet: { path: /, port: 80 }, initialDelaySeconds: 60, periodSeconds: 5 }
----
-apiVersion: v1
-kind: Service
-metadata: { name: web, namespace: ${ns} }
-spec: { selector: { app: web }, ports: [{ port: 80, targetPort: 80 }] }
----
-apiVersion: v1
-kind: Service
-metadata: { name: web-lb, namespace: ${ns} }
-spec: { type: LoadBalancer, selector: { app: web }, ports: [{ port: 8080, targetPort: 80 }] }
-`;
-      await applyYaml(ns, yaml);
-      await kubectl(["rollout", "status", "deployment/web", "-n", ns, "--timeout=300s"]);
-      await applyYaml(ns, yaml); // unchanged re-apply
+    async run({ ns }) {
+      const revision = (tag: string): ManifestObject[] =>
+        render(
+          ns,
+          `services:\n  web:\n    image: nginx:${tag}\n    ports: ["8080:80"]\n    deploy:\n      replicas: 3\n    x-dockflow:\n      probes:\n        use: readiness\n        http:\n          path: /\n          port: 80\n`,
+        );
+      await apply(revision("1.27-alpine"));
+      await rolloutStatus(ns, "deployment/web", 300);
+      await apply(revision("1.28-alpine"));
+      await rolloutStatus(ns, "deployment/web", 600);
+      await apply(revision("1.28-alpine"));
+      await waitPods(ns, "web", "the pods of revision 1 gone", (pods) => pods.length === 3 && pods.every((pod) => !pod.metadata.deletionTimestamp));
     },
   },
   {
     name: "crashloop",
     steps: [
-      "kubectl create namespace fixture-crashloop",
-      "kubectl apply: Deployment web-app of compose service web_app (1 replica, busybox:1.37 running sh -c 'exit 1', Dockflow labels and annotations)",
-      "wait until the pod reports CrashLoopBackOff with restartCount 3",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      'docker-compose.yml: service web_app (object web-app), busybox:1.37, command sh -c "exit 1", placed on server_1',
+      "capture once the container restarted 3 times",
     ],
-    async run(ns) {
-      await applyYaml(ns, busyboxDeployment({ name: "web-app", ns, command: ["sh", "-c", "exit 1"] }));
-      await waitContainerTerminated(ns, "app=web-app", "Error", 3, 240_000);
+    async run({ ns }) {
+      await apply(render(ns, `services:\n  web_app:\n    image: busybox:1.37\n    command: ["sh", "-c", "exit 1"]\n    deploy:\n${placedOn("server_1")}`));
+      await waitPods(ns, "web-app", "web-app restarted 3 times", crashLooping(3), 240_000);
     },
   },
   {
     name: "image-pull-backoff",
     steps: [
-      "kubectl create namespace fixture-image-pull-backoff",
-      "kubectl apply: Deployment web (1 replica, image localhost:35010/e2e/missing:1, which the e2e registry does not serve)",
-      "wait until the container reports waiting reason ImagePullBackOff",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      "docker-compose.yml: service web, image localhost:35010/e2e/missing:1 (a tag the e2e registry does not serve), placed on server_1",
+      "capture once the container waits with reason ImagePullBackOff",
     ],
-    async run(ns) {
-      await applyYaml(ns, busyboxDeployment({ name: "web", ns, image: "localhost:35010/e2e/missing:1" }));
-      await waitContainerWaiting(ns, "app=web", "ImagePullBackOff", 180_000);
+    async run({ ns }) {
+      await apply(render(ns, `services:\n  web:\n    image: localhost:35010/e2e/missing:1\n    deploy:\n${placedOn("server_1")}`));
+      await waitPods(ns, "web", "web waiting in ImagePullBackOff", waitingReason("ImagePullBackOff"));
     },
   },
   {
     name: "err-image-never-pull",
     steps: [
-      "kubectl create namespace fixture-err-image-never-pull",
-      "kubectl apply: Deployment web (1 replica, image dockflow.invalid/shop-web:1.4.2 with imagePullPolicy Never, never imported on the nodes)",
-      "wait until the container reports waiting reason ErrImageNeverPull",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      "docker-compose.yml: service web built by Dockflow (build ., image shop-web:1.4.2, pull_policy never), never imported on the nodes, placed on server_1",
+      "capture once the container waits with reason ErrImageNeverPull",
     ],
-    async run(ns) {
-      await applyYaml(
-        ns,
-        busyboxDeployment({
-          name: "web",
-          ns,
-          image: "dockflow.invalid/shop-web:1.4.2",
-          extraContainerFields: "          imagePullPolicy: Never",
-        }),
-      );
-      await waitContainerWaiting(ns, "app=web", "ErrImageNeverPull", 60_000);
+    async run({ ns }) {
+      await apply(render(ns, `services:\n  web:\n    build: .\n    image: shop-web:1.4.2\n    pull_policy: never\n    deploy:\n${placedOn("server_1")}`));
+      await waitPods(ns, "web", "web waiting in ErrImageNeverPull", waitingReason("ErrImageNeverPull"), 60_000);
     },
   },
   {
     name: "invalid-image-name",
     steps: [
-      "kubectl create namespace fixture-invalid-image-name",
-      'kubectl apply: Deployment web (1 replica, image "UPPER/Case:bad tag")',
-      "wait until the container reports waiting reason InvalidImageName",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      'docker-compose.yml: service web, busybox:1.37, command sleep 36000, placed on server_1; patch: image "UPPER/Case:bad tag", which the normalizer would refuse',
+      "capture once the container waits with reason InvalidImageName",
     ],
-    async run(ns) {
-      await applyYaml(ns, busyboxDeployment({ name: "web", ns, image: '"UPPER/Case:bad tag"' }));
-      await waitContainerWaiting(ns, "app=web", "InvalidImageName", 60_000);
+    async run({ ns }) {
+      const objects = render(ns, `services:\n  web:\n    image: busybox:1.37\n    command: ["sleep", "36000"]\n    deploy:\n${placedOn("server_1")}`);
+      containerOf(deploymentOf(objects, "web")).image = "UPPER/Case:bad tag";
+      await apply(objects);
+      await waitPods(ns, "web", "web waiting in InvalidImageName", waitingReason("InvalidImageName"), 60_000);
     },
   },
   {
     name: "create-container-config-error",
     steps: [
-      "kubectl create namespace fixture-create-container-config-error",
-      "kubectl apply: Deployment web (1 replica, busybox:1.37, envFrom secretRef web-env, a Secret that does not exist)",
-      "wait until the container reports waiting reason CreateContainerConfigError",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      "docker-compose.yml: service web, busybox:1.37, command sleep 36000, environment APP_ENV=production, placed on server_1",
+      "everything is applied except the env Secret the pod reads",
+      "capture once the container waits with reason CreateContainerConfigError",
     ],
-    async run(ns) {
-      await applyYaml(
+    async run({ ns }) {
+      const objects = render(
         ns,
-        busyboxDeployment({
-          name: "web",
-          ns,
-          command: ["sleep", "36000"],
-          extraContainerFields: "          envFrom:\n            - secretRef: { name: web-env }",
-        }),
+        `services:\n  web:\n    image: busybox:1.37\n    command: ["sleep", "36000"]\n    environment:\n      APP_ENV: production\n    deploy:\n${placedOn("server_1")}`,
       );
-      await waitContainerWaiting(ns, "app=web", "CreateContainerConfigError", 60_000);
+      await apply(objects.filter((object) => object.kind !== "Secret"));
+      await waitPods(ns, "web", "web waiting in CreateContainerConfigError", waitingReason("CreateContainerConfigError"), 60_000);
     },
   },
   {
     name: "oom-killed",
     steps: [
-      "kubectl create namespace fixture-oom-killed",
-      "kubectl apply: Deployment web (1 replica, busybox:1.37 running sh -c 'head -c 64m /dev/zero | tail', memory limit 16Mi)",
-      "wait until the container restarted twice with lastState.terminated.reason OOMKilled",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      'docker-compose.yml: service web, busybox:1.37, command sh -c "head -c 64m /dev/zero | tail", deploy.resources.limits.memory 16M, placed on agent_1',
+      "capture once the container restarted twice after being OOMKilled",
     ],
-    async run(ns) {
-      await applyYaml(
-        ns,
-        busyboxDeployment({
-          name: "web",
+    async run({ ns }) {
+      await apply(
+        render(
           ns,
-          command: ["sh", "-c", "head -c 64m /dev/zero | tail"],
-          extraContainerFields: "          resources: { limits: { memory: 16Mi } }",
-        }),
+          `services:\n  web:\n    image: busybox:1.37\n    command: ["sh", "-c", "head -c 64m /dev/zero | tail"]\n    deploy:\n      resources:\n        limits:\n          memory: 16M\n${placedOn("agent_1")}`,
+        ),
       );
-      await waitContainerTerminated(ns, "app=web", "OOMKilled", 2, 240_000);
+      await waitPods(
+        ns,
+        "web",
+        "web OOMKilled twice",
+        (pods) =>
+          pods.some((pod) =>
+            (pod.status?.containerStatuses ?? []).some(
+              (c) => c.restartCount >= 2 && (c.lastState?.terminated?.reason === "OOMKilled" || c.state?.terminated?.reason === "OOMKilled"),
+            ),
+          ),
+        240_000,
+      );
     },
   },
   {
     name: "unschedulable-resources",
     steps: [
-      "kubectl create namespace fixture-unschedulable-resources",
-      "kubectl apply: Deployment web (1 replica, busybox:1.37 running sleep, requests memory 64Gi)",
-      "wait 70 seconds with the pod Pending and PodScheduled=False",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      "docker-compose.yml: service web, busybox:1.37, command sleep 36000, deploy.resources.reservations.memory 64G",
+      "capture after 70 seconds with the pod Pending and PodScheduled=False",
     ],
-    async run(ns) {
-      await applyYaml(
-        ns,
-        busyboxDeployment({
-          name: "web",
-          ns,
-          command: ["sleep", "36000"],
-          extraContainerFields: "          resources: { requests: { memory: 64Gi } }",
-        }),
+    async run({ ns }) {
+      await apply(
+        render(ns, `services:\n  web:\n    image: busybox:1.37\n    command: ["sleep", "36000"]\n    deploy:\n      resources:\n        reservations:\n          memory: 64G\n`),
       );
       await Bun.sleep(70_000);
     },
@@ -615,20 +793,13 @@ spec: { type: LoadBalancer, selector: { app: web }, ports: [{ port: 8080, target
   {
     name: "unschedulable-node-selector",
     steps: [
-      "kubectl create namespace fixture-unschedulable-node-selector",
-      "kubectl apply: Deployment web (1 replica, busybox:1.37 running sleep, nodeSelector zone=nowhere)",
-      "wait 70 seconds with the pod Pending and PodScheduled=False",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      "docker-compose.yml: service web, busybox:1.37, command sleep 36000, x-dockflow.node_selector zone=nowhere",
+      "capture after 70 seconds with the pod Pending and PodScheduled=False",
     ],
-    async run(ns) {
-      await applyYaml(
-        ns,
-        busyboxDeployment({
-          name: "web",
-          ns,
-          command: ["sleep", "36000"],
-          extraSpecFields: "      nodeSelector: { zone: nowhere }",
-        }),
+    async run({ ns }) {
+      await apply(
+        render(ns, `services:\n  web:\n    image: busybox:1.37\n    command: ["sleep", "36000"]\n    x-dockflow:\n      node_selector:\n        zone: nowhere\n`),
       );
       await Bun.sleep(70_000);
     },
@@ -636,43 +807,23 @@ spec: { type: LoadBalancer, selector: { app: web }, ports: [{ port: 8080, target
   {
     name: "pvc-pending-rwx",
     steps: [
-      "kubectl create namespace fixture-pvc-pending-rwx",
-      "kubectl apply: PersistentVolumeClaim shared (ReadWriteMany, 1Gi, storageClassName dockflow-local) and Deployment web (1 replica, busybox:1.37 mounting the claim at /data)",
-      "wait until the claim has a ProvisioningFailed event and 60 more seconds",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      "docker-compose.yml: service web, busybox:1.37, command sleep 36000, mounting volume shared at /data; volume shared with x-dockflow.access_mode ReadWriteMany",
+      "rendered with a storage-class trait that lists ReadWriteMany, which the k3s trait does not: the claim reaches dockflow-local, which cannot provision it",
+      "capture 60 seconds after the claim got its ProvisioningFailed event",
     ],
-    async run(ns) {
-      const yaml = `
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata: { name: shared, namespace: ${ns} }
-spec:
-  accessModes: [ReadWriteMany]
-  storageClassName: dockflow-local
-  resources: { requests: { storage: 1Gi } }
----
-apiVersion: apps/v1
-kind: Deployment
-metadata: { name: web, namespace: ${ns}, labels: { app: web } }
-spec:
-  replicas: 1
-  selector: { matchLabels: { app: web } }
-  template:
-    metadata: { labels: { app: web } }
-    spec:
-      containers:
-        - name: web
-          image: busybox:1.37
-          command: ["sleep", "36000"]
-          volumeMounts: [{ name: data, mountPath: /data }]
-      volumes: [{ name: data, persistentVolumeClaim: { claimName: shared } }]
-`;
-      await applyYaml(ns, yaml);
+    async run({ ns }) {
+      await apply(
+        render(
+          ns,
+          `services:\n  web:\n    image: busybox:1.37\n    command: ["sleep", "36000"]\n    volumes:\n      - shared:/data\nvolumes:\n  shared:\n    x-dockflow:\n      access_mode: ReadWriteMany\n`,
+          { traits: { defaultStorageClassAccessModes: ["ReadWriteOnce", "ReadWriteOncePod", "ReadWriteMany"] } },
+        ),
+      );
       await waitFor(
         async () => {
           const events = await getJson<{ reason?: string; involvedObject?: { name?: string } }>("events", { ns });
-          const hit = events.some((event) => event.reason === "ProvisioningFailed" && event.involvedObject?.name === "shared");
-          return hit ? true : undefined;
+          return events.some((event) => event.reason === "ProvisioningFailed" && event.involvedObject?.name === "shared") ? true : undefined;
         },
         { timeoutMs: 90_000, describe: "a ProvisioningFailed event on PVC shared" },
       );
@@ -682,578 +833,391 @@ spec:
   {
     name: "progress-deadline-exceeded",
     steps: [
-      "kubectl create namespace fixture-progress-deadline-exceeded",
-      "kubectl apply: Deployment web (1 replica, busybox:1.37 running sleep, readiness probe exec sh -c 'exit 1' every 5 seconds, progressDeadlineSeconds 30)",
-      "wait until the Deployment condition Progressing is False with reason ProgressDeadlineExceeded",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      'docker-compose.yml: service web, busybox:1.37, command sleep 36000, healthcheck CMD-SHELL "exit 1" every 5s used as readiness only (x-dockflow.probes.use readiness), placed on server_1',
+      "patch: progressDeadlineSeconds 45 (the API wants it above the minReadySeconds 30 Dockflow renders)",
+      "capture once the Deployment reports Progressing=False (ProgressDeadlineExceeded)",
     ],
-    async run(ns) {
-      await applyYaml(
+    async run({ ns }) {
+      const objects = render(
         ns,
-        `
-apiVersion: apps/v1
-kind: Deployment
-metadata: { name: web, namespace: ${ns}, labels: { app: web } }
-spec:
-  replicas: 1
-  progressDeadlineSeconds: 30
-  selector: { matchLabels: { app: web } }
-  template:
-    metadata: { labels: { app: web } }
-    spec:
-      containers:
-        - name: web
-          image: busybox:1.37
-          command: ["sleep", "36000"]
-          readinessProbe: { exec: { command: ["sh", "-c", "exit 1"] }, periodSeconds: 5 }
-`,
+        `services:\n  web:\n    image: busybox:1.37\n    command: ["sleep", "36000"]\n    healthcheck:\n      test: ["CMD-SHELL", "exit 1"]\n      interval: 5s\n    deploy:\n${placedOn("server_1")}    x-dockflow:\n      probes:\n        use: readiness\n`,
       );
+      deploymentOf(objects, "web").spec.progressDeadlineSeconds = 45;
+      await apply(objects);
       await waitCondition("deployments.apps", ns, "web", "Progressing", "False", 180_000);
     },
   },
   {
     name: "replica-failure-quota",
     steps: [
-      "kubectl create namespace fixture-replica-failure-quota",
-      "kubectl create quota pods --hard=pods=1 -n fixture-replica-failure-quota",
-      "kubectl apply: Deployment web (3 replicas, busybox:1.37 running sleep)",
-      "wait until the Deployment reports condition ReplicaFailure=True",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      "kubectl create quota pods --hard=pods=1 in the namespace",
+      "docker-compose.yml: service web, busybox:1.37, command sleep 36000, deploy.replicas 3, placed on agent_1",
+      "capture once the Deployment reports ReplicaFailure=True",
     ],
-    async run(ns) {
+    async run({ ns }) {
       await kubectl(["create", "quota", "pods", "--hard=pods=1", "-n", ns]);
-      await applyYaml(ns, busyboxDeployment({ name: "web", ns, replicas: 3, command: ["sleep", "36000"] }));
+      await apply(render(ns, `services:\n  web:\n    image: busybox:1.37\n    command: ["sleep", "36000"]\n    deploy:\n      replicas: 3\n${placedOn("agent_1")}`));
       await waitCondition("deployments.apps", ns, "web", "ReplicaFailure", "True", 90_000);
     },
   },
   {
     name: "statefulset-stuck",
     steps: [
-      "kubectl create namespace fixture-statefulset-stuck",
-      "kubectl apply: accessory StatefulSet db (2 replicas, podManagementPolicy Parallel, RollingUpdate, busybox:1.37 running sleep, volumeClaimTemplates data 1Gi ReadWriteOnce on dockflow-local) and headless Service db-hl with the placeholder port 9",
-      "kubectl rollout status statefulset/db --timeout=180s",
-      "update the template to busybox:1.36 running sh -c 'exit 1'",
-      "wait until db-1 runs the update revision and reports CrashLoopBackOff with restartCount 3 (db-0 stays on the current revision)",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      'accessories.yml: service db, busybox:1.37, command sleep 36000, deploy.replicas 2, x-dockflow.kind statefulset, volume data (x-dockflow.per_replica) at /data',
+      "the claims data-db-0 and data-db-1 are created first from the claim template, with the selected-node annotation the scheduler would set (server-1, agent-1), which pins each ordinal to a node",
+      "kubectl rollout status statefulset/db, then render and apply the same service with busybox:1.36 and command sh -c \"exit 1\"",
+      "capture once db-1, on the update revision, restarted 3 times (db-0 stays on the current revision)",
     ],
-    async run(ns) {
-      const base = (image: string, command: string[]) => `
-apiVersion: apps/v1
-kind: StatefulSet
-metadata: { name: db, namespace: ${ns}, labels: { app: db } }
-spec:
-  replicas: 2
-  serviceName: db-hl
-  podManagementPolicy: Parallel
-  updateStrategy: { type: RollingUpdate }
-  selector: { matchLabels: { app: db } }
-  template:
-    metadata: { labels: { app: db } }
-    spec:
-      containers:
-        - name: db
-          image: ${image}
-          command: ${JSON.stringify(command)}
-          volumeMounts: [{ name: data, mountPath: /data }]
-  volumeClaimTemplates:
-    - metadata: { name: data }
-      spec: { accessModes: [ReadWriteOnce], storageClassName: dockflow-local, resources: { requests: { storage: 1Gi } } }
----
-apiVersion: v1
-kind: Service
-metadata: { name: db-hl, namespace: ${ns} }
-spec: { clusterIP: None, selector: { app: db }, ports: [{ port: 9, targetPort: 9 }] }
-`;
-      await applyYaml(ns, base("busybox:1.37", ["sleep", "36000"]));
-      await kubectl(["rollout", "status", "statefulset/db", "-n", ns, "--timeout=180s"]);
-      await applyYaml(ns, base("busybox:1.36", ["sh", "-c", "exit 1"]));
-      await waitContainerTerminated(ns, "app=db", "Error", 3, 240_000);
+    async run({ ns }) {
+      const compose = (image: string, command: string): string =>
+        `services:\n  db:\n    image: ${image}\n    command: ${command}\n    volumes:\n      - data:/data\n    deploy:\n      replicas: 2\n    x-dockflow:\n      kind: statefulset\nvolumes:\n  data:\n    x-dockflow:\n      per_replica: true\n`;
+      const first = render(ns, compose("busybox:1.37", '["sleep", "36000"]'), { role: "accessory" });
+      const db = workloadOf(first, "db");
+      if (db.kind !== "StatefulSet") throw new Error(`db renders as a ${db.kind}`);
+      const [template] = db.spec.volumeClaimTemplates ?? [];
+      if (!template) throw new Error("db renders without a claim template");
+      const claims: PersistentVolumeClaim[] = [
+        ["db-0", "server-1"],
+        ["db-1", "agent-1"],
+      ].map(([pod, node]) => ({
+        apiVersion: "v1",
+        kind: "PersistentVolumeClaim",
+        metadata: {
+          name: `${template.metadata.name}-${pod}`,
+          namespace: ns,
+          // the StatefulSet controller adds the selector labels to the template's own
+          labels: { ...template.metadata.labels, ...db.spec.selector.matchLabels },
+          annotations: { ...template.metadata.annotations, "volume.kubernetes.io/selected-node": node },
+        },
+        spec: structuredClone(template.spec),
+      }));
+      await apply(claims);
+      await apply(first);
+      await rolloutStatus(ns, "statefulset/db", 180);
+      await apply(render(ns, compose("busybox:1.36", '["sh", "-c", "exit 1"]'), { role: "accessory" }));
+      await waitFor(
+        async () => {
+          const [db1] = await getJson<PodLike>("pods", { ns, name: "db-1" });
+          return db1 && crashLooping(3)([db1]) ? true : undefined;
+        },
+        { timeoutMs: 300_000, describe: "db-1 restarted 3 times on the update revision" },
+      );
     },
   },
   {
     name: "daemonset-rolling",
     steps: [
-      "kubectl create namespace fixture-daemonset-rolling",
-      "kubectl apply: DaemonSet agent (busybox:1.37 running sleep 3600, RollingUpdate maxUnavailable 1 maxSurge 0) on server-1 and agent-1",
-      "kubectl rollout status daemonset/agent --timeout=120s",
-      "update the template to sleep 7200 with a readiness probe exec true, initialDelaySeconds 30",
-      "wait until updatedNumberScheduled is 1 and numberUnavailable is 1, then capture into the scenario directory",
-      "kubectl rollout status daemonset/agent --timeout=180s, then capture into completed/",
+      RENDER_STEP,
+      "docker-compose.yml: service agent, busybox:1.37, command sleep 3600, deploy.mode global, update_config parallelism 1 order stop-first (one pod on server-1, one on agent-1)",
+      "kubectl rollout status daemonset/agent, then render and apply the same service with command sleep 7200",
+      "capture into the scenario directory once updatedNumberScheduled is 1 and numberUnavailable is 1 (the new pod inside its minReadySeconds)",
+      "kubectl rollout status daemonset/agent, then capture into completed/",
     ],
-    async run(ns) {
-      const base = (sleepSeconds: number, extra: string) => `
-apiVersion: apps/v1
-kind: DaemonSet
-metadata: { name: agent, namespace: ${ns}, labels: { app: agent } }
-spec:
-  updateStrategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 1, maxSurge: 0 } }
-  selector: { matchLabels: { app: agent } }
-  template:
-    metadata: { labels: { app: agent } }
-    spec:
-      containers:
-        - name: agent
-          image: busybox:1.37
-          command: ["sleep", "${sleepSeconds}"]
-${extra}
-`;
-      await applyYaml(ns, base(3600, ""));
-      await kubectl(["rollout", "status", "daemonset/agent", "-n", ns, "--timeout=120s"]);
-      await applyYaml(
-        ns,
-        base(7200, "          readinessProbe: { exec: { command: [\"true\"] }, initialDelaySeconds: 30 }"),
-      );
+    async run({ ns, capture }) {
+      const revision = (seconds: number): ManifestObject[] =>
+        render(
+          ns,
+          `services:\n  agent:\n    image: busybox:1.37\n    command: ["sleep", "${seconds}"]\n    deploy:\n      mode: global\n      update_config:\n        parallelism: 1\n        order: stop-first\n`,
+        );
+      await apply(revision(3600));
+      await rolloutStatus(ns, "daemonset/agent", 180);
+      await apply(revision(7200));
       await waitFor(
         async () => {
-          const [ds] = await getJson<{ status?: { updatedNumberScheduled?: number; numberUnavailable?: number } }>(
-            "daemonsets.apps",
-            { ns, name: "agent" },
-          );
+          const [ds] = await getJson<{ status?: { updatedNumberScheduled?: number; numberUnavailable?: number } }>("daemonsets.apps", { ns, name: "agent" });
           return ds?.status?.updatedNumberScheduled === 1 && (ds.status.numberUnavailable ?? 0) >= 1 ? true : undefined;
         },
-        { timeoutMs: 120_000, describe: "daemonset/agent mid-rollout (1 updated, 1 unavailable)" },
+        { timeoutMs: 120_000, intervalMs: 1000, describe: "daemonset/agent mid-rollout (1 updated, 1 unavailable)" },
       );
-      // NOTE: a real recording captures here into the scenario root, then again below into
-      // completed/ once the rollout finishes — this tool captures the completed state only;
-      // capturing the mid-rollout state too is a manual step on the test machine for now.
-      await kubectl(["rollout", "status", "daemonset/agent", "-n", ns, "--timeout=180s"]);
+      await capture();
+      await rolloutStatus(ns, "daemonset/agent", 300);
+      await capture("completed");
     },
   },
   {
     name: "job-complete",
     steps: [
-      "kubectl create namespace fixture-job-complete",
-      "kubectl apply: Job migrate-<8 hex> of the replicated-job service migrate (busybox:1.37 running sh -c 'exit 0', backoffLimit 0, completions 1, restartPolicy Never)",
-      "wait until the Job reports condition Complete=True",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      'docker-compose.yml: service migrate, busybox:1.37, command sh -c "exit 0", restart "no", deploy.mode replicated-job, placed on agent_1',
+      "capture once the Job reports Complete=True",
     ],
-    async run(ns) {
-      const name = `migrate-${createHash("sha256").update(ns).digest("hex").slice(0, 8)}`;
-      await applyYaml(
+    async run({ ns }) {
+      const objects = render(
         ns,
-        `
-apiVersion: batch/v1
-kind: Job
-metadata: { name: ${name}, namespace: ${ns}, labels: { app: migrate } }
-spec:
-  backoffLimit: 0
-  completions: 1
-  template:
-    metadata: { labels: { app: migrate } }
-    spec:
-      restartPolicy: Never
-      containers:
-        - name: migrate
-          image: busybox:1.37
-          command: ["sh", "-c", "exit 0"]
-`,
+        `services:\n  migrate:\n    image: busybox:1.37\n    command: ["sh", "-c", "exit 0"]\n    restart: "no"\n    deploy:\n      mode: replicated-job\n${placedOn("agent_1")}`,
       );
-      await waitCondition("jobs.batch", ns, name, "Complete", "True", 120_000);
+      await apply(objects);
+      await waitCondition("jobs.batch", ns, workloadOf(objects).metadata.name, "Complete", "True", 120_000);
     },
   },
   {
     name: "job-failed",
     steps: [
-      "kubectl create namespace fixture-job-failed",
-      "kubectl apply: Job migrate-<8 hex> of the replicated-job service migrate (busybox:1.37 running sh -c 'exit 1', backoffLimit 0, completions 1, restartPolicy Never)",
-      "wait until the Job reports condition Failed=True",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      'docker-compose.yml: service migrate, busybox:1.37, command sh -c "exit 1", restart "no" (backoffLimit 0), deploy.mode replicated-job, placed on agent_1',
+      "capture once the Job reports Failed=True",
     ],
-    async run(ns) {
-      const name = `migrate-${createHash("sha256").update(`${ns}-failed`).digest("hex").slice(0, 8)}`;
-      await applyYaml(
+    async run({ ns }) {
+      const objects = render(
         ns,
-        `
-apiVersion: batch/v1
-kind: Job
-metadata: { name: ${name}, namespace: ${ns}, labels: { app: migrate } }
-spec:
-  backoffLimit: 0
-  completions: 1
-  template:
-    metadata: { labels: { app: migrate } }
-    spec:
-      restartPolicy: Never
-      containers:
-        - name: migrate
-          image: busybox:1.37
-          command: ["sh", "-c", "exit 1"]
-`,
+        `services:\n  migrate:\n    image: busybox:1.37\n    command: ["sh", "-c", "exit 1"]\n    restart: "no"\n    deploy:\n      mode: replicated-job\n${placedOn("agent_1")}`,
       );
-      await waitCondition("jobs.batch", ns, name, "Failed", "True", 120_000);
+      await apply(objects);
+      await waitCondition("jobs.batch", ns, workloadOf(objects).metadata.name, "Failed", "True", 120_000);
     },
   },
   {
     name: "init-container-crash",
     steps: [
-      "kubectl create namespace fixture-init-container-crash",
-      "kubectl apply: Deployment web (1 replica, init container init running busybox:1.37 sh -c 'exit 1', container web nginx:1.27-alpine)",
-      "wait until the init container reports restartCount 3 (k3s 1.36 shows it terminated with Error between restarts more often than waiting in CrashLoopBackOff)",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      "docker-compose.yml: service web, nginx:1.27-alpine, placed on server_1",
+      'patch: init container init, busybox:1.37, command sh -c "exit 1"',
+      "capture once the init container restarted 3 times",
     ],
-    async run(ns) {
-      await applyYaml(
-        ns,
-        `
-apiVersion: apps/v1
-kind: Deployment
-metadata: { name: web, namespace: ${ns}, labels: { app: web } }
-spec:
-  replicas: 1
-  selector: { matchLabels: { app: web } }
-  template:
-    metadata: { labels: { app: web } }
-    spec:
-      initContainers:
-        - name: init
-          image: busybox:1.37
-          command: ["sh", "-c", "exit 1"]
-      containers:
-        - name: web
-          image: nginx:1.27-alpine
-`,
-      );
-      await waitFor(
-        async () => {
-          const pods = await getJson<PodLike>("pods", { ns, selector: "app=web" });
-          const hit = pods.some((pod) =>
-            (pod.status?.initContainerStatuses ?? []).some(
-              (c) => c.restartCount >= 3 && (c.state?.waiting?.reason === "CrashLoopBackOff" || c.state?.terminated !== undefined),
-            ),
-          );
-          return hit ? true : undefined;
-        },
-        { timeoutMs: 240_000, describe: "the init container to report restartCount 3" },
-      );
+    async run({ ns }) {
+      const objects = render(ns, `services:\n  web:\n    image: nginx:1.27-alpine\n    deploy:\n${placedOn("server_1")}`);
+      deploymentOf(objects, "web").spec.template.spec.initContainers = [
+        { name: "init", image: "busybox:1.37", imagePullPolicy: "IfNotPresent", command: ["sh", "-c", "exit 1"] },
+      ];
+      await apply(objects);
+      await waitPods(ns, "web", "the init container restarted 3 times", crashLooping(3, true), 240_000);
     },
   },
   {
     name: "multi-container",
     steps: [
-      "kubectl create namespace fixture-multi-container",
-      "kubectl apply: Deployment api (1 replica, containers api nginx:1.27-alpine and log-shipper busybox:1.37 running sleep, annotation kubectl.kubernetes.io/default-container: api) and ClusterIP Service api (port 80)",
-      "kubectl rollout status deployment/api --timeout=120s",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      "docker-compose.yml: service api, nginx:1.27-alpine, expose 80, placed on agent_1 (Dockflow sets kubectl.kubernetes.io/default-container: api)",
+      "patch: a second container log-shipper, busybox:1.37, command sleep 36000",
+      "kubectl rollout status deployment/api, then capture",
     ],
-    async run(ns) {
-      await applyYaml(
-        ns,
-        `
-apiVersion: apps/v1
-kind: Deployment
-metadata: { name: api, namespace: ${ns}, labels: { app: api } }
-spec:
-  replicas: 1
-  selector: { matchLabels: { app: api } }
-  template:
-    metadata:
-      labels: { app: api }
-      annotations: { kubectl.kubernetes.io/default-container: api }
-    spec:
-      containers:
-        - name: api
-          image: nginx:1.27-alpine
-          ports: [{ containerPort: 80 }]
-        - name: log-shipper
-          image: busybox:1.37
-          command: ["sleep", "36000"]
----
-apiVersion: v1
-kind: Service
-metadata: { name: api, namespace: ${ns} }
-spec: { selector: { app: api }, ports: [{ port: 80, targetPort: 80 }] }
-`,
-      );
-      await kubectl(["rollout", "status", "deployment/api", "-n", ns, "--timeout=120s"]);
+    async run({ ns }) {
+      const objects = render(ns, `services:\n  api:\n    image: nginx:1.27-alpine\n    expose: ["80"]\n    deploy:\n${placedOn("agent_1")}`);
+      deploymentOf(objects, "api").spec.template.spec.containers.push({
+        name: "log-shipper",
+        image: "busybox:1.37",
+        imagePullPolicy: "IfNotPresent",
+        command: ["sleep", "36000"],
+      });
+      await apply(objects);
+      await rolloutStatus(ns, "deployment/api", 180);
     },
   },
   {
     name: "terminating-pods",
     steps: [
-      "kubectl create namespace fixture-terminating-pods",
-      'kubectl apply: Deployment web (2 replicas, busybox:1.37 running sh -c "trap \'\' TERM; sleep 3600", terminationGracePeriodSeconds 300)',
-      "kubectl rollout status deployment/web --timeout=120s",
-      "kubectl delete pod <first pod> --wait=false",
-      "wait until the replacement pod is Ready while the deleted pod is still Terminating",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      "docker-compose.yml: service web, busybox:1.37, command sh -c \"trap '' TERM; sleep 3600\", stop_grace_period 300s, deploy.replicas 2",
+      "kubectl rollout status deployment/web, then kubectl delete pod <the pod on server-1> --wait=false",
+      "capture once the replacement pod is Ready while the deleted pod is still Terminating",
     ],
-    async run(ns) {
-      await applyYaml(
-        ns,
-        `
-apiVersion: apps/v1
-kind: Deployment
-metadata: { name: web, namespace: ${ns}, labels: { app: web } }
-spec:
-  replicas: 2
-  selector: { matchLabels: { app: web } }
-  template:
-    metadata: { labels: { app: web } }
-    spec:
-      terminationGracePeriodSeconds: 300
-      containers:
-        - name: web
-          image: busybox:1.37
-          command: ["sh", "-c", "trap '' TERM; sleep 3600"]
-`,
+    async run({ ns }) {
+      await apply(
+        render(ns, `services:\n  web:\n    image: busybox:1.37\n    command: ["sh", "-c", "trap '' TERM; sleep 3600"]\n    stop_grace_period: 300s\n    deploy:\n      replicas: 2\n`),
       );
-      await kubectl(["rollout", "status", "deployment/web", "-n", ns, "--timeout=120s"]);
-      const [first] = await getJson<{ metadata: { name: string } }>("pods", { ns, selector: "app=web" });
-      if (!first) throw new Error(`terminating-pods: no pod of ${ns}/web found to delete`);
-      await kubectl(["delete", "pod", first.metadata.name, "-n", ns, "--wait=false"]);
-      await waitFor(
-        async () => {
-          const pods = await getJson<PodLike & { metadata: { name: string; deletionTimestamp?: string } }>("pods", {
-            ns,
-            selector: "app=web",
-          });
-          const stillTerminating = pods.some((pod) => pod.metadata.name === first.metadata.name && pod.metadata.deletionTimestamp);
-          const replacementReady = pods.some(
-            (pod) =>
-              pod.metadata.name !== first.metadata.name &&
-              (pod.status?.conditions ?? []).some((c) => c.type === "Ready" && c.status === "True"),
-          );
-          return stillTerminating && replacementReady ? true : undefined;
-        },
-        { timeoutMs: 120_000, describe: "a replacement pod Ready while the deleted one is still Terminating" },
+      await rolloutStatus(ns, "deployment/web", 180);
+      const pods = await getJson<PodLike>("pods", { ns, selector: serviceSelector("web") });
+      const victim = pods.find((pod) => pod.spec?.nodeName === "server-1") ?? pods[0];
+      if (!victim) throw new Error(`terminating-pods: no web pod in ${ns}`);
+      await kubectl(["delete", "pod", victim.metadata.name, "-n", ns, "--wait=false"]);
+      await waitPods(
+        ns,
+        "web",
+        "a replacement pod Ready while the deleted one is Terminating",
+        (current) =>
+          current.some((pod) => pod.metadata.name === victim.metadata.name && pod.metadata.deletionTimestamp) &&
+          current.some((pod) => pod.metadata.name !== victim.metadata.name && !pod.metadata.deletionTimestamp && podReady(pod)) &&
+          current.length === 3,
+        120_000,
       );
     },
   },
   {
     name: "evicted-pod",
     steps: [
-      "kubectl create namespace fixture-evicted-pod",
-      "kubectl apply: Deployment web (1 replica, busybox:1.37 running sh -c 'dd if=/dev/zero of=/tmp/fill bs=1M count=64; sleep 3600', ephemeral-storage limit 16Mi)",
-      "wait until the first pod is Failed with reason Evicted and its replacement is Running",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      'docker-compose.yml: service web, busybox:1.37, command sh -c "dd if=/dev/zero of=/tmp/fill bs=1M count=64; sleep 3600", placed on server_1',
+      "patch: resources.limits.ephemeral-storage 16Mi, which no compose key sets",
+      "capture once the first pod is Failed with reason Evicted and its replacement is Running",
     ],
-    async run(ns) {
-      await applyYaml(
+    async run({ ns }) {
+      const objects = render(
         ns,
-        busyboxDeployment({
-          name: "web",
-          ns,
-          command: ["sh", "-c", "dd if=/dev/zero of=/tmp/fill bs=1M count=64; sleep 3600"],
-          extraContainerFields: "          resources: { limits: { ephemeral-storage: 16Mi } }",
-        }),
+        `services:\n  web:\n    image: busybox:1.37\n    command: ["sh", "-c", "dd if=/dev/zero of=/tmp/fill bs=1M count=64; sleep 3600"]\n    deploy:\n${placedOn("server_1")}`,
       );
-      await waitFor(
-        async () => {
-          const pods = await getJson<PodLike & { status?: { phase?: string; reason?: string } }>("pods", { ns, selector: "app=web" });
-          const evicted = pods.some((pod) => pod.status?.phase === "Failed" && pod.status.reason === "Evicted");
-          const replacement = pods.some((pod) => pod.status?.phase === "Running");
-          return evicted && replacement ? true : undefined;
-        },
-        { timeoutMs: 300_000, describe: "the first pod Failed/Evicted with a Running replacement" },
+      Object.assign(containerOf(deploymentOf(objects, "web")), { resources: { limits: { "ephemeral-storage": "16Mi" } } });
+      await apply(objects);
+      await waitPods(
+        ns,
+        "web",
+        "the first pod Evicted with a Running replacement",
+        (pods) => pods.some((pod) => pod.status?.phase === "Failed" && pod.status.reason === "Evicted") && pods.some((pod) => pod.status?.phase === "Running"),
+        300_000,
       );
     },
   },
   {
     name: "node-not-ready",
     steps: [
-      "kubectl create namespace fixture-node-not-ready",
-      "kubectl apply: Deployment web (2 replicas, busybox:1.37 running sleep, one pod on each node)",
-      "kubectl rollout status deployment/web --timeout=120s",
-      "systemctl stop k3s-agent on agent-1",
-      "wait until node agent-1 reports Ready=Unknown (node-monitor-grace-period, about 50 seconds)",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
-      "systemctl start k3s-agent on agent-1 (the whole outage lasts about 60 seconds)",
+      RENDER_STEP,
+      "docker-compose.yml: service web, busybox:1.37, command sleep 36000, deploy.replicas 2, deploy.placement.max_replicas_per_node 1 (one pod on each node)",
+      "kubectl rollout status deployment/web, then systemctl stop k3s-agent on agent-1",
+      "capture once node agent-1 reports Ready=Unknown (node-monitor-grace-period, about 50 seconds), then systemctl start k3s-agent",
     ],
-    async run(ns) {
-      // withNodeDown (helpers/k8s.ts) restores agent-1 in `finally` even if the capture step throws.
-      await applyYaml(
-        ns,
-        `
-apiVersion: apps/v1
-kind: Deployment
-metadata: { name: web, namespace: ${ns}, labels: { app: web } }
-spec:
-  replicas: 2
-  selector: { matchLabels: { app: web } }
-  template:
-    metadata: { labels: { app: web } }
-    spec:
-      affinity:
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            - labelSelector: { matchLabels: { app: web } }
-              topologyKey: kubernetes.io/hostname
-      containers:
-        - name: web
-          image: busybox:1.37
-          command: ["sleep", "36000"]
-`,
+    async run({ ns, capture }) {
+      await apply(
+        render(
+          ns,
+          `services:\n  web:\n    image: busybox:1.37\n    command: ["sleep", "36000"]\n    deploy:\n      replicas: 2\n      placement:\n        max_replicas_per_node: 1\n`,
+        ),
       );
-      await kubectl(["rollout", "status", "deployment/web", "-n", ns, "--timeout=120s"]);
+      await rolloutStatus(ns, "deployment/web", 180);
+      // withNodeDown (helpers/k8s.ts) restores agent-1 in `finally`, even when the capture throws
       await withNodeDown("agent_1", "stop-k3s", async () => {
         await waitFor(
           async () => {
-            const [node] = await getJson<{ status?: { conditions?: { type: string; status: string }[] } }>("nodes", {
-              name: AGENT_NODE,
-            });
-            const ready = node?.status?.conditions?.find((c) => c.type === "Ready");
-            return ready?.status === "Unknown" ? true : undefined;
+            const [node] = await getJson<{ status?: { conditions?: { type: string; status: string }[] } }>("nodes", { name: "agent-1" });
+            return node?.status?.conditions?.find((c) => c.type === "Ready")?.status === "Unknown" ? true : undefined;
           },
-          { timeoutMs: 90_000, describe: "node agent-1 to report Ready=Unknown" },
+          { timeoutMs: 120_000, describe: "node agent-1 to report Ready=Unknown" },
         );
+        await capture();
       });
     },
   },
   {
     name: "headless-no-ports",
     steps: [
-      "kubectl create namespace fixture-headless-no-ports",
-      "kubectl apply: Deployment worker (2 replicas, busybox:1.37 running sleep, no ports) with headless Service worker-hl without any port, and Deployment cache (1 replica, no ports) with headless Service cache-hl carrying the placeholder port 9/TCP",
-      "kubectl rollout status for both Deployments, then wait until both Services have EndpointSlices with ready endpoints",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      "docker-compose.yml: service worker, busybox:1.37, command sleep 36000, deploy.replicas 2, no ports, rendered with traits.headlessServiceNeedsPort false: headless Service worker without any port",
+      "docker-compose.yml: service cache, busybox:1.37, command sleep 36000, no ports, placed on agent_1, rendered with the k3s traits: headless Service cache with the placeholder port",
+      "kubectl rollout status for both Deployments, then capture once both Services have EndpointSlices with ready endpoints",
     ],
-    async run(ns) {
-      await applyYaml(
-        ns,
-        `
-apiVersion: apps/v1
-kind: Deployment
-metadata: { name: worker, namespace: ${ns}, labels: { app: worker } }
-spec:
-  replicas: 2
-  selector: { matchLabels: { app: worker } }
-  template:
-    metadata: { labels: { app: worker } }
-    spec:
-      containers: [{ name: worker, image: busybox:1.37, command: ["sleep", "36000"] }]
----
-apiVersion: v1
-kind: Service
-metadata: { name: worker-hl, namespace: ${ns} }
-spec: { clusterIP: None, selector: { app: worker } }
----
-apiVersion: apps/v1
-kind: Deployment
-metadata: { name: cache, namespace: ${ns}, labels: { app: cache } }
-spec:
-  replicas: 1
-  selector: { matchLabels: { app: cache } }
-  template:
-    metadata: { labels: { app: cache } }
-    spec:
-      containers: [{ name: cache, image: busybox:1.37, command: ["sleep", "36000"] }]
----
-apiVersion: v1
-kind: Service
-metadata: { name: cache-hl, namespace: ${ns} }
-spec: { clusterIP: None, selector: { app: cache }, ports: [{ port: 9, protocol: TCP }] }
-`,
+    async run({ ns }) {
+      await apply(
+        render(ns, `services:\n  worker:\n    image: busybox:1.37\n    command: ["sleep", "36000"]\n    deploy:\n      replicas: 2\n`, {
+          traits: { headlessServiceNeedsPort: false },
+        }),
       );
-      await kubectl(["rollout", "status", "deployment/worker", "-n", ns, "--timeout=120s"]);
-      await kubectl(["rollout", "status", "deployment/cache", "-n", ns, "--timeout=120s"]);
+      await apply(render(ns, `services:\n  cache:\n    image: busybox:1.37\n    command: ["sleep", "36000"]\n    deploy:\n${placedOn("agent_1")}`));
+      await rolloutStatus(ns, "deployment/worker", 180);
+      await rolloutStatus(ns, "deployment/cache", 180);
       await waitFor(
         async () => {
-          const slices = await getJson<{ metadata: { labels?: Record<string, string> }; endpoints?: { conditions?: { ready?: boolean } }[] }>(
-            "endpointslices",
-            { ns },
-          );
+          const slices = await getJson<{ metadata: { labels?: Record<string, string> }; endpoints?: { conditions?: { ready?: boolean } }[] }>("endpointslices", { ns });
           const ready = (svc: string) =>
-            slices.some(
-              (slice) =>
-                slice.metadata.labels?.["kubernetes.io/service-name"] === svc &&
-                (slice.endpoints ?? []).some((e) => e.conditions?.ready),
-            );
-          return ready("worker-hl") && ready("cache-hl") ? true : undefined;
+            slices.some((slice) => slice.metadata.labels?.["kubernetes.io/service-name"] === svc && (slice.endpoints ?? []).some((e) => e.conditions?.ready));
+          return ready("worker") && ready("cache") ? true : undefined;
         },
-        { timeoutMs: 60_000, describe: "worker-hl and cache-hl to have ready EndpointSlices" },
+        { timeoutMs: 60_000, describe: "the Services worker and cache to have ready EndpointSlices" },
       );
     },
   },
   {
     name: "metrics-top",
     steps: [
-      "kubectl create namespace fixture-metrics-top",
-      "kubectl apply: app Deployment web (2 replicas, nginx:1.27-alpine, memory limit 128Mi), accessory StatefulSet db (1 replica, busybox:1.37 running sleep, memory limit 256Mi) and helper pod dockflow-helper-archive-3f9a2c1b (label dockflow.shawiizz.dev/part=helper)",
-      "wait until every pod is Ready and metrics-server has scraped them (kubectl top pods lists all four)",
-      "capture the namespace resources and the cluster nodes and persistentvolumes",
+      RENDER_STEP,
+      "docker-compose.yml: service web, nginx:1.27-alpine, deploy.replicas 2, deploy.resources.limits.memory 128M",
+      "accessories.yml: service db, busybox:1.37, command sleep 36000, deploy.resources.limits.memory 256M, x-dockflow.kind statefulset, placed on server_1",
+      "the backup helper pod dockflow-helper-backup-3f9a2c1b of service db, as backups create it (backends/backup.ts buildHelperPod), on server-1",
+      "capture once every pod is Ready and kubectl top pods lists all four",
       "kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/fixture-metrics-top/pods > metrics/metrics-top.json",
     ],
-    async run(ns) {
-      await applyYaml(
-        ns,
-        `
-apiVersion: apps/v1
-kind: Deployment
-metadata: { name: web, namespace: ${ns}, labels: { app: web } }
-spec:
-  replicas: 2
-  selector: { matchLabels: { app: web } }
-  template:
-    metadata: { labels: { app: web } }
-    spec:
-      containers: [{ name: web, image: nginx:1.27-alpine, resources: { limits: { memory: 128Mi } } }]
----
-apiVersion: apps/v1
-kind: StatefulSet
-metadata: { name: db, namespace: ${ns}, labels: { app: db } }
-spec:
-  replicas: 1
-  serviceName: db-hl
-  selector: { matchLabels: { app: db } }
-  template:
-    metadata: { labels: { app: db } }
-    spec:
-      containers: [{ name: db, image: busybox:1.37, command: ["sleep", "36000"], resources: { limits: { memory: 256Mi } } }]
----
-apiVersion: v1
-kind: Pod
-metadata:
-  name: dockflow-helper-archive-3f9a2c1b
-  namespace: ${ns}
-  labels: { dockflow.shawiizz.dev/part: helper }
-spec:
-  restartPolicy: Never
-  containers: [{ name: helper, image: busybox:1.37, command: ["sleep", "3600"] }]
-`,
+    async run({ ns, capture, captureMetrics }) {
+      await apply(
+        render(ns, `services:\n  web:\n    image: nginx:1.27-alpine\n    deploy:\n      replicas: 2\n      resources:\n        limits:\n          memory: 128M\n`),
       );
-      await kubectl(["rollout", "status", "deployment/web", "-n", ns, "--timeout=120s"]);
-      await kubectl(["rollout", "status", "statefulset/db", "-n", ns, "--timeout=120s"]);
-      await waitFor(async () => ((await kubectl(["top", "pods", "-n", ns], { allowFailure: true })).trim() ? true : undefined), {
-        timeoutMs: 120_000,
-        intervalMs: 5000,
-        describe: "metrics-server to have scraped every pod of fixture-metrics-top",
-      });
-      const raw = await kubectl(["get", "--raw", `/apis/metrics.k8s.io/v1beta1/namespaces/${ns}/pods`]);
-      const metricsDir = join(FIXTURES_ROOT, "metrics");
-      mkdirSync(metricsDir, { recursive: true });
-      writeFileSync(join(metricsDir, "metrics-top.json"), raw.endsWith("\n") ? raw : `${raw}\n`);
+      await apply(
+        render(
+          ns,
+          `services:\n  db:\n    image: busybox:1.37\n    command: ["sleep", "36000"]\n    deploy:\n      resources:\n        limits:\n          memory: 256M\n${placedOn("server_1")}    x-dockflow:\n      kind: statefulset\n`,
+          { role: "accessory" },
+        ),
+      );
+      await apply([
+        buildHelperPod({
+          name: "dockflow-helper-backup-3f9a2c1b",
+          namespace: ns,
+          identity: { project: FIXTURE_PROJECT, namespace: ns },
+          composeService: "db",
+          helperImage: k3sDistribution.traits.helperImage,
+          mounts: [],
+          readOnly: true,
+          nodeName: "server-1",
+        }),
+      ]);
+      await rolloutStatus(ns, "deployment/web", 180);
+      await rolloutStatus(ns, "statefulset/db", 180);
+      await waitFor(
+        async () => {
+          const pods = await getJson<PodLike>("pods", { ns });
+          return pods.length === 4 && pods.every(podReady) ? true : undefined;
+        },
+        { timeoutMs: 120_000, describe: "the four pods of fixture-metrics-top to be Ready" },
+      );
+      await waitFor(
+        async () => {
+          const top = await kubectl(["top", "pods", "-n", ns, "--no-headers"], { allowFailure: true });
+          return top.trim().split("\n").filter(Boolean).length === 4 ? true : undefined;
+        },
+        { timeoutMs: 180_000, intervalMs: 5000, describe: "metrics-server to have scraped the four pods of fixture-metrics-top" },
+      );
+      await capture();
+      await captureMetrics();
     },
   },
 ];
 
 const SCENARIO_NAMES = new Set(SCENARIOS.map((s) => s.name));
 
+async function record(scenario: Scenario): Promise<void> {
+  const ns = fixtureNamespace(scenario.name);
+  log(`[record] ${scenario.name}: creating the condition in ${ns}...`);
+  await ensureNamespace(ns);
+  const captures: RawCapture[] = [];
+  let metrics: unknown = null;
+  const ctx: ScenarioContext = {
+    ns,
+    async capture(name = "") {
+      if (captures.some((c) => c.name === name)) throw new Error(`${scenario.name} captured ${name || "its directory"} twice`);
+      captures.push(await readCapture(ns, name));
+      log(`[record] ${scenario.name}: captured ${name || "the scenario directory"}`);
+    },
+    async captureMetrics() {
+      metrics = JSON.parse(await kubectl(["get", "--raw", `/apis/metrics.k8s.io/v1beta1/namespaces/${ns}/pods`]));
+    },
+  };
+  await scenario.run(ctx);
+  if (captures.length === 0) await ctx.capture();
+  writeRecording(scenario, captures, metrics);
+}
+
 // ─── entry point ────────────────────────────────────────────────────
 
-const USAGE = "Usage: bun run testing/e2e/k3s/tools/record-kubectl-fixtures.ts --lane <lane> [--scenario <name> | --all]";
+const USAGE = "Usage: bun run testing/e2e/k3s/tools/record-kubectl-fixtures.ts --lane <lane> (--scenario <name>[,<name>...] | --all)";
 
 interface Args {
   lane: LaneName;
-  scenario?: string;
-  all: boolean;
+  scenarios: string[];
 }
 
 function parseArgs(argv: string[]): Args {
   let lane: string | undefined;
-  let scenario: string | undefined;
-  let all = false;
+  let scenarios: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--lane") lane = argv[++i];
-    else if (argv[i] === "--scenario") scenario = argv[++i];
-    else if (argv[i] === "--all") all = true;
+    else if (argv[i] === "--scenario") scenarios.push(...(argv[++i] ?? "").split(",").filter(Boolean));
+    else if (argv[i] === "--all") scenarios = SCENARIOS.map((s) => s.name);
     else throw new Error(`Unknown argument ${argv[i]}\n${USAGE}`);
   }
   if (!lane || !isLaneName(lane)) throw new Error(`--lane must be one of ${Object.keys(LANES).join(", ")}\n${USAGE}`);
-  if (!scenario && !all) throw new Error(`Pass --scenario <name> or --all\n${USAGE}`);
-  if (scenario && !SCENARIO_NAMES.has(scenario)) {
-    throw new Error(`Unknown scenario ${scenario}; known: ${DESIGN_SCENARIOS.kubectl.join(", ")}`);
-  }
-  return { lane, scenario, all };
+  if (scenarios.length === 0) throw new Error(`Pass --scenario <name> or --all\n${USAGE}`);
+  const unknown = scenarios.filter((name) => !SCENARIO_NAMES.has(name));
+  if (unknown.length > 0) throw new Error(`Unknown scenario ${unknown.join(", ")}; known: ${DESIGN_SCENARIOS.kubectl.join(", ")}`);
+  return { lane, scenarios };
 }
 
 async function main(): Promise<void> {
@@ -1263,16 +1227,11 @@ async function main(): Promise<void> {
   process.env.DOCKFLOW_E2E_TOPOLOGY = lane.topology;
   const topo = TOPOLOGIES[lane.topology];
   log(`[record] recording against the ${topo.name} topology of lane ${args.lane} (helm ${HELM_PIN.version}, k3s ${K3S_PIN.version})`);
-
-  const scenarios = args.all ? SCENARIOS : SCENARIOS.filter((s) => s.name === args.scenario);
-  for (const scenario of scenarios) {
-    const ns = fixtureNamespace(scenario.name);
-    log(`[record] ${scenario.name}: creating condition in ${ns}...`);
-    await ensureNamespace(ns);
-    await scenario.run(ns);
-    await captureScenario(scenario.name, scenario.steps);
+  for (const name of args.scenarios) {
+    const scenario = SCENARIOS.find((s) => s.name === name);
+    if (scenario) await record(scenario);
   }
-  log(`[record] done: ${scenarios.length} scenario(s).`);
+  log(`[record] done: ${args.scenarios.length} scenario(s).`);
 }
 
 if (import.meta.main) {

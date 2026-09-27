@@ -142,7 +142,7 @@ interface HelperIdentity {
   namespace: string;
 }
 
-function buildHelperPod(params: {
+export function buildHelperPod(params: {
   name: string;
   namespace: string;
   identity: HelperIdentity;
