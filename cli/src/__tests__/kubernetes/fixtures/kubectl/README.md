@@ -11,13 +11,18 @@ when one is broken. `../../fixtures-meta.test.ts` checks the layout, the version
 The current files are **synthetic** (`"synthetic": true` in `meta.json`): authored in the exact layout
 kubectl v1.36 prints, for k3s `v1.36.4+k3s1`, already scrubbed. The test machine replaces each scenario
 with a recording made by `testing/e2e/k3s/tools/record-kubectl-fixtures.ts` against the `k3s-core`
-lane; a recorded `meta.json` carries `"recordedOn": "YYYY-MM-DD"` instead of `synthetic`. Things to
-confirm on the first recording (they follow the documented v1.36 behaviour but were not observed):
+lane; a recorded `meta.json` carries `"recordedOn": "YYYY-MM-DD"` instead of `synthetic`.
 
-- pod `metadata.generation`, `status.observedGeneration` and `conditions[].observedGeneration`;
-- `terminatingReplicas` on ReplicaSets and Deployments (`terminating-pods`);
-- the exact kubelet, scheduler and local-path-provisioner messages (image pull errors, eviction,
-  `ProvisioningFailed`), which the recording overwrites anyway.
+A first recording of all 24 scenarios (2026-09-27, k3s `v1.36.4+k3s1`) passed the scrub rules and
+confirmed: pods carry `metadata.generation`, `status.observedGeneration` and
+`conditions[].observedGeneration`; Deployments and ReplicaSets report `terminatingReplicas`; a
+StatefulSet omits `readyReplicas` at 0; a crash-looping container, an OOM-killed one and a failing init
+container are mostly reported `terminated` (reason `Error` or `OOMKilled`) between restarts rather than
+`waiting` in `CrashLoopBackOff`, which the fail-fast classifier already treats as the same crash loop.
+It did not replace the synthetic files yet, because the tests read the synthetic pod names and
+placement, and the recipes still differ from them: Dockflow labels on some objects, the node each pod
+lands on, the Job name of `job-*`, the mid-rollout capture of `daemonset-rolling`, `node-not-ready`
+captured while the node is still down, and the scrub of `metrics/metrics-top.json`.
 
 Event lists are representative subsets, not every event the cluster would emit.
 

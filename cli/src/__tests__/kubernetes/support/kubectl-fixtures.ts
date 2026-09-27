@@ -304,7 +304,8 @@ class ScrubCheck {
     for (const [k, v] of Object.entries(value)) {
       const path = `${where}.${k}`;
       if (k === 'managedFields') this.report(path, 'managedFields must be removed');
-      if (k === 'uid' && typeof v !== 'string') this.report(path, 'uid is not a string');
+      // containerStatuses[].user.linux.uid is the numeric Linux uid (Kubernetes 1.36), not an object uid
+      if (k === 'uid' && typeof v !== 'string' && key !== 'linux') this.report(path, 'uid is not a string');
       if (k === 'resourceVersion' && typeof v !== 'string') this.report(path, 'resourceVersion is not a string');
       this.json(path, v, k, key);
     }

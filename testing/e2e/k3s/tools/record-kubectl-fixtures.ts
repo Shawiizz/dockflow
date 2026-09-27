@@ -86,10 +86,52 @@ function scrubResourceVersion(maps: ScrubMaps, value: string): string {
 function scrubHostIp(maps: ScrubMaps, value: string): string {
   const existing = maps.hostIp.get(value);
   if (existing) return existing;
-  const assigned = `192.0.2.${maps.hostIp.size + 1}`;
+  const assigned = `192.0.2.${maps.hostIp.size + 11}`;
   maps.hostIp.set(value, assigned);
   return assigned;
 }
+
+/**
+ * Node addresses first, servers before agents, so server-1 is 192.0.2.11 and agent-1 192.0.2.12 as
+ * the fixture conventions say, whatever order kubectl listed them in.
+ */
+function mapNodeIps(nodes: unknown, maps: ScrubMaps): void {
+  const items = isRecord(nodes) && Array.isArray(nodes.items) ? nodes.items.filter(isRecord) : [];
+  const rank = (item: Record<string, unknown>): string => {
+    const name = isRecord(item.metadata) && typeof item.metadata.name === "string" ? item.metadata.name : "";
+    return `${name.startsWith("server") ? 0 : 1}${name}`;
+  };
+  for (const item of [...items].sort((a, b) => (rank(a) < rank(b) ? -1 : 1))) {
+    const addresses = isRecord(item.status) && Array.isArray(item.status.addresses) ? item.status.addresses.filter(isRecord) : [];
+    for (const address of addresses) {
+      if ((address.type === "InternalIP" || address.type === "ExternalIP") && typeof address.address === "string") {
+        scrubHostIp(maps, address.address);
+      }
+    }
+  }
+}
+
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+/** Event messages name the pod by its uid too (`pod_ns(<uid>)`): the same map applies inside any text. */
+function replaceUuids(value: string, maps: ScrubMaps): string {
+  return value.replace(UUID_RE, (match) => scrubUid(maps, match));
+}
+
+/** A node address also appears inside annotations (`k3s.io/node-args` is a JSON array in a string). */
+function replaceHostIps(value: string, maps: ScrubMaps): string {
+  let out = value;
+  for (const [raw, scrubbed] of maps.hostIp) {
+    out = out.replace(new RegExp(`(?<![\\d.])${raw.replace(/\./g, "\\.")}(?![\\d.])`, "g"), scrubbed);
+  }
+  return out;
+}
+
+/** What identifies the recording machine rather than the cluster state: never kept. */
+const MACHINE_FIELDS: Readonly<Record<string, string>> = {
+  machineID: "0".repeat(32),
+  kernelVersion: "6.8.0-generic",
+};
 
 function scrubContainerRuntimeId(value: string): string {
   return `containerd://${createHash("sha256").update(value).digest("hex").slice(0, 12)}`;
@@ -121,12 +163,13 @@ function collectEarliest(value: unknown, earliest: { date: Date | null }): void 
 /** Mirrors the field detection of the checker's `ScrubCheck` (support/kubectl-fixtures.ts), but rewrites instead of only reporting. */
 function scrubValue(value: unknown, key: string | null, parentKey: string | null, maps: ScrubMaps): unknown {
   if (typeof value === "string") {
-    if (key === "uid") return scrubUid(maps, value);
+    if (key === "uid" || key === "bootID" || key === "systemUUID") return scrubUid(maps, value);
+    if (key !== null && parentKey === "nodeInfo" && Object.hasOwn(MACHINE_FIELDS, key)) return MACHINE_FIELDS[key];
     if (key === "resourceVersion" && value !== "") return scrubResourceVersion(maps, value);
     if ((key === "containerID" || key === "imageID") && value !== "") return scrubContainerRuntimeId(value);
     const hostIpField = key === "hostIP" || (key === "ip" && (parentKey === "hostIPs" || parentKey === "ingress"));
     if (hostIpField) return scrubHostIp(maps, value);
-    return shiftTimestamps(value, maps.shiftMs);
+    return replaceUuids(replaceHostIps(shiftTimestamps(value, maps.shiftMs), maps), maps);
   }
   if (Array.isArray(value)) return value.map((item) => scrubValue(item, key, parentKey, maps));
   if (isRecord(value)) {
@@ -138,6 +181,35 @@ function scrubValue(value: unknown, key: string | null, parentKey: string | null
     return out;
   }
   return value;
+}
+
+const CLUSTER_SCOPED_KINDS = new Set(["Node", "PersistentVolume", "Namespace", "StorageClass"]);
+
+/**
+ * Drops the events of an earlier incarnation of an object the capture holds under the same name (a
+ * StatefulSet pod recreated as db-0 again): their involvedObject uid is the old pod's, which the
+ * fixture rules read as an inconsistent scrub. Event lists are representative subsets anyway.
+ */
+function dropStaleEvents(scrubbed: Record<string, unknown>): void {
+  const uids = new Map<string, string>();
+  for (const list of Object.values(scrubbed)) {
+    const items = isRecord(list) && Array.isArray(list.items) ? list.items.filter(isRecord) : [];
+    for (const item of items) {
+      const meta = isRecord(item.metadata) ? item.metadata : {};
+      if (typeof item.kind === "string" && typeof meta.name === "string" && typeof meta.uid === "string") {
+        uids.set(`${item.kind}/${typeof meta.namespace === "string" ? meta.namespace : ""}/${meta.name}`, meta.uid);
+      }
+    }
+  }
+  const events = scrubbed.events;
+  if (!isRecord(events) || !Array.isArray(events.items)) return;
+  events.items = events.items.filter((event) => {
+    const target = isRecord(event) && isRecord(event.involvedObject) ? event.involvedObject : null;
+    if (!target || typeof target.kind !== "string") return true;
+    const namespace = CLUSTER_SCOPED_KINDS.has(target.kind) ? "" : typeof target.namespace === "string" ? target.namespace : "";
+    const current = uids.get(`${target.kind}/${namespace}/${String(target.name)}`);
+    return current === undefined || current === target.uid;
+  });
 }
 
 // ─── capture pipeline ───────────────────────────────────────────────
@@ -159,14 +231,19 @@ async function captureScenario(name: string, steps: readonly string[]): Promise<
   const raw: Record<string, unknown> = {};
   for (const resource of NAMESPACED_RESOURCES) raw[resource] = await rawGet(ns, resource);
   for (const resource of CLUSTER_RESOURCES) raw[resource] = await rawGet(null, resource);
+  // the cluster-wide list also holds the volumes of every other scenario recorded before this one
+  const pvs = raw.persistentvolumes;
+  if (isRecord(pvs) && Array.isArray(pvs.items)) pvs.items = pvs.items.filter((pv) => claimedFrom(ns, pv));
 
   const earliest: { date: Date | null } = { date: null };
   for (const value of Object.values(raw)) collectEarliest(value, earliest);
   const shiftMs = earliest.date ? SCRUBBED_START.getTime() - earliest.date.getTime() : 0;
   const maps: ScrubMaps = { uid: new Map(), resourceVersion: new Map(), hostIp: new Map(), shiftMs };
+  mapNodeIps(raw.nodes, maps);
 
   const scrubbed: Record<string, unknown> = {};
   for (const [resource, value] of Object.entries(raw)) scrubbed[resource] = scrubValue(value, null, null, maps);
+  dropStaleEvents(scrubbed);
 
   const dir = join(FIXTURES_ROOT, "kubectl", name);
   mkdirSync(dir, { recursive: true });
@@ -254,8 +331,23 @@ async function applyYaml(ns: string, yaml: string): Promise<void> {
   await kubectl(["apply", "-n", ns, "-f", "-"], { stdin: yaml });
 }
 
+/** PersistentVolumes claimed from `ns`: the only ones a scenario's capture keeps. */
+function claimedFrom(ns: string, pv: unknown): boolean {
+  return isRecord(pv) && isRecord(pv.spec) && isRecord(pv.spec.claimRef) && pv.spec.claimRef.namespace === ns;
+}
+
+/**
+ * A fresh namespace per recording: a re-run never captures the objects or events of an earlier
+ * attempt, nor its volumes, which dockflow-local retains after their claims are gone.
+ */
 async function ensureNamespace(ns: string): Promise<void> {
-  await kubectl(["create", "namespace", ns], { allowFailure: true });
+  await kubectl(["delete", "namespace", ns, "--ignore-not-found", "--wait=true", "--timeout=180s"], { allowFailure: true });
+  const pvs = await rawGet(null, "persistentvolumes");
+  const stale = (isRecord(pvs) && Array.isArray(pvs.items) ? pvs.items : [])
+    .filter((pv) => claimedFrom(ns, pv))
+    .map((pv) => String((pv as { metadata: { name: string } }).metadata.name));
+  if (stale.length > 0) await kubectl(["delete", "persistentvolume", ...stale, "--wait=true", "--timeout=120s"], { allowFailure: true });
+  await kubectl(["create", "namespace", ns]);
 }
 
 // ─── scenario recipes (steps text matches the existing synthetic meta.json of each scenario) ──────
@@ -796,7 +888,7 @@ spec:
     steps: [
       "kubectl create namespace fixture-init-container-crash",
       "kubectl apply: Deployment web (1 replica, init container init running busybox:1.37 sh -c 'exit 1', container web nginx:1.27-alpine)",
-      "wait until the init container reports CrashLoopBackOff with restartCount 3",
+      "wait until the init container reports restartCount 3 (k3s 1.36 shows it terminated with Error between restarts more often than waiting in CrashLoopBackOff)",
       "capture the namespace resources and the cluster nodes and persistentvolumes",
     ],
     async run(ns) {
@@ -825,11 +917,13 @@ spec:
         async () => {
           const pods = await getJson<PodLike>("pods", { ns, selector: "app=web" });
           const hit = pods.some((pod) =>
-            (pod.status?.initContainerStatuses ?? []).some((c) => c.restartCount >= 3 && c.state?.waiting?.reason === "CrashLoopBackOff"),
+            (pod.status?.initContainerStatuses ?? []).some(
+              (c) => c.restartCount >= 3 && (c.state?.waiting?.reason === "CrashLoopBackOff" || c.state?.terminated !== undefined),
+            ),
           );
           return hit ? true : undefined;
         },
-        { timeoutMs: 240_000, describe: "the init container to report CrashLoopBackOff with restartCount 3" },
+        { timeoutMs: 240_000, describe: "the init container to report restartCount 3" },
       );
     },
   },
