@@ -92,35 +92,45 @@ async function pullAndTag(ref: string, locked: string, arch: Arch): Promise<void
   await exec(["docker", "tag", locked, ref]);
 }
 
-/** `docker save --platform` exists from Docker 28; older CLIs reject the flag outright. */
-async function savesByPlatform(): Promise<boolean> {
-  const help = await tryExec(["docker", "save", "--help"]);
-  return help.stdout.includes("--platform");
-}
-
-async function dockerSave(refs: readonly string[], archive: string, arch: Arch, containerdStore: boolean): Promise<void> {
+/**
+ * No `--platform`: it saves the platform's manifest alone and drops the index, whose digest the nodes
+ * resolve an image pinned by digest through. Only the content that was pulled comes along, which
+ * pullAndTag limits to the node's platform.
+ */
+async function dockerSave(refs: readonly string[], archive: string): Promise<void> {
   const partial = `${archive}.part`;
   rmSync(partial, { force: true });
-  // The containerd image store keeps every platform of an index; save only the node's. Without the
-  // flag (Docker < 28) the index is still exported but only the content that was pulled comes with
-  // it, which pullAndTag limits to the node's platform.
-  const platform = containerdStore && (await savesByPlatform()) ? ["--platform", `linux/${arch}`] : [];
   try {
-    await exec(["docker", "save", ...platform, "-o", partial, ...refs], { timeoutMs: 1_800_000 });
+    await exec(["docker", "save", "-o", partial, ...refs], { timeoutMs: 1_800_000 });
     renameSync(partial, archive);
   } finally {
     rmSync(partial, { force: true });
   }
 }
 
+/** every locked index digest is a blob of the archive */
+async function carriesDigests(archive: string, digests: readonly string[]): Promise<boolean> {
+  const listing = await tryExec(["tar", "-tf", archive], { timeoutMs: 300_000 });
+  if (listing.exitCode !== 0) return false;
+  const blobs = new Set(listing.stdout.split(/\r?\n/));
+  return digests.every((digest) => blobs.has(`blobs/sha256/${digest.replace(/^sha256:/, "")}`));
+}
+
 async function ensureWorkloadArchive(lock: ImagesLock, arch: Arch, nightly: boolean): Promise<void> {
-  const images = bakedImages(lock, nightly).map((image) => ({ ref: image.ref, locked: lockedReference(image) }));
+  const images = bakedImages(lock, nightly).map((image) => {
+    const locked = lockedReference(image);
+    return { ref: image.ref, locked, digest: locked.slice(locked.indexOf("@") + 1) };
+  });
   const archive = workloadArchivePath(arch);
   const stampPath = join(IMAGES_DIR, `e2e-images-${arch}.json`);
-  // an archive saved from the classic store lacks the index digests: switching stores saves it again
+  // an archive saved from the classic store, or with an index missing, is saved again
   const containerdStore = await usesContainerdStore();
   const stamp = `${JSON.stringify({ arch, store: containerdStore ? "containerd" : "classic", images: images.map((image) => `${image.ref} ${image.locked}`) }, null, 2)}\n`;
-  const upToDate = existsSync(archive) && existsSync(stampPath) && readFileSync(stampPath, "utf-8") === stamp;
+  const upToDate =
+    existsSync(archive) &&
+    existsSync(stampPath) &&
+    readFileSync(stampPath, "utf-8") === stamp &&
+    (!containerdStore || (await carriesDigests(archive, images.map((image) => image.digest))));
 
   // Pull on the runner's own architecture even when the archive is current: fixture builds need the tags
   if (!upToDate || arch === hostArch()) {
@@ -142,9 +152,10 @@ async function ensureWorkloadArchive(lock: ImagesLock, arch: Arch, nightly: bool
   await dockerSave(
     images.map((image) => image.ref),
     archive,
-    arch,
-    containerdStore,
   );
+  if (containerdStore && !(await carriesDigests(archive, images.map((image) => image.digest)))) {
+    throw new Error(`docker save left out the index of an image pinned by digest in ${archive}`);
+  }
   writeFileSync(stampPath, stamp);
 }
 
