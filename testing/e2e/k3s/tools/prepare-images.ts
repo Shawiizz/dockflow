@@ -8,7 +8,8 @@
  * - .cache/images/e2e-images-<arch>.tar: the images.lock.json entries marked `bake` (`--nightly`
  *   adds the "nightly" ones), pulled by digest, tagged back to their reference and saved.
  * The pulled images stay tagged in the runner's Docker, so fixture builds (`FROM nginx:alpine`)
- * do not hit Docker Hub. Both archives are reused while their pins are unchanged.
+ * do not hit Docker Hub. Both archives are reused while their pins are unchanged, the workload one
+ * also while Docker keeps the same image store.
  *
  * Usage (from the repository root):
  *   bun run testing/e2e/k3s/tools/prepare-images.ts [--arch amd64|arm64] [--nightly]
@@ -116,7 +117,9 @@ async function ensureWorkloadArchive(lock: ImagesLock, arch: Arch, nightly: bool
   const images = bakedImages(lock, nightly).map((image) => ({ ref: image.ref, locked: lockedReference(image) }));
   const archive = workloadArchivePath(arch);
   const stampPath = join(IMAGES_DIR, `e2e-images-${arch}.json`);
-  const stamp = `${JSON.stringify({ arch, images: images.map((image) => `${image.ref} ${image.locked}`) }, null, 2)}\n`;
+  // an archive saved from the classic store lacks the index digests: switching stores saves it again
+  const containerdStore = await usesContainerdStore();
+  const stamp = `${JSON.stringify({ arch, store: containerdStore ? "containerd" : "classic", images: images.map((image) => `${image.ref} ${image.locked}`) }, null, 2)}\n`;
   const upToDate = existsSync(archive) && existsSync(stampPath) && readFileSync(stampPath, "utf-8") === stamp;
 
   // Pull on the runner's own architecture even when the archive is current: fixture builds need the tags
@@ -128,7 +131,6 @@ async function ensureWorkloadArchive(lock: ImagesLock, arch: Arch, nightly: bool
     return;
   }
 
-  const containerdStore = await usesContainerdStore();
   if (!containerdStore) {
     process.stderr.write(
       "warning: Docker uses its classic image store, so docker save drops registry digests; " +
