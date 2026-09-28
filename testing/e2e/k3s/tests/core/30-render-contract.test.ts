@@ -158,7 +158,7 @@ describe("core 8.9 e2e render contract", () => {
     });
   }, 180_000);
 
-  test("E-30-03: a real apply of kitchen-sink twice leaves generation/resourceVersion unchanged", async () => {
+  test("E-30-03: a real apply of kitchen-sink twice leaves generation and the applied fields unchanged", async () => {
     await withDump("E-30-03", async () => {
       const cases = await discoverCases();
       const kitchenSink = cases.find((c) => c.name === "kitchen-sink");
@@ -178,6 +178,7 @@ describe("core 8.9 e2e render contract", () => {
       }
 
       const before = await readMetaStamps(objects);
+      expect(before.filter((stamp) => stamp.applied === undefined)).toEqual([]);
       for (const role of ["app", "accessory"] as const) {
         const yaml = await readExpectedText(kitchenSink, `expected-${role}.yaml`);
         if (yaml === null) continue;
@@ -262,24 +263,35 @@ interface MetaStamp {
   name: string;
   namespace: string | null;
   generation: unknown;
-  resourceVersion: unknown;
+  /** the apply's own managedFields entry (time, fields): only a write of the apply moves it */
+  applied: unknown;
 }
 
+interface ManagedFieldsEntry {
+  manager?: string;
+  operation?: string;
+  time?: string;
+  fieldsV1?: unknown;
+}
+
+/**
+ * Not resourceVersion: the controllers keep writing status meanwhile (a pod becoming ready, a Job
+ * finishing), which moves it whatever the re-apply does.
+ */
 async function readMetaStamps(objects: readonly { kind: string; name: string; namespace: string | null }[]): Promise<MetaStamp[]> {
   const stamps: MetaStamp[] = [];
   for (const obj of objects) {
     const resource = KIND_REGISTRY[obj.kind as keyof typeof KIND_REGISTRY]?.resource;
     if (!resource) continue;
-    const [live] = await getJson<{ metadata?: { generation?: unknown; resourceVersion?: unknown } }>(resource, {
-      ...(obj.namespace ? { ns: obj.namespace } : {}),
-      name: obj.name,
-    });
+    const out = await kubectl(["get", resource, obj.name, ...(obj.namespace ? ["-n", obj.namespace] : []), "-o", "json", "--show-managed-fields"]);
+    const live = JSON.parse(out) as { metadata?: { generation?: unknown; managedFields?: ManagedFieldsEntry[] } };
+    const applied = live.metadata?.managedFields?.find((entry) => entry.manager === FIELD_MANAGER && entry.operation === "Apply");
     stamps.push({
       kind: obj.kind,
       name: obj.name,
       namespace: obj.namespace,
-      generation: live?.metadata?.generation,
-      resourceVersion: live?.metadata?.resourceVersion,
+      generation: live.metadata?.generation,
+      applied: applied ? { time: applied.time, fieldsV1: applied.fieldsV1 } : undefined,
     });
   }
   return stamps;
