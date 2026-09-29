@@ -59,12 +59,19 @@ async function assertTraefikBakedByDigest(): Promise<void> {
   }
 }
 
+/** sudo cannot ask for a password in the middle of a run: it must hold the credentials already */
 async function blockEgress(): Promise<void> {
-  await exec(["sudo", "iptables", "-I", ...EGRESS_DROP_RULE]);
+  if ((await tryExec(["sudo", "-n", "true"])).exitCode !== 0) {
+    throw new Error(`${FILE} inserts a host iptables rule with sudo: run \`sudo -v\` in this terminal, then start it again.`);
+  }
+  await exec(["sudo", "-n", "iptables", "-I", ...EGRESS_DROP_RULE]);
 }
 
 async function allowEgress(): Promise<void> {
-  await tryExec(["sudo", "iptables", "-D", ...EGRESS_DROP_RULE]);
+  const removed = await tryExec(["sudo", "-n", "iptables", "-D", ...EGRESS_DROP_RULE]);
+  if (removed.exitCode !== 0) {
+    process.stderr.write(`warning: the egress rule of ${FILE} is still in place; remove it with: sudo iptables -D ${EGRESS_DROP_RULE.join(" ")}\n`);
+  }
 }
 
 function configYml(): string {
@@ -89,8 +96,9 @@ function configYml(): string {
   ].join("\n");
 }
 
+/** `ports` is what gets the default route injected (design-01 7.5) */
 function composeYml(): string {
-  return ["services:", "  web:", "    image: docker.io/library/nginx:alpine", "    deploy:", "      replicas: 1", ""].join("\n");
+  return ["services:", "  web:", "    image: docker.io/library/nginx:alpine", "    ports:", '      - "8080:80"', "    deploy:", "      replicas: 1", ""].join("\n");
 }
 
 describe("nightly: offline canary", () => {
