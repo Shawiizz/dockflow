@@ -101,21 +101,18 @@ export class Lock {
 
       if (options?.force) {
         await sshExec(this.connection, `mkdir -p "${DOCKFLOW_LOCKS_DIR}" && rm -f "${this.lockFile}"`);
-        const { stream, done } = await sshExecChannel(this.connection, `cat > "${this.lockFile}"`);
-        stream.end(lockContent);
-        await done;
-        return ok(lockData);
+        const failure = await this.write(this.lockFile, lockContent);
+        return failure ? err(failure) : ok(lockData);
       }
 
       // Use noclobber (set -C) for atomic acquire — write lock via temp file + mv to avoid shell escaping
       const tmpLock = `${this.lockFile}.tmp.${Date.now()}`;
-      const { stream: ws, done: wsDone } = await sshExecChannel(this.connection, `cat > "${tmpLock}"`);
-      ws.end(lockContent);
-      await wsDone;
+      const failure = await this.write(tmpLock, lockContent);
+      if (failure) return err(failure);
 
       const result = await sshExec(
         this.connection,
-        `mkdir -p "${DOCKFLOW_LOCKS_DIR}" && (set -C; cp "${tmpLock}" "${this.lockFile}") 2>/dev/null && echo "ACQUIRED" || echo "LOCKED"; rm -f "${tmpLock}"`,
+        `(set -C; cp "${tmpLock}" "${this.lockFile}") 2>/dev/null && echo "ACQUIRED" || echo "LOCKED"; rm -f "${tmpLock}"`,
       );
 
       if (result.stdout.trim() === 'ACQUIRED') {
@@ -139,9 +136,8 @@ export class Lock {
       if (current.data.isStale) {
         // Stale: remove and re-acquire — reuse the temp file written above
         const tmpRetry = `${this.lockFile}.tmp.${Date.now()}`;
-        const { stream: rs, done: rsDone } = await sshExecChannel(this.connection, `cat > "${tmpRetry}"`);
-        rs.end(lockContent);
-        await rsDone;
+        const retryFailure = await this.write(tmpRetry, lockContent);
+        if (retryFailure) return err(retryFailure);
 
         const retryResult = await sshExec(
           this.connection,
@@ -163,6 +159,19 @@ export class Lock {
     } catch (error) {
       return err(error instanceof Error ? error : new Error(String(error)));
     }
+  }
+
+  /**
+   * Writes `content` to `path` in the locks directory, which a server's first deploy creates: the
+   * exit code of the write is the only sign it failed.
+   */
+  private async write(path: string, content: string): Promise<Error | null> {
+    const { stream, done } = await sshExecChannel(this.connection, `mkdir -p "${DOCKFLOW_LOCKS_DIR}" && cat > "${path}"`);
+    stream.end(content);
+    const result = await done;
+    if (result.exitCode === 0) return null;
+    const cause = result.stderr.trim();
+    return new Error(`Cannot write the lock file in ${DOCKFLOW_LOCKS_DIR}${cause ? `: ${cause}` : ''}`);
   }
 
   /**
