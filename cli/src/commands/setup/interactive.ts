@@ -11,8 +11,8 @@ import { CLIError, ErrorCode } from '../../utils/errors';
 import { displayDependencyStatus, } from './dependencies';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
 import { prompt, promptPassword, confirm, selectMenu } from './prompts';
-import { generateSSHKey, addToAuthorizedKeys, authorizeKeyForUser, listSSHKeys } from './key-files';
-import { createDeployUser, promptAndValidateUserPassword, } from './user';
+import { generateSSHKey, authorizeKeyForUser, listSSHKeys } from './key-files';
+import { createDeployUser, promptAndValidateUserPassword, requireUser } from './user';
 import { displayConnectionInfo } from './connection';
 import { ensureSetupDependencies, completeSetup } from './flow';
 import type { HostConfig } from './types';
@@ -100,7 +100,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
     deployUser = await prompt('Existing username', currentUser);
 
     const existingKeys = listSSHKeys(deployUser);
-    const userHome = deployUser === 'root' ? '/root' : `/home/${deployUser}`;
+    const userHome = requireUser(deployUser).home;
     const defaultKeyPath = path.join(userHome, '.ssh', 'dockflow_key');
 
     if (existingKeys.length > 0) {
@@ -124,7 +124,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
         const keyResult = generateSSHKey(privateKeyPath, `dockflow-${currentUser}`);
         if (keyResult.success) {
           printSuccess('SSH key generated');
-          addToAuthorizedKeys(`${privateKeyPath}.pub`);
+          authorizeKeyForUser(`${privateKeyPath}.pub`, deployUser);
           printSuccess('Key added to authorized_keys');
         } else {
           throw new CLIError(
@@ -140,7 +140,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
       const keyResult = generateSSHKey(privateKeyPath, `dockflow-${currentUser}`);
       if (keyResult.success) {
         printSuccess('SSH key generated');
-        addToAuthorizedKeys(`${privateKeyPath}.pub`);
+        authorizeKeyForUser(`${privateKeyPath}.pub`, deployUser);
         printSuccess('Key added to authorized_keys');
       } else {
         throw new CLIError(
@@ -158,7 +158,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
     deployUser = await prompt('Deployment username', 'dockflow');
     
     const existingKeys = listSSHKeys(deployUser);
-    const userHome = deployUser === 'root' ? '/root' : `/home/${deployUser}`;
+    const userHome = requireUser(deployUser).home;
     if (existingKeys.length === 0) {
       throw new CLIError(
         `No SSH keys found in ${userHome}/.ssh/`,

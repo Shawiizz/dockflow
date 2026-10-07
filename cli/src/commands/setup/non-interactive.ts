@@ -8,7 +8,7 @@ import * as path from 'path';
 import { printIntro, printSection, printSuccess, printBlank, printRaw, colors } from '../../utils/output';
 import { CLIError, ErrorCode } from '../../utils/errors';
 import { detectPublicIP, detectSSHPort, getCurrentUser } from './network';
-import { generateSSHKey, addToAuthorizedKeys } from './key-files';
+import { generateSSHKey, authorizeKeyForUser } from './key-files';
 import { createDeployUser, } from './user';
 import { ensureSetupDependencies, completeSetup } from './flow';
 import type { SetupOptions, HostConfig } from './types';
@@ -65,7 +65,7 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
             ErrorCode.COMMAND_FAILED
           );
         }
-        addToAuthorizedKeys(`${privateKeyPath}.pub`);
+        authorizeKeyForUser(`${privateKeyPath}.pub`, currentUser);
         printSuccess('SSH key generated and added to authorized_keys');
       }
     }

@@ -7,8 +7,9 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { printWarning } from '../../utils/output';
 import type { SSHKeyResult } from './types';
+import { run, type CommandRunner } from './provision';
+import { authorizeKey, requireUser } from './user';
 
 /** ssh-keygen's arguments: an ed25519 key with an empty passphrase, the comment as a plain argument. */
 export function keygenArgs(keyPath: string, comment: string): string[] {
@@ -53,67 +54,21 @@ export function generateSSHKey(keyPath: string, comment: string = 'dockflow'): S
 }
 
 /**
- * Add public key to authorized_keys
+ * Authorize a public key for a user, in the home the system reports for it. Returns false when the
+ * public key file does not exist; a home that cannot be written safely throws.
  */
-export function addToAuthorizedKeys(pubKeyPath: string, user?: string): boolean {
-  const homeDir = user ? `/home/${user}` : os.homedir();
-  const authKeysPath = path.join(homeDir, '.ssh', 'authorized_keys');
-  const sshDir = path.dirname(authKeysPath);
-
-  if (!fs.existsSync(pubKeyPath)) {
-    return false;
-  }
-  const pubKey = fs.readFileSync(pubKeyPath, 'utf-8').trim();
-
-  if (!fs.existsSync(sshDir)) {
-    fs.mkdirSync(sshDir, { recursive: true, mode: 0o700 });
-  }
-
-  if (fs.existsSync(authKeysPath)) {
-    const existing = fs.readFileSync(authKeysPath, 'utf-8');
-    if (existing.includes(pubKey)) {
-      return true;
-    }
-  }
-
-  fs.appendFileSync(authKeysPath, `${pubKey}\n`, { mode: 0o600 });
-  return true;
-}
-
-/**
- * Authorize a public key for a specific user: appends it to the user's
- * authorized_keys and fixes ownership/permissions (the setup runs as root,
- * so files it creates under the user's home must be chowned back).
- */
-export function authorizeKeyForUser(pubKeyPath: string, username: string): boolean {
-  const added = addToAuthorizedKeys(pubKeyPath, username === 'root' ? undefined : username);
-  if (!added) return false;
-
-  if (username !== 'root') {
-    const sshDir = `/home/${username}/.ssh`;
-    const chown = spawnSync('chown', ['-R', `${username}:${username}`, sshDir], { encoding: 'utf-8', stdio: 'pipe' });
-    if (chown.status !== 0) {
-      printWarning(`Could not chown ${sshDir} to ${username}: ${chown.stderr.trim()}`);
-      return false;
-    }
-    spawnSync('chmod', ['700', sshDir], { encoding: 'utf-8', stdio: 'pipe' });
-    spawnSync('chmod', ['600', `${sshDir}/authorized_keys`], { encoding: 'utf-8', stdio: 'pipe' });
-  }
+export function authorizeKeyForUser(pubKeyPath: string, username: string, runCommand: CommandRunner = run): boolean {
+  if (!fs.existsSync(pubKeyPath)) return false;
+  authorizeKey(requireUser(username, runCommand), fs.readFileSync(pubKeyPath, 'utf-8'));
   return true;
 }
 
 /**
  * List available SSH keys for a user
  */
-export function listSSHKeys(username?: string): string[] {
-  let sshDir: string;
-  
-  if (username && username !== 'root') {
-    sshDir = `/home/${username}/.ssh`;
-  } else {
-    sshDir = path.join(os.homedir(), '.ssh');
-  }
-  
+export function listSSHKeys(username?: string, runCommand: CommandRunner = run): string[] {
+  const sshDir = path.join(username ? requireUser(username, runCommand).home : os.homedir(), '.ssh');
+
   if (!fs.existsSync(sshDir)) {
     return [];
   }
@@ -125,6 +80,8 @@ export function listSSHKeys(username?: string): string[] {
     const filePath = path.join(sshDir, file);
     if (!file.endsWith('.pub') && !file.includes('known_hosts') && !file.includes('config') && !file.includes('authorized_keys')) {
       try {
+        // a link in the user's directory could point root's read at any file
+        if (!fs.lstatSync(filePath).isFile()) continue;
         const content = fs.readFileSync(filePath, 'utf-8');
         if (content.includes('PRIVATE KEY')) {
           keys.push(filePath);

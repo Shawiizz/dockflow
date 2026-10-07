@@ -233,9 +233,18 @@ export function parsePasswdLine(line: string): HostUser | null {
   return { name: fields[0], uid, gid, home: fields[5] };
 }
 
-function lookupUser(username: string, runCommand: CommandRunner): HostUser | null {
+export function lookupUser(username: string, runCommand: CommandRunner = run): HostUser | null {
   const result = runCommand(['getent', 'passwd', username], { quiet: true, timeoutMs: COMMAND_TIMEOUT_MS });
   return result.ok ? parsePasswdLine(result.stdout.split('\n')[0] ?? '') : null;
+}
+
+/** The user as the system knows it (home, uid, gid), or an error naming it. */
+export function requireUser(username: string, runCommand: CommandRunner = run): HostUser {
+  const user = lookupUser(username, runCommand);
+  if (user === null) {
+    throw new CLIError(`User ${username} does not exist on this machine`, ErrorCode.VALIDATION_FAILED);
+  }
+  return user;
 }
 
 /** the base64 blob of an authorized_keys line (`<type> <blob> [comment]`) */
