@@ -15,15 +15,18 @@ import type { BackupDbType, BackupAccessoryConfig } from '../utils/config';
 import { ok, err, type Result } from '../types';
 import { BackupError, ErrorCode } from '../utils/errors';
 import { sshExec, sshExecChannel, shellQuote } from '../utils/ssh';
-import { formatBytes, printDebug } from '../utils/output';
+import { formatBytes, printDebug, printWarning } from '../utils/output';
 import { findSwarmContainer } from './orchestrator/swarm/swarm-utils';
 import { SwarmStackBackend } from './orchestrator/swarm/swarm-stack';
 import { DOCKFLOW_BACKUPS_DIR } from '../constants';
 import {
   DB_TYPES,
-  buildArchiveCheckCommand,
+  ARCHIVE_INTEGRITIES,
   buildDumpScript,
   buildRestoreScript,
+  buildVerifyScript,
+  integrityOf,
+  recordedIntegrity,
   parseContainerMounts,
   parseRestoreRefusal,
   stripRefusalMarker,
@@ -33,7 +36,7 @@ import {
   selectBackupsToPrune,
   findBackupMatch,
 } from './backup-strategies';
-import type { MountInfo } from './backup-strategies';
+import type { ArchiveIntegrity, MountInfo } from './backup-strategies';
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -45,6 +48,8 @@ export interface BackupBaseEntry {
   size: string;
   sizeBytes: number;
   compression: 'gzip' | 'none';
+  /** The check the backup got when it was taken; absent in metadata written before it existed */
+  integrity?: ArchiveIntegrity;
   /** Host of the node where this backup is stored */
   nodeHost: string;
   /** SSH port of the node where this backup is stored */
@@ -111,10 +116,16 @@ function parseMetadata(text: string): BackupMetadata | null {
     printDebug(`Skipping backup ${meta.id}: metadata has no node information`);
     return null;
   }
+  if (meta.integrity !== undefined && !ARCHIVE_INTEGRITIES.includes(meta.integrity)) delete meta.integrity;
   return meta as BackupMetadata;
 }
 
 // ─── Backup ───────────────────────────────────────────────────────────────
+
+export interface RestoreOptions {
+  /** restore a dump whose integrity marker is missing after checking it by other means */
+  forceUnverified: boolean;
+}
 
 export interface BackupOptions {
   /** the pause before forcing a service update after a restore stopped its server */
@@ -159,22 +170,23 @@ export class Backup {
   }
 
   /**
-   * Verify a backup archive: returns null when it is valid and non-empty,
-   * or a human-readable problem description otherwise. Remote pipelines exit
-   * with the last command's status, so a failed dump/tar can still produce a
-   * valid-but-empty archive, and a container dying mid-dump a truncated one.
+   * Verify a backup on the node holding it: null when sound, else the line naming the problem.
+   * Remote pipelines exit with the last command's status, so a failed dump or tar can still
+   * leave a valid-looking file; the check depends on what the backup can be checked with.
    */
   private async checkArchive(
     conn: SSHKeyConnection,
     filePath: string,
     compression: 'gzip' | 'none',
+    integrity: ArchiveIntegrity,
   ): Promise<string | null> {
-    const result = await sshExec(conn, buildArchiveCheckCommand(filePath, compression));
-    const verdict = result.stdout.trim();
-    if (verdict === 'OK') return null;
-    if (verdict === 'EMPTY') return 'the archive is empty';
-    if (verdict === 'CORRUPT') return 'the archive is corrupt, truncated or missing';
-    return `archive check failed (${verdict || `exit ${result.exitCode}`})`;
+    const result = await sshExec(conn, buildVerifyScript(filePath, compression, integrity));
+    const lines = result.stdout.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    if (result.exitCode === 0 && lines.at(-1) === 'OK') return null;
+    const reason = lines.find(line => line !== 'OK');
+    if (reason !== undefined) return reason;
+    const detail = result.stderr.trim().split(/\r?\n/)[0];
+    return `the verification exited with code ${result.exitCode}${detail ? ` (${detail})` : ''}`;
   }
 
   /**
@@ -213,7 +225,7 @@ export class Backup {
 
     let dumpScript: string;
     try {
-      dumpScript = buildDumpScript(config);
+      dumpScript = buildDumpScript(config, compression);
     } catch (e) {
       return err(e instanceof Error ? e : new Error(String(e)));
     }
@@ -229,7 +241,8 @@ export class Backup {
       return err(new Error(`Backup failed: ${result.stderr}`));
     }
 
-    const archiveIssue = await this.checkArchive(nodeConn, filePath, compression);
+    const integrity = integrityOf(config, compression);
+    const archiveIssue = await this.checkArchive(nodeConn, filePath, compression, integrity);
     if (archiveIssue) {
       await sshExec(nodeConn, `rm -f ${shellQuote(filePath)}`);
       return err(new Error(
@@ -252,6 +265,7 @@ export class Backup {
       size: formatBytes(sizeBytes),
       sizeBytes,
       compression,
+      integrity,
       durationMs,
       stackName: this.stackName,
       nodeHost: nodeConn.host,
@@ -262,6 +276,13 @@ export class Backup {
     if (writeError) {
       await sshExec(nodeConn, `rm -f ${shellQuote(filePath)}`);
       return err(writeError);
+    }
+
+    if (integrity === 'opaque') {
+      printWarning(
+        `Backup ${backupId} of ${service} cannot be verified before a restore: nothing in it tells a complete dump from a truncated one. ` +
+        'Set compression: gzip for this service to have it checked.',
+      );
     }
 
     return ok(metadata);
@@ -339,7 +360,7 @@ export class Backup {
 
       // Same pipeline pitfall as db dumps: a failed tar still exits through
       // gzip with status 0. A legitimate tar is never empty (trailer blocks).
-      const archiveIssue = await this.checkArchive(nodeConn, filePath, compression);
+      const archiveIssue = await this.checkArchive(nodeConn, filePath, compression, 'tar');
       if (archiveIssue) {
         return { ok: false as const, mount, error: `${archiveIssue}${result.stderr.trim() ? ` (${result.stderr.trim()})` : ''}` };
       }
@@ -377,6 +398,7 @@ export class Backup {
       size: formatBytes(totalSizeBytes),
       sizeBytes: totalSizeBytes,
       compression,
+      integrity: 'tar',
       durationMs,
       stackName: this.stackName,
       nodeHost: nodeConn.host,
@@ -439,7 +461,7 @@ export class Backup {
 
       // The restore commands wipe the target before extracting — make sure
       // the source archive is sound before destroying anything.
-      const archiveIssue = await this.checkArchive(nodeConn, filePath, compression);
+      const archiveIssue = await this.checkArchive(nodeConn, filePath, compression, 'tar');
       if (archiveIssue) {
         return err(new Error(
           `Backup file for ${mountType} ${entry.name} cannot be restored: ${archiveIssue}`,
@@ -534,6 +556,7 @@ export class Backup {
           size: meta.size,
           sizeBytes: meta.sizeBytes,
           compression: meta.compression,
+          integrity: meta.integrity,
           filePath: dataFile,
           nodeHost: meta.nodeHost,
           nodePort: meta.nodePort,
@@ -555,7 +578,8 @@ export class Backup {
     service: string,
     backupId: string,
     config: BackupAccessoryConfig,
-    compression?: 'gzip' | 'none'
+    compression?: 'gzip' | 'none',
+    options: RestoreOptions = { forceUnverified: false },
   ): Promise<Result<void, Error>> {
     const dbType = config.type;
 
@@ -590,10 +614,8 @@ export class Backup {
     // Refuse to stream an empty/corrupt backup into the database — for
     // postgres/mysql an empty stream would be a silent no-op "success",
     // and file-overwriting restores (redis) would destroy the live data.
-    const archiveIssue = await this.checkArchive(nodeConn, dataFile, backupCompression);
-    if (archiveIssue) {
-      return err(new Error(`Backup ${backupId} cannot be restored: ${archiveIssue}`));
-    }
+    const verdict = await this.verifyBeforeRestore(nodeConn, dataFile, backupCompression, recordedIntegrity(dbType, backupCompression, entry.integrity), backupId, options);
+    if (verdict) return err(verdict);
 
     let restoreScript: string;
     try {
@@ -644,6 +666,34 @@ export class Backup {
     }
 
     return ok(undefined);
+  }
+
+  /**
+   * The verification a restore runs before anything changes. A backup that carries an integrity
+   * marker and has lost it was truncated; --force-unverified restores it anyway, with a warning.
+   * A backup of a kind that cannot be checked is restored after the basic check, as it always was.
+   */
+  private async verifyBeforeRestore(
+    conn: SSHKeyConnection,
+    filePath: string,
+    compression: 'gzip' | 'none',
+    integrity: ArchiveIntegrity,
+    backupId: string,
+    options: RestoreOptions,
+  ): Promise<Error | null> {
+    let check = integrity;
+    if (integrity === 'trailer' && options.forceUnverified) {
+      check = 'opaque';
+      printWarning(`Restoring ${backupId} without checking its integrity marker`);
+    }
+    const issue = await this.checkArchive(conn, filePath, compression, check);
+    if (issue === null) return null;
+    return new BackupError(`Backup ${backupId} cannot be restored: ${issue}`, {
+      code: ErrorCode.RESTORE_FAILED,
+      suggestion: check === 'trailer'
+        ? 'The dump looks truncated. If you have checked it yourself, run the restore again with `--force-unverified`.'
+        : undefined,
+    });
   }
 
   /**

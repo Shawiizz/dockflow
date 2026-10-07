@@ -27,6 +27,16 @@ export interface MountInfo {
 
 export type DatabaseType = Exclude<BackupDbType, 'volume' | 'raw'>;
 
+/**
+ * The end-to-end check a backup can get on the node holding it:
+ * `tar` lists the whole archive, `gzip` reads the whole stream (CRC) and needs one byte of payload,
+ * `trailer` is a plain-text dump that ends with a marker line written only after the dump
+ * succeeded, `opaque` has nothing to check beyond its existence and a non-zero size.
+ */
+export type ArchiveIntegrity = 'tar' | 'gzip' | 'trailer' | 'opaque';
+
+export const ARCHIVE_INTEGRITIES: readonly ArchiveIntegrity[] = ['tar', 'gzip', 'trailer', 'opaque'];
+
 // ─── Types of backup ──────────────────────────────────────────────────────
 
 export const DB_TYPES: Record<Exclude<BackupDbType, 'volume'>, { fileExtension: string; requiresServiceRestart: boolean }> = {
@@ -37,6 +47,9 @@ export const DB_TYPES: Record<Exclude<BackupDbType, 'volume'>, { fileExtension: 
   redis: { fileExtension: 'rdb', requiresServiceRestart: true },
   raw: { fileExtension: 'bin', requiresServiceRestart: false },
 };
+
+/** Last line of a plain-text postgres/mysql dump taken with `compression: none`; an SQL comment on restore. */
+export const DUMP_TRAILER = '-- DOCKFLOW_DUMP_END';
 
 /** Written by the in-container restore script on stderr, read back by `services/backup.ts`. */
 export const RESTORE_REFUSAL_MARKER = 'DOCKFLOW_REFUSED: ';
@@ -144,8 +157,34 @@ function scanPgDumpOptions(dumpOptions: string | undefined): { formats: string[]
   return { formats: formats.map(unquote), dataOnly };
 }
 
+function isPlainPgDump(dumpOptions: string | undefined): boolean {
+  const last = scanPgDumpOptions(dumpOptions).formats.at(-1);
+  return last === undefined || last === 'p' || last === 'plain';
+}
+
+/** Which check a new backup of this configuration gets. */
+export function integrityOf(config: BackupAccessoryConfig, compression: 'gzip' | 'none'): ArchiveIntegrity {
+  if (config.type === 'volume') return 'tar';
+  if (compression === 'gzip') return 'gzip';
+  if (customCommand(config.dump_command) !== null) return 'opaque';
+  if (config.type === 'mysql') return 'trailer';
+  if (config.type === 'postgres' && isPlainPgDump(config.dump_options)) return 'trailer';
+  return 'opaque';
+}
+
+/** The check of a backup whose metadata does not record one: all it ever got was its compression. */
+export function recordedIntegrity(
+  dbType: BackupDbType,
+  compression: 'gzip' | 'none',
+  recorded?: ArchiveIntegrity,
+): ArchiveIntegrity {
+  if (recorded !== undefined) return recorded;
+  if (dbType === 'volume') return 'tar';
+  return compression === 'gzip' ? 'gzip' : 'opaque';
+}
+
 /** The dump script run by `sh -c` in the service container; stdout is the backup. */
-export function buildDumpScript(config: BackupAccessoryConfig): string {
+export function buildDumpScript(config: BackupAccessoryConfig, compression: 'gzip' | 'none'): string {
   const type = config.type;
   if (type === 'volume') throw new ConfigError('Backup type volume has no dump script');
   if (type === 'raw') return rawCommand(config, 'dump_command');
@@ -153,17 +192,21 @@ export function buildDumpScript(config: BackupAccessoryConfig): string {
   if (custom !== null) return credentialPrelude(type) + custom;
 
   const opts = options(config.dump_options);
+  // the trailer follows a dump that succeeded, so the dump cannot be exec'd
+  const trailer = integrityOf(config, compression) === 'trailer';
+  const exec = trailer ? '' : 'exec ';
+  const end = trailer ? ` && printf '%s\\n' '${DUMP_TRAILER}'` : '';
   switch (type) {
     case 'postgres': {
       // --clean: a restore replaces what the dump holds instead of adding its rows to the live ones;
       // pg_dump refuses it together with --data-only, which has no objects to drop anyway
       const clean = scanPgDumpOptions(config.dump_options).dataOnly ? '' : ' --clean --if-exists';
-      return `${PG_PRELUDE}exec pg_dump ${PG_USER}${clean}${opts} ${PG_DATABASE}`;
+      return `${PG_PRELUDE}${exec}pg_dump ${PG_USER}${clean}${opts} ${PG_DATABASE}${end}`;
     }
     case 'mysql':
       return (
         `${MYSQL_PRELUDE}if [ -n "\${MYSQL_DATABASE:-}" ]; then set -- "$MYSQL_DATABASE"; else set -- --all-databases; fi; ` +
-        `exec mysqldump -u"$DF_USER"${opts} "$@"`
+        `${exec}mysqldump -u"$DF_USER"${opts} "$@"${end}`
       );
     case 'mongodb':
       return `${MONGO_ARGS}exec mongodump "$@"${opts}`;
@@ -240,32 +283,48 @@ export function sanitizePathName(mountPath: string): string {
 }
 
 /**
- * Command that prints a single verdict about a backup archive:
- *   OK       — readable, integrity-checked (gzip CRC) and non-empty
- *   EMPTY    — valid but holds zero bytes of content
- *   CORRUPT  — missing, unreadable, or truncated (gzip CRC mismatch)
- *
- * Needed because remote dump/tar pipelines exit with the LAST command's
- * status (gzip/cat), so an upstream failure silently yields a valid-but-empty
- * archive — and a container dying mid-dump yields a truncated one. Every
- * backup is checked after writing and every restore source before streaming.
- * For uncompressed archives there is no integrity data, so only existence
- * and non-emptiness can be verified.
+ * Checks an archive on the node holding it, before anything is destroyed. Prints `OK` and exits 0
+ * when sound; otherwise prints one line naming the problem and exits 1. POSIX sh without
+ * pipefail, so exit statuses inside pipelines are captured through a temporary file. `opaque`
+ * runs only the existence and non-empty check.
  */
-export function buildArchiveCheckCommand(filePath: string, compression: 'gzip' | 'none'): string {
-  const f = shellQuote(filePath);
-  if (compression === 'gzip') {
-    return (
-      `if ! gunzip -t ${f} 2>/dev/null; then echo CORRUPT; ` +
-      `elif [ "$(gunzip -c ${f} 2>/dev/null | head -c 1 | wc -c)" -eq 0 ]; then echo EMPTY; ` +
-      `else echo OK; fi`
-    );
+export function buildVerifyScript(remotePath: string, compression: 'gzip' | 'none', integrity: ArchiveIntegrity): string {
+  const lines = [`f=${shellQuote(remotePath)}`, `[ -s "$f" ] || { echo 'the file is missing or empty'; exit 1; }`];
+  switch (integrity) {
+    case 'tar':
+      lines.push(
+        `t=$(mktemp) || { echo 'cannot create a temporary file'; exit 1; }`,
+        compression === 'gzip'
+          ? 'n=$({ { gunzip -c "$f"; echo "$?" > "$t.z"; } | tar tf -; echo "$?" > "$t"; } | wc -l)'
+          : 'n=$({ tar tf - < "$f"; echo "$?" > "$t"; } | wc -l)',
+        'z=$(cat "$t.z" 2>/dev/null); r=$(cat "$t" 2>/dev/null); rm -f "$t" "$t.z"',
+        // tar first: a tar failure also kills gunzip with SIGPIPE
+        `[ "\${r:-255}" -eq 0 ] || { echo "tar cannot read the archive (exit \${r:-255})"; exit 1; }`,
+        `[ "\${z:-0}" -eq 0 ] || { echo 'the gzip stream is corrupt or truncated'; exit 1; }`,
+        `[ "$n" -ge 1 ] || { echo 'the archive has no entries'; exit 1; }`,
+      );
+      // an uncompressed archive cut exactly at an entry boundary lists cleanly; the two zero
+      // end-of-archive blocks GNU and busybox tar both write are what is missing then
+      if (compression === 'none') {
+        lines.push(
+          `[ "$(tail -c 1024 "$f" | tr -d '\\000' | wc -c)" -eq 0 ] || { echo 'the archive has no end-of-archive marker (truncated)'; exit 1; }`,
+        );
+      }
+      break;
+    case 'gzip':
+      lines.push(
+        `gunzip -t "$f" || { echo 'the gzip stream is corrupt or truncated'; exit 1; }`,
+        `[ "$(gunzip -c "$f" 2>/dev/null | head -c 1 | wc -c)" -eq 1 ] || { echo 'the backup is empty'; exit 1; }`,
+      );
+      break;
+    case 'trailer':
+      lines.push(`[ "$(tail -n 1 "$f")" = '${DUMP_TRAILER}' ] || { echo 'the dump has no integrity marker'; exit 1; }`);
+      break;
+    case 'opaque':
+      break;
   }
-  return (
-    `if [ ! -f ${f} ]; then echo CORRUPT; ` +
-    `elif [ "$(head -c 1 ${f} 2>/dev/null | wc -c)" -eq 0 ]; then echo EMPTY; ` +
-    `else echo OK; fi`
-  );
+  lines.push('echo OK');
+  return lines.join('\n');
 }
 
 /** Strip the stack name prefix from a Docker volume name for cleaner filenames */

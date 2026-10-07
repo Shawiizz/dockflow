@@ -17,12 +17,13 @@ export function registerBackupRestoreCommand(program: Command): void {
     .command('restore <env> [service]')
     .description('Restore a service or accessory database from a backup')
     .option('--from <id>', 'Backup ID or date prefix (default: latest)')
+    .option('--force-unverified', 'Restore a dump whose integrity marker is missing, after checking it yourself')
     .option('-y, --yes', 'Skip confirmation prompt')
     .option('-s, --server <name>', 'Target manager (defaults to the first manager)')
     .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string | undefined,
-      options: { from?: string; yes?: boolean; server?: string }
+      options: { from?: string; yes?: boolean; server?: string; forceUnverified?: boolean }
     ) => {
       if (!service) {
         const available = getBackupServiceNames();
@@ -76,7 +77,9 @@ export function registerBackupRestoreCommand(program: Command): void {
       printBlank();
       const spinner = createSpinner();
       spinner.start('Restoring backup...');
-      const result = await backupService.restore(service, backup.id, backupConfig, backup.compression);
+      const result = await backupService.restore(service, backup.id, backupConfig, backup.compression, {
+        forceUnverified: options.forceUnverified === true,
+      });
 
       if (!result.success) {
         spinner.fail('Restore failed');

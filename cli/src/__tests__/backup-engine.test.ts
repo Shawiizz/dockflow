@@ -384,3 +384,145 @@ describe('Backup.restore of redis', () => {
     expect(pauses).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// verification
+// ---------------------------------------------------------------------------
+
+describe('Backup.backup verifies what it wrote', () => {
+  it('a gzip dump is checked with the gzip class and recorded as such', async () => {
+    containerOnWorker();
+    await backupEngine().backup('db', POSTGRES, 'gzip');
+    const check = nodes.calls.find((call) => call.command.endsWith('\necho OK'));
+    expect(check?.host).toBe('worker');
+    expect(check?.command).toContain('gunzip -t "$f"');
+    expect(JSON.parse(nodes.calls.find((call) => call.via === 'channel')?.input ?? '').integrity).toBe('gzip');
+  });
+
+  it('a plain postgres dump carries the trailer, is checked by it and recorded as such', async () => {
+    containerOnWorker();
+    await backupEngine().backup('db', POSTGRES, 'none');
+    expect(nodes.calls.find((call) => call.command.includes('docker exec'))?.command).toContain('DOCKFLOW_DUMP_END');
+    expect(nodes.calls.find((call) => call.command.endsWith('\necho OK'))?.command).toContain("tail -n 1");
+    expect(JSON.parse(nodes.calls.find((call) => call.via === 'channel')?.input ?? '').integrity).toBe('trailer');
+  });
+
+  it('a dump that fails its check is removed and reported, and no metadata is written', async () => {
+    containerOnWorker();
+    nodes.on('echo OK', { exitCode: 1, stdout: 'the dump has no integrity marker\n' });
+    const error = failure(await backupEngine().backup('db', POSTGRES, 'none'));
+    expect(error.message).toBe('Backup verification failed: the dump has no integrity marker');
+    expect(nodes.commands('worker').some((command) => command.startsWith('rm -f ') && command.includes('.sql'))).toBe(true);
+    expect(nodes.calls.some((call) => call.via === 'channel')).toBe(false);
+  });
+
+  it('a verification that exits without a line to show still says what happened', async () => {
+    containerOnWorker();
+    nodes.on('echo OK', { exitCode: 255, stderr: 'mktemp: failed to create file\n' });
+    expect(failure(await backupEngine().backup('db', POSTGRES, 'gzip')).message).toBe(
+      'Backup verification failed: the verification exited with code 255 (mktemp: failed to create file)',
+    );
+  });
+
+  it('a backup nothing can check is created with a warning and recorded as opaque', async () => {
+    containerOnWorker();
+    const result = await backupEngine().backup('db', { type: 'redis' }, 'none');
+    expect(result.success).toBe(true);
+    expect(printed.filter((line) => line.level === 'warning').map((line) => line.message)).toEqual([
+      expect.stringContaining('cannot be verified before a restore'),
+    ]);
+    expect(JSON.parse(nodes.calls.find((call) => call.via === 'channel')?.input ?? '').integrity).toBe('opaque');
+  });
+
+  it('volume archives are listed end to end', async () => {
+    nodes.on('docker ps', { stdout: 'c1\n' }, 'worker');
+    nodes.on('{{json .Mounts}}', {
+      stdout: JSON.stringify([{ Type: 'volume', Name: `${STACK}_data`, Source: '/x', Destination: '/data' }]),
+    });
+    await backupEngine().backup('db', VOLUME, 'gzip');
+    expect(nodes.calls.find((call) => call.command.endsWith('\necho OK'))?.command).toContain('tar tf -');
+    expect(JSON.parse(nodes.calls.find((call) => call.via === 'channel')?.input ?? '').integrity).toBe('tar');
+  });
+});
+
+describe('Backup.restore verifies before anything is destroyed', () => {
+  const dockerExec = (command: string): boolean => command.includes('docker exec -i');
+  const checks = (): NodeCall[] => nodes.calls.filter((call) => call.command.endsWith('\necho OK'));
+
+  it('the check runs on the node holding the file, before the container is touched', async () => {
+    containerOnWorker();
+    backupOnWorker({ integrity: 'gzip' });
+    await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES);
+    const order = nodes.calls.map((call) => (call.command.endsWith('\necho OK') ? 'check' : dockerExec(call.command) ? 'restore' : ''));
+    expect(order.indexOf('check')).toBeGreaterThan(-1);
+    expect(order.indexOf('check')).toBeLessThan(order.indexOf('restore'));
+    expect(checks()[0].host).toBe('worker');
+    expect(checks()[0].command).toContain(`f='${DIR}/${POSTGRES_BACKUP}.sql.gz'`);
+  });
+
+  it('a failing check means the container is never touched', async () => {
+    containerOnWorker();
+    backupOnWorker({ integrity: 'gzip' });
+    nodes.on('echo OK', { exitCode: 1, stdout: 'the gzip stream is corrupt or truncated\n' });
+    const error = failure(await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES));
+    expect(error.message).toBe(`Backup ${POSTGRES_BACKUP} cannot be restored: the gzip stream is corrupt or truncated`);
+    expect(nodes.commands().some(dockerExec)).toBe(false);
+  });
+
+  it('a dump that lost its marker is refused with the way out; --force-unverified checks the basics and warns', async () => {
+    containerOnWorker();
+    backupOnWorker({ integrity: 'trailer', compression: 'none' });
+    nodes.on('tail -n 1', { exitCode: 1, stdout: 'the dump has no integrity marker\n' });
+    const error = failure(await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES));
+    expect(error.message).toBe(`Backup ${POSTGRES_BACKUP} cannot be restored: the dump has no integrity marker`);
+    expect((error as BackupError).suggestion).toContain('--force-unverified');
+    expect(nodes.commands().some(dockerExec)).toBe(false);
+
+    nodes.calls.length = 0;
+    const forced = await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES, undefined, { forceUnverified: true });
+    expect(forced.success).toBe(true);
+    expect(checks()[0].command).not.toContain('tail -n 1');
+    expect(nodes.commands().some(dockerExec)).toBe(true);
+    expect(printed.filter((line) => line.level === 'warning').map((line) => line.message)).toEqual([
+      `Restoring ${POSTGRES_BACKUP} without checking its integrity marker`,
+    ]);
+  });
+
+  it('--force-unverified never relaxes the gzip check', async () => {
+    containerOnWorker();
+    backupOnWorker({ integrity: 'gzip' });
+    nodes.on('echo OK', { exitCode: 1, stdout: 'the gzip stream is corrupt or truncated\n' });
+    const error = failure(await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES, undefined, { forceUnverified: true }));
+    expect(error.message).toContain('corrupt or truncated');
+    expect(nodes.commands().some(dockerExec)).toBe(false);
+  });
+
+  it('a backup taken before integrity was recorded is restored as it always was: gzip is checked, the rest is not refused', async () => {
+    containerOnWorker();
+    backupOnWorker({ compression: 'gzip' });
+    await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES);
+    expect(checks()[0].command).toContain('gunzip -t "$f"');
+
+    nodes.calls.length = 0;
+    backupOnWorker({ compression: 'none' });
+    const plain = await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES);
+    expect(plain.success).toBe(true);
+    expect(checks()[0].command).toBe(`f='${DIR}/${POSTGRES_BACKUP}.sql'\n[ -s "$f" ] || { echo 'the file is missing or empty'; exit 1; }\necho OK`);
+    expect(printed.filter((line) => line.level === 'warning')).toEqual([]);
+  });
+
+  it('volume restore verifies every archive before any volume is written', async () => {
+    const volumes = [
+      { name: 'data', sizeBytes: 1, mountType: 'volume' as const, sourcePath: `${STACK}_data` },
+      { name: 'uploads', sizeBytes: 1, mountType: 'bind' as const, sourcePath: '/srv/uploads' },
+    ];
+    const meta = metadata({ id: POSTGRES_BACKUP, dbType: 'volume', volumes });
+    nodes.on('*.meta.json', listing(meta));
+    nodes.on(`cat '${DIR}/${POSTGRES_BACKUP}.meta.json'`, { stdout: JSON.stringify(meta) });
+    nodes.on(`${POSTGRES_BACKUP}.uploads.tar.gz`, { exitCode: 1, stdout: 'the gzip stream is corrupt or truncated\n' });
+    const error = failure(await backupEngine().restore('db', POSTGRES_BACKUP, VOLUME));
+    expect(error.message).toContain('uploads');
+    expect(error.message).toContain('corrupt or truncated');
+    expect(nodes.commands().some((command) => command.includes('alpine') || command.includes('tar xf'))).toBe(false);
+  });
+});
