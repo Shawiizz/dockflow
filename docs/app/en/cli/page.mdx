@@ -415,7 +415,7 @@ List running containers for the stack.
 dockflow status [env]
 ```
 
-Show deployment status. Without an argument, summarises every environment; with one, focuses on that environment.
+Show deployment status. Without an argument, summarises every environment, an environment that cannot be read showing as `unavailable`; with one, focuses on that environment and fails with its error and exit code when it cannot be read.
 
 ```bash
 dockflow status               # All environments
