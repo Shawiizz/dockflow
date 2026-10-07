@@ -8,16 +8,29 @@
 
 import type { SSHKeyConnection } from '../../../types';
 import { ok, err, type Result } from '../../../types/result';
-import { sshExec, sshExecStream, executeInteractiveSSH, shellQuote } from '../../../utils/ssh';
+import { sshExec, sshExecStream, sshExecChannelUnbuffered, executeInteractiveSSH, shellQuote, type SSHUnbufferedChannelHandle } from '../../../utils/ssh';
+import { CLIError, ConnectionError, ErrorCode } from '../../../utils/errors';
+import type { ExecRequest } from '../../../utils/exec-plan';
 import { printWarning } from '../../../utils/output';
-import type {
-  ContainerBackend,
-  ExecOptions,
-  ExecResult,
-  LogsOptions,
-} from '../interfaces';
-import { findSwarmContainer, findContainerForTask, listSwarmTasks } from './swarm-utils';
+import type { ContainerBackend, LogsOptions } from '../interfaces';
+import { findSwarmContainer, findContainerForTask, listSwarmTasks, qualifyServiceName } from './swarm-utils';
 import { dockerSinceValue, LOCAL_OFFSET, parseSince } from '../../../utils/log-options';
+
+/** `docker exec [-it|-i] [-w <dir>] [-u <user>] [-e KEY=VALUE]... <id> <argv...>`, every element quoted. */
+export function dockerExecCommand(
+  containerId: string,
+  argv: readonly string[],
+  options: Partial<Pick<ExecRequest, 'tty' | 'stdin' | 'workdir' | 'user' | 'env'>> = {},
+): string {
+  const parts = ['docker exec'];
+  if (options.tty) parts.push('-it');
+  else if (options.stdin) parts.push('-i');
+  if (options.workdir !== undefined) parts.push('-w', shellQuote(options.workdir));
+  if (options.user !== undefined) parts.push('-u', shellQuote(options.user));
+  for (const [key, value] of Object.entries(options.env ?? {})) parts.push('-e', shellQuote(`${key}=${value}`));
+  parts.push(shellQuote(containerId), ...argv.map(shellQuote));
+  return parts.join(' ');
+}
 
 export class SwarmContainerBackend implements ContainerBackend {
   constructor(
@@ -25,104 +38,56 @@ export class SwarmContainerBackend implements ContainerBackend {
     private readonly allConnections: SSHKeyConnection[],
   ) {}
 
-  private findContainer(stackName: string, serviceName: string) {
-    return findSwarmContainer(stackName, serviceName, this.conn, this.allConnections);
+  /** The chosen task's container, else a running container of the service, on whichever node runs it. */
+  private async locate(stackName: string, serviceName: string, taskId?: string): Promise<{ containerId: string; connection: SSHKeyConnection }> {
+    const found = taskId
+      ? await findContainerForTask(taskId, [this.conn, ...this.allConnections])
+      : await findSwarmContainer(stackName, serviceName, this.conn, this.allConnections);
+    if (found) return found;
+    throw new CLIError(
+      taskId ? `Task ${taskId} of ${serviceName} has no container on any reachable node` : `Service ${serviceName} has no running container`,
+      ErrorCode.CONTAINER_NOT_FOUND,
+      'Check its tasks with `dockflow ps <env>`.',
+    );
   }
 
-  private buildExecCommand(
-    containerId: string,
-    command: string | string[],
-    options: ExecOptions = {},
-  ): string {
-    const parts = ['docker exec'];
+  async run(stackName: string, serviceName: string, request: ExecRequest, taskId?: string): Promise<number> {
+    const found = await this.locate(stackName, serviceName, taskId);
+    const command = dockerExecCommand(found.containerId, request.argv, request);
+    if (request.tty) return executeInteractiveSSH(found.connection, command);
 
-    if (options.interactive) parts.push('-it');
-    if (options.workdir) parts.push(`-w ${options.workdir}`);
-    if (options.user) parts.push(`-u ${options.user}`);
-
-    if (options.env) {
-      for (const [key, value] of Object.entries(options.env)) {
-        parts.push(`-e ${key}="${value}"`);
+    let channel: SSHUnbufferedChannelHandle;
+    try {
+      channel = await sshExecChannelUnbuffered(found.connection, command);
+    } catch (error) {
+      throw new ConnectionError(`Could not reach the node running ${serviceName}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const { stream } = channel;
+    stream.pipe(process.stdout, { end: false });
+    stream.stderr.pipe(process.stderr, { end: false });
+    if (request.stdin) process.stdin.pipe(stream);
+    else stream.end();
+    try {
+      const { exitCode } = await channel.done;
+      return exitCode;
+    } finally {
+      if (request.stdin) {
+        process.stdin.unpipe(stream);
+        // an unpiped stdin still holds the event loop open
+        process.stdin.pause();
       }
     }
-
-    parts.push(containerId);
-
-    if (Array.isArray(command)) {
-      parts.push(...command);
-    } else {
-      parts.push(command);
-    }
-
-    return parts.join(' ');
   }
 
-  async exec(
-    stackName: string,
-    serviceName: string,
-    command: string | string[],
-    options: ExecOptions = {},
-  ): Promise<Result<ExecResult, Error>> {
-    const found = await this.findContainer(stackName, serviceName);
-    if (!found) return err(new Error(`No running container found for service ${serviceName}`));
-
-    try {
-      const cmd = this.buildExecCommand(found.containerId, command, options);
-      const result = await sshExec(found.connection, cmd);
-      return ok({ exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr });
-    } catch (error) {
-      return err(error instanceof Error ? error : new Error(String(error)));
+  async shell(stackName: string, serviceName: string, shell: 'auto' | '/bin/sh' | '/bin/bash', taskId?: string): Promise<number> {
+    const found = await this.locate(stackName, serviceName, taskId);
+    const id = shellQuote(found.containerId);
+    let path = shell;
+    if (path === 'auto') {
+      const probe = await sshExec(found.connection, `docker exec ${id} which bash 2>/dev/null || echo not_found`);
+      path = probe.stdout.trim() === 'not_found' ? '/bin/sh' : '/bin/bash';
     }
-  }
-
-  async execStream(
-    stackName: string,
-    serviceName: string,
-    command: string | string[],
-    options: ExecOptions = {},
-    callbacks?: { onStdout?: (data: string) => void; onStderr?: (data: string) => void },
-  ): Promise<Result<number, Error>> {
-    const found = await this.findContainer(stackName, serviceName);
-    if (!found) return err(new Error(`No running container found for service ${serviceName}`));
-
-    try {
-      const cmd = this.buildExecCommand(found.containerId, command, { ...options, interactive: false });
-      const result = await sshExecStream(found.connection, cmd, callbacks);
-      return ok(result.exitCode);
-    } catch (error) {
-      return err(error instanceof Error ? error : new Error(String(error)));
-    }
-  }
-
-  async shell(
-    stackName: string,
-    serviceName: string,
-    shell: string = '/bin/sh',
-  ): Promise<Result<void, Error>> {
-    const found = await this.findContainer(stackName, serviceName);
-    if (!found) return err(new Error(`No running container found for service ${serviceName}`));
-
-    try {
-      await executeInteractiveSSH(found.connection, `docker exec -it ${found.containerId} ${shell}`);
-      return ok(undefined);
-    } catch (error) {
-      return err(error instanceof Error ? error : new Error(String(error)));
-    }
-  }
-
-  async bash(stackName: string, serviceName: string): Promise<Result<void, Error>> {
-    const found = await this.findContainer(stackName, serviceName);
-    if (!found) return err(new Error(`No running container found for service ${serviceName}`));
-
-    const check = await sshExec(found.connection, `docker exec ${found.containerId} which bash 2>/dev/null || echo "not_found"`);
-    const shellPath = check.stdout.trim() === 'not_found' ? '/bin/sh' : '/bin/bash';
-
-    try {
-      await executeInteractiveSSH(found.connection, `docker exec -it ${found.containerId} ${shellPath}`);
-      return ok(undefined);
-    } catch (error) {
-      return err(error instanceof Error ? error : new Error(String(error)));
-    }
+    return executeInteractiveSSH(found.connection, `docker exec -it ${id} ${shellQuote(path)}`);
   }
 
   async copyTo(
@@ -131,9 +96,7 @@ export class SwarmContainerBackend implements ContainerBackend {
     localPath: string,
     containerPath: string,
   ): Promise<Result<void, Error>> {
-    const found = await this.findContainer(stackName, serviceName);
-    if (!found) return err(new Error(`No running container found for service ${serviceName}`));
-
+    const found = await this.locate(stackName, serviceName);
     const result = await sshExec(found.connection, `docker cp ${shellQuote(localPath)} ${found.containerId}:${shellQuote(containerPath)}`);
     if (result.exitCode !== 0) return err(new Error(`Failed to copy file: ${result.stderr}`));
     return ok(undefined);
@@ -145,9 +108,7 @@ export class SwarmContainerBackend implements ContainerBackend {
     containerPath: string,
     localPath: string,
   ): Promise<Result<void, Error>> {
-    const found = await this.findContainer(stackName, serviceName);
-    if (!found) return err(new Error(`No running container found for service ${serviceName}`));
-
+    const found = await this.locate(stackName, serviceName);
     const result = await sshExec(found.connection, `docker cp ${found.containerId}:${shellQuote(containerPath)} ${shellQuote(localPath)}`);
     if (result.exitCode !== 0) return err(new Error(`Failed to copy file: ${result.stderr}`));
     return ok(undefined);
@@ -173,7 +134,7 @@ export class SwarmContainerBackend implements ContainerBackend {
     }
 
     if (options.allTasks) {
-      const fullName = serviceName.includes('_') ? serviceName : `${stackName}_${serviceName}`;
+      const fullName = qualifyServiceName(stackName, serviceName);
       await this.runLogStream(this.conn, 'docker service logs', fullName, options, onData, onError);
       return;
     }

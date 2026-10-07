@@ -9,6 +9,7 @@ import type { Result } from '../../types/result';
 import type { DeployError } from '../../utils/errors';
 import type { ParsedCompose } from '../compose';
 import type { ProxyConfig } from '../../utils/config';
+import type { ExecRequest } from '../../utils/exec-plan';
 
 // ---------------------------------------------------------------------------
 // Stack-level types
@@ -144,19 +145,6 @@ export interface StackBackend {
 // ContainerBackend — exec + logs
 // ---------------------------------------------------------------------------
 
-export interface ExecOptions {
-  interactive?: boolean;
-  workdir?: string;
-  env?: Record<string, string>;
-  user?: string;
-}
-
-export interface ExecResult {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-}
-
 export interface LogsOptions {
   follow: boolean;
   tail?: number | 'all';
@@ -170,28 +158,11 @@ export interface LogsOptions {
 }
 
 export interface ContainerBackend {
-  exec(
-    stackName: string,
-    serviceName: string,
-    command: string | string[],
-    options?: ExecOptions,
-  ): Promise<Result<ExecResult, Error>>;
+  /** Runs `request` in a container of the service (of `taskId` when given); resolves to its exit code. */
+  run(stackName: string, serviceName: string, request: ExecRequest, taskId?: string): Promise<number>;
 
-  execStream(
-    stackName: string,
-    serviceName: string,
-    command: string | string[],
-    options?: ExecOptions,
-    callbacks?: { onStdout?: (data: string) => void; onStderr?: (data: string) => void },
-  ): Promise<Result<number, Error>>;
-
-  shell(
-    stackName: string,
-    serviceName: string,
-    shell?: string,
-  ): Promise<Result<void, Error>>;
-
-  bash(stackName: string, serviceName: string): Promise<Result<void, Error>>;
+  /** An interactive shell; `auto` is bash when the container has it, else sh. */
+  shell(stackName: string, serviceName: string, shell: 'auto' | '/bin/sh' | '/bin/bash', taskId?: string): Promise<number>;
 
   copyTo(
     stackName: string,

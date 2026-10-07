@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 import {
   CLIError,
   ConfigError,
@@ -8,7 +8,9 @@ import {
   BackupError,
   DockerError,
   ErrorCode,
+  ExecExitError,
   formatError,
+  handleError,
 } from '../utils/errors';
 
 describe('CLIError hierarchy', () => {
@@ -68,5 +70,22 @@ describe('formatError', () => {
     const cause = new Error('root cause');
     const err = new CLIError('wrapper', ErrorCode.UNKNOWN, undefined, cause);
     expect(formatError(err, true)).toContain('root cause');
+  });
+});
+
+describe('ExecExitError', () => {
+  it("passes a container command's exit code on without an error banner", () => {
+    const exit = spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    const stderr = spyOn(process.stderr, 'write');
+    try {
+      expect(() => handleError(new ExecExitError(62))).toThrow('exit');
+      expect(exit).toHaveBeenCalledWith(62);
+      expect(stderr).not.toHaveBeenCalled();
+    } finally {
+      exit.mockRestore();
+      stderr.mockRestore();
+    }
   });
 });

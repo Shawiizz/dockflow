@@ -25,8 +25,9 @@ function dedupeConnections(conns: SSHKeyConnection[]): SSHKeyConnection[] {
   });
 }
 
-function qualifyServiceName(stackName: string, serviceName: string): string {
-  return serviceName.includes('_') ? serviceName : `${stackName}_${serviceName}`;
+/** `<stack>_<service>`; a compose name may hold `_` itself (`web_app`), so only the stack prefix says it is qualified. */
+export function qualifyServiceName(stackName: string, serviceName: string): string {
+  return serviceName.startsWith(`${stackName}_`) ? serviceName : `${stackName}_${serviceName}`;
 }
 
 /**

@@ -676,6 +676,40 @@ function openChannelOnClient(
   });
 }
 
+export interface SSHUnbufferedChannelHandle {
+  /** Writable stdin, readable stdout and `stream.stderr`: the caller must consume both. */
+  stream: ClientChannel;
+  /** Settles on the exit status, possibly before stdout has been read to the end. */
+  done: Promise<{ exitCode: number }>;
+}
+
+/** `sshExecChannel` without collecting the output, for streams too long to hold in memory. */
+export async function sshExecChannelUnbuffered(
+  conn: ConnectionInfo,
+  command: string,
+): Promise<SSHUnbufferedChannelHandle> {
+  const client = await getPooledClient(conn);
+  return new Promise<SSHUnbufferedChannelHandle>((resolve, reject) => {
+    client.exec(command, (err, stream) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      const done = new Promise<{ exitCode: number }>((resolveDone) => {
+        let resolved = false;
+        const finish = (code?: number | null, signal?: string) => {
+          if (resolved) return;
+          resolved = true;
+          resolveDone({ exitCode: channelResult('', '', code, signal).exitCode });
+        };
+        stream.on('exit', finish);
+        stream.on('close', finish);
+      });
+      resolve({ stream, done });
+    });
+  });
+}
+
 // ─── Pool management ──────────────────────────────────────────
 
 /**

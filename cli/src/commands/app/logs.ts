@@ -3,12 +3,10 @@
  */
 
 import type { Command } from 'commander';
-import type { SSHKeyConnection } from '../../types';
 import { printInfo, printSection, printDebug, printBlank, printRaw } from '../../utils/output';
-import { selectPrompt } from '../../utils/prompts';
 import { resolveEnv, getAllNodeConnections } from '../../utils/validation';
 import { createContainerBackend, createStackBackend } from '../../services/orchestrator/factory';
-import { listSwarmTasks } from '../../services/orchestrator/swarm/swarm-utils';
+import { pickService, pickSwarmTask } from './pick';
 import { DockerError, withServicesRequired } from '../../utils/errors';
 import { parseTailOption } from '../../utils/log-options';
 
@@ -106,28 +104,4 @@ export function registerLogsCommand(program: Command): void {
         throw new DockerError(`Failed to fetch logs: ${error}`);
       }
     }));
-}
-
-async function pickService(connection: SSHKeyConnection, stackName: string): Promise<string> {
-  const services = await createStackBackend(connection).getServices(stackName);
-  if (services.length === 0) throw new DockerError(`No services found for stack ${stackName}`);
-  if (services.length === 1) return services[0].name;
-
-  return selectPrompt({
-    message: 'Pick a service:',
-    options: services.map(s => ({ value: s.name, label: s.name })),
-  });
-}
-
-async function pickSwarmTask(stackName: string, service: string, connection: SSHKeyConnection): Promise<string> {
-  const tasks = await listSwarmTasks(stackName, service, connection);
-  if (tasks.length === 0) throw new DockerError(`No tasks found for service ${service}`);
-
-  const options = tasks.map(t => ({
-    value: t.id,
-    label: `replica ${t.slot} on ${t.node}`,
-    hint: t.error ? `${t.currentState} — ${t.error}` : t.currentState,
-  }));
-
-  return selectPrompt({ message: 'Pick a task to follow:', options });
 }

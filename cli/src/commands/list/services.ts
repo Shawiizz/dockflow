@@ -7,6 +7,7 @@ import { sshExec } from '../../utils/ssh';
 import { printSection, printNote, printJSON, printBlank, printDim, printRaw, colors } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
+import { qualifyServiceName } from '../../services/orchestrator/swarm/swarm-utils';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
 interface TaskInfo {
@@ -85,7 +86,7 @@ export function registerListServicesCommand(parent: Command): void {
 
           // Show tasks/containers if requested
           if (options.tasks) {
-            const fullName = svc.name.includes('_') ? svc.name : `${stackName}_${svc.name}`;
+            const fullName = qualifyServiceName(stackName, svc.name);
             const tasksCmd = `docker service ps ${fullName} --format '{{.ID}}|{{.Name}}|{{.Node}}|{{.CurrentState}}|{{.Error}}' --no-trunc 2>/dev/null | head -10`;
             const tasksResult = await sshExec(connection, tasksCmd);
             const taskLines = tasksResult.stdout.trim().split('\n').filter(Boolean);

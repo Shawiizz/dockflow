@@ -161,7 +161,19 @@ export function formatError(error: CLIError, isUnexpected = false): string {
  * Handle error and exit process
  * This is the ONLY place that should call process.exit for errors
  */
+/**
+ * A command run inside a container exited non-zero. Not a CLIError: error codes double as exit
+ * codes, so a container's 62 would read as INVALID_ARGUMENT. Its code is passed on silently.
+ */
+export class ExecExitError extends Error {
+  constructor(public readonly exitCode: number) {
+    super(`Command exited with code ${exitCode}`);
+    this.name = 'ExecExitError';
+  }
+}
+
 export function handleError(error: unknown): never {
+  if (error instanceof ExecExitError) process.exit(error.exitCode);
   const isUnexpected = !(error instanceof CLIError);
   const cliError = CLIError.from(error);
 

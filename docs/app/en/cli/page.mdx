@@ -300,18 +300,24 @@ The `--pick` picker lists every task (running + history) with its current state,
 dockflow exec <env> <service> [command...]
 ```
 
-Execute a command inside a running container (default: bash).
+Execute a command inside a running container, or open an interactive shell when no command is given (bash when the container has it, else sh).
 
 | Option | Description |
 |--------|-------------|
-| `-s, --server <name>` | Target server |
+| `-s, --server <name>` | Target manager |
 | `-u, --user <user>` | Run as specified user |
-| `-w, --workdir <dir>` | Working directory inside container |
+| `-w, --workdir <dir>` | Working directory inside the container (absolute path) |
+| `-e, --env <KEY=VALUE>` | Environment variable for the command, repeatable |
+| `--pick` | Choose the task to run in |
+| `-T, --no-tty` | Never allocate a TTY |
+
+The command runs inside the container, never on the server: a single argument holding spaces or shell syntax (`"ls | wc -l"`) runs through `sh -c` in the container, several arguments are passed as they are. Output streams back as it comes, stdin is forwarded when piped (`cat dump.sql | dockflow exec production db psql`), a TTY is allocated only when both ends are terminals, and the command's exit code becomes `dockflow`'s.
 
 ```bash
-dockflow exec production app bash          # Interactive shell
-dockflow exec production app "ls -la"      # Run command
-dockflow exec production db "psql -U user" # Database access
+dockflow exec production app bash                    # Interactive shell
+dockflow exec production app "ls -la /app | head"    # Shell syntax runs in the container
+dockflow exec production db psql -U user             # Several arguments, passed as they are
+dockflow exec production app -e DEBUG=1 node task.js # With an environment variable
 ```
 
 ### Bash
@@ -692,13 +698,16 @@ dockflow accessories logs <env> [service]
 dockflow accessories exec <env> <service> [command...]
 ```
 
-Execute a command in an accessory container (default: sh).
+Execute a command in an accessory container, or open sh when no command is given. It behaves like [`dockflow exec`](#exec).
 
 | Option | Description |
 |--------|-------------|
 | `-u, --user <user>` | Run as specified user |
-| `--workdir <dir>` | Working directory |
-| `-s, --server <name>` | Target server |
+| `-w, --workdir <dir>` | Working directory (absolute path) |
+| `-e, --env <KEY=VALUE>` | Environment variable for the command, repeatable |
+| `--pick` | Choose the task to run in |
+| `-T, --no-tty` | Never allocate a TTY |
+| `-s, --server <name>` | Target manager |
 
 ```bash
 dockflow acc exec production postgres psql     # Run psql
