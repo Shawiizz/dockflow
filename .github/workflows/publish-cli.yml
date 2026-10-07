@@ -128,45 +128,30 @@ jobs:
 
             ### Installation
 
-            **Linux x64:**
+            Each of these checks the binary against this release's `SHA256SUMS` before installing it.
+
+            **Linux / macOS:**
             ```bash
-            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/dockflow-linux-x64 -o /usr/local/bin/dockflow
-            chmod +x /usr/local/bin/dockflow
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | DOCKFLOW_VERSION=${{ github.ref_name }} bash
             ```
 
-            **Linux ARM64:**
-            ```bash
-            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/dockflow-linux-arm64 -o /usr/local/bin/dockflow
-            chmod +x /usr/local/bin/dockflow
+            **Windows (PowerShell):**
+            ```powershell
+            $env:DOCKFLOW_VERSION = "${{ github.ref_name }}"; irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1 | iex
             ```
-
-            **macOS x64:**
-            ```bash
-            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/dockflow-macos-x64 -o /usr/local/bin/dockflow
-            chmod +x /usr/local/bin/dockflow
-            ```
-
-            **macOS ARM64 (Apple Silicon):**
-            ```bash
-            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/dockflow-macos-arm64 -o /usr/local/bin/dockflow
-            chmod +x /usr/local/bin/dockflow
-            ```
-
-            **Windows x64:**
-            Download `dockflow-windows-x64.exe` and add it to your PATH.
 
             **npm:**
             ```bash
-            npm install -g @dockflow-tools/cli
+            npm install -g @dockflow-tools/cli@${{ github.ref_name }}
             ```
 
-            ### Verify a download
+            ### Download by hand
 
-            `SHA256SUMS` lists the SHA-256 of every binary. The npm package, `install.sh`,
-            `install.ps1` and `dockflow setup user@host` check it themselves; for a binary
-            downloaded by hand, from the directory holding it and `SHA256SUMS`:
+            Download the binary of your platform and `SHA256SUMS` from the assets below into one
+            directory, check the binary there, then put it on your PATH:
             ```bash
-            sha256sum --check --ignore-missing SHA256SUMS
+            grep ' dockflow-linux-x64$' SHA256SUMS | sha256sum --check          # Linux
+            grep ' dockflow-macos-arm64$' SHA256SUMS | shasum -a 256 --check    # macOS
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

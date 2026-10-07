@@ -109,6 +109,20 @@ function download(url, dest) {
   });
 }
 
+/** Antivirus software may hold a new .exe for a moment on Windows: the rename is retried briefly. */
+async function renameWithRetry(from, to) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      renameSync(from, to);
+      return;
+    } catch (err) {
+      const busy = ['EPERM', 'EBUSY', 'EACCES'].includes(err.code);
+      if (process.platform !== 'win32' || !busy || attempt === 10) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+    }
+  }
+}
+
 async function main() {
   const binaryPath = getBinaryPath();
 
@@ -135,7 +149,7 @@ async function main() {
     if (process.platform !== 'win32') {
       chmodSync(partialPath, 0o755);
     }
-    renameSync(partialPath, binaryPath);
+    await renameWithRetry(partialPath, binaryPath);
     console.log(`Dockflow CLI installed to ${binaryPath} (SHA-256 verified)`);
   } catch (err) {
     rmSync(partialPath, { force: true });

@@ -63,16 +63,18 @@ binary that does not match it: the npm package carries the checksums of its own 
 `install.sh` and `install.ps1` fetch those of the release they install, and
 `dockflow setup user@host` checks the binary it downloads on the server.
 
-For a binary downloaded by hand, from the directory holding it and the release's `SHA256SUMS`:
+For a binary downloaded by hand, from the directory holding it and the release's `SHA256SUMS`,
+before renaming it:
 
 ```bash
-sha256sum --check --ignore-missing SHA256SUMS
+grep ' dockflow-linux-x64$' SHA256SUMS | sha256sum --check          # Linux
+grep ' dockflow-macos-arm64$' SHA256SUMS | shasum -a 256 --check    # macOS
 ```
 
 <Callout type="warning">
-  Releases published before `SHA256SUMS` existed cannot be installed by `install.sh` or
-  `install.ps1` (with `DOCKFLOW_VERSION`), which refuse what they cannot verify: download those
-  from the [releases page](https://github.com/Shawiizz/dockflow/releases).
+  `install.sh` and `install.ps1` refuse a release that publishes no `SHA256SUMS`, as the releases
+  made before checksums do: download those from the
+  [releases page](https://github.com/Shawiizz/dockflow/releases).
 </Callout>
 
 ## Global Options
