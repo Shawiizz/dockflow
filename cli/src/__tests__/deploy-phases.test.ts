@@ -8,7 +8,9 @@ import {
   dirBackupPath,
   runWithConcurrency,
   rolledBackError,
+  uploadFiles,
 } from '../commands/deploy-phases';
+import type { DeployContext } from '../commands/deploy-context';
 import { DeployError, ErrorCode } from '../utils/errors';
 import type { UploadItem } from '../utils/config';
 
@@ -158,5 +160,19 @@ describe('rolledBackError', () => {
     const err = rolledBackError(new Error('boom'), '1.4.1');
     expect(err.code).toBe(ErrorCode.DEPLOY_FAILED);
     expect(err.message).toBe('boom; rolled back to 1.4.1');
+  });
+});
+
+describe('uploadFiles', () => {
+  it('plans no host without uploads, so commit and rollback never connect to a node', async () => {
+    const ctx = {
+      stackName: 'shop-production',
+      deployVersion: '1.4.2',
+      config: { project_name: 'shop' },
+      options: {},
+      cluster: { manager: { name: 'manager', connection: {} }, otherManagers: [], workers: [] },
+    } as unknown as DeployContext;
+    const plan = await uploadFiles(ctx);
+    expect(plan.hosts).toEqual([]);
   });
 });
