@@ -1,9 +1,30 @@
-import { describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import { resolve } from 'path';
-import { buildEnv, getBuildTargets, getOverridesForTarget } from '../services/build';
+import { BUILD_KEYS_READ, buildEnv, getBuildTargets, getOverridesForTarget, ignoredKeysOf } from '../services/build';
+import * as output from '../utils/output';
 import type { BuildTarget } from '../services/build';
 
 const BASE = resolve('/project/.dockflow/docker');
+
+
+// every warning the builder prints goes through these spies, so no test writes to stderr
+let warnings: string[] = [];
+let hints: string[] = [];
+
+beforeEach(() => {
+  warnings = [];
+  hints = [];
+  spyOn(output, 'printWarning').mockImplementation((message: string) => {
+    warnings.push(message);
+  });
+  spyOn(output, 'printDim').mockImplementation((message: string) => {
+    hints.push(message);
+  });
+});
+
+afterEach(() => {
+  mock.restore();
+});
 
 describe('getBuildTargets', () => {
   it('string build → context dir with default Dockerfile', () => {
@@ -167,5 +188,58 @@ describe('buildEnv', () => {
     const env = { PATH: '/bin' };
     expect(buildEnv({ noDefaultAttestations: false }, env)).toBe(env);
     expect(buildEnv({}, env)).toBe(env);
+  });
+});
+
+describe('ignored build keys', () => {
+  const HINT_TARGET = '  Remove `build.target`, or build and push the image yourself and reference it with `image:`.';
+
+  it('warns once per ignored key with its compose path', () => {
+    const targets = getBuildTargets('services:\n  web:\n    image: web:1\n    build:\n      context: .\n      target: prod\n', BASE);
+
+    expect(targets.map((t) => t.tag)).toEqual(['web:1']);
+    expect(warnings).toEqual([
+      'docker-compose.yml services.web.build.target: build.target is ignored: the Dockflow builder only reads context, dockerfile and args',
+    ]);
+    expect(hints).toEqual([HINT_TARGET]);
+  });
+
+  it('lists every ignored key in file order and never the keys the builder reads', () => {
+    const yaml = `
+services:
+  web:
+    image: web:1
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+      args: { A: "1" }
+      platforms: [linux/arm64]
+      cache_from: [web:cache]
+      x-note: kept for tooling
+`;
+    getBuildTargets(yaml, BASE);
+
+    expect(warnings.map((w) => w.split(':')[0])).toEqual([
+      'docker-compose.yml services.web.build.platforms',
+      'docker-compose.yml services.web.build.cache_from',
+    ]);
+    expect(hints).toHaveLength(2);
+    expect(BUILD_KEYS_READ).toEqual(['context', 'dockerfile', 'args']);
+  });
+
+  it('warns only for the services selected with --only, and never for a string build', () => {
+    const yaml = 'services:\n  a:\n    build:\n      context: .\n      target: x\n  b:\n    build: .\n  c:\n    build:\n      context: .\n      ssh: [default]\n';
+
+    getBuildTargets(yaml, BASE, 'b,c');
+
+    expect(warnings).toEqual([
+      'docker-compose.yml services.c.build.ssh: build.ssh is ignored: the Dockflow builder only reads context, dockerfile and args',
+    ]);
+  });
+
+  it('ignoredKeysOf reads mappings only', () => {
+    expect(ignoredKeysOf('web', '.')).toEqual([]);
+    expect(ignoredKeysOf('web', ['.'])).toEqual([]);
+    expect(ignoredKeysOf('web', { context: '.', no_cache: true })).toEqual([{ service: 'web', key: 'no_cache' }]);
   });
 });

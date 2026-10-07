@@ -152,9 +152,35 @@ export function getOverridesForTarget(
   return overrides;
 }
 
+/** The build keys the Dockflow builder reads; every other key of a `build` mapping is ignored. */
+export const BUILD_KEYS_READ: readonly string[] = ['context', 'dockerfile', 'args'];
+
+export interface IgnoredBuildKey {
+  service: string;
+  key: string;
+}
+
+/** Keys of a `build` mapping the builder does not read, in file order; `x-` extensions are not keys. */
+export function ignoredKeysOf(service: string, build: unknown): IgnoredBuildKey[] {
+  if (build === null || typeof build !== 'object' || Array.isArray(build)) return [];
+  return Object.keys(build)
+    .filter((key) => !BUILD_KEYS_READ.includes(key) && !key.startsWith('x-'))
+    .map((key) => ({ service, key }));
+}
+
+/** Silently dropping a key such as `target` or `platforms` would build another image than the file describes. */
+export function warnIgnoredBuildKeys(keys: readonly IgnoredBuildKey[]): void {
+  for (const { service, key } of keys) {
+    printWarning(
+      `docker-compose.yml services.${service}.build.${key}: build.${key} is ignored: the Dockflow builder only reads context, dockerfile and args`,
+    );
+    printDim(`  Remove \`build.${key}\`, or build and push the image yourself and reference it with \`image:\`.`);
+  }
+}
+
 /**
  * Extract build targets from a compose YAML string, read like the stack it deploys (merge keys
- * resolved).
+ * resolved), warning once per build key the builder ignores.
  */
 export function getBuildTargets(
   composeContent: string,
@@ -168,6 +194,7 @@ export function getBuildTargets(
     : null;
 
   const targets: BuildTarget[] = [];
+  const ignored: IgnoredBuildKey[] = [];
 
   for (const [name, svc] of Object.entries(services)) {
     if (filterSet && !filterSet.has(name)) continue;
@@ -185,6 +212,7 @@ export function getBuildTargets(
       const buildObj = build as Record<string, unknown>;
       dockerfile = (buildObj.dockerfile as string) ?? 'Dockerfile';
       context = (buildObj.context as string) ?? '.';
+      ignored.push(...ignoredKeysOf(name, build));
     } else {
       continue;
     }
@@ -221,6 +249,7 @@ export function getBuildTargets(
     });
   }
 
+  warnIgnoredBuildKeys(ignored);
   return targets;
 }
 
