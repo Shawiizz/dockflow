@@ -88,8 +88,7 @@ describe("dockflow setup (host provisioning)", () => {
       "sh", "-c",
       "head -n 1 /usr/local/sbin/dockflow-public-ports && stat -c '%U %a' /usr/local/sbin/dockflow-public-ports /etc/dockflow/public-ports",
     ]);
-    expect(files.trim().split("
-")).toEqual(["#!/usr/bin/env bash", "root 755", "root 755"]);
+    expect(files.trim().split("\n")).toEqual(["#!/usr/bin/env bash", "root 755", "root 755"]);
 
     const sudoers = await inContainer(["cat", `/etc/sudoers.d/${DEPLOY_USER}`]);
     expect(sudoers).toContain(`${DEPLOY_USER} ALL=(ALL) NOPASSWD: /usr/local/sbin/dockflow-public-ports`);
