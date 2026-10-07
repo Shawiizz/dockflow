@@ -314,7 +314,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
             const now = Date.now();
             if (now - lastTick < 250) return;
             lastTick = now;
-            const pct = Math.min(99, Math.round(bytesProcessed / totalBytes * 100));
+            const pct = Math.min(99, Math.round(bytesProcessed / (totalBytes || 1) * 100));
             spinner.update(`upload: ${uploadName(upload)}/ -> ${name}:${destBase}/ ${formatBytes(bytesProcessed)} / ${totalStr} (${pct}%)`);
           },
           () => spinner.update(`upload: unpacking on ${name}...`),
