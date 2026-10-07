@@ -26,7 +26,7 @@ build:
   before_script:
     - apt-get update && apt-get install -y docker.io
   script:
-    - npx @dockflow-tools/cli@2.5.1 build
+    - npx @dockflow-tools/cli@2.6.0 build
   rules:
     - if: $CI_COMMIT_TAG
       when: never
@@ -44,6 +44,6 @@ deploy:
   before_script:
     - apt-get update && apt-get install -y docker.io
   script:
-    - npx @dockflow-tools/cli@2.5.1 deploy
+    - npx @dockflow-tools/cli@2.6.0 deploy
   rules:
     - if: $CI_COMMIT_TAG
