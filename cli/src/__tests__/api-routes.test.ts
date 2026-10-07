@@ -1,3 +1,4 @@
+import type { ServiceInfo } from '../api/types';
 import { err, ok, type SSHKeyConnection } from '../types';
 import { CLIError, ErrorCode } from '../utils/errors';
 import type { Lock, LockData } from '../services/lock';
@@ -10,7 +11,7 @@ import { formatDiskUsage, parseDockerSize, pruneCommand, pruneNodes, sumDockerSi
 import { execServiceCandidates, locateExecContainer } from '../api/routes/ssh';
 import { connectivityStatus } from '../api/routes/servers';
 import { buildArgs, deployArgs } from '../api/routes/operations';
-import { readServiceLogs, serviceListCommand, serviceLogsCommand, withDeployLock } from '../api/routes/services';
+import { readServiceLogs, resolvePartialStates, serviceListCommand, serviceLogsCommand, withDeployLock } from '../api/routes/services';
 import { ApiProject } from './helpers/api-project';
 
 const project = new ApiProject();
@@ -407,5 +408,38 @@ describe('readServiceLogs', () => {
   it('answers 500 with the docker message for any other failure', async () => {
     const read = await readServiceLogs(conn, 'shop-production', 'shop-production_web', 'web', 100, replyWith('Cannot connect to the Docker daemon', 1));
     expect(read).toEqual({ error: 'Cannot connect to the Docker daemon', status: 500 });
+  });
+});
+
+describe('resolvePartialStates', () => {
+  type Tracked = { name: string; state: ServiceInfo['state'] };
+  const conn = { host: 'm1', port: 22, user: 'deploy', privateKey: 'key', stackName: 'shop-production' };
+  const tasks = (byService: Record<string, string>) => async (_conn: unknown, command: string) => {
+    const service = Object.keys(byService).find((name) => command.includes(`'${name}'`));
+    return { stdout: byService[service ?? ''] ?? '', stderr: '', exitCode: 0 };
+  };
+
+  it('tells a crash-looping 0/N service from one that is still starting', async () => {
+    const services: Tracked[] = [
+      { name: 'shop-production-accessories_db', state: 'starting' },
+      { name: 'shop-production-accessories_cache', state: 'starting' },
+    ];
+    await resolvePartialStates(
+      conn,
+      services,
+      tasks({
+        'shop-production-accessories_db': 'Failed 3 seconds ago\nPreparing 1 second ago',
+        'shop-production-accessories_cache': 'Starting 2 seconds ago',
+      }),
+    );
+    expect(services.map((service) => service.state)).toEqual(['error', 'starting']);
+  });
+
+  it('leaves the states that are already settled alone', async () => {
+    const services: Tracked[] = [{ name: 'a', state: 'running' }, { name: 'b', state: 'stopped' }];
+    await resolvePartialStates(conn, services, async () => {
+      throw new Error('must not be called');
+    });
+    expect(services.map((service) => service.state)).toEqual(['running', 'stopped']);
   });
 });

@@ -11,10 +11,10 @@
 import { jsonResponse, errorResponse } from '../server';
 import { loadConfig, getAccessoriesStackName, getLayout } from '../../utils/config';
 import { getManagerConnection, resolveEnvironment, isValidDockerName, parseIntParam } from './_helpers';
-import { sshExec } from '../../utils/ssh';
-import { readServiceLogs } from './services';
+import { shellQuote, sshExec } from '../../utils/ssh';
+import { readServiceLogs, resolvePartialStates, stateFromReplicas } from './services';
 import * as Compose from '../../services/compose';
-import type { AccessoryInfo, AccessoriesResponse } from '../types';
+import type { AccessoryInfo, AccessoriesResponse, ServiceInfo } from '../types';
 import type { AccessoryStatusInfo, AccessoriesStatusResponse, AccessoryActionResponse, LogsResponse } from '../types';
 
 /** Normalizes compose `environment:` (map or `KEY=value` list form) into a plain string map. */
@@ -162,39 +162,35 @@ async function getAccessoriesStatus(url: URL): Promise<Response> {
   }));
 
   try {
-    // Get live service data via SSH
-    const command = `docker service ls --filter name=${accStackName} --format '{{.Name}}|{{.Replicas}}'`;
+    const command = `docker service ls --filter ${shellQuote(`label=com.docker.stack.namespace=${accStackName}`)} --format '{{.Name}}|{{.Replicas}}|{{.Mode}}'`;
     const result = await sshExec(conn, command);
 
     if (result.exitCode === 0 && result.stdout.trim()) {
       const lines = result.stdout.trim().split('\n').filter((l) => l.trim());
+      const tracked: { name: string; state: ServiceInfo['state']; acc: AccessoryStatusInfo }[] = [];
 
       for (const line of lines) {
-        const [serviceName, replicas] = line.split('|');
+        const [serviceName, replicas, mode] = line.split('|');
         if (!serviceName || !replicas) continue;
 
-        // Match config accessories with Docker services by name
         // Docker service name format: ${accStackName}_${accessoryName}
         const prefix = `${accStackName}_`;
         if (!serviceName.startsWith(prefix)) continue;
 
-        const accName = serviceName.slice(prefix.length);
-        const acc = accessories.find((a) => a.name === accName);
+        const acc = accessories.find((a) => a.name === serviceName.slice(prefix.length));
         if (!acc) continue;
 
         acc.replicas = replicas;
 
-        // Parse replicas (e.g., "1/1", "0/1")
-        const replicasMatch = replicas.match(/^(\d+)\/(\d+)$/);
-        if (replicasMatch) {
-          acc.replicasRunning = parseInt(replicasMatch[1], 10);
-          acc.replicasDesired = parseInt(replicasMatch[2], 10);
-          if (acc.replicasDesired === 0) acc.status = 'stopped';
-          else if (acc.replicasRunning === acc.replicasDesired) acc.status = 'running';
-          else if (acc.replicasRunning === 0) acc.status = 'stopped';
-          else acc.status = 'unknown';
-        }
+        const counts = stateFromReplicas(replicas, mode);
+        if (counts.state === 'unknown') continue;
+        acc.replicasRunning = counts.running;
+        acc.replicasDesired = counts.total;
+        tracked.push({ name: serviceName, state: counts.state, acc });
       }
+
+      await resolvePartialStates(conn, tracked);
+      for (const { state, acc } of tracked) acc.status = state === 'paused' || state === 'unknown' ? 'unknown' : state;
     }
 
     return jsonResponse({

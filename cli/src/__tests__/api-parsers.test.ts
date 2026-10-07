@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { parseIntParam } from '../api/routes/_helpers';
-import { parseServiceLs, classifyTaskState } from '../api/routes/services';
+import { parseServiceLs, classifyTaskState, stateFromReplicas } from '../api/routes/services';
 import { normalizeEnv, normalizeStringArray } from '../api/routes/accessories';
 import { mapMetricStatus } from '../api/routes/deploy';
 import { parseAuditLine, parseDockerStatsLine, parseNodeStats } from '../api/routes/metrics';
@@ -39,13 +39,34 @@ describe('parseServiceLs', () => {
 
   it('derives state from the replica counts', () => {
     const rows = parseServiceLs(table, 'myapp');
-    expect(rows[1].state).toBe('stopped');  // 0/1
+    expect(rows[1].state).toBe('starting'); // 0/1 — a crash-looping service looks the same until its tasks are read
     expect(rows[2].state).toBe('starting'); // 1/2 partial — ambiguous until task states are checked
   });
 
   it('returns empty for header-only or empty output', () => {
     expect(parseServiceLs('ID  NAME  MODE  REPLICAS  IMAGE  PORTS', 'myapp')).toEqual([]);
     expect(parseServiceLs('', 'myapp')).toEqual([]);
+  });
+});
+
+describe('stateFromReplicas', () => {
+  it('is running when every wanted replica runs, stopped when none is wanted', () => {
+    expect(stateFromReplicas('2/2')).toEqual({ running: 2, total: 2, state: 'running' });
+    expect(stateFromReplicas('0/0')).toEqual({ running: 0, total: 0, state: 'stopped' });
+  });
+
+  it('leaves any shortfall, including 0/N, to the task inspection', () => {
+    expect(stateFromReplicas('1/2').state).toBe('starting');
+    expect(stateFromReplicas('0/1').state).toBe('starting');
+  });
+
+  it('reads the ratio of a job and does not take a completed job for a failure', () => {
+    expect(stateFromReplicas('0/1 (1/1 completed)', 'replicated-job')).toEqual({ running: 0, total: 1, state: 'stopped' });
+    expect(stateFromReplicas('1/1 (0/1 completed)', 'global-job').state).toBe('running');
+  });
+
+  it('is unknown for a column it cannot read', () => {
+    expect(stateFromReplicas('')).toEqual({ running: 0, total: 0, state: 'unknown' });
   });
 });
 

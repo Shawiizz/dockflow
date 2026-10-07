@@ -82,14 +82,25 @@ export async function handleServicesRoutes(req: Request): Promise<Response> {
 }
 
 /**
- * Parse `docker service ls` output into ServiceInfo objects.
+ * State of a service from the replicas column of `docker service ls` ("1/2", "0/1 (1/1 completed)").
  *
- * A partial replica count (e.g. 1/2) is ambiguous from this table alone — it's
- * the normal, transient shape of a service that's still converging (new task
- * starting) as much as it is a service with a crashing task. It's provisionally
- * marked 'starting' here; `resolvePartialStates` below inspects actual task
- * state to tell the two apart before the response is sent.
+ * A count below the wanted one is ambiguous from this table alone: it is the normal, transient
+ * shape of a service that is still converging as much as the shape of a crash-looping one, and
+ * that includes 0/N. It is provisionally 'starting'; `resolvePartialStates` inspects the tasks to
+ * tell the two apart. A job has no running tasks once it completed, which is not a failure.
  */
+export function stateFromReplicas(replicas: string, mode = ''): { running: number; total: number; state: ServiceInfo['state'] } {
+  const match = replicas.match(/^(\d+)\/(\d+)/);
+  if (!match) return { running: 0, total: 0, state: 'unknown' };
+
+  const running = Number(match[1]);
+  const total = Number(match[2]);
+  if (mode.endsWith('-job')) return { running, total, state: running > 0 ? 'running' : 'stopped' };
+  if (total === 0) return { running, total, state: 'stopped' };
+  return { running, total, state: running === total ? 'running' : 'starting' };
+}
+
+/** Parse `docker service ls` output into ServiceInfo objects. */
 export function parseServiceLs(output: string, stackName: string): ServiceInfo[] {
   const lines = output.trim().split('\n');
   if (lines.length <= 1) return []; // header only
@@ -98,26 +109,17 @@ export function parseServiceLs(output: string, stackName: string): ServiceInfo[]
     const parts = line.split(/\s{2,}/);
     const id = parts[0] || '';
     const name = parts[1] || '';
-    const replicasStr = parts[3] || '0/0';
     const image = parts[4] || '';
     const portsStr = parts[5] || '';
 
-    const [running, total] = replicasStr.split('/').map(Number);
-
-    let state: ServiceInfo['state'] = 'unknown';
-    if (!isNaN(running) && !isNaN(total)) {
-      if (total === 0) state = 'stopped';
-      else if (running === total) state = 'running';
-      else if (running === 0) state = 'stopped';
-      else state = 'starting'; // partial — resolved below via task inspection
-    }
+    const { running, total, state } = stateFromReplicas(parts[3] || '0/0', parts[2] || '');
 
     return {
       id,
       name,
       image,
-      replicas: total || 0,
-      replicasRunning: running || 0,
+      replicas: total,
+      replicasRunning: running,
       state,
       ports: portsStr ? portsStr.split(',').map((p: string) => p.trim()) : [],
     };
@@ -144,16 +146,17 @@ export function classifyTaskState(currentState: string): 'failed' | 'converging'
  * 'starting' (still converging, no failed tasks) or 'error' (a task has actually
  * failed/been rejected) — mutates the passed-in services in place.
  */
-async function resolvePartialStates(
+export async function resolvePartialStates(
   conn: ManagerConnection,
-  services: ServiceInfo[],
+  services: { name: string; state: ServiceInfo['state'] }[],
+  exec: (conn: ManagerConnection, command: string) => Promise<SSHExecResult> = sshExec,
 ): Promise<void> {
   const partial = services.filter((s) => s.state === 'starting');
   if (partial.length === 0) return;
 
   await Promise.all(
     partial.map(async (service) => {
-      const result = await sshExec(
+      const result = await exec(
         conn,
         `docker service ps ${shellQuote(service.name)} --filter 'desired-state=running' --format '{{.CurrentState}}' --no-trunc 2>/dev/null`,
       );

@@ -214,7 +214,7 @@ export interface ServiceActionResponse {
 // ─── Accessories Status ─────────────────────────────────────────────────────
 
 export interface AccessoryStatusInfo extends AccessoryInfo {
-  status?: 'running' | 'stopped' | 'unknown';
+  status?: 'running' | 'stopped' | 'starting' | 'error' | 'unknown';
   replicas?: string;
   replicasRunning?: number;
   replicasDesired?: number;
