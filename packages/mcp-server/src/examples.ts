@@ -217,8 +217,9 @@ defaults:
 
 registry:
   type: ghcr
+  url: ghcr.io
   username: myuser
-  token: "{{ current.env.registry_token }}"  # a REGISTRY_TOKEN secret
+  token: "{{ current.env.registry_token }}"  # a PRODUCTION_REGISTRY_TOKEN secret
   namespace: myorg`,
       },
       {
