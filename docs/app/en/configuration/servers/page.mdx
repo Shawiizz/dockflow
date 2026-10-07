@@ -200,9 +200,15 @@ dockflow setup swarm production
 ```
 
 This command will:
-- Open firewall ports (2377, 7946, 4789) on all nodes
+- Open the Swarm ports (2377/tcp, 7946/tcp and udp, 4789/udp) on all nodes, with ufw, firewalld or iptables, when the environment has workers; a single-node cluster opens none
 - Initialize Swarm on the manager
 - Join workers to the cluster
+
+<Callout type="warning">
+  The ports are opened with `sudo -n`, which the deploy user created by `dockflow setup` is not
+  allowed for these commands. When a command fails, setup warns and prints the commands to run
+  as root on that node; it then goes on with the cluster.
+</Callout>
 
 ### Deploy
 

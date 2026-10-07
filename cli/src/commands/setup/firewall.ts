@@ -3,7 +3,7 @@
  * Used by both swarm.ts and k3s.ts setup commands.
  */
 
-import { createSpinner } from '../../utils/output';
+import { createSpinner, printDim } from '../../utils/output';
 import { sshExec } from '../../utils/ssh';
 import type { SSHKeyConnection } from '../../types';
 
@@ -13,9 +13,42 @@ export interface PortDefinition {
   description: string;
 }
 
+export type FirewallTool = 'ufw' | 'firewalld' | 'iptables';
+
 /**
- * Open firewall ports on a remote host.
- * Detects the firewall tool (ufw, firewalld, iptables) and opens the given ports.
+ * The commands that open `ports` with `tool`, as the deploy user runs them over SSH: `sudo -n`
+ * fails at once instead of waiting for a password the session cannot type.
+ */
+export function openPortCommands(tool: FirewallTool, ports: readonly PortDefinition[]): string[] {
+  switch (tool) {
+    case 'ufw':
+      return [...ports.map(({ port, protocol }) => `sudo -n ufw allow ${port}/${protocol}`), 'sudo -n ufw reload'];
+    case 'firewalld':
+      return [
+        ...ports.map(({ port, protocol }) => `sudo -n firewall-cmd --permanent --add-port=${port}/${protocol}`),
+        'sudo -n firewall-cmd --reload',
+      ];
+    case 'iptables':
+      // checked first, so running setup again does not stack duplicate rules
+      return ports.map(({ port, protocol }) => {
+        const rule = `INPUT -p ${protocol} --dport ${port} -j ACCEPT`;
+        return `sudo -n iptables -C ${rule} 2>/dev/null || sudo -n iptables -I ${rule}`;
+      });
+  }
+}
+
+/** ufw and firewall-cmd live in /usr/sbin, which a regular user's PATH lacks on some distributions */
+async function detectFirewall(connection: SSHKeyConnection): Promise<FirewallTool> {
+  const has = async (tool: string) =>
+    (await sshExec(connection, `PATH="$PATH:/usr/sbin:/sbin" command -v ${tool}`)).stdout.trim() !== '';
+  if (await has('ufw')) return 'ufw';
+  if (await has('firewall-cmd')) return 'firewalld';
+  return 'iptables';
+}
+
+/**
+ * Open firewall ports on a remote host with the firewall tool it has (ufw, firewalld, else
+ * iptables). Returns false, after printing the commands to run as root, when one of them failed.
  */
 export async function openPorts(
   connection: SSHKeyConnection,
@@ -26,33 +59,21 @@ export async function openPorts(
   spinner.start(`Opening ports on ${serverName}...`);
 
   try {
-    // Check which firewall is available
-    const ufwCheck = await sshExec(connection, 'which ufw 2>/dev/null');
-    const firewallCmdCheck = await sshExec(connection, 'which firewall-cmd 2>/dev/null');
-
-    if (ufwCheck.stdout.trim()) {
-      // UFW (Ubuntu/Debian)
-      for (const { port, protocol } of ports) {
-        await sshExec(connection, `sudo ufw allow ${port}/${protocol} 2>/dev/null || true`);
-      }
-      await sshExec(connection, 'sudo ufw reload 2>/dev/null || true');
-    } else if (firewallCmdCheck.stdout.trim()) {
-      // firewalld (RHEL/CentOS)
-      for (const { port, protocol } of ports) {
-        await sshExec(connection, `sudo firewall-cmd --permanent --add-port=${port}/${protocol} 2>/dev/null || true`);
-      }
-      await sshExec(connection, 'sudo firewall-cmd --reload 2>/dev/null || true');
-    } else {
-      // Try iptables as fallback
-      for (const { port, protocol } of ports) {
-        await sshExec(connection, `sudo iptables -I INPUT -p ${protocol} --dport ${port} -j ACCEPT 2>/dev/null || true`);
+    const tool = await detectFirewall(connection);
+    const commands = openPortCommands(tool, ports);
+    for (const command of commands) {
+      const result = await sshExec(connection, command);
+      if (result.exitCode !== 0) {
+        const cause = (result.stderr || result.stdout).trim() || `exit code ${result.exitCode}`;
+        spinner.warn(`Could not open the ports on ${serverName}: ${cause}`);
+        printDim(`Run as root on ${serverName}:\n${commands.map((c) => `  ${c.replace(/sudo -n /g, '')}`).join('\n')}`);
+        return false;
       }
     }
-
-    spinner.succeed(`Ports opened on ${serverName}`);
+    spinner.succeed(`Ports opened on ${serverName} (${tool})`);
     return true;
-  } catch {
-    spinner.warn(`Could not open ports on ${serverName} (may already be open or no firewall)`);
-    return true; // Continue anyway
+  } catch (error) {
+    spinner.warn(`Could not open the ports on ${serverName}: ${error instanceof Error ? error.message : String(error)}`);
+    return false;
   }
 }

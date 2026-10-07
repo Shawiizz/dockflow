@@ -279,14 +279,19 @@ export async function runSetupK3s(env: string): Promise<void> {
   const totalSteps = workers.length > 0 ? 6 : 4;
   let step = 1;
 
-  // Step 1: Open ports on all nodes
-  printInfo(`Step ${step}/${totalSteps}: Opening firewall ports...`);
-  await openPorts(managerConnection, manager.name, K3S_PORTS);
+  // Step 1: Open ports on all nodes, which no other node uses on a single-node cluster (Dockflow
+  // reaches the API over SSH)
+  if (workers.length === 0) {
+    printInfo(`Step ${step}/${totalSteps}: No firewall port to open (single-node cluster: no other node connects to it)`);
+  } else {
+    printInfo(`Step ${step}/${totalSteps}: Opening firewall ports...`);
+    await openPorts(managerConnection, manager.name, K3S_PORTS);
 
-  for (const worker of workers) {
-    const workerConnection = buildConnection(env, worker);
-    if (workerConnection) {
-      await openPorts(workerConnection, worker.name, K3S_PORTS);
+    for (const worker of workers) {
+      const workerConnection = buildConnection(env, worker);
+      if (workerConnection) {
+        await openPorts(workerConnection, worker.name, K3S_PORTS);
+      }
     }
   }
   printBlank();

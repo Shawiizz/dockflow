@@ -40,7 +40,7 @@ That's it. All Dockflow commands (`deploy`, `logs`, `scale`, `rollback`, `setup`
 <Steps>
 ### Provisioning
 
-Run `dockflow setup swarm <env>` or `dockflow setup k3s <env>` depending on your chosen backend. For Swarm, this installs Docker and initializes the cluster. For k3s, it installs k3s on the manager and joins workers via the node token.
+Run `dockflow setup swarm <env>` or `dockflow setup k3s <env>` depending on your chosen backend. For Swarm, this initializes the cluster on servers that `dockflow setup` prepared (Docker installed). For k3s, it installs k3s on the manager and joins workers via the node token.
 
 ### Deployment
 

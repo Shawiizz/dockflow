@@ -240,14 +240,18 @@ export async function runSetupSwarm(env: string): Promise<void> {
     );
   }
 
-  // Step 1: Open ports on all nodes
-  printInfo('Step 1/3: Opening firewall ports...');
-  await openSwarmPorts(managerConnection, manager.name);
-  
-  for (const worker of workers) {
-    const workerConnection = buildConnection(env, worker);
-    if (workerConnection) {
-      await openSwarmPorts(workerConnection, worker.name);
+  // Step 1: Open ports on all nodes, which no other node uses on a single-node cluster
+  if (workers.length === 0) {
+    printInfo('Step 1/3: No firewall port to open (single-node cluster: no other node connects to it)');
+  } else {
+    printInfo('Step 1/3: Opening firewall ports...');
+    await openSwarmPorts(managerConnection, manager.name);
+
+    for (const worker of workers) {
+      const workerConnection = buildConnection(env, worker);
+      if (workerConnection) {
+        await openSwarmPorts(workerConnection, worker.name);
+      }
     }
   }
   printBlank();
