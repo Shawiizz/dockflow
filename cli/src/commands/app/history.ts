@@ -3,9 +3,10 @@
  */
 
 import type { Command } from 'commander';
-import { sshExecWithFallback } from '../../utils/ssh-fallback';
+import { shellQuote, sshExec } from '../../utils/ssh';
 import { printSection, printNote, printDebug, colors, printBlank, printWarning, printDim, printJSON, printRaw } from '../../utils/output';
-import { resolveEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
+import { nodesOf, readFromFirstNode } from './nodes';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 import { DOCKFLOW_AUDIT_DIR } from '../../constants';
 
@@ -56,27 +57,24 @@ export function registerHistoryCommand(program: Command): void {
     .option('--all', 'Show all entries')
     .option('-j, --json', 'Output as JSON')
     .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string; lines?: string; all?: boolean; json?: boolean }) => {
-      const { stackName, connection } = await resolveEnv(env, options.server);
+      const { stackName, connection, serverName } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName, lines: options.lines, json: options.json });
 
       const auditFile = `${DOCKFLOW_AUDIT_DIR}/${stackName}.log`;
       const lines = options.all ? 1000 : parseInt(options.lines || '20', 10);
 
-      // Use fallback across all nodes unless a specific server was requested
-      const connections = options.server
-        ? [connection]
-        : getAllNodeConnections(env);
-      const fallbackConnections = connections.length > 0 ? connections : [connection];
+      // every node keeps a copy: a manager down does not hide the history
+      const nodes = options.server ? [{ name: serverName, connection }] : nodesOf(env, { name: serverName, connection });
 
       try {
-        const result = await sshExecWithFallback(
-          fallbackConnections,
-          `cat "${auditFile}" 2>/dev/null | tail -n ${lines} || echo "NO_AUDIT_FILE"`
+        const found = await readFromFirstNode(
+          nodes,
+          async (node) => (await sshExec(node.connection, `tail -n ${lines} ${shellQuote(auditFile)} 2>/dev/null`)).stdout.trim(),
+          (output) => output === '',
         );
+        const output = found?.value ?? '';
 
-        const output = result.stdout.trim();
-
-        if (output === 'NO_AUDIT_FILE' || !output) {
+        if (!output) {
           printBlank();
           printWarning(`No audit log found for ${stackName}`);
           printDim('Audit logs are created after the first deployment.');

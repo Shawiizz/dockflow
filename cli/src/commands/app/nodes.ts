@@ -5,7 +5,7 @@
 
 import type { SSHKeyConnection } from '../../types';
 import { getAllNodes } from '../../utils/validation';
-import { printWarning } from '../../utils/output';
+import { printDebug, printDim, printWarning } from '../../utils/output';
 import { ConnectionError } from '../../utils/errors';
 
 export interface NodeRef {
@@ -36,4 +36,26 @@ export async function onEveryNode<T>(nodes: readonly NodeRef[], fn: (node: NodeR
   }
   for (const failure of failures) printWarning(`Skipped ${failure}`);
   return results;
+}
+
+/**
+ * For data every node keeps a copy of (history, metrics): the first node, in order, that answers
+ * with something. Says which node it read when that is not the first.
+ */
+export async function readFromFirstNode<T>(
+  nodes: readonly NodeRef[],
+  read: (node: NodeRef) => Promise<T>,
+  isEmpty: (value: T) => boolean,
+): Promise<{ node: NodeRef; value: T } | null> {
+  for (const [index, node] of nodes.entries()) {
+    try {
+      const value = await read(node);
+      if (isEmpty(value)) continue;
+      if (index > 0) printDim(`Read from ${node.name}`);
+      return { node, value };
+    } catch (error) {
+      printDebug(`${node.name} did not answer: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return null;
 }

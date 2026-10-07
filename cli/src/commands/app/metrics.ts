@@ -19,6 +19,7 @@ import {
 } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { withErrorHandler } from '../../utils/errors';
+import { nodesOf, onEveryNode, readFromFirstNode } from './nodes';
 import {
   Metrics,
   calculateMetricsSummary,
@@ -169,24 +170,24 @@ export function registerMetricsCommand(program: Command): void {
       json?: boolean;
       prune?: boolean;
     }) => {
-      const { stackName, connection } = await resolveEnv(env, options.server);
+      const { stackName, connection, serverName } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName, prune: options.prune, history: options.history });
 
-      const metricsService = new Metrics(connection);
+      // every node keeps a copy of the metrics: read the first that has them, prune them all
+      const nodes = options.server ? [{ name: serverName, connection }] : nodesOf(env, { name: serverName, connection });
 
-      // Prune mode
       if (options.prune) {
-        const removed = await metricsService.prune(stackName, 1000);
-        if (removed > 0) {
-          printSuccess(`Removed ${removed} old metric entries`);
-        } else {
-          printDim('No metrics to prune');
+        const pruned = await onEveryNode(nodes, (node) => new Metrics(node.connection).prune(stackName, 1000));
+        for (const { node, value: removed } of pruned) {
+          if (removed > 0) printSuccess(`${node.name}: removed ${removed} old metric entries`);
+          else printDim(`${node.name}: no metrics to prune`);
         }
         return;
       }
-      
+
       const limit = options.history ? parseInt(options.lines || '20', 10) : 1000;
-      const metricsData = await metricsService.fetch(stackName, limit);
+      const found = await readFromFirstNode(nodes, (node) => new Metrics(node.connection).fetch(stackName, limit), (data) => data.length === 0);
+      const metricsData = found?.value ?? [];
       
       if (metricsData.length === 0) {
         printBlank();
