@@ -4,10 +4,12 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { run, type RunOptions, type RunResult } from '../commands/setup/provision';
 import {
+  checkUserPassword,
   configureServiceAccess,
   type HostEnv,
   isDockflowUserSudoers,
   nginxUserFrom,
+  passwordCheckArgv,
   sudoersTempPath,
   USER_SUDOERS_HEADER,
   writeSudoersFile,
@@ -270,5 +272,103 @@ describe.skipIf(!posix)('sudoers files on disk', () => {
       expect(warnings[0]).toBe("Service access: nginx group membership failed: usermod: group 'www-data' does not exist");
       expect(existsSync(userFile())).toBe(true);
     });
+  });
+});
+
+describe('passwordCheckArgv', () => {
+  it('runs su directly for a user that is not root', () => {
+    expect(passwordCheckArgv('deploy', 1000)).toEqual(['su', '-c', 'true', '-', 'deploy']);
+  });
+
+  it('runs su as nobody through setpriv for root, which would authenticate anything', () => {
+    expect(passwordCheckArgv('deploy', 0)).toEqual([
+      'setpriv', '--reuid=65534', '--regid=65534', '--clear-groups', '--', 'su', '-c', 'true', '-', 'deploy',
+    ]);
+  });
+
+  it('keeps a hostile user name as one element', () => {
+    expect(passwordCheckArgv("x'; id #", 1000).at(-1)).toBe("x'; id #");
+  });
+});
+
+describe('checkUserPassword', () => {
+  const result = (over: Partial<RunResult>): RunResult => ({ ok: false, exitCode: 1, stdout: '', stderr: '', timedOut: false, ...over });
+  const check = (answer: RunResult, euid = 1000) => {
+    const calls: { argv: readonly string[]; opts?: RunOptions }[] = [];
+    const verdict = checkUserPassword('deploy', 'hunter2', (argv, opts) => {
+      calls.push({ argv, opts });
+      return answer;
+    }, euid);
+    return { verdict, calls };
+  };
+
+  it('sends the password on stdin and never in the arguments', () => {
+    const { verdict, calls } = check(result({ ok: true, exitCode: 0 }));
+    expect(verdict).toEqual({ verdict: true });
+    expect(calls[0].opts?.input).toBe('hunter2\n');
+    expect(calls[0].argv.join(' ')).not.toContain('hunter2');
+  });
+
+  it('is false for a wrong password', () => {
+    expect(check(result({ stderr: 'su: Authentication failure\n' })).verdict).toEqual({ verdict: false });
+  });
+
+  it('is unverified, never true, when su needs a terminal', () => {
+    expect(check(result({ stderr: 'su: must be run from a terminal\n' })).verdict).toEqual({ verdict: 'unverified', reason: 'su needs a terminal' });
+  });
+
+  it('is unverified when su does not answer, or setpriv is missing', () => {
+    expect(check(result({ exitCode: 124, timedOut: true })).verdict).toEqual({ verdict: 'unverified', reason: 'su did not answer' });
+    expect(check(result({ exitCode: 127, stderr: 'setpriv: command not found' }), 0).verdict).toEqual({
+      verdict: 'unverified',
+      reason: 'setpriv is not installed',
+    });
+  });
+
+  it('is false for an empty user or password without running anything', () => {
+    let ran = false;
+    const runCommand = () => {
+      ran = true;
+      return result({ ok: true, exitCode: 0 });
+    };
+    expect(checkUserPassword('', 'x', runCommand, 1000)).toEqual({ verdict: false });
+    expect(checkUserPassword('deploy', '', runCommand, 1000)).toEqual({ verdict: false });
+    expect(ran).toBe(false);
+  });
+});
+
+describe.skipIf(!posix)('checkUserPassword with fake su and setpriv in a real shell', () => {
+  const PASSWORD = `it's "quoted" $(id) \`id\` ; & | *`;
+  let dir = '';
+  let savedPath: string | undefined;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'dockflow-su-'));
+    writeFileSync(join(dir, 'password'), PASSWORD);
+    const script = (name: string, body: string) => {
+      writeFileSync(join(dir, name), `#!/bin/sh\n${body}\n`);
+      chmodSync(join(dir, name), 0o755);
+    };
+    script('su', 'printf "%s\\n" "$@" > "$DOCKFLOW_TEST_DIR/su-args"\nread -r typed\n[ "$typed" = "$(cat "$DOCKFLOW_TEST_DIR/password")" ]');
+    script('setpriv', 'printf "%s\\n" "$@" > "$DOCKFLOW_TEST_DIR/setpriv-args"\nwhile [ "$1" != "--" ]; do shift; done\nshift\nexec "$@"');
+    savedPath = process.env.PATH;
+    process.env.PATH = `${dir}:${savedPath}`;
+    process.env.DOCKFLOW_TEST_DIR = dir;
+  });
+  afterEach(() => {
+    process.env.PATH = savedPath;
+    delete process.env.DOCKFLOW_TEST_DIR;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('a password full of shell metacharacters reaches su intact', () => {
+    expect(checkUserPassword('deploy', PASSWORD, run, 1000)).toEqual({ verdict: true });
+    expect(checkUserPassword('deploy', 'wrong', run, 1000)).toEqual({ verdict: false });
+    expect(readFileSync(join(dir, 'su-args'), 'utf8')).toBe('-c\ntrue\n-\ndeploy\n');
+  });
+
+  it('as root su goes through setpriv as nobody', () => {
+    expect(checkUserPassword('deploy', PASSWORD, run, 0)).toEqual({ verdict: true });
+    expect(readFileSync(join(dir, 'setpriv-args'), 'utf8')).toContain('--reuid=65534\n--regid=65534\n--clear-groups\n--\nsu\n');
   });
 });

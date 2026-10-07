@@ -26,6 +26,8 @@ const DOCKFLOW_RULE_SHAPES: readonly RegExp[] = [
   /^\S+ ALL=\(ALL\) NOPASSWD: \/usr\/local\/sbin\/dockflow-public-ports$/,
 ];
 const COMMAND_TIMEOUT_MS = 60_000;
+const PASSWORD_CHECK_TIMEOUT_MS = 30_000;
+const UNPRIVILEGED_ID = 65534;
 
 /** What the functions of this file act on; tests point it at a scratch directory and a fake `run`. */
 export interface HostEnv {
@@ -270,20 +272,33 @@ export function createDeployUser(username: string, password: string, publicKey: 
   return true;
 }
 
+export type PasswordCheck = { verdict: boolean } | { verdict: 'unverified'; reason: string };
+
+/** `su -c true - <user>`, run by nobody when the caller is root: su run by root authenticates nothing (pam_rootok). */
+export function passwordCheckArgv(username: string, effectiveUid: number): string[] {
+  const argv = ['su', '-c', 'true', '-', username];
+  if (effectiveUid !== 0) return argv;
+  return ['setpriv', `--reuid=${UNPRIVILEGED_ID}`, `--regid=${UNPRIVILEGED_ID}`, '--clear-groups', '--', ...argv];
+}
+
 /**
- * Validate user password by testing it with su
+ * Checks a user's password without a shell: the user name is one argv element and the password
+ * travels on su's stdin only, so it is in no process listing and no quote can break out. A host that
+ * cannot run the check answers 'unverified', never a silent yes.
  */
-export async function validateUserPassword(username: string, password: string): Promise<boolean> {
-  if (!username || !password) {
-    return false;
-  }
-
-  const result = spawnSync('bash', ['-c', `echo '${password}' | /bin/su --command true - '${username}'`], {
-    encoding: 'utf-8',
-    stdio: ['pipe', 'pipe', 'pipe']
-  });
-
-  return result.status === 0;
+export function checkUserPassword(
+  username: string,
+  password: string,
+  runCommand: CommandRunner = run,
+  effectiveUid: number = process.geteuid?.() ?? -1,
+): PasswordCheck {
+  if (!username || !password) return { verdict: false };
+  const argv = passwordCheckArgv(username, effectiveUid);
+  const result = runCommand(argv, { quiet: true, input: `${password}\n`, timeoutMs: PASSWORD_CHECK_TIMEOUT_MS });
+  if (result.exitCode === 127) return { verdict: 'unverified', reason: `${argv[0]} is not installed` };
+  if (result.timedOut) return { verdict: 'unverified', reason: 'su did not answer' };
+  if (/must be run from a terminal/i.test(result.stderr)) return { verdict: 'unverified', reason: 'su needs a terminal' };
+  return { verdict: result.ok };
 }
 
 /**
@@ -303,14 +318,18 @@ export async function promptAndValidateUserPassword(username: string): Promise<s
     }
 
     printInfo('Validating password...');
-    if (await validateUserPassword(username, password)) {
+    const check = checkUserPassword(username, password);
+    if (check.verdict === 'unverified') {
+      printWarning(`The password of ${username} could not be verified on this host (${check.reason}); using it as typed`);
+      return password;
+    }
+    if (check.verdict) {
       printSuccess('Password validated');
       return password;
-    } else {
-      attempts++;
-      if (attempts < maxAttempts) {
-        printWarning(`Invalid password. ${maxAttempts - attempts} attempts remaining.`);
-      }
+    }
+    attempts++;
+    if (attempts < maxAttempts) {
+      printWarning(`Invalid password. ${maxAttempts - attempts} attempts remaining.`);
     }
   }
 
