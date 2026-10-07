@@ -17,7 +17,7 @@ import { commandExists, detectPackageManager, getDistroName } from './dependenci
 import { configurePublicPorts } from './public-ports';
 import type { HostConfig } from './types';
 
-const DOCKFLOW_BASE_DIR = '/var/lib/dockflow';
+export const DOCKFLOW_BASE_DIR = '/var/lib/dockflow';
 
 // ---------------------------------------------------------------------------
 // Pure helpers
@@ -32,49 +32,79 @@ export function nginxPackageFor(_pm: string): string {
 // Command execution helpers
 // ---------------------------------------------------------------------------
 
-interface RunResult {
-  ok: boolean;
-  stdout: string;
-  stderr: string;
+export interface RunOptions {
+  /** capture the output instead of streaming it to the console */
+  quiet?: boolean;
+  input?: string;
+  /** the child is killed after this long and the result reports timedOut */
+  timeoutMs?: number;
+  /** output beyond this many bytes kills the child; default 64 MiB */
+  maxBuffer?: number;
 }
 
+export interface RunResult {
+  ok: boolean;
+  /** 127 when the binary does not exist, 124 after a timeout */
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+}
+
+export type CommandRunner = (args: readonly string[], opts?: RunOptions) => RunResult;
+
+// package managers and install scripts print far more than Node's default 1 MiB
+const RUN_MAX_BUFFER = 64 * 1024 * 1024;
+const TIMEOUT_EXIT = 124;
+const NOT_FOUND_EXIT = 127;
+
 /**
- * Run a privileged command, streaming output to the console unless quiet.
+ * Run a privileged command by argv (no shell), streaming output to the console unless quiet.
  * Setup enforces root before provisioning starts (see setup/index.ts), so no
  * sudo prefix is needed — which also keeps minimal systems without a sudo
  * binary working.
  */
-function run(args: string[], opts?: { quiet?: boolean; input?: string }): RunResult {
+export function run(args: readonly string[], opts: RunOptions = {}): RunResult {
+  const captured = opts.quiet || opts.input !== undefined;
   const result = spawnSync(args[0], args.slice(1), {
     encoding: 'utf-8',
-    stdio: opts?.quiet || opts?.input !== undefined
-      ? ['pipe', 'pipe', 'pipe']
-      : ['inherit', 'inherit', 'inherit'],
-    input: opts?.input,
+    stdio: captured ? ['pipe', 'pipe', 'pipe'] : ['inherit', 'inherit', 'inherit'],
+    input: opts.input,
+    timeout: opts.timeoutMs,
+    maxBuffer: opts.maxBuffer ?? RUN_MAX_BUFFER,
   });
-  return {
-    ok: result.status === 0,
-    stdout: result.stdout ?? '',
-    stderr: result.stderr ?? '',
-  };
+  const code = (result.error as NodeJS.ErrnoException | undefined)?.code;
+  const timedOut = code === 'ETIMEDOUT';
+  let exitCode = result.status ?? 1;
+  let stderr = result.stderr ?? '';
+  if (timedOut) {
+    exitCode = TIMEOUT_EXIT;
+  } else if (code === 'ENOENT') {
+    exitCode = NOT_FOUND_EXIT;
+    stderr = `${args[0]}: command not found`;
+  }
+  return { ok: exitCode === 0 && !timedOut, exitCode, stdout: result.stdout ?? '', stderr, timedOut };
 }
 
 // ---------------------------------------------------------------------------
 // Provisioning steps
 // ---------------------------------------------------------------------------
 
-/** Create /var/lib/dockflow owned by the deploy user (mode 0750). */
-function ensureDockflowDir(deployUser: string): void {
-  const result = run([
-    'sh', '-c',
-    `mkdir -p '${DOCKFLOW_BASE_DIR}' && chown '${deployUser}:${deployUser}' '${DOCKFLOW_BASE_DIR}' && chmod 0750 '${DOCKFLOW_BASE_DIR}'`,
-  ], { quiet: true });
-
-  if (!result.ok) {
-    throw new CLIError(
-      `Failed to prepare ${DOCKFLOW_BASE_DIR}: ${result.stderr.trim()}`,
-      ErrorCode.COMMAND_FAILED,
-    );
+/** Create /var/lib/dockflow owned by the deploy user (mode 0750). Argv only: the user name never reaches a shell. */
+export function ensureDockflowDir(deployUser: string, runCommand: CommandRunner = run): void {
+  const steps = [
+    ['mkdir', '-p', '--', DOCKFLOW_BASE_DIR],
+    ['chown', '--', `${deployUser}:${deployUser}`, DOCKFLOW_BASE_DIR],
+    ['chmod', '--', '0750', DOCKFLOW_BASE_DIR],
+  ];
+  for (const argv of steps) {
+    const result = runCommand(argv, { quiet: true });
+    if (!result.ok) {
+      throw new CLIError(
+        `Failed to prepare ${DOCKFLOW_BASE_DIR}: ${result.stderr.trim() || `${argv[0]} exited with ${result.exitCode}`}`,
+        ErrorCode.COMMAND_FAILED,
+      );
+    }
   }
   printSuccess(`${DOCKFLOW_BASE_DIR} ready (owner: ${deployUser})`);
 }
