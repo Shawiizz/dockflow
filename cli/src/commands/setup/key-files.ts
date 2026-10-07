@@ -10,6 +10,11 @@ import * as path from 'path';
 import { printWarning } from '../../utils/output';
 import type { SSHKeyResult } from './types';
 
+/** ssh-keygen's arguments: an ed25519 key with an empty passphrase, the comment as a plain argument. */
+export function keygenArgs(keyPath: string, comment: string): string[] {
+  return ['-q', '-t', 'ed25519', '-f', keyPath, '-N', '', '-C', comment];
+}
+
 /**
  * Generate new SSH key pair
  */
@@ -28,18 +33,9 @@ export function generateSSHKey(keyPath: string, comment: string = 'dockflow'): S
       fs.unlinkSync(`${keyPath}.pub`);
     }
 
-    // Use -q for quiet mode and -N '' for empty passphrase
-    // With shell: true, we need to properly escape the empty string
-    const result = spawnSync('ssh-keygen', [
-      '-q',
-      '-t', 'ed25519',
-      '-f', keyPath,
-      '-N', "''",
-      '-C', comment
-    ], {
+    const result = spawnSync('ssh-keygen', keygenArgs(keyPath, comment), {
       encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      shell: true
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     if (result.status === 0) {
@@ -49,7 +45,7 @@ export function generateSSHKey(keyPath: string, comment: string = 'dockflow'): S
 
     return { 
       success: false, 
-      error: result.stderr || result.stdout || `Exit code: ${result.status}` 
+      error: result.stderr || result.stdout || result.error?.message || `Exit code: ${result.status}`
     };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
