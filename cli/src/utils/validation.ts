@@ -11,6 +11,7 @@ import {
   getFullConnectionInfo,
   getAvailableEnvironments,
   getAllNodeConnections,
+  getAllNodes,
   getManagersForEnvironment,
   findActiveManager,
 } from './servers';
@@ -261,4 +262,4 @@ export function withResolvedEnv<A extends unknown[]>(
 }
 
 // Re-export for CLI commands that need all node connections after validateEnv()
-export { getAllNodeConnections };
+export { getAllNodeConnections, getAllNodes };

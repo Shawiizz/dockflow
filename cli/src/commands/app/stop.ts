@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { printWarning, printInfo, printDebug, createSpinner } from '../../utils/output';
 import { confirmPrompt } from '../../utils/prompts';
-import { resolveEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { loadConfig } from '../../utils/config';
 import { DockerError, withServicesRequired, ConfigError } from '../../utils/errors';
@@ -17,7 +17,7 @@ export function registerStopCommand(program: Command): void {
     .helpGroup('Operate')
     .option('-y, --yes', 'Skip confirmation')
     .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
-    .action(withServicesRequired(async (env: string, options: { yes?: boolean; server?: string }) => {
+    .action(withServicesRequired(withResolvedEnv(async (env: string, options: { yes?: boolean; server?: string }) => {
       const { stackName, connection } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName });
 
@@ -51,5 +51,5 @@ export function registerStopCommand(program: Command): void {
         spinner.fail(`Failed to stop: ${msg}`);
         throw new DockerError(msg);
       }
-    }));
+    })));
 }

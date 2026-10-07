@@ -3,7 +3,7 @@
  */
 
 import type { Command } from 'commander';
-import { resolveEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { loadConfig } from '../../utils/config';
 import { DockerError, withServicesRequired, ConfigError } from '../../utils/errors';
@@ -16,7 +16,7 @@ export function registerVersionCommand(program: Command): void {
     .helpGroup('Inspect')
     .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .option('-j, --json', 'Output as JSON')
-    .action(withServicesRequired(async (env: string, options: { server?: string; json?: boolean }) => {
+    .action(withServicesRequired(withResolvedEnv(async (env: string, options: { server?: string; json?: boolean }) => {
       const { stackName, connection } = await resolveEnv(env, options.server);
 
       const config = loadConfig();
@@ -51,5 +51,5 @@ export function registerVersionCommand(program: Command): void {
         }
         printBlank();
       }
-    }));
+    })));
 }

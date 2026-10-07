@@ -8,8 +8,8 @@
 
 import type { SSHKeyConnection } from '../../../types';
 import { ok, err, type Result } from '../../../types/result';
-import { DeployError, ErrorCode } from '../../../utils/errors';
-import { sshExec } from '../../../utils/ssh';
+import { DeployError, DockerError, ErrorCode } from '../../../utils/errors';
+import { shellQuote, sshExec } from '../../../utils/ssh';
 import { printDebug, createTimedSpinner } from '../../../utils/output';
 import { SwarmStackOps } from './swarm-stack-ops';
 import * as Compose from '../../compose';
@@ -390,9 +390,9 @@ export class SwarmStackBackend implements StackBackend {
   async getContainers(stackName: string): Promise<SwarmContainerInfo[]> {
     const result = await sshExec(
       this.conn,
-      `docker ps --filter 'label=com.docker.stack.namespace=${stackName}' --format '{{.ID}}|{{.Names}}|{{.Status}}|{{.Ports}}'`,
+      `docker ps --filter ${shellQuote(`label=com.docker.stack.namespace=${stackName}`)} --format '{{.ID}}|{{.Names}}|{{.Status}}|{{.Ports}}'`,
     );
-    if (result.exitCode !== 0) return [];
+    if (result.exitCode !== 0) throw new DockerError(`docker ps failed: ${result.stderr.trim() || `exit ${result.exitCode}`}`);
 
     return result.stdout
       .trim()
@@ -407,9 +407,13 @@ export class SwarmStackBackend implements StackBackend {
   async getTasks(stackName: string): Promise<SwarmTaskInfo[]> {
     const result = await sshExec(
       this.conn,
-      `docker stack ps ${stackName} --format '{{.ID}}|{{.Name}}|{{.Image}}|{{.Node}}|{{.DesiredState}}|{{.CurrentState}}|{{.Error}}' --no-trunc 2>/dev/null`,
+      `docker stack ps ${shellQuote(stackName)} --format '{{.ID}}|{{.Name}}|{{.Image}}|{{.Node}}|{{.DesiredState}}|{{.CurrentState}}|{{.Error}}' --no-trunc 2>&1`,
     );
-    if (result.exitCode !== 0) return [];
+    // a stack that is not deployed is no task, any other failure is reported
+    if (result.exitCode !== 0) {
+      if (/nothing found in stack/i.test(result.stdout)) return [];
+      throw new DockerError(`docker stack ps failed: ${result.stdout.trim() || `exit ${result.exitCode}`}`);
+    }
 
     return result.stdout
       .trim()

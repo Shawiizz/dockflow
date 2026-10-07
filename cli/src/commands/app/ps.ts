@@ -1,12 +1,13 @@
 /**
- * PS command - List running containers and the nodes they run on.
+ * PS command - List the running containers of the stack on every node.
  */
 
 import type { Command } from 'commander';
 import { printInfo, printSection, printDebug, colors, printBlank, printDim, printRaw } from '../../utils/output';
-import { resolveEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { SwarmStackBackend } from '../../services/orchestrator/swarm/swarm-stack';
 import { DockerError, withServicesRequired } from '../../utils/errors';
+import { nodesOf, onEveryNode } from './nodes';
 
 export function registerPsCommand(program: Command): void {
   program
@@ -15,8 +16,8 @@ export function registerPsCommand(program: Command): void {
     .helpGroup('Inspect')
     .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .option('--tasks', 'Show tasks instead of containers')
-    .action(withServicesRequired(async (env: string, options: { server?: string; tasks?: boolean }) => {
-      const { stackName, connection } = await resolveEnv(env, options.server);
+    .action(withServicesRequired(withResolvedEnv(async (env: string, options: { server?: string; tasks?: boolean }) => {
+      const { stackName, connection, serverName } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName, tasks: options.tasks });
 
 
@@ -49,10 +50,12 @@ export function registerPsCommand(program: Command): void {
             printBlank();
           }
         } else {
-          const [containers, services] = await Promise.all([
-            orchestrator.getContainers(stackName),
+          const nodes = nodesOf(env, { name: serverName, connection });
+          const [perNode, services] = await Promise.all([
+            onEveryNode(nodes, (node) => new SwarmStackBackend(node.connection).getContainers(stackName)),
             orchestrator.getServices(stackName),
           ]);
+          const containers = perNode.flatMap(({ node, value }) => value.map((container) => ({ ...container, node: node.name })));
 
           if (containers.length === 0) {
             printInfo('No running containers');
@@ -64,10 +67,11 @@ export function registerPsCommand(program: Command): void {
             if (svc.ports) servicePorts.set(svc.name, svc.ports);
           }
 
+          const nodeWidth = Math.max(4, ...containers.map((c) => c.node.length)) + 2;
           printSection('Containers');
           printBlank();
-          printDim('  ID            NAME                                STATUS                         PORTS');
-          printDim('  ' + '─'.repeat(95));
+          printDim(`  ${'ID'.padEnd(14)}${'NAME'.padEnd(36)}${'NODE'.padEnd(nodeWidth)}${'STATUS'.padEnd(31)}PORTS`);
+          printDim('  ' + '─'.repeat(81 + nodeWidth));
 
           for (const container of containers) {
             const statusColor = container.status.includes('Up') ? colors.success : colors.warning;
@@ -76,6 +80,7 @@ export function registerPsCommand(program: Command): void {
             printRaw(
               `  ${container.id.substring(0, 12).padEnd(14)}` +
               `${container.name.substring(0, 35).padEnd(36)}` +
+              `${container.node.padEnd(nodeWidth)}` +
               `${statusColor(container.status.padEnd(31))}` +
               `${ports}`
             );
@@ -87,5 +92,5 @@ export function registerPsCommand(program: Command): void {
         const msg = error instanceof Error ? error.message : String(error);
         throw new DockerError(`Failed to list containers: ${msg}`);
       }
-    }));
+    })));
 }

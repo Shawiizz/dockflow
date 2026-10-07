@@ -17,7 +17,7 @@ import {
   colors,
   formatRelativeTime
 } from '../../utils/output';
-import { resolveEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { withErrorHandler } from '../../utils/errors';
 import {
   Metrics,
@@ -162,7 +162,7 @@ export function registerMetricsCommand(program: Command): void {
     .option('-n, --lines <number>', 'Number of history entries to show', '20')
     .option('-j, --json', 'Output as JSON')
     .option('--prune', 'Remove old metrics (keep last 1000)')
-    .action(withErrorHandler(async (env: string, options: { 
+    .action(withErrorHandler(withResolvedEnv(async (env: string, options: { 
       server?: string; 
       history?: boolean;
       lines?: string;
@@ -219,5 +219,5 @@ export function registerMetricsCommand(program: Command): void {
       // Summary mode (default)
       const summary = calculateMetricsSummary(metricsData);
       displaySummary(summary, stackName);
-    }));
+    })));
 }

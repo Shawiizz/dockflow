@@ -265,20 +265,23 @@ export function getFullConnectionInfo(env: string, serverName: string): SSHKeyCo
  * Skips nodes without SSH credentials.
  */
 export function getAllNodeConnections(environment: string): SSHKeyConnection[] {
+  return getAllNodes(environment).map((node) => node.connection);
+}
+
+/** Every node of the environment this machine can reach, managers first, with its servers.yml name. */
+export function getAllNodes(environment: string): { name: string; connection: SSHKeyConnection }[] {
   const servers = resolveServersForEnvironment(environment);
   const sorted = [
     ...servers.filter(s => s.role === 'manager'),
     ...servers.filter(s => s.role === 'worker'),
   ];
 
-  const connections: SSHKeyConnection[] = [];
+  const nodes: { name: string; connection: SSHKeyConnection }[] = [];
   for (const server of sorted) {
-    const conn = getFullConnectionInfo(environment, server.name);
-    if (conn) {
-      connections.push(conn);
-    }
+    const connection = getFullConnectionInfo(environment, server.name);
+    if (connection) nodes.push({ name: server.name, connection });
   }
-  return connections;
+  return nodes;
 }
 
 /**

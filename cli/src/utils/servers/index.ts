@@ -28,6 +28,7 @@ export {
   getServerNamesForEnvironment,
   getFullConnectionInfo,
   getAllNodeConnections,
+  getAllNodes,
   getEnvVarsForEnvironment,
 } from './resolver';
 

@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import { printDebug, createSpinner } from '../../utils/output';
-import { resolveEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { CLIError, DockerError, ErrorCode, withServicesRequired } from '../../utils/errors';
 import { requireAppService, serviceMode } from './service-name';
@@ -15,7 +15,7 @@ export function registerScaleCommand(program: Command): void {
     .description('Scale service to specified replicas')
     .helpGroup('Operate')
     .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
-    .action(withServicesRequired(async (env: string, service: string, replicas: string, options: { server?: string }) => {
+    .action(withServicesRequired(withResolvedEnv(async (env: string, service: string, replicas: string, options: { server?: string }) => {
       const { config, stackName, connection } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName });
 
@@ -49,5 +49,5 @@ export function registerScaleCommand(program: Command): void {
         spinner.fail(`Failed to scale: ${error}`);
         throw new DockerError(`${error}`);
       }
-    }));
+    })));
 }

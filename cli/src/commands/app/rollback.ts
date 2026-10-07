@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { getPerformer } from '../../utils/config';
 import { createSpinner } from '../../utils/output';
-import { resolveEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { Release } from '../../services/release';
 import { Audit } from '../../services/audit';
@@ -21,7 +21,7 @@ export function registerRollbackCommand(program: Command): void {
     .description('Rollback to previous version')
     .helpGroup('Operate')
     .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
-    .action(withErrorHandler(async (env: string, service: string | undefined, options: { server?: string }) => {
+    .action(withErrorHandler(withResolvedEnv(async (env: string, service: string | undefined, options: { server?: string }) => {
       const { config, stackName, connection } = await resolveEnv(env, options.server);
 
       if (config.no_services) {
@@ -68,5 +68,5 @@ export function registerRollbackCommand(program: Command): void {
           Notification.notify(config.notifications?.webhooks, { project: config.project_name, env, version: rolledBackTo, branch: '', performer: getPerformer(), status: 'success', duration_ms: durationMs, message }),
         ]);
       }
-    }));
+    })));
 }

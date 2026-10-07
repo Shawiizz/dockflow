@@ -412,7 +412,7 @@ dockflow rollback production         # Rollback all services
 dockflow ps <env>
 ```
 
-List running containers for the stack.
+List the running containers of the stack on every node, with the node each one runs on.
 
 | Option | Description |
 |--------|-------------|
@@ -511,7 +511,7 @@ Diagnose deployment issues and show why containers may not be starting.
 dockflow details <env>
 ```
 
-Show stack overview with services, replicas, and resource usage.
+Show stack overview: services and replicas, the Swarm nodes, and the resource usage of the stack's containers on every node.
 
 | Option | Description |
 |--------|-------------|
@@ -523,7 +523,7 @@ Show stack overview with services, replicas, and resource usage.
 dockflow ssh <env> [command...]
 ```
 
-Open an interactive SSH session or execute a command on the server.
+Open an interactive SSH session or execute a command on a server (the first manager by default; `--server` may name any server, workers included). A command's exit code becomes `dockflow`'s.
 
 | Option | Description |
 |--------|-------------|
@@ -540,7 +540,7 @@ dockflow ssh production "docker ps"        # Run remote command
 dockflow prune <env>
 ```
 
-Remove unused Docker resources from the server.
+Remove unused Docker resources on every node of the environment (images are sent to every node, so old ones pile up on workers too). The nodes are listed before you confirm; a node where pruning fails is named, after every node was tried.
 
 | Option | Description |
 |--------|-------------|
@@ -596,7 +596,7 @@ List services in a deployed stack. Alias: `svc`.
 dockflow list images <env>
 ```
 
-Show application images on the server.
+Show the application's images on every node, and whether a running container uses each one.
 
 | Option | Description |
 |--------|-------------|
