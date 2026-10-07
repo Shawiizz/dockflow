@@ -8,7 +8,7 @@
  */
 
 import { jsonResponse, errorResponse } from '../server';
-import { sshExec } from '../../utils/ssh';
+import { shellQuote, sshExec } from '../../utils/ssh';
 import { sshExecWithFallback } from '../../utils/ssh-fallback';
 import { getManagerConnection, getAllNodeConnections, resolveEnvironment, parseIntParam } from './_helpers';
 import { DOCKFLOW_AUDIT_DIR } from '../../constants';
@@ -109,6 +109,19 @@ export function auditFilePath(stackName: string): string {
   return `${DOCKFLOW_AUDIT_DIR}/${stackName}.log`;
 }
 
+/** `timestamp | action | version | performer | message`, as the audit service writes it. */
+export function parseAuditLine(line: string): AuditEntry | null {
+  const parts = line.split(' | ').map((part) => part.trim());
+  if (parts.length < 4 || !parts[0]) return null;
+  return {
+    timestamp: parts[0],
+    action: parts[1],
+    version: parts[2],
+    performer: parts[3],
+    message: parts.slice(4).join(' | ') || undefined,
+  };
+}
+
 /**
  * Read the deploy audit log from the remote server.
  *
@@ -130,7 +143,7 @@ async function getAuditLog(url: URL): Promise<Response> {
   const auditFile = auditFilePath(conn.stackName);
 
   try {
-    const command = `tail -n ${lines} "${auditFile}" 2>/dev/null || echo ""`;
+    const command = `tail -n ${lines} ${shellQuote(auditFile)} 2>/dev/null || echo ""`;
     // Use fallback across all nodes since audit log is replicated
     const nodeConnections = getAllNodeConnections(env);
     const connections = nodeConnections.length > 0 ? nodeConnections : [conn];
@@ -147,18 +160,8 @@ async function getAuditLog(url: URL): Promise<Response> {
 
     const entries: AuditEntry[] = output
       .split('\n')
-      .filter((line) => line.trim())
-      .map((line) => {
-        const parts = line.split('|');
-        return {
-          timestamp: parts[0] || '',
-          action: parts[1] || '',
-          version: parts[2] || '',
-          performer: parts[3] || '',
-          message: parts.slice(4).join('|') || undefined,
-        };
-      })
-      .filter((entry) => entry.timestamp !== '');
+      .map(parseAuditLine)
+      .filter((entry): entry is AuditEntry => entry !== null);
 
     return jsonResponse({
       entries,

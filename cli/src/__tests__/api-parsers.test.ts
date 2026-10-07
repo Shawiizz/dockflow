@@ -3,6 +3,7 @@ import { parseIntParam } from '../api/routes/_helpers';
 import { parseServiceLs, classifyTaskState } from '../api/routes/services';
 import { normalizeEnv, normalizeStringArray } from '../api/routes/accessories';
 import { mapMetricStatus } from '../api/routes/deploy';
+import { parseAuditLine } from '../api/routes/metrics';
 import { parseSSHServerName, parseExecServiceName } from '../api/routes/ssh';
 
 describe('parseIntParam', () => {
@@ -130,5 +131,35 @@ describe('WebSocket path parsers', () => {
 
   it('rejects malformed exec paths', () => {
     expect(parseExecServiceName('/ws/exec/')).toBeNull();
+  });
+});
+
+describe('parseAuditLine', () => {
+  it('splits the fields the audit service writes and trims them', () => {
+    expect(parseAuditLine('2026-01-15T10:30:00.000Z | DEPLOYED | 1.2.3 | ci@runner | Deployment succeeded')).toEqual({
+      timestamp: '2026-01-15T10:30:00.000Z',
+      action: 'DEPLOYED',
+      version: '1.2.3',
+      performer: 'ci@runner',
+      message: 'Deployment succeeded',
+    });
+  });
+
+  it('keeps a message that contains the separator', () => {
+    expect(parseAuditLine('2026-01-15T10:30:00Z | FAILED | 1.0.0 | me@pc | step a | step b')?.message).toBe('step a | step b');
+  });
+
+  it('keeps a pipe inside a field value', () => {
+    expect(parseAuditLine('2026-01-15T10:30:00Z | DEPLOYED | v1|rc | me@pc | ok')?.version).toBe('v1|rc');
+  });
+
+  it('has no message when the line stops after the performer', () => {
+    expect(parseAuditLine('2026-01-15T10:30:00Z | LOCKED | manual-lock | me@pc')?.message).toBeUndefined();
+  });
+
+  it('skips lines that are not audit entries', () => {
+    expect(parseAuditLine('')).toBeNull();
+    expect(parseAuditLine('just text')).toBeNull();
+    expect(parseAuditLine(' | DEPLOYED | 1.0.0 | me@pc | x')).toBeNull();
   });
 });
