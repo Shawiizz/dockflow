@@ -38,7 +38,7 @@ jobs:
         run: |
           # Tag is already the version (2.0.0)
           VERSION=$GITHUB_REF_NAME
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "📦 Building CLI version: $VERSION"
 
       - name: Set version in package.json files

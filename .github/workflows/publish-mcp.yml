@@ -25,23 +25,32 @@ jobs:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
+      # The input reaches the shell through the environment and is checked before it is used:
+      # it is typed by whoever starts the workflow.
       - name: Extract version
         id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="$INPUT_VERSION"
           else
             # Strip "mcp-" prefix from tag (mcp-1.0.2 → 1.0.2)
             VERSION="${GITHUB_REF_NAME#mcp-}"
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "::error::not a version: $VERSION"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Publishing MCP server v$VERSION"
 
       - name: Install dependencies
-        run: cd packages/mcp-server && npm install
+        run: cd packages/mcp-server && npm ci
 
       - name: Build
         run: cd packages/mcp-server && npm run build
+
+      - name: Typecheck and test
+        run: cd packages/mcp-server && npm run typecheck:test && npm test
 
       - name: Set version
         run: cd packages/mcp-server && npm version ${{ steps.version.outputs.version }} --no-git-tag-version --allow-same-version
