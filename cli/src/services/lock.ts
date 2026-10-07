@@ -1,16 +1,23 @@
 /**
- * Lock — manages deployment locks on remote servers via SSH.
+ * Lock — the deployment lock of a stack: one JSON file per stack on the manager.
+ *
+ * - acquire: the lock file appears through `ln` of a complete temporary file, which fails when the
+ *   file exists, so two deploys never both create it and nobody reads a half-written lock.
+ * - stale takeover: a compare-and-swap. Under a short-lived guard directory the file is replaced
+ *   only when it still holds the stale content that was read, so of two deploys that both saw the
+ *   same stale lock exactly one wins, and the loser never removes the winner's lock.
  *
  * Used by both CLI lock commands and API lock routes.
  */
 
-import type { SSHKeyConnection } from '../types';
-import { sshExec, sshExecChannel } from '../utils/ssh';
+import { randomBytes } from 'crypto';
+import type { SSHExecResult, SSHKeyConnection } from '../types';
+import { sshExec, sshExecChannel, shellQuote } from '../utils/ssh';
 import { ok, err, type Result } from '../types';
 import { DOCKFLOW_LOCKS_DIR } from '../constants';
 import { LOCK_STALE_THRESHOLD_MINUTES } from '../constants';
 import { getPerformer } from '../utils/config';
-import { printDebug } from '../utils/output';
+import { printDebug, printWarning } from '../utils/output';
 
 /**
  * Lock information stored in the lock file
@@ -34,163 +41,220 @@ export interface LockStatus {
   isStale?: boolean;
 }
 
+/** Runs a command on the server holding the locks, `stdin` written to its standard input. */
+export interface LockShell {
+  run(command: string, stdin?: string): Promise<SSHExecResult>;
+}
+
+export interface LockOptions {
+  staleThresholdMinutes?: number;
+  /** replaces DOCKFLOW_LOCKS_DIR */
+  locksDir?: string;
+  /** epoch milliseconds */
+  now?: () => number;
+  /** `LockData.performer`; defaults to `user@host` of this machine */
+  performer?: string;
+}
+
+const ACQUIRED = 'ACQUIRED';
+const STALE_TAKEN = 'Lock was stale but another deploy acquired it first';
+/** a takeover guard older than this was left by a killed process (the guarded step takes milliseconds) */
+const ABANDONED_GUARD_MINUTES = 1;
+
+interface LockRead {
+  status: LockStatus;
+  /** file content as read (trailing newlines dropped), the expected value of a stale takeover */
+  content: string | null;
+}
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+export function sshLockShell(connection: SSHKeyConnection): LockShell {
+  return {
+    async run(command: string, stdin?: string): Promise<SSHExecResult> {
+      if (stdin === undefined) return sshExec(connection, command);
+      const { stream, done } = await sshExecChannel(connection, command);
+      stream.end(stdin);
+      return done;
+    },
+  };
+}
+
+/** A stale takeover is worth saying: the holder's deploy most likely died without releasing it. */
+export function staleTakeoverMessage(holder: LockData | null, minutes: number | null): string {
+  if (holder === null) return 'Lock could not be read and is treated as stale; taking it over';
+  const age = minutes === null || !Number.isFinite(minutes) ? '' : ` (${minutes} min old)`;
+  return `Lock of ${holder.performer}${age} is stale; taking it over`;
+}
+
 /**
  * Lock — manages deployment locks for a single stack on a remote server.
  */
 export class Lock {
+  private readonly locksDir: string;
   private readonly lockFile: string;
   private readonly staleThresholdMinutes: number;
+  private readonly now: () => number;
 
   constructor(
-    private readonly connection: SSHKeyConnection,
+    private readonly shell: LockShell,
     private readonly stackName: string,
-    staleThresholdMinutes?: number,
+    private readonly options: LockOptions = {},
   ) {
-    this.lockFile = `${DOCKFLOW_LOCKS_DIR}/${stackName}.lock`;
-    this.staleThresholdMinutes = staleThresholdMinutes ?? LOCK_STALE_THRESHOLD_MINUTES;
+    this.locksDir = (options.locksDir ?? DOCKFLOW_LOCKS_DIR).replace(/\/+$/, '');
+    this.lockFile = `${this.locksDir}/${stackName}.lock`;
+    this.staleThresholdMinutes = options.staleThresholdMinutes ?? LOCK_STALE_THRESHOLD_MINUTES;
+    this.now = options.now ?? Date.now;
   }
 
-  /**
-   * Read the current lock status
-   */
   async status(): Promise<Result<LockStatus, Error>> {
     try {
-      const result = await sshExec(this.connection, `cat "${this.lockFile}" 2>/dev/null || echo "NO_LOCK"`);
-      const output = result.stdout.trim();
-
-      if (output === 'NO_LOCK' || !output) {
-        return ok({ locked: false });
-      }
-
-      try {
-        const data = JSON.parse(output) as LockData;
-        const startedAt = new Date(data.started_at);
-        const durationMinutes = Math.floor((Date.now() - startedAt.getTime()) / 60000);
-        const isStale = durationMinutes > this.staleThresholdMinutes;
-
-        return ok({ locked: true, data, durationMinutes, isStale });
-      } catch (parseErr) {
-        printDebug(`Lock metadata parse failed: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`);
-        return ok({ locked: true, isStale: true });
-      }
+      return ok((await this.read()).status);
     } catch (error) {
-      return err(error instanceof Error ? error : new Error(String(error)));
+      return err(toError(error));
     }
   }
 
-  /**
-   * Acquire a deployment lock atomically.
-   *
-   * Uses bash `set -C` (noclobber) so the redirect `>` fails if the file
-   * already exists, preventing TOCTOU races between concurrent deploys.
-   * Stale or forced locks are removed first, then re-acquired atomically.
-   */
   async acquire(options?: { message?: string; force?: boolean; version?: string }): Promise<Result<LockData, Error>> {
     try {
-      const now = new Date();
+      const now = new Date(this.now());
       const lockData: LockData = {
-        performer: getPerformer(),
+        performer: this.options.performer ?? getPerformer(),
         started_at: now.toISOString(),
         timestamp: Math.floor(now.getTime() / 1000),
         version: options?.version || 'manual-lock',
         stack: this.stackName,
         message: options?.message || 'Manual lock via CLI',
       };
-
-      const lockContent = JSON.stringify(lockData, null, 2);
+      const content = JSON.stringify(lockData, null, 2);
 
       if (options?.force) {
-        await sshExec(this.connection, `mkdir -p "${DOCKFLOW_LOCKS_DIR}" && rm -f "${this.lockFile}"`);
-        const failure = await this.write(this.lockFile, lockContent);
-        return failure ? err(failure) : ok(lockData);
+        const forced = await this.shell.run(this.forceCommand(), content);
+        return forced.exitCode === 0 ? ok(lockData) : err(this.writeFailed(forced));
       }
 
-      // Use noclobber (set -C) for atomic acquire — write lock via temp file + mv to avoid shell escaping
-      const tmpLock = `${this.lockFile}.tmp.${Date.now()}`;
-      const failure = await this.write(tmpLock, lockContent);
-      if (failure) return err(failure);
+      const created = await this.tryCreate(content);
+      if (created instanceof Error) return err(created);
+      if (created) return ok(lockData);
 
-      const result = await sshExec(
-        this.connection,
-        `(set -C; cp "${tmpLock}" "${this.lockFile}") 2>/dev/null && echo "ACQUIRED" || echo "LOCKED"; rm -f "${tmpLock}"`,
-      );
+      let current = await this.read();
+      if (!current.status.locked) {
+        // released between the create attempt and the read: one more attempt before blaming permissions
+        const retried = await this.tryCreate(content);
+        if (retried instanceof Error) return err(retried);
+        if (retried) return ok(lockData);
+        current = await this.read();
+        if (!current.status.locked) return err(this.cannotCreate());
+      }
 
-      if (result.stdout.trim() === 'ACQUIRED') {
+      if (current.status.isStale) {
+        const takeover = await this.shell.run(this.takeoverCommand(current.content ?? ''), content);
+        if (takeover.stdout.trim() !== ACQUIRED) return err(new Error(STALE_TAKEN));
+        printWarning(staleTakeoverMessage(current.status.data ?? null, current.status.durationMinutes ?? null));
         return ok(lockData);
       }
 
-      // Noclobber failed — check if it's an actual lock or a write permission issue
-      const current = await this.status();
-
-      if (!current.success) {
-        return err(current.error);
-      }
-
-      if (!current.data.locked) {
-        // No lock file exists but we still couldn't write — permission issue
-        return err(new Error(
-          `Cannot create lock file at ${this.lockFile}. Check directory permissions on the server.`,
-        ));
-      }
-
-      if (current.data.isStale) {
-        // Stale: remove and re-acquire — reuse the temp file written above
-        const tmpRetry = `${this.lockFile}.tmp.${Date.now()}`;
-        const retryFailure = await this.write(tmpRetry, lockContent);
-        if (retryFailure) return err(retryFailure);
-
-        const retryResult = await sshExec(
-          this.connection,
-          `rm -f "${this.lockFile}" && (set -C; cp "${tmpRetry}" "${this.lockFile}") 2>/dev/null && echo "ACQUIRED" || echo "LOCKED"; rm -f "${tmpRetry}"`,
-        );
-        if (retryResult.stdout.trim() === 'ACQUIRED') {
-          return ok(lockData);
-        }
-        // Another deploy won the race after we removed stale lock
-        return err(new Error('Lock was stale but another deploy acquired it first'));
-      }
-
-      // Active lock held by someone else
-      return err(new Error(
-        current.data.data
-          ? `Already locked by ${current.data.data.performer} (${current.data.durationMinutes} min ago)`
-          : 'Lock file exists but could not be parsed'
-      ));
+      return err(
+        new Error(
+          current.status.data
+            ? `Already locked by ${current.status.data.performer} (${current.status.durationMinutes} min ago)`
+            : 'Lock file exists but could not be parsed',
+        ),
+      );
     } catch (error) {
-      return err(error instanceof Error ? error : new Error(String(error)));
+      return err(toError(error));
     }
   }
 
-  /**
-   * Writes `content` to `path` in the locks directory, which a server's first deploy creates: the
-   * exit code of the write is the only sign it failed.
-   */
-  private async write(path: string, content: string): Promise<Error | null> {
-    const { stream, done } = await sshExecChannel(this.connection, `mkdir -p "${DOCKFLOW_LOCKS_DIR}" && cat > "${path}"`);
-    stream.end(content);
-    const result = await done;
-    if (result.exitCode === 0) return null;
-    const cause = result.stderr.trim();
-    return new Error(`Cannot write the lock file in ${DOCKFLOW_LOCKS_DIR}${cause ? `: ${cause}` : ''}`);
-  }
-
-  /**
-   * Release a deployment lock
-   */
   async release(): Promise<Result<void, Error>> {
     try {
-      const verifyResult = await sshExec(
-        this.connection,
-        `rm -f "${this.lockFile}" && (test -f "${this.lockFile}" && echo "EXISTS" || echo "REMOVED")`,
-      );
-      if (verifyResult.stdout.trim() === 'EXISTS') {
+      const file = shellQuote(this.lockFile);
+      const result = await this.shell.run(`rm -f ${file}; test -f ${file} && echo EXISTS || echo REMOVED`);
+      if (result.stdout.trim() === 'EXISTS') {
         return err(new Error('Lock file could not be removed. Check permissions on the server.'));
       }
-
       return ok(undefined);
     } catch (error) {
-      return err(error instanceof Error ? error : new Error(String(error)));
+      return err(toError(error));
     }
+  }
+
+  private async read(): Promise<LockRead> {
+    const result = await this.shell.run(`cat ${shellQuote(this.lockFile)} 2>/dev/null || echo NO_LOCK`);
+    const output = result.stdout.trim();
+    if (output === 'NO_LOCK' || !output) return { status: { locked: false }, content: null };
+
+    const content = result.stdout.replace(/\n+$/, '');
+    try {
+      const data = JSON.parse(output) as LockData;
+      const durationMinutes = Math.floor((this.now() - new Date(data.started_at).getTime()) / 60000);
+      const isStale = durationMinutes > this.staleThresholdMinutes;
+      return { status: { locked: true, data, durationMinutes, isStale }, content };
+    } catch (parseErr) {
+      printDebug(`Lock metadata parse failed: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`);
+      return { status: { locked: true, isStale: true }, content };
+    }
+  }
+
+  private tempFile(): string {
+    return `${this.lockFile}.tmp.${randomBytes(4).toString('hex')}`;
+  }
+
+  private cannotCreate(): Error {
+    return new Error(`Cannot create lock file at ${this.lockFile}. Check directory permissions on the server.`);
+  }
+
+  /** The locks directory appears on a server's first deploy: the exit code of the write is the only sign it failed. */
+  private writeFailed(result: SSHExecResult): Error {
+    const cause = result.stderr.trim();
+    return new Error(`Cannot write the lock file in ${this.locksDir}${cause ? `: ${cause}` : ''}`);
+  }
+
+  /** `ln` refuses an existing target: the create-if-absent step, with the content already complete. */
+  private async tryCreate(content: string): Promise<boolean | Error> {
+    const tmp = shellQuote(this.tempFile());
+    const result = await this.shell.run(
+      [
+        `mkdir -p ${shellQuote(this.locksDir)} && cat > ${tmp} || { rm -f ${tmp}; exit 1; }`,
+        `ln ${tmp} ${shellQuote(this.lockFile)} 2>/dev/null && r=${ACQUIRED} || r=LOCKED`,
+        `rm -f ${tmp}`,
+        'echo "$r"',
+      ].join('\n'),
+      content,
+    );
+    if (result.exitCode !== 0) return this.writeFailed(result);
+    return result.stdout.trim() === ACQUIRED;
+  }
+
+  private forceCommand(): string {
+    const tmp = shellQuote(this.tempFile());
+    return `mkdir -p ${shellQuote(this.locksDir)} && cat > ${tmp} && mv -f ${tmp} ${shellQuote(this.lockFile)} || { rm -f ${tmp}; exit 1; }`;
+  }
+
+  /**
+   * Replaces the lock only if it still holds `expected`. A lock that disappeared in the meantime
+   * is created instead.
+   */
+  private takeoverCommand(expected: string): string {
+    const file = shellQuote(this.lockFile);
+    const guard = shellQuote(`${this.lockFile}.takeover`);
+    const tmp = shellQuote(this.tempFile());
+    return [
+      'r=LOCKED',
+      `if cat > ${tmp}; then`,
+      `  find ${guard} -prune -type d -mmin +${ABANDONED_GUARD_MINUTES} -exec rmdir {} + 2>/dev/null`,
+      `  if mkdir ${guard} 2>/dev/null; then`,
+      `    if [ ! -e ${file} ]; then ln ${tmp} ${file} 2>/dev/null && r=${ACQUIRED}`,
+      `    elif [ "$(cat ${file} 2>/dev/null)" = ${shellQuote(expected)} ]; then mv -f ${tmp} ${file} && r=${ACQUIRED}`,
+      '    fi',
+      `    rmdir ${guard}`,
+      '  fi',
+      'fi',
+      `rm -f ${tmp}`,
+      'echo "$r"',
+    ].join('\n');
   }
 }
 
@@ -202,5 +266,5 @@ export function createLock(
   stackName: string,
   staleThresholdMinutes?: number,
 ): Lock {
-  return new Lock(connection, stackName, staleThresholdMinutes);
+  return new Lock(sshLockShell(connection), stackName, { staleThresholdMinutes });
 }
