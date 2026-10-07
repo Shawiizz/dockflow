@@ -1,9 +1,13 @@
 // services/backup.ts over a recorded sshExec: every command the engine sends to a node is kept,
 // and each node answers from rules. Nothing here opens a connection.
 
-import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { Writable } from 'stream';
-import { Backup, type BackupMetadata } from '../services/backup';
+import { Backup, type BackupListEntry, type BackupMetadata } from '../services/backup';
+import { hasPosixShell } from './helpers/local-shell';
 import { BackupError, ErrorCode } from '../utils/errors';
 import type { SSHKeyConnection } from '../types';
 import type { BackupAccessoryConfig } from '../utils/config';
@@ -678,5 +682,146 @@ describe('Backup without a container', () => {
 
     const restore = failure(await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES));
     expect((restore as BackupError).code).toBe(ErrorCode.CONTAINER_NOT_FOUND);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// prune
+// ---------------------------------------------------------------------------
+
+describe('Backup.prune', () => {
+  const ORPHANS = '-mmin +1440';
+
+  function entry(fields: Partial<BackupListEntry> & { id: string }): BackupListEntry {
+    return { ...metadata({ id: fields.id }), filePath: '', node: 'server_1', ...fields };
+  }
+
+  it('removes the backups past retention on the node they were listed on, and counts what it freed', async () => {
+    nodes.on(
+      '*.meta.json',
+      listing(
+        metadata({ id: '20260103-000000-cccc', timestamp: '2026-01-03T00:00:00.000Z', sizeBytes: 300, nodeHost: 'manager' }),
+        metadata({ id: '20260101-000000-aaaa', timestamp: '2026-01-01T00:00:00.000Z', sizeBytes: 100, nodeHost: 'manager' }),
+      ),
+      'manager',
+    );
+    nodes.on('*.meta.json', listing(metadata({ id: '20260102-000000-bbbb', timestamp: '2026-01-02T00:00:00.000Z', sizeBytes: 200 })), 'worker');
+    nodes.on(ORPHANS, { stdout: `4096\t${DIR}/20251201-000000-dead.sql.gz\n` }, 'worker');
+
+    const result = await backupEngine().prune('db', 1);
+    expect(result.success && result.data).toEqual({ removed: 2, orphanFiles: 1, bytesFreed: 100 + 200 + 4096 });
+    expect(nodes.commands('manager')).toContain(`rm -f -- '${DIR}/20260101-000000-aaaa.'*`);
+    expect(nodes.commands('worker')).toContain(`rm -f -- '${DIR}/20260102-000000-bbbb.'*`);
+    expect(nodes.commands().filter((command) => command.startsWith('rm -f'))).toHaveLength(2);
+    expect(printed).toContainEqual({ level: 'info', message: 'Removed 1 orphaned backup file(s) (4.0 KB) left by interrupted backups' });
+  });
+
+  it('retention counts the backups as they were taken: the newest are kept whatever the timestamps say', async () => {
+    const result = await backupEngine().prune('db', 1, {
+      prefetched: [
+        entry({ id: 'skewed', timestamp: '2026-12-01T00:00:00.000Z', epochMs: Date.parse('2026-01-01T00:00:00.000Z') }),
+        entry({ id: 'newest', timestamp: '2026-02-01T00:00:00.000Z', epochMs: Date.parse('2026-02-01T00:00:00.000Z') }),
+      ],
+    });
+    expect(result.success && result.data.removed).toBe(1);
+    expect(nodes.commands('manager')).toEqual(expect.arrayContaining([`rm -f -- '${DIR}/skewed.'*`]));
+  });
+
+  it('prefetched entries skip the listing; --node narrows the orphan sweep', async () => {
+    const result = await backupEngine().prune('db', 5, { node: 'agent_1', prefetched: [] });
+    expect(result.success && result.data).toEqual({ removed: 0, orphanFiles: 0, bytesFreed: 0 });
+    expect(nodes.calls.map((call) => call.host)).toEqual(['worker']);
+    expect(nodes.commands()[0]).toContain(ORPHANS);
+    expect(printed.filter((line) => line.level === 'info')).toEqual([]);
+  });
+
+  it('an unknown --node is a validation error naming the servers', async () => {
+    expect(failure(await backupEngine().prune('db', 5, { node: 'nope' })).message).toContain('Server nope is not a server');
+  });
+
+  it('a backup whose name could escape the backup directory prunes nothing', async () => {
+    const error = failure(
+      await backupEngine().prune('db', 0, {
+        prefetched: [entry({ id: '20260101-000000-aaaa' }), entry({ id: '../../etc', timestamp: '2025-01-01T00:00:00.000Z' })],
+      }),
+    );
+    expect(error.message).toBe('Backup "../../etc" of "db" has an unusable name; nothing was pruned');
+    expect(nodes.commands().filter((command) => command.startsWith('rm'))).toEqual([]);
+  });
+
+  it('a removal that fails is an error naming the node, not a count', async () => {
+    nodes.on('rm -f', { exitCode: 1, stderr: 'rm: cannot remove: Permission denied\n' });
+    const error = failure(await backupEngine().prune('db', 0, { prefetched: [entry({ id: '20260101-000000-aaaa' })] }));
+    expect(error.message).toBe('Cannot remove backups on server_1: rm: cannot remove: Permission denied');
+  });
+
+  it('a backup stored on a server that is not one of the environment is an error, not the manager', async () => {
+    const error = failure(
+      await backupEngine().prune('db', 0, {
+        prefetched: [entry({ id: '20260101-000000-aaaa', node: 'gone', nodeHost: 'old-host' })],
+      }),
+    );
+    expect(error.message).toContain('is stored on old-host:22, which is not a server of this environment');
+    expect(nodes.commands().filter((command) => command.startsWith('rm'))).toEqual([]);
+  });
+
+  describe.if(hasPosixShell)('orphan sweep executed by a real sh', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dockflow-backup-engine-'));
+    afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+    it('an orphan older than 24 h is removed, a younger one and files with metadata are kept', async () => {
+      const dir = join(root, STACK, 'db');
+      mkdirSync(dir, { recursive: true });
+      const hoursAgo = (hours: number): Date => new Date(Date.now() - hours * 3600_000);
+      const files: [string, number, number][] = [
+        ['20250101-000000-aaaa.sql.gz', 1000, 25],
+        ['20250101-000000-bbbb.sql.gz', 2000, 1],
+        ['20250101-000000-cccc.sql.gz', 3000, 48],
+        ['20250101-000000-cccc.meta.json', 10, 48],
+        ['20250101-000000-dddd.data.tar.gz', 500, 30],
+        ['20250101-000000-dddd.data.tar.gz.rc', 2, 30],
+      ];
+      for (const [name, size, age] of files) {
+        writeFileSync(join(dir, name), 'x'.repeat(size));
+        utimesSync(join(dir, name), hoursAgo(age), hoursAgo(age));
+      }
+
+      nodes.on(ORPHANS, (command) => {
+        const proc = Bun.spawnSync(['sh', '-c', command.replaceAll('/var/lib/dockflow/backups', root)]);
+        return { exitCode: proc.exitCode ?? 1, stdout: proc.stdout.toString(), stderr: proc.stderr.toString() };
+      });
+
+      const engine = new Backup(MANAGER, STACK, []);
+      const result = await engine.prune('db', 10);
+      expect(result.success && result.data).toEqual({ removed: 0, orphanFiles: 3, bytesFreed: 1000 + 500 + 2 });
+      expect(readdirSync(dir).sort()).toEqual([
+        '20250101-000000-bbbb.sql.gz',
+        '20250101-000000-cccc.meta.json',
+        '20250101-000000-cccc.sql.gz',
+      ]);
+    });
+
+    it('the removal pattern takes every file of the backup and nothing of another', async () => {
+      const dir = join(root, STACK, 'other');
+      mkdirSync(dir, { recursive: true });
+      for (const name of [
+        '20250202-000000-aaaa.data.tar.gz',
+        '20250202-000000-aaaa.uploads.tar.gz',
+        '20250202-000000-aaaa.meta.json',
+        '20250202-000000-aaaa.sql.gz.rc',
+        '20250202-000000-aaab.meta.json',
+      ]) {
+        writeFileSync(join(dir, name), 'x');
+      }
+      nodes.on('rm -f', (command) => {
+        const proc = Bun.spawnSync(['sh', '-c', command.replaceAll('/var/lib/dockflow/backups', root)]);
+        return { exitCode: proc.exitCode ?? 1, stdout: '', stderr: proc.stderr.toString() };
+      });
+      const result = await new Backup(MANAGER, STACK, []).prune('other', 0, {
+        prefetched: [entry({ id: '20250202-000000-aaaa', service: 'other', dbType: 'volume', node: 'manager', nodeHost: 'manager' })],
+      });
+      expect(result.success).toBe(true);
+      expect(readdirSync(dir)).toEqual(['20250202-000000-aaab.meta.json']);
+    });
   });
 });

@@ -15,10 +15,10 @@ import type { BackupDbType, BackupAccessoryConfig } from '../utils/config';
 import { ok, err, type Result } from '../types';
 import { BackupError, ErrorCode, ValidationError } from '../utils/errors';
 import { sshExec, sshExecChannel, shellQuote } from '../utils/ssh';
-import { formatBytes, printDebug, printWarning } from '../utils/output';
+import { formatBytes, printDebug, printInfo, printWarning } from '../utils/output';
 import { findSwarmContainer } from './orchestrator/swarm/swarm-utils';
 import { SwarmStackBackend } from './orchestrator/swarm/swarm-stack';
-import { DOCKFLOW_BACKUPS_DIR } from '../constants';
+import { BACKUP_ORPHAN_GRACE_H, DOCKFLOW_BACKUPS_DIR } from '../constants';
 import {
   DB_TYPES,
   ARCHIVE_INTEGRITIES,
@@ -134,6 +134,14 @@ function parseMetadata(text: string): BackupMetadata | null {
 }
 
 // ─── Backup ───────────────────────────────────────────────────────────────
+
+export interface PruneReport {
+  /** backups removed by retention (data files and metadata) */
+  removed: number;
+  /** data files left by interrupted backups: no metadata, older than BACKUP_ORPHAN_GRACE_H */
+  orphanFiles: number;
+  bytesFreed: number;
+}
 
 export interface RestoreOptions {
   /** restore a dump whose integrity marker is missing after checking it by other means */
@@ -773,56 +781,85 @@ export class Backup {
   }
 
   /**
-   * Prune old backups keeping only the last N (batched deletion).
-   * Deletes files on the node where each backup is stored.
-   * Accepts optional pre-fetched entries to avoid a redundant SSH call.
+   * Keep the `retentionCount` newest backups, and remove data files left without metadata by
+   * interrupted backups once they are older than BACKUP_ORPHAN_GRACE_H (a backup being written
+   * has no metadata yet). Files are removed on the node they were listed on.
+   * `prefetched` entries spare the listing.
    */
   async prune(
     service: string | undefined,
     retentionCount: number,
-    prefetchedEntries?: BackupListEntry[]
-  ): Promise<Result<number, Error>> {
-    let entries: BackupListEntry[];
-    if (prefetchedEntries) {
-      entries = prefetchedEntries;
-    } else {
-      const listResult = await this.list(service);
-      if (!listResult.success) return err(listResult.error);
-      entries = listResult.data.entries;
-    }
+    options: { node?: string; prefetched?: BackupListEntry[] } = {},
+  ): Promise<Result<PruneReport, Error>> {
+    try {
+      const nodes = this.nodesFor(options.node);
+      let entries = options.prefetched;
+      if (!entries) {
+        const listed = await this.list(service, { node: options.node });
+        if (!listed.success) return err(listed.error);
+        entries = listed.data.entries;
+      }
 
-    // Defensive sort newest-first, keep the most recent retentionCount
-    const toRemove = selectBackupsToPrune(entries, retentionCount);
-    if (toRemove.length === 0) {
-      return ok(0);
-    }
+      const toRemove = selectBackupsToPrune(entries, retentionCount);
+      const byNode = new Map<string, { node: ClusterNode; patterns: string[] }>();
+      let bytesFreed = 0;
+      for (const entry of toRemove) {
+        if (!SAFE_NAME.test(entry.id) || !SAFE_NAME.test(entry.service)) {
+          throw new BackupError(`Backup ${JSON.stringify(entry.id)} of ${JSON.stringify(entry.service)} has an unusable name; nothing was pruned`);
+        }
+        const node = this.nodeOf(entry);
+        const key = `${node.connection.host}:${node.connection.port}`;
+        const group = byNode.get(key) ?? { node, patterns: [] };
+        // `<id>.` then a glob: the data files, the metadata and any rc file of that backup only
+        group.patterns.push(`${shellQuote(`${this.getBackupDir(entry.service)}/${entry.id}.`)}*`);
+        byNode.set(key, group);
+        bytesFreed += entry.sizeBytes;
+      }
+      for (const { node, patterns } of byNode.values()) {
+        const result = await sshExec(node.connection, `rm -f -- ${patterns.join(' ')}`);
+        if (result.exitCode !== 0) {
+          throw new BackupError(`Cannot remove backups on ${node.name}: ${result.stderr.trim() || `exit code ${result.exitCode}`}`);
+        }
+      }
 
-    // Group by node to batch rm calls per node
-    const byNode = new Map<string, { conn: SSHKeyConnection; paths: string[] }>();
-    for (const entry of toRemove) {
-      let nodeConn: SSHKeyConnection;
+      const orphans = await this.pruneOrphans(service, nodes);
+      bytesFreed += orphans.bytes;
+      if (orphans.files > 0) {
+        printInfo(`Removed ${orphans.files} orphaned backup file(s) (${formatBytes(orphans.bytes)}) left by interrupted backups`);
+      }
+      return ok({ removed: toRemove.length, orphanFiles: orphans.files, bytesFreed });
+    } catch (e) {
+      return err(e instanceof Error ? e : new Error(String(e)));
+    }
+  }
+
+  private async pruneOrphans(service: string | undefined, nodes: ClusterNode[]): Promise<{ files: number; bytes: number }> {
+    const base = service ? this.getBackupDir(service) : `${DOCKFLOW_BACKUPS_DIR}/${this.stackName}`;
+    // backup ids start with the date, so only files named after one are candidates
+    const command =
+      `find ${shellQuote(base)} -type f -name '[0-9]*' ! -name '*.meta.json' -mmin +${BACKUP_ORPHAN_GRACE_H * 60} 2>/dev/null | ` +
+      `while IFS= read -r f; do b=\${f##*/}; [ -e "\${f%/*}/\${b%%.*}.meta.json" ] && continue; ` +
+      `s=$(stat -c %s "$f" 2>/dev/null || echo 0); rm -f -- "$f" && printf '%s\\t%s\\n' "$s" "$f"; done`;
+
+    let files = 0;
+    let bytes = 0;
+    for (const node of nodes) {
+      let stdout: string;
       try {
-        nodeConn = this.nodeOf(entry).connection;
+        stdout = (await sshExec(node.connection, command)).stdout;
       } catch (e) {
-        return err(e instanceof Error ? e : new Error(String(e)));
+        printDebug(`Orphaned backup files on ${node.name} were not checked: ${e instanceof Error ? e.message : String(e)}`);
+        continue;
       }
-      const key = `${nodeConn.host}:${nodeConn.port}`;
-      if (!byNode.has(key)) byNode.set(key, { conn: nodeConn, paths: [] });
-      const node = byNode.get(key)!;
-      const backupDir = this.getBackupDir(entry.service);
-      if (entry.dbType === 'volume') {
-        node.paths.push(`${shellQuote(backupDir)}/${entry.id}.*.tar*`);
-      } else {
-        node.paths.push(shellQuote(entry.filePath));
+      for (const line of stdout.split(/\r?\n/)) {
+        const [size, path] = line.split('\t');
+        if (!path) continue;
+        files++;
+        bytes += Number.parseInt(size, 10) || 0;
+        printDebug(`Removed orphaned backup file ${path} on ${node.name}`);
       }
-      node.paths.push(shellQuote(`${backupDir}/${entry.id}.meta.json`));
     }
-
-    await Promise.all([...byNode.values()].map(({ conn, paths }) =>
-      sshExec(conn, `rm -f ${paths.join(' ')}`)
-    ));
-
-    return ok(toRemove.length);
+    return { files, bytes };
   }
 
   /**

@@ -513,4 +513,7 @@ export interface BackupPruneResponse {
   success: boolean;
   pruned: number;
   message: string;
+  bytesFreed?: number;
+  /** Servers that did not answer: the backups stored there were not pruned */
+  unreachableNodes?: string[];
 }

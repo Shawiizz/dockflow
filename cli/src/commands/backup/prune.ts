@@ -7,9 +7,10 @@ import type { Command } from 'commander';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { confirmPrompt } from '../../utils/prompts';
 import { loadConfig } from '../../utils/config';
-import { printIntro, printOutro, printInfo, printWarning, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
-import { withErrorHandler } from '../../utils/errors';
+import { printIntro, printOutro, printInfo, printWarning, printBlank, printRaw, colors, createSpinner, formatBytes } from '../../utils/output';
+import { BackupError, CLIError, withErrorHandler } from '../../utils/errors';
 import { createBackup } from '../../services/backup';
+import { parseRetention } from '../../services/backup-strategies';
 import { requireBackupConfig, resolveBackupStack, listGroupedFromAllStacks, getBackupNodes, warnUnreachableNodes, type StackGroupedEntries } from './utils';
 
 export function registerBackupPruneCommand(program: Command): void {
@@ -30,10 +31,7 @@ export function registerBackupPruneCommand(program: Command): void {
 
       const { connection } = validateEnv(env, options.server);
 
-      const config = loadConfig();
-      const retentionCount = options.keep
-        ? parseInt(options.keep, 10)
-        : config?.backup?.retention_count ?? 10;
+      const retentionCount = parseRetention(options.keep, loadConfig()?.backup?.retention_count ?? 10);
 
       // Collect entries per stack, grouped by service
       const stackData: StackGroupedEntries[] = [];
@@ -92,20 +90,24 @@ export function registerBackupPruneCommand(program: Command): void {
 
       const spinner = createSpinner();
       spinner.start('Pruning backups...');
-      let totalPruned = 0;
+      let removed = 0;
+      let bytesFreed = 0;
 
       // Prune per-stack, per-service (avoids cross-stack entry mixing)
       for (const { backupService, byService } of stackData) {
         for (const [svc, entries] of Object.entries(byService)) {
           if (entries.length <= retentionCount) continue;
-          const result = await backupService.prune(svc, retentionCount, entries);
-          if (result.success) {
-            totalPruned += result.data;
+          const result = await backupService.prune(svc, retentionCount, { node: options.node, prefetched: entries });
+          if (!result.success) {
+            spinner.fail('Prune failed');
+            throw result.error instanceof CLIError ? result.error : new BackupError(result.error.message);
           }
+          removed += result.data.removed;
+          bytesFreed += result.data.bytesFreed;
         }
       }
 
-      spinner.succeed(`Pruned ${totalPruned} backup(s)`);
+      spinner.succeed(`Pruned ${removed} backup(s)${bytesFreed > 0 ? ` (${formatBytes(bytesFreed)} freed)` : ''}`);
       printBlank();
       printOutro('Prune completed');
     })));

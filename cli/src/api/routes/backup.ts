@@ -216,22 +216,41 @@ async function pruneBackups(url: URL): Promise<Response> {
   const retentionCount = config?.backup?.retention_count ?? 10;
 
   let totalPruned = 0;
+  let bytesFreed = 0;
+  let unreachable: ClusterNode[] = [];
+  const failures: string[] = [];
 
   if (service) {
     const ctx = resolveBackupContextForService(base.env, base.conn, service);
     if (ctx instanceof Response) return ctx;
     const result = await ctx.backupService.prune(service, retentionCount);
     if (!result.success) return errorResponse(result.error.message, 500);
-    totalPruned = result.data;
+    totalPruned = result.data.removed;
+    bytesFreed = result.data.bytesFreed;
   } else {
-    const { stacks } = await listGroupedFromAllStacks(base.conn, base.env);
-    for (const { backupService, byService } of stacks) {
+    let grouped;
+    try {
+      grouped = await listGroupedFromAllStacks(base.conn, base.env);
+    } catch (e) {
+      return errorResponse(e instanceof Error ? e.message : String(e), 500);
+    }
+    unreachable = grouped.unreachable;
+    for (const { backupService, byService } of grouped.stacks) {
       for (const [svc, entries] of Object.entries(byService)) {
         if (entries.length <= retentionCount) continue;
-        const result = await backupService.prune(svc, retentionCount, entries);
-        if (result.success) totalPruned += result.data;
+        const result = await backupService.prune(svc, retentionCount, { prefetched: entries });
+        if (result.success) {
+          totalPruned += result.data.removed;
+          bytesFreed += result.data.bytesFreed;
+        } else {
+          failures.push(`${svc}: ${result.error.message}`);
+        }
       }
     }
+  }
+
+  if (failures.length > 0) {
+    return errorResponse(`Pruned ${totalPruned} backup(s), but pruning failed for ${failures.join('; ')}`, 500);
   }
 
   const response: BackupPruneResponse = {
@@ -240,6 +259,8 @@ async function pruneBackups(url: URL): Promise<Response> {
     message: service
       ? `Pruned ${totalPruned} backup(s) for ${service}`
       : `Pruned ${totalPruned} backup(s)`,
+    ...(bytesFreed > 0 && { bytesFreed }),
+    ...(unreachable.length > 0 && { unreachableNodes: unreachable.map(node => node.name) }),
   };
 
   return jsonResponse(response);

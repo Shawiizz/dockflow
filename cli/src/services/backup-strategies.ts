@@ -8,7 +8,7 @@
 
 import { posix } from 'path';
 import type { BackupAccessoryConfig, BackupDbType } from '../utils/config';
-import { ConfigError } from '../utils/errors';
+import { ConfigError, ValidationError } from '../utils/errors';
 import { shellQuote } from '../utils/ssh';
 import { DOCKFLOW_BACKUPS_DIR } from '../constants';
 
@@ -433,6 +433,15 @@ export function newestBackupFirst(a: OrderedBackup, b: OrderedBackup): number {
  */
 export function backupEpochMs(now: Date, stored: readonly OrderedBackup[]): number {
   return stored.reduce((epoch, entry) => Math.max(epoch, backupOrder(entry) + 1), now.getTime());
+}
+
+/** The `--keep` option: a whole number of backups, zero included; anything else would delete by accident. */
+export function parseRetention(raw: string | undefined, fallback: number): number {
+  if (raw === undefined) return fallback;
+  if (!/^\d+$/.test(raw.trim())) {
+    throw new ValidationError(`--keep must be a non-negative integer, got "${raw}"`);
+  }
+  return Number.parseInt(raw, 10);
 }
 
 /**

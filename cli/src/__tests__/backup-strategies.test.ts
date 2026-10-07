@@ -18,6 +18,7 @@ import {
   integrityOf,
   newestBackupFirst,
   parseContainerMounts,
+  parseRetention,
   parseRestoreRefusal,
   RESTORE_REFUSAL_MARKER,
   recordedIntegrity,
@@ -27,7 +28,7 @@ import {
 } from '../services/backup-strategies';
 import type { ArchiveIntegrity } from '../services/backup-strategies';
 import type { BackupAccessoryConfig } from '../utils/config';
-import { ConfigError } from '../utils/errors';
+import { ConfigError, ValidationError } from '../utils/errors';
 
 // ---------------------------------------------------------------------------
 // Golden in-container scripts, written out independently of the module
@@ -898,5 +899,24 @@ describe('findBackupMatch', () => {
     expect(findBackupMatch(entries, '20260301-120000-ff')?.id).toBe('20260301-120000-ff');
     expect(findBackupMatch(entries, '2026030')?.id).toBe('2026030');
     expect(findBackupMatch(entries, '20260301-12')?.id).toBe('20260301-120000-ff00');
+  });
+});
+
+describe('parseRetention', () => {
+  it('no option gives the configured count', () => {
+    expect(parseRetention(undefined, 10)).toBe(10);
+  });
+
+  it('a whole number, zero included, is taken as given', () => {
+    expect(parseRetention('5', 10)).toBe(5);
+    expect(parseRetention('0', 10)).toBe(0);
+    expect(parseRetention(' 3 ', 10)).toBe(3);
+  });
+
+  it('anything else is refused instead of selecting every backup for removal or none', () => {
+    for (const raw of ['abc', '-1', '1.5', '5x', '', '1e3']) {
+      expect(() => parseRetention(raw, 10)).toThrow(ValidationError);
+    }
+    expect(() => parseRetention('-1', 10)).toThrow('--keep must be a non-negative integer, got "-1"');
   });
 });
