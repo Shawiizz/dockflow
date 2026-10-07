@@ -380,8 +380,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pinned: an unattended job must not pick up a new release by surprise
       - name: Install Dockflow
-        run: npm install -g @dockflow-tools/cli
+        run: npm install -g @dockflow-tools/cli@2.5.1
 
       - name: Deploy
         run: dockflow deploy production
