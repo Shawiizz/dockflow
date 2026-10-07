@@ -112,7 +112,7 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
 
   loadSecrets();
 
-  let config = loadConfig();
+  let config = loadConfig({ strict: true });
   if (!config) throw new ConfigError('No config.yml found', 'Run `dockflow init` to create a project configuration.');
 
   if (config.options?.enable_debug_logs) setVerbose(true);

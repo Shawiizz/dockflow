@@ -87,7 +87,7 @@ export function validateEnvironment(env: string, serverName?: string): Environme
   const layout = getLayout();
   const flat = layout.type === 'flat';
 
-  const config = loadConfig();
+  const config = loadConfig({ strict: true });
   if (!config) {
     return {
       type: ValidationErrorType.CONFIG_NOT_FOUND,
