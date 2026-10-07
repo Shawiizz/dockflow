@@ -9,12 +9,17 @@ on:
     branches:
       - main
       - develop
+  # Callable, so the release runs the same checks
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   checks:
     name: Typecheck, Lint & Unit Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
 
     steps:
       - name: Checkout code
@@ -39,4 +44,63 @@ jobs:
 
       - name: Unit tests
         run: |
-          cd cli && bun test src/
+          cd cli && bun test src/ --reporter=junit --reporter-outfile=junit.xml
+
+      - name: Upload the test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-unit-junit
+          path: cli/junit.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # cli/ type-checks and lints src/ only: without this job a broken harness file would surface
+  # once a lane ran it.
+  e2e-checks:
+    name: E2E harness typecheck & lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install CLI dependencies
+        run: |
+          cd cli && bun install --frozen-lockfile
+
+      - name: Typecheck (testing/e2e)
+        run: |
+          cd cli && bunx tsc --noEmit -p ../testing/e2e/tsconfig.json
+
+      - name: Lint (testing/e2e)
+        run: |
+          cd cli && bunx biome check --config-path=../testing/e2e/biome.json ../testing/e2e
+
+  mcp:
+    name: MCP server build and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Build, typecheck and test
+        run: |
+          cd packages/mcp-server && npm ci && npm run build && npm run typecheck:test && npm test
+
+      - name: No test compiled into the package
+        run: |
+          cd packages/mcp-server && test ! -e dist/__tests__
