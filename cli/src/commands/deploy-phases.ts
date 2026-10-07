@@ -529,6 +529,7 @@ export async function buildAndDistribute(
         target.renderedOverrides = Build.getOverridesForTarget(ctx.rendered, target, ctx.projectRoot);
         target.platform = platform;
         target.engine = engine;
+        target.noDefaultAttestations = !Compose.usesRegistry(ctx.config);
       }
 
       ({ images } = await Build.buildAll(targets));

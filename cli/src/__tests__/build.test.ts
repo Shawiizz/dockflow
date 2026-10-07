@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { resolve } from 'path';
-import { getBuildTargets, getOverridesForTarget } from '../services/build';
+import { buildEnv, getBuildTargets, getOverridesForTarget } from '../services/build';
 import type { BuildTarget } from '../services/build';
 
 const BASE = resolve('/project/.dockflow/docker');
@@ -155,5 +155,17 @@ describe('getOverridesForTarget', () => {
 
   it('empty rendered map yields empty overrides', () => {
     expect(getOverridesForTarget(new Map(), makeTarget(), projectRoot).size).toBe(0);
+  });
+});
+
+describe('buildEnv', () => {
+  it('leaves out the default provenance attestation of an image shipped to the nodes, whose id must follow its content', () => {
+    expect(buildEnv({ noDefaultAttestations: true }, { PATH: '/bin' })).toEqual({ PATH: '/bin', BUILDX_NO_DEFAULT_ATTESTATIONS: '1' });
+  });
+
+  it('keeps the environment as it is for a registry push', () => {
+    const env = { PATH: '/bin' };
+    expect(buildEnv({ noDefaultAttestations: false }, env)).toBe(env);
+    expect(buildEnv({}, env)).toBe(env);
   });
 });
