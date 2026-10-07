@@ -17,6 +17,7 @@ import type {
   LogsOptions,
 } from '../interfaces';
 import { findSwarmContainer, findContainerForTask, listSwarmTasks } from './swarm-utils';
+import { dockerSinceValue, LOCAL_OFFSET, parseSince } from '../../../utils/log-options';
 
 export class SwarmContainerBackend implements ContainerBackend {
   constructor(
@@ -213,7 +214,7 @@ export class SwarmContainerBackend implements ContainerBackend {
     if (options.follow) parts.push('-f');
     parts.push(`--tail ${options.tail ?? 100}`);
     if (options.timestamps) parts.push('--timestamps');
-    if (options.since) parts.push(`--since ${options.since}`);
+    if (options.since !== undefined) parts.push(`--since ${shellQuote(dockerSinceValue(parseSince(options.since, LOCAL_OFFSET)))}`);
     parts.push(target, '2>&1');
 
     const emit = (data: string) => {

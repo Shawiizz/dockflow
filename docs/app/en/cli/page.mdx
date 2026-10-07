@@ -274,9 +274,9 @@ View logs from running services. On Swarm, only **currently running task replica
 | Option | Description |
 |--------|-------------|
 | `-f, --follow` | Follow log output |
-| `-n, --tail <lines>` | Number of lines to show (default: 100) |
+| `-n, --tail <lines>` | Number of lines to show, or `all` (default: 100) |
 | `-T, --timestamps` | Show timestamps |
-| `--since <time>` | Show logs since timestamp (e.g., `1h`, `2024-01-01`) |
+| `--since <time>` | Show logs since a duration (`30m`, `1h30m`, `2d`), a date (`2024-01-01`, local midnight), a timestamp (`2024-01-01T10:00:00Z`, local time without a zone) or unix seconds |
 | `-s, --server <name>` | Target server |
 | `-a, --all-tasks` | Include logs from terminated/historical task replicas (Swarm only) |
 | `--pick` | Interactively pick which task replica to follow (Swarm only) |
@@ -680,8 +680,8 @@ dockflow accessories logs <env> [service]
 | Option | Description |
 |--------|-------------|
 | `-f, --follow` | Follow log output |
-| `-n, --tail <lines>` | Number of lines (default: 100) |
-| `--since <time>` | Show logs since timestamp |
+| `-n, --tail <lines>` | Number of lines, or `all` (default: 100) |
+| `--since <time>` | Show logs since a duration, date, timestamp or unix seconds, as for `dockflow logs` |
 | `--timestamps` | Show timestamps |
 | `--raw` | Raw output without formatting |
 | `-s, --server <name>` | Target server |

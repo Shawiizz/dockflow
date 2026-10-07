@@ -10,6 +10,7 @@ import { validateEnv, getAllNodeConnections } from '../../utils/validation';
 import { createContainerBackend, createStackBackend } from '../../services/orchestrator/factory';
 import { listSwarmTasks } from '../../services/orchestrator/swarm/swarm-utils';
 import { DockerError, withServicesRequired } from '../../utils/errors';
+import { parseTailOption } from '../../utils/log-options';
 
 export function registerLogsCommand(program: Command): void {
   program
@@ -52,7 +53,7 @@ export function registerLogsCommand(program: Command): void {
       }
 
       const logOptions = {
-        tail: parseInt(options.tail || '100', 10),
+        tail: parseTailOption(options.tail, 100),
         follow: options.follow ?? false,
         timestamps: options.timestamps,
         since: options.since,

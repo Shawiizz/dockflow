@@ -159,7 +159,8 @@ export interface ExecResult {
 
 export interface LogsOptions {
   follow: boolean;
-  tail?: number;
+  tail?: number | 'all';
+  /** as typed by the user; validated by parseSince before any SSH */
   since?: string;
   timestamps?: boolean;
   /** Stream a specific task only (Swarm task ID). */

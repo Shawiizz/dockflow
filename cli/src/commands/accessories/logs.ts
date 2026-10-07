@@ -9,6 +9,7 @@ import { validateEnv, withResolvedEnv, getAllNodeConnections } from '../../utils
 import { requireAccessoriesStack } from './utils';
 import { createContainerBackend, createStackBackend } from '../../services/orchestrator/factory';
 import { DockerError, withErrorHandler } from '../../utils/errors';
+import { parseTailOption } from '../../utils/log-options';
 
 /**
  * Register the accessories logs command
@@ -35,7 +36,7 @@ export function registerAccessoriesLogsCommand(program: Command): void {
       // accessory containers may run on any worker, not just the manager.
       const logsBackend = createContainerBackend(connection, getAllNodeConnections(env));
       const logOptions = {
-        tail: parseInt(options.tail || '100', 10),
+        tail: parseTailOption(options.tail, 100),
         follow: options.follow ?? false,
         timestamps: options.timestamps,
         since: options.since,
