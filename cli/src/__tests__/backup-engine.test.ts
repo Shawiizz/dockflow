@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync 
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Duplex, PassThrough, Writable } from 'stream';
-import { Backup, type BackupListEntry, type BackupMetadata } from '../services/backup';
+import { Backup, type BackupListEntry, type BackupMetadata, restoreTypeMismatch } from '../services/backup';
 import { hasPosixShell } from './helpers/local-shell';
 import { BackupError, ErrorCode } from '../utils/errors';
 import type { SSHKeyConnection } from '../types';
@@ -1044,5 +1044,43 @@ describe('Backup.restore of volumes', () => {
     expect(error.message).toBe(`Backup metadata for ${POSTGRES_BACKUP} is missing mount information for "data"; refusing to restore`);
     volumeBackup([{ name: '../x', sizeBytes: 1, mountType: 'volume', sourcePath: 'v' }]);
     expect(failure(await restore()).message).toContain('missing mount information');
+  });
+});
+
+describe('Backup.restore refusals', () => {
+  it('a backup of another type than the configured one is refused before any node is touched', async () => {
+    containerOnWorker();
+    backupOnWorker({ dbType: 'mysql' });
+    const error = failure(await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES));
+    expect(error).toBeInstanceOf(BackupError);
+    expect(error.message).toBe(`Backup ${POSTGRES_BACKUP} is a mysql backup, but db is configured with type postgres`);
+    expect((error as BackupError).code).toBe(ErrorCode.RESTORE_FAILED);
+    expect(nodes.commands().some((command) => command.includes('docker exec') || command.endsWith('\necho OK'))).toBe(false);
+  });
+
+  it('a volume backup is not streamed into a database, nor a dump into volumes', async () => {
+    backupOnWorker({ dbType: 'volume' });
+    expect(failure(await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES)).message).toContain('is a volume backup');
+    backupOnWorker({ dbType: 'postgres' });
+    expect(failure(await backupEngine().restore('db', POSTGRES_BACKUP, VOLUME)).message).toContain('is a postgres backup');
+  });
+
+  it('restoreTypeMismatch tells a match from a mismatch', () => {
+    expect(restoreTypeMismatch({ id: 'x', dbType: 'redis' }, 'cache', { type: 'redis' })).toBeNull();
+    expect(restoreTypeMismatch({ id: 'x', dbType: 'redis' }, 'cache', { type: 'raw' })?.message).toBe(
+      'Backup x is a redis backup, but cache is configured with type raw',
+    );
+  });
+
+  it('a backup recorded on a server that is not one of the environment is an error, not the manager', async () => {
+    containerOnWorker();
+    nodes.on('*.meta.json', listing(metadata({ id: POSTGRES_BACKUP })), 'worker');
+    const listed = await backupEngine().list('db');
+    if (!listed.success) throw listed.error;
+    const stray = { ...listed.data.entries[0], node: 'gone', nodeHost: 'old-host' };
+    const error = failure(await backupEngine().restore('db', stray, POSTGRES));
+    expect(error.message).toBe(`Backup ${POSTGRES_BACKUP} is stored on old-host:22, which is not a server of this environment with SSH credentials`);
+    expect((error as BackupError).code).toBe(ErrorCode.BACKUP_NOT_FOUND);
+    expect(nodes.commands().some((command) => command.includes('docker exec'))).toBe(false);
   });
 });

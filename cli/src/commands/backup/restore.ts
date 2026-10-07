@@ -8,7 +8,7 @@ import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { dangerousConfirmPrompt } from '../../utils/prompts';
 import { printIntro, printOutro, printInfo, printWarning, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
 import { BackupError, CLIError, ErrorCode, ValidationError, withErrorHandler } from '../../utils/errors';
-import { createBackup } from '../../services/backup';
+import { createBackup, restoreTypeMismatch } from '../../services/backup';
 import { requireBackupConfig, resolveBackupStack, getBackupServiceNames, getBackupNodes } from './utils';
 
 export function registerBackupRestoreCommand(program: Command): void {
@@ -49,6 +49,8 @@ export function registerBackupRestoreCommand(program: Command): void {
       }
 
       const backup = resolveResult.data;
+      const mismatch = restoreTypeMismatch(backup, service, backupConfig);
+      if (mismatch) throw mismatch;
 
       // Show backup details
       printWarning('You are about to restore from this backup:');

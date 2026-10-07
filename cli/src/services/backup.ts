@@ -178,6 +178,25 @@ function parseMetadata(text: string): BackupMetadata | null {
 
 // ─── Backup ───────────────────────────────────────────────────────────────
 
+/**
+ * A backup of another type than the one configured would be fed to the wrong tool: a mysql dump to
+ * psql, a volume archive to a database.
+ */
+export function restoreTypeMismatch(
+  entry: { id: string; dbType: BackupDbType },
+  service: string,
+  config: BackupAccessoryConfig,
+): BackupError | null {
+  if (entry.dbType === config.type) return null;
+  return new BackupError(
+    `Backup ${entry.id} is a ${entry.dbType} backup, but ${service} is configured with type ${config.type}`,
+    {
+      code: ErrorCode.RESTORE_FAILED,
+      suggestion: `Restore it with a backup configuration of type ${entry.dbType}, or pick a backup of type ${config.type} with \`--from <id>\`.`,
+    },
+  );
+}
+
 export interface PruneReport {
   /** backups removed by retention (data files and metadata) */
   removed: number;
@@ -777,6 +796,8 @@ export class Backup {
     } catch (e) {
       return err(e instanceof Error ? e : new Error(String(e)));
     }
+    const mismatch = restoreTypeMismatch(entry, service, config);
+    if (mismatch) return err(mismatch);
     const nodeConn = node.connection;
     const backupId = entry.id;
     const backupDir = this.getBackupDir(service);
