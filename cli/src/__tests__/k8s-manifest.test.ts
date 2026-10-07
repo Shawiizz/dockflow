@@ -316,6 +316,45 @@ services:
     expect(routes[0].services).toEqual([{ name: 'web', port: 80 }]);
     expect(ingress.spec.entryPoints).toEqual(['web']); // acme off
   });
+
+  it('proxy.routes: one IngressRoute for the service, a route per router, ports the Service carries', () => {
+    const compose = loadFromString('services:\n  panel:\n    image: p\n    expose:\n      - "4326"\n');
+    const proxy = {
+      enabled: true,
+      acme: true,
+      routes: [
+        { service: 'panel', domains: { test: 'panel.test.local' } },
+        { service: 'panel', domains: { test: 'panel.test.local' }, path: '/ws', port: 4327 },
+      ],
+    } as ProxyConfig;
+    injectTraefikLabels(compose, proxy, 'demo', 'test', { defaultRoute: false });
+
+    const manifests = parseAllDocuments(composeToManifests('demo', compose, proxy)).map(d => d.toJS() as Manifest);
+    const ingresses = manifests.filter(m => m.kind === 'IngressRoute');
+    expect(ingresses.map(m => m.metadata.name)).toEqual(['panel']);
+    expect(ingresses[0].spec.routes).toEqual([
+      { match: 'Host(`panel.test.local`)', kind: 'Rule', services: [{ name: 'panel', port: 4326 }] },
+      { match: 'Host(`panel.test.local`) && PathPrefix(`/ws`)', kind: 'Rule', services: [{ name: 'panel', port: 4327 }] },
+    ]);
+    expect(ingresses[0].spec.entryPoints).toEqual(['websecure']);
+    expect(ingresses[0].spec.tls).toEqual({ certResolver: 'letsencrypt' });
+    const service = find(manifests, 'Service', 'panel')!;
+    expect((service.spec.ports as Array<{ port: number }>).map(p => p.port)).toEqual([4326, 4327]);
+  });
+
+  it('traefik.enable=false means no IngressRoute, as for Traefik', () => {
+    const manifests = toManifests(`
+services:
+  web:
+    image: w
+    ports:
+      - "80"
+    labels:
+      traefik.enable: false
+      traefik.http.routers.web.rule: Host(\`x.io\`)
+`);
+    expect(find(manifests, 'IngressRoute')).toBeUndefined();
+  });
 });
 
 function getContainer(deployment: Manifest): Record<string, unknown> {

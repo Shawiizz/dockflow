@@ -45,6 +45,8 @@ export interface DeployContext {
 
   orchestrator: StackBackend;
   proxyBackend?: ProxyBackend;
+  /** Traefik brought up to date, by whichever phase needed it first */
+  proxyReady?: Promise<void>;
   releases: Release;
   lock: Lock;
   audit: Audit;

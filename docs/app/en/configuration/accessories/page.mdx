@@ -62,7 +62,8 @@ volumes:
   interface of every node through its own iptables rules, past ufw and firewalld: a database
   published that way answers the internet. Your app reaches accessories over their network (see
   [Connecting Your App](#connecting-your-app)), and `dockflow accessories exec` opens a shell or a
-  client inside them.
+  client inside them. An accessory served over HTTP, an admin panel for instance, goes through
+  Traefik with [`proxy.routes`](/en/configuration/proxy#routing-a-service-on-its-own-domain).
 </Callout>
 
 <Callout type="warning">

@@ -1,0 +1,21 @@
+project_name: "test-app-routes"
+
+options:
+  # nginx:alpine is pulled as is: nothing is built
+  image_auto_tag: false
+
+proxy:
+  enabled: true
+  acme: false
+  domains:
+    test: "routes.test.local"
+  routes:
+    - service: panel
+      domains:
+        test: "panel.test.local"
+      port: 4326
+    - service: panel
+      domains:
+        test: "panel.test.local"
+      path: /ws
+      port: 4327

@@ -144,11 +144,24 @@ export interface ProxyDashboardConfig {
   domain?: string;
 }
 
+/** A route Traefik serves for one service of docker-compose.yml or accessories.yml */
+export interface ProxyRoute {
+  service: string;
+  /** domain per environment; the route is left out of the others */
+  domains: Record<string, string>;
+  /** path prefix the requests must start with */
+  path?: string;
+  /** container port the requests go to; the service's first port when absent */
+  port?: number;
+}
+
 export interface ProxyConfig {
   enabled?: boolean;
   email?: string;
   acme?: boolean;
   domains?: Record<string, string>;
+  /** services routed on their own domains; they get no route on `domains` */
+  routes?: ProxyRoute[];
   dashboard?: ProxyDashboardConfig;
   /** CDN or load balancer addresses whose X-Forwarded-* headers Traefik keeps */
   trusted_ips?: string[];

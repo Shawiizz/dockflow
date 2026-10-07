@@ -1,0 +1,7 @@
+services:
+  web:
+    image: nginx:alpine
+    ports:
+      - "8093:80"
+    deploy:
+      replicas: 1

@@ -50,6 +50,12 @@ proxy:
   domains:
     production: my-app.example.com
     staging: staging.my-app.example.com
+  routes:                          # Optional: services on domains of their own
+    - service: admin
+      domains:
+        production: admin.example.com
+      path: /api                   # Optional
+      port: 8080                   # Optional
   dashboard:
     enabled: true                  # Optional: expose Traefik dashboard
     domain: traefik.example.com
@@ -62,7 +68,12 @@ proxy:
 | `enabled` | boolean | Enable Traefik proxy | `false` |
 | `email` | string | Email for Let's Encrypt notifications. Required when `acme` is not disabled | — |
 | `acme` | boolean | Enable ACME/Let's Encrypt TLS. Set to `false` for HTTP-only mode | `true` |
-| `domains` | map | Domain per environment | — |
+| `domains` | map | Domain per environment, where every service with `ports:` answers | — |
+| `routes` | list | Services routed on domains of their own. See [Routing a Service on Its Own Domain](#routing-a-service-on-its-own-domain) | — |
+| `routes[].service` | string | Service of `docker-compose.yml` or `accessories.yml` | — |
+| `routes[].domains` | map | Domain per environment. The route is left out of the environments not listed | — |
+| `routes[].path` | string | Only the requests whose path starts with this prefix | — |
+| `routes[].port` | number | Container port the requests go to | first port of the service |
 | `dashboard.enabled` | boolean | Expose the Traefik dashboard | `false` |
 | `dashboard.domain` | string | Domain for the dashboard. Required if `dashboard.enabled: true` | — |
 | `trusted_ips` | list | Addresses or CIDR ranges whose `X-Forwarded-*` headers Traefik keeps. See [Behind a CDN](#behind-a-cdn) | — |
@@ -120,7 +131,7 @@ reaching Traefik (see the warning under [Requirements](#requirements)).
 
 - Ports **80** and **443** must be open and reachable from the internet on your manager node
 - Your domain's DNS must point to your manager's IP before deploying
-- Your app service must expose a port in `docker-compose.yml` (Traefik reads this to know the container port)
+- Your app service must expose a port in `docker-compose.yml` (Traefik reads this to know the container port), or be routed by [`routes`](#routing-a-service-on-its-own-domain)
 
 <Callout type="warning">
   Traefik publishes 80 and 443 through Docker, which writes its own iptables rules: ufw and
@@ -151,6 +162,7 @@ Dockflow automatically injects Traefik routing labels into your app services (an
 deploy:
   labels:
     - "traefik.enable=true"
+    - "traefik.docker.network=traefik-public"
     - "traefik.http.routers.my-app-production-app.rule=Host(`my-app.example.com`)"
     - "traefik.http.routers.my-app-production-app.entrypoints=websecure"
     - "traefik.http.routers.my-app-production-app.tls.certresolver=letsencrypt"
@@ -201,8 +213,70 @@ services:
 <Callout type="warning">
   When several services of the stack get the injected route, they all answer on the same domain
   and Traefik sends each request to one of them. Dockflow warns when this happens: exclude the
-  services that must not answer, or give them their own router rule.
+  services that must not answer, or give them [routes of their own](#routing-a-service-on-its-own-domain).
 </Callout>
+
+## Routing a Service on Its Own Domain
+
+`domains` gives the whole project one domain. `routes` sends a domain, or a path of one, to the
+service of your choice, whether it is in `docker-compose.yml` or in `accessories.yml`:
+
+```yaml
+# .dockflow/config.yml
+proxy:
+  enabled: true
+  email: admin@example.com
+  routes:
+    - service: panel               # HTTP on 4326
+      domains:
+        production: panel.example.com
+        staging: panel.staging.example.com
+      port: 4326
+    - service: panel               # its WebSocket server, on 4327, same domain
+      domains:
+        production: panel.example.com
+      path: /ws
+      port: 4327
+```
+
+```yaml
+# .dockflow/docker/accessories.yml
+services:
+  panel:
+    image: my-panel
+```
+
+- `port` is the port the container listens on. Traefik reaches it over the `traefik-public`
+  network, so the service does not publish it: leave `ports:` out. Without `port`, the route
+  goes to the first port of `ports:`, else of `expose:`.
+- `path` keeps only the requests whose path starts with it, and the path reaches the service
+  unchanged. When two routes match a request, the one with the longer rule wins: above,
+  `/ws` goes to 4327 and everything else to 4326. WebSocket connections need nothing more.
+- A route is left out of the environments its `domains` does not list.
+- A service listed in `routes` never gets the route on `domains`, in any environment. The other
+  services with `ports:` still answer on `domains`; leave `domains` out to route only what
+  `routes` lists.
+
+Each route is a router named `<project>-<env>-<service>-route<n>`, where `n` is its position
+among the routes of that service (from 1): add your own labels to it in `deploy.labels`, a
+middleware for instance, and they win over the injected ones.
+
+```yaml
+# What Dockflow injects for the first route above, in production
+deploy:
+  labels:
+    - "traefik.enable=true"
+    - "traefik.docker.network=traefik-public"
+    - "traefik.http.routers.my-app-production-panel-route1.rule=Host(`panel.example.com`)"
+    - "traefik.http.routers.my-app-production-panel-route1.entrypoints=websecure"
+    - "traefik.http.routers.my-app-production-panel-route1.service=my-app-production-panel-route1"
+    - "traefik.http.services.my-app-production-panel-route1.loadbalancer.server.port=4326"
+    - "traefik.http.routers.my-app-production-panel-route1.tls.certresolver=letsencrypt"
+```
+
+Before building anything, `dockflow deploy` stops when a route names a service that neither file
+has (or both have), when it cannot tell the port, when two routes share a domain and path, or
+when a route without `path` takes the domain where services answer through `domains`.
 
 ## Coexistence with Nginx
 

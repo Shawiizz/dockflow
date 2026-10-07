@@ -17,9 +17,11 @@ interface K8sResource {
   spec: Record<string, unknown>;
 }
 
-interface TraefikLabels {
-  rule?: string;
+/** A Traefik router read from the labels of a service */
+interface TraefikRouter {
+  rule: string;
   tls?: boolean;
+  /** the container port it sends to, when the labels name one */
   port?: number;
   entrypoints?: string;
 }
@@ -59,23 +61,21 @@ export function composeToManifests(
     resources.push(deployment);
 
     const ports = extractPorts(config);
-    if (ports.length > 0) {
-      resources.push(createService(serviceName, ports, namespace, stackName));
+    const routers = extractTraefikRouters(config);
+    const defaultPort = ports.length > 0 ? ports[0].containerPort : 80;
+    // Traefik reaches the pods through the Service, which must also carry the ports routed
+    // without being published.
+    const servicePorts = [...ports];
+    for (const router of routers) {
+      const port = router.port ?? defaultPort;
+      if (!servicePorts.some((p) => p.containerPort === port)) servicePorts.push({ containerPort: port });
+    }
+    if (servicePorts.length > 0) {
+      resources.push(createService(serviceName, servicePorts, namespace, stackName));
     }
 
-    const traefikLabels = extractTraefikLabels(serviceName, config);
-    if (traefikLabels.rule) {
-      const ingressPort = traefikLabels.port ?? (ports.length > 0 ? ports[0].containerPort : 80);
-      resources.push(
-        createIngressRoute(
-          serviceName,
-          traefikLabels,
-          ingressPort,
-          namespace,
-          stackName,
-          proxyConfig,
-        ),
-      );
+    if (routers.length > 0) {
+      resources.push(createIngressRoute(serviceName, routers, defaultPort, namespace, stackName, proxyConfig));
     }
   }
 
@@ -237,28 +237,37 @@ function createService(
   };
 }
 
+/**
+ * One IngressRoute per service, named after it, with a route per router: removing a router
+ * leaves no IngressRoute of its own behind, as `kubectl apply` prunes nothing.
+ */
 function createIngressRoute(
   serviceName: string,
-  traefikLabels: TraefikLabels,
-  port: number,
+  routers: readonly TraefikRouter[],
+  defaultPort: number,
   namespace: string,
   stackName: string,
   proxyConfig?: ProxyConfig,
 ): K8sResource {
-  const route: Record<string, unknown> = {
-    match: traefikLabels.rule!,
+  const routes = routers.map((router) => ({
+    match: router.rule,
     kind: 'Rule',
-    services: [{ name: serviceName, port }],
-  };
+    services: [{ name: serviceName, port: router.port ?? defaultPort }],
+  }));
+
+  // entry points and TLS belong to the IngressRoute: every router's together
+  const entryPoints = [
+    ...new Set(
+      routers.flatMap((router) => (router.entrypoints ? router.entrypoints.split(',').map((ep) => ep.trim()) : ['websecure'])),
+    ),
+  ];
 
   const spec: Record<string, unknown> = {
-    entryPoints: traefikLabels.entrypoints
-      ? traefikLabels.entrypoints.split(',').map((ep) => ep.trim())
-      : ['websecure'],
-    routes: [route],
+    entryPoints,
+    routes,
   };
 
-  if (traefikLabels.tls || proxyConfig?.acme) {
+  if (routers.some((router) => router.tls) || proxyConfig?.acme) {
     spec.tls = proxyConfig?.acme ? { certResolver: 'letsencrypt' } : {};
   }
 
@@ -491,18 +500,17 @@ function parseDuration(duration: string | number): number {
 }
 
 /**
- * Extract Traefik Docker labels from a compose service and convert to structured data.
- * Looks for: traefik.http.routers.{name}.rule, .tls, .entrypoints
- *            traefik.http.services.{name}.loadbalancer.server.port
+ * Read the Traefik routers of a compose service from its labels:
+ *   traefik.http.routers.{router}.rule, .tls, .entrypoints, .service
+ *   traefik.http.services.{service}.loadbalancer.server.port
+ * A router sends to the Traefik service it names, else to the only one the labels define.
  *
  * Labels are read from both the service top level (container labels) and
  * deploy.labels (Swarm service labels — where injectTraefikLabels and most
  * Swarm-style compose files put them). deploy.labels wins on conflicts.
+ * With `traefik.enable=false` there is no router, as for Traefik.
  */
-function extractTraefikLabels(
-  _serviceName: string,
-  config: Record<string, unknown>,
-): TraefikLabels {
+function extractTraefikRouters(config: Record<string, unknown>): TraefikRouter[] {
   const deploy = config.deploy as Record<string, unknown> | undefined;
   const labelSources = [config.labels, deploy?.labels] as Array<
     Record<string, string> | string[] | undefined
@@ -522,31 +530,28 @@ function extractTraefikLabels(
       Object.assign(labelMap, labels);
     }
   }
-  if (Object.keys(labelMap).length === 0) return {};
+  // the false values of Go's strconv.ParseBool, which Traefik reads traefik.enable with
+  if (['0', 'f', 'F', 'false', 'FALSE', 'False'].includes(String(labelMap['traefik.enable'] ?? 'true').trim())) return [];
 
-  const result: TraefikLabels = {};
-
+  const routers = new Map<string, Record<string, string>>();
+  const ports = new Map<string, number>();
   for (const [key, value] of Object.entries(labelMap)) {
-    const ruleMatch = key.match(/^traefik\.http\.routers\.([^.]+)\.rule$/);
-    if (ruleMatch) {
-      result.rule = value;
+    const router = key.match(/^traefik\.http\.routers\.([^.]+)\.(rule|tls|entrypoints|service)$/);
+    if (router) {
+      routers.set(router[1], { ...routers.get(router[1]), [router[2]]: String(value) });
+      continue;
     }
-
-    const tlsMatch = key.match(/^traefik\.http\.routers\.([^.]+)\.tls$/);
-    if (tlsMatch) {
-      result.tls = value === 'true';
-    }
-
-    const entrypointsMatch = key.match(/^traefik\.http\.routers\.([^.]+)\.entrypoints$/);
-    if (entrypointsMatch) {
-      result.entrypoints = value;
-    }
-
-    const portMatch = key.match(/^traefik\.http\.services\.([^.]+)\.loadbalancer\.server\.port$/);
-    if (portMatch) {
-      result.port = parseInt(value, 10);
-    }
+    const port = key.match(/^traefik\.http\.services\.([^.]+)\.loadbalancer\.server\.port$/);
+    if (port) ports.set(port[1], parseInt(String(value), 10));
   }
 
-  return result;
+  const onlyPort = ports.size === 1 ? [...ports.values()][0] : undefined;
+  return [...routers.values()]
+    .filter((fields) => fields.rule)
+    .map((fields) => ({
+      rule: fields.rule,
+      tls: fields.tls === 'true',
+      entrypoints: fields.entrypoints,
+      port: fields.service ? ports.get(fields.service) : onlyPort,
+    }));
 }

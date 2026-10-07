@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { isIpOrCidr, ProxyConfigSchema } from '../schemas/config.schema';
+import { findUnknownConfigKeys } from '../schemas/validation';
 
 describe('isIpOrCidr', () => {
   it('accepts addresses and CIDR ranges of both families', () => {
@@ -20,5 +21,22 @@ describe('ProxyConfigSchema', () => {
     const parsed = ProxyConfigSchema.safeParse({ enabled: true, acme: false, trusted_ips: ['173.245.48.0/20', '2400:cb00::/32'] });
     expect(parsed.success).toBe(true);
     expect(ProxyConfigSchema.safeParse({ enabled: true, acme: false, trusted_ips: ['cdn.example.com'] }).success).toBe(false);
+  });
+
+  it('takes routes with a domain per environment, an optional path and port', () => {
+    const route = { service: 'panel', domains: { production: 'panel.example.com' } };
+    const routes = (...list: unknown[]) => ProxyConfigSchema.safeParse({ enabled: true, acme: false, routes: list }).success;
+
+    expect(routes(route, { ...route, path: '/ws', port: 4327 })).toBe(true);
+    expect(routes({ ...route, domains: { production: 'https://panel.example.com' } })).toBe(false);
+    expect(routes({ ...route, domains: { production: 'panel.example.com`) || Host(`x' } })).toBe(false);
+    expect(routes({ ...route, path: 'ws' })).toBe(false);
+    expect(routes({ ...route, port: 70000 })).toBe(false);
+    expect(routes({ domains: route.domains })).toBe(false);
+  });
+
+  it('reports the unknown keys of a route', () => {
+    const config = { project_name: 'demo', proxy: { routes: [{ service: 'panel', domains: {}, prot: 4326 }] } };
+    expect(findUnknownConfigKeys(config)).toEqual([{ path: 'proxy.routes[0].prot', suggestion: 'port' }]);
   });
 });

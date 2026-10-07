@@ -9,6 +9,7 @@ import {
   stripBuildSections,
   injectAccessoriesDefaults,
   injectTraefikLabels,
+  checkProxyRoutes,
   filterServices,
   syncNonTargetedImageTags,
   getExternalNetworks,
@@ -417,6 +418,165 @@ services:
     const nets = compose.services.web.networks as Record<string, unknown>;
     expect(Object.keys(nets)).toContain('backend');
     expect(Object.keys(nets)).toContain(TRAEFIK_NETWORK_NAME);
+  });
+
+  it('routes the container port of a long syntax ports entry', () => {
+    const compose = makeCompose('services:\n  web:\n    image: nginx\n    ports:\n      - target: 80\n        published: 8080\n');
+    injectTraefikLabels(compose, proxy, 'demo', 'production');
+    const labels = (compose.services.web.deploy as Record<string, unknown>).labels as string[];
+    expect(labels).toContain('traefik.http.services.demo-web.loadbalancer.server.port=80');
+  });
+});
+
+describe('injectTraefikLabels — proxy.routes', () => {
+  const panel = `
+services:
+  game:
+    image: game
+    ports:
+      - "25000:25000"
+  panel:
+    image: panel
+    expose:
+      - "4326"
+`;
+  const proxy = {
+    enabled: true,
+    domains: { production: 'app.example.com' },
+    routes: [
+      { service: 'panel', domains: { production: 'panel.example.com', staging: 'panel.staging.example.com' } },
+      { service: 'panel', domains: { production: 'panel.example.com' }, path: '/ws', port: 4327 },
+    ],
+  } as ProxyConfig;
+
+  const labelsOf = (compose: ParsedCompose, service: string) =>
+    ((compose.services[service].deploy as Record<string, unknown> | undefined)?.labels ?? []) as string[];
+
+  it('gives each route a router and a Traefik service of its own, on the routed port', () => {
+    const compose = makeCompose(panel);
+    expect(injectTraefikLabels(compose, proxy, 'demo', 'production')).toBe(true);
+
+    expect(labelsOf(compose, 'panel')).toEqual([
+      'traefik.enable=true',
+      `traefik.docker.network=${TRAEFIK_NETWORK_NAME}`,
+      'traefik.http.routers.demo-panel-route1.rule=Host(`panel.example.com`)',
+      'traefik.http.routers.demo-panel-route1.entrypoints=websecure',
+      'traefik.http.routers.demo-panel-route1.service=demo-panel-route1',
+      'traefik.http.services.demo-panel-route1.loadbalancer.server.port=4326',
+      'traefik.http.routers.demo-panel-route1.tls.certresolver=letsencrypt',
+      'traefik.http.routers.demo-panel-route2.rule=Host(`panel.example.com`) && PathPrefix(`/ws`)',
+      'traefik.http.routers.demo-panel-route2.entrypoints=websecure',
+      'traefik.http.routers.demo-panel-route2.service=demo-panel-route2',
+      'traefik.http.services.demo-panel-route2.loadbalancer.server.port=4327',
+      'traefik.http.routers.demo-panel-route2.tls.certresolver=letsencrypt',
+    ]);
+    expect(compose.services.panel.networks).toEqual(['default', TRAEFIK_NETWORK_NAME]);
+    expect(compose.services.panel.ports).toBeUndefined();
+    expect((compose.networks as Record<string, unknown>)[TRAEFIK_NETWORK_NAME]).toEqual({ external: true });
+    // the other services keep the route on proxy.domains
+    expect(labelsOf(compose, 'game')).toContain('traefik.http.routers.demo-game.rule=Host(`app.example.com`)');
+  });
+
+  it('keeps the numbering of a route in the environments that leave others out', () => {
+    const compose = makeCompose(panel);
+    injectTraefikLabels(compose, { ...proxy, acme: false } as ProxyConfig, 'demo', 'staging');
+    expect(labelsOf(compose, 'panel')).toEqual([
+      'traefik.enable=true',
+      `traefik.docker.network=${TRAEFIK_NETWORK_NAME}`,
+      'traefik.http.routers.demo-panel-route1.rule=Host(`panel.staging.example.com`)',
+      'traefik.http.routers.demo-panel-route1.entrypoints=web',
+      'traefik.http.routers.demo-panel-route1.service=demo-panel-route1',
+      'traefik.http.services.demo-panel-route1.loadbalancer.server.port=4326',
+    ]);
+  });
+
+  it('never gives a listed service the route on proxy.domains', () => {
+    const compose = makeCompose(panel.replace('    expose:\n      - "4326"', '    ports:\n      - "4326:4326"'));
+    injectTraefikLabels(compose, { ...proxy, domains: { development: 'dev.example.com' } } as ProxyConfig, 'demo', 'development');
+    expect(compose.services.panel.deploy).toBeUndefined();
+    expect(labelsOf(compose, 'game')).toContain('traefik.http.routers.demo-game.rule=Host(`dev.example.com`)');
+  });
+
+  it('routes only listed services without the default route, as for accessories', () => {
+    const compose = makeCompose(panel);
+    expect(injectTraefikLabels(compose, proxy, 'demo', 'production', { defaultRoute: false })).toBe(true);
+    expect(compose.services.game.deploy).toBeUndefined();
+    expect(labelsOf(compose, 'panel')).toContain('traefik.http.routers.demo-panel-route1.rule=Host(`panel.example.com`)');
+  });
+
+  it('leaves alone the routes of services the compose does not have', () => {
+    const compose = makeCompose('services:\n  db:\n    image: postgres\n');
+    expect(injectTraefikLabels(compose, proxy, 'demo', 'production', { defaultRoute: false })).toBe(false);
+    expect(compose.services.db.deploy).toBeUndefined();
+    expect(compose.networks).toBeUndefined();
+  });
+
+  it('skips a listed service that sets traefik.enable=false', () => {
+    const compose = makeCompose(`${panel}    deploy:\n      labels:\n        - "traefik.enable=false"\n`);
+    injectTraefikLabels(compose, proxy, 'demo', 'production', { defaultRoute: false });
+    expect(labelsOf(compose, 'panel')).toEqual(['traefik.enable=false']);
+    expect(compose.networks).toBeUndefined();
+  });
+
+  it('routes to the first published port when the route names none', () => {
+    const compose = makeCompose('services:\n  panel:\n    image: panel\n    ports:\n      - "8080:4326"\n    expose:\n      - "9000"\n');
+    injectTraefikLabels(compose, proxy, 'demo', 'staging');
+    expect(labelsOf(compose, 'panel')).toContain('traefik.http.services.demo-panel-route1.loadbalancer.server.port=4326');
+  });
+});
+
+describe('checkProxyRoutes', () => {
+  const app = makeCompose('services:\n  web:\n    image: web\n    ports:\n      - "8080:80"\n  worker:\n    image: worker\n');
+  const accessories = makeCompose('services:\n  panel:\n    image: panel\n    expose:\n      - "4326"\n');
+  const base = { enabled: true, domains: { production: 'app.example.com' } } as ProxyConfig;
+  const check = (routes: unknown[], env = 'production', accessoriesCompose: ParsedCompose | null = accessories) =>
+    checkProxyRoutes({ ...base, routes } as ProxyConfig, env, 'demo', app, accessoriesCompose);
+
+  it('accepts routes to services of either file, on paths of a shared domain', () => {
+    expect(check([
+      { service: 'panel', domains: { production: 'panel.example.com' } },
+      { service: 'panel', domains: { production: 'panel.example.com' }, path: '/ws', port: 4327 },
+      { service: 'worker', domains: { production: 'app.example.com' }, path: '/jobs', port: 9000 },
+    ])).toEqual([]);
+  });
+
+  it('names the route of a service that is in neither file, or in both', () => {
+    expect(check([{ service: 'pannel', domains: { production: 'panel.example.com' } }])).toEqual([
+      'proxy.routes[0]: no service "pannel" in docker-compose.yml or accessories.yml',
+    ]);
+    expect(check([{ service: 'panel', domains: { production: 'panel.example.com' } }], 'production', null)).toEqual([
+      'proxy.routes[0]: no service "panel" in docker-compose.yml or accessories.yml',
+    ]);
+    expect(check([{ service: 'web', domains: { production: 'web.example.com' } }], 'production', makeCompose('services:\n  web:\n    image: web\n'))).toEqual([
+      'proxy.routes[0]: docker-compose.yml and accessories.yml both have a service "web"; rename one of them',
+    ]);
+  });
+
+  it('asks for the port of a service that declares none', () => {
+    expect(check([{ service: 'worker', domains: { production: 'jobs.example.com' } }])).toEqual([
+      'proxy.routes[0]: service "worker" declares no port; set port to the one it listens on',
+    ]);
+  });
+
+  it('refuses two routes on the same domain and path, whatever the case of the domain', () => {
+    expect(check([
+      { service: 'panel', domains: { production: 'panel.example.com' }, path: '/ws', port: 4327 },
+      { service: 'worker', domains: { production: 'Panel.example.com' }, path: '/ws', port: 9000 },
+    ])).toEqual(['proxy.routes[1]: proxy.routes[0] already routes panel.example.com/ws']);
+  });
+
+  it('refuses a route without a path on the domain where services already answer', () => {
+    expect(check([{ service: 'panel', domains: { production: 'app.example.com' } }])).toEqual([
+      'proxy.routes[0]: app.example.com is also proxy.domains.production, the domain of the default route (web); ' +
+        'give the route a path, or add traefik.enable=false to deploy.labels of those services',
+    ]);
+    // once the route lists the only service there, nothing else answers on that domain
+    expect(check([{ service: 'web', domains: { production: 'app.example.com' } }])).toEqual([]);
+  });
+
+  it('ignores the routes of other environments, and everything when the proxy is off', () => {
+    expect(check([{ service: 'pannel', domains: { staging: 'panel.example.com' } }])).toEqual([]);
+    expect(checkProxyRoutes({ enabled: false, routes: [{ service: 'pannel', domains: { production: 'x.example.com' } }] }, 'production', 'demo', app, null)).toEqual([]);
   });
 });
 

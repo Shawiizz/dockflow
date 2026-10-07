@@ -547,6 +547,14 @@ function collectExternalNetworks(compose: ReturnType<typeof Compose.loadFromStri
     .map(([name]) => name);
 }
 
+/** The key of accessories.yml among the rendered files */
+export function accessoriesKey(): string {
+  const layout = getLayout();
+  return layout.accessoriesPath
+    ? relative(layout.root, layout.accessoriesPath).replace(/\\/g, '/')
+    : '.dockflow/docker/accessories.yml';
+}
+
 export async function ensureExternalNetworks(ctx: DeployContext): Promise<void> {
   // Overlay network management is Swarm-only — k3s uses Kubernetes networking
   if (ctx.config.orchestrator === 'k3s') return;
@@ -554,11 +562,7 @@ export async function ensureExternalNetworks(ctx: DeployContext): Promise<void> 
   const mainCompose = Compose.loadFromString(ctx.composeContent);
   const networks = new Set(collectExternalNetworks(mainCompose));
 
-  const layout = getLayout();
-  const accessoriesRelPath = layout.accessoriesPath
-    ? relative(layout.root, layout.accessoriesPath).replace(/\\/g, '/')
-    : '.dockflow/docker/accessories.yml';
-  const accessoriesContent = ctx.rendered.get(accessoriesRelPath);
+  const accessoriesContent = ctx.rendered.get(accessoriesKey());
   if (accessoriesContent) {
     for (const n of collectExternalNetworks(Compose.loadFromString(accessoriesContent))) networks.add(n);
   }
@@ -587,18 +591,27 @@ export async function ensureExternalNetworks(ctx: DeployContext): Promise<void> 
 // Phase: Accessories
 // ---------------------------------------------------------------------------
 
+/** Bring Traefik up to date once per deploy, for whichever phase needs it first. */
+function ensureProxy(ctx: DeployContext): Promise<void> {
+  if (!ctx.proxyBackend) return Promise.resolve();
+  ctx.proxyReady ??= ctx.proxyBackend.ensureRunning(ctx.config.proxy!);
+  return ctx.proxyReady;
+}
+
 export async function deployAccessories(ctx: DeployContext): Promise<void> {
   if (ctx.skipAccessories) return;
 
-  const layout = getLayout();
-  const accessoriesRelPath = layout.accessoriesPath
-    ? relative(layout.root, layout.accessoriesPath).replace(/\\/g, '/')
-    : '.dockflow/docker/accessories.yml';
+  const accessoriesRelPath = accessoriesKey();
   const accessoriesContent = ctx.rendered.get(accessoriesRelPath);
   if (!accessoriesContent) return;
 
   const accessoriesCompose = Compose.loadFromString(accessoriesContent);
   Compose.injectAccessoriesDefaults(accessoriesCompose);
+  // Accessories answer only through proxy.routes, and their stack joins Traefik's network.
+  const proxy = ctx.config.proxy;
+  if (proxy && Compose.injectTraefikLabels(accessoriesCompose, proxy, ctx.stackName, ctx.env, { defaultRoute: false })) {
+    await ensureProxy(ctx);
+  }
 
   const result = await ctx.orchestrator.deployAccessory({
     stackName: ctx.stackName,
@@ -623,9 +636,7 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
   if (!ctx.deployApp) return;
   if (!Compose.hasServices(compose)) return;
 
-  if (ctx.proxyBackend) {
-    await ctx.proxyBackend.ensureRunning(ctx.config.proxy!);
-  }
+  await ensureProxy(ctx);
 
   const servicesFilter = ctx.options.only
     ? ctx.options.only.split(',').map((s: string) => s.trim())

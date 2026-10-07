@@ -261,6 +261,30 @@ export function isIpOrCidr(value: string): boolean {
   return /^\d{1,3}$/.test(prefix) && Number(prefix) <= (v4 ? 32 : 128);
 }
 
+/** A host name as Traefik's Host() matches it: dot-separated labels of letters, digits and hyphens */
+const HOST_NAME = /^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/;
+
+/**
+ * A route Traefik serves for one service, beside the default route of proxy.domains
+ */
+export const ProxyRouteSchema = z.object({
+  service: z.string().min(1).describe(
+    'Service of docker-compose.yml or accessories.yml the requests go to'
+  ),
+  domains: z.record(
+    z.string(),
+    z.string().regex(HOST_NAME, { message: 'must be a domain name, e.g. panel.example.com' })
+  ).describe(
+    'Domain per environment, e.g. { production: "panel.example.com" }; the route is left out of the environments not listed'
+  ),
+  path: z.string().regex(/^\/[^\s`]*$/, { message: 'must start with / and contain no spaces or backticks' }).optional().describe(
+    'Only the requests whose path starts with this prefix, e.g. /ws; the path reaches the service unchanged'
+  ),
+  port: z.number().int().min(1).max(65535).optional().describe(
+    'Container port the requests go to; it does not need to be published. Defaults to the first port of the service (ports, then expose)'
+  ),
+});
+
 /**
  * Reverse proxy configuration schema (Traefik + Let's Encrypt)
  */
@@ -276,6 +300,9 @@ export const ProxyConfigSchema = z.object({
   ),
   domains: z.record(z.string(), z.string()).optional().describe(
     'Domain per environment, e.g. { production: "app.example.com", staging: "staging.example.com" }'
+  ),
+  routes: z.array(ProxyRouteSchema).optional().describe(
+    'Routes of their own for chosen services: a domain per environment, a path, a port. A service listed here gets no route on proxy.domains'
   ),
   dashboard: ProxyDashboardSchema.optional().describe(
     'Traefik dashboard configuration'
