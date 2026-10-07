@@ -6,7 +6,7 @@ import type { Command } from 'commander';
 import { sshShell, sshExecStream } from '../../utils/ssh';
 import { printInfo, printBlank } from '../../utils/output';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
-import { CLIError, ConnectionError, withServicesRequired } from '../../utils/errors';
+import { ConnectionError, ExecExitError, withServicesRequired } from '../../utils/errors';
 
 export function registerSshCommand(program: Command): void {
   program
@@ -23,17 +23,13 @@ export function registerSshCommand(program: Command): void {
         printInfo(`Executing on ${env} server (${serverName}): ${command}`);
         printBlank();
 
+        let exitCode: number;
         try {
-          const result = await sshExecStream(connection, command);
-          if (result.exitCode !== 0) {
-            throw new CLIError(
-              `Command exited with code ${result.exitCode}`,
-              result.exitCode,
-            );
-          }
+          ({ exitCode } = await sshExecStream(connection, command));
         } catch (error) {
-          throw new ConnectionError(`SSH command failed: ${error}`);
+          throw new ConnectionError(`SSH command failed: ${error instanceof Error ? error.message : String(error)}`);
         }
+        if (exitCode !== 0) throw new ExecExitError(exitCode);
         return;
       }
 
