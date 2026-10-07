@@ -126,6 +126,45 @@ networks:
 Traefik performs an HTTP-01 ACME challenge with Let's Encrypt. The certificate is stored in a persistent Docker volume (`traefik-certs`) and renewed automatically before expiry.
 </Steps>
 
+## Excluding a Service or Overriding a Label
+
+Every app service with `ports:` gets the injected route. A service that publishes a port for
+another protocol (a TCP game or database port, for instance) opts out with `traefik.enable=false`:
+
+```yaml
+# .dockflow/docker/docker-compose.yml
+services:
+  game:
+    image: my-game
+    ports:
+      - "25000:25000"
+    deploy:
+      labels:
+        - "traefik.enable=false"
+```
+
+A label the service sets itself always wins over the injected one, so the injected router can be
+adjusted without being replaced:
+
+```yaml
+# .dockflow/docker/docker-compose.yml
+services:
+  app:
+    image: my-app
+    ports:
+      - "3000:3000"
+    deploy:
+      labels:
+        # serve another host with the router Dockflow names <stack>-<service>
+        - "traefik.http.routers.my-app-production-app.rule=Host(`www.example.com`)"
+```
+
+<Callout type="warning">
+  When several services of the stack get the injected route, they all answer on the same domain
+  and Traefik sends each request to one of them. Dockflow warns when this happens: exclude the
+  services that must not answer, or give them their own router rule.
+</Callout>
+
 ## Coexistence with Nginx
 
 Traefik and the [nginx plugin](/en/configuration/plugins#nginx) do not know about each other.

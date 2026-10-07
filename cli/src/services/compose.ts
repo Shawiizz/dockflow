@@ -23,7 +23,7 @@ import {
 import { findUndefinedEnvReferences, describeUndefinedEnvReferences } from './template-lint';
 import type { DockflowConfig, ProxyConfig } from '../utils/config';
 import { getAccessoriesPath, getProjectRoot, getComposePath, getLayout } from '../utils/config';
-import { printDebug, printWarning } from '../utils/output';
+import { printDebug, printDim, printWarning } from '../utils/output';
 import { ConfigError } from '../utils/errors';
 import { DOCKFLOW_PLUGINS_DIR, TRAEFIK_NETWORK_NAME } from '../constants';
 import type { TemplateContext } from '../types';
@@ -561,11 +561,36 @@ export function injectAccessoriesDefaults(compose: ParsedCompose): void {
 // Traefik labels
 // ---------------------------------------------------------------------------
 
+/** `deploy.labels` as `key=value` entries, from the list or the map form of compose */
+function labelEntries(labels: unknown): string[] {
+  if (Array.isArray(labels)) return labels.map(String);
+  if (labels && typeof labels === 'object') {
+    return Object.entries(labels as Record<string, unknown>).map(([k, v]) => `${k}=${v ?? ''}`);
+  }
+  return [];
+}
+
+/** label values by key; a later entry wins, as when Docker reads the list */
+function labelValues(entries: readonly string[]): Map<string, string> {
+  const values = new Map<string, string>();
+  for (const entry of entries) {
+    const eq = entry.indexOf('=');
+    values.set(eq === -1 ? entry : entry.slice(0, eq), eq === -1 ? '' : entry.slice(eq + 1));
+  }
+  return values;
+}
+
+/** the false values of Go's strconv.ParseBool, which Traefik reads `traefik.enable` with */
+function isFalseLabel(value: string): boolean {
+  return ['0', 'f', 'F', 'false', 'FALSE', 'False'].includes(value.trim());
+}
+
 /**
  * Inject Traefik routing labels for services that expose ports.
  *
  * Only runs if `config.proxy.enabled` is true and a domain is defined
- * for the given environment.
+ * for the given environment. A service opts out with `traefik.enable=false`
+ * in `deploy.labels`, and every label it sets itself wins over the injected one.
  */
 export function injectTraefikLabels(
   compose: ParsedCompose,
@@ -581,10 +606,19 @@ export function injectTraefikLabels(
   const acme = proxy.acme !== false;
   const entrypoint = acme ? 'websecure' : 'web';
   let hasProxiedService = false;
+  const onDomain: string[] = [];
 
   for (const [svcName, svc] of Object.entries(compose.services)) {
     const ports = svc.ports as (string | number)[] | undefined;
     if (!ports || ports.length === 0) continue;
+
+    const deploy = (svc.deploy ?? {}) as Record<string, unknown>;
+    const existing = labelEntries(deploy.labels);
+    const own = labelValues(existing);
+    if (isFalseLabel(own.get('traefik.enable') ?? 'true')) {
+      printDim(`Service "${svcName}" sets traefik.enable=false: no route is injected`);
+      continue;
+    }
 
     hasProxiedService = true;
     if (ports.length > 1) {
@@ -592,34 +626,21 @@ export function injectTraefikLabels(
     }
     const containerPort = parseContainerPort(ports[0]);
     const routerName = `${stackName}-${svcName}`;
+    const ruleKey = `traefik.http.routers.${routerName}.rule`;
 
-    const traefikLabels: string[] = [
-      'traefik.enable=true',
-      `traefik.docker.network=${TRAEFIK_NETWORK_NAME}`,
-      `traefik.http.routers.${routerName}.rule=Host(\`${domain}\`)`,
-      `traefik.http.routers.${routerName}.entrypoints=${entrypoint}`,
-      `traefik.http.services.${routerName}.loadbalancer.server.port=${containerPort}`,
+    const traefikLabels: [string, string][] = [
+      ['traefik.enable', 'true'],
+      ['traefik.docker.network', TRAEFIK_NETWORK_NAME],
+      [ruleKey, `Host(\`${domain}\`)`],
+      [`traefik.http.routers.${routerName}.entrypoints`, entrypoint],
+      [`traefik.http.services.${routerName}.loadbalancer.server.port`, String(containerPort)],
     ];
     if (acme) {
-      traefikLabels.push(`traefik.http.routers.${routerName}.tls.certresolver=letsencrypt`);
+      traefikLabels.push([`traefik.http.routers.${routerName}.tls.certresolver`, 'letsencrypt']);
     }
+    if (!own.has(ruleKey)) onDomain.push(svcName);
 
-    const deploy = (svc.deploy ?? {}) as Record<string, unknown>;
-    const existingLabels = deploy.labels;
-    let labelList: string[];
-
-    if (Array.isArray(existingLabels)) {
-      labelList = [...existingLabels.map(String), ...traefikLabels];
-    } else if (existingLabels && typeof existingLabels === 'object') {
-      labelList = [
-        ...Object.entries(existingLabels as Record<string, string>).map(
-          ([k, v]) => `${k}=${v}`,
-        ),
-        ...traefikLabels,
-      ];
-    } else {
-      labelList = traefikLabels;
-    }
+    const labelList = [...existing, ...traefikLabels.filter(([key]) => !own.has(key)).map(([key, value]) => `${key}=${value}`)];
 
     const existingNets = svc.networks;
     let newNets: unknown;
@@ -642,6 +663,13 @@ export function injectTraefikLabels(
       deploy: { ...deploy, labels: labelList },
       networks: newNets,
     };
+  }
+
+  if (onDomain.length > 1) {
+    printWarning(
+      `Services ${onDomain.join(', ')} all answer on ${domain}: Traefik sends each request to one of them. ` +
+        'Add traefik.enable=false to deploy.labels of the services that must not, or give them their own router rule.',
+    );
   }
 
   if (hasProxiedService) {

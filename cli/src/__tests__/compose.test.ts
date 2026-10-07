@@ -356,6 +356,38 @@ services:
     expect(labels).toContain('custom=1');
   });
 
+  it('leaves a service that sets traefik.enable=false alone, in either label form', () => {
+    for (const labels of ['      - "traefik.enable=false"\n', '        traefik.enable: "False"\n', '      - "traefik.enable=0"\n']) {
+      const compose = makeCompose(`services:\n  game:\n    image: game\n    ports:\n      - "25000:25000"\n    deploy:\n      labels:\n${labels}`);
+      const before = structuredClone(compose.services.game);
+      injectTraefikLabels(compose, proxy, 'demo', 'production');
+      expect(compose.services.game).toEqual(before);
+      expect(compose.networks).toBeUndefined();
+    }
+  });
+
+  it('keeps the labels a service sets itself over the injected ones', () => {
+    const compose = makeCompose(`
+services:
+  web:
+    image: nginx
+    ports:
+      - "8080:80"
+    deploy:
+      labels:
+        - "traefik.http.routers.demo-web.rule=Host(\`www.example.com\`)"
+        - "traefik.http.services.demo-web.loadbalancer.server.port=8081"
+`);
+    injectTraefikLabels(compose, proxy, 'demo', 'production');
+    const labels = (compose.services.web.deploy as Record<string, unknown>).labels as string[];
+    expect(labels.filter((l) => l.startsWith('traefik.http.routers.demo-web.rule='))).toEqual(['traefik.http.routers.demo-web.rule=Host(`www.example.com`)']);
+    expect(labels.filter((l) => l.startsWith('traefik.http.services.demo-web.loadbalancer.server.port='))).toEqual([
+      'traefik.http.services.demo-web.loadbalancer.server.port=8081',
+    ]);
+    expect(labels).toContain('traefik.enable=true');
+    expect(labels).toContain('traefik.http.routers.demo-web.entrypoints=websecure');
+  });
+
   it('merges traefik network into existing array networks without duplicates', () => {
     const compose = makeCompose(`
 services:
