@@ -4,7 +4,8 @@
  */
 
 import type { Command } from 'commander';
-import { printIntro, printOutro, printDebug, printBlank, createSpinner } from '../../utils/output';
+import { printIntro, printOutro, printDebug, printBlank, printWarning, createSpinner } from '../../utils/output';
+import { idleServices } from '../app/service-name';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createStackBackend } from '../../services/orchestrator/factory';
@@ -36,15 +37,16 @@ export function registerAccessoriesRestartCommand(program: Command): void {
       const spinner = createSpinner();
 
       try {
-        if (service) {
-          spinner.start(`Restarting ${service}...`);
-          await orchestrator.restart(stackName, service);
-          spinner.succeed(`Accessory '${service}' restarted`);
+        spinner.start(service ? `Restarting ${service}...` : 'Restarting all accessories...');
+        await orchestrator.restart(stackName, service);
+        const services = await orchestrator.getServices(stackName);
+        const idle = idleServices(services, service ? [service] : services.map((s) => s.name));
+        if (idle.length > 0) {
+          spinner.warn(`Restarted, but ${idle.join(', ')} ${idle.length === 1 ? 'has' : 'have'} 0 replicas and ${idle.length === 1 ? 'was' : 'were'} not started`);
+          printWarning(`Start stopped accessories with \`dockflow deploy ${env} --accessories\`.`);
         } else {
-          spinner.start('Restarting all accessories...');
-          await orchestrator.restart(stackName);
-          spinner.succeed('All accessories restarted');
-          printOutro('Restart complete');
+          spinner.succeed(service ? `Accessory '${service}' restarted` : 'All accessories restarted');
+          if (!service) printOutro('Restart complete');
         }
       } catch (error) {
         if (error instanceof DockerError) throw error;

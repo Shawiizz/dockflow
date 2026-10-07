@@ -13,6 +13,7 @@ import { Metrics } from '../../services/metrics';
 import * as Notification from '../../services/notification';
 import { withErrorHandler, DeployError, ErrorCode } from '../../utils/errors';
 import { runPostRollbackHealthChecks } from '../deploy-phases';
+import { requireAppService } from './service-name';
 
 export function registerRollbackCommand(program: Command): void {
   program
@@ -38,7 +39,7 @@ export function registerRollbackCommand(program: Command): void {
       const startTime = Date.now();
 
       if (service) {
-        // Single-service rollback: docker service rollback
+        await requireAppService(connection, env, stackName, service, 'rollback');
         spinner.start(`Rolling back ${stackName}_${service}...`);
         await orchestrator.rollbackService(stackName, service);
         spinner.succeed(`Rolled back ${stackName}_${service}`);

@@ -7,6 +7,7 @@ import { printDebug, createSpinner } from '../../utils/output';
 import { resolveEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { CLIError, DockerError, ErrorCode, withServicesRequired } from '../../utils/errors';
+import { requireAppService, serviceMode } from './service-name';
 
 export function registerScaleCommand(program: Command): void {
   program
@@ -18,9 +19,19 @@ export function registerScaleCommand(program: Command): void {
       const { config, stackName, connection } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName });
 
-      const replicaCount = parseInt(replicas, 10);
-      if (isNaN(replicaCount) || replicaCount < 0) {
-        throw new CLIError('Replicas must be a non-negative number', ErrorCode.INVALID_ARGUMENT);
+      if (!/^\d+$/.test(replicas)) {
+        throw new CLIError('Replicas must be a non-negative integer', ErrorCode.INVALID_ARGUMENT);
+      }
+      const replicaCount = Number(replicas);
+
+      await requireAppService(connection, env, stackName, service, 'scale');
+      const mode = await serviceMode(connection, stackName, service);
+      if (mode !== 'replicated') {
+        throw new CLIError(
+          `${service} runs in ${mode} mode, which has no replica count to scale`,
+          ErrorCode.INVALID_ARGUMENT,
+          mode === 'global' ? 'A global service runs one task per node.' : 'A job runs to completion; deploy it again to run it again.',
+        );
       }
 
       const orchestrator = createStackBackend(connection);

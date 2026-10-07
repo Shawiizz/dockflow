@@ -174,7 +174,7 @@ dockflow accessories stop production postgres  # Scale specific to 0
 ```
 
 <Callout type="info">
-  Stop scales services to 0 replicas but keeps the containers and volumes. Use `restart` to bring them back.
+  Stop scales services to 0 replicas and keeps their volumes. `restart` leaves a stopped service at 0; `dockflow deploy production --accessories` brings back the replica count `accessories.yml` sets.
 </Callout>
 
 ### Remove Accessories

@@ -12,6 +12,7 @@ import { createContainerBackend, createStackBackend } from '../../services/orche
 import { DockerError, withServicesRequired } from '../../utils/errors';
 import { parseTailOption } from '../../utils/log-options';
 import { pickService, pickSwarmTask } from './pick';
+import { requireAppService } from './service-name';
 
 export interface LogsCommandOptions {
   follow?: boolean;
@@ -114,6 +115,7 @@ export function registerLogsCommand(program: Command): void {
       printInfo(`Server: ${serverName}`);
       printInfo(`Fetching logs for stack: ${stackName}`);
       printBlank();
+      if (service) await requireAppService(connection, env, stackName, service, 'logs');
       await showLogs(env, connection, stackName, service, options);
     })));
 }

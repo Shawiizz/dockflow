@@ -10,12 +10,12 @@ import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { loadConfig } from '../../utils/config';
-import { DockerError, withErrorHandler, ConfigError } from '../../utils/errors';
+import { CLIError, DockerError, ErrorCode, withErrorHandler, ConfigError } from '../../utils/errors';
 
 export function registerAccessoriesStopCommand(program: Command): void {
   program
     .command('stop <env> [service]')
-    .description('Stop accessory services (scale to 0, can be restarted)')
+    .description('Stop accessory services (scale to 0; deploy --accessories starts them again)')
     .option('-y, --yes', 'Skip confirmation prompt')
     .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .action(withErrorHandler(withResolvedEnv(async (
@@ -36,6 +36,10 @@ export function registerAccessoriesStopCommand(program: Command): void {
       const services = await orchestrator.getServices(stackName);
       if (services.length === 0) {
         throw new DockerError('No accessories services found');
+      }
+
+      if (service && !services.some((s) => s.name === service)) {
+        throw new CLIError(`No accessory ${service} in ${stackName}`, ErrorCode.SERVICE_NOT_FOUND, `Accessories: ${services.map((s) => s.name).join(', ')}`);
       }
 
       const targetDesc = service ? `accessory '${service}'` : 'all accessories';
@@ -65,27 +69,28 @@ export function registerAccessoriesStopCommand(program: Command): void {
         } else {
           const spinner = createSpinner();
           spinner.start('Scaling all services to 0...');
-          let allSuccess = true;
+          const failed: string[] = [];
 
           for (const svc of services) {
             try {
               await orchestrator.scaleService(stackName, svc.name, 0);
-            } catch {
-              allSuccess = false;
+            } catch (error) {
+              failed.push(`${svc.name}: ${error instanceof Error ? error.message : String(error)}`);
             }
           }
 
-          if (allSuccess) {
-            spinner.succeed('All accessories stopped');
-          } else {
-            spinner.warn('Some services failed to stop');
+          if (failed.length > 0) {
+            spinner.fail(`${failed.length} of ${services.length} accessories did not stop`);
+            throw new DockerError(`Accessories not stopped:\n  ${failed.join('\n  ')}`);
           }
+          spinner.succeed('All accessories stopped');
         }
 
         printBlank();
+        // restart keeps a service at 0 replicas: the deploy brings back the count accessories.yml sets
         printNote(
-          `To restart: dockflow accessories restart ${env}` + (service ? ` ${service}` : '') + '\n' +
-          `To remove:  dockflow accessories remove ${env}` + (service ? ` ${service}` : ''),
+          `To start again: dockflow deploy ${env} --accessories\n` +
+          `To remove:      dockflow accessories remove ${env}`,
           'Next steps'
         );
         printOutro('Accessories stopped');

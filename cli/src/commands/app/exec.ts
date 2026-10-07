@@ -11,6 +11,7 @@ import { createContainerBackend } from '../../services/orchestrator/factory';
 import { ExecExitError, withServicesRequired } from '../../utils/errors';
 import { type ExecPlan, planExec } from '../../utils/exec-plan';
 import { pickSwarmTask } from './pick';
+import { requireAppService } from './service-name';
 
 export interface ExecCommandOptions {
   server?: string;
@@ -77,6 +78,7 @@ export function registerExecCommand(program: Command): void {
     .action(withServicesRequired(withResolvedEnv(async (env: string, service: string, command: string[], options: ExecCommandOptions) => {
       const plan = planExecCommand(command, options);
       const { stackName, connection } = await resolveEnv(env, options.server);
+      await requireAppService(connection, env, stackName, service, 'exec');
       await runExecIn(env, connection, stackName, service, plan, options);
     })));
 }
