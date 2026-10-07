@@ -408,6 +408,11 @@ export function renderAndResolveCompose(
   };
 }
 
+function hasBuild(service: Record<string, unknown>): boolean {
+  const build = service.build;
+  return typeof build === 'string' ? build !== '' : build !== null && typeof build === 'object';
+}
+
 /** Swarm modes that run one task per node: `replicas` contradicts them. */
 const PER_NODE_MODES = new Set(['global', 'global-job']);
 
@@ -790,7 +795,7 @@ export function usesRegistry(config: DockflowConfig): boolean {
 }
 
 /**
- * Update image tags in all services.
+ * Update the image tags of the services Dockflow builds (those with a `build:` section).
  *
  * If `image_auto_tag` is true (default):
  *   - Strips existing tag: "my-api:old" → "my-api"
@@ -818,8 +823,9 @@ export function updateImageTags(
     : null;
 
   for (const [name, svc] of Object.entries(compose.services)) {
-    const originalImage = svc.image as string | undefined;
-    if (!originalImage) continue;
+    const originalImage = svc.image;
+    // an image Dockflow does not build is pulled as written: renamed, it would exist nowhere
+    if (typeof originalImage !== 'string' || originalImage === '' || !hasBuild(svc)) continue;
     if (filterSet && !filterSet.has(name)) continue;
 
     let newImage: string;

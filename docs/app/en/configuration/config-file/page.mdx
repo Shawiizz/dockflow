@@ -69,7 +69,7 @@ The stack name is derived as `{project_name}-{env}`. Releases are stored at:
 ### `image_auto_tag`
 **Default:** `true`
 
-Appends `-{env}:{version}` to image names for environment isolation:
+Appends `-{env}:{version}` to the names of the images Dockflow builds (services with `build:`), for environment isolation; other images are pulled as written:
 
 - `my-app` → `my-app-production:1.0.0`
 - `backend:latest` → `backend-staging:2.1.0`

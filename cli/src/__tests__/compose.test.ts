@@ -109,20 +109,20 @@ describe('updateImageTags', () => {
   const baseConfig = { project_name: 'demo' } as DockflowConfig;
 
   it('auto-tag (default): strips tag, appends env and version', () => {
-    const compose = makeCompose('services:\n  api:\n    image: my-api:old\n');
+    const compose = makeCompose('services:\n  api:\n    image: my-api:old\n    build: .\n');
     updateImageTags(compose, baseConfig, 'production', '1.2.3');
     expect(compose.services.api.image).toBe('my-api-production:1.2.3');
   });
 
   it('auto-tag on image without tag', () => {
-    const compose = makeCompose('services:\n  api:\n    image: my-api\n');
+    const compose = makeCompose('services:\n  api:\n    image: my-api\n    build: .\n');
     updateImageTags(compose, baseConfig, 'staging', '2.0.0');
     expect(compose.services.api.image).toBe('my-api-staging:2.0.0');
   });
 
   it('image_auto_tag=false keeps original image', () => {
     const config = { ...baseConfig, options: { image_auto_tag: false } } as DockflowConfig;
-    const compose = makeCompose('services:\n  api:\n    image: my-api:pinned\n');
+    const compose = makeCompose('services:\n  api:\n    image: my-api:pinned\n    build: .\n');
     updateImageTags(compose, config, 'production', '1.2.3');
     expect(compose.services.api.image).toBe('my-api:pinned');
   });
@@ -138,7 +138,7 @@ describe('updateImageTags', () => {
       ...baseConfig,
       registry: { enabled: true, url: 'registry.example.com', namespace: 'team', password: 'pw' },
     } as DockflowConfig;
-    const compose = makeCompose('services:\n  api:\n    image: my-api\n');
+    const compose = makeCompose('services:\n  api:\n    image: my-api\n    build: .\n');
     updateImageTags(compose, config, 'production', '1.0.0');
     expect(compose.services.api.image).toBe('registry.example.com/team/my-api-production:1.0.0');
   });
@@ -149,27 +149,33 @@ describe('updateImageTags', () => {
       options: { image_auto_tag: false },
       registry: { enabled: true, url: 'registry.example.com', password: 'pw' },
     } as DockflowConfig;
-    const compose = makeCompose('services:\n  api:\n    image: ghcr.io/org/my-api:1.0\n');
+    const compose = makeCompose('services:\n  api:\n    image: ghcr.io/org/my-api:1.0\n    build: .\n');
     updateImageTags(compose, config, 'production', '1.0.0');
     expect(compose.services.api.image).toBe('ghcr.io/org/my-api:1.0');
   });
 
   it('a registry without password or token is not prepended: its images go over SSH', () => {
     const config = { ...baseConfig, registry: { enabled: true, url: 'registry.example.com' } } as DockflowConfig;
-    const compose = makeCompose('services:\n  api:\n    image: my-api\n');
+    const compose = makeCompose('services:\n  api:\n    image: my-api\n    build: .\n');
     updateImageTags(compose, config, 'production', '1.0.0');
     expect(compose.services.api.image).toBe('my-api-production:1.0.0');
   });
 
+  it('an image Dockflow does not build is pulled as written', () => {
+    const compose = makeCompose('services:\n  db:\n    image: postgres:16\n');
+    updateImageTags(compose, baseConfig, 'production', '1.0.0');
+    expect(compose.services.db.image).toBe('postgres:16');
+  });
+
   it('servicesFilter only updates listed services', () => {
-    const compose = makeCompose('services:\n  api:\n    image: api\n  worker:\n    image: worker\n');
+    const compose = makeCompose('services:\n  api:\n    image: api\n    build: .\n  worker:\n    image: worker\n    build: .\n');
     updateImageTags(compose, baseConfig, 'production', '1.0.0', 'api');
     expect(compose.services.api.image).toBe('api-production:1.0.0');
     expect(compose.services.worker.image).toBe('worker');
   });
 
   it('updates raw.services so serialization reflects changes', () => {
-    const compose = makeCompose('services:\n  api:\n    image: api\n');
+    const compose = makeCompose('services:\n  api:\n    image: api\n    build: .\n');
     updateImageTags(compose, baseConfig, 'production', '1.0.0');
     const reparsed = makeCompose(serialize(compose));
     expect(reparsed.services.api.image).toBe('api-production:1.0.0');

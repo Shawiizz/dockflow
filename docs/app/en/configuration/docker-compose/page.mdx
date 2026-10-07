@@ -54,7 +54,7 @@ services:
 
 ## Automatic Image Tagging
 
-Dockflow automatically appends the environment and version to image names for isolation:
+Dockflow automatically appends the environment and version to the names of the images it builds (services with a `build:` section), for isolation. An image it does not build, such as `postgres:16`, is pulled as written.
 
 ```
 my-app → my-app-production:1.0.0

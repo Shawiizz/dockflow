@@ -1,9 +1,5 @@
 project_name: "test-app-routes"
 
-options:
-  # nginx:alpine is pulled as is: nothing is built
-  image_auto_tag: false
-
 proxy:
   enabled: true
   acme: false
