@@ -30,17 +30,25 @@ jobs:
           # main's docs, also when a release tag calls this workflow
           ref: main
 
+      # The version reaches the shell through the environment, checked, never expanded into a
+      # command: the secrets are in this job's environment.
       - name: Wait for npm to serve the release
         if: ${{ inputs.version }}
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::not a release version: $VERSION"; exit 1; }
           for attempt in $(seq 1 30); do
-            [ "$(npm view @dockflow-tools/cli version)" = "${{ inputs.version }}" ] && exit 0
+            [ "$(npm view @dockflow-tools/cli version)" = "$VERSION" ] && exit 0
             sleep 10
           done
-          echo "::error::npm does not serve ${{ inputs.version }} as latest"
+          echo "::error::npm does not serve $VERSION as latest"
           exit 1
 
       - name: Deploy docs
-        run: npx @dockflow-tools/cli@${{ inputs.version || 'latest' }} deploy production "main-$(git rev-parse HEAD)"
         env:
+          CLI_VERSION: ${{ inputs.version || 'latest' }}
           DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
+        run: |
+          [[ "$CLI_VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+|latest)$ ]] || { echo "::error::not a release version: $CLI_VERSION"; exit 1; }
+          npx "@dockflow-tools/cli@$CLI_VERSION" deploy production "main-$(git rev-parse HEAD)"
