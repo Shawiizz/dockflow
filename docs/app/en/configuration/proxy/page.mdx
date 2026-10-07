@@ -96,6 +96,13 @@ When `acme: false`:
 - Your domain's DNS must point to your manager's IP before deploying
 - Your app service must expose a port in `docker-compose.yml` (Traefik reads this to know the container port)
 
+<Callout type="warning">
+  Traefik publishes 80 and 443 through Docker, which writes its own iptables rules: ufw and
+  firewalld do not filter them, and neither do they filter the `ports:` of your services. To
+  restrict who reaches them (only a CDN's addresses, for instance), add rules to the
+  `DOCKER-USER` chain, which Docker evaluates before its own.
+</Callout>
+
 ## How It Works
 
 <Steps>

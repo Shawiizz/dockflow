@@ -25,8 +25,6 @@ Create a file at `.dockflow/docker/accessories.yml` using standard Docker Compos
 services:
   postgres:
     image: postgres:16-alpine
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
@@ -41,8 +39,6 @@ services:
 
   redis:
     image: redis:8-alpine
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -59,6 +55,14 @@ volumes:
 
 <Callout type="info">
   Environment variables can be accessed using template syntax: `{{ variable_name }}`
+</Callout>
+
+<Callout type="warning">
+  **Do not publish accessory ports.** A `ports:` entry makes Docker publish the port on every
+  interface of every node through its own iptables rules, past ufw and firewalld: a database
+  published that way answers the internet. Your app reaches accessories over their network (see
+  [Connecting Your App](#connecting-your-app)), and `dockflow accessories exec` opens a shell or a
+  client inside them.
 </Callout>
 
 <Callout type="warning">

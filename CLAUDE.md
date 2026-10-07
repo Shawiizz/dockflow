@@ -279,7 +279,7 @@ E2E tests run on Linux, WSL and Windows (Docker required). CI runs both suites a
 
 CI/CD integration is handled entirely by the CLI itself — no reusable workflows or external templates needed. The CLI auto-detects environment and version from CI provider env vars (GitHub Actions, GitLab CI, Jenkins, Buildkite) when `dockflow deploy` or `dockflow build` are called without arguments. Users generate a standalone CI workflow via `dockflow init`.
 
-CI secrets format: `{ENV}_{SERVER}_{CONNECTION}` = base64-encoded `user@host:port|privateKey|password`.
+CI secrets format: `{ENV}_{SERVER}_CONNECTION` = base64-encoded JSON `{host, port, user, privateKey, password?}` (`utils/connection-parser.ts`).
 
 ## Development Rules
 

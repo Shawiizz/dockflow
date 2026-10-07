@@ -63,9 +63,12 @@ Dockflow needs SSH credentials to connect to your servers. The recommended appro
       "port": 22,
       "user": "dockflow",
       "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\n...",
-      "password": "optional-sudo-password"
+      "password": "deploy-user-password"
     }
     ```
+
+    `password` is present when setup was given the deploy user's password; SSH falls back to it
+    when the key is refused.
 
     Store it as `[ENV]_[SERVERNAME]_CONNECTION`:
 
@@ -86,7 +89,13 @@ Dockflow needs SSH credentials to connect to your servers. The recommended appro
     </Tabs>
 
     <Callout type="error">
-      **Do not share connection strings** — they contain SSH private keys.
+      **A connection string is the whole access to the server.** It holds the deploy user's private
+      key, which has no passphrase, and its password when setup was given one, base64-encoded but
+      not encrypted. That user is in the `docker` group, which is root-equivalent (see
+      [Deploy User Permissions](#deploy-user-permissions)). Keep it in CI secrets and
+      `.env.dockflow` only. If one leaks, remove its public key from the deploy user's
+      `~/.ssh/authorized_keys` on that server, change the user's password, then run
+      `dockflow setup` again with a new key.
     </Callout>
   </Tabs.Tab>
   <Tabs.Tab>

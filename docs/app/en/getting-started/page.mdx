@@ -28,7 +28,8 @@ Dockflow deploys to a single server or a multi-node cluster — same workflow. A
     ```
 
     <Callout type="info">
-      Pin a specific version with `npx @dockflow-tools/cli@1.2.3 <command>`.
+      Pin the version (`npx @dockflow-tools/cli@2.5.1 <command>`) wherever the command runs
+      unattended, CI included.
     </Callout>
   </Tabs.Tab>
   <Tabs.Tab>
@@ -149,7 +150,7 @@ This generates the following structure at the root of your project:
             runs-on: ubuntu-latest
             steps:
               - uses: actions/checkout@v4
-              - run: npx @dockflow-tools/cli build
+              - run: npx @dockflow-tools/cli@2.5.1 build
                 env:
                   DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
         ```
@@ -167,14 +168,10 @@ This generates the following structure at the root of your project:
             runs-on: ubuntu-latest
             steps:
               - uses: actions/checkout@v4
-              - run: npx @dockflow-tools/cli deploy
+              - run: npx @dockflow-tools/cli@2.5.1 deploy
                 env:
                   DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
         ```
-
-        <Callout type="info">
-          Pin a specific CLI version with `npx @dockflow-tools/cli@1.2.3`.
-        </Callout>
       </Tabs.Tab>
 
       <Tabs.Tab>
@@ -197,7 +194,7 @@ This generates the following structure at the root of your project:
           before_script:
             - apt-get update -qq && apt-get install -y -qq docker.io
           script:
-            - npx @dockflow-tools/cli build
+            - npx @dockflow-tools/cli@2.5.1 build
           rules:
             - if: $CI_COMMIT_TAG
               when: never
@@ -208,7 +205,7 @@ This generates the following structure at the root of your project:
           stage: deploy
           image: node:24
           script:
-            - npx @dockflow-tools/cli deploy
+            - npx @dockflow-tools/cli@2.5.1 deploy
           rules:
             - if: $CI_COMMIT_TAG
         ```
@@ -234,7 +231,7 @@ This generates the following structure at the root of your project:
                   services:
                     - docker
                   script:
-                    - npx @dockflow-tools/cli build
+                    - npx @dockflow-tools/cli@2.5.1 build
 
           # CD: Deploy on tag push (SSH-only, no Docker needed)
           tags:
@@ -242,7 +239,7 @@ This generates the following structure at the root of your project:
               - step:
                   name: Deploy
                   script:
-                    - npx @dockflow-tools/cli deploy
+                    - npx @dockflow-tools/cli@2.5.1 deploy
         ```
 
         <Callout type="info">
@@ -250,6 +247,13 @@ This generates the following structure at the root of your project:
         </Callout>
       </Tabs.Tab>
     </Tabs>
+
+    <Callout type="warning">
+      **Pin the CLI version**, as `@2.5.1` does above. Without one, every pipeline run fetches the
+      latest release: a release that changes behaviour breaks every deployment at once, and it runs
+      with your servers' SSH keys. `dockflow init` writes the version it was run with into the
+      workflows it generates. Move to a new version when you choose to.
+    </Callout>
 
     ### Repository secrets
 
@@ -268,7 +272,10 @@ This generates the following structure at the root of your project:
         - **Bitbucket**: Repository Settings → Repository variables
 
         <Callout type="error">
-          **Do not share connection strings** — they contain SSH private keys.
+          **A connection string is the whole access to the server**: the deploy user's private key
+          and, when setup was given it, its password, base64-encoded but not encrypted. Keep it in
+          CI secrets only, and see [Secrets](/en/configuration/servers#secrets) for what to do if
+          one leaks.
         </Callout>
       </Tabs.Tab>
 
@@ -279,7 +286,7 @@ This generates the following structure at the root of your project:
         | `[ENV]_[SERVERNAME]_HOST` | Server IP/hostname | `PRODUCTION_MAIN_SERVER_HOST` |
         | `[ENV]_[SERVERNAME]_USER` | SSH user (default: dockflow) | `PRODUCTION_MAIN_SERVER_USER` |
         | `[ENV]_[SERVERNAME]_PORT` | SSH port (default: 22) | `PRODUCTION_MAIN_SERVER_PORT` |
-        | `[ENV]_[SERVERNAME]_PASSWORD` | Sudo password (optional) | `PRODUCTION_MAIN_SERVER_PASSWORD` |
+        | `[ENV]_[SERVERNAME]_PASSWORD` | Deploy user's password, which SSH falls back to (optional) | `PRODUCTION_MAIN_SERVER_PASSWORD` |
         | `GIT_TOKEN` | Optional: for remote build strategy | GitHub/GitLab token |
       </Tabs.Tab>
     </Tabs>
