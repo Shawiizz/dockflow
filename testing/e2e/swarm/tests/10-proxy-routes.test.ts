@@ -25,21 +25,20 @@ const ACCESSORIES_STACK = `${STACK_NAME}-accessories`;
 const PANEL_SERVICE = `${ACCESSORIES_STACK}_panel`;
 const ROUTER = `${STACK_NAME}-panel-route2`;
 
-/** GET through Traefik (manager port 80, published on the host as 38080) until the body holds `marker`. */
+/**
+ * GET through Traefik, on port 80 of the manager, until the body holds `marker`. Curl runs on
+ * the manager so that no proxy of the machine running the tests gets in the way.
+ */
 async function waitForRoute(host: string, path: string, marker: string, timeoutMs = 60_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   let last = "";
   while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`http://localhost:38080${path}`, {
-        headers: { Host: host },
-        signal: AbortSignal.timeout(5000),
-      });
-      last = `${res.status} ${await res.text()}`;
-      if (res.status === 200 && last.includes(marker)) return;
-    } catch (e) {
-      last = String(e);
-    }
+    last = await dockerExec(MANAGER_CONTAINER, [
+      "sh",
+      "-c",
+      `curl -4 -s --max-time 5 -H 'Host: ${host}' -w ' HTTP %{http_code}' http://localhost${path} || true`,
+    ]);
+    if (last.includes(marker) && last.trimEnd().endsWith("HTTP 200")) return;
     await Bun.sleep(1000);
   }
   throw new Error(`${host}${path} never answered "${marker}" through Traefik (last: ${last.slice(0, 200)})`);
