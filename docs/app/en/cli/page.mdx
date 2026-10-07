@@ -353,7 +353,8 @@ Force restart services (rolling update).
 
 | Option | Description |
 |--------|-------------|
-| `-s, --server <name>` | Target server |
+| `-s, --server <name>` | Target manager |
+| `--no-wait` | Return once Swarm accepted the change, without waiting for convergence |
 
 ```bash
 dockflow restart production           # All services
@@ -383,7 +384,8 @@ Scale a service to a specified number of replicas.
 
 | Option | Description |
 |--------|-------------|
-| `-s, --server <name>` | Target server |
+| `-s, --server <name>` | Target manager |
+| `--no-wait` | Return once Swarm accepted the change, without waiting for convergence |
 
 ```bash
 dockflow scale production app 3      # Scale to 3 replicas
@@ -730,7 +732,8 @@ dockflow accessories restart <env> [service]
 | Option | Description |
 |--------|-------------|
 | `--force` | Force restart even if updating |
-| `-s, --server <name>` | Target server |
+| `-s, --server <name>` | Target manager |
+| `--no-wait` | Return once Swarm accepted the change, without waiting for convergence |
 
 ### Stop Accessories
 

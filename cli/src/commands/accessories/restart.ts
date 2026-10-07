@@ -18,10 +18,11 @@ export function registerAccessoriesRestartCommand(program: Command): void {
     .description('Restart accessory services')
     .option('--force', 'Force restart even if service is updating')
     .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
+    .option('--no-wait', 'Return once Swarm accepted the change, without waiting for the services to converge')
     .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string | undefined,
-      options: { force?: boolean; server?: string }
+      options: { force?: boolean; server?: string; wait?: boolean }
     ) => {
       printIntro(`Restarting Accessories - ${env}`);
       printBlank();
@@ -38,7 +39,7 @@ export function registerAccessoriesRestartCommand(program: Command): void {
 
       try {
         spinner.start(service ? `Restarting ${service}...` : 'Restarting all accessories...');
-        await orchestrator.restart(stackName, service);
+        await orchestrator.restart(stackName, service, { detach: options.wait === false });
         const services = await orchestrator.getServices(stackName);
         const idle = idleServices(services, service ? [service] : services.map((s) => s.name));
         if (idle.length > 0) {

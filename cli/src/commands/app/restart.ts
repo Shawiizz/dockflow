@@ -16,7 +16,8 @@ export function registerRestartCommand(program: Command): void {
     .description('Restart service(s)')
     .helpGroup('Operate')
     .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
-    .action(withServicesRequired(withResolvedEnv(async (env: string, service: string | undefined, options: { server?: string }) => {
+    .option('--no-wait', 'Return once Swarm accepted the change, without waiting for the services to converge')
+    .action(withServicesRequired(withResolvedEnv(async (env: string, service: string | undefined, options: { server?: string; wait?: boolean }) => {
       const { stackName, connection } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName });
 
@@ -29,7 +30,7 @@ export function registerRestartCommand(program: Command): void {
       try {
         if (service) await requireAppService(connection, env, stackName, service, 'restart');
         spinner.start(service ? `Restarting ${service}...` : 'Restarting all services...');
-        await orchestrator.restart(stackName, service);
+        await orchestrator.restart(stackName, service, { detach: options.wait === false });
         const services = await orchestrator.getServices(stackName);
         const idle = idleServices(services, service ? [service] : services.map((s) => s.name));
         if (idle.length > 0) {

@@ -313,9 +313,9 @@ export class SwarmStackBackend implements StackBackend {
       });
   }
 
-  async scaleService(stackName: string, service: string, replicas: number): Promise<void> {
+  async scaleService(stackName: string, service: string, replicas: number, options: { detach?: boolean } = {}): Promise<void> {
     const fullName = `${stackName}_${service}`;
-    const result = await sshExec(this.conn, `docker service scale ${shellQuote(fullName)}=${replicas}`);
+    const result = await sshExec(this.conn, `docker service scale${options.detach ? ' --detach' : ''} ${shellQuote(fullName)}=${replicas}`);
     if (result.exitCode !== 0) {
       throw new DeployError(
         result.stderr || `Failed to scale ${service}`,
@@ -340,10 +340,11 @@ export class SwarmStackBackend implements StackBackend {
     return (stdout ?? '').split('\n').map((line) => line.trim()).includes(stackName);
   }
 
-  async restart(stackName: string, service?: string): Promise<void> {
+  async restart(stackName: string, service?: string, options: { detach?: boolean } = {}): Promise<void> {
+    const update = `docker service update --force${options.detach ? ' --detach' : ''}`;
     if (service) {
       const fullName = `${stackName}_${service}`;
-      const r = await sshExec(this.conn, `docker service update --force ${shellQuote(fullName)}`);
+      const r = await sshExec(this.conn, `${update} ${shellQuote(fullName)}`);
       if (r.exitCode !== 0) {
         throw new DeployError(r.stderr || `Failed to restart ${service}`, ErrorCode.DEPLOY_FAILED);
       }
@@ -356,7 +357,7 @@ export class SwarmStackBackend implements StackBackend {
     }
 
     const cmd = services
-      .map((s) => `docker service update --force ${shellQuote(`${stackName}_${s.name}`)}`)
+      .map((s) => `${update} ${shellQuote(`${stackName}_${s.name}`)}`)
       .join(' && ');
     const r = await sshExec(this.conn, cmd);
     if (r.exitCode !== 0) {

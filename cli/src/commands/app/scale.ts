@@ -15,7 +15,8 @@ export function registerScaleCommand(program: Command): void {
     .description('Scale service to specified replicas')
     .helpGroup('Operate')
     .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
-    .action(withServicesRequired(withResolvedEnv(async (env: string, service: string, replicas: string, options: { server?: string }) => {
+    .option('--no-wait', 'Return once Swarm accepted the change, without waiting for the service to converge')
+    .action(withServicesRequired(withResolvedEnv(async (env: string, service: string, replicas: string, options: { server?: string; wait?: boolean }) => {
       const { config, stackName, connection } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName });
 
@@ -39,7 +40,7 @@ export function registerScaleCommand(program: Command): void {
       spinner.start(`Scaling ${stackName}_${service} to ${replicaCount} replicas...`);
 
       try {
-        await orchestrator.scaleService(stackName, service, replicaCount);
+        await orchestrator.scaleService(stackName, service, replicaCount, { detach: options.wait === false });
         spinner.succeed('Done');
       } catch (error) {
         if (error instanceof CLIError) {

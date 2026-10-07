@@ -126,7 +126,8 @@ export interface StackBackend {
   removeStack(stackName: string): Promise<void>;
   listStacks(): Promise<StackInfo[]>;
   getServices(stackName: string): Promise<ServiceInfo[]>;
-  scaleService(stackName: string, service: string, replicas: number): Promise<void>;
+  /** waits until the service converged, unless `detach` */
+  scaleService(stackName: string, service: string, replicas: number, options?: { detach?: boolean }): Promise<void>;
   rollbackService(stackName: string, service: string): Promise<void>;
 
   stackExists(stackName: string): Promise<boolean>;
@@ -135,7 +136,8 @@ export interface StackBackend {
    * Force a restart of one service, or every service in the stack
    * (`docker service update --force`).
    */
-  restart(stackName: string, service?: string): Promise<void>;
+  /** waits until the services converged, unless `detach` */
+  restart(stackName: string, service?: string, options?: { detach?: boolean }): Promise<void>;
 
   /** Read the deployment metadata file written by the release service. */
   getMetadata(stackName: string): Promise<StackMetadata | null>;
