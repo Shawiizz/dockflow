@@ -47,7 +47,7 @@ async function getDeployHistory(url: URL): Promise<Response> {
     return jsonResponse({ deployments: [], total: 0 } satisfies DeployHistoryResponse);
   }
 
-  const conn = getManagerConnection(env);
+  const conn = await getManagerConnection(env);
   if (!conn) {
     return errorResponse(`No manager connection available for environment "${env}"`, 503);
   }

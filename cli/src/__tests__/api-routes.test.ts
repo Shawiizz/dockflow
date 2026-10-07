@@ -18,12 +18,13 @@ const project = new ApiProject();
 afterAll(() => project.dispose());
 
 describe('the stack name of an API connection', () => {
+  // staging has one manager: its connection needs no probe over SSH
   it('is <project>-<env>, the name the deploy gives the stack', async () => {
-    const names = await project.run<Record<string, string | null>>(`
-      const { getManagerConnection } = await api('api/routes/_helpers');
+    const names = await project.run<Record<string, string | null | undefined>>(`
+      const { getApiStacks, getManagerConnection } = await api('api/routes/_helpers');
       console.log(JSON.stringify({
-        production: getManagerConnection('production')?.stackName,
-        staging: getManagerConnection('staging')?.stackName,
+        production: getApiStacks('production')?.app,
+        staging: (await getManagerConnection('staging'))?.stackName,
       }));
     `);
     expect(names).toEqual({ production: 'shop-production', staging: 'shop-staging' });
@@ -34,14 +35,14 @@ describe('the stack name of an API connection', () => {
       const { getManagerConnection } = await api('api/routes/_helpers');
       const { auditFilePath } = await api('api/routes/metrics');
       const { Lock } = await api('services/lock');
-      const conn = getManagerConnection('production');
+      const conn = await getManagerConnection('staging');
       const commands: string[] = [];
       const shell = { run: async (command: string) => { commands.push(command); return { stdout: 'NO_LOCK', stderr: '', exitCode: 0 }; } };
       await new Lock(shell, conn.stackName).status();
       console.log(JSON.stringify({ lock: commands[0], audit: auditFilePath(conn.stackName) }));
     `);
-    expect(files.lock).toContain('/shop-production.lock');
-    expect(files.audit).toEndWith('/shop-production.log');
+    expect(files.lock).toContain('/shop-staging.lock');
+    expect(files.audit).toEndWith('/shop-staging.log');
   });
 });
 

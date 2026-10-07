@@ -163,7 +163,7 @@ function resolveServerConnection(serverName: string) {
  * Attach these to Bun.serve({ websocket: sshWebSocketHandlers })
  */
 export const sshWebSocketHandlers = {
-  open(ws: ServerWebSocket<WSData>) {
+  async open(ws: ServerWebSocket<WSData>) {
     ensureTimersStarted();
 
     // ── Exec mode: docker exec into a container ──
@@ -198,7 +198,7 @@ export const sshWebSocketHandlers = {
       activeWebSockets.set(sessionId, ws);
 
       const stacks = [getStackName(env), getAccessoriesStackName(env)].filter((name): name is string => !!name);
-      const manager = getManagerConnection(env) ?? nodes[0];
+      const manager = await getManagerConnection(env) ?? nodes[0];
 
       client.on('error', (err) => {
         try {

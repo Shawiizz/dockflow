@@ -192,7 +192,7 @@ async function getAuditLog(url: URL): Promise<Response> {
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
 
-  const conn = getManagerConnection(env);
+  const conn = await getManagerConnection(env);
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
   const lines = parseIntParam(url.searchParams.get('lines'), 100, 1, 10000);

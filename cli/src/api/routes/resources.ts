@@ -247,7 +247,7 @@ async function getDiskUsage(url: URL): Promise<Response> {
  * Get the current lock status for an environment
  */
 async function getLockStatus(env: string): Promise<Response> {
-  const conn = getManagerConnection(env);
+  const conn = await getManagerConnection(env);
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
   try {
@@ -284,7 +284,7 @@ async function getLockStatus(env: string): Promise<Response> {
  * Acquire a deploy lock
  */
 async function acquireLock(env: string, req: Request): Promise<Response> {
-  const conn = getManagerConnection(env);
+  const conn = await getManagerConnection(env);
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
   let body: { message?: string } = {};
@@ -319,7 +319,7 @@ async function acquireLock(env: string, req: Request): Promise<Response> {
  * Release a deploy lock
  */
 async function releaseLock(env: string): Promise<Response> {
-  const conn = getManagerConnection(env);
+  const conn = await getManagerConnection(env);
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
   try {

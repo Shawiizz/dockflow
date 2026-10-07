@@ -210,7 +210,7 @@ async function listServices(url: URL): Promise<Response> {
   const stackName = getStackName(env) ?? config.project_name;
   const accessoriesStackName = getAccessoriesStackName(env) ?? `${stackName}-accessories`;
 
-  const conn = getManagerConnection(env);
+  const conn = await getManagerConnection(env);
   if (!conn) {
     return jsonResponse({
       services: [],
@@ -264,7 +264,7 @@ async function restartService(serviceName: string, url: URL): Promise<Response> 
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
 
-  const conn = getManagerConnection(env);
+  const conn = await getManagerConnection(env);
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
   try {
@@ -290,7 +290,7 @@ async function stopService(serviceName: string, url: URL): Promise<Response> {
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
 
-  const conn = getManagerConnection(env);
+  const conn = await getManagerConnection(env);
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
   try {
@@ -316,7 +316,7 @@ async function scaleService(serviceName: string, url: URL, req: Request): Promis
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
 
-  const conn = getManagerConnection(env);
+  const conn = await getManagerConnection(env);
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
   let replicas: number;
@@ -380,7 +380,7 @@ async function rollbackService(serviceName: string, url: URL): Promise<Response>
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
 
-  const conn = getManagerConnection(env);
+  const conn = await getManagerConnection(env);
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
   try {
@@ -448,7 +448,7 @@ async function getServiceLogs(serviceName: string, url: URL): Promise<Response> 
     return errorResponse('No environments configured', 404);
   }
 
-  const conn = getManagerConnection(env);
+  const conn = await getManagerConnection(env);
   if (!conn) {
     return errorResponse('No manager server with credentials found', 404);
   }

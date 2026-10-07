@@ -27,11 +27,11 @@ interface BackupContext {
 }
 
 /** Resolve env and connection — returns an error Response on failure */
-function resolveEnvAndConnection(url: URL): { env: string; conn: SSHKeyConnection } | Response {
+async function resolveEnvAndConnection(url: URL): Promise<{ env: string; conn: SSHKeyConnection } | Response> {
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environment available', 400);
 
-  const conn = getManagerConnection(env);
+  const conn = await getManagerConnection(env);
   if (!conn) return errorResponse('Cannot connect to manager', 500);
 
   return { env, conn };
@@ -107,7 +107,7 @@ export async function handleBackupRoutes(req: Request): Promise<Response> {
  * GET /api/backup/list?env=&service=
  */
 async function listBackups(url: URL): Promise<Response> {
-  const base = resolveEnvAndConnection(url);
+  const base = await resolveEnvAndConnection(url);
   if (base instanceof Response) return base;
 
   const service = url.searchParams.get('service') || undefined;
@@ -136,7 +136,7 @@ async function listBackups(url: URL): Promise<Response> {
  * POST /api/backup/create?env=&service=
  */
 async function handleCreateBackup(url: URL): Promise<Response> {
-  const base = resolveEnvAndConnection(url);
+  const base = await resolveEnvAndConnection(url);
   if (base instanceof Response) return base;
 
   const service = url.searchParams.get('service');
@@ -164,7 +164,7 @@ async function handleCreateBackup(url: URL): Promise<Response> {
  * POST /api/backup/restore?env=&service=&id=
  */
 async function restoreBackup(url: URL): Promise<Response> {
-  const base = resolveEnvAndConnection(url);
+  const base = await resolveEnvAndConnection(url);
   if (base instanceof Response) return base;
 
   const service = url.searchParams.get('service');
@@ -199,7 +199,7 @@ async function restoreBackup(url: URL): Promise<Response> {
  * POST /api/backup/prune?env=&service=
  */
 async function pruneBackups(url: URL): Promise<Response> {
-  const base = resolveEnvAndConnection(url);
+  const base = await resolveEnvAndConnection(url);
   if (base instanceof Response) return base;
 
   const service = url.searchParams.get('service') || undefined;
