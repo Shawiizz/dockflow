@@ -135,7 +135,8 @@ backup:
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: "postgresql://myapp:{{ env.DB_PASSWORD }}@db:5432/myapp"
+      # db_password: a DB_PASSWORD secret or env variable (templates read current.env, lowercase)
+      DATABASE_URL: "postgresql://myapp:{{ current.env.db_password }}@db:5432/myapp"
     deploy:
       replicas: 1
       restart_policy:
@@ -151,7 +152,7 @@ backup:
     environment:
       POSTGRES_DB: myapp
       POSTGRES_USER: myapp
-      POSTGRES_PASSWORD: "{{ env.DB_PASSWORD }}"
+      POSTGRES_PASSWORD: "{{ current.env.db_password }}"
 
 volumes:
   db-data:`,
@@ -161,7 +162,7 @@ volumes:
   {
     id: 'with-proxy',
     title: 'Automatic HTTPS with Traefik',
-    description: 'Traefik reverse proxy with Let\'s Encrypt certificates. Requires dockflow setup to have been run with Traefik enabled.',
+    description: 'Traefik reverse proxy with Let\'s Encrypt certificates: dockflow deploy runs Traefik and routes the app on its domain. Ports 80 and 443 must reach the manager, and the domain must point to it.',
     files: [
       {
         path: 'dockflow.yml',
@@ -187,14 +188,13 @@ proxy:
   app:
     image: my-app
     build: .
+    # Dockflow injects the Traefik labels; the route goes to the first port listed here
+    ports:
+      - "3000:3000"
     deploy:
       replicas: 2
       restart_policy:
-        condition: on-failure
-      labels:
-        - "traefik.enable=true"
-        - "traefik.http.routers.my-app-production.rule=Host(\`{{ proxy.domain }}\`)"
-        - "traefik.http.services.my-app-production.loadbalancer.server.port=3000"`,
+        condition: on-failure`,
       },
     ],
   },
@@ -218,7 +218,7 @@ defaults:
 registry:
   type: ghcr
   username: myuser
-  token: "{{ env.GITHUB_TOKEN }}"
+  token: "{{ current.env.registry_token }}"  # a REGISTRY_TOKEN secret
   namespace: myorg`,
       },
       {
