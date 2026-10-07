@@ -28,67 +28,67 @@ export async function handleApiRoutes(req: Request): Promise<Response> {
   try {
     // /api/servers/* - Server management
     if (pathname.startsWith('/api/servers')) {
-      return handleServersRoutes(req);
+      return await handleServersRoutes(req);
     }
     
     // /api/services/* - Docker services
     if (pathname.startsWith('/api/services')) {
-      return handleServicesRoutes(req);
+      return await handleServicesRoutes(req);
     }
     
     // /api/config/* - Configuration
     if (pathname.startsWith('/api/config')) {
-      return handleConfigRoutes(req);
+      return await handleConfigRoutes(req);
     }
     
     // /api/project/* - Project info
     if (pathname.startsWith('/api/project')) {
-      return handleProjectRoutes(req);
+      return await handleProjectRoutes(req);
     }
     
     // /api/operations/* - Deploy/Build streaming
     if (pathname.startsWith('/api/operations')) {
-      return handleOperationsRoutes(req);
+      return await handleOperationsRoutes(req);
     }
 
     // /api/deploy/* - Deploy history
     if (pathname.startsWith('/api/deploy')) {
-      return handleDeployRoutes(req);
+      return await handleDeployRoutes(req);
     }
 
     // /api/accessories/* - Accessories
     if (pathname.startsWith('/api/accessories')) {
-      return handleAccessoriesRoutes(req);
+      return await handleAccessoriesRoutes(req);
     }
 
     // /api/backup/* - Backup & Restore
     if (pathname.startsWith('/api/backup')) {
-      return handleBackupRoutes(req);
+      return await handleBackupRoutes(req);
     }
 
     // /api/resources/* - Prune & disk usage
     if (pathname.startsWith('/api/resources')) {
-      return handleResourcesRoutes(req);
+      return await handleResourcesRoutes(req);
     }
 
     // /api/locks/* - Deploy locks
     if (pathname.startsWith('/api/locks')) {
-      return handleLocksRoutes(req);
+      return await handleLocksRoutes(req);
     }
 
     // /api/metrics/* - Container stats & audit
     if (pathname.startsWith('/api/metrics')) {
-      return handleMetricsRoutes(req);
+      return await handleMetricsRoutes(req);
     }
 
     // /api/compose/* - Docker Compose
     if (pathname.startsWith('/api/compose')) {
-      return handleComposeRoutes(req);
+      return await handleComposeRoutes(req);
     }
 
     // /api/topology - Service-to-server topology
     if (pathname.startsWith('/api/topology')) {
-      return handleTopologyRoutes(req);
+      return await handleTopologyRoutes(req);
     }
 
     // /api/health - Health check
