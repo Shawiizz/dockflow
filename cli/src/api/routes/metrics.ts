@@ -105,13 +105,15 @@ async function getContainerStats(url: URL): Promise<Response> {
 
 // ─── Audit log ──────────────────────────────────────────────────────────────
 
-// (audit log below)
+export function auditFilePath(stackName: string): string {
+  return `${DOCKFLOW_AUDIT_DIR}/${stackName}.log`;
+}
 
 /**
  * Read the deploy audit log from the remote server.
  *
- * The audit file uses a pipe-delimited format:
- *   timestamp|action|version|performer|message
+ * The audit file has one line per entry:
+ *   timestamp | action | version | performer | message
  *
  * Supports query parameters:
  * - env:   environment to query (defaults to first available)
@@ -125,7 +127,7 @@ async function getAuditLog(url: URL): Promise<Response> {
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
   const lines = parseIntParam(url.searchParams.get('lines'), 100, 1, 10000);
-  const auditFile = `${DOCKFLOW_AUDIT_DIR}/${conn.stackName}.log`;
+  const auditFile = auditFilePath(conn.stackName);
 
   try {
     const command = `tail -n ${lines} "${auditFile}" 2>/dev/null || echo ""`;

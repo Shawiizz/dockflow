@@ -10,9 +10,9 @@
  */
 
 import { jsonResponse, errorResponse } from '../server';
-import { loadConfig } from '../../utils/config';
+import { getAccessoriesStackName, getStackName, loadConfig } from '../../utils/config';
 import { getAvailableEnvironments } from '../../utils/servers';
-import { sshExec } from '../../utils/ssh';
+import { shellQuote, sshExec } from '../../utils/ssh';
 import { parseDockerLogLines } from '../../utils/docker-logs';
 import { getManagerConnection, resolveEnvironment, isValidDockerName, parseIntParam } from './_helpers';
 import type { ManagerConnection } from './_helpers';
@@ -143,7 +143,7 @@ async function resolvePartialStates(
     partial.map(async (service) => {
       const result = await sshExec(
         conn,
-        `docker service ps ${service.name} --filter 'desired-state=running' --format '{{.CurrentState}}' --no-trunc 2>/dev/null`,
+        `docker service ps ${shellQuote(service.name)} --filter 'desired-state=running' --format '{{.CurrentState}}' --no-trunc 2>/dev/null`,
       );
       const taskStates = result.stdout.trim().split('\n').filter(Boolean);
       const hasFailure = taskStates.some((state) => classifyTaskState(state) === 'failed');
@@ -153,7 +153,15 @@ async function resolvePartialStates(
 }
 
 /**
- * List Docker services running on the swarm
+ * `docker service ls` for the services of one stack. The label matches the stack exactly,
+ * where `--filter name=` is a prefix match that also lists other environments and the accessories.
+ */
+export function serviceListCommand(stackName: string): string {
+  return `docker service ls --filter ${shellQuote(`label=com.docker.stack.namespace=${stackName}`)} --format "table {{.ID}}  {{.Name}}  {{.Mode}}  {{.Replicas}}  {{.Image}}  {{.Ports}}"`;
+}
+
+/**
+ * List the Docker services of the app stack and the accessories stack of the environment
  */
 async function listServices(url: URL): Promise<Response> {
   const envFilter = url.searchParams.get('env');
@@ -168,18 +176,20 @@ async function listServices(url: URL): Promise<Response> {
     } satisfies ServicesListResponse);
   }
 
-  const stackName = config.project_name;
   const environments = getAvailableEnvironments();
   const env = envFilter || environments[0];
 
   if (!env) {
     return jsonResponse({
       services: [],
-      stackName,
+      stackName: config.project_name,
       total: 0,
       message: 'No environments configured.',
     } satisfies ServicesListResponse);
   }
+
+  const stackName = getStackName(env) ?? config.project_name;
+  const accessoriesStackName = getAccessoriesStackName(env) ?? `${stackName}-accessories`;
 
   const conn = getManagerConnection(env);
   if (!conn) {
@@ -192,19 +202,24 @@ async function listServices(url: URL): Promise<Response> {
   }
 
   try {
-    const command = `docker service ls --filter name=${stackName} --format "table {{.ID}}  {{.Name}}  {{.Mode}}  {{.Replicas}}  {{.Image}}  {{.Ports}}"`;
-    const result = await sshExec(conn, command);
+    const listed = await Promise.all(
+      [stackName, accessoriesStackName].map((stack) => sshExec(conn, serviceListCommand(stack))),
+    );
 
-    if (result.exitCode !== 0) {
+    const failed = listed.find((result) => result.exitCode !== 0);
+    if (failed) {
       return jsonResponse({
         services: [],
         stackName,
         total: 0,
-        message: result.stderr.trim() || 'Failed to list services.',
+        message: failed.stderr.trim() || 'Failed to list services.',
       } satisfies ServicesListResponse);
     }
 
-    const services = parseServiceLs(result.stdout, stackName);
+    const services = [
+      ...parseServiceLs(listed[0].stdout, stackName),
+      ...parseServiceLs(listed[1].stdout, accessoriesStackName),
+    ];
     await resolvePartialStates(conn, services);
 
     return jsonResponse({

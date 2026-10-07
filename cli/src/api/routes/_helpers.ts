@@ -2,7 +2,7 @@
  * Shared API route helpers
  */
 
-import { loadConfig } from '../../utils/config';
+import { getStackName } from '../../utils/config';
 import {
   getAvailableEnvironments,
   getServerPrivateKey,
@@ -34,6 +34,7 @@ export interface ManagerConnection {
   port: number;
   user: string;
   privateKey: string;
+  /** `<project>-<env>`, the name of the app stack on the cluster */
   stackName: string;
 }
 
@@ -54,7 +55,7 @@ export function getManagerConnection(env: string): ManagerConnection | null {
     port: manager.port || DEFAULT_SSH_PORT,
     user: manager.user,
     privateKey,
-    stackName: loadConfig({ silent: true })?.project_name || '',
+    stackName: getStackName(env) ?? '',
   };
 }
 

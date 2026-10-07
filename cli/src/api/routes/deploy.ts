@@ -56,9 +56,7 @@ async function getDeployHistory(url: URL): Promise<Response> {
     return errorResponse('Project name not found in config — cannot resolve metrics path', 500);
   }
 
-  // Stack name on remote is "<project_name>-<environment>"
-  const fullStackName = `${conn.stackName}-${env}`;
-  const metricsPath = `${DOCKFLOW_METRICS_DIR}/${fullStackName}/deployments.json`;
+  const metricsPath = `${DOCKFLOW_METRICS_DIR}/${conn.stackName}/deployments.json`;
 
   try {
     // Read the last N*2 lines to account for potential filtering
