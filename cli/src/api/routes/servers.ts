@@ -15,7 +15,9 @@ import {
   checkManagerStatus 
 } from '../../utils/servers';
 import type { ResolvedServer } from '../../types';
-import type { ServerStatus } from '../types';
+import { sshExec } from '../../utils/ssh';
+import { withTimeout } from './_helpers';
+import type { ServerConnectionStatus, ServerStatus, SwarmStatus } from '../types';
 
 /**
  * Convert ResolvedServer to ServerStatus
@@ -149,37 +151,45 @@ async function getServer(serverName: string, url: URL): Promise<Response> {
   return jsonResponse(toServerStatus(resolvedServer));
 }
 
+/** How long the status route waits for a server before calling it offline. */
+const STATUS_PROBE_TIMEOUT_MS = 10_000;
+
+/** A server answers over SSH, and when it is a manager Docker answers too: anything but `unreachable` is online. */
+export function connectivityStatus(sshReachable: boolean, swarmStatus?: SwarmStatus): ServerConnectionStatus {
+  if (!sshReachable || swarmStatus === 'unreachable') return 'offline';
+  return 'online';
+}
+
 /**
  * Check server connectivity and Swarm status
  */
 async function checkServerStatus(serverName: string, url: URL): Promise<Response> {
   const env = url.searchParams.get('env');
-  
+
   const serversConfig = loadServersConfig();
   if (!serversConfig) {
     return errorResponse('No servers.yml found', 404);
   }
-  
-  // Find the server
+
   const environments = env ? [env] : getAvailableEnvironments();
   let resolvedServer: ResolvedServer | null = null;
-  
+  let resolvedEnv = '';
+
   for (const e of environments) {
     const servers = resolveServersForEnvironment(e);
     const found = servers.find(s => s.name === serverName);
     if (found) {
       resolvedServer = found;
+      resolvedEnv = e;
       break;
     }
   }
-  
+
   if (!resolvedServer) {
     return errorResponse(`Server "${serverName}" not found`, 404);
   }
-  
-  // Check if we have connection info — find env from server tags
-  const serverEnv = resolvedServer.tags[0] || '';
-  const privateKey = getServerPrivateKey(serverEnv, serverName);
+
+  const privateKey = getServerPrivateKey(resolvedEnv, serverName);
   if (!privateKey) {
     return jsonResponse({
       ...toServerStatus(resolvedServer),
@@ -187,28 +197,32 @@ async function checkServerStatus(serverName: string, url: URL): Promise<Response
       message: 'No connection credentials available. Set up .env.dockflow or CI secrets.',
     });
   }
-  
-  // Try to check manager status
+
+  const connection = {
+    host: resolvedServer.host,
+    port: resolvedServer.port,
+    user: resolvedServer.user,
+    privateKey,
+  };
+
   try {
-    const status = await checkManagerStatus({
-      host: resolvedServer.host,
-      port: resolvedServer.port,
-      user: resolvedServer.user,
-      privateKey,
-    });
-    
-    const serverStatus: ServerStatus = {
+    const probe = await withTimeout(sshExec(connection, 'true'), STATUS_PROBE_TIMEOUT_MS, `${serverName} did not answer`);
+    const sshReachable = probe.exitCode === 0;
+    const swarmStatus: SwarmStatus | undefined =
+      sshReachable && resolvedServer.role === 'manager' ? await checkManagerStatus(connection) : undefined;
+
+    const status = connectivityStatus(sshReachable, swarmStatus);
+    return jsonResponse({
       ...toServerStatus(resolvedServer),
-      status: status ? 'online' : 'offline',
-      swarmStatus: status || undefined,
-    };
-    
-    return jsonResponse(serverStatus);
+      status,
+      swarmStatus,
+      ...(sshReachable ? {} : { error: probe.stderr.trim() || 'SSH command failed' }),
+    } satisfies ServerStatus);
   } catch (error) {
     return jsonResponse({
       ...toServerStatus(resolvedServer),
-      status: 'error',
+      status: 'offline',
       error: error instanceof Error ? error.message : 'Connection failed',
-    });
+    } satisfies ServerStatus);
   }
 }

@@ -1,4 +1,6 @@
 import { afterAll, describe, expect, it } from 'bun:test';
+import { withTimeout } from '../api/routes/_helpers';
+import { connectivityStatus } from '../api/routes/servers';
 import { buildArgs, deployArgs } from '../api/routes/operations';
 import { serviceListCommand } from '../api/routes/services';
 import { ApiProject } from './helpers/api-project';
@@ -64,5 +66,37 @@ describe('operation arguments', () => {
   it('adds no option that was not asked for', () => {
     expect(deployArgs({ environment: 'production' })).toEqual(['deploy', 'production']);
     expect(buildArgs({ environment: 'production' })).toEqual(['build', 'production']);
+  });
+});
+
+describe('connectivityStatus', () => {
+  it('is offline when the server does not answer over SSH', () => {
+    expect(connectivityStatus(false)).toBe('offline');
+    expect(connectivityStatus(false, 'leader')).toBe('offline');
+  });
+
+  it('is offline when Docker does not answer on a manager', () => {
+    expect(connectivityStatus(true, 'unreachable')).toBe('offline');
+  });
+
+  it('is online for a worker and for every answering manager state', () => {
+    expect(connectivityStatus(true)).toBe('online');
+    expect(connectivityStatus(true, 'leader')).toBe('online');
+    expect(connectivityStatus(true, 'reachable')).toBe('online');
+    expect(connectivityStatus(true, 'unready')).toBe('online');
+  });
+});
+
+describe('withTimeout', () => {
+  it('returns the value of a promise that settles in time', async () => {
+    expect(await withTimeout(Promise.resolve(7), 1000, 'late')).toBe(7);
+  });
+
+  it('passes the rejection of the promise through', async () => {
+    await expect(withTimeout(Promise.reject(new Error('boom')), 1000, 'late')).rejects.toThrow('boom');
+  });
+
+  it('rejects with the message when the promise takes too long', async () => {
+    await expect(withTimeout(new Promise(() => {}), 20, 'did not answer')).rejects.toThrow('did not answer');
   });
 });

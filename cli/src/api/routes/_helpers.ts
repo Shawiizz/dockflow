@@ -78,3 +78,17 @@ export function resolveEnvironment(envFilter: string | null): string | null {
   const environments = getAvailableEnvironments();
   return environments[0] || null;
 }
+
+/** Rejects with `message` when `promise` has not settled after `ms`; the timer never keeps the process alive. */
+export async function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
