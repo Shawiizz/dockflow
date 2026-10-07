@@ -101,7 +101,7 @@ export function stateFromReplicas(replicas: string, mode = ''): { running: numbe
 }
 
 /** Parse `docker service ls` output into ServiceInfo objects. */
-export function parseServiceLs(output: string, stackName: string): ServiceInfo[] {
+export function parseServiceLs(output: string, stackName: string, role?: ServiceInfo['role']): ServiceInfo[] {
   const lines = output.trim().split('\n');
   if (lines.length <= 1) return []; // header only
 
@@ -109,10 +109,11 @@ export function parseServiceLs(output: string, stackName: string): ServiceInfo[]
     const parts = line.split(/\s{2,}/);
     const id = parts[0] || '';
     const name = parts[1] || '';
+    const mode = parts[2] || '';
     const image = parts[4] || '';
     const portsStr = parts[5] || '';
 
-    const { running, total, state } = stateFromReplicas(parts[3] || '0/0', parts[2] || '');
+    const { running, total, state } = stateFromReplicas(parts[3] || '0/0', mode);
 
     return {
       id,
@@ -122,6 +123,9 @@ export function parseServiceLs(output: string, stackName: string): ServiceInfo[]
       replicasRunning: running,
       state,
       ports: portsStr ? portsStr.split(',').map((p: string) => p.trim()) : [],
+      service: name.startsWith(`${stackName}_`) ? name.slice(stackName.length + 1) : name,
+      mode: mode || undefined,
+      role,
     };
   });
 }
@@ -232,8 +236,8 @@ async function listServices(url: URL): Promise<Response> {
     }
 
     const services = [
-      ...parseServiceLs(listed[0].stdout, stackName),
-      ...parseServiceLs(listed[1].stdout, accessoriesStackName),
+      ...parseServiceLs(listed[0].stdout, stackName, 'app'),
+      ...parseServiceLs(listed[1].stdout, accessoriesStackName, 'accessory'),
     ];
     await resolvePartialStates(conn, services);
 
@@ -264,7 +268,9 @@ async function restartService(serviceName: string, url: URL): Promise<Response> 
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
   try {
-    const result = await sshExec(conn, `docker service update --force --detach ${serviceName}`);
+    const target = await resolveRequestedService(conn, env, serviceName);
+    if (!target) return errorResponse(`Service ${serviceName} not found`, 404);
+    const result = await sshExec(conn, `docker service update --force --detach ${shellQuote(target.name)}`);
     const success = result.exitCode === 0;
     return jsonResponse({
       success,
@@ -288,7 +294,9 @@ async function stopService(serviceName: string, url: URL): Promise<Response> {
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
   try {
-    const result = await sshExec(conn, `docker service scale --detach ${serviceName}=0`);
+    const target = await resolveRequestedService(conn, env, serviceName);
+    if (!target) return errorResponse(`Service ${serviceName} not found`, 404);
+    const result = await sshExec(conn, `docker service scale --detach ${shellQuote(target.name)}=0`);
     const success = result.exitCode === 0;
     return jsonResponse({
       success,
@@ -323,7 +331,9 @@ async function scaleService(serviceName: string, url: URL, req: Request): Promis
   }
 
   try {
-    const result = await sshExec(conn, `docker service scale --detach ${serviceName}=${replicas}`);
+    const target = await resolveRequestedService(conn, env, serviceName);
+    if (!target) return errorResponse(`Service ${serviceName} not found`, 404);
+    const result = await sshExec(conn, `docker service scale --detach ${shellQuote(target.name)}=${replicas}`);
     const success = result.exitCode === 0;
     return jsonResponse({
       success,

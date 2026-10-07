@@ -124,6 +124,12 @@ export interface ServiceInfo {
   ports: string[];
   updatedAt?: string;
   error?: string;
+  /** name in the compose file; `name` is the Swarm service name */
+  service?: string;
+  /** which stack the service belongs to */
+  role?: 'app' | 'accessory';
+  /** Swarm service mode: replicated, global, replicated-job, global-job */
+  mode?: string;
 }
 
 export interface ServicesListResponse {

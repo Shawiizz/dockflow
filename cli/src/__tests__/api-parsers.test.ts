@@ -43,6 +43,22 @@ describe('parseServiceLs', () => {
     expect(rows[2].state).toBe('starting'); // 1/2 partial — ambiguous until task states are checked
   });
 
+  it('adds the compose name, the mode and the role of the stack', () => {
+    const rows = parseServiceLs(
+      [
+        'ID      NAME                          MODE         REPLICAS   IMAGE      PORTS',
+        'abc123  shop-production_web           replicated   2/2        web:1',
+        'def456  shop-production_my_worker     global       1/1        worker:1',
+      ].join('\n'),
+      'shop-production',
+      'app',
+    );
+    expect(rows.map((row) => [row.name, row.service, row.mode, row.role])).toEqual([
+      ['shop-production_web', 'web', 'replicated', 'app'],
+      ['shop-production_my_worker', 'my_worker', 'global', 'app'],
+    ]);
+  });
+
   it('returns empty for header-only or empty output', () => {
     expect(parseServiceLs('ID  NAME  MODE  REPLICAS  IMAGE  PORTS', 'myapp')).toEqual([]);
     expect(parseServiceLs('', 'myapp')).toEqual([]);
