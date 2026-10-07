@@ -475,12 +475,8 @@ function registryLogin(config: DockflowConfig): Distribution.RegistryLogin {
 
 /** The fallback to SSH distribution is deliberate, not silent. */
 function warnRegistryWithoutPassword(config: DockflowConfig): void {
-  const registry = config.registry;
-  if (registry?.enabled === true && !!registry.url && !Compose.registryPassword(config)) {
-    printWarning(
-      `Registry ${registry.url} is enabled but neither registry.password nor registry.token is set; built images are distributed over SSH instead of pushed`,
-    );
-  }
+  const unused = Compose.registryWithoutCredentials(config);
+  if (unused) printWarning(unused);
 }
 
 /** `docker stack deploy --with-registry-auth` hands the manager's registry login to the nodes that pull. */

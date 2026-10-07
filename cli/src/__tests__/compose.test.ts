@@ -17,6 +17,7 @@ import {
   hasServices,
   getImages,
   registryPassword,
+  registryWithoutCredentials,
   usesRegistry,
 } from '../services/compose';
 import type { ParsedCompose } from '../services/compose';
@@ -760,5 +761,18 @@ describe('registry predicate', () => {
     expect(usesRegistry(withRegistry({ enabled: false, url: 'ghcr.io', token: 'ghp_x' }))).toBe(false);
     expect(usesRegistry(withRegistry({ enabled: true, token: 'ghp_x' }))).toBe(false);
     expect(usesRegistry({ project_name: 'demo' } as DockflowConfig)).toBe(false);
+  });
+});
+
+describe('registryWithoutCredentials', () => {
+  const withRegistry = (registry: Record<string, unknown>) => ({ project_name: 'demo', registry }) as unknown as DockflowConfig;
+
+  it('explains an enabled registry that has neither password nor token', () => {
+    expect(registryWithoutCredentials(withRegistry({ enabled: true, url: 'ghcr.io' }))).toContain('neither registry.password nor registry.token');
+  });
+
+  it('says nothing for a registry in use or disabled', () => {
+    expect(registryWithoutCredentials(withRegistry({ enabled: true, url: 'ghcr.io', token: 't' }))).toBeNull();
+    expect(registryWithoutCredentials(withRegistry({ enabled: false, url: 'ghcr.io' }))).toBeNull();
   });
 });

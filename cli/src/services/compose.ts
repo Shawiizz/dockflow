@@ -794,6 +794,13 @@ export function usesRegistry(config: DockflowConfig): boolean {
   return registry?.enabled === true && !!registry.url && !!registryPassword(config);
 }
 
+/** Why the registry is enabled but unused, null when it is used or disabled. */
+export function registryWithoutCredentials(config: DockflowConfig): string | null {
+  const registry = config.registry;
+  if (registry?.enabled !== true || !registry.url || registryPassword(config)) return null;
+  return `Registry ${registry.url} is enabled but neither registry.password nor registry.token is set; built images are distributed over SSH instead of pushed`;
+}
+
 /**
  * Update the image tags of the services Dockflow builds (those with a `build:` section).
  *

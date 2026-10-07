@@ -41,6 +41,7 @@ import {
   describeShellPlaceholders,
 } from '../services/compose-lint';
 import { CLIError, ValidationError, withErrorHandler } from '../utils/errors';
+import { registryWithoutCredentials } from '../services/compose';
 import {
   findUnknownConfigKeys,
   findUnknownServersKeys,
@@ -142,6 +143,8 @@ async function runValidate(options: ValidateOptions): Promise<void> {
       if (features.length > 0) {
         printTableRow('Features:', features.join(', '));
       }
+      const unusedRegistry = registryWithoutCredentials(config);
+      if (unusedRegistry) printWarning(unusedRegistry);
 
       // Expanded against the unrendered config: `with:` values that are templates
       // pass through verbatim, which is enough to catch an unknown plugin, a
