@@ -20,7 +20,7 @@ describe('CLIError hierarchy', () => {
     expect(new DeployError('x').code).toBe(ErrorCode.DEPLOY_FAILED);
     expect(new ValidationError('x').code).toBe(ErrorCode.VALIDATION_FAILED);
     expect(new BackupError('x').code).toBe(ErrorCode.BACKUP_FAILED);
-    expect(new DockerError('x').code).toBe(ErrorCode.DOCKER_NOT_AVAILABLE);
+    expect(new DockerError('x').code).toBe(ErrorCode.COMMAND_FAILED);
   });
 
   it('DeployError accepts a custom code', () => {

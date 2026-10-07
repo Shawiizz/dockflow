@@ -9,7 +9,7 @@ import type { LogSource } from '../../services/orchestrator/interfaces';
 import { printInfo, printSection, printDebug, printBlank, printRaw } from '../../utils/output';
 import { resolveEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
 import { createContainerBackend, createStackBackend } from '../../services/orchestrator/factory';
-import { DockerError, withServicesRequired } from '../../utils/errors';
+import { DockerError, ErrorCode, withServicesRequired } from '../../utils/errors';
 import { parseTailOption } from '../../utils/log-options';
 import { pickService, pickSwarmTask } from './pick';
 import { requireAppService } from './service-name';
@@ -78,7 +78,7 @@ export async function showLogs(
   const fail = (err: Error) => { throw err; };
 
   const services = service ? [service] : (await createStackBackend(connection).getServices(stackName)).map((s) => s.name);
-  if (services.length === 0) throw new DockerError(`No services found for stack ${stackName}`);
+  if (services.length === 0) throw new DockerError(`No services found for stack ${stackName}`, { code: ErrorCode.STACK_NOT_FOUND });
 
   try {
     if (options.follow || services.length === 1) {

@@ -35,7 +35,7 @@ export function registerAccessoriesStopCommand(program: Command): void {
 
       const services = await orchestrator.getServices(stackName);
       if (services.length === 0) {
-        throw new DockerError('No accessories services found');
+        throw new DockerError('No accessories services found', { code: ErrorCode.STACK_NOT_FOUND });
       }
 
       if (service && !services.some((s) => s.name === service)) {

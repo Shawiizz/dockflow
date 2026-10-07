@@ -103,7 +103,7 @@ export class ConnectionError extends CLIError {
 
 export class DockerError extends CLIError {
   constructor(message: string, options?: { code?: ErrorCode; suggestion?: string }) {
-    super(message, options?.code ?? ErrorCode.DOCKER_NOT_AVAILABLE, options?.suggestion);
+    super(message, options?.code ?? ErrorCode.COMMAND_FAILED, options?.suggestion);
     this.name = 'DockerError';
   }
 }
