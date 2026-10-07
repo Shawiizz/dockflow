@@ -18,6 +18,7 @@
  */
 
 import { randomBytes } from 'crypto';
+import { parseAllDocuments } from 'yaml';
 import type { SSHKeyConnection } from '../types';
 import { shellQuote } from '../utils/ssh';
 import { sshShell, type RemoteShell } from '../utils/remote-shell';
@@ -163,11 +164,33 @@ export function selectRollbackTarget(
   return index === -1 ? (sorted[1] ?? null) : (sorted[index + 1] ?? null);
 }
 
-/** Extract image references from compose YAML text (regex-based, tolerant of quotes). */
+/**
+ * The images of the services of one or more compose documents (several files read one after the
+ * other are separated by `---`). Only `services.*.image`: an `image:` in a comment or a label is
+ * not an image. An unreadable document contributes nothing.
+ */
 export function extractComposeImages(yamlText: string): string[] {
-  const matches = yamlText.match(/image:\s*['"]?([^\s'"]+)/g);
-  if (!matches) return [];
-  return matches.map(m => m.replace(/image:\s*['"]?/, ''));
+  const images: string[] = [];
+  for (const doc of parseAllDocuments(yamlText)) {
+    if (doc.errors.length > 0) continue;
+    let value: unknown;
+    try {
+      value = doc.toJS({ maxAliasCount: 1000 });
+    } catch {
+      continue;
+    }
+    const services = isRecord(value) ? value.services : undefined;
+    if (!isRecord(services)) continue;
+    for (const service of Object.values(services)) {
+      const image = isRecord(service) ? service.image : undefined;
+      if (typeof image === 'string' && image !== '' && !images.includes(image)) images.push(image);
+    }
+  }
+  return images;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -500,8 +523,9 @@ export class Release {
       return;
     }
 
+    // one YAML document per release
     const composeFiles = (list: ReleaseMetadata[]) =>
-      list.map(r => shellQuote(`${this.releaseDir(stackName, r.version)}/${COMPOSE_FILE}`)).join(' ');
+      `for f in ${list.map(r => shellQuote(`${this.releaseDir(stackName, r.version)}/${COMPOSE_FILE}`)).join(' ')}; do cat "$f" 2>/dev/null; echo '---'; done`;
 
     const [runningResult, keptResult, removeResult] = await Promise.all([
       this.shell.run(
@@ -509,8 +533,8 @@ export class Release {
           `docker stack services "$stack" --format '{{.Image}}' 2>/dev/null; ` +
         `done`,
       ),
-      this.shell.run(`cat ${composeFiles(kept)} 2>/dev/null || echo ""`),
-      this.shell.run(`cat ${composeFiles(removed)} 2>/dev/null || echo ""`),
+      this.shell.run(composeFiles(kept)),
+      this.shell.run(composeFiles(removed)),
     ]);
 
     const orphanImages = computeOrphanImages(runningResult.stdout, keptResult.stdout, removeResult.stdout);

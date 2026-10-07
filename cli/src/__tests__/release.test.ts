@@ -144,6 +144,17 @@ services:
   it('no images → empty list', () => {
     expect(extractComposeImages('services: {}')).toEqual([]);
   });
+
+  it('reads services only: an image: in a comment or a label is not an image', () => {
+    const yaml = ['services:', '  web:', '    image: web:2  # was image: web:1', '    labels:', '      note: "image: other:9"'].join(String.fromCharCode(10));
+    expect(extractComposeImages(yaml)).toEqual(['web:2']);
+  });
+
+  it('reads every document of several files separated by ---', () => {
+    const nl = String.fromCharCode(10);
+    const yaml = ['services:', '  a:', '    image: a:1', '---', 'services:', '  b:', '    image: b:1', '---'].join(nl);
+    expect(extractComposeImages(yaml)).toEqual(['a:1', 'b:1']);
+  });
 });
 
 describe('computeOrphanImages', () => {
