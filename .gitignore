@@ -38,6 +38,7 @@ cli/ui/.angular/
 
 # Caches
 .cache/
+.bun-cache/
 .npm/
 .pnpm-store/
 *.tsbuildinfo
