@@ -46,11 +46,13 @@ If no project is detected, a welcome screen guides you through initialization.
 
 A detailed table view of all servers with columns for name, host, status, role, environment, and Swarm status. Supports pagination and per-server status checks.
 
+A status check connects to the server over SSH, waiting at most 10 seconds. A server that does not answer is shown as offline, and so is a manager whose Docker does not answer.
+
 Click the terminal icon on any online server to open an interactive SSH session.
 
 ### Services
 
-Displays all Docker services as cards showing name, state, image, replica progress, and ports.
+Displays the Docker services of the selected environment, application and accessories, as cards showing name, state, image, replica progress, and ports. A service that is below its wanted replica count is shown as starting, or as error when one of its tasks failed or was rejected.
 
 Available actions per service:
 
@@ -60,8 +62,8 @@ Available actions per service:
 | **Restart** | Restart the service (with confirmation) |
 | **Stop** | Scale to 0 replicas (with confirmation) |
 | **Scale** | Set a specific replica count (0–20) |
-| **Rollback** | Revert to the previous version (with confirmation) |
-| **Terminal** | Open an exec session into a running container |
+| **Rollback** | Revert to the previous version (with confirmation). Takes the deploy lock, so it is refused while a deploy runs, and it is not available for accessories |
+| **Terminal** | Open an exec session into a running container, on whichever server it runs |
 | **Logs** | Jump to the Logs page filtered to this service |
 
 A search bar filters services by name. After any action, the UI polls until the service state updates.
@@ -70,13 +72,14 @@ A search bar filters services by name. After any action, the UI polls until the 
 
 Grid of accessory containers (databases, caches, etc.) showing name, image, status, replicas, ports, volumes, and environment variables.
 
-Actions: Restart, Stop, View Logs (in a dialog).
+Actions: Restart, Stop, View Logs (in a dialog). An accessory that keeps failing to start is shown as error.
 
 ### Logs
 
 Real-time log viewer for any service.
 
 - **Service selector**: Pick which service to tail
+- **Order**: Lines of all the instances of a service are merged by time. When a service has several instances, each line is labelled with the instance that wrote it
 - **Lines**: Choose how many lines to fetch (50/100/200/500)
 - **Auto-scroll**: Keep the view pinned to the latest output
 - **Auto-refresh**: Poll for new logs every 5 seconds (pauses when the browser tab is hidden)
@@ -90,7 +93,7 @@ Trigger and monitor deployments from the browser.
 | Option | Description |
 |--------|-------------|
 | Version | Version string for this deployment |
-| Services | Comma-separated list to deploy selectively |
+| Services | Comma-separated list to deploy selectively (the `--only` option of `dockflow deploy`) |
 | Skip Build | Skip the image build phase |
 | Force | Override deployment locks |
 | Accessories | Deploy accessories only |
@@ -122,7 +125,7 @@ An interactive visual map of your cluster architecture.
 
 Two tabs for observability:
 
-**Container Stats** — Real-time resource usage table (CPU %, memory, network I/O, block I/O) with 10-second auto-refresh.
+**Container Stats** — Real-time resource usage table (CPU %, memory, network I/O, block I/O) with 10-second auto-refresh. It covers the containers of the application and accessories stacks on every server of the environment, and names the server each one runs on. Servers that do not answer are left out.
 
 **Audit Log** — Deployment history table with color-coded action tags (deployed, rollback, scale, stop), version, performer, and message.
 
@@ -130,7 +133,7 @@ Two tabs for observability:
 
 Three tools for cluster maintenance:
 
-**Prune** — Remove unused containers, images, volumes, and/or networks. Select targets and run cleanup. Displays reclaimed space per target.
+**Prune** — Remove unused containers, images, volumes, and/or networks on every server of the environment. Select targets and run cleanup. Displays the space reclaimed per target, summed over the servers, and names the servers where a target failed.
 
 <Callout type="warning">
   Pruning volumes permanently deletes data. The UI shows a warning when volumes are selected.
@@ -138,7 +141,7 @@ Three tools for cluster maintenance:
 
 **Deploy Lock** — View and manage the deployment lock. Shows lock status (locked/unlocked/stale), performer, and duration. Acquire or release locks manually.
 
-**Disk Usage** — Raw `docker system df` output showing Docker disk consumption.
+**Disk Usage** — Raw `docker system df` output showing Docker disk consumption, one block per server.
 
 ### Settings
 
