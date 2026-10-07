@@ -704,6 +704,25 @@ export async function deployAccessories(ctx: DeployContext): Promise<void> {
 // Phase: App deploy + health checks
 // ---------------------------------------------------------------------------
 
+/** Why the stack did not converge, with the command that shows more. */
+export function convergenceError(
+  convergence: { rolledBack: boolean; timedOut: boolean; errorDetail?: string },
+  env: string,
+): DeployError {
+  if (convergence.rolledBack) {
+    return new DeployError(
+      convergence.errorDetail ?? 'Swarm rolled the new version back',
+      ErrorCode.HEALTH_CHECK_FAILED,
+      `The new version failed to start; see why with \`dockflow logs ${env} <service>\`.`,
+    );
+  }
+  return new DeployError(
+    convergence.errorDetail ?? 'The services did not converge in time',
+    ErrorCode.DEPLOY_FAILED,
+    `Run \`dockflow diagnose ${env}\` to see what keeps them from starting.`,
+  );
+}
+
 export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Promise<void> {
   if (!ctx.deployApp) return;
   if (!Compose.hasServices(compose)) return;
@@ -733,20 +752,7 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
     CONVERGENCE_INTERVAL_S,
     servicesFilter,
   );
-  if (!convergence.converged) {
-    if (convergence.rolledBack) {
-      throw new DeployError(
-        convergence.errorDetail ?? 'Orchestrator auto-rolled back the deployment',
-        ErrorCode.HEALTH_CHECK_FAILED,
-        'Check service logs to understand why the new version failed.',
-      );
-    }
-    throw new DeployError(
-      convergence.errorDetail ?? 'Service convergence timed out',
-      ErrorCode.DEPLOY_FAILED,
-      'Check service logs with `dockflow logs <service>` for details.',
-    );
-  }
+  if (!convergence.converged) throw convergenceError(convergence, ctx.env);
 
   if (ctx.config.health_checks?.enabled !== false) {
     const health = new HealthCheck(ctx.cluster.manager.connection, ctx.orchestrator);
@@ -755,7 +761,7 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
       throw new DeployError(
         internalResult.message || `Health check failed${internalResult.failedService ? `: ${internalResult.failedService}` : ''}`,
         ErrorCode.HEALTH_CHECK_FAILED,
-        'Check service logs with `dockflow logs <service>` for details.',
+        `Check its logs: \`dockflow logs ${ctx.env} ${internalResult.failedService ?? '<service>'}\`.`,
       );
     }
 

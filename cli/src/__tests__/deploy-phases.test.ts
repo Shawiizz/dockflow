@@ -9,6 +9,7 @@ import {
   runWithConcurrency,
   rolledBackError,
   uploadFiles,
+  convergenceError,
 } from '../commands/deploy-phases';
 import type { DeployContext } from '../commands/deploy-context';
 import { DeployError, ErrorCode } from '../utils/errors';
@@ -174,5 +175,20 @@ describe('uploadFiles', () => {
     } as unknown as DeployContext;
     const plan = await uploadFiles(ctx);
     expect(plan.hosts).toEqual([]);
+  });
+});
+
+describe('convergenceError', () => {
+  it('a Swarm rollback is a failed health check that points to the logs', () => {
+    const error = convergenceError({ rolledBack: true, timedOut: false, errorDetail: 'web: task exited (1)' }, 'production');
+    expect(error.code).toBe(ErrorCode.HEALTH_CHECK_FAILED);
+    expect(error.message).toBe('web: task exited (1)');
+    expect(error.suggestion).toBe('The new version failed to start; see why with `dockflow logs production <service>`.');
+  });
+
+  it('a stack that never converged is a failed deploy that points to diagnose', () => {
+    const error = convergenceError({ rolledBack: false, timedOut: true }, 'production');
+    expect(error.code).toBe(ErrorCode.DEPLOY_FAILED);
+    expect(error.suggestion).toBe('Run `dockflow diagnose production` to see what keeps them from starting.');
   });
 });
