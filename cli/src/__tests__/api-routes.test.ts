@@ -1,14 +1,16 @@
-import type { SSHKeyConnection } from '../types';
+import { err, ok, type SSHKeyConnection } from '../types';
+import { CLIError, ErrorCode } from '../utils/errors';
+import type { Lock, LockData } from '../services/lock';
 import { afterAll, describe, expect, it, test } from 'bun:test';
 import { hasPosixShell, LocalShell } from './helpers/local-shell';
 import { parseNodeStats, statsCommand } from '../api/routes/metrics';
 import type { ApiNode } from '../api/routes/_helpers';
-import { withTimeout } from '../api/routes/_helpers';
+import { resolveApiService, withTimeout } from '../api/routes/_helpers';
 import { formatDiskUsage, parseDockerSize, pruneCommand, pruneNodes, sumDockerSizes, unknownPruneTargets } from '../api/routes/resources';
 import { execServiceCandidates, locateExecContainer } from '../api/routes/ssh';
 import { connectivityStatus } from '../api/routes/servers';
 import { buildArgs, deployArgs } from '../api/routes/operations';
-import { serviceListCommand } from '../api/routes/services';
+import { serviceListCommand, withDeployLock } from '../api/routes/services';
 import { ApiProject } from './helpers/api-project';
 
 const project = new ApiProject();
@@ -285,5 +287,89 @@ describe('formatDiskUsage', () => {
         { node: 'w1', role: 'worker', error: 'timed out' },
       ]),
     ).toBe('m1 (manager):\nTYPE  TOTAL\n\nw1 (worker):\nunreachable: timed out');
+  });
+});
+
+describe('resolveApiService', () => {
+  const stacks = { app: 'shop-production', accessories: 'shop-production-accessories' };
+  const existing = (...names: string[]) => async (name: string) => names.includes(name);
+
+  it('takes a native name as it is, without asking the cluster', async () => {
+    const exists = async () => {
+      throw new Error('must not be called');
+    };
+    expect(await resolveApiService('shop-production_web', stacks, exists)).toEqual({ name: 'shop-production_web', service: 'web', role: 'app' });
+    expect(await resolveApiService('shop-production-accessories_db', stacks, exists)).toEqual({
+      name: 'shop-production-accessories_db',
+      service: 'db',
+      role: 'accessory',
+    });
+  });
+
+  it('finds a compose name in the app stack, then in the accessories', async () => {
+    expect(await resolveApiService('web', stacks, existing('shop-production_web'))).toEqual({ name: 'shop-production_web', service: 'web', role: 'app' });
+    expect(await resolveApiService('db', stacks, existing('shop-production-accessories_db'))).toEqual({
+      name: 'shop-production-accessories_db',
+      service: 'db',
+      role: 'accessory',
+    });
+  });
+
+  it('is null for a service that exists in neither stack', async () => {
+    expect(await resolveApiService('ghost', stacks, existing())).toBeNull();
+  });
+});
+
+describe('withDeployLock', () => {
+  const data = {} as LockData;
+  const fakeLock = (acquire: () => ReturnType<Lock['acquire']>) => {
+    const calls: string[] = [];
+    return {
+      calls,
+      lock: {
+        acquire: async () => {
+          calls.push('acquire');
+          return acquire();
+        },
+        release: async () => {
+          calls.push('release');
+          return ok(undefined);
+        },
+      },
+    };
+  };
+  const done = async () => new Response('done');
+
+  it('runs the operation under the lock and releases it', async () => {
+    const { calls, lock } = fakeLock(async () => ok(data));
+    const response = await withDeployLock(lock, 'x', async () => {
+      calls.push('run');
+      return done();
+    });
+    expect(await response.text()).toBe('done');
+    expect(calls).toEqual(['acquire', 'run', 'release']);
+  });
+
+  it('answers 409 and does not run while a deploy holds the lock', async () => {
+    const { calls, lock } = fakeLock(async () => err(new CLIError('Already locked by ci@runner (2 min ago)', ErrorCode.DEPLOY_LOCKED)));
+    const response = await withDeployLock(lock, 'x', done);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ success: false, message: 'Already locked by ci@runner (2 min ago)' });
+    expect(calls).toEqual(['acquire']);
+  });
+
+  it('answers 500 when the lock cannot be read at all', async () => {
+    const { lock } = fakeLock(async () => err(new CLIError('connection refused', ErrorCode.CONNECTION_FAILED)));
+    expect((await withDeployLock(lock, 'x', done)).status).toBe(500);
+  });
+
+  it('releases the lock when the operation throws', async () => {
+    const { calls, lock } = fakeLock(async () => ok(data));
+    await expect(
+      withDeployLock(lock, 'x', async () => {
+        throw new Error('boom');
+      }),
+    ).rejects.toThrow('boom');
+    expect(calls).toEqual(['acquire', 'release']);
   });
 });

@@ -2,7 +2,7 @@
  * Shared API route helpers
  */
 
-import { getStackName } from '../../utils/config';
+import { getAccessoriesStackName, getStackName } from '../../utils/config';
 import {
   getAvailableEnvironments,
   getFullConnectionInfo,
@@ -129,4 +129,46 @@ export async function onEveryNode<T>(nodes: ApiNode[], run: (node: ApiNode) => P
       }
     }),
   );
+}
+
+export interface ApiStacks {
+  app: string;
+  accessories: string;
+}
+
+/** The app stack and the accessories stack of an environment; null without a project name. */
+export function getApiStacks(env: string): ApiStacks | null {
+  const app = getStackName(env);
+  const accessories = getAccessoriesStackName(env);
+  return app && accessories ? { app, accessories } : null;
+}
+
+export interface ResolvedService {
+  /** Swarm service name, `<stack>_<service>` */
+  name: string;
+  /** name in the compose file */
+  service: string;
+  role: 'app' | 'accessory';
+}
+
+/**
+ * A service named in a request: the native Swarm name, or the compose name, which is looked up in
+ * the app stack and then in the accessories stack. Null when no such service exists.
+ */
+export async function resolveApiService(
+  raw: string,
+  stacks: ApiStacks,
+  exists: (nativeName: string) => Promise<boolean>,
+): Promise<ResolvedService | null> {
+  if (raw.startsWith(`${stacks.accessories}_`)) {
+    return { name: raw, service: raw.slice(stacks.accessories.length + 1), role: 'accessory' };
+  }
+  if (raw.startsWith(`${stacks.app}_`)) {
+    return { name: raw, service: raw.slice(stacks.app.length + 1), role: 'app' };
+  }
+  for (const [role, stack] of [['app', stacks.app], ['accessory', stacks.accessories]] as const) {
+    const name = `${stack}_${raw}`;
+    if (await exists(name)) return { name, service: raw, role };
+  }
+  return null;
 }

@@ -207,6 +207,8 @@ export interface ServiceActionResponse {
   success: boolean;
   message: string;
   output?: string;
+  /** same text as `message`, on refusals, where clients read `error` */
+  error?: string;
 }
 
 // ─── Accessories Status ─────────────────────────────────────────────────────

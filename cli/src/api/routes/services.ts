@@ -14,7 +14,17 @@ import { getAccessoriesStackName, getStackName, loadConfig } from '../../utils/c
 import { getAvailableEnvironments } from '../../utils/servers';
 import { shellQuote, sshExec } from '../../utils/ssh';
 import { parseDockerLogLines } from '../../utils/docker-logs';
-import { getManagerConnection, resolveEnvironment, isValidDockerName, parseIntParam } from './_helpers';
+import { createLock, type Lock } from '../../services/lock';
+import { ErrorCode } from '../../utils/errors';
+import {
+  getApiStacks,
+  getManagerConnection,
+  isValidDockerName,
+  parseIntParam,
+  type ResolvedService,
+  resolveApiService,
+  resolveEnvironment,
+} from './_helpers';
 import type { ManagerConnection } from './_helpers';
 import type {
   ServiceInfo,
@@ -320,8 +330,35 @@ async function scaleService(serviceName: string, url: URL, req: Request): Promis
   }
 }
 
+/** The service a request names, in the app or accessories stack of the environment. */
+async function resolveRequestedService(conn: ManagerConnection, env: string, raw: string): Promise<ResolvedService | null> {
+  const stacks = getApiStacks(env);
+  if (!stacks) return null;
+  return resolveApiService(raw, stacks, async (name) => {
+    const result = await sshExec(conn, `docker service inspect ${shellQuote(name)} --format '{{.ID}}'`);
+    return result.exitCode === 0;
+  });
+}
+
+type ApiLock = Pick<Lock, 'acquire' | 'release'>;
+
+/** Runs `run` while holding the deploy lock; a lock held by a deploy answers 409 without running it. */
+export async function withDeployLock(lock: ApiLock, message: string, run: () => Promise<Response>): Promise<Response> {
+  const acquired = await lock.acquire({ message });
+  if (!acquired.success) {
+    const status = acquired.error.code === ErrorCode.DEPLOY_LOCKED ? 409 : 500;
+    return jsonResponse({ success: false, message: acquired.error.message, error: acquired.error.message } satisfies ServiceActionResponse, status);
+  }
+  try {
+    return await run();
+  } finally {
+    await lock.release();
+  }
+}
+
 /**
- * Rollback a Docker service
+ * Rollback a Docker service. Takes the deploy lock like a deploy does, and refuses accessories,
+ * which have no release history.
  */
 async function rollbackService(serviceName: string, url: URL): Promise<Response> {
   if (!isValidDockerName(serviceName)) return errorResponse('Invalid service name', 400);
@@ -332,13 +369,25 @@ async function rollbackService(serviceName: string, url: URL): Promise<Response>
   if (!conn) return errorResponse('No manager server with credentials found', 404);
 
   try {
-    const result = await sshExec(conn, `docker service rollback --detach ${serviceName}`);
-    const success = result.exitCode === 0;
-    return jsonResponse({
-      success,
-      message: success ? `Service ${serviceName} rolled back` : (result.stderr.trim() || 'Failed to rollback service'),
-      output: result.stdout.trim() || undefined,
-    } satisfies ServiceActionResponse);
+    const target = await resolveRequestedService(conn, env, serviceName);
+    if (!target) return errorResponse(`Service ${serviceName} not found`, 404);
+
+    if (target.role === 'accessory') {
+      const message = `${target.service} is an accessory; accessories have no release history. Change accessories.yml and deploy with --accessories.`;
+      return jsonResponse({ success: false, message, error: message } satisfies ServiceActionResponse, 501);
+    }
+
+    const staleThreshold = loadConfig({ silent: true })?.lock?.stale_threshold_minutes;
+    const lock = createLock(conn, conn.stackName, staleThreshold);
+    return await withDeployLock(lock, `Rolling back ${target.service} via WebUI`, async () => {
+      const result = await sshExec(conn, `docker service rollback --detach ${shellQuote(target.name)}`);
+      const success = result.exitCode === 0;
+      return jsonResponse({
+        success,
+        message: success ? `Service ${serviceName} rolled back` : (result.stderr.trim() || 'Failed to rollback service'),
+        output: result.stdout.trim() || undefined,
+      } satisfies ServiceActionResponse);
+    });
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : 'Failed to rollback service', 500);
   }
