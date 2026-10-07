@@ -266,6 +266,10 @@ dockflow ALL=(ALL) NOPASSWD: /usr/local/sbin/dockflow-public-ports
 On a host with neither, the file is removed rather than left empty. Nothing else is granted. In particular there is **no rule for `systemctl`** — a hook running
 `sudo systemctl daemon-reload` will fail on a normally provisioned server.
 
+For a user name containing a dot, the file is named with `_dot_` in its place (`john.doe` gives
+`/etc/sudoers.d/john_dot_doe`), because sudo skips files whose name has a dot; setup removes the
+dotted file an older version left, unless you edited it.
+
 The file starts with a `# Managed by Dockflow` comment. Setup writes it to a temporary file, has
 `visudo -c` check it, and only then moves it into place, so a rule that does not parse never
 replaces a working file. When it removes the file, it checks the whole sudoers configuration

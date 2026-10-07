@@ -132,12 +132,22 @@ function removeSudoersFile(path: string, host: HostEnv): void {
   }
 }
 
+/** sudo skips every file of /etc/sudoers.d whose name contains a dot, so a dotted user name is spelled out. */
+export function userSudoersPath(sudoersDir: string, username: string): string {
+  return `${sudoersDir}/${username.replace(/\./g, '_dot_')}`;
+}
+
 /**
  * `/etc/sudoers.d/<user>` is written with exactly `rules`, or removed when there are none. A file
  * the operator edited is left byte-identical.
  */
 function syncUserSudoers(username: string, rules: readonly string[], host: HostEnv): void {
-  const path = `${host.sudoersDir}/${username}`;
+  const path = userSudoersPath(host.sudoersDir, username);
+  // older versions wrote the dotted name, which sudo never read
+  const unread = `${host.sudoersDir}/${username}`;
+  if (unread !== path && lstatSync(unread, { throwIfNoEntry: false })?.isFile() && isDockflowUserSudoers(readFileSync(unread, 'utf8'))) {
+    rmSync(unread, { force: true });
+  }
   const info = lstatSync(path, { throwIfNoEntry: false });
   if (info !== undefined && !(info.isFile() && isDockflowUserSudoers(readFileSync(path, 'utf8')))) {
     if (rules.length > 0) {
@@ -207,7 +217,7 @@ export function configureServiceAccess(username: string, overrides: Partial<Host
     syncUserSudoers(username, sudoersRules, host);
   } catch (error) {
     host.warn(
-      `Service access: could not update ${host.sudoersDir}/${username}: ${error instanceof Error ? error.message : String(error)}`,
+      `Service access: could not update ${userSudoersPath(host.sudoersDir, username)}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }

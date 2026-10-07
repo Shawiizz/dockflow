@@ -17,6 +17,7 @@ import {
   passwordCheckArgv,
   sudoersTempPath,
   USER_SUDOERS_HEADER,
+  userSudoersPath,
   writeSudoersFile,
 } from '../commands/setup/user';
 import { CLIError } from '../utils/errors';
@@ -50,6 +51,14 @@ describe('isDockflowUserSudoers', () => {
 describe('sudoersTempPath', () => {
   it('is a dot file in the same directory, which sudo never reads', () => {
     expect(sudoersTempPath('/etc/sudoers.d/deploy')).toBe('/etc/sudoers.d/.deploy.tmp');
+  });
+});
+
+describe('userSudoersPath', () => {
+  it('keeps a plain name and spells out the dots sudo would skip', () => {
+    expect(userSudoersPath('/etc/sudoers.d', 'deploy')).toBe('/etc/sudoers.d/deploy');
+    expect(userSudoersPath('/etc/sudoers.d', 'john.doe')).toBe('/etc/sudoers.d/john_dot_doe');
+    expect(userSudoersPath('/etc/sudoers.d', 'a.b.c')).toBe('/etc/sudoers.d/a_dot_b_dot_c');
   });
 });
 
@@ -268,6 +277,51 @@ describe.skipIf(!posix)('sudoers files on disk', () => {
       expect(readFileSync(userFile(), 'utf8')).toBe(`${USER_SUDOERS_HEADER}\n${PORTS_RULE}\n`);
       expect(warnings).toHaveLength(1);
       expect(warnings[0]).toContain('syntax error');
+    });
+
+    describe('a user name with a dot, which sudo skips in a file name', () => {
+      const DOTTED = 'john.doe';
+      const dottedRule = `${DOTTED} ALL=(ALL) NOPASSWD: /usr/sbin/nginx -t, /usr/sbin/nginx -s reload`;
+      const readable = () => join(sudoersDir(), 'john_dot_doe');
+      const unread = () => join(sudoersDir(), DOTTED);
+
+      it('writes the rules under a name without a dot', () => {
+        withNginx();
+        configureServiceAccess(DOTTED, host());
+        expect(readFileSync(readable(), 'utf8')).toBe(`${USER_SUDOERS_HEADER}\n${dottedRule}\n`);
+        expect(readdirSync(sudoersDir())).toEqual(['john_dot_doe']);
+      });
+
+      it('removes the dotted file an older version wrote, if it was Dockflow\'s', () => {
+        withNginx();
+        writeFileSync(unread(), `${dottedRule}\n`);
+        configureServiceAccess(DOTTED, host());
+        expect(readdirSync(sudoersDir())).toEqual(['john_dot_doe']);
+      });
+
+      it('keeps a dotted file the operator wrote, and does not mistake it for the new one', () => {
+        withNginx();
+        writeFileSync(unread(), `${DOTTED} ALL=(ALL) ALL\n`);
+        configureServiceAccess(DOTTED, host());
+        expect(readFileSync(unread(), 'utf8')).toBe(`${DOTTED} ALL=(ALL) ALL\n`);
+        expect(readFileSync(readable(), 'utf8')).toContain(dottedRule);
+        expect(warnings).toEqual([]);
+      });
+
+      it('leaves a hand-edited file under the new name alone', () => {
+        withNginx();
+        writeFileSync(readable(), `${DOTTED} ALL=(ALL) NOPASSWD: ALL\n`);
+        configureServiceAccess(DOTTED, host());
+        expect(readFileSync(readable(), 'utf8')).toBe(`${DOTTED} ALL=(ALL) NOPASSWD: ALL\n`);
+        expect(warnings).toHaveLength(1);
+      });
+
+      it('removes the file under the new name when nothing is left to grant', () => {
+        writeFileSync(readable(), `${USER_SUDOERS_HEADER}\n${dottedRule}\n`);
+        commands['visudo -c'] = {};
+        configureServiceAccess(DOTTED, host());
+        expect(readdirSync(sudoersDir())).toEqual([]);
+      });
     });
 
     it('still warns, and goes on, when a group change fails', () => {
