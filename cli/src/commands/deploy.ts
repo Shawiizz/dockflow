@@ -271,7 +271,7 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
     orchestrator: createStackBackend(managerConn),
     proxyBackend: config.proxy?.enabled ? createProxyBackend(managerConn) : undefined,
     releases: new Release(managerConn),
-    lock: createLock(managerConn, stackName),
+    lock: createLock(managerConn, stackName, config.lock?.stale_threshold_minutes),
     audit: new Audit(managerConn),
     metrics: new Metrics(managerConn),
   };
