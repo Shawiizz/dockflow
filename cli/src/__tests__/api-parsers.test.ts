@@ -3,7 +3,7 @@ import { parseIntParam } from '../api/routes/_helpers';
 import { parseServiceLs, classifyTaskState } from '../api/routes/services';
 import { normalizeEnv, normalizeStringArray } from '../api/routes/accessories';
 import { mapMetricStatus } from '../api/routes/deploy';
-import { parseAuditLine } from '../api/routes/metrics';
+import { parseAuditLine, parseDockerStatsLine, parseNodeStats } from '../api/routes/metrics';
 import { parseSSHServerName, parseExecServiceName } from '../api/routes/ssh';
 
 describe('parseIntParam', () => {
@@ -161,5 +161,70 @@ describe('parseAuditLine', () => {
     expect(parseAuditLine('')).toBeNull();
     expect(parseAuditLine('just text')).toBeNull();
     expect(parseAuditLine(' | DEPLOYED | 1.0.0 | me@pc | x')).toBeNull();
+  });
+});
+
+describe('parseDockerStatsLine', () => {
+  it('reads the fields of a stats line', () => {
+    expect(parseDockerStatsLine('S|abc123|shop_web.1.x|0.50%|12MiB / 1GiB|1.17%|1.2kB / 3kB|0B / 4.1kB')).toEqual({
+      id: 'abc123',
+      name: 'shop_web.1.x',
+      cpuPercent: '0.50%',
+      memUsage: '12MiB / 1GiB',
+      memPercent: '1.17%',
+      netIO: '1.2kB / 3kB',
+      blockIO: '0B / 4.1kB',
+    });
+  });
+
+  it('never leaves a column empty', () => {
+    expect(parseDockerStatsLine('S|abc123|shop_web.1.x')).toEqual({
+      id: 'abc123',
+      name: 'shop_web.1.x',
+      cpuPercent: '0.00%',
+      memUsage: '0B / 0B',
+      memPercent: '0.00%',
+      netIO: '0B / 0B',
+      blockIO: '0B / 0B',
+    });
+  });
+
+  it('ignores lines that are not stats lines', () => {
+    expect(parseDockerStatsLine('')).toBeNull();
+    expect(parseDockerStatsLine('C|abc123|shop_web|shop')).toBeNull();
+    expect(parseDockerStatsLine('Cannot connect to the Docker daemon')).toBeNull();
+    expect(parseDockerStatsLine('S||name')).toBeNull();
+  });
+});
+
+describe('parseNodeStats', () => {
+  const stacks = { app: 'shop-production', accessories: 'shop-production-accessories' };
+  const output = [
+    'C|aaa111|shop-production_web|shop-production',
+    'C|bbb222|shop-production-accessories_db|shop-production-accessories',
+    'S|aaa111|shop-production_web.1.t1|0.10%|5MiB / 1GiB|0.50%|1kB / 1kB|0B / 0B',
+    'S|bbb222|shop-production-accessories_db.1.t2|2.00%|100MiB / 1GiB|9.77%|2kB / 2kB|1MB / 5MB',
+  ].join('\n');
+
+  it('gives each container its node, compose service and role', () => {
+    const entries = parseNodeStats(output, 'w1', stacks);
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({ name: 'shop-production_web.1.t1', node: 'w1', service: 'web', role: 'app', cpuPercent: '0.10%' });
+    expect(entries[1]).toMatchObject({ name: 'shop-production-accessories_db.1.t2', node: 'w1', service: 'db', role: 'accessory' });
+  });
+
+  it('does not expose the container id', () => {
+    expect(Object.keys(parseNodeStats(output, 'w1', stacks)[0])).not.toContain('id');
+  });
+
+  it('is empty when the node runs none of the stacks', () => {
+    expect(parseNodeStats('', 'w1', stacks)).toEqual([]);
+  });
+
+  it('keeps a container whose listing line is missing', () => {
+    const entries = parseNodeStats('S|zzz|orphan|1.00%|1MiB / 2MiB|50.00%|0B / 0B|0B / 0B', 'w1', stacks);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ name: 'orphan', node: 'w1', role: 'app' });
+    expect(entries[0].service).toBeUndefined();
   });
 });

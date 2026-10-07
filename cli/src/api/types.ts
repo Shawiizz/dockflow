@@ -264,19 +264,38 @@ export interface PruneRequest {
   all?: boolean;
 }
 
-export interface PruneResult {
-  target: string;
+export interface PruneNodeResult {
+  node: string;
   success: boolean;
   reclaimed?: string;
   error?: string;
+}
+
+export interface PruneResult {
+  target: string;
+  /** true only when the prune succeeded on every node */
+  success: boolean;
+  /** space freed, summed over the nodes */
+  reclaimed?: string;
+  error?: string;
+  nodes?: PruneNodeResult[];
 }
 
 export interface PruneResponse {
   results: PruneResult[];
 }
 
+export interface NodeDiskUsage {
+  node: string;
+  role: ServerRole;
+  raw?: string;
+  error?: string;
+}
+
 export interface DiskUsageResponse {
+  /** `docker system df` of every node, one block per node when the environment has several */
   raw: string;
+  nodes?: NodeDiskUsage[];
 }
 
 // ─── Locks ──────────────────────────────────────────────────────────────────
@@ -306,11 +325,18 @@ export interface ContainerStatsEntry {
   memPercent: string;
   netIO: string;
   blockIO: string;
+  /** server the container runs on */
+  node?: string;
+  /** compose name of the service */
+  service?: string;
+  role?: 'app' | 'accessory';
 }
 
 export interface ContainerStatsResponse {
   containers: ContainerStatsEntry[];
   timestamp: string;
+  /** servers that did not answer, whose containers are missing from the list */
+  unreachableNodes?: string[];
 }
 
 export interface AuditEntry {

@@ -10,7 +10,8 @@
 import { jsonResponse, errorResponse } from '../server';
 import { shellQuote, sshExec } from '../../utils/ssh';
 import { sshExecWithFallback } from '../../utils/ssh-fallback';
-import { getManagerConnection, getAllNodeConnections, resolveEnvironment, parseIntParam } from './_helpers';
+import { getAccessoriesStackName, getStackName } from '../../utils/config';
+import { getApiNodes, getManagerConnection, getAllNodeConnections, onEveryNode, resolveEnvironment, parseIntParam } from './_helpers';
 import { DOCKFLOW_AUDIT_DIR } from '../../constants';
 import type {
   ContainerStatsEntry,
@@ -44,63 +45,118 @@ export async function handleMetricsRoutes(req: Request): Promise<Response> {
 
 // ─── Container stats ────────────────────────────────────────────────────────
 
+const STACK_LABEL = 'com.docker.stack.namespace';
+const SERVICE_LABEL = 'com.docker.swarm.service.name';
+
+export interface ParsedStatsLine {
+  id: string;
+  name: string;
+  cpuPercent: string;
+  memUsage: string;
+  memPercent: string;
+  netIO: string;
+  blockIO: string;
+}
+
+/** One `S|id|name|cpu|mem|mem%|net|block` line of the stats command; null for any other line. */
+export function parseDockerStatsLine(line: string): ParsedStatsLine | null {
+  const parts = line.trim().split('|');
+  if (parts[0] !== 'S' || !parts[1] || !parts[2]) return null;
+  return {
+    id: parts[1],
+    name: parts[2],
+    cpuPercent: parts[3] || '0.00%',
+    memUsage: parts[4] || '0B / 0B',
+    memPercent: parts[5] || '0.00%',
+    netIO: parts[6] || '0B / 0B',
+    blockIO: parts[7] || '0B / 0B',
+  };
+}
+
 /**
- * Get container resource stats via `docker stats --no-stream`.
- *
- * Uses pipe-delimited format for reliable parsing:
- *   Name|CPU%|MemUsage|Mem%|NetIO|BlockIO
- *
- * When a stackName is available, results are filtered to containers
- * belonging to that stack.
+ * Lists the containers of the stacks on a node (`C|id|service|stack` lines) and then their
+ * resource usage (`S|...` lines). Fails when Docker does not answer.
+ */
+export function statsCommand(stacks: string[]): string {
+  const lines = stacks.map(
+    (stack, i) =>
+      `c${i}=$(docker ps --filter ${shellQuote(`label=${STACK_LABEL}=${stack}`)} --format 'C|{{.ID}}|{{.Label "${SERVICE_LABEL}"}}|{{.Label "${STACK_LABEL}"}}') || exit 1`,
+  );
+  const all = stacks.map((_, i) => `"$c${i}"`).join(' ');
+  return [
+    ...lines,
+    `containers=$(printf '%s\n' ${all} | grep '^C|')`,
+    '[ -n "$containers" ] || exit 0',
+    `printf '%s\n' "$containers"`,
+    `docker stats --no-stream --format 'S|{{.ID}}|{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.BlockIO}}' $(printf '%s\n' "$containers" | cut -d'|' -f2)`,
+  ].join('\n');
+}
+
+/** Stats entries of one node from the output of `statsCommand`. */
+export function parseNodeStats(
+  stdout: string,
+  node: string,
+  stacks: { app: string; accessories: string },
+): ContainerStatsEntry[] {
+  const owners = new Map<string, { service: string; stack: string }>();
+  const stats: ParsedStatsLine[] = [];
+
+  for (const line of stdout.split('\n')) {
+    const parts = line.trim().split('|');
+    if (parts[0] === 'C' && parts[1]) {
+      owners.set(parts[1], { service: parts[2] ?? '', stack: parts[3] ?? '' });
+      continue;
+    }
+    const parsed = parseDockerStatsLine(line);
+    if (parsed) stats.push(parsed);
+  }
+
+  return stats.map(({ id, ...entry }) => {
+    const owner = owners.get(id);
+    const prefix = owner ? `${owner.stack}_` : '';
+    const service = owner?.service.startsWith(prefix) ? owner.service.slice(prefix.length) : owner?.service;
+    return {
+      ...entry,
+      node,
+      service: service || undefined,
+      role: owner?.stack === stacks.accessories ? 'accessory' : 'app',
+    };
+  });
+}
+
+/**
+ * Get container resource stats of the app and accessories stacks, from every node that runs
+ * them, via `docker stats --no-stream`.
  */
 async function getContainerStats(url: URL): Promise<Response> {
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
 
-  const conn = getManagerConnection(env);
-  if (!conn) return errorResponse('No manager server with credentials found', 404);
+  const app = getStackName(env);
+  const accessories = getAccessoriesStackName(env);
+  if (!app || !accessories) return errorResponse('Project name not found in config', 500);
 
-  try {
-    // docker stats outputs one row per container, --no-stream takes a snapshot
-    let command = "docker stats --no-stream --format '{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.BlockIO}}'";
+  const nodes = getApiNodes(env);
+  if (nodes.length === 0) return errorResponse('No server with credentials found', 404);
 
-    // Filter by stack name if available
-    if (conn.stackName) {
-      command += ` | grep -F '${conn.stackName}'`;
-      // grep may exit 1 if no matches, so ensure we get output either way
-      command = `${command} || true`;
-    }
+  const command = statsCommand([app, accessories]);
+  const outcomes = await onEveryNode(nodes, async ({ name, connection }) => {
+    const result = await sshExec(connection, command);
+    if (result.exitCode !== 0) throw new Error(result.stderr.trim() || 'Failed to get container stats');
+    return parseNodeStats(result.stdout, name, { app, accessories });
+  });
 
-    const result = await sshExec(conn, command);
-
-    if (result.exitCode !== 0) {
-      return errorResponse(result.stderr.trim() || 'Failed to get container stats', 500);
-    }
-
-    const containers: ContainerStatsEntry[] = result.stdout
-      .trim()
-      .split('\n')
-      .filter((line) => line.trim())
-      .map((line) => {
-        const parts = line.split('|');
-        return {
-          name: parts[0] || '',
-          cpuPercent: parts[1] || '0.00%',
-          memUsage: parts[2] || '0B / 0B',
-          memPercent: parts[3] || '0.00%',
-          netIO: parts[4] || '0B / 0B',
-          blockIO: parts[5] || '0B / 0B',
-        };
-      })
-      .filter((entry) => entry.name !== '');
-
-    return jsonResponse({
-      containers,
-      timestamp: new Date().toISOString(),
-    } satisfies ContainerStatsResponse);
-  } catch (error) {
-    return errorResponse(error instanceof Error ? error.message : 'Failed to get container stats', 500);
+  const failed = outcomes.filter((outcome) => !outcome.ok);
+  if (failed.length === outcomes.length) {
+    return errorResponse(failed[0].ok ? 'Failed to get container stats' : failed[0].error, 500);
   }
+
+  const containers = outcomes.flatMap((outcome) => (outcome.ok ? outcome.value : []));
+  return jsonResponse({
+    containers,
+    timestamp: new Date().toISOString(),
+    ...(failed.length > 0 ? { unreachableNodes: failed.map((outcome) => outcome.node.name) } : {}),
+  } satisfies ContainerStatsResponse);
 }
 
 // ─── Audit log ──────────────────────────────────────────────────────────────

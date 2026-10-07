@@ -1,7 +1,10 @@
 import type { SSHKeyConnection } from '../types';
-import { afterAll, describe, expect, it } from 'bun:test';
+import { afterAll, describe, expect, it, test } from 'bun:test';
+import { hasPosixShell, LocalShell } from './helpers/local-shell';
+import { parseNodeStats, statsCommand } from '../api/routes/metrics';
+import type { ApiNode } from '../api/routes/_helpers';
 import { withTimeout } from '../api/routes/_helpers';
-import { pruneCommand, unknownPruneTargets } from '../api/routes/resources';
+import { formatDiskUsage, parseDockerSize, pruneCommand, pruneNodes, sumDockerSizes, unknownPruneTargets } from '../api/routes/resources';
 import { execServiceCandidates, locateExecContainer } from '../api/routes/ssh';
 import { connectivityStatus } from '../api/routes/servers';
 import { buildArgs, deployArgs } from '../api/routes/operations';
@@ -159,5 +162,128 @@ describe('prune targets', () => {
   it('prunes all unused images only when asked to', () => {
     expect(pruneCommand('images', false)).toBe('docker image prune -f');
     expect(pruneCommand('images', true)).toBe('docker image prune -f -a');
+  });
+});
+
+describe('statsCommand', () => {
+  const stacks = ['shop-production', 'shop-production-accessories'];
+  const fakeDocker = (body: string) => `docker() {\n${body}\n}\n`;
+
+  const workingDocker = fakeDocker(`
+    case "$1" in
+      ps)
+        case "$*" in
+          *namespace=shop-production-accessories*) echo 'C|bbb222|shop-production-accessories_db|shop-production-accessories' ;;
+          *namespace=shop-production*) echo 'C|aaa111|shop-production_web|shop-production' ;;
+        esac ;;
+      stats)
+        shift 4
+        for id in "$@"; do echo "S|$id|name-$id|1.00%|1MiB / 2MiB|50.00%|1kB / 1kB|0B / 0B"; done ;;
+    esac`);
+
+  test.if(hasPosixShell)('lists the containers of both stacks, then reads the stats of exactly those', async () => {
+    const shell = new LocalShell();
+    const result = await shell.run(workingDocker + statsCommand(stacks));
+    expect(result.exitCode).toBe(0);
+    const entries = parseNodeStats(result.stdout, 'w1', { app: stacks[0], accessories: stacks[1] });
+    expect(entries.map((entry) => [entry.name, entry.service, entry.role])).toEqual([
+      ['name-aaa111', 'web', 'app'],
+      ['name-bbb222', 'db', 'accessory'],
+    ]);
+  });
+
+  test.if(hasPosixShell)('prints nothing and succeeds on a node that runs none of the stacks', async () => {
+    const result = await new LocalShell().run(fakeDocker('return 0') + statsCommand(stacks));
+    expect(result).toMatchObject({ stdout: '', exitCode: 0 });
+  });
+
+  test.if(hasPosixShell)('fails with the Docker error when the daemon does not answer', async () => {
+    const result = await new LocalShell().run(fakeDocker('echo "Cannot connect to the Docker daemon" >&2; return 1') + statsCommand(stacks));
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain('Cannot connect');
+  });
+});
+
+describe('docker sizes', () => {
+  it('reads the decimal units docker prints', () => {
+    expect(parseDockerSize('0B')).toBe(0);
+    expect(parseDockerSize('12.3kB')).toBe(12_300);
+    expect(parseDockerSize('1.234GB')).toBe(1_234_000_000);
+    expect(parseDockerSize('nothing')).toBeNull();
+  });
+
+  it('sums sizes across nodes in docker notation', () => {
+    expect(sumDockerSizes(['1.5GB', '500MB'])).toBe('2GB');
+    expect(sumDockerSizes(['300kB', '400kB'])).toBe('700kB');
+    expect(sumDockerSizes(['0B', '0B'])).toBe('0B');
+    expect(sumDockerSizes(['999B', '2B'])).toBe('1.001kB');
+  });
+
+  it('has no sum when a size is unreadable or there is none', () => {
+    expect(sumDockerSizes(['1GB', 'n/a'])).toBeNull();
+    expect(sumDockerSizes([])).toBeNull();
+  });
+});
+
+describe('pruneNodes', () => {
+  const node = (name: string, role: 'manager' | 'worker'): ApiNode => ({
+    name,
+    role,
+    connection: { host: `${name}.example`, port: 22, user: 'deploy', privateKey: 'key' },
+  });
+  const nodes = [node('m1', 'manager'), node('w1', 'worker')];
+  const reply = (stdout: string, exitCode = 0, stderr = '') => ({ stdout, stderr, exitCode });
+
+  it('prunes every node and sums the space freed', async () => {
+    const seen: string[] = [];
+    const results = await pruneNodes(nodes, ['images'], true, async (conn, command) => {
+      seen.push(`${conn.host}: ${command}`);
+      return reply(conn.host.startsWith('m1') ? 'Total reclaimed space: 1.5GB' : 'Total reclaimed space: 500MB');
+    });
+    expect(seen.sort()).toEqual(['m1.example: docker image prune -f -a', 'w1.example: docker image prune -f -a']);
+    expect(results).toEqual([
+      {
+        target: 'images',
+        success: true,
+        reclaimed: '2GB',
+        nodes: [
+          { node: 'm1', success: true, reclaimed: '1.5GB' },
+          { node: 'w1', success: true, reclaimed: '500MB' },
+        ],
+      },
+    ]);
+  });
+
+  it('names the nodes that failed and still counts what the others freed', async () => {
+    const results = await pruneNodes(nodes, ['containers', 'networks'], false, async (conn, command) =>
+      conn.host.startsWith('w1') && command.includes('container') ? reply('', 1, 'permission denied') : reply('Total reclaimed space: 10MB'),
+    );
+    expect(results[0]).toMatchObject({ target: 'containers', success: false, reclaimed: '10MB', error: 'w1: permission denied' });
+    expect(results[1]).toMatchObject({ target: 'networks', success: true });
+  });
+
+  it('reports a node that cannot be reached', async () => {
+    const results = await pruneNodes(nodes, ['containers'], false, async (conn) => {
+      if (conn.host.startsWith('w1')) throw new Error('connection timed out');
+      return reply('');
+    });
+    expect(results[0].success).toBe(false);
+    expect(results[0].error).toBe('w1: connection timed out');
+    expect(results[0].nodes?.[0]).toEqual({ node: 'm1', success: true, reclaimed: '0B' });
+  });
+});
+
+describe('formatDiskUsage', () => {
+  it('is the plain output for a single node', () => {
+    expect(formatDiskUsage([{ node: 'm1', role: 'manager', raw: 'TYPE  TOTAL' }])).toBe('TYPE  TOTAL');
+  });
+
+  it('has a block per node, with the unreachable ones named', () => {
+    expect(
+      formatDiskUsage([
+        { node: 'm1', role: 'manager', raw: 'TYPE  TOTAL' },
+        { node: 'w1', role: 'worker', error: 'timed out' },
+      ]),
+    ).toBe('m1 (manager):\nTYPE  TOTAL\n\nw1 (worker):\nunreachable: timed out');
   });
 });

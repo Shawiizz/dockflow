@@ -5,10 +5,13 @@
 import { getStackName } from '../../utils/config';
 import {
   getAvailableEnvironments,
+  getFullConnectionInfo,
   getServerPrivateKey,
   resolveServersForEnvironment,
   getAllNodeConnections,
 } from '../../utils/servers';
+import type { SSHKeyConnection } from '../../types';
+import type { ServerRole } from '../types';
 import { DEFAULT_SSH_PORT } from '../../constants';
 
 export { getAllNodeConnections };
@@ -91,4 +94,39 @@ export async function withTimeout<T>(promise: Promise<T>, ms: number, message: s
   } finally {
     clearTimeout(timer);
   }
+}
+
+export interface ApiNode {
+  name: string;
+  role: ServerRole;
+  connection: SSHKeyConnection;
+}
+
+/** The servers of an environment that have credentials, managers first. */
+export function getApiNodes(env: string): ApiNode[] {
+  const servers = resolveServersForEnvironment(env);
+  const ordered = [...servers.filter((s) => s.role === 'manager'), ...servers.filter((s) => s.role === 'worker')];
+  const nodes: ApiNode[] = [];
+  for (const server of ordered) {
+    const connection = getFullConnectionInfo(env, server.name);
+    if (connection) nodes.push({ name: server.name, role: server.role, connection });
+  }
+  return nodes;
+}
+
+export type NodeOutcome<T> =
+  | { node: ApiNode; ok: true; value: T }
+  | { node: ApiNode; ok: false; error: string };
+
+/** Runs `run` on every node at once; a node that fails is an outcome, not an exception. */
+export async function onEveryNode<T>(nodes: ApiNode[], run: (node: ApiNode) => Promise<T>): Promise<NodeOutcome<T>[]> {
+  return Promise.all(
+    nodes.map(async (node): Promise<NodeOutcome<T>> => {
+      try {
+        return { node, ok: true, value: await run(node) };
+      } catch (error) {
+        return { node, ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    }),
+  );
 }

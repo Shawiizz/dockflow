@@ -12,9 +12,12 @@ import { jsonResponse, errorResponse } from '../server';
 import { sshExec } from '../../utils/ssh';
 import { createLock } from '../../services';
 import { loadConfig } from '../../utils/config';
-import { getManagerConnection, resolveEnvironment } from './_helpers';
+import { type ApiNode, getApiNodes, getManagerConnection, onEveryNode, resolveEnvironment } from './_helpers';
+import type { SSHExecResult, SSHKeyConnection } from '../../types';
 import type {
   PruneRequest,
+  PruneNodeResult,
+  NodeDiskUsage,
   PruneResult,
   PruneResponse,
   DiskUsageResponse,
@@ -103,16 +106,81 @@ export function pruneCommand(target: PruneTarget, all: boolean): string {
   }
 }
 
+const SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+
+/** Bytes of a size as docker prints it (decimal units: "1.234GB", "12.3kB"), null when it is not one. */
+export function parseDockerSize(text: string): number | null {
+  const match = text.trim().match(/^(\d+(?:\.\d+)?)\s*([kKMGTP]?B)$/);
+  if (!match) return null;
+  return Number(match[1]) * 1000 ** SIZE_UNITS.indexOf(match[2].toUpperCase());
+}
+
+/** The sum of docker sizes, written the way docker writes them; null when one cannot be read. */
+export function sumDockerSizes(sizes: string[]): string | null {
+  if (sizes.length === 0) return null;
+  let total = 0;
+  for (const size of sizes) {
+    const bytes = parseDockerSize(size);
+    if (bytes === null) return null;
+    total += bytes;
+  }
+  const unit = total > 0 ? Math.min(Math.floor(Math.log10(total) / 3), SIZE_UNITS.length - 1) : 0;
+  const unitName = unit === 1 ? 'kB' : SIZE_UNITS[unit];
+  return `${Number((total / 1000 ** unit).toPrecision(4))}${unitName}`;
+}
+
+export type NodeExec = (connection: SSHKeyConnection, command: string) => Promise<SSHExecResult>;
+
 /**
- * Prune Docker resources on the remote server
+ * Prune each target on every node, one target at a time. A target succeeds when it did on every
+ * node; the failing nodes are named in its error and the space freed is summed over the others.
+ */
+export async function pruneNodes(
+  nodes: ApiNode[],
+  targets: PruneTarget[],
+  all: boolean,
+  exec: NodeExec = sshExec,
+): Promise<PruneResult[]> {
+  const results: PruneResult[] = [];
+
+  for (const target of targets) {
+    const command = pruneCommand(target, all);
+    const outcomes = await onEveryNode(nodes, async ({ connection }) => {
+      const result = await exec(connection, command);
+      if (result.exitCode !== 0) throw new Error(result.stderr.trim() || 'Prune command failed');
+      return result.stdout.match(/Total reclaimed space:\s*(.+)/i)?.[1].trim() ?? '0B';
+    });
+
+    const perNode: PruneNodeResult[] = outcomes.map((outcome) =>
+      outcome.ok
+        ? { node: outcome.node.name, success: true, reclaimed: outcome.value }
+        : { node: outcome.node.name, success: false, error: outcome.error },
+    );
+    const failed = perNode.filter((entry) => !entry.success);
+    const reclaimed = sumDockerSizes(perNode.flatMap((entry) => (entry.reclaimed ? [entry.reclaimed] : [])));
+
+    results.push({
+      target,
+      success: failed.length === 0,
+      ...(reclaimed ? { reclaimed } : {}),
+      ...(failed.length > 0 ? { error: failed.map((entry) => `${entry.node}: ${entry.error}`).join('; ') } : {}),
+      nodes: perNode,
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Prune Docker resources on every node of the environment
  */
 async function pruneResources(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
 
-  const conn = getManagerConnection(env);
-  if (!conn) return errorResponse('No manager server with credentials found', 404);
+  const nodes = getApiNodes(env);
+  if (nodes.length === 0) return errorResponse('No server with credentials found', 404);
 
   let body: PruneRequest;
   try {
@@ -130,65 +198,47 @@ async function pruneResources(req: Request): Promise<Response> {
     return errorResponse(`Unknown prune target: ${unknown.join(', ')} (expected: ${PRUNE_TARGETS.join(', ')})`, 400);
   }
 
-  const results: PruneResult[] = [];
-
-  for (const target of body.targets) {
-    const command = pruneCommand(target, body.all === true);
-
-    try {
-      const result = await sshExec(conn, command);
-
-      if (result.exitCode !== 0) {
-        results.push({
-          target,
-          success: false,
-          error: result.stderr.trim() || 'Prune command failed',
-        });
-        continue;
-      }
-
-      // Parse reclaimed space from output (e.g. "Total reclaimed space: 1.234GB")
-      const reclaimedMatch = result.stdout.match(/Total reclaimed space:\s*(.+)/i);
-      results.push({
-        target,
-        success: true,
-        reclaimed: reclaimedMatch ? reclaimedMatch[1].trim() : '0B',
-      });
-    } catch (error) {
-      results.push({
-        target,
-        success: false,
-        error: error instanceof Error ? error.message : 'SSH execution failed',
-      });
-    }
-  }
-
+  const results = await pruneNodes(nodes, body.targets, body.all === true);
   return jsonResponse({ results } satisfies PruneResponse);
 }
 
 // ─── Disk usage implementation ──────────────────────────────────────────────
 
+/** `docker system df` of each node: the plain text for one node, a block per node for several. */
+export function formatDiskUsage(nodes: NodeDiskUsage[]): string {
+  if (nodes.length === 1 && nodes[0].raw !== undefined) return nodes[0].raw;
+  return nodes
+    .map((node) => `${node.node} (${node.role}):\n${node.raw ?? `unreachable: ${node.error ?? 'no answer'}`}`)
+    .join('\n\n');
+}
+
 /**
- * Get Docker disk usage via `docker system df`
+ * Get Docker disk usage of every node via `docker system df`
  */
 async function getDiskUsage(url: URL): Promise<Response> {
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
 
-  const conn = getManagerConnection(env);
-  if (!conn) return errorResponse('No manager server with credentials found', 404);
+  const apiNodes = getApiNodes(env);
+  if (apiNodes.length === 0) return errorResponse('No server with credentials found', 404);
 
-  try {
-    const result = await sshExec(conn, 'docker system df');
+  const outcomes = await onEveryNode(apiNodes, async ({ connection }) => {
+    const result = await sshExec(connection, 'docker system df');
+    if (result.exitCode !== 0) throw new Error(result.stderr.trim() || 'Failed to get disk usage');
+    return result.stdout.trim();
+  });
 
-    if (result.exitCode !== 0) {
-      return errorResponse(result.stderr.trim() || 'Failed to get disk usage', 500);
-    }
-
-    return jsonResponse({ raw: result.stdout.trim() } satisfies DiskUsageResponse);
-  } catch (error) {
-    return errorResponse(error instanceof Error ? error.message : 'Failed to get disk usage', 500);
+  if (outcomes.every((outcome) => !outcome.ok)) {
+    const first = outcomes[0];
+    return errorResponse(first.ok ? 'Failed to get disk usage' : first.error, 500);
   }
+
+  const nodes: NodeDiskUsage[] = outcomes.map((outcome) =>
+    outcome.ok
+      ? { node: outcome.node.name, role: outcome.node.role, raw: outcome.value }
+      : { node: outcome.node.name, role: outcome.node.role, error: outcome.error },
+  );
+  return jsonResponse({ raw: formatDiskUsage(nodes), nodes } satisfies DiskUsageResponse);
 }
 
 // ─── Lock implementations (using Lock service) ─────────────────────────────
