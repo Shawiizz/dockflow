@@ -91,15 +91,17 @@ Dockflow organizes releases on your server:
 ```
 /var/lib/dockflow/stacks/my-app-production/
 ├── 1.0.0/
-│   └── docker-compose.yml
+│   ├── docker-compose.yml
+│   ├── stack.yml
+│   └── metadata.json
 ├── 1.0.1/
-│   └── docker-compose.yml
 ├── 1.0.2/
-│   └── docker-compose.yml
 └── current -> 1.0.2/
 ```
 
-The `current` symlink points to the active release. By default, Dockflow keeps the last 3 releases (configurable via [`keep_releases`](/en/configuration/config-file#keep_releases)).
+The `current` symlink points to the active release, and `stack.yml` is the rendered stack a rollback re-applies. Release files contain your secrets, so only the deploy user can read them. By default, Dockflow keeps the last 3 releases, and always the current one (configurable via [`keep_releases`](/en/configuration/config-file#keep_releases)).
+
+`dockflow rollback <env>` goes back to the release before `current`; running it again goes one release further back.
 
 ## Health Checks
 
