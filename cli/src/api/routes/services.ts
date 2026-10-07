@@ -13,7 +13,8 @@ import { jsonResponse, errorResponse } from '../server';
 import { getAccessoriesStackName, getStackName, loadConfig } from '../../utils/config';
 import { getAvailableEnvironments } from '../../utils/servers';
 import { shellQuote, sshExec } from '../../utils/ssh';
-import { parseDockerLogLines } from '../../utils/docker-logs';
+import { arrangeLogLines, parseDockerLogLines } from '../../utils/docker-logs';
+import type { SSHExecResult } from '../../types';
 import { createLock, type Lock } from '../../services/lock';
 import { ErrorCode } from '../../utils/errors';
 import {
@@ -30,6 +31,7 @@ import type {
   ServiceInfo,
   ServicesListResponse,
   ServiceActionResponse,
+  LogEntry,
   LogsResponse,
 } from '../types';
 
@@ -393,6 +395,28 @@ async function rollbackService(serviceName: string, url: URL): Promise<Response>
   }
 }
 
+export function serviceLogsCommand(nativeName: string, lines: number): string {
+  // stderr of the containers reaches docker's own stderr: merged, so a docker failure is told by the exit status
+  return `docker service logs --tail ${lines} --timestamps --no-trunc ${shellQuote(nativeName)} 2>&1`;
+}
+
+/** Log entries of a Swarm service, or the failure to answer with. */
+export async function readServiceLogs(
+  conn: ManagerConnection,
+  stackName: string,
+  nativeName: string,
+  service: string,
+  lines: number,
+  exec: (conn: ManagerConnection, command: string) => Promise<SSHExecResult> = sshExec,
+): Promise<{ logs: LogEntry[] } | { error: string; status: number }> {
+  const result = await exec(conn, serviceLogsCommand(nativeName, lines));
+  if (result.exitCode !== 0) {
+    const reason = result.stdout.trim().split('\n')[0] || result.stderr.trim() || 'Failed to get logs';
+    return /no such service/i.test(reason) ? { error: `Service ${service} not found`, status: 404 } : { error: reason, status: 500 };
+  }
+  return { logs: arrangeLogLines(parseDockerLogLines(result.stdout, service), stackName) };
+}
+
 /**
  * Get logs for a specific service
  */
@@ -417,15 +441,17 @@ async function getServiceLogs(serviceName: string, url: URL): Promise<Response> 
   }
 
   try {
-    const command = `docker service logs --tail ${lines} --timestamps --no-trunc ${serviceName} 2>&1`;
-    const result = await sshExec(conn, command);
+    const target = await resolveRequestedService(conn, env, serviceName);
+    const stacks = getApiStacks(env);
+    if (!target || !stacks) return errorResponse(`Service ${serviceName} not found`, 404);
 
-    const logEntries = parseDockerLogLines(result.stdout, serviceName);
+    const read = await readServiceLogs(conn, target.role === 'app' ? stacks.app : stacks.accessories, target.name, target.service, lines);
+    if ('error' in read) return errorResponse(read.error, read.status);
 
     return jsonResponse({
-      logs: logEntries,
-      service: serviceName,
-      lines: logEntries.length,
+      logs: read.logs,
+      service: target.service,
+      lines: read.logs.length,
     } satisfies LogsResponse);
   } catch (error) {
     return errorResponse(

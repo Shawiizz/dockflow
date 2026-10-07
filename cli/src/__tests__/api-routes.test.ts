@@ -10,7 +10,7 @@ import { formatDiskUsage, parseDockerSize, pruneCommand, pruneNodes, sumDockerSi
 import { execServiceCandidates, locateExecContainer } from '../api/routes/ssh';
 import { connectivityStatus } from '../api/routes/servers';
 import { buildArgs, deployArgs } from '../api/routes/operations';
-import { serviceListCommand, withDeployLock } from '../api/routes/services';
+import { readServiceLogs, serviceListCommand, serviceLogsCommand, withDeployLock } from '../api/routes/services';
 import { ApiProject } from './helpers/api-project';
 
 const project = new ApiProject();
@@ -371,5 +371,41 @@ describe('withDeployLock', () => {
       }),
     ).rejects.toThrow('boom');
     expect(calls).toEqual(['acquire', 'release']);
+  });
+});
+
+describe('readServiceLogs', () => {
+  const conn = { host: 'm1', port: 22, user: 'deploy', privateKey: 'key', stackName: 'shop-production' };
+  const task = (slot: number) => `shop-production_web.${slot}.k2j3h4g5f6d7s8a9q1w2e3r4t`;
+  const replyWith = (stdout: string, exitCode = 0) => async () => ({ stdout, stderr: '', exitCode });
+
+  it('asks for timestamps and merges the containers stderr', () => {
+    expect(serviceLogsCommand('shop-production_web', 50)).toBe(
+      "docker service logs --tail 50 --timestamps --no-trunc 'shop-production_web' 2>&1",
+    );
+  });
+
+  it('returns the lines of every task, oldest first, without the task context', async () => {
+    const output = [
+      `${task(1)}@m1    | 2026-01-15T10:00:02Z second`,
+      `${task(2)}@w1    | 2026-01-15T10:00:01Z first`,
+    ].join('\n');
+    const read = await readServiceLogs(conn, 'shop-production', 'shop-production_web', 'web', 100, replyWith(output));
+    expect(read).toEqual({
+      logs: [
+        { timestamp: '2026-01-15T10:00:01Z', message: 'first', service: 'web.2' },
+        { timestamp: '2026-01-15T10:00:02Z', message: 'second', service: 'web.1' },
+      ],
+    });
+  });
+
+  it('answers 404 for a service that does not exist, instead of parsing docker error as a log line', async () => {
+    const read = await readServiceLogs(conn, 'shop-production', 'shop-production_ghost', 'ghost', 100, replyWith('Error response from daemon: no such service: shop-production_ghost', 1));
+    expect(read).toEqual({ error: 'Service ghost not found', status: 404 });
+  });
+
+  it('answers 500 with the docker message for any other failure', async () => {
+    const read = await readServiceLogs(conn, 'shop-production', 'shop-production_web', 'web', 100, replyWith('Cannot connect to the Docker daemon', 1));
+    expect(read).toEqual({ error: 'Cannot connect to the Docker daemon', status: 500 });
   });
 });

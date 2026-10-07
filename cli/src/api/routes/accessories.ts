@@ -12,7 +12,7 @@ import { jsonResponse, errorResponse } from '../server';
 import { loadConfig, getAccessoriesStackName, getLayout } from '../../utils/config';
 import { getManagerConnection, resolveEnvironment, isValidDockerName, parseIntParam } from './_helpers';
 import { sshExec } from '../../utils/ssh';
-import { parseDockerLogLines } from '../../utils/docker-logs';
+import { readServiceLogs } from './services';
 import * as Compose from '../../services/compose';
 import type { AccessoryInfo, AccessoriesResponse } from '../types';
 import type { AccessoryStatusInfo, AccessoriesStatusResponse, AccessoryActionResponse, LogsResponse } from '../types';
@@ -302,15 +302,13 @@ async function getAccessoryLogs(name: string, url: URL): Promise<Response> {
   }
 
   try {
-    const command = `docker service logs --tail ${lines} --timestamps ${accStackName}_${name} 2>&1`;
-    const result = await sshExec(conn, command);
-
-    const logEntries = parseDockerLogLines(result.stdout, name);
+    const read = await readServiceLogs(conn, accStackName, `${accStackName}_${name}`, name, lines);
+    if ('error' in read) return errorResponse(read.error, read.status);
 
     return jsonResponse({
-      logs: logEntries,
+      logs: read.logs,
       service: name,
-      lines: logEntries.length,
+      lines: read.logs.length,
     } satisfies LogsResponse);
   } catch (error) {
     return errorResponse(
