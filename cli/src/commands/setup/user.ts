@@ -6,8 +6,7 @@
  * Commands go by argv, never through a shell.
  */
 
-import { spawnSync } from 'child_process';
-import { closeSync, fchmodSync, fchownSync, lstatSync, openSync, readFileSync, renameSync, rmSync, statSync, writeSync } from 'fs';
+import { closeSync, constants, fchmodSync, fchownSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeSync } from 'fs';
 import { dirname } from 'path';
 import { printWarning, printSuccess, printInfo, createSpinner } from '../../utils/output';
 import { CLIError, ErrorCode } from '../../utils/errors';
@@ -213,6 +212,141 @@ export function configureServiceAccess(username: string, overrides: Partial<Host
   }
 }
 
+// ---------------------------------------------------------------------------
+// Deploy user
+// ---------------------------------------------------------------------------
+
+export interface HostUser {
+  name: string;
+  uid: number;
+  gid: number;
+  home: string;
+}
+
+/** a `getent passwd` line: name:x:uid:gid:gecos:home:shell */
+export function parsePasswdLine(line: string): HostUser | null {
+  const fields = line.trim().split(':');
+  if (fields.length < 7) return null;
+  const uid = Number(fields[2]);
+  const gid = Number(fields[3]);
+  if (!Number.isInteger(uid) || !Number.isInteger(gid) || fields[5] === '') return null;
+  return { name: fields[0], uid, gid, home: fields[5] };
+}
+
+function lookupUser(username: string, runCommand: CommandRunner): HostUser | null {
+  const result = runCommand(['getent', 'passwd', username], { quiet: true, timeoutMs: COMMAND_TIMEOUT_MS });
+  return result.ok ? parsePasswdLine(result.stdout.split('\n')[0] ?? '') : null;
+}
+
+/** the base64 blob of an authorized_keys line (`<type> <blob> [comment]`) */
+export function keyBlobOf(publicKey: string): string {
+  return publicKey.trim().split(/\s+/)[1] ?? '';
+}
+
+// The deploy user owns its home, so root must never follow a link it planted there.
+// Platforms without these flags (Windows, where only the tests run) take 0.
+const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
+const DIRECTORY = constants.O_DIRECTORY ?? 0;
+
+function refuseLink(path: string, error: unknown): never {
+  const code = (error as NodeJS.ErrnoException).code;
+  if (code === 'ELOOP' || code === 'ENOTDIR') {
+    throw new CLIError(
+      `Refusing to touch ${path}: it is a symbolic link or not a directory`,
+      ErrorCode.COMMAND_FAILED,
+      'Remove it, or fix the home of the deploy user, then run setup again.',
+    );
+  }
+  throw error;
+}
+
+/** `~/.ssh` as a real directory, mode 0700, owned by the user */
+function prepareSshDir(path: string, user: HostUser): void {
+  try {
+    mkdirSync(path, { mode: 0o700 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
+  let fd: number;
+  try {
+    fd = openSync(path, constants.O_RDONLY | DIRECTORY | NOFOLLOW);
+  } catch (error) {
+    return refuseLink(path, error);
+  }
+  try {
+    fchmodSync(fd, 0o700);
+    fchownSync(fd, user.uid, user.gid);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * Appends `publicKey` to the user's authorized_keys unless a line already holds its blob, whatever
+ * its comment. The key is data in a file, never part of a command. Returns whether it was added.
+ */
+export function authorizeKey(user: HostUser, publicKey: string): boolean {
+  const key = publicKey.trim();
+  const blob = keyBlobOf(key);
+  if (blob === '' || /[\r\n]/.test(key)) {
+    throw new CLIError('The public key is not a single "<type> <key> [comment]" line', ErrorCode.VALIDATION_FAILED);
+  }
+  const sshDir = `${user.home}/.ssh`;
+  const keysPath = `${sshDir}/authorized_keys`;
+  prepareSshDir(sshDir, user);
+  let fd: number;
+  try {
+    fd = openSync(keysPath, constants.O_RDWR | constants.O_CREAT | constants.O_APPEND | NOFOLLOW, 0o600);
+  } catch (error) {
+    return refuseLink(keysPath, error);
+  }
+  try {
+    const current = readFileSync(fd, 'utf8');
+    const present = current.split(/\r?\n/).some((line) => line.split(/\s+/).includes(blob));
+    if (!present) writeSync(fd, `${current === '' || current.endsWith('\n') ? '' : '\n'}${key}\n`);
+    fchmodSync(fd, 0o600);
+    fchownSync(fd, user.uid, user.gid);
+    return !present;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * Creates the deploy user when absent (`useradd -m -U -s /bin/bash`, the password through
+ * chpasswd's stdin) and authorizes the key in the home `getent passwd` reports. An existing user's
+ * password is never changed.
+ */
+export function ensureDeployUser(
+  username: string,
+  password: string,
+  publicKey: string,
+  host: Pick<HostEnv, 'run'> = localHost,
+): { user: HostUser; created: boolean; keyAdded: boolean } {
+  const fail = (what: string, result: Parameters<typeof detailOf>[0]): never => {
+    throw new CLIError(`${what}: ${detailOf(result)}`, ErrorCode.COMMAND_FAILED);
+  };
+  let user = lookupUser(username, host.run);
+  const created = user === null;
+  if (user === null) {
+    // chpasswd reads one "user:password" per line: a newline would set another account's password
+    if (/[\r\n]/.test(password)) throw new CLIError('The password cannot contain a line break', ErrorCode.VALIDATION_FAILED);
+    const add = host.run(['useradd', '-m', '-U', '-s', '/bin/bash', '--', username], { quiet: true, timeoutMs: COMMAND_TIMEOUT_MS });
+    if (!add.ok) fail(`Failed to create user ${username}`, add);
+    const chpasswd = host.run(['chpasswd'], { quiet: true, input: `${username}:${password}\n`, timeoutMs: COMMAND_TIMEOUT_MS });
+    if (!chpasswd.ok) fail(`Failed to set the password of ${username}`, chpasswd);
+    user = lookupUser(username, host.run);
+    if (user === null) throw new CLIError(`Created user ${username}, but getent passwd does not know it`, ErrorCode.COMMAND_FAILED);
+  } else {
+    printWarning(`User ${username} already exists — password left unchanged`);
+  }
+
+  // Docker may not be installed yet: configureServiceAccess runs again once it is
+  host.run(['usermod', '-aG', 'docker', username], { quiet: true, timeoutMs: COMMAND_TIMEOUT_MS });
+
+  return { user, created, keyAdded: authorizeKey(user, publicKey) };
+}
+
 /**
  * Create deployment user with docker group access and service permissions.
  */
@@ -220,55 +354,20 @@ export function createDeployUser(username: string, password: string, publicKey: 
   const spinner = createSpinner();
   spinner.start(`Creating user ${username}...`);
 
-  let result = spawnSync('useradd', ['-m', '-s', '/bin/bash', username], {
-    encoding: 'utf-8',
-    stdio: ['pipe', 'pipe', 'pipe']
-  });
-
-  const userAlreadyExists = result.status !== 0 && result.stderr.includes('already exists');
-  if (result.status !== 0 && !userAlreadyExists) {
-    spinner.fail(`Failed to create user: ${result.stderr}`);
+  let created: boolean;
+  try {
+    ({ created } = ensureDeployUser(username, password, publicKey));
+  } catch (error) {
+    spinner.fail(error instanceof Error ? error.message : String(error));
     return false;
   }
-
-  // Only set the password on a freshly created user — re-running setup must
-  // never silently reset an existing user's password.
-  if (userAlreadyExists) {
-    printWarning(`User ${username} already exists — password left unchanged`);
-  } else {
-    const chpasswd = spawnSync('chpasswd', [], {
-      input: `${username}:${password}`,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    if (chpasswd.status !== 0) {
-      spinner.fail(`Failed to set password: ${chpasswd.stderr}`);
-      return false;
-    }
-  }
-
-  // Add user to docker group (if docker is installed)
-  spawnSync('usermod', ['-aG', 'docker', username], {
-    encoding: 'utf-8',
-    stdio: ['pipe', 'pipe', 'pipe']
-  });
-
-  const userHome = `/home/${username}`;
-  const userSSHDir = `${userHome}/.ssh`;
-
-  spawnSync('mkdir', ['-p', userSSHDir], { encoding: 'utf-8' });
-  spawnSync('sh', ['-c', `touch ${userSSHDir}/authorized_keys && grep -qF "${publicKey}" ${userSSHDir}/authorized_keys || echo "${publicKey}" >> ${userSSHDir}/authorized_keys`], { encoding: 'utf-8' });
-  spawnSync('chown', ['-R', `${username}:${username}`, userSSHDir], { encoding: 'utf-8' });
-  spawnSync('chmod', ['700', userSSHDir], { encoding: 'utf-8' });
-  spawnSync('chmod', ['600', `${userSSHDir}/authorized_keys`], { encoding: 'utf-8' });
 
   // Configure service access — best-effort at user creation time.
   // configureServiceAccess() must be called again post-provisioning if
   // nginx or the filter of published ports is installed after this point.
   configureServiceAccess(username);
 
-  spinner.succeed(`User ${username} created successfully`);
+  spinner.succeed(created ? `User ${username} created successfully` : `User ${username} is ready`);
   return true;
 }
 

@@ -4,11 +4,16 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { run, type RunOptions, type RunResult } from '../commands/setup/provision';
 import {
+  authorizeKey,
   checkUserPassword,
   configureServiceAccess,
+  ensureDeployUser,
   type HostEnv,
+  type HostUser,
   isDockflowUserSudoers,
+  keyBlobOf,
   nginxUserFrom,
+  parsePasswdLine,
   passwordCheckArgv,
   sudoersTempPath,
   USER_SUDOERS_HEADER,
@@ -370,5 +375,144 @@ describe.skipIf(!posix)('checkUserPassword with fake su and setpriv in a real sh
   it('as root su goes through setpriv as nobody', () => {
     expect(checkUserPassword('deploy', PASSWORD, run, 0)).toEqual({ verdict: true });
     expect(readFileSync(join(dir, 'setpriv-args'), 'utf8')).toContain('--reuid=65534\n--regid=65534\n--clear-groups\n--\nsu\n');
+  });
+});
+
+describe('parsePasswdLine and keyBlobOf', () => {
+  it('reads uid, gid and home of a getent line', () => {
+    expect(parsePasswdLine('deploy:x:1001:1002:Deploy,,,:/srv/deploy:/bin/bash\n')).toEqual({ name: 'deploy', uid: 1001, gid: 1002, home: '/srv/deploy' });
+    expect(parsePasswdLine('')).toBeNull();
+    expect(parsePasswdLine('deploy:x:abc:1002::/home/deploy:/bin/sh')).toBeNull();
+  });
+
+  it('takes the blob out of an authorized_keys line', () => {
+    expect(keyBlobOf('ssh-ed25519 AAAAC3Nza dockflow-deploy')).toBe('AAAAC3Nza');
+    expect(keyBlobOf('ssh-ed25519')).toBe('');
+  });
+});
+
+describe.skipIf(!posix)('deploy user', () => {
+  const KEY = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeDeployKeyBlobForTestsOnly0123456789ab dockflow-deploy';
+  const uid = process.getuid?.() ?? 0;
+  const gid = process.getgid?.() ?? 0;
+  let dir = '';
+  let calls: { argv: readonly string[]; input?: string }[] = [];
+  let users: Set<string>;
+  let failing: Record<string, RunResult>;
+
+  const homeOf = (name: string) => join(dir, 'home', name);
+  const fakeRun = (argv: readonly string[], opts?: RunOptions): RunResult => {
+    calls.push({ argv: [...argv], input: opts?.input });
+    const ok = (stdout = ''): RunResult => ({ ok: true, exitCode: 0, stdout, stderr: '', timedOut: false });
+    const scripted = failing[argv[0]];
+    if (scripted) return scripted;
+    if (argv[0] === 'getent') {
+      return users.has(argv[2])
+        ? ok(`${argv[2]}:x:${uid}:${gid}::${homeOf(argv[2])}:/bin/bash\n`)
+        : { ok: false, exitCode: 2, stdout: '', stderr: '', timedOut: false };
+    }
+    if (argv[0] === 'useradd') {
+      const name = argv.at(-1) as string;
+      users.add(name);
+      mkdirSync(homeOf(name), { recursive: true });
+    }
+    return ok();
+  };
+  const host = () => ({ run: fakeRun });
+  const user = (name: string): HostUser => ({ name, uid, gid, home: homeOf(name) });
+  const keysOf = (name: string) => readFileSync(join(homeOf(name), '.ssh', 'authorized_keys'), 'utf8');
+  const modeOf = (path: string) => lstatSync(path).mode & 0o7777;
+  const failure = (stderr: string): RunResult => ({ ok: false, exitCode: 1, stdout: '', stderr, timedOut: false });
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'dockflow-user-'));
+    calls = [];
+    users = new Set();
+    failing = {};
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  describe('ensureDeployUser', () => {
+    it('creates the user, sets its password through stdin and authorizes the key as files', () => {
+      const password = `p'a"ss $(id) \`id\` ;|&`;
+      const result = ensureDeployUser('ops', password, KEY, host());
+      expect(result).toMatchObject({ created: true, keyAdded: true });
+      expect(calls.map((call) => call.argv)).toEqual([
+        ['getent', 'passwd', 'ops'],
+        ['useradd', '-m', '-U', '-s', '/bin/bash', '--', 'ops'],
+        ['chpasswd'],
+        ['getent', 'passwd', 'ops'],
+        ['usermod', '-aG', 'docker', 'ops'],
+      ]);
+      expect(calls[2].input).toBe(`ops:${password}\n`);
+      expect(calls.some((call) => call.argv.some((arg) => arg.includes(password) || arg.includes(keyBlobOf(KEY))))).toBe(false);
+      expect(calls.some((call) => ['sh', 'bash'].includes(call.argv[0]))).toBe(false);
+      expect(modeOf(join(homeOf('ops'), '.ssh'))).toBe(0o700);
+      expect(modeOf(join(homeOf('ops'), '.ssh', 'authorized_keys'))).toBe(0o600);
+      expect(keysOf('ops')).toBe(`${KEY}\n`);
+    });
+
+    it('takes the home from getent, not from /home/<name>', () => {
+      ensureDeployUser('ops', 'pw', KEY, host());
+      expect(existsSync(join(homeOf('ops'), '.ssh', 'authorized_keys'))).toBe(true);
+      expect(existsSync('/home/ops')).toBe(false);
+    });
+
+    it('leaves an existing user and its password alone, and adds the key once', () => {
+      users.add('ops');
+      mkdirSync(homeOf('ops'), { recursive: true });
+      expect(ensureDeployUser('ops', 'another-password', KEY, host())).toMatchObject({ created: false, keyAdded: true });
+      expect(ensureDeployUser('ops', 'another-password', KEY, host())).toMatchObject({ created: false, keyAdded: false });
+      expect(calls.some((call) => ['useradd', 'chpasswd'].includes(call.argv[0]))).toBe(false);
+      expect(keysOf('ops')).toBe(`${KEY}\n`);
+    });
+
+    it('stops with the command output when useradd or chpasswd fails', () => {
+      failing.useradd = failure("useradd: invalid user name 'a b'\n");
+      expect(() => ensureDeployUser('a b', 'pw', KEY, host())).toThrow("Failed to create user a b: useradd: invalid user name 'a b'");
+      failing = { chpasswd: failure('chpasswd: PAM: Authentication token manipulation error\n') };
+      expect(() => ensureDeployUser('ops', 'pw', KEY, host())).toThrow('Failed to set the password of ops: chpasswd: PAM');
+    });
+
+    it('refuses a password that would add a second line to chpasswd, before creating anything', () => {
+      expect(() => ensureDeployUser('ops', 'pw\nroot:owned', KEY, host())).toThrow('line break');
+      expect(calls.some((call) => call.argv[0] === 'useradd')).toBe(false);
+    });
+  });
+
+  describe('authorizeKey', () => {
+    it('appends to an existing file, on its own line, without duplicating a known blob whatever its comment', () => {
+      mkdirSync(join(homeOf('ops'), '.ssh'), { recursive: true, mode: 0o755 });
+      writeFileSync(join(homeOf('ops'), '.ssh', 'authorized_keys'), 'ssh-rsa AAAAB3other operator@laptop', { mode: 0o644 });
+      expect(authorizeKey(user('ops'), KEY)).toBe(true);
+      expect(keysOf('ops')).toBe(`ssh-rsa AAAAB3other operator@laptop\n${KEY}\n`);
+      expect(authorizeKey(user('ops'), KEY.replace('dockflow-deploy', 'another-comment'))).toBe(false);
+      expect(keysOf('ops').split('\n').filter((line) => line !== '')).toHaveLength(2);
+      expect(modeOf(join(homeOf('ops'), '.ssh'))).toBe(0o700);
+      expect(modeOf(join(homeOf('ops'), '.ssh', 'authorized_keys'))).toBe(0o600);
+    });
+
+    it('does not write through a ~/.ssh symlink the user planted', () => {
+      mkdirSync(homeOf('ops'), { recursive: true });
+      mkdirSync(join(dir, 'elsewhere'), { mode: 0o755 });
+      symlinkSync(join(dir, 'elsewhere'), join(homeOf('ops'), '.ssh'));
+      expect(() => authorizeKey(user('ops'), KEY)).toThrow('Refusing to touch');
+      expect(readdirSync(join(dir, 'elsewhere'))).toEqual([]);
+      expect(modeOf(join(dir, 'elsewhere'))).toBe(0o755);
+    });
+
+    it('does not write through an authorized_keys symlink the user planted', () => {
+      mkdirSync(join(homeOf('ops'), '.ssh'), { recursive: true });
+      writeFileSync(join(dir, 'shadow'), 'root:secret\n', { mode: 0o640 });
+      symlinkSync(join(dir, 'shadow'), join(homeOf('ops'), '.ssh', 'authorized_keys'));
+      expect(() => authorizeKey(user('ops'), KEY)).toThrow('Refusing to touch');
+      expect(readFileSync(join(dir, 'shadow'), 'utf8')).toBe('root:secret\n');
+      expect(modeOf(join(dir, 'shadow'))).toBe(0o640);
+    });
+
+    it('refuses a key that is not one line', () => {
+      expect(() => authorizeKey(user('ops'), `${KEY}\ncommand="id" ssh-rsa AAAA x`)).toThrow('single');
+      expect(() => authorizeKey(user('ops'), 'not-a-key')).toThrow('single');
+    });
   });
 });
