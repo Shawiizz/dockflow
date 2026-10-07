@@ -9,7 +9,7 @@ import type { ClientChannel } from 'ssh2';
 import { createGzip } from 'node:zlib';
 import { Readable } from 'node:stream';
 import type { SSHKeyConnection } from '../types';
-import { sshExec, sshExecChannel, shellQuote } from '../utils/ssh';
+import { sshExec, sshExecChannel, sshExecChannelUnbuffered, shellQuote } from '../utils/ssh';
 import { printDebug, printDim, printSuccess, printWarning, createTimedSpinner } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import { parseImageRef } from './compose';
@@ -146,32 +146,38 @@ async function streamToTarget(
   }
 }
 
+/** The text a stream writes, kept for the error message (stderr is short). */
+function collectText(stream: NodeJS.ReadableStream): () => string {
+  let text = '';
+  stream.on('data', (chunk: Buffer) => { text += chunk.toString(); });
+  return () => text;
+}
+
+/** `save` on the source node piped into `load` on the target, never holding the image in memory. */
 async function streamRemoteToTarget(
   image: string,
   source: SSHKeyConnection,
   target: DistributionTarget,
   runtime: ContainerRuntime = 'docker',
 ): Promise<void> {
-  const { stream: sink, done: sinkDone } = await sshExecChannel(
-    target.connection,
-    importCommand(runtime),
-  );
+  const sinkChannel = await sshExecChannelUnbuffered(target.connection, importCommand(runtime));
+  const sink = sinkChannel.stream;
+  const sinkErr = collectText(sink.stderr);
   sink.resume();
 
-  const { stream: src, done: srcDone } = await sshExecChannel(
-    source,
-    saveCommand(image, runtime),
-  );
+  const srcChannel = await sshExecChannelUnbuffered(source, saveCommand(image, runtime));
+  const src = srcChannel.stream;
+  const srcErr = collectText(src.stderr);
 
   await pipeChannels(src, sink);
 
-  const [srcResult, sinkResult] = await Promise.all([srcDone, sinkDone]);
+  const [srcResult, sinkResult] = await Promise.all([srcChannel.done, sinkChannel.done]);
 
   if (srcResult.exitCode !== 0) {
-    throw new Error(`image export failed on remote: ${srcResult.stderr.trim()}`);
+    throw new Error(`image export failed on the build node: ${srcErr().trim() || `exit ${srcResult.exitCode}`}`);
   }
   if (sinkResult.exitCode !== 0) {
-    throw new Error(`image import failed on ${target.name}: ${sinkResult.stderr.trim()}`);
+    throw new Error(`image import failed on ${target.name}: ${sinkErr().trim() || `exit ${sinkResult.exitCode}`}`);
   }
 }
 
