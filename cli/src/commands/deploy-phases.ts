@@ -558,13 +558,6 @@ export async function buildAndDistribute(
 // Phase: External networks
 // ---------------------------------------------------------------------------
 
-function collectExternalNetworks(compose: ReturnType<typeof Compose.loadFromString>): string[] {
-  const nets = compose.networks ?? {};
-  return Object.entries(nets)
-    .filter(([, cfg]) => (cfg as Record<string, unknown>)?.external === true)
-    .map(([name]) => name);
-}
-
 /** The key of accessories.yml among the rendered files */
 export function accessoriesKey(): string {
   const layout = getLayout();
@@ -575,11 +568,11 @@ export function accessoriesKey(): string {
 
 export async function ensureExternalNetworks(ctx: DeployContext): Promise<void> {
   const mainCompose = Compose.loadFromString(ctx.composeContent, 'docker-compose.yml');
-  const networks = new Set(collectExternalNetworks(mainCompose));
+  const networks = new Set(Compose.getExternalNetworks(mainCompose));
 
   const accessoriesContent = ctx.rendered.get(accessoriesKey());
   if (accessoriesContent) {
-    for (const n of collectExternalNetworks(Compose.loadFromString(accessoriesContent, 'accessories.yml'))) networks.add(n);
+    for (const n of Compose.getExternalNetworks(Compose.loadFromString(accessoriesContent, 'accessories.yml'))) networks.add(n);
   }
 
   if (networks.size === 0) return;

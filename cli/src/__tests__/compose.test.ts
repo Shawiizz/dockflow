@@ -280,6 +280,27 @@ services:
     expect(restart.max_attempts).toBe(10);
     expect(restart.condition).toBe('on-failure');
   });
+
+  it('gives no replica count to a service running once per node, or one that sets scale', () => {
+    const compose = makeCompose(`
+services:
+  agent:
+    image: agent
+    deploy:
+      mode: global
+  backup:
+    image: backup
+    deploy:
+      mode: global-job
+  workers:
+    image: worker
+    scale: 3
+`);
+    injectAccessoriesDefaults(compose);
+    for (const name of ['agent', 'backup', 'workers']) {
+      expect((compose.services[name].deploy as Record<string, unknown>).replicas).toBeUndefined();
+    }
+  });
 });
 
 describe('injectTraefikLabels', () => {
@@ -677,6 +698,22 @@ volumes:
     const compose = makeCompose('services: {}\n');
     expect(getExternalNetworks(compose)).toEqual([]);
     expect(getExternalVolumes(compose)).toEqual([]);
+  });
+
+  it('an external resource is known to docker by its name: when set', () => {
+    const compose = makeCompose(`
+services: {}
+networks:
+  pub:
+    external: true
+    name: shared-public
+volumes:
+  data:
+    external: true
+    name: legacy_data
+`);
+    expect(getExternalNetworks(compose)).toEqual(['shared-public']);
+    expect(getExternalVolumes(compose)).toEqual(['legacy_data']);
   });
 
   it('null-valued network entries are not external', () => {

@@ -408,6 +408,9 @@ export function renderAndResolveCompose(
   };
 }
 
+/** Swarm modes that run one task per node: `replicas` contradicts them. */
+const PER_NODE_MODES = new Set(['global', 'global-job']);
+
 // ---------------------------------------------------------------------------
 // YAML load / serialize
 // ---------------------------------------------------------------------------
@@ -898,11 +901,10 @@ export function injectAccessoriesDefaults(compose: ParsedCompose): void {
 
     const mergedRestart = deepMerge(DEFAULT_RESTART_POLICY, userRestart);
 
-    const mergedDeploy = {
-      ...deploy,
-      replicas: deploy.replicas ?? 1,
-      restart_policy: mergedRestart,
-    };
+    const mergedDeploy: Record<string, unknown> = { ...deploy, restart_policy: mergedRestart };
+    // docker refuses replicas on a service that runs once per node, and `scale` already says how many
+    const perNode = typeof deploy.mode === 'string' && PER_NODE_MODES.has(deploy.mode);
+    if (deploy.replicas == null && svc.scale == null && !perNode) mergedDeploy.replicas = 1;
 
     compose.services[name] = { ...svc, deploy: mergedDeploy };
   }
@@ -1233,34 +1235,23 @@ export function syncNonTargetedImageTags(
   return { ...local, services };
 }
 
-/**
- * Extract all external network names from a compose object.
- */
-export function getExternalNetworks(compose: ParsedCompose): string[] {
-  if (!compose.networks) return [];
-  return Object.entries(compose.networks)
-    .filter(([, value]) => {
-      if (value && typeof value === 'object') {
-        return (value as Record<string, unknown>).external === true;
-      }
-      return false;
-    })
-    .map(([name]) => name);
+/** External networks or volumes, by the name docker knows them: `name:` when set, else the key. */
+function externalNames(section: Record<string, unknown> | undefined): string[] {
+  if (!isRecord(section)) return [];
+  const names: string[] = [];
+  for (const [key, value] of Object.entries(section)) {
+    if (!isRecord(value) || value.external !== true) continue;
+    names.push(typeof value.name === 'string' && value.name !== '' ? value.name : key);
+  }
+  return names;
 }
 
-/**
- * Extract all external volume names from a compose object.
- */
+export function getExternalNetworks(compose: ParsedCompose): string[] {
+  return externalNames(compose.networks);
+}
+
 export function getExternalVolumes(compose: ParsedCompose): string[] {
-  if (!compose.volumes) return [];
-  return Object.entries(compose.volumes)
-    .filter(([, value]) => {
-      if (value && typeof value === 'object') {
-        return (value as Record<string, unknown>).external === true;
-      }
-      return false;
-    })
-    .map(([name]) => name);
+  return externalNames(compose.volumes);
 }
 
 /**

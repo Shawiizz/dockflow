@@ -11,7 +11,7 @@
 
 import { createHash } from 'crypto';
 import type { SSHKeyConnection } from '../../../types';
-import { sshExec, sshExecChannel } from '../../../utils/ssh';
+import { shellQuote, sshExec, sshExecChannel } from '../../../utils/ssh';
 import { printDebug, printInfo, printWarning, printSuccess, createTimedSpinner } from '../../../utils/output';
 import { DeployError, ErrorCode } from '../../../utils/errors';
 import {
@@ -34,7 +34,7 @@ export class SwarmStackOps {
       printDebug(`Creating overlay network: ${name}`);
       return sshExec(
         this.connection,
-        `docker network create --driver overlay --attachable ${name} 2>/dev/null || true`,
+        `docker network create --driver overlay --attachable ${shellQuote(name)} 2>/dev/null || true`,
       );
     }));
   }
@@ -48,7 +48,7 @@ export class SwarmStackOps {
       printDebug(`Creating volume: ${name}`);
       return sshExec(
         this.connection,
-        `docker volume create ${name} 2>/dev/null || true`,
+        `docker volume create ${shellQuote(name)} 2>/dev/null || true`,
       );
     }));
   }
