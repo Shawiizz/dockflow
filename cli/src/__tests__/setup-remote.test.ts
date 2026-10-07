@@ -28,7 +28,7 @@ mock.module('../utils/ssh', () => ({
   },
 }));
 
-const { cleanupTempDir, detectRemoteArch, makeTempDir, runRemoteSetup } = await import('../commands/setup/remote');
+const { cleanupTempDir, connectionFailureMessage, detectRemoteArch, makeTempDir, runRemoteSetup } = await import('../commands/setup/remote');
 
 const CONN: ConnectionInfo = { host: 'server.example.com', port: 22, user: 'deploy', privateKey: 'test-key' };
 const DIR = '/tmp/dockflow-setup.AbC123xy';
@@ -122,7 +122,7 @@ describe('runRemoteSetup in release mode', () => {
 
   it('removes the directory when the download fails', async () => {
     respond = (command) => (command.includes('curl') ? { exitCode: 22, stderr: 'curl: (22) 404' } : serverAnswers(command));
-    await runRemoteSetup(OPTS);
+    await expect(runRemoteSetup(OPTS)).rejects.toThrow('Could not download the Dockflow binary on server.example.com: curl: (22) 404');
     expect(interactive).toEqual([]);
     expect(executed.at(-1)).toBe(`rm -rf -- '${DIR}'`);
   });
@@ -145,5 +145,36 @@ describe('runRemoteSetup in release mode', () => {
     respond = serverAnswers;
     await runRemoteSetup({ ...OPTS, user: 'root' });
     expect(interactive[0].startsWith(`'${DIR}/dockflow' setup`)).toBe(true);
+  });
+});
+
+describe('runRemoteSetup before the binary is delivered fails instead of returning', () => {
+  const OPTS = { host: 'server.example.com', port: 22, user: 'deploy', privateKey: 'test-key' };
+
+  it('needs a way to authenticate', async () => {
+    await expect(runRemoteSetup({ host: 'h', port: 22, user: 'root' })).rejects.toThrow('No authentication method provided');
+    expect(executed).toEqual([]);
+  });
+
+  it('reports a refused or failing connection with the advice for it', async () => {
+    respond = () => {
+      throw new Error('connect ECONNREFUSED 203.0.113.7:22');
+    };
+    await expect(runRemoteSetup(OPTS)).rejects.toThrow('Connection refused on server.example.com:22. Is SSH running on that port?');
+    respond = (command) => (command === 'echo ok' ? { exitCode: 1 } : undefined);
+    await expect(runRemoteSetup(OPTS)).rejects.toThrow('Connected but command execution failed');
+    expect(executed.some((command) => command.startsWith('mktemp'))).toBe(false);
+  });
+});
+
+describe('connectionFailureMessage', () => {
+  const target = { host: 'h.example.com', port: 2222 };
+
+  it('explains each kind of failure', () => {
+    expect(connectionFailureMessage('getaddrinfo ENOTFOUND h.example.com', target)).toContain('not found');
+    expect(connectionFailureMessage('Timed out while waiting for handshake', target)).toContain('timed out');
+    expect(connectionFailureMessage('All configured authentication methods failed', { ...target, privateKey: 'k' })).toContain('SSH key');
+    expect(connectionFailureMessage('All configured authentication methods failed', target)).toContain('username and password');
+    expect(connectionFailureMessage('weird', target)).toBe('SSH error: weird');
   });
 });

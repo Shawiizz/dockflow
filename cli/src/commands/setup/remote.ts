@@ -30,6 +30,23 @@ import type { RemoteSetupOptions } from './types';
 
 type Exec = (conn: ConnectionInfo, command: string) => Promise<SSHExecResult>;
 
+/** What the operator should read for a failed SSH connection. */
+export function connectionFailureMessage(message: string, target: { host: string; port: number; privateKey?: string }): string {
+  if (message.includes('ECONNREFUSED')) return `Connection refused on ${target.host}:${target.port}. Is SSH running on that port?`;
+  if (message.includes('ENOTFOUND') || message.includes('getaddrinfo')) {
+    return `Host "${target.host}" not found. Check the hostname or IP address.`;
+  }
+  if (message.includes('ETIMEDOUT') || message.includes('Timed out')) {
+    return `Connection to ${target.host}:${target.port} timed out. Check firewall rules and network access.`;
+  }
+  if (message.includes('authentication') || message.includes('All configured authentication methods failed')) {
+    return target.privateKey
+      ? 'Authentication failed. Check that the SSH key is correct and authorized on the server.'
+      : 'Authentication failed. Check the username and password.';
+  }
+  return `SSH error: ${message}`;
+}
+
 /**
  * Detect remote server architecture; a machine Dockflow publishes no binary for is refused.
  */
@@ -281,7 +298,7 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
 
   if (!opts.privateKey && !opts.password) {
     testSpinner.fail('No authentication method provided');
-    return;
+    throw new CLIError('No authentication method provided', ErrorCode.INVALID_ARGUMENT, 'Pass an SSH key (-k), a password or a connection string.');
   }
 
   const base = { host: opts.host, port: opts.port, user: opts.user };
@@ -293,26 +310,12 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
     const result = await sshExec(conn, 'echo ok');
     if (result.exitCode !== 0 || !result.stdout.includes('ok')) {
       testSpinner.fail('SSH connection failed');
-      printError('Connected but command execution failed. Check that the user has shell access.');
-      return;
+      throw new ConnectionError('Connected but command execution failed', 'Check that the user has shell access.');
     }
   } catch (err: unknown) {
+    if (err instanceof ConnectionError) throw err;
     testSpinner.fail('SSH connection failed');
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes('ECONNREFUSED')) {
-      printError(`Connection refused on ${opts.host}:${opts.port}. Is SSH running on that port?`);
-    } else if (msg.includes('ENOTFOUND') || msg.includes('getaddrinfo')) {
-      printError(`Host "${opts.host}" not found. Check the hostname or IP address.`);
-    } else if (msg.includes('ETIMEDOUT') || msg.includes('Timed out')) {
-      printError(`Connection to ${opts.host}:${opts.port} timed out. Check firewall rules and network access.`);
-    } else if (msg.includes('authentication') || msg.includes('All configured authentication methods failed')) {
-      printError(opts.privateKey
-        ? 'Authentication failed. Check that the SSH key is correct and authorized on the server.'
-        : 'Authentication failed. Check the username and password.');
-    } else {
-      printError(`SSH error: ${msg}`);
-    }
-    return;
+    throw new ConnectionError(connectionFailureMessage(err instanceof Error ? err.message : String(err), opts));
   }
 
   testSpinner.succeed('SSH connection successful');
@@ -351,13 +354,13 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
         const installed = await sshExec(conn, installUploadCommand(dir, localHash));
         if (installed.exitCode !== 0) {
           uploadSpinner.fail('Uploaded binary rejected');
-          printError(installed.stderr.trim() || 'The uploaded binary could not be verified');
-          return;
+          throw new CLIError(installed.stderr.trim() || 'The uploaded binary could not be verified', ErrorCode.COMMAND_FAILED);
         }
         uploadSpinner.succeed('Binary uploaded and verified');
       } catch (err) {
-        buildSpinner.fail(`Build/upload failed: ${err}`);
-        return;
+        if (err instanceof CLIError) throw err;
+        buildSpinner.fail('Build/upload failed');
+        throw new CLIError(`Build or upload failed: ${err instanceof Error ? err.message : String(err)}`, ErrorCode.COMMAND_FAILED);
       }
     } else {
       // Release mode: download from GitHub
@@ -374,8 +377,11 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
 
       if (downloadResult.exitCode !== 0) {
         downloadSpinner.fail('Failed to download Dockflow CLI');
-        printError(downloadResult.stderr.trim() || 'Download failed');
-        return;
+        throw new CLIError(
+          `Could not download the Dockflow binary on ${opts.host}: ${downloadResult.stderr.trim() || `exit ${downloadResult.exitCode}`}`,
+          ErrorCode.COMMAND_FAILED,
+          'Check that the server can reach github.com, then run the same command again.',
+        );
       }
 
       downloadSpinner.succeed('Dockflow CLI downloaded and verified');
