@@ -111,6 +111,14 @@ export class SwarmProxyBackend implements ProxyBackend {
       );
     }
 
+    // the client address arrives in X-Forwarded-For from a CDN, which Traefik only keeps from trusted senders
+    const trusted = proxyConfig.trusted_ips ?? [];
+    if (trusted.length > 0) {
+      for (const entrypoint of acme ? ['web', 'websecure'] : ['web']) {
+        command.push(`--entrypoints.${entrypoint}.forwardedHeaders.trustedIPs=${trusted.join(',')}`);
+      }
+    }
+
     if (dashboard) {
       command.push('--api.dashboard=true');
     }

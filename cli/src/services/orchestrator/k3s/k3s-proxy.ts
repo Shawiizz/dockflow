@@ -11,7 +11,7 @@ import type { ProxyBackend } from '../interfaces';
  *
  * Configures the Traefik instance embedded in k3s. k3s ships Traefik as a
  * Helm chart in kube-system — this backend applies a HelmChartConfig for
- * Let's Encrypt when proxy.acme is enabled.
+ * Let's Encrypt when proxy.acme is enabled, and for proxy.trusted_ips.
  */
 export class K3sProxyBackend implements ProxyBackend {
   private readonly kube: string;
@@ -38,9 +38,9 @@ export class K3sProxyBackend implements ProxyBackend {
       printDebug(`Traefik running in kube-system (replicas: ${check.stdout.trim() || '0'})`);
     }
 
-    // Apply ACME config if enabled
-    if (proxyConfig.acme && proxyConfig.email) {
-      await this.applyAcmeConfig(proxyConfig.email);
+    const helmChartConfig = K3sProxyBackend.generateHelmChartConfig(proxyConfig);
+    if (helmChartConfig) {
+      await this.applyHelmChartConfig(helmChartConfig);
     }
   }
 
@@ -66,13 +66,12 @@ export class K3sProxyBackend implements ProxyBackend {
   }
 
   /**
-   * Apply a HelmChartConfig to configure Let's Encrypt on the k3s-embedded Traefik.
+   * Apply a HelmChartConfig to the k3s-embedded Traefik.
    * This is idempotent — kubectl apply will update if already present.
    */
-  private async applyAcmeConfig(email: string): Promise<void> {
-    printDebug('Applying Traefik ACME configuration via HelmChartConfig...');
+  private async applyHelmChartConfig(helmChartConfig: string): Promise<void> {
+    printDebug('Applying Traefik configuration via HelmChartConfig...');
 
-    const helmChartConfig = K3sProxyBackend.generateHelmChartConfig(email);
     const escaped = helmChartConfig.replace(/'/g, "'\\''");
 
     const result = await sshExec(this.connection,
@@ -90,16 +89,38 @@ export class K3sProxyBackend implements ProxyBackend {
     );
 
     if (restart.exitCode === 0) {
-      printSuccess('Traefik ACME configuration applied');
+      printSuccess('Traefik configuration applied');
     } else {
       printDebug(`Traefik restart stderr: ${restart.stderr}`);
     }
   }
 
   /**
-   * Generate the HelmChartConfig YAML that configures Let's Encrypt on k3s Traefik.
+   * Generate the HelmChartConfig YAML for k3s Traefik: Let's Encrypt when ACME has an email,
+   * the trusted senders of X-Forwarded-* headers. Null when there is nothing to configure.
    */
-  static generateHelmChartConfig(email: string): string {
+  static generateHelmChartConfig(proxyConfig: ProxyConfig): string | null {
+    const acme = proxyConfig.acme && proxyConfig.email ? proxyConfig.email : null;
+    const trusted = proxyConfig.trusted_ips ?? [];
+    if (!acme && trusted.length === 0) return null;
+
+    const values: string[] = [];
+    const args: string[] = [];
+    if (acme) {
+      values.push('persistence:', '  enabled: true', '  size: 128Mi');
+      args.push(
+        `--certificatesresolvers.letsencrypt.acme.email=${acme}`,
+        '--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json',
+        '--certificatesresolvers.letsencrypt.acme.tlschallenge=true',
+      );
+    }
+    if (trusted.length > 0) {
+      for (const entrypoint of ['web', 'websecure']) {
+        args.push(`--entrypoints.${entrypoint}.forwardedHeaders.trustedIPs=${trusted.join(',')}`);
+      }
+    }
+    values.push('additionalArguments:', ...args.map((arg) => `  - "${arg}"`));
+
     const config = {
       apiVersion: 'helm.cattle.io/v1',
       kind: 'HelmChartConfig',
@@ -108,15 +129,7 @@ export class K3sProxyBackend implements ProxyBackend {
         namespace: K3S_TRAEFIK_NAMESPACE,
       },
       spec: {
-        valuesContent: [
-          'persistence:',
-          '  enabled: true',
-          '  size: 128Mi',
-          'additionalArguments:',
-          `  - "--certificatesresolvers.letsencrypt.acme.email=${email}"`,
-          '  - "--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json"',
-          '  - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"',
-        ].join('\n'),
+        valuesContent: values.join('\n'),
       },
     };
 

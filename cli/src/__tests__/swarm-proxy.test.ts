@@ -19,6 +19,16 @@ describe('SwarmProxyBackend.configHash', () => {
 });
 
 describe('SwarmProxyBackend.generateCompose', () => {
+  it('trusts the X-Forwarded-* headers of the configured senders on every entrypoint', () => {
+    const trusted = { ...base, trusted_ips: ['173.245.48.0/20', '2400:cb00::/32'] } as ProxyConfig;
+    const compose = SwarmProxyBackend.generateCompose(trusted);
+    expect(compose).toContain('"--entrypoints.web.forwardedHeaders.trustedIPs=173.245.48.0/20,2400:cb00::/32"');
+    expect(compose).toContain('"--entrypoints.websecure.forwardedHeaders.trustedIPs=173.245.48.0/20,2400:cb00::/32"');
+    expect(SwarmProxyBackend.generateCompose({ ...trusted, acme: false })).not.toContain('websecure.forwardedHeaders');
+    expect(SwarmProxyBackend.generateCompose(base)).not.toContain('forwardedHeaders');
+    expect(SwarmProxyBackend.configHash(trusted)).not.toBe(SwarmProxyBackend.configHash(base));
+  });
+
   it('labels the service with the hash it was deployed from, dashboard or not', () => {
     const hash = SwarmProxyBackend.configHash(base);
     const dashboard = { ...base, dashboard: { enabled: true, domain: 'tr.example.com' } } as ProxyConfig;

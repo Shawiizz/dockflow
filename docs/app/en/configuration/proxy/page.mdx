@@ -53,6 +53,8 @@ proxy:
   dashboard:
     enabled: true                  # Optional: expose Traefik dashboard
     domain: traefik.example.com
+  trusted_ips:                     # Optional: a CDN or load balancer in front of Traefik
+    - 173.245.48.0/20
 ```
 
 | Field | Type | Description | Default |
@@ -63,6 +65,7 @@ proxy:
 | `domains` | map | Domain per environment | — |
 | `dashboard.enabled` | boolean | Expose the Traefik dashboard | `false` |
 | `dashboard.domain` | string | Domain for the dashboard. Required if `dashboard.enabled: true` | — |
+| `trusted_ips` | list | Addresses or CIDR ranges whose `X-Forwarded-*` headers Traefik keeps. See [Behind a CDN](#behind-a-cdn) | — |
 
 <Callout type="warning">
   **Dashboard security** — The Traefik dashboard is exposed publicly when enabled. Restrict access with your firewall or add [Traefik middleware](https://doc.traefik.io/traefik/middlewares/http/basicauth/) for basic auth.
@@ -89,6 +92,29 @@ When `acme: false`:
 <Callout type="warning">
   Do not use `acme: false` in production with public traffic. Your app will be served over plain HTTP.
 </Callout>
+
+## Behind a CDN
+
+When a CDN or a load balancer sits in front of Traefik, Traefik sees the CDN's address, and the
+client's arrives in `X-Forwarded-For`. Traefik drops forwarded headers from senders it does not
+trust, so list the CDN's ranges (your CDN publishes them) in `trusted_ips`:
+
+```yaml
+# .dockflow/config.yml
+proxy:
+  enabled: true
+  acme: false            # the CDN terminates TLS
+  domains:
+    production: my-app.example.com
+  trusted_ips:
+    - 173.245.48.0/20
+    - 103.21.244.0/22
+    - 2400:cb00::/32
+```
+
+Traefik then passes the client's address on in `X-Forwarded-For` to your services.
+`trusted_ips` only decides whose headers are believed: it does not stop other addresses from
+reaching Traefik (see the warning under [Requirements](#requirements)).
 
 ## Requirements
 

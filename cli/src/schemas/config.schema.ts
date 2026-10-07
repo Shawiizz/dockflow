@@ -248,6 +248,19 @@ export const ProxyDashboardSchema = z.object({
   { message: 'proxy.dashboard.domain is required when proxy.dashboard.enabled is true' }
 );
 
+const IPV4_ADDRESS = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
+const IPV6_ADDRESS = /^(?=.*:)[0-9a-fA-F:.]+$/;
+
+/** An IPv4 or IPv6 address, or a CIDR range of one (`173.245.48.0/20`, `2400:cb00::/32`) */
+export function isIpOrCidr(value: string): boolean {
+  const [address = '', prefix, extra] = value.split('/');
+  if (extra !== undefined) return false;
+  const v4 = IPV4_ADDRESS.test(address);
+  if (!v4 && !(IPV6_ADDRESS.test(address) && address.split('::').length <= 2)) return false;
+  if (prefix === undefined) return true;
+  return /^\d{1,3}$/.test(prefix) && Number(prefix) <= (v4 ? 32 : 128);
+}
+
 /**
  * Reverse proxy configuration schema (Traefik + Let's Encrypt)
  */
@@ -266,6 +279,11 @@ export const ProxyConfigSchema = z.object({
   ),
   dashboard: ProxyDashboardSchema.optional().describe(
     'Traefik dashboard configuration'
+  ),
+  trusted_ips: z.array(
+    z.string().refine(isIpOrCidr, { message: 'must be an IP address or a CIDR range, e.g. 173.245.48.0/20' })
+  ).optional().describe(
+    'Addresses of a CDN or load balancer in front of Traefik: Traefik keeps the X-Forwarded-* headers they send, so apps see the client address'
   ),
 }).refine(
   (data) => !data.enabled || data.acme === false || !!data.email,

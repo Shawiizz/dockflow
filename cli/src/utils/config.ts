@@ -150,6 +150,8 @@ export interface ProxyConfig {
   acme?: boolean;
   domains?: Record<string, string>;
   dashboard?: ProxyDashboardConfig;
+  /** CDN or load balancer addresses whose X-Forwarded-* headers Traefik keeps */
+  trusted_ips?: string[];
 }
 
 export interface WebhookConfig {
