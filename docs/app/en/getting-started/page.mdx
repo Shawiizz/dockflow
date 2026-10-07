@@ -10,7 +10,7 @@ Dockflow deploys to a single server or a multi-node cluster — same workflow. A
 <Tabs items={['npm (any OS)', 'npx (no install)', 'Linux / macOS', 'Windows']}>
   <Tabs.Tab>
     ```bash
-    npm install -g @dockflow-tools/cli
+    npm install -g @dockflow-tools/cli@__DOCKFLOW_VERSION__
     dockflow --version
     ```
   </Tabs.Tab>
@@ -18,29 +18,29 @@ Dockflow deploys to a single server or a multi-node cluster — same workflow. A
     Run any command directly without installing:
 
     ```bash
-    npx @dockflow-tools/cli <command>
+    npx @dockflow-tools/cli@__DOCKFLOW_VERSION__ <command>
     ```
 
     For example:
 
     ```bash
-    npx @dockflow-tools/cli deploy production
+    npx @dockflow-tools/cli@__DOCKFLOW_VERSION__ deploy production
     ```
 
     <Callout type="info">
-      Pin the version (`npx @dockflow-tools/cli@2.6.0 <command>`) wherever the command runs
-      unattended, CI included.
+      Every command here pins the latest release, `__DOCKFLOW_VERSION__`. Keep a version pinned wherever Dockflow
+      runs unattended, CI included, and move it when you choose to.
     </Callout>
   </Tabs.Tab>
   <Tabs.Tab>
     ```bash
-    curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/__DOCKFLOW_VERSION__/install.sh | DOCKFLOW_VERSION=__DOCKFLOW_VERSION__ bash
     dockflow --version
     ```
   </Tabs.Tab>
   <Tabs.Tab>
     ```powershell
-    irm https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.ps1 | iex
+    $env:DOCKFLOW_VERSION = "__DOCKFLOW_VERSION__"; irm https://raw.githubusercontent.com/Shawiizz/dockflow/__DOCKFLOW_VERSION__/install.ps1 | iex
     dockflow --version
     ```
   </Tabs.Tab>
@@ -150,7 +150,7 @@ This generates the following structure at the root of your project:
             runs-on: ubuntu-latest
             steps:
               - uses: actions/checkout@v4
-              - run: npx @dockflow-tools/cli@2.6.0 build
+              - run: npx @dockflow-tools/cli@__DOCKFLOW_VERSION__ build
                 env:
                   DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
         ```
@@ -168,7 +168,7 @@ This generates the following structure at the root of your project:
             runs-on: ubuntu-latest
             steps:
               - uses: actions/checkout@v4
-              - run: npx @dockflow-tools/cli@2.6.0 deploy
+              - run: npx @dockflow-tools/cli@__DOCKFLOW_VERSION__ deploy
                 env:
                   DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
         ```
@@ -194,7 +194,7 @@ This generates the following structure at the root of your project:
           before_script:
             - apt-get update -qq && apt-get install -y -qq docker.io
           script:
-            - npx @dockflow-tools/cli@2.6.0 build
+            - npx @dockflow-tools/cli@__DOCKFLOW_VERSION__ build
           rules:
             - if: $CI_COMMIT_TAG
               when: never
@@ -205,7 +205,7 @@ This generates the following structure at the root of your project:
           stage: deploy
           image: node:24
           script:
-            - npx @dockflow-tools/cli@2.6.0 deploy
+            - npx @dockflow-tools/cli@__DOCKFLOW_VERSION__ deploy
           rules:
             - if: $CI_COMMIT_TAG
         ```
@@ -231,7 +231,7 @@ This generates the following structure at the root of your project:
                   services:
                     - docker
                   script:
-                    - npx @dockflow-tools/cli@2.6.0 build
+                    - npx @dockflow-tools/cli@__DOCKFLOW_VERSION__ build
 
           # CD: Deploy on tag push (SSH-only, no Docker needed)
           tags:
@@ -239,7 +239,7 @@ This generates the following structure at the root of your project:
               - step:
                   name: Deploy
                   script:
-                    - npx @dockflow-tools/cli@2.6.0 deploy
+                    - npx @dockflow-tools/cli@__DOCKFLOW_VERSION__ deploy
         ```
 
         <Callout type="info">
@@ -249,7 +249,7 @@ This generates the following structure at the root of your project:
     </Tabs>
 
     <Callout type="warning">
-      **Pin the CLI version**, as `@2.6.0` does above. Without one, every pipeline run fetches the
+      **Pin the CLI version**, as `@__DOCKFLOW_VERSION__` does above. Without one, every pipeline run fetches the
       latest release: a release that changes behaviour breaks every deployment at once, and it runs
       with your servers' SSH keys. `dockflow init` writes the version it was run with into the
       workflows it generates. Move to a new version when you choose to.

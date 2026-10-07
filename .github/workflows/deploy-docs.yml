@@ -8,13 +8,39 @@ on:
       - 'docs/**'
       - 'cli/ui/**'
   workflow_dispatch:
+  # Every stable release (publish-cli.yml): the docs pin it in their install and CI examples,
+  # reading npm's latest when they build (docs/cli-version.mjs)
+  workflow_call:
+    inputs:
+      version:
+        description: The release the docs must show, once npm serves it as latest
+        type: string
+        required: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # one docs deploy at a time: a push to main and a release would otherwise meet on the deploy lock
+    concurrency:
+      group: deploy-docs
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          # main's docs, also when a release tag calls this workflow
+          ref: main
+
+      - name: Wait for npm to serve the release
+        if: ${{ inputs.version }}
+        run: |
+          for attempt in $(seq 1 30); do
+            [ "$(npm view @dockflow-tools/cli version)" = "${{ inputs.version }}" ] && exit 0
+            sleep 10
+          done
+          echo "::error::npm does not serve ${{ inputs.version }} as latest"
+          exit 1
+
       - name: Deploy docs
-        run: npx @dockflow-tools/cli deploy production ${{ github.ref_name }}-${{ github.sha }}
+        run: npx @dockflow-tools/cli@${{ inputs.version || 'latest' }} deploy production "main-$(git rev-parse HEAD)"
         env:
           DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}

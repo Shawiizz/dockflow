@@ -274,7 +274,7 @@ E2E tests run on Linux, WSL and Windows (Docker required). CI runs both suites a
 
 - **publish-cli.yml** — Triggered by version tags. Runs typecheck + lint + unit tests, then builds multi-platform binaries (linux-x64/arm64, macos-x64/arm64, windows-x64), creates GitHub Release, publishes to npm (`@dockflow-tools/cli`).
 - **cli-checks.yml** — Runs on push to main/develop and PRs. Typecheck (`tsc --noEmit`), Biome lint, and unit tests (`bun test src/`) in `cli/`.
-- **deploy-docs.yml** — Documentation site deployment. Installs CLI and runs `dockflow deploy` directly.
+- **deploy-docs.yml** — Documentation site deployment. Installs CLI and runs `dockflow deploy` directly. Runs on docs pushes to main and, called by publish-cli.yml, after every stable release.
 - **e2e-tests.yml** — Runs on push to main/develop and PRs. Matrix of three parallel jobs (swarm, k3s, setup), each running `bun test tests/` in `testing/e2e/<suite>/`.
 - **shell-lint.yml** — ShellCheck validation.
 
@@ -330,6 +330,7 @@ New pages in `docs/app/configuration/` or `docs/app/` should follow this order:
 - Tables for option references: `| Field | Type | Description | Default |`
 - Link to related pages at the end with "See also" or inline contextual links
 - No marketing language. Direct, technical, factual.
+- Commands that install or run the CLI pin it with `__DOCKFLOW_VERSION__`, never a written version: the docs build writes npm's latest there (`docs/cli-version.mjs`), and every release redeploys the docs.
 
 ### Navigation and index
 

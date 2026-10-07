@@ -205,3 +205,12 @@ jobs:
           else
             npm publish --access public
           fi
+
+  # The docs pin the latest stable release in their examples: deploy them once npm serves it
+  docs:
+    needs: [build, publish-npm]
+    if: ${{ !contains(needs.build.outputs.version, '-') }}
+    uses: ./.github/workflows/deploy-docs.yml
+    with:
+      version: ${{ needs.build.outputs.version }}
+    secrets: inherit

@@ -9,7 +9,7 @@ Dockflow provides a comprehensive CLI for managing deployments and interacting w
 <Tabs items={['npm (any OS)', 'npx (no install)', 'Linux / macOS', 'Windows']}>
   <Tabs.Tab>
     ```bash
-    npm install -g @dockflow-tools/cli
+    npm install -g @dockflow-tools/cli@__DOCKFLOW_VERSION__
     dockflow --version
     ```
   </Tabs.Tab>
@@ -17,23 +17,23 @@ Dockflow provides a comprehensive CLI for managing deployments and interacting w
     Run any command directly without installing:
 
     ```bash
-    npx @dockflow-tools/cli <command>
+    npx @dockflow-tools/cli@__DOCKFLOW_VERSION__ <command>
     ```
 
     <Callout type="info">
-      Pin the version (`npx @dockflow-tools/cli@2.6.0 <command>`) wherever the command runs
-      unattended, CI included.
+      Every command here pins the latest release, `__DOCKFLOW_VERSION__`. Keep a version pinned wherever Dockflow
+      runs unattended, CI included, and move it when you choose to.
     </Callout>
   </Tabs.Tab>
   <Tabs.Tab>
     ```bash
-    curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/__DOCKFLOW_VERSION__/install.sh | DOCKFLOW_VERSION=__DOCKFLOW_VERSION__ bash
     dockflow --version
     ```
   </Tabs.Tab>
   <Tabs.Tab>
     ```powershell
-    irm https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.ps1 | iex
+    $env:DOCKFLOW_VERSION = "__DOCKFLOW_VERSION__"; irm https://raw.githubusercontent.com/Shawiizz/dockflow/__DOCKFLOW_VERSION__/install.ps1 | iex
     dockflow --version
     ```
   </Tabs.Tab>

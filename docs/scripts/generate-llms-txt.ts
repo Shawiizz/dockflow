@@ -16,6 +16,7 @@ import remarkStringify from 'remark-stringify';
 import remarkFrontmatter from 'remark-frontmatter';
 import remarkGfm from 'remark-gfm';
 import remarkMdx from 'remark-mdx';
+import { dockflowVersion, withVersion } from '../cli-version.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -358,8 +359,10 @@ function generateFull(structure: PageEntry[]): string {
 async function main(): Promise<void> {
   const structure = await buildStructure();
   assertComplete(structure);
-  const index = generateIndex(structure);
-  const full = generateFull(structure);
+  // the release the examples pin, as on the site
+  const version = await dockflowVersion();
+  const index = withVersion(generateIndex(structure), version);
+  const full = withVersion(generateFull(structure), version);
 
   mkdirSync(PUBLIC_DIR, { recursive: true });
   writeFileSync(join(PUBLIC_DIR, 'llms.txt'), index, 'utf-8');
