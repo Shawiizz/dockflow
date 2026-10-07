@@ -781,12 +781,14 @@ export async function runPostRollbackHealthChecks(
   orchestrator: StackBackend,
   stackName: string,
   healthConfig: HealthCheckConfig | undefined,
+  rollbackStartedAt: Date,
 ): Promise<void> {
   if (healthConfig?.enabled === false) return;
 
   const health = new HealthCheck(connection, orchestrator);
 
-  const result = await health.checkInternalHealth(stackName, healthConfig).catch(() => null);
+  // a Swarm rollback completed before ours (the failed update's own) says nothing about this version
+  const result = await health.checkInternalHealth(stackName, healthConfig, undefined, rollbackStartedAt).catch(() => null);
   if (result && !result.healthy) {
     printWarning(`Rolled-back version is unhealthy: ${result.message ?? result.failedService ?? 'check logs'}`);
   }

@@ -54,9 +54,10 @@ export function registerRollbackCommand(program: Command): void {
         // Full stack rollback — redeploy previous release compose and update symlink
         spinner.start('Rolling back to previous release...');
         const releases = new Release(connection);
+        const rollbackStartedAt = new Date();
         const rolledBackTo = await releases.rollback(stackName, orchestrator);
         spinner.succeed(`Rolled back to ${rolledBackTo}`);
-        await runPostRollbackHealthChecks(connection, orchestrator, stackName, config.health_checks);
+        await runPostRollbackHealthChecks(connection, orchestrator, stackName, config.health_checks, rollbackStartedAt);
 
         const durationMs = Date.now() - startTime;
         const message = `Rolled back ${stackName} to ${rolledBackTo}`;
