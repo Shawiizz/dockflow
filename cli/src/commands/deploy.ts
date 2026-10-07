@@ -241,6 +241,21 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
     }
   }
 
+  // Validate --only service names before anything else, dry runs included (no_services has no Docker services)
+  if (options.only && !config.no_services) {
+    const compose = Compose.loadFromString(composeContent, 'docker-compose.yml');
+    const available = Object.keys(compose.services);
+    const filterSet = options.only.split(',').map((s) => s.trim()).filter(Boolean);
+    const unknown = filterSet.filter(s => !available.includes(s));
+    if (unknown.length > 0) {
+      throw new DeployError(
+        `Unknown service(s): ${unknown.join(', ')}. Available: ${available.join(', ')}`,
+        ErrorCode.VALIDATION_FAILED,
+        'Use the exact service names defined in your docker-compose file.',
+      );
+    }
+  }
+
   // Dry-run exit — after rendering and plugin expansion, so the summary lists the
   // uploads and hook entries a deploy would actually run.
   if (options.dryRun) {
@@ -251,21 +266,6 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
       config, pluginSummary: pluginsLoaded.pluginSummary,
     });
     return null;
-  }
-
-  // Validate --only service names before acquiring the lock (skip for no_services — no Docker services)
-  if (options.only && !config.no_services) {
-    const compose = Compose.loadFromString(composeContent, 'docker-compose.yml');
-    const available = Object.keys(compose.services);
-    const filterSet = options.only.split(',').map((s) => s.trim());
-    const unknown = filterSet.filter(s => !available.includes(s));
-    if (unknown.length > 0) {
-      throw new DeployError(
-        `Unknown service(s): ${unknown.join(', ')}. Available: ${available.join(', ')}`,
-        ErrorCode.VALIDATION_FAILED,
-        'Use the exact service names defined in your docker-compose file.',
-      );
-    }
   }
 
   // Build context
