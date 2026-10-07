@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from 'bun:test';
+import { buildArgs, deployArgs } from '../api/routes/operations';
 import { serviceListCommand } from '../api/routes/services';
 import { ApiProject } from './helpers/api-project';
 
@@ -42,5 +43,26 @@ describe('serviceListCommand', () => {
 
   it('quotes the stack name', () => {
     expect(serviceListCommand('a b; c')).toContain("'label=com.docker.stack.namespace=a b; c'");
+  });
+});
+
+describe('operation arguments', () => {
+  it('passes the service list of a deploy as --only, the only option the CLI defines', () => {
+    expect(deployArgs({ environment: 'production', services: 'web,api', skipBuild: true })).toEqual([
+      'deploy',
+      'production',
+      '--skip-build',
+      '--only',
+      'web,api',
+    ]);
+  });
+
+  it('passes the service list of a build as --only', () => {
+    expect(buildArgs({ environment: 'staging', services: 'web', push: true })).toEqual(['build', 'staging', '--only', 'web', '--push']);
+  });
+
+  it('adds no option that was not asked for', () => {
+    expect(deployArgs({ environment: 'production' })).toEqual(['deploy', 'production']);
+    expect(buildArgs({ environment: 'production' })).toEqual(['build', 'production']);
   });
 });

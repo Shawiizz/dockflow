@@ -65,6 +65,30 @@ function getCliCommand(): string[] {
   return [argv0];
 }
 
+/** Arguments of `dockflow deploy` for a request; `services` is the `--only` list. */
+export function deployArgs(body: DeployOperationRequest): string[] {
+  const args = ['deploy', body.environment];
+
+  if (body.version) args.push(body.version);
+  if (body.skipBuild) args.push('--skip-build');
+  if (body.force) args.push('--force');
+  if (body.accessories) args.push('--accessories');
+  if (body.all) args.push('--all');
+  if (body.skipAccessories) args.push('--skip-accessories');
+  if (body.services) args.push('--only', body.services);
+  if (body.dryRun) args.push('--dry-run');
+  return args;
+}
+
+/** Arguments of `dockflow build` for a request; `services` is the `--only` list. */
+export function buildArgs(body: BuildOperationRequest): string[] {
+  const args = ['build', body.environment];
+
+  if (body.services) args.push('--only', body.services);
+  if (body.push) args.push('--push');
+  return args;
+}
+
 // ─── Route handler ───────────────────────────────────────────────────────────
 
 /**
@@ -296,20 +320,7 @@ async function startDeployOperation(req: Request): Promise<Response> {
     );
   }
 
-  // Build the CLI command arguments
-  const cliCmd = getCliCommand();
-  const args = [...cliCmd, 'deploy', body.environment];
-
-  if (body.version) args.push(body.version);
-  if (body.skipBuild) args.push('--skip-build');
-  if (body.force) args.push('--force');
-  if (body.accessories) args.push('--accessories');
-  if (body.all) args.push('--all');
-  if (body.skipAccessories) args.push('--skip-accessories');
-  if (body.services) args.push('--services', body.services);
-  if (body.dryRun) args.push('--dry-run');
-
-  const op = launchOperation('deploy', body.environment, args);
+  const op = launchOperation('deploy', body.environment, [...getCliCommand(), ...deployArgs(body)]);
 
   return subscribeToOperation(op);
 }
@@ -338,14 +349,7 @@ async function startBuildOperation(req: Request): Promise<Response> {
     );
   }
 
-  // Build the CLI command arguments
-  const cliCmd = getCliCommand();
-  const args = [...cliCmd, 'build', body.environment];
-
-  if (body.services) args.push('--services', body.services);
-  if (body.push) args.push('--push');
-
-  const op = launchOperation('build', body.environment, args);
+  const op = launchOperation('build', body.environment, [...getCliCommand(), ...buildArgs(body)]);
 
   return subscribeToOperation(op);
 }

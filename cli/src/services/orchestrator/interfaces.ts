@@ -61,7 +61,7 @@ export interface StackDeployInput {
   proxy?: ProxyConfig;
   /**
    * When set, only these service names are deployed. Other services in the compose
-   * are left untouched (no prune). Used by --services flag.
+   * are left untouched (no prune). Used by the --only flag.
    */
   servicesFilter?: string[];
 }

@@ -403,7 +403,7 @@ export const UploadItemSchema = z.object({
     .refine(v => v.startsWith('/') || v.includes('{{'), { message: 'dest must be an absolute path (starting with /)' })
     .describe('Absolute destination path on the remote server (Nunjucks templates allowed)'),
   service: z.union([z.string(), z.array(z.string())]).optional()
-    .describe('Service(s) this upload belongs to. When --services is used, only uploads matching a targeted service are transferred.'),
+    .describe('Service(s) this upload belongs to. When --only is used, only uploads matching a targeted service are transferred.'),
   permissions: z.string().optional()
     .describe('File permissions to apply after upload, in octal notation (e.g. "640", "755").'),
   owner: z.string().optional()
