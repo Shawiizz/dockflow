@@ -435,16 +435,6 @@ export function serialize(compose: ParsedCompose): string {
 // Image tags
 // ---------------------------------------------------------------------------
 
-/**
- * Update image tags in all services.
- *
- * If `image_auto_tag` is true (default):
- *   - Strips existing tag: "my-api:old" → "my-api"
- *   - Appends env + version: "my-api" → "my-api-{env}:{version}"
- *
- * If the registry is used (`usesRegistry`):
- *   - Prepends registry prefix (only if image doesn't already contain a registry domain)
- */
 /** `registry.token` is the documented spelling for GHCR and GitLab; either one authenticates. */
 export function registryPassword(config: DockflowConfig): string | undefined {
   return config.registry?.password || config.registry?.token || undefined;
@@ -456,6 +446,16 @@ export function usesRegistry(config: DockflowConfig): boolean {
   return registry?.enabled === true && !!registry.url && !!registryPassword(config);
 }
 
+/**
+ * Update image tags in all services.
+ *
+ * If `image_auto_tag` is true (default):
+ *   - Strips existing tag: "my-api:old" → "my-api"
+ *   - Appends env + version: "my-api" → "my-api-{env}:{version}"
+ *
+ * If the registry is used (`usesRegistry`):
+ *   - Prepends registry prefix (only if image doesn't already contain a registry domain)
+ */
 export function updateImageTags(
   compose: ParsedCompose,
   config: DockflowConfig,
