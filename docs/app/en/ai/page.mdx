@@ -75,6 +75,11 @@ The `@dockflow-tools/mcp` package provides a [Model Context Protocol](https://mo
 | `list_pages` | List all available documentation pages with descriptions |
 | `search_docs` | Search documentation for a specific topic or keyword |
 | `get_page` | Get the full content of a specific documentation page |
+| `get_examples` | Ready-to-use configurations for common setups: `simple`, `standard`, `app-with-database`, `with-proxy`, `with-registry`, `multi-server`, `with-hooks`, `with-ci` |
+| `validate_config` | Validate the content of a `dockflow.yml`, `config.yml` or `servers.yml`, with the path of each error |
+| `read_project_config` | Read the Dockflow configuration files of the current project |
+
+`validate_config` and `read_project_config` need no network access.
 
 ### Example Usage
 

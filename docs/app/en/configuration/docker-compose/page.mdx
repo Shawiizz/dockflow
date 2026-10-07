@@ -33,7 +33,7 @@ Environment variables can come from multiple sources:
 
 - **`servers.yml`** — defined per-environment or per-server (see [Servers & Connections](/en/configuration/servers))
 - **CI secrets** — override `servers.yml` values
-- **Nunjucks templating** — all files in `.dockflow/` are automatically rendered with Nunjucks. This is the only substitution Dockflow performs: shell-style `${VAR}` placeholders are **not** expanded, since the compose file is deployed with `docker stack deploy -c` without an env file.
+- **Nunjucks templating** — all files in `.dockflow/` are automatically rendered with Nunjucks. This is the only substitution Dockflow performs. Shell-style `$VAR` and `${VAR}` placeholders are left to Docker, which replaces them with an empty string as no env file is given: `dockflow validate` reports each one as an error with its line, and `deploy` warns. Write `$$` for a literal `$`.
 
 ```yaml
 services:
