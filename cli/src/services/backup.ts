@@ -24,6 +24,7 @@ import {
   buildArchiveCheckCommand,
   parseContainerEnv,
   parseContainerMounts,
+  buildCapturePipeline,
   buildDataFilePath,
   buildBackupDir,
   selectBackupsToPrune,
@@ -47,9 +48,19 @@ export interface BackupBaseEntry {
   nodePort: number;
 }
 
+/** One archive of a `type: volume` backup */
+export interface BackupVolumeRecord {
+  name: string;
+  sizeBytes: number;
+  mountType: 'volume' | 'bind';
+  /** Docker volume name or host path */
+  sourcePath: string;
+}
+
 export interface BackupMetadata extends BackupBaseEntry {
   durationMs: number;
   stackName: string;
+  volumes?: BackupVolumeRecord[];
 }
 
 export interface BackupListEntry extends BackupBaseEntry {
@@ -58,11 +69,46 @@ export interface BackupListEntry extends BackupBaseEntry {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
+/** Ids and service names end up in the paths of remote `rm` commands. */
+const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+const COMPRESSIONS: ReadonlySet<string> = new Set(['gzip', 'none']);
+
 function generateBackupId(): string {
   const now = new Date();
   const pad = (n: number) => n.toString().padStart(2, '0');
-  const suffix = Math.random().toString(16).slice(2, 6);
+  const suffix = Math.random().toString(16).slice(2, 6).padEnd(4, '0');
   return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}-${suffix}`;
+}
+
+function isBackupType(value: unknown): value is BackupDbType {
+  return typeof value === 'string' && ['postgres', 'mysql', 'mongodb', 'redis', 'raw', 'volume'].includes(value);
+}
+
+/** Metadata read back from a node, or null when it cannot describe a backup safely. */
+function parseMetadata(text: string): BackupMetadata | null {
+  let meta: Partial<BackupMetadata> | null;
+  try {
+    meta = JSON.parse(text) as Partial<BackupMetadata> | null;
+  } catch (e) {
+    printDebug(`Skipping malformed backup metadata: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  }
+  if (
+    typeof meta !== 'object' || meta === null ||
+    typeof meta.id !== 'string' || !SAFE_NAME.test(meta.id) ||
+    typeof meta.service !== 'string' || !SAFE_NAME.test(meta.service) ||
+    !isBackupType(meta.dbType) ||
+    typeof meta.compression !== 'string' || !COMPRESSIONS.has(meta.compression)
+  ) {
+    printDebug('Skipping backup metadata without a usable id, service, type or compression');
+    return null;
+  }
+  if (!meta.nodeHost || !meta.nodePort) {
+    printDebug(`Skipping backup ${meta.id}: metadata has no node information`);
+    return null;
+  }
+  return meta as BackupMetadata;
 }
 
 // ─── Backup ───────────────────────────────────────────────────────────────
@@ -176,15 +222,7 @@ export class Backup {
     const backupId = generateBackupId();
     const backupDir = this.getBackupDir(service);
 
-    // Get credentials and create backup directory in parallel (independent SSH calls)
-    const [creds, mkdirResult] = await Promise.all([
-      this.getContainerCredentials(containerId, dbType, nodeConn),
-      sshExec(nodeConn, `mkdir -p ${shellQuote(backupDir)}`),
-    ]);
-
-    if (mkdirResult.exitCode !== 0) {
-      return err(new Error(`Failed to create backup directory: ${mkdirResult.stderr}`));
-    }
+    const creds = await this.getContainerCredentials(containerId, dbType, nodeConn);
 
     // Build dump command
     let dumpCommand: string;
@@ -206,11 +244,7 @@ export class Backup {
     const envPart = execEnvFlags ? `${execEnvFlags} ` : '';
 
     const dockerExec = `docker exec ${envPart}${shellQuote(containerId)} sh -c ${shellQuote(dumpCommand)}`;
-    const fullCommand = compression === 'gzip'
-      ? `${dockerExec} | gzip > ${shellQuote(filePath)}`
-      : `${dockerExec} > ${shellQuote(filePath)}`;
-
-    const result = await sshExec(nodeConn, fullCommand);
+    const result = await sshExec(nodeConn, buildCapturePipeline(dockerExec, filePath, compression === 'gzip'));
     if (result.exitCode !== 0) {
       await sshExec(nodeConn, `rm -f ${shellQuote(filePath)}`);
       return err(new Error(`Backup failed: ${result.stderr}`));
@@ -227,7 +261,6 @@ export class Backup {
     const durationMs = Date.now() - startTime;
 
     // Get file size
-    const metaPath = `${backupDir}/${backupId}.meta.json`;
     const sizeCmd = `SIZE=$(stat -c %s ${shellQuote(filePath)} 2>/dev/null || echo 0) && echo $SIZE`;
     const sizeResult = await sshExec(nodeConn, sizeCmd);
     const sizeBytes = parseInt(sizeResult.stdout.trim(), 10) || 0;
@@ -246,11 +279,25 @@ export class Backup {
       nodePort: nodeConn.port,
     };
 
-    const { stream, done } = await sshExecChannel(nodeConn, `cat > ${shellQuote(metaPath)}`);
-    stream.end(JSON.stringify(metadata, null, 2));
-    await done;
+    const writeError = await this.writeMetadata(nodeConn, backupDir, metadata);
+    if (writeError) {
+      await sshExec(nodeConn, `rm -f ${shellQuote(filePath)}`);
+      return err(writeError);
+    }
 
     return ok(metadata);
+  }
+
+  /** Writes `<id>.meta.json` (mode 0600) beside the data; null on success */
+  private async writeMetadata(nodeConn: SSHKeyConnection, backupDir: string, metadata: BackupMetadata): Promise<Error | null> {
+    const metaPath = `${backupDir}/${metadata.id}.meta.json`;
+    const { stream, done } = await sshExecChannel(nodeConn, `umask 077 && cat > ${shellQuote(metaPath)}`);
+    stream.end(JSON.stringify(metadata, null, 2));
+    const result = await done;
+    if (result.exitCode !== 0) {
+      return new Error(`Cannot write the metadata of backup ${metadata.id}: ${result.stderr.trim() || `exit code ${result.exitCode}`}`);
+    }
+    return null;
   }
 
   // ─── Volume Backup ───────────────────────────────────────────────────────
@@ -291,11 +338,6 @@ export class Backup {
     const backupId = generateBackupId();
     const backupDir = this.getBackupDir(service);
 
-    const mkdirResult = await sshExec(nodeConn, `mkdir -p ${shellQuote(backupDir)}`);
-    if (mkdirResult.exitCode !== 0) {
-      return err(new Error(`Failed to create backup directory: ${mkdirResult.stderr}`));
-    }
-
     const startTime = Date.now();
 
     // Build all file paths upfront for reliable cleanup
@@ -311,11 +353,7 @@ export class Backup {
         ? `docker run --rm -v ${shellQuote(mount.source)}:/backup-source:ro alpine tar cf - -C /backup-source .`
         : `tar cf - -C ${shellQuote(mount.source)} .`;
 
-      const fullCommand = compression === 'gzip'
-        ? `${tarCmd} | gzip > ${shellQuote(filePath)}`
-        : `${tarCmd} > ${shellQuote(filePath)}`;
-
-      const result = await sshExec(nodeConn, fullCommand);
+      const result = await sshExec(nodeConn, buildCapturePipeline(tarCmd, filePath, compression === 'gzip'));
       if (result.exitCode !== 0) {
         return { ok: false as const, mount, error: result.stderr };
       }
@@ -366,12 +404,11 @@ export class Backup {
       nodePort: nodeConn.port,
     };
 
-    // Extended metadata includes per-volume/bind details
-    const extendedMeta = { ...metadata, volumes: volumeEntries };
-    const metaPath = `${backupDir}/${backupId}.meta.json`;
-    const { stream, done } = await sshExecChannel(nodeConn, `cat > ${shellQuote(metaPath)}`);
-    stream.end(JSON.stringify(extendedMeta, null, 2));
-    await done;
+    const writeError = await this.writeMetadata(nodeConn, backupDir, { ...metadata, volumes: volumeEntries });
+    if (writeError) {
+      await sshExec(nodeConn, `rm -f ${filePaths.map(f => shellQuote(f)).join(' ')}`);
+      return err(writeError);
+    }
 
     return ok(metadata);
   }
@@ -392,10 +429,8 @@ export class Backup {
       return err(new Error(`Backup ${backupId} not found`));
     }
 
-    let meta: BackupMetadata & { volumes?: { name: string; sizeBytes: number; mountType: 'volume' | 'bind'; sourcePath: string }[] };
-    try {
-      meta = JSON.parse(metaResult.stdout.trim());
-    } catch {
+    const meta = parseMetadata(metaResult.stdout.trim());
+    if (!meta) {
       return err(new Error(`Invalid backup metadata for ${backupId}`));
     }
 
@@ -499,39 +534,31 @@ export class Backup {
       const chunks = stdout.split(SEP).filter(c => c.trim());
 
       for (const chunk of chunks) {
-        try {
-          const meta = JSON.parse(chunk.trim()) as BackupMetadata & { volumes?: { name: string }[] };
+        const meta = parseMetadata(chunk.trim());
+        if (!meta) continue;
 
-          // Deduplicate: same backup ID may appear on multiple nodes if replicated
-          if (seenIds.has(meta.id)) continue;
-          seenIds.add(meta.id);
+        // Deduplicate: same backup ID may appear on multiple nodes if replicated
+        if (seenIds.has(meta.id)) continue;
+        seenIds.add(meta.id);
 
-          if (!meta.nodeHost || !meta.nodePort) {
-            printDebug(`Skipping backup ${meta.id}: metadata has no node information`);
-            continue;
-          }
+        const dir = this.getBackupDir(meta.service);
+        const volumeName = meta.dbType === 'volume' && meta.volumes?.length
+          ? meta.volumes[0].name
+          : undefined;
+        const dataFile = this.getDataFilePath(dir, meta.id, meta.dbType, meta.compression, volumeName);
 
-          const dir = this.getBackupDir(meta.service);
-          const volumeName = meta.dbType === 'volume' && meta.volumes?.length
-            ? meta.volumes[0].name
-            : undefined;
-          const dataFile = this.getDataFilePath(dir, meta.id, meta.dbType, meta.compression, volumeName);
-
-          entries.push({
-            id: meta.id,
-            service: meta.service,
-            dbType: meta.dbType,
-            timestamp: meta.timestamp,
-            size: meta.size,
-            sizeBytes: meta.sizeBytes,
-            compression: meta.compression,
-            filePath: dataFile,
-            nodeHost: meta.nodeHost,
-            nodePort: meta.nodePort,
-          });
-        } catch (parseErr) {
-          printDebug(`Skipping malformed backup metadata: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`);
-        }
+        entries.push({
+          id: meta.id,
+          service: meta.service,
+          dbType: meta.dbType,
+          timestamp: meta.timestamp,
+          size: meta.size,
+          sizeBytes: meta.sizeBytes,
+          compression: meta.compression,
+          filePath: dataFile,
+          nodeHost: meta.nodeHost,
+          nodePort: meta.nodePort,
+        });
       }
     }
 

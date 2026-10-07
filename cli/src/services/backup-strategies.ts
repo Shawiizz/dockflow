@@ -6,6 +6,7 @@
  * is unit-testable (see __tests__/backup-strategies.test.ts).
  */
 
+import { posix } from 'path';
 import type { BackupDbType } from '../utils/config';
 import { shellQuote } from '../utils/ssh';
 import { DOCKFLOW_BACKUPS_DIR } from '../constants';
@@ -171,6 +172,22 @@ export function buildExecEnvFlags(env: Record<string, string>): string {
       return `-e ${k}=${shellQuote(v)}`;
     })
     .join(' ');
+}
+
+/**
+ * Runs `producer` on a node and writes its stdout to `remotePath` (mode 0600, directory created),
+ * exiting with the PRODUCER's status, or gzip's when the producer succeeded: without pipefail a gzip
+ * pipeline reports gzip's alone, and a dump that dies midway becomes a CRC-valid truncated archive.
+ */
+export function buildCapturePipeline(producer: string, remotePath: string, gzip: boolean): string {
+  const dir = shellQuote(posix.dirname(remotePath));
+  const file = shellQuote(remotePath);
+  if (!gzip) return `umask 077 && mkdir -p ${dir} && ${producer} > ${file}`;
+  const rc = shellQuote(`${remotePath}.rc`);
+  return (
+    `umask 077 && mkdir -p ${dir} && { ${producer}; echo "$?" > ${rc}; } | gzip -c > ${file}; z=$?; ` +
+    `rc=$(cat ${rc} 2>/dev/null); rm -f ${rc}; [ "\${rc:-255}" -eq 0 ] || exit "\${rc:-255}"; exit "$z"`
+  );
 }
 
 /** Convert a mount destination path to a safe filename component */

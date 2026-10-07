@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'bun:test';
+import { afterAll, describe, expect, it } from 'bun:test';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { hasPosixShell } from './helpers/local-shell';
 import {
   DB_STRATEGIES,
+  buildCapturePipeline,
   buildExecEnvFlags,
   buildArchiveCheckCommand,
   sanitizePathName,
@@ -319,5 +324,96 @@ describe('findBackupMatch', () => {
   it('no match or empty list → null', () => {
     expect(findBackupMatch(entries, 'zzz')).toBeNull();
     expect(findBackupMatch([], 'a')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Execution against a real POSIX sh (skipped where there is none: run in WSL)
+// ---------------------------------------------------------------------------
+
+const work = mkdtempSync(join(tmpdir(), 'dockflow-backup-strategies-'));
+afterAll(() => rmSync(work, { recursive: true, force: true }));
+
+function runSh(script: string, stdin?: string): { exitCode: number; stdout: string; stderr: string } {
+  const proc = Bun.spawnSync(['sh', '-c', script], {
+    cwd: work,
+    env: { PATH: process.env.PATH ?? '/usr/bin:/bin' },
+    stdin: stdin === undefined ? 'ignore' : new TextEncoder().encode(stdin),
+  });
+  return { exitCode: proc.exitCode ?? -1, stdout: proc.stdout.toString(), stderr: proc.stderr.toString() };
+}
+
+function freshDir(name: string): string {
+  const dir = join(work, name);
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+describe('buildCapturePipeline', () => {
+  it('gzip: the producer status is returned and the output still written', () => {
+    expect(buildCapturePipeline("docker exec 'c1' sh -c 'x'", '/b/s/db/1.sql.gz', true)).toBe(
+      "umask 077 && mkdir -p '/b/s/db' && { docker exec 'c1' sh -c 'x'; echo \"$?\" > '/b/s/db/1.sql.gz.rc'; } | gzip -c > '/b/s/db/1.sql.gz'; z=$?; " +
+        "rc=$(cat '/b/s/db/1.sql.gz.rc' 2>/dev/null); rm -f '/b/s/db/1.sql.gz.rc'; [ \"${rc:-255}\" -eq 0 ] || exit \"${rc:-255}\"; exit \"$z\"",
+    );
+  });
+
+  it('none: a plain redirection', () => {
+    expect(buildCapturePipeline("docker exec 'c1' sh -c 'x'", '/b/s/db/1.sql', false)).toBe(
+      "umask 077 && mkdir -p '/b/s/db' && docker exec 'c1' sh -c 'x' > '/b/s/db/1.sql'",
+    );
+  });
+
+  it('paths are shell-quoted', () => {
+    expect(buildCapturePipeline('true', "/b/it's/1.gz", true)).toContain("mkdir -p '/b/it'\\''s'");
+  });
+
+  describe.if(hasPosixShell)('executed', () => {
+    it('a producer that fails midway fails the pipeline, and the partial output is on disk for the caller to remove', () => {
+      const file = join(freshDir('capture-fail'), 'out', '1.sql.gz');
+      const result = runSh(buildCapturePipeline("sh -c 'printf partial; exit 3'", file, true));
+      expect(result.exitCode).toBe(3);
+      expect(runSh(`gunzip -c '${file}'`).stdout).toBe('partial');
+      expect(readdirSync(join(file, '..'))).toEqual(['1.sql.gz']);
+    });
+
+    it('a producer that succeeds gives 0, and the rc file is gone', () => {
+      const file = join(freshDir('capture-ok'), 'out', '1.sql.gz');
+      expect(runSh(buildCapturePipeline("sh -c 'printf payload'", file, true)).exitCode).toBe(0);
+      expect(runSh(`gunzip -c '${file}'`).stdout).toBe('payload');
+      expect(readdirSync(join(file, '..'))).toEqual(['1.sql.gz']);
+    });
+
+    it('a failing gzip fails the pipeline too', () => {
+      const dir = freshDir('capture-gzip');
+      const bin = join(dir, 'bin');
+      mkdirSync(bin);
+      writeFileSync(join(bin, 'gzip'), ['#!/bin/sh', 'cat > /dev/null', 'exit 7', ''].join('\n'));
+      chmodSync(join(bin, 'gzip'), 0o755);
+      const result = runSh(`PATH='${bin}':$PATH; ${buildCapturePipeline("sh -c 'printf x'", join(dir, 'out', '1.gz'), true)}`);
+      expect(result.exitCode).toBe(7);
+    });
+
+    it('a producer that dies of a signal is not mistaken for success', () => {
+      const file = join(freshDir('capture-kill'), 'out', '1.gz');
+      expect(runSh(buildCapturePipeline("sh -c 'printf x; kill -9 $$'", file, true)).exitCode).toBe(137);
+    });
+
+    it('files are 0600 and new directories 0700; none has no rc file', () => {
+      const dir = freshDir('capture-mode');
+      const gz = join(dir, 'new', 'sub', '1.gz');
+      const plain = join(dir, 'new', 'sub', '2.sql');
+      expect(runSh(buildCapturePipeline("sh -c 'printf x'", gz, true)).exitCode).toBe(0);
+      expect(runSh(buildCapturePipeline("sh -c 'printf plain; exit 0'", plain, false)).exitCode).toBe(0);
+      expect(statSync(gz).mode & 0o777).toBe(0o600);
+      expect(statSync(plain).mode & 0o777).toBe(0o600);
+      expect(statSync(join(dir, 'new', 'sub')).mode & 0o777).toBe(0o700);
+      expect(readFileSync(plain, 'utf8')).toBe('plain');
+      expect(readdirSync(join(dir, 'new', 'sub')).sort()).toEqual(['1.gz', '2.sql']);
+    });
+
+    it('a producer failing with none still fails', () => {
+      expect(runSh(buildCapturePipeline("sh -c 'exit 5'", join(freshDir('capture-none'), '1.sql'), false)).exitCode).toBe(5);
+    });
   });
 });
