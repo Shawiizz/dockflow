@@ -105,6 +105,12 @@ Not filtered: the host's own traffic, other interfaces than the default route's 
 network, a VPN), traffic between containers, and every connection containers open. SSH and the
 host's own services are still ufw's or firewalld's job.
 
+<Callout type="warning">
+  The filter needs Docker's iptables integration, which sends published ports through
+  `DOCKER-USER`. Without it (`"iptables": false` in `daemon.json`, or Docker's experimental
+  nftables backend), deploys warn that the ports are recorded but not filtered.
+</Callout>
+
 ```bash
 # on a node: the recorded ports and the rules in place
 sudo dockflow-public-ports status

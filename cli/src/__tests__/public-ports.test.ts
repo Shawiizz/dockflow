@@ -223,6 +223,15 @@ describe('dockflow-public-ports', () => {
     expect(readFileSync(`${dir}/iptables.log`, 'utf-8')).toContain('-w -I DOCKER-USER 1 -j DOCKFLOW-PUBLIC-PORTS');
   });
 
+  it.skipIf(!bash)('says when Docker does not send published ports through DOCKER-USER', async () => {
+    writeFileSync(`${dir}/bin/iptables`, '#!/usr/bin/env bash\ncase "$*" in *"-C "*) exit 1 ;; esac\n');
+    const result = await run('set', 'shop-production', '80/tcp');
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stderr).toContain('Docker does not send published ports through DOCKER-USER here');
+    expect(readFileSync(`${dir}/state/shop-production`, 'utf-8')).toBe('80/tcp\n');
+  });
+
   it.skipIf(!bash)('forgets a project given no port', async () => {
     writeFileSync(`${dir}/state/shop-production`, '80/tcp\n');
     expect((await run('set', 'shop-production')).exitCode).toBe(0);

@@ -616,7 +616,10 @@ export async function applyPublicPorts(ctx: DeployContext): Promise<void> {
       return;
     }
     const { exitCode, stdout, stderr } = outcome.value;
-    if (exitCode !== 0) {
+    if (exitCode === 3) {
+      // recorded, but Docker does not send published ports through DOCKER-USER there
+      printWarning(`${node}: ${stderr.trim()}`);
+    } else if (exitCode !== 0) {
       printWarning(`${node}: could not record the public ports: ${(stderr || stdout).trim() || `exit ${exitCode}`}`);
     } else if (stdout.trim() === 'missing') {
       printWarning(

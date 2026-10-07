@@ -9,7 +9,8 @@
 # Installed by `dockflow setup`; runs as root.
 #
 #   set <project> [<port>[-<port>]/<tcp|udp>[@<cidr>[,<cidr>]...]]...
-#              record the public ports of a project (none: forget it), then apply
+#              record the public ports of a project (none: forget it), then apply; exits 3
+#              when Docker does not send published ports through DOCKER-USER
 #   apply      load the filter for every project (at boot, before Docker starts)
 #   status     print the recorded ports and the rules in place
 #   render 4|6 print the rules apply loads into iptables or ip6tables, without loading them
@@ -125,6 +126,11 @@ apply() {
 	return $status
 }
 
+# Docker sends published ports through DOCKER-USER only with its iptables backend
+effective() {
+	iptables -w -C FORWARD -j DOCKER-USER 2>/dev/null
+}
+
 set_project() {
 	local project=$1 spec
 	shift
@@ -138,7 +144,11 @@ set_project() {
 	elif ! { printf '%s\n' "$@" >"$STATE_DIR/.$project.new" && mv -f "$STATE_DIR/.$project.new" "$STATE_DIR/$project"; }; then
 		die "cannot record the ports of $project"
 	fi
-	apply
+	apply || return 1
+	if ! effective; then
+		echo "dockflow-public-ports: Docker does not send published ports through DOCKER-USER here (iptables disabled, or its nftables backend): the ports are recorded, not filtered" >&2
+		return 3
+	fi
 }
 
 status() {
@@ -151,6 +161,7 @@ status() {
 	done
 	[ -n "$found" ] || echo "  none"
 	iptables -w -S "$CHAIN" 2>/dev/null || echo "The filter is not in place."
+	effective || echo "Docker does not send published ports through DOCKER-USER: nothing is filtered."
 }
 
 off() {
