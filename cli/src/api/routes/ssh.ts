@@ -19,7 +19,11 @@ import {
 } from '../../utils/servers';
 import { normalizePrivateKey } from '../../utils/ssh-keys';
 import { DEFAULT_SSH_PORT, SSH_READY_TIMEOUT_MS, SSH_KEEPALIVE_INTERVAL_MS } from '../../constants';
-import { getManagerConnection, isValidDockerName } from './_helpers';
+import { getStackName, getAccessoriesStackName } from '../../utils/config';
+import { shellQuote } from '../../utils/ssh';
+import { findSwarmContainer } from '../../services/orchestrator/swarm/swarm-utils';
+import type { SSHKeyConnection } from '../../types';
+import { getAllNodeConnections, getManagerConnection, isValidDockerName } from './_helpers';
 
 /** Data attached to each WebSocket during upgrade */
 export interface WSData {
@@ -179,9 +183,9 @@ export const sshWebSocketHandlers = {
         return;
       }
 
-      const conn = getManagerConnection(env);
-      if (!conn) {
-        ws.send(JSON.stringify({ type: 'error', message: `Cannot connect to manager for env "${env}": no credentials found` }));
+      const nodes = getAllNodeConnections(env);
+      if (nodes.length === 0) {
+        ws.send(JSON.stringify({ type: 'error', message: `Cannot connect to env "${env}": no credentials found` }));
         ws.close();
         return;
       }
@@ -193,79 +197,8 @@ export const sshWebSocketHandlers = {
       ws.data.sessionId = sessionId;
       activeWebSockets.set(sessionId, ws);
 
-      client.on('ready', () => {
-        // First find the container for the service
-        client.exec(
-          `docker ps --filter label=com.docker.swarm.service.name=${serviceName} --format '{{.ID}}' | head -n1`,
-          (err, stream) => {
-            if (err) {
-              ws.send(JSON.stringify({ type: 'error', message: `Failed to find container: ${err.message}` }));
-              client.end();
-              return;
-            }
-
-            let containerId = '';
-            stream.on('data', (data: Buffer) => {
-              containerId += data.toString();
-            });
-
-            stream.on('close', () => {
-              containerId = containerId.trim();
-              if (!containerId) {
-                ws.send(JSON.stringify({ type: 'error', message: `No container found for service ${serviceName}` }));
-                cleanupSession(sessionId);
-                return;
-              }
-
-              // Now exec into the container with PTY
-              client.exec(
-                `docker exec -it ${containerId} /bin/sh`,
-                { pty: { term: 'xterm-256color', rows: 24, cols: 80 } },
-                (execErr, execStream) => {
-                  if (execErr) {
-                    ws.send(JSON.stringify({ type: 'error', message: `Exec error: ${execErr.message}` }));
-                    client.end();
-                    return;
-                  }
-
-                  // Store stream reference for resize
-                  const session = activeSessions.get(sessionId);
-                  if (session) {
-                    session.stream = execStream;
-                  }
-
-                  ws.send(JSON.stringify({ type: 'connected', service: serviceName }));
-
-                  execStream.on('data', (data: Buffer) => {
-                    try {
-                      ws.send(data);
-                    } catch {
-                      // WebSocket may be closed
-                    }
-                  });
-
-                  execStream.stderr?.on('data', (data: Buffer) => {
-                    try {
-                      ws.send(data);
-                    } catch {
-                      // WebSocket may be closed
-                    }
-                  });
-
-                  execStream.on('close', () => {
-                    try {
-                      ws.send(JSON.stringify({ type: 'exit', code: 0 }));
-                    } catch {
-                      // WebSocket may already be closed
-                    }
-                    cleanupSession(sessionId);
-                  });
-                },
-              );
-            });
-          },
-        );
-      });
+      const stacks = [getStackName(env), getAccessoriesStackName(env)].filter((name): name is string => !!name);
+      const manager = getManagerConnection(env) ?? nodes[0];
 
       client.on('error', (err) => {
         try {
@@ -285,16 +218,81 @@ export const sshWebSocketHandlers = {
         cleanupSession(sessionId);
       });
 
-      // Connect using ssh2 with manager credentials
-      client.connect({
-        host: conn.host,
-        port: conn.port,
-        username: conn.user,
-        privateKey: normalizePrivateKey(conn.privateKey),
-        hostVerifier: () => true,
-        readyTimeout: SSH_READY_TIMEOUT_MS,
-        keepaliveInterval: SSH_KEEPALIVE_INTERVAL_MS,
-      });
+      // The task can run on any node: connect to the one that hosts the container
+      locateExecContainer(serviceName, stacks, manager, nodes)
+        .then((target) => {
+          if (!activeSessions.has(sessionId)) return;
+          if (!target) {
+            ws.send(JSON.stringify({ type: 'error', message: `No container found for service ${serviceName}` }));
+            cleanupSession(sessionId);
+            return;
+          }
+
+          client.on('ready', () => {
+            client.exec(
+              `docker exec -it ${shellQuote(target.containerId)} /bin/sh`,
+              { pty: { term: 'xterm-256color', rows: 24, cols: 80 } },
+              (execErr, execStream) => {
+                if (execErr) {
+                  ws.send(JSON.stringify({ type: 'error', message: `Exec error: ${execErr.message}` }));
+                  client.end();
+                  return;
+                }
+
+                // Store stream reference for resize
+                const session = activeSessions.get(sessionId);
+                if (session) {
+                  session.stream = execStream;
+                }
+
+                ws.send(JSON.stringify({ type: 'connected', service: serviceName }));
+
+                execStream.on('data', (data: Buffer) => {
+                  try {
+                    ws.send(data);
+                  } catch {
+                    // WebSocket may be closed
+                  }
+                });
+
+                execStream.stderr?.on('data', (data: Buffer) => {
+                  try {
+                    ws.send(data);
+                  } catch {
+                    // WebSocket may be closed
+                  }
+                });
+
+                execStream.on('close', () => {
+                  try {
+                    ws.send(JSON.stringify({ type: 'exit', code: 0 }));
+                  } catch {
+                    // WebSocket may already be closed
+                  }
+                  cleanupSession(sessionId);
+                });
+              },
+            );
+          });
+
+          client.connect({
+            host: target.connection.host,
+            port: target.connection.port,
+            username: target.connection.user,
+            privateKey: normalizePrivateKey(target.connection.privateKey),
+            hostVerifier: () => true,
+            readyTimeout: SSH_READY_TIMEOUT_MS,
+            keepaliveInterval: SSH_KEEPALIVE_INTERVAL_MS,
+          });
+        })
+        .catch((error) => {
+          try {
+            ws.send(JSON.stringify({ type: 'error', message: error instanceof Error ? error.message : String(error) }));
+          } catch {
+            // WebSocket may be closed
+          }
+          cleanupSession(sessionId);
+        });
 
       return;
     }
@@ -446,4 +444,30 @@ export function parseSSHServerName(pathname: string): string | null {
 export function parseExecServiceName(pathname: string): { serviceName: string } | null {
   const match = pathname.match(/^\/ws\/exec\/([^/?]+)/);
   return match ? { serviceName: decodeURIComponent(match[1]) } : null;
+}
+
+/**
+ * Swarm service names an exec target can mean. A name that already starts with a stack prefix is
+ * the native name; any other is a compose name, of the app stack first and then of the accessories.
+ */
+export function execServiceCandidates(name: string, stacks: string[]): string[] {
+  if (stacks.some((stack) => name.startsWith(`${stack}_`))) return [name];
+  return stacks.length > 0 ? stacks.map((stack) => `${stack}_${name}`) : [name];
+}
+
+type FindContainer = typeof findSwarmContainer;
+
+/** The running container of an exec target and the node it runs on, from any node of the cluster. */
+export async function locateExecContainer(
+  name: string,
+  stacks: string[],
+  manager: SSHKeyConnection,
+  nodes: SSHKeyConnection[],
+  find: FindContainer = findSwarmContainer,
+): Promise<{ containerId: string; connection: SSHKeyConnection } | null> {
+  for (const candidate of execServiceCandidates(name, stacks)) {
+    const found = await find(stacks[0] ?? '', candidate, manager, nodes);
+    if (found) return found;
+  }
+  return null;
 }

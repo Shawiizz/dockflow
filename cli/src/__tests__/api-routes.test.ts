@@ -1,5 +1,7 @@
+import type { SSHKeyConnection } from '../types';
 import { afterAll, describe, expect, it } from 'bun:test';
 import { withTimeout } from '../api/routes/_helpers';
+import { execServiceCandidates, locateExecContainer } from '../api/routes/ssh';
 import { connectivityStatus } from '../api/routes/servers';
 import { buildArgs, deployArgs } from '../api/routes/operations';
 import { serviceListCommand } from '../api/routes/services';
@@ -98,5 +100,48 @@ describe('withTimeout', () => {
 
   it('rejects with the message when the promise takes too long', async () => {
     await expect(withTimeout(new Promise(() => {}), 20, 'did not answer')).rejects.toThrow('did not answer');
+  });
+});
+
+describe('exec target lookup', () => {
+  const stacks = ['shop-production', 'shop-production-accessories'];
+  const conn = (host: string): SSHKeyConnection => ({ host, port: 22, user: 'deploy', privateKey: 'key' });
+  const manager = conn('10.0.0.1');
+  const nodes = [manager, conn('10.0.0.3')];
+
+  it('reads a bare name as a compose name of the app stack, then of the accessories', () => {
+    expect(execServiceCandidates('web', stacks)).toEqual(['shop-production_web', 'shop-production-accessories_web']);
+  });
+
+  it('keeps a compose name that contains an underscore', () => {
+    expect(execServiceCandidates('my_worker', stacks)).toEqual(['shop-production_my_worker', 'shop-production-accessories_my_worker']);
+  });
+
+  it('keeps a native name as it is', () => {
+    expect(execServiceCandidates('shop-production_web', stacks)).toEqual(['shop-production_web']);
+    expect(execServiceCandidates('shop-production-accessories_db', stacks)).toEqual(['shop-production-accessories_db']);
+  });
+
+  it('returns the container with the node that runs it', async () => {
+    const worker = nodes[1];
+    const asked: string[] = [];
+    const found = await locateExecContainer('web', stacks, manager, nodes, async (_stack, service, _conn, all) => {
+      asked.push(service);
+      expect(all).toEqual(nodes);
+      return { containerId: 'abc123', connection: worker };
+    });
+    expect(found).toEqual({ containerId: 'abc123', connection: worker });
+    expect(asked).toEqual(['shop-production_web']);
+  });
+
+  it('tries the accessories stack when the app stack has no such service', async () => {
+    const found = await locateExecContainer('db', stacks, manager, nodes, async (_stack, service) =>
+      service === 'shop-production-accessories_db' ? { containerId: 'def456', connection: manager } : null,
+    );
+    expect(found?.containerId).toBe('def456');
+  });
+
+  it('is null when no node runs the service', async () => {
+    expect(await locateExecContainer('web', stacks, manager, nodes, async () => null)).toBeNull();
   });
 });
