@@ -34,7 +34,7 @@ import {
   buildTemplateContext,
 } from '../utils/servers';
 import { loadSecrets } from '../utils/secrets';
-import { resolveEnvironmentPrefix } from '../utils/validation';
+import { chooseServer, resolveEnvironmentPrefix } from '../utils/validation';
 import { detectCIEnvironment, resolveDeployParams } from '../utils/ci';
 import { getCurrentBranch } from '../utils/git';
 import { incrementVersion } from '../utils/version';
@@ -139,8 +139,14 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   let { manager, managers, workers } = deployment;
   let unavailableManagers: string[] = [];
 
+  if (options.server) {
+    const chosen = chooseServer(env, [...managers, ...workers], options.server, {}, () => true);
+    if ('type' in chosen) throw new ConfigError(chosen.message, chosen.suggestion);
+    manager = managers.find((m) => m.name === chosen.name) ?? manager;
+  }
+
   // Multi-manager failover
-  if (managers.length > 1 && options.failover !== false) {
+  if (managers.length > 1 && options.failover !== false && !options.server) {
     const managerSpinner = createSpinner();
     managerSpinner.start(`Checking ${managers.length} managers for active leader...`);
     const activeResult = await findActiveManager(env, managers, { verbose: !!options.debug });
@@ -487,6 +493,7 @@ export function registerDeployCommand(program: Command): void {
     .option('--all', 'Deploy both application and accessories')
     .option('--skip-accessories', 'Skip accessories check entirely')
     .option('--no-failover', 'Disable multi-manager failover (use first manager only)')
+    .option('-s, --server <name>', 'Deploy through this manager (no failover)')
     .option('--dry-run', 'Show what would be deployed without executing')
     .option('--branch <branch>', 'Override auto-detected git branch')
     .option('--debug', 'Enable debug output')

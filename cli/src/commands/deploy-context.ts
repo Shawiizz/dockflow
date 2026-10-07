@@ -21,6 +21,8 @@ export interface DeployOptions {
   skipAccessories?: boolean;
   /** False with --no-failover (Commander stores negated options under the positive name). */
   failover?: boolean;
+  /** the manager to deploy through, instead of the failover choice */
+  server?: string;
   dryRun?: boolean;
   branch?: string;
 }

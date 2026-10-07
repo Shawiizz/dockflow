@@ -16,3 +16,9 @@ describe('deploy options', () => {
     expect(parseDeployOptions([]).failover).toBe(true);
   });
 });
+
+describe('deploy --server', () => {
+  it('names the manager to deploy through', () => {
+    expect(parseDeployOptions(['-s', 'manager-2']).server).toBe('manager-2');
+  });
+});
