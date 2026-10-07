@@ -140,7 +140,7 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   let { manager, managers, workers } = deployment;
 
   // Multi-manager failover
-  if (managers.length > 1 && !options.noFailover) {
+  if (managers.length > 1 && options.failover !== false) {
     const managerSpinner = createSpinner();
     managerSpinner.start(`Checking ${managers.length} managers for active leader...`);
     const activeResult = await findActiveManager(env, managers, { verbose: !!options.debug });

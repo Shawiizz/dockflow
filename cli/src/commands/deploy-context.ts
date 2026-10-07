@@ -19,7 +19,8 @@ export interface DeployOptions {
   accessories?: boolean;
   all?: boolean;
   skipAccessories?: boolean;
-  noFailover?: boolean;
+  /** False with --no-failover (Commander stores negated options under the positive name). */
+  failover?: boolean;
   dryRun?: boolean;
   branch?: string;
 }
