@@ -6,6 +6,8 @@
 import type { Command } from 'commander';
 import { sshExec, shellQuote } from '../../utils/ssh';
 import type { SSHKeyConnection } from '../../types/connection';
+import { createLock, type Lock } from '../../services/lock';
+import { stopIfInterrupted, withDeployLock } from '../with-lock';
 import { confirmPrompt, dangerousConfirmPrompt } from '../../utils/prompts';
 import { printInfo, printIntro, printOutro, printNote, printWarning, printError, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
@@ -28,8 +30,8 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
       env: string,
       options: RemoveOptions
     ) => {
-      const { connection, stackName } = await resolveEnv(env, options.server);
-      await removeAccessories(connection, env, stackName, options);
+      const { connection, stackName, config } = await resolveEnv(env, options.server);
+      await removeAccessories(connection, env, stackName, options, createLock(connection, stackName, config.lock?.stale_threshold_minutes));
     })));
 }
 
@@ -49,7 +51,8 @@ export async function removeAccessories(
   connection: SSHKeyConnection,
   env: string,
   appStackName: string,
-  options: RemoveOptions
+  options: RemoveOptions,
+  lock?: Lock,
 ): Promise<void> {
   printIntro(`Removing Accessories - ${env}`);
   printBlank();
@@ -119,16 +122,21 @@ export async function removeAccessories(
 
   printBlank();
 
-  if (validation.exists) {
-    await removeStack(connection, stackName);
-  }
+  const remove = async (signal?: AbortSignal) => {
+    if (validation.exists) {
+      await removeStack(connection, stackName);
+    }
 
-  // The next deploy compares against this hash: without it, it redeploys the accessories.
-  await sshExec(connection, `rm -rf ${shellQuote(`${DOCKFLOW_ACCESSORIES_DIR}/${appStackName}`)}`);
+    // The next deploy compares against this hash: without it, it redeploys the accessories.
+    await sshExec(connection, `rm -rf ${shellQuote(`${DOCKFLOW_ACCESSORIES_DIR}/${appStackName}`)}`);
 
-  if (options.volumes) {
-    await removeVolumes(connection, env, await listStackVolumes(connection, stackName));
-  }
+    if (options.volumes) {
+      if (signal) stopIfInterrupted(signal, 'deleting the volumes');
+      await removeVolumes(connection, env, await listStackVolumes(connection, stackName));
+    }
+  };
+  if (lock) await withDeployLock(lock, 'Remove accessories', remove);
+  else await remove();
 
   printBlank();
   if (!options.volumes) {

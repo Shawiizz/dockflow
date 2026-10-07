@@ -8,7 +8,9 @@ import { confirmPrompt } from '../../utils/prompts';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { loadConfig } from '../../utils/config';
-import { DockerError, withServicesRequired, ConfigError } from '../../utils/errors';
+import { CLIError, DockerError, withServicesRequired, ConfigError } from '../../utils/errors';
+import { createLock } from '../../services/lock';
+import { withDeployLock } from '../with-lock';
 
 export function registerStopCommand(program: Command): void {
   program
@@ -40,13 +42,15 @@ export function registerStopCommand(program: Command): void {
       const orchestrator = createStackBackend(connection);
 
       const spinner = createSpinner();
-      spinner.start(`Stopping stack ${stackName}...`);
 
       try {
-        await orchestrator.removeStack(stackName);
-        spinner.succeed(`Stack ${stackName} stopped`);
+        await withDeployLock(createLock(connection, stackName, config.lock?.stale_threshold_minutes), `Stop ${stackName}`, async () => {
+          spinner.start(`Stopping stack ${stackName}...`);
+          await orchestrator.removeStack(stackName);
+          spinner.succeed(`Stack ${stackName} stopped`);
+        });
       } catch (error) {
-        if (error instanceof DockerError) throw error;
+        if (error instanceof CLIError) throw error;
         const msg = error instanceof Error ? error.message : String(error);
         spinner.fail(`Failed to stop: ${msg}`);
         throw new DockerError(msg);

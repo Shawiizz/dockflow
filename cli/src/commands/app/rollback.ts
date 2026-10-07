@@ -14,6 +14,8 @@ import * as Notification from '../../services/notification';
 import { withErrorHandler, DeployError, ErrorCode } from '../../utils/errors';
 import { runPostRollbackHealthChecks } from '../deploy-phases';
 import { requireAppService } from './service-name';
+import { createLock } from '../../services/lock';
+import { withDeployLock } from '../with-lock';
 
 export function registerRollbackCommand(program: Command): void {
   program
@@ -38,35 +40,39 @@ export function registerRollbackCommand(program: Command): void {
       const spinner = createSpinner();
       const startTime = Date.now();
 
-      if (service) {
-        await requireAppService(connection, env, stackName, service, 'rollback');
-        spinner.start(`Rolling back ${stackName}_${service}...`);
-        await orchestrator.rollbackService(stackName, service);
-        spinner.succeed(`Rolled back ${stackName}_${service}`);
+      if (service) await requireAppService(connection, env, stackName, service, 'rollback');
+      const lock = createLock(connection, stackName, config.lock?.stale_threshold_minutes);
+      // the audit, metrics and notification are written while the lock is held
+      await withDeployLock(lock, service ? `Rollback ${service}` : `Rollback ${stackName}`, async () => {
+        if (service) {
+          spinner.start(`Rolling back ${stackName}_${service}...`);
+          await orchestrator.rollbackService(stackName, service);
+          spinner.succeed(`Rolled back ${stackName}_${service}`);
 
-        const durationMs = Date.now() - startTime;
-        const message = `Rolled back service ${service} in ${stackName}`;
-        await Promise.allSettled([
-          audit.writeEntry(stackName, 'rolled_back', message, 'service-rollback'),
-          metrics.writeDeployment({ stackName, version: 'service-rollback', env, branch: '', status: 'rolled_back', durationMs, performer: getPerformer(), buildSkipped: true, accessoriesDeployed: false, nodeCount: 1 }),
-          Notification.notify(config.notifications?.webhooks, { project: config.project_name, env, version: 'service-rollback', branch: '', performer: getPerformer(), status: 'success', duration_ms: durationMs, message }),
-        ]);
-      } else {
-        // Full stack rollback — redeploy previous release compose and update symlink
-        spinner.start('Rolling back to previous release...');
-        const releases = new Release(connection);
-        const rollbackStartedAt = new Date();
-        const rolledBackTo = await releases.rollback(stackName, orchestrator);
-        spinner.succeed(`Rolled back to ${rolledBackTo}`);
-        await runPostRollbackHealthChecks(connection, orchestrator, stackName, config.health_checks, rollbackStartedAt);
+          const durationMs = Date.now() - startTime;
+          const message = `Rolled back service ${service} in ${stackName}`;
+          await Promise.allSettled([
+            audit.writeEntry(stackName, 'rolled_back', message, 'service-rollback'),
+            metrics.writeDeployment({ stackName, version: 'service-rollback', env, branch: '', status: 'rolled_back', durationMs, performer: getPerformer(), buildSkipped: true, accessoriesDeployed: false, nodeCount: 1 }),
+            Notification.notify(config.notifications?.webhooks, { project: config.project_name, env, version: 'service-rollback', branch: '', performer: getPerformer(), status: 'success', duration_ms: durationMs, message }),
+          ]);
+        } else {
+          // Full stack rollback — redeploy previous release compose and update symlink
+          spinner.start('Rolling back to previous release...');
+          const releases = new Release(connection);
+          const rollbackStartedAt = new Date();
+          const rolledBackTo = await releases.rollback(stackName, orchestrator);
+          spinner.succeed(`Rolled back to ${rolledBackTo}`);
+          await runPostRollbackHealthChecks(connection, orchestrator, stackName, config.health_checks, rollbackStartedAt);
 
-        const durationMs = Date.now() - startTime;
-        const message = `Rolled back ${stackName} to ${rolledBackTo}`;
-        await Promise.allSettled([
-          audit.writeEntry(stackName, 'rolled_back', message, rolledBackTo),
-          metrics.writeDeployment({ stackName, version: rolledBackTo, env, branch: '', status: 'rolled_back', durationMs, performer: getPerformer(), buildSkipped: true, accessoriesDeployed: false, nodeCount: 1 }),
-          Notification.notify(config.notifications?.webhooks, { project: config.project_name, env, version: rolledBackTo, branch: '', performer: getPerformer(), status: 'success', duration_ms: durationMs, message }),
-        ]);
-      }
+          const durationMs = Date.now() - startTime;
+          const message = `Rolled back ${stackName} to ${rolledBackTo}`;
+          await Promise.allSettled([
+            audit.writeEntry(stackName, 'rolled_back', message, rolledBackTo),
+            metrics.writeDeployment({ stackName, version: rolledBackTo, env, branch: '', status: 'rolled_back', durationMs, performer: getPerformer(), buildSkipped: true, accessoriesDeployed: false, nodeCount: 1 }),
+            Notification.notify(config.notifications?.webhooks, { project: config.project_name, env, version: rolledBackTo, branch: '', performer: getPerformer(), status: 'success', duration_ms: durationMs, message }),
+          ]);
+        }
+      });
     })));
 }

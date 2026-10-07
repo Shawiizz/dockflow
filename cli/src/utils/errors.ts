@@ -16,7 +16,7 @@ import { loadConfig } from './config';
 export enum ErrorCode {
   // General errors (1-9)
   UNKNOWN = 1,
-  INTERRUPTED = 2,
+  INTERRUPTED = 130,
   COMMAND_FAILED = 3,
   
   // Configuration errors (10-19)
