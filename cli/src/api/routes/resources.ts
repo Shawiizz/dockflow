@@ -83,6 +83,26 @@ export async function handleLocksRoutes(req: Request): Promise<Response> {
 
 // ─── Prune implementation ───────────────────────────────────────────────────
 
+const PRUNE_TARGETS = ['containers', 'images', 'volumes', 'networks'] as const;
+type PruneTarget = (typeof PRUNE_TARGETS)[number];
+
+export function unknownPruneTargets(targets: unknown[]): string[] {
+  return targets.filter((target) => !PRUNE_TARGETS.includes(target as PruneTarget)).map(String);
+}
+
+export function pruneCommand(target: PruneTarget, all: boolean): string {
+  switch (target) {
+    case 'containers':
+      return 'docker container prune -f';
+    case 'images':
+      return all ? 'docker image prune -f -a' : 'docker image prune -f';
+    case 'volumes':
+      return 'docker volume prune -f';
+    case 'networks':
+      return 'docker network prune -f';
+  }
+}
+
 /**
  * Prune Docker resources on the remote server
  */
@@ -105,21 +125,15 @@ async function pruneResources(req: Request): Promise<Response> {
     return errorResponse('Missing required field: targets (array of: containers, images, volumes, networks)', 400);
   }
 
-  const pruneCommands: Record<string, string> = {
-    containers: 'docker container prune -f',
-    images: body.all ? 'docker image prune -f -a' : 'docker image prune -f',
-    volumes: 'docker volume prune -f',
-    networks: 'docker network prune -f',
-  };
+  const unknown = unknownPruneTargets(body.targets);
+  if (unknown.length > 0) {
+    return errorResponse(`Unknown prune target: ${unknown.join(', ')} (expected: ${PRUNE_TARGETS.join(', ')})`, 400);
+  }
 
   const results: PruneResult[] = [];
 
   for (const target of body.targets) {
-    const command = pruneCommands[target];
-    if (!command) {
-      results.push({ target, success: false, error: `Unknown prune target: ${target}` });
-      continue;
-    }
+    const command = pruneCommand(target, body.all === true);
 
     try {
       const result = await sshExec(conn, command);

@@ -1,6 +1,7 @@
 import type { SSHKeyConnection } from '../types';
 import { afterAll, describe, expect, it } from 'bun:test';
 import { withTimeout } from '../api/routes/_helpers';
+import { pruneCommand, unknownPruneTargets } from '../api/routes/resources';
 import { execServiceCandidates, locateExecContainer } from '../api/routes/ssh';
 import { connectivityStatus } from '../api/routes/servers';
 import { buildArgs, deployArgs } from '../api/routes/operations';
@@ -143,5 +144,20 @@ describe('exec target lookup', () => {
 
   it('is null when no node runs the service', async () => {
     expect(await locateExecContainer('web', stacks, manager, nodes, async () => null)).toBeNull();
+  });
+});
+
+describe('prune targets', () => {
+  it('accepts the four docker resources', () => {
+    expect(unknownPruneTargets(['containers', 'images', 'volumes', 'networks'])).toEqual([]);
+  });
+
+  it('names every unknown target', () => {
+    expect(unknownPruneTargets(['images', 'cache', 'rm -rf /', 3])).toEqual(['cache', 'rm -rf /', '3']);
+  });
+
+  it('prunes all unused images only when asked to', () => {
+    expect(pruneCommand('images', false)).toBe('docker image prune -f');
+    expect(pruneCommand('images', true)).toBe('docker image prune -f -a');
   });
 });
