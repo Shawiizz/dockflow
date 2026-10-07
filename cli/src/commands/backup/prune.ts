@@ -8,10 +8,9 @@ import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { confirmPrompt } from '../../utils/prompts';
 import { loadConfig } from '../../utils/config';
 import { printIntro, printOutro, printInfo, printWarning, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
-import { BackupError, withErrorHandler } from '../../utils/errors';
+import { withErrorHandler } from '../../utils/errors';
 import { createBackup } from '../../services/backup';
-import { requireBackupConfig, resolveBackupStack, listGroupedFromAllStacks, type StackGroupedEntries } from './utils';
-import { getAllNodeConnections } from '../../utils/servers';
+import { requireBackupConfig, resolveBackupStack, listGroupedFromAllStacks, getBackupNodes, warnUnreachableNodes, type StackGroupedEntries } from './utils';
 
 export function registerBackupPruneCommand(program: Command): void {
   program
@@ -19,11 +18,12 @@ export function registerBackupPruneCommand(program: Command): void {
     .description('Remove old backups (keeps the latest N per service)')
     .option('--keep <n>', 'Number of backups to keep per service (default: config retention_count or 10)')
     .option('-y, --yes', 'Skip confirmation prompt')
+    .option('--node <name>', 'Only the backups stored on this server')
     .option('-s, --server <name>', 'Target manager (defaults to the first manager)')
     .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string | undefined,
-      options: { keep?: string; yes?: boolean; server?: string }
+      options: { keep?: string; yes?: boolean; server?: string; node?: string }
     ) => {
       printIntro(`Prune Backups (${env})`);
       printBlank();
@@ -41,12 +41,15 @@ export function registerBackupPruneCommand(program: Command): void {
       if (service) {
         const { source } = requireBackupConfig(service);
         const stackName = resolveBackupStack(env, source);
-        const backupService = createBackup(connection, stackName, getAllNodeConnections(env));
-        const result = await backupService.list(service);
-        if (!result.success) throw new BackupError(result.error.message);
-        stackData.push({ backupService, byService: { [service]: result.data } });
+        const backupService = createBackup(connection, stackName, getBackupNodes(env));
+        const result = await backupService.list(service, { node: options.node });
+        if (!result.success) throw result.error;
+        warnUnreachableNodes(result.data.unreachable, 'backups stored there are not pruned');
+        stackData.push({ backupService, byService: { [service]: result.data.entries } });
       } else {
-        stackData.push(...await listGroupedFromAllStacks(connection, env));
+        const grouped = await listGroupedFromAllStacks(connection, env, options.node);
+        warnUnreachableNodes(grouped.unreachable, 'backups stored there are not pruned');
+        stackData.push(...grouped.stacks);
       }
 
       // Count what needs pruning across all stacks

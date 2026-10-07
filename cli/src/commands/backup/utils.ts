@@ -4,9 +4,11 @@
 
 import { loadConfig, getStackName, getAccessoriesStackName, type BackupAccessoryConfig } from '../../utils/config';
 import { BackupError, ErrorCode } from '../../utils/errors';
-import type { SSHKeyConnection } from '../../types';
+import type { ClusterNode, SSHKeyConnection } from '../../types';
 import { createBackup, type Backup, type BackupListEntry } from '../../services/backup';
-import { getAllNodeConnections } from '../../utils/servers';
+import { newestBackupFirst } from '../../services/backup-strategies';
+import { getFullConnectionInfo, resolveServersForEnvironment } from '../../utils/servers';
+import { printWarning } from '../../utils/output';
 
 export type BackupSource = 'services' | 'accessories';
 
@@ -32,11 +34,13 @@ export function requireBackupConfig(service: string): {
     return { backupConfig: fromAccessories, compression: config?.backup?.compression ?? 'gzip', source: 'accessories' };
   }
 
+  const configured = getBackupServiceNames();
+  const known = configured.length > 0 ? `Services with a backup configuration: ${configured.join(', ')}.\n` : '';
   throw new BackupError(
     `No backup configuration found for service '${service}'`,
     {
       code: ErrorCode.BACKUP_CONFIG_MISSING,
-      suggestion: `Add backup config in .dockflow/config.yml:\n  backup:\n    services:        # for main stack services\n      ${service}:\n        type: volume\n    accessories:     # for accessory services\n      ${service}:\n        type: postgres  # postgres, mysql, mongodb, redis, raw, or volume`,
+      suggestion: `${known}Add backup config in .dockflow/config.yml:\n  backup:\n    services:        # for main stack services\n      ${service}:\n        type: volume\n    accessories:     # for accessory services\n      ${service}:\n        type: postgres  # postgres, mysql, mongodb, redis, raw, or volume`,
     }
   );
 }
@@ -93,6 +97,32 @@ export function getBackupServiceNames(): string[] {
   return names;
 }
 
+/**
+ * Every server of the environment with SSH credentials, managers first: the nodes a backup can
+ * be stored on.
+ */
+export function getBackupNodes(env: string): ClusterNode[] {
+  const servers = resolveServersForEnvironment(env);
+  const sorted = [
+    ...servers.filter(server => server.role === 'manager'),
+    ...servers.filter(server => server.role === 'worker'),
+  ];
+  return sorted.flatMap((server) => {
+    const connection = getFullConnectionInfo(env, server.name);
+    return connection ? [{ name: server.name, connection }] : [];
+  });
+}
+
+/** Say which servers did not answer, and what that leaves out. */
+export function warnUnreachableNodes(unreachable: ClusterNode[], consequence: string): void {
+  if (unreachable.length === 0) return;
+  printWarning(`${unreachable.length} server(s) did not answer (${unreachable.map(node => node.name).join(', ')}); ${consequence}`);
+}
+
+function addUnreachable(into: Map<string, ClusterNode>, nodes: ClusterNode[]): void {
+  for (const node of nodes) into.set(`${node.connection.host}:${node.connection.port}`, node);
+}
+
 // ─── Shared data-fetching helpers (used by both CLI commands and API routes) ──
 
 /** Backup entries grouped by service within a single stack */
@@ -102,50 +132,54 @@ export interface StackGroupedEntries {
 }
 
 /**
- * List backups across all configured stacks, sorted newest-first.
+ * List backups across all configured stacks, sorted newest-first, with the servers that did not
+ * answer. `node` narrows the search to one server.
  */
 export async function listFromAllStacks(
   connection: SSHKeyConnection,
-  env: string
-): Promise<BackupListEntry[]> {
-  const stacks = getAllBackupStacks(env);
+  env: string,
+  node?: string,
+): Promise<{ entries: BackupListEntry[]; unreachable: ClusterNode[] }> {
   const entries: BackupListEntry[] = [];
+  const unreachable = new Map<string, ClusterNode>();
+  const nodes = getBackupNodes(env);
 
-  const allConnections = getAllNodeConnections(env);
-
-  for (const { stackName } of stacks) {
-    const backupService = createBackup(connection, stackName, allConnections);
-    const result = await backupService.list();
-    if (result.success) entries.push(...result.data);
+  for (const { stackName } of getAllBackupStacks(env)) {
+    const result = await createBackup(connection, stackName, nodes).list(undefined, { node });
+    if (!result.success) throw result.error;
+    entries.push(...result.data.entries);
+    addUnreachable(unreachable, result.data.unreachable);
   }
 
-  entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  return entries;
+  entries.sort(newestBackupFirst);
+  return { entries, unreachable: [...unreachable.values()] };
 }
 
 /**
  * List backups across all configured stacks, grouped by stack and service.
- * Returns one entry per stack, each containing a BackupService and its entries grouped by service name.
+ * Returns one entry per stack, each containing a Backup and its entries grouped by service name.
  */
 export async function listGroupedFromAllStacks(
   connection: SSHKeyConnection,
-  env: string
-): Promise<StackGroupedEntries[]> {
-  const stacks = getAllBackupStacks(env);
-  const result: StackGroupedEntries[] = [];
-  const allConnections = getAllNodeConnections(env);
+  env: string,
+  node?: string,
+): Promise<{ stacks: StackGroupedEntries[]; unreachable: ClusterNode[] }> {
+  const stacks: StackGroupedEntries[] = [];
+  const unreachable = new Map<string, ClusterNode>();
+  const nodes = getBackupNodes(env);
 
-  for (const { stackName } of stacks) {
-    const backupService = createBackup(connection, stackName, allConnections);
-    const listResult = await backupService.list();
-    if (!listResult.success) continue;
+  for (const { stackName } of getAllBackupStacks(env)) {
+    const backupService = createBackup(connection, stackName, nodes);
+    const listResult = await backupService.list(undefined, { node });
+    if (!listResult.success) throw listResult.error;
 
     const byService: Record<string, BackupListEntry[]> = {};
-    for (const entry of listResult.data) {
+    for (const entry of listResult.data.entries) {
       (byService[entry.service] ??= []).push(entry);
     }
-    result.push({ backupService, byService });
+    stacks.push({ backupService, byService });
+    addUnreachable(unreachable, listResult.data.unreachable);
   }
 
-  return result;
+  return { stacks, unreachable: [...unreachable.values()] };
 }

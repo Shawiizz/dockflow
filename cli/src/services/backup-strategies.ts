@@ -412,28 +412,45 @@ export function buildBackupDir(stackName: string, service: string): string {
   return `${DOCKFLOW_BACKUPS_DIR}/${stackName}/${service}`;
 }
 
+interface OrderedBackup {
+  timestamp: string;
+  epochMs?: number;
+}
+
+/** The order of a backup: its `epochMs`, or its timestamp in metadata written before `epochMs` existed. */
+export function backupOrder(entry: OrderedBackup): number {
+  return entry.epochMs ?? (Date.parse(entry.timestamp) || 0);
+}
+
+/** Newest first: listings, `latest` and retention. */
+export function newestBackupFirst(a: OrderedBackup, b: OrderedBackup): number {
+  return backupOrder(b) - backupOrder(a);
+}
+
+/**
+ * The `epochMs` of a new backup: when it is taken, but after every stored backup of its service,
+ * which a machine whose clock was ahead of this one may have taken.
+ */
+export function backupEpochMs(now: Date, stored: readonly OrderedBackup[]): number {
+  return stored.reduce((epoch, entry) => Math.max(epoch, backupOrder(entry) + 1), now.getTime());
+}
+
 /**
  * Select which backups to delete given a retention count.
  * Sorts newest-first defensively, keeps the first `retentionCount`.
  */
-export function selectBackupsToPrune<T extends { timestamp: string }>(
-  entries: T[],
-  retentionCount: number,
-): T[] {
-  const sorted = [...entries].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+export function selectBackupsToPrune<T extends OrderedBackup>(entries: T[], retentionCount: number): T[] {
+  const sorted = [...entries].sort(newestBackupFirst);
   if (sorted.length <= retentionCount) return [];
   return sorted.slice(retentionCount);
 }
 
 /**
- * Resolve a backup entry by exact ID, ID prefix, or "latest" (undefined).
+ * Resolve a backup entry by exact ID, ID prefix, or the newest one (undefined or `latest`).
  * Entries are expected newest-first.
  */
-export function findBackupMatch<T extends { id: string }>(
-  entries: T[],
-  idOrLatest?: string,
-): T | null {
+export function findBackupMatch<T extends { id: string }>(entries: T[], idOrLatest?: string): T | null {
   if (entries.length === 0) return null;
-  if (!idOrLatest) return entries[0];
-  return entries.find(e => e.id === idOrLatest || e.id.startsWith(idOrLatest)) ?? null;
+  if (!idOrLatest || idOrLatest === 'latest') return entries[0];
+  return entries.find((e) => e.id === idOrLatest) ?? entries.find((e) => e.id.startsWith(idOrLatest)) ?? null;
 }

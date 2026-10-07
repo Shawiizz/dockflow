@@ -10,10 +10,10 @@
  * (restore, prune, list) can connect to the correct node directly.
  */
 
-import type { SSHKeyConnection } from '../types';
+import type { ClusterNode, SSHKeyConnection } from '../types';
 import type { BackupDbType, BackupAccessoryConfig } from '../utils/config';
 import { ok, err, type Result } from '../types';
-import { BackupError, ErrorCode } from '../utils/errors';
+import { BackupError, ErrorCode, ValidationError } from '../utils/errors';
 import { sshExec, sshExecChannel, shellQuote } from '../utils/ssh';
 import { formatBytes, printDebug, printWarning } from '../utils/output';
 import { findSwarmContainer } from './orchestrator/swarm/swarm-utils';
@@ -33,6 +33,8 @@ import {
   buildCapturePipeline,
   buildDataFilePath,
   buildBackupDir,
+  backupEpochMs,
+  newestBackupFirst,
   selectBackupsToPrune,
   findBackupMatch,
 } from './backup-strategies';
@@ -45,6 +47,8 @@ export interface BackupBaseEntry {
   service: string;
   dbType: BackupDbType;
   timestamp: string;
+  /** What orders the backups (backupEpochMs); absent in metadata written before it, the timestamp orders those */
+  epochMs?: number;
   size: string;
   sizeBytes: number;
   compression: 'gzip' | 'none';
@@ -73,6 +77,15 @@ export interface BackupMetadata extends BackupBaseEntry {
 
 export interface BackupListEntry extends BackupBaseEntry {
   filePath: string;
+  /** Name of the server the backup was listed on */
+  node: string;
+}
+
+export interface BackupListing {
+  /** newest first */
+  entries: BackupListEntry[];
+  /** servers with SSH credentials that did not answer; backups stored there are not listed */
+  unreachable: ClusterNode[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -137,21 +150,63 @@ const RESTART_PAUSE_MS = 3000;
 export class Backup {
   private readonly orchestrator: SwarmStackBackend;
   private readonly sleep: (ms: number) => Promise<void>;
+  /** The manager first, then every other server with SSH credentials */
+  private readonly nodes: ClusterNode[];
 
   constructor(
     /** Manager connection — used for Swarm operations (service restart) */
     private readonly connection: SSHKeyConnection,
     private readonly stackName: string,
-    /** All node connections — used to find containers and run backup/restore on any node */
-    private readonly allConnections: SSHKeyConnection[] = [],
+    /** Every server with SSH credentials — used to find containers and the backups on any node */
+    nodes: ClusterNode[] = [],
     options: BackupOptions = {}
   ) {
     this.orchestrator = new SwarmStackBackend(connection);
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    const same = (a: SSHKeyConnection, b: SSHKeyConnection) => a.host === b.host && a.port === b.port;
+    const manager = nodes.find(node => same(node.connection, connection)) ?? { name: connection.host, connection };
+    this.nodes = [manager, ...nodes.filter(node => !same(node.connection, connection))];
   }
 
   private findContainer(service: string) {
-    return findSwarmContainer(this.stackName, service, this.connection, this.allConnections);
+    return findSwarmContainer(this.stackName, service, this.connection, this.nodes.map(node => node.connection));
+  }
+
+  /** Every node, or the one `--node` names */
+  private nodesFor(name: string | undefined): ClusterNode[] {
+    if (name === undefined) return this.nodes;
+    const node = this.nodes.find(candidate => candidate.name === name);
+    if (!node) {
+      throw new ValidationError(
+        `Server ${name} is not a server of this environment with SSH credentials`,
+        `Pass one of: ${this.nodes.map(candidate => candidate.name).join(', ')}.`,
+      );
+    }
+    return [node];
+  }
+
+  /** The node holding a backup: the one it was listed on, else the host its metadata recorded */
+  private nodeOf(entry: { node?: string; nodeHost: string; nodePort: number; id: string }): ClusterNode {
+    const node = this.nodes.find(candidate => candidate.name === entry.node)
+      ?? this.nodes.find(candidate => candidate.connection.host === entry.nodeHost && candidate.connection.port === entry.nodePort);
+    if (!node) {
+      throw new BackupError(
+        `Backup ${entry.id} is stored on ${entry.nodeHost}:${entry.nodePort}, which is not a server of this environment with SSH credentials`,
+        { code: ErrorCode.BACKUP_NOT_FOUND },
+      );
+    }
+    return node;
+  }
+
+  /** The backups of a service on the nodes that answer, which a new backup must sort after */
+  private async storedBackups(service: string): Promise<BackupListEntry[]> {
+    try {
+      const listed = await this.list(service);
+      return listed.success ? listed.data.entries : [];
+    } catch (e) {
+      printDebug(`Stored backups of ${service} could not be listed: ${e instanceof Error ? e.message : String(e)}`);
+      return [];
+    }
   }
 
   private getBackupDir(service: string): string {
@@ -190,16 +245,6 @@ export class Backup {
   }
 
   /**
-   * Resolve the node connection for a backup entry by matching nodeHost/nodePort.
-   * Falls back to the manager connection if no match found.
-   */
-  private resolveNodeConnection(entry: { nodeHost: string; nodePort: number }): SSHKeyConnection {
-    const all = [this.connection, ...this.allConnections];
-    return all.find(c => c.host === entry.nodeHost && c.port === entry.nodePort)
-      ?? this.connection;
-  }
-
-  /**
    * Create a backup of an accessory service.
    * The backup file is written on the node where the container runs.
    */
@@ -210,7 +255,7 @@ export class Backup {
   ): Promise<Result<BackupMetadata, Error>> {
     const found = await this.findContainer(service);
     if (!found) {
-      return err(new Error(`No running container found for service ${service}`));
+      return err(new BackupError(`No running container found for service ${service}`, { code: ErrorCode.CONTAINER_NOT_FOUND }));
     }
     const { containerId, connection: nodeConn } = found;
     const dbType = config.type;
@@ -233,6 +278,7 @@ export class Backup {
     const filePath = this.getDataFilePath(backupDir, backupId, dbType, compression);
 
     const startTime = Date.now();
+    const stored = this.storedBackups(service);
 
     const dockerExec = `docker exec ${shellQuote(containerId)} sh -c ${shellQuote(dumpScript)}`;
     const result = await sshExec(nodeConn, buildCapturePipeline(dockerExec, filePath, compression === 'gzip'));
@@ -257,11 +303,13 @@ export class Backup {
     const sizeResult = await sshExec(nodeConn, sizeCmd);
     const sizeBytes = parseInt(sizeResult.stdout.trim(), 10) || 0;
 
+    const now = new Date();
     const metadata: BackupMetadata = {
       id: backupId,
       service,
       dbType,
-      timestamp: new Date().toISOString(),
+      timestamp: now.toISOString(),
+      epochMs: backupEpochMs(now, await stored),
       size: formatBytes(sizeBytes),
       sizeBytes,
       compression,
@@ -339,6 +387,7 @@ export class Backup {
     const backupDir = this.getBackupDir(service);
 
     const startTime = Date.now();
+    const stored = this.storedBackups(service);
 
     // Build all file paths upfront for reliable cleanup
     const filePaths = mounts.map(m => this.getDataFilePath(backupDir, backupId, 'volume', compression, m.name));
@@ -390,11 +439,13 @@ export class Backup {
 
     const durationMs = Date.now() - startTime;
 
+    const now = new Date();
     const metadata: BackupMetadata = {
       id: backupId,
       service,
       dbType: 'volume',
-      timestamp: new Date().toISOString(),
+      timestamp: now.toISOString(),
+      epochMs: backupEpochMs(now, await stored),
       size: formatBytes(totalSizeBytes),
       sizeBytes: totalSizeBytes,
       compression,
@@ -508,33 +559,44 @@ export class Backup {
   }
 
   /**
-   * List available backups.
-   * Queries all node connections in parallel and aggregates results.
+   * List available backups, newest first.
+   * Queries every node in parallel; a node that does not answer is reported in `unreachable`,
+   * never skipped silently.
    */
-  async list(service?: string): Promise<Result<BackupListEntry[], Error>> {
-    const allConns = [this.connection, ...this.allConnections.filter(
-      c => !(c.host === this.connection.host && c.port === this.connection.port)
-    )];
+  async list(service?: string, options: { node?: string } = {}): Promise<Result<BackupListing, Error>> {
+    let nodes: ClusterNode[];
+    try {
+      nodes = this.nodesFor(options.node);
+    } catch (e) {
+      return err(e instanceof Error ? e : new Error(String(e)));
+    }
 
     const SEP = '---DOCKFLOW_META_SEP---';
+    const baseDir = service
+      ? this.getBackupDir(service)
+      : `${DOCKFLOW_BACKUPS_DIR}/${this.stackName}`;
+    const findCmd = `find ${shellQuote(baseDir)} -name '*.meta.json' 2>/dev/null | sort -r | while IFS= read -r f; do echo '${SEP}'; cat "$f"; done`;
 
-    const perNodeResults = await Promise.all(allConns.map(async (conn) => {
-      const baseDir = service
-        ? this.getBackupDir(service)
-        : `${DOCKFLOW_BACKUPS_DIR}/${this.stackName}`;
-      const findCmd = `find ${shellQuote(baseDir)} -name '*.meta.json' 2>/dev/null | sort -r | while IFS= read -r f; do echo '${SEP}'; cat "$f"; done`;
-      const result = await sshExec(conn, findCmd);
-      return result.stdout;
+    const answers = await Promise.all(nodes.map(async (node) => {
+      try {
+        return { node, stdout: (await sshExec(node.connection, findCmd)).stdout };
+      } catch (e) {
+        printDebug(`Backups on ${node.name} could not be listed: ${e instanceof Error ? e.message : String(e)}`);
+        return { node, stdout: null };
+      }
     }));
 
     const entries: BackupListEntry[] = [];
+    const unreachable: ClusterNode[] = [];
     const seenIds = new Set<string>();
 
-    for (const stdout of perNodeResults) {
-      if (!stdout.trim()) continue;
-      const chunks = stdout.split(SEP).filter(c => c.trim());
-
-      for (const chunk of chunks) {
+    for (const { node, stdout } of answers) {
+      if (stdout === null) {
+        unreachable.push(node);
+        continue;
+      }
+      for (const chunk of stdout.split(SEP)) {
+        if (!chunk.trim()) continue;
         const meta = parseMetadata(chunk.trim());
         if (!meta) continue;
 
@@ -546,53 +608,54 @@ export class Backup {
         const volumeName = meta.dbType === 'volume' && meta.volumes?.length
           ? meta.volumes[0].name
           : undefined;
-        const dataFile = this.getDataFilePath(dir, meta.id, meta.dbType, meta.compression, volumeName);
 
         entries.push({
           id: meta.id,
           service: meta.service,
           dbType: meta.dbType,
           timestamp: meta.timestamp,
+          epochMs: typeof meta.epochMs === 'number' ? meta.epochMs : undefined,
           size: meta.size,
           sizeBytes: meta.sizeBytes,
           compression: meta.compression,
           integrity: meta.integrity,
-          filePath: dataFile,
+          filePath: this.getDataFilePath(dir, meta.id, meta.dbType, meta.compression, volumeName),
           nodeHost: meta.nodeHost,
           nodePort: meta.nodePort,
+          node: node.name,
         });
       }
     }
 
-    // Sort newest-first across all nodes
-    entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    entries.sort(newestBackupFirst);
 
-    return ok(entries);
+    return ok({ entries, unreachable });
   }
 
   /**
    * Restore from a backup.
-   * Connects to the node where the backup was created (stored in metadata).
+   * `backup` is an id to look up on every node, or the entry resolveBackup already found, which
+   * spares a second round of listings (and the wait for a node that does not answer).
+   * Connects to the node holding the backup.
    */
   async restore(
     service: string,
-    backupId: string,
+    backup: string | BackupListEntry,
     config: BackupAccessoryConfig,
     compression?: 'gzip' | 'none',
     options: RestoreOptions = { forceUnverified: false },
   ): Promise<Result<void, Error>> {
     const dbType = config.type;
 
-    // First resolve which node has this backup
-    const listResult = await this.list(service);
-    if (!listResult.success) return err(listResult.error);
-
-    const entry = listResult.data.find(e => e.id === backupId);
-    if (!entry) {
-      return err(new Error(`Backup ${backupId} not found`));
+    let entry: BackupListEntry;
+    let nodeConn: SSHKeyConnection;
+    try {
+      entry = typeof backup === 'string' ? await this.listedEntry(service, backup) : backup;
+      nodeConn = this.nodeOf(entry).connection;
+    } catch (e) {
+      return err(e instanceof Error ? e : new Error(String(e)));
     }
-
-    const nodeConn = this.resolveNodeConnection(entry);
+    const backupId = entry.id;
     const backupDir = this.getBackupDir(service);
 
     // Determine compression from argument or metadata
@@ -605,7 +668,7 @@ export class Backup {
 
     const found = await this.findContainer(service);
     if (!found) {
-      return err(new Error(`No running container found for service ${service}`));
+      return err(new BackupError(`No running container found for service ${service}`, { code: ErrorCode.CONTAINER_NOT_FOUND }));
     }
     const { containerId } = found;
 
@@ -696,6 +759,19 @@ export class Backup {
     });
   }
 
+  /** The listed entry of a backup id; one that is not listed names the nodes that did not answer */
+  private async listedEntry(service: string, backupId: string): Promise<BackupListEntry> {
+    const listed = await this.list(service);
+    if (!listed.success) throw listed.error;
+    const entry = listed.data.entries.find(candidate => candidate.id === backupId);
+    if (entry) return entry;
+    const names = listed.data.unreachable.map(node => node.name).join(', ');
+    throw new BackupError(`Backup ${backupId} not found`, {
+      code: ErrorCode.BACKUP_NOT_FOUND,
+      suggestion: names ? `Bring ${names} back and retry; backups stored there are not listed.` : undefined,
+    });
+  }
+
   /**
    * Prune old backups keeping only the last N (batched deletion).
    * Deletes files on the node where each backup is stored.
@@ -712,7 +788,7 @@ export class Backup {
     } else {
       const listResult = await this.list(service);
       if (!listResult.success) return err(listResult.error);
-      entries = listResult.data;
+      entries = listResult.data.entries;
     }
 
     // Defensive sort newest-first, keep the most recent retentionCount
@@ -724,7 +800,12 @@ export class Backup {
     // Group by node to batch rm calls per node
     const byNode = new Map<string, { conn: SSHKeyConnection; paths: string[] }>();
     for (const entry of toRemove) {
-      const nodeConn = this.resolveNodeConnection(entry);
+      let nodeConn: SSHKeyConnection;
+      try {
+        nodeConn = this.nodeOf(entry).connection;
+      } catch (e) {
+        return err(e instanceof Error ? e : new Error(String(e)));
+      }
       const key = `${nodeConn.host}:${nodeConn.port}`;
       if (!byNode.has(key)) byNode.set(key, { conn: nodeConn, paths: [] });
       const node = byNode.get(key)!;
@@ -745,7 +826,8 @@ export class Backup {
   }
 
   /**
-   * Resolve a backup by ID prefix or "latest"
+   * Resolve a backup by ID prefix or "latest" (undefined). The newest backup cannot be known
+   * while a node that may hold a newer one did not answer, so "latest" is refused then.
    */
   async resolveBackup(
     service: string,
@@ -754,17 +836,29 @@ export class Backup {
     const listResult = await this.list(service);
     if (!listResult.success) return err(listResult.error);
 
-    const entries = listResult.data;
-    if (entries.length === 0) {
-      return err(new Error(`No backups found for service ${service}`));
+    const { entries, unreachable } = listResult.data;
+    const names = unreachable.map(node => node.name).join(', ');
+    const latest = !idOrLatest || idOrLatest === 'latest';
+
+    if (latest && unreachable.length > 0) {
+      return err(new BackupError(`The newest backup of ${service} cannot be determined: ${names} did not answer`, {
+        code: ErrorCode.BACKUP_NOT_FOUND,
+        suggestion: `Name the backup explicitly with \`--from <id>\`, or bring ${names} back and retry.`,
+      }));
     }
 
-    const match = findBackupMatch(entries, idOrLatest);
-    if (!match) {
-      return err(new Error(`No backup matching "${idOrLatest}" found for service ${service}`));
-    }
+    const match = findBackupMatch(entries, latest ? undefined : idOrLatest);
+    if (match) return ok(match);
 
-    return ok(match);
+    return err(new BackupError(
+      entries.length === 0
+        ? `No backups found for service ${service}`
+        : `No backup matching "${idOrLatest}" found for service ${service}`,
+      {
+        code: ErrorCode.BACKUP_NOT_FOUND,
+        suggestion: unreachable.length > 0 ? `Bring ${names} back and retry; backups stored there are not listed.` : undefined,
+      },
+    ));
   }
 }
 
@@ -774,7 +868,7 @@ export class Backup {
 export function createBackup(
   connection: SSHKeyConnection,
   stackName: string,
-  allConnections: SSHKeyConnection[] = []
+  nodes: ClusterNode[] = []
 ): Backup {
-  return new Backup(connection, stackName, allConnections);
+  return new Backup(connection, stackName, nodes);
 }

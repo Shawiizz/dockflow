@@ -5,6 +5,8 @@ import { join } from 'path';
 import { hasPosixShell } from './helpers/local-shell';
 import {
   DB_TYPES,
+  backupEpochMs,
+  backupOrder,
   buildBackupDir,
   buildCapturePipeline,
   buildDataFilePath,
@@ -14,6 +16,7 @@ import {
   credentialPrelude,
   findBackupMatch,
   integrityOf,
+  newestBackupFirst,
   parseContainerMounts,
   parseRestoreRefusal,
   RESTORE_REFUSAL_MARKER,
@@ -843,5 +846,57 @@ describe.if(hasPosixShell)('the trailer, executed', () => {
     const failed = runSh(script, { binDir: failing });
     expect(failed.exitCode).toBe(1);
     expect(failed.stdout).not.toContain('DOCKFLOW_DUMP_END');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Order
+// ---------------------------------------------------------------------------
+
+describe('backup order', () => {
+  const t = (iso: string): number => Date.parse(iso);
+
+  it('epochMs orders a backup; metadata written before it is ordered by its timestamp', () => {
+    expect(backupOrder({ timestamp: '2026-01-01T00:00:00.000Z', epochMs: 5 })).toBe(5);
+    expect(backupOrder({ timestamp: '2026-01-01T00:00:00.000Z' })).toBe(t('2026-01-01T00:00:00.000Z'));
+    expect(backupOrder({ timestamp: 'not a date' })).toBe(0);
+    const mixed = [
+      { id: 'legacy', timestamp: '2026-02-01T00:00:00.000Z' },
+      { id: 'late', timestamp: '2026-01-15T00:00:00.000Z', epochMs: t('2026-03-01T00:00:00.000Z') },
+      { id: 'first', timestamp: '2026-01-01T00:00:00.000Z', epochMs: t('2026-01-01T00:00:00.000Z') },
+    ];
+    expect([...mixed].sort(newestBackupFirst).map((e) => e.id)).toEqual(['late', 'legacy', 'first']);
+    expect(selectBackupsToPrune(mixed, 2).map((e) => e.id)).toEqual(['first']);
+  });
+
+  it('a new backup comes after every stored one, even one taken by a machine whose clock was ahead', () => {
+    const now = new Date('2026-05-01T10:00:00.000Z');
+    expect(backupEpochMs(now, [])).toBe(now.getTime());
+    expect(backupEpochMs(now, [{ timestamp: '2026-04-01T00:00:00.000Z' }])).toBe(now.getTime());
+    expect(backupEpochMs(now, [{ timestamp: '2026-04-01T00:00:00.000Z' }, { timestamp: '2026-05-01T11:00:00.000Z' }])).toBe(
+      t('2026-05-01T11:00:00.000Z') + 1,
+    );
+    expect(backupEpochMs(now, [{ timestamp: '2026-04-01T00:00:00.000Z', epochMs: now.getTime() + 60_000 }])).toBe(now.getTime() + 60_001);
+  });
+
+  it('retention keeps the backups taken last, whatever their timestamps say', () => {
+    const entries = [
+      { id: 'skewed', timestamp: '2026-12-01T00:00:00.000Z', epochMs: t('2026-01-01T00:00:00.000Z') },
+      { id: 'newest', timestamp: '2026-02-01T00:00:00.000Z', epochMs: t('2026-02-01T00:00:00.000Z') },
+    ];
+    expect(selectBackupsToPrune(entries, 1).map((e) => e.id)).toEqual(['skewed']);
+  });
+});
+
+describe('findBackupMatch', () => {
+  it('latest, spelled out, is the newest', () => {
+    expect(findBackupMatch([{ id: 'b' }, { id: 'a' }], 'latest')?.id).toBe('b');
+  });
+
+  it('an exact id wins over a prefix shared by a newer one', () => {
+    const entries = [{ id: '20260301-120000-ff00' }, { id: '2026030' }, { id: '20260301-120000-ff' }];
+    expect(findBackupMatch(entries, '20260301-120000-ff')?.id).toBe('20260301-120000-ff');
+    expect(findBackupMatch(entries, '2026030')?.id).toBe('2026030');
+    expect(findBackupMatch(entries, '20260301-12')?.id).toBe('20260301-120000-ff00');
   });
 });

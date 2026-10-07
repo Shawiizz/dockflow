@@ -9,8 +9,7 @@ import { dangerousConfirmPrompt } from '../../utils/prompts';
 import { printIntro, printOutro, printInfo, printWarning, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
 import { BackupError, CLIError, ErrorCode, ValidationError, withErrorHandler } from '../../utils/errors';
 import { createBackup } from '../../services/backup';
-import { requireBackupConfig, resolveBackupStack, getBackupServiceNames } from './utils';
-import { getAllNodeConnections } from '../../utils/servers';
+import { requireBackupConfig, resolveBackupStack, getBackupServiceNames, getBackupNodes } from './utils';
 
 export function registerBackupRestoreCommand(program: Command): void {
   program
@@ -39,12 +38,14 @@ export function registerBackupRestoreCommand(program: Command): void {
       const { connection } = validateEnv(env, options.server);
       const { backupConfig, source } = requireBackupConfig(service);
       const stackName = resolveBackupStack(env, source);
-      const backupService = createBackup(connection, stackName, getAllNodeConnections(env));
+      const backupService = createBackup(connection, stackName, getBackupNodes(env));
 
       // Resolve which backup to restore
       const resolveResult = await backupService.resolveBackup(service, options.from);
       if (!resolveResult.success) {
-        throw new BackupError(resolveResult.error.message, { code: ErrorCode.BACKUP_NOT_FOUND });
+        throw resolveResult.error instanceof CLIError
+          ? resolveResult.error
+          : new BackupError(resolveResult.error.message, { code: ErrorCode.BACKUP_NOT_FOUND });
       }
 
       const backup = resolveResult.data;
@@ -77,7 +78,7 @@ export function registerBackupRestoreCommand(program: Command): void {
       printBlank();
       const spinner = createSpinner();
       spinner.start('Restoring backup...');
-      const result = await backupService.restore(service, backup.id, backupConfig, backup.compression, {
+      const result = await backupService.restore(service, backup, backupConfig, backup.compression, {
         forceUnverified: options.forceUnverified === true,
       });
 

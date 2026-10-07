@@ -6,10 +6,9 @@
 import type { Command } from 'commander';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { printIntro, printOutro, printInfo, printBlank, printDim, printJSON, createSpinner } from '../../utils/output';
-import { BackupError, ValidationError, withErrorHandler } from '../../utils/errors';
+import { BackupError, CLIError, ValidationError, withErrorHandler } from '../../utils/errors';
 import { createBackup } from '../../services/backup';
-import { requireBackupConfig, resolveBackupStack, getBackupServiceNames } from './utils';
-import { getAllNodeConnections } from '../../utils/servers';
+import { requireBackupConfig, resolveBackupStack, getBackupServiceNames, getBackupNodes } from './utils';
 import { DOCKFLOW_BACKUPS_DIR } from '../../constants';
 
 export function registerBackupCreateCommand(program: Command): void {
@@ -41,7 +40,7 @@ export function registerBackupCreateCommand(program: Command): void {
       const { connection } = validateEnv(env, options.server);
       const { backupConfig, compression, source } = requireBackupConfig(service);
       const stackName = resolveBackupStack(env, source);
-      const backupService = createBackup(connection, stackName, getAllNodeConnections(env));
+      const backupService = createBackup(connection, stackName, getBackupNodes(env));
 
       const spinner = json ? null : createSpinner();
       spinner?.start('Creating backup...');
@@ -49,7 +48,7 @@ export function registerBackupCreateCommand(program: Command): void {
 
       if (!result.success) {
         spinner?.fail('Backup failed');
-        throw new BackupError(result.error.message);
+        throw result.error instanceof CLIError ? result.error : new BackupError(result.error.message);
       }
 
       if (json) {

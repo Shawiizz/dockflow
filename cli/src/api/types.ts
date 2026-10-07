@@ -499,6 +499,8 @@ export interface BackupEntry {
 export interface BackupListResponse {
   backups: BackupEntry[];
   total: number;
+  /** Servers that did not answer: the backups stored there are not in the list */
+  unreachableNodes?: string[];
 }
 
 export interface BackupActionResponse {

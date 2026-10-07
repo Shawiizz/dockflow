@@ -128,7 +128,7 @@ const VOLUME: BackupAccessoryConfig = { type: 'volume' };
 let pauses: number[] = [];
 
 function backupEngine(): Backup {
-  return new Backup(MANAGER, STACK, [MANAGER, WORKER], {
+  return new Backup(MANAGER, STACK, [{ name: 'server_1', connection: MANAGER }, { name: 'agent_1', connection: WORKER }], {
     sleep: async (ms) => {
       pauses.push(ms);
     },
@@ -278,7 +278,7 @@ describe('Backup.list metadata', () => {
       ),
     );
     const listed = await backupEngine().list('db');
-    expect(listed.success && listed.data.map((entry) => entry.id)).toEqual(['20260501-100000-aaaa']);
+    expect(listed.success && listed.data.entries.map((entry) => entry.id)).toEqual(['20260501-100000-aaaa']);
   });
 });
 
@@ -310,7 +310,7 @@ describe('Backup.backup credentials', () => {
 const POSTGRES_BACKUP = '20260501-100000-aaaa';
 
 function backupOnWorker(fields: Partial<BackupMetadata> = {}): void {
-  nodes.on('*.meta.json', listing(metadata({ id: POSTGRES_BACKUP, ...fields })));
+  nodes.on('*.meta.json', listing(metadata({ id: POSTGRES_BACKUP, ...fields })), 'worker');
 }
 
 describe('Backup.restore', () => {
@@ -350,7 +350,7 @@ describe('Backup.restore of redis', () => {
 
   function redisBackup(): void {
     containerOnWorker();
-    nodes.on('*.meta.json', listing(metadata({ id: POSTGRES_BACKUP, dbType: 'redis' })));
+    nodes.on('*.meta.json', listing(metadata({ id: POSTGRES_BACKUP, dbType: 'redis' })), 'worker');
   }
 
   it('an appendonly redis is refused with advice, before the service is touched', async () => {
@@ -524,5 +524,159 @@ describe('Backup.restore verifies before anything is destroyed', () => {
     expect(error.message).toContain('uploads');
     expect(error.message).toContain('corrupt or truncated');
     expect(nodes.commands().some((command) => command.includes('alpine') || command.includes('tar xf'))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// list, resolveBackup, ordering
+// ---------------------------------------------------------------------------
+
+describe('Backup.list and resolveBackup', () => {
+  const OLD = '20260401-100000-aaaa';
+  const NEW = '20260501-100000-bbbb';
+
+  /** the manager holds one backup, the worker the other */
+  function backupsOnBothNodes(): void {
+    nodes.on('*.meta.json', listing(metadata({ id: OLD, nodeHost: 'manager', timestamp: '2026-04-01T10:00:00.000Z' })), 'manager');
+    nodes.on('*.meta.json', listing(metadata({ id: NEW, nodeHost: 'worker', timestamp: '2026-05-01T10:00:00.000Z' })), 'worker');
+  }
+
+  it('lists the backups of every node, newest first, each with the server it was found on', async () => {
+    backupsOnBothNodes();
+    const listed = await backupEngine().list('db');
+    expect(listed.success && listed.data.unreachable).toEqual([]);
+    expect(listed.success && listed.data.entries.map((entry) => [entry.id, entry.node])).toEqual([
+      [NEW, 'agent_1'],
+      [OLD, 'server_1'],
+    ]);
+  });
+
+  it('reports the node that did not answer instead of failing', async () => {
+    backupsOnBothNodes();
+    nodes.on('*.meta.json', new Error('Timed out while waiting for handshake'), 'worker');
+    const listed = await backupEngine().list('db');
+    expect(listed.success && listed.data.entries.map((entry) => entry.id)).toEqual([OLD]);
+    expect(listed.success && listed.data.unreachable.map((node) => node.name)).toEqual(['agent_1']);
+  });
+
+  it('orders by when the backups were taken, not by what the clock of the machine that took them said', async () => {
+    nodes.on(
+      '*.meta.json',
+      listing(
+        metadata({ id: 'skewed', timestamp: '2026-09-01T00:00:00.000Z', epochMs: Date.parse('2026-03-01T00:00:00.000Z') }),
+        metadata({ id: 'recent', timestamp: '2026-04-01T00:00:00.000Z', epochMs: Date.parse('2026-04-01T00:00:00.000Z') }),
+        metadata({ id: 'legacy', timestamp: '2026-03-15T00:00:00.000Z' }),
+      ),
+      'manager',
+    );
+    const listed = await backupEngine().list('db');
+    expect(listed.success && listed.data.entries.map((entry) => entry.id)).toEqual(['recent', 'legacy', 'skewed']);
+  });
+
+  it('--node narrows the search to that server; an unknown name lists the valid ones', async () => {
+    backupsOnBothNodes();
+    const only = await backupEngine().list('db', { node: 'agent_1' });
+    expect(only.success && only.data.entries.map((entry) => entry.id)).toEqual([NEW]);
+    expect(nodes.commands('manager').some((command) => command.includes('*.meta.json'))).toBe(false);
+
+    const unknown = failure(await backupEngine().list('db', { node: 'nope' }));
+    expect(unknown.message).toBe('Server nope is not a server of this environment with SSH credentials');
+    expect((unknown as BackupError).suggestion).toBe('Pass one of: server_1, agent_1.');
+  });
+
+  it('latest, implicit or explicit, is refused while a node that may hold a newer backup did not answer', async () => {
+    backupsOnBothNodes();
+    nodes.on('*.meta.json', new Error('Timed out'), 'worker');
+    for (const id of [undefined, 'latest']) {
+      const error = failure(await backupEngine().resolveBackup('db', id));
+      expect(error.message).toBe('The newest backup of db cannot be determined: agent_1 did not answer');
+      expect((error as BackupError).suggestion).toBe('Name the backup explicitly with `--from <id>`, or bring agent_1 back and retry.');
+      expect((error as BackupError).code).toBe(ErrorCode.BACKUP_NOT_FOUND);
+    }
+  });
+
+  it('an explicit id on a reachable node resolves although another node did not answer', async () => {
+    backupsOnBothNodes();
+    nodes.on('*.meta.json', new Error('Timed out'), 'worker');
+    const resolved = await backupEngine().resolveBackup('db', '202604');
+    expect(resolved.success && resolved.data.id).toBe(OLD);
+  });
+
+  it('a backup that is not listed names the nodes that did not answer', async () => {
+    backupsOnBothNodes();
+    nodes.on('*.meta.json', new Error('Timed out'), 'worker');
+    const error = failure(await backupEngine().resolveBackup('db', '2027'));
+    expect(error.message).toBe('No backup matching "2027" found for service db');
+    expect((error as BackupError).suggestion).toBe('Bring agent_1 back and retry; backups stored there are not listed.');
+  });
+
+  it('with every node answering, latest is the newest across nodes; the exact id wins over a prefix', async () => {
+    backupsOnBothNodes();
+    const latest = await backupEngine().resolveBackup('db');
+    expect(latest.success && latest.data.id).toBe(NEW);
+    const exact = await backupEngine().resolveBackup('db', OLD);
+    expect(exact.success && exact.data.id).toBe(OLD);
+  });
+
+  it('restoring the entry resolveBackup found asks no node for the listing again', async () => {
+    containerOnWorker();
+    nodes.on('*.meta.json', listing(metadata({ id: OLD, integrity: 'gzip' })), 'worker');
+    const engine = backupEngine();
+    const resolved = await engine.resolveBackup('db', OLD);
+    if (!resolved.success) throw resolved.error;
+    const listings = () => nodes.commands().filter((command) => command.includes('*.meta.json')).length;
+    const before = listings();
+    expect(before).toBeGreaterThan(0);
+
+    expect((await engine.restore('db', resolved.data, POSTGRES)).success).toBe(true);
+    expect(listings()).toBe(before);
+
+    expect((await engine.restore('db', OLD, POSTGRES)).success).toBe(true);
+    expect(listings()).toBeGreaterThan(before);
+  });
+
+  it('restoring a bare id that no node lists says so, and names the nodes that did not answer', async () => {
+    nodes.on('*.meta.json', new Error('Timed out'), 'worker');
+    const error = failure(await backupEngine().restore('db', OLD, POSTGRES));
+    expect(error.message).toBe(`Backup ${OLD} not found`);
+    expect((error as BackupError).suggestion).toBe('Bring agent_1 back and retry; backups stored there are not listed.');
+  });
+});
+
+describe('Backup.backup order', () => {
+  it('a new backup sorts after every stored one, also one taken by a machine whose clock was ahead', async () => {
+    containerOnWorker();
+    const ahead = Date.now() + 3_600_000;
+    nodes.on(
+      '*.meta.json',
+      listing(metadata({ id: '20260101-100000-aaaa', timestamp: new Date(ahead).toISOString(), epochMs: ahead })),
+      'manager',
+    );
+    const result = await backupEngine().backup('db', POSTGRES, 'gzip');
+    if (!result.success) throw result.error;
+    expect(result.data.epochMs).toBe(ahead + 1);
+    expect(JSON.parse(nodes.calls.find((call) => call.via === 'channel')?.input ?? '').epochMs).toBe(ahead + 1);
+  });
+
+  it('a node that does not answer does not fail the backup', async () => {
+    containerOnWorker();
+    nodes.on('*.meta.json', new Error('Timed out'), 'manager');
+    const result = await backupEngine().backup('db', POSTGRES, 'gzip');
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.epochMs).toBeGreaterThan(0);
+  });
+});
+
+describe('Backup without a container', () => {
+  it('a service with no running container is a typed error for a backup and for a restore', async () => {
+    nodes.on('docker ps', { stdout: '' });
+    nodes.on('*.meta.json', listing(metadata({ id: POSTGRES_BACKUP })), 'worker');
+    const backup = failure(await backupEngine().backup('db', POSTGRES, 'gzip'));
+    expect(backup).toBeInstanceOf(BackupError);
+    expect(backup.message).toBe('No running container found for service db');
+    expect((backup as BackupError).code).toBe(ErrorCode.CONTAINER_NOT_FOUND);
+
+    const restore = failure(await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES));
+    expect((restore as BackupError).code).toBe(ErrorCode.CONTAINER_NOT_FOUND);
   });
 });

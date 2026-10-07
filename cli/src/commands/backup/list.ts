@@ -6,10 +6,9 @@
 import type { Command } from 'commander';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { printIntro, printInfo, printBlank, printJSON, printRaw, printDim, colors, formatRelativeTime } from '../../utils/output';
-import { withErrorHandler, BackupError } from '../../utils/errors';
+import { withErrorHandler } from '../../utils/errors';
 import { createBackup, type BackupListEntry } from '../../services/backup';
-import { requireBackupConfig, resolveBackupStack, listFromAllStacks } from './utils';
-import { getAllNodeConnections } from '../../utils/servers';
+import { requireBackupConfig, resolveBackupStack, listFromAllStacks, getBackupNodes, warnUnreachableNodes } from './utils';
 
 export function registerBackupListCommand(program: Command): void {
   program
@@ -17,27 +16,31 @@ export function registerBackupListCommand(program: Command): void {
     .alias('ls')
     .description('List available backups')
     .option('-j, --json', 'Output in JSON format')
+    .option('--node <name>', 'Only the backups stored on this server')
     .option('-s, --server <name>', 'Target manager (defaults to the first manager)')
     .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string | undefined,
-      options: { json?: boolean; server?: string }
+      options: { json?: boolean; server?: string; node?: string }
     ) => {
       const { connection } = validateEnv(env, options.server);
 
       let entries: BackupListEntry[];
+      let unreachable;
 
       if (service) {
         // Specific service — resolve which stack it belongs to
         const { source } = requireBackupConfig(service);
         const stackName = resolveBackupStack(env, source);
-        const backupService = createBackup(connection, stackName, getAllNodeConnections(env));
-        const result = await backupService.list(service);
-        if (!result.success) throw new BackupError(result.error.message);
-        entries = result.data;
+        const backupService = createBackup(connection, stackName, getBackupNodes(env));
+        const result = await backupService.list(service, { node: options.node });
+        if (!result.success) throw result.error;
+        ({ entries, unreachable } = result.data);
       } else {
-        entries = await listFromAllStacks(connection, env);
+        ({ entries, unreachable } = await listFromAllStacks(connection, env, options.node));
       }
+
+      warnUnreachableNodes(unreachable, 'backups stored there are not listed');
 
       if (options.json) {
         printJSON(entries);
@@ -53,7 +56,7 @@ export function registerBackupListCommand(program: Command): void {
       }
 
       // Table header
-      const header = `${'SERVICE'.padEnd(20)} ${'ID'.padEnd(17)} ${'DATE'.padEnd(20)} ${'SIZE'.padEnd(10)} AGE`;
+      const header = `${'SERVICE'.padEnd(20)} ${'ID'.padEnd(17)} ${'DATE'.padEnd(20)} ${'SIZE'.padEnd(10)} ${'NODE'.padEnd(12)} AGE`;
       printDim(header);
       printDim('─'.repeat(header.length));
 
@@ -61,7 +64,7 @@ export function registerBackupListCommand(program: Command): void {
         const date = new Date(entry.timestamp).toLocaleString();
         const age = formatRelativeTime(entry.timestamp);
         printRaw(
-          `${colors.info(entry.service.padEnd(20))} ${entry.id.padEnd(17)} ${date.padEnd(20)} ${entry.size.padEnd(10)} ${colors.dim(age)}`
+          `${colors.info(entry.service.padEnd(20))} ${entry.id.padEnd(17)} ${date.padEnd(20)} ${entry.size.padEnd(10)} ${entry.node.padEnd(12)} ${colors.dim(age)}`
         );
       }
 

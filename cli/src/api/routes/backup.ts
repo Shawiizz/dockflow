@@ -9,9 +9,10 @@
 
 import { jsonResponse, errorResponse } from '../server';
 import { loadConfig, getStackName, getAccessoriesStackName, type BackupAccessoryConfig } from '../../utils/config';
-import { getManagerConnection, resolveEnvironment, getAllNodeConnections } from './_helpers';
+import { getManagerConnection, resolveEnvironment } from './_helpers';
 import { createBackup, type Backup, type BackupBaseEntry } from '../../services/backup';
-import { requireBackupConfig, listFromAllStacks, listGroupedFromAllStacks, type BackupSource } from '../../commands/backup/utils';
+import { requireBackupConfig, listFromAllStacks, listGroupedFromAllStacks, getBackupNodes, type BackupSource } from '../../commands/backup/utils';
+import type { ClusterNode } from '../../types';
 import type { SSHKeyConnection } from '../../types';
 import type { BackupEntry, BackupListResponse, BackupActionResponse, BackupPruneResponse } from '../types';
 
@@ -47,7 +48,7 @@ function resolveBackupContextForService(env: string, conn: SSHKeyConnection, ser
 
   return {
     env, conn, stackName,
-    backupService: createBackup(conn, stackName, getAllNodeConnections(env)),
+    backupService: createBackup(conn, stackName, getBackupNodes(env)),
     backupConfig: cfg.backupConfig,
     compression: cfg.compression,
   };
@@ -113,20 +114,27 @@ async function listBackups(url: URL): Promise<Response> {
   const service = url.searchParams.get('service') || undefined;
 
   let allEntries: BackupBaseEntry[] = [];
+  let unreachable: ClusterNode[] = [];
 
   if (service) {
     const ctx = resolveBackupContextForService(base.env, base.conn, service);
     if (ctx instanceof Response) return ctx;
     const result = await ctx.backupService.list(service);
     if (!result.success) return errorResponse(result.error.message, 500);
-    allEntries = result.data;
+    allEntries = result.data.entries;
+    unreachable = result.data.unreachable;
   } else {
-    allEntries = await listFromAllStacks(base.conn, base.env);
+    try {
+      ({ entries: allEntries, unreachable } = await listFromAllStacks(base.conn, base.env));
+    } catch (e) {
+      return errorResponse(e instanceof Error ? e.message : String(e), 500);
+    }
   }
 
   const response: BackupListResponse = {
     backups: allEntries.map(toBackupEntry),
     total: allEntries.length,
+    ...(unreachable.length > 0 && { unreachableNodes: unreachable.map(node => node.name) }),
   };
 
   return jsonResponse(response);
@@ -181,7 +189,7 @@ async function restoreBackup(url: URL): Promise<Response> {
     return errorResponse(resolveResult.error.message, 404);
   }
 
-  const result = await ctx.backupService.restore(service, resolveResult.data.id, ctx.backupConfig, resolveResult.data.compression);
+  const result = await ctx.backupService.restore(service, resolveResult.data, ctx.backupConfig, resolveResult.data.compression);
 
   if (!result.success) {
     return errorResponse(result.error.message, 500);
@@ -216,8 +224,8 @@ async function pruneBackups(url: URL): Promise<Response> {
     if (!result.success) return errorResponse(result.error.message, 500);
     totalPruned = result.data;
   } else {
-    const stackData = await listGroupedFromAllStacks(base.conn, base.env);
-    for (const { backupService, byService } of stackData) {
+    const { stacks } = await listGroupedFromAllStacks(base.conn, base.env);
+    for (const { backupService, byService } of stacks) {
       for (const [svc, entries] of Object.entries(byService)) {
         if (entries.length <= retentionCount) continue;
         const result = await backupService.prune(svc, retentionCount, entries);
