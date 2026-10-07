@@ -506,7 +506,10 @@ services:
 
   it('leaves alone the routes of services the compose does not have', () => {
     const compose = makeCompose('services:\n  db:\n    image: postgres\n');
+    const inherited = { ...proxy, routes: [{ service: 'toString', domains: { production: 'x.example.com' }, port: 80 }] } as ProxyConfig;
     expect(injectTraefikLabels(compose, proxy, 'demo', 'production', { defaultRoute: false })).toBe(false);
+    expect(injectTraefikLabels(compose, inherited, 'demo', 'production', { defaultRoute: false })).toBe(false);
+    expect(Object.keys(compose.services)).toEqual(['db']);
     expect(compose.services.db.deploy).toBeUndefined();
     expect(compose.networks).toBeUndefined();
   });
@@ -572,6 +575,21 @@ describe('checkProxyRoutes', () => {
     ]);
     // once the route lists the only service there, nothing else answers on that domain
     expect(check([{ service: 'web', domains: { production: 'app.example.com' } }])).toEqual([]);
+  });
+
+  it('refuses a route without a path on the dashboard domain', () => {
+    const dashboard = { ...base, dashboard: { enabled: true, domain: 'traefik.example.com' } } as ProxyConfig;
+    const routes = [{ service: 'panel', domains: { production: 'traefik.example.com' } }];
+    expect(checkProxyRoutes({ ...dashboard, routes } as ProxyConfig, 'production', 'demo', app, accessories)).toEqual([
+      'proxy.routes[0]: traefik.example.com is also proxy.dashboard.domain; give the route a path, or the dashboard another domain',
+    ]);
+    expect(checkProxyRoutes({ ...dashboard, routes: [{ ...routes[0], path: '/panel' }] } as ProxyConfig, 'production', 'demo', app, accessories)).toEqual([]);
+  });
+
+  it('names an inherited property as no service', () => {
+    expect(check([{ service: 'constructor', domains: { production: 'x.example.com' }, port: 80 }])).toEqual([
+      'proxy.routes[0]: no service "constructor" in docker-compose.yml or accessories.yml',
+    ]);
   });
 
   it('ignores the routes of other environments, and everything when the proxy is off', () => {

@@ -689,8 +689,12 @@ export function injectTraefikLabels(
   for (const route of proxy.routes ?? []) listed.set(route.service, [...(listed.get(route.service) ?? []), route]);
 
   for (const [svcName, routes] of listed) {
+    if (!Object.hasOwn(compose.services, svcName)) continue;
     const svc = compose.services[svcName];
-    if (!svc || !routes.some((route) => route.domains[env])) continue;
+    if (!routes.some((route) => route.domains[env])) {
+      printDim(`Service "${svcName}" has no route for ${env} in proxy.routes: Traefik does not serve it there`);
+      continue;
+    }
     if (optsOutOfTraefik(svc)) {
       printWarning(`Service "${svcName}" sets traefik.enable=false: its routes in proxy.routes are not applied`);
       continue;
@@ -775,7 +779,8 @@ export function injectTraefikLabels(
  * What keeps proxy.routes from being served in this environment, one message each: a route whose
  * service is in neither compose file or in both, a service Traefik knows no port of, two routes
  * on the same domain and path, a route without a path on the domain of proxy.domains while
- * services answer there. `accessories` is null when the project has no accessories.yml.
+ * services answer there, or on the dashboard's. `accessories` is null when the project has no
+ * accessories.yml.
  */
 export function checkProxyRoutes(
   proxy: ProxyConfig,
@@ -790,13 +795,14 @@ export function checkProxyRoutes(
   const claimed = new Map<string, number>();
   const defaultDomain = proxy.domains?.[env]?.toLowerCase();
   const onDomain = defaultDomain ? onDefaultDomain(app, proxy, stackName) : [];
+  const dashboardDomain = proxy.dashboard?.enabled ? proxy.dashboard.domain?.toLowerCase() : undefined;
 
   (proxy.routes ?? []).forEach((route, i) => {
     const domain = route.domains[env]?.toLowerCase();
     if (!domain) return;
     const at = `proxy.routes[${i}]`;
-    const inApp = route.service in app.services;
-    const inAccessories = accessories !== null && route.service in accessories.services;
+    const inApp = Object.hasOwn(app.services, route.service);
+    const inAccessories = accessories !== null && Object.hasOwn(accessories.services, route.service);
 
     if (!inApp && !inAccessories) {
       problems.push(`${at}: no service "${route.service}" in docker-compose.yml or accessories.yml`);
@@ -821,6 +827,9 @@ export function checkProxyRoutes(
         `${at}: ${domain} is also proxy.domains.${env}, the domain of the default route (${onDomain.join(', ')}); ` +
           'give the route a path, or add traefik.enable=false to deploy.labels of those services',
       );
+    }
+    if (domain === dashboardDomain && !route.path) {
+      problems.push(`${at}: ${domain} is also proxy.dashboard.domain; give the route a path, or the dashboard another domain`);
     }
   });
 

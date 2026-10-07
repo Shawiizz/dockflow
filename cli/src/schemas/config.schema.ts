@@ -277,7 +277,8 @@ export const ProxyRouteSchema = z.object({
   ).describe(
     'Domain per environment, e.g. { production: "panel.example.com" }; the route is left out of the environments not listed'
   ),
-  path: z.string().regex(/^\/[^\s`]*$/, { message: 'must start with / and contain no spaces or backticks' }).optional().describe(
+  // `docker stack deploy` would read a `$` as a variable: /a$b would become /a
+  path: z.string().regex(/^\/[^\s`$]*$/, { message: 'must start with / and contain no spaces, backticks or $' }).optional().describe(
     'Only the requests whose path starts with this prefix, e.g. /ws; the path reaches the service unchanged'
   ),
   port: z.number().int().min(1).max(65535).optional().describe(

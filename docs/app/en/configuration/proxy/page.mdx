@@ -71,7 +71,7 @@ proxy:
 | `domains` | map | Domain per environment, where every service with `ports:` answers | — |
 | `routes` | list | Services routed on domains of their own. See [Routing a Service on Its Own Domain](#routing-a-service-on-its-own-domain) | — |
 | `routes[].service` | string | Service of `docker-compose.yml` or `accessories.yml` | — |
-| `routes[].domains` | map | Domain per environment. The route is left out of the environments not listed | — |
+| `routes[].domains` | map | Domain per environment. In the others, the service gets no route at all | — |
 | `routes[].path` | string | Only the requests whose path starts with this prefix | — |
 | `routes[].port` | number | Container port the requests go to | first port of the service |
 | `dashboard.enabled` | boolean | Expose the Traefik dashboard | `false` |
@@ -252,7 +252,8 @@ services:
 - `path` keeps only the requests whose path starts with it, and the path reaches the service
   unchanged. When two routes match a request, the one with the longer rule wins: above,
   `/ws` goes to 4327 and everything else to 4326. WebSocket connections need nothing more.
-- A route is left out of the environments its `domains` does not list.
+- A route is left out of the environments its `domains` does not list; a service none of whose
+  routes lists the environment has no route there at all, and the deploy says so.
 - A service listed in `routes` never gets the route on `domains`, in any environment. The other
   services with `ports:` still answer on `domains`; leave `domains` out to route only what
   `routes` lists.
@@ -274,9 +275,10 @@ deploy:
     - "traefik.http.routers.my-app-production-panel-route1.tls.certresolver=letsencrypt"
 ```
 
-Before building anything, `dockflow deploy` stops when a route names a service that neither file
-has (or both have), when it cannot tell the port, when two routes share a domain and path, or
-when a route without `path` takes the domain where services answer through `domains`.
+Before building anything, and on `--dry-run` too, `dockflow deploy` stops when a route names a
+service that neither file has (or both have), when it cannot tell the port, when two routes share
+a domain and path, or when a route without `path` takes the domain where services answer through
+`domains`, or the dashboard's.
 
 ## Coexistence with Nginx
 

@@ -31,6 +31,7 @@ describe('ProxyConfigSchema', () => {
     expect(routes({ ...route, domains: { production: 'https://panel.example.com' } })).toBe(false);
     expect(routes({ ...route, domains: { production: 'panel.example.com`) || Host(`x' } })).toBe(false);
     expect(routes({ ...route, path: 'ws' })).toBe(false);
+    expect(routes({ ...route, path: '/a$b' })).toBe(false);
     expect(routes({ ...route, port: 70000 })).toBe(false);
     expect(routes({ domains: route.domains })).toBe(false);
   });

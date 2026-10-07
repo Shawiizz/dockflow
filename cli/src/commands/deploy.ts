@@ -215,6 +215,24 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   const pluginsLoaded = await Plugin.loadConfigWithPlugins({ rendered, fallback: config, projectRoot, projectContext: renderContext });
   config = pluginsLoaded.config;
 
+  // proxy.routes name services of both compose files: check them before anything is built,
+  // dry runs included
+  if (config.proxy?.enabled && config.proxy.routes?.length && !config.no_services) {
+    const accessories = rendered.get(accessoriesKey());
+    const problems = Compose.checkProxyRoutes(
+      config.proxy, env, stackName,
+      Compose.loadFromString(composeContent),
+      accessories ? Compose.loadFromString(accessories) : null,
+    );
+    if (problems.length > 0) {
+      throw new DeployError(
+        `Traefik cannot serve proxy.routes as configured:\n  ${problems.join('\n  ')}`,
+        ErrorCode.VALIDATION_FAILED,
+        'Fix proxy.routes in .dockflow/config.yml.',
+      );
+    }
+  }
+
   // Dry-run exit — after rendering and plugin expansion, so the summary lists the
   // uploads and hook entries a deploy would actually run.
   if (options.dryRun) {
@@ -238,23 +256,6 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
         `Unknown service(s): ${unknown.join(', ')}. Available: ${available.join(', ')}`,
         ErrorCode.VALIDATION_FAILED,
         'Use the exact service names defined in your docker-compose file.',
-      );
-    }
-  }
-
-  // proxy.routes name services of both compose files: check them before anything is built
-  if (config.proxy?.enabled && config.proxy.routes?.length && !config.no_services) {
-    const accessories = rendered.get(accessoriesKey());
-    const problems = Compose.checkProxyRoutes(
-      config.proxy, env, stackName,
-      Compose.loadFromString(composeContent),
-      accessories ? Compose.loadFromString(accessories) : null,
-    );
-    if (problems.length > 0) {
-      throw new DeployError(
-        `Traefik cannot serve proxy.routes as configured:\n  ${problems.join('\n  ')}`,
-        ErrorCode.VALIDATION_FAILED,
-        'Fix proxy.routes in .dockflow/config.yml.',
       );
     }
   }

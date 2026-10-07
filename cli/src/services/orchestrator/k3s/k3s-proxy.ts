@@ -3,7 +3,7 @@ import type { ProxyConfig } from '../../../utils/config';
 import { K3S_DOCKFLOW_KUBECONFIG, K3S_TRAEFIK_NAMESPACE } from '../../../constants';
 import { sshExec } from '../../../utils/ssh';
 import { printDebug, printInfo, printSuccess } from '../../../utils/output';
-import { stringify } from 'yaml';
+import { parse, stringify } from 'yaml';
 import type { ProxyBackend } from '../interfaces';
 
 /**
@@ -23,7 +23,8 @@ export class K3sProxyBackend implements ProxyBackend {
   /**
    * Ensure Traefik is running and configured in kube-system.
    * If proxy.acme is enabled, applies a HelmChartConfig for Let's Encrypt.
-   * Idempotent: skips if already configured.
+   * Idempotent: a configuration the cluster already holds is left alone, so Traefik restarts
+   * only when it changes.
    */
   async ensureRunning(proxyConfig: ProxyConfig): Promise<void> {
     // Check Traefik is running in kube-system
@@ -39,9 +40,20 @@ export class K3sProxyBackend implements ProxyBackend {
     }
 
     const helmChartConfig = K3sProxyBackend.generateHelmChartConfig(proxyConfig);
-    if (helmChartConfig) {
+    if (helmChartConfig && !(await this.isApplied(helmChartConfig))) {
       await this.applyHelmChartConfig(helmChartConfig);
+    } else if (helmChartConfig) {
+      printDebug('Traefik configuration unchanged');
     }
+  }
+
+  /** Whether the cluster holds these values already: applying them again restarts Traefik for nothing. */
+  private async isApplied(helmChartConfig: string): Promise<boolean> {
+    const wanted = (parse(helmChartConfig) as { spec: { valuesContent: string } }).spec.valuesContent;
+    const current = await sshExec(this.connection,
+      `${this.kube} get helmchartconfig traefik -n ${K3S_TRAEFIK_NAMESPACE} -o jsonpath='{.spec.valuesContent}'`,
+    );
+    return current.exitCode === 0 && current.stdout.trim() === wanted.trim();
   }
 
   /**
