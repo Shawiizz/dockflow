@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, statSync } from 'fs';
 import { join, dirname, parse as parsePath } from 'path';
 
 export interface ProjectConfigResult {
@@ -21,10 +21,23 @@ function findProjectRoot(startDir: string): { root: string; layout: 'flat' | 'st
   return { root: startDir, layout: 'none' };
 }
 
-function readIfExists(path: string): { path: string; content: string } | null {
-  if (!existsSync(path)) return null;
-  return { path, content: readFileSync(path, 'utf-8') };
+/** The first candidate that is a regular file; one that cannot be read counts as absent */
+function readFirst(root: string, candidates: string[]): { path: string; content: string } | null {
+  for (const candidate of candidates) {
+    try {
+      const path = join(root, candidate);
+      if (statSync(path).isFile()) return { path: candidate, content: readFileSync(path, 'utf-8') };
+    } catch {
+      continue;
+    }
+  }
+  return null;
 }
+
+// The files of cli/src/utils/config.ts `getLayout`, in its lookup order. Only configuration is
+// returned: .env.dockflow holds the SSH connection strings and is never read.
+const DOCKER_DIR = '.dockflow/docker';
+const COMPOSE_NAMES = ['docker-compose.yml', 'docker-compose.yaml'];
 
 export function readProjectConfig(cwd: string): ProjectConfigResult {
   const { root, layout } = findProjectRoot(cwd);
@@ -33,28 +46,24 @@ export function readProjectConfig(cwd: string): ProjectConfigResult {
     return { layout: 'none', root, files: [] };
   }
 
+  const candidates: string[][] =
+    layout === 'flat'
+      ? [
+          ['dockflow.yml'],
+          [...COMPOSE_NAMES, ...COMPOSE_NAMES.map((name) => `${DOCKER_DIR}/${name}`)],
+          ['accessories.yml', 'accessories.yaml', `${DOCKER_DIR}/accessories.yml`],
+        ]
+      : [
+          ['.dockflow/config.yml'],
+          ['.dockflow/servers.yml'],
+          COMPOSE_NAMES.map((name) => `${DOCKER_DIR}/${name}`),
+          [`${DOCKER_DIR}/accessories.yml`],
+        ];
+
   const files: { path: string; content: string }[] = [];
-
-  if (layout === 'flat') {
-    const f = readIfExists(join(root, 'dockflow.yml'));
-    if (f) files.push({ path: 'dockflow.yml', content: f.content });
-
-    const compose =
-      readIfExists(join(root, 'docker-compose.yml')) ??
-      readIfExists(join(root, 'docker-compose.yaml'));
-    if (compose) files.push({ path: compose.path.replace(root + '/', '').replace(root + '\\', ''), content: compose.content });
-  } else {
-    for (const name of ['config.yml', 'servers.yml']) {
-      const f = readIfExists(join(root, '.dockflow', name));
-      if (f) files.push({ path: `.dockflow/${name}`, content: f.content });
-    }
-    const compose =
-      readIfExists(join(root, '.dockflow', 'docker', 'docker-compose.yml')) ??
-      readIfExists(join(root, '.dockflow', 'docker', 'docker-compose.yaml'));
-    if (compose) {
-      const rel = compose.path.replace(root + '/', '').replace(root + '\\', '').replace(/\\/g, '/');
-      files.push({ path: rel, content: compose.content });
-    }
+  for (const names of candidates) {
+    const file = readFirst(root, names);
+    if (file) files.push(file);
   }
 
   return { layout, root, files };
