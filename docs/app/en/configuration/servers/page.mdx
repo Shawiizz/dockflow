@@ -213,6 +213,10 @@ This command will:
 - Initialize Swarm on the manager
 - Join workers to the cluster
 
+If a worker cannot be joined (no SSH key for it, or `docker swarm join` fails), the command
+names it, exits with an error and does not report the cluster as ready. Fix the cause and run
+it again: nodes already in the cluster are left alone.
+
 <Callout type="warning">
   The ports are opened with `sudo -n`, which the deploy user created by `dockflow setup` is not
   allowed for these commands. When a command fails, setup warns and prints the commands to run
@@ -262,9 +266,17 @@ dockflow ALL=(ALL) NOPASSWD: /usr/local/sbin/dockflow-public-ports
 On a host with neither, the file is removed rather than left empty. Nothing else is granted. In particular there is **no rule for `systemctl`** — a hook running
 `sudo systemctl daemon-reload` will fail on a normally provisioned server.
 
+The file starts with a `# Managed by Dockflow` comment. Setup writes it to a temporary file, has
+`visudo -c` check it, and only then moves it into place, so a rule that does not parse never
+replaces a working file. When it removes the file, it checks the whole sudoers configuration
+again.
+
 <Callout type="warning">
   **Put your own rules in your own file.** Setup rewrites `/etc/sudoers.d/<username>` every time
-  it runs, so anything you add there is lost on the next `dockflow setup`. Use a separate file:
+  it runs, so anything you add to a file it manages is lost on the next `dockflow setup`. A
+  `/etc/sudoers.d/<username>` that has no `# Managed by Dockflow` first line and holds any rule
+  other than the two above is treated as yours: setup leaves it exactly as it is and warns, and
+  the nginx and public-ports rules are then yours to add. Use a separate file:
 
   ```bash
   echo 'dockflow ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload' | sudo tee /etc/sudoers.d/dockflow-myapp > /dev/null

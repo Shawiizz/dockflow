@@ -862,7 +862,12 @@ Run the interactive setup wizard. On Windows/macOS, prompts to connect to a Linu
 dockflow setup user@host[:port]
 ```
 
-Run setup on a remote Linux server from any platform.
+Run setup on a remote Linux server from any platform. The server must be x86_64 (amd64) or
+aarch64 (arm64); any other architecture is refused before anything is put on it.
+
+The Dockflow binary is placed in a private temporary directory on the server (created with
+`mktemp -d`, readable by the connecting user only), checked, run from there and removed when
+setup ends, whether it succeeded or not.
 
 | Option | Description |
 |--------|-------------|
@@ -904,7 +909,7 @@ Configure a server without prompts (Linux only, must run on target host). Pass f
 dockflow setup swarm <env>
 ```
 
-Initialize a Docker Swarm cluster for an environment. Joins all servers configured in `servers.yml` into the Swarm.
+Initialize a Docker Swarm cluster for an environment. Joins all servers configured in `servers.yml` into the Swarm. It exits with an error, naming them, when a worker could not be joined; running it again leaves the nodes already in the cluster alone.
 
 ### Check Dependencies
 
