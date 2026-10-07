@@ -10,6 +10,7 @@ import {
   K3S_MANAGER_CONTAINER,
 } from "./connection";
 import { getCliBinaryName } from "./cli";
+import { SOCKET_PROXY_IMAGE, TRAEFIK_IMAGE } from "../../../cli/src/constants";
 
 const E2E_DIR = join(import.meta.dir, "..");
 const DOCKER_DIR = join(E2E_DIR, "docker");
@@ -66,10 +67,11 @@ export async function startCluster(): Promise<void> {
   );
   console.log("[cluster] Containers started.");
 
-  // Pre-pull images into DinD containers in parallel
+  // Pre-pull images into DinD containers in parallel; the proxy's two come from the CLI
   await preloadImages([MANAGER_CONTAINER, WORKER_CONTAINER], [
     "redis:8-alpine",
-    "traefik:v3.6",
+    TRAEFIK_IMAGE,
+    SOCKET_PROXY_IMAGE,
     "nginx:alpine",
   ]);
 
