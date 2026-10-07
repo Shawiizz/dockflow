@@ -44,6 +44,7 @@ export interface SwarmTaskInfo {
 
 export class SwarmStackBackend implements StackBackend {
   private readonly ops: SwarmStackOps;
+  private readonly renders = new Map<string, string>();
 
   constructor(private readonly conn: SSHKeyConnection) {
     this.ops = new SwarmStackOps(conn);
@@ -66,8 +67,19 @@ export class SwarmStackBackend implements StackBackend {
     }
   }
 
+  /** The same input renders once: the release and the deploy both need it, and its warnings print once. */
   render(input: StackDeployInput): string {
-    const compose = Compose.loadFromString(Compose.serialize(input.compose));
+    const source = Compose.serialize(input.compose);
+    const key = JSON.stringify([input.stackName, input.env, input.servicesFilter ?? null, input.proxy ?? null, source]);
+    const cached = this.renders.get(key);
+    if (cached !== undefined) return cached;
+    const rendered = this.renderOnce(input, source);
+    this.renders.set(key, rendered);
+    return rendered;
+  }
+
+  private renderOnce(input: StackDeployInput, source: string): string {
+    const compose = Compose.loadFromString(source);
     const targeted = input.servicesFilter?.length
       ? Compose.filterServices(compose, input.servicesFilter)
       : compose;
@@ -267,7 +279,7 @@ export class SwarmStackBackend implements StackBackend {
   }
 
   async removeStack(stackName: string): Promise<void> {
-    await this.ops.forceRemoveStack(stackName);
+    await this.ops.removeStackAndWait(stackName);
   }
 
   async listStacks(): Promise<StackInfo[]> {

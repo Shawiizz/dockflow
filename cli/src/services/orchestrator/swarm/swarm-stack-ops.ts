@@ -103,10 +103,9 @@ export class SwarmStackOps {
   }
 
   /**
-   * Force-remove a stuck stack. Waits up to 60s for the stack to disappear.
+   * Remove a stack and wait up to 60s for it to disappear.
    */
-  async forceRemoveStack(stackName: string): Promise<void> {
-    printWarning(`Removing stuck stack: ${stackName}`);
+  async removeStackAndWait(stackName: string): Promise<void> {
     const rmResult = await sshExec(this.connection, `docker stack rm ${stackName}`);
     if (rmResult.exitCode !== 0) {
       printWarning(`docker stack rm failed (exit ${rmResult.exitCode}): ${rmResult.stderr.trim()}`);
@@ -151,8 +150,8 @@ export class SwarmStackOps {
     // 1. Handle stuck services
     const stuck = await this.getStuckServices(stackName);
     if (stuck.length > 0) {
-      printWarning(`Stuck services detected: ${stuck.join(', ')}`);
-      await this.forceRemoveStack(stackName);
+      printWarning(`Stuck services detected: ${stuck.join(', ')}; removing stack ${stackName} before deploying`);
+      await this.removeStackAndWait(stackName);
       await Bun.sleep(3000);
     }
 

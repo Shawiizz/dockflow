@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 import { parse } from 'yaml';
+import * as Compose from '../services/compose';
 import { loadFromString, serialize } from '../services/compose';
 import { SwarmStackBackend } from '../services/orchestrator/swarm/swarm-stack';
 import type { ProxyConfig } from '../utils/config';
@@ -37,5 +38,21 @@ describe('SwarmStackBackend.render', () => {
     );
 
     expect(Object.keys(rendered.services)).toEqual(['worker']);
+  });
+
+  it('renders an input once: the release and the deploy share it, and its warnings print once', () => {
+    const inject = spyOn(Compose, 'injectTraefikLabels');
+    try {
+      const backend = new SwarmStackBackend(conn);
+      const input = { stackName: 'demo-production', env: 'production', compose: compose(), proxy };
+      const first = backend.render(input);
+      expect(backend.render({ ...input, compose: compose() })).toBe(first);
+      expect(inject).toHaveBeenCalledTimes(1);
+
+      backend.render({ ...input, servicesFilter: ['web'] });
+      expect(inject).toHaveBeenCalledTimes(2);
+    } finally {
+      inject.mockRestore();
+    }
   });
 });
