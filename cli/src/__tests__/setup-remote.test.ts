@@ -10,16 +10,30 @@ let respond: Responder = () => undefined;
 let interactiveExit = 0;
 const executed: string[] = [];
 const interactive: string[] = [];
+const channels: { command: string; stdin: string }[] = [];
+let channelExit = 0;
 
 const answer = (partial: Partial<SSHExecResult> | undefined): SSHExecResult => ({ stdout: '', stderr: '', exitCode: 0, ...partial });
 
 const realSsh = await import('../utils/ssh');
+
+const fakeChannel = (entry: { stdin: string }): Awaited<ReturnType<typeof realSsh.sshExecChannel>> =>
+  ({
+    stream: { end: (data: string) => void (entry.stdin += data) },
+    done: Promise.resolve({ exitCode: channelExit, stdout: '', stderr: channelExit === 0 ? '' : 'cat: Permission denied' }),
+  }) as unknown as Awaited<ReturnType<typeof realSsh.sshExecChannel>>;
 mock.module('../utils/ssh', () => ({
   ...realSsh,
   sshExec: async (...args: Parameters<typeof realSsh.sshExec>) => {
     if (!scripted) return realSsh.sshExec(...args);
     executed.push(args[1]);
     return answer(respond(args[1]));
+  },
+  sshExecChannel: async (...args: Parameters<typeof realSsh.sshExecChannel>) => {
+    if (!scripted) return realSsh.sshExecChannel(...args);
+    const entry = { command: args[1], stdin: '' };
+    channels.push(entry);
+    return fakeChannel(entry);
   },
   executeInteractiveSSH: async (...args: Parameters<typeof realSsh.executeInteractiveSSH>) => {
     if (!scripted) return realSsh.executeInteractiveSSH(...args);
@@ -28,7 +42,7 @@ mock.module('../utils/ssh', () => ({
   },
 }));
 
-const { cleanupTempDir, connectionFailureMessage, detectRemoteArch, makeTempDir, runRemoteSetup } = await import('../commands/setup/remote');
+const { cleanupTempDir, connectionFailureMessage, detectRemoteArch, makeTempDir, runRemoteSetup, writePasswordFile } = await import('../commands/setup/remote');
 
 const CONN: ConnectionInfo = { host: 'server.example.com', port: 22, user: 'deploy', privateKey: 'test-key' };
 const DIR = '/tmp/dockflow-setup.AbC123xy';
@@ -39,6 +53,8 @@ beforeEach(() => {
   interactiveExit = 0;
   executed.length = 0;
   interactive.length = 0;
+  channels.length = 0;
+  channelExit = 0;
 });
 
 describe('detectRemoteArch', () => {
@@ -176,5 +192,66 @@ describe('connectionFailureMessage', () => {
     expect(connectionFailureMessage('All configured authentication methods failed', { ...target, privateKey: 'k' })).toContain('SSH key');
     expect(connectionFailureMessage('All configured authentication methods failed', target)).toContain('username and password');
     expect(connectionFailureMessage('weird', target)).toBe('SSH error: weird');
+  });
+});
+
+describe('the password of the deploy user created by remote setup', () => {
+  const PASSWORD = `it's "a" $(id) p@ss`;
+  const OPTS = {
+    host: 'server.example.com',
+    port: 22,
+    user: 'deploy',
+    privateKey: 'test-key',
+    deployPassword: PASSWORD,
+    forwardFlags: ["--user 'dockflow'", '--generate-key'],
+  };
+  const serverAnswers: Responder = (command) => {
+    if (command === 'echo ok') return { stdout: 'ok\n' };
+    if (command === 'uname -m') return { stdout: 'x86_64\n' };
+    if (command.startsWith('mktemp')) return { stdout: `${DIR}\n` };
+    if (command.endsWith('--version')) return { stdout: `${DOCKFLOW_VERSION}\n` };
+    return undefined;
+  };
+
+  it('travels on the stdin of a channel into a file of the private directory, never in a command', async () => {
+    respond = serverAnswers;
+    await runRemoteSetup(OPTS);
+    expect(channels).toEqual([{ command: `umask 077 && cat > '${DIR}/deploy-password'`, stdin: PASSWORD }]);
+    expect(interactive).toEqual([`sudo '${DIR}/dockflow' setup --user 'dockflow' --generate-key --password-file '${DIR}/deploy-password'`]);
+    for (const command of [...executed, ...interactive, ...channels.map((channel) => channel.command)]) {
+      expect(command).not.toContain('p@ss');
+    }
+  });
+
+  it('is not sent when no deploy user is created', async () => {
+    respond = serverAnswers;
+    await runRemoteSetup({ ...OPTS, deployPassword: undefined });
+    expect(channels).toEqual([]);
+    expect(interactive[0]).not.toContain('password-file');
+  });
+
+  it('stops, and removes the directory, when the file cannot be written', async () => {
+    respond = serverAnswers;
+    channelExit = 1;
+    await expect(runRemoteSetup(OPTS)).rejects.toThrow('Could not write the password file on server.example.com: cat: Permission denied');
+    expect(interactive).toEqual([]);
+    expect(executed.at(-1)).toBe(`rm -rf -- '${DIR}'`);
+  });
+
+  it.skipIf(process.platform === 'win32' || Bun.which('bash') === null)('is written by that command exactly, readable by its owner only', async () => {
+    const { mkdtempSync, readFileSync, statSync, rmSync } = await import('fs');
+    const { tmpdir } = await import('os');
+    const { join } = await import('path');
+    const dir = mkdtempSync(join(tmpdir(), 'dockflow-pw-'));
+    try {
+      const file = join(dir, "we ird'name");
+      await writePasswordFile(CONN, file, PASSWORD);
+      const proc = Bun.spawn(['bash', '-c', channels[0].command], { stdin: Buffer.from(PASSWORD), stdout: 'pipe', stderr: 'pipe' });
+      expect(await proc.exited).toBe(0);
+      expect(readFileSync(file, 'utf8')).toBe(PASSWORD);
+      expect(statSync(file).mode & 0o777).toBe(0o600);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

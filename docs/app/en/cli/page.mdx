@@ -894,10 +894,11 @@ Configure a server without prompts (Linux only, must run on target host). Pass f
 | `--host <host>` | Public IP/hostname for connection string |
 | `--port <port>` | SSH port (default: 22) |
 | `--user <user>` | Deployment username |
-| `--password <password>` | Password for new user or sudo |
+| `--password <password>` | Password for the new deploy user |
+| `--password-file <path>` | Read that password from a file instead of the command line, where other users of the machine could see it in the process list |
 | `--ssh-key <path>` | Path to existing SSH private key |
 | `--generate-key` | Generate new SSH key |
-| `--deploy-password <pw>` | Password for the deploy user created remotely (remote, with `--user`) |
+| `--deploy-password <pw>` | Password for the deploy user created remotely (remote, with `--user`); sent to the server through a file in the private directory, not on a command line |
 | `--skip-docker-install` | Skip Docker installation |
 | `--nginx` | Install nginx, for the [nginx plugin](/en/configuration/plugins#nginx) |
 | `--no-port-filter` | Let the internet reach every published container port, instead of only the [public ports](/en/configuration/firewall) |

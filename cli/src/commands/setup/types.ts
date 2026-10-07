@@ -7,6 +7,8 @@ export interface SetupOptions {
   port?: string;
   user?: string;
   password?: string;
+  /** file holding `password`, so it stays out of the process list */
+  passwordFile?: string;
   sshKey?: string;
   generateKey?: boolean;
   skipDockerInstall?: boolean;
@@ -35,6 +37,8 @@ export interface RemoteSetupOptions {
   password?: string;
   privateKey?: string;
   privateKeyPath?: string;
+  /** password of the deploy user the remote setup creates (sent to the server through a file) */
+  deployPassword?: string;
   dev?: boolean;
   /** Flags to forward to the remote `dockflow setup` command */
   forwardFlags?: string[];

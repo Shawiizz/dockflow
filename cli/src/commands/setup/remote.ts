@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import { join, resolve } from 'path';
 import { Client as SSHClient } from 'ssh2';
 import { printIntro, printOutro, printSection, printError, printInfo, printBlank, printDim, createSpinner } from '../../utils/output';
-import { sshExec, executeInteractiveSSH, shellQuote } from '../../utils/ssh';
+import { sshExec, sshExecChannel, executeInteractiveSSH, shellQuote } from '../../utils/ssh';
 import { CLIError, ConnectionError, ErrorCode } from '../../utils/errors';
 import type { ConnectionInfo, SSHExecResult } from '../../types';
 import { isKeyConnection } from '../../types';
@@ -79,6 +79,22 @@ export async function makeTempDir(conn: ConnectionInfo, exec: Exec = sshExec): P
     );
   }
   return dir;
+}
+
+/**
+ * Puts a password in a file only its owner can read, sent on the channel's stdin: it is in no
+ * command line, local or remote.
+ */
+export async function writePasswordFile(conn: ConnectionInfo, path: string, password: string, open: typeof sshExecChannel = sshExecChannel): Promise<void> {
+  const { stream, done } = await open(conn, `umask 077 && cat > ${shellQuote(path)}`);
+  stream.end(password);
+  const result = await done;
+  if (result.exitCode !== 0) {
+    throw new CLIError(
+      `Could not write the password file on ${conn.host}: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
+      ErrorCode.COMMAND_FAILED,
+    );
+  }
 }
 
 /** Removes a directory made by makeTempDir; a failure only leaves a temporary directory behind. */
@@ -404,9 +420,15 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
 
     // root runs the binary directly (sudo may not even exist on minimal
     // systems); other users escalate through sudo.
+    const flags = [...(opts.forwardFlags ?? [])];
+    if (opts.deployPassword) {
+      const passwordFile = `${dir}/deploy-password`;
+      await writePasswordFile(conn, passwordFile, opts.deployPassword);
+      flags.push('--password-file', shellQuote(passwordFile));
+    }
     const sudoPrefix = opts.user === 'root' ? '' : 'sudo ';
-    const remoteCmd = opts.forwardFlags?.length
-      ? `${sudoPrefix}${shellQuote(remotePath)} setup ${opts.forwardFlags.join(' ')}`
+    const remoteCmd = flags.length
+      ? `${sudoPrefix}${shellQuote(remotePath)} setup ${flags.join(' ')}`
       : `${sudoPrefix}${shellQuote(remotePath)} setup`;
     exitCode = await executeInteractiveSSH(conn, remoteCmd);
 

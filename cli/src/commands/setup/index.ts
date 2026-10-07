@@ -20,7 +20,7 @@ import { displayConnectionInfo, parseConnectionString } from './connection';
 import { runInteractiveSetup } from './interactive';
 import { runNonInteractiveSetup } from './non-interactive';
 import { runRemoteSetup, promptRemoteConnection } from './remote';
-import { buildForwardFlags } from './forward';
+import { buildForwardFlags, readPasswordFile } from './forward';
 import { runSetupSwarm } from './swarm';
 import { CLIError, ConfigError, ErrorCode, withErrorHandler } from '../../utils/errors';
 import type { SetupOptions, ConnectionOptions, RemoteSetupOptions } from './types';
@@ -44,7 +44,8 @@ export function registerSetupCommand(program: Command): void {
     .option('-k, --key <path>', 'Path to SSH private key (remote)')
     .option('--connection <string>', 'Dockflow connection string (remote)')
     // Shared options
-    .option('--password <password>', 'SSH password (remote) or sudo password (local)')
+    .option('--password <password>', 'SSH password (remote) or password of the new deploy user (local)')
+    .option('--password-file <path>', 'Read the password of the new deploy user (local) from a file instead of the command line')
     // Local non-interactive options
     .option('--host <host>', 'Public IP/hostname for connection string (local)')
     .option('--port <port>', 'SSH port (local)', '22')
@@ -117,10 +118,8 @@ export function registerSetupCommand(program: Command): void {
           );
         }
 
-        remoteOpts.forwardFlags = buildForwardFlags(
-          { ...options, deployPassword: options.deployPassword },
-          { host: remoteOpts.host, port: remoteOpts.port },
-        );
+        remoteOpts.forwardFlags = buildForwardFlags(options, { host: remoteOpts.host, port: remoteOpts.port });
+        remoteOpts.deployPassword = options.deployPassword;
 
         await runRemoteSetup(remoteOpts);
         return;
@@ -144,6 +143,8 @@ export function registerSetupCommand(program: Command): void {
           'Re-run with: sudo dockflow setup ...',
         );
       }
+
+      if (options.passwordFile) options.password = readPasswordFile(options.passwordFile);
 
       // Detect non-interactive mode: connection/identity flags provided
       // Config flags (--skip-docker-install, --nginx) don't trigger non-interactive mode

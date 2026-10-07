@@ -12,6 +12,7 @@ import {
   installUploadCommand,
   isDevVersion,
   printsVersion,
+  readPasswordFile,
   removeDirCommand,
   tempDirFrom,
   verifiedDownloadCommand,
@@ -33,22 +34,21 @@ describe('buildForwardFlags', () => {
   });
 
   it('forwards identity flags so a deploy user can be created remotely', () => {
-    const flags = buildForwardFlags(
-      { user: 'dockflow', deployPassword: 'secret', yes: true },
-      REMOTE,
-    ).join(' ');
+    const flags = buildForwardFlags({ user: 'dockflow', yes: true }, REMOTE).join(' ');
     expect(flags).toContain("--user 'dockflow'");
-    expect(flags).toContain("--password 'secret'");
     expect(flags).toContain('--generate-key');
     expect(flags).toContain('--yes');
   });
 
   it('quotes values containing spaces and shell metacharacters', () => {
-    const flags = buildForwardFlags(
-      { user: 'dockflow', deployPassword: "P@ss word'$x" },
-      REMOTE,
-    ).join(' ');
-    expect(flags).toContain("--password 'P@ss word'\\''$x'");
+    const flags = buildForwardFlags({ user: "dock flow'$x" }, REMOTE).join(' ');
+    expect(flags).toContain("--user 'dock flow'\\''$x'");
+  });
+
+  it('never puts a password on the remote command line', () => {
+    const flags = buildForwardFlags({ user: 'dockflow', password: 'secret', passwordFile: '/root/pw' }, REMOTE).join(' ');
+    expect(flags).not.toContain('secret');
+    expect(flags).not.toContain('--password');
   });
 
   it('forwards provisioning options', () => {
@@ -64,10 +64,9 @@ describe('buildForwardFlags', () => {
     expect(flags).toContain('--nginx');
   });
 
-  it('no user flag → no password/generate-key forwarded', () => {
-    const flags = buildForwardFlags({ deployPassword: 'x' }, REMOTE).join(' ');
+  it('no user flag → no generate-key forwarded', () => {
+    const flags = buildForwardFlags({}, REMOTE).join(' ');
     expect(flags).not.toContain('--user');
-    expect(flags).not.toContain('--password');
     expect(flags).not.toContain('--generate-key');
   });
 });
@@ -264,5 +263,29 @@ describe('the commands of the private binary directory, in a real shell', () => 
     expect((await sh(removeDirCommand(target))).exitCode).toBe(0);
     expect(existsSync(target)).toBe(false);
     expect(existsSync(join(dir, 'neighbour'))).toBe(true);
+  });
+});
+
+describe('readPasswordFile', () => {
+  let dir = '';
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'dockflow-pwfile-'));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('returns the password as written, minus one trailing line break', () => {
+    const password = `it's "a" $(id) p@ss `;
+    writeFileSync(join(dir, 'exact'), password);
+    writeFileSync(join(dir, 'echoed'), `${password}\n`);
+    writeFileSync(join(dir, 'crlf'), `${password}\r\n`);
+    expect(readPasswordFile(join(dir, 'exact'))).toBe(password);
+    expect(readPasswordFile(join(dir, 'echoed'))).toBe(password);
+    expect(readPasswordFile(join(dir, 'crlf'))).toBe(password);
+  });
+
+  it('refuses a missing or empty file', () => {
+    writeFileSync(join(dir, 'empty'), '\n');
+    expect(() => readPasswordFile(join(dir, 'empty'))).toThrow('is empty');
+    expect(() => readPasswordFile(join(dir, 'missing'))).toThrow('Cannot read the password file');
   });
 });

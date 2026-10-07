@@ -4,7 +4,9 @@
  * binary download. Unit-tested in __tests__/setup-forward.test.ts.
  */
 
+import { readFileSync } from 'fs';
 import { shellQuote } from '../../utils/ssh';
+import { CLIError, ErrorCode } from '../../utils/errors';
 import type { SetupOptions } from './types';
 
 /**
@@ -12,10 +14,11 @@ import type { SetupOptions } from './types';
  *
  * Identity flags (--user, --host, --port) are forwarded so a dedicated deploy
  * user can be created non-interactively over SSH; --host defaults to the host
- * being provisioned. Values are single-quoted (passwords may contain spaces).
+ * being provisioned. Values are single-quoted. The deploy user's password is not a flag: it would
+ * show in the server's process list, so it goes through a file (`--password-file`).
  */
 export function buildForwardFlags(
-  options: SetupOptions & { deployPassword?: string },
+  options: SetupOptions,
   remote: { host: string; port: number },
 ): string[] {
   const flags: string[] = [];
@@ -27,7 +30,6 @@ export function buildForwardFlags(
 
   if (options.user) {
     flags.push('--user', quote(options.user));
-    if (options.deployPassword) flags.push('--password', quote(options.deployPassword));
     flags.push('--generate-key');
   }
 
@@ -150,4 +152,20 @@ export function expectedBinaryVersion(cliVersion: string, uploadedBuild: boolean
 export function printsVersion(output: string, expected: string): boolean {
   const first = output.split(/\r?\n/)[0] ?? '';
   return first.trim().split(/\s+/).includes(expected);
+}
+
+/** The password in a `--password-file`: the whole file, without the line break an editor or echo adds. */
+export function readPasswordFile(path: string): string {
+  let content: string;
+  try {
+    content = readFileSync(path, 'utf-8');
+  } catch (error) {
+    throw new CLIError(
+      `Cannot read the password file ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      ErrorCode.INVALID_ARGUMENT,
+    );
+  }
+  const password = content.replace(/\r?\n$/, '');
+  if (password === '') throw new CLIError(`The password file ${path} is empty`, ErrorCode.INVALID_ARGUMENT);
+  return password;
 }
