@@ -6,7 +6,7 @@ import type { Command } from 'commander';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { loadConfig } from '../../utils/config';
-import { DockerError, withServicesRequired, ConfigError } from '../../utils/errors';
+import { CLIError, ErrorCode, withServicesRequired, ConfigError } from '../../utils/errors';
 import { colors, printJSON, printBlank, printDim, printRaw } from '../../utils/output';
 
 export function registerVersionCommand(program: Command): void {
@@ -25,7 +25,7 @@ export function registerVersionCommand(program: Command): void {
 
       const metadata = await orchestrator.getMetadata(stackName);
       if (!metadata) {
-        throw new DockerError(`No deployment found for ${stackName}`);
+        throw new CLIError(`No deployment found for ${stackName}`, ErrorCode.STACK_NOT_FOUND, `Deploy first with \`dockflow deploy ${env}\`.`);
       }
 
       if (options.json) {
