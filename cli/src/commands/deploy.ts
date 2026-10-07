@@ -230,8 +230,8 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
     const accessories = rendered.get(accessoriesKey());
     const problems = Compose.checkProxyRoutes(
       config.proxy, env, stackName,
-      Compose.loadFromString(composeContent),
-      accessories ? Compose.loadFromString(accessories) : null,
+      Compose.loadFromString(composeContent, 'docker-compose.yml'),
+      accessories ? Compose.loadFromString(accessories, 'accessories.yml') : null,
     );
     if (problems.length > 0) {
       throw new DeployError(
@@ -256,7 +256,7 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
 
   // Validate --only service names before acquiring the lock (skip for no_services — no Docker services)
   if (options.only && !config.no_services) {
-    const compose = Compose.loadFromString(composeContent);
+    const compose = Compose.loadFromString(composeContent, 'docker-compose.yml');
     const available = Object.keys(compose.services);
     const filterSet = options.only.split(',').map((s) => s.trim());
     const unknown = filterSet.filter(s => !available.includes(s));
@@ -326,7 +326,7 @@ async function execute(ctx: DeployContext): Promise<void> {
   const stopHandlingInterrupts = onInterrupt(handleSignal);
 
   try {
-    let compose = Compose.loadFromString(ctx.composeContent);
+    let compose = Compose.loadFromString(ctx.composeContent, 'docker-compose.yml');
 
     Compose.updateImageTags(compose, ctx.config, ctx.env, ctx.deployVersion, ctx.options.only);
 

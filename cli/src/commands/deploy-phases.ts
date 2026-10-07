@@ -574,12 +574,12 @@ export function accessoriesKey(): string {
 }
 
 export async function ensureExternalNetworks(ctx: DeployContext): Promise<void> {
-  const mainCompose = Compose.loadFromString(ctx.composeContent);
+  const mainCompose = Compose.loadFromString(ctx.composeContent, 'docker-compose.yml');
   const networks = new Set(collectExternalNetworks(mainCompose));
 
   const accessoriesContent = ctx.rendered.get(accessoriesKey());
   if (accessoriesContent) {
-    for (const n of collectExternalNetworks(Compose.loadFromString(accessoriesContent))) networks.add(n);
+    for (const n of collectExternalNetworks(Compose.loadFromString(accessoriesContent, 'accessories.yml'))) networks.add(n);
   }
 
   if (networks.size === 0) return;
@@ -679,7 +679,9 @@ export async function deployAccessories(ctx: DeployContext): Promise<void> {
   const accessoriesContent = ctx.rendered.get(accessoriesRelPath);
   if (!accessoriesContent) return;
 
-  const accessoriesCompose = Compose.loadFromString(accessoriesContent);
+  const accessoriesCompose = Compose.loadFromString(accessoriesContent, 'accessories.yml');
+  // a file left with comments only declares no accessory
+  if (!Compose.hasServices(accessoriesCompose)) return;
   Compose.injectAccessoriesDefaults(accessoriesCompose);
   // Accessories answer only through proxy.routes, and their stack joins Traefik's network.
   const proxy = ctx.config.proxy;

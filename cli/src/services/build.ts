@@ -8,7 +8,7 @@
 
 import { resolve, join, relative } from 'path';
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
-import { parse as parseYaml } from 'yaml';
+import { loadFromString } from './compose';
 import type { SSHKeyConnection } from '../types';
 import { sshExec, shellQuote } from '../utils/ssh';
 import { printDim, printRaw, printSuccess, printWarning, createTaskLog } from '../utils/output';
@@ -153,15 +153,15 @@ export function getOverridesForTarget(
 }
 
 /**
- * Extract build targets from a compose YAML string.
- * Parses the YAML directly — no external dependency needed.
+ * Extract build targets from a compose YAML string, read like the stack it deploys (merge keys
+ * resolved).
  */
 export function getBuildTargets(
   composeContent: string,
   basePath: string,
   servicesFilter?: string,
 ): BuildTarget[] {
-  const compose = parseYaml(composeContent) as Record<string, unknown>;
+  const compose = loadFromString(composeContent, 'docker-compose.yml').raw;
   const services = (compose.services ?? {}) as Record<string, Record<string, unknown>>;
   const filterSet = servicesFilter
     ? new Set(servicesFilter.split(',').map(s => s.trim()))
