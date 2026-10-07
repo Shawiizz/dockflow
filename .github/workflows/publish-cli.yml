@@ -213,4 +213,5 @@ jobs:
     uses: ./.github/workflows/deploy-docs.yml
     with:
       version: ${{ needs.build.outputs.version }}
-    secrets: inherit
+    secrets:
+      PRODUCTION_CONNECTION: ${{ secrets.PRODUCTION_CONNECTION }}
