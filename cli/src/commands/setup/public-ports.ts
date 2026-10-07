@@ -8,6 +8,7 @@
 import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import { printDim, printInfo, printSuccess, printWarning } from '../../utils/output';
+import { ensureDir } from '../../utils/fs';
 import { commandExists } from './dependencies';
 import { PUBLIC_PORTS_SCRIPT, currentPublicPorts } from '../../services/public-ports';
 import {
@@ -83,7 +84,7 @@ function removeFilter(): void {
  * records its own: setting up the filter cuts no running service.
  */
 export function configurePublicPorts(enabled: boolean): void {
-  fs.mkdirSync('/etc/dockflow', { recursive: true, mode: 0o755 });
+  ensureDir('/etc/dockflow', 0o755);
   if (!enabled) {
     removeFilter();
     return;
@@ -93,7 +94,7 @@ export function configurePublicPorts(enabled: boolean): void {
   fs.mkdirSync('/usr/local/sbin', { recursive: true });
   fs.writeFileSync(PUBLIC_PORTS_BIN, PUBLIC_PORTS_SCRIPT);
   fs.chmodSync(PUBLIC_PORTS_BIN, 0o755);
-  fs.mkdirSync(PUBLIC_PORTS_STATE_DIR, { recursive: true, mode: 0o755 });
+  ensureDir(PUBLIC_PORTS_STATE_DIR, 0o755);
   fs.rmSync(PUBLIC_PORTS_OFF_MARKER, { force: true });
 
   if (firstInstall) {
