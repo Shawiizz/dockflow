@@ -230,7 +230,7 @@ describe('Release when the server refuses', () => {
   it('a rollback that does not converge fails', async () => {
     const { shell } = scripted((command) => twoReleases(command) ?? (command.startsWith('cat ') ? { stdout: 'services: {}\n' } : undefined));
     const { backend } = fakeBackend({ convergenceFails: true });
-    await expect(new Release(shell).rollback(STACK, backend, '2.0.0')).rejects.toThrow('Rollback did not converge');
+    await expect(new Release(shell).rollback(STACK, backend, '2.0.0')).rejects.toThrow('Rollback to 1.0.0 did not converge');
   });
 
   it('a rollback deployed but not recorded says so', async () => {

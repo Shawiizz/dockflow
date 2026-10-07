@@ -431,7 +431,12 @@ export class Release {
 
     const convergence = await orchestrator.waitConvergence(stackName, 300, 5);
     if (!convergence.converged) {
-      throw new DeployError('Rollback did not converge', ErrorCode.ROLLBACK_FAILED);
+      const detail = convergence.errorDetail ?? (convergence.timedOut ? 'timed out' : convergence.rolledBack ? 'Swarm rolled the services back' : '');
+      throw new DeployError(
+        `Rollback to ${previousVersion} did not converge${detail ? `: ${detail}` : ''}`,
+        ErrorCode.ROLLBACK_FAILED,
+        'Run `dockflow diagnose <env>` to see why the services do not start.',
+      );
     }
 
     const linkResult = await this.shell.run(`ln -sfn ${shellQuote(previousDir)} ${shellQuote(`${this.stackDir(stackName)}/${CURRENT_LINK}`)}`);
