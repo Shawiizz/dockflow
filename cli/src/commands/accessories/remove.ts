@@ -4,7 +4,8 @@
  */
 
 import type { Command } from 'commander';
-import { sshExec } from '../../utils/ssh';
+import { sshExec, shellQuote } from '../../utils/ssh';
+import type { SSHKeyConnection } from '../../types/connection';
 import { confirmPrompt, dangerousConfirmPrompt } from '../../utils/prompts';
 import { printInfo, printIntro, printOutro, printNote, printWarning, printError, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
@@ -25,171 +26,168 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
     .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
     .action(withErrorHandler(withResolvedEnv(async (
       env: string,
-      options: { volumes?: boolean; yes?: boolean; server?: string }
+      options: RemoveOptions
     ) => {
-      printIntro(`Removing Accessories - ${env}`);
-      printBlank();
-
-      // Validate environment and check stack exists
-      const { connection } = validateEnv(env, options.server);
-      const validation = await validateAccessoriesStack(connection, env);
-
-      if (!validation.exists) {
-        throw new DockerError(
-          'Accessories stack not found',
-          { code: ErrorCode.STACK_NOT_FOUND, suggestion: 'Nothing to remove.' }
-        );
-      }
-
-      const { stackName, services } = validation;
-
-      // Show what will be removed
-      if (services.length > 0) {
-        printWarning('The following services will be removed:');
-        
-        // Get replicas info
-        const servicesResult = await sshExec(connection, 
-          `docker stack services ${stackName} --format "{{.Name}}\t{{.Replicas}}"`
-        );
-        
-        for (const line of servicesResult.stdout.trim().split('\n')) {
-          const [name, replicas] = line.split('\t');
-          const shortName = name.replace(`${stackName}_`, '');
-          printRaw(`  ${colors.info(shortName)} ${colors.dim(`(${replicas})`)}`);
-        }
-      }
-
-      // Show volumes if --volumes is specified
-      if (options.volumes) {
-        const volumesResult = await sshExec(connection,
-          `docker volume ls --filter "label=com.docker.stack.namespace=${stackName}" --format "{{.Name}}"`
-        );
-
-        if (volumesResult.stdout.trim()) {
-          printBlank();
-          printError('⚠ The following volumes will be PERMANENTLY DELETED:');
-          for (const vol of volumesResult.stdout.trim().split('\n').filter(Boolean)) {
-            printRaw(`  ${colors.error(vol)}`);
-          }
-        }
-      }
-
-      printBlank();
-
-      // Confirmation
-      if (!options.yes) {
-        const warningMessage = options.volumes 
-          ? 'This will PERMANENTLY DELETE the accessories stack and their data!'
-          : 'This will remove the accessories stack (volumes will be preserved)';
-        
-        printWarning(warningMessage);
-        
-        if (options.volumes) {
-          // Extra confirmation for volume deletion
-          const confirmed = await dangerousConfirmPrompt({
-            message: `Type '${env}' to confirm removal with volumes:`,
-            expectedText: env,
-          });
-
-          if (!confirmed) {
-            printInfo('Cancelled - text did not match');
-            return;
-          }
-        } else {
-          const confirmed = await confirmPrompt({
-            message: 'Are you sure you want to remove the accessories stack?',
-            initialValue: false,
-          });
-
-          if (!confirmed) {
-            printInfo('Cancelled');
-            return;
-          }
-        }
-      }
-
-      printBlank();
-
-      try {
-        // Remove the stack
-        const spinner = createSpinner();
-        spinner.start('Removing accessories stack...');
-        
-        const removeCmd = `docker stack rm ${stackName}`;
-        const result = await sshExec(connection, removeCmd);
-
-        if (result.exitCode !== 0) {
-          spinner.fail('Remove failed');
-          throw new DockerError(result.stderr || 'Failed to remove stack');
-        }
-
-        // Wait for stack to be fully removed
-        spinner.text = 'Waiting for stack removal...';
-        let attempts = 0;
-        while (attempts < STACK_REMOVAL_MAX_ATTEMPTS) {
-          const checkResult = await sshExec(connection, 
-            `docker stack ps ${stackName} 2>&1 | grep -v "Nothing found" | wc -l`
-          );
-          const count = parseInt(checkResult.stdout.trim(), 10);
-          if (count <= 1) break; // Only header line or nothing
-          await new Promise(resolve => setTimeout(resolve, STACK_REMOVAL_POLL_INTERVAL_MS));
-          attempts++;
-        }
-
-        spinner.succeed('Accessories stack removed');
-
-        // Remove volumes if requested
-        if (options.volumes) {
-          const volumesResult = await sshExec(connection, 
-            `docker volume ls --filter "label=com.docker.stack.namespace=${stackName}" --format "{{.Name}}"`
-          );
-          
-          const volumes = volumesResult.stdout.trim().split('\n').filter(Boolean);
-          
-          if (volumes.length > 0) {
-            const volSpinner = createSpinner();
-            volSpinner.start('Removing volumes...');
-
-            // Volume removal can fail right after stack rm (containers still
-            // draining hold the volume) — report failures instead of claiming
-            // the data was destroyed when it wasn't.
-            const failed: string[] = [];
-            for (const vol of volumes) {
-              const rmResult = await sshExec(connection, `docker volume rm ${vol}`);
-              if (rmResult.exitCode !== 0) {
-                failed.push(`${vol}: ${rmResult.stderr.trim() || `exit ${rmResult.exitCode}`}`);
-              }
-            }
-
-            if (failed.length > 0) {
-              volSpinner.fail(`Removed ${volumes.length - failed.length}/${volumes.length} volume(s)`);
-              for (const failure of failed) {
-                printWarning(`Volume not removed — ${failure}`);
-              }
-              printWarning('Retry in a few seconds once the containers are gone: docker volume rm <name>');
-            } else {
-              volSpinner.succeed(`Removed ${volumes.length} volume(s)`);
-            }
-          }
-        }
-
-        // Clean up local files on remote
-        const accessoriesDir = `${DOCKFLOW_ACCESSORIES_DIR}/${stackName}`;
-        await sshExec(connection, `rm -rf ${accessoriesDir}`);
-
-        printBlank();
-        if (!options.volumes) {
-          printNote(
-            `docker volume ls --filter "label=com.docker.stack.namespace=${stackName}"\n` +
-            `docker volume rm <volume_name>`,
-            'Volumes preserved — remove manually'
-          );
-        }
-        printOutro('Accessories removed successfully');
-
-      } catch (error) {
-        if (error instanceof DockerError) throw error;
-        throw new DockerError(`Failed to remove: ${error}`);
-      }
+      const { connection, stackName } = validateEnv(env, options.server);
+      await removeAccessories(connection, env, stackName, options);
     })));
+}
+
+interface RemoveOptions { volumes?: boolean; yes?: boolean; server?: string }
+
+function listStackVolumes(connection: SSHKeyConnection, stackName: string): Promise<string[]> {
+  return sshExec(connection,
+    `docker volume ls --filter "label=com.docker.stack.namespace=${stackName}" --format "{{.Name}}"`
+  ).then((result) => result.stdout.trim().split('\n').filter(Boolean));
+}
+
+/**
+ * Remove the accessories stack of `appStackName`. With `volumes`, a stack already gone
+ * whose volumes remain (an earlier removal interrupted) only has its volumes deleted.
+ */
+export async function removeAccessories(
+  connection: SSHKeyConnection,
+  env: string,
+  appStackName: string,
+  options: RemoveOptions
+): Promise<void> {
+  printIntro(`Removing Accessories - ${env}`);
+  printBlank();
+
+  const validation = await validateAccessoriesStack(connection, env);
+  const { stackName, services } = validation;
+  const volumes = options.volumes ? await listStackVolumes(connection, stackName) : [];
+
+  if (!validation.exists && volumes.length === 0) {
+    throw new DockerError(
+      'Accessories stack not found',
+      { code: ErrorCode.STACK_NOT_FOUND, suggestion: 'Nothing to remove.' }
+    );
+  }
+
+  if (services.length > 0) {
+    printWarning('The following services will be removed:');
+    const servicesResult = await sshExec(connection,
+      `docker stack services ${stackName} --format "{{.Name}}\t{{.Replicas}}"`
+    );
+    for (const line of servicesResult.stdout.trim().split('\n')) {
+      const [name, replicas] = line.split('\t');
+      const shortName = name.replace(`${stackName}_`, '');
+      printRaw(`  ${colors.info(shortName)} ${colors.dim(`(${replicas})`)}`);
+    }
+  }
+
+  if (volumes.length > 0) {
+    printBlank();
+    printError('⚠ The following volumes will be PERMANENTLY DELETED:');
+    for (const vol of volumes) {
+      printRaw(`  ${colors.error(vol)}`);
+    }
+  }
+
+  printBlank();
+
+  if (!options.yes) {
+    const warningMessage = options.volumes
+      ? 'This will PERMANENTLY DELETE the accessories stack and their data!'
+      : 'This will remove the accessories stack (volumes will be preserved)';
+
+    printWarning(warningMessage);
+
+    if (options.volumes) {
+      const confirmed = await dangerousConfirmPrompt({
+        message: `Type '${env}' to confirm removal with volumes:`,
+        expectedText: env,
+      });
+
+      if (!confirmed) {
+        printInfo('Cancelled - text did not match');
+        return;
+      }
+    } else {
+      const confirmed = await confirmPrompt({
+        message: 'Are you sure you want to remove the accessories stack?',
+        initialValue: false,
+      });
+
+      if (!confirmed) {
+        printInfo('Cancelled');
+        return;
+      }
+    }
+  }
+
+  printBlank();
+
+  if (validation.exists) {
+    await removeStack(connection, stackName);
+  }
+
+  // The next deploy compares against this hash: without it, it redeploys the accessories.
+  await sshExec(connection, `rm -rf ${shellQuote(`${DOCKFLOW_ACCESSORIES_DIR}/${appStackName}`)}`);
+
+  if (options.volumes) {
+    await removeVolumes(connection, env, await listStackVolumes(connection, stackName));
+  }
+
+  printBlank();
+  if (!options.volumes) {
+    printNote(
+      `docker volume ls --filter "label=com.docker.stack.namespace=${stackName}"\n` +
+      `docker volume rm <volume_name>`,
+      'Volumes preserved — remove manually'
+    );
+  }
+  printOutro('Accessories removed successfully');
+}
+
+async function removeStack(connection: SSHKeyConnection, stackName: string): Promise<void> {
+  const spinner = createSpinner();
+  spinner.start('Removing accessories stack...');
+
+  const result = await sshExec(connection, `docker stack rm ${stackName}`);
+  if (result.exitCode !== 0) {
+    spinner.fail('Remove failed');
+    throw new DockerError(result.stderr || 'Failed to remove stack');
+  }
+
+  spinner.text = 'Waiting for stack removal...';
+  for (let attempts = 0; attempts < STACK_REMOVAL_MAX_ATTEMPTS; attempts++) {
+    const checkResult = await sshExec(connection,
+      `docker stack ps ${stackName} 2>&1 | grep -v "Nothing found" | wc -l`
+    );
+    if (parseInt(checkResult.stdout.trim(), 10) <= 1) break;
+    await new Promise(resolve => setTimeout(resolve, STACK_REMOVAL_POLL_INTERVAL_MS));
+  }
+
+  spinner.succeed('Accessories stack removed');
+}
+
+async function removeVolumes(connection: SSHKeyConnection, env: string, volumes: string[]): Promise<void> {
+  if (volumes.length === 0) return;
+
+  const spinner = createSpinner();
+  spinner.start('Removing volumes...');
+
+  // Right after `docker stack rm`, a draining container can still hold its volume.
+  const failed: string[] = [];
+  for (const vol of volumes) {
+    const rmResult = await sshExec(connection, `docker volume rm ${shellQuote(vol)}`);
+    if (rmResult.exitCode !== 0) {
+      failed.push(`${vol}: ${rmResult.stderr.trim() || `exit ${rmResult.exitCode}`}`);
+    }
+  }
+
+  if (failed.length === 0) {
+    spinner.succeed(`Removed ${volumes.length} volume(s)`);
+    return;
+  }
+
+  spinner.fail(`Removed ${volumes.length - failed.length}/${volumes.length} volume(s)`);
+  for (const failure of failed) {
+    printWarning(`Volume not removed — ${failure}`);
+  }
+  throw new DockerError(`${failed.length} volume(s) could not be removed`, {
+    suggestion: `Retry in a few seconds, once the containers are gone: dockflow accessories remove ${env} --volumes`,
+  });
 }
