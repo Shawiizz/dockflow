@@ -28,29 +28,24 @@ describe('buildForwardFlags', () => {
 
   it('quotes values containing spaces and shell metacharacters', () => {
     const flags = buildForwardFlags(
-      { portainer: true, portainerPassword: "P@ss word'$x" },
+      { user: 'dockflow', deployPassword: "P@ss word'$x" },
       REMOTE,
     ).join(' ');
-    expect(flags).toContain("--portainer-password 'P@ss word'\\''$x'");
+    expect(flags).toContain("--password 'P@ss word'\\''$x'");
   });
 
-  it('forwards provisioning options including the previously-missing domain', () => {
+  it('forwards provisioning options', () => {
     const flags = buildForwardFlags(
       {
         skipDockerInstall: true,
         orchestrator: 'k3s',
         nginx: true,
-        portainer: true,
-        portainerPort: '9100',
-        portainerDomain: 'portainer.example.com',
       },
       REMOTE,
     ).join(' ');
     expect(flags).toContain('--skip-docker-install');
     expect(flags).toContain("--orchestrator 'k3s'");
     expect(flags).toContain('--nginx');
-    expect(flags).toContain("--portainer-port '9100'");
-    expect(flags).toContain("--portainer-domain 'portainer.example.com'");
   });
 
   it('no user flag → no password/generate-key forwarded', () => {

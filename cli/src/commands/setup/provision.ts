@@ -1,6 +1,6 @@
 /**
  * Host provisioning — pure TypeScript replacement for the former Ansible
- * playbook: Docker install, /var/lib/dockflow, nginx, Portainer.
+ * playbook: Docker install, /var/lib/dockflow, nginx.
  *
  * Runs locally on the target Linux host (local setup mode — the remote setup
  * flow ships the binary and re-executes it on the server). Setup enforces
@@ -19,42 +19,8 @@ import type { HostConfig } from './types';
 const DOCKFLOW_BASE_DIR = '/var/lib/dockflow';
 
 // ---------------------------------------------------------------------------
-// Pure helpers (unit-tested)
+// Pure helpers
 // ---------------------------------------------------------------------------
-
-/** Nginx vhost proxying a domain to the local Portainer HTTP port. */
-export function buildPortainerVhost(domain: string, port: number): string {
-  return [
-    'server {',
-    '    listen 80;',
-    `    server_name ${domain};`,
-    '',
-    '    location / {',
-    `        proxy_pass http://127.0.0.1:${port};`,
-    '        proxy_set_header Host $host;',
-    '        proxy_set_header X-Real-IP $remote_addr;',
-    '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;',
-    '        proxy_set_header X-Forwarded-Proto $scheme;',
-    '    }',
-    '}',
-    '',
-  ].join('\n');
-}
-
-/**
- * Extract the bcrypt hash from `htpasswd -niB admin` output
- * ("admin:$2y$..."). Tolerates noise lines (e.g. docker pull output);
- * returns null when no credential line is found.
- */
-export function parseHtpasswdHash(output: string): string | null {
-  for (const line of output.trim().split('\n')) {
-    const idx = line.indexOf(':');
-    if (idx === -1) continue;
-    const hash = line.slice(idx + 1).trim();
-    if (hash.startsWith('$')) return hash;
-  }
-  return null;
-}
 
 /** Package name for nginx per package manager (same everywhere today). */
 export function nginxPackageFor(_pm: string): string {
@@ -160,10 +126,8 @@ function installDocker(): void {
   printSuccess('Docker installed');
 }
 
-/**
- * Install and enable nginx. Writes the Portainer vhost when a domain is set.
- */
-function installNginx(config: HostConfig): void {
+/** Install and enable nginx. */
+function installNginx(): void {
   if (!commandExists('nginx')) {
     const pm = detectPackageManager();
     if (!pm) {
@@ -195,21 +159,6 @@ function installNginx(config: HostConfig): void {
     run(['rm', '-f', '/etc/nginx/sites-enabled/default'], { quiet: true });
   }
 
-  // Portainer vhost (only when Portainer is installed with a domain)
-  if (config.portainer.install && config.portainer.domain) {
-    const vhostDir = fs.existsSync('/etc/nginx/sites-enabled')
-      ? '/etc/nginx/sites-enabled'
-      : '/etc/nginx/conf.d';
-    const vhostPath = `${vhostDir}/portainer${vhostDir.endsWith('conf.d') ? '.conf' : ''}`;
-    const vhost = buildPortainerVhost(config.portainer.domain, config.portainer.port);
-
-    const write = run(['sh', '-c', `cat > '${vhostPath}'`], { quiet: true, input: vhost });
-    if (!write.ok) {
-      throw new CLIError(`Failed to write ${vhostPath}: ${write.stderr.trim()}`, ErrorCode.COMMAND_FAILED);
-    }
-    printSuccess(`Portainer vhost written (${config.portainer.domain} â†’ :${config.portainer.port})`);
-  }
-
   // Validate config before (re)starting
   const test = run(['nginx', '-t'], { quiet: true });
   if (!test.ok) {
@@ -230,90 +179,17 @@ function installNginx(config: HostConfig): void {
   printSuccess('nginx configured');
 }
 
-/**
- * Run Portainer CE as a standalone container (volume + bcrypt admin password).
- */
-function installPortainer(config: HostConfig): void {
-  const { port, password } = config.portainer;
-
-  if (!password) {
-    throw new CLIError(
-      'Portainer requires an admin password',
-      ErrorCode.INVALID_ARGUMENT,
-      'Pass --portainer-password or enter one in the interactive setup.',
-    );
-  }
-
-  printInfo('Setting up Portainer...');
-
-  // Portainer only applies --admin-password on a fresh data volume — warn on
-  // re-runs with an existing one, or the new password is silently ignored.
-  if (run(['docker', 'volume', 'inspect', 'portainer_data'], { quiet: true }).ok) {
-    printWarning(
-      'portainer_data volume already exists — the admin password only applies on first initialization and will NOT be changed.',
-    );
-  }
-
-  const volume = run(['docker', 'volume', 'create', 'portainer_data'], { quiet: true });
-  if (!volume.ok) {
-    throw new CLIError(`Failed to create portainer_data volume: ${volume.stderr.trim()}`, ErrorCode.COMMAND_FAILED);
-  }
-
-  // Hash the admin password with bcrypt inside a throwaway httpd container.
-  // -i reads the password from stdin so it never appears in process args.
-  const hashRun = run(
-    ['docker', 'run', '--rm', '-i', 'httpd:2.4-alpine', 'htpasswd', '-niB', 'admin'],
-    { quiet: true, input: `${password}\n` },
-  );
-  const hash = parseHtpasswdHash(hashRun.stdout);
-  if (!hashRun.ok || !hash) {
-    throw new CLIError(
-      `Failed to hash the Portainer admin password: ${hashRun.stderr.trim()}`,
-      ErrorCode.COMMAND_FAILED,
-    );
-  }
-
-  // Recreate the container (parity with the previous behavior)
-  run(['docker', 'rm', '-f', 'portainer'], { quiet: true });
-
-  const startResult = run([
-    'docker', 'run', '-d',
-    '--name', 'portainer',
-    '--restart', 'always',
-    '-p', '8000:8000',
-    '-p', '9443:9443',
-    '-p', `${port}:9000`,
-    '-v', '/var/run/docker.sock:/var/run/docker.sock',
-    '-v', 'portainer_data:/data',
-    'portainer/portainer-ce:lts',
-    `--admin-password=${hash}`,
-  ], { quiet: true });
-
-  if (!startResult.ok) {
-    throw new CLIError(`Failed to start Portainer: ${startResult.stderr.trim()}`, ErrorCode.COMMAND_FAILED);
-  }
-
-  printSuccess(`Portainer running on port ${port}`);
-}
-
 // ---------------------------------------------------------------------------
 // Orchestration
 // ---------------------------------------------------------------------------
 
 /**
- * Provision the host: Docker, /var/lib/dockflow, optional nginx + Portainer.
+ * Provision the host: Docker, /var/lib/dockflow, optional nginx.
  * Throws CLIError on the first failing step.
  */
 export function provisionHost(config: HostConfig): void {
   printSection('Provisioning host');
   printBlank();
-
-  if (config.orchestrator === 'k3s' && config.portainer.install) {
-    throw new CLIError(
-      'Portainer requires Docker and is not supported with --orchestrator k3s',
-      ErrorCode.INVALID_ARGUMENT,
-    );
-  }
 
   if (config.skipDockerInstall) {
     printDim('Docker install skipped (--skip-docker-install)');
@@ -326,11 +202,7 @@ export function provisionHost(config: HostConfig): void {
   ensureDockflowDir(config.deployUser);
 
   if (config.installNginx) {
-    installNginx(config);
-  }
-
-  if (config.portainer.install) {
-    installPortainer(config);
+    installNginx();
   }
 
   printBlank();

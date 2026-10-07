@@ -14,10 +14,6 @@ export interface SetupOptions {
   skipDockerInstall?: boolean;
   orchestrator?: SetupOrchestrator;
   nginx?: boolean;
-  portainer?: boolean;
-  portainerPort?: string;
-  portainerPassword?: string;
-  portainerDomain?: string;
   yes?: boolean;
 }
 
@@ -30,14 +26,6 @@ export interface HostConfig {
   skipDockerInstall: boolean;
   orchestrator: SetupOrchestrator;
   installNginx: boolean;
-  portainer: PortainerConfig;
-}
-
-export interface PortainerConfig {
-  install: boolean;
-  port: number;
-  password?: string;
-  domain?: string;
 }
 
 export interface RemoteSetupOptions {

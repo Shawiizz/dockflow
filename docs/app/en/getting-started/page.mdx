@@ -74,9 +74,7 @@ You need a Debian/Ubuntu server with SSH access (root or sudo user).
       --host $(hostname -I | awk '{print $1}') \
       --user dockflow \
       --password "your-secure-password" \
-      --generate-key \
-      --portainer \
-      --portainer-password "portainer-admin-password"
+      --generate-key
     ```
 
     See `dockflow setup --help` for all options.

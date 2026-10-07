@@ -78,7 +78,6 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
   printRaw(`${colors.info('Create New User:')} ${needsUserSetup ? 'Yes' : 'No'}`);
   printRaw(`${colors.info('Skip Docker Install:')} ${options.skipDockerInstall ? 'Yes' : 'No'}`);
   printRaw(`${colors.info('Install Nginx:')} ${options.nginx ? 'Yes' : 'No'}`);
-  printRaw(`${colors.info('Install Portainer:')} ${options.portainer ? 'Yes' : 'No'}`);
   printBlank();
 
   if (needsUserSetup && deployPassword) {
@@ -100,12 +99,6 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
     skipDockerInstall: options.skipDockerInstall || false,
     orchestrator: options.orchestrator || 'swarm',
     installNginx: options.nginx || false,
-    portainer: {
-      install: options.portainer || false,
-      port: parseInt(options.portainerPort || '9000', 10),
-      password: options.portainerPassword,
-      domain: options.portainerDomain
-    }
   };
 
   printBlank();

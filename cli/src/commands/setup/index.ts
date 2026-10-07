@@ -56,10 +56,6 @@ export function registerSetupCommand(program: Command): void {
     .option('--skip-docker-install', 'Skip Docker installation (local)')
     .option('--orchestrator <type>', 'Target orchestrator: swarm or k3s (k3s skips the Docker install)', 'swarm')
     .option('--nginx', 'Install Nginx (local)')
-    .option('--portainer', 'Install Portainer (local)')
-    .option('--portainer-port <port>', 'Portainer HTTP port (local)', '9000')
-    .option('--portainer-password <password>', 'Portainer admin password (local)')
-    .option('--portainer-domain <domain>', 'Portainer domain name (local)')
     .option('-y, --yes', 'Skip confirmations (local)')
     .option('--dev', 'Build and upload local CLI binary instead of downloading from GitHub (development)')
     .action(withErrorHandler(async (target: string | undefined, options: SetupOptions & { key?: string; connection?: string; dev?: boolean; deployPassword?: string }) => {
@@ -159,7 +155,7 @@ export function registerSetupCommand(program: Command): void {
       }
 
       // Detect non-interactive mode: connection/identity flags provided
-      // Config flags (--skip-docker-install, --portainer) don't trigger non-interactive mode
+      // Config flags (--skip-docker-install, --nginx) don't trigger non-interactive mode
       const hasLocalFlags = options.host || options.user || options.sshKey || options.generateKey || options.yes;
 
       if (hasLocalFlags) {
@@ -261,7 +257,6 @@ export function registerSetupCommand(program: Command): void {
         skipDockerInstall: false,
         orchestrator: 'swarm',
         installNginx: false,
-        portainer: { install: false, port: 9000 }
       }, privateKey);
     }));
 }

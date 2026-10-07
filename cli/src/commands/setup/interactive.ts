@@ -20,7 +20,7 @@ import type { HostConfig, SetupOrchestrator } from './types';
 /**
  * Run interactive setup wizard
  */
-export async function runInteractiveSetup(options?: { skipDockerInstall?: boolean; orchestrator?: SetupOrchestrator; portainer?: boolean; portainerPort?: string; portainerPassword?: string }): Promise<void> {
+export async function runInteractiveSetup(options?: { skipDockerInstall?: boolean; orchestrator?: SetupOrchestrator }): Promise<void> {
   printIntro('Machine Setup Wizard');
   printBlank();
 
@@ -185,7 +185,6 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
       skipDockerInstall: false,
       orchestrator: 'swarm',
       installNginx: false,
-      portainer: { install: false, port: 9000 }
     }, privateKey);
     
     return;  // Early return for display-only option
@@ -199,24 +198,6 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
     installNginx = true;
   }
 
-  let portainerConfig = {
-    install: false,
-    port: 9000,
-    password: undefined as string | undefined,
-    domain: undefined as string | undefined
-  };
-
-  if (await confirm('Install Portainer (container management UI)?', false)) {
-    portainerConfig.install = true;
-    portainerConfig.password = await promptPassword('Portainer admin password');
-    const portStr = await prompt('Portainer HTTP port', '9000');
-    portainerConfig.port = parseInt(portStr, 10) || 9000;
-    const domain = await prompt('Portainer domain (optional, press Enter to skip)', '');
-    if (domain) {
-      portainerConfig.domain = domain;
-    }
-  }
-
   printBlank();
   printSection('Configuration Summary');
   printBlank();
@@ -226,13 +207,6 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
   printRaw(`${colors.info('Deployment User:')} ${deployUser}`);
   printRaw(`${colors.info('Create New User:')} ${needsUserSetup ? 'Yes' : 'No'}`);
   printRaw(`${colors.info('Install Nginx:')} ${installNginx ? 'Yes' : 'No'}`);
-  printRaw(`${colors.info('Install Portainer:')} ${portainerConfig.install ? 'Yes' : 'No'}`);
-  if (portainerConfig.install) {
-    printRaw(`${colors.info('Portainer Port:')} ${portainerConfig.port}`);
-    if (portainerConfig.domain) {
-      printRaw(`${colors.info('Portainer Domain:')} ${portainerConfig.domain}`);
-    }
-  }
   printBlank();
 
   if (!await confirm('Proceed with this configuration?', true)) {
@@ -261,7 +235,6 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
     skipDockerInstall: options?.skipDockerInstall || false,
     orchestrator: options?.orchestrator || 'swarm',
     installNginx,
-    portainer: portainerConfig
   };
 
   completeSetup(config);

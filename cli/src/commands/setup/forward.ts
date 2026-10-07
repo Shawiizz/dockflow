@@ -24,10 +24,6 @@ export function buildForwardFlags(
   if (options.skipDockerInstall) flags.push('--skip-docker-install');
   if (options.orchestrator) flags.push('--orchestrator', quote(options.orchestrator));
   if (options.nginx) flags.push('--nginx');
-  if (options.portainer) flags.push('--portainer');
-  if (options.portainerPort) flags.push('--portainer-port', quote(options.portainerPort));
-  if (options.portainerPassword) flags.push('--portainer-password', quote(options.portainerPassword));
-  if (options.portainerDomain) flags.push('--portainer-domain', quote(options.portainerDomain));
 
   if (options.user) {
     flags.push('--user', quote(options.user));
