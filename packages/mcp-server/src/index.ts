@@ -2,12 +2,11 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { getIndex, getFull, parseSections } from './docs.js';
 import { EXAMPLES, listExamples, formatExample } from './examples.js';
 import { withCliVersion } from './version.js';
-import { validateConfig, validateServersOnly, formatValidationResult } from './validate.js';
+import { detectFileType, FILE_NAMES, formatValidationResult, validateFile } from './validate.js';
 import { readProjectConfig, formatProjectConfig } from './project.js';
 
 const server = new McpServer({
@@ -122,31 +121,9 @@ server.registerTool('validate_config', {
     ),
   },
 }, async ({ content, type }) => {
-  let detectedType = type;
-
-  if (detectedType === 'auto') {
-    try {
-      const parsed = parseYaml(content);
-      if (parsed && typeof parsed === 'object') {
-        const obj = parsed as Record<string, unknown>;
-        if (obj.project_name && obj.servers) detectedType = 'root';
-        else if (obj.servers && !obj.project_name) detectedType = 'servers';
-        else detectedType = 'config';
-      }
-    } catch {
-      detectedType = 'config';
-    }
-  }
-
-  const result = detectedType === 'servers'
-    ? validateServersOnly(content)
-    : validateConfig(content);
-
-  const filename = detectedType === 'servers' ? 'servers.yml'
-    : detectedType === 'root' ? 'dockflow.yml'
-    : 'config.yml';
-
-  return { content: [{ type: 'text', text: formatValidationResult(result, filename) }] };
+  const fileType = type === 'auto' ? detectFileType(content) : type;
+  const result = validateFile(content, fileType);
+  return { content: [{ type: 'text', text: formatValidationResult(result, FILE_NAMES[fileType]) }] };
 });
 
 server.registerTool('read_project_config', {
