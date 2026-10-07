@@ -273,16 +273,20 @@ View logs from running services. On Swarm, only **currently running task replica
 
 | Option | Description |
 |--------|-------------|
-| `-f, --follow` | Follow log output |
+| `-f, --follow` | Follow log output; without a service, every service at once |
 | `-n, --tail <lines>` | Number of lines to show, or `all` (default: 100) |
 | `-T, --timestamps` | Show timestamps |
 | `--since <time>` | Show logs since a duration (`30m`, `1h30m`, `2d`), a date (`2024-01-01`, local midnight), a timestamp (`2024-01-01T10:00:00Z`, local time without a zone) or unix seconds |
-| `-s, --server <name>` | Target server |
-| `-a, --all-tasks` | Include logs from terminated/historical task replicas (Swarm only) |
-| `--pick` | Interactively pick which task replica to follow (Swarm only) |
+| `-s, --server <name>` | Target manager |
+| `-a, --all-tasks` | Include logs from terminated/historical task replicas |
+| `--pick` | Interactively pick which task replica to show |
+| `--no-prefix` | Do not prefix lines with their instance |
+
+When several replicas or services share the output, each line starts with its instance (`web.2 |`), in a colour of its own.
 
 ```bash
 dockflow logs production                 # All services, running replicas only
+dockflow logs production -f              # Follow every service
 dockflow logs production app -f          # Follow specific service
 dockflow logs production app -n 500      # Last 500 lines
 dockflow logs production --since 1h      # Last hour
@@ -685,12 +689,14 @@ dockflow accessories logs <env> [service]
 
 | Option | Description |
 |--------|-------------|
-| `-f, --follow` | Follow log output |
+| `-f, --follow` | Follow log output; without a service, every accessory at once |
 | `-n, --tail <lines>` | Number of lines, or `all` (default: 100) |
 | `--since <time>` | Show logs since a duration, date, timestamp or unix seconds, as for `dockflow logs` |
 | `--timestamps` | Show timestamps |
-| `--raw` | Raw output without formatting |
-| `-s, --server <name>` | Target server |
+| `-a, --all-tasks` | Include logs from terminated/historical task replicas |
+| `--pick` | Interactively pick which task replica to show |
+| `--no-prefix` | Do not prefix lines with their instance |
+| `-s, --server <name>` | Target manager |
 
 ### Accessories Exec
 

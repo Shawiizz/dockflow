@@ -28,3 +28,26 @@ export function parseDockerLogLines(stdout: string, serviceName: string): Parsed
       return { timestamp: new Date().toISOString(), message: line, service: serviceName };
     });
 }
+
+/** Cuts a chunked stream into lines; a partial last line waits for the next chunk. */
+export class LogLineBuffer {
+  private pending = '';
+
+  push(chunk: string): string[] {
+    this.pending += chunk;
+    const parts = this.pending.split('\n');
+    this.pending = parts.pop() ?? '';
+    return parts.map(stripCarriageReturn);
+  }
+
+  /** the unterminated last line, once the stream ended */
+  flush(): string[] {
+    const rest = this.pending;
+    this.pending = '';
+    return rest === '' ? [] : [stripCarriageReturn(rest)];
+  }
+}
+
+function stripCarriageReturn(line: string): string {
+  return line.endsWith('\r') ? line.slice(0, -1) : line;
+}

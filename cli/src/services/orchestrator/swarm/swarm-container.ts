@@ -12,7 +12,8 @@ import { sshExec, sshExecStream, sshExecChannelUnbuffered, executeInteractiveSSH
 import { CLIError, ConnectionError, ErrorCode } from '../../../utils/errors';
 import type { ExecRequest } from '../../../utils/exec-plan';
 import { printWarning } from '../../../utils/output';
-import type { ContainerBackend, LogsOptions } from '../interfaces';
+import type { ContainerBackend, LogSource, LogsOptions } from '../interfaces';
+import { LogLineBuffer } from '../../../utils/docker-logs';
 import { findSwarmContainer, findContainerForTask, listSwarmTasks, qualifyServiceName } from './swarm-utils';
 import { dockerSinceValue, LOCAL_OFFSET, parseSince } from '../../../utils/log-options';
 
@@ -118,10 +119,11 @@ export class SwarmContainerBackend implements ContainerBackend {
     stackName: string,
     serviceName: string,
     options: LogsOptions,
-    onData: (line: string) => void,
+    onLine: (line: string, source: LogSource) => void,
     onError: (err: Error) => void,
   ): Promise<void> {
     const allConns = [this.conn, ...this.allConnections];
+    const single: LogSource = { instance: serviceName, instances: 1 };
 
     if (options.taskId) {
       const found = await findContainerForTask(options.taskId, allConns);
@@ -129,13 +131,13 @@ export class SwarmContainerBackend implements ContainerBackend {
         onError(new Error(`Task ${options.taskId} not found on any node`));
         return;
       }
-      await this.runLogStream(found.connection, 'docker logs', found.containerId, options, onData, onError);
+      await this.runLogStream(found.connection, 'docker logs', found.containerId, options, (line) => onLine(line, single), onError);
       return;
     }
 
     if (options.allTasks) {
-      const fullName = qualifyServiceName(stackName, serviceName);
-      await this.runLogStream(this.conn, 'docker service logs', fullName, options, onData, onError);
+      // docker service logs names each line's task itself
+      await this.runLogStream(this.conn, 'docker service logs', qualifyServiceName(stackName, serviceName), options, (line) => onLine(line, single), onError);
       return;
     }
 
@@ -159,7 +161,8 @@ export class SwarmContainerBackend implements ContainerBackend {
         );
         return;
       }
-      await this.runLogStream(found.connection, 'docker logs', found.containerId, options, onData, onError);
+      const source: LogSource = { instance: `${serviceName}.${task.slot}`, instances: running.length };
+      await this.runLogStream(found.connection, 'docker logs', found.containerId, options, (line) => onLine(line, source), onError);
     }));
   }
 
@@ -168,7 +171,7 @@ export class SwarmContainerBackend implements ContainerBackend {
     baseCommand: string,
     target: string,
     options: LogsOptions,
-    onData: (line: string) => void,
+    onLine: (line: string) => void,
     onError: (err: Error) => void,
   ): Promise<void> {
     const parts = [baseCommand];
@@ -176,16 +179,22 @@ export class SwarmContainerBackend implements ContainerBackend {
     parts.push(`--tail ${options.tail ?? 100}`);
     if (options.timestamps) parts.push('--timestamps');
     if (options.since !== undefined) parts.push(`--since ${shellQuote(dockerSinceValue(parseSince(options.since, LOCAL_OFFSET)))}`);
-    parts.push(target, '2>&1');
+    parts.push(shellQuote(target), '2>&1');
 
-    const emit = (data: string) => {
-      for (const line of data.split('\n')) {
-        if (line.length > 0) onData(line);
-      }
+    // whole lines only: a chunk can end in the middle of one
+    const stdout = new LogLineBuffer();
+    const stderr = new LogLineBuffer();
+    const emit = (lines: string[]) => {
+      for (const line of lines) if (line.length > 0) onLine(line);
     };
 
     try {
-      await sshExecStream(connection, parts.join(' '), { onStdout: emit, onStderr: emit });
+      await sshExecStream(connection, parts.join(' '), {
+        onStdout: (chunk) => emit(stdout.push(chunk)),
+        onStderr: (chunk) => emit(stderr.push(chunk)),
+      });
+      emit(stdout.flush());
+      emit(stderr.flush());
     } catch (e) {
       onError(e instanceof Error ? e : new Error(String(e)));
     }

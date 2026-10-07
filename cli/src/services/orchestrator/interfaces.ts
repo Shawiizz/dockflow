@@ -145,6 +145,12 @@ export interface StackBackend {
 // ContainerBackend — exec + logs
 // ---------------------------------------------------------------------------
 
+/** Where a log line comes from: `web.2` among the service's running instances. */
+export interface LogSource {
+  instance: string;
+  instances: number;
+}
+
 export interface LogsOptions {
   follow: boolean;
   tail?: number | 'all';
@@ -182,7 +188,7 @@ export interface ContainerBackend {
     stackName: string,
     serviceName: string,
     options: LogsOptions,
-    onData: (line: string) => void,
+    onLine: (line: string, source: LogSource) => void,
     onError: (err: Error) => void,
   ): Promise<void>;
 }

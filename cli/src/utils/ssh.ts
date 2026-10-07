@@ -10,6 +10,7 @@
 
 import { Client as SSHClient } from 'ssh2';
 import type { ClientChannel, ConnectConfig } from 'ssh2';
+import { StringDecoder } from 'string_decoder';
 import type { ConnectionInfo, SSHExecResult } from '../types';
 import { isKeyConnection } from '../types';
 import { normalizePrivateKey } from './ssh-keys';
@@ -366,39 +367,31 @@ function execStreamOnClient(
     onStdout?: (data: string) => void;
     onStderr?: (data: string) => void;
   } = {},
-): Promise<SSHExecResult> {
-  return new Promise<SSHExecResult>((resolve, reject) => {
+): Promise<{ exitCode: number }> {
+  return new Promise<{ exitCode: number }>((resolve, reject) => {
     client.exec(command, (err, stream) => {
       if (err) {
         reject(err);
         return;
       }
 
-      let stdout = '';
-      let stderr = '';
-
-      stream.on('data', (data: Buffer) => {
-        const str = data.toString();
-        stdout += str;
-        if (options.onStdout) {
-          options.onStdout(str);
-        } else {
-          process.stdout.write(str);
-        }
-      });
-
-      stream.stderr.on('data', (data: Buffer) => {
-        const str = data.toString();
-        stderr += str;
-        if (options.onStderr) {
-          options.onStderr(str);
-        } else {
-          process.stderr.write(str);
-        }
-      });
+      // nothing is kept: a followed stream runs for hours. One decoder per stream, as a chunk can
+      // end in the middle of a multi-byte character.
+      const forward = (source: NodeJS.ReadableStream, sink: ((data: string) => void) | undefined, fallback: NodeJS.WriteStream) => {
+        const decoder = new StringDecoder('utf8');
+        const write = (text: string) => {
+          if (!text) return;
+          if (sink) sink(text);
+          else fallback.write(text);
+        };
+        source.on('data', (data: Buffer) => write(decoder.write(data)));
+        source.on('end', () => write(decoder.end()));
+      };
+      forward(stream, options.onStdout, process.stdout);
+      forward(stream.stderr, options.onStderr, process.stderr);
 
       stream.on('close', (code?: number | null, signal?: string) => {
-        resolve(channelResult(stdout, stderr, code, signal));
+        resolve({ exitCode: channelResult('', '', code, signal).exitCode });
       });
     });
   });
@@ -440,7 +433,7 @@ export async function sshExecStream(
     onStdout?: (data: string) => void;
     onStderr?: (data: string) => void;
   } = {}
-): Promise<SSHExecResult> {
+): Promise<{ exitCode: number }> {
   const client = await getPooledClient(conn);
 
   try {
