@@ -12,11 +12,11 @@
  */
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { join } from "path";
+import { resolveLinuxBinaryPath } from "../../helpers/cli";
 import { exec } from "../../helpers/cluster";
 
 const CONTAINER = "dockflow-test-setup";
-const BINARY = join(import.meta.dir, "..", "..", "..", "..", "cli", "dist", "dockflow-linux-x64");
+const BINARY = resolveLinuxBinaryPath();
 const DEPLOY_USER = "deploytest";
 const SETUP_ARGS = [
   "setup", "--yes",

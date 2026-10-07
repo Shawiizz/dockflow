@@ -1,0 +1,2 @@
+# Failure dumps and the last CLI invocations of a run (helpers/artifacts.ts)
+.artifacts/

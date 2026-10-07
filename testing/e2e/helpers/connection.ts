@@ -44,13 +44,14 @@ function encodeConnection(conn: {
 }
 
 /**
- * Write .env.dockflow with connection strings for the test-app.
+ * Write .env.dockflow with connection strings for the test-app, plus `extra` entries.
  * Uses localhost + mapped ports so the CLI (running on the host) can reach containers.
  */
-export function writeDockflowEnv(appDir: string): void {
+export function writeDockflowEnv(appDir: string, extra: Readonly<Record<string, string>> = {}): void {
   const content = [
     `TEST_MAIN_SERVER_CONNECTION=${encodeConnection(MANAGER)}`,
     `TEST_WORKER_1_CONNECTION=${encodeConnection(WORKER)}`,
+    ...Object.entries(extra).map(([key, value]) => `${key}=${value}`),
   ].join("\n");
   writeFileSync(join(appDir, ".env.dockflow"), content + "\n");
 }

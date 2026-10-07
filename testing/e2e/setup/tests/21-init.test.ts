@@ -7,11 +7,11 @@
  */
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { join } from "path";
+import { resolveLinuxBinaryPath } from "../../helpers/cli";
 import { exec } from "../../helpers/cluster";
 
 const CONTAINER = "dockflow-test-init";
-const BINARY = join(import.meta.dir, "..", "..", "..", "..", "cli", "dist", "dockflow-linux-x64");
+const BINARY = resolveLinuxBinaryPath();
 const WORKDIR = "/workspace/dockflow-init-test";
 
 /** Run a command inside the init container, stdin closed (non-interactive). */

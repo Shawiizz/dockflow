@@ -24,7 +24,7 @@ export interface Fixture {
  * env file for the target cluster there.
  */
 export function makeFixture(name: string): Fixture {
-  const dir = mkdtempSync(join(tmpdir(), `dockflow-e2e-${name}-`));
+  const dir = mkdtempSync(join(tmpdir(), `dockflow-e2e-${name.replace(/[\\/]/g, "-")}-`));
   cpSync(join(FIXTURES_DIR, name), dir, { recursive: true });
 
   writeDockflowEnv(dir);
