@@ -157,8 +157,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # The setup suite runs the compiled binary, so it is the only one that can catch a
-  # packaging regression before the artifact reaches npm. swarm and k3s cover deployment
-  # behaviour and already run on every push to main.
+  # packaging regression before the artifact reaches npm. The swarm suite covers deployment
+  # behaviour and already runs on every push to main.
   e2e:
     uses: ./.github/workflows/e2e-tests.yml
     with:

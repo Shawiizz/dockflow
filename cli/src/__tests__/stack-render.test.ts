@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'bun:test';
-import { parse, parseAllDocuments } from 'yaml';
+import { parse } from 'yaml';
 import { loadFromString, serialize } from '../services/compose';
 import { SwarmStackBackend } from '../services/orchestrator/swarm/swarm-stack';
-import { K3sStackBackend } from '../services/orchestrator/k3s/k3s-stack';
 import type { ProxyConfig } from '../utils/config';
 
 const conn = { host: 'h', port: 22, user: 'u', privateKey: 'k' };
@@ -38,25 +37,5 @@ describe('SwarmStackBackend.render', () => {
     );
 
     expect(Object.keys(rendered.services)).toEqual(['worker']);
-  });
-});
-
-describe('K3sStackBackend.render', () => {
-  it('produces manifests, which is what a rollback hands back to kubectl', () => {
-    const out = new K3sStackBackend(conn).render({ stackName: 'demo-production', env: 'production', compose: compose(), proxy });
-    const documents = parseAllDocuments(out).map((d) => d.toJS() as Record<string, unknown>);
-
-    expect(documents.map((d) => d.kind)).toContain('Deployment');
-    expect(documents.map((d) => d.kind)).toContain('IngressRoute');
-    expect(documents.every((d) => typeof d.apiVersion === 'string' && !('services' in d))).toBe(true);
-  });
-
-  it('never mutates the compose it is given', () => {
-    const input = compose();
-    const before = serialize(input);
-
-    new K3sStackBackend(conn).render({ stackName: 'demo-production', env: 'production', compose: input, proxy });
-
-    expect(serialize(input)).toBe(before);
   });
 });

@@ -1,7 +1,7 @@
 /**
  * HealthCheck — orchestrator-agnostic health checking.
  *
- * Internal health checks (Swarm tasks or K8s pods) are delegated to the
+ * Internal health checks (Swarm tasks) are delegated to the
  * injected StackBackend. HTTP endpoint checks run sequentially with a
  * per-endpoint spinner that updates in place on each retry.
  */
@@ -24,8 +24,7 @@ export class HealthCheck {
   ) {}
 
   /**
-   * Orchestrator-agnostic internal health check.
-   * Delegates to the injected StackBackend (Swarm or k3s).
+   * Internal health check, delegated to the injected StackBackend.
    */
   async checkInternalHealth(
     stackName: string,

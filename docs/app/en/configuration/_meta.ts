@@ -16,5 +16,4 @@ export default {
   proxy: 'Automatic HTTPS Proxy',
   firewall: 'Public Ports',
   notifications: 'Notifications',
-  orchestrator: 'Orchestrator'
 }

@@ -78,11 +78,6 @@ function validateConfigBlock(obj: Record<string, unknown>, errors: string[]) {
     errors.push('project_name: must be lowercase alphanumeric with hyphens, no leading/trailing hyphens');
   }
 
-  // orchestrator
-  if (obj.orchestrator !== undefined && !['swarm', 'k3s'].includes(obj.orchestrator as string)) {
-    errors.push('orchestrator: must be "swarm" or "k3s"');
-  }
-
   // container_engine
   if (obj.container_engine !== undefined && !['docker', 'podman'].includes(obj.container_engine as string)) {
     errors.push('container_engine: must be "docker" or "podman"');

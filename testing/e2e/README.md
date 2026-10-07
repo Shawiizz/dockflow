@@ -1,16 +1,13 @@
 # E2E Tests
 
-Two independent suites, one per orchestrator. Each suite owns its cluster
-lifecycle and can run in isolation (CI runs them as parallel jobs).
+Two independent suites, each owning its cluster lifecycle; each can run in isolation
+(CI runs them as parallel jobs).
 
 ```
 e2e/
   swarm/        # 2-node Docker-in-Docker Swarm (compose project: dockflow-swarm)
     bunfig.toml #   preload: setup.ts (build CLI, reset cluster, pre-deploy test-app)
     tests/      #   01-build … 11-public-ports
-  k3s/          # single-node k3s-in-Docker (compose project: dockflow-k3s)
-    bunfig.toml #   preload: setup.ts (build CLI only — tests own the cluster lifecycle)
-    tests/      #   10-k3s-deploy
   setup/        # host provisioning on a clean ubuntu container
     bunfig.toml #   preload: setup.ts (cross-compile the Linux binary)
     tests/      #   20-setup (get.docker.com, deploy user, idempotent re-run)
@@ -24,7 +21,6 @@ e2e/
 
 ```bash
 cd testing/e2e/swarm && bun test tests/    # Swarm suite
-cd testing/e2e/k3s   && bun test tests/    # k3s suite
 cd testing/e2e/setup && bun test tests/    # setup/provisioning suite
 bun run testing/e2e/teardown.ts            # stop all test containers
 ```
@@ -50,9 +46,7 @@ routes, service names), its own `project_name`. See the failing-endpoint
 test in `05-http-healthcheck.test.ts` for the pattern.
 
 **Ports are statically allocated** (`helpers/connection.ts`): Swarm manager
-:32222, worker :32223, k3s :32224, Traefik HTTP :38080, e2e registry :35000.
-The two clusters use separate compose projects and networks and can run
-simultaneously.
+:32222, worker :32223, Traefik HTTP :38080, e2e registry :35000.
 
 **The e2e registry** (`registry:2`, anonymous) runs inside the manager DinD
 node with its port published in cascade, so the single image name

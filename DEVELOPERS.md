@@ -68,51 +68,43 @@ Open `http://localhost:4200`. The `--dev` flag (added automatically by `bun run 
 
 When you run `dockflow deploy`, the CLI connects directly to servers via SSH (using the `ssh2` library). All deploy operations — template rendering, image building/distribution, stack deployment, health checks — happen in TypeScript over SSH. No Docker containers or Ansible are involved in the deploy flow.
 
-Ansible is only used for `dockflow setup` (one-shot machine provisioning), where it runs inside a Docker container to configure hosts.
-
-This distinction matters when working on E2E tests. See the E2E section below.
+`dockflow setup` provisions machines the same way: the CLI binary runs on the server (shipped over SSH for a remote setup) and configures it directly.
 
 ---
 
 ## E2E Tests
 
-> **Run from WSL only** — not PowerShell or CMD.
-
-### Prerequisites
-
-```bash
-sudo apt install sshpass jq
-```
-
-Docker Desktop must be running with WSL integration enabled.
+Two suites live under `testing/e2e/` (see `testing/e2e/README.md`): `swarm`, a two-node
+Docker-in-Docker Swarm, and `setup`, host provisioning on a clean Ubuntu container. They run on
+Linux, WSL and Windows with Docker.
 
 ### Running the tests
 
 ```bash
-cd testing/e2e
-bun test tests/                       # full suite: Swarm + k3s (~5-10 min)
-bun test tests/02-deploy.test.ts      # single Swarm test
-bun test tests/10-k3s-deploy.test.ts  # k3s tests only
-bun run teardown.ts                   # clean up containers afterwards
+cd testing/e2e/swarm && bun test tests/                    # Swarm suite (~10 min)
+cd testing/e2e/swarm && bun test tests/02-deploy.test.ts   # one file
+cd testing/e2e/setup && bun test tests/                    # setup suite
+bun run testing/e2e/teardown.ts                            # clean up containers afterwards
 ```
 
 ### Test architecture
 
-Two Docker containers simulate a real Swarm cluster, and a separate container runs a single-node k3s cluster:
-
 | Container | Role |
 |-----------|------|
-| `dockflow-test-manager` | Swarm manager — SSH on `localhost:2222` |
-| `dockflow-test-worker-1` | Swarm worker — SSH on `localhost:2223` |
-| `dockflow-test-k3s` | k3s single-node — SSH on `localhost:2224` |
+| `dockflow-test-manager` | Swarm manager — SSH on `localhost:32222` |
+| `dockflow-test-worker-1` | Swarm worker — SSH on `localhost:32223` |
+| `dockflow-test-setup` | Clean Ubuntu host for the setup suite |
 
-The `.env.dockflow` in test fixtures uses `localhost:222x` port mappings to reach the containers from the host.
+Each test copies a read-only fixture from `testing/e2e/fixtures/` into a temp directory and
+writes its `.env.dockflow` there, with the `localhost` port mappings above.
 
 ### What's tested
 
-**Swarm tests** (`01-05`): build, deploy (2 replicas, distributed), health checks, Traefik routing, backup/restore (Redis), remote build.
+**Swarm suite**: build, deploy (2 replicas, distributed), health checks, Traefik routing and
+`proxy.routes`, backup/restore, remote build, rollback, uploads, exec/logs, registry
+distribution, the filter of published ports.
 
-**k3s tests** (`10`): deploy to k3s, namespace creation, deployment replicas, logs, exec, scale up/down.
+**Setup suite**: non-interactive `dockflow setup` on a clean host, `dockflow init`.
 
 ### Debug commands
 
@@ -138,7 +130,7 @@ docker exec dockflow-test-manager docker stack ps test-app-test
 
 ### 1. `*Backend` — polymorphic interfaces
 
-Used only under `cli/src/services/orchestrator/` for things that have more than one implementation (Swarm + k3s).
+Used only under `cli/src/services/orchestrator/`: the contracts the commands use, implemented for Swarm under `./swarm/`.
 
 ```ts
 // Interface
@@ -147,12 +139,11 @@ export interface StackBackend {
   // ...
 }
 
-// Implementations
+// Implementation
 export class SwarmStackBackend implements StackBackend { /* ... */ }
-export class K3sStackBackend implements StackBackend { /* ... */ }
 
 // Consumed via factory
-const backend = createStackBackend('swarm', managerConn);
+const backend = createStackBackend(managerConn);
 ```
 
 Current backends: `StackBackend`, `ContainerBackend`, `HealthBackend`, `ProxyBackend`.
@@ -205,7 +196,7 @@ import * as Compose from '../services/compose';
 Compose.updateImageTags(parsed, { web: 'app:1.2.3' });
 ```
 
-Current modules: `compose.ts`, `build.ts`, `distribution.ts`, `hook.ts`, `notification.ts`, `history-sync.ts`, `k8s-manifest.ts`.
+Current modules: `compose.ts`, `build.ts`, `distribution.ts`, `hook.ts`, `notification.ts`, `history-sync.ts`.
 
 ### Why no more `*Service`?
 

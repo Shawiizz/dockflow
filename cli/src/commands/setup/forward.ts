@@ -15,14 +15,13 @@ import type { SetupOptions } from './types';
  * being provisioned. Values are single-quoted (passwords may contain spaces).
  */
 export function buildForwardFlags(
-  options: SetupOptions & { orchestrator?: string; deployPassword?: string },
+  options: SetupOptions & { deployPassword?: string },
   remote: { host: string; port: number },
 ): string[] {
   const flags: string[] = [];
   const quote = shellQuote;
 
   if (options.skipDockerInstall) flags.push('--skip-docker-install');
-  if (options.orchestrator) flags.push('--orchestrator', quote(options.orchestrator));
   if (options.nginx) flags.push('--nginx');
   if (options.portFilter === false) flags.push('--no-port-filter');
 

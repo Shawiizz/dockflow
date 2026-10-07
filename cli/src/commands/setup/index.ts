@@ -22,7 +22,6 @@ import { runNonInteractiveSetup } from './non-interactive';
 import { runRemoteSetup, promptRemoteConnection } from './remote';
 import { buildForwardFlags } from './forward';
 import { runSetupSwarm } from './swarm';
-import { runSetupK3s } from './k3s';
 import { CLIError, ConfigError, ErrorCode, withErrorHandler } from '../../utils/errors';
 import type { SetupOptions, ConnectionOptions, RemoteSetupOptions } from './types';
 
@@ -54,20 +53,11 @@ export function registerSetupCommand(program: Command): void {
     .option('--generate-key', 'Generate new SSH key (local)')
     .option('--deploy-password <password>', 'Password for the deploy user created on the remote host (remote, with --user)')
     .option('--skip-docker-install', 'Skip Docker installation (local)')
-    .option('--orchestrator <type>', 'Target orchestrator: swarm or k3s (k3s skips the Docker install)', 'swarm')
     .option('--nginx', 'Install Nginx (local)')
     .option('--no-port-filter', 'Let the internet reach every port a container publishes (Docker default), not only firewall.public_ports')
     .option('-y, --yes', 'Skip confirmations (local)')
     .option('--dev', 'Build and upload local CLI binary instead of downloading from GitHub (development)')
     .action(withErrorHandler(async (target: string | undefined, options: SetupOptions & { key?: string; connection?: string; dev?: boolean; deployPassword?: string }) => {
-      if (options.orchestrator && options.orchestrator !== 'swarm' && options.orchestrator !== 'k3s') {
-        throw new CLIError(
-          `Invalid orchestrator: "${options.orchestrator}"`,
-          ErrorCode.INVALID_ARGUMENT,
-          'Supported values: swarm, k3s',
-        );
-      }
-
       let remoteOpts: RemoteSetupOptions | null = null;
 
       if (options.connection) {
@@ -174,14 +164,6 @@ export function registerSetupCommand(program: Command): void {
       await runSetupSwarm(env);
     }));
 
-  // k3s cluster setup
-  setup
-    .command('k3s <env>')
-    .description('Initialize k3s cluster for an environment')
-    .action(withErrorHandler(async (env: string) => {
-      await runSetupK3s(env);
-    }));
-
   // Check dependencies
   setup
     .command('check')
@@ -256,7 +238,6 @@ export function registerSetupCommand(program: Command): void {
         deployUser: user,
         privateKeyPath: keyPath,
         skipDockerInstall: false,
-        orchestrator: 'swarm',
         installNginx: false,
         portFilter: true,
       }, privateKey);

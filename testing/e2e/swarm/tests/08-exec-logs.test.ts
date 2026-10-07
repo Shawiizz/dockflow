@@ -1,9 +1,8 @@
 /**
  * E2E tests for `dockflow exec` and `dockflow logs` on Swarm.
  *
- * The k3s suite already covers these commands for kubectl; this file covers
- * the Swarm backend (container lookup across nodes via docker ps, service
- * logs aggregation). Read-only against the shared test-app stack.
+ * Covers the container lookup across nodes (docker ps) and service logs
+ * aggregation. Read-only against the shared test-app stack.
  */
 
 import { describe, test, expect } from "bun:test";

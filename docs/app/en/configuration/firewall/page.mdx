@@ -132,8 +132,3 @@ sudo dockflow-public-ports set containers
 `dockflow setup --no-port-filter` (or answering no in the setup wizard) removes the filter: every
 published port answers the internet, as with Docker alone. Deploys then leave the host as it is,
 without warning.
-
-<Callout type="info">
-  The filter is for Swarm hosts. With `orchestrator: k3s`, ports do not go through Docker, and
-  setup skips it.
-</Callout>

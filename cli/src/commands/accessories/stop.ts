@@ -31,7 +31,7 @@ export function registerAccessoriesStopCommand(program: Command): void {
 
       const config = loadConfig();
       if (!config) throw new ConfigError('No dockflow config found');
-      const orchestrator = createStackBackend(config.orchestrator ?? 'swarm', connection);
+      const orchestrator = createStackBackend(connection);
 
       const services = await orchestrator.getServices(stackName);
       if (services.length === 0) {

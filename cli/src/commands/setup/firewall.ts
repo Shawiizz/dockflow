@@ -1,6 +1,6 @@
 /**
  * Shared firewall helper for opening ports on remote hosts.
- * Used by both swarm.ts and k3s.ts setup commands.
+ * Used by the swarm.ts setup command.
  */
 
 import { createSpinner, printDim } from '../../utils/output';

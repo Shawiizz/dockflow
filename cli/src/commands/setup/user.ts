@@ -6,18 +6,18 @@
  */
 
 import { spawnSync } from 'child_process';
-import { existsSync, writeFileSync } from 'fs';
+import { existsSync, rmSync, writeFileSync } from 'fs';
 import { printWarning, printSuccess, printInfo, createSpinner } from '../../utils/output';
 import { CLIError, ErrorCode } from '../../utils/errors';
 import { promptPassword } from './prompts';
-import { K3S_TOKEN_PATH, NGINX_SITES_ENABLED, PUBLIC_PORTS_BIN } from '../../constants';
+import { NGINX_SITES_ENABLED, PUBLIC_PORTS_BIN } from '../../constants';
 
 /**
  * Configure nginx group access and deploy-time sudoers for a deploy user.
  *
  * Safe to call multiple times — writes are idempotent.
- * Must be called AFTER nginx/k3s are installed, so call it again
- * post-provisioning if those services were installed during setup.
+ * Must be called AFTER nginx and the filter of published ports are installed, so call it again
+ * post-provisioning if they were installed during setup.
  */
 export function configureServiceAccess(username: string): void {
   const sudoersRules: string[] = [];
@@ -48,20 +48,15 @@ export function configureServiceAccess(username: string): void {
     sudoersRules.push(`${username} ALL=(ALL) NOPASSWD: ${nginxBin} -t, ${nginxBin} -s reload`);
   }
 
-  // k3s: deploy-time image operations (import/export/ls) + one-time token read.
-  // Fallback to /usr/local/bin/k3s — the k3s installer always uses that path.
-  const k3sBin = spawnSync('which', ['k3s'], { encoding: 'utf-8', stdio: 'pipe' }).stdout.trim() || '/usr/local/bin/k3s';
-  sudoersRules.push(`${username} ALL=(ALL) NOPASSWD: ${k3sBin} ctr -n k8s.io images *`);
-  const catBin = spawnSync('which', ['cat'], { encoding: 'utf-8', stdio: 'pipe' }).stdout.trim() || '/bin/cat';
-  sudoersRules.push(`${username} ALL=(ALL) NOPASSWD: ${catBin} ${K3S_TOKEN_PATH}`);
-
   // deploys record the project's public ports in the filter of published ports
   if (existsSync(PUBLIC_PORTS_BIN)) {
     sudoersRules.push(`${username} ALL=(ALL) NOPASSWD: ${PUBLIC_PORTS_BIN}`);
   }
 
   try {
-    writeFileSync(`/etc/sudoers.d/${username}`, sudoersRules.join('\n') + '\n', { mode: 0o440 });
+    // a host without nginx or the filter grants the deploy user nothing
+    if (sudoersRules.length === 0) rmSync(`/etc/sudoers.d/${username}`, { force: true });
+    else writeFileSync(`/etc/sudoers.d/${username}`, sudoersRules.join('\n') + '\n', { mode: 0o440 });
   } catch (error) {
     printWarning(
       `Service access: could not write /etc/sudoers.d/${username}: ${error instanceof Error ? error.message : String(error)}`,
@@ -121,7 +116,7 @@ export function createDeployUser(username: string, password: string, publicKey: 
 
   // Configure service access — best-effort at user creation time.
   // configureServiceAccess() must be called again post-provisioning if
-  // nginx/k3s are installed after this point.
+  // nginx or the filter of published ports is installed after this point.
   configureServiceAccess(username);
 
   spinner.succeed(`User ${username} created successfully`);

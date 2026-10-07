@@ -879,7 +879,6 @@ Configure a server without prompts (Linux only, must run on target host). Pass f
 | `--generate-key` | Generate new SSH key |
 | `--deploy-password <pw>` | Password for the deploy user created remotely (remote, with `--user`) |
 | `--skip-docker-install` | Skip Docker installation |
-| `--orchestrator <type>` | `swarm` (default) or `k3s` — k3s skips the Docker install |
 | `--nginx` | Install nginx, for the [nginx plugin](/en/configuration/plugins#nginx) |
 | `--no-port-filter` | Let the internet reach every published container port, instead of only the [public ports](/en/configuration/firewall) |
 | `-y, --yes` | Skip confirmations |
@@ -891,14 +890,6 @@ dockflow setup swarm <env>
 ```
 
 Initialize a Docker Swarm cluster for an environment. Joins all servers configured in `servers.yml` into the Swarm.
-
-### Initialize k3s
-
-```bash
-dockflow setup k3s <env>
-```
-
-Install and configure k3s on the target server for an environment.
 
 ### Check Dependencies
 
@@ -932,7 +923,7 @@ Display connection string for an existing deployment user.
 - Root access (local setup must run as root; remote setup escalates automatically)
 - SSH (`ssh`, `ssh-keygen`)
 - curl (downloads the Docker install script)
-- sudo (the deploy user records public ports, reloads nginx and imports k3s images through it)
+- sudo (the deploy user records public ports and reloads nginx through it)
 
 Missing dependencies are installed automatically during setup.
 

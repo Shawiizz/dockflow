@@ -26,11 +26,10 @@ export function registerListServicesCommand(parent: Command): void {
     .option('-t, --tasks', 'Show individual containers/tasks for each service')
     .option('-j, --json', 'Output as JSON')
     .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string; tasks?: boolean; json?: boolean }) => {
-      const { config, stackName, connection } = validateEnv(env, options.server);
+      const { stackName, connection } = validateEnv(env, options.server);
 
       try {
-        const orchType = config.orchestrator ?? 'swarm';
-        const orchestrator = createStackBackend(orchType, connection);
+        const orchestrator = createStackBackend(connection);
         const services = await orchestrator.getServices(stackName);
 
         if (services.length === 0) {
@@ -84,8 +83,8 @@ export function registerListServicesCommand(parent: Command): void {
             colors.dim(svc.ports || '-')
           );
 
-          // Show tasks/containers if requested (Swarm-specific detail)
-          if (options.tasks && orchType === 'swarm') {
+          // Show tasks/containers if requested
+          if (options.tasks) {
             const fullName = svc.name.includes('_') ? svc.name : `${stackName}_${svc.name}`;
             const tasksCmd = `docker service ps ${fullName} --format '{{.ID}}|{{.Name}}|{{.Node}}|{{.CurrentState}}|{{.Error}}' --no-trunc 2>/dev/null | head -10`;
             const tasksResult = await sshExec(connection, tasksCmd);
@@ -112,29 +111,6 @@ export function registerListServicesCommand(parent: Command): void {
                 colors.info((node || '').padEnd(15)) +
                 stateColor(stateStr) +
                 errorStr
-              );
-            }
-          } else if (options.tasks && orchType === 'k3s') {
-            const tasksCmd = `kubectl get pods -n dockflow-${stackName} -l app=${svc.name} -o custom-columns='NAME:.metadata.name,NODE:.spec.nodeName,STATUS:.status.phase' --no-headers 2>/dev/null | head -10`;
-            const tasksResult = await sshExec(connection, tasksCmd);
-            const taskLines = tasksResult.stdout.trim().split('\n').filter(Boolean);
-
-            for (const taskLine of taskLines) {
-              const parts = taskLine.trim().split(/\s+/);
-              const podName = parts[0] || '';
-              const nodeName = parts[1] || '';
-              const status = parts[2] || 'Unknown';
-
-              let stateColor = colors.dim;
-              if (status === 'Running') stateColor = colors.success;
-              else if (status === 'Failed' || status === 'CrashLoopBackOff') stateColor = colors.error;
-              else if (status === 'Pending' || status === 'ContainerCreating') stateColor = colors.warning;
-
-              printRaw(
-                colors.dim('  └─ ') +
-                podName.padEnd(34) +
-                colors.info(nodeName.padEnd(15)) +
-                stateColor(status)
               );
             }
           }

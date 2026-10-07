@@ -1,8 +1,7 @@
 /**
  * Distribution — image transfer module.
  *
- * Streams Docker images to nodes via SSH pipe.
- * Supports both Docker (docker save/load) and containerd (k3s ctr import) runtimes.
+ * Streams images to nodes via SSH pipe (docker or podman save/load).
  * Also handles registry push and authentication.
  */
 
@@ -15,7 +14,7 @@ import { printDebug, printDim, printSuccess, printWarning, createTimedSpinner } 
 import { DeployError, ErrorCode } from '../utils/errors';
 import { parseImageRef } from './compose';
 
-export type ContainerRuntime = 'docker' | 'containerd' | 'podman';
+export type ContainerRuntime = 'docker' | 'podman';
 
 export interface DistributionTarget {
   connection: SSHKeyConnection;
@@ -24,32 +23,15 @@ export interface DistributionTarget {
 
 const TRANSFER_MAX_RETRIES = 2;
 
-function k3sPermissionSuggestion(nodeName: string, deployUser: string): string {
-  return (
-    `The deploy user needs restricted sudo for k3s on ${nodeName}.\n` +
-    `Run once on the server:\n` +
-    `  K3S=$(which k3s)\n` +
-    `  echo "${deployUser} ALL=(ALL) NOPASSWD: $K3S ctr -n k8s.io images *" > /etc/sudoers.d/dockflow-k3s\n` +
-    `  chmod 440 /etc/sudoers.d/dockflow-k3s`
-  );
-}
-
-function isPermissionError(stderr: string): boolean {
-  return stderr.includes('is not allowed') || stderr.includes('not in the sudoers') || stderr.includes('command not found');
-}
-
 function importCommand(runtime: ContainerRuntime): string {
-  if (runtime === 'containerd') return 'gunzip | sudo k3s ctr -n k8s.io images import -';
   return `gunzip | ${runtime} load`;
 }
 
 function saveCommand(image: string, runtime: ContainerRuntime): string {
-  if (runtime === 'containerd') return `sudo k3s ctr -n k8s.io images export - ${shellQuote(image)} | gzip -1`;
   return `${runtime} save ${shellQuote(image)} | gzip -1`;
 }
 
 function imageIdCommand(image: string, runtime: ContainerRuntime): string {
-  if (runtime === 'containerd') return `sudo k3s ctr -n k8s.io images ls -q 2>/dev/null | grep -F ${shellQuote(image)} | head -1`;
   return `${runtime} images --no-trunc -q ${shellQuote(image)} 2>/dev/null | head -1`;
 }
 
@@ -142,8 +124,7 @@ async function streamToTarget(
 
   sink.resume();
 
-  const localEngine = runtime === 'containerd' ? 'docker' : runtime;
-  const saveProc = Bun.spawn([localEngine, 'save', image], {
+  const saveProc = Bun.spawn([runtime, 'save', image], {
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -161,11 +142,7 @@ async function streamToTarget(
     throw new Error(`docker save failed for ${image}: ${stderr.trim()}`);
   }
   if (result.exitCode !== 0) {
-    const detail = result.stderr.trim();
-    if (isPermissionError(detail)) {
-      throw new DeployError(`k3s image import failed on ${target.name}: ${detail}`, ErrorCode.DEPLOY_FAILED, k3sPermissionSuggestion(target.name, target.connection.user));
-    }
-    throw new Error(`image import failed on ${target.name}: ${detail}`);
+    throw new Error(`image import failed on ${target.name}: ${result.stderr.trim()}`);
   }
 }
 
@@ -191,18 +168,10 @@ async function streamRemoteToTarget(
   const [srcResult, sinkResult] = await Promise.all([srcDone, sinkDone]);
 
   if (srcResult.exitCode !== 0) {
-    const detail = srcResult.stderr.trim();
-    if (isPermissionError(detail)) {
-      throw new DeployError(`k3s image export failed on source: ${detail}`, ErrorCode.DEPLOY_FAILED, k3sPermissionSuggestion('source node', source.user));
-    }
-    throw new Error(`image export failed on remote: ${detail}`);
+    throw new Error(`image export failed on remote: ${srcResult.stderr.trim()}`);
   }
   if (sinkResult.exitCode !== 0) {
-    const detail = sinkResult.stderr.trim();
-    if (isPermissionError(detail)) {
-      throw new DeployError(`k3s image import failed on ${target.name}: ${detail}`, ErrorCode.DEPLOY_FAILED, k3sPermissionSuggestion(target.name, target.connection.user));
-    }
-    throw new Error(`image import failed on ${target.name}: ${detail}`);
+    throw new Error(`image import failed on ${target.name}: ${sinkResult.stderr.trim()}`);
   }
 }
 

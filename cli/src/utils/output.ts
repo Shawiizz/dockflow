@@ -2,7 +2,7 @@
  * Output formatting utilities
  * Unified output module for CLI feedback and debug logging
  *
- * Convention (Unix standard, same as gh/kubectl):
+ * Convention (Unix standard, same as gh):
  *   stdout → data only (printJSON, printRaw)
  *   stderr → everything decorative (status, warnings, spinners, etc.)
  *

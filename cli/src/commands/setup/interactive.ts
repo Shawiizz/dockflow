@@ -15,12 +15,12 @@ import { generateSSHKey, addToAuthorizedKeys, authorizeKeyForUser, listSSHKeys }
 import { createDeployUser, promptAndValidateUserPassword, } from './user';
 import { displayConnectionInfo } from './connection';
 import { ensureSetupDependencies, completeSetup } from './flow';
-import type { HostConfig, SetupOrchestrator } from './types';
+import type { HostConfig } from './types';
 
 /**
  * Run interactive setup wizard
  */
-export async function runInteractiveSetup(options?: { skipDockerInstall?: boolean; orchestrator?: SetupOrchestrator; portFilter?: boolean }): Promise<void> {
+export async function runInteractiveSetup(options?: { skipDockerInstall?: boolean; portFilter?: boolean }): Promise<void> {
   printIntro('Machine Setup Wizard');
   printBlank();
 
@@ -183,7 +183,6 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
       deployPassword,
       privateKeyPath,
       skipDockerInstall: false,
-      orchestrator: 'swarm',
       installNginx: false,
       portFilter: true,
     }, privateKey);
@@ -200,8 +199,8 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
   }
 
   // Docker publishes ports past ufw and firewalld: by default only declared ones answer the
-  // internet. k3s does not publish through Docker.
-  const portFilter = options?.portFilter === false || options?.orchestrator === 'k3s'
+  // internet
+  const portFilter = options?.portFilter === false
     ? false
     : await confirm('Let the internet reach only the container ports your projects declare public? (recommended)', true);
 
@@ -241,7 +240,6 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
     deployPassword,
     privateKeyPath,
     skipDockerInstall: options?.skipDockerInstall || false,
-    orchestrator: options?.orchestrator || 'swarm',
     installNginx,
     portFilter,
   };

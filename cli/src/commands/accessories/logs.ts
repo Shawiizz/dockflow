@@ -1,8 +1,6 @@
 /**
  * Accessories Logs Command
  * View logs for accessory services
- *
- * Uses ContainerBackend abstraction to support both Swarm and k3s.
  */
 
 import type { Command } from 'commander';
@@ -33,10 +31,9 @@ export function registerAccessoriesLogsCommand(program: Command): void {
       const { config, connection } = validateEnv(env, options.server);
       const { stackName } = await requireAccessoriesStack(connection, env);
 
-      const orchType = config.orchestrator ?? 'swarm';
       // All node connections are required: in a multi-node Swarm the
       // accessory containers may run on any worker, not just the manager.
-      const logsBackend = createContainerBackend(orchType, connection, getAllNodeConnections(env));
+      const logsBackend = createContainerBackend(connection, getAllNodeConnections(env));
       const logOptions = {
         tail: parseInt(options.tail || '100', 10),
         follow: options.follow ?? false,
@@ -57,7 +54,7 @@ export function registerAccessoriesLogsCommand(program: Command): void {
           );
         } else {
           // Get service list from orchestrator then stream each
-          const orchestrator = createStackBackend(orchType, connection);
+          const orchestrator = createStackBackend(connection);
           const services = await orchestrator.getServices(stackName);
 
           if (services.length === 0) {

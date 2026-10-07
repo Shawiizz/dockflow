@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Dockflow is a CLI-first deployment framework supporting **Docker Swarm** and **k3s** (Kubernetes). A single TypeScript binary handles building, deploying, managing stacks AND one-shot machine provisioning (`dockflow setup`) via direct SSH — no runtime dependencies beyond the binary itself.
+Dockflow is a CLI-first deployment framework built on **Docker Swarm**. A single TypeScript binary handles building, deploying, managing stacks AND one-shot machine provisioning (`dockflow setup`) via direct SSH — no runtime dependencies beyond the binary itself.
 
 **Stack at a glance:**
 - `cli/` — TypeScript CLI (Bun runtime) + embedded Angular WebUI — handles all deploy logic via ssh2
 - `docs/` — Next.js 15 + Nextra documentation site
 - `packages/` — MCP server, npm CLI wrapper
-- `testing/e2e/` — End-to-end tests for both Swarm (Docker-in-Docker) and k3s (k3s-in-Docker)
+- `testing/e2e/` — End-to-end tests (Swarm in Docker-in-Docker, host provisioning)
 
 ## Repository Structure
 
@@ -20,7 +20,7 @@ cli/ui/       # Angular 21 WebUI (PrimeNG + Tailwind)
 docs/            # Next.js 15 + Nextra documentation site
 packages/        # Additional packages (MCP server, npm CLI wrapper)
 scripts/         # Build & version management scripts
-testing/e2e/     # End-to-end tests (two suites: swarm/ and k3s/)
+testing/e2e/     # End-to-end tests (two suites: swarm/ and setup/)
 ```
 
 ## Common Commands
@@ -66,7 +66,6 @@ pnpm build                     # Production build + LLM text generation + Pagefi
 
 ```bash
 cd testing/e2e/swarm && bun test tests/   # Swarm suite (DinD, 2 nodes)
-cd testing/e2e/k3s && bun test tests/     # k3s suite (k3s-in-Docker)
 cd testing/e2e/setup && bun test tests/   # Setup/provisioning suite (clean ubuntu container)
 bun run testing/e2e/teardown.ts           # Cleanup all test containers
 ```
@@ -119,30 +118,27 @@ Always throw these typed errors from commands. The `withErrorHandler` wrapper di
 
 | Shape | Suffix | Examples | Import style |
 |---|---|---|---|
-| Polymorphic abstraction (multiple impls) | `*Backend` | `StackBackend`, `ExecBackend`, `LogsBackend`, `HealthBackend`, `ProxyBackend`, `ContainerBackend` | `new SwarmStackBackend(conn)` via factory |
+| Backend contract (Swarm implementation) | `*Backend` | `StackBackend`, `ExecBackend`, `LogsBackend`, `HealthBackend`, `ProxyBackend`, `ContainerBackend` | `new SwarmStackBackend(conn)` via factory |
 | Stateful class (wraps a connection / holds state) | no suffix | `Audit`, `Lock`, `Release`, `Metrics`, `Backup`, `HealthCheck` | `new Lock(conn, stackName)` |
-| Pure module (stateless free functions) | no class | `compose.ts`, `build.ts`, `distribution.ts`, `hook.ts`, `notification.ts`, `history-sync.ts`, `k8s-manifest.ts` | `import * as Compose from '../services/compose'` |
+| Pure module (stateless free functions) | no class | `compose.ts`, `build.ts`, `distribution.ts`, `hook.ts`, `notification.ts`, `history-sync.ts` | `import * as Compose from '../services/compose'` |
 
 **Rules:**
 - Never append `Service` to anything new. The word is too vague — if the class wraps state, drop the suffix; if it's just functions, make it a module.
-- `*Backend` is reserved for interfaces with more than one implementation, and lives only under `services/orchestrator/`.
+- `*Backend` is reserved for the orchestrator contracts, and lives only under `services/orchestrator/`.
 - Stateful class files are named after the singular noun (e.g. `lock.ts` exports `class Lock` + `createLock()` factory).
 - Module files export top-level `export function` declarations and are imported with `import * as Xxx from '...'`.
 
 **Orchestrator abstraction** (`cli/src/services/orchestrator/`):
 
-The orchestrator layer abstracts Swarm vs k3s behind common interfaces. Config field `orchestrator: 'swarm' | 'k3s'` (default: `swarm`) selects the backend. Factory functions in `cli/src/services/orchestrator/factory.ts` create the right implementation:
+Commands reach Swarm through common interfaces; factory functions in `cli/src/services/orchestrator/factory.ts` create the Swarm implementations:
 
 - `StackBackend` — stack lifecycle: deploy, remove, getServices, scale, rollback, list stacks
   - `SwarmStackBackend` — uses `docker stack deploy`, `docker service` commands
-  - `K3sStackBackend` — uses `kubectl apply`, manages namespaces (`dockflow-{stackName}`)
 - `ContainerBackend` — exec/shell/copy/logs in containers
   - `SwarmContainerBackend` — finds containers via `docker ps` across all nodes with `Promise.any()`
-  - `K3sContainerBackend` — finds pods via `kubectl get pods`, uses `kubectl exec`/`kubectl cp`
 - `HealthBackend` — internal health checks
   - `SwarmHealthBackend` — inspects tasks via `docker service ps` + UpdateStatus
-  - `K3sHealthBackend` — checks pod status, detects CrashLoopBackOff
-- `ProxyBackend` — Traefik / ingress management
+- `ProxyBackend` — Traefik management
 
 **Stateful classes** (`cli/src/services/*.ts`, no Service suffix):
 - `Metrics` (`metrics.ts`) — deployment metrics read/write, connection-bound
@@ -157,15 +153,14 @@ Each stateful class exposes a matching factory (`createLock`, `createBackup`, �
 **Pure modules** (`cli/src/services/*.ts`, imported via `import * as`):
 - `compose.ts` — template rendering (Nunjucks), YAML load/serialize, Swarm/accessory deploy config injection, Traefik label injection, image tag updates
 - `build.ts` — local/remote Docker/Podman image builds (parses compose YAML, assembles tar contexts in memory)
-- `distribution.ts` — image distribution (SSH pipe for Docker/Podman, `k3s ctr images import` for containerd), registry login/push
+- `distribution.ts` — image distribution (SSH pipe for Docker/Podman), registry login/push
 - `hook.ts` — pre/post build/deploy hooks (local via `Bun.spawn`, remote via SSH)
 - `notification.ts` — HMAC-signed HTTP webhooks on deploy events
 - `history-sync.ts` — replicates audit/metrics to non-manager nodes
-- `k8s-manifest.ts` — Docker Compose → native Kubernetes manifests (Deployment + Service + PVC + IngressRoute, nodeSelector, probes)
 
 **Container engine support:**
 
-Config field `container_engine: 'docker' | 'podman'` (auto-detected if not set). Affects the `build` module (build command) and `distribution` module (save/load/push). The runtime type is `ContainerRuntime = 'docker' | 'containerd' | 'podman'` — k3s always uses `containerd` for image import regardless of the build engine.
+Config field `container_engine: 'docker' | 'podman'` (auto-detected if not set). Affects the `build` module (build command) and `distribution` module (save/load/push).
 
 Services and modules use the `Result<T, E>` type pattern (`ok()` / `err()`) from `cli/src/types/`.
 
@@ -204,14 +199,10 @@ The `dockflow deploy` command executes entirely in TypeScript via ssh2:
 2. Detect container engine (Docker or Podman, auto-detected or from config)
 3. Render Nunjucks templates (docker-compose, env files)
 4. Prepare compose: load YAML, update image tags, inject deploy defaults, inject Traefik labels
-5. Build images (local or remote, Docker or Podman), distribute to nodes:
-   - **Swarm**: base64 chunked transfer or registry push (`docker load`/`docker push`)
-   - **k3s**: `k3s ctr images import` (containerd)
+5. Build images (local or remote, Docker or Podman), distribute to nodes: streamed over SSH (`docker save | docker load`) or pushed to a registry
 6. Create release directory on manager, upload compose file
-7. Deploy:
-   - **Swarm**: `docker stack deploy -c -` (accessories first with hash-based change detection)
-   - **k3s**: `K8sManifest.composeToManifests()` → `kubectl apply -f -`
-8. Health checks: internal (orchestrator-specific backend) + HTTP endpoint checks
+7. Deploy: `docker stack deploy -c -` (accessories first with hash-based change detection)
+8. Health checks: internal (Swarm task states) + HTTP endpoint checks
 9. Cleanup old releases, write audit/metrics, sync history to all nodes
 10. Release lock (always, even on failure)
 
@@ -220,9 +211,9 @@ All steps are in `cli/src/commands/deploy.ts` using the services layer.
 ### Host Provisioning (`commands/setup/provision.ts`)
 
 `dockflow setup` provisions hosts in pure TypeScript (no Ansible, no repo clone on the server). Local setup requires root (no sudo binary needed — commands run directly). Steps, all idempotent:
-- Docker install via the official `get.docker.com` script (multi-distro), skippable with `--skip-docker-install` (and skipped with `--orchestrator k3s` — k3s uses containerd)
+- Docker install via the official `get.docker.com` script (multi-distro), skippable with `--skip-docker-install`
 - `/var/lib/dockflow` creation owned by the deploy user
-- The filter of published ports (Swarm, `commands/setup/public-ports.ts`): installs `services/public-ports.sh` as `/usr/local/sbin/dockflow-public-ports` plus a systemd unit ordered before docker.service, records the ports published at first install so no running service is cut, and a sudo rule for the deploy user; `--no-port-filter` removes it and leaves `/etc/dockflow/public-ports.off`. Each deploy records the project's `firewall.public_ports` (+ Traefik's 80/443) on every node (`applyPublicPorts` in `deploy-phases.ts`)
+- The filter of published ports (`commands/setup/public-ports.ts`): installs `services/public-ports.sh` as `/usr/local/sbin/dockflow-public-ports` plus a systemd unit ordered before docker.service, records the ports published at first install so no running service is cut, and a sudo rule for the deploy user; `--no-port-filter` removes it and leaves `/etc/dockflow/public-ports.off`. Each deploy records the project's `firewall.public_ports` (+ Traefik's 80/443) on every node (`applyPublicPorts` in `deploy-phases.ts`)
 - Optional nginx install (package-manager aware)
 
 Remote setup (`setup user@host`) ships the version-pinned binary and forwards flags — including `--user`/`--deploy-password` to create the deploy user non-interactively. Forwarded values are shell-quoted (`buildForwardFlags` in `setup/forward.ts`).
@@ -258,15 +249,13 @@ Key values in `cli/src/constants.ts`: `DOCKFLOW_VERSION` (from package.json), `D
 
 ## E2E Tests
 
-Two independent suites under `testing/e2e/`, one per orchestrator, each with its own `bunfig.toml` preload (see `testing/e2e/README.md` for conventions):
+Two independent suites under `testing/e2e/`, each with its own `bunfig.toml` preload (see `testing/e2e/README.md` for conventions):
 
 **Swarm suite** (`swarm/tests/01-11`): Docker-in-Docker with a manager (`dockflow-test-manager`, SSH port 32222) and worker (`dockflow-test-worker-1`, port 32223), compose project `dockflow-swarm`. Covers build, deploy, Traefik routing, backup/restore, remote build, HTTP health checks, automatic rollback on failed health checks (dedicated `test-app-rb` stack), uploads with rollback on failed deploys (dedicated `test-app-up` stack), exec/logs, and registry distribution (anonymous `registry:2` inside the manager at `localhost:35000`, dedicated `test-app-reg` stack pinned to the manager), `proxy.routes` (an accessory routed by Traefik on two ports of one domain, dedicated `test-app-routes` stacks), and the filter of published ports (installed on both nodes, the worker standing for the internet; dedicated `test-app-ports` stack, filter removed afterwards). The preload resets the cluster and pre-deploys the shared test-app.
 
-**k3s suite** (`k3s/tests/10`): k3s-in-Docker single node (`dockflow-test-k3s`, port 32224, Traefik enabled), compose project `dockflow-k3s`. Covers deploy, namespace creation, replicas, logs, exec, scale, IngressRoute generation, Traefik HTTP routing, and remote HTTP health checks through the ingress. The test file owns the cluster lifecycle.
-
 **Setup suite** (`setup/tests/20`): host provisioning on a clean `ubuntu:24.04` container (`dockflow-test-setup`). Runs the cross-compiled Linux binary inside it: non-interactive `dockflow setup`, Docker install via get.docker.com, deploy user + docker group, `/var/lib/dockflow` permissions, the filter of published ports and its sudo rule (installed, not loaded: the container cannot run iptables), an idempotent re-run, and `--no-port-filter`.
 
-Test helpers: `helpers/fixtures.ts` (temp-dir fixture copies — fixture templates in `fixtures/` are read-only, tests never write into the repo tree), `helpers/docker.ts` (Swarm assertions), `helpers/k8s.ts` (kubectl assertions), `helpers/cluster.ts` (cluster lifecycle for both).
+Test helpers: `helpers/fixtures.ts` (temp-dir fixture copies — fixture templates in `fixtures/` are read-only, tests never write into the repo tree), `helpers/docker.ts` (Swarm assertions), `helpers/cluster.ts` (cluster lifecycle).
 
 E2E tests run on Linux, WSL and Windows (Docker required). CI runs both suites as parallel matrix jobs.
 
@@ -275,7 +264,7 @@ E2E tests run on Linux, WSL and Windows (Docker required). CI runs both suites a
 - **publish-cli.yml** — Triggered by version tags. Runs typecheck + lint + unit tests, then builds multi-platform binaries (linux-x64/arm64, macos-x64/arm64, windows-x64), creates GitHub Release, publishes to npm (`@dockflow-tools/cli`).
 - **cli-checks.yml** — Runs on push to main/develop and PRs. Typecheck (`tsc --noEmit`), Biome lint, and unit tests (`bun test src/`) in `cli/`.
 - **deploy-docs.yml** — Documentation site deployment. Installs CLI and runs `dockflow deploy` directly. Runs on docs pushes to main and, called by publish-cli.yml, after every stable release.
-- **e2e-tests.yml** — Runs on push to main/develop and PRs. Matrix of three parallel jobs (swarm, k3s, setup), each running `bun test tests/` in `testing/e2e/<suite>/`.
+- **e2e-tests.yml** — Runs on push to main/develop and PRs. Matrix of two parallel jobs (swarm, setup), each running `bun test tests/` in `testing/e2e/<suite>/`.
 - **shell-lint.yml** — ShellCheck validation.
 
 CI/CD integration is handled entirely by the CLI itself — no reusable workflows or external templates needed. The CLI auto-detects environment and version from CI provider env vars (GitHub Actions, GitLab CI, Jenkins, Buildkite) when `dockflow deploy` or `dockflow build` are called without arguments. Users generate a standalone CI workflow via `dockflow init`.
@@ -289,8 +278,8 @@ CI secrets format: `{ENV}_{SERVER}_CONNECTION` = base64-encoded JSON `{host, por
 - **Use centralized output helpers**: Never add raw `console.log`/`console.error` in CLI commands or API routes.
 - **Config schema + interface parity**: Update both Zod schema and TypeScript interface when adding config fields.
 - **Error handling**: Throw typed `CLIError` subclasses from commands. Never catch-and-exit manually.
-- **Services for container ops**: Use the services layer (`cli/src/services/`) for orchestrator/container interactions, not raw SSH commands in command handlers.
-- **Orchestrator abstraction**: New commands that interact with stacks/containers must use the backend interfaces (`StackBackend`, `ContainerBackend`, `HealthBackend`, `ProxyBackend`) via the factory functions in `cli/src/services/orchestrator/factory.ts`. Never hardcode Swarm-specific or k3s-specific logic in command handlers.
+- **Services for container ops**: Use the services layer (`cli/src/services/`) for stack/container interactions, not raw SSH commands in command handlers.
+- **Orchestrator abstraction**: New commands that interact with stacks/containers must use the backend interfaces (`StackBackend`, `ContainerBackend`, `HealthBackend`, `ProxyBackend`) via the factory functions in `cli/src/services/orchestrator/factory.ts`, not Swarm commands in command handlers.
 - **Service naming**: Follow the three-tier convention (see *Services Layer*). `*Backend` for polymorphic interfaces, plain nouns for stateful classes, module imports for stateless functions. Never introduce a new `*Service` class.
 - **Multi-node services**: When creating `Backup` or `SwarmContainerBackend`, always pass `getAllNodeConnections(env)` so container lookups work on worker nodes too.
 - **New directory paths**: Add constants in `cli/src/constants.ts` and ensure the deploy command creates them on the remote host.

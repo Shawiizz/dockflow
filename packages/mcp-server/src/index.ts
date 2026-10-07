@@ -95,7 +95,7 @@ server.registerTool('get_examples', {
   description: 'Get complete, ready-to-use Dockflow configuration examples for common project setups. Call without arguments to list available scenarios, or with a scenario id to get the full files.',
   inputSchema: {
     scenario: z.string().optional().describe(
-      'Scenario id: simple, standard, app-with-database, with-proxy, with-registry, multi-server, k3s, with-hooks, with-ci. Omit to list all.',
+      'Scenario id: simple, standard, app-with-database, with-proxy, with-registry, multi-server, with-hooks, with-ci. Omit to list all.',
     ),
   },
 }, async ({ scenario }) => {

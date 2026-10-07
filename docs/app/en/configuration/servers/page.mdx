@@ -250,18 +250,16 @@ then `www-data`. Setup also runs `chgrp -R` and `chmod -R g+rwX` on `sites-enabl
 
 **Sudo rules**
 
-Setup writes `/etc/sudoers.d/<username>` (mode `0440`) with these entries — binary paths are
-resolved with `which` at setup time, and the last one exists when setup installed the filter of
-[public ports](/en/configuration/firewall):
+Setup writes `/etc/sudoers.d/<username>` (mode `0440`) with the nginx rule when nginx is
+installed, and the rule of the filter of [public ports](/en/configuration/firewall) when setup
+installed it — binary paths are resolved with `which` at setup time:
 
 ```
 dockflow ALL=(ALL) NOPASSWD: /usr/sbin/nginx -t, /usr/sbin/nginx -s reload
-dockflow ALL=(ALL) NOPASSWD: /usr/local/bin/k3s ctr -n k8s.io images *
-dockflow ALL=(ALL) NOPASSWD: /bin/cat /var/lib/rancher/k3s/server/node-token
 dockflow ALL=(ALL) NOPASSWD: /usr/local/sbin/dockflow-public-ports
 ```
 
-Nothing else is granted. In particular there is **no rule for `systemctl`** — a hook running
+On a host with neither, the file is removed rather than left empty. Nothing else is granted. In particular there is **no rule for `systemctl`** — a hook running
 `sudo systemctl daemon-reload` will fail on a normally provisioned server.
 
 <Callout type="warning">
@@ -282,8 +280,8 @@ Nothing else is granted. In particular there is **no rule for `systemctl`** — 
   These rules are defence in depth, not a security boundary. Membership of the `docker` group is
   equivalent to root — anyone who can reach the Docker socket can start a privileged container
   and take the host. The restricted sudo still limits accidents and documents intent, and it
-  becomes a real boundary with `orchestrator: k3s` or rootless Podman, where that shortcut does
-  not exist. Protect the CI key accordingly.
+  becomes a real boundary with rootless Podman, where that shortcut does not exist. Protect the
+  CI key accordingly.
 </Callout>
 
 ## Environment Variables

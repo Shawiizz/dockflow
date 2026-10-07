@@ -371,10 +371,8 @@ export class SwarmStackBackend implements StackBackend {
   }
 
   // ---------------------------------------------------------------------------
-  // Swarm-only inspection methods (not on StackBackend interface).
-  // Used by `dockflow ps` and `dockflow diagnose` — commands that surface
-  // Swarm-native concepts (containers on nodes, task scheduling) that don't
-  // translate to k3s.
+  // Inspection methods outside the StackBackend interface, used by `dockflow ps` and
+  // `dockflow diagnose`: containers on nodes, task scheduling.
   // ---------------------------------------------------------------------------
 
   async getContainers(stackName: string): Promise<SwarmContainerInfo[]> {

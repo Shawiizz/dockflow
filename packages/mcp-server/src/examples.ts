@@ -279,37 +279,6 @@ defaults:
     ],
   },
   {
-    id: 'k3s',
-    title: 'k3s (lightweight Kubernetes)',
-    description: 'Deploy to a k3s cluster instead of Docker Swarm. Each stack becomes a Kubernetes namespace.',
-    files: [
-      {
-        path: 'dockflow.yml',
-        content: `project_name: my-app
-orchestrator: k3s
-
-servers:
-  main:
-    host: 1.2.3.4
-    tags: [production]
-
-defaults:
-  user: deploy`,
-      },
-      {
-        path: 'docker-compose.yml',
-        content: `services:
-  app:
-    image: my-app
-    build: .
-    ports:
-      - "3000:3000"
-    deploy:
-      replicas: 2`,
-      },
-    ],
-  },
-  {
     id: 'with-hooks',
     title: 'Lifecycle hooks',
     description: 'Run custom scripts before/after build and deploy — e.g. run tests, send notifications, warm up caches.',

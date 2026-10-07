@@ -31,16 +31,6 @@ const WORKER = {
 export const MANAGER_CONTAINER = "dockflow-test-manager";
 export const WORKER_CONTAINER = "dockflow-test-worker-1";
 
-// k3s test cluster
-const K3S_MANAGER = {
-  host: "localhost",
-  port: 32224,
-  user: DEPLOY_USER,
-  privateKey: PRIVATE_KEY,
-} as const;
-
-export const K3S_MANAGER_CONTAINER = "dockflow-test-k3s";
-
 /**
  * Encode a connection as base64 JSON (matches CLI's `generateConnectionString` format).
  */
@@ -62,13 +52,5 @@ export function writeDockflowEnv(appDir: string): void {
     `TEST_MAIN_SERVER_CONNECTION=${encodeConnection(MANAGER)}`,
     `TEST_WORKER_1_CONNECTION=${encodeConnection(WORKER)}`,
   ].join("\n");
-  writeFileSync(join(appDir, ".env.dockflow"), content + "\n");
-}
-
-/**
- * Write .env.dockflow for k3s test-app (single node, no worker).
- */
-export function writeK3sDockflowEnv(appDir: string): void {
-  const content = `TEST_MAIN_SERVER_CONNECTION=${encodeConnection(K3S_MANAGER)}`;
   writeFileSync(join(appDir, ".env.dockflow"), content + "\n");
 }

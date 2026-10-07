@@ -1,7 +1,5 @@
 /**
  * Rollback command - Rollback to previous version
- *
- * Uses the StackBackend abstraction to support both Swarm and k3s.
  */
 
 import type { Command } from 'commander';
@@ -33,15 +31,14 @@ export function registerRollbackCommand(program: Command): void {
         );
       }
 
-      const orchType = config.orchestrator ?? 'swarm';
-      const orchestrator = createStackBackend(orchType, connection);
+      const orchestrator = createStackBackend(connection);
       const audit = new Audit(connection);
       const metrics = new Metrics(connection);
       const spinner = createSpinner();
       const startTime = Date.now();
 
       if (service) {
-        // Single-service rollback — orchestrator-native (docker service rollback / kubectl rollout undo)
+        // Single-service rollback: docker service rollback
         spinner.start(`Rolling back ${stackName}_${service}...`);
         await orchestrator.rollbackService(stackName, service);
         spinner.succeed(`Rolled back ${stackName}_${service}`);

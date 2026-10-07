@@ -10,7 +10,7 @@ Accessories are **stateful services** (databases, caches, message queues, etc.) 
   **Problem**: If you put your database in the main `docker-compose.yml`, it gets restarted on every deployment. This can cause data corruption or downtime.
 </Callout>
 
-**Solution**: Accessories are deployed as a separate stack (Swarm) or namespace (k3s). Your app can be deployed 100 times without touching the database.
+**Solution**: Accessories are deployed as a separate stack. Your app can be deployed 100 times without touching the database.
 
 ```
 myapp-production              ← Main app (redeployed often)

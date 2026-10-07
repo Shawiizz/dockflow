@@ -50,7 +50,7 @@ export const REQUIRED_DEPENDENCIES: Dependency[] = [
   {
     name: 'sudo',
     command: 'sudo -V',
-    description: 'sudo (the deploy user records public ports, reloads nginx, imports k3s images through it)',
+    description: 'sudo (the deploy user records public ports and reloads nginx through it)',
     packages: {
       apt: ['sudo'],
       yum: ['sudo'],

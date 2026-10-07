@@ -2,8 +2,7 @@
  * Orchestrator backend interfaces.
  *
  * Every backend that plugs into the deploy/operate pipeline implements one
- * of these three contracts. Swarm and K3s each ship their own implementations
- * under ./swarm/ and ./k3s/.
+ * of these three contracts; the Swarm implementations live under ./swarm/.
  */
 
 import type { Result } from '../../types/result';
@@ -59,8 +58,6 @@ export interface StackDeployInput {
   compose: ParsedCompose;
   /** Proxy config — if defined with enabled=true, backend injects Traefik routing. */
   proxy?: ProxyConfig;
-  /** True when deploying via a remote registry (affects manifest generation on k3s). */
-  useRegistry?: boolean;
   /**
    * When set, only these service names are deployed. Other services in the compose
    * are left untouched (no prune). Used by --services flag.
@@ -77,7 +74,6 @@ export interface AccessoryDeployInput {
   /** Skip change detection and deploy even if the content hasn't changed. */
   force?: boolean;
   proxy?: ProxyConfig;
-  useRegistry?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -135,9 +131,8 @@ export interface StackBackend {
   stackExists(stackName: string): Promise<boolean>;
 
   /**
-   * Force a restart of one service, or every service in the stack.
-   * - Swarm: `docker service update --force`
-   * - k3s:   `kubectl rollout restart deployment/...`
+   * Force a restart of one service, or every service in the stack
+   * (`docker service update --force`).
    */
   restart(stackName: string, service?: string): Promise<void>;
 
@@ -167,7 +162,7 @@ export interface LogsOptions {
   tail?: number;
   since?: string;
   timestamps?: boolean;
-  /** Stream a specific task/replica only (Swarm task ID or k8s pod name). */
+  /** Stream a specific task only (Swarm task ID). */
   taskId?: string;
   /** Include logs from terminated/historical task replicas (Swarm only). */
   allTasks?: boolean;
@@ -221,7 +216,7 @@ export interface ContainerBackend {
 }
 
 // ---------------------------------------------------------------------------
-// ProxyBackend — reverse-proxy installer (Traefik on Swarm or k3s)
+// ProxyBackend — reverse-proxy installer (Traefik)
 // ---------------------------------------------------------------------------
 
 export interface ProxyBackend {

@@ -29,7 +29,6 @@ import { HealthCheck } from '../services/health-check';
 import * as HistorySync from '../services/history-sync';
 import * as Build from '../services/build';
 import * as Distribution from '../services/distribution';
-import type { ContainerRuntime } from '../services/distribution';
 import * as Hook from '../services/hook';
 import { CONVERGENCE_TIMEOUT_S, CONVERGENCE_INTERVAL_S, DOCKFLOW_UPLOAD_BACKUPS_DIR } from '../constants';
 import type { StackBackend } from '../services/orchestrator/interfaces';
@@ -475,7 +474,6 @@ export async function buildAndDistribute(
   await Hook.runHook('pre-build', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
 
   const engine = await detectContainerEngine(ctx.cluster.manager.connection, ctx.config.container_engine);
-  const runtime: ContainerRuntime = ctx.config.orchestrator === 'k3s' ? 'containerd' : engine;
   let images: string[] = [];
   let usedRegistry = false;
 
@@ -492,7 +490,7 @@ export async function buildAndDistribute(
     }));
 
     if (images.length > 0 && ctx.cluster.workers.length > 0) {
-      await Distribution.distributeFromRemote(images, ctx.cluster.manager.connection, ctx.cluster.workers, runtime);
+      await Distribution.distributeFromRemote(images, ctx.cluster.manager.connection, ctx.cluster.workers, engine);
     }
   } else {
     const targets = Build.getBuildTargets(
@@ -528,7 +526,7 @@ export async function buildAndDistribute(
           branch: ctx.branchName,
         } : undefined, engine);
       } else if (images.length > 0) {
-        await Distribution.distributeAll(images, activeNodes(ctx.cluster), runtime);
+        await Distribution.distributeAll(images, activeNodes(ctx.cluster), engine);
       }
     }
   }
@@ -557,9 +555,6 @@ export function accessoriesKey(): string {
 }
 
 export async function ensureExternalNetworks(ctx: DeployContext): Promise<void> {
-  // Overlay network management is Swarm-only — k3s uses Kubernetes networking
-  if (ctx.config.orchestrator === 'k3s') return;
-
   const mainCompose = Compose.loadFromString(ctx.composeContent);
   const networks = new Set(collectExternalNetworks(mainCompose));
 
@@ -599,7 +594,7 @@ export async function ensureExternalNetworks(ctx: DeployContext): Promise<void> 
  * as it is.
  */
 export async function applyPublicPorts(ctx: DeployContext): Promise<void> {
-  if (ctx.config.orchestrator === 'k3s' || ctx.config.no_services) return;
+  if (ctx.config.no_services) return;
 
   const rules = PublicPorts.publicPortRules(ctx.config);
   const nodes = [ctx.cluster.manager, ...ctx.cluster.otherManagers, ...ctx.cluster.workers];
@@ -680,7 +675,6 @@ export async function deployAccessories(ctx: DeployContext): Promise<void> {
     accessoryPath: accessoriesRelPath,
     force: ctx.forceAccessories,
     proxy: ctx.config.proxy,
-    useRegistry: ctx.config.registry?.enabled,
   });
 
   if (!result.success) {
@@ -709,7 +703,6 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
     env: ctx.env,
     compose,
     proxy: ctx.config.proxy,
-    useRegistry: ctx.config.registry?.enabled,
     servicesFilter,
   });
   if (!deployResult.success) {

@@ -37,7 +37,7 @@ export function registerStopCommand(program: Command): void {
 
       const config = loadConfig();
       if (!config) throw new ConfigError('No dockflow config found');
-      const orchestrator = createStackBackend(config.orchestrator ?? 'swarm', connection);
+      const orchestrator = createStackBackend(connection);
 
       const spinner = createSpinner();
       spinner.start(`Stopping stack ${stackName}...`);

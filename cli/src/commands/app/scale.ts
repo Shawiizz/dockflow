@@ -1,7 +1,5 @@
 /**
  * Scale command - Scale service replicas
- *
- * Uses the StackBackend abstraction to support both Swarm and k3s.
  */
 
 import type { Command } from 'commander';
@@ -25,8 +23,7 @@ export function registerScaleCommand(program: Command): void {
         throw new CLIError('Replicas must be a non-negative number', ErrorCode.INVALID_ARGUMENT);
       }
 
-      const orchType = config.orchestrator ?? 'swarm';
-      const orchestrator = createStackBackend(orchType, connection);
+      const orchestrator = createStackBackend(connection);
       const spinner = createSpinner();
       spinner.start(`Scaling ${stackName}_${service} to ${replicaCount} replicas...`);
 

@@ -287,7 +287,7 @@ function generateIndex(structure: PageEntry[]): string {
   const lines: string[] = [
     '# Dockflow',
     '',
-    '> A deployment framework for Docker Swarm and k3s (Kubernetes). Single binary, SSH-only, no runtime dependencies.',
+    '> A deployment framework for Docker Swarm. Single binary, SSH-only, no runtime dependencies.',
     '',
   ];
 
@@ -326,7 +326,7 @@ function generateFull(structure: PageEntry[]): string {
   const sections: string[] = [
     '# Dockflow - Complete Documentation',
     '',
-    '> A deployment framework for Docker Swarm and k3s (Kubernetes). Single binary, SSH-only, no runtime dependencies.',
+    '> A deployment framework for Docker Swarm. Single binary, SSH-only, no runtime dependencies.',
     '',
   ];
 

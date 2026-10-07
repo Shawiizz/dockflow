@@ -194,19 +194,13 @@ export function provisionHost(config: HostConfig): void {
 
   if (config.skipDockerInstall) {
     printDim('Docker install skipped (--skip-docker-install)');
-  } else if (config.orchestrator === 'k3s') {
-    printDim('Docker install skipped: k3s uses containerd (run `dockflow setup k3s <env>` afterwards to install the cluster)');
   } else {
     installDocker();
   }
 
   ensureDockflowDir(config.deployUser);
 
-  if (config.orchestrator === 'k3s') {
-    printDim('Published-port filter skipped: k3s does not publish ports through Docker');
-  } else {
-    configurePublicPorts(config.portFilter);
-  }
+  configurePublicPorts(config.portFilter);
 
   if (config.installNginx) {
     installNginx();

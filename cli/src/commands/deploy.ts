@@ -261,15 +261,14 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   }
 
   // Build context
-  const orchType = config.orchestrator ?? 'swarm';
   const managerConn = cluster.manager.connection;
   const ctx: DeployContext = {
     env, config, stackName, branchName, deployVersion, projectRoot,
     cluster,
     deployApp: shouldDeployApp, forceAccessories, skipAccessories,
     options, rendered, composeContent, composeDirPath,
-    orchestrator: createStackBackend(orchType, managerConn),
-    proxyBackend: config.proxy?.enabled ? createProxyBackend(orchType, managerConn) : undefined,
+    orchestrator: createStackBackend(managerConn),
+    proxyBackend: config.proxy?.enabled ? createProxyBackend(managerConn) : undefined,
     releases: new Release(managerConn),
     lock: new Lock(managerConn, stackName),
     audit: new Audit(managerConn),
@@ -346,7 +345,7 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     // The whole stack, even under --only: a rollback restores every service.
     const renderedStack = ctx.orchestrator.render({
-      stackName: ctx.stackName, env: ctx.env, compose, proxy: ctx.config.proxy, useRegistry: ctx.config.registry?.enabled,
+      stackName: ctx.stackName, env: ctx.env, compose, proxy: ctx.config.proxy,
     });
 
     // Settled, not Promise.all: when accessories fail first, the release write

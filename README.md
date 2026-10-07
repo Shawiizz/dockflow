@@ -9,7 +9,7 @@
 ![GitLab CI](https://img.shields.io/badge/GitLab_CI-FC6D26?style=for-the-badge&logo=gitlab&logoColor=white)
 ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=for-the-badge&logo=github-actions&logoColor=white)
 
-**Deploy Docker apps to your own servers — Docker Swarm or k3s, via SSH.**
+**Deploy Docker apps to your own servers — Docker Swarm, via SSH.**
 
 [![License](https://img.shields.io/badge/License-MIT-00b0ff.svg?style=for-the-badge&logo=opensourceinitiative&logoColor=white)](https://opensource.org/licenses/MIT)
 ![Version](https://img.shields.io/github/v/tag/Shawiizz/dockflow?style=for-the-badge&logo=semver&logoColor=white&label=Latest%20Release&color=6F42C1&filter=!*-dev*)
@@ -18,7 +18,7 @@
 
 ---
 
-A CLI-first deployment framework for Docker applications. Supports Docker Swarm and k3s (Kubernetes) as orchestrators.
+A CLI-first deployment framework for Docker applications, built on Docker Swarm.
 
 Dockflow automates the deployment of containerized applications to remote servers via direct SSH — no runtime dependencies beyond the binary itself. It handles image building, transfer, stack deployment, health monitoring, and automatic rollback.
 

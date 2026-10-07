@@ -1,7 +1,5 @@
 /**
  * Logs command - View service logs
- *
- * Uses the ContainerBackend abstraction to support both Swarm and k3s.
  */
 
 import type { Command } from 'commander';
@@ -40,17 +38,15 @@ export function registerLogsCommand(program: Command): void {
       printInfo(`Fetching logs for stack: ${stackName}`);
       printBlank();
 
-      const orchType = config.orchestrator ?? 'swarm';
       // All node connections are required: in a multi-node Swarm the service
       // tasks may all run on workers — with only the manager connection the
       // per-task container lookup silently finds nothing.
-      const logsBackend = createContainerBackend(orchType, connection, getAllNodeConnections(env));
+      const logsBackend = createContainerBackend(connection, getAllNodeConnections(env));
 
       let taskId: string | undefined;
       if (options.pick) {
-        if (orchType !== 'swarm') throw new DockerError('--pick is only supported on Swarm');
         if (!service) {
-          service = await pickService(orchType, connection, stackName);
+          service = await pickService(connection, stackName);
         }
         taskId = await pickSwarmTask(stackName, service, connection);
       }
@@ -74,7 +70,7 @@ export function registerLogsCommand(program: Command): void {
             (err) => { throw err; },
           );
         } else {
-          const orchestrator = createStackBackend(orchType, connection);
+          const orchestrator = createStackBackend(connection);
           const services = await orchestrator.getServices(stackName);
 
           if (services.length === 0) {
@@ -111,8 +107,8 @@ export function registerLogsCommand(program: Command): void {
     }));
 }
 
-async function pickService(orchType: 'swarm' | 'k3s', connection: SSHKeyConnection, stackName: string): Promise<string> {
-  const services = await createStackBackend(orchType, connection).getServices(stackName);
+async function pickService(connection: SSHKeyConnection, stackName: string): Promise<string> {
+  const services = await createStackBackend(connection).getServices(stackName);
   if (services.length === 0) throw new DockerError(`No services found for stack ${stackName}`);
   if (services.length === 1) return services[0].name;
 

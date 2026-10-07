@@ -32,8 +32,7 @@ async function getEnvStatus(env: string): Promise<EnvStatus> {
     if (!config) return { env, version: null, deployedAt: null, services: null, error: 'config.yml not found' };
 
     const stackName = `${config.project_name}-${env}`;
-    const orchType = config.orchestrator ?? 'swarm';
-    const orchestrator = createStackBackend(orchType, connection);
+    const orchestrator = createStackBackend(connection);
 
     const [metaResult, servicesResult] = await Promise.allSettled([
       orchestrator.getMetadata(stackName),

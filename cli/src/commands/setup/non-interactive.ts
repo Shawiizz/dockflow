@@ -98,7 +98,6 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
     deployPassword,
     privateKeyPath,
     skipDockerInstall: options.skipDockerInstall || false,
-    orchestrator: options.orchestrator || 'swarm',
     installNginx: options.nginx || false,
     portFilter: options.portFilter !== false,
   };

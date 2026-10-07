@@ -29,18 +29,6 @@ The `container_engine` setting controls **build** and **distribution** operation
 
 Podman is CLI-compatible with Docker for these operations, so your `docker-compose.yml` and Dockerfiles work as-is.
 
-### k3s and containerd
-
-When using `orchestrator: k3s`, images are always imported via `k3s ctr -n k8s.io images import` (containerd) regardless of the build engine. You can build with Docker or Podman locally, and Dockflow handles the transfer to containerd on the k3s node.
-
-```
-# With Docker + k3s:
-docker save myapp:1.0 | ssh node "sudo k3s ctr -n k8s.io images import -"
-
-# With Podman + k3s:
-podman save myapp:1.0 | ssh node "sudo k3s ctr -n k8s.io images import -"
-```
-
 ## When to Use Podman
 
 - Rootless builds (no Docker daemon required)
@@ -48,7 +36,7 @@ podman save myapp:1.0 | ssh node "sudo k3s ctr -n k8s.io images import -"
 - OCI-native workflows
 
 <Callout type="warning">
-  Podman support applies to the build/distribution pipeline only. The orchestrator (`swarm` or `k3s`) is configured separately via the [`orchestrator`](/en/configuration/orchestrator) field.
+  Podman support applies to the build/distribution pipeline only: the servers still run Docker Swarm.
 </Callout>
 
 ## Example
@@ -56,8 +44,7 @@ podman save myapp:1.0 | ssh node "sudo k3s ctr -n k8s.io images import -"
 ```yaml
 # .dockflow/config.yml
 project_name: "my-app"
-orchestrator: k3s
 container_engine: podman
 
-# Build with Podman, deploy to k3s via containerd
+# Build with Podman, deploy to Swarm
 ```

@@ -1,16 +1,12 @@
 /**
- * PS command - List running containers (Swarm-only).
- *
- * k3s users should use `kubectl get pods` — this command surfaces
- * Swarm-native concepts (containers on nodes, task scheduling).
+ * PS command - List running containers and the nodes they run on.
  */
 
 import type { Command } from 'commander';
 import { printInfo, printSection, printDebug, colors, printBlank, printDim, printRaw } from '../../utils/output';
 import { validateEnv } from '../../utils/validation';
 import { SwarmStackBackend } from '../../services/orchestrator/swarm/swarm-stack';
-import { loadConfig } from '../../utils/config';
-import { DockerError, withServicesRequired, ConfigError } from '../../utils/errors';
+import { DockerError, withServicesRequired } from '../../utils/errors';
 
 export function registerPsCommand(program: Command): void {
   program
@@ -23,13 +19,6 @@ export function registerPsCommand(program: Command): void {
       const { stackName, connection } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName, tasks: options.tasks });
 
-      const config = loadConfig();
-      if (!config) throw new ConfigError('No dockflow config found');
-      if ((config.orchestrator ?? 'swarm') !== 'swarm') {
-        throw new DockerError(
-          '`dockflow ps` is Swarm-only. For k3s, use `kubectl get pods` or `dockflow status`.',
-        );
-      }
 
       const orchestrator = new SwarmStackBackend(connection);
 

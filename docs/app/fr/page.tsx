@@ -27,7 +27,7 @@ export default function Page() {
 
           <p className="mt-5 text-lg text-neutral-500 dark:text-neutral-400 max-w-[560px] mx-auto leading-relaxed">
             Un CLI qui scaffold, provisionne et déploie vos applications Docker sur vos propres serveurs.
-            Compatible Docker Swarm et k3s. Aucun vendor lock-in.
+            Basé sur Docker Swarm. Aucun vendor lock-in.
           </p>
 
           <div className="flex justify-center gap-3 mt-8 flex-wrap">
@@ -115,7 +115,7 @@ export default function Page() {
               Sans Dockflow
             </div>
             {[
-              "Installer Docker et configurer l'orchestrateur à la main",
+              "Installer Docker et configurer Swarm à la main",
               "Gérer les clés SSH et les comptes utilisateurs",
               "Écrire des scripts bash de déploiement",
               "Transférer les images vers les serveurs manuellement",
@@ -136,7 +136,7 @@ export default function Page() {
             </div>
             {[
               ["dockflow init", "Scaffold la config, Compose & Dockerfile"],
-              ["dockflow setup", "Installe Docker, crée l'utilisateur, configure Swarm ou k3s"],
+              ["dockflow setup", "Installe Docker, crée l'utilisateur, configure Swarm"],
               ["Chaînes de connexion", "Générées automatiquement après le setup"],
               ["dockflow deploy", "Build, transfère & déploie via SSH"],
               ["Health checks", "Rollback automatique en cas d'échec"],
@@ -168,7 +168,7 @@ export default function Page() {
           <FeatureCard
             icon={<IconTerminal />}
             title="Déploiement en une commande"
-            desc="dockflow deploy build votre image, la transfère vers le serveur et déploie votre stack via SSH — que vous utilisiez Docker Swarm ou k3s."
+            desc="dockflow deploy build votre image, la transfère vers le serveur et déploie votre stack sur Docker Swarm via SSH."
             large
           />
           <FeatureCard
@@ -181,7 +181,7 @@ export default function Page() {
         {/* Row 2: 4 small */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <FeatureCard icon={<IconRollback />} title="Rollback automatique" desc="Health checks configurables au déploiement. Rollback, notification, ou ignorance en cas d'échec." />
-          <FeatureCard icon={<IconServer />} title="D'un seul nœud au cluster" desc="Démarrez sur un seul serveur. Passez à un cluster Swarm multi-nœuds ou déployez sur k3s quand vous êtes prêt." />
+          <FeatureCard icon={<IconServer />} title="D'un seul nœud au cluster" desc="Démarrez sur un seul serveur. Passez à un cluster Swarm multi-nœuds quand vous êtes prêt." />
           <FeatureCard icon={<IconGitBranch />} title="Workflows CI/CD" desc="Livré avec des pipelines GitHub Actions et GitLab CI prêts à l'emploi. Poussez un tag, déclenchez un déploiement." />
           <FeatureCard icon={<IconMonitor />} title="Dashboard web" desc="Surveillez les services, suivez les logs et déclenchez des déploiements depuis l'interface web intégrée." />
         </div>

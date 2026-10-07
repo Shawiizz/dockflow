@@ -43,13 +43,12 @@ describe('buildForwardFlags', () => {
     const flags = buildForwardFlags(
       {
         skipDockerInstall: true,
-        orchestrator: 'k3s',
         nginx: true,
       },
       REMOTE,
     ).join(' ');
     expect(flags).toContain('--skip-docker-install');
-    expect(flags).toContain("--orchestrator 'k3s'");
+    expect(flags).not.toContain('--orchestrator');
     expect(flags).toContain('--nginx');
   });
 

@@ -8,7 +8,7 @@
 import { cpSync, mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { writeDockflowEnv, writeK3sDockflowEnv } from "./connection";
+import { writeDockflowEnv } from "./connection";
 
 const FIXTURES_DIR = join(import.meta.dir, "..", "fixtures");
 
@@ -23,18 +23,11 @@ export interface Fixture {
  * Copy a fixture template into a temp dir and write the SSH connection
  * env file for the target cluster there.
  */
-export function makeFixture(
-  name: string,
-  opts?: { cluster?: "swarm" | "k3s" },
-): Fixture {
+export function makeFixture(name: string): Fixture {
   const dir = mkdtempSync(join(tmpdir(), `dockflow-e2e-${name}-`));
   cpSync(join(FIXTURES_DIR, name), dir, { recursive: true });
 
-  if (opts?.cluster === "k3s") {
-    writeK3sDockflowEnv(dir);
-  } else {
-    writeDockflowEnv(dir);
-  }
+  writeDockflowEnv(dir);
 
   return {
     dir,

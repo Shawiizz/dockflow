@@ -6,8 +6,7 @@ import {
 } from '../../utils/output';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { SwarmStackBackend } from '../../services/orchestrator/swarm/swarm-stack';
-import { loadConfig } from '../../utils/config';
-import { withServicesRequired, DockerError, ConfigError } from '../../utils/errors';
+import { withServicesRequired } from '../../utils/errors';
 
 interface DiagnosticIssue {
   severity: 'error' | 'warning';
@@ -83,13 +82,6 @@ export function registerDiagnoseCommand(program: Command): void {
       const { stackName, connection, serverName } = validateEnv(env, options.server);
       printDebug('Connection validated', { stackName, serverName });
 
-      const config = loadConfig();
-      if (!config) throw new ConfigError('No dockflow config found');
-      if ((config.orchestrator ?? 'swarm') !== 'swarm') {
-        throw new DockerError(
-          '`dockflow diagnose` is Swarm-only. For k3s, use `kubectl describe pods` or `kubectl get events`.',
-        );
-      }
 
       printIntro(`Diagnosing: ${stackName}`);
       printBlank();
