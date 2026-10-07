@@ -369,8 +369,9 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     // Settled, not Promise.all: when accessories fail first, the release write
     // must still hand back the symlink to restore, or cleanup deletes `current`.
+    // `deploy --accessories` leaves the app and its release history alone
     const [releaseOutcome, accessoriesOutcome] = await Promise.allSettled([
-      ctx.releases.createRelease(ctx.stackName, ctx.deployVersion, Compose.serialize(compose), renderedStack, {
+      !ctx.deployApp ? Promise.resolve({ previousSymlink: null }) : ctx.releases.createRelease(ctx.stackName, ctx.deployVersion, Compose.serialize(compose), renderedStack, {
         project_name: ctx.config.project_name, version: ctx.deployVersion, env: ctx.env,
         timestamp: now.toISOString(), epoch: releaseEpoch(now, storedReleases),
         performer: getPerformer(), branch: ctx.branchName,
@@ -379,7 +380,7 @@ async function execute(ctx: DeployContext): Promise<void> {
     ]);
     if (releaseOutcome.status === 'rejected') throw releaseOutcome.reason;
     previousSymlink = releaseOutcome.value.previousSymlink;
-    releaseCreated = true;
+    releaseCreated = ctx.deployApp;
     if (accessoriesOutcome.status === 'rejected') throw accessoriesOutcome.reason;
 
     applyStarted = true;
@@ -392,7 +393,7 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     await Promise.all([
       // the deploy succeeded: housekeeping failures are reported, never a reason to roll back
-      ctx.releases.cleanupOldReleases(ctx.stackName, ctx.config).catch((e) => printWarning(`Old releases cleanup failed: ${e instanceof Error ? e.message : String(e)}`)),
+      ctx.deployApp && ctx.releases.cleanupOldReleases(ctx.stackName, ctx.config).catch((e) => printWarning(`Old releases cleanup failed: ${e instanceof Error ? e.message : String(e)}`)),
       commitUploads(uploadPlan).catch((e) => printWarning(`Upload commit failed: ${e instanceof Error ? e.message : String(e)}`)),
     ]);
     auditMessage = `Deployed ${ctx.deployVersion} to ${ctx.env} successfully`;
@@ -423,7 +424,8 @@ async function execute(ctx: DeployContext): Promise<void> {
         );
         await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
       }
-    } else {
+    } else if (releaseCreated) {
+      // only a record this deploy wrote: before that, the version's directory may be the running release
       await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
     }
 
