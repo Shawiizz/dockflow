@@ -56,6 +56,7 @@ import { Audit } from '../services/audit';
 import { Metrics } from '../services/metrics';
 import * as Notification from '../services/notification';
 import * as Plugin from '../services/plugin';
+import { onInterrupt, SIGINT_EXIT_CODE } from '../utils/interrupt';
 import * as Hook from '../services/hook';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
@@ -294,6 +295,8 @@ async function execute(ctx: DeployContext): Promise<void> {
   let buildResult: BuildResult | null = null;
   let auditMessage = `Deploy ${ctx.deployVersion} to ${ctx.env}`;
   let releaseCreated = false;
+  // the stack deploy was sent: from then on Swarm may run the new version, whatever happens here
+  let applyStarted = false;
   let interrupted = false;
 
   const handleSignal = () => {
@@ -302,13 +305,16 @@ async function execute(ctx: DeployContext): Promise<void> {
     printWarning(`\nDeploy interrupted — cleaning up before exit...`);
     (async () => {
       if (uploadPlan) await rollbackUploads(uploadPlan).catch(() => {});
-      if (releaseCreated) await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
+      if (releaseCreated && !applyStarted) {
+        await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
+      } else if (applyStarted) {
+        printWarning(`Version ${ctx.deployVersion} was sent to Swarm but its state is unknown; run dockflow status ${ctx.env}`);
+      }
       await ctx.lock.release().catch(() => {});
-    })().finally(() => process.exit(130));
+    })().finally(() => process.exit(SIGINT_EXIT_CODE));
   };
 
-  process.once('SIGINT', handleSignal);
-  process.once('SIGTERM', handleSignal);
+  const stopHandlingInterrupts = onInterrupt(handleSignal);
 
   try {
     let compose = Compose.loadFromString(ctx.composeContent);
@@ -363,6 +369,7 @@ async function execute(ctx: DeployContext): Promise<void> {
     releaseCreated = true;
     if (accessoriesOutcome.status === 'rejected') throw accessoriesOutcome.reason;
 
+    applyStarted = true;
     await deployApp(ctx, compose);
     stackDeployed = ctx.deployApp !== false && Compose.hasServices(compose);
 
@@ -426,8 +433,7 @@ async function execute(ctx: DeployContext): Promise<void> {
     }
     throw err;
   } finally {
-    process.off('SIGINT', handleSignal);
-    process.off('SIGTERM', handleSignal);
+    stopHandlingInterrupts();
     const durationMs = Date.now() - startTime;
     const status = deployFailed ? 'failed' : 'success';
 
