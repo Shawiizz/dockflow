@@ -263,7 +263,7 @@ async function distributeImages(
 
       const sourceId = isRemote
         ? await getRemoteImageId(source, image, runtime)
-        : await getLocalImageId(image);
+        : await getLocalImageId(image, runtime);
 
       const needsUpdate = await filterTargetsNeedingImage(image, sourceId, targets, runtime);
       if (needsUpdate.length === 0) continue;
@@ -304,7 +304,7 @@ export async function transferImage(
   target: DistributionTarget,
   runtime: ContainerRuntime = 'docker',
 ): Promise<void> {
-  const sourceId = await getLocalImageId(image);
+  const sourceId = await getLocalImageId(image, runtime);
   if (sourceId) {
     const targetId = await getRemoteImageId(target.connection, image, runtime);
     if (sourceId === targetId) {
