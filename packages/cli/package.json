@@ -11,6 +11,7 @@
   "files": [
     "install.js",
     "run.js",
+    "SHA256SUMS",
     "bin/"
   ],
   "keywords": [

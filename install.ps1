@@ -23,6 +23,8 @@ if ($Version -eq "latest") {
 # Build download URL
 $binaryName = "dockflow-windows-$arch.exe"
 $downloadUrl = "https://github.com/Shawiizz/dockflow/releases/download/$Version/$binaryName"
+# Every release publishes the SHA-256 of its binaries
+$sumsUrl = "https://github.com/Shawiizz/dockflow/releases/download/$Version/SHA256SUMS"
 
 # Determine install location
 $installDir = "$env:LOCALAPPDATA\dockflow"
@@ -39,15 +41,45 @@ Write-Host "  Platform: windows-$arch"
 Write-Host "  URL: $downloadUrl"
 Write-Host ""
 
-# Download
+# Download into a temporary directory: the binary reaches $installPath only once verified
+$tmpDir = Join-Path ([IO.Path]::GetTempPath()) ("dockflow-" + [Guid]::NewGuid())
+New-Item -ItemType Directory -Path $tmpDir | Out-Null
 try {
-    Invoke-WebRequest -Uri $downloadUrl -OutFile $installPath -UseBasicParsing
-} catch {
-    Write-Error "Failed to download: $_"
-    exit 1
+    $tmpBinary = Join-Path $tmpDir $binaryName
+    try {
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $tmpBinary -UseBasicParsing
+    } catch {
+        Write-Error "Failed to download: $_"
+        exit 1
+    }
+
+    $tmpSums = Join-Path $tmpDir "SHA256SUMS"
+    try {
+        Invoke-WebRequest -Uri $sumsUrl -OutFile $tmpSums -UseBasicParsing
+    } catch {
+        Write-Error "Release $Version publishes no SHA256SUMS, so the download cannot be verified. Releases made before checksums can be downloaded by hand: https://github.com/Shawiizz/dockflow/releases"
+        exit 1
+    }
+
+    $expected = $null
+    foreach ($line in Get-Content $tmpSums) {
+        if ($line -match '^([0-9a-fA-F]{64})\s+\*?(.+)$' -and $Matches[2].Trim() -eq $binaryName) {
+            $expected = $Matches[1].ToLower()
+        }
+    }
+    $actual = (Get-FileHash -Algorithm SHA256 -Path $tmpBinary).Hash.ToLower()
+    if (-not $expected -or $expected -ne $actual) {
+        $listed = if ($expected) { $expected } else { "nothing listed for $binaryName" }
+        Write-Error "The SHA-256 of $binaryName does not match the release. Expected: $listed. Got: $actual"
+        exit 1
+    }
+
+    Move-Item -Force -Path $tmpBinary -Destination $installPath
+} finally {
+    Remove-Item -Recurse -Force -Path $tmpDir -ErrorAction SilentlyContinue
 }
 
-Write-Host "✓ Dockflow CLI installed to $installPath" -ForegroundColor Green
+Write-Host "✓ Dockflow CLI installed to $installPath (SHA-256 verified)" -ForegroundColor Green
 Write-Host ""
 
 # Add to PATH if not already there

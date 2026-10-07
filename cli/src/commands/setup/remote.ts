@@ -12,7 +12,7 @@ import { isKeyConnection } from '../../types';
 import { normalizePrivateKey } from '../../utils/ssh-keys';
 import { DOCKFLOW_RELEASE_URL } from './constants';
 import { DEFAULT_SSH_PORT, DOCKFLOW_VERSION } from '../../constants';
-import { buildBinaryDownloadUrl } from './forward';
+import { verifiedDownloadCommand } from './forward';
 import { prompt, promptPassword, selectMenu, promptMultiline } from './prompts';
 import { parseConnectionString } from './connection';
 import type { RemoteSetupOptions } from './types';
@@ -317,23 +317,23 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
     archSpinner.succeed(`Server architecture: ${arch}`);
 
     // Pinned to this CLI's version so the binary provisioning the server is
-    // the same one the operator runs (dev builds fall back to latest).
+    // the same one the operator runs (dev builds fall back to latest), and
+    // checked against the SHA-256 its release publishes.
     const binaryName = `dockflow-linux-${arch}`;
-    const downloadUrl = buildBinaryDownloadUrl(DOCKFLOW_RELEASE_URL, DOCKFLOW_VERSION, binaryName);
 
     const downloadSpinner = createSpinner();
     downloadSpinner.start('Downloading Dockflow CLI to remote server...');
 
-    const downloadCmd = `curl -fsSL "${downloadUrl}" -o ${remotePath} && chmod +x ${remotePath}`;
+    const downloadCmd = verifiedDownloadCommand(DOCKFLOW_RELEASE_URL, DOCKFLOW_VERSION, binaryName, remotePath);
     const downloadResult = await sshExec(conn, downloadCmd);
 
     if (downloadResult.exitCode !== 0) {
       downloadSpinner.fail('Failed to download Dockflow CLI');
-      printError(downloadResult.stderr || 'Download failed');
+      printError(downloadResult.stderr.trim() || 'Download failed');
       return;
     }
 
-    downloadSpinner.succeed('Dockflow CLI downloaded');
+    downloadSpinner.succeed('Dockflow CLI downloaded and verified');
   }
 
   printBlank();

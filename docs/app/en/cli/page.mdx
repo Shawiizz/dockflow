@@ -39,7 +39,7 @@ Dockflow provides a comprehensive CLI for managing deployments and interacting w
   </Tabs.Tab>
 </Tabs>
 
-The script detects your platform and architecture, downloads the binary, and adds it to your PATH.
+The script detects your platform and architecture, downloads the binary, checks it against the release's [checksums](#verified-downloads), and adds it to your PATH.
 
 <Callout type="info">
   The CLI binary is self-contained and requires no external dependencies for most commands.
@@ -55,6 +55,25 @@ The script detects your platform and architecture, downloads the binary, and add
 | `dockflow-macos-x64` | macOS | Intel |
 | `dockflow-macos-arm64` | macOS | Apple Silicon |
 | `dockflow-windows-x64.exe` | Windows | x86_64 |
+
+### Verified Downloads
+
+Each release publishes `SHA256SUMS`, the SHA-256 of its binaries, and every installer refuses a
+binary that does not match it: the npm package carries the checksums of its own version,
+`install.sh` and `install.ps1` fetch those of the release they install, and
+`dockflow setup user@host` checks the binary it downloads on the server.
+
+For a binary downloaded by hand, from the directory holding it and the release's `SHA256SUMS`:
+
+```bash
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+<Callout type="warning">
+  Releases published before `SHA256SUMS` existed cannot be installed by `install.sh` or
+  `install.ps1` (with `DOCKFLOW_VERSION`), which refuse what they cannot verify: download those
+  from the [releases page](https://github.com/Shawiizz/dockflow/releases).
+</Callout>
 
 ## Global Options
 
