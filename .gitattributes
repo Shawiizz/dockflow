@@ -39,3 +39,7 @@
 *.png           binary
 *.so            binary
 *.war           binary
+
+# Copied into the e2e node image: sshd and OpenSSH reject CRLF
+testing/e2e/docker/**                               text eol=lf
+testing/e2e/fixtures/keys/*                         text eol=lf
