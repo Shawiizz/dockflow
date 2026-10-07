@@ -66,6 +66,7 @@ let spies: { mockRestore(): void }[] = [];
 
 beforeEach(() => {
   printed = [];
+  pauses = [];
   nodes = new FakeNodes();
   // a verification script prints OK when the archive is sound
   nodes.on(/echo OK/, { stdout: 'OK\n' });
@@ -123,8 +124,14 @@ const SEPARATOR = '---DOCKFLOW_META_SEP---';
 const POSTGRES: BackupAccessoryConfig = { type: 'postgres' };
 const VOLUME: BackupAccessoryConfig = { type: 'volume' };
 
+let pauses: number[] = [];
+
 function backupEngine(): Backup {
-  return new Backup(MANAGER, STACK, [MANAGER, WORKER]);
+  return new Backup(MANAGER, STACK, [MANAGER, WORKER], {
+    sleep: async (ms) => {
+      pauses.push(ms);
+    },
+  });
 }
 
 /** the container of `db` runs on the worker */
@@ -271,5 +278,94 @@ describe('Backup.list metadata', () => {
     );
     const listed = await backupEngine().list('db');
     expect(listed.success && listed.data.map((entry) => entry.id)).toEqual(['20260501-100000-aaaa']);
+  });
+});
+
+describe('Backup.backup credentials', () => {
+  it('never reads the container environment or puts a credential on the host command line', async () => {
+    containerOnWorker();
+    await backupEngine().backup('db', POSTGRES, 'gzip');
+    for (const command of nodes.commands()) {
+      expect(command).not.toContain('{{json .Config.Env}}');
+      expect(command).not.toContain('PGPASSWORD=pw');
+      expect(command).not.toMatch(/ -e [A-Z_]+=/);
+    }
+    const capture = nodes.calls.find((call) => call.command.includes('docker exec'));
+    expect(capture?.command).toContain('"${POSTGRES_PASSWORD:-}"');
+  });
+
+  it('a raw service without a dump command is a configuration error, and nothing runs on a node', async () => {
+    containerOnWorker();
+    const error = failure(await backupEngine().backup('db', { type: 'raw' }, 'gzip'));
+    expect(error.message).toBe('Backup type raw needs dump_command');
+    expect(nodes.commands('worker').some((command) => command.includes('docker exec'))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// restore
+// ---------------------------------------------------------------------------
+
+const POSTGRES_BACKUP = '20260501-100000-aaaa';
+
+function backupOnWorker(fields: Partial<BackupMetadata> = {}): void {
+  nodes.on('*.meta.json', listing(metadata({ id: POSTGRES_BACKUP, ...fields })));
+}
+
+describe('Backup.restore', () => {
+  it('streams the verified file into the container with the in-container script, nothing secret on the host', async () => {
+    containerOnWorker();
+    backupOnWorker();
+    const result = await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES);
+    expect(result.success).toBe(true);
+
+    const restore = nodes.calls.find((call) => call.command.includes('docker exec -i'));
+    expect(restore?.host).toBe('worker');
+    expect(restore?.command).toBe(
+      `gunzip -c '${DIR}/${POSTGRES_BACKUP}.sql.gz' | docker exec -i 'c1' sh -c 'export PGPASSWORD="\${POSTGRES_PASSWORD:-}"; exec psql -U "\${POSTGRES_USER:-postgres}" "\${POSTGRES_DB:-\${POSTGRES_USER:-postgres}}"'`,
+    );
+    expect(nodes.commands().some((command) => command.includes('{{json .Config.Env}}'))).toBe(false);
+  });
+
+  it('a failing restore reports the stderr of the database', async () => {
+    containerOnWorker();
+    backupOnWorker();
+    nodes.on('docker exec -i', { exitCode: 3, stderr: 'psql: FATAL: password authentication failed' });
+    expect(failure(await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES)).message).toBe(
+      'Restore failed: psql: FATAL: password authentication failed',
+    );
+  });
+
+  it('a failing restore without stderr still says it failed', async () => {
+    containerOnWorker();
+    backupOnWorker();
+    nodes.on('docker exec -i', { exitCode: 2 });
+    expect(failure(await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES)).message).toBe('Restore failed: exit code 2');
+  });
+});
+
+describe('Backup.restore of redis', () => {
+  const REDIS: BackupAccessoryConfig = { type: 'redis' };
+
+  function redisBackup(): void {
+    containerOnWorker();
+    nodes.on('*.meta.json', listing(metadata({ id: POSTGRES_BACKUP, dbType: 'redis' })));
+  }
+
+  it('the expected kill of redis (non-zero exit, empty stderr) is a success followed by a service update', async () => {
+    redisBackup();
+    nodes.on('docker exec -i', { exitCode: 137 });
+    expect((await backupEngine().restore('db', POSTGRES_BACKUP, REDIS)).success).toBe(true);
+    expect(pauses).toEqual([3000]);
+    expect(nodes.commands('manager')).toContain(`docker service update --force ${STACK}_db`);
+  });
+
+  it('any other failure reports its detail and does not restart', async () => {
+    redisBackup();
+    nodes.on('docker exec -i', { exitCode: 1, stderr: 'restore: received an empty backup stream\n' });
+    expect(failure(await backupEngine().restore('db', POSTGRES_BACKUP, REDIS)).message).toBe(
+      'Restore failed: restore: received an empty backup stream',
+    );
+    expect(pauses).toEqual([]);
   });
 });

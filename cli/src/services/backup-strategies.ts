@@ -1,23 +1,18 @@
 /**
  * Backup strategies — pure logic behind backup/restore operations.
  *
- * Database dump/restore command builders, container env/mount parsing,
- * file path construction and prune selection. No SSH — everything here
- * is unit-testable (see __tests__/backup-strategies.test.ts).
+ * In-container dump/restore scripts, the host-side capture pipeline, container mount parsing,
+ * file path construction and prune selection. No SSH — everything here is unit-testable
+ * (see __tests__/backup-strategies.test.ts).
  */
 
 import { posix } from 'path';
-import type { BackupDbType } from '../utils/config';
+import type { BackupAccessoryConfig, BackupDbType } from '../utils/config';
+import { ConfigError } from '../utils/errors';
 import { shellQuote } from '../utils/ssh';
 import { DOCKFLOW_BACKUPS_DIR } from '../constants';
 
 // ─── Types ────────────────────────────────────────────────────────────────
-
-export interface ContainerCredentials {
-  user?: string;
-  password?: string;
-  database?: string;
-}
 
 export interface MountInfo {
   /** 'volume' for named Docker volumes, 'bind' for host-mounted paths */
@@ -30,149 +25,171 @@ export interface MountInfo {
   source: string;
 }
 
-// ─── Database Strategies ──────────────────────────────────────────────────
+export type DatabaseType = Exclude<BackupDbType, 'volume' | 'raw'>;
 
-export interface DbStrategy {
-  envMapping: Record<string, keyof ContainerCredentials>;
-  buildDumpCommand(creds: ContainerCredentials, options?: string): string;
-  buildRestoreCommand(creds: ContainerCredentials, options?: string): string;
-  /** Env vars to inject via `docker exec -e` (e.g. for password passing) */
-  buildExecEnv(creds: ContainerCredentials): Record<string, string>;
-  fileExtension: string;
-  /** When true, the restore command kills the container process (e.g. Redis SHUTDOWN NOSAVE)
-   *  and requires an explicit Swarm service restart to guarantee the container comes back. */
-  requiresServiceRestart?: boolean;
-}
+// ─── Types of backup ──────────────────────────────────────────────────────
 
-export const DB_STRATEGIES: Record<Exclude<BackupDbType, 'raw' | 'volume'>, DbStrategy> = {
-  postgres: {
-    envMapping: {
-      POSTGRES_USER: 'user',
-      POSTGRES_PASSWORD: 'password',
-      POSTGRES_DB: 'database',
-    },
-    buildDumpCommand(creds, options) {
-      const parts = ['pg_dump', '-U', creds.user || 'postgres'];
-      if (options) parts.push(options);
-      parts.push(creds.database || 'postgres');
-      return parts.join(' ');
-    },
-    buildRestoreCommand(creds, options) {
-      const parts = ['psql', '-U', creds.user || 'postgres'];
-      if (options) parts.push(options);
-      parts.push(creds.database || 'postgres');
-      return parts.join(' ');
-    },
-    buildExecEnv(creds): Record<string, string> {
-      return creds.password ? { PGPASSWORD: creds.password } : {};
-    },
-    fileExtension: 'sql',
-  },
-
-  mysql: {
-    envMapping: {
-      MYSQL_USER: 'user',
-      MYSQL_ROOT_PASSWORD: 'password',
-      MYSQL_PASSWORD: 'password',
-      MYSQL_DATABASE: 'database',
-    },
-    buildDumpCommand(creds, options) {
-      const user = creds.user || 'root';
-      const parts = ['mysqldump', `-u${user}`];
-      if (options) parts.push(options);
-      parts.push(creds.database || '--all-databases');
-      return parts.join(' ');
-    },
-    buildRestoreCommand(creds, options) {
-      const user = creds.user || 'root';
-      const parts = ['mysql', `-u${user}`];
-      if (options) parts.push(options);
-      if (creds.database) parts.push(creds.database);
-      return parts.join(' ');
-    },
-    buildExecEnv(creds): Record<string, string> {
-      return creds.password ? { MYSQL_PWD: creds.password } : {};
-    },
-    fileExtension: 'sql',
-  },
-
-  // Note: MongoDB does not support password passing via env vars like PGPASSWORD/MYSQL_PWD.
-  // The password is passed as a command-line argument, which is visible in the container's
-  // process list. This is the standard approach for mongodump/mongorestore.
-  mongodb: {
-    envMapping: {
-      MONGO_INITDB_ROOT_USERNAME: 'user',
-      MONGO_INITDB_ROOT_PASSWORD: 'password',
-      MONGO_INITDB_DATABASE: 'database',
-    },
-    buildDumpCommand(creds, options) {
-      const parts = ['mongodump', '--archive'];
-      if (creds.user) {
-        parts.push(`--username="${creds.user}"`, `--authenticationDatabase=admin`);
-      }
-      if (creds.password) parts.push(`--password="${creds.password}"`);
-      if (creds.database) parts.push(`--db="${creds.database}"`);
-      if (options) parts.push(options);
-      return parts.join(' ');
-    },
-    buildRestoreCommand(creds, options) {
-      const parts = ['mongorestore', '--archive'];
-      if (creds.user) {
-        parts.push(`--username="${creds.user}"`, `--authenticationDatabase=admin`);
-      }
-      if (creds.password) parts.push(`--password="${creds.password}"`);
-      if (creds.database) parts.push(`--db="${creds.database}"`);
-      if (options) parts.push(options);
-      return parts.join(' ');
-    },
-    buildExecEnv() {
-      return {};
-    },
-    fileExtension: 'archive',
-  },
-
-  redis: {
-    envMapping: {},
-    buildDumpCommand() {
-      // Trigger BGSAVE and wait for it to complete by polling LASTSAVE.
-      // A save already in flight is fine too — it started after the data was
-      // written, and LASTSAVE changes when it lands.
-      // The BGSAVE/LASTSAVE output is redirected to /dev/null — only the raw RDB bytes are emitted.
-      return 'BEFORE=$(redis-cli LASTSAVE) && OUT=$(redis-cli BGSAVE) && echo "$OUT" | grep -qE "Background saving (started|scheduled)|already in progress" || { echo "BGSAVE failed: $OUT" >&2; exit 1; } && for i in $(seq 1 30); do AFTER=$(redis-cli LASTSAVE); [ "$AFTER" != "$BEFORE" ] && break; sleep 1; done && cat /data/dump.rdb';
-    },
-    buildRestoreCommand() {
-      // Stage the RDB in a temp file and refuse to install an empty stream —
-      // overwriting dump.rdb with nothing would leave Redis crash-looping.
-      // Then SHUTDOWN NOSAVE so Redis doesn't overwrite the file with
-      // in-memory data during shutdown. The service restart is handled
-      // explicitly by the restore() method via `docker service update --force`.
-      return 'cat > /data/dump.rdb.tmp; if ! [ -s /data/dump.rdb.tmp ]; then rm -f /data/dump.rdb.tmp; echo "restore: received an empty backup stream" >&2; exit 1; fi; mv /data/dump.rdb.tmp /data/dump.rdb && redis-cli SHUTDOWN NOSAVE || true';
-    },
-    buildExecEnv() {
-      return {};
-    },
-    fileExtension: 'rdb',
-    requiresServiceRestart: true,
-  },
+export const DB_TYPES: Record<Exclude<BackupDbType, 'volume'>, { fileExtension: string; requiresServiceRestart: boolean }> = {
+  postgres: { fileExtension: 'sql', requiresServiceRestart: false },
+  mysql: { fileExtension: 'sql', requiresServiceRestart: false },
+  mongodb: { fileExtension: 'archive', requiresServiceRestart: false },
+  // the restore ends with SHUTDOWN NOSAVE so the staged dump.rdb is loaded on the next start
+  redis: { fileExtension: 'rdb', requiresServiceRestart: true },
+  raw: { fileExtension: 'bin', requiresServiceRestart: false },
 };
 
-// ─── Pure helpers ─────────────────────────────────────────────────────────
+// ─── In-container scripts ─────────────────────────────────────────────────
+//
+// The container's own shell reads its credentials from its own environment, so no secret appears
+// on the host command line, and a password with `$`, spaces or quotes arrives intact.
 
-/**
- * Build docker exec env flags from a key-value map.
- * SAFETY: Keys are NOT shell-escaped — callers must only pass hardcoded keys
- * (e.g. PGPASSWORD, MYSQL_PWD) via DbStrategy.buildExecEnv(). Never pass user input as keys.
- */
-export function buildExecEnvFlags(env: Record<string, string>): string {
-  return Object.entries(env)
-    .map(([k, v]) => {
-      if (!/^[A-Z_][A-Z0-9_]*$/i.test(k)) {
-        throw new Error(`Invalid env key: ${k}`);
-      }
-      return `-e ${k}=${shellQuote(v)}`;
-    })
-    .join(' ');
+const PG_PRELUDE = 'export PGPASSWORD="${POSTGRES_PASSWORD:-}"; ';
+const PG_USER = '-U "${POSTGRES_USER:-postgres}"';
+// the image creates a database named after the user when POSTGRES_DB is unset
+const PG_DATABASE = '"${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"';
+
+// MYSQL_USER only goes with MYSQL_PASSWORD; otherwise root and its own password
+const MYSQL_PRELUDE =
+  'if [ -n "${MYSQL_USER:-}" ] && [ -n "${MYSQL_PASSWORD:-}" ]; then DF_USER="$MYSQL_USER"; export MYSQL_PWD="$MYSQL_PASSWORD"; ' +
+  'else DF_USER=root; export MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-}"; fi; ';
+
+const MONGO_ARGS =
+  'set -- --archive; ' +
+  'if [ -n "${MONGO_INITDB_ROOT_USERNAME:-}" ]; then set -- "$@" --username="$MONGO_INITDB_ROOT_USERNAME" --authenticationDatabase=admin; fi; ' +
+  'if [ -n "${MONGO_INITDB_ROOT_PASSWORD:-}" ]; then set -- "$@" --password="$MONGO_INITDB_ROOT_PASSWORD"; fi; ' +
+  'if [ -n "${MONGO_INITDB_DATABASE:-}" ]; then set -- "$@" --db="$MONGO_INITDB_DATABASE"; fi; ';
+
+// BGSAVE, then wait for LASTSAVE to move: only the raw RDB bytes reach stdout. A save already in
+// flight is fine too, it started after the data was written.
+const REDIS_DUMP =
+  'BEFORE=$(redis-cli LASTSAVE) && OUT=$(redis-cli BGSAVE) && echo "$OUT" | grep -qE "Background saving (started|scheduled)|already in progress" || { echo "BGSAVE failed: $OUT" >&2; exit 1; } && for i in $(seq 1 30); do AFTER=$(redis-cli LASTSAVE); [ "$AFTER" != "$BEFORE" ] && break; sleep 1; done && cat /data/dump.rdb';
+
+// Stage the RDB and refuse an empty stream (an empty dump.rdb leaves Redis crash-looping), then
+// SHUTDOWN NOSAVE so Redis does not overwrite the file with its in-memory data on the way down.
+const REDIS_RESTORE =
+  'cat > /data/dump.rdb.tmp; if ! [ -s /data/dump.rdb.tmp ]; then rm -f /data/dump.rdb.tmp; echo "restore: received an empty backup stream" >&2; exit 1; fi; mv /data/dump.rdb.tmp /data/dump.rdb && redis-cli SHUTDOWN NOSAVE || true';
+
+/** Custom commands keep the credential exports `docker exec -e PGPASSWORD/MYSQL_PWD` used to provide. */
+export function credentialPrelude(type: DatabaseType): string {
+  switch (type) {
+    case 'postgres':
+      return PG_PRELUDE;
+    case 'mysql':
+      return MYSQL_PRELUDE;
+    case 'mongodb':
+    case 'redis':
+      return '';
+  }
 }
+
+function customCommand(command: string | undefined): string | null {
+  return command !== undefined && command.trim() !== '' ? command : null;
+}
+
+function options(value: string | undefined): string {
+  const trimmed = value?.trim() ?? '';
+  return trimmed === '' ? '' : ` ${trimmed}`;
+}
+
+function rawCommand(config: BackupAccessoryConfig, key: 'dump_command' | 'restore_command'): string {
+  const command = customCommand(config[key]);
+  if (command === null) {
+    throw new ConfigError(`Backup type raw needs ${key}`, `Set backup.*.<service>.${key} in .dockflow/config.yml.`);
+  }
+  return command;
+}
+
+// pg_dump short options that take an argument: in a cluster such as `-xFc` the rest of the token
+// belongs to the first of them.
+const PG_SHORT_WITH_ARGUMENT = new Set(['d', 'E', 'e', 'f', 'F', 'h', 'j', 'n', 'N', 'p', 'S', 't', 'T', 'U', 'Z']);
+
+function unquote(value: string): string {
+  return value.replace(/^['"]+|['"]+$/g, '').toLowerCase();
+}
+
+/** What `dump_options` tells pg_dump: every output format it selects, in order, and `--data-only`. */
+function scanPgDumpOptions(dumpOptions: string | undefined): { formats: string[]; dataOnly: boolean } {
+  const tokens = (dumpOptions ?? '').trim().split(/\s+/).filter((token) => token !== '');
+  const formats: string[] = [];
+  let dataOnly = false;
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token === '--') break;
+    if (token.startsWith('--')) {
+      const [name, value] = token.slice(2).split(/=(.*)/s, 2);
+      if (name === 'data-only') dataOnly = true;
+      // getopt_long accepts any unambiguous prefix of --format
+      if (name.length >= 2 && 'format'.startsWith(name)) formats.push(value ?? tokens[++i] ?? '');
+      continue;
+    }
+    if (!token.startsWith('-')) continue;
+    for (let c = 1; c < token.length; c++) {
+      const flag = token[c];
+      if (flag === 'a') dataOnly = true;
+      if (!PG_SHORT_WITH_ARGUMENT.has(flag)) continue;
+      const rest = token.slice(c + 1);
+      const value = rest !== '' ? rest : (tokens[++i] ?? '');
+      if (flag === 'F') formats.push(value);
+      break;
+    }
+  }
+  return { formats: formats.map(unquote), dataOnly };
+}
+
+/** The dump script run by `sh -c` in the service container; stdout is the backup. */
+export function buildDumpScript(config: BackupAccessoryConfig): string {
+  const type = config.type;
+  if (type === 'volume') throw new ConfigError('Backup type volume has no dump script');
+  if (type === 'raw') return rawCommand(config, 'dump_command');
+  const custom = customCommand(config.dump_command);
+  if (custom !== null) return credentialPrelude(type) + custom;
+
+  const opts = options(config.dump_options);
+  switch (type) {
+    case 'postgres': {
+      // --clean: a restore replaces what the dump holds instead of adding its rows to the live ones;
+      // pg_dump refuses it together with --data-only, which has no objects to drop anyway
+      const clean = scanPgDumpOptions(config.dump_options).dataOnly ? '' : ' --clean --if-exists';
+      return `${PG_PRELUDE}exec pg_dump ${PG_USER}${clean}${opts} ${PG_DATABASE}`;
+    }
+    case 'mysql':
+      return (
+        `${MYSQL_PRELUDE}if [ -n "\${MYSQL_DATABASE:-}" ]; then set -- "$MYSQL_DATABASE"; else set -- --all-databases; fi; ` +
+        `exec mysqldump -u"$DF_USER"${opts} "$@"`
+      );
+    case 'mongodb':
+      return `${MONGO_ARGS}exec mongodump "$@"${opts}`;
+    case 'redis':
+      return REDIS_DUMP;
+  }
+}
+
+/** The restore script run by `sh -c` in the service container; the backup arrives on stdin. */
+export function buildRestoreScript(config: BackupAccessoryConfig): string {
+  const type = config.type;
+  if (type === 'volume') throw new ConfigError('Backup type volume has no restore script');
+  if (type === 'raw') return rawCommand(config, 'restore_command');
+  const custom = customCommand(config.restore_command);
+  if (custom !== null) return credentialPrelude(type) + custom;
+
+  const opts = options(config.restore_options);
+  switch (type) {
+    case 'postgres':
+      return `${PG_PRELUDE}exec psql ${PG_USER}${opts} ${PG_DATABASE}`;
+    case 'mysql':
+      return (
+        `${MYSQL_PRELUDE}if [ -n "\${MYSQL_DATABASE:-}" ]; then set -- "$MYSQL_DATABASE"; else set --; fi; ` +
+        `exec mysql -u"$DF_USER"${opts} "$@"`
+      );
+    case 'mongodb':
+      // --drop: each collection of the archive replaces the live one instead of being merged into it
+      return `${MONGO_ARGS}exec mongorestore "$@" --drop${opts}`;
+    case 'redis':
+      return REDIS_RESTORE;
+  }
+}
+
+// ─── Pure helpers ─────────────────────────────────────────────────────────
 
 /**
  * Runs `producer` on a node and writes its stdout to `remotePath` (mode 0600, directory created),
@@ -222,33 +239,6 @@ export function buildArchiveCheckCommand(filePath: string, compression: 'gzip' |
     `elif [ "$(head -c 1 ${f} 2>/dev/null | wc -c)" -eq 0 ]; then echo EMPTY; ` +
     `else echo OK; fi`
   );
-}
-
-/**
- * Parse `docker inspect --format '{{json .Config.Env}}'` output into credentials
- * using a strategy's env mapping. Throws on malformed JSON (caller decides how
- * to report). Empty output yields empty credentials.
- */
-export function parseContainerEnv(
-  stdout: string,
-  envMapping: Record<string, keyof ContainerCredentials>,
-): ContainerCredentials {
-  const creds: ContainerCredentials = {};
-  if (!stdout.trim()) return creds;
-
-  const envVars: string[] = JSON.parse(stdout.trim());
-  for (const envVar of envVars) {
-    const eqIndex = envVar.indexOf('=');
-    if (eqIndex === -1) continue;
-    const key = envVar.substring(0, eqIndex);
-    const value = envVar.substring(eqIndex + 1);
-    const credKey = envMapping[key];
-    if (credKey && value) {
-      creds[credKey] = value;
-    }
-  }
-
-  return creds;
 }
 
 /** Strip the stack name prefix from a Docker volume name for cleaner filenames */
@@ -324,7 +314,7 @@ export function buildDataFilePath(
   } else if (dbType === 'raw') {
     ext = 'bin';
   } else {
-    ext = DB_STRATEGIES[dbType]?.fileExtension || 'bin';
+    ext = DB_TYPES[dbType].fileExtension;
   }
   const suffix = compression === 'gzip' ? '.gz' : '';
   const volPart = volumeName ? `.${volumeName}` : '';

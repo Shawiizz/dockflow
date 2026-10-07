@@ -1,166 +1,177 @@
-import { afterAll, describe, expect, it } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { hasPosixShell } from './helpers/local-shell';
 import {
-  DB_STRATEGIES,
-  buildCapturePipeline,
-  buildExecEnvFlags,
+  DB_TYPES,
   buildArchiveCheckCommand,
-  sanitizePathName,
-  parseContainerEnv,
-  parseContainerMounts,
-  buildDataFilePath,
   buildBackupDir,
-  selectBackupsToPrune,
+  buildCapturePipeline,
+  buildDataFilePath,
+  buildDumpScript,
+  buildRestoreScript,
+  credentialPrelude,
   findBackupMatch,
+  parseContainerMounts,
+  sanitizePathName,
+  selectBackupsToPrune,
 } from '../services/backup-strategies';
+import type { BackupAccessoryConfig } from '../utils/config';
+import { ConfigError } from '../utils/errors';
 
 // ---------------------------------------------------------------------------
-// Dump / restore command builders
+// Golden in-container scripts, written out independently of the module
 // ---------------------------------------------------------------------------
 
-describe('DB_STRATEGIES.postgres', () => {
-  it('dump defaults to postgres user and database', () => {
-    expect(DB_STRATEGIES.postgres.buildDumpCommand({})).toBe('pg_dump -U postgres postgres');
+const PG_PRELUDE = 'export PGPASSWORD="${POSTGRES_PASSWORD:-}"; ';
+const MYSQL_PRELUDE =
+  'if [ -n "${MYSQL_USER:-}" ] && [ -n "${MYSQL_PASSWORD:-}" ]; then DF_USER="$MYSQL_USER"; export MYSQL_PWD="$MYSQL_PASSWORD"; else DF_USER=root; export MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-}"; fi; ';
+const MONGO_ARGS =
+  'set -- --archive; if [ -n "${MONGO_INITDB_ROOT_USERNAME:-}" ]; then set -- "$@" --username="$MONGO_INITDB_ROOT_USERNAME" --authenticationDatabase=admin; fi; if [ -n "${MONGO_INITDB_ROOT_PASSWORD:-}" ]; then set -- "$@" --password="$MONGO_INITDB_ROOT_PASSWORD"; fi; if [ -n "${MONGO_INITDB_DATABASE:-}" ]; then set -- "$@" --db="$MONGO_INITDB_DATABASE"; fi; ';
+const REDIS_DUMP =
+  'BEFORE=$(redis-cli LASTSAVE) && OUT=$(redis-cli BGSAVE) && echo "$OUT" | grep -qE "Background saving (started|scheduled)|already in progress" || { echo "BGSAVE failed: $OUT" >&2; exit 1; } && for i in $(seq 1 30); do AFTER=$(redis-cli LASTSAVE); [ "$AFTER" != "$BEFORE" ] && break; sleep 1; done && cat /data/dump.rdb';
+const REDIS_RESTORE =
+  'cat > /data/dump.rdb.tmp; if ! [ -s /data/dump.rdb.tmp ]; then rm -f /data/dump.rdb.tmp; echo "restore: received an empty backup stream" >&2; exit 1; fi; mv /data/dump.rdb.tmp /data/dump.rdb && redis-cli SHUTDOWN NOSAVE || true';
+
+const cfg = (config: BackupAccessoryConfig): BackupAccessoryConfig => config;
+
+describe('buildDumpScript', () => {
+  it('postgres: credentials and database from the container environment, database defaulting to the user', () => {
+    expect(buildDumpScript(cfg({ type: 'postgres' }))).toBe(
+      'export PGPASSWORD="${POSTGRES_PASSWORD:-}"; exec pg_dump -U "${POSTGRES_USER:-postgres}" --clean --if-exists "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"',
+    );
   });
 
-  it('dump uses credentials and options', () => {
-    expect(DB_STRATEGIES.postgres.buildDumpCommand(
-      { user: 'app', database: 'appdb' },
-      '--no-owner',
-    )).toBe('pg_dump -U app --no-owner appdb');
+  it('postgres: dump_options inserted verbatim before the database', () => {
+    expect(buildDumpScript(cfg({ type: 'postgres', dump_options: '--no-owner --clean' }))).toBe(
+      'export PGPASSWORD="${POSTGRES_PASSWORD:-}"; exec pg_dump -U "${POSTGRES_USER:-postgres}" --clean --if-exists --no-owner --clean "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"',
+    );
   });
 
-  it('restore mirrors dump structure with psql', () => {
-    expect(DB_STRATEGIES.postgres.buildRestoreCommand({ user: 'app', database: 'appdb' }))
-      .toBe('psql -U app appdb');
+  it('postgres: --data-only (which pg_dump refuses together with --clean) drops the default', () => {
+    for (const dump_options of ['--data-only', '-a', '-a --no-owner', '--no-owner --data-only', '-ax']) {
+      expect(buildDumpScript(cfg({ type: 'postgres', dump_options }))).toBe(
+        `export PGPASSWORD="\${POSTGRES_PASSWORD:-}"; exec pg_dump -U "\${POSTGRES_USER:-postgres}" ${dump_options} "\${POSTGRES_DB:-\${POSTGRES_USER:-postgres}}"`,
+      );
+    }
   });
 
-  it('password is passed via PGPASSWORD env, not the command line', () => {
-    expect(DB_STRATEGIES.postgres.buildExecEnv({ password: 's3cret' })).toEqual({ PGPASSWORD: 's3cret' });
-    expect(DB_STRATEGIES.postgres.buildExecEnv({})).toEqual({});
-    expect(DB_STRATEGIES.postgres.buildDumpCommand({ password: 's3cret' })).not.toContain('s3cret');
+  it('postgres: an option that merely contains an a keeps the default', () => {
+    expect(buildDumpScript(cfg({ type: 'postgres', dump_options: '-n abc --inserts' }))).toContain('--clean --if-exists');
+    expect(buildDumpScript(cfg({ type: 'postgres', dump_options: '--attribute-inserts' }))).toContain('--clean --if-exists');
+  });
+
+  it('mysql: user and password paired from the environment, every database when none is named', () => {
+    expect(buildDumpScript(cfg({ type: 'mysql' }))).toBe(
+      `${MYSQL_PRELUDE}if [ -n "\${MYSQL_DATABASE:-}" ]; then set -- "$MYSQL_DATABASE"; else set -- --all-databases; fi; exec mysqldump -u"$DF_USER" "$@"`,
+    );
+    expect(buildDumpScript(cfg({ type: 'mysql', dump_options: '--single-transaction' }))).toBe(
+      `${MYSQL_PRELUDE}if [ -n "\${MYSQL_DATABASE:-}" ]; then set -- "$MYSQL_DATABASE"; else set -- --all-databases; fi; exec mysqldump -u"$DF_USER" --single-transaction "$@"`,
+    );
+  });
+
+  it('mongodb: arguments built in the container, options after them', () => {
+    expect(buildDumpScript(cfg({ type: 'mongodb' }))).toBe(`${MONGO_ARGS}exec mongodump "$@"`);
+    expect(buildDumpScript(cfg({ type: 'mongodb', dump_options: '--oplog' }))).toBe(`${MONGO_ARGS}exec mongodump "$@" --oplog`);
+  });
+
+  it('redis: BGSAVE, wait for LASTSAVE, emit the RDB; options are ignored', () => {
+    expect(buildDumpScript(cfg({ type: 'redis' }))).toBe(REDIS_DUMP);
+    expect(buildDumpScript(cfg({ type: 'redis', dump_options: '--x' }))).toBe(REDIS_DUMP);
+  });
+
+  it('raw: dump_command verbatim; a missing command is a ConfigError', () => {
+    expect(buildDumpScript(cfg({ type: 'raw', dump_command: 'cat /srv/data.bin', restore_command: 'x' }))).toBe('cat /srv/data.bin');
+    expect(() => buildDumpScript(cfg({ type: 'raw' }))).toThrow(ConfigError);
+  });
+
+  it('custom dump_command: the credential prelude is prepended for postgres and mysql only', () => {
+    expect(buildDumpScript(cfg({ type: 'postgres', dump_command: 'pg_dumpall -U app' }))).toBe(`${PG_PRELUDE}pg_dumpall -U app`);
+    expect(buildDumpScript(cfg({ type: 'mysql', dump_command: 'mysqldump -u"$DF_USER" shop' }))).toBe(
+      `${MYSQL_PRELUDE}mysqldump -u"$DF_USER" shop`,
+    );
+    expect(buildDumpScript(cfg({ type: 'mongodb', dump_command: 'mongodump --archive' }))).toBe('mongodump --archive');
+    expect(buildDumpScript(cfg({ type: 'redis', dump_command: 'cat /data/dump.rdb' }))).toBe('cat /data/dump.rdb');
+  });
+
+  it('volume has no dump script', () => {
+    expect(() => buildDumpScript(cfg({ type: 'volume' }))).toThrow(ConfigError);
   });
 });
 
-describe('DB_STRATEGIES.mysql', () => {
-  it('dump defaults to root and --all-databases', () => {
-    expect(DB_STRATEGIES.mysql.buildDumpCommand({})).toBe('mysqldump -uroot --all-databases');
+describe('buildRestoreScript', () => {
+  it('postgres', () => {
+    expect(buildRestoreScript(cfg({ type: 'postgres' }))).toBe(
+      'export PGPASSWORD="${POSTGRES_PASSWORD:-}"; exec psql -U "${POSTGRES_USER:-postgres}" "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"',
+    );
+    expect(buildRestoreScript(cfg({ type: 'postgres', restore_options: '-v ON_ERROR_STOP=1' }))).toBe(
+      'export PGPASSWORD="${POSTGRES_PASSWORD:-}"; exec psql -U "${POSTGRES_USER:-postgres}" -v ON_ERROR_STOP=1 "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"',
+    );
   });
 
-  it('restore omits database when not set', () => {
-    expect(DB_STRATEGIES.mysql.buildRestoreCommand({})).toBe('mysql -uroot');
-    expect(DB_STRATEGIES.mysql.buildRestoreCommand({ database: 'db' })).toBe('mysql -uroot db');
+  it('mysql: no positional argument without a database', () => {
+    expect(buildRestoreScript(cfg({ type: 'mysql' }))).toBe(
+      `${MYSQL_PRELUDE}if [ -n "\${MYSQL_DATABASE:-}" ]; then set -- "$MYSQL_DATABASE"; else set --; fi; exec mysql -u"$DF_USER" "$@"`,
+    );
+    expect(buildRestoreScript(cfg({ type: 'mysql', restore_options: '--force' }))).toBe(
+      `${MYSQL_PRELUDE}if [ -n "\${MYSQL_DATABASE:-}" ]; then set -- "$MYSQL_DATABASE"; else set --; fi; exec mysql -u"$DF_USER" --force "$@"`,
+    );
   });
 
-  it('password via MYSQL_PWD env', () => {
-    expect(DB_STRATEGIES.mysql.buildExecEnv({ password: 'pw' })).toEqual({ MYSQL_PWD: 'pw' });
-  });
-});
-
-describe('DB_STRATEGIES.mongodb', () => {
-  it('anonymous dump is a plain archive', () => {
-    expect(DB_STRATEGIES.mongodb.buildDumpCommand({})).toBe('mongodump --archive');
+  it('mongodb: --drop before the options', () => {
+    expect(buildRestoreScript(cfg({ type: 'mongodb' }))).toBe(`${MONGO_ARGS}exec mongorestore "$@" --drop`);
+    expect(buildRestoreScript(cfg({ type: 'mongodb', restore_options: '--gzip' }))).toBe(`${MONGO_ARGS}exec mongorestore "$@" --drop --gzip`);
   });
 
-  it('authenticated dump includes username, admin auth db and password', () => {
-    const cmd = DB_STRATEGIES.mongodb.buildDumpCommand({ user: 'root', password: 'pw', database: 'db' });
-    expect(cmd).toBe('mongodump --archive --username="root" --authenticationDatabase=admin --password="pw" --db="db"');
+  it('redis: the staged RDB, then a shutdown without save', () => {
+    expect(buildRestoreScript(cfg({ type: 'redis' }))).toBe(REDIS_RESTORE);
   });
 
-  it('no env vars (mongo passes credentials on the command line)', () => {
-    expect(DB_STRATEGIES.mongodb.buildExecEnv({})).toEqual({});
-  });
-});
-
-describe('DB_STRATEGIES.redis', () => {
-  it('dump triggers BGSAVE, waits for completion, then emits the RDB file', () => {
-    const cmd = DB_STRATEGIES.redis.buildDumpCommand({});
-    expect(cmd).toContain('BGSAVE');
-    expect(cmd).toContain('LASTSAVE');
-    expect(cmd).toContain('cat /data/dump.rdb');
-  });
-
-  it('dump tolerates a background save already in flight', () => {
-    const cmd = DB_STRATEGIES.redis.buildDumpCommand({});
-    expect(cmd).toContain('Background saving (started|scheduled)');
-    expect(cmd).toContain('already in progress');
-  });
-
-  it('restore stages to a temp file and refuses an empty stream', () => {
-    const cmd = DB_STRATEGIES.redis.buildRestoreCommand({});
-    expect(cmd).toContain('cat > /data/dump.rdb.tmp');
-    expect(cmd).toContain('[ -s /data/dump.rdb.tmp ]');
-    expect(cmd).toContain('exit 1');
-    expect(cmd).toContain('mv /data/dump.rdb.tmp /data/dump.rdb');
-    expect(cmd).toContain('SHUTDOWN NOSAVE');
-    // The empty-stream failure must reach stderr so restore() detects it
-    expect(cmd).toContain('>&2');
-  });
-
-  it('redis requires a service restart after restore', () => {
-    expect(DB_STRATEGIES.redis.requiresServiceRestart).toBe(true);
-    expect(DB_STRATEGIES.postgres.requiresServiceRestart).toBeUndefined();
+  it('raw and custom commands', () => {
+    expect(buildRestoreScript(cfg({ type: 'raw', dump_command: 'x', restore_command: 'cat > /srv/data.bin' }))).toBe('cat > /srv/data.bin');
+    expect(() => buildRestoreScript(cfg({ type: 'raw', dump_command: 'x' }))).toThrow(ConfigError);
+    expect(buildRestoreScript(cfg({ type: 'postgres', restore_command: 'psql -U app shop' }))).toBe(`${PG_PRELUDE}psql -U app shop`);
+    expect(buildRestoreScript(cfg({ type: 'mysql', restore_command: 'mysql shop' }))).toBe(`${MYSQL_PRELUDE}mysql shop`);
+    expect(buildRestoreScript(cfg({ type: 'mongodb', restore_command: 'mongorestore --archive' }))).toBe('mongorestore --archive');
+    expect(buildRestoreScript(cfg({ type: 'redis', restore_command: 'cat > /data/dump.rdb' }))).toBe('cat > /data/dump.rdb');
+    expect(() => buildRestoreScript(cfg({ type: 'volume' }))).toThrow(ConfigError);
   });
 });
 
-// ---------------------------------------------------------------------------
-// Exec env flags
-// ---------------------------------------------------------------------------
-
-describe('buildExecEnvFlags', () => {
-  it('builds -e flags with shell-escaped values', () => {
-    expect(buildExecEnvFlags({ PGPASSWORD: 'plain' })).toBe("-e PGPASSWORD='plain'");
-  });
-
-  it('escapes single quotes in values', () => {
-    expect(buildExecEnvFlags({ PGPASSWORD: "it's" })).toBe("-e PGPASSWORD='it'\\''s'");
-  });
-
-  it('rejects invalid env keys (injection guard)', () => {
-    expect(() => buildExecEnvFlags({ 'X; rm -rf /': 'v' })).toThrow('Invalid env key');
-  });
-
-  it('empty map yields empty string', () => {
-    expect(buildExecEnvFlags({})).toBe('');
+describe('credentialPrelude', () => {
+  it('postgres and mysql export the password variable, mongodb and redis need nothing', () => {
+    expect(credentialPrelude('postgres')).toBe(PG_PRELUDE);
+    expect(credentialPrelude('mysql')).toBe(MYSQL_PRELUDE);
+    expect(credentialPrelude('mongodb')).toBe('');
+    expect(credentialPrelude('redis')).toBe('');
   });
 });
 
-// ---------------------------------------------------------------------------
-// Container env / mounts parsing
-// ---------------------------------------------------------------------------
+describe('no credential values on the host', () => {
+  it('no script mentions a password value: they only name the container variables', () => {
+    for (const type of ['postgres', 'mysql', 'mongodb', 'redis'] as const) {
+      expect(buildDumpScript(cfg({ type }))).not.toMatch(/s3cret/);
+      expect(buildRestoreScript(cfg({ type }))).not.toMatch(/s3cret/);
+    }
+  });
+});
 
-describe('parseContainerEnv', () => {
-  it('maps known env vars to credentials', () => {
-    const stdout = JSON.stringify(['POSTGRES_USER=app', 'POSTGRES_PASSWORD=pw', 'POSTGRES_DB=appdb', 'PATH=/usr/bin']);
-    expect(parseContainerEnv(stdout, DB_STRATEGIES.postgres.envMapping)).toEqual({
-      user: 'app',
-      password: 'pw',
-      database: 'appdb',
+describe('DB_TYPES', () => {
+  it('extensions and the restart after a redis restore', () => {
+    expect(DB_TYPES).toEqual({
+      postgres: { fileExtension: 'sql', requiresServiceRestart: false },
+      mysql: { fileExtension: 'sql', requiresServiceRestart: false },
+      mongodb: { fileExtension: 'archive', requiresServiceRestart: false },
+      redis: { fileExtension: 'rdb', requiresServiceRestart: true },
+      raw: { fileExtension: 'bin', requiresServiceRestart: false },
     });
   });
-
-  it('empty output → empty credentials', () => {
-    expect(parseContainerEnv('', DB_STRATEGIES.postgres.envMapping)).toEqual({});
-    expect(parseContainerEnv('  \n', DB_STRATEGIES.postgres.envMapping)).toEqual({});
-  });
-
-  it('values containing = are kept whole', () => {
-    const stdout = JSON.stringify(['POSTGRES_PASSWORD=a=b=c']);
-    expect(parseContainerEnv(stdout, DB_STRATEGIES.postgres.envMapping).password).toBe('a=b=c');
-  });
-
-  it('empty values are ignored', () => {
-    const stdout = JSON.stringify(['POSTGRES_USER=']);
-    expect(parseContainerEnv(stdout, DB_STRATEGIES.postgres.envMapping).user).toBeUndefined();
-  });
-
-  it('malformed JSON throws (caller decides reporting)', () => {
-    expect(() => parseContainerEnv('not json', DB_STRATEGIES.postgres.envMapping)).toThrow();
-  });
 });
+
+// ---------------------------------------------------------------------------
+// Mounts, archive check, paths, selection
+// ---------------------------------------------------------------------------
 
 describe('parseContainerMounts', () => {
   const mounts = JSON.stringify([
@@ -334,11 +345,15 @@ describe('findBackupMatch', () => {
 const work = mkdtempSync(join(tmpdir(), 'dockflow-backup-strategies-'));
 afterAll(() => rmSync(work, { recursive: true, force: true }));
 
-function runSh(script: string, stdin?: string): { exitCode: number; stdout: string; stderr: string } {
-  const proc = Bun.spawnSync(['sh', '-c', script], {
-    cwd: work,
-    env: { PATH: process.env.PATH ?? '/usr/bin:/bin' },
-    stdin: stdin === undefined ? 'ignore' : new TextEncoder().encode(stdin),
+function runSh(
+  script: string,
+  options: { env?: Record<string, string>; stdin?: string; binDir?: string; cwd?: string } = {},
+): { exitCode: number; stdout: string; stderr: string } {
+  const systemPath = process.env.PATH ?? '/usr/bin:/bin';
+  const proc = Bun.spawnSync([Bun.which('sh') ?? 'sh', '-c', script], {
+    cwd: options.cwd ?? work,
+    env: { PATH: options.binDir ? `${options.binDir}:${systemPath}` : systemPath, ...options.env },
+    stdin: options.stdin === undefined ? 'ignore' : new TextEncoder().encode(options.stdin),
   });
   return { exitCode: proc.exitCode ?? -1, stdout: proc.stdout.toString(), stderr: proc.stderr.toString() };
 }
@@ -415,5 +430,129 @@ describe('buildCapturePipeline', () => {
     it('a producer failing with none still fails', () => {
       expect(runSh(buildCapturePipeline("sh -c 'exit 5'", join(freshDir('capture-none'), '1.sql'), false)).exitCode).toBe(5);
     });
+  });
+});
+
+describe.if(hasPosixShell)('in-container scripts, executed', () => {
+  /** shims that print how they were called: name, one line per argument, the password variables */
+  function shimDir(): string {
+    const dir = freshDir('bin');
+    const shim = [
+      '#!/bin/sh',
+      `printf 'cmd=%s\\n' "\${0##*/}"`,
+      `for a in "$@"; do printf 'arg=%s\\n' "$a"; done`,
+      `printf 'PGPASSWORD=%s\\n' "\${PGPASSWORD-<unset>}"`,
+      `printf 'MYSQL_PWD=%s\\n' "\${MYSQL_PWD-<unset>}"`,
+      '',
+    ].join('\n');
+    for (const name of ['pg_dump', 'psql', 'mysqldump', 'mysql', 'mongodump', 'mongorestore']) {
+      writeFileSync(join(dir, name), shim);
+      chmodSync(join(dir, name), 0o755);
+    }
+    const redis = [
+      '#!/bin/sh',
+      `printf '%s\\n' "$*" >> "$REDIS_LOG"`,
+      '',
+    ].join('\n');
+    writeFileSync(join(dir, 'redis-cli'), redis);
+    chmodSync(join(dir, 'redis-cli'), 0o755);
+    return dir;
+  }
+
+  function call(stdout: string): { cmd: string; args: string[]; env: Record<string, string> } {
+    const lines = stdout.split('\n').filter((line) => line !== '');
+    const cmd = lines.find((line) => line.startsWith('cmd='))?.slice(4) ?? '';
+    const args = lines.filter((line) => line.startsWith('arg=')).map((line) => line.slice(4));
+    const env: Record<string, string> = {};
+    for (const line of lines) {
+      const match = /^(PGPASSWORD|MYSQL_PWD)=(.*)$/.exec(line);
+      if (match) env[match[1]] = match[2];
+    }
+    return { cmd, args, env };
+  }
+
+  let bin = '';
+  beforeAll(() => {
+    bin = shimDir();
+  });
+  const run = (script: string, env: Record<string, string>) => {
+    const result = runSh(script, { binDir: bin, env });
+    expect(result.exitCode).toBe(0);
+    return call(result.stdout);
+  };
+
+  it('postgres: the database falls back to POSTGRES_USER when POSTGRES_DB is unset', () => {
+    const dump = buildDumpScript(cfg({ type: 'postgres' }));
+    expect(run(dump, { POSTGRES_USER: 'app', POSTGRES_PASSWORD: 'pg-secret' })).toEqual({
+      cmd: 'pg_dump',
+      args: ['-U', 'app', '--clean', '--if-exists', 'app'],
+      env: { PGPASSWORD: 'pg-secret', MYSQL_PWD: '<unset>' },
+    });
+    expect(run(dump, { POSTGRES_USER: 'app', POSTGRES_DB: 'shop' }).args).toEqual(['-U', 'app', '--clean', '--if-exists', 'shop']);
+    expect(run(dump, {})).toEqual({
+      cmd: 'pg_dump',
+      args: ['-U', 'postgres', '--clean', '--if-exists', 'postgres'],
+      env: { PGPASSWORD: '', MYSQL_PWD: '<unset>' },
+    });
+    expect(run(buildRestoreScript(cfg({ type: 'postgres' })), { POSTGRES_DB: 'shop' })).toMatchObject({
+      cmd: 'psql',
+      args: ['-U', 'postgres', 'shop'],
+    });
+  });
+
+  it('postgres: a password with $, space and quotes reaches pg_dump intact', () => {
+    const password = `p$ss w'rd"x`;
+    expect(run(buildDumpScript(cfg({ type: 'postgres' })), { POSTGRES_PASSWORD: password }).env.PGPASSWORD).toBe(password);
+  });
+
+  it('mysql: MYSQL_USER is used only with MYSQL_PASSWORD, otherwise root with the root password', () => {
+    const dump = buildDumpScript(cfg({ type: 'mysql' }));
+    expect(run(dump, { MYSQL_USER: 'app', MYSQL_PASSWORD: 'app-secret', MYSQL_ROOT_PASSWORD: 'root-secret' })).toEqual({
+      cmd: 'mysqldump',
+      args: ['-uapp', '--all-databases'],
+      env: { PGPASSWORD: '<unset>', MYSQL_PWD: 'app-secret' },
+    });
+    expect(run(dump, { MYSQL_USER: 'app', MYSQL_ROOT_PASSWORD: 'root-secret' })).toMatchObject({
+      args: ['-uroot', '--all-databases'],
+      env: { MYSQL_PWD: 'root-secret' },
+    });
+    expect(run(dump, { MYSQL_DATABASE: 'shop' }).args).toEqual(['-uroot', 'shop']);
+
+    const restore = buildRestoreScript(cfg({ type: 'mysql' }));
+    expect(run(restore, {})).toMatchObject({ cmd: 'mysql', args: ['-uroot'] });
+    expect(run(restore, { MYSQL_DATABASE: 'shop' }).args).toEqual(['-uroot', 'shop']);
+  });
+
+  it('mongodb: credentials and database when set; a password with $, space and quotes arrives intact', () => {
+    const password = `p$ss w'rd"x`;
+    expect(
+      run(buildDumpScript(cfg({ type: 'mongodb' })), {
+        MONGO_INITDB_ROOT_USERNAME: 'root',
+        MONGO_INITDB_ROOT_PASSWORD: password,
+        MONGO_INITDB_DATABASE: 'shop',
+      }),
+    ).toMatchObject({
+      cmd: 'mongodump',
+      args: ['--archive', '--username=root', '--authenticationDatabase=admin', `--password=${password}`, '--db=shop'],
+    });
+    expect(run(buildRestoreScript(cfg({ type: 'mongodb' })), {})).toMatchObject({
+      cmd: 'mongorestore',
+      args: ['--archive', '--drop'],
+    });
+    expect(run(buildRestoreScript(cfg({ type: 'mongodb', restore_options: '--gzip' })), {}).args).toEqual(['--archive', '--drop', '--gzip']);
+  });
+
+  it('redis restore: the RDB is staged, installed, and Redis shut down without saving', () => {
+    const dir = freshDir('redis-restored');
+    const log = join(dir, 'redis.log');
+    const script = buildRestoreScript(cfg({ type: 'redis' })).replaceAll('/data/', `${dir}/`);
+    const result = runSh(script, { binDir: bin, env: { REDIS_LOG: log }, stdin: 'REDIS0011-payload' });
+    expect(result.exitCode).toBe(0);
+    expect(readFileSync(join(dir, 'dump.rdb'), 'utf8')).toBe('REDIS0011-payload');
+    expect(readFileSync(log, 'utf8')).toBe('SHUTDOWN NOSAVE\n');
+
+    const empty = runSh(script, { binDir: bin, env: { REDIS_LOG: log }, stdin: '' });
+    expect(empty.exitCode).toBe(1);
+    expect(empty.stderr).toContain('restore: received an empty backup stream');
   });
 });

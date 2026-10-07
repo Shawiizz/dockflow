@@ -19,10 +19,10 @@ import { findSwarmContainer } from './orchestrator/swarm/swarm-utils';
 import { SwarmStackBackend } from './orchestrator/swarm/swarm-stack';
 import { DOCKFLOW_BACKUPS_DIR } from '../constants';
 import {
-  DB_STRATEGIES,
-  buildExecEnvFlags,
+  DB_TYPES,
   buildArchiveCheckCommand,
-  parseContainerEnv,
+  buildDumpScript,
+  buildRestoreScript,
   parseContainerMounts,
   buildCapturePipeline,
   buildDataFilePath,
@@ -30,7 +30,7 @@ import {
   selectBackupsToPrune,
   findBackupMatch,
 } from './backup-strategies';
-import type { ContainerCredentials, MountInfo } from './backup-strategies';
+import type { MountInfo } from './backup-strategies';
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -113,17 +113,27 @@ function parseMetadata(text: string): BackupMetadata | null {
 
 // ─── Backup ───────────────────────────────────────────────────────────────
 
+export interface BackupOptions {
+  /** the pause before forcing a service update after a restore stopped its server */
+  sleep?: (ms: number) => Promise<void>;
+}
+
+const RESTART_PAUSE_MS = 3000;
+
 export class Backup {
   private readonly orchestrator: SwarmStackBackend;
+  private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(
     /** Manager connection — used for Swarm operations (service restart) */
     private readonly connection: SSHKeyConnection,
     private readonly stackName: string,
     /** All node connections — used to find containers and run backup/restore on any node */
-    private readonly allConnections: SSHKeyConnection[] = []
+    private readonly allConnections: SSHKeyConnection[] = [],
+    options: BackupOptions = {}
   ) {
     this.orchestrator = new SwarmStackBackend(connection);
+    this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
 
   private findContainer(service: string) {
@@ -175,30 +185,6 @@ export class Backup {
   }
 
   /**
-   * Read environment variables from a running container
-   */
-  private async getContainerCredentials(
-    containerId: string,
-    dbType: BackupDbType,
-    nodeConn: SSHKeyConnection
-  ): Promise<ContainerCredentials> {
-    if (dbType === 'raw' || dbType === 'volume') return {};
-
-    const strategy = DB_STRATEGIES[dbType];
-    const result = await sshExec(
-      nodeConn,
-      `docker inspect --format '{{json .Config.Env}}' ${shellQuote(containerId)}`
-    );
-
-    try {
-      return parseContainerEnv(result.stdout, strategy.envMapping);
-    } catch (e) {
-      printDebug(`Failed to parse container env for ${containerId}: ${e}`);
-      return {};
-    }
-  }
-
-  /**
    * Create a backup of an accessory service.
    * The backup file is written on the node where the container runs.
    */
@@ -222,28 +208,18 @@ export class Backup {
     const backupId = generateBackupId();
     const backupDir = this.getBackupDir(service);
 
-    const creds = await this.getContainerCredentials(containerId, dbType, nodeConn);
-
-    // Build dump command
-    let dumpCommand: string;
-    if (dbType === 'raw') {
-      dumpCommand = config.dump_command!;
-    } else {
-      const strategy = DB_STRATEGIES[dbType];
-      dumpCommand = config.dump_command || strategy.buildDumpCommand(creds, config.dump_options);
+    let dumpScript: string;
+    try {
+      dumpScript = buildDumpScript(config);
+    } catch (e) {
+      return err(e instanceof Error ? e : new Error(String(e)));
     }
 
     const filePath = this.getDataFilePath(backupDir, backupId, dbType, compression);
 
     const startTime = Date.now();
 
-    // Build exec env flags (e.g. PGPASSWORD, MYSQL_PWD)
-    const execEnvFlags = dbType !== 'raw'
-      ? buildExecEnvFlags(DB_STRATEGIES[dbType].buildExecEnv(creds))
-      : '';
-    const envPart = execEnvFlags ? `${execEnvFlags} ` : '';
-
-    const dockerExec = `docker exec ${envPart}${shellQuote(containerId)} sh -c ${shellQuote(dumpCommand)}`;
+    const dockerExec = `docker exec ${shellQuote(containerId)} sh -c ${shellQuote(dumpScript)}`;
     const result = await sshExec(nodeConn, buildCapturePipeline(dockerExec, filePath, compression === 'gzip'));
     if (result.exitCode !== 0) {
       await sshExec(nodeConn, `rm -f ${shellQuote(filePath)}`);
@@ -604,7 +580,7 @@ export class Backup {
     if (!found) {
       return err(new Error(`No running container found for service ${service}`));
     }
-    const { containerId, connection: containerConn } = found;
+    const { containerId } = found;
 
     const dataFile = this.getDataFilePath(backupDir, backupId, dbType, backupCompression);
 
@@ -616,47 +592,37 @@ export class Backup {
       return err(new Error(`Backup ${backupId} cannot be restored: ${archiveIssue}`));
     }
 
-    // Get credentials from the container's node
-    const creds = await this.getContainerCredentials(containerId, dbType, containerConn);
-
-    // Build restore command
-    let restoreCommand: string;
-    if (dbType === 'raw') {
-      restoreCommand = config.restore_command!;
-    } else {
-      restoreCommand = config.restore_command || DB_STRATEGIES[dbType].buildRestoreCommand(creds, config.restore_options);
+    let restoreScript: string;
+    try {
+      restoreScript = buildRestoreScript(config);
+    } catch (e) {
+      return err(e instanceof Error ? e : new Error(String(e)));
     }
-
-    // Build exec env flags
-    const execEnvFlags = dbType !== 'raw'
-      ? buildExecEnvFlags(DB_STRATEGIES[dbType].buildExecEnv(creds))
-      : '';
-    const envPart = execEnvFlags ? `${execEnvFlags} ` : '';
 
     // Backup file and container are on the same node — backups are created
     // via docker exec on the container's node, so the file is always local.
-    const dockerExec = `docker exec -i ${envPart}${shellQuote(containerId)} sh -c ${shellQuote(restoreCommand)}`;
+    const dockerExec = `docker exec -i ${shellQuote(containerId)} sh -c ${shellQuote(restoreScript)}`;
     const fullCommand = backupCompression === 'gzip'
       ? `gunzip -c ${shellQuote(dataFile)} | ${dockerExec}`
       : `cat ${shellQuote(dataFile)} | ${dockerExec}`;
 
-    const strategy = dbType !== 'raw' ? DB_STRATEGIES[dbType] : null;
     const result = await sshExec(nodeConn, fullCommand);
 
     // For strategies that kill the container as part of restore (e.g. Redis SHUTDOWN NOSAVE),
     // a non-zero exit from docker exec is expected — the process died mid-exec.
     // Only treat it as an error if there's actual stderr output.
-    const restoreKillsContainer = strategy?.requiresServiceRestart ?? false;
-    if (result.exitCode !== 0 && (!restoreKillsContainer || result.stderr.trim())) {
-      return err(new Error(`Restore failed: ${result.stderr}`));
+    const restoreKillsContainer = DB_TYPES[dbType].requiresServiceRestart;
+    const detail = result.stderr.trim();
+    if (result.exitCode !== 0 && (!restoreKillsContainer || detail)) {
+      return err(new Error(`Restore failed: ${detail || `exit code ${result.exitCode}`}`));
     }
 
     // If the restore killed the container (e.g. Redis SHUTDOWN NOSAVE):
     // Swarm's restart_policy brings it back automatically in most cases.
     // We also force a service update as a safety net for setups where the restart
     // policy is disabled or exhausted — non-fatal if it fails.
-    if (strategy?.requiresServiceRestart) {
-      await new Promise(resolve => setTimeout(resolve, 3000));
+    if (restoreKillsContainer) {
+      await this.sleep(RESTART_PAUSE_MS);
       try {
         await this.orchestrator.restart(this.stackName, service);
       } catch (e) {
