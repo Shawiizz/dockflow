@@ -60,7 +60,7 @@ import { onInterrupt, SIGINT_EXIT_CODE } from '../utils/interrupt';
 import * as Hook from '../services/hook';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
-import { accessoriesKey, applyPublicPorts, buildAndDistribute, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
+import { accessoriesKey, applyPublicPorts, rolledBackError, buildAndDistribute, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
 import type { BuildResult } from './deploy-phases';
 import type { UploadRollbackPlan } from './deploy-phases';
 
@@ -425,12 +425,7 @@ async function execute(ctx: DeployContext): Promise<void> {
       },
     }).catch((e) => printWarning(`on-failure hooks could not run: ${e instanceof Error ? e.message : String(e)}`));
 
-    if (rolledBackTo) {
-      throw new DeployError(
-        `Deployment failed and was rolled back to ${rolledBackTo}`,
-        ErrorCode.DEPLOY_FAILED,
-      );
-    }
+    if (rolledBackTo) throw rolledBackError(err, rolledBackTo);
     throw err;
   } finally {
     stopHandlingInterrupts();

@@ -16,10 +16,7 @@ import { printDim, printInfo, printWarning, formatBytes, createSpinner } from '.
 import { walkDir } from '../utils/fs';
 import { packDirToTarGz, buildExcludeFilter } from '../utils/tar';
 import { sshExec, sshExecChannel, shellQuote } from '../utils/ssh';
-import {
-  DeployError,
-  ErrorCode,
-} from '../utils/errors';
+import { CLIError, DeployError, ErrorCode } from '../utils/errors';
 import type { SSHKeyConnection, ClusterConnection, ClusterNode } from '../types';
 
 import * as Compose from '../services/compose';
@@ -851,4 +848,10 @@ export async function recordHistory(
   ).catch((e) =>
     printWarning(`History sync failed: ${e instanceof Error ? e.message : String(e)}`),
   );
+}
+
+/** The error of a rolled-back deploy: its cause's code, message and suggestion, then where it went back to. */
+export function rolledBackError(err: unknown, rolledBackTo: string): DeployError {
+  const cause = CLIError.from(err, ErrorCode.DEPLOY_FAILED);
+  return new DeployError(`${cause.message}; rolled back to ${rolledBackTo}`, cause.code, cause.suggestion);
 }

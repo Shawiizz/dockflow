@@ -7,7 +7,9 @@ import {
   fileBackupPath,
   dirBackupPath,
   runWithConcurrency,
+  rolledBackError,
 } from '../commands/deploy-phases';
+import { DeployError, ErrorCode } from '../utils/errors';
 import type { UploadItem } from '../utils/config';
 
 describe('filterUploads', () => {
@@ -140,5 +142,21 @@ describe('uploadName', () => {
   it('a plugin upload is named by its label, not by its in-memory key', () => {
     expect(uploadName({ src: '.dockflow/plugins/.instances/nginx/plugin/vhost.conf', dest: '/x', label: 'nginx › vhost.conf' }))
       .toBe('nginx › vhost.conf');
+  });
+});
+
+describe('rolledBackError', () => {
+  it('keeps the code and suggestion of the failure that triggered the rollback', () => {
+    const cause = new DeployError('web is unhealthy', ErrorCode.HEALTH_CHECK_FAILED, 'Check the logs of web');
+    const err = rolledBackError(cause, '1.4.1');
+    expect(err.code).toBe(ErrorCode.HEALTH_CHECK_FAILED);
+    expect(err.message).toBe('web is unhealthy; rolled back to 1.4.1');
+    expect(err.suggestion).toBe('Check the logs of web');
+  });
+
+  it('reports a plain error as a failed deploy', () => {
+    const err = rolledBackError(new Error('boom'), '1.4.1');
+    expect(err.code).toBe(ErrorCode.DEPLOY_FAILED);
+    expect(err.message).toBe('boom; rolled back to 1.4.1');
   });
 });
