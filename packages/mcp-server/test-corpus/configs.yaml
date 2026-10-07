@@ -1,0 +1,1127 @@
+# Configuration files both validators of Dockflow are checked against.
+#
+#   packages/mcp-server/src/__tests__/corpus.test.ts   validate_config agrees with cliValid
+#   cli/src/__tests__/mcp-corpus.test.ts               cliValid is what the CLI schemas say
+#
+# Each row: name, file (config = .dockflow/config.yml, servers = .dockflow/servers.yml,
+# root = dockflow.yml), yaml, cliValid, and mcpErrors: fragments that must appear in the issue
+# lines of BOTH tools. A rule whose message only the MCP words (a missing or mistyped field) lists
+# no fragment: the row pins the verdict only.
+
+# --- config.yml: accepted ---------------------------------------------------------------------
+
+- name: project name only
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+
+- name: project name of one character
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: a
+
+- name: project name of 63 characters
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+- name: podman as container engine
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    container_engine: podman
+
+- name: remote build is a Swarm option
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    options:
+      remote_build: true
+
+- name: every registry type
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    registry:
+      type: ghcr
+      username: deploy
+      password: secret
+      token: abc
+      namespace: team
+      enabled: false
+      additional_tags: ["{env}", latest]
+
+- name: local registry
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    registry:
+      type: local
+
+- name: custom registry with a URL
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    registry:
+      type: custom
+      url: registry.example.com:5000
+
+- name: proxy without an email
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    proxy:
+      enabled: true
+      domains:
+        production: shop.example.com
+
+- name: proxy with every key
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    proxy:
+      enabled: true
+      email: ops@example.com
+      acme: false
+      domains:
+        production: shop.example.com
+        staging: staging.example.com
+      dashboard:
+        enabled: true
+        domain: traefik.example.com
+      routes:
+        - service: api
+          domains:
+            production: api.example.com
+          path: /v1
+          port: 8080
+        - service: ws
+          domains:
+            production: shop.example.com
+          path: /ws
+      trusted_ips:
+        - 173.245.48.0/20
+        - 2400:cb00::/32
+        - 10.0.0.1
+
+- name: proxy dashboard disabled without a domain
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    proxy:
+      dashboard:
+        enabled: false
+
+- name: public ports in every form
+  file: config
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    firewall:
+      public_ports:
+        - 443
+        - "51820/udp"
+        - "8000-8010/tcp"
+        - port: 5432
+          from:
+            - 203.0.113.0/24
+            - 198.51.100.7
+        - port: "9000"
+
+# --- config.yml: refused ----------------------------------------------------------------------
+
+- name: no project name
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    container_engine: docker
+
+- name: empty project name
+  file: config
+  cliValid: false
+  mcpErrors: [Project name is required]
+  yaml: |
+    project_name: ""
+
+- name: project name left empty in the file
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name:
+
+- name: project name that is a number
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: 123
+
+- name: project name with capitals
+  file: config
+  cliValid: false
+  mcpErrors: [Project name must contain only lowercase letters]
+  yaml: |
+    project_name: Shop
+
+- name: project name ending with a hyphen
+  file: config
+  cliValid: false
+  mcpErrors: [Cannot start or end with a hyphen]
+  yaml: |
+    project_name: shop-
+
+- name: project name starting with a hyphen
+  file: config
+  cliValid: false
+  mcpErrors: [Cannot start or end with a hyphen]
+  yaml: |
+    project_name: -shop
+
+- name: project name with an underscore
+  file: config
+  cliValid: false
+  mcpErrors: [Project name must contain only lowercase letters]
+  yaml: |
+    project_name: my_shop
+
+- name: project name of 64 characters
+  file: config
+  cliValid: false
+  mcpErrors: [Project name must be 63 characters or less]
+  yaml: |
+    project_name: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+- name: unknown container engine
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    container_engine: nerdctl
+
+- name: registry that is a string
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    registry: ghcr
+
+- name: registry without a type
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    registry:
+      username: deploy
+
+- name: unknown registry type
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    registry:
+      type: quay
+
+- name: custom registry without a URL
+  file: config
+  cliValid: false
+  mcpErrors: [Custom registry type requires a URL]
+  yaml: |
+    project_name: shop
+    registry:
+      type: custom
+
+- name: registry URL that is a number
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    registry:
+      type: custom
+      url: 5000
+
+- name: registry password that is a number
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    registry:
+      type: dockerhub
+      password: 123456
+
+- name: registry additional tags that are not a list
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    registry:
+      type: ghcr
+      additional_tags: latest
+
+- name: registry enabled as a word
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    registry:
+      type: ghcr
+      enabled: "yes"
+
+- name: proxy that is a boolean
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    proxy: true
+
+- name: proxy enabled as a word
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    proxy:
+      enabled: "yes"
+
+- name: proxy email that is not an address
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    proxy:
+      enabled: true
+      email: not-an-email
+
+- name: proxy dashboard enabled without a domain
+  file: config
+  cliValid: false
+  mcpErrors: [proxy.dashboard.domain is required when proxy.dashboard.enabled is true]
+  yaml: |
+    project_name: shop
+    proxy:
+      enabled: true
+      dashboard:
+        enabled: true
+
+- name: proxy domains that are a list
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    proxy:
+      domains:
+        - shop.example.com
+
+- name: proxy domain that is a number
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    proxy:
+      domains:
+        production: 8080
+
+- name: proxy routes that are a map
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    proxy:
+      routes:
+        api: x
+
+- name: proxy route without a service
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    proxy:
+      routes:
+        - domains:
+            production: api.example.com
+
+- name: proxy route without domains
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    proxy:
+      routes:
+        - service: api
+
+- name: proxy route domain that is a URL
+  file: config
+  cliValid: false
+  mcpErrors: [must be a domain name, e.g. panel.example.com]
+  yaml: |
+    project_name: shop
+    proxy:
+      routes:
+        - service: api
+          domains:
+            production: https://api.example.com
+
+- name: proxy route path without a slash
+  file: config
+  cliValid: false
+  mcpErrors: [must start with / and contain no spaces, backticks or $]
+  yaml: |
+    project_name: shop
+    proxy:
+      routes:
+        - service: api
+          domains:
+            production: api.example.com
+          path: v1
+
+- name: proxy route path with a dollar sign
+  file: config
+  cliValid: false
+  mcpErrors: [must start with / and contain no spaces, backticks or $]
+  yaml: |
+    project_name: shop
+    proxy:
+      routes:
+        - service: api
+          domains:
+            production: api.example.com
+          path: /a$b
+
+- name: proxy route port above 65535
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    proxy:
+      routes:
+        - service: api
+          domains:
+            production: api.example.com
+          port: 70000
+
+- name: proxy route port with a fraction
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    proxy:
+      routes:
+        - service: api
+          domains:
+            production: api.example.com
+          port: 80.5
+
+- name: proxy trusted IP that is a host name
+  file: config
+  cliValid: false
+  mcpErrors: [must be an IP address or a CIDR range]
+  yaml: |
+    project_name: shop
+    proxy:
+      trusted_ips:
+        - cdn.example.com
+
+- name: proxy trusted IP range with a prefix too long
+  file: config
+  cliValid: false
+  mcpErrors: [must be an IP address or a CIDR range]
+  yaml: |
+    project_name: shop
+    proxy:
+      trusted_ips:
+        - 10.0.0.0/33
+
+- name: proxy trusted IP with an octet above 255
+  file: config
+  cliValid: false
+  mcpErrors: [must be an IP address or a CIDR range]
+  yaml: |
+    project_name: shop
+    proxy:
+      trusted_ips:
+        - 300.1.1.1
+
+- name: firewall that is a list
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    firewall:
+      - 443
+
+- name: public ports that are a number
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    firewall:
+      public_ports: 443
+
+- name: public port above 65535
+  file: config
+  cliValid: false
+  mcpErrors: [must be a port or a range within 1-65535]
+  yaml: |
+    project_name: shop
+    firewall:
+      public_ports:
+        - 70000
+
+- name: public port zero
+  file: config
+  cliValid: false
+  mcpErrors: [must be a port or a range within 1-65535]
+  yaml: |
+    project_name: shop
+    firewall:
+      public_ports:
+        - "0"
+
+- name: public port range that runs backwards
+  file: config
+  cliValid: false
+  mcpErrors: [must be a port or a range within 1-65535]
+  yaml: |
+    project_name: shop
+    firewall:
+      public_ports:
+        - "8010-8000"
+
+- name: public port with a protocol that does not exist
+  file: config
+  cliValid: false
+  mcpErrors: [must be a port or a range within 1-65535]
+  yaml: |
+    project_name: shop
+    firewall:
+      public_ports:
+        - "53/sctp"
+
+- name: public port object with a misspelled key
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    firewall:
+      public_ports:
+        - port: 5432
+          form: [203.0.113.0/24]
+
+- name: public port object with an empty from
+  file: config
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    firewall:
+      public_ports:
+        - port: 5432
+          from: []
+
+- name: public port object with an address that is not one
+  file: config
+  cliValid: false
+  mcpErrors: [must be an IP address or a CIDR range]
+  yaml: |
+    project_name: shop
+    firewall:
+      public_ports:
+        - port: 5432
+          from: [office]
+
+# --- servers.yml: accepted --------------------------------------------------------------------
+
+- name: one server
+  file: servers
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        host: 203.0.113.10
+        tags: [production]
+
+- name: server without a host
+  file: servers
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        tags: [production]
+
+- name: server name of 63 characters
+  file: servers
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    servers:
+      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:
+        tags: [production]
+
+- name: server names with hyphens and underscores
+  file: servers
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    servers:
+      web-1:
+        tags: [production]
+      web_2:
+        tags: [production]
+        role: worker
+
+- name: defaults, user, port, workers and several environments
+  file: servers
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        host: 203.0.113.10
+        user: deploy
+        port: 2222
+        tags: [production, staging]
+      worker-1:
+        role: worker
+        tags: [production]
+    defaults:
+      user: dockflow
+      port: 22
+
+- name: tag of 50 characters
+  file: servers
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        tags: [aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]
+
+- name: environment variables per server and per tag
+  file: servers
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        tags: [production]
+        env:
+          NODE_ENV: production
+    env:
+      all:
+        LOG_LEVEL: info
+      production:
+        API_URL: https://api.example.com
+      staging:
+
+- name: server environment left empty
+  file: servers
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        tags: [production]
+        env:
+
+- name: two managers of one environment
+  file: servers
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    servers:
+      a:
+        tags: [production]
+      b:
+        role: manager
+        tags: [production]
+
+# --- servers.yml: refused ---------------------------------------------------------------------
+
+- name: no servers key
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    defaults:
+      user: deploy
+
+- name: empty servers
+  file: servers
+  cliValid: false
+  mcpErrors: [At least one server must be defined]
+  yaml: |
+    servers: {}
+
+- name: servers that are a list
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      - main
+
+- name: server that is a string
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main: 203.0.113.10
+
+- name: server name with capitals
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      Main:
+        tags: [production]
+
+- name: server name of 64 characters
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:
+        tags: [production]
+
+- name: server name that is empty
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      "":
+        tags: [production]
+
+- name: server without tags
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        host: 203.0.113.10
+
+- name: server with an empty tag list
+  file: servers
+  cliValid: false
+  mcpErrors: [At least one tag is required]
+  yaml: |
+    servers:
+      main:
+        tags: []
+
+- name: tags that are a string
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        tags: production
+
+- name: tag that is a number
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        tags: [production, 1]
+
+- name: tag with capitals
+  file: servers
+  cliValid: false
+  mcpErrors: [Tags must be lowercase alphanumeric with hyphens]
+  yaml: |
+    servers:
+      main:
+        tags: [Production]
+
+- name: tag with an underscore
+  file: servers
+  cliValid: false
+  mcpErrors: [Tags must be lowercase alphanumeric with hyphens]
+  yaml: |
+    servers:
+      main:
+        tags: [pre_prod]
+
+- name: empty tag
+  file: servers
+  cliValid: false
+  mcpErrors: [Tag cannot be empty]
+  yaml: |
+    servers:
+      main:
+        tags: [""]
+
+- name: tag of 51 characters
+  file: servers
+  cliValid: false
+  mcpErrors: [Tag must be 50 characters or less]
+  yaml: |
+    servers:
+      main:
+        tags: [aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]
+
+- name: unknown role
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        role: leader
+        tags: [production]
+
+- name: host that is a number
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        host: 12345
+        tags: [production]
+
+- name: user of 33 characters
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        user: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        tags: [production]
+
+- name: empty user
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        user: ""
+        tags: [production]
+
+- name: port with a fraction
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        port: 22.5
+        tags: [production]
+
+- name: port zero
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        port: 0
+        tags: [production]
+
+- name: port above 65535
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        port: 65536
+        tags: [production]
+
+- name: port that is a string
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        port: "22"
+        tags: [production]
+
+- name: defaults that are a string
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        tags: [production]
+    defaults: deploy
+
+- name: default user of 33 characters
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        tags: [production]
+    defaults:
+      user: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+- name: default port with a fraction
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        tags: [production]
+    defaults:
+      port: 22.5
+
+- name: default port above 65535
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        tags: [production]
+    defaults:
+      port: 70000
+
+- name: environment with workers only
+  file: servers
+  cliValid: false
+  mcpErrors: [Each environment tag must have at least one manager server]
+  yaml: |
+    servers:
+      worker-1:
+        role: worker
+        tags: [production]
+
+- name: one environment of two without a manager
+  file: servers
+  cliValid: false
+  mcpErrors: [Each environment tag must have at least one manager server]
+  yaml: |
+    servers:
+      main:
+        tags: [production]
+      worker-1:
+        role: worker
+        tags: [production, staging]
+
+- name: server environment variable with an invalid name
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        tags: [production]
+        env:
+          1ST: one
+
+- name: server environment variable that is a number
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        tags: [production]
+        env:
+          PORT: 8080
+
+- name: environment variable name with a hyphen
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        tags: [production]
+    env:
+      all:
+        LOG-LEVEL: info
+
+- name: environment variable that is a boolean
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        tags: [production]
+    env:
+      all:
+        DEBUG: true
+
+- name: environment variables that are a list
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        tags: [production]
+    env:
+      - LOG_LEVEL=info
+
+# --- dockflow.yml: accepted -------------------------------------------------------------------
+
+- name: flat project with a server
+  file: root
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    servers:
+      main:
+        host: 203.0.113.10
+        tags: [production]
+    defaults:
+      user: deploy
+      port: 22
+
+- name: flat project with two managers
+  file: root
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    servers:
+      a:
+        tags: [production]
+      b:
+        tags: [production]
+
+- name: flat project with a registry, a proxy and environment variables
+  file: root
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+    registry:
+      type: dockerhub
+      namespace: team
+    proxy:
+      enabled: true
+      domains:
+        production: shop.example.com
+    servers:
+      main:
+        tags: [production]
+    env:
+      all:
+        LOG_LEVEL: info
+
+# --- dockflow.yml: refused --------------------------------------------------------------------
+
+- name: flat project without servers
+  file: root
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    project_name: shop
+
+- name: flat project with a bad name and a server
+  file: root
+  cliValid: false
+  mcpErrors: [Project name must contain only lowercase letters]
+  yaml: |
+    project_name: Shop
+    servers:
+      main:
+        tags: [production]
+
+- name: flat project with a bad registry and a server
+  file: root
+  cliValid: false
+  mcpErrors: [Custom registry type requires a URL]
+  yaml: |
+    project_name: shop
+    registry:
+      type: custom
+    servers:
+      main:
+        tags: [production]
+
+- name: flat project with a bad server
+  file: root
+  cliValid: false
+  mcpErrors: [Tags must be lowercase alphanumeric with hyphens]
+  yaml: |
+    project_name: shop
+    servers:
+      main:
+        tags: [Production]
+
+- name: flat project whose environment has no manager
+  file: root
+  cliValid: false
+  mcpErrors: [Each environment tag must have at least one manager server]
+  yaml: |
+    project_name: shop
+    servers:
+      worker-1:
+        role: worker
+        tags: [production]
+
+- name: flat project with a bad name and no manager
+  file: root
+  cliValid: false
+  mcpErrors: [Project name must contain only lowercase letters]
+  yaml: |
+    project_name: Shop
+    servers:
+      worker-1:
+        role: worker
+        tags: [production]
