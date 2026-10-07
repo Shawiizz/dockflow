@@ -364,6 +364,9 @@ jobs:
   },
 ];
 
+/** Listed in the get_examples tool, so a new example is announced without a second edit */
+export const SCENARIO_DESCRIPTION = `Scenario id: ${EXAMPLES.map((e) => e.id).join(', ')}. Omit to list all.`;
+
 export function listExamples(): string {
   const lines = ['Available examples:\n'];
   for (const ex of EXAMPLES) {

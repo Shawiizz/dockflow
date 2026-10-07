@@ -4,7 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { getIndex, getFull, parseSections } from './docs.js';
-import { EXAMPLES, listExamples, formatExample } from './examples.js';
+import { EXAMPLES, SCENARIO_DESCRIPTION, listExamples, formatExample } from './examples.js';
 import { withCliVersion } from './version.js';
 import { detectFileType, FILE_NAMES, formatValidationResult, validateFile } from './validate.js';
 import { readProjectConfig, formatProjectConfig } from './project.js';
@@ -93,9 +93,7 @@ server.registerTool('get_page', {
 server.registerTool('get_examples', {
   description: 'Get complete, ready-to-use Dockflow configuration examples for common project setups. Call without arguments to list available scenarios, or with a scenario id to get the full files.',
   inputSchema: {
-    scenario: z.string().optional().describe(
-      'Scenario id: simple, standard, app-with-database, with-proxy, with-registry, multi-server, with-hooks, with-ci. Omit to list all.',
-    ),
+    scenario: z.string().optional().describe(SCENARIO_DESCRIPTION),
   },
 }, async ({ scenario }) => {
   if (!scenario) {
