@@ -12,7 +12,8 @@
 
 import { randomBytes } from 'crypto';
 import type { SSHExecResult, SSHKeyConnection } from '../types';
-import { sshExec, sshExecChannel, shellQuote } from '../utils/ssh';
+import { shellQuote } from '../utils/ssh';
+import { sshShell, type RemoteShell } from '../utils/remote-shell';
 import { ok, err, type Result } from '../types';
 import { DOCKFLOW_LOCKS_DIR } from '../constants';
 import { LOCK_STALE_THRESHOLD_MINUTES } from '../constants';
@@ -42,10 +43,6 @@ export interface LockStatus {
   isStale?: boolean;
 }
 
-/** Runs a command on the server holding the locks, `stdin` written to its standard input. */
-export interface LockShell {
-  run(command: string, stdin?: string): Promise<SSHExecResult>;
-}
 
 export interface LockOptions {
   staleThresholdMinutes?: number;
@@ -81,16 +78,6 @@ function toError(error: unknown): CLIError {
   return CLIError.from(error, ErrorCode.CONNECTION_FAILED);
 }
 
-export function sshLockShell(connection: SSHKeyConnection): LockShell {
-  return {
-    async run(command: string, stdin?: string): Promise<SSHExecResult> {
-      if (stdin === undefined) return sshExec(connection, command);
-      const { stream, done } = await sshExecChannel(connection, command);
-      stream.end(stdin);
-      return done;
-    },
-  };
-}
 
 /** A stale takeover is worth saying: the holder's deploy most likely died without releasing it. */
 export function staleTakeoverMessage(holder: LockData | null, minutes: number | null): string {
@@ -109,7 +96,7 @@ export class Lock {
   private readonly now: () => number;
 
   constructor(
-    private readonly shell: LockShell,
+    private readonly shell: RemoteShell,
     private readonly stackName: string,
     private readonly options: LockOptions = {},
   ) {
@@ -276,5 +263,5 @@ export function createLock(
   stackName: string,
   staleThresholdMinutes?: number,
 ): Lock {
-  return new Lock(sshLockShell(connection), stackName, { staleThresholdMinutes });
+  return new Lock(sshShell(connection), stackName, { staleThresholdMinutes });
 }

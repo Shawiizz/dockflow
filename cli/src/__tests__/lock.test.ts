@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'fs';
-import { tmpdir } from 'os';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { type Call, hasPosixShell, LocalShell } from './helpers/local-shell';
 import { DOCKFLOW_LOCKS_DIR } from '../constants';
-import { Lock, type LockData, type LockOptions, type LockShell } from '../services/lock';
+import { Lock, type LockData, type LockOptions } from '../services/lock';
+import type { RemoteShell } from '../utils/remote-shell';
 import { ErrorCode } from '../utils/errors';
 import type { Result, SSHExecResult } from '../types';
 
@@ -11,54 +12,6 @@ const STACK = 'shop-production';
 const T0 = Date.parse('2026-09-19T10:00:00.000Z');
 const MINUTE = 60_000;
 const STALE_TAKEN = 'Lock was stale but another deploy acquired it first';
-
-/** The lock targets Linux managers: its commands run in a real shell, POSIX hosts only. */
-const hasPosixShell = process.platform !== 'win32' && ['sh', 'find'].every((tool) => Bun.which(tool) !== null);
-
-interface Call {
-  command: string;
-  stdin: string | undefined;
-}
-
-/** Runs the lock's commands with `sh -c`; `hold` pauses one command to interleave two deploys. */
-class LocalShell implements LockShell {
-  readonly root = mkdtempSync(join(tmpdir(), 'dockflow-lock-'));
-  private readonly holds: { matches: (command: string) => boolean; arrive: () => void; open: Promise<void> }[] = [];
-
-  hold(matches: (command: string) => boolean): { reached: Promise<void>; release: () => void } {
-    let arrive = () => {};
-    let release = () => {};
-    const reached = new Promise<void>((resolve) => {
-      arrive = resolve;
-    });
-    const open = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    this.holds.push({ matches, arrive, open });
-    return { reached, release };
-  }
-
-  async run(command: string, stdin?: string): Promise<SSHExecResult> {
-    const index = this.holds.findIndex((hold) => hold.matches(command));
-    if (index >= 0) {
-      const [hold] = this.holds.splice(index, 1);
-      hold.arrive();
-      await hold.open;
-    }
-    const child = Bun.spawn(['sh', '-c', command], {
-      cwd: this.root,
-      stdin: stdin === undefined ? 'ignore' : Buffer.from(stdin),
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-      child.exited,
-    ]);
-    return { stdout, stderr, exitCode };
-  }
-}
 
 type Reply = Partial<SSHExecResult> | undefined;
 type LockCommand = 'read' | 'create' | 'takeover' | 'force' | 'release';
@@ -74,7 +27,7 @@ function lockCommand(command: string): LockCommand {
 /** Answers each kind of lock command, for the server failures no temporary directory can produce. */
 function scriptedLock(replies: Partial<Record<LockCommand, Reply>>): { calls: Call[]; lock: Lock } {
   const calls: Call[] = [];
-  const shell: LockShell = {
+  const shell: RemoteShell = {
     async run(command, stdin) {
       calls.push({ command, stdin });
       const answer = replies[lockCommand(command)] ?? {};
