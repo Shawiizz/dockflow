@@ -174,6 +174,44 @@ async function joinWorkerToSwarm(
   }
 }
 
+export interface WorkerFailure {
+  name: string;
+  reason: string;
+}
+
+/** Joins every worker it can; returns the ones that could not be joined. */
+export async function joinWorkers(
+  workers: readonly ResolvedServer[],
+  connect: (worker: ResolvedServer) => SSHKeyConnection | null,
+  managerHost: string,
+  joinToken: string,
+): Promise<WorkerFailure[]> {
+  const failures: WorkerFailure[] = [];
+  for (const worker of workers) {
+    const connection = connect(worker);
+    if (!connection) {
+      printError(`No SSH key found for worker "${worker.name}"`);
+      failures.push({ name: worker.name, reason: 'no SSH key' });
+      continue;
+    }
+    if (!(await joinWorkerToSwarm(connection, worker.name, managerHost, joinToken))) {
+      failures.push({ name: worker.name, reason: 'could not join the cluster' });
+    }
+  }
+  return failures;
+}
+
+/** A cluster missing workers is not "ready": the command fails, naming them. */
+export function requireAllJoined(env: string, failures: readonly WorkerFailure[]): void {
+  if (failures.length === 0) return;
+  for (const { name, reason } of failures) printWarning(`${name}: ${reason}`);
+  throw new CLIError(
+    `Swarm setup of ${env} failed on ${failures.map(({ name }) => name).join(', ')}`,
+    ErrorCode.COMMAND_FAILED,
+    'Fix the cause above and run setup again: nodes already in the cluster are left alone.',
+  );
+}
+
 /**
  * Display cluster status
  */
@@ -269,28 +307,11 @@ export async function runSetupSwarm(env: string): Promise<void> {
   printBlank();
 
   // Step 3: Join workers
+  let failedWorkers: WorkerFailure[] = [];
   if (workers.length > 0) {
     printInfo('Step 3/3: Joining workers to cluster...');
-    let allJoined = true;
-    
-    for (const worker of workers) {
-      const workerConnection = buildConnection(env, worker);
-      if (!workerConnection) {
-        printError(`No SSH key found for worker "${worker.name}"`);
-        allJoined = false;
-        continue;
-      }
-      
-      // Use the manager's internal IP for swarm join (not the external SSH host)
-      const joined = await joinWorkerToSwarm(workerConnection, worker.name, managerInternalIp, joinToken);
-      if (!joined) {
-        allJoined = false;
-      }
-    }
-    
-    if (!allJoined) {
-      printWarning('Some workers failed to join the cluster');
-    }
+    // Use the manager's internal IP for swarm join (not the external SSH host)
+    failedWorkers = await joinWorkers(workers, (worker) => buildConnection(env, worker), managerInternalIp, joinToken);
   } else {
     printInfo('Step 3/3: No workers to join (single-node cluster)');
   }
@@ -298,6 +319,8 @@ export async function runSetupSwarm(env: string): Promise<void> {
 
   // Display final status
   await displayClusterStatus(managerConnection);
+
+  requireAllJoined(env, failedWorkers);
 
   printNote(`Deploy with: dockflow deploy ${env}`);
   printOutro('Docker Swarm cluster is ready!');
