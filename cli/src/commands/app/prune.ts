@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
 import { printIntro, printOutro, printInfo, printSection, printWarning, printDebug, printBlank, printRaw, createSpinner } from '../../utils/output';
-import { validateEnv, withResolvedEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { DockerError, withServicesRequired } from '../../utils/errors';
 import { confirmPrompt } from '../../utils/prompts';
 
@@ -20,7 +20,7 @@ export function registerPruneCommand(program: Command): void {
     .option('--volumes', 'Prune volumes only')
     .option('--networks', 'Prune networks only')
     .option('-y, --yes', 'Skip confirmation')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .action(withServicesRequired(withResolvedEnv(async (env: string, options: {
       all?: boolean;
       images?: boolean;
@@ -30,7 +30,7 @@ export function registerPruneCommand(program: Command): void {
       yes?: boolean;
       server?: string;
     }) => {
-      const { connection } = validateEnv(env, options.server);
+      const { connection } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { targets: [options.images, options.containers, options.volumes, options.networks] });
 
       // Determine what to prune

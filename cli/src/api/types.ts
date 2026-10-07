@@ -20,7 +20,7 @@ export interface HealthResponse {
 
 export type ServerRole = 'manager' | 'worker';
 export type ServerConnectionStatus = 'unknown' | 'checking' | 'online' | 'offline' | 'error';
-export type SwarmStatus = 'leader' | 'reachable' | 'unreachable' | 'not-swarm';
+export type SwarmStatus = 'leader' | 'reachable' | 'unready' | 'unreachable' | 'not-swarm';
 
 export interface ServerStatus {
   name: string;

@@ -5,7 +5,7 @@
 
 import type { Command } from 'commander';
 import { printInfo } from '../../utils/output';
-import { validateEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
+import { resolveEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createContainerBackend, createStackBackend } from '../../services/orchestrator/factory';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
@@ -19,14 +19,14 @@ export function registerAccessoriesExecCommand(program: Command): void {
     .description('Execute a command in an accessory container (default: sh)')
     .option('-u, --user <user>', 'Run command as specific user')
     .option('-w, --workdir <dir>', 'Working directory inside the container')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string,
       command: string[],
       options: { user?: string; workdir?: string; server?: string }
     ) => {
-      const { config, connection } = validateEnv(env, options.server);
+      const { config, connection } = await resolveEnv(env, options.server);
       const { stackName } = await requireAccessoriesStack(connection, env);
 
       const execBackend = createContainerBackend(connection, getAllNodeConnections(env));

@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import { printWarning, printNote, printDim, printBlank, createSpinner } from '../../utils/output';
-import { validateEnv, withResolvedEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { createLock } from '../../services';
 import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
@@ -12,11 +12,11 @@ export function registerLockAcquireCommand(parent: Command): void {
   parent
     .command('acquire <env>')
     .description('Acquire a deployment lock (prevents other deployments)')
-    .option('-s, --server <name>', 'Target server (defaults to manager)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .option('-m, --message <message>', 'Lock message/reason')
     .option('--force', 'Force acquire even if already locked')
     .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string; message?: string; force?: boolean }) => {
-      const { stackName, connection, config } = validateEnv(env, options.server);
+      const { stackName, connection, config } = await resolveEnv(env, options.server);
       const lockService = createLock(connection, stackName, config.lock?.stale_threshold_minutes);
       const spinner = createSpinner();
 

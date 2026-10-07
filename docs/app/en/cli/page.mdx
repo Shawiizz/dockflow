@@ -261,7 +261,7 @@ dockflow completion fish > ~/.config/fish/completions/dockflow.fish
 
 ## App Commands
 
-These commands interact with deployed services via SSH. Most accept `-s, --server <name>` to target a specific server (defaults to the first server for the environment).
+These commands interact with deployed services via SSH, through a manager of the environment: the leader, or else the first manager that answers, so one manager down does not stop them. Most accept `-s, --server <name>` to name the manager to use (`dockflow ssh` accepts any server, workers included).
 
 ### Logs
 

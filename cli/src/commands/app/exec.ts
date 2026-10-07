@@ -6,7 +6,7 @@
 
 import type { Command } from 'commander';
 import { printInfo, printDebug, printBlank } from '../../utils/output';
-import { validateEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
+import { resolveEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
 import { createContainerBackend, createStackBackend } from '../../services/orchestrator/factory';
 import { DockerError, CLIError, withServicesRequired } from '../../utils/errors';
 
@@ -16,7 +16,7 @@ export function registerExecCommand(program: Command): void {
     .aliases(['bash', 'shell'])
     .description('Execute a command in a container (default: interactive shell)')
     .helpGroup('Operate')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .option('-u, --user <user>', 'Run as specified user')
     .option('-w, --workdir <dir>', 'Working directory inside container')
     .option('--sh', 'Use sh instead of bash for interactive shell')
@@ -26,7 +26,7 @@ export function registerExecCommand(program: Command): void {
       workdir?: string;
       sh?: boolean;
     }) => {
-      const { config, stackName, connection } = validateEnv(env, options.server);
+      const { config, stackName, connection } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName });
 
       const execBackend = createContainerBackend(connection, getAllNodeConnections(env));

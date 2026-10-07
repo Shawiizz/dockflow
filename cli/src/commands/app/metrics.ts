@@ -17,7 +17,7 @@ import {
   colors,
   formatRelativeTime
 } from '../../utils/output';
-import { validateEnv } from '../../utils/validation';
+import { resolveEnv } from '../../utils/validation';
 import { withErrorHandler } from '../../utils/errors';
 import {
   Metrics,
@@ -157,7 +157,7 @@ export function registerMetricsCommand(program: Command): void {
     .command('metrics <env>')
     .description('Show deployment metrics and statistics')
     .helpGroup('Inspect')
-    .option('-s, --server <name>', 'Target server (defaults to manager)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .option('--history', 'Show deployment history')
     .option('-n, --lines <number>', 'Number of history entries to show', '20')
     .option('-j, --json', 'Output as JSON')
@@ -169,7 +169,7 @@ export function registerMetricsCommand(program: Command): void {
       json?: boolean;
       prune?: boolean;
     }) => {
-      const { stackName, connection } = validateEnv(env, options.server);
+      const { stackName, connection } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName, prune: options.prune, history: options.history });
 
       const metricsService = new Metrics(connection);

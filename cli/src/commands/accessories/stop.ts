@@ -6,7 +6,7 @@
 import type { Command } from 'commander';
 import { printInfo, printIntro, printOutro, printNote, printWarning, printBlank, createSpinner } from '../../utils/output';
 import { confirmPrompt } from '../../utils/prompts';
-import { validateEnv, withResolvedEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { loadConfig } from '../../utils/config';
@@ -17,7 +17,7 @@ export function registerAccessoriesStopCommand(program: Command): void {
     .command('stop <env> [service]')
     .description('Stop accessory services (scale to 0, can be restarted)')
     .option('-y, --yes', 'Skip confirmation prompt')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string | undefined,
@@ -26,7 +26,7 @@ export function registerAccessoriesStopCommand(program: Command): void {
       printIntro(`Stopping Accessories - ${env}`);
       printBlank();
 
-      const { connection } = validateEnv(env, options.server);
+      const { connection } = await resolveEnv(env, options.server);
       const { stackName } = await requireAccessoriesStack(connection, env);
 
       const config = loadConfig();

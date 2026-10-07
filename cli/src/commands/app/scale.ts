@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import { printDebug, createSpinner } from '../../utils/output';
-import { validateEnv } from '../../utils/validation';
+import { resolveEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { CLIError, DockerError, ErrorCode, withServicesRequired } from '../../utils/errors';
 
@@ -13,9 +13,9 @@ export function registerScaleCommand(program: Command): void {
     .command('scale <env> <service> <replicas>')
     .description('Scale service to specified replicas')
     .helpGroup('Operate')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .action(withServicesRequired(async (env: string, service: string, replicas: string, options: { server?: string }) => {
-      const { config, stackName, connection } = validateEnv(env, options.server);
+      const { config, stackName, connection } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName });
 
       const replicaCount = parseInt(replicas, 10);

@@ -18,7 +18,7 @@ export function registerBackupRestoreCommand(program: Command): void {
     .description('Restore a service or accessory database from a backup')
     .option('--from <id>', 'Backup ID or date prefix (default: latest)')
     .option('-y, --yes', 'Skip confirmation prompt')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .option('-s, --server <name>', 'Target manager (defaults to the first manager)')
     .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string | undefined,

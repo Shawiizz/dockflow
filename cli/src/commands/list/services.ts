@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
 import { printSection, printNote, printJSON, printBlank, printDim, printRaw, colors } from '../../utils/output';
-import { validateEnv, withResolvedEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
@@ -22,11 +22,11 @@ export function registerListServicesCommand(parent: Command): void {
     .command('services <env>')
     .alias('svc')
     .description('List services in a deployed stack')
-    .option('-s, --server <name>', 'Target server (defaults to manager)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .option('-t, --tasks', 'Show individual containers/tasks for each service')
     .option('-j, --json', 'Output as JSON')
     .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string; tasks?: boolean; json?: boolean }) => {
-      const { stackName, connection } = validateEnv(env, options.server);
+      const { stackName, connection } = await resolveEnv(env, options.server);
 
       try {
         const orchestrator = createStackBackend(connection);

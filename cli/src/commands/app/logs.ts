@@ -6,7 +6,7 @@ import type { Command } from 'commander';
 import type { SSHKeyConnection } from '../../types';
 import { printInfo, printSection, printDebug, printBlank, printRaw } from '../../utils/output';
 import { selectPrompt } from '../../utils/prompts';
-import { validateEnv, getAllNodeConnections } from '../../utils/validation';
+import { resolveEnv, getAllNodeConnections } from '../../utils/validation';
 import { createContainerBackend, createStackBackend } from '../../services/orchestrator/factory';
 import { listSwarmTasks } from '../../services/orchestrator/swarm/swarm-utils';
 import { DockerError, withServicesRequired } from '../../utils/errors';
@@ -21,7 +21,7 @@ export function registerLogsCommand(program: Command): void {
     .option('-n, --tail <lines>', 'Number of lines to show', '100')
     .option('-T, --timestamps', 'Show timestamps')
     .option('--since <time>', 'Show logs since timestamp (e.g., "1h", "2024-01-01")')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .option('-a, --all-tasks', 'Include logs from terminated/historical task replicas (Swarm only)')
     .option('--pick', 'Interactively pick which task replica to follow')
     .action(withServicesRequired(async (env: string, service: string | undefined, options: {
@@ -33,7 +33,7 @@ export function registerLogsCommand(program: Command): void {
       allTasks?: boolean;
       pick?: boolean;
     }) => {
-      const { config, stackName, connection, serverName } = validateEnv(env, options.server);
+      const { config, stackName, connection, serverName } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName, serverName });
       printInfo(`Server: ${serverName}`);
       printInfo(`Fetching logs for stack: ${stackName}`);

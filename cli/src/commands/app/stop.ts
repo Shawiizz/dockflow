@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { printWarning, printInfo, printDebug, createSpinner } from '../../utils/output';
 import { confirmPrompt } from '../../utils/prompts';
-import { validateEnv } from '../../utils/validation';
+import { resolveEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { loadConfig } from '../../utils/config';
 import { DockerError, withServicesRequired, ConfigError } from '../../utils/errors';
@@ -16,9 +16,9 @@ export function registerStopCommand(program: Command): void {
     .description('Stop and remove the stack')
     .helpGroup('Operate')
     .option('-y, --yes', 'Skip confirmation')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .action(withServicesRequired(async (env: string, options: { yes?: boolean; server?: string }) => {
-      const { stackName, connection } = validateEnv(env, options.server);
+      const { stackName, connection } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName });
 
       if (!options.yes) {

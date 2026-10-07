@@ -11,10 +11,14 @@ import {
   getFullConnectionInfo,
   getAvailableEnvironments,
   getAllNodeConnections,
+  getManagersForEnvironment,
+  findActiveManager,
 } from './servers';
+import { printWarning } from './output';
 import { loadSecrets } from './secrets';
 import {
   CLIError,
+  ConnectionError,
   ErrorCode
 } from './errors';
 import type { SSHKeyConnection } from '../types';
@@ -74,12 +78,49 @@ export function resolveEnvironmentPrefix(env: string): string {
   return env;
 }
 
+export interface ServerChoice {
+  /** any server of the environment may be named or picked, workers included (`dockflow ssh`) */
+  anyServer?: boolean;
+}
+
+/**
+ * The server a command talks to: the named one, which must be a manager unless `anyServer`, or the
+ * first manager this machine has credentials for (a worker listed first used to be picked).
+ */
+export function chooseServer(
+  env: string,
+  servers: readonly { name: string; role: string }[],
+  serverName: string | undefined,
+  choice: ServerChoice,
+  hasCredentials: (name: string) => boolean,
+): { name: string } | ValidationError {
+  const eligible = choice.anyServer ? servers : servers.filter((s) => s.role === 'manager');
+  if (serverName) {
+    const named = servers.find((s) => s.name === serverName);
+    if (named && eligible.includes(named)) return { name: named.name };
+    return {
+      type: ValidationErrorType.NO_SERVERS_FOR_ENV,
+      message: named
+        ? `Server "${serverName}" is a worker; this command runs on a manager`
+        : `No server named "${serverName}" for environment ${env}`,
+      suggestion: `${choice.anyServer ? 'Servers' : 'Managers'}: ${eligible.map((s) => s.name).join(', ') || 'none'}`,
+    };
+  }
+  if (eligible.length === 0) {
+    return {
+      type: ValidationErrorType.NO_SERVERS_FOR_ENV,
+      message: `No manager for environment ${env}`,
+      suggestion: 'Give one of its servers role: manager in servers.yml',
+    };
+  }
+  return { name: (eligible.find((s) => hasCredentials(s.name)) ?? eligible[0]).name };
+}
+
 /**
  * Validate environment and return context or error
  * Does NOT exit process - caller decides what to do on failure
- * Uses the first server for the environment by default
  */
-export function validateEnvironment(env: string, serverName?: string): EnvironmentContext | ValidationError {
+export function validateEnvironment(env: string, serverName?: string, choice: ServerChoice = {}): EnvironmentContext | ValidationError {
   // Load secrets from .env.dockflow or CI environment
   loadSecrets();
 
@@ -131,8 +172,9 @@ export function validateEnvironment(env: string, serverName?: string): Environme
     };
   }
 
-  // Use specified server or first server
-  const targetServerName = serverName || servers[0].name;
+  const chosen = chooseServer(resolvedEnv, servers, serverName, choice, (name) => getFullConnectionInfo(resolvedEnv, name) !== null);
+  if ('type' in chosen) return chosen;
+  const targetServerName = chosen.name;
 
   // Get full connection info (with private key)
   const connection = getFullConnectionInfo(resolvedEnv, targetServerName);
@@ -170,14 +212,39 @@ function toCliError(error: ValidationError): CLIError {
  * Validate environment and throw CLIError on failure
  * Preferred for use with withErrorHandler
  */
-export function validateEnv(env: string, serverName?: string): EnvironmentContext {
-  const result = validateEnvironment(env, serverName);
+export function validateEnv(env: string, serverName?: string, choice: ServerChoice = {}): EnvironmentContext {
+  const result = validateEnvironment(env, serverName, choice);
 
   if (isValidationError(result)) {
     throw toCliError(result);
   }
 
   return result;
+}
+
+/**
+ * `validateEnv` for a command that talks to Swarm: with several managers and none named, the one
+ * that takes Swarm commands now (the leader first), so a manager down does not stop the command.
+ */
+export async function resolveEnv(env: string, serverName?: string): Promise<EnvironmentContext> {
+  const ctx = validateEnv(env, serverName);
+  if (serverName) return ctx;
+
+  const managers = getManagersForEnvironment(ctx.env);
+  if (managers.length < 2) return ctx;
+
+  const active = await findActiveManager(ctx.env, managers);
+  if (!active) {
+    throw new ConnectionError(
+      `No manager of ${ctx.env} takes Swarm commands`,
+      `Managers tried: ${managers.map((m) => `${m.name} (${m.host})`).join(', ')}`,
+    );
+  }
+  if (active.failedManagers.length > 0) {
+    printWarning(`Using ${active.manager.name}; not available: ${active.failedManagers.join(', ')}`);
+  }
+  const connection = getFullConnectionInfo(ctx.env, active.manager.name);
+  return connection ? { ...ctx, connection, serverName: active.manager.name } : ctx;
 }
 
 /**

@@ -19,7 +19,7 @@ export function registerBackupPruneCommand(program: Command): void {
     .description('Remove old backups (keeps the latest N per service)')
     .option('--keep <n>', 'Number of backups to keep per service (default: config retention_count or 10)')
     .option('-y, --yes', 'Skip confirmation prompt')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .option('-s, --server <name>', 'Target manager (defaults to the first manager)')
     .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string | undefined,

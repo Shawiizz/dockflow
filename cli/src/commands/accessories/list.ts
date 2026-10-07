@@ -7,7 +7,7 @@ import type { Command } from 'commander';
 import { getLayout } from '../../utils/config';
 import { sshExec } from '../../utils/ssh';
 import { printInfo, printIntro, printSection, printBlank, printJSON, printDim, printRaw, colors } from '../../utils/output';
-import { validateEnv, withResolvedEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { validateAccessoriesStack } from './utils';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 
@@ -70,7 +70,7 @@ export function registerAccessoriesListCommand(program: Command): void {
     .alias('ls')
     .description('List running accessories and their status')
     .option('-j, --json', 'Output in JSON format')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .action(withErrorHandler(withResolvedEnv(async (env: string, options: { json?: boolean; server?: string }) => {
       if (!options.json) {
         printIntro(`Accessories - ${env}`);
@@ -78,7 +78,7 @@ export function registerAccessoriesListCommand(program: Command): void {
       }
 
       // Validate environment
-      const { connection } = validateEnv(env, options.server);
+      const { connection } = await resolveEnv(env, options.server);
       const validation = await validateAccessoriesStack(connection, env);
 
       try {

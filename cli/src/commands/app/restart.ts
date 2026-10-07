@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import { printSuccess, printDebug, createSpinner } from '../../utils/output';
-import { validateEnv } from '../../utils/validation';
+import { resolveEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { loadConfig } from '../../utils/config';
 import { DockerError, withServicesRequired, ConfigError } from '../../utils/errors';
@@ -14,9 +14,9 @@ export function registerRestartCommand(program: Command): void {
     .command('restart <env> [service]')
     .description('Restart service(s)')
     .helpGroup('Operate')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .action(withServicesRequired(async (env: string, service: string | undefined, options: { server?: string }) => {
-      const { stackName, connection } = validateEnv(env, options.server);
+      const { stackName, connection } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName });
 
       const config = loadConfig();

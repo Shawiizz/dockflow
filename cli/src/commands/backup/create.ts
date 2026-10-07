@@ -17,7 +17,7 @@ export function registerBackupCreateCommand(program: Command): void {
     .command('create <env> [service]')
     .description('Create a backup of a service or accessory database')
     .option('-j, --json', 'Output backup metadata in JSON format')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .option('-s, --server <name>', 'Target manager (defaults to the first manager)')
     .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string | undefined,

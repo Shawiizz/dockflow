@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
 import { printSection, printNote, printBlank, printRaw } from '../../utils/output';
-import { validateEnv } from '../../utils/validation';
+import { resolveEnv } from '../../utils/validation';
 import { loadConfig } from '../../utils/config';
 import { withErrorHandler, DockerError } from '../../utils/errors';
 
@@ -13,10 +13,10 @@ export function registerListImagesCommand(parent: Command): void {
   parent
     .command('images <env>')
     .description('Show app images on server')
-    .option('-s, --server <name>', 'Target server (defaults to manager)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .option('-a, --all', 'Show all images, not just app images')
     .action(withErrorHandler(async (env: string, options: { server?: string; all?: boolean }) => {
-      const { stackName, connection } = validateEnv(env, options.server);
+      const { stackName, connection } = await resolveEnv(env, options.server);
       const config = loadConfig();
       const projectName = config?.project_name || stackName.split('-')[0];
 

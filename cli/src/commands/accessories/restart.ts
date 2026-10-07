@@ -5,7 +5,7 @@
 
 import type { Command } from 'commander';
 import { printIntro, printOutro, printDebug, printBlank, createSpinner } from '../../utils/output';
-import { validateEnv, withResolvedEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { loadConfig } from '../../utils/config';
@@ -16,7 +16,7 @@ export function registerAccessoriesRestartCommand(program: Command): void {
     .command('restart <env> [service]')
     .description('Restart accessory services')
     .option('--force', 'Force restart even if service is updating')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string | undefined,
@@ -25,7 +25,7 @@ export function registerAccessoriesRestartCommand(program: Command): void {
       printIntro(`Restarting Accessories - ${env}`);
       printBlank();
 
-      const { connection } = validateEnv(env, options.server);
+      const { connection } = await resolveEnv(env, options.server);
       const { stackName } = await requireAccessoriesStack(connection, env);
 
       const config = loadConfig();

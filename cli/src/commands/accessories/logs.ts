@@ -5,7 +5,7 @@
 
 import type { Command } from 'commander';
 import { printInfo, printSection, printBlank, printRaw } from '../../utils/output';
-import { validateEnv, withResolvedEnv, getAllNodeConnections } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv, getAllNodeConnections } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createContainerBackend, createStackBackend } from '../../services/orchestrator/factory';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -23,13 +23,13 @@ export function registerAccessoriesLogsCommand(program: Command): void {
     .option('--since <time>', 'Show logs since timestamp (e.g., 2021-01-02T13:23:37) or relative (e.g., 42m for 42 minutes)')
     .option('--timestamps', 'Show timestamps')
     .option('--raw', 'Show raw output without pretty printing')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string | undefined,
       options: { follow?: boolean; tail?: string; since?: string; timestamps?: boolean; raw?: boolean; server?: string }
     ) => {
-      const { config, connection } = validateEnv(env, options.server);
+      const { config, connection } = await resolveEnv(env, options.server);
       const { stackName } = await requireAccessoriesStack(connection, env);
 
       // All node connections are required: in a multi-node Swarm the

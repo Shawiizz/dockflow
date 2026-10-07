@@ -8,7 +8,7 @@ import { sshExec, shellQuote } from '../../utils/ssh';
 import type { SSHKeyConnection } from '../../types/connection';
 import { confirmPrompt, dangerousConfirmPrompt } from '../../utils/prompts';
 import { printInfo, printIntro, printOutro, printNote, printWarning, printError, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
-import { validateEnv, withResolvedEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { validateAccessoriesStack } from './utils';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
 import { STACK_REMOVAL_MAX_ATTEMPTS, STACK_REMOVAL_POLL_INTERVAL_MS, DOCKFLOW_ACCESSORIES_DIR } from '../../constants';
@@ -23,12 +23,12 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
     .description('Remove the accessories stack entirely')
     .option('-v, --volumes', 'Also remove associated volumes (DESTRUCTIVE)')
     .option('-y, --yes', 'Skip confirmation prompt')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       options: RemoveOptions
     ) => {
-      const { connection, stackName } = validateEnv(env, options.server);
+      const { connection, stackName } = await resolveEnv(env, options.server);
       await removeAccessories(connection, env, stackName, options);
     })));
 }

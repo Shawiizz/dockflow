@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import { printInfo, printNote, printBlank, printDim, createSpinner } from '../../utils/output';
-import { validateEnv, withResolvedEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { createLock } from '../../services';
 import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
@@ -12,10 +12,10 @@ export function registerLockReleaseCommand(parent: Command): void {
   parent
     .command('release <env>')
     .description('Release a deployment lock')
-    .option('-s, --server <name>', 'Target server (defaults to manager)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .option('--force', 'Force release without confirmation')
     .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string; force?: boolean }) => {
-      const { stackName, connection, config } = validateEnv(env, options.server);
+      const { stackName, connection, config } = await resolveEnv(env, options.server);
       const lockService = createLock(connection, stackName, config.lock?.stale_threshold_minutes);
       const spinner = createSpinner();
 

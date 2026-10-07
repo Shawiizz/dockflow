@@ -1,9 +1,5 @@
 /**
- * Manager failover utilities
- * 
- * Handles multi-manager high availability:
- * - Check manager status (leader/reachable/unreachable)
- * - Find active manager with automatic failover
+ * Manager failover: which manager of an environment can take Swarm commands now.
  */
 
 import { sshExec } from '../ssh';
@@ -12,71 +8,55 @@ import type { SSHKeyConnection, ResolvedServer } from '../../types';
 import { getFullConnectionInfo } from './resolver';
 
 /**
- * Check if a manager is reachable and get its Swarm status
- * Returns: 'leader' | 'reachable' | 'unreachable'
+ * - leader: the Raft leader
+ * - reachable: a manager that takes Swarm commands
+ * - unready: Docker answers, but the node cannot take Swarm commands (not a manager, or no quorum)
+ * - unreachable: no answer over SSH or from Docker
  */
-export async function checkManagerStatus(
-  connection: SSHKeyConnection
-): Promise<'leader' | 'reachable' | 'unreachable'> {
+export type ManagerStatus = 'leader' | 'reachable' | 'unready' | 'unreachable';
+
+export async function checkManagerStatus(connection: SSHKeyConnection): Promise<ManagerStatus> {
   try {
-    // Quick connectivity check + Swarm leader status
     const result = await sshExec(connection,
       'docker info --format "{{.Swarm.ControlAvailable}}" 2>/dev/null || echo "error"'
     );
-    
+
     if (result.exitCode !== 0 || result.stdout.trim() === 'error') {
       return 'unreachable';
     }
-    
-    // ControlAvailable = true means this node can accept manager commands
-    // It may or may not be the leader, but it can handle deployments
-    const controlAvailable = result.stdout.trim().toLowerCase() === 'true';
-    
-    if (controlAvailable) {
-      // Check if this is specifically the leader
-      const leaderCheck = await sshExec(connection,
-        'docker node inspect self --format "{{.ManagerStatus.Leader}}" 2>/dev/null || echo "false"'
-      );
-      
-      if (leaderCheck.stdout.trim().toLowerCase() === 'true') {
-        return 'leader';
-      }
-      return 'reachable';
-    }
-    
-    return 'reachable'; // Node is up but not a manager or Swarm not initialized
+
+    if (result.stdout.trim().toLowerCase() !== 'true') return 'unready';
+
+    const leaderCheck = await sshExec(connection,
+      'docker node inspect self --format "{{.ManagerStatus.Leader}}" 2>/dev/null || echo "false"'
+    );
+    return leaderCheck.stdout.trim().toLowerCase() === 'true' ? 'leader' : 'reachable';
   } catch {
     return 'unreachable';
   }
 }
 
-/**
- * Result of finding an active manager
- */
 export interface ActiveManagerResult {
   manager: ResolvedServer;
   status: 'leader' | 'reachable';
   failedManagers: string[];
 }
 
-/**
- * Options for findActiveManager
- */
 export interface FindActiveManagerOptions {
-  /** Enable verbose output */
+  /** Print each manager's status */
   verbose?: boolean;
   /** Prefer leader node (default: true) */
   preferLeader?: boolean;
 }
 
+const FAILURE_LABEL: Record<'unready' | 'unreachable', string> = {
+  unready: 'cannot take Swarm commands',
+  unreachable: 'unreachable',
+};
+
 /**
- * Find the active manager for deployment with failover
- * 
- * Strategy:
- * 1. Try each manager in order
- * 2. Prefer the leader if found
- * 3. Fall back to any reachable manager (Swarm will forward to leader)
- * 4. Return null if no managers are reachable
+ * Probes every manager at once and returns the leader, or else the first manager in the given
+ * order that takes Swarm commands (it forwards to the leader). Null when none does.
  */
 export async function findActiveManager(
   env: string,
@@ -84,57 +64,37 @@ export async function findActiveManager(
   options: FindActiveManagerOptions = {}
 ): Promise<ActiveManagerResult | null> {
   const { verbose = false, preferLeader = true } = options;
-  const failedManagers: string[] = [];
-  let firstReachable: { manager: ResolvedServer; status: 'leader' | 'reachable' } | null = null;
-  
-  for (const manager of managers) {
+
+  const probes = await Promise.all(managers.map(async (manager) => {
     const connection = getFullConnectionInfo(env, manager.name);
-    if (!connection) {
-      if (verbose) {
-        printWarning(`${manager.name}: No SSH key configured`);
-      }
+    const status: ManagerStatus | 'no-key' = connection ? await checkManagerStatus(connection) : 'no-key';
+    return { manager, status };
+  }));
+
+  const failedManagers: string[] = [];
+  for (const { manager, status } of probes) {
+    if (status === 'no-key') {
+      if (verbose) printWarning(`${manager.name}: No SSH key configured`);
       failedManagers.push(`${manager.name} (no SSH key)`);
-      continue;
-    }
-    
-    if (verbose) {
-      process.stdout.write(`  Checking ${manager.name} (${manager.host})...`);
-    }
-    
-    const status = await checkManagerStatus(connection);
-    
-    if (status === 'unreachable') {
-      if (verbose) {
-        printError('unreachable');
-      }
-      failedManagers.push(`${manager.name} (unreachable)`);
-      continue;
-    }
-    
-    if (verbose) {
-      printSuccess(status === 'leader' ? 'LEADER' : 'reachable');
-    }
-    
-    // If this is the leader and we prefer leader, return immediately
-    if (status === 'leader' && preferLeader) {
-      return { manager, status, failedManagers };
-    }
-    
-    // Store first reachable manager as fallback
-    if (!firstReachable) {
-      firstReachable = { manager, status };
-    }
-    
-    // If we found the leader but don't prefer it, keep it as best option
-    if (status === 'leader') {
-      firstReachable = { manager, status };
+    } else if (status === 'unready' || status === 'unreachable') {
+      if (verbose) printError(`${manager.name} (${manager.host}): ${FAILURE_LABEL[status]}`);
+      failedManagers.push(`${manager.name} (${FAILURE_LABEL[status]})`);
+    } else if (verbose) {
+      printSuccess(`${manager.name} (${manager.host}): ${status === 'leader' ? 'LEADER' : 'reachable'}`);
     }
   }
-  
-  // Return first reachable manager if no leader found (or preferLeader=false)
-  if (firstReachable) {
-    return { ...firstReachable, failedManagers };
-  }
-  
-  return null;
+
+  const chosen = pickActiveManager(probes, preferLeader);
+  return chosen ? { ...chosen, failedManagers } : null;
+}
+
+/** The leader (when preferred), else the first manager in order that takes Swarm commands. */
+export function pickActiveManager<T>(
+  probes: readonly { manager: T; status: ManagerStatus | 'no-key' }[],
+  preferLeader = true,
+): { manager: T; status: 'leader' | 'reachable' } | null {
+  const usable = probes.filter(
+    (p): p is { manager: T; status: 'leader' | 'reachable' } => p.status === 'leader' || p.status === 'reachable',
+  );
+  return (preferLeader ? usable.find((p) => p.status === 'leader') : undefined) ?? usable[0] ?? null;
 }

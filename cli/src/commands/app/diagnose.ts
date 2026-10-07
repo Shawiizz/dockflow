@@ -4,7 +4,7 @@ import {
   printSection, printIntro, printInfo, printError,
   printSuccess, printDebug, printBlank, printRaw, printWarning, colors,
 } from '../../utils/output';
-import { validateEnv, withResolvedEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { SwarmStackBackend } from '../../services/orchestrator/swarm/swarm-stack';
 import { withServicesRequired } from '../../utils/errors';
 
@@ -76,10 +76,10 @@ export function registerDiagnoseCommand(program: Command): void {
     .command('diagnose <env>')
     .description('Diagnose deployment issues and show why containers may not be starting')
     .helpGroup('Inspect')
-    .option('-s, --server <name>', 'Target server (defaults to first server for environment)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .option('-v, --verbose', 'Show all diagnostic details')
     .action(withServicesRequired(withResolvedEnv(async (env: string, options: { server?: string; verbose?: boolean }) => {
-      const { stackName, connection, serverName } = validateEnv(env, options.server);
+      const { stackName, connection, serverName } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName, serverName });
 
 

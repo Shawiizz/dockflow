@@ -3,7 +3,7 @@
  */
 
 import type { Command } from 'commander';
-import { validateEnv } from '../../utils/validation';
+import { resolveEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { loadConfig } from '../../utils/config';
 import { DockerError, withServicesRequired, ConfigError } from '../../utils/errors';
@@ -14,10 +14,10 @@ export function registerVersionCommand(program: Command): void {
     .command('version <env>')
     .description('Show app version currently deployed')
     .helpGroup('Inspect')
-    .option('-s, --server <name>', 'Target server (defaults to manager)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .option('-j, --json', 'Output as JSON')
     .action(withServicesRequired(async (env: string, options: { server?: string; json?: boolean }) => {
-      const { stackName, connection } = validateEnv(env, options.server);
+      const { stackName, connection } = await resolveEnv(env, options.server);
 
       const config = loadConfig();
       if (!config) throw new ConfigError('No dockflow config found');

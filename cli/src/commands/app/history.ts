@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { sshExecWithFallback } from '../../utils/ssh-fallback';
 import { printSection, printNote, printDebug, colors, printBlank, printWarning, printDim, printJSON, printRaw } from '../../utils/output';
-import { validateEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
+import { resolveEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 import { DOCKFLOW_AUDIT_DIR } from '../../constants';
 
@@ -51,12 +51,12 @@ export function registerHistoryCommand(program: Command): void {
     .alias('audit')
     .description('Show deployment history')
     .helpGroup('Inspect')
-    .option('-s, --server <name>', 'Target server (defaults to manager)')
+    .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .option('-n, --lines <number>', 'Number of lines to show', '20')
     .option('--all', 'Show all entries')
     .option('-j, --json', 'Output as JSON')
     .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string; lines?: string; all?: boolean; json?: boolean }) => {
-      const { stackName, connection } = validateEnv(env, options.server);
+      const { stackName, connection } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName, lines: options.lines, json: options.json });
 
       const auditFile = `${DOCKFLOW_AUDIT_DIR}/${stackName}.log`;
