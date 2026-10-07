@@ -36,3 +36,22 @@ describe('ServersBaseSchema — env block with a null tag entry', () => {
     expect(result.env?.production).toBeUndefined();
   });
 });
+
+describe('invalid record keys', () => {
+  const messages = (input: unknown) => {
+    const result = ServersBaseSchema.safeParse(input);
+    return result.success ? [] : result.error.issues.map((issue) => issue.message);
+  };
+
+  it('a bad server name reports its rule, not "Invalid key in record"', () => {
+    expect(messages({ servers: { Bad_Name: { host: '1.2.3.4', tags: ['production'] } } })).toContain(
+      'Server name must be lowercase alphanumeric with hyphens or underscores',
+    );
+  });
+
+  it('a bad env var name reports its rule', () => {
+    expect(messages({ servers: { main: { host: '1.2.3.4', tags: ['production'], env: { '1BAD': 'x' } } } })).toContain(
+      'Environment variable names must start with a letter and contain only letters, numbers, and underscores',
+    );
+  });
+});

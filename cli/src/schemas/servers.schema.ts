@@ -11,12 +11,16 @@ import { z } from 'zod';
  */
 const ENV_VAR_NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]*$/;
 
+/** zod reports a record key that fails its schema as "Invalid key in record": say the key's own rule. */
+const recordKeyMessage = { error: (issue: z.core.$ZodRawIssue) => (issue.code === 'invalid_key' ? issue.issues[0]?.message : undefined) };
+
 export const EnvVarsSchema = z.record(
   z.string().regex(
     ENV_VAR_NAME_REGEX,
     'Environment variable names must start with a letter and contain only letters, numbers, and underscores'
   ),
-  z.string()
+  z.string(),
+  recordKeyMessage,
 )
   .nullable()
   .transform((val) => val ?? {})
@@ -111,7 +115,8 @@ export const ServersBaseSchema = z.object({
         /^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0-9]$/,
         'Server name must be lowercase alphanumeric with hyphens or underscores'
       ),
-    ServerConfigSchema
+    ServerConfigSchema,
+    recordKeyMessage,
   )
     .refine(
       (servers) => Object.keys(servers).length > 0,
