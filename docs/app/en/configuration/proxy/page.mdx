@@ -136,6 +136,12 @@ reaching Traefik (see the warning under [Requirements](#requirements)).
 
 On `dockflow deploy`, Dockflow creates a `traefik-public` overlay network and deploys Traefik as a Swarm service on the manager node. Traefik watches the Docker Swarm API for services with `traefik.enable=true` labels.
 
+Traefik answers the internet, so it does not mount the Docker socket. It reads the Swarm API
+through a second service of the `traefik` stack,
+[docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy), which alone mounts the
+socket (read-only) and only answers `GET` requests on services, tasks, networks, nodes and
+system info, over an internal network that only Traefik joins.
+
 ### Label injection
 
 Dockflow automatically injects Traefik routing labels into your app services (any service that has `ports:` defined):

@@ -82,6 +82,9 @@ export const TRAEFIK_STACK_NAME = 'traefik';
 export const TRAEFIK_NETWORK_NAME = 'traefik-public';
 export const TRAEFIK_CERTS_VOLUME = 'traefik-certs';
 export const TRAEFIK_IMAGE = 'traefik:v3.6';
+/** Read-only proxy of the Docker API that Traefik reads Swarm through; pinned, as it holds the socket */
+export const SOCKET_PROXY_IMAGE =
+  'tecnativa/docker-socket-proxy:v0.5.0@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459';
 
 /**
  * k3s orchestrator constants

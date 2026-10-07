@@ -17,11 +17,14 @@ import {
   TRAEFIK_NETWORK_NAME,
   TRAEFIK_CERTS_VOLUME,
   TRAEFIK_IMAGE,
+  SOCKET_PROXY_IMAGE,
 } from '../../../constants';
 
 import type { ProxyBackend } from '../interfaces';
 
 const CONFIG_HASH_LABEL = 'dockflow.config-hash';
+const SOCKET_PROXY_SERVICE = 'socket-proxy';
+const SOCKET_PROXY_NETWORK = 'socket-proxy';
 
 export class SwarmProxyBackend implements ProxyBackend {
   constructor(private readonly connection: SSHKeyConnection) {}
@@ -95,6 +98,8 @@ export class SwarmProxyBackend implements ProxyBackend {
 
     const command: string[] = [
       '--providers.swarm=true',
+      // Traefik answers the internet: it reads Swarm through the read-only proxy, never the socket
+      `--providers.swarm.endpoint=tcp://${SOCKET_PROXY_SERVICE}:2375`,
       '--providers.swarm.exposedByDefault=false',
       `--providers.swarm.network=${TRAEFIK_NETWORK_NAME}`,
       '--entrypoints.web.address=:80',
@@ -132,7 +137,7 @@ export class SwarmProxyBackend implements ProxyBackend {
     }
 
     // Volumes
-    const volumes: string[] = ['/var/run/docker.sock:/var/run/docker.sock:ro'];
+    const volumes: string[] = [];
     if (acme) {
       volumes.push(`${TRAEFIK_CERTS_VOLUME}:/letsencrypt`);
     }
@@ -166,9 +171,11 @@ export class SwarmProxyBackend implements ProxyBackend {
     const portsYaml = ports
       .map((p) => `      - target: ${p.target}\n        published: ${p.published}\n        protocol: ${p.protocol}\n        mode: ${p.mode}`)
       .join('\n');
-    const volumesYaml = volumes.map((v) => `      - ${v}`).join('\n');
+    const volumesYaml = volumes.length > 0 ? `    volumes:\n${volumes.map((v) => `      - ${v}`).join('\n')}\n` : '';
     const labelsYaml = labels.map((l) => `        - "${l}"`).join('\n');
 
+    // The proxy holds the socket read-only and answers GET requests on the parts of the Docker
+    // API the Swarm provider reads (POST stays off), on a network only Traefik joins.
     let yaml = `version: "3.8"
 
 services:
@@ -178,10 +185,9 @@ services:
 ${commandYaml}
     ports:
 ${portsYaml}
-    volumes:
-${volumesYaml}
-    networks:
+${volumesYaml}    networks:
       - ${TRAEFIK_NETWORK_NAME}
+      - ${SOCKET_PROXY_NETWORK}
     deploy:
       placement:
         constraints:
@@ -191,9 +197,31 @@ ${volumesYaml}
       labels:
 ${labelsYaml}
 
+  ${SOCKET_PROXY_SERVICE}:
+    image: ${SOCKET_PROXY_IMAGE}
+    environment:
+      SERVICES: "1"
+      TASKS: "1"
+      NETWORKS: "1"
+      NODES: "1"
+      INFO: "1"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - ${SOCKET_PROXY_NETWORK}
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
 networks:
   ${TRAEFIK_NETWORK_NAME}:
-    external: true`;
+    external: true
+  ${SOCKET_PROXY_NETWORK}:
+    driver: overlay
+    internal: true`;
 
     if (acme) {
       yaml += `
