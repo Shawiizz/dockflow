@@ -17,11 +17,25 @@ on:
         type: string
         required: false
         default: '["swarm", "setup"]'
+      binary_artifact:
+        description: Artifact of the calling run that holds dockflow-linux-x64; empty builds from source
+        type: string
+        required: false
+        default: ''
+
+# A newer push to a pull request replaces its run; a push to a branch or a release never cancels.
+concurrency:
+  group: e2e-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 jobs:
   e2e:
     name: E2E (${{ matrix.suite }})
-    runs-on: ubuntu-latest
+    if: ${{ (inputs.suites || '["swarm", "setup"]') != '[]' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -41,51 +55,36 @@ jobs:
         run: |
           cd cli && bun install --frozen-lockfile
 
+      - name: Download the binary under test
+        if: ${{ inputs.binary_artifact }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.binary_artifact }}
+          path: dist-under-test
+
+      - name: Use the binary under test
+        if: ${{ inputs.binary_artifact }}
+        run: |
+          chmod +x dist-under-test/dockflow-linux-x64
+          echo "DOCKFLOW_E2E_BINARY=$GITHUB_WORKSPACE/dist-under-test/dockflow-linux-x64" >> "$GITHUB_ENV"
+
       - name: Run E2E Tests (${{ matrix.suite }})
         run: |
           cd testing/e2e/${{ matrix.suite }} && bun test tests/ --timeout 300000
 
-      - name: Show Swarm cluster logs on failure
+      - name: Dump the Swarm cluster state on failure
         if: failure() && matrix.suite == 'swarm'
         run: |
-          echo "=== Docker Compose Status ==="
-          docker ps -a
-          echo ""
-          echo "=== Manager Docker Info ==="
-          docker exec dockflow-test-manager docker info 2>/dev/null | grep -E "Storage|Server Version" || true
-          echo ""
-          echo "=== Manager Images ==="
-          docker exec dockflow-test-manager docker images 2>/dev/null || true
-          echo ""
-          echo "=== Manager Node Logs ==="
-          docker compose -f testing/e2e/docker/docker-compose.yml logs test-vm-manager 2>/dev/null || true
-          echo ""
-          echo "=== Worker Node Logs ==="
-          docker compose -f testing/e2e/docker/docker-compose.yml logs test-vm-worker-1 2>/dev/null || true
-          echo ""
-          echo "=== Swarm Node Status ==="
-          docker exec dockflow-test-manager docker node ls 2>/dev/null || echo "Could not fetch node status"
-          echo ""
-          echo "=== Swarm Services ==="
-          docker exec dockflow-test-manager docker service ls 2>/dev/null || echo "Could not fetch services"
-          echo ""
-          echo "=== Swarm Service Tasks ==="
-          docker exec dockflow-test-manager docker service ps --no-trunc $(docker exec dockflow-test-manager docker service ls -q 2>/dev/null) 2>/dev/null || echo "Could not fetch service tasks"
-          echo ""
-          echo "=== Application Logs ==="
-          docker exec dockflow-test-manager docker service logs test-app-test_web 2>&1 || echo "Could not fetch app logs"
-          echo ""
-          echo "=== Traefik Logs ==="
-          docker exec dockflow-test-manager docker service logs traefik_traefik 2>&1 || echo "Could not fetch Traefik logs"
-          echo ""
-          echo "=== Traefik Service Labels ==="
-          docker exec dockflow-test-manager docker service inspect traefik_traefik --format '{{json .Spec.Labels}}' 2>/dev/null | jq . || true
-          echo ""
-          echo "=== App Service Labels ==="
-          docker exec dockflow-test-manager docker service inspect test-app-test_web --format '{{json .Spec.Labels}}' 2>/dev/null | jq . || true
-          echo ""
-          echo "=== Overlay Networks ==="
-          docker exec dockflow-test-manager docker network ls --filter driver=overlay 2>/dev/null || true
+          bun run testing/e2e/helpers/debug-dump.ts swarm
+
+      - name: Upload the Swarm dump
+        if: failure() && matrix.suite == 'swarm'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-swarm-dump-${{ github.run_attempt }}
+          path: testing/e2e/.artifacts
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Show setup container state on failure
         if: failure() && matrix.suite == 'setup'
@@ -100,3 +99,24 @@ jobs:
         if: always()
         run: |
           bun run testing/e2e/teardown.ts 2>/dev/null || true
+
+  # One check for branch protection and for the release gate: a suite that was cancelled, or a
+  # matrix emptied by a bad edit, must not leave the run green.
+  summary:
+    name: E2E summary
+    if: always()
+    needs: [e2e]
+    runs-on: ubuntu-24.04
+    env:
+      NEEDS: ${{ toJSON(needs) }}
+    steps:
+      - name: Fail when any suite failed or was cancelled
+        run: |
+          echo "$NEEDS" | jq -e 'to_entries | all(.value.result == "success" or .value.result == "skipped")'
+
+      # In a call from the release workflow github.event_name is the caller's (the tag push), so the
+      # release gate gets the same guard.
+      - name: Require the suites to have run
+        if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+        run: |
+          echo "$NEEDS" | jq -e '.e2e.result == "success"'

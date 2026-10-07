@@ -63,6 +63,8 @@ export async function dumpDebug(lane: string): Promise<string> {
   write(dir, "host-docker-ps.txt", `${host.stdout}${host.stderr}`);
 
   for (const container of NODES) {
+    const logs = await tryExec(["docker", "logs", "--tail", "500", container]);
+    write(dir, `${container}.container-logs.txt`, `${logs.stdout}${logs.stderr}`);
     for (const { file, argv } of NODE_COMMANDS) {
       write(dir, `${container}.${file}`, await inContainer(container, argv));
     }
