@@ -13,6 +13,7 @@
 import type { SSHKeyConnection } from '../types';
 import type { BackupDbType, BackupAccessoryConfig } from '../utils/config';
 import { ok, err, type Result } from '../types';
+import { BackupError, ErrorCode } from '../utils/errors';
 import { sshExec, sshExecChannel, shellQuote } from '../utils/ssh';
 import { formatBytes, printDebug } from '../utils/output';
 import { findSwarmContainer } from './orchestrator/swarm/swarm-utils';
@@ -24,6 +25,8 @@ import {
   buildDumpScript,
   buildRestoreScript,
   parseContainerMounts,
+  parseRestoreRefusal,
+  stripRefusalMarker,
   buildCapturePipeline,
   buildDataFilePath,
   buildBackupDir,
@@ -608,11 +611,21 @@ export class Backup {
 
     const result = await sshExec(nodeConn, fullCommand);
 
+    if (parseRestoreRefusal(result.stderr) === 'redis-appendonly') {
+      return err(new BackupError(
+        `Redis in service ${service} has appendonly enabled; a restored dump.rdb would be ignored at startup, so nothing was changed`,
+        {
+          code: ErrorCode.RESTORE_FAILED,
+          suggestion: 'Back up and restore this service with `type: volume`.',
+        },
+      ));
+    }
+
     // For strategies that kill the container as part of restore (e.g. Redis SHUTDOWN NOSAVE),
     // a non-zero exit from docker exec is expected — the process died mid-exec.
     // Only treat it as an error if there's actual stderr output.
     const restoreKillsContainer = DB_TYPES[dbType].requiresServiceRestart;
-    const detail = result.stderr.trim();
+    const detail = stripRefusalMarker(result.stderr).trim();
     if (result.exitCode !== 0 && (!restoreKillsContainer || detail)) {
       return err(new Error(`Restore failed: ${detail || `exit code ${result.exitCode}`}`));
     }

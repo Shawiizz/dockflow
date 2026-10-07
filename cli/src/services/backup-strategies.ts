@@ -38,6 +38,9 @@ export const DB_TYPES: Record<Exclude<BackupDbType, 'volume'>, { fileExtension: 
   raw: { fileExtension: 'bin', requiresServiceRestart: false },
 };
 
+/** Written by the in-container restore script on stderr, read back by `services/backup.ts`. */
+export const RESTORE_REFUSAL_MARKER = 'DOCKFLOW_REFUSED: ';
+
 // ─── In-container scripts ─────────────────────────────────────────────────
 //
 // The container's own shell reads its credentials from its own environment, so no secret appears
@@ -63,6 +66,11 @@ const MONGO_ARGS =
 // flight is fine too, it started after the data was written.
 const REDIS_DUMP =
   'BEFORE=$(redis-cli LASTSAVE) && OUT=$(redis-cli BGSAVE) && echo "$OUT" | grep -qE "Background saving (started|scheduled)|already in progress" || { echo "BGSAVE failed: $OUT" >&2; exit 1; } && for i in $(seq 1 30); do AFTER=$(redis-cli LASTSAVE); [ "$AFTER" != "$BEFORE" ] && break; sleep 1; done && cat /data/dump.rdb';
+
+// With appendonly Redis loads the AOF at startup and ignores a restored RDB. stdin is drained so
+// the host side of the pipe never fails with a broken pipe instead of this refusal.
+const REDIS_APPENDONLY_GUARD =
+  'if [ "$(redis-cli CONFIG GET appendonly 2>/dev/null | tail -n 1)" = "yes" ]; then echo "DOCKFLOW_REFUSED: redis-appendonly" >&2; cat > /dev/null; exit 3; fi; ';
 
 // Stage the RDB and refuse an empty stream (an empty dump.rdb leaves Redis crash-looping), then
 // SHUTDOWN NOSAVE so Redis does not overwrite the file with its in-memory data on the way down.
@@ -185,8 +193,27 @@ export function buildRestoreScript(config: BackupAccessoryConfig): string {
       // --drop: each collection of the archive replaces the live one instead of being merged into it
       return `${MONGO_ARGS}exec mongorestore "$@" --drop${opts}`;
     case 'redis':
-      return REDIS_RESTORE;
+      return REDIS_APPENDONLY_GUARD + REDIS_RESTORE;
   }
+}
+
+/** The refusal id the restore script announced on stderr, if any. */
+export function parseRestoreRefusal(stderr: string): 'redis-appendonly' | null {
+  for (const line of stderr.split(/\r?\n/)) {
+    const text = line.trim();
+    if (text.startsWith(RESTORE_REFUSAL_MARKER) && text.slice(RESTORE_REFUSAL_MARKER.length).trim() === 'redis-appendonly') {
+      return 'redis-appendonly';
+    }
+  }
+  return null;
+}
+
+/** stderr without the internal marker lines, for messages shown to the user */
+export function stripRefusalMarker(stderr: string): string {
+  return stderr
+    .split(/\r?\n/)
+    .filter((line) => !line.includes(RESTORE_REFUSAL_MARKER.trim()))
+    .join('\n');
 }
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────

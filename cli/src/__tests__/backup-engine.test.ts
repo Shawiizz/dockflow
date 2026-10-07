@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { Writable } from 'stream';
 import { Backup, type BackupMetadata } from '../services/backup';
+import { BackupError, ErrorCode } from '../utils/errors';
 import type { SSHKeyConnection } from '../types';
 import type { BackupAccessoryConfig } from '../utils/config';
 import * as output from '../utils/output';
@@ -352,6 +353,20 @@ describe('Backup.restore of redis', () => {
     nodes.on('*.meta.json', listing(metadata({ id: POSTGRES_BACKUP, dbType: 'redis' })));
   }
 
+  it('an appendonly redis is refused with advice, before the service is touched', async () => {
+    redisBackup();
+    nodes.on('docker exec -i', { exitCode: 3, stderr: 'DOCKFLOW_REFUSED: redis-appendonly\n' });
+    const error = failure(await backupEngine().restore('db', POSTGRES_BACKUP, REDIS));
+    expect(error).toBeInstanceOf(BackupError);
+    expect(error.message).toBe(
+      'Redis in service db has appendonly enabled; a restored dump.rdb would be ignored at startup, so nothing was changed',
+    );
+    expect((error as BackupError).suggestion).toBe('Back up and restore this service with `type: volume`.');
+    expect((error as BackupError).code).toBe(ErrorCode.RESTORE_FAILED);
+    expect(pauses).toEqual([]);
+    expect(nodes.commands().some((command) => command.startsWith('docker service update'))).toBe(false);
+  });
+
   it('the expected kill of redis (non-zero exit, empty stderr) is a success followed by a service update', async () => {
     redisBackup();
     nodes.on('docker exec -i', { exitCode: 137 });
@@ -360,7 +375,7 @@ describe('Backup.restore of redis', () => {
     expect(nodes.commands('manager')).toContain(`docker service update --force ${STACK}_db`);
   });
 
-  it('any other failure reports its detail and does not restart', async () => {
+  it('any other failure reports its detail without the marker line, and does not restart', async () => {
     redisBackup();
     nodes.on('docker exec -i', { exitCode: 1, stderr: 'restore: received an empty backup stream\n' });
     expect(failure(await backupEngine().restore('db', POSTGRES_BACKUP, REDIS)).message).toBe(

@@ -7,7 +7,7 @@ import type { Command } from 'commander';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { dangerousConfirmPrompt } from '../../utils/prompts';
 import { printIntro, printOutro, printInfo, printWarning, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
-import { BackupError, ErrorCode, ValidationError, withErrorHandler } from '../../utils/errors';
+import { BackupError, CLIError, ErrorCode, ValidationError, withErrorHandler } from '../../utils/errors';
 import { createBackup } from '../../services/backup';
 import { requireBackupConfig, resolveBackupStack, getBackupServiceNames } from './utils';
 import { getAllNodeConnections } from '../../utils/servers';
@@ -80,7 +80,9 @@ export function registerBackupRestoreCommand(program: Command): void {
 
       if (!result.success) {
         spinner.fail('Restore failed');
-        throw new BackupError(result.error.message, { code: ErrorCode.RESTORE_FAILED });
+        throw result.error instanceof CLIError
+          ? result.error
+          : new BackupError(result.error.message, { code: ErrorCode.RESTORE_FAILED });
       }
 
       spinner.succeed('Restore completed');

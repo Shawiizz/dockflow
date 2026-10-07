@@ -14,8 +14,11 @@ import {
   credentialPrelude,
   findBackupMatch,
   parseContainerMounts,
+  parseRestoreRefusal,
+  RESTORE_REFUSAL_MARKER,
   sanitizePathName,
   selectBackupsToPrune,
+  stripRefusalMarker,
 } from '../services/backup-strategies';
 import type { BackupAccessoryConfig } from '../utils/config';
 import { ConfigError } from '../utils/errors';
@@ -32,6 +35,7 @@ const MONGO_ARGS =
 const REDIS_DUMP =
   'BEFORE=$(redis-cli LASTSAVE) && OUT=$(redis-cli BGSAVE) && echo "$OUT" | grep -qE "Background saving (started|scheduled)|already in progress" || { echo "BGSAVE failed: $OUT" >&2; exit 1; } && for i in $(seq 1 30); do AFTER=$(redis-cli LASTSAVE); [ "$AFTER" != "$BEFORE" ] && break; sleep 1; done && cat /data/dump.rdb';
 const REDIS_RESTORE =
+  'if [ "$(redis-cli CONFIG GET appendonly 2>/dev/null | tail -n 1)" = "yes" ]; then echo "DOCKFLOW_REFUSED: redis-appendonly" >&2; cat > /dev/null; exit 3; fi; ' +
   'cat > /data/dump.rdb.tmp; if ! [ -s /data/dump.rdb.tmp ]; then rm -f /data/dump.rdb.tmp; echo "restore: received an empty backup stream" >&2; exit 1; fi; mv /data/dump.rdb.tmp /data/dump.rdb && redis-cli SHUTDOWN NOSAVE || true';
 
 const cfg = (config: BackupAccessoryConfig): BackupAccessoryConfig => config;
@@ -124,7 +128,7 @@ describe('buildRestoreScript', () => {
     expect(buildRestoreScript(cfg({ type: 'mongodb', restore_options: '--gzip' }))).toBe(`${MONGO_ARGS}exec mongorestore "$@" --drop --gzip`);
   });
 
-  it('redis: the staged RDB, then a shutdown without save', () => {
+  it('redis: appendonly refusal first, then the staged RDB', () => {
     expect(buildRestoreScript(cfg({ type: 'redis' }))).toBe(REDIS_RESTORE);
   });
 
@@ -166,6 +170,27 @@ describe('DB_TYPES', () => {
       redis: { fileExtension: 'rdb', requiresServiceRestart: true },
       raw: { fileExtension: 'bin', requiresServiceRestart: false },
     });
+  });
+});
+
+describe('parseRestoreRefusal', () => {
+  it('recognises the redis appendonly marker line', () => {
+    expect(RESTORE_REFUSAL_MARKER).toBe('DOCKFLOW_REFUSED: ');
+    expect(parseRestoreRefusal('DOCKFLOW_REFUSED: redis-appendonly\n')).toBe('redis-appendonly');
+    expect(parseRestoreRefusal('warning: x\r\nDOCKFLOW_REFUSED: redis-appendonly\r\n')).toBe('redis-appendonly');
+    expect(parseRestoreRefusal('  DOCKFLOW_REFUSED: redis-appendonly  ')).toBe('redis-appendonly');
+  });
+
+  it('ignores other text and unknown ids', () => {
+    expect(parseRestoreRefusal('')).toBeNull();
+    expect(parseRestoreRefusal('ERROR: relation "x" does not exist')).toBeNull();
+    expect(parseRestoreRefusal('DOCKFLOW_REFUSED: something-else')).toBeNull();
+    expect(parseRestoreRefusal('echo DOCKFLOW_REFUSED: redis-appendonly')).toBeNull();
+  });
+
+  it('stripRefusalMarker removes the marker lines only', () => {
+    expect(stripRefusalMarker('DOCKFLOW_REFUSED: redis-appendonly\nreal error\n')).toBe('real error\n');
+    expect(stripRefusalMarker('plain')).toBe('plain');
   });
 });
 
@@ -451,6 +476,7 @@ describe.if(hasPosixShell)('in-container scripts, executed', () => {
     }
     const redis = [
       '#!/bin/sh',
+      `if [ "$1 $2" = "CONFIG GET" ]; then printf 'appendonly\\n%s\\n' "$APPENDONLY"; exit 0; fi`,
       `printf '%s\\n' "$*" >> "$REDIS_LOG"`,
       '',
     ].join('\n');
@@ -542,16 +568,31 @@ describe.if(hasPosixShell)('in-container scripts, executed', () => {
     expect(run(buildRestoreScript(cfg({ type: 'mongodb', restore_options: '--gzip' })), {}).args).toEqual(['--archive', '--drop', '--gzip']);
   });
 
-  it('redis restore: the RDB is staged, installed, and Redis shut down without saving', () => {
+  it('redis restore with appendonly yes: exit 3, the marker on stderr, stdin drained, nothing written', () => {
+    const dir = freshDir('redis-refused');
+    writeFileSync(join(dir, 'restore.sh'), buildRestoreScript(cfg({ type: 'redis' })).replaceAll('/data/', `${dir}/`));
+    const result = runSh('( sh ./restore.sh ); echo "rc=$?"; echo "rest=$(wc -c)"', {
+      binDir: bin,
+      cwd: dir,
+      env: { APPENDONLY: 'yes', REDIS_LOG: join(dir, 'redis.log') },
+      stdin: 'x'.repeat(4096),
+    });
+    expect(result.stdout).toContain('rc=3');
+    expect(result.stdout).toMatch(/rest=\s*0\b/);
+    expect(parseRestoreRefusal(result.stderr)).toBe('redis-appendonly');
+    expect(readdirSync(dir)).toEqual(['restore.sh']);
+  });
+
+  it('redis restore with appendonly no: the RDB is staged, installed, and Redis shut down without saving', () => {
     const dir = freshDir('redis-restored');
     const log = join(dir, 'redis.log');
     const script = buildRestoreScript(cfg({ type: 'redis' })).replaceAll('/data/', `${dir}/`);
-    const result = runSh(script, { binDir: bin, env: { REDIS_LOG: log }, stdin: 'REDIS0011-payload' });
+    const result = runSh(script, { binDir: bin, env: { APPENDONLY: 'no', REDIS_LOG: log }, stdin: 'REDIS0011-payload' });
     expect(result.exitCode).toBe(0);
     expect(readFileSync(join(dir, 'dump.rdb'), 'utf8')).toBe('REDIS0011-payload');
     expect(readFileSync(log, 'utf8')).toBe('SHUTDOWN NOSAVE\n');
 
-    const empty = runSh(script, { binDir: bin, env: { REDIS_LOG: log }, stdin: '' });
+    const empty = runSh(script, { binDir: bin, env: { APPENDONLY: 'no', REDIS_LOG: log }, stdin: '' });
     expect(empty.exitCode).toBe(1);
     expect(empty.stderr).toContain('restore: received an empty backup stream');
   });
