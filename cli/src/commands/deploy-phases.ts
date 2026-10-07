@@ -461,6 +461,13 @@ export interface BuildResult {
   usedRegistry: boolean;
 }
 
+/** A hook of the deploy, which receives the stack, the environment and the version it deploys. */
+export function runDeployHook(ctx: DeployContext, phase: Hook.HookPhase, env: Record<string, string> = {}): Promise<void> {
+  return Hook.runHook(phase, ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName }, {
+    env: { DOCKFLOW_STACK: ctx.stackName, DOCKFLOW_ENV: ctx.env, DOCKFLOW_VERSION: ctx.deployVersion, ...env },
+  });
+}
+
 function registryLogin(config: DockflowConfig): Distribution.RegistryLogin {
   const registry = config.registry!;
   return { url: registry.url!, username: registry.username, password: Compose.registryPassword(config)! };
@@ -492,7 +499,7 @@ export async function buildAndDistribute(
 
   warnRegistryWithoutPassword(ctx.config);
 
-  await Hook.runHook('pre-build', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
+  await runDeployHook(ctx, 'pre-build');
 
   const engine = await detectContainerEngine(ctx.cluster.manager.connection, ctx.config.container_engine);
   let images: string[] = [];
@@ -550,7 +557,7 @@ export async function buildAndDistribute(
     }
   }
 
-  await Hook.runHook('post-build', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
+  await runDeployHook(ctx, 'post-build');
   return { images, engine, usedRegistry };
 }
 

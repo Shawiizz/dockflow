@@ -122,6 +122,16 @@ echo "Deploying {{ config.project_name }} version {{ version }} to {{ env }}"
 DATABASE_URL="{{ current.env.database_url }}"
 ```
 
+## Environment variables
+
+During a deploy, every hook entry, local or on the server, also receives:
+
+| Variable | Value |
+|----------|-------|
+| `DOCKFLOW_STACK` | The stack deployed, `<project_name>-<env>` |
+| `DOCKFLOW_ENV` | The environment |
+| `DOCKFLOW_VERSION` | The version being deployed |
+
 ## Examples
 
 ### Pre-build: Generate assets

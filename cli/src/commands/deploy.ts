@@ -57,10 +57,9 @@ import { Metrics } from '../services/metrics';
 import * as Notification from '../services/notification';
 import * as Plugin from '../services/plugin';
 import { onInterrupt, SIGINT_EXIT_CODE } from '../utils/interrupt';
-import * as Hook from '../services/hook';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
-import { accessoriesKey, applyPublicPorts, rolledBackError, buildAndDistribute, loginManagerToRegistry, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
+import { accessoriesKey, applyPublicPorts, rolledBackError, buildAndDistribute, loginManagerToRegistry, runDeployHook, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
 import type { BuildResult } from './deploy-phases';
 import type { UploadRollbackPlan } from './deploy-phases';
 
@@ -334,13 +333,13 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     buildResult = await buildAndDistribute(ctx, compose);
 
-    await Hook.runHook('pre-upload', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
+    await runDeployHook(ctx, 'pre-upload');
 
     uploadPlan = await uploadFiles(ctx);
 
-    await Hook.runHook('post-upload', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
+    await runDeployHook(ctx, 'post-upload');
 
-    await Hook.runHook('pre-deploy', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
+    await runDeployHook(ctx, 'pre-deploy');
 
     // When --only targets specific services, borrow image tags from the server
     // release for non-targeted services so both the deploy and the release file
@@ -389,7 +388,7 @@ async function execute(ctx: DeployContext): Promise<void> {
 
 
     await runHTTPHealthChecks(ctx);
-    await Hook.runHook('post-deploy', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
+    await runDeployHook(ctx, 'post-deploy');
 
     await Promise.all([
       // the deploy succeeded: housekeeping failures are reported, never a reason to roll back
@@ -428,16 +427,11 @@ async function execute(ctx: DeployContext): Promise<void> {
       await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
     }
 
-    // Runs last so it observes the settled state. Hook.runHook never lets an
+    // Runs last so it observes the settled state. runHook never lets an
     // on-failure entry abort, and this catch keeps the original error on top.
-    await Hook.runHook('on-failure', ctx.projectRoot, ctx.config, ctx.rendered, {
-      connection: ctx.cluster.manager.connection,
-      stackName: ctx.stackName,
-    }, {
-      env: {
-        DOCKFLOW_ERROR: err instanceof Error ? err.message : String(err),
-        DOCKFLOW_ROLLED_BACK_TO: rolledBackTo ?? '',
-      },
+    await runDeployHook(ctx, 'on-failure', {
+      DOCKFLOW_ERROR: err instanceof Error ? err.message : String(err),
+      DOCKFLOW_ROLLED_BACK_TO: rolledBackTo ?? '',
     }).catch((e) => printWarning(`on-failure hooks could not run: ${e instanceof Error ? e.message : String(e)}`));
 
     if (rolledBackTo) throw rolledBackError(err, rolledBackTo);
