@@ -314,10 +314,7 @@ export const ProxyConfigSchema = z.object({
   ).optional().describe(
     'Addresses of a CDN or load balancer in front of Traefik: Traefik keeps the X-Forwarded-* headers they send, so apps see the client address'
   ),
-}).refine(
-  (data) => !data.enabled || data.acme === false || !!data.email,
-  { message: 'proxy.email is required when proxy.enabled is true and acme is not disabled' }
-);
+});
 
 const PortValueSchema = z.union([z.number(), z.string()]).refine(
   (value) => parsePortSpec(value) !== null,

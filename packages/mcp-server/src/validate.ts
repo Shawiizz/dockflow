@@ -106,9 +106,6 @@ function validateConfigBlock(obj: Record<string, unknown>, errors: string[]) {
       errors.push('proxy: must be an object');
     } else {
       const p = obj.proxy as Record<string, unknown>;
-      if (p.enabled && p.acme !== false && !p.email) {
-        errors.push('proxy.email: required when proxy.enabled is true and acme is not disabled');
-      }
       if (p.dashboard && typeof p.dashboard === 'object') {
         const d = p.dashboard as Record<string, unknown>;
         if (d.enabled && !d.domain) {
