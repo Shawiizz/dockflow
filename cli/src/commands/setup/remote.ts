@@ -7,6 +7,7 @@ import { join, resolve } from 'path';
 import { Client as SSHClient } from 'ssh2';
 import { printIntro, printOutro, printSection, printError, printInfo, printBlank, printDim, createSpinner } from '../../utils/output';
 import { sshExec, executeInteractiveSSH } from '../../utils/ssh';
+import { CLIError, ErrorCode } from '../../utils/errors';
 import type { ConnectionInfo } from '../../types';
 import { isKeyConnection } from '../../types';
 import { normalizePrivateKey } from '../../utils/ssh-keys';
@@ -347,7 +348,7 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   const remoteCmd = opts.forwardFlags?.length
     ? `${sudoPrefix}${remotePath} setup ${opts.forwardFlags.join(' ')}`
     : `${sudoPrefix}${remotePath} setup`;
-  await executeInteractiveSSH(conn, remoteCmd);
+  const exitCode = await executeInteractiveSSH(conn, remoteCmd);
 
   printBlank();
   printDim('─'.repeat(60));
@@ -356,6 +357,14 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   cleanupSpinner.start('Cleaning up...');
   await sshExec(conn, `rm -f ${remotePath}`);
   cleanupSpinner.succeed('Cleanup complete');
+
+  if (exitCode !== 0) {
+    throw new CLIError(
+      `Setup failed on ${opts.host} (exit code ${exitCode})`,
+      ErrorCode.COMMAND_FAILED,
+      'Its output above says what went wrong; fix it, then run the same command again: setup is idempotent.',
+    );
+  }
 
   printBlank();
   printOutro('Remote setup completed');

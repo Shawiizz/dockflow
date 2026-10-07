@@ -250,6 +250,43 @@ function connectDedicatedClient(conn: ConnectionInfo): Promise<SSHClient> {
   return connectWithRetry(conn, false);
 }
 
+// ─── Exit status of a channel ─────────────────────────────────
+
+/** Linux numbers of the signals RFC 4254 lets a server report */
+const SIGNAL_NUMBERS: Readonly<Record<string, number>> = {
+  SIGHUP: 1, SIGINT: 2, SIGQUIT: 3, SIGILL: 4, SIGABRT: 6, SIGFPE: 8, SIGKILL: 9,
+  SIGUSR1: 10, SIGSEGV: 11, SIGUSR2: 12, SIGPIPE: 13, SIGALRM: 14, SIGTERM: 15,
+};
+
+/** What ssh(1) returns when the session ends without the command's exit status */
+export const NO_EXIT_STATUS = 255;
+
+/**
+ * The result of a closed exec channel, from what ssh2 passes its 'exit' and 'close' events:
+ * a number when the command exited; null and the signal's name when a signal killed it, which
+ * reads as a shell reports it (128 + the signal's number); nothing when the channel closed
+ * without an exit status, which reads as ssh(1) reports it. Only an exit status of 0 is a
+ * success, and stderr says why there was none.
+ */
+export function channelResult(
+  stdout: string,
+  stderr: string,
+  code?: number | null,
+  signal?: string,
+): { stdout: string; stderr: string; exitCode: number } {
+  if (typeof code === 'number') return { stdout, stderr, exitCode: code };
+
+  const killed = code === null && signal !== undefined;
+  const reason = killed
+    ? `the remote command was killed by ${signal}`
+    : 'the session closed before the remote command reported its exit status';
+  return {
+    stdout,
+    stderr: stderr && !stderr.endsWith('\n') ? `${stderr}\n${reason}` : `${stderr}${reason}`,
+    exitCode: killed ? 128 + (SIGNAL_NUMBERS[signal as string] ?? 0) : NO_EXIT_STATUS,
+  };
+}
+
 // ─── Low-level exec on a connected client ─────────────────────
 
 function execOnClient(
@@ -280,11 +317,9 @@ function execOnClient(
         stderr += data.toString();
       });
 
-      stream.on('close', (code: number) => {
+      stream.on('close', (code?: number | null, signal?: string) => {
         resolve({
-          stdout,
-          stderr,
-          exitCode: code ?? 0,
+          ...channelResult(stdout, stderr, code, signal),
           binaryOutput: options?.collectBinary ? Buffer.concat(chunks) : undefined,
         });
       });
@@ -330,12 +365,8 @@ function execStreamOnClient(
         }
       });
 
-      stream.on('close', (code: number) => {
-        resolve({
-          stdout,
-          stderr,
-          exitCode: code ?? 0,
-        });
+      stream.on('close', (code?: number | null, signal?: string) => {
+        resolve(channelResult(stdout, stderr, code, signal));
       });
     });
   });
@@ -483,7 +514,7 @@ export async function executeInteractiveSSH(
       };
       process.stdout.on('resize', onResize);
 
-      stream.on('close', (code: number) => {
+      stream.on('close', (code?: number | null, signal?: string) => {
         if (process.stdin.isTTY) {
           process.stdin.setRawMode(false);
         }
@@ -491,7 +522,7 @@ export async function executeInteractiveSSH(
         process.stdin.pause();
         process.stdout.removeListener('resize', onResize);
         client.end();
-        resolve(code ?? 0);
+        resolve(channelResult('', '', code, signal).exitCode);
       });
     });
   });
@@ -540,12 +571,12 @@ export async function executePtySSH(
       };
       process.stdout.on('resize', onResize);
 
-      stream.on('close', (code: number) => {
+      stream.on('close', (code?: number | null, signal?: string) => {
         process.stdin.unpipe(stream);
         process.stdin.pause();
         process.stdout.removeListener('resize', onResize);
         client.end();
-        resolve(code ?? 0);
+        resolve(channelResult('', '', code, signal).exitCode);
       });
     });
   });
@@ -598,10 +629,10 @@ function openChannelOnClient(
           // Bun's ssh2 streams may not emit 'close' after stream.end(),
           // but 'exit' always fires. Use whichever comes first.
           let resolved = false;
-          const finish = (code: number) => {
+          const finish = (code?: number | null, signal?: string) => {
             if (resolved) return;
             resolved = true;
-            resolveDone({ exitCode: code ?? 0, stdout, stderr });
+            resolveDone(channelResult(stdout, stderr, code, signal));
           };
           stream.on('exit', finish);
           stream.on('close', finish);
