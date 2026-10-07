@@ -6,29 +6,71 @@ import * as fs from 'fs';
 import { join, resolve } from 'path';
 import { Client as SSHClient } from 'ssh2';
 import { printIntro, printOutro, printSection, printError, printInfo, printBlank, printDim, createSpinner } from '../../utils/output';
-import { sshExec, executeInteractiveSSH } from '../../utils/ssh';
-import { CLIError, ErrorCode } from '../../utils/errors';
-import type { ConnectionInfo } from '../../types';
+import { sshExec, executeInteractiveSSH, shellQuote } from '../../utils/ssh';
+import { CLIError, ConnectionError, ErrorCode } from '../../utils/errors';
+import type { ConnectionInfo, SSHExecResult } from '../../types';
 import { isKeyConnection } from '../../types';
 import { normalizePrivateKey } from '../../utils/ssh-keys';
 import { DOCKFLOW_RELEASE_URL } from './constants';
 import { DEFAULT_SSH_PORT, DOCKFLOW_VERSION } from '../../constants';
-import { verifiedDownloadCommand } from './forward';
+import {
+  MAKE_TEMP_DIR_COMMAND,
+  archFromMachine,
+  installUploadCommand,
+  expectedBinaryVersion,
+  printsVersion,
+  removeDirCommand,
+  tempDirFrom,
+  verifiedDownloadCommand,
+  type RemoteArch,
+} from './forward';
 import { prompt, promptPassword, selectMenu, promptMultiline } from './prompts';
 import { parseConnectionString } from './connection';
 import type { RemoteSetupOptions } from './types';
 
-/**
- * Detect remote server architecture
- */
-async function detectRemoteArch(conn: ConnectionInfo): Promise<'x64' | 'arm64'> {
-  const result = await sshExec(conn, 'uname -m');
-  const arch = result.stdout.trim();
+type Exec = (conn: ConnectionInfo, command: string) => Promise<SSHExecResult>;
 
-  if (arch === 'aarch64' || arch === 'arm64') {
-    return 'arm64';
+/**
+ * Detect remote server architecture; a machine Dockflow publishes no binary for is refused.
+ */
+export async function detectRemoteArch(conn: ConnectionInfo, exec: Exec = sshExec): Promise<RemoteArch> {
+  const result = await exec(conn, 'uname -m');
+  const machine = result.stdout.trim();
+  const arch = result.exitCode === 0 ? archFromMachine(machine) : null;
+  if (arch === null) {
+    throw new ConnectionError(
+      `Unsupported architecture ${machine || 'unknown'} on ${conn.host}`,
+      'Dockflow publishes binaries for amd64 (x86_64) and arm64 (aarch64) Linux servers.',
+    );
   }
-  return 'x64';
+  return arch;
+}
+
+/**
+ * A private `mktemp -d` directory (0700, owned by the connecting user) in place of a fixed path in
+ * a world-writable directory: no other local user can pre-create or swap the binary that setup
+ * then runs as root.
+ */
+export async function makeTempDir(conn: ConnectionInfo, exec: Exec = sshExec): Promise<string> {
+  const result = await exec(conn, MAKE_TEMP_DIR_COMMAND);
+  const dir = result.exitCode === 0 ? tempDirFrom(result.stdout) : null;
+  if (dir === null) {
+    const reason = result.stderr.split(/\r?\n/).find((line) => line.trim() !== '')?.trim() || `exit ${result.exitCode}`;
+    throw new ConnectionError(
+      `Could not create a temporary directory on ${conn.host} (${reason})`,
+      'Check that the connecting user can write under $TMPDIR or /tmp.',
+    );
+  }
+  return dir;
+}
+
+/** Removes a directory made by makeTempDir; a failure only leaves a temporary directory behind. */
+export async function cleanupTempDir(conn: ConnectionInfo, dir: string, exec: Exec = sshExec): Promise<void> {
+  try {
+    await exec(conn, removeDirCommand(dir));
+  } catch {
+    // the directory is private to the connecting user and sits under the temporary directory
+  }
 }
 
 /**
@@ -89,7 +131,7 @@ async function uploadFile(
         if (err) { client.end(); reject(err); return; }
 
         const readStream = fs.createReadStream(localPath);
-        const writeStream = sftp.createWriteStream(remotePath, { mode: 0o755 });
+        const writeStream = sftp.createWriteStream(remotePath, { mode: 0o700 });
         let transferred = 0;
 
         readStream.on('data', (chunk: Buffer) => {
@@ -275,88 +317,101 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
 
   testSpinner.succeed('SSH connection successful');
 
-  const remotePath = '/tmp/dockflow';
+  const archSpinner = createSpinner();
+  archSpinner.start('Detecting server architecture...');
+  let arch: RemoteArch;
+  try {
+    arch = await detectRemoteArch(conn);
+  } catch (err) {
+    archSpinner.fail('Unsupported server architecture');
+    throw err;
+  }
+  archSpinner.succeed(`Server architecture: ${arch}`);
 
-  if (opts.dev) {
-    // Dev mode: build locally and upload
-    const archSpinner = createSpinner();
-    archSpinner.start('Detecting server architecture...');
-    const arch = await detectRemoteArch(conn);
-    archSpinner.succeed(`Server architecture: ${arch}`);
+  const dir = await makeTempDir(conn);
+  const remotePath = `${dir}/dockflow`;
 
-    const buildSpinner = createSpinner();
-    buildSpinner.start(`Building CLI binary (linux-${arch})...`);
-    try {
-      const binaryPath = await buildLocalBinary(arch);
-      const size = fs.statSync(binaryPath).size;
-      buildSpinner.succeed(`Binary built (${(size / 1024 / 1024).toFixed(1)} MB)`);
+  let exitCode: number;
+  try {
+    if (opts.dev) {
+      // Dev mode: build locally and upload
+      const buildSpinner = createSpinner();
+      buildSpinner.start(`Building CLI binary (linux-${arch})...`);
+      try {
+        const binaryPath = await buildLocalBinary(arch);
+        const size = fs.statSync(binaryPath).size;
+        buildSpinner.succeed(`Binary built (${(size / 1024 / 1024).toFixed(1)} MB)`);
 
-      // Check if remote already has the same binary (hash comparison)
-      const localHash = new Bun.CryptoHasher('sha256').update(fs.readFileSync(binaryPath)).digest('hex');
-      const remoteHashResult = await sshExec(conn, `sha256sum ${remotePath} 2>/dev/null | cut -d' ' -f1`);
-      const remoteHash = remoteHashResult.stdout.trim();
-
-      if (localHash === remoteHash) {
-        printInfo('Binary unchanged, skipping upload');
-      } else {
+        const localHash = new Bun.CryptoHasher('sha256').update(fs.readFileSync(binaryPath)).digest('hex');
         const uploadSpinner = createSpinner();
         uploadSpinner.start('Uploading binary to remote server... 0%');
-        await uploadFile(conn, binaryPath, remotePath, (pct) => {
+        await uploadFile(conn, binaryPath, `${dir}/dockflow.part`, (pct) => {
           uploadSpinner.text = `Uploading binary to remote server... ${pct}%`;
         });
-        uploadSpinner.succeed('Binary uploaded');
+        const installed = await sshExec(conn, installUploadCommand(dir, localHash));
+        if (installed.exitCode !== 0) {
+          uploadSpinner.fail('Uploaded binary rejected');
+          printError(installed.stderr.trim() || 'The uploaded binary could not be verified');
+          return;
+        }
+        uploadSpinner.succeed('Binary uploaded and verified');
+      } catch (err) {
+        buildSpinner.fail(`Build/upload failed: ${err}`);
+        return;
       }
-    } catch (err) {
-      buildSpinner.fail(`Build/upload failed: ${err}`);
-      return;
-    }
-  } else {
-    // Release mode: download from GitHub
-    const archSpinner = createSpinner();
-    archSpinner.start('Detecting server architecture...');
-    const arch = await detectRemoteArch(conn);
-    archSpinner.succeed(`Server architecture: ${arch}`);
+    } else {
+      // Release mode: download from GitHub
+      // Pinned to this CLI's version so the binary provisioning the server is
+      // the same one the operator runs (dev builds fall back to latest), and
+      // checked against the SHA-256 its release publishes.
+      const binaryName = `dockflow-linux-${arch}`;
 
-    // Pinned to this CLI's version so the binary provisioning the server is
-    // the same one the operator runs (dev builds fall back to latest), and
-    // checked against the SHA-256 its release publishes.
-    const binaryName = `dockflow-linux-${arch}`;
+      const downloadSpinner = createSpinner();
+      downloadSpinner.start('Downloading Dockflow CLI to remote server...');
 
-    const downloadSpinner = createSpinner();
-    downloadSpinner.start('Downloading Dockflow CLI to remote server...');
+      const downloadCmd = verifiedDownloadCommand(DOCKFLOW_RELEASE_URL, DOCKFLOW_VERSION, binaryName, remotePath);
+      const downloadResult = await sshExec(conn, downloadCmd);
 
-    const downloadCmd = verifiedDownloadCommand(DOCKFLOW_RELEASE_URL, DOCKFLOW_VERSION, binaryName, remotePath);
-    const downloadResult = await sshExec(conn, downloadCmd);
+      if (downloadResult.exitCode !== 0) {
+        downloadSpinner.fail('Failed to download Dockflow CLI');
+        printError(downloadResult.stderr.trim() || 'Download failed');
+        return;
+      }
 
-    if (downloadResult.exitCode !== 0) {
-      downloadSpinner.fail('Failed to download Dockflow CLI');
-      printError(downloadResult.stderr.trim() || 'Download failed');
-      return;
+      downloadSpinner.succeed('Dockflow CLI downloaded and verified');
     }
 
-    downloadSpinner.succeed('Dockflow CLI downloaded and verified');
+    const expectedVersion = expectedBinaryVersion(DOCKFLOW_VERSION, opts.dev === true);
+    const version = await sshExec(conn, `${shellQuote(remotePath)} --version`);
+    if (version.exitCode !== 0 || (expectedVersion !== null && !printsVersion(version.stdout, expectedVersion))) {
+      throw new CLIError(
+        `The Dockflow binary on ${opts.host} prints ${version.stdout.split(/\r?\n/)[0]?.trim() || 'no version'}, expected ${expectedVersion ?? 'a version'}`,
+        ErrorCode.COMMAND_FAILED,
+        'Run the same command again; if it persists, the server may not run Linux binaries of this architecture.',
+      );
+    }
+
+    printBlank();
+    printSection('Running setup on remote server');
+    printDim('─'.repeat(60));
+    printBlank();
+
+    // root runs the binary directly (sudo may not even exist on minimal
+    // systems); other users escalate through sudo.
+    const sudoPrefix = opts.user === 'root' ? '' : 'sudo ';
+    const remoteCmd = opts.forwardFlags?.length
+      ? `${sudoPrefix}${shellQuote(remotePath)} setup ${opts.forwardFlags.join(' ')}`
+      : `${sudoPrefix}${shellQuote(remotePath)} setup`;
+    exitCode = await executeInteractiveSSH(conn, remoteCmd);
+
+    printBlank();
+    printDim('─'.repeat(60));
+  } finally {
+    const cleanupSpinner = createSpinner();
+    cleanupSpinner.start('Cleaning up...');
+    await cleanupTempDir(conn, dir);
+    cleanupSpinner.succeed('Cleanup complete');
   }
-
-  printBlank();
-  printSection('Running setup on remote server');
-  printDim('─'.repeat(60));
-  printBlank();
-
-  // root runs the binary directly (sudo may not even exist on minimal
-  // systems); other users escalate through sudo.
-  const sudoPrefix = opts.user === 'root' ? '' : 'sudo ';
-  const remoteCmd = opts.forwardFlags?.length
-    ? `${sudoPrefix}${remotePath} setup ${opts.forwardFlags.join(' ')}`
-    : `${sudoPrefix}${remotePath} setup`;
-  const exitCode = await executeInteractiveSSH(conn, remoteCmd);
-
-  printBlank();
-  printDim('─'.repeat(60));
-
-  const cleanupSpinner = createSpinner();
-  cleanupSpinner.start('Cleaning up...');
-  await sshExec(conn, `rm -f ${remotePath}`);
-  cleanupSpinner.succeed('Cleanup complete');
 
   if (exitCode !== 0) {
     throw new CLIError(
