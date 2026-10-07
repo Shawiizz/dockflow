@@ -285,7 +285,8 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
 
 async function execute(ctx: DeployContext): Promise<void> {
   const lockResult = await ctx.lock.acquire({ version: ctx.deployVersion, force: ctx.options.force, message: `Deploy ${ctx.deployVersion}` });
-  if (!lockResult.success) throw new DeployError(lockResult.error.message, ErrorCode.DEPLOY_LOCKED);
+  // DEPLOY_LOCKED only when another deploy holds it: a manager that does not answer has its own code
+  if (!lockResult.success) throw lockResult.error;
 
   const startTime = Date.now();
   let deployFailed = false;

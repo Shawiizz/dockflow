@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { DOCKFLOW_LOCKS_DIR } from '../constants';
 import { Lock, type LockData, type LockOptions, type LockShell } from '../services/lock';
+import { ErrorCode } from '../utils/errors';
 import type { Result, SSHExecResult } from '../types';
 
 const STACK = 'shop-production';
@@ -280,6 +281,18 @@ describe('Lock when the server refuses', () => {
   test('unparseable content reads as a stale lock', async () => {
     const { lock } = scriptedLock({ read: { stdout: 'not json' } });
     expect(dataOf(await lock.status())).toEqual({ locked: true, isStale: true });
+  });
+
+  test('only another holder is DEPLOY_LOCKED: a server that fails is not a lock to wait for', async () => {
+    const alice = JSON.stringify(lockData('alice@ci', T0 - 5 * MINUTE), null, 2);
+    const held = await scriptedLock({ create: { stdout: 'LOCKED\n' }, read: { stdout: alice } }).lock.acquire();
+    expect(held.success ? null : held.error.code).toBe(ErrorCode.DEPLOY_LOCKED);
+
+    const denied = await scriptedLock({ create: { stderr: 'Permission denied\n', exitCode: 1 } }).lock.acquire();
+    expect(denied.success ? null : denied.error.code).toBe(ErrorCode.COMMAND_FAILED);
+
+    const down = await new Lock({ run: () => Promise.reject(new Error('connect ETIMEDOUT')) }, STACK).acquire();
+    expect(down.success ? null : down.error.code).toBe(ErrorCode.CONNECTION_FAILED);
   });
 
   test('transport failures become failed results', async () => {

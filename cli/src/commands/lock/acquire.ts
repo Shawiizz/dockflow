@@ -48,7 +48,7 @@ export function registerLockAcquireCommand(parent: Command): void {
 
       if (!result.success) {
         spinner.fail('Failed to acquire lock');
-        throw new CLIError(result.error.message, ErrorCode.COMMAND_FAILED);
+        throw result.error;
       }
 
       spinner.succeed(`Lock acquired for ${stackName}`);

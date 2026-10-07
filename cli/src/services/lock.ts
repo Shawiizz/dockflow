@@ -18,6 +18,7 @@ import { DOCKFLOW_LOCKS_DIR } from '../constants';
 import { LOCK_STALE_THRESHOLD_MINUTES } from '../constants';
 import { getPerformer } from '../utils/config';
 import { printDebug, printWarning } from '../utils/output';
+import { CLIError, ErrorCode } from '../utils/errors';
 
 /**
  * Lock information stored in the lock file
@@ -67,8 +68,17 @@ interface LockRead {
   content: string | null;
 }
 
-function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
+/** Another deploy holds the lock: the one failure a CI retry loop should wait on. */
+export class LockHeldError extends CLIError {
+  constructor(message: string) {
+    super(message, ErrorCode.DEPLOY_LOCKED);
+    this.name = 'LockHeldError';
+  }
+}
+
+/** Anything thrown while talking to the server: it did not answer, which is not a held lock. */
+function toError(error: unknown): CLIError {
+  return CLIError.from(error, ErrorCode.CONNECTION_FAILED);
 }
 
 export function sshLockShell(connection: SSHKeyConnection): LockShell {
@@ -109,7 +119,7 @@ export class Lock {
     this.now = options.now ?? Date.now;
   }
 
-  async status(): Promise<Result<LockStatus, Error>> {
+  async status(): Promise<Result<LockStatus, CLIError>> {
     try {
       return ok((await this.read()).status);
     } catch (error) {
@@ -117,7 +127,7 @@ export class Lock {
     }
   }
 
-  async acquire(options?: { message?: string; force?: boolean; version?: string }): Promise<Result<LockData, Error>> {
+  async acquire(options?: { message?: string; force?: boolean; version?: string }): Promise<Result<LockData, CLIError>> {
     try {
       const now = new Date(this.now());
       const lockData: LockData = {
@@ -151,13 +161,13 @@ export class Lock {
 
       if (current.status.isStale) {
         const takeover = await this.shell.run(this.takeoverCommand(current.content ?? ''), content);
-        if (takeover.stdout.trim() !== ACQUIRED) return err(new Error(STALE_TAKEN));
+        if (takeover.stdout.trim() !== ACQUIRED) return err(new LockHeldError(STALE_TAKEN));
         printWarning(staleTakeoverMessage(current.status.data ?? null, current.status.durationMinutes ?? null));
         return ok(lockData);
       }
 
       return err(
-        new Error(
+        new LockHeldError(
           current.status.data
             ? `Already locked by ${current.status.data.performer} (${current.status.durationMinutes} min ago)`
             : 'Lock file exists but could not be parsed',
@@ -168,12 +178,12 @@ export class Lock {
     }
   }
 
-  async release(): Promise<Result<void, Error>> {
+  async release(): Promise<Result<void, CLIError>> {
     try {
       const file = shellQuote(this.lockFile);
       const result = await this.shell.run(`rm -f ${file}; test -f ${file} && echo EXISTS || echo REMOVED`);
       if (result.stdout.trim() === 'EXISTS') {
-        return err(new Error('Lock file could not be removed. Check permissions on the server.'));
+        return err(new CLIError('Lock file could not be removed. Check permissions on the server.', ErrorCode.COMMAND_FAILED));
       }
       return ok(undefined);
     } catch (error) {
@@ -202,18 +212,18 @@ export class Lock {
     return `${this.lockFile}.tmp.${randomBytes(4).toString('hex')}`;
   }
 
-  private cannotCreate(): Error {
-    return new Error(`Cannot create lock file at ${this.lockFile}. Check directory permissions on the server.`);
+  private cannotCreate(): CLIError {
+    return new CLIError(`Cannot create lock file at ${this.lockFile}. Check directory permissions on the server.`, ErrorCode.COMMAND_FAILED);
   }
 
   /** The locks directory appears on a server's first deploy: the exit code of the write is the only sign it failed. */
-  private writeFailed(result: SSHExecResult): Error {
+  private writeFailed(result: SSHExecResult): CLIError {
     const cause = result.stderr.trim();
-    return new Error(`Cannot write the lock file in ${this.locksDir}${cause ? `: ${cause}` : ''}`);
+    return new CLIError(`Cannot write the lock file in ${this.locksDir}${cause ? `: ${cause}` : ''}`, ErrorCode.COMMAND_FAILED);
   }
 
   /** `ln` refuses an existing target: the create-if-absent step, with the content already complete. */
-  private async tryCreate(content: string): Promise<boolean | Error> {
+  private async tryCreate(content: string): Promise<boolean | CLIError> {
     const tmp = shellQuote(this.tempFile());
     const result = await this.shell.run(
       [
