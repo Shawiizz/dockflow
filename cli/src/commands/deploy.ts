@@ -137,6 +137,7 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   }
 
   let { manager, managers, workers } = deployment;
+  let unavailableManagers: string[] = [];
 
   // Multi-manager failover
   if (managers.length > 1 && options.failover !== false) {
@@ -148,6 +149,7 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
       throw new ConnectionError('All managers are unreachable. Cannot deploy.', `Managers tried: ${managers.map((m) => `${m.name} (${m.host})`).join(', ')}`);
     }
     manager = activeResult.manager;
+    unavailableManagers = activeResult.unavailable;
     if (activeResult.failedManagers.length > 0) {
       managerSpinner.warn(`Using ${manager.name} (${activeResult.status}). Unreachable: ${activeResult.failedManagers.join(', ')}`);
     } else {
@@ -166,7 +168,8 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   }));
   const otherManagerNodes: ClusterNode[] = [];
   for (const m of managers) {
-    if (m.name === manager.name) continue;
+    // a manager found down cannot run tasks: it gets no image or upload
+    if (m.name === manager.name || unavailableManagers.includes(m.name)) continue;
     try { otherManagerNodes.push({ connection: buildConnection(env, m.name, m.host, m.port, m.user), name: m.name }); }
     catch { printWarning(`History sync: no SSH key for ${m.name}`); }
   }
@@ -406,7 +409,7 @@ async function execute(ctx: DeployContext): Promise<void> {
     }
 
     if (buildResult && ctx.config.stack_management?.cleanup_on_failure !== false) {
-      await cleanupFailedImages(buildResult, [ctx.cluster.manager, ...ctx.cluster.workers]).catch(() => {});
+      await cleanupFailedImages(buildResult, [ctx.cluster.manager, ...ctx.cluster.otherManagers, ...ctx.cluster.workers]).catch(() => {});
     }
 
     let rolledBackTo: string | null = null;

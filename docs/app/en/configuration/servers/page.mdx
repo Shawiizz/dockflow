@@ -200,7 +200,7 @@ Before your first multi-node deployment, initialize the Swarm cluster:
 <Steps>
 ### Configure secrets
 
-Add connection strings for **all** nodes (manager + workers) in `.env.dockflow` or your CI/CD platform.
+Add connection strings for **all** nodes (managers and workers) in `.env.dockflow` or your CI/CD platform: without a registry, built images and uploads are sent to every node, managers included, as Swarm runs tasks on managers too.
 
 ### Initialize Swarm
 

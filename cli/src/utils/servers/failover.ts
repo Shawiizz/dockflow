@@ -39,7 +39,10 @@ export async function checkManagerStatus(connection: SSHKeyConnection): Promise<
 export interface ActiveManagerResult {
   manager: ResolvedServer;
   status: 'leader' | 'reachable';
+  /** `name (reason)` of each manager that cannot be used */
   failedManagers: string[];
+  /** names of the managers that cannot be used */
+  unavailable: string[];
 }
 
 export interface FindActiveManagerOptions {
@@ -85,7 +88,8 @@ export async function findActiveManager(
   }
 
   const chosen = pickActiveManager(probes, preferLeader);
-  return chosen ? { ...chosen, failedManagers } : null;
+  const unavailable = probes.filter((p) => p.status !== 'leader' && p.status !== 'reachable').map((p) => p.manager.name);
+  return chosen ? { ...chosen, failedManagers, unavailable } : null;
 }
 
 /** The leader (when preferred), else the first manager in order that takes Swarm commands. */

@@ -36,9 +36,9 @@ import type { DeployContext } from './deploy-context';
 // Cluster helpers — deploy-specific traversal of ClusterConnection
 // ---------------------------------------------------------------------------
 
-/** Nodes that receive builds, uploads, and deployments (manager + workers). */
+/** Nodes that receive images and uploads: Swarm schedules tasks on managers too. */
 function activeNodes(cluster: ClusterConnection): ClusterNode[] {
-  return [cluster.manager, ...cluster.workers];
+  return [cluster.manager, ...cluster.otherManagers, ...cluster.workers];
 }
 
 /** Connections that receive history-sync writes (all nodes except the primary manager). */
@@ -513,8 +513,9 @@ export async function buildAndDistribute(
       engine,
     }));
 
-    if (images.length > 0 && ctx.cluster.workers.length > 0) {
-      await Distribution.distributeFromRemote(images, ctx.cluster.manager.connection, ctx.cluster.workers, engine);
+    const others = [...ctx.cluster.otherManagers, ...ctx.cluster.workers];
+    if (images.length > 0 && others.length > 0) {
+      await Distribution.distributeFromRemote(images, ctx.cluster.manager.connection, others, engine);
     }
   } else {
     const targets = Build.getBuildTargets(
