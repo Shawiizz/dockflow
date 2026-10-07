@@ -681,7 +681,13 @@ export async function sshExecChannelUnbuffered(
   conn: ConnectionInfo,
   command: string,
 ): Promise<SSHUnbufferedChannelHandle> {
-  const client = await getPooledClient(conn);
+  return openUnbufferedChannelOnClient(await getPooledClient(conn), command);
+}
+
+export function openUnbufferedChannelOnClient(
+  client: Pick<SSHClient, 'exec'>,
+  command: string,
+): Promise<SSHUnbufferedChannelHandle> {
   return new Promise<SSHUnbufferedChannelHandle>((resolve, reject) => {
     client.exec(command, (err, stream) => {
       if (err) {

@@ -277,6 +277,52 @@ export function buildCapturePipeline(producer: string, remotePath: string, gzip:
   );
 }
 
+/** Mount point of the volume inside the helper container of a volume restore */
+export const RESTORE_MOUNT_DIR = '/dockflow/v0';
+
+function checkId8(id8: string): string {
+  if (!/^[0-9a-z]{1,16}$/.test(id8)) throw new Error(`Invalid restore id ${JSON.stringify(id8)}`);
+  return id8;
+}
+
+/** Directory the archive is extracted into, inside the volume beside its current contents */
+export function restoreDirName(id8: string): string {
+  return `.dockflow-restore-${checkId8(id8)}`;
+}
+
+/** Directory the previous contents are moved into during the swap */
+export function previousDirName(id8: string): string {
+  return `.dockflow-old-${checkId8(id8)}`;
+}
+
+/** Phase 1 of a volume restore: extract stdin beside the data; nothing of the current contents is touched. */
+export function buildExtractScript(mountDir: string, id8: string): string {
+  return [
+    `set -e; d=${shellQuote(mountDir)}; new="$d/${restoreDirName(id8)}"`,
+    'rm -rf "$new"; mkdir "$new"',
+    'tar xf - -C "$new"',
+  ].join('\n');
+}
+
+/**
+ * Phase 2, run only after every extraction succeeded: renames within one filesystem, no data
+ * copied. The previous contents are kept in the old directory until the new ones are in place.
+ */
+export function buildSwapScript(mountDir: string, id8: string): string {
+  return [
+    `set -e; d=${shellQuote(mountDir)}; new="$d/${restoreDirName(id8)}"; old="$d/${previousDirName(id8)}"`,
+    'rm -rf "$old"; mkdir "$old"',
+    'for e in "$d"/* "$d"/.[!.]* "$d"/..?*; do [ -e "$e" ] || [ -L "$e" ] || continue; case "$e" in "$new"|"$old") continue;; esac; mv "$e" "$old/"; done',
+    'for e in "$new"/* "$new"/.[!.]* "$new"/..?*; do [ -e "$e" ] || [ -L "$e" ] || continue; mv "$e" "$d/"; done',
+    'rmdir "$new"; rm -rf "$old"',
+  ].join('\n');
+}
+
+/** Removes what a failed extraction left beside the data. */
+export function buildDiscardScript(mountDir: string, id8: string): string {
+  return `d=${shellQuote(mountDir)}; rm -rf "$d/${restoreDirName(id8)}"`;
+}
+
 /** Convert a mount destination path to a safe filename component */
 export function sanitizePathName(mountPath: string): string {
   return mountPath.replace(/^\/+/, '').replace(/\//g, '-') || 'root';

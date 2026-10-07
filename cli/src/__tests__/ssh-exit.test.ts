@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'bun:test';
-import { channelResult, NO_EXIT_STATUS } from '../utils/ssh';
+import { EventEmitter } from 'events';
+import type { Client } from 'ssh2';
+import { channelResult, NO_EXIT_STATUS, openUnbufferedChannelOnClient } from '../utils/ssh';
 
 // What ssh2 passes the 'close' and 'exit' events of an exec channel: (code) when the command
 // exited, (null, 'SIGKILL', ...) when a signal killed it, nothing when no exit status came.
@@ -33,5 +35,49 @@ describe('channelResult', () => {
       });
     }
     expect(NO_EXIT_STATUS).toBe(255);
+  });
+});
+
+describe('openUnbufferedChannelOnClient', () => {
+  function client(): { channel: EventEmitter; client: Pick<Client, 'exec'> } {
+    const channel = Object.assign(new EventEmitter(), { stderr: new EventEmitter() });
+    return {
+      channel,
+      client: { exec: ((_command: string, callback: (error: Error | undefined, stream: unknown) => void) => callback(undefined, channel)) as Client['exec'] },
+    };
+  }
+
+  it('settles on the exit status and keeps nothing of the output', async () => {
+    const { channel, client: fake } = client();
+    const handle = await openUnbufferedChannelOnClient(fake, 'cat file');
+    channel.emit('data', Buffer.from('payload'));
+    channel.emit('exit', 0);
+    expect(await handle.done).toEqual({ exitCode: 0 });
+    expect(Object.keys(await handle.done)).toEqual(['exitCode']);
+  });
+
+  it('reads a signal and a missing status as channelResult does', async () => {
+    const killed = client();
+    const handleKilled = await openUnbufferedChannelOnClient(killed.client, 'x');
+    killed.channel.emit('exit', null, 'SIGKILL');
+    expect(await handleKilled.done).toEqual({ exitCode: 137 });
+
+    const lost = client();
+    const handleLost = await openUnbufferedChannelOnClient(lost.client, 'x');
+    lost.channel.emit('close');
+    expect(await handleLost.done).toEqual({ exitCode: NO_EXIT_STATUS });
+  });
+
+  it('the first of exit and close wins', async () => {
+    const { channel, client: fake } = client();
+    const handle = await openUnbufferedChannelOnClient(fake, 'x');
+    channel.emit('exit', 3);
+    channel.emit('close');
+    expect(await handle.done).toEqual({ exitCode: 3 });
+  });
+
+  it('an exec that cannot open its channel rejects', async () => {
+    const failing = { exec: ((_command: string, callback: (error: Error | undefined) => void) => callback(new Error('channel open failure'))) as Client['exec'] };
+    await expect(openUnbufferedChannelOnClient(failing, 'x')).rejects.toThrow('channel open failure');
   });
 });

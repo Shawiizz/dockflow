@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, spyOn } from 'bu
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { Writable } from 'stream';
+import { Duplex, PassThrough, Writable } from 'stream';
 import { Backup, type BackupListEntry, type BackupMetadata } from '../services/backup';
 import { hasPosixShell } from './helpers/local-shell';
 import { BackupError, ErrorCode } from '../utils/errors';
@@ -24,7 +24,7 @@ type Matcher = string | RegExp | ((command: string) => boolean);
 interface NodeCall {
   host: string;
   command: string;
-  via: 'exec' | 'channel';
+  via: 'exec' | 'channel' | 'stream';
   /** bytes written to a channel's stdin */
   input: string;
 }
@@ -64,6 +64,7 @@ class FakeNodes {
 }
 
 type ChannelHandle = Awaited<ReturnType<typeof ssh.sshExecChannel>>;
+type UnbufferedHandle = Awaited<ReturnType<typeof ssh.sshExecChannelUnbuffered>>;
 
 let nodes: FakeNodes;
 let printed: { level: 'warning' | 'info' | 'debug'; message: string }[] = [];
@@ -101,6 +102,40 @@ beforeEach(() => {
         });
       });
       return { stream: stream as unknown as ChannelHandle['stream'], done };
+    }),
+    spyOn(ssh, 'sshExecChannelUnbuffered').mockImplementation(async (conn, command) => {
+      const call: NodeCall = { host: conn.host, command, via: 'stream', input: '' };
+      nodes.calls.push(call);
+      const reply = nodes.reply(conn.host, command);
+      const result = reply instanceof Error ? { exitCode: 255, stderr: reply.message } : reply;
+      const isSource = /^(gunzip -c|cat) /.test(command);
+      const chunks: Buffer[] = [];
+      const stream = Object.assign(
+        new Duplex({
+          read() {},
+          write(chunk, _encoding, callback) {
+            chunks.push(Buffer.from(chunk));
+            callback();
+          },
+        }),
+        { stderr: new PassThrough() },
+      );
+      const finishOutput = () => {
+        if (result.stdout) stream.push(result.stdout);
+        stream.push(null);
+      };
+      if (isSource) setImmediate(finishOutput);
+      else {
+        stream.on('finish', () => {
+          call.input = Buffer.concat(chunks).toString();
+          finishOutput();
+        });
+      }
+      setImmediate(() => stream.stderr.end(result.stderr ?? ''));
+      const done = new Promise<{ exitCode: number }>((resolve) => {
+        stream.on('end', () => resolve({ exitCode: result.exitCode ?? 0 }));
+      });
+      return { stream: stream as unknown as UnbufferedHandle['stream'], done };
     }),
     spyOn(output, 'printWarning').mockImplementation((message) => {
       printed.push({ level: 'warning', message });
@@ -823,5 +858,191 @@ describe('Backup.prune', () => {
       expect(result.success).toBe(true);
       expect(readdirSync(dir)).toEqual(['20250202-000000-aaab.meta.json']);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// restore when the container is not on the node holding the backup
+// ---------------------------------------------------------------------------
+
+describe('Backup.restore relay', () => {
+  /** the backup is on the worker, the container now runs on the manager */
+  function containerMoved(): void {
+    nodes.on('docker ps', { stdout: 'c9\n' }, 'manager');
+    nodes.on('docker ps', { stdout: '' }, 'worker');
+    backupOnWorker({ integrity: 'gzip' });
+  }
+
+  it('streams the file from the node holding it into the container on its node, without buffering it here', async () => {
+    containerMoved();
+    nodes.on((command) => command.startsWith('gunzip -c'), { stdout: 'DUMP-BYTES' });
+    const result = await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES);
+    expect(result.success).toBe(true);
+
+    const source = nodes.calls.find((call) => call.via === 'stream' && call.command.startsWith('gunzip -c'));
+    const sink = nodes.calls.find((call) => call.via === 'stream' && call.command.includes('docker exec -i'));
+    expect(source?.host).toBe('worker');
+    expect(source?.command).toBe(`gunzip -c '${DIR}/${POSTGRES_BACKUP}.sql.gz'`);
+    expect(sink?.host).toBe('manager');
+    expect(sink?.command).toContain("docker exec -i 'c9' sh -c");
+    expect(sink?.input).toBe('DUMP-BYTES');
+    expect(nodes.calls.some((call) => call.via === 'exec' && call.command.includes('docker exec -i'))).toBe(false);
+  });
+
+  it('the file is verified on the node holding it, not on the container node', async () => {
+    containerMoved();
+    await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES);
+    const check = nodes.calls.find((call) => call.command.endsWith('\necho OK'));
+    expect(check?.host).toBe('worker');
+  });
+
+  it('an uncompressed file is read with cat', async () => {
+    containerMoved();
+    backupOnWorker({ compression: 'none' });
+    await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES);
+    expect(nodes.calls.some((call) => call.via === 'stream' && call.command === `cat '${DIR}/${POSTGRES_BACKUP}.sql'`)).toBe(true);
+  });
+
+  it('the stderr and exit status of the restore are those of the container side', async () => {
+    containerMoved();
+    nodes.on('docker exec -i', { exitCode: 3, stderr: 'psql: FATAL: password authentication failed\n' });
+    expect(failure(await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES)).message).toBe(
+      'Restore failed: psql: FATAL: password authentication failed',
+    );
+  });
+
+  it('a redis appendonly refusal is recognised through the relay too', async () => {
+    containerMoved();
+    nodes.on('*.meta.json', listing(metadata({ id: POSTGRES_BACKUP, dbType: 'redis' })), 'worker');
+    nodes.on('docker exec -i', { exitCode: 3, stderr: 'DOCKFLOW_REFUSED: redis-appendonly\n' });
+    const error = failure(await backupEngine().restore('db', POSTGRES_BACKUP, { type: 'redis' }));
+    expect(error.message).toContain('has appendonly enabled');
+    expect(pauses).toEqual([]);
+  });
+
+  it('a file that cannot be read is reported as such, not as a restore that succeeded', async () => {
+    containerMoved();
+    nodes.on((command) => command.startsWith('gunzip -c'), { exitCode: 1, stderr: 'gzip: stdin: unexpected end of file\n' });
+    const error = failure(await backupEngine().restore('db', POSTGRES_BACKUP, POSTGRES));
+    expect(error.message).toBe(`Cannot read backup file ${DIR}/${POSTGRES_BACKUP}.sql.gz on agent_1: gzip: stdin: unexpected end of file`);
+    expect((error as BackupError).code).toBe(ErrorCode.RESTORE_FAILED);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// volume restore
+// ---------------------------------------------------------------------------
+
+describe('Backup.restore of volumes', () => {
+  const VOLUMES = [
+    { name: 'data', sizeBytes: 1, mountType: 'volume' as const, sourcePath: `${STACK}_data` },
+    { name: 'uploads', sizeBytes: 1, mountType: 'bind' as const, sourcePath: '/srv/uploads' },
+  ];
+  const helper = (command: string): boolean => command.includes('docker run --rm');
+
+  function volumeBackup(volumes = VOLUMES): void {
+    const meta = metadata({ id: POSTGRES_BACKUP, dbType: 'volume', integrity: 'tar', volumes });
+    nodes.on('*.meta.json', listing(meta), 'worker');
+    nodes.on(`cat '${DIR}/${POSTGRES_BACKUP}.meta.json'`, { stdout: JSON.stringify(meta) });
+    nodes.on('docker volume ls', { stdout: `other\n${STACK}_data\n` });
+    nodes.on('test -d', { exitCode: 0 });
+  }
+
+  const restore = (): ReturnType<Backup['restore']> => backupEngine().restore('db', POSTGRES_BACKUP, VOLUME);
+
+  it('verifies, then extracts every archive beside the data, and swaps only after all of them', async () => {
+    volumeBackup();
+    expect((await restore()).success).toBe(true);
+
+    const kinds = nodes.commands('worker').flatMap((command) => {
+      if (command.includes('.dockflow-restore-') && command.includes('tar xf - -C')) return ['extract'];
+      if (command.includes('.dockflow-old-')) return ['swap'];
+      if (command.endsWith('\necho OK')) return ['verify'];
+      return [];
+    });
+    expect(kinds).toEqual(['verify', 'verify', 'extract', 'extract', 'swap', 'swap']);
+    expect(nodes.commands().some((command) => /find .*-delete|rm -rf \/backup-target|\/backup-target/.test(command))).toBe(false);
+  });
+
+  it('feeds each archive to a root helper container: the volume by name, the bind mount by path', async () => {
+    volumeBackup();
+    await restore();
+    const extracts = nodes.commands('worker').filter((command) => command.includes('tar xf - -C'));
+    expect(extracts[0]).toMatch(new RegExp(`^gunzip -c '${DIR}/${POSTGRES_BACKUP}.data.tar.gz' \\| docker run --rm -i -v '${STACK}_data':/dockflow/v0 alpine sh -c `));
+    expect(extracts[1]).toMatch(new RegExp(`^gunzip -c '${DIR}/${POSTGRES_BACKUP}.uploads.tar.gz' \\| docker run --rm -i -v '/srv/uploads':/dockflow/v0 alpine sh -c `));
+  });
+
+  it('an uncompressed archive is read with cat', async () => {
+    volumeBackup();
+    nodes.on('*.meta.json', listing(metadata({ id: POSTGRES_BACKUP, dbType: 'volume', compression: 'none', integrity: 'tar', volumes: VOLUMES })), 'worker');
+    await backupEngine().restore('db', POSTGRES_BACKUP, VOLUME);
+    expect(nodes.commands('worker').some((command) => command.startsWith(`cat '${DIR}/${POSTGRES_BACKUP}.data.tar' | docker run`))).toBe(true);
+  });
+
+  it('an extraction that fails on the second volume swaps nothing, cleans both, and says nothing changed', async () => {
+    volumeBackup();
+    nodes.on((command) => command.includes('/srv/uploads') && command.includes('tar xf - -C'), { exitCode: 2, stderr: 'tar: invalid magic\n' });
+    const error = failure(await restore());
+    expect(error.message).toBe('Restore of db failed while extracting bind uploads: tar: invalid magic; nothing was changed');
+    expect(nodes.commands().some((command) => command.includes('.dockflow-old-'))).toBe(false);
+    const discards = nodes.commands('worker').filter((command) => helper(command) && !command.includes('tar xf') && command.includes('rm -rf "$d/.dockflow-restore-'));
+    expect(discards).toHaveLength(2);
+  });
+
+  it('a full disk during extraction names the node and keeps the data', async () => {
+    volumeBackup();
+    nodes.on((command) => command.includes('tar xf - -C'), { exitCode: 1, stderr: 'tar: x: Cannot write: No space left on device\n' });
+    const error = failure(await restore());
+    expect(error.message).toBe('Restore of db needs room for a second copy of volume data on agent_1; nothing was changed');
+    expect((error as BackupError).suggestion).toContain('Free disk space on agent_1');
+    expect(nodes.commands().some((command) => command.includes('.dockflow-old-'))).toBe(false);
+  });
+
+  it('a swap that fails names where the previous contents are', async () => {
+    volumeBackup();
+    nodes.on((command) => command.includes('.dockflow-old-') && command.includes("'/srv/uploads'"), { exitCode: 1, stderr: 'mv: cannot move\n' });
+    const error = failure(await restore());
+    expect(error.message).toMatch(/^Restore of db failed while swapping bind uploads: mv: cannot move; the previous contents are in uploads\/\.dockflow-old-[0-9a-f]{8}$/);
+  });
+
+  it('a volume that no longer exists is refused before anything runs, instead of being created empty', async () => {
+    volumeBackup();
+    nodes.on('docker volume ls', { stdout: 'other\n' });
+    const error = failure(await restore());
+    expect(error.message).toBe(`Volume ${STACK}_data of service db does not exist on agent_1; nothing was restored`);
+    expect(nodes.commands().some(helper)).toBe(false);
+  });
+
+  it('a volume is found under its recorded name, then the stack-prefixed one, then the short one, labelled or not', async () => {
+    volumeBackup();
+    nodes.on('docker volume ls', { stdout: `${STACK}_data\n` });
+    expect((await restore()).success).toBe(true);
+
+    nodes.calls.length = 0;
+    volumeBackup([{ ...VOLUMES[0], sourcePath: 'renamed' }, VOLUMES[1]]);
+    nodes.on('docker volume ls', { stdout: `${STACK}_data\n` });
+    expect((await restore()).success).toBe(true);
+    expect(nodes.commands('worker').some((command) => command.includes(`-v '${STACK}_data':/dockflow/v0`))).toBe(true);
+
+    nodes.calls.length = 0;
+    nodes.on('docker volume ls', { stdout: 'data\n' });
+    expect((await restore()).success).toBe(true);
+    expect(nodes.commands('worker').some((command) => command.includes("-v 'data':/dockflow/v0"))).toBe(true);
+  });
+
+  it('a bind mount whose directory is gone is refused before anything runs', async () => {
+    volumeBackup();
+    nodes.on('test -d', { exitCode: 1 });
+    const error = failure(await restore());
+    expect(error.message).toBe('Bind mount /srv/uploads does not exist on agent_1; nothing was restored');
+    expect(nodes.commands().some(helper)).toBe(false);
+  });
+
+  it('metadata that is missing the mount information is refused', async () => {
+    volumeBackup([{ name: 'data', sizeBytes: 1, mountType: 'bind', sourcePath: '' }]);
+    const error = failure(await restore());
+    expect(error.message).toBe(`Backup metadata for ${POSTGRES_BACKUP} is missing mount information for "data"; refusing to restore`);
+    volumeBackup([{ name: '../x', sizeBytes: 1, mountType: 'volume', sourcePath: 'v' }]);
+    expect(failure(await restore()).message).toContain('missing mount information');
   });
 });

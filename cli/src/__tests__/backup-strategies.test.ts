@@ -9,6 +9,9 @@ import {
   backupOrder,
   buildBackupDir,
   buildCapturePipeline,
+  buildDiscardScript,
+  buildExtractScript,
+  buildSwapScript,
   buildDataFilePath,
   buildDumpScript,
   buildRestoreScript,
@@ -19,6 +22,8 @@ import {
   newestBackupFirst,
   parseContainerMounts,
   parseRetention,
+  previousDirName,
+  restoreDirName,
   parseRestoreRefusal,
   RESTORE_REFUSAL_MARKER,
   recordedIntegrity,
@@ -918,5 +923,113 @@ describe('parseRetention', () => {
       expect(() => parseRetention(raw, 10)).toThrow(ValidationError);
     }
     expect(() => parseRetention('-1', 10)).toThrow('--keep must be a non-negative integer, got "-1"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Volume restore scripts
+// ---------------------------------------------------------------------------
+
+describe('volume restore scripts', () => {
+  it('extract beside the data', () => {
+    expect(buildExtractScript('/dockflow/v0', 'ab12cd34')).toBe(
+      ["set -e; d='/dockflow/v0'; new=\"$d/.dockflow-restore-ab12cd34\"", 'rm -rf "$new"; mkdir "$new"', 'tar xf - -C "$new"'].join('\n'),
+    );
+  });
+
+  it('swap moves the old contents aside, then the new ones in', () => {
+    expect(buildSwapScript('/dockflow/v0', 'ab12cd34')).toBe(
+      [
+        "set -e; d='/dockflow/v0'; new=\"$d/.dockflow-restore-ab12cd34\"; old=\"$d/.dockflow-old-ab12cd34\"",
+        'rm -rf "$old"; mkdir "$old"',
+        'for e in "$d"/* "$d"/.[!.]* "$d"/..?*; do [ -e "$e" ] || [ -L "$e" ] || continue; case "$e" in "$new"|"$old") continue;; esac; mv "$e" "$old/"; done',
+        'for e in "$new"/* "$new"/.[!.]* "$new"/..?*; do [ -e "$e" ] || [ -L "$e" ] || continue; mv "$e" "$d/"; done',
+        'rmdir "$new"; rm -rf "$old"',
+      ].join('\n'),
+    );
+  });
+
+  it('discard removes the extraction directory only', () => {
+    expect(buildDiscardScript('/dockflow/v0', 'ab12cd34')).toBe("d='/dockflow/v0'; rm -rf \"$d/.dockflow-restore-ab12cd34\"");
+  });
+
+  it('never wipes the mount root', () => {
+    for (const script of [buildExtractScript('/dockflow/v0', 'ab12cd34'), buildSwapScript('/dockflow/v0', 'ab12cd34')]) {
+      expect(script).not.toContain('find');
+      expect(script).not.toMatch(/rm -rf "\$d"\/?\*|rm -rf "\$d"(\s|$)|-delete/);
+    }
+  });
+
+  it('directory names; an id that is not lowercase alphanumeric is refused', () => {
+    expect(restoreDirName('ab12cd34')).toBe('.dockflow-restore-ab12cd34');
+    expect(previousDirName('ab12cd34')).toBe('.dockflow-old-ab12cd34');
+    expect(() => buildExtractScript('/dockflow/v0', '../x')).toThrow();
+    expect(() => restoreDirName('$(id)')).toThrow();
+  });
+});
+
+describe.if(hasPosixShell)('volume restore scripts, executed', () => {
+  const listTree = (root: string): string[] => {
+    const out: string[] = [];
+    const walk = (dir: string, prefix: string): void => {
+      for (const name of readdirSync(dir).sort()) {
+        const path = join(dir, name);
+        out.push(`${prefix}${name}`);
+        if (statSync(path).isDirectory()) walk(path, `${prefix}${name}/`);
+      }
+    };
+    walk(root, '');
+    return out;
+  };
+
+  const setup = (): { volume: string; archive: string } => {
+    const volume = freshDir('volume');
+    writeFileSync(join(volume, 'old.txt'), 'old');
+    writeFileSync(join(volume, '.hidden-old'), 'h');
+    writeFileSync(join(volume, '..odd'), 'o');
+    mkdirSync(join(volume, 'sub'));
+    writeFileSync(join(volume, 'sub', 'x'), 'x');
+    const source = freshDir('volume-source');
+    writeFileSync(join(source, 'new.txt'), 'new');
+    writeFileSync(join(source, '.hidden-new'), 'n');
+    mkdirSync(join(source, 'sub2'));
+    writeFileSync(join(source, 'sub2', 'y'), 'y');
+    const archive = join(work, 'volume.tar');
+    expect(runSh(`tar cf '${archive}' -C '${source}' .`).exitCode).toBe(0);
+    return { volume, archive };
+  };
+
+  it('extract beside, then swap: the volume holds exactly the archive', () => {
+    const { volume, archive } = setup();
+    const script = join(work, 'extract.sh');
+    writeFileSync(script, buildExtractScript(volume, 'ab12cd34'));
+    expect(runSh(`sh '${script}' < '${archive}'`).exitCode).toBe(0);
+    expect(listTree(volume)).toEqual([
+      '..odd',
+      '.dockflow-restore-ab12cd34',
+      '.dockflow-restore-ab12cd34/.hidden-new',
+      '.dockflow-restore-ab12cd34/new.txt',
+      '.dockflow-restore-ab12cd34/sub2',
+      '.dockflow-restore-ab12cd34/sub2/y',
+      '.hidden-old',
+      'old.txt',
+      'sub',
+      'sub/x',
+    ]);
+
+    expect(runSh(buildSwapScript(volume, 'ab12cd34')).exitCode).toBe(0);
+    expect(listTree(volume)).toEqual(['.hidden-new', 'new.txt', 'sub2', 'sub2/y']);
+    expect(readFileSync(join(volume, 'new.txt'), 'utf8')).toBe('new');
+  });
+
+  it('a failed extraction leaves the data untouched, and discard removes what it left', () => {
+    const { volume } = setup();
+    const extract = runSh(buildExtractScript(volume, 'ab12cd34'), { stdin: 'this is not a tar archive'.repeat(100) });
+    expect(extract.exitCode).not.toBe(0);
+    expect(listTree(volume)).toContain('old.txt');
+    expect(readFileSync(join(volume, 'sub', 'x'), 'utf8')).toBe('x');
+
+    expect(runSh(buildDiscardScript(volume, 'ab12cd34')).exitCode).toBe(0);
+    expect(listTree(volume)).toEqual(['..odd', '.hidden-old', 'old.txt', 'sub', 'sub/x']);
   });
 });

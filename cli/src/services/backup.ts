@@ -10,11 +10,12 @@
  * (restore, prune, list) can connect to the correct node directly.
  */
 
+import { createHash } from 'crypto';
 import type { ClusterNode, SSHKeyConnection } from '../types';
 import type { BackupDbType, BackupAccessoryConfig } from '../utils/config';
 import { ok, err, type Result } from '../types';
 import { BackupError, ErrorCode, ValidationError } from '../utils/errors';
-import { sshExec, sshExecChannel, shellQuote } from '../utils/ssh';
+import { sshExec, sshExecChannel, sshExecChannelUnbuffered, shellQuote } from '../utils/ssh';
 import { formatBytes, printDebug, printInfo, printWarning } from '../utils/output';
 import { findSwarmContainer } from './orchestrator/swarm/swarm-utils';
 import { SwarmStackBackend } from './orchestrator/swarm/swarm-stack';
@@ -29,8 +30,13 @@ import {
   recordedIntegrity,
   parseContainerMounts,
   parseRestoreRefusal,
+  previousDirName,
+  RESTORE_MOUNT_DIR,
   stripRefusalMarker,
   buildCapturePipeline,
+  buildDiscardScript,
+  buildExtractScript,
+  buildSwapScript,
   buildDataFilePath,
   buildBackupDir,
   backupEpochMs,
@@ -75,6 +81,13 @@ export interface BackupMetadata extends BackupBaseEntry {
   volumes?: BackupVolumeRecord[];
 }
 
+interface RestorePlan {
+  record: BackupVolumeRecord;
+  /** Docker volume name or host path mounted into the helper container */
+  source: string;
+  file: string;
+}
+
 export interface BackupListEntry extends BackupBaseEntry {
   filePath: string;
   /** Name of the server the backup was listed on */
@@ -100,6 +113,36 @@ function generateBackupId(): string {
   const pad = (n: number) => n.toString().padStart(2, '0');
   const suffix = Math.random().toString(16).slice(2, 6).padEnd(4, '0');
   return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}-${suffix}`;
+}
+
+const STDERR_CAP = 64 * 1024;
+
+/** What a stream wrote so far, up to a cap: the head of stderr is what names the problem. */
+function collectText(stream: NodeJS.ReadableStream): () => string {
+  let text = '';
+  stream.on('data', (chunk: Buffer | string) => {
+    if (text.length < STDERR_CAP) text += chunk.toString();
+  });
+  return () => text;
+}
+
+/** Resolves when the stream has ended, or after a moment if it never says so. */
+function streamEnded(stream: NodeJS.ReadableStream & { readableEnded?: boolean }): Promise<void> {
+  if (stream.readableEnded) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(done, 500);
+    stream.once('end', done);
+    stream.once('close', done);
+  });
+}
+
+/** Stable per backup, so a retry cleans the directories an interrupted restore left. */
+function restoreId(backupDir: string, backupId: string): string {
+  return createHash('sha256').update(`${backupDir}/${backupId}`).digest('hex').slice(0, 8);
 }
 
 function isBackupType(value: unknown): value is BackupDbType {
@@ -473,97 +516,168 @@ export class Backup {
     return ok(metadata);
   }
 
-  /** Restore volumes and bind mounts from a backup */
+  /**
+   * Restore volumes and bind mounts from a backup, all of them or none: every archive is verified
+   * and every target resolved first, then each archive is extracted beside the current contents,
+   * and only when all extractions succeeded are the contents swapped by renames. A bad archive
+   * or a full disk leaves every volume as it was. The service keeps running.
+   */
   private async restoreVolumes(
     service: string,
     backupId: string,
     compression: 'gzip' | 'none',
-    nodeConn: SSHKeyConnection
+    node: ClusterNode
   ): Promise<Result<void, Error>> {
+    try {
+      await this.restoreVolumesOn(service, backupId, compression, node);
+      return ok(undefined);
+    } catch (e) {
+      return err(e instanceof Error ? e : new Error(String(e)));
+    }
+  }
+
+  private async restoreVolumesOn(
+    service: string,
+    backupId: string,
+    compression: 'gzip' | 'none',
+    node: ClusterNode,
+  ): Promise<void> {
+    const nodeConn = node.connection;
     const backupDir = this.getBackupDir(service);
 
-    // Read metadata to get volume/bind mount names
-    const metaPath = `${backupDir}/${backupId}.meta.json`;
-    const metaResult = await sshExec(nodeConn, `cat ${shellQuote(metaPath)} 2>/dev/null`);
+    const metaResult = await sshExec(nodeConn, `cat ${shellQuote(`${backupDir}/${backupId}.meta.json`)} 2>/dev/null`);
     if (!metaResult.stdout.trim()) {
-      return err(new Error(`Backup ${backupId} not found`));
+      throw new BackupError(`Backup ${backupId} not found`, { code: ErrorCode.BACKUP_NOT_FOUND });
     }
-
     const meta = parseMetadata(metaResult.stdout.trim());
     if (!meta) {
-      return err(new Error(`Invalid backup metadata for ${backupId}`));
+      throw new BackupError(`Invalid backup metadata for ${backupId}`, { code: ErrorCode.RESTORE_FAILED });
     }
 
-    const volumeEntries = meta.volumes ?? [];
-    if (volumeEntries.length === 0) {
-      return err(new Error(`No volume information in backup metadata for ${backupId}`));
+    const records = meta.volumes ?? [];
+    if (records.length === 0) {
+      throw new BackupError(`No volume information in backup metadata for ${backupId}`, { code: ErrorCode.RESTORE_FAILED });
     }
-
-    // List existing Docker volumes to resolve short names for volume mounts
-    const volListResult = await sshExec(
-      nodeConn,
-      `docker volume ls --filter "label=com.docker.stack.namespace=${this.stackName}" --format "{{.Name}}"`
-    );
-    const existingVolumes = volListResult.stdout.trim().split('\n').filter(Boolean);
-
-    const restoreTasks: { entry: typeof volumeEntries[number]; fullCommand: string }[] = [];
-
-    for (const entry of volumeEntries) {
-      const filePath = this.getDataFilePath(backupDir, backupId, 'volume', compression, entry.name);
-      const { mountType } = entry;
-
-      if (!mountType || (mountType === 'bind' && !entry.sourcePath)) {
-        return err(new Error(
-          `Backup metadata for ${backupId} is missing mount information for "${entry.name}" — refusing to restore`,
-        ));
+    for (const record of records) {
+      if (
+        typeof record.name !== 'string' || !SAFE_NAME.test(record.name) ||
+        (record.mountType !== 'volume' && record.mountType !== 'bind') ||
+        typeof record.sourcePath !== 'string' || !record.sourcePath
+      ) {
+        throw new BackupError(
+          `Backup metadata for ${backupId} is missing mount information for "${String(record.name)}"; refusing to restore`,
+          { code: ErrorCode.RESTORE_FAILED },
+        );
       }
+    }
 
-      // The restore commands wipe the target before extracting — make sure
-      // the source archive is sound before destroying anything.
+    // Every archive, before anything is changed
+    for (const record of records) {
+      const filePath = this.getDataFilePath(backupDir, backupId, 'volume', compression, record.name);
       const archiveIssue = await this.checkArchive(nodeConn, filePath, compression, 'tar');
       if (archiveIssue) {
-        return err(new Error(
-          `Backup file for ${mountType} ${entry.name} cannot be restored: ${archiveIssue}`,
-        ));
+        throw new BackupError(
+          `Backup file for ${record.mountType} ${record.name} cannot be restored: ${archiveIssue}`,
+          { code: ErrorCode.RESTORE_FAILED },
+        );
       }
-
-      let restoreCmd: string;
-      if (mountType === 'bind') {
-        // Bind mount: clear target and extract directly on the host
-        const src = shellQuote(entry.sourcePath);
-        restoreCmd = `find ${src} -mindepth 1 -delete && tar xf - -C ${src}`;
-      } else {
-        // Named volume: extract via temporary alpine container
-        const fullVolumeName = existingVolumes.find(
-          v => v === entry.name || v === `${this.stackName}_${entry.name}`
-        ) || `${this.stackName}_${entry.name}`;
-        restoreCmd = `docker run --rm -i -v ${shellQuote(fullVolumeName)}:/backup-target alpine sh -c 'rm -rf /backup-target/* /backup-target/..?* /backup-target/.[!.]* 2>/dev/null; tar xf - -C /backup-target'`;
-      }
-
-      const fullCommand = compression === 'gzip'
-        ? `gunzip -c ${shellQuote(filePath)} | ${restoreCmd}`
-        : `cat ${shellQuote(filePath)} | ${restoreCmd}`;
-
-      restoreTasks.push({ entry, fullCommand });
     }
 
-    const restoreResults = await Promise.allSettled(
-      restoreTasks.map(({ fullCommand }) => sshExec(nodeConn, fullCommand)),
+    // Every target, before anything is written: a missing one must not be created empty by docker run -v
+    const existing = await this.dockerVolumeNames(nodeConn);
+    const plans: RestorePlan[] = [];
+    for (const record of records) {
+      const source = record.mountType === 'bind'
+        ? await this.requireBindPath(nodeConn, node, record)
+        : this.resolveVolume(existing, record, service, node);
+      plans.push({ record, source, file: this.getDataFilePath(backupDir, backupId, 'volume', compression, record.name) });
+    }
+
+    const id8 = restoreId(backupDir, backupId);
+    const helper = (plan: RestorePlan, script: string, interactive: boolean): string =>
+      `docker run --rm ${interactive ? '-i ' : ''}-v ${shellQuote(plan.source)}:${RESTORE_MOUNT_DIR} alpine sh -c ${shellQuote(script)}`;
+
+    const extracted: RestorePlan[] = [];
+    try {
+      for (const plan of plans) {
+        extracted.push(plan);
+        const command = helper(plan, buildExtractScript(RESTORE_MOUNT_DIR, id8), true);
+        const feed = compression === 'gzip' ? `gunzip -c ${shellQuote(plan.file)}` : `cat ${shellQuote(plan.file)}`;
+        const result = await sshExec(nodeConn, `${feed} | ${command}`);
+        if (result.exitCode !== 0) throw this.extractionError(service, plan, node, result);
+      }
+    } catch (e) {
+      for (const plan of extracted) {
+        try {
+          const discarded = await sshExec(nodeConn, helper(plan, buildDiscardScript(RESTORE_MOUNT_DIR, id8), false));
+          if (discarded.exitCode !== 0) printDebug(`Could not clean the restore directory of ${plan.record.name}: ${discarded.stderr.trim()}`);
+        } catch (cleanupError) {
+          printDebug(`Could not clean the restore directory of ${plan.record.name}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
+        }
+      }
+      throw e;
+    }
+
+    for (const plan of plans) {
+      const result = await sshExec(nodeConn, helper(plan, buildSwapScript(RESTORE_MOUNT_DIR, id8), false));
+      if (result.exitCode !== 0) {
+        throw new BackupError(
+          `Restore of ${service} failed while swapping ${plan.record.mountType} ${plan.record.name}: ${result.stderr.trim() || `exit code ${result.exitCode}`}; the previous contents are in ${plan.record.name}/${previousDirName(id8)}`,
+          {
+            code: ErrorCode.RESTORE_FAILED,
+            suggestion: `Retry the restore, or move the files back from that directory on ${node.name}.`,
+          },
+        );
+      }
+    }
+  }
+
+  private async dockerVolumeNames(conn: SSHKeyConnection): Promise<Set<string>> {
+    const result = await sshExec(conn, `docker volume ls --format '{{.Name}}'`);
+    return new Set(result.stdout.split(/\r?\n/).map(line => line.trim()).filter(Boolean));
+  }
+
+  /** The Docker volume an archive goes back into: the one that was backed up, never a new empty one */
+  private resolveVolume(existing: Set<string>, record: BackupVolumeRecord, service: string, node: ClusterNode): string {
+    const candidates = [record.sourcePath, `${this.stackName}_${record.name}`, record.name];
+    const match = candidates.find(candidate => existing.has(candidate));
+    if (match === undefined) {
+      throw new BackupError(
+        `Volume ${record.sourcePath} of service ${service} does not exist on ${node.name}; nothing was restored`,
+        {
+          code: ErrorCode.RESTORE_FAILED,
+          suggestion: 'Deploy the service so its volume exists, then run the restore again.',
+        },
+      );
+    }
+    return match;
+  }
+
+  private async requireBindPath(conn: SSHKeyConnection, node: ClusterNode, record: BackupVolumeRecord): Promise<string> {
+    const result = await sshExec(conn, `test -d ${shellQuote(record.sourcePath)}`);
+    if (result.exitCode !== 0) {
+      throw new BackupError(
+        `Bind mount ${record.sourcePath} does not exist on ${node.name}; nothing was restored`,
+        { code: ErrorCode.RESTORE_FAILED },
+      );
+    }
+    return record.sourcePath;
+  }
+
+  private extractionError(service: string, plan: RestorePlan, node: ClusterNode, result: { exitCode: number; stderr: string }): BackupError {
+    if (/No space left on device/i.test(result.stderr)) {
+      return new BackupError(
+        `Restore of ${service} needs room for a second copy of ${plan.record.mountType} ${plan.record.name} on ${node.name}; nothing was changed`,
+        {
+          code: ErrorCode.RESTORE_FAILED,
+          suggestion: `Free disk space on ${node.name} and run the restore again; the current contents were kept.`,
+        },
+      );
+    }
+    return new BackupError(
+      `Restore of ${service} failed while extracting ${plan.record.mountType} ${plan.record.name}: ${result.stderr.trim() || `exit code ${result.exitCode}`}; nothing was changed`,
+      { code: ErrorCode.RESTORE_FAILED },
     );
-
-    for (let i = 0; i < restoreResults.length; i++) {
-      const r = restoreResults[i];
-      const { entry } = restoreTasks[i];
-      const { mountType } = entry;
-      if (r.status === 'rejected') {
-        return err(new Error(`Restore failed for ${mountType} ${entry.name}: ${r.reason?.message ?? 'unknown'}`));
-      }
-      if (r.value.exitCode !== 0) {
-        return err(new Error(`Restore failed for ${mountType} ${entry.name}: ${r.value.stderr}`));
-      }
-    }
-
-    return ok(undefined);
   }
 
   /**
@@ -656,13 +770,14 @@ export class Backup {
     const dbType = config.type;
 
     let entry: BackupListEntry;
-    let nodeConn: SSHKeyConnection;
+    let node: ClusterNode;
     try {
       entry = typeof backup === 'string' ? await this.listedEntry(service, backup) : backup;
-      nodeConn = this.nodeOf(entry).connection;
+      node = this.nodeOf(entry);
     } catch (e) {
       return err(e instanceof Error ? e : new Error(String(e)));
     }
+    const nodeConn = node.connection;
     const backupId = entry.id;
     const backupDir = this.getBackupDir(service);
 
@@ -671,14 +786,14 @@ export class Backup {
 
     // Volume restore uses a different flow (docker run instead of docker exec)
     if (dbType === 'volume') {
-      return this.restoreVolumes(service, backupId, backupCompression, nodeConn);
+      return this.restoreVolumes(service, backupId, backupCompression, node);
     }
 
     const found = await this.findContainer(service);
     if (!found) {
       return err(new BackupError(`No running container found for service ${service}`, { code: ErrorCode.CONTAINER_NOT_FOUND }));
     }
-    const { containerId } = found;
+    const { containerId, connection: containerConn } = found;
 
     const dataFile = this.getDataFilePath(backupDir, backupId, dbType, backupCompression);
 
@@ -695,14 +810,14 @@ export class Backup {
       return err(e instanceof Error ? e : new Error(String(e)));
     }
 
-    // Backup file and container are on the same node — backups are created
-    // via docker exec on the container's node, so the file is always local.
+    // The container may have moved to another node since the backup was taken
     const dockerExec = `docker exec -i ${shellQuote(containerId)} sh -c ${shellQuote(restoreScript)}`;
-    const fullCommand = backupCompression === 'gzip'
-      ? `gunzip -c ${shellQuote(dataFile)} | ${dockerExec}`
-      : `cat ${shellQuote(dataFile)} | ${dockerExec}`;
-
-    const result = await sshExec(nodeConn, fullCommand);
+    let result: { exitCode: number; stderr: string };
+    try {
+      result = await this.streamInto(node, dataFile, backupCompression === 'gzip', containerConn, dockerExec);
+    } catch (e) {
+      return err(e instanceof Error ? e : new Error(String(e)));
+    }
 
     if (parseRestoreRefusal(result.stderr) === 'redis-appendonly') {
       return err(new BackupError(
@@ -737,6 +852,68 @@ export class Backup {
     }
 
     return ok(undefined);
+  }
+
+  /**
+   * Streams a backup file into `command` on `sink`: one pipeline when the file is on that node,
+   * else a relay through this machine with backpressure.
+   */
+  private async streamInto(
+    source: ClusterNode,
+    file: string,
+    gunzip: boolean,
+    sink: SSHKeyConnection,
+    command: string,
+  ): Promise<{ exitCode: number; stderr: string }> {
+    const path = shellQuote(file);
+    const reader = gunzip ? `gunzip -c ${path}` : `cat ${path}`;
+    if (source.connection.host === sink.host && source.connection.port === sink.port) {
+      const result = await sshExec(sink, `${reader} | ${command}`);
+      return { exitCode: result.exitCode, stderr: result.stderr };
+    }
+
+    const from = await sshExecChannelUnbuffered(source.connection, reader);
+    let to: Awaited<ReturnType<typeof sshExecChannelUnbuffered>>;
+    try {
+      to = await sshExecChannelUnbuffered(sink, command);
+    } catch (e) {
+      from.stream.destroy();
+      throw e;
+    }
+    const fromStderr = collectText(from.stream.stderr);
+    const toStderr = collectText(to.stream.stderr);
+    to.stream.on('data', () => {});
+    from.stream.on('error', (e: Error) => printDebug(`Backup relay source: ${e.message}`));
+    to.stream.on('error', (e: Error) => printDebug(`Backup relay target: ${e.message}`));
+
+    // Whichever side settles first decides: a reader that failed first truncated the stream; a
+    // restore that finished first stopped reading, so the reader is closed.
+    const settled: { first: 'source' | 'sink' | null } = { first: null };
+    const fromOutcome = from.done.then(({ exitCode }) => {
+      settled.first ??= 'source';
+      return exitCode;
+    });
+    const toOutcome = to.done.then(({ exitCode }) => {
+      settled.first ??= 'sink';
+      if (!from.stream.readableEnded) {
+        from.stream.unpipe(to.stream);
+        from.stream.destroy();
+      }
+      return exitCode;
+    });
+    from.stream.pipe(to.stream);
+
+    const [fromExit, toExit] = await Promise.all([fromOutcome, toOutcome]);
+    // the exit status can arrive before the last of stderr
+    await streamEnded(to.stream.stderr);
+    if (settled.first === 'source' && fromExit !== 0) {
+      await streamEnded(from.stream.stderr);
+      throw new BackupError(
+        `Cannot read backup file ${file} on ${source.name}: ${fromStderr().trim().split(/\r?\n/)[0] || `exit code ${fromExit}`}`,
+        { code: ErrorCode.RESTORE_FAILED },
+      );
+    }
+    return { exitCode: toExit, stderr: toStderr() };
   }
 
   /**
