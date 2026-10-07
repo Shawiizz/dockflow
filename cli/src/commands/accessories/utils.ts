@@ -5,7 +5,8 @@
 
 import type { SSHKeyConnection } from '../../types/connection';
 import { getAccessoriesStackName } from '../../utils/config';
-import { sshExec } from '../../utils/ssh';
+import { shellQuote, sshExec } from '../../utils/ssh';
+import { runDockerQuery } from '../../services/orchestrator/swarm/swarm-utils';
 import { DockerError, ErrorCode } from '../../utils/errors';
 
 /**
@@ -26,17 +27,19 @@ export async function validateAccessoriesStack(
 ): Promise<StackValidation> {
   const stackName = getAccessoriesStackName(env)!;
   
-  const stacksResult = await sshExec(connection, `docker stack ls --format "{{.Name}}"`);
-  const stacks = stacksResult.stdout.trim().split('\n').filter(Boolean);
-  
+  const stacks = (await runDockerQuery(connection, `docker stack ls --format '{{.Name}}'`, 'docker stack ls') ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
   if (!stacks.includes(stackName)) {
     return { exists: false, stackName, services: [] };
   }
 
-  const servicesResult = await sshExec(connection, 
-    `docker stack services ${stackName} --format "{{.Name}}"`
-  );
-  const services = servicesResult.stdout.trim().split('\n').filter(Boolean);
+  const services = (await runDockerQuery(connection, `docker stack services ${shellQuote(stackName)} --format '{{.Name}}'`, 'docker stack services') ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
 
   return { exists: true, stackName, services };
 }

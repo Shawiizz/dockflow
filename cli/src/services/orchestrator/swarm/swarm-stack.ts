@@ -8,10 +8,11 @@
 
 import type { SSHKeyConnection } from '../../../types';
 import { ok, err, type Result } from '../../../types/result';
-import { DeployError, DockerError, ErrorCode } from '../../../utils/errors';
+import { DeployError, ErrorCode } from '../../../utils/errors';
 import { shellQuote, sshExec } from '../../../utils/ssh';
 import { printDebug, createTimedSpinner } from '../../../utils/output';
 import { SwarmStackOps } from './swarm-stack-ops';
+import { runDockerQuery } from './swarm-utils';
 import * as Compose from '../../compose';
 import { DOCKFLOW_STACKS_DIR } from '../../../constants';
 import type {
@@ -284,11 +285,8 @@ export class SwarmStackBackend implements StackBackend {
   }
 
   async listStacks(): Promise<StackInfo[]> {
-    const result = await sshExec(
-      this.conn,
-      `docker stack ls --format '{{.Name}}\t{{.Services}}' 2>/dev/null || echo ""`,
-    );
-    return result.stdout
+    const stdout = await runDockerQuery(this.conn, `docker stack ls --format '{{.Name}}\t{{.Services}}'`, 'docker stack ls');
+    return (stdout ?? '')
       .trim()
       .split('\n')
       .filter(Boolean)
@@ -299,13 +297,12 @@ export class SwarmStackBackend implements StackBackend {
   }
 
   async getServices(stackName: string): Promise<ServiceInfo[]> {
-    const result = await sshExec(
+    const stdout = await runDockerQuery(
       this.conn,
-      `docker stack services ${shellQuote(stackName)} --format '{{.Name}}|{{.Image}}|{{.Replicas}}|{{.Ports}}' 2>/dev/null`,
+      `docker stack services ${shellQuote(stackName)} --format '{{.Name}}|{{.Image}}|{{.Replicas}}|{{.Ports}}'`,
+      'docker stack services',
     );
-    if (result.exitCode !== 0) return [];
-
-    return result.stdout
+    return (stdout ?? '')
       .trim()
       .split('\n')
       .filter(Boolean)
@@ -339,11 +336,8 @@ export class SwarmStackBackend implements StackBackend {
   }
 
   async stackExists(stackName: string): Promise<boolean> {
-    const result = await sshExec(
-      this.conn,
-      `docker stack ls --format '{{.Name}}' | grep -Fxq ${shellQuote(stackName)} && echo exists || echo not_found`,
-    );
-    return result.stdout.trim() === 'exists';
+    const stdout = await runDockerQuery(this.conn, `docker stack ls --format '{{.Name}}'`, 'docker stack ls');
+    return (stdout ?? '').split('\n').map((line) => line.trim()).includes(stackName);
   }
 
   async restart(stackName: string, service?: string): Promise<void> {
@@ -389,13 +383,12 @@ export class SwarmStackBackend implements StackBackend {
   // ---------------------------------------------------------------------------
 
   async getContainers(stackName: string): Promise<SwarmContainerInfo[]> {
-    const result = await sshExec(
+    const stdout = await runDockerQuery(
       this.conn,
       `docker ps --filter ${shellQuote(`label=com.docker.stack.namespace=${stackName}`)} --format '{{.ID}}|{{.Names}}|{{.Status}}|{{.Ports}}'`,
+      'docker ps',
     );
-    if (result.exitCode !== 0) throw new DockerError(`docker ps failed: ${result.stderr.trim() || `exit ${result.exitCode}`}`);
-
-    return result.stdout
+    return (stdout ?? '')
       .trim()
       .split('\n')
       .filter(Boolean)
@@ -406,17 +399,12 @@ export class SwarmStackBackend implements StackBackend {
   }
 
   async getTasks(stackName: string): Promise<SwarmTaskInfo[]> {
-    const result = await sshExec(
+    const stdout = await runDockerQuery(
       this.conn,
-      `docker stack ps ${shellQuote(stackName)} --format '{{.ID}}|{{.Name}}|{{.Image}}|{{.Node}}|{{.DesiredState}}|{{.CurrentState}}|{{.Error}}' --no-trunc 2>&1`,
+      `docker stack ps ${shellQuote(stackName)} --format '{{.ID}}|{{.Name}}|{{.Image}}|{{.Node}}|{{.DesiredState}}|{{.CurrentState}}|{{.Error}}' --no-trunc`,
+      'docker stack ps',
     );
-    // a stack that is not deployed is no task, any other failure is reported
-    if (result.exitCode !== 0) {
-      if (/nothing found in stack/i.test(result.stdout)) return [];
-      throw new DockerError(`docker stack ps failed: ${result.stdout.trim() || `exit ${result.exitCode}`}`);
-    }
-
-    return result.stdout
+    return (stdout ?? '')
       .trim()
       .split('\n')
       .filter(Boolean)

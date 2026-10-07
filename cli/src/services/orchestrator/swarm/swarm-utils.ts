@@ -5,6 +5,7 @@
 import type { SSHKeyConnection } from '../../../types';
 import { shellQuote, sshExec } from '../../../utils/ssh';
 import { printDebug } from '../../../utils/output';
+import { DockerError, ErrorCode } from '../../../utils/errors';
 
 export interface SwarmTask {
   id: string;
@@ -100,4 +101,26 @@ export function findSwarmContainer(
     `label=com.docker.swarm.service.name=${qualifyServiceName(stackName, serviceName)}`,
     [conn, ...allConnections],
   );
+}
+
+const NOTHING_FOUND = /nothing found in stack/i;
+
+/** A docker read that failed, said in terms of what to fix on the node. */
+export function dockerQueryError(host: string, result: { stdout: string; stderr: string; exitCode: number }, what: string): DockerError {
+  const text = `${result.stderr}\n${result.stdout}`;
+  const suggestion = `Check Docker on ${host} with \`dockflow ssh <env>\`.`;
+  if (/Cannot connect to the Docker daemon/i.test(text)) return new DockerError(`Docker is not running on ${host}`, { code: ErrorCode.DOCKER_NOT_AVAILABLE, suggestion });
+  if (result.exitCode === 127 || /docker: (command )?not found/i.test(text)) return new DockerError(`Docker is not installed on ${host}`, { code: ErrorCode.DOCKER_NOT_AVAILABLE, suggestion });
+  if (/not a swarm manager/i.test(text)) return new DockerError(`${host} is not a Swarm manager`, { suggestion });
+  if (/permission denied.*docker/i.test(text)) return new DockerError(`The SSH user of ${host} is not allowed to use Docker`, { suggestion });
+  const detail = text.split('\n').map((line) => line.trim()).find(Boolean) ?? `exit ${result.exitCode}`;
+  return new DockerError(`${what} failed on ${host}: ${detail}`, { suggestion });
+}
+
+/** Runs a read-only docker command; null when docker says the stack holds nothing. */
+export async function runDockerQuery(connection: SSHKeyConnection, command: string, what: string): Promise<string | null> {
+  const result = await sshExec(connection, command);
+  if (NOTHING_FOUND.test(result.stderr) || NOTHING_FOUND.test(result.stdout)) return null;
+  if (result.exitCode !== 0) throw dockerQueryError(connection.host, result, what);
+  return result.stdout;
 }
