@@ -52,6 +52,16 @@ services:
   `{{ env }}` and `{{ version }}` are always available in the render context — no need to declare them in `servers.yml`.
 </Callout>
 
+## How the File Is Read
+
+Dockflow reads the compose file the way Compose means it, then hands Swarm a plain file:
+
+- Merge keys (`<<: *defaults`) are resolved, and an anchor used twice gives two independent copies.
+- File modes such as `mode: 0440` on secrets, configs and tmpfs are octal, as Compose reads them.
+- Values Compose treats as text keep their text: `PORT: 010` stays `010`, `VERSION: 1.10` stays `1.10` (environment, labels, build args, sysctls, extra hosts).
+- A file that Compose would not mean is refused with its name and line: duplicate keys, several YAML documents, tags other than the plain YAML ones (`!reset` and `!override` belong to override files, which Dockflow does not merge).
+- A file holding only comments is a stack without services.
+
 ## Automatic Image Tagging
 
 Dockflow automatically appends the environment and version to the names of the images it builds (services with a `build:` section), for isolation. An image it does not build, such as `postgres:16`, is pulled as written.
