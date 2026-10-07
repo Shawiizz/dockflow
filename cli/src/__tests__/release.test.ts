@@ -1,67 +1,46 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, test } from 'bun:test';
+import { existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync } from 'fs';
+import { join } from 'path';
+import {
+  assertReleaseName,
+  computeOrphanImages,
+  extractComposeImages,
+  parseReleaseList,
+  Release,
+  releaseEpoch,
+  type ReleaseMetadata,
+  selectRetention,
+  selectRollbackTarget,
+} from '../services/release';
+import type { StackBackend } from '../services/orchestrator/interfaces';
 import type { SSHExecResult } from '../types';
+import { DeployError, ErrorCode } from '../utils/errors';
+import type { RemoteShell } from '../utils/remote-shell';
+import { hasPosixShell, LocalShell } from './helpers/local-shell';
 
-// ---------------------------------------------------------------------------
-// SSH mock — must be installed before importing Release.
-// Each test scripts responses via `sshResponses`; commands are recorded
-// in `executedCommands` for assertions.
-// ---------------------------------------------------------------------------
-
-type Responder = (cmd: string) => SSHExecResult | undefined;
-
-const executedCommands: string[] = [];
-let sshResponses: Responder = () => undefined;
-
-const okResult = (stdout = ''): SSHExecResult => ({ stdout, stderr: '', exitCode: 0 });
-
-const realSsh = await import('../utils/ssh');
-mock.module('../utils/ssh', () => ({
-  ...realSsh,
-  sshExec: async (_conn: unknown, cmd: string): Promise<SSHExecResult> => {
-    executedCommands.push(cmd);
-    return sshResponses(cmd) ?? okResult();
-  },
-  sshExecChannel: async (_conn: unknown, cmd: string) => {
-    executedCommands.push(cmd);
-    return {
-      stream: { end: (_data?: unknown) => {} },
-      done: Promise.resolve(sshResponses(cmd) ?? okResult()),
-    };
-  },
-}));
-
-const { Release, parseReleaseList, selectRollbackCandidate, extractComposeImages, computeOrphanImages } =
-  await import('../services/release');
-type ReleaseMetadata = import('../services/release').ReleaseMetadata;
-const { DeployError } = await import('../utils/errors');
+const STACK = 'demo-production';
 
 function meta(version: string, epoch: number): ReleaseMetadata {
   return {
     project_name: 'demo',
     version,
     env: 'production',
-    timestamp: new Date(epoch).toISOString(),
+    timestamp: new Date(epoch * 1000).toISOString(),
     epoch,
     performer: 'ci',
     branch: 'main',
   };
 }
 
-beforeEach(() => {
-  executedCommands.length = 0;
-  sshResponses = () => undefined;
-});
+const listing = (...releases: ReleaseMetadata[]) => releases.map((r) => `${r.version}\t${JSON.stringify(r)}`).join('\n');
 
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
 
 describe('parseReleaseList', () => {
-  it('parses one metadata JSON per line, sorted newest first', () => {
-    const out = parseReleaseList(
-      JSON.stringify(meta('1.0.0', 100)) + '\n' + JSON.stringify(meta('1.0.1', 200)) + '\n',
-    );
-    expect(out.map(r => r.version)).toEqual(['1.0.1', '1.0.0']);
+  it('parses one directory and metadata per line, newest first', () => {
+    expect(parseReleaseList(listing(meta('1.0.0', 100), meta('1.0.1', 200))).map((r) => r.version)).toEqual(['1.0.1', '1.0.0']);
   });
 
   it('empty output → empty list', () => {
@@ -69,36 +48,82 @@ describe('parseReleaseList', () => {
     expect(parseReleaseList('  \n ')).toEqual([]);
   });
 
-  it('corrupted lines are skipped and reported, valid ones kept', () => {
-    let corrupted = 0;
+  it('reports a directory whose metadata is unreadable or names another version, and leaves it out', () => {
+    const corrupted: string[] = [];
     const out = parseReleaseList(
-      JSON.stringify(meta('1.0.0', 100)) + '\n{broken json\n' + JSON.stringify(meta('1.0.1', 200)),
-      () => corrupted++,
+      `${listing(meta('1.0.0', 100))}\n1.0.1\t{broken json\n1.0.2\t${JSON.stringify(meta('9.9.9', 300))}`,
+      (directory) => corrupted.push(directory),
     );
-    expect(out).toHaveLength(2);
-    expect(corrupted).toBe(1);
+    expect(out.map((r) => r.version)).toEqual(['1.0.0']);
+    expect(corrupted).toEqual(['1.0.1', '1.0.2']);
+  });
+
+  it('orders releases of the same epoch by version', () => {
+    expect(parseReleaseList(listing(meta('1.0.1', 100), meta('1.0.2', 100))).map((r) => r.version)).toEqual(['1.0.2', '1.0.1']);
   });
 });
 
-describe('selectRollbackCandidate', () => {
+describe('selectRollbackTarget', () => {
   const releases = [meta('3.0.0', 300), meta('2.0.0', 200), meta('1.0.0', 100)];
 
-  it('with failedVersion: picks newest release that is not the failed one', () => {
-    expect(selectRollbackCandidate(releases, '3.0.0')!.version).toBe('2.0.0');
+  it('with the failed version: the newest other release', () => {
+    expect(selectRollbackTarget(releases, '3.0.0', '3.0.0')?.version).toBe('2.0.0');
+    expect(selectRollbackTarget(releases, null, '9.9.9')?.version).toBe('3.0.0');
   });
 
-  it('failedVersion not in list: picks newest', () => {
-    expect(selectRollbackCandidate(releases, '9.9.9')!.version).toBe('3.0.0');
+  it('without: the release before current, so a second rollback goes further back', () => {
+    expect(selectRollbackTarget(releases, '3.0.0')?.version).toBe('2.0.0');
+    expect(selectRollbackTarget(releases, '2.0.0')?.version).toBe('1.0.0');
   });
 
-  it('without failedVersion: skips the most recent (current) release', () => {
-    expect(selectRollbackCandidate(releases)!.version).toBe('2.0.0');
+  it('without a current record: skips the newest', () => {
+    expect(selectRollbackTarget(releases, null)?.version).toBe('2.0.0');
   });
 
-  it('no candidate available → null', () => {
-    expect(selectRollbackCandidate([], '1.0.0')).toBeNull();
-    expect(selectRollbackCandidate([meta('1.0.0', 100)])).toBeNull();
-    expect(selectRollbackCandidate([meta('1.0.0', 100)], '1.0.0')).toBeNull();
+  it('nothing older → null', () => {
+    expect(selectRollbackTarget(releases, '1.0.0')).toBeNull();
+    expect(selectRollbackTarget([], null, '1.0.0')).toBeNull();
+    expect(selectRollbackTarget([meta('1.0.0', 100)], null, '1.0.0')).toBeNull();
+  });
+});
+
+describe('selectRetention', () => {
+  const releases = [meta('4.0.0', 400), meta('3.0.0', 300), meta('2.0.0', 200), meta('1.0.0', 100)];
+
+  it('keeps the newest N', () => {
+    expect(selectRetention(releases, '4.0.0', 2).removed.map((r) => r.version)).toEqual(['2.0.0', '1.0.0']);
+  });
+
+  it('keeps current even when older than the newest N (after a rollback)', () => {
+    const { kept, removed } = selectRetention(releases, '1.0.0', 2);
+    expect(kept.map((r) => r.version)).toEqual(['4.0.0', '3.0.0', '1.0.0']);
+    expect(removed.map((r) => r.version)).toEqual(['2.0.0']);
+  });
+});
+
+describe('releaseEpoch', () => {
+  it('is the deploy time, but always after every stored release (another machine may run ahead)', () => {
+    const now = new Date(1000 * 1000);
+    expect(releaseEpoch(now, [])).toBe(1000);
+    expect(releaseEpoch(now, [meta('1.0.0', 500)])).toBe(1000);
+    expect(releaseEpoch(now, [meta('1.0.0', 500), meta('1.0.1', 2000)])).toBe(2001);
+  });
+});
+
+describe('assertReleaseName', () => {
+  it('accepts plain names', () => {
+    expect(() => assertReleaseName('1.4.2-beta+build.7', 'version')).not.toThrow();
+    expect(() => assertReleaseName('shop-production', 'stack')).not.toThrow();
+  });
+
+  for (const bad of ['', 'feature/login', '..', '.hidden', 'current', 'a\nb']) {
+    it(`refuses the version ${JSON.stringify(bad)}`, () => {
+      expect(() => assertReleaseName(bad, 'version')).toThrow(DeployError);
+    });
+  }
+
+  it('a stack may be named current', () => {
+    expect(() => assertReleaseName('current', 'stack')).not.toThrow();
   });
 });
 
@@ -132,222 +157,202 @@ describe('computeOrphanImages', () => {
   });
 
   it(':latest images are never removed', () => {
-    const orphans = computeOrphanImages('', '', 'services:\n  a:\n    image: thing:latest\n');
-    expect(orphans).toEqual([]);
+    expect(computeOrphanImages('', '', 'services:\n  a:\n    image: thing:latest\n')).toEqual([]);
   });
 
   it('deduplicates orphans', () => {
-    const orphans = computeOrphanImages(
-      '',
-      '',
-      'services:\n  a:\n    image: dup:1\n  b:\n    image: dup:1\n',
-    );
-    expect(orphans).toEqual(['dup:1']);
-  });
-
-  it('empty running output does not protect anything', () => {
-    const orphans = computeOrphanImages('\n', '', 'services:\n  a:\n    image: x:1\n');
-    expect(orphans).toEqual(['x:1']);
+    expect(computeOrphanImages('', '', 'services:\n  a:\n    image: dup:1\n  b:\n    image: dup:1\n')).toEqual(['dup:1']);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Rollback flow (scripted SSH + fake StackBackend)
+// Fakes
 // ---------------------------------------------------------------------------
 
-interface FakeBackendOptions {
-  redeployFails?: boolean;
-  convergenceFails?: boolean;
-}
-
-function makeFakeBackend(options: FakeBackendOptions = {}) {
-  const calls: { redeploy: Array<{ stackName: string; content: string }>; convergence: number } = {
-    redeploy: [],
-    convergence: 0,
-  };
+function fakeBackend(options: { redeployFails?: boolean; convergenceFails?: boolean } = {}) {
+  const redeployed: string[] = [];
   const backend = {
-    redeploy: async (stackName: string, rawContent: string) => {
-      calls.redeploy.push({ stackName, content: rawContent });
+    redeploy: async (_stackName: string, content: string) => {
+      redeployed.push(content);
       return options.redeployFails
         ? { success: false as const, error: new DeployError('redeploy boom') }
         : { success: true as const, data: undefined };
     },
-    waitConvergence: async () => {
-      calls.convergence++;
-      return { converged: !options.convergenceFails, rolledBack: false, timedOut: false };
-    },
-  };
-  return { backend, calls };
+    waitConvergence: async () => ({ converged: !options.convergenceFails, rolledBack: false, timedOut: false }),
+  } as unknown as StackBackend;
+  return { backend, redeployed };
 }
 
-const conn = { host: 'h', port: 22, user: 'u', privateKey: 'k' };
+/** Answers each command from a function, for the server failures a temporary directory cannot produce. */
+function scripted(reply: (command: string) => Partial<SSHExecResult> | undefined): { shell: RemoteShell; commands: string[] } {
+  const commands: string[] = [];
+  return {
+    commands,
+    shell: {
+      async run(command) {
+        commands.push(command);
+        const answer = reply(command) ?? {};
+        return { stdout: answer.stdout ?? '', stderr: answer.stderr ?? '', exitCode: answer.exitCode ?? 0 };
+      },
+    },
+  };
+}
 
-describe('Release.rollback', () => {
-  it('happy path: redeploys previous compose, updates symlink, removes failed dir', async () => {
-    const release = new Release(conn);
-    const { backend, calls } = makeFakeBackend();
+// ---------------------------------------------------------------------------
+// Failures reported by the server
+// ---------------------------------------------------------------------------
 
-    sshResponses = (cmd) => {
-      if (cmd.includes('for d in */')) {
-        return okResult(JSON.stringify(meta('2.0.0', 200)) + '\n' + JSON.stringify(meta('1.0.0', 100)));
-      }
-      if (cmd.startsWith('cat ')) return okResult('services:\n  web:\n    image: web:1\n');
-      return okResult();
-    };
+describe('Release when the server refuses', () => {
+  const twoReleases = (command: string) =>
+    command.includes('for d in */') ? { stdout: listing(meta('2.0.0', 200), meta('1.0.0', 100)) } : undefined;
 
-    const version = await release.rollback('demo', backend as never, '2.0.0');
-
-    expect(version).toBe('1.0.0');
-    expect(calls.redeploy).toHaveLength(1);
-    expect(calls.redeploy[0].content).toContain('web:1');
-    expect(calls.convergence).toBe(1);
-    // Symlink restored to the previous release dir
-    expect(executedCommands.some(c => c.includes('ln -sfn') && c.includes('/1.0.0'))).toBe(true);
-    // Failed release dir removed
-    expect(executedCommands.some(c => c.includes('rm -rf') && c.includes('/2.0.0'))).toBe(true);
-  });
-
-  it('fast path: previousReleasePath skips release discovery', async () => {
-    const release = new Release(conn);
-    const { backend, calls } = makeFakeBackend();
-
-    sshResponses = (cmd) => (cmd.startsWith('cat ') ? okResult('services: {}\n') : okResult());
-
-    const version = await release.rollback('demo', backend as never, null, '/var/lib/dockflow/stacks/demo/1.5.0');
-
-    expect(version).toBe('1.5.0');
-    expect(calls.redeploy).toHaveLength(1);
-    // No listing command was needed
-    expect(executedCommands.some(c => c.includes('for d in */'))).toBe(false);
-  });
-
-  it('no previous release → DeployError', async () => {
-    const release = new Release(conn);
-    const { backend } = makeFakeBackend();
-    sshResponses = (cmd) => (cmd.includes('for d in */') ? okResult('') : okResult());
-
-    await expect(release.rollback('demo', backend as never, '1.0.0')).rejects.toThrow(
-      'No previous release available for rollback',
+  it('a current symlink that cannot be updated fails the create', async () => {
+    const { shell } = scripted((command) => (command.includes('ln -sfn') ? { stderr: 'permission denied', exitCode: 2 } : undefined));
+    await expect(new Release(shell).createRelease(STACK, '1.0.0', 'services: {}\n', 'stack\n', meta('1.0.0', 100))).rejects.toThrow(
+      'current release symlink',
     );
   });
 
-  it('unreadable previous compose → DeployError, no redeploy attempted', async () => {
-    const release = new Release(conn);
-    const { backend, calls } = makeFakeBackend();
-    sshResponses = (cmd) => {
-      if (cmd.includes('for d in */')) {
-        return okResult(JSON.stringify(meta('2.0.0', 200)) + '\n' + JSON.stringify(meta('1.0.0', 100)));
-      }
-      if (cmd.startsWith('cat ')) return { stdout: '', stderr: 'no such file', exitCode: 1 };
-      return okResult();
-    };
+  it('an unreadable stack stops the rollback before any redeploy', async () => {
+    const { shell } = scripted((command) => twoReleases(command) ?? (command.startsWith('cat ') ? { exitCode: 1 } : undefined));
+    const { backend, redeployed } = fakeBackend();
+    await expect(new Release(shell).rollback(STACK, backend, '2.0.0')).rejects.toThrow('Could not read the stack for rollback');
+    expect(redeployed).toEqual([]);
+  });
 
-    await expect(release.rollback('demo', backend as never, '2.0.0')).rejects.toThrow(
-      'Could not read the stack for rollback',
+  it('a failed redeploy leaves current alone', async () => {
+    const { shell, commands } = scripted((command) => twoReleases(command) ?? (command.startsWith('cat ') ? { stdout: 'services: {}\n' } : undefined));
+    const { backend } = fakeBackend({ redeployFails: true });
+    await expect(new Release(shell).rollback(STACK, backend, '2.0.0')).rejects.toThrow('redeploy boom');
+    expect(commands.some((command) => command.includes('ln -sfn'))).toBe(false);
+  });
+
+  it('a rollback that does not converge fails', async () => {
+    const { shell } = scripted((command) => twoReleases(command) ?? (command.startsWith('cat ') ? { stdout: 'services: {}\n' } : undefined));
+    const { backend } = fakeBackend({ convergenceFails: true });
+    await expect(new Release(shell).rollback(STACK, backend, '2.0.0')).rejects.toThrow('Rollback did not converge');
+  });
+
+  it('a rollback deployed but not recorded says so', async () => {
+    const { shell } = scripted(
+      (command) =>
+        twoReleases(command) ??
+        (command.startsWith('cat ') ? { stdout: 'services: {}\n' } : command.startsWith('ln -sfn') ? { stderr: 'read-only file system', exitCode: 1 } : undefined),
     );
-    expect(calls.redeploy).toHaveLength(0);
-  });
-
-  it('redeploy failure → DeployError, symlink not touched', async () => {
-    const release = new Release(conn);
-    const { backend } = makeFakeBackend({ redeployFails: true });
-    sshResponses = (cmd) => {
-      if (cmd.includes('for d in */')) {
-        return okResult(JSON.stringify(meta('2.0.0', 200)) + '\n' + JSON.stringify(meta('1.0.0', 100)));
-      }
-      if (cmd.startsWith('cat ')) return okResult('services: {}\n');
-      return okResult();
-    };
-
-    await expect(release.rollback('demo', backend as never, '2.0.0')).rejects.toThrow('redeploy boom');
-    expect(executedCommands.some(c => c.includes('ln -sfn'))).toBe(false);
-  });
-
-  it('convergence failure → DeployError', async () => {
-    const release = new Release(conn);
-    const { backend } = makeFakeBackend({ convergenceFails: true });
-    sshResponses = (cmd) => {
-      if (cmd.includes('for d in */')) {
-        return okResult(JSON.stringify(meta('2.0.0', 200)) + '\n' + JSON.stringify(meta('1.0.0', 100)));
-      }
-      if (cmd.startsWith('cat ')) return okResult('services: {}\n');
-      return okResult();
-    };
-
-    await expect(release.rollback('demo', backend as never, '2.0.0')).rejects.toThrow(
-      'Rollback did not converge',
-    );
-  });
-});
-
-describe('Release.createRelease', () => {
-  it('fails loudly when the current symlink cannot be updated', async () => {
-    const release = new Release(conn);
-    sshResponses = (cmd) => {
-      if (cmd.includes('ln -sfn')) return { stdout: '', stderr: 'permission denied', exitCode: 1 };
-      return okResult();
-    };
-
-    await expect(
-      release.createRelease('demo', '1.0.0', 'services: {}\n', 'services: {}\n', meta('1.0.0', 100)),
-    ).rejects.toThrow('current release symlink');
-  });
-
-  it('stores the rendered stack beside the compose', async () => {
-    const release = new Release(conn);
-
-    await release.createRelease('demo', '1.0.0', 'services: {}\n', 'rendered\n', meta('1.0.0', 100));
-
-    expect(executedCommands.some((c) => c.startsWith('cat > ') && c.endsWith('/1.0.0/stack.yml"'))).toBe(true);
-    expect(executedCommands.some((c) => c.startsWith('cat > ') && c.endsWith('/1.0.0/docker-compose.yml"'))).toBe(true);
-  });
-});
-
-describe('Release.rollback — what it re-applies', () => {
-  it('reads the rendered stack, and falls back to the compose of an older release', async () => {
-    const release = new Release(conn);
-    const { backend, calls } = makeFakeBackend();
-    sshResponses = (cmd) => (cmd.startsWith('cat ') ? okResult('rendered\n') : okResult());
-
-    await release.rollback('demo', backend as never, null, '/var/lib/dockflow/stacks/demo/1.5.0');
-
-    expect(executedCommands).toContain(
-      'cat "/var/lib/dockflow/stacks/demo/1.5.0/stack.yml" 2>/dev/null || cat "/var/lib/dockflow/stacks/demo/1.5.0/docker-compose.yml"',
-    );
-    expect(calls.redeploy[0].content).toBe('rendered\n');
-  });
-});
-
-describe('Release.rollback — symlink failure', () => {
-  it('redeploy succeeded but symlink update failed → loud rollback error', async () => {
-    const release = new Release(conn);
-    const { backend, calls } = makeFakeBackend();
-    sshResponses = (cmd) => {
-      if (cmd.includes('for d in */')) {
-        return okResult(JSON.stringify(meta('2.0.0', 200)) + '\n' + JSON.stringify(meta('1.0.0', 100)));
-      }
-      if (cmd.startsWith('cat ')) return okResult('services: {}\n');
-      if (cmd.includes('ln -sfn')) return { stdout: '', stderr: 'read-only file system', exitCode: 1 };
-      return okResult();
-    };
-
-    await expect(release.rollback('demo', backend as never, '2.0.0')).rejects.toThrow(
+    await expect(new Release(shell).rollback(STACK, fakeBackend().backend, '2.0.0')).rejects.toThrow(
       'failed to update the current release symlink',
     );
-    // The redeploy itself did happen — only the bookkeeping failed
-    expect(calls.redeploy).toHaveLength(1);
+  });
+
+  it('no previous release → ROLLBACK_FAILED', async () => {
+    const { shell } = scripted(() => undefined);
+    await expect(new Release(shell).rollback(STACK, fakeBackend().backend, '1.0.0')).rejects.toMatchObject({
+      code: ErrorCode.ROLLBACK_FAILED,
+    });
+  });
+
+  it('a version that is not a plain name is refused before any command', async () => {
+    const { shell, commands } = scripted(() => undefined);
+    await expect(new Release(shell).createRelease(STACK, 'feature/login', '', '', meta('feature/login', 1))).rejects.toThrow(
+      'cannot be used as a release directory name',
+    );
+    expect(commands).toEqual([]);
   });
 });
 
-describe('Release.listReleases', () => {
-  it('returns parsed sorted releases from the remote listing', async () => {
-    const release = new Release(conn);
-    sshResponses = (cmd) =>
-      cmd.includes('for d in */')
-        ? okResult(JSON.stringify(meta('1.0.0', 100)) + '\n' + JSON.stringify(meta('2.0.0', 200)))
-        : okResult();
+// ---------------------------------------------------------------------------
+// The release store on a real shell
+// ---------------------------------------------------------------------------
 
-    const releases = await release.listReleases('demo');
-    expect(releases.map(r => r.version)).toEqual(['2.0.0', '1.0.0']);
+describe('Release on a real shell', () => {
+  let shell: LocalShell;
+  let release: Release;
+  const stackDir = (): string => join(shell.root, 'stacks', STACK);
+  const file = (version: string, name: string): string => join(stackDir(), version, name);
+  const current = (): string => readlinkSync(join(stackDir(), 'current'));
+  const create = (version: string, epoch: number, stack = `stack ${version}\n`) =>
+    release.createRelease(STACK, version, `compose ${version}\n`, stack, meta(version, epoch));
+
+  beforeEach(() => {
+    shell = new LocalShell();
+    release = new Release(shell, { stacksDir: join(shell.root, 'stacks') });
+  });
+
+  afterEach(() => {
+    rmSync(shell.root, { recursive: true, force: true });
+  });
+
+  test.if(hasPosixShell)('a release is written for the deploy user only and becomes current', async () => {
+    const { previousSymlink } = await create('1.0.0', 100);
+    expect(previousSymlink).toBeNull();
+    expect(readFileSync(file('1.0.0', 'stack.yml'), 'utf8')).toBe('stack 1.0.0\n');
+    expect(statSync(file('1.0.0', 'stack.yml')).mode & 0o777).toBe(0o600);
+    expect(statSync(join(stackDir(), '1.0.0')).mode & 0o777).toBe(0o700);
+    expect(current()).toBe(join(stackDir(), '1.0.0'));
+    expect(readdirSync(stackDir()).sort()).toEqual(['1.0.0', 'current']);
+  });
+
+  test.if(hasPosixShell)('a failed redeploy of the same version gets its previous files back', async () => {
+    await create('1.0.0', 100, 'old stack\n');
+    const { previousSymlink } = await create('1.0.0', 200, 'new stack\n');
+    expect(readFileSync(file('1.0.0', 'stack.yml'), 'utf8')).toBe('new stack\n');
+
+    await release.removeRelease(STACK, '1.0.0', previousSymlink);
+    expect(readFileSync(file('1.0.0', 'stack.yml'), 'utf8')).toBe('old stack\n');
+    expect(current()).toBe(join(stackDir(), '1.0.0'));
+    expect(readdirSync(stackDir()).sort()).toEqual(['1.0.0', 'current']);
+  });
+
+  test.if(hasPosixShell)('a failed new version is removed and current goes back', async () => {
+    await create('1.0.0', 100);
+    const { previousSymlink } = await create('1.0.1', 200);
+    await release.removeRelease(STACK, '1.0.1', previousSymlink);
+    expect(existsSync(join(stackDir(), '1.0.1'))).toBe(false);
+    expect(current()).toBe(join(stackDir(), '1.0.0'));
+  });
+
+  test.if(hasPosixShell)('a rollback after a failed same-version redeploy re-applies the previous files', async () => {
+    await create('1.0.0', 100, 'old stack\n');
+    const { previousSymlink } = await create('1.0.0', 200, 'new stack\n');
+    const { backend, redeployed } = fakeBackend();
+
+    expect(await release.rollback(STACK, backend, '1.0.0', previousSymlink)).toBe('1.0.0');
+    expect(redeployed).toEqual(['old stack\n']);
+    expect(existsSync(join(stackDir(), '1.0.0'))).toBe(true);
+  });
+
+  test.if(hasPosixShell)('two manual rollbacks in a row walk back one release each', async () => {
+    await create('1.0.0', 100);
+    await create('1.0.1', 200);
+    await create('1.0.2', 300);
+    const { backend, redeployed } = fakeBackend();
+
+    expect(await release.rollback(STACK, backend)).toBe('1.0.1');
+    expect(await release.rollback(STACK, backend)).toBe('1.0.0');
+    expect(redeployed).toEqual(['stack 1.0.1\n', 'stack 1.0.0\n']);
+    expect(current()).toBe(join(stackDir(), '1.0.0'));
+  });
+
+  test.if(hasPosixShell)('cleanup keeps current, even rolled back past the retention', async () => {
+    for (const [version, epoch] of [['1.0.0', 100], ['1.0.1', 200], ['1.0.2', 300], ['1.0.3', 400]] as const) {
+      await create(version, epoch);
+    }
+    const { backend } = fakeBackend();
+    await release.rollback(STACK, backend);
+    await release.rollback(STACK, backend);
+    await release.rollback(STACK, backend);
+    expect(current()).toBe(join(stackDir(), '1.0.0'));
+
+    await release.cleanupOldReleases(STACK, { project_name: 'demo', stack_management: { keep_releases: 2 } } as never);
+    expect(readdirSync(stackDir()).sort()).toEqual(['1.0.0', '1.0.2', '1.0.3', 'current']);
+  });
+
+  test.if(hasPosixShell)('listing skips a directory whose metadata names another version', async () => {
+    await create('1.0.0', 100);
+    mkdirSync(join(stackDir(), 'other'));
+    writeFileSync(join(stackDir(), 'other', 'metadata.json'), JSON.stringify(meta('1.0.0', 500)));
+    expect((await release.listReleases(STACK)).map((r) => r.version)).toEqual(['1.0.0']);
+    expect(await release.latestVersion(STACK)).toBe('1.0.0');
+    expect(await release.currentVersion(STACK)).toBe('1.0.0');
   });
 });

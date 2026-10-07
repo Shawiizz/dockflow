@@ -37,7 +37,7 @@ import { loadSecrets } from '../utils/secrets';
 import { resolveEnvironmentPrefix } from '../utils/validation';
 import { detectCIEnvironment, resolveDeployParams } from '../utils/ci';
 import { getCurrentBranch } from '../utils/git';
-import { getLatestVersion, incrementVersion } from '../utils/version';
+import { incrementVersion } from '../utils/version';
 import {
   ConfigError,
   ConnectionError,
@@ -50,7 +50,7 @@ import type { ClusterNode, SSHKeyConnection } from '../types';
 
 import * as Compose from '../services/compose';
 import { createStackBackend, createProxyBackend } from '../services/orchestrator/factory';
-import { Release } from '../services/release';
+import { assertReleaseName, Release, releaseEpoch } from '../services/release';
 import { createLock } from '../services/lock';
 import { Audit } from '../services/audit';
 import { Metrics } from '../services/metrics';
@@ -182,8 +182,14 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   } else {
     const versionSpinner = createSpinner();
     versionSpinner.start('Fetching latest deployed version...');
-    const connectionString = Buffer.from(JSON.stringify(cluster.manager.connection)).toString('base64');
-    const latestVersion = await getLatestVersion(connectionString, config.project_name || 'app', env, !!options.debug);
+    let latestVersion: string | null;
+    try {
+      latestVersion = await new Release(cluster.manager.connection).latestVersion(`${config.project_name}-${env}`);
+    } catch (e) {
+      // starting over at 1.0.0 would overwrite a release that exists
+      versionSpinner.fail('Could not read the deployed versions');
+      throw e;
+    }
     if (latestVersion) {
       deployVersion = incrementVersion(latestVersion);
       versionSpinner.succeed(`Latest version: ${latestVersion} → New version: ${deployVersion}`);
@@ -194,6 +200,8 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   }
 
   const stackName = `${config.project_name}-${env}`;
+  assertReleaseName(stackName, 'stack');
+  assertReleaseName(deployVersion, 'version');
   const projectRoot = getProjectRoot();
 
   // Display info
@@ -357,12 +365,15 @@ async function execute(ctx: DeployContext): Promise<void> {
       stackName: ctx.stackName, env: ctx.env, compose, proxy: ctx.config.proxy,
     });
 
+    const now = new Date();
+    const storedReleases = await ctx.releases.listReleases(ctx.stackName);
+
     // Settled, not Promise.all: when accessories fail first, the release write
     // must still hand back the symlink to restore, or cleanup deletes `current`.
     const [releaseOutcome, accessoriesOutcome] = await Promise.allSettled([
       ctx.releases.createRelease(ctx.stackName, ctx.deployVersion, Compose.serialize(compose), renderedStack, {
         project_name: ctx.config.project_name, version: ctx.deployVersion, env: ctx.env,
-        timestamp: new Date().toISOString(), epoch: Math.floor(Date.now() / 1000),
+        timestamp: now.toISOString(), epoch: releaseEpoch(now, storedReleases),
         performer: getPerformer(), branch: ctx.branchName,
       }),
       deployAccessories(ctx),
@@ -381,7 +392,8 @@ async function execute(ctx: DeployContext): Promise<void> {
     await Hook.runHook('post-deploy', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
 
     await Promise.all([
-      ctx.releases.cleanupOldReleases(ctx.stackName, ctx.config),
+      // the deploy succeeded: housekeeping failures are reported, never a reason to roll back
+      ctx.releases.cleanupOldReleases(ctx.stackName, ctx.config).catch((e) => printWarning(`Old releases cleanup failed: ${e instanceof Error ? e.message : String(e)}`)),
       commitUploads(uploadPlan).catch((e) => printWarning(`Upload commit failed: ${e instanceof Error ? e.message : String(e)}`)),
     ]);
     auditMessage = `Deployed ${ctx.deployVersion} to ${ctx.env} successfully`;
