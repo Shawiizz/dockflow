@@ -382,7 +382,7 @@ jobs:
 
       # Pinned: an unattended job must not pick up a new release by surprise
       - name: Install Dockflow
-        run: npm install -g @dockflow-tools/cli@2.6.0
+        run: npm install -g @dockflow-tools/cli@__DOCKFLOW_VERSION__
 
       - name: Deploy
         run: dockflow deploy production

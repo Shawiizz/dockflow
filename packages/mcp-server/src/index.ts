@@ -6,6 +6,7 @@ import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { getIndex, getFull, parseSections } from './docs.js';
 import { EXAMPLES, listExamples, formatExample } from './examples.js';
+import { withCliVersion } from './version.js';
 import { validateConfig, validateServersOnly, formatValidationResult } from './validate.js';
 import { readProjectConfig, formatProjectConfig } from './project.js';
 
@@ -108,7 +109,8 @@ server.registerTool('get_examples', {
     return { content: [{ type: 'text', text: `Unknown scenario "${scenario}". Available: ${ids}` }] };
   }
 
-  return { content: [{ type: 'text', text: formatExample(ex) }] };
+  // the examples pin the CLI's latest release, read from npm
+  return { content: [{ type: 'text', text: await withCliVersion(formatExample(ex)) }] };
 });
 
 server.registerTool('validate_config', {
