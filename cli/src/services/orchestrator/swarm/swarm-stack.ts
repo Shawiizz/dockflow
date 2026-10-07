@@ -195,7 +195,7 @@ export class SwarmStackBackend implements StackBackend {
   ): Promise<{ healthy: string[]; unhealthy: string[]; rolledBack: string[] }> {
     const listResult = await sshExec(
       this.conn,
-      `docker stack services ${stackName} --format '{{.Name}}' 2>/dev/null || echo ""`,
+      `docker stack services ${shellQuote(stackName)} --format '{{.Name}}' 2>/dev/null || echo ""`,
     );
 
     let serviceNames = listResult.stdout.trim().split('\n').filter(Boolean);
@@ -239,7 +239,7 @@ export class SwarmStackBackend implements StackBackend {
     // Check for rollback — fetch both state and completion timestamp in one call
     const inspectResult = await sshExec(
       this.conn,
-      `docker service inspect ${serviceName} --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}|{{.UpdateStatus.CompletedAt}}{{end}}' 2>/dev/null`,
+      `docker service inspect ${shellQuote(serviceName)} --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}|{{.UpdateStatus.CompletedAt}}{{end}}' 2>/dev/null`,
     );
     const raw = inspectResult.stdout.trim();
     if (raw) {
@@ -268,7 +268,7 @@ export class SwarmStackBackend implements StackBackend {
     // Check task states
     const psResult = await sshExec(
       this.conn,
-      `docker service ps ${serviceName} --filter 'desired-state=running' --format '{{.CurrentState}}' --no-trunc 2>/dev/null`,
+      `docker service ps ${shellQuote(serviceName)} --filter 'desired-state=running' --format '{{.CurrentState}}' --no-trunc 2>/dev/null`,
     );
     const tasks = psResult.stdout.trim().split('\n').filter(Boolean);
     if (tasks.length === 0) {
@@ -301,7 +301,7 @@ export class SwarmStackBackend implements StackBackend {
   async getServices(stackName: string): Promise<ServiceInfo[]> {
     const result = await sshExec(
       this.conn,
-      `docker stack services ${stackName} --format '{{.Name}}|{{.Image}}|{{.Replicas}}|{{.Ports}}' 2>/dev/null`,
+      `docker stack services ${shellQuote(stackName)} --format '{{.Name}}|{{.Image}}|{{.Replicas}}|{{.Ports}}' 2>/dev/null`,
     );
     if (result.exitCode !== 0) return [];
 
@@ -318,7 +318,7 @@ export class SwarmStackBackend implements StackBackend {
 
   async scaleService(stackName: string, service: string, replicas: number): Promise<void> {
     const fullName = `${stackName}_${service}`;
-    const result = await sshExec(this.conn, `docker service scale ${fullName}=${replicas}`);
+    const result = await sshExec(this.conn, `docker service scale ${shellQuote(fullName)}=${replicas}`);
     if (result.exitCode !== 0) {
       throw new DeployError(
         result.stderr || `Failed to scale ${service}`,
@@ -329,7 +329,7 @@ export class SwarmStackBackend implements StackBackend {
 
   async rollbackService(stackName: string, service: string): Promise<void> {
     const fullName = `${stackName}_${service}`;
-    const result = await sshExec(this.conn, `docker service rollback ${fullName}`);
+    const result = await sshExec(this.conn, `docker service rollback ${shellQuote(fullName)}`);
     if (result.exitCode !== 0) {
       throw new DeployError(
         result.stderr || `Failed to rollback ${service}`,
@@ -341,7 +341,7 @@ export class SwarmStackBackend implements StackBackend {
   async stackExists(stackName: string): Promise<boolean> {
     const result = await sshExec(
       this.conn,
-      `docker stack ls --format '{{.Name}}' | grep -Fxq '${stackName}' && echo exists || echo not_found`,
+      `docker stack ls --format '{{.Name}}' | grep -Fxq ${shellQuote(stackName)} && echo exists || echo not_found`,
     );
     return result.stdout.trim() === 'exists';
   }
@@ -349,7 +349,7 @@ export class SwarmStackBackend implements StackBackend {
   async restart(stackName: string, service?: string): Promise<void> {
     if (service) {
       const fullName = `${stackName}_${service}`;
-      const r = await sshExec(this.conn, `docker service update --force ${fullName}`);
+      const r = await sshExec(this.conn, `docker service update --force ${shellQuote(fullName)}`);
       if (r.exitCode !== 0) {
         throw new DeployError(r.stderr || `Failed to restart ${service}`, ErrorCode.DEPLOY_FAILED);
       }
@@ -362,7 +362,7 @@ export class SwarmStackBackend implements StackBackend {
     }
 
     const cmd = services
-      .map((s) => `docker service update --force ${stackName}_${s.name}`)
+      .map((s) => `docker service update --force ${shellQuote(`${stackName}_${s.name}`)}`)
       .join(' && ');
     const r = await sshExec(this.conn, cmd);
     if (r.exitCode !== 0) {

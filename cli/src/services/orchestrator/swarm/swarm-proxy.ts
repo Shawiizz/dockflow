@@ -10,7 +10,7 @@ import { createHash } from 'crypto';
 
 import type { SSHKeyConnection } from '../../../types';
 import type { ProxyConfig } from '../../../utils/config';
-import { sshExec, sshExecChannel } from '../../../utils/ssh';
+import { shellQuote, sshExec, sshExecChannel } from '../../../utils/ssh';
 import { printDebug, printDim, printSuccess } from '../../../utils/output';
 import {
   TRAEFIK_STACK_NAME,
@@ -76,8 +76,8 @@ export class SwarmProxyBackend implements ProxyBackend {
   private async currentState(): Promise<{ replicas: string; configHash: string }> {
     const service = `${TRAEFIK_STACK_NAME}_traefik`;
     const [replicas, labels] = await Promise.all([
-      sshExec(this.connection, `docker service ls --filter "name=${service}" --format '{{.Replicas}}' 2>/dev/null`),
-      sshExec(this.connection, `docker service inspect ${service} --format '{{index .Spec.Labels "${CONFIG_HASH_LABEL}"}}' 2>/dev/null`),
+      sshExec(this.connection, `docker service ls --filter ${shellQuote(`name=${service}`)} --format '{{.Replicas}}' 2>/dev/null`),
+      sshExec(this.connection, `docker service inspect ${shellQuote(service)} --format '{{index .Spec.Labels "${CONFIG_HASH_LABEL}"}}' 2>/dev/null`),
     ]);
     return { replicas: replicas.stdout.trim(), configHash: labels.exitCode === 0 ? labels.stdout.trim() : '' };
   }

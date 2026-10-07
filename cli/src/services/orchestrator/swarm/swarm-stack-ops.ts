@@ -70,7 +70,7 @@ export class SwarmStackOps {
   async getStuckServices(stackName: string): Promise<string[]> {
     const listResult = await sshExec(
       this.connection,
-      `docker stack services ${stackName} --format '{{.Name}}' 2>/dev/null || true`,
+      `docker stack services ${shellQuote(stackName)} --format '{{.Name}}' 2>/dev/null || true`,
     );
 
     const serviceNames = listResult.stdout
@@ -83,7 +83,7 @@ export class SwarmStackOps {
     const results = await Promise.all(serviceNames.map(async (svc) => {
       const inspectResult = await sshExec(
         this.connection,
-        `docker service inspect ${svc} --format '{{json .UpdateStatus}}' 2>/dev/null || echo '{}'`,
+        `docker service inspect ${shellQuote(svc)} --format '{{json .UpdateStatus}}' 2>/dev/null || echo '{}'`,
       );
 
       const raw = inspectResult.stdout.trim();
@@ -106,7 +106,7 @@ export class SwarmStackOps {
    * Remove a stack and wait up to 60s for it to disappear.
    */
   async removeStackAndWait(stackName: string): Promise<void> {
-    const rmResult = await sshExec(this.connection, `docker stack rm ${stackName}`);
+    const rmResult = await sshExec(this.connection, `docker stack rm ${shellQuote(stackName)}`);
     if (rmResult.exitCode !== 0) {
       printWarning(`docker stack rm failed (exit ${rmResult.exitCode}): ${rmResult.stderr.trim()}`);
     }
@@ -116,7 +116,7 @@ export class SwarmStackOps {
 
       const check = await sshExec(
         this.connection,
-        `docker stack ls --format '{{.Name}}' | grep -xF '${stackName}' || echo ""`,
+        `docker stack ls --format '{{.Name}}' | grep -xF ${shellQuote(stackName)} || echo ""`,
       );
 
       if (!check.stdout.trim()) {
@@ -166,7 +166,7 @@ export class SwarmStackOps {
 
     const { stream, done } = await sshExecChannel(
       this.connection,
-      `docker stack deploy ${flags} -c - ${stackName}`,
+      `docker stack deploy ${flags} -c - ${shellQuote(stackName)}`,
     );
     stream.end(composeYaml);
     const result = await done;
@@ -181,7 +181,7 @@ export class SwarmStackOps {
     // 3. Verify stack exists
     const verify = await sshExec(
       this.connection,
-      `docker stack ls --format '{{.Name}}' | grep -xF '${stackName}' || echo ""`,
+      `docker stack ls --format '{{.Name}}' | grep -xF ${shellQuote(stackName)} || echo ""`,
     );
 
     if (!verify.stdout.trim()) {
@@ -222,7 +222,7 @@ export class SwarmStackOps {
     while (Date.now() < deadline) {
       const result = await sshExec(
         this.connection,
-        `docker stack services ${stackName} --format '{{.Name}}\t{{.Replicas}}' 2>/dev/null || echo ""`,
+        `docker stack services ${shellQuote(stackName)} --format '{{.Name}}\t{{.Replicas}}' 2>/dev/null || echo ""`,
       );
 
       let lines = result.stdout.trim().split('\n').filter(Boolean);
@@ -378,7 +378,7 @@ export class SwarmStackOps {
   private async getFailedTaskErrors(stackName: string): Promise<string> {
     const result = await sshExec(
       this.connection,
-      `docker stack ps ${stackName} --no-trunc --filter 'desired-state=shutdown' --format '{{.Name}}|{{.Error}}' 2>/dev/null || echo ""`,
+      `docker stack ps ${shellQuote(stackName)} --no-trunc --filter 'desired-state=shutdown' --format '{{.Name}}|{{.Error}}' 2>/dev/null || echo ""`,
     );
     const lines = result.stdout.trim().split('\n').filter(Boolean);
     const errors = lines

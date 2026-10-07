@@ -3,7 +3,7 @@
  */
 
 import type { SSHKeyConnection } from '../../../types';
-import { sshExec } from '../../../utils/ssh';
+import { shellQuote, sshExec } from '../../../utils/ssh';
 import { printDebug } from '../../../utils/output';
 
 export interface SwarmTask {
@@ -40,7 +40,7 @@ async function findContainerByLabel(
   { includeStopped = false }: { includeStopped?: boolean } = {},
 ): Promise<{ containerId: string; connection: SSHKeyConnection } | null> {
   const psFlag = includeStopped ? '-a' : '';
-  const cmd = `docker ps ${psFlag} --filter '${labelFilter}' --format '{{.ID}}' | head -n1`;
+  const cmd = `docker ps ${psFlag} --filter ${shellQuote(labelFilter)} --format '{{.ID}}' | head -n1`;
 
   const promises = dedupeConnections(conns).map(async (connection) => {
     const result = await sshExec(connection, cmd);
@@ -64,7 +64,7 @@ export async function listSwarmTasks(
   conn: SSHKeyConnection,
 ): Promise<SwarmTask[]> {
   const cmd =
-    `docker service ps ${qualifyServiceName(stackName, serviceName)} --no-trunc ` +
+    `docker service ps ${shellQuote(qualifyServiceName(stackName, serviceName))} --no-trunc ` +
     `--format '{{.ID}}\t{{.Node}}\t{{.Name}}\t{{.DesiredState}}\t{{.CurrentState}}\t{{.Error}}' 2>/dev/null`;
 
   const result = await sshExec(conn, cmd);
