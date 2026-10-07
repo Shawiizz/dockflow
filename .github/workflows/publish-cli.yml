@@ -6,13 +6,17 @@ on:
       - '[0-9]+.[0-9]+.[0-9]+*'
   workflow_dispatch:
 
+# A tag is released once, and a second push must wait for the first to finish
+concurrency:
+  group: publish-cli-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -57,22 +61,7 @@ jobs:
       - name: Install CLI dependencies
         run: |
           cd cli
-          bun install
-
-      - name: Typecheck
-        run: |
-          cd cli
-          bun run typecheck
-
-      - name: Lint
-        run: |
-          cd cli
-          bun run lint
-
-      - name: Unit tests
-        run: |
-          cd cli
-          bun test src/
+          bun install --frozen-lockfile
 
       - name: Install UI dependencies
         run: |
@@ -108,23 +97,64 @@ jobs:
         with:
           name: dockflow-binaries-${{ steps.version.outputs.version }}
           path: cli/dist/*
+          retention-days: 7
 
       - name: Upload checksums
         uses: actions/upload-artifact@v4
         with:
           name: dockflow-checksums-${{ steps.version.outputs.version }}
           path: cli/dist/SHA256SUMS
+          retention-days: 7
+
+  # The same checks as main: typecheck, lint, unit tests, the e2e harness and the MCP package.
+  checks:
+    uses: ./.github/workflows/cli-checks.yml
+
+  # The setup suite runs the compiled binary, so it is the only one that can catch a
+  # packaging regression before the artifact reaches npm. It tests the artifact built above.
+  # The swarm suite covers deployment behaviour and already runs on every push to main.
+  e2e:
+    needs: build
+    uses: ./.github/workflows/e2e-tests.yml
+    with:
+      suites: '["setup"]'
+      binary_artifact: dockflow-binaries-${{ needs.build.outputs.version }}
+
+  # Nothing is published before the checks and the e2e of the built binaries have passed:
+  # install.sh and install.ps1 read the latest release.
+  release:
+    needs: [build, checks, e2e]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: dockflow-binaries-${{ needs.build.outputs.version }}
+          path: cli/dist
+
+      - name: The checksums list every binary and match
+        run: |
+          cd cli/dist
+          test -s SHA256SUMS
+          sha256sum -c SHA256SUMS
+          for binary in dockflow-linux-x64 dockflow-linux-arm64 dockflow-windows-x64.exe dockflow-macos-x64 dockflow-macos-arm64; do
+            grep -Eq "^[0-9a-f]{64}  $binary\$" SHA256SUMS || { echo "::error::SHA256SUMS lists no checksum for $binary"; exit 1; }
+          done
 
       - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          name: Dockflow ${{ steps.version.outputs.version }}
+          name: Dockflow ${{ needs.build.outputs.version }}
           tag_name: ${{ github.ref_name }}
           files: cli/dist/*
           generate_release_notes: true
           body: |
-            ## Dockflow ${{ steps.version.outputs.version }}
+            ## Dockflow ${{ needs.build.outputs.version }}
 
             ### Installation
 
@@ -156,18 +186,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # The setup suite runs the compiled binary, so it is the only one that can catch a
-  # packaging regression before the artifact reaches npm. The swarm suite covers deployment
-  # behaviour and already runs on every push to main.
-  e2e:
-    uses: ./.github/workflows/e2e-tests.yml
-    with:
-      suites: '["setup"]'
-
   publish-npm:
-    needs: [build, e2e]
-    runs-on: ubuntu-latest
+    needs: [build, release]
+    runs-on: ubuntu-24.04
     if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
