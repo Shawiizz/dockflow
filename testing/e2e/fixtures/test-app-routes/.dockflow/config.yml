@@ -13,9 +13,9 @@ proxy:
     - service: panel
       domains:
         test: "panel.test.local"
-      port: 4326
+      port: 3000
     - service: panel
       domains:
         test: "panel.test.local"
       path: /ws
-      port: 4327
+      port: 3001

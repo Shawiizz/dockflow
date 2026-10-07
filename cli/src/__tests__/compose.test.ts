@@ -438,14 +438,14 @@ services:
   panel:
     image: panel
     expose:
-      - "4326"
+      - "3000"
 `;
   const proxy = {
     enabled: true,
     domains: { production: 'app.example.com' },
     routes: [
       { service: 'panel', domains: { production: 'panel.example.com', staging: 'panel.staging.example.com' } },
-      { service: 'panel', domains: { production: 'panel.example.com' }, path: '/ws', port: 4327 },
+      { service: 'panel', domains: { production: 'panel.example.com' }, path: '/ws', port: 3001 },
     ],
   } as ProxyConfig;
 
@@ -462,12 +462,12 @@ services:
       'traefik.http.routers.demo-panel-route1.rule=Host(`panel.example.com`)',
       'traefik.http.routers.demo-panel-route1.entrypoints=websecure',
       'traefik.http.routers.demo-panel-route1.service=demo-panel-route1',
-      'traefik.http.services.demo-panel-route1.loadbalancer.server.port=4326',
+      'traefik.http.services.demo-panel-route1.loadbalancer.server.port=3000',
       'traefik.http.routers.demo-panel-route1.tls.certresolver=letsencrypt',
       'traefik.http.routers.demo-panel-route2.rule=Host(`panel.example.com`) && PathPrefix(`/ws`)',
       'traefik.http.routers.demo-panel-route2.entrypoints=websecure',
       'traefik.http.routers.demo-panel-route2.service=demo-panel-route2',
-      'traefik.http.services.demo-panel-route2.loadbalancer.server.port=4327',
+      'traefik.http.services.demo-panel-route2.loadbalancer.server.port=3001',
       'traefik.http.routers.demo-panel-route2.tls.certresolver=letsencrypt',
     ]);
     expect(compose.services.panel.networks).toEqual(['default', TRAEFIK_NETWORK_NAME]);
@@ -486,12 +486,12 @@ services:
       'traefik.http.routers.demo-panel-route1.rule=Host(`panel.staging.example.com`)',
       'traefik.http.routers.demo-panel-route1.entrypoints=web',
       'traefik.http.routers.demo-panel-route1.service=demo-panel-route1',
-      'traefik.http.services.demo-panel-route1.loadbalancer.server.port=4326',
+      'traefik.http.services.demo-panel-route1.loadbalancer.server.port=3000',
     ]);
   });
 
   it('never gives a listed service the route on proxy.domains', () => {
-    const compose = makeCompose(panel.replace('    expose:\n      - "4326"', '    ports:\n      - "4326:4326"'));
+    const compose = makeCompose(panel.replace('    expose:\n      - "3000"', '    ports:\n      - "3000:3000"'));
     injectTraefikLabels(compose, { ...proxy, domains: { development: 'dev.example.com' } } as ProxyConfig, 'demo', 'development');
     expect(compose.services.panel.deploy).toBeUndefined();
     expect(labelsOf(compose, 'game')).toContain('traefik.http.routers.demo-game.rule=Host(`dev.example.com`)');
@@ -522,15 +522,15 @@ services:
   });
 
   it('routes to the first published port when the route names none', () => {
-    const compose = makeCompose('services:\n  panel:\n    image: panel\n    ports:\n      - "8080:4326"\n    expose:\n      - "9000"\n');
+    const compose = makeCompose('services:\n  panel:\n    image: panel\n    ports:\n      - "8080:3000"\n    expose:\n      - "9000"\n');
     injectTraefikLabels(compose, proxy, 'demo', 'staging');
-    expect(labelsOf(compose, 'panel')).toContain('traefik.http.services.demo-panel-route1.loadbalancer.server.port=4326');
+    expect(labelsOf(compose, 'panel')).toContain('traefik.http.services.demo-panel-route1.loadbalancer.server.port=3000');
   });
 });
 
 describe('checkProxyRoutes', () => {
   const app = makeCompose('services:\n  web:\n    image: web\n    ports:\n      - "8080:80"\n  worker:\n    image: worker\n');
-  const accessories = makeCompose('services:\n  panel:\n    image: panel\n    expose:\n      - "4326"\n');
+  const accessories = makeCompose('services:\n  panel:\n    image: panel\n    expose:\n      - "3000"\n');
   const base = { enabled: true, domains: { production: 'app.example.com' } } as ProxyConfig;
   const check = (routes: unknown[], env = 'production', accessoriesCompose: ParsedCompose | null = accessories) =>
     checkProxyRoutes({ ...base, routes } as ProxyConfig, env, 'demo', app, accessoriesCompose);
@@ -538,7 +538,7 @@ describe('checkProxyRoutes', () => {
   it('accepts routes to services of either file, on paths of a shared domain', () => {
     expect(check([
       { service: 'panel', domains: { production: 'panel.example.com' } },
-      { service: 'panel', domains: { production: 'panel.example.com' }, path: '/ws', port: 4327 },
+      { service: 'panel', domains: { production: 'panel.example.com' }, path: '/ws', port: 3001 },
       { service: 'worker', domains: { production: 'app.example.com' }, path: '/jobs', port: 9000 },
     ])).toEqual([]);
   });
@@ -563,7 +563,7 @@ describe('checkProxyRoutes', () => {
 
   it('refuses two routes on the same domain and path, whatever the case of the domain', () => {
     expect(check([
-      { service: 'panel', domains: { production: 'panel.example.com' }, path: '/ws', port: 4327 },
+      { service: 'panel', domains: { production: 'panel.example.com' }, path: '/ws', port: 3001 },
       { service: 'worker', domains: { production: 'Panel.example.com' }, path: '/ws', port: 9000 },
     ])).toEqual(['proxy.routes[1]: proxy.routes[0] already routes panel.example.com/ws']);
   });

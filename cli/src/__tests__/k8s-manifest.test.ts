@@ -318,13 +318,13 @@ services:
   });
 
   it('proxy.routes: one IngressRoute for the service, a route per router, ports the Service carries', () => {
-    const compose = loadFromString('services:\n  panel:\n    image: p\n    expose:\n      - "4326"\n');
+    const compose = loadFromString('services:\n  panel:\n    image: p\n    expose:\n      - "3000"\n');
     const proxy = {
       enabled: true,
       acme: true,
       routes: [
         { service: 'panel', domains: { test: 'panel.test.local' } },
-        { service: 'panel', domains: { test: 'panel.test.local' }, path: '/ws', port: 4327 },
+        { service: 'panel', domains: { test: 'panel.test.local' }, path: '/ws', port: 3001 },
       ],
     } as ProxyConfig;
     injectTraefikLabels(compose, proxy, 'demo', 'test', { defaultRoute: false });
@@ -333,13 +333,13 @@ services:
     const ingresses = manifests.filter(m => m.kind === 'IngressRoute');
     expect(ingresses.map(m => m.metadata.name)).toEqual(['panel']);
     expect(ingresses[0].spec.routes).toEqual([
-      { match: 'Host(`panel.test.local`)', kind: 'Rule', services: [{ name: 'panel', port: 4326 }] },
-      { match: 'Host(`panel.test.local`) && PathPrefix(`/ws`)', kind: 'Rule', services: [{ name: 'panel', port: 4327 }] },
+      { match: 'Host(`panel.test.local`)', kind: 'Rule', services: [{ name: 'panel', port: 3000 }] },
+      { match: 'Host(`panel.test.local`) && PathPrefix(`/ws`)', kind: 'Rule', services: [{ name: 'panel', port: 3001 }] },
     ]);
     expect(ingresses[0].spec.entryPoints).toEqual(['websecure']);
     expect(ingresses[0].spec.tls).toEqual({ certResolver: 'letsencrypt' });
     const service = find(manifests, 'Service', 'panel')!;
-    expect((service.spec.ports as Array<{ port: number }>).map(p => p.port)).toEqual([4326, 4327]);
+    expect((service.spec.ports as Array<{ port: number }>).map(p => p.port)).toEqual([3000, 3001]);
   });
 
   it('traefik.enable=false means no IngressRoute, as for Traefik', () => {

@@ -1,13 +1,13 @@
 services:
   # Two servers in one container, no port published: Traefik reaches both over
-  # traefik-public. 4327 answers on /ws only, so a stripped path would show.
+  # traefik-public. 3001 answers on /ws only, so a stripped path would show.
   panel:
     image: nginx:alpine
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
         cat > /etc/nginx/conf.d/default.conf <<'CONF'
-        server { listen 4326; location / { return 200 "panel-http"; } }
-        server { listen 4327; location /ws { return 200 "panel-ws"; } location / { return 404; } }
+        server { listen 3000; location / { return 200 "panel-http"; } }
+        server { listen 3001; location /ws { return 200 "panel-ws"; } location / { return 404; } }
         CONF
         exec nginx -g 'daemon off;'

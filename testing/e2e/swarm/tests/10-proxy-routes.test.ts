@@ -1,8 +1,8 @@
 /**
  * E2E test for proxy.routes.
  *
- * Scenario: an accessory publishes no port and listens on two, 4326 and 4327.
- * Two routes send its domain to 4326 and the /ws path of that domain to 4327,
+ * Scenario: an accessory publishes no port and listens on two, 3000 and 3001.
+ * Two routes send its domain to 3000 and the /ws path of that domain to 3001,
  * while the app keeps its route on proxy.domains. Before that, a route naming
  * a service that does not exist must stop the deploy.
  *
@@ -97,7 +97,7 @@ describe("proxy.routes", () => {
     const labels = await getServiceLabels(PANEL_SERVICE);
     expect(labels[`traefik.http.routers.${ROUTER}.rule`]).toBe("Host(`panel.test.local`) && PathPrefix(`/ws`)");
     expect(labels[`traefik.http.routers.${ROUTER}.service`]).toBe(ROUTER);
-    expect(labels[`traefik.http.services.${ROUTER}.loadbalancer.server.port`]).toBe("4327");
+    expect(labels[`traefik.http.services.${ROUTER}.loadbalancer.server.port`]).toBe("3001");
   }, 30_000);
 
   test("Traefik sends the domain to one port and its /ws path, unchanged, to the other", async () => {
