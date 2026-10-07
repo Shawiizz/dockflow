@@ -344,30 +344,67 @@ export async function transferImageFromRemote(
   );
 }
 
+export interface RegistryLogin {
+  url: string;
+  username?: string;
+  password: string;
+}
+
+function firstTextLine(text: string): string {
+  return text.split(/\r?\n/).find((line) => line.trim().length > 0)?.trim() ?? '';
+}
+
+/**
+ * `<engine> login` on a server, the password on stdin so it never reaches a process listing.
+ * Without a username, which `login --password-stdin` requires, the registry is used anonymously.
+ */
 export async function registryLogin(
   connection: SSHKeyConnection,
-  config: { url: string; username?: string; password: string },
-  engine: 'docker' | 'podman' = 'docker',
+  config: RegistryLogin,
+  engine: ContainerRuntime = 'docker',
 ): Promise<void> {
+  if (!config.username) return;
   printDebug('Logging in to container registry...');
 
-  const qPassword = shellQuote(config.password);
-  const qUrl = shellQuote(config.url);
-  const userFlag = config.username ? `-u ${shellQuote(config.username)}` : '';
-  const result = await sshExec(
+  const { stream, done } = await sshExecChannel(
     connection,
-    `echo ${qPassword} | ${engine} login ${qUrl} ${userFlag} --password-stdin 2>&1`,
+    `${engine} login ${shellQuote(config.url)} -u ${shellQuote(config.username)} --password-stdin`,
   );
+  stream.end(`${config.password}\n`);
+  const result = await done;
 
   if (result.exitCode !== 0) {
     throw new DeployError(
-      `Registry login failed: ${result.stdout.trim()}`,
+      `Registry login to ${config.url} failed on the manager: ${firstTextLine(result.stderr) || firstTextLine(result.stdout) || `exit ${result.exitCode}`}`,
       ErrorCode.DEPLOY_FAILED,
-      'Check registry URL and credentials.',
+      'Check registry.url, registry.username and registry.password (or registry.token).',
     );
   }
 
   printDebug('Registry login successful');
+}
+
+/** `<engine> login` on this machine, the one that pushes, the password on stdin. */
+export async function registryLoginLocal(config: RegistryLogin, engine: ContainerRuntime = 'docker'): Promise<void> {
+  if (!config.username) return;
+  printDebug('Logging in to container registry...');
+  const proc = Bun.spawn([engine, 'login', config.url, '-u', config.username, '--password-stdin'], {
+    stdin: new Response(config.password).body!,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  if (exitCode !== 0) {
+    throw new DeployError(
+      `Registry login to ${config.url} failed: ${firstTextLine(stderr) || firstTextLine(stdout) || `exit ${exitCode}`}`,
+      ErrorCode.DEPLOY_FAILED,
+      'Check registry.username and registry.password (or registry.token).',
+    );
+  }
 }
 
 async function pushSingleImage(

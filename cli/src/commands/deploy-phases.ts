@@ -29,7 +29,7 @@ import * as Distribution from '../services/distribution';
 import * as Hook from '../services/hook';
 import { CONVERGENCE_TIMEOUT_S, CONVERGENCE_INTERVAL_S, DOCKFLOW_UPLOAD_BACKUPS_DIR } from '../constants';
 import type { StackBackend } from '../services/orchestrator/interfaces';
-import type { HealthCheckConfig, UploadItem } from '../utils/config';
+import type { DockflowConfig, HealthCheckConfig, UploadItem } from '../utils/config';
 import type { DeployContext } from './deploy-context';
 
 // ---------------------------------------------------------------------------
@@ -461,12 +461,36 @@ export interface BuildResult {
   usedRegistry: boolean;
 }
 
+function registryLogin(config: DockflowConfig): Distribution.RegistryLogin {
+  const registry = config.registry!;
+  return { url: registry.url!, username: registry.username, password: Compose.registryPassword(config)! };
+}
+
+/** The fallback to SSH distribution is deliberate, not silent. */
+function warnRegistryWithoutPassword(config: DockflowConfig): void {
+  const registry = config.registry;
+  if (registry?.enabled === true && !!registry.url && !Compose.registryPassword(config)) {
+    printWarning(
+      `Registry ${registry.url} is enabled but neither registry.password nor registry.token is set; built images are distributed over SSH instead of pushed`,
+    );
+  }
+}
+
+/** `docker stack deploy --with-registry-auth` hands the manager's registry login to the nodes that pull. */
+export async function loginManagerToRegistry(ctx: DeployContext): Promise<void> {
+  if (!Compose.usesRegistry(ctx.config)) return;
+  const engine = await detectContainerEngine(ctx.cluster.manager.connection, ctx.config.container_engine);
+  await Distribution.registryLogin(ctx.cluster.manager.connection, registryLogin(ctx.config), engine);
+}
+
 export async function buildAndDistribute(
   ctx: DeployContext,
   compose: ParsedCompose,
 ): Promise<BuildResult | null> {
   if (ctx.options.skipBuild || !ctx.deployApp) return null;
   if (!Compose.hasServices(compose)) return null;
+
+  warnRegistryWithoutPassword(ctx.config);
 
   await Hook.runHook('pre-build', ctx.projectRoot, ctx.config, ctx.rendered, { connection: ctx.cluster.manager.connection, stackName: ctx.stackName });
 
@@ -509,15 +533,12 @@ export async function buildAndDistribute(
 
       ({ images } = await Build.buildAll(targets));
 
-      if (ctx.config.registry?.enabled && ctx.config.registry.url && ctx.config.registry.password) {
+      if (Compose.usesRegistry(ctx.config)) {
         usedRegistry = true;
-        await Distribution.registryLogin(ctx.cluster.manager.connection, {
-          url: ctx.config.registry.url,
-          username: ctx.config.registry.username,
-          password: ctx.config.registry.password,
-        }, engine);
-        await Distribution.pushImages(images, ctx.config.registry.additional_tags?.length ? {
-          tags: ctx.config.registry.additional_tags,
+        await Distribution.registryLoginLocal(registryLogin(ctx.config), engine);
+        const additionalTags = ctx.config.registry?.additional_tags;
+        await Distribution.pushImages(images, additionalTags?.length ? {
+          tags: additionalTags,
           env: ctx.env,
           version: ctx.deployVersion,
           branch: ctx.branchName,

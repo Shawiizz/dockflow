@@ -60,7 +60,7 @@ import { onInterrupt, SIGINT_EXIT_CODE } from '../utils/interrupt';
 import * as Hook from '../services/hook';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
-import { accessoriesKey, applyPublicPorts, rolledBackError, buildAndDistribute, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
+import { accessoriesKey, applyPublicPorts, rolledBackError, buildAndDistribute, loginManagerToRegistry, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
 import type { BuildResult } from './deploy-phases';
 import type { UploadRollbackPlan } from './deploy-phases';
 
@@ -348,6 +348,8 @@ async function execute(ctx: DeployContext): Promise<void> {
     await applyPublicPorts(ctx);
 
     await ensureExternalNetworks(ctx);
+
+    await loginManagerToRegistry(ctx);
 
     // The whole stack, even under --only: a rollback restores every service.
     const renderedStack = ctx.orchestrator.render({

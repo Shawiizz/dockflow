@@ -16,6 +16,8 @@ import {
   getExternalVolumes,
   hasServices,
   getImages,
+  registryPassword,
+  usesRegistry,
 } from '../services/compose';
 import type { ParsedCompose } from '../services/compose';
 import type { DockflowConfig, ProxyConfig } from '../utils/config';
@@ -134,7 +136,7 @@ describe('updateImageTags', () => {
   it('registry enabled prepends registry prefix with namespace', () => {
     const config = {
       ...baseConfig,
-      registry: { enabled: true, url: 'registry.example.com', namespace: 'team' },
+      registry: { enabled: true, url: 'registry.example.com', namespace: 'team', password: 'pw' },
     } as DockflowConfig;
     const compose = makeCompose('services:\n  api:\n    image: my-api\n');
     updateImageTags(compose, config, 'production', '1.0.0');
@@ -145,11 +147,18 @@ describe('updateImageTags', () => {
     const config = {
       ...baseConfig,
       options: { image_auto_tag: false },
-      registry: { enabled: true, url: 'registry.example.com' },
+      registry: { enabled: true, url: 'registry.example.com', password: 'pw' },
     } as DockflowConfig;
     const compose = makeCompose('services:\n  api:\n    image: ghcr.io/org/my-api:1.0\n');
     updateImageTags(compose, config, 'production', '1.0.0');
     expect(compose.services.api.image).toBe('ghcr.io/org/my-api:1.0');
+  });
+
+  it('a registry without password or token is not prepended: its images go over SSH', () => {
+    const config = { ...baseConfig, registry: { enabled: true, url: 'registry.example.com' } } as DockflowConfig;
+    const compose = makeCompose('services:\n  api:\n    image: my-api\n');
+    updateImageTags(compose, config, 'production', '1.0.0');
+    expect(compose.services.api.image).toBe('my-api-production:1.0.0');
   });
 
   it('servicesFilter only updates listed services', () => {
@@ -690,5 +699,23 @@ services:
     image: other:2
 `);
     expect(getImages(compose).sort()).toEqual(['other:2', 'shared:1']);
+  });
+});
+
+describe('registry predicate', () => {
+  const withRegistry = (registry: Record<string, unknown>) => ({ project_name: 'demo', registry }) as unknown as DockflowConfig;
+
+  it('a token authenticates like a password', () => {
+    expect(registryPassword(withRegistry({ type: 'ghcr', token: 'ghp_x' }))).toBe('ghp_x');
+    expect(registryPassword(withRegistry({ type: 'custom', password: 'pw', token: 'ghp_x' }))).toBe('pw');
+    expect(registryPassword(withRegistry({ type: 'custom' }))).toBeUndefined();
+  });
+
+  it('holds only for an enabled registry with a URL and a password or token', () => {
+    expect(usesRegistry(withRegistry({ enabled: true, url: 'ghcr.io', token: 'ghp_x' }))).toBe(true);
+    expect(usesRegistry(withRegistry({ enabled: true, url: 'ghcr.io' }))).toBe(false);
+    expect(usesRegistry(withRegistry({ enabled: false, url: 'ghcr.io', token: 'ghp_x' }))).toBe(false);
+    expect(usesRegistry(withRegistry({ enabled: true, token: 'ghp_x' }))).toBe(false);
+    expect(usesRegistry({ project_name: 'demo' } as DockflowConfig)).toBe(false);
   });
 });

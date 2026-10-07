@@ -442,9 +442,20 @@ export function serialize(compose: ParsedCompose): string {
  *   - Strips existing tag: "my-api:old" → "my-api"
  *   - Appends env + version: "my-api" → "my-api-{env}:{version}"
  *
- * If `registry.enabled`:
+ * If the registry is used (`usesRegistry`):
  *   - Prepends registry prefix (only if image doesn't already contain a registry domain)
  */
+/** `registry.token` is the documented spelling for GHCR and GitLab; either one authenticates. */
+export function registryPassword(config: DockflowConfig): string | undefined {
+  return config.registry?.password || config.registry?.token || undefined;
+}
+
+/** The one registry predicate: images are named for, pushed to and pulled from the registry only when it holds. */
+export function usesRegistry(config: DockflowConfig): boolean {
+  const registry = config.registry;
+  return registry?.enabled === true && !!registry.url && !!registryPassword(config);
+}
+
 export function updateImageTags(
   compose: ParsedCompose,
   config: DockflowConfig,
@@ -453,7 +464,7 @@ export function updateImageTags(
   servicesFilter?: string,
 ): void {
   const autoTag = config.options?.image_auto_tag !== false;
-  const useRegistry = config.registry?.enabled === true;
+  const useRegistry = usesRegistry(config);
   const registryUrl = config.registry?.url ?? '';
   const registryNs = config.registry?.namespace ?? '';
   const registryPrefix = registryNs
