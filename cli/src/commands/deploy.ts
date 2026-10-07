@@ -59,7 +59,7 @@ import * as Plugin from '../services/plugin';
 import * as Hook from '../services/hook';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
-import { accessoriesKey, buildAndDistribute, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
+import { accessoriesKey, applyPublicPorts, buildAndDistribute, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
 import type { BuildResult } from './deploy-phases';
 import type { UploadRollbackPlan } from './deploy-phases';
 
@@ -339,6 +339,8 @@ async function execute(ctx: DeployContext): Promise<void> {
         compose = Compose.syncNonTargetedImageTags(compose, Compose.loadFromString(currentContent), filter);
       }
     }
+
+    await applyPublicPorts(ctx);
 
     await ensureExternalNetworks(ctx);
 

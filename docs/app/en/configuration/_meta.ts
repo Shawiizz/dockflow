@@ -14,6 +14,7 @@ export default {
   templates: 'Templates',
   'multi-host': 'Multi-Node Deployment',
   proxy: 'Automatic HTTPS Proxy',
+  firewall: 'Public Ports',
   notifications: 'Notifications',
   orchestrator: 'Orchestrator'
 }

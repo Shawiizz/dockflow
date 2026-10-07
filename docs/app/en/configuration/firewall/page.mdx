@@ -1,0 +1,133 @@
+# Public Ports
+
+import { Callout, Steps } from 'nextra/components'
+
+Docker publishes the `ports:` of your services through iptables rules of its own, which ufw and
+firewalld never see: a database published "to test" answers the whole internet, whatever ufw
+says. On Swarm hosts, `dockflow setup` installs a filter so that the internet reaches only the
+published ports a project declares public. Every published port still answers the host itself
+(nginx proxying to `127.0.0.1:8080`, health checks) and private networks.
+
+## Minimal Configuration
+
+```yaml
+# .dockflow/config.yml
+firewall:
+  public_ports:
+    - 1883
+```
+
+On the next `dockflow deploy`, port 1883 answers the internet on every node of the
+environment. A port published by a service but not listed answers only locally.
+
+## Declaring Public Ports
+
+| Entry | Opens to the internet |
+|---|---|
+| `443` or `443/tcp` | TCP port 443 |
+| `51820/udp` | UDP port 51820 |
+| `8000-8010/tcp` | TCP ports 8000 to 8010 |
+| `port: 443` with `from: [...]` | TCP port 443, to those addresses or CIDR ranges only |
+
+A port is the one the host publishes: for `ports: ["8080:80"]`, declare `8080`.
+
+```yaml
+firewall:
+  public_ports:
+    - 1883                    # open to everyone
+    - 51820/udp
+    - port: 443                # only from a CDN
+      from:
+        - 173.245.48.0/20
+        - 2400:cb00::/32
+```
+
+<Callout type="warning">
+  Keys of an entry are checked strictly: a misspelled `from` fails the configuration instead of
+  opening the port to everyone.
+</Callout>
+
+## Traefik's Ports
+
+With `proxy.enabled: true`, Traefik's ports are public without being listed: 80, and 443 unless
+`acme: false`. To keep one to a CDN, declare it yourself, with `from`: your declaration replaces
+the automatic one.
+
+```yaml
+proxy:
+  enabled: true
+  acme: false          # the CDN terminates TLS
+firewall:
+  public_ports:
+    - port: 80
+      from: [173.245.48.0/20, 103.21.244.0/22]
+```
+
+<Callout type="info">
+  Projects that share a server share Traefik and the filter: a port answers the union of what
+  they declare. One project opening 443 to everyone opens it for all of them.
+</Callout>
+
+## What a Deploy Prints
+
+```
+Public ports: 1883/tcp, 80/tcp, 443/tcp
+Published but closed to the internet: db 5432/tcp (firewall.public_ports opens a port)
+```
+
+The second line lists the ports your services publish that the internet cannot reach. It is
+expected for a service that nginx proxies on the host, or that only other nodes call; declare the
+others.
+
+## How It Works
+
+<Steps>
+### Setup
+
+`dockflow setup` installs `/usr/local/sbin/dockflow-public-ports`, a systemd unit that loads the
+filter at boot before Docker starts (and again when Docker restarts), and a sudo rule that lets
+the deploy user record its project's ports.
+
+### The filter
+
+Docker evaluates the `DOCKER-USER` chain before its own rules. The filter keeps a chain of its
+own, `DOCKFLOW-PUBLIC-PORTS`, at the top of it: a connection that the internet (an interface of
+a default route) opens to a published port goes on only when a project declared that port, from
+that address. It matches the port as published, before Docker translates it to the container's.
+
+### Deploys
+
+Swarm publishes a port on every node, so each deploy records the project's public ports on every
+node of the environment, in `/etc/dockflow/public-ports/<project>-<env>`, and reloads the filter.
+</Steps>
+
+Not filtered: the host's own traffic, other interfaces than the default route's (a private
+network, a VPN), traffic between containers, and every connection containers open. SSH and the
+host's own services are still ufw's or firewalld's job.
+
+```bash
+# on a node: the recorded ports and the rules in place
+sudo dockflow-public-ports status
+```
+
+## Servers Set Up Before the Filter
+
+A deploy warns about every node that has no filter. Run `dockflow setup` on it again to install
+it. Ports published at that moment stay open, recorded by project, until each Dockflow project's
+next deploy records its own: setting up the filter cuts no running service. Containers outside
+Dockflow keep theirs under `containers` (services outside stacks under `services`); to close them:
+
+```bash
+sudo dockflow-public-ports set containers
+```
+
+## Opting Out
+
+`dockflow setup --no-port-filter` (or answering no in the setup wizard) removes the filter: every
+published port answers the internet, as with Docker alone. Deploys then leave the host as it is,
+without warning.
+
+<Callout type="info">
+  The filter is for Swarm hosts. With `orchestrator: k3s`, ports do not go through Docker, and
+  setup skips it.
+</Callout>

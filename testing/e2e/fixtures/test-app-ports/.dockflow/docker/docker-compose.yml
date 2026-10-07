@@ -1,0 +1,15 @@
+services:
+  # in firewall.public_ports
+  web:
+    image: nginx:alpine
+    ports:
+      - "8094:80"
+    deploy:
+      replicas: 1
+  # published, not declared: closed to the internet
+  admin:
+    image: nginx:alpine
+    ports:
+      - "8095:80"
+    deploy:
+      replicas: 1

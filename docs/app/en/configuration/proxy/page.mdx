@@ -133,11 +133,10 @@ reaching Traefik (see the warning under [Requirements](#requirements)).
 - Your domain's DNS must point to your manager's IP before deploying
 - Your app service must expose a port in `docker-compose.yml` (Traefik reads this to know the container port), or be routed by [`routes`](#routing-a-service-on-its-own-domain)
 
-<Callout type="warning">
-  Traefik publishes 80 and 443 through Docker, which writes its own iptables rules: ufw and
-  firewalld do not filter them, and neither do they filter the `ports:` of your services. To
-  restrict who reaches them (only a CDN's addresses, for instance), add rules to the
-  `DOCKER-USER` chain, which Docker evaluates before its own.
+<Callout type="info">
+  Traefik publishes 80 and 443 through Docker, past ufw and firewalld. On hosts that
+  `dockflow setup` filters, they are [public ports](/en/configuration/firewall#traefiks-ports) on
+  their own; declare them yourself to keep them to a CDN's addresses.
 </Callout>
 
 ## How It Works
@@ -227,16 +226,16 @@ proxy:
   enabled: true
   email: admin@example.com
   routes:
-    - service: panel               # HTTP on 4326
+    - service: panel               # HTTP on 3000
       domains:
         production: panel.example.com
         staging: panel.staging.example.com
-      port: 4326
-    - service: panel               # its WebSocket server, on 4327, same domain
+      port: 3000
+    - service: panel               # its WebSocket server, on 3001, same domain
       domains:
         production: panel.example.com
       path: /ws
-      port: 4327
+      port: 3001
 ```
 
 ```yaml
@@ -251,7 +250,7 @@ services:
   goes to the first port of `ports:`, else of `expose:`.
 - `path` keeps only the requests whose path starts with it, and the path reaches the service
   unchanged. When two routes match a request, the one with the longer rule wins: above,
-  `/ws` goes to 4327 and everything else to 4326. WebSocket connections need nothing more.
+  `/ws` goes to 3001 and everything else to 3000. WebSocket connections need nothing more.
 - A route is left out of the environments its `domains` does not list; a service none of whose
   routes lists the environment has no route there at all, and the deploy says so.
 - A service listed in `routes` never gets the route on `domains`, in any environment. The other
@@ -271,7 +270,7 @@ deploy:
     - "traefik.http.routers.my-app-production-panel-route1.rule=Host(`panel.example.com`)"
     - "traefik.http.routers.my-app-production-panel-route1.entrypoints=websecure"
     - "traefik.http.routers.my-app-production-panel-route1.service=my-app-production-panel-route1"
-    - "traefik.http.services.my-app-production-panel-route1.loadbalancer.server.port=4326"
+    - "traefik.http.services.my-app-production-panel-route1.loadbalancer.server.port=3000"
     - "traefik.http.routers.my-app-production-panel-route1.tls.certresolver=letsencrypt"
 ```
 

@@ -250,13 +250,15 @@ then `www-data`. Setup also runs `chgrp -R` and `chmod -R g+rwX` on `sites-enabl
 
 **Sudo rules**
 
-Setup writes `/etc/sudoers.d/<username>` (mode `0440`) with exactly three entries — binary
-paths are resolved with `which` at setup time:
+Setup writes `/etc/sudoers.d/<username>` (mode `0440`) with these entries — binary paths are
+resolved with `which` at setup time, and the last one exists when setup installed the filter of
+[public ports](/en/configuration/firewall):
 
 ```
 dockflow ALL=(ALL) NOPASSWD: /usr/sbin/nginx -t, /usr/sbin/nginx -s reload
 dockflow ALL=(ALL) NOPASSWD: /usr/local/bin/k3s ctr -n k8s.io images *
 dockflow ALL=(ALL) NOPASSWD: /bin/cat /var/lib/rancher/k3s/server/node-token
+dockflow ALL=(ALL) NOPASSWD: /usr/local/sbin/dockflow-public-ports
 ```
 
 Nothing else is granted. In particular there is **no rule for `systemctl`** — a hook running

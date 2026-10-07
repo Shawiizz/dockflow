@@ -27,6 +27,17 @@ export const DOCKFLOW_UPLOAD_BACKUPS_DIR = '/var/lib/dockflow/upload-backups';
 export const NGINX_SITES_ENABLED = '/etc/nginx/sites-enabled';
 
 /**
+ * Filter of the internet traffic to published container ports (Swarm hosts), installed by setup
+ */
+export const PUBLIC_PORTS_BIN = '/usr/local/sbin/dockflow-public-ports';
+/** The public ports each project recorded, one file per project (root-owned) */
+export const PUBLIC_PORTS_STATE_DIR = '/etc/dockflow/public-ports';
+export const PUBLIC_PORTS_UNIT = 'dockflow-public-ports.service';
+export const PUBLIC_PORTS_UNIT_PATH = `/etc/systemd/system/${PUBLIC_PORTS_UNIT}`;
+/** Left by `setup --no-port-filter`, so deploys know the host is unfiltered on purpose */
+export const PUBLIC_PORTS_OFF_MARKER = '/etc/dockflow/public-ports.off';
+
+/**
  * Default values
  */
 export const DEFAULT_SSH_PORT = 22;

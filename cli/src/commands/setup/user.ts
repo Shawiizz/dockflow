@@ -6,11 +6,11 @@
  */
 
 import { spawnSync } from 'child_process';
-import { writeFileSync } from 'fs';
+import { existsSync, writeFileSync } from 'fs';
 import { printWarning, printSuccess, printInfo, createSpinner } from '../../utils/output';
 import { CLIError, ErrorCode } from '../../utils/errors';
 import { promptPassword } from './prompts';
-import { K3S_TOKEN_PATH, NGINX_SITES_ENABLED } from '../../constants';
+import { K3S_TOKEN_PATH, NGINX_SITES_ENABLED, PUBLIC_PORTS_BIN } from '../../constants';
 
 /**
  * Configure nginx group access and deploy-time sudoers for a deploy user.
@@ -54,6 +54,11 @@ export function configureServiceAccess(username: string): void {
   sudoersRules.push(`${username} ALL=(ALL) NOPASSWD: ${k3sBin} ctr -n k8s.io images *`);
   const catBin = spawnSync('which', ['cat'], { encoding: 'utf-8', stdio: 'pipe' }).stdout.trim() || '/bin/cat';
   sudoersRules.push(`${username} ALL=(ALL) NOPASSWD: ${catBin} ${K3S_TOKEN_PATH}`);
+
+  // deploys record the project's public ports in the filter of published ports
+  if (existsSync(PUBLIC_PORTS_BIN)) {
+    sudoersRules.push(`${username} ALL=(ALL) NOPASSWD: ${PUBLIC_PORTS_BIN}`);
+  }
 
   try {
     writeFileSync(`/etc/sudoers.d/${username}`, sudoersRules.join('\n') + '\n', { mode: 0o440 });

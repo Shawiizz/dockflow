@@ -12,7 +12,7 @@ import {
 import { readFileSync, existsSync, statSync } from 'fs';
 import { resolve, relative, dirname, basename } from 'path';
 import { pipeline } from 'stream/promises';
-import { printDim, printWarning, formatBytes, createSpinner } from '../utils/output';
+import { printDim, printInfo, printWarning, formatBytes, createSpinner } from '../utils/output';
 import { walkDir } from '../utils/fs';
 import { packDirToTarGz, buildExcludeFilter } from '../utils/tar';
 import { sshExec, sshExecChannel, shellQuote } from '../utils/ssh';
@@ -24,6 +24,7 @@ import type { SSHKeyConnection, ClusterConnection, ClusterNode } from '../types'
 
 import * as Compose from '../services/compose';
 import type { ParsedCompose } from '../services/compose';
+import * as PublicPorts from '../services/public-ports';
 import { HealthCheck } from '../services/health-check';
 import * as HistorySync from '../services/history-sync';
 import * as Build from '../services/build';
@@ -583,6 +584,62 @@ export async function ensureExternalNetworks(ctx: DeployContext): Promise<void> 
     if (r.exitCode !== 0) throw new DeployError(
       `Failed to create overlay network '${name}': ${r.stderr.trim() || `exit ${r.exitCode}`}`,
       ErrorCode.DEPLOY_FAILED,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase: Public ports
+// ---------------------------------------------------------------------------
+
+/**
+ * Record the project's public ports on every node, where dockflow-public-ports lets the internet
+ * reach only those among the published ports (Swarm: every node answers on a published port).
+ * A node set up before the filter existed is reported; one set up with --no-port-filter is left
+ * as it is.
+ */
+export async function applyPublicPorts(ctx: DeployContext): Promise<void> {
+  if (ctx.config.orchestrator === 'k3s' || ctx.config.no_services) return;
+
+  const rules = PublicPorts.publicPortRules(ctx.config);
+  const nodes = [ctx.cluster.manager, ...ctx.cluster.otherManagers, ...ctx.cluster.workers];
+  const outcomes = await Promise.allSettled(
+    nodes.map((node) => sshExec(node.connection, PublicPorts.recordCommand(ctx.stackName, rules, node.connection.user))),
+  );
+
+  let filtered = 0;
+  outcomes.forEach((outcome, i) => {
+    const node = nodes[i].name;
+    if (outcome.status === 'rejected') {
+      const cause = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+      printWarning(`${node}: could not record the public ports: ${cause}`);
+      return;
+    }
+    const { exitCode, stdout, stderr } = outcome.value;
+    if (exitCode !== 0) {
+      printWarning(`${node}: could not record the public ports: ${(stderr || stdout).trim() || `exit ${exitCode}`}`);
+    } else if (stdout.trim() === 'missing') {
+      printWarning(
+        `${node} does not filter published ports: the internet reaches every port a service publishes there. ` +
+          'Run `dockflow setup` on it again to install the filter.',
+      );
+    } else if (stdout.trim() !== 'off') {
+      filtered++;
+      if (stderr.trim()) printDim(`${node}: ${stderr.trim()}`);
+    }
+  });
+  if (filtered === 0) return;
+
+  printInfo(`Public ports: ${rules.map(PublicPorts.describeRule).join(', ') || 'none'}`);
+  const accessories = ctx.rendered.get(accessoriesKey());
+  const published = [ctx.composeContent, accessories].flatMap((content) =>
+    content ? PublicPorts.publishedPorts(Compose.loadFromString(content)) : [],
+  );
+  const closed = PublicPorts.closedPorts(published, rules);
+  if (closed.length > 0) {
+    printInfo(
+      `Published but closed to the internet: ${closed.map(PublicPorts.describePublished).join(', ')} ` +
+        '(firewall.public_ports opens a port)',
     );
   }
 }

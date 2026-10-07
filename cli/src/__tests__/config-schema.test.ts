@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { isIpOrCidr, ProxyConfigSchema } from '../schemas/config.schema';
+import { FirewallConfigSchema, isIpOrCidr, ProxyConfigSchema } from '../schemas/config.schema';
 import { findUnknownConfigKeys } from '../schemas/validation';
 
 describe('isIpOrCidr', () => {
@@ -27,7 +27,7 @@ describe('ProxyConfigSchema', () => {
     const route = { service: 'panel', domains: { production: 'panel.example.com' } };
     const routes = (...list: unknown[]) => ProxyConfigSchema.safeParse({ enabled: true, acme: false, routes: list }).success;
 
-    expect(routes(route, { ...route, path: '/ws', port: 4327 })).toBe(true);
+    expect(routes(route, { ...route, path: '/ws', port: 3001 })).toBe(true);
     expect(routes({ ...route, domains: { production: 'https://panel.example.com' } })).toBe(false);
     expect(routes({ ...route, domains: { production: 'panel.example.com`) || Host(`x' } })).toBe(false);
     expect(routes({ ...route, path: 'ws' })).toBe(false);
@@ -37,7 +37,25 @@ describe('ProxyConfigSchema', () => {
   });
 
   it('reports the unknown keys of a route', () => {
-    const config = { project_name: 'demo', proxy: { routes: [{ service: 'panel', domains: {}, prot: 4326 }] } };
+    const config = { project_name: 'demo', proxy: { routes: [{ service: 'panel', domains: {}, prot: 3000 }] } };
     expect(findUnknownConfigKeys(config)).toEqual([{ path: 'proxy.routes[0].prot', suggestion: 'port' }]);
+  });
+});
+
+describe('FirewallConfigSchema', () => {
+  const ports = (...list: unknown[]) => FirewallConfigSchema.safeParse({ public_ports: list });
+
+  it('takes a port, a range, a protocol, and the addresses a port answers', () => {
+    expect(ports(1883, '51820/udp', '8000-8010/tcp', { port: 443, from: ['173.245.48.0/20', '2400:cb00::/32'] }).success).toBe(true);
+  });
+
+  it('refuses a port outside 1-65535, an unknown protocol, a bad address', () => {
+    for (const entry of [0, 70000, '443/sctp', '10-5', 'https', { port: 443, from: ['cdn.example.com'] }, { port: 443, from: [] }]) {
+      expect({ entry, ok: ports(entry).success }).toEqual({ entry, ok: false });
+    }
+  });
+
+  it('refuses a misspelled key, which would otherwise open the port to everyone', () => {
+    expect(ports({ port: 443, form: ['173.245.48.0/20'] }).success).toBe(false);
   });
 });

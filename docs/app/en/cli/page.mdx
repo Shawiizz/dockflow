@@ -881,6 +881,7 @@ Configure a server without prompts (Linux only, must run on target host). Pass f
 | `--skip-docker-install` | Skip Docker installation |
 | `--orchestrator <type>` | `swarm` (default) or `k3s` — k3s skips the Docker install |
 | `--nginx` | Install nginx, for the [nginx plugin](/en/configuration/plugins#nginx) |
+| `--no-port-filter` | Let the internet reach every published container port, instead of only the [public ports](/en/configuration/firewall) |
 | `-y, --yes` | Skip confirmations |
 
 ### Initialize Swarm
@@ -931,6 +932,7 @@ Display connection string for an existing deployment user.
 - Root access (local setup must run as root; remote setup escalates automatically)
 - SSH (`ssh`, `ssh-keygen`)
 - curl (downloads the Docker install script)
+- sudo (the deploy user records public ports, reloads nginx and imports k3s images through it)
 
 Missing dependencies are installed automatically during setup.
 

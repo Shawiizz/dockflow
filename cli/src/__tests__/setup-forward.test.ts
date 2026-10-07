@@ -61,6 +61,14 @@ describe('buildForwardFlags', () => {
   });
 });
 
+describe('buildForwardFlags --no-port-filter', () => {
+  it('forwards the opt-out only when it was asked for', () => {
+    expect(buildForwardFlags({ portFilter: false }, REMOTE)).toContain('--no-port-filter');
+    expect(buildForwardFlags({ portFilter: true }, REMOTE)).not.toContain('--no-port-filter');
+    expect(buildForwardFlags({}, REMOTE)).not.toContain('--no-port-filter');
+  });
+});
+
 describe('buildBinaryDownloadUrl', () => {
   const BASE = 'https://github.com/Shawiizz/dockflow/releases/latest/download';
 

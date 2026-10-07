@@ -6,7 +6,9 @@
  *
  * The container deliberately starts fully minimal (no sudo — setup runs as
  * root and uses no sudo binary): the dependency auto-install path
- * (openssh-client, curl) is part of what's being tested.
+ * (openssh-client, curl, and sudo for the deploy user) is part of what's
+ * being tested. It cannot run iptables: the filter of published ports is
+ * installed there, not loaded.
  */
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
@@ -81,10 +83,37 @@ describe("dockflow setup (host provisioning)", () => {
     expect(parseInt(authKeys.trim(), 10)).toBeGreaterThanOrEqual(1);
   });
 
+  test("the filter of published ports is installed, for the deploy user to update", async () => {
+    const files = await inContainer([
+      "sh", "-c",
+      "head -n 1 /usr/local/sbin/dockflow-public-ports && stat -c '%U %a' /usr/local/sbin/dockflow-public-ports /etc/dockflow/public-ports",
+    ]);
+    expect(files.trim().split("
+")).toEqual(["#!/usr/bin/env bash", "root 755", "root 755"]);
+
+    const sudoers = await inContainer(["cat", `/etc/sudoers.d/${DEPLOY_USER}`]);
+    expect(sudoers).toContain(`${DEPLOY_USER} ALL=(ALL) NOPASSWD: /usr/local/sbin/dockflow-public-ports`);
+  });
+
   test("re-running setup is idempotent", async () => {
     const output = await runSetup(180_000);
 
     expect(output).toContain("Docker already installed — skipping");
     expect(output).toContain("Host provisioning complete");
+  }, 240_000);
+
+  test("setup --no-port-filter removes the filter and says the host is unfiltered on purpose", async () => {
+    const output = await exec(
+      ["docker", "exec", CONTAINER, "sh", "-c", `dockflow ${SETUP_ARGS.join(" ")} --no-port-filter 2>&1`],
+      { timeoutMs: 180_000 },
+    );
+    expect(output).toContain("Every published container port stays open to the internet (--no-port-filter)");
+
+    const state = await inContainer([
+      "sh", "-c",
+      "ls /usr/local/sbin/dockflow-public-ports /etc/dockflow/public-ports 2>&1; cat /etc/dockflow/public-ports.off",
+    ]);
+    expect(state).toContain("No such file or directory");
+    expect(state).toContain("--no-port-filter");
   }, 240_000);
 });

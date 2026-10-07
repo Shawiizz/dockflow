@@ -5,3 +5,9 @@ declare module '*.conf' {
   const path: string;
   export default path;
 }
+
+// Shell scripts are imported `with { type: 'text' }`: their content, inlined at build time.
+declare module '*.sh' {
+  const content: string;
+  export default content;
+}

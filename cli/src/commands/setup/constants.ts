@@ -47,6 +47,19 @@ export const REQUIRED_DEPENDENCIES: Dependency[] = [
       apk: ['curl']
     }
   },
+  {
+    name: 'sudo',
+    command: 'sudo -V',
+    description: 'sudo (the deploy user records public ports, reloads nginx, imports k3s images through it)',
+    packages: {
+      apt: ['sudo'],
+      yum: ['sudo'],
+      dnf: ['sudo'],
+      pacman: ['sudo'],
+      zypper: ['sudo'],
+      apk: ['sudo']
+    }
+  },
 ];
 
 export const OPTIONAL_DEPENDENCIES: Dependency[] = [

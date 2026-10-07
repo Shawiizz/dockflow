@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod';
+import { parsePortSpec } from '../utils/port-spec';
 
 /**
  * Registry configuration schema
@@ -318,6 +319,35 @@ export const ProxyConfigSchema = z.object({
   { message: 'proxy.email is required when proxy.enabled is true and acme is not disabled' }
 );
 
+const PortValueSchema = z.union([z.number(), z.string()]).refine(
+  (value) => parsePortSpec(value) !== null,
+  { message: 'must be a port or a range within 1-65535, with /tcp or /udp when needed: 443, 51820/udp, 8000-8010/tcp' }
+);
+
+/**
+ * A published port the internet may reach. The object form is strict: a misspelled `from` would
+ * otherwise open the port to everyone.
+ */
+export const PublicPortSchema = z.union([
+  PortValueSchema,
+  z.object({
+    port: PortValueSchema,
+    from: z.array(
+      z.string().refine(isIpOrCidr, { message: 'must be an IP address or a CIDR range, e.g. 173.245.48.0/20' })
+    ).min(1).optional().describe('Addresses or CIDR ranges the port answers; any address when absent'),
+  }).strict(),
+]);
+
+/**
+ * Filter of the internet traffic to published container ports (Swarm hosts set up by dockflow setup)
+ */
+export const FirewallConfigSchema = z.object({
+  public_ports: z.array(PublicPortSchema).optional().describe(
+    'Published container ports the internet may reach; the others answer only locally and on private networks. ' +
+    'Traefik\'s ports are added when proxy.enabled is true'
+  ),
+});
+
 /**
  * Webhook notification configuration schema
  */
@@ -447,6 +477,10 @@ export const DockflowConfigSchema = z.object({
 
   proxy: ProxyConfigSchema.optional().describe(
     'Automatic HTTPS proxy configuration (Traefik + Let\'s Encrypt)'
+  ),
+
+  firewall: FirewallConfigSchema.optional().describe(
+    'Which published container ports the internet may reach (Swarm)'
   ),
 
   notifications: NotificationsConfigSchema.optional().describe(

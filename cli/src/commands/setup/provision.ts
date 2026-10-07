@@ -1,6 +1,6 @@
 /**
  * Host provisioning — pure TypeScript replacement for the former Ansible
- * playbook: Docker install, /var/lib/dockflow, nginx.
+ * playbook: Docker install, /var/lib/dockflow, the filter of published ports, nginx.
  *
  * Runs locally on the target Linux host (local setup mode — the remote setup
  * flow ships the binary and re-executes it on the server). Setup enforces
@@ -14,6 +14,7 @@ import * as fs from 'fs';
 import { printSection, printInfo, printSuccess, printWarning, printDim, printBlank } from '../../utils/output';
 import { CLIError, ErrorCode } from '../../utils/errors';
 import { commandExists, detectPackageManager, getDistroName } from './dependencies';
+import { configurePublicPorts } from './public-ports';
 import type { HostConfig } from './types';
 
 const DOCKFLOW_BASE_DIR = '/var/lib/dockflow';
@@ -200,6 +201,12 @@ export function provisionHost(config: HostConfig): void {
   }
 
   ensureDockflowDir(config.deployUser);
+
+  if (config.orchestrator === 'k3s') {
+    printDim('Published-port filter skipped: k3s does not publish ports through Docker');
+  } else {
+    configurePublicPorts(config.portFilter);
+  }
 
   if (config.installNginx) {
     installNginx();

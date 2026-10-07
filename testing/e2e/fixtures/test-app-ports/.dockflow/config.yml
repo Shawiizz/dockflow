@@ -1,0 +1,14 @@
+project_name: "test-app-ports"
+
+options:
+  # nginx:alpine is pulled as is: nothing is built
+  image_auto_tag: false
+
+# Traefik's port 80 becomes public on its own
+proxy:
+  enabled: true
+  acme: false
+
+firewall:
+  public_ports:
+    - 8094

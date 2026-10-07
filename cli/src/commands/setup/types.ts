@@ -14,6 +14,8 @@ export interface SetupOptions {
   skipDockerInstall?: boolean;
   orchestrator?: SetupOrchestrator;
   nginx?: boolean;
+  /** false with --no-port-filter */
+  portFilter?: boolean;
   yes?: boolean;
 }
 
@@ -26,6 +28,8 @@ export interface HostConfig {
   skipDockerInstall: boolean;
   orchestrator: SetupOrchestrator;
   installNginx: boolean;
+  /** filter the internet traffic to published container ports (Swarm) */
+  portFilter: boolean;
 }
 
 export interface RemoteSetupOptions {

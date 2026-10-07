@@ -56,6 +56,7 @@ export function registerSetupCommand(program: Command): void {
     .option('--skip-docker-install', 'Skip Docker installation (local)')
     .option('--orchestrator <type>', 'Target orchestrator: swarm or k3s (k3s skips the Docker install)', 'swarm')
     .option('--nginx', 'Install Nginx (local)')
+    .option('--no-port-filter', 'Let the internet reach every port a container publishes (Docker default), not only firewall.public_ports')
     .option('-y, --yes', 'Skip confirmations (local)')
     .option('--dev', 'Build and upload local CLI binary instead of downloading from GitHub (development)')
     .action(withErrorHandler(async (target: string | undefined, options: SetupOptions & { key?: string; connection?: string; dev?: boolean; deployPassword?: string }) => {
@@ -257,6 +258,7 @@ export function registerSetupCommand(program: Command): void {
         skipDockerInstall: false,
         orchestrator: 'swarm',
         installNginx: false,
+        portFilter: true,
       }, privateKey);
     }));
 }

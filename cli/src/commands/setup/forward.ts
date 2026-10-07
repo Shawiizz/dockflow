@@ -24,6 +24,7 @@ export function buildForwardFlags(
   if (options.skipDockerInstall) flags.push('--skip-docker-install');
   if (options.orchestrator) flags.push('--orchestrator', quote(options.orchestrator));
   if (options.nginx) flags.push('--nginx');
+  if (options.portFilter === false) flags.push('--no-port-filter');
 
   if (options.user) {
     flags.push('--user', quote(options.user));

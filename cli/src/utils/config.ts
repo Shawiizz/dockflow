@@ -167,6 +167,14 @@ export interface ProxyConfig {
   trusted_ips?: string[];
 }
 
+/** A published port the internet may reach: `443`, `51820/udp`, `8000-8010/tcp`, or with the addresses it answers */
+export type PublicPort = number | string | { port: number | string; from?: string[] };
+
+export interface FirewallConfig {
+  /** published container ports the internet may reach on Swarm hosts that `dockflow setup` filters */
+  public_ports?: PublicPort[];
+}
+
 export interface WebhookConfig {
   url: string;
   on?: Array<'success' | 'failure' | 'always'>;
@@ -216,6 +224,7 @@ export interface DockflowConfig {
   templates?: (string | TemplateFileConfig)[];
   plugins?: PluginUse[];
   proxy?: ProxyConfig;
+  firewall?: FirewallConfig;
   notifications?: NotificationsConfig;
   uploads?: UploadItem[];
   no_services?: boolean;

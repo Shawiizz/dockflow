@@ -20,7 +20,7 @@ import type { HostConfig, SetupOrchestrator } from './types';
 /**
  * Run interactive setup wizard
  */
-export async function runInteractiveSetup(options?: { skipDockerInstall?: boolean; orchestrator?: SetupOrchestrator }): Promise<void> {
+export async function runInteractiveSetup(options?: { skipDockerInstall?: boolean; orchestrator?: SetupOrchestrator; portFilter?: boolean }): Promise<void> {
   printIntro('Machine Setup Wizard');
   printBlank();
 
@@ -185,6 +185,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
       skipDockerInstall: false,
       orchestrator: 'swarm',
       installNginx: false,
+      portFilter: true,
     }, privateKey);
     
     return;  // Early return for display-only option
@@ -198,6 +199,12 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
     installNginx = true;
   }
 
+  // Docker publishes ports past ufw and firewalld: by default only declared ones answer the
+  // internet. k3s does not publish through Docker.
+  const portFilter = options?.portFilter === false || options?.orchestrator === 'k3s'
+    ? false
+    : await confirm('Let the internet reach only the container ports your projects declare public? (recommended)', true);
+
   printBlank();
   printSection('Configuration Summary');
   printBlank();
@@ -207,6 +214,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
   printRaw(`${colors.info('Deployment User:')} ${deployUser}`);
   printRaw(`${colors.info('Create New User:')} ${needsUserSetup ? 'Yes' : 'No'}`);
   printRaw(`${colors.info('Install Nginx:')} ${installNginx ? 'Yes' : 'No'}`);
+  printRaw(`${colors.info('Filter Published Ports:')} ${portFilter ? 'Yes' : 'No'}`);
   printBlank();
 
   if (!await confirm('Proceed with this configuration?', true)) {
@@ -235,6 +243,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
     skipDockerInstall: options?.skipDockerInstall || false,
     orchestrator: options?.orchestrator || 'swarm',
     installNginx,
+    portFilter,
   };
 
   completeSetup(config);
