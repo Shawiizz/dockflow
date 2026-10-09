@@ -145,7 +145,7 @@ export async function removeAccessories(
 
     if (options.volumes) {
       if (signal) stopIfInterrupted(signal, 'deleting the volumes');
-      await removeVolumes(env, await listStackVolumes(nodes, stackName));
+      await removeVolumes(env, stackName, await listStackVolumes(nodes, stackName));
     }
   };
   if (lock) await withDeployLock(lock, 'Remove accessories', remove);
@@ -184,16 +184,22 @@ async function removeStack(connection: SSHKeyConnection, stackName: string): Pro
   spinner.succeed('Accessories stack removed');
 }
 
-async function removeVolumes(env: string, found: NodeVolumes[]): Promise<void> {
+/** Waits up to a minute for the stack's containers to leave the node: until then they hold their volumes. */
+export function containersGoneCommand(stackName: string): string {
+  const filter = shellQuote(`label=com.docker.stack.namespace=${stackName}`);
+  return `for i in $(seq 1 30); do [ -z "$(docker ps -aq --filter ${filter})" ] && exit 0; sleep 2; done; exit 1`;
+}
+
+async function removeVolumes(env: string, stackName: string, found: NodeVolumes[]): Promise<void> {
   const total = found.reduce((sum, { volumes }) => sum + volumes.length, 0);
   if (total === 0) return;
 
   const spinner = createSpinner();
   spinner.start('Removing volumes...');
 
-  // Right after `docker stack rm`, a draining container can still hold its volume.
   const failed: string[] = [];
   for (const { node, volumes } of found) {
+    await sshExec(node.connection, containersGoneCommand(stackName));
     for (const vol of volumes) {
       const rmResult = await sshExec(node.connection, `docker volume rm ${shellQuote(vol)}`);
       if (rmResult.exitCode !== 0) {
