@@ -88,7 +88,7 @@ You need a Debian/Ubuntu server with SSH access (root or sudo user).
 dockflow init
 ```
 
-This generates the following structure at the root of your project:
+This generates the following structure at the root of your project, adds `.env.dockflow` to `.gitignore`, and offers to set up the CI/CD workflows:
 
 <FileTree>
   <FileTree.Folder name=".dockflow" defaultOpen>
@@ -96,15 +96,13 @@ This generates the following structure at the root of your project:
     <FileTree.File name="servers.yml" />
     <FileTree.Folder name="docker" defaultOpen>
       <FileTree.File name="docker-compose.yml" />
-      <FileTree.File name="accessories.yml" />
-      <FileTree.File name="Dockerfile" />
     </FileTree.Folder>
   </FileTree.Folder>
 </FileTree>
 
 - **`config.yml`** — Project name, build strategy, health checks ([reference](/en/configuration))
 - **`servers.yml`** — Servers and environment variables ([reference](/en/configuration/servers))
-- **`docker/`** — Docker Compose stack, accessories, and Dockerfile
+- **`docker/`** — the Docker Compose stack (add `accessories.yml` for databases and caches, and the Dockerfiles your services build from)
 
 ## Deploy
 

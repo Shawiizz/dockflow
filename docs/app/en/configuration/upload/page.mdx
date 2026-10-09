@@ -208,7 +208,7 @@ uploads:
 
 With `no_services: true`:
 - Docker build and compose deploy are skipped entirely
-- Commands that require a running stack (`dockflow app logs`, `dockflow app status`, `rollback`, etc.) return a clear error instead of failing silently
+- Commands that require a running stack (`dockflow logs`, `dockflow status`, `dockflow exec`, `dockflow rollback`, etc.) return a clear error instead of failing silently
 - Pre/post-deploy hooks still run
 
 <Callout type="warning">
