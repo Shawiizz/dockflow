@@ -37,24 +37,29 @@ jobs:
         with:
           version: 10
 
+      # The tag is the version; anything else would reach shell scripts and package names
       - name: Extract version from tag
         id: version
         run: |
-          # Tag is already the version (2.0.0)
           VERSION=$GITHUB_REF_NAME
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::$VERSION is not a version tag"
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "📦 Building CLI version: $VERSION"
 
       - name: Set version in package.json files
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION=${{ steps.version.outputs.version }}
           node -e "
             const fs = require('fs');
             for (const p of ['package.json', 'cli/package.json', 'packages/cli/package.json']) {
               const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
-              pkg.version = '$VERSION';
+              pkg.version = process.env.VERSION;
               fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
-              console.log('✓ ' + p + ' → ' + '$VERSION');
+              console.log('✓ ' + p + ' → ' + process.env.VERSION);
             }
           "
 
@@ -202,9 +207,11 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - name: Set package version from tag
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
           cd packages/cli
-          npm version ${{ needs.build.outputs.version }} --no-git-tag-version --allow-same-version
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
 
       # The package carries the SHA-256 of the binaries its version downloads
       - name: Download checksums
@@ -222,9 +229,10 @@ jobs:
           npm pack --dry-run 2>&1 | grep -q 'SHA256SUMS' || { echo "::error::SHA256SUMS is not packed"; exit 1; }
 
       - name: Publish to npm
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
           cd packages/cli
-          VERSION="${{ needs.build.outputs.version }}"
           if [[ "$VERSION" == *-* ]]; then
             npm publish --access public --tag dev
           else

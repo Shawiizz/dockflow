@@ -53,12 +53,15 @@ jobs:
         run: cd packages/mcp-server && npm run typecheck:test && npm test
 
       - name: Set version
-        run: cd packages/mcp-server && npm version ${{ steps.version.outputs.version }} --no-git-tag-version --allow-same-version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: cd packages/mcp-server && npm version "$VERSION" --no-git-tag-version --allow-same-version
 
       - name: Publish
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           cd packages/mcp-server
-          VERSION="${{ steps.version.outputs.version }}"
           if [[ "$VERSION" == *-* ]]; then
             npm publish --access public --tag dev --provenance
           else
