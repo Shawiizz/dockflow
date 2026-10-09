@@ -37,7 +37,7 @@ beforeEach(() => {
   released = 0;
   lockReply = Promise.resolve(ok({}));
   spies = [
-    spyOn(helpers, 'getManagerConnection').mockReturnValue(conn),
+    spyOn(helpers, 'getManagerConnection').mockResolvedValue(conn),
     spyOn(config, 'loadConfig').mockReturnValue({ backup: { retention_count: 1 } } as never),
     spyOn(config, 'getStackName').mockReturnValue('shop-production'),
     spyOn(config, 'getAccessoriesStackName').mockReturnValue('shop-production-accessories'),

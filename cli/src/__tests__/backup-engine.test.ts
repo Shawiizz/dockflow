@@ -411,7 +411,7 @@ describe('Backup.restore of redis', () => {
     nodes.on('docker exec -i', { exitCode: 137 });
     expect((await backupEngine().restore('db', POSTGRES_BACKUP, REDIS)).success).toBe(true);
     expect(pauses).toEqual([3000]);
-    expect(nodes.commands('manager')).toContain(`docker service update --force ${STACK}_db`);
+    expect(nodes.commands('manager')).toContain(`docker service update --force '${STACK}_db'`);
   });
 
   it('any other failure reports its detail without the marker line, and does not restart', async () => {
