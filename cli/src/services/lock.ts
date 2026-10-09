@@ -8,6 +8,8 @@
  *   same stale lock exactly one wins, and the loser never removes the winner's lock.
  * - release by the holder: the same compare under the guard, so a deploy whose lock was taken over
  *   leaves the new holder's lock in place.
+ * - keep-alive: the holder rewrites `renewed_at` with the same compare, so a deploy that runs longer
+ *   than the stale threshold is not taken for a dead one.
  *
  * Used by both CLI lock commands and API lock routes.
  */
@@ -33,6 +35,7 @@ export interface LockData {
   version: string;
   stack: string;
   message?: string;
+  renewed_at?: string;
 }
 
 /**
@@ -58,6 +61,7 @@ export interface LockOptions {
 
 const ACQUIRED = 'ACQUIRED';
 const TAKEN = 'TAKEN';
+const BUSY = 'BUSY';
 const STALE_TAKEN = 'Lock was stale but another deploy acquired it first';
 /** a takeover guard older than this was left by a killed process (the guarded step takes milliseconds) */
 const ABANDONED_GUARD_MINUTES = 1;
@@ -99,6 +103,7 @@ export class Lock {
   private readonly now: () => number;
   /** the content this instance wrote, while it holds the lock */
   private held: string | null = null;
+  private renewal: { timer: ReturnType<typeof setInterval>; inFlight: Promise<void> | null } | null = null;
 
   constructor(
     private readonly shell: RemoteShell,
@@ -157,7 +162,7 @@ export class Lock {
       }
 
       if (current.status.isStale) {
-        const takeover = await this.shell.run(this.takeoverCommand(current.content ?? ''), content);
+        const takeover = await this.shell.run(this.swapCommand(current.content ?? '', { createIfMissing: true }), content);
         if (takeover.stdout.trim() !== ACQUIRED) return err(new LockHeldError(STALE_TAKEN));
         printWarning(staleTakeoverMessage(current.status.data ?? null, current.status.durationMinutes ?? null));
         return acquired();
@@ -177,6 +182,7 @@ export class Lock {
 
   /** The holder removes only its own lock; any other instance (`dockflow lock release`) removes whatever is there. */
   async release(): Promise<Result<void, CLIError>> {
+    await this.stopKeepAlive();
     try {
       const file = shellQuote(this.lockFile);
       const command = this.held === null
@@ -194,6 +200,45 @@ export class Lock {
     }
   }
 
+  /** Renews the lock every third of the stale threshold until `release`. */
+  keepAlive(): void {
+    if (this.held === null || this.renewal) return;
+    const renewal: { timer: ReturnType<typeof setInterval>; inFlight: Promise<void> | null } = {
+      timer: setInterval(() => {
+        renewal.inFlight ??= this.renew().finally(() => {
+          renewal.inFlight = null;
+        });
+      }, (this.staleThresholdMinutes * 60_000) / 3),
+      inFlight: null,
+    };
+    renewal.timer.unref?.();
+    this.renewal = renewal;
+  }
+
+  /** Marks the held lock as alive now. A lock another deploy took over is left to it, and no longer renewed. */
+  async renew(): Promise<void> {
+    if (this.held === null) return;
+    const renewed = JSON.stringify({ ...(JSON.parse(this.held) as LockData), renewed_at: new Date(this.now()).toISOString() }, null, 2);
+    try {
+      const outcome = (await this.shell.run(this.swapCommand(this.held, { createIfMissing: false }), renewed)).stdout.trim();
+      if (outcome === ACQUIRED) {
+        this.held = renewed;
+      } else if (outcome !== BUSY) {
+        if (this.renewal) clearInterval(this.renewal.timer);
+        printWarning('This deploy no longer holds the lock: another deploy took it over, or it was released by hand');
+      }
+    } catch (error) {
+      printDebug(`Lock renewal failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private async stopKeepAlive(): Promise<void> {
+    if (!this.renewal) return;
+    clearInterval(this.renewal.timer);
+    await this.renewal.inFlight;
+    this.renewal = null;
+  }
+
   private async read(): Promise<LockRead> {
     const result = await this.shell.run(`cat ${shellQuote(this.lockFile)} 2>/dev/null || echo NO_LOCK`);
     const output = result.stdout.trim();
@@ -202,8 +247,9 @@ export class Lock {
     const content = result.stdout.replace(/\n+$/, '');
     try {
       const data = JSON.parse(output) as LockData;
-      const durationMinutes = Math.floor((this.now() - new Date(data.started_at).getTime()) / 60000);
-      const isStale = durationMinutes > this.staleThresholdMinutes;
+      const minutesSince = (iso: string): number => Math.floor((this.now() - new Date(iso).getTime()) / 60000);
+      const durationMinutes = minutesSince(data.started_at);
+      const isStale = minutesSince(data.renewed_at ?? data.started_at) > this.staleThresholdMinutes;
       return { status: { locked: true, data, durationMinutes, isStale }, content };
     } catch (parseErr) {
       printDebug(`Lock metadata parse failed: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`);
@@ -246,10 +292,6 @@ export class Lock {
     return `mkdir -p ${shellQuote(this.locksDir)} && cat > ${tmp} && mv -f ${tmp} ${shellQuote(this.lockFile)} || { rm -f ${tmp}; exit 1; }`;
   }
 
-  /**
-   * Replaces the lock only if it still holds `expected`. A lock that disappeared in the meantime
-   * is created instead.
-   */
   private ownReleaseCommand(own: string): string {
     const file = shellQuote(this.lockFile);
     const guard = shellQuote(`${this.lockFile}.takeover`);
@@ -267,16 +309,21 @@ export class Lock {
     ].join('\n');
   }
 
-  private takeoverCommand(expected: string): string {
+  /**
+   * Replaces the lock only if it still holds `expected`; a lock that disappeared in the meantime
+   * is created only when `createIfMissing`. Prints ACQUIRED, TAKEN, or BUSY while another swap runs.
+   */
+  private swapCommand(expected: string, { createIfMissing }: { createIfMissing: boolean }): string {
     const file = shellQuote(this.lockFile);
     const guard = shellQuote(`${this.lockFile}.takeover`);
     const tmp = shellQuote(this.tempFile());
     return [
-      'r=LOCKED',
+      `r=${BUSY}`,
       `if cat > ${tmp}; then`,
       `  find ${guard} -prune -type d -mmin +${ABANDONED_GUARD_MINUTES} -exec rmdir {} + 2>/dev/null`,
       `  if mkdir ${guard} 2>/dev/null; then`,
-      `    if [ ! -e ${file} ]; then ln ${tmp} ${file} 2>/dev/null && r=${ACQUIRED}`,
+      `    r=${TAKEN}`,
+      `    if [ ! -e ${file} ]; then ${createIfMissing ? `ln ${tmp} ${file} 2>/dev/null && r=${ACQUIRED}` : ':'}`,
       `    elif [ "$(cat ${file} 2>/dev/null)" = ${shellQuote(expected)} ]; then mv -f ${tmp} ${file} && r=${ACQUIRED}`,
       '    fi',
       `    rmdir ${guard}`,

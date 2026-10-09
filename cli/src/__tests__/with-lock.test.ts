@@ -12,6 +12,9 @@ function fakeLock(acquire: 'ok' | CLIError = 'ok') {
       events.push('acquire');
       return acquire === 'ok' ? { success: true as const, data: {} } : { success: false as const, error: acquire };
     },
+    keepAlive: () => {
+      events.push('keepAlive');
+    },
     release: async () => {
       events.push('release');
       return { success: true as const, data: undefined };
@@ -28,14 +31,14 @@ describe('withDeployLock', () => {
     await withDeployLock(lock, 'Stop', async () => {
       events.push('action');
     });
-    expect(events).toEqual(['acquire', 'action', 'release']);
+    expect(events).toEqual(['acquire', 'keepAlive', 'action', 'release']);
   });
 
   it('releases the lock when the action fails, and keeps its error', async () => {
     const { lock, events } = fakeLock();
     const boom = new CLIError('boom', ErrorCode.DEPLOY_FAILED);
     await expect(withDeployLock(lock, 'Stop', async () => { throw boom; })).rejects.toBe(boom);
-    expect(events).toEqual(['acquire', 'release']);
+    expect(events).toEqual(['acquire', 'keepAlive', 'release']);
   });
 
   it('runs nothing when another deploy holds the lock', async () => {
@@ -54,6 +57,6 @@ describe('withDeployLock', () => {
     }).catch((error) => error);
     expect(failure).toBeInstanceOf(CLIError);
     expect(failure.code).toBe(ErrorCode.INTERRUPTED);
-    expect(events).toEqual(['acquire', 'release']);
+    expect(events).toEqual(['acquire', 'keepAlive', 'release']);
   });
 });

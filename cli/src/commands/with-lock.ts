@@ -13,6 +13,7 @@ import { printWarning } from '../utils/output';
 export async function withDeployLock<T>(lock: Lock, message: string, action: (signal: AbortSignal) => Promise<T>): Promise<T> {
   const acquired = await lock.acquire({ message });
   if (!acquired.success) throw acquired.error;
+  lock.keepAlive();
 
   const interrupt = new AbortController();
   const stopHandling = onInterrupt(() => {

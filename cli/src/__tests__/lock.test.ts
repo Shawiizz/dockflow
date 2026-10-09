@@ -161,6 +161,56 @@ describe('Lock on a real shell', () => {
     expect(existsSync(lockFile())).toBe(false);
   });
 
+  test.if(hasPosixShell)('a renewed lock is not stale however old the deploy, and keeps its start time', async () => {
+    const alice = locks('alice@ci');
+    const held = dataOf(await alice.acquire({ message: 'Deploy 1.0.0', version: '1.0.0' }));
+    clock = T0 + 25 * MINUTE;
+    await alice.renew();
+    clock = T0 + 45 * MINUTE;
+
+    expect(dataOf(await locks('bob@ci').status())).toEqual({
+      locked: true,
+      data: { ...held, renewed_at: new Date(T0 + 25 * MINUTE).toISOString() },
+      durationMinutes: 45,
+      isStale: false,
+    });
+    expect(errorOf(await locks('bob@ci').acquire())).toBe('Already locked by alice@ci (45 min ago)');
+
+    dataOf(await alice.release());
+    expect(existsSync(lockFile())).toBe(false);
+  });
+
+  test.if(hasPosixShell)('a lock taken over is not renewed over the new holder', async () => {
+    const alice = locks('alice@ci');
+    await alice.acquire();
+    clock = T0 + 45 * MINUTE;
+    const bob = dataOf(await locks('bob@ci').acquire());
+
+    await alice.renew();
+    expect(JSON.parse(readFileSync(lockFile(), 'utf8'))).toEqual(bob);
+  });
+
+  test.if(hasPosixShell)('a released lock is not brought back by a renewal', async () => {
+    const alice = locks('alice@ci');
+    await alice.acquire();
+    dataOf(await locks('ops@ci').release());
+
+    await alice.renew();
+    expect(existsSync(lockFile())).toBe(false);
+  });
+
+  test.if(hasPosixShell)('keep-alive renews on its own until the release', async () => {
+    const alice = locks('alice@ci', { staleThresholdMinutes: 0.001 });
+    await alice.acquire();
+    clock = T0 + 5 * MINUTE;
+    alice.keepAlive();
+    await Bun.sleep(200);
+
+    expect(JSON.parse(readFileSync(lockFile(), 'utf8')).renewed_at).toBe(new Date(T0 + 5 * MINUTE).toISOString());
+    dataOf(await alice.release());
+    expect(existsSync(lockFile())).toBe(false);
+  });
+
   test.if(hasPosixShell)('lock release by hand removes any holder\'s lock', async () => {
     await locks('alice@ci').acquire();
 

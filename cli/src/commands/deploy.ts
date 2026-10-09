@@ -303,6 +303,7 @@ async function execute(ctx: DeployContext): Promise<void> {
   const lockResult = await ctx.lock.acquire({ version: ctx.deployVersion, force: ctx.options.force, message: `Deploy ${ctx.deployVersion}` });
   // DEPLOY_LOCKED only when another deploy holds it: a manager that does not answer has its own code
   if (!lockResult.success) throw lockResult.error;
+  ctx.lock.keepAlive();
 
   const startTime = Date.now();
   let deployFailed = false;
