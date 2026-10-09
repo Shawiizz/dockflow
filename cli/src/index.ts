@@ -8,22 +8,7 @@
 import { Command } from 'commander';
 import { version } from '../package.json';
 import { setVerbose, printSuccess, printBlank, printWarning, printRaw, colors } from './utils/output';
-
-// Commands
-import { registerAppCommands } from './commands/app/index';
-import { registerDeployCommand } from './commands/deploy';
-import { registerBuildCommand } from './commands/build';
-import { registerSetupCommand } from './commands/setup';
-import { registerInitCommand } from './commands/init';
-import { registerAccessoriesCommands } from './commands/accessories';
-import { registerBackupCommands } from './commands/backup';
-import { registerLockCommands } from './commands/lock';
-import { registerListCommands } from './commands/list';
-import { registerPluginsCommands } from './commands/plugins';
-import { registerConfigCommand } from './commands/config';
-import { registerUICommand } from './commands/ui';
-import { registerValidateCommand } from './commands/validate';
-import { registerCompletionCommand } from './commands/completion';
+import { registerAllCommands } from './commands/register-all';
 
 const program = new Command();
 
@@ -40,21 +25,7 @@ program
     }
   });
 
-// Register all commands
-registerAppCommands(program);
-registerAccessoriesCommands(program);
-registerBackupCommands(program);
-registerLockCommands(program);
-registerListCommands(program);
-registerPluginsCommands(program);
-registerConfigCommand(program);
-registerDeployCommand(program);
-registerBuildCommand(program);
-registerSetupCommand(program);
-registerInitCommand(program);
-registerUICommand(program);
-registerValidateCommand(program);
-registerCompletionCommand(program);
+registerAllCommands(program);
 
 // Ordered group display sequence — groups are declared in each command file via .helpGroup()
 const GROUP_ORDER = ['Setup', 'Deploy', 'Inspect', 'Operate', 'Resources', 'Other'];
