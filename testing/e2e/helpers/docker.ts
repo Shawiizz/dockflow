@@ -16,6 +16,32 @@ export async function dockerExec(
   return exec(["docker", "exec", container, ...cmd]);
 }
 
+const RELEASES_ROOT = "/var/lib/dockflow/stacks";
+
+/**
+ * Permission bits of a release directory (key ".") and of the files in it, as `stat -c %a` prints
+ * them on the manager. Release files hold the rendered stack and its secrets.
+ */
+export async function releaseModes(stackName: string, version: string): Promise<Record<string, string>> {
+  const dir = `${RELEASES_ROOT}/${stackName}/${version}`;
+  const files = ["docker-compose.yml", "stack.yml", "metadata.json"];
+  const out = await dockerExec(MANAGER_CONTAINER, ["stat", "-c", "%a %n", dir, ...files.map((file) => `${dir}/${file}`)]);
+  const modes: Record<string, string> = {};
+  for (const line of out.split("\n").filter(Boolean)) {
+    const [mode, path] = line.split(" ");
+    modes[path === dir ? "." : path.slice(dir.length + 1)] = mode;
+  }
+  return modes;
+}
+
+/** What `releaseModes` returns for a release only its owner can read. */
+export const PRIVATE_RELEASE_MODES = {
+  ".": "700",
+  "docker-compose.yml": "600",
+  "stack.yml": "600",
+  "metadata.json": "600",
+} as const;
+
 /**
  * Get service replicas as "running/desired" string.
  */

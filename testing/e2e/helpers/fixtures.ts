@@ -5,7 +5,7 @@
  * working tree.
  */
 
-import { cpSync, mkdtempSync, rmSync } from "fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { writeDockflowEnv } from "./connection";
@@ -40,6 +40,16 @@ export function makeFixture(name: string): Fixture {
       }
     },
   };
+}
+
+/**
+ * Replace the first occurrence of `search` in a file of a fixture copy. A patch that changes
+ * nothing throws: the pattern drifted from the fixture and the test would pass on the wrong input.
+ */
+export function patchFile(path: string, search: string, replacement: string): void {
+  const text = readFileSync(path, "utf-8");
+  if (!text.includes(search)) throw new Error(`patchFile: "${search}" is not in ${path}`);
+  writeFileSync(path, text.replace(search, () => replacement));
 }
 
 // ---------------------------------------------------------------------------

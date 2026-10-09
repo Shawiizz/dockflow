@@ -1,0 +1,23 @@
+project_name: "test-app-lk"
+
+stack_management:
+  keep_releases: 3
+  cleanup_on_failure: true
+
+health_checks:
+  startup_delay: 3
+  on_failure: fail
+  endpoints:
+    - url: "http://localhost:{{ current.env.web_port }}"
+      name: "web service"
+      remote: true
+      expected_status: 200
+      retries: 3
+      retry_delay: 2
+
+# The deploy holds its lock while this runs: DOCKFLOW_E2E_HOLD (seconds) decides for how long, so a
+# test can act on a deploy that is still in progress
+hooks:
+  pre-build:
+    - name: hold the lock
+      run: 'sleep ${DOCKFLOW_E2E_HOLD:-0}'

@@ -20,6 +20,11 @@ export interface CLIResult {
   durationMs: number;
 }
 
+/** Everything the command printed: the CLI writes its decorated messages to stderr. */
+export function combinedOutput(result: CLIResult): string {
+  return result.stdout + result.stderr;
+}
+
 export function getCliBinaryName(): string {
   const platform = process.platform;
   const arch = process.arch;
