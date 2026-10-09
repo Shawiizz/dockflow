@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import {
   filterUploads,
   resolveFileDestPath,
@@ -10,7 +10,11 @@ import {
   rolledBackError,
   uploadFiles,
   convergenceError,
+  runPostRollbackHealthChecks,
 } from '../commands/deploy-phases';
+import { HealthCheck } from '../services/health-check';
+import type { StackBackend } from '../services/orchestrator/interfaces';
+import * as output from '../utils/output';
 import type { DeployContext } from '../commands/deploy-context';
 import { DeployError, ErrorCode } from '../utils/errors';
 import type { UploadItem } from '../utils/config';
@@ -195,5 +199,58 @@ describe('convergenceError', () => {
     const error = convergenceError({ rolledBack: false, timedOut: true }, 'production');
     expect(error.code).toBe(ErrorCode.DEPLOY_FAILED);
     expect(error.suggestion).toBe('Run `dockflow diagnose production` to see what keeps them from starting.');
+  });
+});
+
+describe('runPostRollbackHealthChecks', () => {
+  const connection = { host: 'node-1', port: 22, user: 'dockflow', privateKey: 'key' };
+  const startedAt = new Date('2026-10-09T10:00:00Z');
+
+  function backend(result: { healthy: boolean; message?: string }) {
+    const calls: unknown[][] = [];
+    const orchestrator = {
+      checkInternalHealth: async (...args: unknown[]) => {
+        calls.push(args);
+        return result;
+      },
+    } as unknown as StackBackend;
+    return { orchestrator, calls };
+  }
+
+  const warnings = spyOn(output, 'printWarning').mockImplementation(() => {});
+  const http = spyOn(HealthCheck.prototype, 'checkHTTPEndpoints').mockImplementation(async () => []);
+  afterEach(() => {
+    warnings.mockClear();
+    http.mockClear();
+  });
+
+  it('judges only the tasks started by the rollback, and warns when they are unhealthy', async () => {
+    const { orchestrator, calls } = backend({ healthy: false, message: 'web: 0/2' });
+
+    await runPostRollbackHealthChecks(connection, orchestrator, 'shop-production', undefined, startedAt);
+
+    expect(calls[0]?.[0]).toBe('shop-production');
+    expect(calls[0]?.[4]).toBe(startedAt);
+    expect(warnings).toHaveBeenCalledWith('Rolled-back version is unhealthy: web: 0/2');
+    expect(http).not.toHaveBeenCalled();
+  });
+
+  it('checks the endpoints without rolling back a rollback', async () => {
+    const { orchestrator } = backend({ healthy: true });
+    const endpoints = [{ url: 'https://shop.example.com/health' }];
+
+    await runPostRollbackHealthChecks(connection, orchestrator, 'shop-production', { endpoints, on_failure: 'rollback' } as never, startedAt);
+
+    expect(http).toHaveBeenCalledWith(expect.objectContaining({ endpoints, on_failure: 'notify' }));
+    expect(warnings).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when health checks are disabled', async () => {
+    const { orchestrator, calls } = backend({ healthy: false });
+
+    await runPostRollbackHealthChecks(connection, orchestrator, 'shop-production', { enabled: false } as never, startedAt);
+
+    expect(calls).toEqual([]);
+    expect(http).not.toHaveBeenCalled();
   });
 });
