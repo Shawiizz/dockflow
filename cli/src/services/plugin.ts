@@ -465,7 +465,8 @@ export async function loadConfigWithPlugins(args: {
   projectContext: Record<string, unknown>;
 }): Promise<{ config: DockflowConfig; pluginSummary: string[] }> {
   const configRelPath = relative(args.projectRoot, getLayout().configPath).replace(/\\/g, '/');
-  const config = loadConfig({ content: args.rendered.get(configRelPath), silent: true }) ?? args.fallback;
+  // a template that renders an invalid config fails the deploy rather than falling back to the unrendered file
+  const config = loadConfig({ content: args.rendered.get(configRelPath), silent: true, strict: true }) ?? args.fallback;
   if (!config.plugins?.length) return { config, pluginSummary: [] };
 
   const expansion = await expandPlugins(config.plugins, {
