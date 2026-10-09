@@ -39,6 +39,7 @@ import { loadSecrets } from '../utils/secrets';
 import {
   findShellPlaceholders,
   describeShellPlaceholders,
+  findAccessoriesWithBuild,
 } from '../services/compose-lint';
 import { CLIError, ValidationError, withErrorHandler } from '../utils/errors';
 import { registryWithoutCredentials } from '../services/compose';
@@ -238,6 +239,13 @@ async function runValidate(options: ValidateOptions): Promise<void> {
       printError(`${relative(projectRoot, stackFile).split(sep).join('/')} ${line}`);
     }
     if (placeholders.length > 0) hasErrors = true;
+  }
+
+  const accessoriesPath = getAccessoriesPath();
+  if (accessoriesPath) {
+    for (const name of findAccessoriesWithBuild(readFileSync(accessoriesPath, 'utf-8'))) {
+      printWarning(`accessories.yml: ${name} has a build section, which Dockflow never builds; it deploys the image as it is`);
+    }
   }
 
   printBlank();

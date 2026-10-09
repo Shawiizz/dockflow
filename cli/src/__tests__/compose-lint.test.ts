@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   describeInsertedPlaceholders,
   describeShellPlaceholders,
+  findAccessoriesWithBuild,
   findInsertedPlaceholders,
   findShellPlaceholders,
 } from '../services/compose-lint';
@@ -125,5 +126,17 @@ describe('describeInsertedPlaceholders', () => {
     expect(line).toContain('replace("$", "$$")');
     expect(line).not.toContain('s3cr');
     expect(line).not.toContain('$et');
+  });
+});
+
+describe('findAccessoriesWithBuild', () => {
+  test('names the accessories that have a build section', () => {
+    const accessories = ['services:', '  db:', '    image: postgres:16', '  search:', '    build: ./search', '    image: search:local'].join('\n');
+
+    expect(findAccessoriesWithBuild(accessories)).toEqual(['search']);
+  });
+
+  test('a file that does not parse yet, a template say, reports nothing', () => {
+    expect(findAccessoriesWithBuild('services: [')).toEqual([]);
   });
 });

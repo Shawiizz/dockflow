@@ -14,6 +14,8 @@
  * This module only reports; the caller decides between a warning and a hard failure.
  */
 
+import { loadFromString } from './compose';
+
 /** Values Dockflow puts at the root of the render context rather than under `current.env`. */
 const ROOT_CONTEXT_VARS: Record<string, string> = {
   ENV: '{{ env }}',
@@ -140,4 +142,14 @@ export function describeInsertedPlaceholders(lines: number[]): string[] {
     `line ${line} (rendered): a value inserted by a template contains a $ that Docker will replace when deploying. ` +
     'Escape it with | replace("$", "$$").',
   );
+}
+
+/** Accessories are deployed from their image as it is: a `build:` section in accessories.yml is never built. */
+export function findAccessoriesWithBuild(accessoriesContent: string): string[] {
+  try {
+    const { services } = loadFromString(accessoriesContent, 'accessories.yml');
+    return Object.entries(services).filter(([, service]) => service.build !== undefined).map(([name]) => name);
+  } catch {
+    return [];
+  }
 }
