@@ -182,7 +182,7 @@ proxy:
 ### `stale_threshold_minutes`
 **Default:** `30`
 
-Dockflow prevents concurrent deployments to the same stack. Lock files are stored in `/var/lib/dockflow/locks/` and expire after this threshold. Accepts values from 1 to 1440 (24 hours).
+Dockflow prevents concurrent deployments to the same stack. Lock files are stored in `/var/lib/dockflow/locks/` and expire after this threshold, counted from their last renewal: a running deploy renews its lock every third of the threshold, so only the lock of a deploy that died expires. Accepts values from 1 to 1440 (24 hours).
 
 ## Audit Log
 
