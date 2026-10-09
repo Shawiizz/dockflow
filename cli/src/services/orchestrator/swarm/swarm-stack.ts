@@ -11,7 +11,7 @@ import { ok, err, type Result } from '../../../types/result';
 import { DeployError, ErrorCode } from '../../../utils/errors';
 import { shellQuote, sshExec } from '../../../utils/ssh';
 import { printDebug, createTimedSpinner } from '../../../utils/output';
-import { realClock, SwarmStackOps, type SwarmClock } from './swarm-stack-ops';
+import { ConvergenceError, realClock, SwarmStackOps, type SwarmClock } from './swarm-stack-ops';
 import { runDockerQuery } from './swarm-utils';
 import * as Compose from '../../compose';
 import { DOCKFLOW_STACKS_DIR } from '../../../constants';
@@ -132,9 +132,8 @@ export class SwarmStackBackend implements StackBackend {
       return { converged: true, rolledBack: false, timedOut: false };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      const rolledBack = /rolled back|rollback/i.test(msg);
-      const timedOut = /timeout/i.test(msg);
-      return { converged: false, rolledBack, timedOut, errorDetail: msg };
+      const outcome = e instanceof ConvergenceError ? e.outcome : null;
+      return { converged: false, rolledBack: outcome === 'rolled-back', timedOut: outcome === 'timeout', errorDetail: msg };
     }
   }
 

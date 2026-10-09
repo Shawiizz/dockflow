@@ -575,6 +575,45 @@ describe('SwarmStackBackend.waitConvergence', () => {
     expect(script.commands()[0]).toStartWith("docker stack services 'my stack' --format");
   });
 
+  describe('a rollback state an earlier deploy left', () => {
+    const DEPLOYED_AT = Date.parse('2026-09-19T12:00:00Z') / 1000;
+
+    function scriptDeployThenStates(rollbackStartedAt: string): void {
+      script
+        .on(STACK_SERVICES_NAMES, { stdout: '' })
+        .on(/^date -u \+%s$/, { stdout: `${DEPLOYED_AT}\n` })
+        .on(STACK_DEPLOY, {})
+        .on(STACK_LS_CHECK, { stdout: STACK })
+        .on(REPLICAS, sequence({ stdout: `${web('2/2')}\n${WORKER}${TAB}0/1` }, { stdout: `${web('2/2')}\n${WORKER}${TAB}1/1` }))
+        .on(UPDATE_STATES, { stdout: states([WEB, `rollback_completed|${rollbackStartedAt}`], [WORKER, '']) })
+        .on(FAILED_TASKS, { stdout: '' });
+    }
+
+    it('is ignored on a service this deploy did not change', async () => {
+      scriptDeployThenStates('2026-09-19T11:00:00.000000000Z');
+      const b = backend();
+      await b.deploy({ stackName: STACK, env: 'production', compose: appCompose() });
+
+      expect(await b.waitConvergence(STACK, 60, 5)).toEqual({ converged: true, rolledBack: false, timedOut: false });
+    });
+
+    it('fails the deploy when the rollback started after it', async () => {
+      scriptDeployThenStates('2026-09-19T12:00:05.000000000Z');
+      const b = backend();
+      await b.deploy({ stackName: STACK, env: 'production', compose: appCompose() });
+
+      expect((await b.waitConvergence(STACK, 60, 5)).rolledBack).toBe(true);
+    });
+  });
+
+  it('a timeout is a timeout even when a service name contains "rollback"', async () => {
+    script.on(REPLICAS, { stdout: `${STACK}_rollback-worker${TAB}0/1` }).on(UPDATE_STATES, { stdout: '' });
+
+    const result = await backend().waitConvergence(STACK, 10, 5);
+
+    expect(result).toMatchObject({ converged: false, rolledBack: false, timedOut: true });
+  });
+
   describe('what the deploy gets', () => {
     it('a rollback is a failed health check, with the logs to read', () => {
       const error = convergenceError({ rolledBack: true, timedOut: false, errorDetail: 'Swarm auto-rolled back services: x' }, 'production');

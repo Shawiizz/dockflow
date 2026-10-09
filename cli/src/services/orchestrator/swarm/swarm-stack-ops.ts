@@ -32,11 +32,33 @@ export const realClock: SwarmClock = {
   sleep: (ms) => Bun.sleep(ms),
 };
 
+interface UpdateState {
+  state: string;
+  startedAt: string | null;
+}
+
+/** A stack that did not converge, and how. */
+export class ConvergenceError extends DeployError {
+  constructor(message: string, readonly outcome: 'rolled-back' | 'paused' | 'timeout', suggestion?: string) {
+    super(message, ErrorCode.DEPLOY_FAILED, suggestion);
+    this.name = 'ConvergenceError';
+  }
+}
+
 export class SwarmStackOps {
+  /** the manager's clock when the last stack deploy started: a service's update states are compared with it */
+  private deployStartedAt: number | null = null;
+
   constructor(
     private readonly connection: SSHKeyConnection,
     private readonly clock: SwarmClock = realClock,
   ) {}
+
+  private startedByThisDeploy(startedAt: string | null): boolean {
+    if (this.deployStartedAt === null || startedAt === null) return true;
+    const started = Date.parse(startedAt);
+    return Number.isNaN(started) || started >= this.deployStartedAt;
+  }
 
   /**
    * Create external overlay networks (idempotent, parallel).
@@ -177,6 +199,10 @@ export class SwarmStackOps {
       .filter(Boolean)
       .join(' ');
 
+    const serverNow = await sshExec(this.connection, 'date -u +%s').catch(() => null);
+    const seconds = Number(serverNow?.stdout.trim());
+    this.deployStartedAt = serverNow && Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null;
+
     const { stream, done } = await sshExecChannel(
       this.connection,
       `docker stack deploy ${flags} -c - ${shellQuote(stackName)}`,
@@ -295,11 +321,10 @@ export class SwarmStackOps {
         if (error instanceof DeployError) {
           const taskErrors = await this.getFailedTaskErrors(stackName).catch(() => '');
           if (taskErrors) {
-            throw new DeployError(
-              `${error.message}\n\nFailed tasks:\n${taskErrors}`,
-              error.code,
-              error.suggestion,
-            );
+            const message = `${error.message}\n\nFailed tasks:\n${taskErrors}`;
+            throw error instanceof ConvergenceError
+              ? new ConvergenceError(message, error.outcome, error.suggestion)
+              : new DeployError(message, error.code, error.suggestion);
           }
         }
         throw error;
@@ -319,10 +344,9 @@ export class SwarmStackOps {
 
     spinner.fail(`Convergence timeout after ${timeout / 1000}s`);
 
-    throw new DeployError(
+    throw new ConvergenceError(
       `${ctx} convergence timeout after ${timeout / 1000}s. Non-converged services: ${notConverged.join(', ')}`,
-      ErrorCode.DEPLOY_FAILED,
-      'Check service logs with `dockflow logs <service>` for details.',
+      'timeout',
     );
   }
 
@@ -330,7 +354,7 @@ export class SwarmStackOps {
    * Fetch the UpdateStatus.State for all services in a single SSH call.
    * Returns a Map of service name → state (lowercase).
    */
-  private async getServiceUpdateStates(serviceLines: string[]): Promise<Map<string, string>> {
+  private async getServiceUpdateStates(serviceLines: string[]): Promise<Map<string, UpdateState>> {
     const serviceNames = serviceLines.map((l) => l.split('\t')[0]).filter(Boolean);
     if (serviceNames.length === 0) return new Map();
 
@@ -338,15 +362,16 @@ export class SwarmStackOps {
     const result = await sshExec(
       this.connection,
       `for svc in ${quoted}; do ` +
-        `STATE=$(docker service inspect "$svc" --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{end}}' 2>/dev/null); ` +
+        `STATE=$(docker service inspect "$svc" --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}|{{.UpdateStatus.StartedAt}}{{end}}' 2>/dev/null); ` +
         `echo "$svc\t$STATE"; ` +
       `done`,
     );
 
-    const states = new Map<string, string>();
+    const states = new Map<string, UpdateState>();
     for (const line of result.stdout.trim().split('\n').filter(Boolean)) {
-      const [svc, state] = line.split('\t');
-      states.set(svc, (state || '').toLowerCase());
+      const [svc, status = ''] = line.split('\t');
+      const [state = '', startedAt = ''] = status.split('|');
+      states.set(svc, { state: state.toLowerCase(), startedAt: startedAt.trim() || null });
     }
     return states;
   }
@@ -355,12 +380,14 @@ export class SwarmStackOps {
    * Detect services in rollback or crash-loop states during convergence.
    * Throws immediately on detection.
    */
-  private detectFailingFromStates(states: Map<string, string>): void {
+  private detectFailingFromStates(states: Map<string, UpdateState>): void {
     const rolledBack: string[] = [];
     const stuck: string[] = [];
 
-    for (const [svc, state] of states) {
+    for (const [svc, { state, startedAt }] of states) {
       if (state === 'rollback_started' || state === 'rollback_completed') {
+        // a rollback left by an earlier deploy on a service this one did not change is not this deploy's
+        if (!this.startedByThisDeploy(startedAt)) continue;
         rolledBack.push(svc);
       } else if (state === 'rollback_paused' || state === 'paused') {
         stuck.push(svc);
@@ -368,17 +395,17 @@ export class SwarmStackOps {
     }
 
     if (rolledBack.length > 0) {
-      throw new DeployError(
+      throw new ConvergenceError(
         `Swarm auto-rolled back services: ${rolledBack.join(', ')}`,
-        ErrorCode.DEPLOY_FAILED,
+        'rolled-back',
         'The new version failed Swarm health checks. Check service logs for details.',
       );
     }
 
     if (stuck.length > 0) {
-      throw new DeployError(
-        `Services stuck in ${[...states.entries()].find(([s]) => stuck.includes(s))?.[1]}: ${stuck.join(', ')}`,
-        ErrorCode.DEPLOY_FAILED,
+      throw new ConvergenceError(
+        `Services stuck in ${states.get(stuck[0])?.state}: ${stuck.join(', ')}`,
+        'paused',
         'Try `dockflow deploy --force` to force a fresh deployment.',
       );
     }
@@ -409,9 +436,9 @@ export class SwarmStackOps {
   /**
    * Return service names that have an in-progress update (state = "updating").
    */
-  private getUpdatingFromStates(states: Map<string, string>): string[] {
+  private getUpdatingFromStates(states: Map<string, UpdateState>): string[] {
     return [...states.entries()]
-      .filter(([, state]) => state === 'updating')
+      .filter(([, { state }]) => state === 'updating')
       .map(([svc]) => svc);
   }
 
