@@ -643,8 +643,8 @@ export async function sshExecChannel(
   return openChannelOnClient(client, command);
 }
 
-function openChannelOnClient(
-  client: SSHClient,
+export function openChannelOnClient(
+  client: Pick<SSHClient, 'exec'>,
   command: string,
 ): Promise<SSHChannelHandle> {
   return new Promise<SSHChannelHandle>((resolve, reject) => {
@@ -666,12 +666,13 @@ function openChannelOnClient(
       const done = new Promise<{ exitCode: number; stdout: string; stderr: string }>(
         (resolveDone) => {
           // Bun's ssh2 streams may not emit 'close' after stream.end(),
-          // but 'exit' always fires. Use whichever comes first.
+          // but 'exit' always fires. Use whichever comes first, once the output
+          // already received has been delivered.
           let resolved = false;
           const finish = (code?: number | null, signal?: string) => {
             if (resolved) return;
             resolved = true;
-            resolveDone(channelResult(stdout, stderr, code, signal));
+            setImmediate(() => resolveDone(channelResult(stdout, stderr, code, signal)));
           };
           stream.on('exit', finish);
           stream.on('close', finish);

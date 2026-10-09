@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { EventEmitter } from 'events';
 import type { Client } from 'ssh2';
-import { channelResult, NO_EXIT_STATUS, openUnbufferedChannelOnClient } from '../utils/ssh';
+import { channelResult, NO_EXIT_STATUS, openChannelOnClient, openUnbufferedChannelOnClient } from '../utils/ssh';
 
 // What ssh2 passes the 'close' and 'exit' events of an exec channel: (code) when the command
 // exited, (null, 'SIGKILL', ...) when a signal killed it, nothing when no exit status came.
@@ -38,14 +38,26 @@ describe('channelResult', () => {
   });
 });
 
+function client(): { channel: EventEmitter & { stderr: EventEmitter }; client: Pick<Client, 'exec'> } {
+  const channel = Object.assign(new EventEmitter(), { stderr: new EventEmitter() });
+  return {
+    channel,
+    client: { exec: ((_command: string, callback: (error: Error | undefined, stream: unknown) => void) => callback(undefined, channel)) as Client['exec'] },
+  };
+}
+
+describe('openChannelOnClient', () => {
+  it('keeps the error text a stream delivers right after the exit status', async () => {
+    const { channel, client: fake } = client();
+    const handle = await openChannelOnClient(fake, 'docker stack deploy');
+    channel.emit('exit', 1);
+    process.nextTick(() => channel.stderr.emit('data', Buffer.from('network not found')));
+
+    expect(await handle.done).toEqual({ stdout: '', stderr: 'network not found', exitCode: 1 });
+  });
+});
+
 describe('openUnbufferedChannelOnClient', () => {
-  function client(): { channel: EventEmitter; client: Pick<Client, 'exec'> } {
-    const channel = Object.assign(new EventEmitter(), { stderr: new EventEmitter() });
-    return {
-      channel,
-      client: { exec: ((_command: string, callback: (error: Error | undefined, stream: unknown) => void) => callback(undefined, channel)) as Client['exec'] },
-    };
-  }
 
   it('settles on the exit status and keeps nothing of the output', async () => {
     const { channel, client: fake } = client();
