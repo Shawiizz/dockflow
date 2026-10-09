@@ -20,5 +20,23 @@ services:
         constraints:
           - node.role == manager
 
+  # appendonly on: a dump.rdb restore would be ignored at startup, so backup restore refuses it
+  # (03-backup.test.ts). Named without "redis" so the redisExec helper keeps finding the other one.
+  journal:
+    image: redis:8-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - journal_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
 volumes:
   redis_data:
+  journal_data:

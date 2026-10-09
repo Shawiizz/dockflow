@@ -30,6 +30,8 @@ backup:
   accessories:
     redis:
       type: redis
+    journal:
+      type: redis
 
 hooks:
   pre-build:

@@ -132,4 +132,45 @@ describe("backup & restore", () => {
       expect(backups.some((b) => b.id === backupId)).toBe(false);
     }, 60_000);
   });
+
+  describe("redis with appendonly", () => {
+    const APPENDONLY_SERVICE = "journal";
+
+    async function journalCli(args: string[]): Promise<string> {
+      const result = await runCLI(
+        ["accessories", "exec", TEST_ENV, APPENDONLY_SERVICE, "--", "redis-cli", ...args],
+        { cwd: sharedAppDir() },
+      );
+      if (result.exitCode !== 0) {
+        throw new Error(`redis-cli ${args.join(" ")} failed: ${result.stderr.slice(-500)}`);
+      }
+      return result.stdout.trim();
+    }
+
+    test("a restore is refused and the data is left untouched", async () => {
+      await waitForService(`${ACCESSORIES_STACK}_${APPENDONLY_SERVICE}`, "1/1", { timeoutMs: 30_000 });
+
+      await journalCli(["SET", TEST_KEY, "before"]);
+      const created = await runCLI(
+        ["backup", "create", TEST_ENV, APPENDONLY_SERVICE, "--json"],
+        { cwd: sharedAppDir() },
+      );
+      expect(created.exitCode).toBe(0);
+      const { id }: { id: string } = JSON.parse(created.stdout);
+
+      await journalCli(["SET", TEST_KEY, "after"]);
+      const restore = await runCLI(
+        ["backup", "restore", TEST_ENV, APPENDONLY_SERVICE, "--from", id, "--yes"],
+        { cwd: sharedAppDir() },
+      );
+
+      expect(restore.exitCode).toBe(72); // RESTORE_FAILED
+      const output = restore.stdout + restore.stderr;
+      expect(output).toContain(
+        `Redis in service ${APPENDONLY_SERVICE} has appendonly enabled; a restored dump.rdb would be ignored at startup, so nothing was changed`,
+      );
+      expect(output).not.toContain("DOCKFLOW_REFUSED");
+      expect(await journalCli(["GET", TEST_KEY])).toBe("after");
+    }, 120_000);
+  });
 });
