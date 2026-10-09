@@ -6,15 +6,16 @@
 
 import type { Command } from 'commander';
 import chalk from 'chalk';
-import { getAvailableEnvironments, getManagersForEnvironment, getFullConnectionInfo } from '../../utils/servers';
+import { getAvailableEnvironments, getManagersForEnvironment } from '../../utils/servers';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { withSecrets } from '../../utils/secrets';
-import { CLIError, ConfigError, ConnectionError, ErrorCode, withServicesRequired } from '../../utils/errors';
-import { loadConfig } from '../../utils/config';
-import { resolveEnvironmentPrefix } from '../../utils/validation';
+import { CLIError, ConnectionError, ErrorCode, withServicesRequired } from '../../utils/errors';
+import { resolveEnv, resolveEnvironmentPrefix } from '../../utils/validation';
 import { printIntro, printBlank, printRaw, printSection, printWarning, colors } from '../../utils/output';
 
 const STATUS_BUDGET_MS = 8000;
+/** time to find, among several managers, one that answers, then read through it */
+const STATUS_FAILOVER_BUDGET_MS = 20000;
 
 export interface EnvReading {
   version: string | null;
@@ -36,26 +37,11 @@ export interface StatusDeps {
   availableEnvironments(): string[];
   /** throws a CLIError when the environment cannot be read */
   read(env: string): Promise<EnvReading>;
-  budgetMs: number;
+  budgetMs(env: string): number;
 }
 
 async function readEnvironment(env: string): Promise<EnvReading> {
-  const managers = getManagersForEnvironment(env);
-  if (managers.length === 0) {
-    throw new CLIError(`No manager is configured for ${env}`, ErrorCode.NO_SERVERS_FOR_ENV, 'Tag a manager with it in servers.yml.');
-  }
-  const connection = getFullConnectionInfo(env, managers[0].name);
-  if (!connection) {
-    throw new CLIError(
-      `No SSH credentials for ${managers[0].name} in ${env}`,
-      ErrorCode.SSH_KEY_NOT_FOUND,
-      'Set the connection secret of this server (CI secret or .env.dockflow).',
-    );
-  }
-  const config = loadConfig({ strict: true });
-  if (!config) throw new ConfigError('config.yml not found', 'Run `dockflow init` to create a project configuration.');
-
-  const stackName = `${config.project_name}-${env}`;
+  const { stackName, connection } = await resolveEnv(env);
   const orchestrator = createStackBackend(connection);
   const [meta, services] = await Promise.all([orchestrator.getMetadata(stackName), orchestrator.getServices(stackName)]);
   const totals = services.reduce(
@@ -71,7 +57,7 @@ async function readEnvironment(env: string): Promise<EnvReading> {
 const defaultStatusDeps: StatusDeps = {
   availableEnvironments: getAvailableEnvironments,
   read: readEnvironment,
-  budgetMs: STATUS_BUDGET_MS,
+  budgetMs: (env) => (getManagersForEnvironment(env).length > 1 ? STATUS_FAILOVER_BUDGET_MS : STATUS_BUDGET_MS),
 };
 
 const TIMEOUT = Symbol('status-timeout');
@@ -92,11 +78,12 @@ function rowText(failure: CLIError): string {
 }
 
 async function getEnvStatus(env: string, deps: StatusDeps): Promise<EnvStatus> {
-  const budget = timeout(deps.budgetMs);
+  const budgetMs = deps.budgetMs(env);
+  const budget = timeout(budgetMs);
   try {
     const reading = await Promise.race([deps.read(env), budget.expired]);
     if (reading === TIMEOUT) {
-      return { env, reading: null, error: 'timeout', failure: new ConnectionError(`${env} did not answer within ${deps.budgetMs / 1000}s`) };
+      return { env, reading: null, error: 'timeout', failure: new ConnectionError(`${env} did not answer within ${budgetMs / 1000}s`) };
     }
     return { env, reading, error: null };
   } catch (error) {

@@ -6,7 +6,7 @@ import * as output from '../utils/output';
 const reading: EnvReading = { version: '1.4.2', deployedAt: new Date().toISOString(), services: { running: 2, desired: 2 } };
 
 function deps(read: StatusDeps['read'], budgetMs = 8000): StatusDeps {
-  return { availableEnvironments: () => ['production', 'staging'], read, budgetMs };
+  return { availableEnvironments: () => ['production', 'staging'], read, budgetMs: () => budgetMs };
 }
 
 const rows: string[] = [];
