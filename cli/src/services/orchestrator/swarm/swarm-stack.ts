@@ -11,7 +11,7 @@ import { ok, err, type Result } from '../../../types/result';
 import { DeployError, ErrorCode } from '../../../utils/errors';
 import { shellQuote, sshExec } from '../../../utils/ssh';
 import { printDebug, createTimedSpinner } from '../../../utils/output';
-import { SwarmStackOps } from './swarm-stack-ops';
+import { realClock, SwarmStackOps, type SwarmClock } from './swarm-stack-ops';
 import { runDockerQuery } from './swarm-utils';
 import * as Compose from '../../compose';
 import { DOCKFLOW_STACKS_DIR } from '../../../constants';
@@ -47,8 +47,11 @@ export class SwarmStackBackend implements StackBackend {
   private readonly ops: SwarmStackOps;
   private readonly renders = new Map<string, string>();
 
-  constructor(private readonly conn: SSHKeyConnection) {
-    this.ops = new SwarmStackOps(conn);
+  constructor(
+    private readonly conn: SSHKeyConnection,
+    private readonly clock: SwarmClock = realClock,
+  ) {
+    this.ops = new SwarmStackOps(conn, clock);
   }
 
   async deploy(input: StackDeployInput): Promise<Result<void, DeployError>> {
@@ -144,14 +147,14 @@ export class SwarmStackBackend implements StackBackend {
   ): Promise<InternalHealthResult> {
     const timeout = timeoutSeconds * 1000;
     const interval = intervalSeconds * 1000;
-    const deadline = Date.now() + timeout;
+    const deadline = this.clock.now() + timeout;
 
     const spinner = createTimedSpinner();
     spinner.start(`Checking Swarm health (timeout: ${timeoutSeconds}s)...`);
 
     let lastUnhealthy: string[] = [];
 
-    while (Date.now() < deadline) {
+    while (this.clock.now() < deadline) {
       const result = await this.pollHealth(stackName, servicesFilter, deployStartedAt);
 
       if (result.rolledBack.length > 0) {
@@ -172,7 +175,7 @@ export class SwarmStackBackend implements StackBackend {
       lastUnhealthy = result.unhealthy;
       printDebug(`Health: healthy=[${result.healthy.join(', ')}] unhealthy=[${result.unhealthy.join(', ')}]`);
       spinner.update(`Checking Swarm health: ${result.unhealthy.length} unhealthy`);
-      await new Promise((resolve) => setTimeout(resolve, interval));
+      await this.clock.sleep(interval);
     }
 
     spinner.fail(`Health check timeout after ${timeoutSeconds}s`);

@@ -22,8 +22,21 @@ import {
   CONVERGENCE_INTERVAL_S,
 } from '../../../constants';
 
+export interface SwarmClock {
+  now(): number;
+  sleep(ms: number): Promise<void>;
+}
+
+export const realClock: SwarmClock = {
+  now: () => Date.now(),
+  sleep: (ms) => Bun.sleep(ms),
+};
+
 export class SwarmStackOps {
-  constructor(private readonly connection: SSHKeyConnection) {}
+  constructor(
+    private readonly connection: SSHKeyConnection,
+    private readonly clock: SwarmClock = realClock,
+  ) {}
 
   /**
    * Create external overlay networks (idempotent, parallel).
@@ -112,7 +125,7 @@ export class SwarmStackOps {
     }
 
     for (let i = 0; i < STACK_REMOVAL_MAX_ATTEMPTS; i++) {
-      await Bun.sleep(STACK_REMOVAL_POLL_INTERVAL_MS);
+      await this.clock.sleep(STACK_REMOVAL_POLL_INTERVAL_MS);
 
       const check = await sshExec(
         this.connection,
@@ -152,7 +165,7 @@ export class SwarmStackOps {
     if (stuck.length > 0) {
       printWarning(`Stuck services detected: ${stuck.join(', ')}; removing stack ${stackName} before deploying`);
       await this.removeStackAndWait(stackName);
-      await Bun.sleep(3000);
+      await this.clock.sleep(3000);
     }
 
     // 2. Deploy from stdin. The compose carries the stack's secrets: a file in
@@ -208,7 +221,7 @@ export class SwarmStackOps {
     const timeout = (options?.timeout ?? CONVERGENCE_TIMEOUT_S) * 1000;
     const interval = (options?.interval ?? CONVERGENCE_INTERVAL_S) * 1000;
     const ctx = options?.context ?? 'deployment';
-    const deadline = Date.now() + timeout;
+    const deadline = this.clock.now() + timeout;
 
     const filterSet = options?.servicesFilter?.length
       ? new Set(options.servicesFilter.map(s => `${stackName}_${s}`))
@@ -219,7 +232,7 @@ export class SwarmStackOps {
 
     let lastStatuses: string[] = [];
 
-    while (Date.now() < deadline) {
+    while (this.clock.now() < deadline) {
       const result = await sshExec(
         this.connection,
         `docker stack services ${shellQuote(stackName)} --format '{{.Name}}\t{{.Replicas}}' 2>/dev/null || echo ""`,
@@ -228,7 +241,7 @@ export class SwarmStackOps {
       let lines = result.stdout.trim().split('\n').filter(Boolean);
       if (filterSet) lines = lines.filter(l => filterSet.has(l.split('\t')[0]));
       if (lines.length === 0) {
-        await Bun.sleep(interval);
+        await this.clock.sleep(interval);
         continue;
       }
 
@@ -266,7 +279,7 @@ export class SwarmStackOps {
         if (updating.length > 0) {
           printDebug(`Update in progress: ${updating.join(', ')}`);
           spinner.update(`Waiting for ${ctx} convergence: update in progress`);
-          await Bun.sleep(interval);
+          await this.clock.sleep(interval);
           continue;
         }
 
@@ -295,7 +308,7 @@ export class SwarmStackOps {
       printDebug(`Convergence: ${statuses.join(', ')}`);
       spinner.update(`Waiting for ${ctx} convergence: ${statuses.join(', ')}`);
 
-      await Bun.sleep(interval);
+      await this.clock.sleep(interval);
     }
 
     // Timeout — use last known statuses
