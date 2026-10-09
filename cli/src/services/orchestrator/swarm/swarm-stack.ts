@@ -371,7 +371,7 @@ export class SwarmStackBackend implements StackBackend {
   async getMetadata(stackName: string): Promise<StackMetadata | null> {
     const result = await sshExec(
       this.conn,
-      `cat '${DOCKFLOW_STACKS_DIR}/${stackName}/current/metadata.json' 2>/dev/null`,
+      `cat ${shellQuote(`${DOCKFLOW_STACKS_DIR}/${stackName}/current/metadata.json`)} 2>/dev/null`,
     );
     if (result.exitCode !== 0 || !result.stdout.trim()) return null;
     try {

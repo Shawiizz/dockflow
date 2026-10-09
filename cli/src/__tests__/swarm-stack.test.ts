@@ -100,8 +100,8 @@ const FAILED_TASKS = /^docker stack ps .*desired-state=shutdown/;
 const STACK_RM = /^docker stack rm /;
 const STACK_LS_CHECK = /^docker stack ls --format '\{\{\.Name\}\}' \| grep -xF /;
 const STACK_DEPLOY = /^docker stack deploy /;
-const HASH_READ = /^cat ".*\.hash"/;
-const HASH_WRITE = /\.hash"$/;
+const HASH_READ = /^cat '.*\.hash'/;
+const HASH_WRITE = /\.hash'$/;
 
 const web = (replicas: string) => `${STACK}_web${TAB}${replicas}`;
 const states = (...pairs: [string, string][]) => pairs.map(([service, state]) => `${service}${TAB}${state}`).join('\n');
@@ -361,7 +361,7 @@ describe('SwarmStackBackend.deployAccessory', () => {
     const result = await backend().deployAccessory(input());
 
     expect(result).toEqual({ success: true, data: { deployed: false } });
-    expect(script.commands()).toEqual([`cat "${hashFile}" 2>/dev/null || echo ""`]);
+    expect(script.commands()).toEqual([`cat '${hashFile}' 2>/dev/null || echo ""`]);
   });
 
   it('reads the hash from the application stack directory, not the accessories stack', async () => {
@@ -385,7 +385,7 @@ describe('SwarmStackBackend.deployAccessory', () => {
     expect(script.calls.find((call) => /^docker compose -f - pull/.test(call.command))?.stdin).toBe(serialize(accessories()));
 
     const write = script.calls.length - 1;
-    expect(script.calls[write].command).toBe(`mkdir -p "/var/lib/dockflow/accessories/${STACK}" && echo '${hash}' > "${hashFile}"`);
+    expect(script.calls[write].command).toBe(`mkdir -p '/var/lib/dockflow/accessories/${STACK}' && echo '${hash}' > '${hashFile}'`);
     expect(script.indexOf(STACK_DEPLOY)).toBeLessThan(script.lastIndexOf(REPLICAS));
     expect(script.lastIndexOf(REPLICAS)).toBeLessThan(write);
   });
@@ -406,7 +406,7 @@ describe('SwarmStackBackend.deployAccessory', () => {
     expect(result.success).toBe(true);
     expect(script.indexOf(HASH_READ)).toBe(-1);
     expect(script.indexOf(STACK_DEPLOY)).toBeGreaterThanOrEqual(0);
-    expect(script.calls[script.calls.length - 1].command).toContain(`> "${hashFile}"`);
+    expect(script.calls[script.calls.length - 1].command).toContain(`> '${hashFile}'`);
   });
 
   it('does not record the hash when the accessories never converge', async () => {

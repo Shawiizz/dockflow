@@ -334,7 +334,7 @@ export class SwarmStackOps {
     const serviceNames = serviceLines.map((l) => l.split('\t')[0]).filter(Boolean);
     if (serviceNames.length === 0) return new Map();
 
-    const quoted = serviceNames.map((s) => `'${s}'`).join(' ');
+    const quoted = serviceNames.map(shellQuote).join(' ');
     const result = await sshExec(
       this.connection,
       `for svc in ${quoted}; do ` +
@@ -440,7 +440,7 @@ export class SwarmStackOps {
     if (!options?.force) {
       const remoteResult = await sshExec(
         this.connection,
-        `cat "${hashFile}" 2>/dev/null || echo ""`,
+        `cat ${shellQuote(hashFile)} 2>/dev/null || echo ""`,
       );
       const remoteHash = remoteResult.stdout.trim();
 
@@ -476,7 +476,7 @@ export class SwarmStackOps {
     // 6. Write hash
     await sshExec(
       this.connection,
-      `mkdir -p "${hashDir}" && echo '${localHash}' > "${hashFile}"`,
+      `mkdir -p ${shellQuote(hashDir)} && echo ${shellQuote(localHash)} > ${shellQuote(hashFile)}`,
     );
 
     printSuccess('Accessories deployed');
