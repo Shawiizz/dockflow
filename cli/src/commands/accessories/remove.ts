@@ -13,6 +13,7 @@ import { printInfo, printIntro, printOutro, printNote, printWarning, printError,
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { validateAccessoriesStack } from './utils';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
+import { nodesOf, onEveryNode, type NodeRef } from '../app/nodes';
 import { STACK_REMOVAL_MAX_ATTEMPTS, STACK_REMOVAL_POLL_INTERVAL_MS, DOCKFLOW_ACCESSORIES_DIR } from '../../constants';
 
 /**
@@ -30,25 +31,36 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
       env: string,
       options: RemoveOptions
     ) => {
-      const { connection, stackName, config } = await resolveEnv(env, options.server);
-      await removeAccessories(connection, env, stackName, options, createLock(connection, stackName, config.lock?.stale_threshold_minutes));
+      const { connection, stackName, config, serverName } = await resolveEnv(env, options.server);
+      const nodes = nodesOf(env, { name: serverName, connection });
+      await removeAccessories(nodes, env, stackName, options, createLock(connection, stackName, config.lock?.stale_threshold_minutes));
     })));
 }
 
 interface RemoveOptions { volumes?: boolean; yes?: boolean; server?: string }
 
-function listStackVolumes(connection: SSHKeyConnection, stackName: string): Promise<string[]> {
-  return sshExec(connection,
-    `docker volume ls --filter "label=com.docker.stack.namespace=${stackName}" --format "{{.Name}}"`
-  ).then((result) => result.stdout.trim().split('\n').filter(Boolean));
+interface NodeVolumes {
+  node: NodeRef;
+  volumes: string[];
+}
+
+/** A local volume lives on the node that ran its task: every node is asked. */
+async function listStackVolumes(nodes: readonly NodeRef[], stackName: string): Promise<NodeVolumes[]> {
+  const listed = await onEveryNode(nodes, async (node) => {
+    const result = await sshExec(node.connection, `docker volume ls --filter ${shellQuote(`label=com.docker.stack.namespace=${stackName}`)} --format '{{.Name}}'`);
+    if (result.exitCode !== 0) throw new DockerError(result.stderr.trim() || `exit ${result.exitCode}`);
+    return result.stdout.trim().split('\n').filter(Boolean);
+  });
+  return listed.map(({ node, value }) => ({ node, volumes: value })).filter(({ volumes }) => volumes.length > 0);
 }
 
 /**
- * Remove the accessories stack of `appStackName`. With `volumes`, a stack already gone
- * whose volumes remain (an earlier removal interrupted) only has its volumes deleted.
+ * Remove the accessories stack of `appStackName`; `nodes` starts with the manager to act through.
+ * With `volumes`, a stack already gone whose volumes remain (an earlier removal interrupted) only
+ * has its volumes deleted, on whichever nodes hold them.
  */
 export async function removeAccessories(
-  connection: SSHKeyConnection,
+  nodes: readonly NodeRef[],
   env: string,
   appStackName: string,
   options: RemoveOptions,
@@ -57,9 +69,10 @@ export async function removeAccessories(
   printIntro(`Removing Accessories - ${env}`);
   printBlank();
 
+  const { connection } = nodes[0];
   const validation = await validateAccessoriesStack(connection, env);
   const { stackName, services } = validation;
-  const volumes = options.volumes ? await listStackVolumes(connection, stackName) : [];
+  const volumes = options.volumes ? await listStackVolumes(nodes, stackName) : [];
 
   if (!validation.exists && volumes.length === 0) {
     throw new DockerError(
@@ -83,8 +96,8 @@ export async function removeAccessories(
   if (volumes.length > 0) {
     printBlank();
     printError('⚠ The following volumes will be PERMANENTLY DELETED:');
-    for (const vol of volumes) {
-      printRaw(`  ${colors.error(vol)}`);
+    for (const { node, volumes: names } of volumes) {
+      for (const vol of names) printRaw(`  ${colors.error(vol)} ${colors.dim(`(${node.name})`)}`);
     }
   }
 
@@ -132,7 +145,7 @@ export async function removeAccessories(
 
     if (options.volumes) {
       if (signal) stopIfInterrupted(signal, 'deleting the volumes');
-      await removeVolumes(connection, env, await listStackVolumes(connection, stackName));
+      await removeVolumes(env, await listStackVolumes(nodes, stackName));
     }
   };
   if (lock) await withDeployLock(lock, 'Remove accessories', remove);
@@ -171,27 +184,30 @@ async function removeStack(connection: SSHKeyConnection, stackName: string): Pro
   spinner.succeed('Accessories stack removed');
 }
 
-async function removeVolumes(connection: SSHKeyConnection, env: string, volumes: string[]): Promise<void> {
-  if (volumes.length === 0) return;
+async function removeVolumes(env: string, found: NodeVolumes[]): Promise<void> {
+  const total = found.reduce((sum, { volumes }) => sum + volumes.length, 0);
+  if (total === 0) return;
 
   const spinner = createSpinner();
   spinner.start('Removing volumes...');
 
   // Right after `docker stack rm`, a draining container can still hold its volume.
   const failed: string[] = [];
-  for (const vol of volumes) {
-    const rmResult = await sshExec(connection, `docker volume rm ${shellQuote(vol)}`);
-    if (rmResult.exitCode !== 0) {
-      failed.push(`${vol}: ${rmResult.stderr.trim() || `exit ${rmResult.exitCode}`}`);
+  for (const { node, volumes } of found) {
+    for (const vol of volumes) {
+      const rmResult = await sshExec(node.connection, `docker volume rm ${shellQuote(vol)}`);
+      if (rmResult.exitCode !== 0) {
+        failed.push(`${vol} on ${node.name}: ${rmResult.stderr.trim() || `exit ${rmResult.exitCode}`}`);
+      }
     }
   }
 
   if (failed.length === 0) {
-    spinner.succeed(`Removed ${volumes.length} volume(s)`);
+    spinner.succeed(`Removed ${total} volume(s)`);
     return;
   }
 
-  spinner.fail(`Removed ${volumes.length - failed.length}/${volumes.length} volume(s)`);
+  spinner.fail(`Removed ${total - failed.length}/${total} volume(s)`);
   for (const failure of failed) {
     printWarning(`Volume not removed — ${failure}`);
   }
