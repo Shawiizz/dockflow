@@ -361,7 +361,20 @@ describe('SwarmStackBackend.deployAccessory', () => {
     const result = await backend().deployAccessory(input());
 
     expect(result).toEqual({ success: true, data: { deployed: false } });
-    expect(script.commands()).toEqual([`cat '${hashFile}' 2>/dev/null || echo ""`]);
+    expect(script.commands()).toEqual([
+      `cat '${hashFile}' 2>/dev/null || echo ""`,
+      `docker stack ls --format '{{.Name}}' | grep -xF '${accessoriesStack}' || echo ""`,
+    ]);
+  });
+
+  it('deploys an unchanged accessories stack that was removed by hand', async () => {
+    script.on(STACK_LS_CHECK, sequence({ stdout: '' }, { stdout: accessoriesStack }));
+    scriptAccessories(hash);
+
+    const result = await backend().deployAccessory(input());
+
+    expect(result).toEqual({ success: true, data: { deployed: true } });
+    expect(script.indexOf(STACK_DEPLOY)).toBeGreaterThan(0);
   });
 
   it('reads the hash from the application stack directory, not the accessories stack', async () => {

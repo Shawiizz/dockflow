@@ -474,8 +474,16 @@ export class SwarmStackOps {
       const remoteHash = remoteResult.stdout.trim();
 
       if (remoteHash === localHash) {
-        printInfo('Accessories unchanged, skipping');
-        return false;
+        // a stack removed by hand leaves its hash behind
+        const present = await sshExec(
+          this.connection,
+          `docker stack ls --format '{{.Name}}' | grep -xF ${shellQuote(accessoriesStackName)} || echo ""`,
+        );
+        if (present.stdout.trim()) {
+          printInfo('Accessories unchanged, skipping');
+          return false;
+        }
+        printInfo('Accessories unchanged but their stack is gone');
       }
     }
 
