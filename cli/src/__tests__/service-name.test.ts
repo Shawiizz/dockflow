@@ -16,6 +16,12 @@ describe('unknownServiceError', () => {
     );
   });
 
+  it('points cp at its --accessories option', () => {
+    expect(unknownServiceError('production', 'shop-production', 'redis', ['web'], true, 'cp').suggestion).toBe(
+      'Add --accessories: `dockflow cp production redis:<path> <local> --accessories`.',
+    );
+  });
+
   it('lists the services of the app for an unknown name', () => {
     const error = unknownServiceError('production', 'shop-production', 'wbe', ['web', 'worker'], false, 'exec');
     expect(error.message).toBe('No service wbe in shop-production');

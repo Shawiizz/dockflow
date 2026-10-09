@@ -5,6 +5,7 @@
  * of these three contracts; the Swarm implementations live under ./swarm/.
  */
 
+import type { Readable } from 'stream';
 import type { Result } from '../../types/result';
 import type { DeployError } from '../../utils/errors';
 import type { ParsedCompose } from '../compose';
@@ -172,19 +173,14 @@ export interface ContainerBackend {
   /** An interactive shell; `auto` is bash when the container has it, else sh. */
   shell(stackName: string, serviceName: string, shell: 'auto' | '/bin/sh' | '/bin/bash', taskId?: string): Promise<number>;
 
-  copyTo(
-    stackName: string,
-    serviceName: string,
-    localPath: string,
-    containerPath: string,
-  ): Promise<Result<void, Error>>;
+  /**
+   * The tar archive of `path` (of the chosen task's container when `taskId` is given). The stream
+   * ends only when the copy succeeded; otherwise it errors with a `ContainerPathError`.
+   */
+  copyOut(stackName: string, serviceName: string, path: string, taskId?: string): Promise<Readable>;
 
-  copyFrom(
-    stackName: string,
-    serviceName: string,
-    containerPath: string,
-    localPath: string,
-  ): Promise<Result<void, Error>>;
+  /** Extracts the tar stream `archive` into the directory `destDir` of the container. */
+  copyIn(stackName: string, serviceName: string, destDir: string, archive: Readable, taskId?: string): Promise<void>;
 
   streamLogs(
     stackName: string,

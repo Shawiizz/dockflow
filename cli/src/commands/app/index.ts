@@ -6,6 +6,7 @@
 import type { Command } from 'commander';
 import { registerLogsCommand } from './logs';
 import { registerExecCommand } from './exec';
+import { registerCpCommand } from './cp';
 import { registerRestartCommand } from './restart';
 import { registerStopCommand } from './stop';
 import { registerDetailsCommand } from './details';
@@ -38,6 +39,7 @@ export function registerAppCommands(program: Command): void {
   
   // Action commands
   registerExecCommand(program);
+  registerCpCommand(program);
   registerRestartCommand(program);
   registerStopCommand(program);
   registerScaleCommand(program);

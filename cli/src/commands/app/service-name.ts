@@ -22,6 +22,13 @@ export function unknownServiceError(
   isAccessory: boolean,
   command: string,
 ): CLIError {
+  if (isAccessory && command === 'cp') {
+    return new CLIError(
+      `'${service}' is an accessory of ${env}, not a service of the app`,
+      ErrorCode.SERVICE_NOT_FOUND,
+      `Add --accessories: \`dockflow cp ${env} ${service}:<path> <local> --accessories\`.`,
+    );
+  }
   if (isAccessory) {
     return new CLIError(
       `'${service}' is an accessory of ${env}, not a service of the app`,

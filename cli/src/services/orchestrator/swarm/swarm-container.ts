@@ -6,13 +6,14 @@
  * on the right node.
  */
 
+import { PassThrough, type Readable } from 'stream';
 import type { SSHKeyConnection } from '../../../types';
-import { ok, err, type Result } from '../../../types/result';
 import { sshExec, sshExecStream, sshExecChannelUnbuffered, executeInteractiveSSH, shellQuote, type SSHUnbufferedChannelHandle } from '../../../utils/ssh';
 import { CLIError, ConnectionError, ErrorCode } from '../../../utils/errors';
 import type { ExecRequest } from '../../../utils/exec-plan';
 import { printWarning } from '../../../utils/output';
 import type { ContainerBackend, LogSource, LogsOptions } from '../interfaces';
+import { ContainerPathError } from '../copy';
 import { LogLineBuffer } from '../../../utils/docker-logs';
 import { findSwarmContainer, findContainerForTask, listSwarmTasks, qualifyServiceName } from './swarm-utils';
 import { dockerSinceValue, LOCAL_OFFSET, parseSince } from '../../../utils/log-options';
@@ -33,14 +34,60 @@ export function dockerExecCommand(
   return parts.join(' ');
 }
 
+const COPY_NOT_FOUND = /Could not find the file|No such container:path/i;
+const COPY_NOT_A_DIRECTORY = /not a directory|must be a directory/i;
+
+/** The error `docker cp` reported on stderr, said in terms of the container path. */
+function copyFailure(stderr: string, exitCode: number, subject: string, path: string, service: string): ContainerPathError {
+  if (COPY_NOT_FOUND.test(stderr)) return new ContainerPathError(`Path ${path} does not exist in ${service}`, 'not-found');
+  if (COPY_NOT_A_DIRECTORY.test(stderr)) return new ContainerPathError(`Path ${path} in ${service} is not a directory`, 'not-a-directory');
+  const detail = stderr.split('\n').map((line) => line.trim()).find(Boolean) ?? `exit ${exitCode}`;
+  return new ContainerPathError(`${subject} failed: ${detail}`, 'other');
+}
+
+/** What `stream` has emitted so far, as text. */
+function collectText(stream: Readable): () => string {
+  const chunks: Buffer[] = [];
+  stream.on('data', (chunk: Buffer | string) => chunks.push(Buffer.from(chunk)));
+  return () => Buffer.concat(chunks).toString('utf8');
+}
+
+function streamEnded(stream: Readable): Promise<void> {
+  return new Promise((resolve) => {
+    if (stream.readableEnded || stream.destroyed) return resolve();
+    stream.once('end', resolve);
+    stream.once('close', resolve);
+    stream.once('error', () => resolve());
+  });
+}
+
+interface LocatedContainer {
+  containerId: string;
+  connection: SSHKeyConnection;
+}
+
 export class SwarmContainerBackend implements ContainerBackend {
   constructor(
     private readonly conn: SSHKeyConnection,
     private readonly allConnections: SSHKeyConnection[],
   ) {}
 
+  /** One command talks to one container: the probe and the copy must not land on two replicas. */
+  private readonly located = new Map<string, Promise<LocatedContainer>>();
+
   /** The chosen task's container, else a running container of the service, on whichever node runs it. */
-  private async locate(stackName: string, serviceName: string, taskId?: string): Promise<{ containerId: string; connection: SSHKeyConnection }> {
+  private locate(stackName: string, serviceName: string, taskId?: string): Promise<LocatedContainer> {
+    const key = `${stackName}\0${serviceName}\0${taskId ?? ''}`;
+    let located = this.located.get(key);
+    if (!located) {
+      located = this.findContainer(stackName, serviceName, taskId);
+      this.located.set(key, located);
+      located.catch(() => this.located.delete(key));
+    }
+    return located;
+  }
+
+  private async findContainer(stackName: string, serviceName: string, taskId?: string): Promise<LocatedContainer> {
     const found = taskId
       ? await findContainerForTask(taskId, [this.conn, ...this.allConnections])
       : await findSwarmContainer(stackName, serviceName, this.conn, this.allConnections);
@@ -91,28 +138,75 @@ export class SwarmContainerBackend implements ContainerBackend {
     return executeInteractiveSSH(found.connection, `docker exec -it ${id} ${shellQuote(path)}`);
   }
 
-  async copyTo(
-    stackName: string,
-    serviceName: string,
-    localPath: string,
-    containerPath: string,
-  ): Promise<Result<void, Error>> {
-    const found = await this.locate(stackName, serviceName);
-    const result = await sshExec(found.connection, `docker cp ${shellQuote(localPath)} ${found.containerId}:${shellQuote(containerPath)}`);
-    if (result.exitCode !== 0) return err(new Error(`Failed to copy file: ${result.stderr}`));
-    return ok(undefined);
+  /**
+   * `docker cp <id>:<path> -` on the container's node. The exit status is only known after the
+   * archive, so the stream ends only once it is 0; otherwise it errors with the copy error.
+   */
+  async copyOut(stackName: string, serviceName: string, path: string, taskId?: string): Promise<Readable> {
+    const found = await this.locate(stackName, serviceName, taskId);
+    const channel = await this.openCopyChannel(found.connection, `docker cp ${shellQuote(`${found.containerId}:${path}`)} -`);
+    const { stream } = channel;
+    stream.end();
+    const stderr = collectText(stream.stderr);
+    const archive = new PassThrough();
+    stream.pipe(archive, { end: false });
+    let finished = false;
+    // a reader that stops early (the destination probe reads one header) releases the channel
+    archive.once('close', () => {
+      if (!finished) stream.close();
+    });
+    Promise.all([channel.done, streamEnded(stream), streamEnded(stream.stderr)]).then(
+      ([{ exitCode }]) => {
+        finished = true;
+        if (exitCode === 0) archive.end();
+        else archive.destroy(copyFailure(stderr(), exitCode, `Copying ${path} out of ${serviceName}`, path, serviceName));
+      },
+      () => {
+        finished = true;
+        archive.destroy(new ConnectionError(`Lost the connection to ${found.connection.host} while copying ${path} out of ${serviceName}`));
+      },
+    );
+    return archive;
   }
 
-  async copyFrom(
-    stackName: string,
-    serviceName: string,
-    containerPath: string,
-    localPath: string,
-  ): Promise<Result<void, Error>> {
-    const found = await this.locate(stackName, serviceName);
-    const result = await sshExec(found.connection, `docker cp ${found.containerId}:${shellQuote(containerPath)} ${shellQuote(localPath)}`);
-    if (result.exitCode !== 0) return err(new Error(`Failed to copy file: ${result.stderr}`));
-    return ok(undefined);
+  /** `docker cp - <id>:<destDir>` with the tar stream on stdin. */
+  async copyIn(stackName: string, serviceName: string, destDir: string, archive: Readable, taskId?: string): Promise<void> {
+    // listening before the first await: the archive may fail while the container is being located
+    let closeChannel = () => {};
+    const localFailure = new Promise<never>((_, reject) => {
+      archive.once('error', (error) => {
+        closeChannel();
+        reject(error);
+      });
+    });
+    localFailure.catch(() => {});
+
+    const found = await Promise.race([this.locate(stackName, serviceName, taskId), localFailure]);
+    const channel = await Promise.race([
+      this.openCopyChannel(found.connection, `docker cp - ${shellQuote(`${found.containerId}:${destDir}`)}`),
+      localFailure,
+    ]);
+    const { stream } = channel;
+    closeChannel = () => stream.close();
+    const stderr = collectText(stream.stderr);
+    stream.resume();
+    archive.pipe(stream);
+    const remote = Promise.all([channel.done, streamEnded(stream), streamEnded(stream.stderr)]).then(
+      ([{ exitCode }]) => exitCode,
+      () => {
+        throw new ConnectionError(`Lost the connection to ${found.connection.host} while copying into ${destDir} of ${serviceName}`);
+      },
+    );
+    const exitCode = await Promise.race([remote, localFailure]);
+    if (exitCode !== 0) throw copyFailure(stderr(), exitCode, `Copying into ${destDir} of ${serviceName}`, destDir, serviceName);
+  }
+
+  private async openCopyChannel(connection: SSHKeyConnection, command: string): Promise<SSHUnbufferedChannelHandle> {
+    try {
+      return await sshExecChannelUnbuffered(connection, command);
+    } catch (error) {
+      throw new ConnectionError(`Could not reach ${connection.host}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   async streamLogs(

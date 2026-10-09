@@ -343,6 +343,32 @@ dockflow bash production app              # Open bash shell
 dockflow shell production app --sh        # Use sh (Alpine containers)
 ```
 
+### Cp
+
+```bash
+dockflow cp <env> <src> <dest>
+```
+
+Copy files between your machine and a container, in either direction. Exactly one side is `<service>:<absolute path>`; the other is a local path. The data is streamed through `docker cp` on the node running the container, so the image does not need a shell or `tar`.
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <name>` | Target manager |
+| `--accessories` | Copy in an accessory instead of the app |
+| `--pick` | Choose the task to copy in |
+
+It follows `docker cp`: a file or directory lands inside an existing destination directory under its own name, at a new name when the destination does not exist (its parent must), and a file overwrites an existing file. A source ending in `/.` copies the contents of the directory instead of the directory, into a destination that exists. A Windows drive such as `C:\data` is a local path, never a service.
+
+Copying out refuses what could escape the destination: absolute or `..` names, links pointing outside it, and anything written through a link. Setuid, setgid and sticky bits are dropped, and devices and FIFOs are skipped with a warning.
+
+```bash
+dockflow cp production app:/app/logs ./logs              # Directory out, as ./logs
+dockflow cp production app:/app/logs/. ./logs            # Its contents into the existing ./logs
+dockflow cp production ./nginx.conf app:/etc/nginx/      # File in
+dockflow cp production ./conf/. app:/etc/app             # Contents of ./conf into /etc/app
+dockflow cp production redis:/data/dump.rdb . --accessories
+```
+
 ### Restart
 
 ```bash
