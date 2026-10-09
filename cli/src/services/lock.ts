@@ -6,6 +6,8 @@
  * - stale takeover: a compare-and-swap. Under a short-lived guard directory the file is replaced
  *   only when it still holds the stale content that was read, so of two deploys that both saw the
  *   same stale lock exactly one wins, and the loser never removes the winner's lock.
+ * - release by the holder: the same compare under the guard, so a deploy whose lock was taken over
+ *   leaves the new holder's lock in place.
  *
  * Used by both CLI lock commands and API lock routes.
  */
@@ -55,6 +57,7 @@ export interface LockOptions {
 }
 
 const ACQUIRED = 'ACQUIRED';
+const TAKEN = 'TAKEN';
 const STALE_TAKEN = 'Lock was stale but another deploy acquired it first';
 /** a takeover guard older than this was left by a killed process (the guarded step takes milliseconds) */
 const ABANDONED_GUARD_MINUTES = 1;
@@ -94,6 +97,8 @@ export class Lock {
   private readonly lockFile: string;
   private readonly staleThresholdMinutes: number;
   private readonly now: () => number;
+  /** the content this instance wrote, while it holds the lock */
+  private held: string | null = null;
 
   constructor(
     private readonly shell: RemoteShell,
@@ -127,21 +132,26 @@ export class Lock {
       };
       const content = JSON.stringify(lockData, null, 2);
 
+      const acquired = (): Result<LockData, CLIError> => {
+        this.held = content;
+        return ok(lockData);
+      };
+
       if (options?.force) {
         const forced = await this.shell.run(this.forceCommand(), content);
-        return forced.exitCode === 0 ? ok(lockData) : err(this.writeFailed(forced));
+        return forced.exitCode === 0 ? acquired() : err(this.writeFailed(forced));
       }
 
       const created = await this.tryCreate(content);
       if (created instanceof Error) return err(created);
-      if (created) return ok(lockData);
+      if (created) return acquired();
 
       let current = await this.read();
       if (!current.status.locked) {
         // released between the create attempt and the read: one more attempt before blaming permissions
         const retried = await this.tryCreate(content);
         if (retried instanceof Error) return err(retried);
-        if (retried) return ok(lockData);
+        if (retried) return acquired();
         current = await this.read();
         if (!current.status.locked) return err(this.cannotCreate());
       }
@@ -150,7 +160,7 @@ export class Lock {
         const takeover = await this.shell.run(this.takeoverCommand(current.content ?? ''), content);
         if (takeover.stdout.trim() !== ACQUIRED) return err(new LockHeldError(STALE_TAKEN));
         printWarning(staleTakeoverMessage(current.status.data ?? null, current.status.durationMinutes ?? null));
-        return ok(lockData);
+        return acquired();
       }
 
       return err(
@@ -165,13 +175,19 @@ export class Lock {
     }
   }
 
+  /** The holder removes only its own lock; any other instance (`dockflow lock release`) removes whatever is there. */
   async release(): Promise<Result<void, CLIError>> {
     try {
       const file = shellQuote(this.lockFile);
-      const result = await this.shell.run(`rm -f ${file}; test -f ${file} && echo EXISTS || echo REMOVED`);
-      if (result.stdout.trim() === 'EXISTS') {
+      const command = this.held === null
+        ? `rm -f ${file}; test -f ${file} && echo EXISTS || echo REMOVED`
+        : this.ownReleaseCommand(this.held);
+      const outcome = (await this.shell.run(command)).stdout.trim();
+      if (outcome === 'EXISTS') {
         return err(new CLIError('Lock file could not be removed. Check permissions on the server.', ErrorCode.COMMAND_FAILED));
       }
+      this.held = null;
+      if (outcome === TAKEN) printWarning('Another deploy took the lock over in the meantime; it is left in place');
       return ok(undefined);
     } catch (error) {
       return err(toError(error));
@@ -234,6 +250,23 @@ export class Lock {
    * Replaces the lock only if it still holds `expected`. A lock that disappeared in the meantime
    * is created instead.
    */
+  private ownReleaseCommand(own: string): string {
+    const file = shellQuote(this.lockFile);
+    const guard = shellQuote(`${this.lockFile}.takeover`);
+    return [
+      `r=${TAKEN}`,
+      `find ${guard} -prune -type d -mmin +${ABANDONED_GUARD_MINUTES} -exec rmdir {} + 2>/dev/null`,
+      `if [ ! -e ${file} ]; then r=REMOVED`,
+      `elif mkdir ${guard} 2>/dev/null; then`,
+      `  if [ "$(cat ${file} 2>/dev/null)" = ${shellQuote(own)} ]; then`,
+      `    rm -f ${file}; if [ -e ${file} ]; then r=EXISTS; else r=REMOVED; fi`,
+      '  fi',
+      `  rmdir ${guard}`,
+      'fi',
+      'echo "$r"',
+    ].join('\n');
+  }
+
   private takeoverCommand(expected: string): string {
     const file = shellQuote(this.lockFile);
     const guard = shellQuote(`${this.lockFile}.takeover`);

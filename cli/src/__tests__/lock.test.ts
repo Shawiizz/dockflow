@@ -138,6 +138,36 @@ describe('Lock on a real shell', () => {
     expect(dataOf(await lock.acquire()).performer).toBe('alice@ci');
   });
 
+  test.if(hasPosixShell)('a deploy whose stale lock was taken over leaves the new holder its lock', async () => {
+    const alice = locks('alice@ci');
+    await alice.acquire({ message: 'Deploy 1.0.0', version: '1.0.0' });
+    clock = T0 + 45 * MINUTE;
+    const bob = dataOf(await locks('bob@ci').acquire({ message: 'Deploy 1.1.0' }));
+
+    expect(dataOf(await alice.release())).toBeUndefined();
+    expect(JSON.parse(readFileSync(lockFile(), 'utf8'))).toEqual(bob);
+    expect(readdirSync(locksDir())).toEqual([`${STACK}.lock`]);
+  });
+
+  test.if(hasPosixShell)('a forced lock is the forcing deploy\'s to release', async () => {
+    const alice = locks('alice@ci');
+    await alice.acquire();
+    const bob = locks('bob@ci');
+    await bob.acquire({ force: true, message: 'Hotfix' });
+
+    dataOf(await alice.release());
+    expect(JSON.parse(readFileSync(lockFile(), 'utf8')).performer).toBe('bob@ci');
+    dataOf(await bob.release());
+    expect(existsSync(lockFile())).toBe(false);
+  });
+
+  test.if(hasPosixShell)('lock release by hand removes any holder\'s lock', async () => {
+    await locks('alice@ci').acquire();
+
+    dataOf(await locks('bob@ci').release());
+    expect(existsSync(lockFile())).toBe(false);
+  });
+
   for (const [late, early] of [
     ['bob@ci', 'carol@ci'],
     ['carol@ci', 'bob@ci'],
