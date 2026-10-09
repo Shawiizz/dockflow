@@ -54,6 +54,10 @@ volumes:
 ```
 
 <Callout type="info">
+  A Redis running with `--appendonly yes` cannot be restored from a Dockflow RDB backup: see [Backup & Restore](/en/configuration/backup#redis).
+</Callout>
+
+<Callout type="info">
   Environment variables can be accessed using template syntax: `{{ variable_name }}`
 </Callout>
 

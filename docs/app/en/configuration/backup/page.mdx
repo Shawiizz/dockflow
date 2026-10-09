@@ -15,7 +15,7 @@ backup:
   accessories:
     postgres:
       type: postgres
-      dump_options: "--no-owner --clean"
+      dump_options: "--no-owner"
     redis:
       type: redis
   services:
@@ -82,7 +82,9 @@ The same fields are available as for accessory configuration:
 dockflow backup create <env> <service>
 ```
 
-Runs the appropriate dump command inside the running container and stores the compressed output on the server.
+Runs the appropriate dump command inside the running container and stores the compressed output on the server. The credentials are read by the container itself from its own environment, so no password appears on the command line of the server or of your machine. Backup files are readable by the deploy user only.
+
+Every backup is checked on the server before the command reports it: a backup that fails its check is removed and the command fails. See [Verification](#verification).
 
 ```bash
 dockflow backup create production postgres
@@ -106,7 +108,12 @@ dockflow backup list <env> [service]
 dockflow backup list production           # All services
 dockflow backup list production postgres  # Specific service
 dockflow backup list production --json    # JSON output
+dockflow backup list production --node agent_1   # Only the backups stored on one server
 ```
+
+Backups are stored on the server that ran the service, so the listing asks every server of the environment. A server that does not answer is named in a warning, and the backups stored there are missing from the list. `--node <name>` limits the search to one server; the NODE column shows where each backup is.
+
+Backups are ordered by when they were taken, not by the clock of the machine that took them: a new backup always sorts after the ones already stored, even if another machine's clock was ahead. This decides which backup is "latest" and which ones `prune` keeps.
 
 ### Restore from a Backup
 
@@ -115,11 +122,19 @@ dockflow backup restore <env> <service>
 dockflow backup restore production postgres              # Restore latest
 dockflow backup restore production postgres --from 20260309-143052-a3f1  # Specific backup
 dockflow backup restore production postgres --yes        # Skip confirmation
+dockflow backup restore production postgres --force-unverified   # See Verification
 ```
 
 <Callout type="error">
-  Restore **overwrites** the current database. You will be prompted to type the environment name to confirm.
+  Restore **replaces** the current data with the backup. You will be prompted to type the environment name to confirm.
 </Callout>
+
+What a restore does:
+
+- It verifies the backup first, on the server that holds it. If the check fails, nothing is changed.
+- It refuses a backup whose type differs from the one configured for the service (a MySQL dump for a service configured as PostgreSQL), before asking for confirmation.
+- If the service now runs on another server than the one that holds the backup, the backup is streamed there through your machine.
+- Without `--from`, the latest backup is used. If a server did not answer, the newest backup cannot be known, and the restore stops and asks for `--from <id>`. An exact backup ID wins over a prefix shared by other IDs.
 
 ### Prune Old Backups
 
@@ -130,23 +145,31 @@ dockflow backup prune production postgres      # Specific service
 dockflow backup prune production --keep 5      # Override retention count
 ```
 
+`--keep` must be a whole number (0 keeps nothing); anything else is refused. A removal that fails makes the command fail, and the bytes freed are reported. Prune also removes data files of interrupted backups (a backup killed before its metadata was written) once they are older than 24 hours.
+
 ## Supported Database Types
 
 ### PostgreSQL
 
-Uses `pg_dump` and `psql`. Credentials are automatically read from the container's `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` environment variables.
+Uses `pg_dump` and `psql`. Credentials are automatically read from the container's `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` environment variables. When `POSTGRES_DB` is not set, the database is the one named after `POSTGRES_USER`, as the image creates it.
+
+The dump is taken with `--clean --if-exists`, so a restore drops each object it brings back before creating it: the database ends up as it was at the backup. Objects created after the backup and absent from the dump are left alone. `--clean` cannot be combined with `--data-only` (`-a`); when `dump_options` contains it, the default is left out.
+
+<Callout type="info">
+  Backups taken before this behaviour carry no DROP statements, and restoring them still adds their rows to the existing ones.
+</Callout>
 
 ```yaml
 backup:
   accessories:
     postgres:
       type: postgres
-      dump_options: "--no-owner --clean --if-exists"
+      dump_options: "--no-owner"
 ```
 
 ### MySQL
 
-Uses `mysqldump` and `mysql`. Credentials are read from `MYSQL_USER` (or `root`), `MYSQL_ROOT_PASSWORD` / `MYSQL_PASSWORD`, and `MYSQL_DATABASE`.
+Uses `mysqldump` and `mysql`. When `MYSQL_USER` and `MYSQL_PASSWORD` are both set, they are used; otherwise the user is `root` with `MYSQL_ROOT_PASSWORD`. The database is `MYSQL_DATABASE`, or every database when it is not set. A restore replaces the tables of the dump, as `mysqldump` writes a DROP TABLE for each.
 
 ```yaml
 backup:
@@ -158,7 +181,7 @@ backup:
 
 ### MongoDB
 
-Uses `mongodump --archive` and `mongorestore --archive`. Credentials are read from `MONGO_INITDB_ROOT_USERNAME`, `MONGO_INITDB_ROOT_PASSWORD`, and `MONGO_INITDB_DATABASE`.
+Uses `mongodump --archive` and `mongorestore --archive --drop`. Credentials are read from `MONGO_INITDB_ROOT_USERNAME`, `MONGO_INITDB_ROOT_PASSWORD`, and `MONGO_INITDB_DATABASE`. With `--drop`, each collection in the archive replaces the live one instead of being merged into it. Backups made before still restore the same way.
 
 ```yaml
 backup:
@@ -180,6 +203,10 @@ backup:
 
 <Callout type="info">
   Redis restore automatically handles the full cycle: write the RDB file, shut down Redis without saving, and restart the service. This works regardless of the service's restart policy configuration.
+</Callout>
+
+<Callout type="warning">
+  A Redis that runs with `appendonly yes` loads its append-only file when it starts and ignores a restored RDB file, so the restore would change nothing. Dockflow checks this first: the restore is refused with exit code 72, nothing is changed, and the service is not restarted. To back up and restore such a service, configure it with `type: volume`, which archives its data directory, or run it without `appendonly`.
 </Callout>
 
 ### Custom (Raw)
@@ -217,6 +244,8 @@ backup:
 ```
 
 The system automatically discovers all named volumes and read-write bind mounts on the service container. Each produces a separate tar archive. Read-only bind mounts (e.g., config files) are excluded automatically.
+
+A restore puts each archive back into the volume or directory it was taken from, and never empties anything before the new contents are safely in place: every archive is verified and every target checked first, each archive is extracted next to the current contents, and only when all extractions succeeded are the contents swapped. A bad archive or a full disk leaves every volume as it was. A volume that no longer exists, or a bind mount whose directory is gone, refuses the restore instead of being created empty. The service keeps running during the restore, and the server needs room for a second copy of the data.
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -259,9 +288,24 @@ backup:
   The Docker host must be able to pull the `alpine` image (or have it cached). On air-gapped servers, ensure the image is available locally.
 </Callout>
 
+## Verification
+
+Dockflow checks every backup on the server that holds it, right after it is taken and again before a restore changes anything. How far a backup can be checked depends on its kind:
+
+| Backup | Check |
+|--------|-------|
+| Volume archives | The whole tar archive is listed |
+| Compressed dumps (`compression: gzip`, the default) | The whole gzip stream is read, and it must not be empty |
+| Uncompressed PostgreSQL (plain format) and MySQL dumps | The dump ends with a marker line, written only after the dump succeeded |
+| Anything else uncompressed (Redis, MongoDB, custom commands, `pg_dump` custom format) | Only that the file exists and is not empty |
+
+A backup that cannot be checked beyond that is created with a warning: set `compression: gzip` for the service to have it checked. It is still restored as before; nothing is refused for lack of a check.
+
+A dump that carries the marker and has lost it is refused at restore time, because it was cut short. If you have checked the file yourself, `--force-unverified` restores it anyway. It never relaxes the gzip or tar checks. Backups taken before verification existed are restored as they always were, with the gzip check when they are compressed.
+
 ## Storage
 
-Backups are stored on the manager server at:
+Backups are stored on the server that runs the service, at:
 
 ```
 # Accessory backups
@@ -293,6 +337,8 @@ The WebUI exposes backup operations via REST:
 | `POST` | `/api/backup/create?env=&service=` | Create a backup |
 | `POST` | `/api/backup/restore?env=&service=&id=` | Restore from a backup |
 | `POST` | `/api/backup/prune?env=&service=` | Prune old backups |
+
+The list and prune answers carry `unreachableNodes` when a server did not answer. A restore holds the lock of the stack: it answers `409` while a deploy or another restore holds it. A prune that fails for a service answers an error naming it.
 
 ## Best Practices
 
