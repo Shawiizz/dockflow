@@ -29,6 +29,7 @@ import * as Distribution from '../services/distribution';
 import * as Hook from '../services/hook';
 import { CONVERGENCE_TIMEOUT_S, CONVERGENCE_INTERVAL_S, DOCKFLOW_UPLOAD_BACKUPS_DIR } from '../constants';
 import type { StackBackend } from '../services/orchestrator/interfaces';
+import { ConvergenceError } from '../services/orchestrator/swarm/swarm-stack-ops';
 import type { DockflowConfig, HealthCheckConfig, UploadItem } from '../utils/config';
 import type { DeployContext } from './deploy-context';
 
@@ -696,7 +697,9 @@ export async function deployAccessories(ctx: DeployContext): Promise<void> {
   });
 
   if (!result.success) {
-    throw result.error;
+    const error = result.error;
+    if (!(error instanceof ConvergenceError)) throw error;
+    throw convergenceError({ rolledBack: error.outcome === 'rolled-back', timedOut: error.outcome === 'timeout', errorDetail: error.message }, ctx.env, 'accessories');
   }
 }
 
@@ -708,12 +711,14 @@ export async function deployAccessories(ctx: DeployContext): Promise<void> {
 export function convergenceError(
   convergence: { rolledBack: boolean; timedOut: boolean; errorDetail?: string },
   env: string,
+  stack: 'app' | 'accessories' = 'app',
 ): DeployError {
   if (convergence.rolledBack) {
+    const logs = stack === 'app' ? `dockflow logs ${env} <service>` : `dockflow accessories logs ${env} <accessory>`;
     return new DeployError(
       convergence.errorDetail ?? 'Swarm rolled the new version back',
       ErrorCode.HEALTH_CHECK_FAILED,
-      `The new version failed to start; see why with \`dockflow logs ${env} <service>\`.`,
+      `The new version failed to start; see why with \`${logs}\`.`,
     );
   }
   return new DeployError(

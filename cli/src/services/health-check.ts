@@ -174,7 +174,7 @@ export class HealthCheck {
         throw new DeployError(
           `HTTP health checks failed: ${failedEndpoints.join(', ')}`,
           ErrorCode.HEALTH_CHECK_FAILED,
-          'The deploy command will attempt a rollback (on_failure: rollback).',
+          'on_failure: rollback puts the previous release back.',
         );
       case 'notify':
         printWarning(`HTTP health checks failed (non-fatal): ${failedEndpoints.join(', ')}`);

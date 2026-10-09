@@ -186,6 +186,11 @@ describe('convergenceError', () => {
     expect(error.suggestion).toBe('The new version failed to start; see why with `dockflow logs production <service>`.');
   });
 
+  it('an accessory rolled back points to the accessories logs', () => {
+    const error = convergenceError({ rolledBack: true, timedOut: false }, 'production', 'accessories');
+    expect(error.suggestion).toBe('The new version failed to start; see why with `dockflow accessories logs production <accessory>`.');
+  });
+
   it('a stack that never converged is a failed deploy that points to diagnose', () => {
     const error = convergenceError({ rolledBack: false, timedOut: true }, 'production');
     expect(error.code).toBe(ErrorCode.DEPLOY_FAILED);
