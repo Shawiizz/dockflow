@@ -386,6 +386,23 @@ describe('Release on a real shell', () => {
     expect(readdirSync(stackDir()).sort()).toEqual(['1.0.0', '1.0.2', '1.0.3', 'current']);
   });
 
+  test.if(hasPosixShell)('cleanup removes the images of the dropped releases on the other nodes too', async () => {
+    for (const [version, epoch] of [['1.0.0', 100], ['1.0.1', 200]] as const) {
+      await release.createRelease(STACK, version, `services:\n  web:\n    image: shop-web:${version}\n`, `stack ${version}\n`, meta(version, epoch));
+    }
+    const worker: string[] = [];
+    const workerShell: RemoteShell = {
+      async run(command) {
+        worker.push(command);
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    };
+
+    await release.cleanupOldReleases(STACK, { project_name: 'demo', stack_management: { keep_releases: 1 } } as never, [workerShell]);
+
+    expect(worker).toEqual([removeImagesCommand(['shop-web:1.0.0'])]);
+  });
+
   test.if(hasPosixShell)('listing skips a directory whose metadata names another version', async () => {
     await create('1.0.0', 100);
     mkdirSync(join(stackDir(), 'other'));

@@ -523,11 +523,12 @@ export class Release {
 
   /**
    * Cleanup old releases keeping the N most recent, and current whatever its age.
-   * Also removes orphaned Docker images from deleted releases.
+   * Also removes orphaned Docker images from deleted releases, here and on `otherNodes`.
    */
   async cleanupOldReleases(
     stackName: string,
     config: DockflowConfig,
+    otherNodes: RemoteShell[] = [],
   ): Promise<void> {
     const keepN = config.stack_management?.keep_releases ?? DEFAULT_KEEP_RELEASES;
     const [releases, current] = await Promise.all([this.listReleases(stackName), this.currentVersion(stackName)]);
@@ -555,7 +556,8 @@ export class Release {
     const orphanImages = computeOrphanImages(runningResult.stdout, keptResult.stdout, removeResult.stdout);
 
     if (orphanImages.length > 0) {
-      await this.shell.run(removeImagesCommand(orphanImages));
+      const command = removeImagesCommand(orphanImages);
+      await Promise.allSettled([this.shell, ...otherNodes].map((node) => node.run(command)));
       printDebug(`Removed ${orphanImages.length} orphaned image(s)`);
     }
 

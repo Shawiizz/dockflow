@@ -57,6 +57,7 @@ import { Metrics } from '../services/metrics';
 import * as Notification from '../services/notification';
 import * as Plugin from '../services/plugin';
 import { onInterrupt, SIGINT_EXIT_CODE } from '../utils/interrupt';
+import { sshShell } from '../utils/remote-shell';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
 import { accessoriesKey, applyPublicPorts, rolledBackError, buildAndDistribute, loginManagerToRegistry, runDeployHook, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
@@ -403,7 +404,7 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     await Promise.all([
       // the deploy succeeded: housekeeping failures are reported, never a reason to roll back
-      ctx.deployApp && ctx.releases.cleanupOldReleases(ctx.stackName, ctx.config).catch((e) => printWarning(`Old releases cleanup failed: ${e instanceof Error ? e.message : String(e)}`)),
+      ctx.deployApp && ctx.releases.cleanupOldReleases(ctx.stackName, ctx.config, [...ctx.cluster.otherManagers, ...ctx.cluster.workers].map((node) => sshShell(node.connection))).catch((e) => printWarning(`Old releases cleanup failed: ${e instanceof Error ? e.message : String(e)}`)),
       commitUploads(uploadPlan).catch((e) => printWarning(`Upload commit failed: ${e instanceof Error ? e.message : String(e)}`)),
     ]);
     auditMessage = `Deployed ${ctx.deployVersion} to ${ctx.env} successfully`;
