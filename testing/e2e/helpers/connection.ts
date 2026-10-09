@@ -31,6 +31,11 @@ const WORKER = {
 export const MANAGER_CONTAINER = "dockflow-test-manager";
 export const WORKER_CONTAINER = "dockflow-test-worker-1";
 
+/** The e2e registry that asks for credentials; the anonymous one is on :35000 */
+export const AUTH_REGISTRY_PORT = 35001;
+export const AUTH_REGISTRY_USER = "e2e";
+export const AUTH_REGISTRY_PASSWORD = "E2E_SECRET_REGISTRY_7f3a9c";
+
 /**
  * Encode a connection as base64 JSON (matches CLI's `generateConnectionString` format).
  */

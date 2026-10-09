@@ -5,7 +5,7 @@
 
 import { existsSync } from "fs";
 import { join } from "path";
-import { MANAGER_CONTAINER, WORKER_CONTAINER } from "./connection";
+import { AUTH_REGISTRY_PASSWORD, AUTH_REGISTRY_PORT, AUTH_REGISTRY_USER, MANAGER_CONTAINER, WORKER_CONTAINER } from "./connection";
 import { getCliBinaryName } from "./cli";
 import { SOCKET_PROXY_IMAGE, TRAEFIK_IMAGE } from "../../../cli/src/constants";
 
@@ -155,6 +155,28 @@ async function startRegistry(): Promise<void> {
   await exec([
     "docker", "exec", MANAGER_CONTAINER, "sh", "-c",
     "docker rm -f e2e-registry 2>/dev/null; docker run -d --name e2e-registry --restart unless-stopped -p 35000:5000 registry:2",
+  ]);
+  await startAuthRegistry();
+}
+
+/**
+ * Start a second registry on the manager, published like the first on port 35001, that serves only
+ * the e2e user. The password hash is made here and handed over on stdin, so no credential file
+ * lives in the repository.
+ */
+async function startAuthRegistry(): Promise<void> {
+  console.log(`[cluster] Starting e2e registry with credentials on the manager (localhost:${AUTH_REGISTRY_PORT})...`);
+  const hash = await Bun.password.hash(AUTH_REGISTRY_PASSWORD, { algorithm: "bcrypt", cost: 5 });
+  const htpasswd = `${AUTH_REGISTRY_USER}:${hash.replace(/^\$2b\$/, () => "$2y$")}\n`;
+  await exec(
+    ["docker", "exec", "-i", MANAGER_CONTAINER, "sh", "-c", "mkdir -p /e2e-auth && cat > /e2e-auth/htpasswd"],
+    { input: htpasswd },
+  );
+  await exec([
+    "docker", "exec", MANAGER_CONTAINER, "sh", "-c",
+    "docker rm -f e2e-registry-auth 2>/dev/null; docker run -d --name e2e-registry-auth --restart unless-stopped " +
+      `-p ${AUTH_REGISTRY_PORT}:5000 -v /e2e-auth:/auth ` +
+      "-e REGISTRY_AUTH=htpasswd -e REGISTRY_AUTH_HTPASSWD_REALM=e2e -e REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd registry:2",
   ]);
 }
 

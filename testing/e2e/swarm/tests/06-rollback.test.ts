@@ -13,7 +13,7 @@
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { runCLI } from "../../helpers/cli";
-import { waitForService, dockerExec } from "../../helpers/docker";
+import { waitForService, dockerExec, releaseModes, PRIVATE_RELEASE_MODES } from "../../helpers/docker";
 import { MANAGER_CONTAINER } from "../../helpers/connection";
 import { makeFixture, type Fixture } from "../../helpers/fixtures";
 import { join } from "path";
@@ -130,6 +130,10 @@ describe("automatic rollback on failed health check", () => {
     expect(target.trim()).toBe(`${RELEASES_DIR}/${V1}`);
   });
 
+  test("the release directory and its files are private to the deploy user", async () => {
+    expect(await releaseModes(STACK_NAME, V1)).toEqual(PRIVATE_RELEASE_MODES);
+  });
+
   test("failed v2 release directory was removed", async () => {
     const out = await dockerExec(MANAGER_CONTAINER, [
       "sh",
@@ -226,5 +230,40 @@ describe("automatic rollback on failed health check", () => {
       ]);
       expect(target.trim()).toBe(`${RELEASES_DIR}/6.0.0-rb`);
     }, 600_000);
+
+    test("each further rollback goes one release further back, then there is nothing left", async () => {
+      // current is 6.0.0-rb; the first rollback runs 5.0.0-rb and a second one must not redeploy it
+      const runningImage = () =>
+        dockerExec(MANAGER_CONTAINER, [
+          "docker",
+          "service",
+          "inspect",
+          SERVICE_NAME,
+          "--format",
+          "{{.Spec.TaskTemplate.ContainerSpec.Image}}",
+        ]);
+      const currentTarget = async () =>
+        (await dockerExec(MANAGER_CONTAINER, ["sh", "-c", `readlink '${RELEASES_DIR}/current'`])).trim();
+
+      for (const version of ["5.0.0-rb", "4.0.0-rb"]) {
+        const result = await runCLI(["rollback", TEST_ENV], { cwd: fixture.dir });
+        if (result.exitCode !== 0) {
+          console.error(`[rollback to ${version}] STDOUT:`, result.stdout.slice(-2000));
+          console.error(`[rollback to ${version}] STDERR:`, result.stderr.slice(-2000));
+        }
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout + result.stderr).toContain(version);
+        expect(await currentTarget()).toBe(`${RELEASES_DIR}/${version}`);
+        await waitForService(SERVICE_NAME, "1/1", { timeoutMs: 90_000 });
+        expect(await runningImage()).toContain(`test-rb-web-app-test:${version}`);
+      }
+
+      // 4.0.0-rb is the oldest release kept: a rollback has nowhere to go and changes nothing
+      const exhausted = await runCLI(["rollback", TEST_ENV], { cwd: fixture.dir });
+      expect(exhausted.exitCode).toBe(52);
+      expect(exhausted.stdout + exhausted.stderr).toContain("No previous release available for rollback");
+      expect(await currentTarget()).toBe(`${RELEASES_DIR}/4.0.0-rb`);
+      expect(await listReleaseDirs()).toEqual(["4.0.0-rb", "5.0.0-rb", "6.0.0-rb"]);
+    }, 900_000);
   });
 });

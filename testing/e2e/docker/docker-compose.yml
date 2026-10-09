@@ -14,6 +14,8 @@ services:
       # e2e registry (runs inside this DinD node, published in cascade so
       # `localhost:35000` works from both the host and the inner daemon)
       - "35000:35000"
+      # same for the registry that asks for credentials
+      - "35001:35001"
     volumes:
       - swarm-data:/swarm
       - /etc/ssl/certs:/etc/ssl/certs:ro

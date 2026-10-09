@@ -13,7 +13,7 @@
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { runCLI } from "../../helpers/cli";
-import { dockerExec } from "../../helpers/docker";
+import { dockerExec, releaseModes, PRIVATE_RELEASE_MODES } from "../../helpers/docker";
 import { MANAGER_CONTAINER, WORKER_CONTAINER } from "../../helpers/connection";
 import { makeFixture, type Fixture } from "../../helpers/fixtures";
 import { join } from "path";
@@ -72,6 +72,10 @@ describe("uploads", () => {
       expect(await readRemote(node, ASSET_A_PATH)).toContain("ASSET_A_V1");
     }
   }, 240_000);
+
+  test("the release directory and its files are private to the deploy user", async () => {
+    expect(await releaseModes(STACK_NAME, V1)).toEqual(PRIVATE_RELEASE_MODES);
+  });
 
   test("successful deploy leaves no upload backups behind", async () => {
     for (const node of NODES) {
