@@ -17,11 +17,12 @@ export function registerAccessoriesStopCommand(program: Command): void {
     .command('stop <env> [service]')
     .description('Stop accessory services (scale to 0; deploy --accessories starts them again)')
     .option('-y, --yes', 'Skip confirmation prompt')
+    .option('--no-wait', 'Return once Swarm accepted the change, without waiting for the services to stop')
     .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .action(withErrorHandler(withResolvedEnv(async (
       env: string,
       service: string | undefined,
-      options: { yes?: boolean; server?: string }
+      options: { yes?: boolean; server?: string; wait?: boolean }
     ) => {
       printIntro(`Stopping Accessories - ${env}`);
       printBlank();
@@ -60,12 +61,14 @@ export function registerAccessoriesStopCommand(program: Command): void {
         }
       }
 
+      const scale = { detach: options.wait === false };
+      const done = scale.detach ? 'asked to stop' : 'stopped';
       try {
         if (service) {
           const spinner = createSpinner();
           spinner.start(`Stopping ${service}...`);
-          await orchestrator.scaleService(stackName, service, 0);
-          spinner.succeed(`Accessory '${service}' stopped`);
+          await orchestrator.scaleService(stackName, service, 0, scale);
+          spinner.succeed(`Accessory '${service}' ${done}`);
         } else {
           const spinner = createSpinner();
           spinner.start('Scaling all services to 0...');
@@ -73,7 +76,7 @@ export function registerAccessoriesStopCommand(program: Command): void {
 
           for (const svc of services) {
             try {
-              await orchestrator.scaleService(stackName, svc.name, 0);
+              await orchestrator.scaleService(stackName, svc.name, 0, scale);
             } catch (error) {
               failed.push(`${svc.name}: ${error instanceof Error ? error.message : String(error)}`);
             }
@@ -83,7 +86,7 @@ export function registerAccessoriesStopCommand(program: Command): void {
             spinner.fail(`${failed.length} of ${services.length} accessories did not stop`);
             throw new DockerError(`Accessories not stopped:\n  ${failed.join('\n  ')}`);
           }
-          spinner.succeed('All accessories stopped');
+          spinner.succeed(`All accessories ${done}`);
         }
 
         printBlank();
