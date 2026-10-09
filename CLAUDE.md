@@ -8,7 +8,7 @@ Dockflow is a CLI-first deployment framework built on **Docker Swarm**. A single
 
 **Stack at a glance:**
 - `cli/` — TypeScript CLI (Bun runtime) + embedded Angular WebUI — handles all deploy logic via ssh2
-- `docs/` — Next.js 15 + Nextra documentation site
+- `docs/` — Next.js 16 + Nextra documentation site (English only, under `docs/app/en/`)
 - `packages/` — MCP server, npm CLI wrapper
 - `testing/e2e/` — End-to-end tests (Swarm in Docker-in-Docker, host provisioning)
 
@@ -17,7 +17,7 @@ Dockflow is a CLI-first deployment framework built on **Docker Swarm**. A single
 ```
 cli/          # TypeScript CLI application (Bun)
 cli/ui/       # Angular 21 WebUI (PrimeNG + Tailwind)
-docs/            # Next.js 15 + Nextra documentation site
+docs/            # Next.js 16 + Nextra documentation site (pages in docs/app/en/)
 packages/        # Additional packages (MCP server, npm CLI wrapper)
 scripts/         # Build & version management scripts
 testing/e2e/     # End-to-end tests (two suites: swarm/ and setup/)
@@ -33,7 +33,7 @@ bun run typecheck              # TypeScript validation (tsc --noEmit)
 bun run lint                   # Biome lint (no console.*, no any, no unused imports)
 bun run lint:fix               # Biome lint with auto-fix
 bun test src/                  # Unit tests
-bun run dev <command> [args]   # Run CLI locally in dev mode
+bun run dev <command> [args]   # Run the CLI from source, in the current directory (scripts/dev.ts)
 bun run build                  # Build all platform binaries
 bun run build:linux            # Build Linux x64 binary only
 bun run build:windows          # Build Windows x64 binary only
@@ -45,15 +45,17 @@ bun run ui:build               # Build Angular UI (cd ui && pnpm build)
 ```bash
 pnpm install                   # Install dependencies
 pnpm build                     # Production build
-pnpm start                     # Dev server
+pnpm start                     # Angular dev server on port 4201, proxying /api and /ws to the CLI's API server on 4200
 ```
+
+To work on the UI, run `bun run dev ui` in `cli/` (API server on 4200) next to `pnpm start`, and open `http://localhost:4201`. Without the Angular server, `dockflow ui` serves the built `cli/ui/dist/` (or the copy embedded in the binary).
 
 ### Docs (`docs/`)
 
 ```bash
 pnpm install                   # Install dependencies
 pnpm dev                       # Next.js dev server
-pnpm build                     # Production build + LLM text generation + Pagefind indexing
+pnpm build                     # UI demo build + Next.js build + LLM text generation, then Pagefind indexing
 ```
 
 ### Shell Linting
@@ -96,7 +98,7 @@ Commands live in `cli/src/commands/` and follow this structure:
 3. Commands **throw errors** — never call `process.exit()` directly
 4. The `withErrorHandler()` wrapper (from `utils/errors.ts`) catches, formats, and exits
 
-Entry point `cli/src/index.ts` registers all commands and sets up the `--verbose` flag via a global preAction hook.
+Entry point `cli/src/index.ts` creates the program, registers every command through `registerAllCommands()` (`cli/src/commands/register-all.ts`, the one list of commands) and sets up the `--verbose` flag via a global preAction hook. Adding a command or an option means documenting it on `docs/app/en/cli/page.mdx`: the unit test `docs-sync.test.ts` fails otherwise.
 
 ### Error Handling Hierarchy
 
@@ -110,7 +112,11 @@ CLIError (base — has code, suggestion, cause)
   ├─ ValidationError
   └─ BackupError
 ```
-Always throw these typed errors from commands. The `withErrorHandler` wrapper displays the message + suggestion and exits with the error code. Stack traces only show in DEBUG/CI or for unexpected errors.
+Always throw these typed errors from commands. The `withErrorHandler` wrapper displays the message + suggestion and exits with the error code (the `ErrorCode` enum is the table of exit codes, mirrored on the CLI page of the docs). Stack traces only show in DEBUG/CI or for unexpected errors.
+
+A command run in a container exits with the container's own code through `ExecExitError`, which is not a `CLIError`: error codes are exit codes, and a container's 62 must not read as `INVALID_ARGUMENT`.
+
+**Interrupts:** `utils/interrupt.ts` owns SIGINT and SIGTERM. Work that must clean up before exiting registers with `onInterrupt()`; the first signal runs the handlers, a second one (or a signal with none registered) exits at once, with 130 for SIGINT and 143 for SIGTERM. A command that changes the stack runs inside `withDeployLock()` (`commands/with-lock.ts`), which takes the deploy lock, hands the action an `AbortSignal` and releases the lock in `finally`; `deploy` has its own handler because it must also undo its uploads and release record.
 
 ### Services Layer
 
@@ -118,9 +124,9 @@ Always throw these typed errors from commands. The `withErrorHandler` wrapper di
 
 | Shape | Suffix | Examples | Import style |
 |---|---|---|---|
-| Backend contract (Swarm implementation) | `*Backend` | `StackBackend`, `ExecBackend`, `LogsBackend`, `HealthBackend`, `ProxyBackend`, `ContainerBackend` | `new SwarmStackBackend(conn)` via factory |
+| Backend contract (Swarm implementation) | `*Backend` | `StackBackend`, `ContainerBackend`, `ProxyBackend` | `new SwarmStackBackend(conn)` via factory |
 | Stateful class (wraps a connection / holds state) | no suffix | `Audit`, `Lock`, `Release`, `Metrics`, `Backup`, `HealthCheck` | `new Lock(conn, stackName)` |
-| Pure module (stateless free functions) | no class | `compose.ts`, `build.ts`, `distribution.ts`, `hook.ts`, `notification.ts`, `history-sync.ts` | `import * as Compose from '../services/compose'` |
+| Pure module (stateless free functions) | no class | `compose.ts`, `build.ts`, `distribution.ts`, `hook.ts`, `notification.ts`, `history-sync.ts`, `plugin.ts` | `import * as Compose from '../services/compose'` |
 
 **Rules:**
 - Never append `Service` to anything new. The word is too vague — if the class wraps state, drop the suffix; if it's just functions, make it a module.
@@ -132,13 +138,12 @@ Always throw these typed errors from commands. The `withErrorHandler` wrapper di
 
 Commands reach Swarm through common interfaces; factory functions in `cli/src/services/orchestrator/factory.ts` create the Swarm implementations:
 
-- `StackBackend` — stack lifecycle: deploy, remove, getServices, scale, rollback, list stacks
+- `StackBackend` — stack lifecycle: deploy, remove, getServices, scale, rollback, list stacks, and the internal health check (`checkInternalHealth`: tasks in their desired state, from `docker service ps` + UpdateStatus)
   - `SwarmStackBackend` — uses `docker stack deploy`, `docker service` commands
 - `ContainerBackend` — exec/shell/copy/logs in containers
   - `SwarmContainerBackend` — finds containers via `docker ps` across all nodes with `Promise.any()`
-- `HealthBackend` — internal health checks
-  - `SwarmHealthBackend` — inspects tasks via `docker service ps` + UpdateStatus
 - `ProxyBackend` — Traefik management
+  - `SwarmProxyBackend`
 
 **Stateful classes** (`cli/src/services/*.ts`, no Service suffix):
 - `Metrics` (`metrics.ts`) — deployment metrics read/write, connection-bound
@@ -146,7 +151,7 @@ Commands reach Swarm through common interfaces; factory functions in `cli/src/se
 - `Backup` (`backup.ts`) — backup/restore for accessories, holds manager + worker connections
 - `Audit` (`audit.ts`) — deployment audit log entries on remote manager
 - `Release` (`release.ts`) — release directory management, rollback, cleanup of old releases
-- `HealthCheck` (`health-check.ts`) — HTTP endpoint checks with retry (uses HealthBackend internally)
+- `HealthCheck` (`health-check.ts`) — HTTP endpoint checks with retry (uses `StackBackend` for the internal check)
 
 Each stateful class exposes a matching factory (`createLock`, `createBackup`, …) where construction needs defaults from config.
 
@@ -156,7 +161,8 @@ Each stateful class exposes a matching factory (`createLock`, `createBackup`, �
 - `distribution.ts` — image distribution (SSH pipe for Docker/Podman), registry login/push
 - `hook.ts` — pre/post build/deploy hooks (local via `Bun.spawn`, remote via SSH)
 - `notification.ts` — HMAC-signed HTTP webhooks on deploy events
-- `history-sync.ts` — replicates audit/metrics to non-manager nodes
+- `history-sync.ts` — replicates audit/metrics to the other nodes
+- `plugin.ts` — discovers, validates and expands plugins (built-in and the project's own)
 
 **Container engine support:**
 
@@ -170,7 +176,7 @@ Services and modules use the `Result<T, E>` type pattern (`ok()` / `err()`) from
 
 All CLI output goes through `cli/src/utils/output.ts` helpers. **Never use `console.log` directly.**
 
-Key helpers: `printSuccess`, `printError`, `printWarning`, `printInfo`, `printDebug` (verbose-only), `printDim`, `printBlank`, `printJSON`, `printRaw`, `printHeader`, `printSection`, `printTableRow`.
+Key helpers: `printSuccess`, `printError`, `printWarning`, `printInfo`, `printDebug` (verbose-only), `printDim`, `printBlank`, `printJSON`, `printRaw`, `printIntro`, `printOutro`, `printNote`, `printSection`, `printTableRow`.
 
 Formatters: `formatDuration(seconds)`, `formatBytes(bytes)`, `formatRelativeTime(iso)`.
 
@@ -178,8 +184,8 @@ Verbose mode controlled by `setVerbose()` / `isVerbose()`.
 
 ### Config System
 
-- **Zod schemas**: `cli/src/schemas/config.schema.ts` — runtime validation of `.dockflow/config.yml`
-- **TypeScript interfaces**: `cli/src/utils/config.ts` — `DockflowConfig`, `ServersConfig`, etc.
+- **Zod schemas**: `cli/src/schemas/` — runtime validation of `.dockflow/config.yml` (`config.schema.ts`), `servers.yml` (`servers.schema.ts`) and the flat `dockflow.yml` (`root-config.schema.ts`)
+- **TypeScript interfaces**: `cli/src/utils/config.ts` (`DockflowConfig`) and `cli/src/types/` (`ServersConfig`, connections)
 - **Both must stay in sync** when adding/changing config fields.
 - Config loading: `loadConfig()` finds the `.dockflow/` directory by walking up from CWD via `getProjectRoot()`.
 
@@ -210,7 +216,7 @@ All steps are in `cli/src/commands/deploy.ts` using the services layer.
 
 ### Host Provisioning (`commands/setup/provision.ts`)
 
-`dockflow setup` provisions hosts in pure TypeScript (no Ansible, no repo clone on the server). Local setup requires root (no sudo binary needed — commands run directly). Steps, all idempotent:
+`dockflow setup` provisions hosts in pure TypeScript (the binary does the work on the host; nothing is cloned there). Local setup requires root (no sudo binary needed — commands run directly). Steps, all idempotent:
 - Docker install via the official `get.docker.com` script (multi-distro), skippable with `--skip-docker-install`
 - `/var/lib/dockflow` creation owned by the deploy user
 - The filter of published ports (`commands/setup/public-ports.ts`): installs `services/public-ports.sh` as `/usr/local/sbin/dockflow-public-ports` plus a systemd unit ordered before docker.service, records the ports published at first install so no running service is cut, and a sudo rule for the deploy user; `--no-port-filter` removes it and leaves `/etc/dockflow/public-ports.off`. Each deploy records the project's `firewall.public_ports` (+ Traefik's 80/443) on every node (`applyPublicPorts` in `deploy-phases.ts`)
@@ -222,14 +228,14 @@ Remote setup (`setup user@host`) ships the version-pinned binary and forwards fl
 
 All directories under `/var/lib/dockflow/` are created by the deploy command (via the `StackBackend` implementations) with proper ownership so the deploy user can write to them directly via SSH without sudo. The `dockflow setup` command also creates the base `/var/lib/dockflow` directory.
 
-Directory constants are defined in `cli/src/constants.ts` (`DOCKFLOW_STACKS_DIR`, `DOCKFLOW_LOCKS_DIR`, `DOCKFLOW_AUDIT_DIR`, `DOCKFLOW_METRICS_DIR`, `DOCKFLOW_BACKUPS_DIR`, `DOCKFLOW_ACCESSORIES_DIR`).
+Directory constants are defined in `cli/src/constants.ts` (`DOCKFLOW_STACKS_DIR`, `DOCKFLOW_LOCKS_DIR`, `DOCKFLOW_AUDIT_DIR`, `DOCKFLOW_METRICS_DIR`, `DOCKFLOW_BACKUPS_DIR`, `DOCKFLOW_ACCESSORIES_DIR`, `DOCKFLOW_UPLOAD_BACKUPS_DIR`).
 
 ### API Server & WebUI
 
 `cli/src/api/server.ts` — Bun HTTP server with WebSocket support. Serves the Angular UI (embedded in binary via `ui-manifest.generated`, or from `ui/dist/` in dev).
 
 Routes in `cli/src/api/routes/`:
-- REST: `/api/servers`, `/api/services`, `/api/config`, `/api/deploy`, `/api/operations`, `/api/accessories`, `/api/backup`, etc.
+- REST: `/api/servers`, `/api/services`, `/api/config`, `/api/project`, `/api/deploy`, `/api/operations`, `/api/accessories`, `/api/backup`, `/api/resources`, `/api/locks`, `/api/metrics`, `/api/compose`, `/api/topology`, `/api/health`
 - WebSocket: `/ws/ssh/:serverName` (interactive SSH), `/ws/exec/:serviceName` (docker exec)
 
 WebSocket sessions include heartbeat (30s), idle timeout (15min), and watchdog cleanup (60s).
@@ -239,7 +245,7 @@ Response helpers: `jsonResponse()`, `errorResponse()` — both include CORS head
 ### WebUI Architecture
 
 Angular 21 standalone components with lazy-loaded routes in `cli/ui/src/app/app.routes.ts`:
-- 12 feature modules: dashboard, servers, services, logs, deploy, build, accessories, monitoring, resources, topology, settings
+- 11 feature modules: dashboard, servers, services, logs, deploy, build, accessories, monitoring, resources, topology, settings
 - `settings` route has an `unsavedChangesGuard`
 - Shared components (sidebar, header) in `cli/ui/src/app/shared/`
 
@@ -249,32 +255,49 @@ Key values in `cli/src/constants.ts`: `DOCKFLOW_VERSION` (from package.json), `D
 
 ## E2E Tests
 
-Two independent suites under `testing/e2e/`, each with its own `bunfig.toml` preload (see `testing/e2e/README.md` for conventions):
+Two independent suites under `testing/e2e/`, each with its own `bunfig.toml` preload (see `testing/e2e/README.md` for conventions). Both build the binary they test, or use the one named by `DOCKFLOW_E2E_BINARY`.
 
-**Swarm suite** (`swarm/tests/01-11`): Docker-in-Docker with a manager (`dockflow-test-manager`, SSH port 32222) and worker (`dockflow-test-worker-1`, port 32223), compose project `dockflow-swarm`. Covers build, deploy, Traefik routing, backup/restore, remote build, HTTP health checks, automatic rollback on failed health checks (dedicated `test-app-rb` stack), uploads with rollback on failed deploys (dedicated `test-app-up` stack), exec/logs, and registry distribution (anonymous `registry:2` inside the manager at `localhost:35000`, dedicated `test-app-reg` stack pinned to the manager), `proxy.routes` (an accessory routed by Traefik on two ports of one domain, dedicated `test-app-routes` stacks), and the filter of published ports (installed on both nodes, the worker standing for the internet; dedicated `test-app-ports` stack, filter removed afterwards). The preload resets the cluster and pre-deploys the shared test-app.
+**Swarm suite** (`swarm/tests/01-13`): Docker-in-Docker with a manager (`dockflow-test-manager`, SSH port 32222) and worker (`dockflow-test-worker-1`, port 32223), compose project `dockflow-swarm`. The preload resets the cluster and pre-deploys the shared test-app. One file per area:
 
-**Setup suite** (`setup/tests/20`): host provisioning on a clean `ubuntu:24.04` container (`dockflow-test-setup`). Runs the cross-compiled Linux binary inside it: non-interactive `dockflow setup`, Docker install via get.docker.com, deploy user + docker group, `/var/lib/dockflow` permissions, the filter of published ports and its sudo rule (installed, not loaded: the container cannot run iptables), an idempotent re-run, and `--no-port-filter`.
+| File | Covers |
+|---|---|
+| `01-build` | `dockflow build` |
+| `02-deploy` | deploy over two nodes, replicas distributed |
+| `03-backup` | backup, restore and prune, redis with appendonly |
+| `04-remote-build` | build on the server |
+| `05-http-healthcheck` | HTTP health checks run remotely; a failing endpoint (dedicated stack) |
+| `06-rollback` | automatic rollback on a failed health check (`test-app-rb`), manual rollback and release retention |
+| `07-uploads` | `uploads:` on every node, rolled back on a failed deploy (`test-app-up`) |
+| `08-exec-logs` | `dockflow exec` and `dockflow logs` across nodes |
+| `09-registry` | registry distribution: anonymous `registry:2` at `localhost:35000` and one that asks for credentials at `:35001` (`test-app-reg`, pinned to the manager) |
+| `10-proxy-routes` | `proxy.routes`: an accessory routed by Traefik on two ports of one domain (`test-app-routes`) |
+| `11-public-ports` | the filter of published ports, installed on both nodes, the worker standing for the internet (`test-app-ports`, filter removed afterwards) |
+| `12-locks` | the deploy lock: held by a running deploy, `dockflow lock`, takeover of a dead holder's lock |
+| `13-interrupt` | Ctrl+C during a deploy exits 130 and releases the lock (Linux and macOS only) |
 
-Test helpers: `helpers/fixtures.ts` (temp-dir fixture copies — fixture templates in `fixtures/` are read-only, tests never write into the repo tree), `helpers/docker.ts` (Swarm assertions), `helpers/cluster.ts` (cluster lifecycle).
+**Setup suite** (`setup/tests/20-21`): host provisioning on a clean `ubuntu:24.04` container (`dockflow-test-setup`). `20-setup` runs the cross-compiled Linux binary inside it: non-interactive `dockflow setup`, Docker install via get.docker.com, deploy user + docker group, `/var/lib/dockflow` permissions, the filter of published ports and its sudo rule (installed, not loaded: the container cannot run iptables), an idempotent re-run, and `--no-port-filter`. `21-init` runs the compiled binary's `dockflow init` scaffolding.
+
+Test helpers (`helpers/`): `cli.ts` (runs the CLI, also in the background), `fixtures.ts` (temp-dir fixture copies — fixture templates in `fixtures/` are read-only, tests never write into the repo tree), `docker.ts` (Swarm assertions), `cluster.ts` (cluster lifecycle), `connection.ts` (ports and credentials), `lock.ts`, `artifacts.ts` and `debug-dump.ts` (failure dump).
 
 E2E tests run on Linux, WSL and Windows (Docker required). CI runs both suites as parallel matrix jobs.
 
 ## CI/CD Workflows (`.github/workflows/`)
 
-- **publish-cli.yml** — Triggered by version tags. Runs typecheck + lint + unit tests, then builds multi-platform binaries (linux-x64/arm64, macos-x64/arm64, windows-x64), creates GitHub Release, publishes to npm (`@dockflow-tools/cli`).
-- **cli-checks.yml** — Runs on push to main/develop and PRs. Typecheck (`tsc --noEmit`), Biome lint, and unit tests (`bun test src/`) in `cli/`.
-- **deploy-docs.yml** — Documentation site deployment. Installs CLI and runs `dockflow deploy` directly. Runs on docs pushes to main and, called by publish-cli.yml, after every stable release.
-- **e2e-tests.yml** — Runs on push to main/develop and PRs. Matrix of two parallel jobs (swarm, setup), each running `bun test tests/` in `testing/e2e/<suite>/`.
-- **shell-lint.yml** — ShellCheck validation.
+- **cli-checks.yml** — Runs on push to main/develop and PRs, and is called by publish-cli.yml. Three jobs: `checks` (typecheck, Biome lint, `bun test src/` in `cli/`), `e2e-checks` (typecheck and lint of the `testing/e2e` harness) and `mcp` (build, typecheck and test `packages/mcp-server`).
+- **e2e-tests.yml** — Runs on push to main/develop and PRs, and is called by publish-cli.yml. Matrix of parallel jobs (swarm, setup), each running `bun test tests/` in `testing/e2e/<suite>/`, then an `E2E summary` job that fails when a suite failed or did not run. When called with `binary_artifact`, it tests that binary instead of building from source.
+- **publish-cli.yml** — Triggered by version tags (`X.Y.Z`, with an optional suffix). Builds the UI and the binaries (linux-x64/arm64, macos-x64/arm64, windows-x64) and `SHA256SUMS`, runs `cli-checks.yml` and the setup e2e suite on the built binary, then creates the GitHub Release, publishes to npm (`@dockflow-tools/cli`) and, for a stable release, calls deploy-docs.yml.
+- **publish-mcp.yml** — Triggered by `mcp-X.Y.Z` tags or by hand. Builds, tests and publishes `@dockflow-tools/mcp` to npm with provenance.
+- **deploy-docs.yml** — Documentation site deployment. Runs the published CLI (`npx @dockflow-tools/cli deploy production`). Runs on pushes to main touching `docs/**` or `cli/ui/**`, by hand, and, called by publish-cli.yml, after every stable release.
+- **shell-lint.yml** — ShellCheck and shfmt through `scripts/lint-shell.sh`, on PRs and pushes to main/develop.
 
-CI/CD integration is handled entirely by the CLI itself — no reusable workflows or external templates needed. The CLI auto-detects environment and version from CI provider env vars (GitHub Actions, GitLab CI, Jenkins, Buildkite) when `dockflow deploy` or `dockflow build` are called without arguments. Users generate a standalone CI workflow via `dockflow init`.
+CI/CD integration is handled entirely by the CLI itself — no reusable workflows or external templates needed. The CLI auto-detects environment and version from CI provider env vars (GitHub Actions, GitLab CI, Jenkins, Buildkite, Bitbucket Pipelines) when `dockflow deploy` or `dockflow build` are called without arguments. Users generate a standalone CI workflow via `dockflow init`.
 
 CI secrets format: `{ENV}_{SERVER}_CONNECTION` = base64-encoded JSON `{host, port, user, privateKey, password?}` (`utils/connection-parser.ts`).
 
 ## Development Rules
 
 - **Typecheck before committing**: Run `bun run typecheck` in `cli/` — zero errors required.
-- **Lint before committing**: Run `bun run lint` in `cli/`. Biome enforces: no `console.*` outside `utils/output.ts`, no `any`, no unused imports (config in `cli/biome.json`).
+- **Test and lint before committing**: Run `bun test src/` and `bun run lint` in `cli/`. Biome enforces: no `console.*` outside `utils/output.ts`, no `any`, no unused imports (config in `cli/biome.json`).
 - **Use centralized output helpers**: Never add raw `console.log`/`console.error` in CLI commands or API routes.
 - **Config schema + interface parity**: Update both Zod schema and TypeScript interface when adding config fields.
 - **Error handling**: Throw typed `CLIError` subclasses from commands. Never catch-and-exit manually.
@@ -283,6 +306,7 @@ CI secrets format: `{ENV}_{SERVER}_CONNECTION` = base64-encoded JSON `{host, por
 - **Service naming**: Follow the three-tier convention (see *Services Layer*). `*Backend` for polymorphic interfaces, plain nouns for stateful classes, module imports for stateless functions. Never introduce a new `*Service` class.
 - **Multi-node services**: When creating `Backup` or `SwarmContainerBackend`, always pass `getAllNodeConnections(env)` so container lookups work on worker nodes too.
 - **New directory paths**: Add constants in `cli/src/constants.ts` and ensure the deploy command creates them on the remote host.
+
 ## Self-Review Before Finishing
 
 After implementing any feature or fix, always ask:
@@ -304,7 +328,7 @@ Every new user-facing feature **must** be documented before the task is consider
 
 ### Doc page structure
 
-New pages in `docs/app/configuration/` or `docs/app/` should follow this order:
+New pages in `docs/app/en/configuration/` or `docs/app/en/` should follow this order:
 1. **One-line intro** — what this feature does and why it matters
 2. **Minimal working example** — the simplest config that makes it work
 3. **All options** — table with field, type, description, default
@@ -324,6 +348,11 @@ New pages in `docs/app/configuration/` or `docs/app/` should follow this order:
 ### Navigation and index
 
 After creating a new page:
-1. Add its slug to `docs/app/configuration/_meta.ts` (or the relevant `_meta.ts`) so it appears in the sidebar
-2. Add a `<Cards.Card>` entry in the parent index page (`docs/app/configuration/page.mdx`)
-3. Add the entry to `docs/scripts/generate-llms-txt.ts` so LLM context stays up to date
+1. Add its slug to `docs/app/en/configuration/_meta.ts` (or the relevant `_meta.ts`) so it appears in the sidebar
+2. Add a `<Cards.Card>` entry in the parent index page (`docs/app/en/configuration/page.mdx`)
+
+`docs/scripts/generate-llms-txt.ts` reads the `_meta` files, so the LLM context follows the navigation without a further step.
+
+### CLI page
+
+`docs/app/en/cli/page.mdx` documents every command and long option of the CLI, and the unit test `cli/src/__tests__/docs-sync.test.ts` fails when one is missing or when the page names one that no longer exists. Each command has a code block starting with `dockflow <command>`, and its options sit in the table of that section. The exit codes table follows `ErrorCode` in `cli/src/utils/errors.ts`.

@@ -5,8 +5,8 @@
 - [Bun](https://bun.sh/) runtime (CLI)
 - [Node.js](https://nodejs.org/) 22+ (WebUI)
 - [pnpm](https://pnpm.io/) (WebUI and docs)
-- Docker Desktop with WSL integration enabled
-- WSL2 (required for E2E tests)
+- Docker (E2E tests; on Windows, Docker Desktop with WSL integration)
+- WSL2 on Windows, to run the tests that need a POSIX shell
 
 ---
 
@@ -23,9 +23,9 @@ bun cli/src/index.ts deploy staging
 bun cli/src/index.ts status production
 ```
 
-### Dev script (for deploy/build commands)
+### Dev script (to run the CLI from source in another project)
 
-The `dev.ts` script sets `DOCKFLOW_DEV_PATH` so the CLI uses your local Ansible roles instead of the published Docker image. Run it from your **target project directory**:
+`cli/scripts/dev.ts` runs `cli/src/index.ts` with the arguments it is given, in the directory it is started from, so the CLI finds that project's `.dockflow/`. Run it from your **target project directory**:
 
 ```bash
 cd /path/to/my-app
@@ -33,6 +33,8 @@ cd /path/to/my-app
 # Run dockflow commands using local source
 bun /path/to/dockflow/cli/scripts/dev.ts deploy production --force
 ```
+
+It adds nothing to the command line. For `dockflow setup user@host`, `--dev` builds the CLI from your checkout and uploads it to the server instead of downloading the release; pass it yourself.
 
 Recommended: create an alias:
 
@@ -50,23 +52,23 @@ bun run typecheck   # must pass with zero errors before committing
 
 ### WebUI (hot-reload)
 
-The UI proxies to the CLI's API server. You need two terminals:
+The Angular dev server proxies `/api` and `/ws` to the CLI's API server (`cli/ui/proxy.conf.json`). You need two terminals:
 
 ```bash
-# Terminal 1 — Angular dev server
-cd cli/ui && pnpm install && pnpm start   # port 4201
+# Terminal 1 — CLI API server (run from a project directory, it opens that project)
+bun /path/to/dockflow/cli/scripts/dev.ts ui   # port 4200
 
-# Terminal 2 — CLI API server
-cd cli && bun run dev ui                  # port 4200, proxies to 4201
+# Terminal 2 — Angular dev server
+cd cli/ui && pnpm install && pnpm start   # port 4201
 ```
 
-Open `http://localhost:4200`. The `--dev` flag (added automatically by `bun run dev`) makes the API proxy non-`/api/` requests to the Angular server.
+Open `http://localhost:4201`. Without the Angular server, `dockflow ui` serves the UI built in `cli/ui/dist/` (`pnpm build`), or the copy embedded in a compiled binary.
 
 ---
 
 ## How Deploy Works (important for contributors)
 
-When you run `dockflow deploy`, the CLI connects directly to servers via SSH (using the `ssh2` library). All deploy operations — template rendering, image building/distribution, stack deployment, health checks — happen in TypeScript over SSH. No Docker containers or Ansible are involved in the deploy flow.
+When you run `dockflow deploy`, the CLI connects directly to servers via SSH (using the `ssh2` library). All deploy operations — template rendering, image building/distribution, stack deployment, health checks — happen in TypeScript over SSH. The only things that run on the servers are the `docker` commands the CLI sends.
 
 `dockflow setup` provisions machines the same way: the CLI binary runs on the server (shipped over SSH for a remote setup) and configures it directly.
 
@@ -81,7 +83,7 @@ Linux, WSL and Windows with Docker.
 ### Running the tests
 
 ```bash
-cd testing/e2e/swarm && bun test tests/                    # Swarm suite (~10 min)
+cd testing/e2e/swarm && bun test tests/                    # Swarm suite
 cd testing/e2e/swarm && bun test tests/02-deploy.test.ts   # one file
 cd testing/e2e/setup && bun test tests/                    # setup suite
 bun run testing/e2e/teardown.ts                            # clean up containers afterwards
@@ -100,11 +102,15 @@ writes its `.env.dockflow` there, with the `localhost` port mappings above.
 
 ### What's tested
 
-**Swarm suite**: build, deploy (2 replicas, distributed), health checks, Traefik routing and
-`proxy.routes`, backup/restore, remote build, rollback, uploads, exec/logs, registry
-distribution, the filter of published ports.
+**Swarm suite** (`swarm/tests/01-13`): build, deploy (2 replicas, distributed), backup/restore,
+remote build, remote HTTP health checks, automatic and manual rollback, uploads, exec/logs,
+registry distribution, `proxy.routes`, the filter of published ports, the deploy lock, and
+Ctrl+C during a deploy.
 
-**Setup suite**: non-interactive `dockflow setup` on a clean host, `dockflow init`.
+**Setup suite** (`setup/tests/20-21`): non-interactive `dockflow setup` on a clean host,
+`dockflow init`.
+
+`CLAUDE.md` lists the file of each area and `testing/e2e/README.md` the conventions.
 
 ### Debug commands
 
@@ -146,7 +152,7 @@ export class SwarmStackBackend implements StackBackend { /* ... */ }
 const backend = createStackBackend(managerConn);
 ```
 
-Current backends: `StackBackend`, `ContainerBackend`, `HealthBackend`, `ProxyBackend`.
+Current backends: `StackBackend` (which also runs the internal health check), `ContainerBackend`, `ProxyBackend`.
 
 ### 2. Plain noun — stateful classes
 
@@ -223,13 +229,12 @@ The suffix was ambiguous — it was attached to interfaces, to stateful classes,
 
 Quick checklist:
 
-1. **Command**: add in `cli/src/commands/`, register in `cli/src/index.ts`
+1. **Command**: add in `cli/src/commands/`, register in `cli/src/commands/register-all.ts`
 2. **Service logic**: put in `cli/src/services/`. Pick the right shape (see *Services Layer — Naming Convention* above)
 3. **Config field**: update both `cli/src/schemas/config.schema.ts` (Zod) and `cli/src/utils/config.ts` (interface)
 4. **New remote path**: add constants in `cli/src/constants.ts` and ensure the deploy command creates them via the `StackBackend` implementations
-5. **Ansible defaults**: centralize in `ansible/group_vars/all.yml`, never hardcode in roles
-6. **Typecheck**: `bun run typecheck` — zero errors
-7. **Documentation**: add or update a page in `docs/app/`
+5. **Typecheck, lint, tests**: from `cli/`, `bun run typecheck` (zero errors), `bun run lint` and `bun test src/`
+6. **Documentation**: add or update a page in `docs/app/en/`. A new command or option goes on `docs/app/en/cli/page.mdx` (the `docs-sync` unit test fails without it), and a new error code in its exit codes table. A new page is added to the `_meta.ts` of its folder and, for a configuration page, to the cards of `docs/app/en/configuration/page.mdx`; the llms.txt files follow the `_meta` files by themselves.
 
 See `CLAUDE.md` for detailed patterns and rules.
 
