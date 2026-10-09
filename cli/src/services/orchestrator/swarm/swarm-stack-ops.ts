@@ -282,7 +282,9 @@ export class SwarmStackOps {
           continue;
         }
 
-        const [currentStr, desiredStr] = replicas.split('/');
+        // a job service reads `0/1 (1/1 completed)`: it converged once every task completed
+        const job = /\((\d+)\/(\d+) completed\)/.exec(replicas);
+        const [currentStr, desiredStr] = (job ? `${job[1]}/${job[2]}` : replicas).split('/');
         const current = parseInt(currentStr, 10);
         const desired = parseInt(desiredStr, 10);
 

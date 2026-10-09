@@ -475,6 +475,28 @@ describe('SwarmStackBackend.waitConvergence', () => {
     expect(clock.sleeps).toEqual([5000, 5000]);
   });
 
+  it('counts a job as converged once all its tasks completed', async () => {
+    const MIGRATE = `${STACK}_migrate`;
+    script
+      .on(REPLICAS, sequence({ stdout: `${web('2/2')}\n${MIGRATE}${TAB}1/1 (0/1 completed)` }, { stdout: `${web('2/2')}\n${MIGRATE}${TAB}0/1 (1/1 completed)` }))
+      .on(UPDATE_STATES, { stdout: states([WEB, 'completed'], [MIGRATE, '']) });
+
+    const result = await backend().waitConvergence(STACK, 60, 5);
+
+    expect(result.converged).toBe(true);
+    expect(clock.sleeps).toEqual([5000]);
+  });
+
+  it('times out on a job whose tasks never complete', async () => {
+    const MIGRATE = `${STACK}_migrate`;
+    script.on(REPLICAS, { stdout: `${MIGRATE}${TAB}1/1 (0/1 completed)` }).on(UPDATE_STATES, { stdout: '' });
+
+    const result = await backend().waitConvergence(STACK, 10, 5);
+
+    expect(result.timedOut).toBe(true);
+    expect(result.errorDetail).toBe(`deployment convergence timeout after 10s. Non-converged services: ${MIGRATE} 0/1`);
+  });
+
   it('keeps polling while the stack lists no service yet', async () => {
     script
       .on(REPLICAS, sequence({ stdout: '' }, { stdout: web('1/1') }))
