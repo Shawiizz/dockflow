@@ -9,6 +9,7 @@ import {
   Release,
   releaseEpoch,
   type ReleaseMetadata,
+  removeImagesCommand,
   selectRetention,
   selectRollbackTarget,
 } from '../services/release';
@@ -173,6 +174,33 @@ describe('computeOrphanImages', () => {
 
   it('deduplicates orphans', () => {
     expect(computeOrphanImages('', '', 'services:\n  a:\n    image: dup:1\n  b:\n    image: dup:1\n')).toEqual(['dup:1']);
+  });
+});
+
+describe('removeImagesCommand', () => {
+  // a docker that knows one running and one exited container of the image, and logs what it is asked
+  const FAKE_DOCKER = [
+    '#!/bin/sh',
+    'echo "$*" >> calls',
+    'case "$1" in',
+    '  ps) case "$*" in *status=exited*) echo exited-1 ;; *) echo running-1; echo exited-1 ;; esac ;;',
+    'esac',
+  ].join('\n');
+
+  test.if(hasPosixShell)('removes the stopped containers of an image, never a running one, then the image', async () => {
+    const shell = new LocalShell();
+    try {
+      mkdirSync(join(shell.root, 'bin'));
+      writeFileSync(join(shell.root, 'bin', 'docker'), FAKE_DOCKER, { mode: 0o755 });
+
+      await shell.run(`PATH="$PWD/bin:$PATH"; ${removeImagesCommand(['shop-web:1.0.0'])}`);
+
+      const calls = readFileSync(join(shell.root, 'calls'), 'utf8').trim().split('\n');
+      expect(calls[0]).toContain('ancestor=shop-web:1.0.0');
+      expect(calls.slice(1)).toEqual(['rm exited-1', 'rmi shop-web:1.0.0']);
+    } finally {
+      rmSync(shell.root, { recursive: true, force: true });
+    }
   });
 });
 

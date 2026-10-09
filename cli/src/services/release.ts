@@ -194,6 +194,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * Removes the images, and the stopped containers that keep them. `ancestor=` matches by image id,
+ * which a kept release shares when its build came from the same cache: a running container is
+ * never removed, and `docker rmi` of a shared id only drops the tag.
+ */
+export function removeImagesCommand(images: string[]): string {
+  return (
+    `for img in ${images.map(shellQuote).join(' ')}; do ` +
+      `ids=$(docker ps -a --filter "ancestor=$img" --filter status=exited --filter status=created --filter status=dead -q 2>/dev/null); ` +
+      `[ -n "$ids" ] && docker rm $ids 2>/dev/null; ` +
+      `timeout 60 docker rmi "$img" 2>/dev/null; ` +
+    `done; true`
+  );
+}
+
+/**
  * Compute which images from removed releases can be deleted: anything not used
  * by a running stack, not referenced by a kept release, and not tagged :latest.
  * Returns a deduplicated list.
@@ -540,14 +555,7 @@ export class Release {
     const orphanImages = computeOrphanImages(runningResult.stdout, keptResult.stdout, removeResult.stdout);
 
     if (orphanImages.length > 0) {
-      // Remove containers using these images, then the images themselves
-      await this.shell.run(
-        `for img in ${orphanImages.map(shellQuote).join(' ')}; do ` +
-          `ids=$(docker ps -a --filter "ancestor=$img" -q 2>/dev/null); ` +
-          `[ -n "$ids" ] && docker rm -f $ids 2>/dev/null; ` +
-          `timeout 60 docker rmi "$img" 2>/dev/null; ` +
-        `done; true`,
-      );
+      await this.shell.run(removeImagesCommand(orphanImages));
       printDebug(`Removed ${orphanImages.length} orphaned image(s)`);
     }
 
