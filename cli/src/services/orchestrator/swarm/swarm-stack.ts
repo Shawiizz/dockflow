@@ -101,8 +101,8 @@ export class SwarmStackBackend implements StackBackend {
       // Accessories already have injectAccessoriesDefaults applied by caller.
       const content = Compose.serialize(input.compose);
       await this.ops.createExternalResources(Compose.getExternalNetworks(input.compose), Compose.getExternalVolumes(input.compose));
-      await this.ops.deployAccessories(input.stackName, input.accessoryPath, content, { force: input.force });
-      return ok({ deployed: true });
+      const deployed = await this.ops.deployAccessories(input.stackName, input.accessoryPath, content, { force: input.force });
+      return ok({ deployed });
     } catch (e) {
       return err(toDeployError(e));
     }

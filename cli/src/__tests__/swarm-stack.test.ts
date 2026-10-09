@@ -360,7 +360,7 @@ describe('SwarmStackBackend.deployAccessory', () => {
 
     const result = await backend().deployAccessory(input());
 
-    expect(result.success).toBe(true);
+    expect(result).toEqual({ success: true, data: { deployed: false } });
     expect(script.commands()).toEqual([`cat "${hashFile}" 2>/dev/null || echo ""`]);
   });
 
@@ -378,7 +378,7 @@ describe('SwarmStackBackend.deployAccessory', () => {
 
     const result = await backend().deployAccessory(input());
 
-    expect(result.success).toBe(true);
+    expect(result).toEqual({ success: true, data: { deployed: true } });
     const deploy = script.calls.find((call) => STACK_DEPLOY.test(call.command));
     expect(deploy?.command).toBe(`docker stack deploy --prune --with-registry-auth -c - '${accessoriesStack}'`);
     expect(deploy?.stdin).toBe(serialize(accessories()));

@@ -419,14 +419,14 @@ export class SwarmStackOps {
    * Deploy accessories stack with hash-based change detection.
    *
    * Skips deploy if the compose content hasn't changed since last deploy
-   * (unless `options.force` is true).
+   * (unless `options.force` is true). Returns whether a deploy ran.
    */
   async deployAccessories(
     stackName: string,
     accessoriesComposePath: string,
     accessoriesComposeYaml: string,
     options?: { force?: boolean },
-  ): Promise<void> {
+  ): Promise<boolean> {
     const accessoriesStackName = `${stackName}-accessories`;
     const hashDir = `${DOCKFLOW_ACCESSORIES_DIR}/${stackName}`;
     const hashFile = `${hashDir}/.hash`;
@@ -446,7 +446,7 @@ export class SwarmStackOps {
 
       if (remoteHash === localHash) {
         printInfo('Accessories unchanged, skipping');
-        return;
+        return false;
       }
     }
 
@@ -480,5 +480,6 @@ export class SwarmStackOps {
     );
 
     printSuccess('Accessories deployed');
+    return true;
   }
 }
