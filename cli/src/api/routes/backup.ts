@@ -8,12 +8,13 @@
  */
 
 import { jsonResponse, errorResponse } from '../server';
+import { printDebug } from '../../utils/output';
 import { loadConfig, getStackName, getAccessoriesStackName, type BackupAccessoryConfig } from '../../utils/config';
 import { getManagerConnection, resolveEnvironment } from './_helpers';
 import { createBackup, type Backup, type BackupBaseEntry } from '../../services/backup';
 import { requireBackupConfig, listFromAllStacks, listGroupedFromAllStacks, getBackupNodes, type BackupSource } from '../../commands/backup/utils';
-import type { ClusterNode } from '../../types';
-import type { SSHKeyConnection } from '../../types';
+import { createLock, LockHeldError } from '../../services/lock';
+import type { ClusterNode, SSHKeyConnection } from '../../types';
 import type { BackupEntry, BackupListResponse, BackupActionResponse, BackupPruneResponse } from '../types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -189,7 +190,22 @@ async function restoreBackup(url: URL): Promise<Response> {
     return errorResponse(resolveResult.error.message, 404);
   }
 
-  const result = await ctx.backupService.restore(service, resolveResult.data, ctx.backupConfig, resolveResult.data.compression);
+  // A deploy or another restore rewriting the same stack at the same time would corrupt both
+  const stackName = getStackName(base.env);
+  if (!stackName) return errorResponse('No project configured', 400);
+  const lock = createLock(base.conn, stackName, loadConfig({ silent: true })?.lock?.stale_threshold_minutes);
+  const acquired = await lock.acquire({ message: `Restore ${service} from backup ${resolveResult.data.id}` });
+  if (!acquired.success) {
+    return errorResponse(acquired.error.message, acquired.error instanceof LockHeldError ? 409 : 500);
+  }
+
+  let result;
+  try {
+    result = await ctx.backupService.restore(service, resolveResult.data, ctx.backupConfig, resolveResult.data.compression);
+  } finally {
+    const released = await lock.release();
+    if (!released.success) printDebug(`Could not release the lock of ${stackName}: ${released.error.message}`);
+  }
 
   if (!result.success) {
     return errorResponse(result.error.message, 500);
