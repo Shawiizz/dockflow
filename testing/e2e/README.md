@@ -7,14 +7,16 @@ Two independent suites, each owning its cluster lifecycle; each can run in isola
 e2e/
   swarm/        # 2-node Docker-in-Docker Swarm (compose project: dockflow-swarm)
     bunfig.toml #   preload: setup.ts (build CLI, reset cluster, pre-deploy test-app)
-    tests/      #   01-build … 11-public-ports
+    tests/      #   01-build … 13-interrupt
   setup/        # host provisioning on a clean ubuntu container
     bunfig.toml #   preload: setup.ts (cross-compile the Linux binary)
-    tests/      #   20-setup (get.docker.com, deploy user, idempotent re-run)
+    tests/      #   20-setup (get.docker.com, deploy user, idempotent re-run), 21-init
   helpers/      # shared: CLI runner, cluster lifecycle, fixtures, assertions
   fixtures/     # READ-ONLY templates — never written to by tests
   docker/       # images + compose files for the test clusters
   teardown.ts   # stops all test containers
+  tsconfig.json # type-check of this folder (CI job "E2E harness typecheck & lint")
+  biome.json    # its lint rules
 ```
 
 ## Running
@@ -26,6 +28,18 @@ bun run testing/e2e/teardown.ts            # stop all test containers
 ```
 
 Works on Linux, WSL and Windows (requires Docker Desktop).
+
+The suites build the binary they test. To test a binary you already have, for instance the
+release artifact, set `DOCKFLOW_E2E_BINARY` to its path: nothing is built and every suite runs
+that file (the setup suites need a Linux x64 one). A call of `runCLI` can set the variable in its
+own `env` to run another build for that call only.
+
+The harness is checked like the CLI:
+
+```bash
+cd cli && bunx tsc --noEmit -p ../testing/e2e/tsconfig.json
+cd cli && bunx biome check --config-path=../testing/e2e/biome.json ../testing/e2e
+```
 
 ## Conventions
 
@@ -45,12 +59,29 @@ fixture copy — and, if it would interfere with the shared stack (Traefik
 routes, service names), its own `project_name`. See the failing-endpoint
 test in `05-http-healthcheck.test.ts` for the pattern.
 
+**Tests that need a deploy to be in progress** use `runCLIInBackground` with the `test-app-lock`
+fixture, whose pre-build hook sleeps for `DOCKFLOW_E2E_HOLD` seconds while the deploy holds its
+lock (`12-locks`, `13-interrupt`). They never pass `--force`, which overrides the lock. The Ctrl+C
+test runs on Linux and macOS only (`GRACEFUL_INTERRUPTS`).
+
 **Ports are statically allocated** (`helpers/connection.ts`): Swarm manager
-:32222, worker :32223, Traefik HTTP :38080, e2e registry :35000.
+:32222, worker :32223, Traefik HTTP :38080, e2e registry :35000, e2e registry
+with credentials :35001.
 
 **The e2e registry** (`registry:2`, anonymous) runs inside the manager DinD
 node with its port published in cascade, so the single image name
 `localhost:35000/...` resolves from the host (CLI push) and from the
 manager's inner daemon (service pull) — loopback registries are TLS-exempt,
 no daemon configuration needed. Registry-mode fixtures must pin their
-services to the manager.
+services to the manager. A second registry on :35001 serves one user
+(`AUTH_REGISTRY_USER` / `AUTH_REGISTRY_PASSWORD`); a test that deploys through a
+registry logs the machine's Docker engine in and logs it out in `afterAll`.
+
+**Secrets in fixtures are named `E2E_SECRET_<PURPOSE>_<suffix>`.** Everything the
+harness writes for a failed run is scrubbed of such values.
+
+**Failure dump.** The last three CLI invocations of a run are kept in
+`.artifacts/last-cli-invocations.txt` (git-ignored). When a Swarm job fails, CI runs
+`bun run testing/e2e/helpers/debug-dump.ts swarm`, which adds the state of the cluster
+(nodes, service tasks, logs and labels, daemon logs, firewall, disk) under `.artifacts/swarm/`
+and uploads the folder.
