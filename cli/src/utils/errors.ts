@@ -95,8 +95,8 @@ export class ConfigError extends CLIError {
 }
 
 export class ConnectionError extends CLIError {
-  constructor(message: string, suggestion?: string) {
-    super(message, ErrorCode.CONNECTION_FAILED, suggestion);
+  constructor(message: string, suggestion?: string, code: ErrorCode = ErrorCode.CONNECTION_FAILED) {
+    super(message, code, suggestion);
     this.name = 'ConnectionError';
   }
 }

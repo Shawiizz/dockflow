@@ -17,6 +17,7 @@ import { normalizePrivateKey } from './ssh-keys';
 import { DEFAULT_SSH_PORT, SSH_READY_TIMEOUT_MS, SSH_KEEPALIVE_INTERVAL_MS, SSH_KEEPALIVE_COUNT_MAX, SSH_CONNECT_RETRIES, SSH_CONNECT_RETRY_BASE_DELAY_MS } from '../constants';
 import { printDebug } from './output';
 import { installSignalHandlers } from './interrupt';
+import { ConnectionError, ErrorCode } from './errors';
 
 
 // ─── Pool types ───────────────────────────────────────────────
@@ -54,17 +55,20 @@ function ensureExitHandler(): void {
  * Returns true for errors that are worth retrying (transient network issues).
  * Auth failures (wrong key/password) are NOT retryable.
  */
-function isRetryableConnectionError(err: unknown): boolean {
+function isAuthenticationError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message.toLowerCase();
-  // Auth errors — don't retry, would just fail again
-  if (
+  return (
     msg.includes('all configured authentication methods failed') ||
     msg.includes('permission denied') ||
     msg.includes('authentication failed') ||
     msg.includes('no supported authentication methods')
-  ) return false;
-  // Transient errors — worth retrying
+  );
+}
+
+function isRetryableConnectionError(err: unknown): boolean {
+  if (!(err instanceof Error) || isAuthenticationError(err)) return false;
+  const msg = err.message.toLowerCase();
   return (
     msg.includes('timed out while waiting for handshake') ||
     msg.includes('connection refused') ||
@@ -199,7 +203,17 @@ async function connectWithRetry(
       }
     }
   }
-  throw lastErr;
+  throw connectionFailure(conn, lastErr);
+}
+
+/** A refused key or user is told apart from an unreachable host: only `dockflow setup` fixes it. */
+export function connectionFailure(conn: ConnectionInfo, err: unknown): unknown {
+  if (!isAuthenticationError(err)) return err;
+  return new ConnectionError(
+    `SSH authentication as ${conn.user} on ${conn.host} was refused: ${(err as Error).message}`,
+    'The server no longer accepts this key or user. Re-run `dockflow setup` on the server, then update the connection string.',
+    ErrorCode.SSH_AUTH_FAILED,
+  );
 }
 
 /**
