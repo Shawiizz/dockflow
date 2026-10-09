@@ -55,4 +55,28 @@ describe("swarm exec & logs", () => {
 
     throw new Error(`Service logs never contained an access log line (last output: ${lastOutput.slice(-500)})`);
   }, 90_000);
+
+  test("logs -n all returns the whole log", async () => {
+    const result = await runCLI(["logs", TEST_ENV, "web", "-n", "all"], { cwd: sharedAppDir() });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout + result.stderr).toContain("GET /");
+  }, 60_000);
+
+  test("logs refuses a --tail that is not a count before reaching the server", async () => {
+    const result = await runCLI(["logs", TEST_ENV, "web", "-n", "10abc"], { cwd: sharedAppDir() });
+
+    expect(result.exitCode).toBe(60);
+    expect(result.stdout + result.stderr).toContain("--tail must be a non-negative integer or all");
+  }, 30_000);
+
+  test("exec passes on the exit code of the command and the variables given with -e", async () => {
+    const result = await runCLI(
+      ["exec", TEST_ENV, "web", "-T", "-e", "GREETING=hello=swarm", "--", "sh", "-c", 'echo "$GREETING"; exit 7'],
+      { cwd: sharedAppDir() },
+    );
+
+    expect(result.stdout).toContain("hello=swarm");
+    expect(result.exitCode).toBe(7);
+  }, 60_000);
 });

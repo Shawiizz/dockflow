@@ -7,7 +7,7 @@ Two independent suites, each owning its cluster lifecycle; each can run in isola
 e2e/
   swarm/        # 2-node Docker-in-Docker Swarm (compose project: dockflow-swarm)
     bunfig.toml #   preload: setup.ts (build CLI, reset cluster, pre-deploy test-app)
-    tests/      #   01-build … 13-interrupt
+    tests/      #   01-build … 14-accessories-remove
   setup/        # host provisioning on a clean ubuntu container
     bunfig.toml #   preload: setup.ts (cross-compile the Linux binary)
     tests/      #   20-setup (get.docker.com, deploy user, idempotent re-run), 21-init

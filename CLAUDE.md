@@ -257,7 +257,7 @@ Key values in `cli/src/constants.ts`: `DOCKFLOW_VERSION` (from package.json), `D
 
 Two independent suites under `testing/e2e/`, each with its own `bunfig.toml` preload (see `testing/e2e/README.md` for conventions). Both build the binary they test, or use the one named by `DOCKFLOW_E2E_BINARY`.
 
-**Swarm suite** (`swarm/tests/01-13`): Docker-in-Docker with a manager (`dockflow-test-manager`, SSH port 32222) and worker (`dockflow-test-worker-1`, port 32223), compose project `dockflow-swarm`. The preload resets the cluster and pre-deploys the shared test-app. One file per area:
+**Swarm suite** (`swarm/tests/01-14`): Docker-in-Docker with a manager (`dockflow-test-manager`, SSH port 32222) and worker (`dockflow-test-worker-1`, port 32223), compose project `dockflow-swarm`. The preload resets the cluster and pre-deploys the shared test-app. One file per area:
 
 | File | Covers |
 |---|---|
@@ -268,12 +268,13 @@ Two independent suites under `testing/e2e/`, each with its own `bunfig.toml` pre
 | `05-http-healthcheck` | HTTP health checks run remotely; a failing endpoint (dedicated stack) |
 | `06-rollback` | automatic rollback on a failed health check (`test-app-rb`), manual rollback and release retention |
 | `07-uploads` | `uploads:` on every node, rolled back on a failed deploy (`test-app-up`) |
-| `08-exec-logs` | `dockflow exec` and `dockflow logs` across nodes |
+| `08-exec-logs` | `dockflow exec` (exit code, `-e`) and `dockflow logs` (`-n all`, a bad `--tail`) across nodes |
 | `09-registry` | registry distribution: anonymous `registry:2` at `localhost:35000` and one that asks for credentials at `:35001` (`test-app-reg`, pinned to the manager) |
 | `10-proxy-routes` | `proxy.routes`: an accessory routed by Traefik on two ports of one domain (`test-app-routes`) |
 | `11-public-ports` | the filter of published ports, installed on both nodes, the worker standing for the internet (`test-app-ports`, filter removed afterwards) |
 | `12-locks` | the deploy lock: held by a running deploy, `dockflow lock`, takeover of a dead holder's lock |
 | `13-interrupt` | Ctrl+C during a deploy exits 130 and releases the lock (Linux and macOS only) |
+| `14-accessories-remove` | `accessories remove --volumes` finishes a removal interrupted after the stack was gone, and the next deploy recreates the accessories (`test-app-acc`) |
 
 **Setup suite** (`setup/tests/20-21`): host provisioning on a clean `ubuntu:24.04` container (`dockflow-test-setup`). `20-setup` runs the cross-compiled Linux binary inside it: non-interactive `dockflow setup`, Docker install via get.docker.com, deploy user + docker group, `/var/lib/dockflow` permissions, the filter of published ports and its sudo rule (installed, not loaded: the container cannot run iptables), an idempotent re-run, and `--no-port-filter`. `21-init` runs the compiled binary's `dockflow init` scaffolding.
 

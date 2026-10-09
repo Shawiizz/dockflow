@@ -1,0 +1,8 @@
+services:
+  cache:
+    image: redis:8-alpine
+    volumes:
+      - data:/data
+
+volumes:
+  data:
