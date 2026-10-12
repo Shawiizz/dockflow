@@ -4,6 +4,7 @@
 
 import { spawnSync } from 'child_process';
 import * as fs from 'fs';
+import { publicKeyOf } from '../../utils/ssh-keys';
 import * as os from 'os';
 import * as path from 'path';
 import { printIntro, printSection, printSuccess, printInfo, printWarning, printBlank, printRaw, colors } from '../../utils/output';
@@ -223,7 +224,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
 
   if (needsUserSetup && deployPassword) {
     printBlank();
-    const pubKey = fs.readFileSync(`${privateKeyPath}.pub`, 'utf-8').trim();
+    const pubKey = publicKeyOf(privateKeyPath);
     if (!createDeployUser(deployUser, deployPassword, pubKey)) {
       throw new CLIError(
         'Failed to create deployment user',

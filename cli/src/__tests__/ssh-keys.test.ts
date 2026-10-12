@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'bun:test';
-import { normalizePrivateKey, isValidPrivateKey } from '../utils/ssh-keys';
+import { afterAll, describe, expect, it } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { utils } from 'ssh2';
+import { normalizePrivateKey, isValidPrivateKey, publicKeyOf } from '../utils/ssh-keys';
 
 describe('normalizePrivateKey', () => {
   it('converts escaped \\n sequences to real newlines', () => {
@@ -40,5 +44,27 @@ describe('isValidPrivateKey', () => {
     expect(isValidPrivateKey('ssh-ed25519 AAAA... user@host')).toBe(false);
     expect(isValidPrivateKey('not a key')).toBe(false);
     expect(isValidPrivateKey('')).toBe(false);
+  });
+});
+
+describe('publicKeyOf', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dockflow-keys-'));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('reads the .pub next to the key', () => {
+    writeFileSync(join(dir, 'with-pub'), 'not read');
+    writeFileSync(join(dir, 'with-pub.pub'), 'ssh-ed25519 AAAAfrom-file deploy@ci\n');
+    expect(publicKeyOf(join(dir, 'with-pub'))).toBe('ssh-ed25519 AAAAfrom-file deploy@ci');
+  });
+
+  it('derives the public key from the private key when there is no .pub', () => {
+    const pair = utils.generateKeyPairSync('ed25519');
+    writeFileSync(join(dir, 'alone'), pair.private);
+    expect(publicKeyOf(join(dir, 'alone'))).toBe(pair.public.trim().split(' ').slice(0, 2).join(' '));
+  });
+
+  it('says how to provide the public key when the file is no key', () => {
+    writeFileSync(join(dir, 'garbage'), 'hello');
+    expect(() => publicKeyOf(join(dir, 'garbage'))).toThrow(/Cannot read the public key/);
   });
 });
