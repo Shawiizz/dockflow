@@ -66,6 +66,11 @@ interface LocatedContainer {
   connection: SSHKeyConnection;
 }
 
+/** A service's tasks that are meant to run now; a job's tasks are meant to complete, and their logs are what it printed. */
+export function tasksToFollow<T extends { desiredState: string }>(tasks: readonly T[]): T[] {
+  return tasks.filter((task) => task.desiredState === 'Running' || task.desiredState === 'Complete');
+}
+
 export class SwarmContainerBackend implements ContainerBackend {
   constructor(
     private readonly conn: SSHKeyConnection,
@@ -235,8 +240,7 @@ export class SwarmContainerBackend implements ContainerBackend {
       return;
     }
 
-    const tasks = await listSwarmTasks(stackName, serviceName, this.conn);
-    const running = tasks.filter(t => t.desiredState === 'Running');
+    const running = tasksToFollow(await listSwarmTasks(stackName, serviceName, this.conn));
     if (running.length === 0) {
       onError(new Error(
         `No running tasks for service ${serviceName}. ` +

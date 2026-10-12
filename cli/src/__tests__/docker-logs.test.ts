@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { arrangeLogLines, LogLineBuffer, parseDockerLogLines, splitServiceLogsContext, splitTimestamp, timestampKey } from '../utils/docker-logs';
+import { tasksToFollow } from '../services/orchestrator/swarm/swarm-container';
 
 const TASK = 'shop-production_web.1.k2j3h4g5f6d7s8a9q1w2e3r4t';
 
@@ -159,5 +160,17 @@ describe('arrangeLogLines', () => {
   it('keeps the order of lines with the same timestamp', () => {
     const out = arrangeLogLines([line('2026-01-15T10:00:00Z', '1'), line('2026-01-15T10:00:00Z', '2'), line('2026-01-15T10:00:00Z', '3')], 's');
     expect(out.map((l) => l.message)).toEqual(['1', '2', '3']);
+  });
+});
+
+describe('tasksToFollow', () => {
+  it('follows the tasks meant to run, and a job\'s tasks meant to complete', () => {
+    const tasks = [
+      { id: 'web.1', desiredState: 'Running' },
+      { id: 'web.1-old', desiredState: 'Shutdown' },
+      { id: 'migrate.1', desiredState: 'Complete' },
+    ];
+
+    expect(tasksToFollow(tasks).map((task) => task.id)).toEqual(['web.1', 'migrate.1']);
   });
 });
