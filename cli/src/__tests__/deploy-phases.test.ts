@@ -11,7 +11,10 @@ import {
   uploadFiles,
   convergenceError,
   runPostRollbackHealthChecks,
+  cleanupFailedImages,
 } from '../commands/deploy-phases';
+import { removeImagesCommand } from '../services/release';
+import * as ssh from '../utils/ssh';
 import { HealthCheck } from '../services/health-check';
 import type { StackBackend } from '../services/orchestrator/interfaces';
 import * as output from '../utils/output';
@@ -252,5 +255,34 @@ describe('runPostRollbackHealthChecks', () => {
 
     expect(calls).toEqual([]);
     expect(http).not.toHaveBeenCalled();
+  });
+});
+
+describe('cleanupFailedImages', () => {
+  const node = (host: string) => ({ name: host, connection: { host, port: 22, user: 'dockflow', privateKey: 'key' } }) as never;
+  const built = { images: ['shop-web:1.2.0'], engine: 'docker', usedRegistry: false } as never;
+
+  it('removes the images and the failed tasks\' stopped containers on every node', async () => {
+    const calls: string[] = [];
+    const exec = spyOn(ssh, 'sshExec').mockImplementation(async (conn, command) => {
+      calls.push(`${conn.host}: ${command}`);
+      return { stdout: '', stderr: '', exitCode: 0 };
+    });
+    try {
+      await cleanupFailedImages(built, [node('manager'), node('worker-1')]);
+    } finally {
+      exec.mockRestore();
+    }
+    expect(calls).toEqual([`manager: ${removeImagesCommand(['shop-web:1.2.0'])}`, `worker-1: ${removeImagesCommand(['shop-web:1.2.0'])}`]);
+  });
+
+  it('leaves the nodes alone when the images went through a registry', async () => {
+    const exec = spyOn(ssh, 'sshExec');
+    try {
+      await cleanupFailedImages({ images: ['shop-web:1.2.0'], engine: 'docker', usedRegistry: true } as never, [node('manager')]);
+      expect(exec).not.toHaveBeenCalled();
+    } finally {
+      exec.mockRestore();
+    }
   });
 });

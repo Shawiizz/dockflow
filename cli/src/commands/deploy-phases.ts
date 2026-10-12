@@ -24,6 +24,7 @@ import type { ParsedCompose } from '../services/compose';
 import * as PublicPorts from '../services/public-ports';
 import { HealthCheck } from '../services/health-check';
 import * as HistorySync from '../services/history-sync';
+import { removeImagesCommand } from '../services/release';
 import * as Build from '../services/build';
 import * as Distribution from '../services/distribution';
 import * as Hook from '../services/hook';
@@ -810,7 +811,7 @@ export async function runPostRollbackHealthChecks(
 /**
  * Remove images from all cluster nodes after a failed deployment.
  * Skipped when a registry was used — images live in the registry, not just on nodes.
- * Best-effort: Docker/Podman refuse to remove in-use images, so this is inherently safe.
+ * Best-effort: the failed tasks' stopped containers go first; a running container keeps its image.
  */
 export async function cleanupFailedImages(
   buildResult: BuildResult,
@@ -818,14 +819,8 @@ export async function cleanupFailedImages(
 ): Promise<void> {
   if (buildResult.usedRegistry || buildResult.images.length === 0) return;
 
-  const quotedImages = buildResult.images.map(img => `'${img}'`).join(' ');
-  const engine = buildResult.engine;
-
-  await Promise.allSettled(
-    nodes.map(node =>
-      sshExec(node.connection, `${engine} rmi ${quotedImages} 2>/dev/null || true`),
-    ),
-  );
+  const command = removeImagesCommand(buildResult.images);
+  await Promise.allSettled(nodes.map((node) => sshExec(node.connection, command)));
 }
 
 // ---------------------------------------------------------------------------

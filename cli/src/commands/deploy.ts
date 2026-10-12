@@ -416,10 +416,6 @@ async function execute(ctx: DeployContext): Promise<void> {
       await rollbackUploads(uploadPlan).catch((e) => printWarning(`Upload rollback failed: ${e instanceof Error ? e.message : String(e)}`));
     }
 
-    if (buildResult && ctx.config.stack_management?.cleanup_on_failure !== false) {
-      await cleanupFailedImages(buildResult, [ctx.cluster.manager, ...ctx.cluster.otherManagers, ...ctx.cluster.workers]).catch(() => {});
-    }
-
     let rolledBackTo: string | null = null;
     if (stackDeployed && ctx.config.health_checks?.on_failure === 'rollback' && previousSymlink) {
       // rollback() handles its own cleanup — calling removeRelease first would delete the failed release before rollback can list it.
@@ -439,6 +435,11 @@ async function execute(ctx: DeployContext): Promise<void> {
     } else if (releaseCreated) {
       // only a record this deploy wrote: before that, the version's directory may be the running release
       await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
+    }
+
+    // after the rollback: until then the failed tasks' containers hold the images
+    if (buildResult && ctx.config.stack_management?.cleanup_on_failure !== false) {
+      await cleanupFailedImages(buildResult, [ctx.cluster.manager, ...ctx.cluster.otherManagers, ...ctx.cluster.workers]).catch(() => {});
     }
 
     // Runs last so it observes the settled state. runHook never lets an
