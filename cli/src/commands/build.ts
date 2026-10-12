@@ -113,6 +113,11 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
 
   if (config.options?.enable_debug_logs) setVerbose(true);
 
+  if (config.no_services) {
+    printInfo('This project deploys files only (no_services): there is nothing to build.');
+    return;
+  }
+
   const branchName = options.branch || getCurrentBranch();
 
   // Display build info
