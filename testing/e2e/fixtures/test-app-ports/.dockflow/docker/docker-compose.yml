@@ -6,6 +6,9 @@ services:
       - "8094:80"
     deploy:
       replicas: 1
+      # a short monitor: each redeploy otherwise waits Dockflow's default
+      update_config:
+        monitor: 5s
   # published, not declared: closed to the internet
   admin:
     image: nginx:alpine
@@ -13,3 +16,6 @@ services:
       - "8095:80"
     deploy:
       replicas: 1
+      # a short monitor: each redeploy otherwise waits Dockflow's default
+      update_config:
+        monitor: 5s

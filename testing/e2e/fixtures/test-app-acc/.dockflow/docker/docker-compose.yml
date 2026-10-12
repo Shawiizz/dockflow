@@ -5,3 +5,6 @@ services:
       - "8096:80"
     deploy:
       replicas: 1
+      # a short monitor: each redeploy otherwise waits Dockflow's default
+      update_config:
+        monitor: 5s
