@@ -7,7 +7,7 @@ import { printDebug, printWarning, createSpinner } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { loadConfig } from '../../utils/config';
-import { DockerError, withServicesRequired, ConfigError } from '../../utils/errors';
+import { CLIError, DockerError, withServicesRequired, ConfigError } from '../../utils/errors';
 import { idleServices, requireAppService } from './service-name';
 
 export function registerRestartCommand(program: Command): void {
@@ -25,10 +25,10 @@ export function registerRestartCommand(program: Command): void {
       if (!config) throw new ConfigError('No dockflow config found');
       const orchestrator = createStackBackend(connection);
 
+      if (service) await requireAppService(connection, env, stackName, service, 'restart');
       const spinner = createSpinner();
 
       try {
-        if (service) await requireAppService(connection, env, stackName, service, 'restart');
         spinner.start(service ? `Restarting ${service}...` : 'Restarting all services...');
         await orchestrator.restart(stackName, service, { detach: options.wait === false });
         const services = await orchestrator.getServices(stackName);
@@ -40,10 +40,9 @@ export function registerRestartCommand(program: Command): void {
           spinner.succeed(service ? `Restarted ${service}` : 'All services restarted');
         }
       } catch (error) {
-        if (error instanceof DockerError) throw error;
         const msg = error instanceof Error ? error.message : String(error);
         spinner.fail(`Failed to restart: ${msg}`);
-        throw new DockerError(msg);
+        throw error instanceof CLIError ? error : new DockerError(msg);
       }
     })));
 }

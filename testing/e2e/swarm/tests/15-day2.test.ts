@@ -286,6 +286,13 @@ describe("day-2 commands", () => {
       await waitForService(WEB_SERVICE, "2/2", { timeoutMs: 60_000 });
     }, 180_000);
 
+    test("restart of an accessory name points to accessories restart", async () => {
+      const result = await run(["restart", TEST_ENV, "cache"]);
+
+      expectFailure("restart cache", result, EXIT.SERVICE_NOT_FOUND);
+      expect(plain(result)).toContain("is an accessory of test");
+    }, 60_000);
+
     test("accessories restart replaces the tasks of the accessory", async () => {
       const before = await runningTaskIds(CACHE_SERVICE);
       expect(before.length).toBe(1);

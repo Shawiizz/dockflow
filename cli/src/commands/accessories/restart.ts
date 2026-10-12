@@ -10,7 +10,7 @@ import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { loadConfig } from '../../utils/config';
-import { DockerError, withErrorHandler, ConfigError } from '../../utils/errors';
+import { CLIError, DockerError, withErrorHandler, ConfigError } from '../../utils/errors';
 
 export function registerAccessoriesRestartCommand(program: Command): void {
   program
@@ -50,7 +50,7 @@ export function registerAccessoriesRestartCommand(program: Command): void {
           if (!service) printOutro('Restart complete');
         }
       } catch (error) {
-        if (error instanceof DockerError) throw error;
+        if (error instanceof CLIError) throw error;
         const msg = error instanceof Error ? error.message : String(error);
         throw new DockerError(`Failed to restart: ${msg}`);
       }
