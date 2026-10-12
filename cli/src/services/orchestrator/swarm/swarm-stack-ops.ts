@@ -45,6 +45,13 @@ export class ConvergenceError extends DeployError {
   }
 }
 
+/** The cause of a failed `docker stack deploy`, without the warnings it prints first about keys Swarm ignores. */
+export function stackDeployFailure(stderr: string): string {
+  const lines = stderr.trim().split('\n');
+  const cause = lines.filter((line) => !/^Ignoring (unsupported|deprecated) options:/.test(line.trim()));
+  return (cause.length > 0 ? cause : lines).join('\n').trim();
+}
+
 export class SwarmStackOps {
   /** the manager's clock when the last stack deploy started: a service's update states are compared with it */
   private deployStartedAt: number | null = null;
@@ -212,7 +219,7 @@ export class SwarmStackOps {
 
     if (result.exitCode !== 0) {
       throw new DeployError(
-        `docker stack deploy failed (exit ${result.exitCode}): ${result.stderr.trim()}`,
+        `docker stack deploy failed (exit ${result.exitCode}): ${stackDeployFailure(result.stderr)}`,
         ErrorCode.DEPLOY_FAILED,
       );
     }

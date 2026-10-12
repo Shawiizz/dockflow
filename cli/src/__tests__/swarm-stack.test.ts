@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { convergenceError } from '../commands/deploy-phases';
 import { loadFromString, serialize } from '../services/compose';
 import { SwarmStackBackend } from '../services/orchestrator/swarm/swarm-stack';
-import type { SwarmClock } from '../services/orchestrator/swarm/swarm-stack-ops';
+import { stackDeployFailure, type SwarmClock } from '../services/orchestrator/swarm/swarm-stack-ops';
 import type { SSHExecResult } from '../types';
 import { DeployError, ErrorCode } from '../utils/errors';
 import * as output from '../utils/output';
@@ -298,6 +298,12 @@ describe('SwarmStackBackend.deploy', () => {
       expect(warnings.some((warning) => warning.includes('docker stack rm failed (exit 1): boom'))).toBe(true);
       expect(script.indexOf(STACK_DEPLOY)).toBe(-1);
     });
+  });
+
+  it('keeps the cause of a failed docker stack deploy, not the warnings about ignored keys', () => {
+    expect(stackDeployFailure('Ignoring unsupported options: build\n\nIgnoring deprecated options:\n\ncontainer_name: Setting the container name is not supported.\n\nfailed to create service shop_web: network shop_net not found\n'))
+      .toBe('container_name: Setting the container name is not supported.\n\nfailed to create service shop_web: network shop_net not found');
+    expect(stackDeployFailure('Ignoring unsupported options: build\n')).toBe('Ignoring unsupported options: build');
   });
 
   it('returns the docker error of a failed docker stack deploy', async () => {
