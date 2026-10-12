@@ -391,6 +391,8 @@ dockflow scale <env> <service> <replicas>
 
 Scale a service to a specified number of replicas (a non-negative integer). Only replicated services can be scaled: a global service runs one task per node, and a job runs to completion.
 
+`scale`, `restart` and `accessories restart` wait for the services to converge, 300 seconds at most; past that they fail and Swarm keeps trying in the background. `--no-wait` returns at once.
+
 | Option | Description |
 |--------|-------------|
 | `-s, --server <name>` | Target manager |

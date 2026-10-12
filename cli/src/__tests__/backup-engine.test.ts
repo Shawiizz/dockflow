@@ -403,7 +403,7 @@ describe('Backup.restore of redis', () => {
     expect((error as BackupError).suggestion).toBe('Back up and restore this service with `type: volume`.');
     expect((error as BackupError).code).toBe(ErrorCode.RESTORE_FAILED);
     expect(pauses).toEqual([]);
-    expect(nodes.commands().some((command) => command.startsWith('docker service update'))).toBe(false);
+    expect(nodes.commands().some((command) => command.includes('docker service update'))).toBe(false);
   });
 
   it('the expected kill of redis (non-zero exit, empty stderr) is a success followed by a service update', async () => {
@@ -411,7 +411,7 @@ describe('Backup.restore of redis', () => {
     nodes.on('docker exec -i', { exitCode: 137 });
     expect((await backupEngine().restore('db', POSTGRES_BACKUP, REDIS)).success).toBe(true);
     expect(pauses).toEqual([3000]);
-    expect(nodes.commands('manager')).toContain(`docker service update --force '${STACK}_db'`);
+    expect(nodes.commands('manager')).toContain(`timeout 300 docker service update --force '${STACK}_db'`);
   });
 
   it('any other failure reports its detail without the marker line, and does not restart', async () => {

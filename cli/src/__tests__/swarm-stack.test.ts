@@ -760,23 +760,25 @@ describe('SwarmStackBackend.checkInternalHealth', () => {
   });
 });
 
+const SERVICE_UPDATE = /^(timeout 300 )?docker service update /;
+
 describe('SwarmStackBackend.restart', () => {
   const listing = `${STACK}_web|web:1|1/1|\n${STACK}_worker|worker:1|2/2|\n`;
 
   it('updates every service of the stack in one chained command', async () => {
     script
       .on(/\{\{\.Image\}\}/, { stdout: listing })
-      .on(/^docker service update /, {});
+      .on(SERVICE_UPDATE, {});
 
     await backend().restart(STACK);
 
-    expect(script.commands('exec')[1]).toBe(`docker service update --force '${STACK}_web' && docker service update --force '${STACK}_worker'`);
+    expect(script.commands('exec')[1]).toBe(`timeout 300 docker service update --force '${STACK}_web' && timeout 300 docker service update --force '${STACK}_worker'`);
   });
 
   it('asks for --detach on every update of the chain', async () => {
     script
       .on(/\{\{\.Image\}\}/, { stdout: listing })
-      .on(/^docker service update /, {});
+      .on(SERVICE_UPDATE, {});
 
     await backend().restart(STACK, undefined, { detach: true });
 
@@ -786,7 +788,7 @@ describe('SwarmStackBackend.restart', () => {
   });
 
   it('updates one service by its stack-qualified, quoted name', async () => {
-    script.on(/^docker service update /, {});
+    script.on(SERVICE_UPDATE, {});
 
     await backend().restart('my stack', 'web', { detach: true });
 
@@ -803,7 +805,7 @@ describe('SwarmStackBackend.restart', () => {
   it('raises the docker error of a failed update', async () => {
     script
       .on(/\{\{\.Image\}\}/, { stdout: listing })
-      .on(/^docker service update /, { exitCode: 1, stderr: 'no such service' });
+      .on(SERVICE_UPDATE, { exitCode: 1, stderr: 'no such service' });
 
     await expect(backend().restart(STACK)).rejects.toThrow('no such service');
     await expect(backend().restart(STACK, 'web')).rejects.toThrow('no such service');
@@ -812,27 +814,36 @@ describe('SwarmStackBackend.restart', () => {
 
 describe('SwarmStackBackend service commands', () => {
   it('scales by the quoted, stack-qualified name, detached only on request', async () => {
-    script.on(/^docker service scale /, {});
+    script.on(/^(timeout 300 )?docker service scale /, {});
 
     await backend().scaleService('my stack', 'web', 3);
     await backend().scaleService('my stack', 'web', 0, { detach: true });
 
-    expect(script.commands()).toEqual(["docker service scale 'my stack_web'=3", "docker service scale --detach 'my stack_web'=0"]);
+    expect(script.commands()).toEqual(["timeout 300 docker service scale 'my stack_web'=3", "docker service scale --detach 'my stack_web'=0"]);
   });
 
   it('raises the docker error of a failed scale or rollback', async () => {
-    script.on(/^docker service (scale|rollback) /, { exitCode: 1, stderr: 'service not found' });
+    script.on(/^timeout 300 docker service (scale|rollback) /, { exitCode: 1, stderr: 'service not found' });
 
     await expect(backend().scaleService(STACK, 'web', 2)).rejects.toThrow('service not found');
     await expect(backend().rollbackService(STACK, 'web')).rejects.toThrow('service not found');
   });
 
+  it('gives up waiting after the convergence timeout, and says Swarm keeps trying', async () => {
+    script.on(/^timeout 300 docker service scale /, { exitCode: 124 });
+
+    const failure = await backend().scaleService(STACK, 'web', 2).catch((error) => error);
+
+    expect(failure.message).toBe('web did not converge within 300s; Swarm keeps trying');
+    expect(failure.suggestion).toContain('dockflow diagnose');
+  });
+
   it('rolls a service back by its quoted name', async () => {
-    script.on(/^docker service rollback /, {});
+    script.on(/^timeout 300 docker service rollback /, {});
 
     await backend().rollbackService('my stack', 'web');
 
-    expect(script.commands()).toEqual(["docker service rollback 'my stack_web'"]);
+    expect(script.commands()).toEqual(["timeout 300 docker service rollback 'my stack_web'"]);
   });
 
   it('removes a stack by its quoted name and waits until it is gone', async () => {

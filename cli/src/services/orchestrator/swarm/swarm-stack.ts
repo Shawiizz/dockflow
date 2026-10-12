@@ -14,7 +14,7 @@ import { printDebug, createTimedSpinner } from '../../../utils/output';
 import { ConvergenceError, realClock, SwarmStackOps, type SwarmClock } from './swarm-stack-ops';
 import { runDockerQuery } from './swarm-utils';
 import * as Compose from '../../compose';
-import { DOCKFLOW_STACKS_DIR } from '../../../constants';
+import { CONVERGENCE_TIMEOUT_S, DOCKFLOW_STACKS_DIR } from '../../../constants';
 import type {
   StackBackend,
   StackInfo,
@@ -317,24 +317,14 @@ export class SwarmStackBackend implements StackBackend {
 
   async scaleService(stackName: string, service: string, replicas: number, options: { detach?: boolean } = {}): Promise<void> {
     const fullName = `${stackName}_${service}`;
-    const result = await sshExec(this.conn, `docker service scale${options.detach ? ' --detach' : ''} ${shellQuote(fullName)}=${replicas}`);
-    if (result.exitCode !== 0) {
-      throw new DeployError(
-        result.stderr || `Failed to scale ${service}`,
-        ErrorCode.DEPLOY_FAILED,
-      );
-    }
+    const result = await sshExec(this.conn, `${waiting('docker service scale', options.detach)} ${shellQuote(fullName)}=${replicas}`);
+    if (result.exitCode !== 0) throw serviceCommandError(result, service, `Failed to scale ${service}`);
   }
 
   async rollbackService(stackName: string, service: string): Promise<void> {
     const fullName = `${stackName}_${service}`;
-    const result = await sshExec(this.conn, `docker service rollback ${shellQuote(fullName)}`);
-    if (result.exitCode !== 0) {
-      throw new DeployError(
-        result.stderr || `Failed to rollback ${service}`,
-        ErrorCode.DEPLOY_FAILED,
-      );
-    }
+    const result = await sshExec(this.conn, `${waiting('docker service rollback')} ${shellQuote(fullName)}`);
+    if (result.exitCode !== 0) throw serviceCommandError(result, service, `Failed to rollback ${service}`);
   }
 
   async stackExists(stackName: string): Promise<boolean> {
@@ -343,13 +333,11 @@ export class SwarmStackBackend implements StackBackend {
   }
 
   async restart(stackName: string, service?: string, options: { detach?: boolean } = {}): Promise<void> {
-    const update = `docker service update --force${options.detach ? ' --detach' : ''}`;
+    const update = waiting('docker service update --force', options.detach);
     if (service) {
       const fullName = `${stackName}_${service}`;
       const r = await sshExec(this.conn, `${update} ${shellQuote(fullName)}`);
-      if (r.exitCode !== 0) {
-        throw new DeployError(r.stderr || `Failed to restart ${service}`, ErrorCode.DEPLOY_FAILED);
-      }
+      if (r.exitCode !== 0) throw serviceCommandError(r, service, `Failed to restart ${service}`);
       return;
     }
 
@@ -362,9 +350,7 @@ export class SwarmStackBackend implements StackBackend {
       .map((s) => `${update} ${shellQuote(`${stackName}_${s.name}`)}`)
       .join(' && ');
     const r = await sshExec(this.conn, cmd);
-    if (r.exitCode !== 0) {
-      throw new DeployError(r.stderr || 'Some services failed to restart', ErrorCode.DEPLOY_FAILED);
-    }
+    if (r.exitCode !== 0) throw serviceCommandError(r, stackName, 'Some services failed to restart');
   }
 
   async getMetadata(stackName: string): Promise<StackMetadata | null> {
@@ -416,6 +402,24 @@ export class SwarmStackBackend implements StackBackend {
         return { id, name, image, node, desiredState, currentState, error };
       });
   }
+}
+
+/** The Docker CLI waits for the service to converge, forever when no node can take its tasks. */
+function waiting(command: string, detach?: boolean): string {
+  return detach ? `${command} --detach` : `timeout ${CONVERGENCE_TIMEOUT_S} ${command}`;
+}
+
+const TIMED_OUT = 124;
+
+function serviceCommandError(result: { stderr: string; exitCode: number }, what: string, fallback: string): DeployError {
+  if (result.exitCode === TIMED_OUT) {
+    return new DeployError(
+      `${what} did not converge within ${CONVERGENCE_TIMEOUT_S}s; Swarm keeps trying`,
+      ErrorCode.DEPLOY_FAILED,
+      'Run `dockflow diagnose <env>` to see what keeps its tasks from starting.',
+    );
+  }
+  return new DeployError(result.stderr || fallback, ErrorCode.DEPLOY_FAILED);
 }
 
 function toDeployError(e: unknown): DeployError {
