@@ -217,6 +217,9 @@ If a worker cannot be joined (no SSH key for it, or `docker swarm join` fails), 
 names it, exits with an error and does not report the cluster as ready. Fix the cause and run
 it again: nodes already in the cluster are left alone.
 
+It then waits up to a minute for every node to be `Ready`. A node that stays `Down` usually
+cannot reach the manager on ports 2377, 7946 and 4789: the command names it and fails.
+
 <Callout type="warning">
   The ports are opened with `sudo -n`, which the deploy user created by `dockflow setup` is not
   allowed for these commands. When a command fails, setup warns and prints the commands to run

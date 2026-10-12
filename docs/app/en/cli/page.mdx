@@ -946,7 +946,7 @@ Configure a server without prompts (Linux only, must run on target host). Pass f
 dockflow setup swarm <env>
 ```
 
-Initialize a Docker Swarm cluster for an environment. Joins all servers configured in `servers.yml` into the Swarm. It exits with an error, naming them, when a worker could not be joined; running it again leaves the nodes already in the cluster alone.
+Initialize a Docker Swarm cluster for an environment. Joins all servers configured in `servers.yml` into the Swarm. It exits with an error, naming them, when a worker could not be joined or a node is not `Ready` within a minute; running it again leaves the nodes already in the cluster alone.
 
 ### Check Dependencies
 

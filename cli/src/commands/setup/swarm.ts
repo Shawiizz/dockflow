@@ -212,6 +212,27 @@ export function requireAllJoined(env: string, failures: readonly WorkerFailure[]
   );
 }
 
+/** Nodes of `docker node ls --format '{{.Hostname}}|{{.Status}}'` that are not Ready, and how many are. */
+export function readiness(nodeList: string): { ready: number; notReady: string[] } {
+  const nodes = nodeList.trim().split('\n').filter(Boolean).map((line) => line.split('|'));
+  return {
+    ready: nodes.filter(([, status]) => status === 'Ready').length,
+    notReady: nodes.filter(([, status]) => status !== 'Ready').map(([host, status]) => `${host} (${status})`),
+  };
+}
+
+/** A worker that joined can still be Down for Swarm: the cluster is ready once every node is Ready. */
+async function waitForReadyNodes(connection: SSHKeyConnection, expected: number): Promise<string | null> {
+  let last = { ready: 0, notReady: [] as string[] };
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const result = await sshExec(connection, `docker node ls --format '{{.Hostname}}|{{.Status}}'`);
+    last = readiness(result.stdout);
+    if (last.ready >= expected && last.notReady.length === 0) return null;
+    await Bun.sleep(2000);
+  }
+  return `${last.ready} of ${expected} node(s) Ready after 60s${last.notReady.length > 0 ? `; not ready: ${last.notReady.join(', ')}` : ''}`;
+}
+
 /**
  * Display cluster status
  */
@@ -317,10 +338,20 @@ export async function runSetupSwarm(env: string): Promise<void> {
   }
   printBlank();
 
+  const expected = 1 + workers.length - failedWorkers.length;
+  const notReady = expected > 1 ? await waitForReadyNodes(managerConnection, expected) : null;
+
   // Display final status
   await displayClusterStatus(managerConnection);
 
   requireAllJoined(env, failedWorkers);
+  if (notReady) {
+    throw new CLIError(
+      `Swarm setup of ${env}: ${notReady}`,
+      ErrorCode.COMMAND_FAILED,
+      'A node that stays Down usually cannot reach the manager on ports 2377, 7946 and 4789; check the firewall between them.',
+    );
+  }
 
   printNote(`Deploy with: dockflow deploy ${env}`);
   printOutro('Docker Swarm cluster is ready!');

@@ -19,7 +19,7 @@ mock.module('../utils/ssh', () => ({
   },
 }));
 
-const { joinWorkers, requireAllJoined } = await import('../commands/setup/swarm');
+const { joinWorkers, readiness, requireAllJoined } = await import('../commands/setup/swarm');
 
 const worker = (name: string): ResolvedServer => ({ name, host: `${name}.example.com`, port: 22, user: 'deploy' }) as ResolvedServer;
 const connect = (w: ResolvedServer): SSHKeyConnection | null =>
@@ -72,5 +72,12 @@ describe('requireAllJoined', () => {
     expect(error).toBeInstanceOf(CLIError);
     expect(error).toMatchObject({ message: 'Swarm setup of production failed on w1, w2', code: ErrorCode.COMMAND_FAILED });
     expect((error as CLIError).suggestion).toContain('run setup again');
+  });
+});
+
+describe('readiness', () => {
+  it('counts the Ready nodes and names the others', () => {
+    expect(readiness('manager-1|Ready\nworker-1|Down\nworker-2|Ready\n')).toEqual({ ready: 2, notReady: ['worker-1 (Down)'] });
+    expect(readiness('')).toEqual({ ready: 0, notReady: [] });
   });
 });
