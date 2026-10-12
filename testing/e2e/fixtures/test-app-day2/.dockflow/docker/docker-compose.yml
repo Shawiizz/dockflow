@@ -1,0 +1,18 @@
+services:
+  web:
+    image: nginx:alpine
+    ports:
+      - "8098:80"
+    deploy:
+      replicas: 2
+      # a short monitor: each update otherwise waits Dockflow's default
+      update_config:
+        monitor: 5s
+
+  # one task per node, so `scale` has a service it must refuse
+  agent:
+    image: nginx:alpine
+    deploy:
+      mode: global
+      update_config:
+        monitor: 5s

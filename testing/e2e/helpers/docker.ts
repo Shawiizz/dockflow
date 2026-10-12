@@ -87,6 +87,20 @@ export async function waitForService(
 }
 
 /**
+ * Wait until a stack has no service and no container left on the manager.
+ */
+export async function waitForStackGone(stack: string, timeoutMs = 60_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const services = await dockerExec(MANAGER_CONTAINER, ["sh", "-c", `docker stack services ${stack} -q 2>/dev/null || true`]);
+    const containers = await dockerExec(MANAGER_CONTAINER, ["sh", "-c", `docker ps -aq --filter label=com.docker.stack.namespace=${stack}`]);
+    if (!services.trim() && !containers.trim()) return;
+    await Bun.sleep(1000);
+  }
+  throw new Error(`stack ${stack} was still there after ${timeoutMs / 1000}s`);
+}
+
+/**
  * Get service labels as a key-value map.
  */
 export async function getServiceLabels(
