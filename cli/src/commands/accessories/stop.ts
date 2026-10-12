@@ -11,6 +11,7 @@ import { requireAccessoriesStack } from './utils';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { loadConfig } from '../../utils/config';
 import { CLIError, DockerError, ErrorCode, withErrorHandler, ConfigError } from '../../utils/errors';
+import { serviceMode } from '../app/service-name';
 
 export function registerAccessoriesStopCommand(program: Command): void {
   program
@@ -43,6 +44,20 @@ export function registerAccessoriesStopCommand(program: Command): void {
         throw new CLIError(`No accessory ${service} in ${stackName}`, ErrorCode.SERVICE_NOT_FOUND, `Accessories: ${services.map((s) => s.name).join(', ')}`);
       }
 
+      // only a replicated service has a replica count to set to 0
+      const targets = service ? [service] : services.map((s) => s.name);
+      const modes = await Promise.all(targets.map((name) => serviceMode(connection, stackName, name)));
+      const unscalable = targets.filter((_, i) => modes[i] !== 'replicated');
+      if (service && unscalable.length > 0) {
+        throw new CLIError(
+          `${service} runs in ${modes[0]} mode, which cannot be scaled to 0`,
+          ErrorCode.INVALID_ARGUMENT,
+          `Remove it from accessories.yml and run dockflow deploy ${env} --accessories, or remove the accessories with dockflow accessories remove ${env}.`,
+        );
+      }
+      const stoppable = targets.filter((name) => !unscalable.includes(name));
+      for (const name of unscalable) printWarning(`${name} is not replicated and is left running`);
+
       const targetDesc = service ? `accessory '${service}'` : 'all accessories';
 
       if (!options.yes) {
@@ -74,16 +89,16 @@ export function registerAccessoriesStopCommand(program: Command): void {
           spinner.start('Scaling all services to 0...');
           const failed: string[] = [];
 
-          for (const svc of services) {
+          for (const name of stoppable) {
             try {
-              await orchestrator.scaleService(stackName, svc.name, 0, scale);
+              await orchestrator.scaleService(stackName, name, 0, scale);
             } catch (error) {
-              failed.push(`${svc.name}: ${error instanceof Error ? error.message : String(error)}`);
+              failed.push(`${name}: ${error instanceof Error ? error.message : String(error)}`);
             }
           }
 
           if (failed.length > 0) {
-            spinner.fail(`${failed.length} of ${services.length} accessories did not stop`);
+            spinner.fail(`${failed.length} of ${stoppable.length} accessories did not stop`);
             throw new DockerError(`Accessories not stopped:\n  ${failed.join('\n  ')}`);
           }
           spinner.succeed(`All accessories ${done}`);
