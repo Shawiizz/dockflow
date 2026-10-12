@@ -211,6 +211,21 @@ describe('Lock on a real shell', () => {
     expect(existsSync(lockFile())).toBe(false);
   });
 
+  test.if(hasPosixShell)('a renewal in flight during the release does not bring the lock back', async () => {
+    const alice = locks('alice@ci', { staleThresholdMinutes: 0.001 });
+    await alice.acquire();
+    const renewal = shell.hold((command) => command.includes('.takeover') && command.startsWith('r=BUSY'));
+    alice.keepAlive();
+    await renewal.reached;
+
+    const released = alice.release();
+    await Bun.sleep(50);
+    renewal.release();
+    dataOf(await released);
+
+    expect(existsSync(lockFile())).toBe(false);
+  });
+
   test.if(hasPosixShell)('lock release by hand removes any holder\'s lock', async () => {
     await locks('alice@ci').acquire();
 
