@@ -346,8 +346,13 @@ export class SwarmStackOps {
 
     spinner.fail(`Convergence timeout after ${timeout / 1000}s`);
 
+    const [pending, failed] = await Promise.all([
+      this.getPendingTaskErrors(stackName).catch(() => ''),
+      this.getFailedTaskErrors(stackName).catch(() => ''),
+    ]);
+    const why = [pending, failed].filter(Boolean).join('\n');
     throw new ConvergenceError(
-      `${ctx} convergence timeout after ${timeout / 1000}s. Non-converged services: ${notConverged.join(', ')}`,
+      `${ctx} convergence timeout after ${timeout / 1000}s. Non-converged services: ${notConverged.join(', ')}${why ? `\n\nTask errors:\n${why}` : ''}`,
       'timeout',
     );
   }
@@ -417,10 +422,19 @@ export class SwarmStackOps {
    * Fetch error messages from recently failed tasks in a stack.
    * Used to enrich rollback error messages with the actual failure reason.
    */
-  private async getFailedTaskErrors(stackName: string): Promise<string> {
+  private getFailedTaskErrors(stackName: string): Promise<string> {
+    return this.taskErrors(stackName, 'shutdown');
+  }
+
+  /** Errors of tasks meant to run that never started: no node can take them, an image cannot be pulled. */
+  private getPendingTaskErrors(stackName: string): Promise<string> {
+    return this.taskErrors(stackName, 'running');
+  }
+
+  private async taskErrors(stackName: string, desiredState: 'shutdown' | 'running'): Promise<string> {
     const result = await sshExec(
       this.connection,
-      `docker stack ps ${shellQuote(stackName)} --no-trunc --filter 'desired-state=shutdown' --format '{{.Name}}|{{.Error}}' 2>/dev/null || echo ""`,
+      `docker stack ps ${shellQuote(stackName)} --no-trunc --filter 'desired-state=${desiredState}' --format '{{.Name}}|{{.Error}}' 2>/dev/null || echo ""`,
     );
     const lines = result.stdout.trim().split('\n').filter(Boolean);
     const errors = lines

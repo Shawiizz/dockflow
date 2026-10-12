@@ -579,6 +579,21 @@ describe('SwarmStackBackend.waitConvergence', () => {
     expect(clock.sleeps).toEqual([5000, 5000, 5000, 5000]);
   });
 
+  it('names what keeps the tasks from starting when it times out', async () => {
+    script
+      .on(REPLICAS, { stdout: web('0/2') })
+      .on(UPDATE_STATES, { stdout: '' })
+      .on(/^docker stack ps .*desired-state=running/, { stdout: `${WEB}.1|no suitable node (insufficient resources on 2 nodes)\n${WEB}.2|\n` })
+      .on(FAILED_TASKS, { stdout: '' });
+
+    const result = await backend().waitConvergence(STACK, 10, 5);
+
+    expect(result.timedOut).toBe(true);
+    expect(result.errorDetail).toBe(
+      `deployment convergence timeout after 10s. Non-converged services: ${WEB} 0/2\n\nTask errors:\n  ${WEB}.1: no suitable node (insufficient resources on 2 nodes)`,
+    );
+  });
+
   it('times out when the stack never lists a service', async () => {
     script.on(REPLICAS, { stdout: '' });
 
