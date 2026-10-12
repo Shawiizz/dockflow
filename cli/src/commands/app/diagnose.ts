@@ -28,6 +28,14 @@ const ERROR_PATTERNS: Array<{
     suggestion: (m: RegExpMatchArray) => `Create the directory on the server: mkdir -p ${m[1]}`,
   },
   {
+    pattern: /no suitable node \(([^)]*)\)/i,
+    suggestion: (m: RegExpMatchArray) => `No node can run the task (${m[1]}). Check its placement constraints, the node labels and free resources: docker node ls`,
+  },
+  {
+    pattern: /pull access denied|manifest unknown|repository does not exist|unauthorized: /i,
+    suggestion: 'The image cannot be pulled from its registry. Check the image name and tag, and the registry credentials in config.yml.',
+  },
+  {
     pattern: /no such image|image not found/i,
     suggestion: 'The Docker image may not have been pushed. Try redeploying.',
   },
@@ -55,9 +63,15 @@ const ERROR_PATTERNS: Array<{
     pattern: /network .+ not found/i,
     suggestion: 'Docker network may have been removed. Try redeploying the stack.',
   },
+  {
+    pattern: /non-zero exit \((\d+)\)/i,
+    suggestion: (m: RegExpMatchArray) => m[1] === '137'
+      ? 'The container was killed (exit 137), most often for using more memory than its limit. Read its output with: dockflow logs <env> <service>'
+      : `The container exited with code ${m[1]}. Read its output with: dockflow logs <env> <service>`,
+  },
 ];
 
-function analyzeTaskError(error: string): string {
+export function analyzeTaskError(error: string): string {
   for (const { pattern, suggestion } of ERROR_PATTERNS) {
     const match = error.match(pattern);
     if (match) {
