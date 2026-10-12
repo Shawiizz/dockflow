@@ -166,7 +166,7 @@ async function removeStack(connection: SSHKeyConnection, stackName: string): Pro
   const spinner = createSpinner();
   spinner.start('Removing accessories stack...');
 
-  const result = await sshExec(connection, `docker stack rm ${stackName}`);
+  const result = await sshExec(connection, `docker stack rm ${shellQuote(stackName)}`);
   if (result.exitCode !== 0) {
     spinner.fail('Remove failed');
     throw new DockerError(result.stderr || 'Failed to remove stack');
@@ -175,13 +175,19 @@ async function removeStack(connection: SSHKeyConnection, stackName: string): Pro
   spinner.text = 'Waiting for stack removal...';
   for (let attempts = 0; attempts < STACK_REMOVAL_MAX_ATTEMPTS; attempts++) {
     const checkResult = await sshExec(connection,
-      `docker stack ps ${stackName} 2>&1 | grep -v "Nothing found" | wc -l`
+      `docker stack ps ${shellQuote(stackName)} 2>&1 | grep -v "Nothing found" | wc -l`
     );
-    if (parseInt(checkResult.stdout.trim(), 10) <= 1) break;
+    if (parseInt(checkResult.stdout.trim(), 10) <= 1) {
+      spinner.succeed('Accessories stack removed');
+      return;
+    }
     await new Promise(resolve => setTimeout(resolve, STACK_REMOVAL_POLL_INTERVAL_MS));
   }
 
-  spinner.succeed('Accessories stack removed');
+  spinner.fail('Accessories stack still being removed');
+  throw new DockerError(`${stackName} still has tasks after ${STACK_REMOVAL_MAX_ATTEMPTS * STACK_REMOVAL_POLL_INTERVAL_MS / 1000}s`, {
+    suggestion: 'Swarm keeps removing it; run the command again in a moment to finish.',
+  });
 }
 
 /** Waits up to a minute for the stack's containers to leave the node: until then they hold their volumes. */

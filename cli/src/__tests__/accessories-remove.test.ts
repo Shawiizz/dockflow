@@ -43,7 +43,7 @@ beforeEach(() => {
 describe('removeAccessories', () => {
   it('clears the accessories hash of the app stack, so the next deploy brings them back', async () => {
     await remove({});
-    expect(ran('manager', 'docker stack rm demo-production-accessories')).toBe(true);
+    expect(ran('manager', "docker stack rm 'demo-production-accessories'")).toBe(true);
     expect(ran('manager', "rm -rf '/var/lib/dockflow/accessories/demo-production'")).toBe(true);
   });
 
