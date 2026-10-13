@@ -585,6 +585,22 @@
         host: 203.0.113.10
         tags: [production]
 
+- name: servers with a private address, IPv4 and IPv6
+  file: servers
+  cliValid: true
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        host: 203.0.113.10
+        private_host: 10.0.0.5
+        tags: [production]
+      worker-1:
+        role: worker
+        host: manager.example.com
+        private_host: fd00::6
+        tags: [production]
+
 - name: server without a host
   file: servers
   cliValid: true
@@ -690,6 +706,37 @@
   yaml: |
     defaults:
       user: deploy
+
+- name: private address that is a host name
+  file: servers
+  cliValid: false
+  mcpErrors: [servers.main.private_host, must be an IP address]
+  yaml: |
+    servers:
+      main:
+        host: 203.0.113.10
+        private_host: db.internal
+        tags: [production]
+
+- name: private address that is a range
+  file: servers
+  cliValid: false
+  mcpErrors: [servers.main.private_host, must be an IP address]
+  yaml: |
+    servers:
+      main:
+        private_host: 10.0.0.0/24
+        tags: [production]
+
+- name: private address that is a number
+  file: servers
+  cliValid: false
+  mcpErrors: []
+  yaml: |
+    servers:
+      main:
+        private_host: 10
+        tags: [production]
 
 - name: empty servers
   file: servers

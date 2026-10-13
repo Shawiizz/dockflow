@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import * as output from '../utils/output';
 import type { ResolvedServer, SSHExecResult, SSHKeyConnection } from '../types';
 import { CLIError, ErrorCode } from '../utils/errors';
 
@@ -19,7 +20,7 @@ mock.module('../utils/ssh', () => ({
   },
 }));
 
-const { joinWorkers, readiness, requireAllJoined } = await import('../commands/setup/swarm');
+const { initializeSwarm, joinWorkers, readiness, requireAllJoined, swarmAddress, swarmJoinCommand } = await import('../commands/setup/swarm');
 
 const worker = (name: string): ResolvedServer => ({ name, host: `${name}.example.com`, port: 22, user: 'deploy' }) as ResolvedServer;
 const connect = (w: ResolvedServer): SSHKeyConnection | null =>
@@ -51,6 +52,102 @@ describe('joinWorkers', () => {
       { name: 'broken', reason: 'could not join the cluster' },
     ]);
     expect(executed.filter((call) => call.command.startsWith('docker swarm join')).map((call) => call.host)).toEqual(['broken.example.com', 'fine.example.com']);
+  });
+});
+
+describe('private_host', () => {
+  const manager = (extra: Partial<ResolvedServer> = {}): ResolvedServer =>
+    ({ name: 'manager-1', role: 'manager', host: '203.0.113.10', port: 22, user: 'deploy', ...extra }) as ResolvedServer;
+  const connection: SSHKeyConnection = { host: '203.0.113.10', port: 22, user: 'deploy', privateKey: 'test-key' };
+  const warnings: string[] = [];
+  let warn: ReturnType<typeof spyOn>;
+
+  beforeEach(() => {
+    warnings.length = 0;
+    warn = spyOn(output, 'printWarning').mockImplementation((message: string) => void warnings.push(message));
+  });
+  afterEach(() => warn.mockRestore());
+
+  const swarmCommands = () => executed.map((call) => call.command).filter((command) => command.startsWith('docker swarm'));
+
+  it('is the address Swarm uses, and the host when there is none', () => {
+    expect(swarmAddress(manager())).toBe('203.0.113.10');
+    expect(swarmAddress(manager({ privateHost: '10.0.0.5' }))).toBe('10.0.0.5');
+  });
+
+  it('initialises the Swarm on the private address while SSH keeps using the host', async () => {
+    respond = (_host, command) => (command.startsWith('docker info') ? { stdout: 'inactive\n' } : undefined);
+
+    const init = await initializeSwarm(connection, manager({ privateHost: '10.0.0.5' }));
+
+    expect(swarmCommands()).toContain("docker swarm init --advertise-addr '10.0.0.5' 2>&1");
+    expect(init?.internalIp).toBe('10.0.0.5');
+    expect(executed.every((call) => call.host === '203.0.113.10')).toBe(true);
+  });
+
+  it('initialises on the host when no private address is set', async () => {
+    respond = (_host, command) => (command.startsWith('docker info') ? { stdout: 'inactive\n' } : undefined);
+    const init = await initializeSwarm(connection, manager());
+    expect(swarmCommands()).toContain("docker swarm init --advertise-addr '203.0.113.10' 2>&1");
+    expect(init?.internalIp).toBe('203.0.113.10');
+  });
+
+  it('builds the join of a worker with the manager address, and its own advertised address', () => {
+    expect(swarmJoinCommand('SWMTKN-1-abc', '10.0.0.5')).toBe("docker swarm join --token 'SWMTKN-1-abc' '10.0.0.5:2377'");
+    expect(swarmJoinCommand('SWMTKN-1-abc', '10.0.0.5', '10.0.0.6')).toBe(
+      "docker swarm join --token 'SWMTKN-1-abc' --advertise-addr '10.0.0.6' '10.0.0.5:2377'",
+    );
+    expect(swarmJoinCommand('t', 'fd00::5')).toBe("docker swarm join --token 't' '[fd00::5]:2377'");
+  });
+
+  it('joins a worker through the manager private address, advertising its own', async () => {
+    respond = (_host, command) => (command.startsWith('docker info') ? { stdout: 'inactive\n' } : undefined);
+
+    const failures = await joinWorkers([{ ...worker('w1'), privateHost: '10.0.0.6' }, worker('w2')], connect, '10.0.0.5', 'SWMTKN-1-abc');
+
+    expect(failures).toEqual([]);
+    expect(swarmCommands().filter((command) => command.startsWith('docker swarm join'))).toEqual([
+      "docker swarm join --token 'SWMTKN-1-abc' --advertise-addr '10.0.0.6' '10.0.0.5:2377'",
+      "docker swarm join --token 'SWMTKN-1-abc' '10.0.0.5:2377'",
+    ]);
+  });
+
+  it('warns, and changes nothing, when a node already in the cluster advertises another address', async () => {
+    respond = (_host, command) => {
+      if (command === "docker info --format '{{.Swarm.LocalNodeState}}'") return { stdout: 'active\n' };
+      if (command === "docker info --format '{{.Swarm.NodeAddr}}'") return { stdout: '203.0.113.20\n' };
+      return undefined;
+    };
+
+    await joinWorkers([{ ...worker('w1'), privateHost: '10.0.0.6' }], connect, '10.0.0.5', 'SWMTKN-1-abc');
+
+    expect(swarmCommands()).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('w1 advertises 203.0.113.20 in the Swarm, not its private_host 10.0.0.6');
+    expect(warnings[0]).toContain('docker swarm leave --force');
+  });
+
+  it('says nothing when the node already advertises its private address, or has none', async () => {
+    respond = (_host, command) => {
+      if (command === "docker info --format '{{.Swarm.LocalNodeState}}'") return { stdout: 'active\n' };
+      if (command === "docker info --format '{{.Swarm.NodeAddr}}'") return { stdout: '10.0.0.6\n' };
+      return undefined;
+    };
+    await joinWorkers([{ ...worker('w1'), privateHost: '10.0.0.6' }, worker('w2')], connect, '10.0.0.5', 'SWMTKN-1-abc');
+    expect(warnings).toEqual([]);
+    expect(executed.filter((call) => call.command.includes('NodeAddr'))).toHaveLength(1);
+  });
+
+  it('warns about a manager whose Swarm already exists on another address', async () => {
+    respond = (_host, command) => {
+      if (command === "docker info --format '{{.Swarm.LocalNodeState}}'") return { stdout: 'active\n' };
+      if (command === "docker info --format '{{.Swarm.NodeAddr}}'") return { stdout: '203.0.113.10\n' };
+      if (command.startsWith('docker swarm join-token')) return { stdout: 'SWMTKN-1-abc\n' };
+      return undefined;
+    };
+    await initializeSwarm(connection, manager({ privateHost: '10.0.0.5' }));
+    expect(warnings[0]).toContain('manager-1 advertises 203.0.113.10 in the Swarm, not its private_host 10.0.0.5');
+    expect(swarmCommands().some((command) => command.startsWith('docker swarm init'))).toBe(false);
   });
 });
 

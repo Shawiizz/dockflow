@@ -55,3 +55,30 @@ describe('invalid record keys', () => {
     );
   });
 });
+
+describe('private_host', () => {
+  const messages = (privateHost: unknown) => {
+    const result = ServersBaseSchema.safeParse({ servers: { main: { host: '203.0.113.10', private_host: privateHost, tags: ['production'] } } });
+    return result.success ? [] : result.error.issues.map((issue) => issue.message);
+  };
+
+  it('accepts an IPv4 or IPv6 address, and is optional', () => {
+    expect(messages('10.0.0.5')).toEqual([]);
+    expect(messages('fd00::5')).toEqual([]);
+    const parsed = ServersBaseSchema.parse({ servers: { main: { tags: ['production'] } } });
+    expect(parsed.servers.main.private_host).toBeUndefined();
+  });
+
+  it('keeps the address', () => {
+    const parsed = ServersBaseSchema.parse({ servers: { main: { private_host: '10.0.0.5', tags: ['production'] } } });
+    expect(parsed.servers.main.private_host).toBe('10.0.0.5');
+  });
+
+  it('refuses a host name, a range and a number: --advertise-addr takes an address', () => {
+    for (const value of ['db.internal', '10.0.0.0/24', '10.0.0.999', '', 5]) {
+      expect(messages(value).length).toBeGreaterThan(0);
+    }
+    expect(messages('db.internal')).toContain('must be an IP address, e.g. 10.0.0.5');
+    expect(messages('10.0.0.0/24')).toContain('must be an IP address, e.g. 10.0.0.5');
+  });
+});

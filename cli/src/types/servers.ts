@@ -28,6 +28,8 @@ export interface ServerConfig {
   role?: ServerRole;
   /** Server hostname or IP (can be overridden by CI secret) */
   host?: string;
+  /** Private IP of the server: Swarm traffic between nodes goes through it, SSH still uses `host` */
+  private_host?: string;
   /** Environment tags this server belongs to (e.g., production, staging) */
   tags: string[];
   /** SSH user (overrides defaults.user) */
@@ -84,6 +86,8 @@ export interface ResolvedServer {
   port: number;
   /** SSH user */
   user: string;
+  /** Private IP Swarm advertises and joins through, when servers.yml sets one */
+  privateHost?: string;
   /** Pinned SSH host key fingerprint, when the connection string or a secret carries one */
   hostKey?: string;
   /** Merged environment variables (all → tag → server → CI) */

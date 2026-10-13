@@ -328,6 +328,13 @@ function checkEnvVars(env: unknown, path: Path, issues: Issues): void {
   }
 }
 
+function checkPrivateHost(server: Doc, path: Path, issues: Issues): void {
+  const { private_host: address } = server;
+  if (address === undefined) return;
+  if (typeof address !== 'string') issues.add([...path, 'private_host'], 'must be a string');
+  else if (address.includes('/') || !isIpOrCidr(address)) issues.add([...path, 'private_host'], 'must be an IP address, e.g. 10.0.0.5');
+}
+
 function checkServers(servers: unknown, issues: Issues): void {
   if (!isMap(servers)) {
     issues.add(['servers'], 'must be a map of server names to servers');
@@ -351,6 +358,7 @@ function checkServers(servers: unknown, issues: Issues): void {
       issues.add([...path, 'role'], 'must be "manager" or "worker"');
     }
     checkString(server, 'host', path, issues);
+    checkPrivateHost(server, path, issues);
     checkTags(server.tags, [...path, 'tags'], issues);
     checkUser(server, path, issues);
     checkPort(server, path, issues);

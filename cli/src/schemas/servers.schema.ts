@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod';
+import { isIpOrCidr } from './config.schema';
 
 /**
  * Environment variables dictionary schema
@@ -50,6 +51,11 @@ export const ServerConfigSchema = z.object({
     .optional()
     .describe('Server hostname or IP address (can be overridden by CI secrets)'),
   
+  private_host: z.string()
+    .refine((address) => !address.includes('/') && isIpOrCidr(address), { message: 'must be an IP address, e.g. 10.0.0.5' })
+    .optional()
+    .describe('Private IP address of the server: Swarm traffic between nodes goes through it, SSH still uses host'),
+
   tags: z.array(
     z.string()
       .min(1, 'Tag cannot be empty')

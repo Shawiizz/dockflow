@@ -163,6 +163,7 @@ sequences such as `\n` are not expanded.
 | `tags` | Yes | - | Environment tags (e.g., `[production]`) |
 | `env` | No | - | Server-specific environment variables |
 | `host` | No | From connection string | Override host (rarely needed) |
+| `private_host` | No | - | Private IP address of the server, for [Swarm traffic between the nodes](#private-network) |
 | `user` | No | `defaults.user` | Override SSH user |
 | `port` | No | `defaults.port` | Override SSH port |
 
@@ -223,7 +224,7 @@ dockflow setup swarm production
 This command will:
 - Open the Swarm ports (2377/tcp, 7946/tcp and udp, 4789/udp) on all nodes, with ufw, firewalld or iptables, when the environment has workers; a single-node cluster opens none
 - Initialize Swarm on the manager
-- Join workers to the cluster
+- Join workers to the cluster, through the manager's [private address](#private-network) when the servers have one
 
 If a worker cannot be joined (no SSH key for it, or `docker swarm join` fails), the command
 names it, exits with an error and does not report the cluster as ready. Fix the cause and run
@@ -250,6 +251,27 @@ Swarm automatically distributes containers to workers based on resource availabi
 <Callout type="info">
   You only need to run `setup swarm` once per environment. After that, just use `dockflow deploy`.
 </Callout>
+
+### Private network
+
+When the nodes share a private network, give each its address with `private_host`, so that Swarm traffic (cluster management, node communication, the overlay network) stays off the public network:
+
+```yaml
+servers:
+  manager:
+    role: manager
+    tags: [production]
+    private_host: 10.0.0.5
+
+  worker_1:
+    role: worker
+    tags: [production]
+    private_host: 10.0.0.6
+```
+
+`dockflow setup swarm` then runs `docker swarm init --advertise-addr` with the manager's `private_host`, and each worker joins the manager at that address with `--advertise-addr` set to its own `private_host`. A server without one uses its `host`. SSH always uses `host` (or the connection string): `private_host` only changes what Swarm advertises.
+
+`private_host` must be an IP address (IPv4 or IPv6), which is what Docker's `--advertise-addr` takes. It applies when a node joins the cluster: a node already in a Swarm keeps the address it advertised, and `setup swarm` warns when that is not its `private_host`. To move such a node, have it leave the cluster (`docker swarm leave --force`) and run `setup swarm` again.
 
 ## Deploy User Permissions
 

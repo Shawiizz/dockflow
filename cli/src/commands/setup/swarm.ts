@@ -18,7 +18,7 @@ import {
   getServerPrivateKey,
   getAvailableEnvironments
 } from '../../utils/servers';
-import { sshExec } from '../../utils/ssh';
+import { sshExec, shellQuote } from '../../utils/ssh';
 import { loadSecrets } from '../../utils/secrets';
 import { openPorts } from './firewall';
 import type { SSHKeyConnection, ResolvedServer } from '../../types';
@@ -50,6 +50,34 @@ function buildConnection(env: string, server: ResolvedServer): SSHKeyConnection 
   };
 }
 
+/** The address Swarm nodes reach this one on: the private address when servers.yml sets one. */
+export function swarmAddress(server: ResolvedServer): string {
+  return server.privateHost ?? server.host;
+}
+
+/** `docker swarm join` for a worker; an IPv6 manager address is bracketed. */
+export function swarmJoinCommand(joinToken: string, managerAddress: string, advertiseAddress?: string): string {
+  const manager = managerAddress.includes(':') ? `[${managerAddress}]` : managerAddress;
+  const advertise = advertiseAddress ? ` --advertise-addr ${shellQuote(advertiseAddress)}` : '';
+  return `docker swarm join --token ${shellQuote(joinToken)}${advertise} ${shellQuote(`${manager}:2377`)}`;
+}
+
+/**
+ * A node already in a cluster keeps the address it advertised when it joined: private_host does not
+ * move it, so the operator is told instead of being left with traffic on the public network.
+ */
+async function warnIfAdvertisedElsewhere(connection: SSHKeyConnection, server: ResolvedServer): Promise<void> {
+  if (!server.privateHost) return;
+  const result = await sshExec(connection, "docker info --format '{{.Swarm.NodeAddr}}'");
+  const advertised = result.stdout.trim();
+  if (result.exitCode === 0 && advertised !== '' && advertised !== server.privateHost) {
+    printWarning(
+      `${server.name} advertises ${advertised} in the Swarm, not its private_host ${server.privateHost}: the cluster keeps using ${advertised}. ` +
+      'To move it, have the node leave the cluster (`docker swarm leave --force`) and run setup swarm again.',
+    );
+  }
+}
+
 /**
  * Open firewall ports for Swarm (delegates to shared helper)
  */
@@ -60,11 +88,12 @@ async function openSwarmPorts(connection: SSHKeyConnection, serverName: string):
 /**
  * Initialize Swarm on manager and return join token + internal IP for workers to join
  */
-async function initializeSwarm(
+export async function initializeSwarm(
   connection: SSHKeyConnection, 
-  managerName: string,
-  managerHost: string
+  manager: ResolvedServer,
 ): Promise<{ token: string; internalIp: string } | null> {
+  const managerName = manager.name;
+  const managerHost = swarmAddress(manager);
   const spinner = createSpinner();
   spinner.start(`Initializing Docker Swarm on ${managerName}...`);
   
@@ -105,12 +134,13 @@ async function initializeSwarm(
       const tokenResult = await sshExec(connection, 'docker swarm join-token worker -q');
       const token = tokenResult.stdout.trim();
       spinner.succeed(`Docker Swarm already active on ${managerName}`);
+      await warnIfAdvertisedElsewhere(connection, manager);
       return { token, internalIp };
     }
     
     // Initialize new swarm
     const initResult = await sshExec(connection, 
-      `docker swarm init --advertise-addr ${internalIp} 2>&1`
+      `docker swarm init --advertise-addr ${shellQuote(internalIp)} 2>&1`
     );
     
     if (initResult.exitCode !== 0) {
@@ -135,10 +165,11 @@ async function initializeSwarm(
  */
 async function joinWorkerToSwarm(
   connection: SSHKeyConnection,
-  workerName: string,
+  worker: ResolvedServer,
   managerHost: string,
   joinToken: string
 ): Promise<boolean> {
+  const workerName = worker.name;
   const spinner = createSpinner();
   spinner.start(`Joining ${workerName} to Swarm cluster...`);
   
@@ -149,6 +180,7 @@ async function joinWorkerToSwarm(
     
     if (state === 'active') {
       spinner.succeed(`${workerName} is already in a Swarm cluster`);
+      await warnIfAdvertisedElsewhere(connection, worker);
       return true;
     }
     
@@ -158,9 +190,7 @@ async function joinWorkerToSwarm(
     }
     
     // Join the swarm
-    const joinResult = await sshExec(connection, 
-      `docker swarm join --token ${joinToken} ${managerHost}:2377`
-    );
+    const joinResult = await sshExec(connection, swarmJoinCommand(joinToken, managerHost, worker.privateHost));
     
     if (joinResult.exitCode !== 0) {
       spinner.fail(`Failed to join ${workerName}: ${joinResult.stderr || joinResult.stdout}`);
@@ -195,7 +225,7 @@ export async function joinWorkers(
       failures.push({ name: worker.name, reason: 'no SSH key' });
       continue;
     }
-    if (!(await joinWorkerToSwarm(connection, worker.name, managerHost, joinToken))) {
+    if (!(await joinWorkerToSwarm(connection, worker, managerHost, joinToken))) {
       failures.push({ name: worker.name, reason: 'could not join the cluster' });
     }
   }
@@ -318,7 +348,7 @@ export async function runSetupSwarm(env: string): Promise<void> {
 
   // Step 2: Initialize Swarm on manager
   printInfo('Step 2/3: Initializing Swarm on manager...');
-  const swarmInit = await initializeSwarm(managerConnection, manager.name, manager.host);
+  const swarmInit = await initializeSwarm(managerConnection, manager);
   if (!swarmInit) {
     throw new CLIError(
       'Failed to initialize Swarm cluster',
