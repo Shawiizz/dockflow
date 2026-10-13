@@ -5,6 +5,8 @@ import {
   assertReleaseName,
   computeOrphanImages,
   extractComposeImages,
+  type ImageNode,
+  missingImagesCommand,
   parseReleaseList,
   Release,
   releaseEpoch,
@@ -505,5 +507,154 @@ describe('Release rollback and the accessories', () => {
     expect(await release.rollback(STACK, fakeBackend({ accessories: new Error('ssh down') }).backend)).toBe('1.0.0');
     expect(accessoriesWarnings()).toEqual([]);
     expect(readlinkSync(join(stackDir(), 'current'))).toBe(join(stackDir(), '1.0.0'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Images on the nodes before a rollback without registry
+// ---------------------------------------------------------------------------
+
+describe('extractComposeImages built only', () => {
+  const compose = [
+    'services:',
+    '  web:',
+    '    image: shop-web-production:1.0.0',
+    '    build: ./web',
+    '  api:',
+    '    image: shop-api-production:1.0.0',
+    '    build:',
+    '      context: ./api',
+    '  cache:',
+    '    image: redis:7',
+    '',
+  ].join('\n');
+
+  it('keeps the images of the services with a build section', () => {
+    expect(extractComposeImages(compose, true)).toEqual(['shop-web-production:1.0.0', 'shop-api-production:1.0.0']);
+    expect(extractComposeImages(compose)).toEqual(['shop-web-production:1.0.0', 'shop-api-production:1.0.0', 'redis:7']);
+  });
+});
+
+describe('Release rollback and the images on the nodes', () => {
+  const COMPOSE = [
+    'services:',
+    '  web:',
+    '    image: shop-web-production:1.0.0',
+    '    build: ./web',
+    '  api:',
+    '    image: shop-api-production:1.0.0',
+    '    build: ./api',
+    '  cache:',
+    '    image: redis:7',
+    '',
+  ].join('\n');
+  // a docker that has the images listed, one per line, in the file `images`
+  const FAKE_DOCKER = ['#!/bin/sh', '[ "$1 $2" = "image inspect" ] || exit 2', 'grep -qxF "$3" images'].join('\n');
+
+  let manager: LocalShell;
+  let worker: LocalShell;
+  let release: Release;
+  let warnings: string[];
+  let spies: { mockRestore(): void }[] = [];
+  const stackDir = (): string => join(manager.root, 'stacks', STACK);
+
+  /** a node of the cluster holding `images`, whose shell runs the fake docker */
+  function node(shell: LocalShell, name: string, images: string[]): ImageNode {
+    mkdirSync(join(shell.root, 'bin'), { recursive: true });
+    writeFileSync(join(shell.root, 'bin', 'docker'), FAKE_DOCKER, { mode: 0o755 });
+    writeFileSync(join(shell.root, 'images'), images.map((image) => `${image}\n`).join(''));
+    return { name, shell: { run: (command, stdin) => shell.run(`PATH="$PWD/bin:$PATH"; ${command}`, stdin) } };
+  }
+
+  const releaseImages = ['shop-web-production:1.0.0', 'shop-api-production:1.0.0'];
+
+  beforeEach(async () => {
+    manager = new LocalShell();
+    worker = new LocalShell();
+    release = new Release(manager, { stacksDir: join(manager.root, 'stacks') });
+    warnings = [];
+    spies = [
+      spyOn(output, 'printWarning').mockImplementation((message: string) => {
+        warnings.push(message);
+      }),
+      spyOn(output, 'printInfo').mockImplementation(() => {}),
+    ];
+    await release.createRelease(STACK, '1.0.0', COMPOSE, 'stack 1.0.0\n', meta('1.0.0', 100));
+    await release.createRelease(STACK, '1.0.1', COMPOSE.replaceAll('1.0.0', '1.0.1'), 'stack 1.0.1\n', meta('1.0.1', 200));
+  });
+
+  afterEach(() => {
+    for (const spy of spies) spy.mockRestore();
+    rmSync(manager.root, { recursive: true, force: true });
+    rmSync(worker.root, { recursive: true, force: true });
+  });
+
+  test.if(hasPosixShell)('missingImagesCommand lists the images a node does not have', async () => {
+    const result = await node(worker, 'worker', ['shop-web-production:1.0.0']).shell.run(missingImagesCommand(releaseImages));
+    expect(result.stdout).toBe('shop-api-production:1.0.0\n');
+  });
+
+  test.if(hasPosixShell)('fails at once, naming the missing images and the nodes, and changes nothing', async () => {
+    const nodes = [node(manager, 'server_1', releaseImages), node(worker, 'agent_1', ['shop-web-production:1.0.0'])];
+    const { backend, redeployed } = fakeBackend();
+
+    const failure = await release.rollback(STACK, backend, null, null, { imageNodes: nodes }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(DeployError);
+    expect((failure as DeployError).code).toBe(ErrorCode.ROLLBACK_FAILED);
+    expect((failure as DeployError).message).toBe(
+      'Cannot roll back to 1.0.0: its images are missing on agent_1 (shop-api-production:1.0.0)',
+    );
+    expect((failure as DeployError).suggestion).toContain('Deploy 1.0.0 again');
+    expect(redeployed).toEqual([]);
+    expect(readlinkSync(join(stackDir(), 'current'))).toBe(join(stackDir(), '1.0.1'));
+  });
+
+  test.if(hasPosixShell)('names every node that lacks something', async () => {
+    const nodes = [node(manager, 'server_1', ['shop-api-production:1.0.0']), node(worker, 'agent_1', [])];
+
+    const failure = await release.rollback(STACK, fakeBackend().backend, null, null, { imageNodes: nodes }).catch((error: unknown) => error);
+
+    expect((failure as DeployError).message).toBe(
+      'Cannot roll back to 1.0.0: its images are missing on server_1 (shop-web-production:1.0.0); agent_1 (shop-web-production:1.0.0, shop-api-production:1.0.0)',
+    );
+  });
+
+  test.if(hasPosixShell)('rolls back when every node has the images; an image Dockflow does not build is not asked for', async () => {
+    const nodes = [node(manager, 'server_1', releaseImages), node(worker, 'agent_1', releaseImages)];
+    const { backend, redeployed } = fakeBackend();
+
+    expect(await release.rollback(STACK, backend, null, null, { imageNodes: nodes })).toBe('1.0.0');
+    expect(redeployed).toEqual(['stack 1.0.0\n']);
+  });
+
+  test.if(hasPosixShell)('checks the target of the automatic rollback of a failed deploy too', async () => {
+    const nodes = [node(worker, 'agent_1', [])];
+    const previous = join(stackDir(), '1.0.0');
+
+    await expect(release.rollback(STACK, fakeBackend().backend, '1.0.1', previous, { imageNodes: nodes })).rejects.toMatchObject({
+      code: ErrorCode.ROLLBACK_FAILED,
+    });
+  });
+
+  test.if(hasPosixShell)('does not look at the nodes when none is given, as with a registry', async () => {
+    const { backend, redeployed } = fakeBackend();
+    expect(await release.rollback(STACK, backend)).toBe('1.0.0');
+    expect(redeployed).toEqual(['stack 1.0.0\n']);
+  });
+
+  test.if(hasPosixShell)('a node that cannot be asked is reported and does not block the rollback', async () => {
+    const unreachable: ImageNode = {
+      name: 'agent_2',
+      shell: {
+        async run() {
+          throw new Error('Timed out');
+        },
+      },
+    };
+    const nodes = [node(manager, 'server_1', releaseImages), unreachable];
+
+    expect(await release.rollback(STACK, fakeBackend().backend, null, null, { imageNodes: nodes })).toBe('1.0.0');
+    expect(warnings).toContain('Could not check the images on agent_2: Timed out');
   });
 });

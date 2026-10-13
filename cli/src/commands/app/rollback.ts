@@ -7,7 +7,10 @@ import { getPerformer } from '../../utils/config';
 import { createSpinner } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
+import * as Compose from '../../services/compose';
 import { Release } from '../../services/release';
+import { sshShell } from '../../utils/remote-shell';
+import { nodesOf } from './nodes';
 import { Audit } from '../../services/audit';
 import { Metrics } from '../../services/metrics';
 import * as Notification from '../../services/notification';
@@ -24,7 +27,7 @@ export function registerRollbackCommand(program: Command): void {
     .helpGroup('Operate')
     .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .action(withErrorHandler(withResolvedEnv(async (env: string, service: string | undefined, options: { server?: string }) => {
-      const { config, stackName, connection } = await resolveEnv(env, options.server);
+      const { config, stackName, connection, serverName } = await resolveEnv(env, options.server);
 
       if (config.no_services) {
         throw new DeployError(
@@ -61,7 +64,11 @@ export function registerRollbackCommand(program: Command): void {
           spinner.start('Rolling back to previous release...');
           const releases = new Release(connection);
           const rollbackStartedAt = new Date();
-          const rolledBackTo = await releases.rollback(stackName, orchestrator);
+          // without a registry the nodes cannot pull what a release needs
+          const imageNodes = Compose.usesRegistry(config)
+            ? undefined
+            : nodesOf(env, { name: serverName, connection }).map((node) => ({ name: node.name, shell: sshShell(node.connection) }));
+          const rolledBackTo = await releases.rollback(stackName, orchestrator, null, null, { imageNodes });
           spinner.succeed(`Rolled back to ${rolledBackTo}`);
           await runPostRollbackHealthChecks(connection, orchestrator, stackName, config.health_checks, rollbackStartedAt);
 

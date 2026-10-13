@@ -426,7 +426,10 @@ async function execute(ctx: DeployContext): Promise<void> {
       // rollback() handles its own cleanup — calling removeRelease first would delete the failed release before rollback can list it.
       try {
         const rollbackStartedAt = new Date();
-        rolledBackTo = await releases.rollback(ctx.stackName, orchestrator, ctx.deployVersion, previousSymlink);
+        const imageNodes = Compose.usesRegistry(ctx.config)
+          ? undefined
+          : [ctx.cluster.manager, ...ctx.cluster.otherManagers, ...ctx.cluster.workers].map((node) => ({ name: node.name, shell: sshShell(node.connection) }));
+        rolledBackTo = await releases.rollback(ctx.stackName, orchestrator, ctx.deployVersion, previousSymlink, { imageNodes });
         printWarning(`Rolled back to ${rolledBackTo}`);
         await runPostRollbackHealthChecks(through.connection, orchestrator, ctx.stackName, ctx.config.health_checks, rollbackStartedAt);
       }

@@ -169,9 +169,10 @@ export function selectRollbackTarget(
 /**
  * The images of the services of one or more compose documents (several files read one after the
  * other are separated by `---`). Only `services.*.image`: an `image:` in a comment or a label is
- * not an image. An unreadable document contributes nothing.
+ * not an image. An unreadable document contributes nothing. With `builtOnly`, only the services
+ * with a `build` section: the images Dockflow builds and distributes itself.
  */
-export function extractComposeImages(yamlText: string): string[] {
+export function extractComposeImages(yamlText: string, builtOnly = false): string[] {
   const images: string[] = [];
   for (const doc of parseAllDocuments(yamlText)) {
     if (doc.errors.length > 0) continue;
@@ -185,6 +186,7 @@ export function extractComposeImages(yamlText: string): string[] {
     if (!isRecord(services)) continue;
     for (const service of Object.values(services)) {
       const image = isRecord(service) ? service.image : undefined;
+      if (builtOnly && !(isRecord(service) && hasBuildSection(service))) continue;
       if (typeof image === 'string' && image !== '' && !images.includes(image)) images.push(image);
     }
   }
@@ -193,6 +195,16 @@ export function extractComposeImages(yamlText: string): string[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasBuildSection(service: Record<string, unknown>): boolean {
+  const build = service.build;
+  return typeof build === 'string' ? build !== '' : isRecord(build);
+}
+
+/** Prints, one per line, the images among `images` the node does not have. */
+export function missingImagesCommand(images: string[]): string {
+  return `for img in ${images.map(shellQuote).join(' ')}; do docker image inspect "$img" >/dev/null 2>&1 || echo "$img"; done`;
 }
 
 /**
@@ -236,6 +248,17 @@ export function computeOrphanImages(
 
 function failure(result: { stderr: string; exitCode: number }): string {
   return result.stderr.trim() || `exit ${result.exitCode}`;
+}
+
+/** A node that may run the services, where the images of a release have to be. */
+export interface ImageNode {
+  name: string;
+  shell: RemoteShell;
+}
+
+export interface RollbackOptions {
+  /** the nodes the images were distributed to (no registry): the rollback is refused when one lacks an image */
+  imageNodes?: ImageNode[];
 }
 
 export interface ReleaseOptions {
@@ -423,6 +446,7 @@ export class Release {
     orchestrator: StackBackend,
     failedVersion?: string | null,
     previousReleasePath?: string | null,
+    options: RollbackOptions = {},
   ): Promise<string> {
     let previousVersion: string;
     if (previousReleasePath) {
@@ -464,6 +488,8 @@ export class Release {
       );
     }
 
+    if (options.imageNodes?.length) await this.requireImagesOnNodes(previousDir, previousVersion, options.imageNodes);
+
     const deployResult = await orchestrator.redeploy(stackName, stackResult.stdout);
     if (!deployResult.success) {
       throw new DeployError(deployResult.error.message, ErrorCode.ROLLBACK_FAILED);
@@ -498,6 +524,38 @@ export class Release {
     }
 
     return previousVersion;
+  }
+
+  /**
+   * Without a registry, nodes cannot pull a release's images: a node missing one would only show it
+   * as a task that never starts, after the whole convergence timeout.
+   */
+  private async requireImagesOnNodes(dir: string, version: string, nodes: ImageNode[]): Promise<void> {
+    const compose = await this.shell.run(`cat ${shellQuote(`${dir}/${COMPOSE_FILE}`)} 2>/dev/null`);
+    const images = compose.exitCode === 0 ? extractComposeImages(compose.stdout, true) : [];
+    if (images.length === 0) return;
+
+    const command = missingImagesCommand(images);
+    const missing = (
+      await Promise.all(
+        nodes.map(async (node) => {
+          try {
+            const result = await node.shell.run(command);
+            return { node: node.name, images: result.stdout.split('\n').map((line) => line.trim()).filter(Boolean) };
+          } catch (error) {
+            printWarning(`Could not check the images on ${node.name}: ${error instanceof Error ? error.message : String(error)}`);
+            return { node: node.name, images: [] };
+          }
+        }),
+      )
+    ).filter((entry) => entry.images.length > 0);
+    if (missing.length === 0) return;
+
+    throw new DeployError(
+      `Cannot roll back to ${version}: its images are missing on ${missing.map((entry) => `${entry.node} (${entry.images.join(', ')})`).join('; ')}`,
+      ErrorCode.ROLLBACK_FAILED,
+      `No registry holds them, so the nodes cannot pull them. Deploy ${version} again to rebuild and distribute its images.`,
+    );
   }
 
   /** Accessories are not part of the stack a rollback redeploys; say so when they are not what the release ran with. */

@@ -110,6 +110,8 @@ The `current` symlink points to the active release, and `stack.yml` is the rende
 
 `dockflow rollback <env>` goes back to the release before `current`; running it again goes one release further back.
 
+Without a [registry](/en/configuration/registry), the nodes cannot pull the images of a release, so a stack rollback first checks that every image Dockflow built for the target release is present on every node of the environment. If one is missing, the rollback stops at once with exit code 52, naming the images and the nodes, instead of waiting for a service that never starts. Deploy that version again to rebuild and distribute its images. The check also runs for the automatic rollback after a failed deploy.
+
 A rollback re-applies the application stack only. Each release records a digest of the accessories that were running when it was made; after a rollback, Dockflow warns `Accessories were not rolled back: they changed since <version>` when the accessories on the server are no longer those. Releases made before this was recorded give no warning.
 
 ## Health Checks
