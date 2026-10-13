@@ -14,7 +14,11 @@ import {
   cleanupFailedImages,
   failureOutcome,
   cleanupManager,
+  accessoriesKey,
+  deployAccessories,
+  releaseAccessoriesDigest,
 } from '../commands/deploy-phases';
+import { accessoriesDigest, serialize } from '../services/compose';
 import { removeImagesCommand } from '../services/release';
 import * as ssh from '../utils/ssh';
 import { HealthCheck } from '../services/health-check';
@@ -328,5 +332,68 @@ describe('cleanupManager', () => {
     expect(chosen?.name).toBe('m3');
     expect(asked).toEqual(['m1', 'm2', 'm3']);
     expect(await cleanupManager(cluster, async () => false)).toBeNull();
+  });
+});
+
+describe('releaseAccessoriesDigest', () => {
+  const ACCESSORIES = 'services:\n  db:\n    image: postgres:16\n';
+
+  function context(options: { accessories?: string; skip?: boolean; running?: string | null | Error }) {
+    const deployed: unknown[] = [];
+    const reads: string[] = [];
+    const orchestrator = {
+      accessoriesDigest: async (stackName: string) => {
+        reads.push(stackName);
+        if (options.running instanceof Error) throw options.running;
+        return options.running ?? null;
+      },
+      deployAccessory: async (input: unknown) => {
+        deployed.push(input);
+        return { success: true, data: { deployed: true } };
+      },
+    };
+    const ctx = {
+      env: 'production',
+      stackName: 'shop-production',
+      config: {},
+      skipAccessories: options.skip === true,
+      forceAccessories: false,
+      rendered: new Map(options.accessories === undefined ? [] : [[accessoriesKey(), options.accessories]]),
+      orchestrator,
+    } as unknown as DeployContext;
+    return { ctx, deployed, reads };
+  }
+
+  it('is the digest of the accessories compose the deploy sends, so a release and the server compare', async () => {
+    const { ctx, deployed } = context({ accessories: ACCESSORIES });
+
+    const digest = await releaseAccessoriesDigest(ctx);
+    await deployAccessories(ctx);
+
+    const sent = (deployed[0] as { compose: Parameters<typeof serialize>[0] }).compose;
+    expect(digest).toBe(accessoriesDigest(serialize(sent)));
+    expect(digest).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('follows the content of the accessories', async () => {
+    const first = await releaseAccessoriesDigest(context({ accessories: ACCESSORIES }).ctx);
+    const second = await releaseAccessoriesDigest(context({ accessories: ACCESSORIES.replace('16', '17') }).ctx);
+    expect(second).not.toBe(first);
+  });
+
+  it('is the digest on the server when the accessories are skipped', async () => {
+    const { ctx, reads } = context({ accessories: ACCESSORIES, skip: true, running: 'on-the-server' });
+    expect(await releaseAccessoriesDigest(ctx)).toBe('on-the-server');
+    expect(reads).toEqual(['shop-production']);
+  });
+
+  it('is the digest on the server when the project declares no accessory', async () => {
+    expect(await releaseAccessoriesDigest(context({ running: 'on-the-server' }).ctx)).toBe('on-the-server');
+    expect(await releaseAccessoriesDigest(context({ accessories: '# nothing\n', running: 'on-the-server' }).ctx)).toBe('on-the-server');
+  });
+
+  it('is absent without accessories, locally or on the server, or when the server cannot be asked', async () => {
+    expect(await releaseAccessoriesDigest(context({}).ctx)).toBeUndefined();
+    expect(await releaseAccessoriesDigest(context({ running: new Error('ssh down') }).ctx)).toBeUndefined();
   });
 });

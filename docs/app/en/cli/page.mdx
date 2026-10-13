@@ -420,7 +420,7 @@ dockflow scale production worker 5   # Scale workers
 dockflow rollback <env> [service]
 ```
 
-Rollback a service to its previous version, or, without a service, the whole stack to its previous release. It takes the [deploy lock](/en/advanced#deployment-locks) and records the rollback in the audit log. It is not available for upload-only projects (`no_services`): redeploy the commit you want instead.
+Rollback a service to its previous version, or, without a service, the whole stack to its previous release. It takes the [deploy lock](/en/advanced#deployment-locks) and records the rollback in the audit log. It is not available for upload-only projects (`no_services`): redeploy the commit you want instead. A stack rollback does not touch the accessories: it warns when they changed since the release it restores.
 
 | Option | Description |
 |--------|-------------|

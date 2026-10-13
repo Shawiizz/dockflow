@@ -19,6 +19,7 @@ import {
   registryPassword,
   registryWithoutCredentials,
   usesRegistry,
+  accessoriesDigest,
 } from '../services/compose';
 import type { ParsedCompose } from '../services/compose';
 import type { DockflowConfig, ProxyConfig } from '../utils/config';
@@ -774,5 +775,11 @@ describe('registryWithoutCredentials', () => {
   it('says nothing for a registry in use or disabled', () => {
     expect(registryWithoutCredentials(withRegistry({ enabled: true, url: 'ghcr.io', token: 't' }))).toBeNull();
     expect(registryWithoutCredentials(withRegistry({ enabled: false, url: 'ghcr.io' }))).toBeNull();
+  });
+});
+
+describe('accessoriesDigest', () => {
+  it('is the sha256 of the serialized compose, in hex', () => {
+    expect(accessoriesDigest('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
   });
 });

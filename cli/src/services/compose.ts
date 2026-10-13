@@ -9,6 +9,7 @@
  * written to disk. Returns a Map<relativePath, renderedContent>.
  */
 
+import { createHash } from 'crypto';
 import { readFileSync, existsSync } from 'fs';
 import { join, relative, dirname } from 'path';
 import { walkDir } from '../utils/fs';
@@ -782,6 +783,11 @@ export function serialize(compose: ParsedCompose): string {
 // ---------------------------------------------------------------------------
 // Image tags
 // ---------------------------------------------------------------------------
+
+/** What a release records, and the server keeps, to tell whether the accessories changed. */
+export function accessoriesDigest(serializedCompose: string): string {
+  return createHash('sha256').update(serializedCompose).digest('hex');
+}
 
 /** `registry.token` is the documented spelling for GHCR and GitLab; either one authenticates. */
 export function registryPassword(config: DockflowConfig): string | undefined {

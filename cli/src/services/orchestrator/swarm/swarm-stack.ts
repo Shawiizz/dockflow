@@ -108,6 +108,10 @@ export class SwarmStackBackend implements StackBackend {
     }
   }
 
+  accessoriesDigest(stackName: string): Promise<string | null> {
+    return this.ops.readAccessoriesDigest(stackName);
+  }
+
   async redeploy(stackName: string, rawContent: string): Promise<Result<void, DeployError>> {
     try {
       await this.ops.deployStack(stackName, rawContent);

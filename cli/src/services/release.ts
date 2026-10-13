@@ -46,6 +46,8 @@ export interface ReleaseMetadata {
   epoch: number;
   performer: string;
   branch: string;
+  /** digest of the accessories compose running when the release was made; absent from older releases and when there are no accessories */
+  accessories_digest?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -477,6 +479,8 @@ export class Release {
       );
     }
 
+    await this.warnIfAccessoriesChanged(stackName, orchestrator, previousDir, previousVersion);
+
     const linkResult = await this.shell.run(`ln -sfn ${shellQuote(previousDir)} ${shellQuote(`${this.stackDir(stackName)}/${CURRENT_LINK}`)}`);
     if (linkResult.exitCode !== 0) {
       throw new DeployError(
@@ -494,6 +498,19 @@ export class Release {
     }
 
     return previousVersion;
+  }
+
+  /** Accessories are not part of the stack a rollback redeploys; say so when they are not what the release ran with. */
+  private async warnIfAccessoriesChanged(stackName: string, orchestrator: StackBackend, dir: string, version: string): Promise<void> {
+    try {
+      const metadata = await this.shell.run(`cat ${shellQuote(`${dir}/${METADATA_FILE}`)} 2>/dev/null`);
+      const recorded = metadata.exitCode === 0 ? parseMetadata(metadata.stdout)?.accessories_digest : undefined;
+      if (typeof recorded !== 'string' || recorded === '') return;
+      const running = await orchestrator.accessoriesDigest(stackName);
+      if (running !== null && running !== recorded) printWarning(`Accessories were not rolled back: they changed since ${version}`);
+    } catch (error) {
+      printDebug(`Accessories digest check failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   /**

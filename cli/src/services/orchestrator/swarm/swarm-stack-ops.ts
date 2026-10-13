@@ -9,11 +9,11 @@
  * SwarmStackBackend (via createStackBackend) instead.
  */
 
-import { createHash } from 'crypto';
 import type { SSHKeyConnection } from '../../../types';
 import { shellQuote, sshExec, sshExecChannel } from '../../../utils/ssh';
 import { printDebug, printInfo, printWarning, printSuccess, createTimedSpinner } from '../../../utils/output';
 import { DeployError, ErrorCode } from '../../../utils/errors';
+import { accessoriesDigest } from '../../compose';
 import {
   DOCKFLOW_ACCESSORIES_DIR,
   STACK_REMOVAL_MAX_ATTEMPTS,
@@ -517,6 +517,15 @@ export class SwarmStackOps {
       .map(([svc]) => svc);
   }
 
+  /** The digest of the accessories compose last deployed for the stack, null when none was. */
+  async readAccessoriesDigest(stackName: string): Promise<string | null> {
+    const result = await sshExec(
+      this.connection,
+      `cat ${shellQuote(`${DOCKFLOW_ACCESSORIES_DIR}/${stackName}/.hash`)} 2>/dev/null || echo ""`,
+    );
+    return result.stdout.trim() || null;
+  }
+
   /**
    * Deploy accessories stack with hash-based change detection.
    *
@@ -534,9 +543,7 @@ export class SwarmStackOps {
     const hashFile = `${hashDir}/.hash`;
 
     // 1. Compute local hash
-    const localHash = createHash('sha256')
-      .update(accessoriesComposeYaml)
-      .digest('hex');
+    const localHash = accessoriesDigest(accessoriesComposeYaml);
 
     // 2. Read remote hash
     if (!options?.force) {

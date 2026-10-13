@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { createHash } from 'crypto';
 import { convergenceError } from '../commands/deploy-phases';
-import { loadFromString, serialize } from '../services/compose';
+import { accessoriesDigest, loadFromString, serialize } from '../services/compose';
 import { SwarmStackBackend } from '../services/orchestrator/swarm/swarm-stack';
 import { failedTasksByService, stackDeployFailure, type SwarmClock } from '../services/orchestrator/swarm/swarm-stack-ops';
 import type { SSHExecResult } from '../types';
@@ -371,6 +371,20 @@ describe('SwarmStackBackend.deployAccessory', () => {
       `cat '${hashFile}' 2>/dev/null || echo ""`,
       `docker stack ls --format '{{.Name}}' | grep -xF '${accessoriesStack}' || echo ""`,
     ]);
+  });
+
+  it('reads back the digest it recorded, which is the one a release stores', async () => {
+    script.on(HASH_READ, { stdout: `${hash}\n` });
+
+    expect(await backend().accessoriesDigest(STACK)).toBe(hash);
+    expect(hash).toBe(accessoriesDigest(serialize(accessories())));
+    expect(script.commands()).toEqual([`cat '${hashFile}' 2>/dev/null || echo ""`]);
+  });
+
+  it('has no digest when none was recorded', async () => {
+    script.on(HASH_READ, { stdout: '\n' });
+
+    expect(await backend().accessoriesDigest(STACK)).toBeNull();
   });
 
   it('deploys an unchanged accessories stack that was removed by hand', async () => {

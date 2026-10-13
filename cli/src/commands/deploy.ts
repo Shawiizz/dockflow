@@ -60,7 +60,7 @@ import { onInterrupt, SIGINT_EXIT_CODE } from '../utils/interrupt';
 import { sshShell } from '../utils/remote-shell';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
-import { accessoriesKey, applyPublicPorts, composeWithImageTags, keepRunningImageTags, rolledBackError, failureOutcome, cleanupManager, buildAndDistribute, loginManagerToRegistry, runDeployHook, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
+import { accessoriesKey, applyPublicPorts, composeWithImageTags, keepRunningImageTags, rolledBackError, failureOutcome, cleanupManager, buildAndDistribute, loginManagerToRegistry, runDeployHook, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, releaseAccessoriesDigest, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
 import type { AppProgress, BuildResult } from './deploy-phases';
 import type { UploadRollbackPlan } from './deploy-phases';
 
@@ -369,6 +369,7 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     const now = new Date();
     const storedReleases = await ctx.releases.listReleases(ctx.stackName);
+    const accessoriesDigest = ctx.deployApp ? await releaseAccessoriesDigest(ctx) : undefined;
 
     // Settled, not Promise.all: when accessories fail first, the release write
     // must still hand back the symlink to restore, or cleanup deletes `current`.
@@ -378,6 +379,7 @@ async function execute(ctx: DeployContext): Promise<void> {
         project_name: ctx.config.project_name, version: ctx.deployVersion, env: ctx.env,
         timestamp: now.toISOString(), epoch: releaseEpoch(now, storedReleases),
         performer: getPerformer(), branch: ctx.branchName,
+        ...(accessoriesDigest && { accessories_digest: accessoriesDigest }),
       }),
       deployAccessories(ctx),
     ]);

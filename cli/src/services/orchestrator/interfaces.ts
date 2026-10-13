@@ -102,6 +102,9 @@ export interface StackBackend {
    */
   deployAccessory(input: AccessoryDeployInput): Promise<Result<{ deployed: boolean }, DeployError>>;
 
+  /** The digest of the accessories compose last deployed for the stack, null when none was. */
+  accessoriesDigest(stackName: string): Promise<string | null>;
+
   /**
    * Re-apply a previously-rendered stack definition (no preparation).
    * Used for rollback, where the content is read straight from a release dir.

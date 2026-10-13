@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, spyOn, test } from 'bun:test';
 import { existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import {
@@ -17,6 +17,7 @@ import type { StackBackend } from '../services/orchestrator/interfaces';
 import type { SSHExecResult } from '../types';
 import { DeployError, ErrorCode } from '../utils/errors';
 import type { RemoteShell } from '../utils/remote-shell';
+import * as output from '../utils/output';
 import { hasPosixShell, LocalShell } from './helpers/local-shell';
 
 const STACK = 'demo-production';
@@ -208,9 +209,13 @@ describe('removeImagesCommand', () => {
 // Fakes
 // ---------------------------------------------------------------------------
 
-function fakeBackend(options: { redeployFails?: boolean; convergenceFails?: boolean } = {}) {
+function fakeBackend(options: { redeployFails?: boolean; convergenceFails?: boolean; accessories?: string | null | Error } = {}) {
   const redeployed: string[] = [];
   const backend = {
+    accessoriesDigest: async () => {
+      if (options.accessories instanceof Error) throw options.accessories;
+      return options.accessories ?? null;
+    },
     redeploy: async (_stackName: string, content: string) => {
       redeployed.push(content);
       return options.redeployFails
@@ -410,5 +415,95 @@ describe('Release on a real shell', () => {
     expect((await release.listReleases(STACK)).map((r) => r.version)).toEqual(['1.0.0']);
     expect(await release.latestVersion(STACK)).toBe('1.0.0');
     expect(await release.currentVersion(STACK)).toBe('1.0.0');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Accessories after a rollback
+// ---------------------------------------------------------------------------
+
+describe('Release rollback and the accessories', () => {
+  let shell: LocalShell;
+  let release: Release;
+  let warnings: string[];
+  let spies: { mockRestore(): void }[] = [];
+  const stackDir = (): string => join(shell.root, 'stacks', STACK);
+  const create = (version: string, epoch: number, accessories?: string) =>
+    release.createRelease(STACK, version, `compose ${version}\n`, `stack ${version}\n`, {
+      ...meta(version, epoch),
+      ...(accessories && { accessories_digest: accessories }),
+    });
+  const accessoriesWarnings = () => warnings.filter((warning) => warning.startsWith('Accessories were not rolled back'));
+
+  beforeEach(() => {
+    shell = new LocalShell();
+    release = new Release(shell, { stacksDir: join(shell.root, 'stacks') });
+    warnings = [];
+    spies = [
+      spyOn(output, 'printWarning').mockImplementation((message: string) => {
+        warnings.push(message);
+      }),
+      spyOn(output, 'printInfo').mockImplementation(() => {}),
+    ];
+  });
+
+  afterEach(() => {
+    for (const spy of spies) spy.mockRestore();
+    rmSync(shell.root, { recursive: true, force: true });
+  });
+
+  test.if(hasPosixShell)('the digest is stored in the release metadata', async () => {
+    await create('1.0.0', 100, 'aaa');
+    expect(JSON.parse(readFileSync(join(stackDir(), '1.0.0', 'metadata.json'), 'utf8')).accessories_digest).toBe('aaa');
+    expect((await release.listReleases(STACK))[0].accessories_digest).toBe('aaa');
+  });
+
+  test.if(hasPosixShell)('warns, naming the version, when the accessories changed since the restored release', async () => {
+    await create('1.0.0', 100, 'aaa');
+    await create('1.0.1', 200, 'bbb');
+
+    expect(await release.rollback(STACK, fakeBackend({ accessories: 'bbb' }).backend)).toBe('1.0.0');
+    expect(accessoriesWarnings()).toEqual(['Accessories were not rolled back: they changed since 1.0.0']);
+  });
+
+  test.if(hasPosixShell)('warns after the automatic rollback of a failed deploy too', async () => {
+    await create('1.0.0', 100, 'aaa');
+    const { previousSymlink } = await create('1.0.1', 200, 'bbb');
+
+    await release.rollback(STACK, fakeBackend({ accessories: 'bbb' }).backend, '1.0.1', previousSymlink);
+    expect(accessoriesWarnings()).toEqual(['Accessories were not rolled back: they changed since 1.0.0']);
+  });
+
+  test.if(hasPosixShell)('says nothing when the accessories are the ones the release ran with', async () => {
+    await create('1.0.0', 100, 'aaa');
+    await create('1.0.1', 200, 'aaa');
+
+    await release.rollback(STACK, fakeBackend({ accessories: 'aaa' }).backend);
+    expect(accessoriesWarnings()).toEqual([]);
+  });
+
+  test.if(hasPosixShell)('says nothing for a release that recorded no digest', async () => {
+    await create('1.0.0', 100);
+    await create('1.0.1', 200, 'bbb');
+
+    await release.rollback(STACK, fakeBackend({ accessories: 'bbb' }).backend);
+    expect(accessoriesWarnings()).toEqual([]);
+  });
+
+  test.if(hasPosixShell)('says nothing when the server has no accessories digest to compare with', async () => {
+    await create('1.0.0', 100, 'aaa');
+    await create('1.0.1', 200, 'bbb');
+
+    await release.rollback(STACK, fakeBackend({ accessories: null }).backend);
+    expect(accessoriesWarnings()).toEqual([]);
+  });
+
+  test.if(hasPosixShell)('a digest that cannot be read does not fail the rollback', async () => {
+    await create('1.0.0', 100, 'aaa');
+    await create('1.0.1', 200, 'bbb');
+
+    expect(await release.rollback(STACK, fakeBackend({ accessories: new Error('ssh down') }).backend)).toBe('1.0.0');
+    expect(accessoriesWarnings()).toEqual([]);
+    expect(readlinkSync(join(stackDir(), 'current'))).toBe(join(stackDir(), '1.0.0'));
   });
 });
