@@ -7,7 +7,8 @@
  */
 
 import type { Command } from 'commander';
-import { sshExec } from '../../utils/ssh';
+import { shellQuote, sshExec } from '../../utils/ssh';
+import { sshShell, type RemoteShell } from '../../utils/remote-shell';
 import { printSuccess, printInfo, printBlank, printWarning, printDebug, createSpinner } from '../../utils/output';
 import { validateEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
 import { DockerError, withErrorHandler } from '../../utils/errors';
@@ -48,8 +49,8 @@ async function readNodeHistory(
 /**
  * Write the full history to a node (replace content)
  */
-async function writeNodeHistory(
-  conn: SSHKeyConnection,
+export async function writeNodeHistory(
+  shell: RemoteShell,
   stackName: string,
   auditContent: string,
   metricsContent: string,
@@ -59,12 +60,11 @@ async function writeNodeHistory(
     const metricsFile = `${DOCKFLOW_METRICS_DIR}/${stackName}/deployments.json`;
     const metricsDir = `${DOCKFLOW_METRICS_DIR}/${stackName}`;
 
-    if (auditContent) {
-      await sshExec(conn, `mkdir -p "${DOCKFLOW_AUDIT_DIR}" && cat > "${auditFile}" << 'DOCKFLOW_SYNC_EOF'\n${auditContent}\nDOCKFLOW_SYNC_EOF`);
-    }
-    if (metricsContent) {
-      await sshExec(conn, `mkdir -p "${metricsDir}" && cat > "${metricsFile}" << 'DOCKFLOW_SYNC_EOF'\n${metricsContent}\nDOCKFLOW_SYNC_EOF`);
-    }
+    // the content goes on stdin: a history is no command-line argument (size limit, process list)
+    const write = async (dir: string, file: string, content: string): Promise<boolean> =>
+      (await shell.run(`mkdir -p ${shellQuote(dir)} && cat > ${shellQuote(file)}`, `${content}\n`)).exitCode === 0;
+    if (auditContent && !(await write(DOCKFLOW_AUDIT_DIR, auditFile, auditContent))) return false;
+    if (metricsContent && !(await write(metricsDir, metricsFile, metricsContent))) return false;
     return true;
   } catch {
     return false;
@@ -173,7 +173,7 @@ export function registerHistorySyncCommand(program: Command): void {
       let failed = 0;
 
       for (const nd of nodeData) {
-        const ok = await writeNodeHistory(nd.connection, stackName, auditContent, metricsContent);
+        const ok = await writeNodeHistory(sshShell(nd.connection), stackName, auditContent, metricsContent);
         if (ok) {
           synced++;
         } else {
