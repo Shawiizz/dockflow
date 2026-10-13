@@ -16,6 +16,8 @@ export interface SetupOptions {
   /** false with --no-port-filter */
   portFilter?: boolean;
   yes?: boolean;
+  /** host key fingerprint written into the connection string instead of the one sshd presents */
+  hostKey?: string;
 }
 
 export interface HostConfig {
@@ -28,6 +30,8 @@ export interface HostConfig {
   installNginx: boolean;
   /** filter the internet traffic to published container ports */
   portFilter: boolean;
+  /** host key fingerprint to pin in the connection string; this machine's sshd key by default */
+  hostKey?: string;
 }
 
 export interface RemoteSetupOptions {
@@ -37,6 +41,8 @@ export interface RemoteSetupOptions {
   password?: string;
   privateKey?: string;
   privateKeyPath?: string;
+  /** host key the server must present; trusted on the first connection when absent */
+  hostKey?: string;
   /** password of the deploy user the remote setup creates (sent to the server through a file) */
   deployPassword?: string;
   dev?: boolean;

@@ -6,7 +6,8 @@ import * as fs from 'fs';
 import { join, resolve } from 'path';
 import { Client as SSHClient } from 'ssh2';
 import { printIntro, printOutro, printSection, printError, printInfo, printBlank, printDim, createSpinner } from '../../utils/output';
-import { sshExec, sshExecChannel, executeInteractiveSSH, shellQuote } from '../../utils/ssh';
+import { sshExec, sshExecChannel, executeInteractiveSSH, shellQuote, presentedHostKey } from '../../utils/ssh';
+import { hostKeyCheck } from '../../utils/host-key';
 import { CLIError, ConnectionError, ErrorCode } from '../../utils/errors';
 import type { ConnectionInfo, SSHExecResult } from '../../types';
 import { isKeyConnection } from '../../types';
@@ -143,11 +144,12 @@ async function uploadFile(
   const fileSize = fs.statSync(localPath).size;
 
   const client = new SSHClient();
+  const hostKey = hostKeyCheck(conn);
   const config: Record<string, unknown> = {
     host: conn.host,
     port: conn.port || DEFAULT_SSH_PORT,
     username: conn.user,
-    hostVerifier: () => true,
+    hostVerifier: hostKey.verify,
     readyTimeout: 30_000,
   };
 
@@ -193,7 +195,7 @@ async function uploadFile(
       });
     });
 
-    client.on('error', reject);
+    client.on('error', (e) => reject(hostKey.failure() ?? e));
     client.connect(config as never);
   });
 }
@@ -246,6 +248,7 @@ export async function promptRemoteConnection(prefilled?: RemoteSetupOptions): Pr
         user: conn.user,
         privateKey: conn.privateKey,
         password: conn.password,
+        hostKey: conn.hostKey,
         dev: devMode,
       };
     }
@@ -317,7 +320,7 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
     throw new CLIError('No authentication method provided', ErrorCode.INVALID_ARGUMENT, 'Pass an SSH key (-k), a password or a connection string.');
   }
 
-  const base = { host: opts.host, port: opts.port, user: opts.user };
+  const base = { host: opts.host, port: opts.port, user: opts.user, hostKey: opts.hostKey };
   const conn: ConnectionInfo = opts.privateKey
     ? { ...base, privateKey: opts.privateKey, ...(opts.password ? { password: opts.password } : {}) }
     : { ...base, password: opts.password! };
@@ -325,16 +328,22 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   try {
     const result = await sshExec(conn, 'echo ok');
     if (result.exitCode !== 0 || !result.stdout.includes('ok')) {
-      testSpinner.fail('SSH connection failed');
       throw new ConnectionError('Connected but command execution failed', 'Check that the user has shell access.');
     }
   } catch (err: unknown) {
-    if (err instanceof ConnectionError) throw err;
     testSpinner.fail('SSH connection failed');
+    if (err instanceof ConnectionError) throw err;
     throw new ConnectionError(connectionFailureMessage(err instanceof Error ? err.message : String(err), opts));
   }
 
   testSpinner.succeed('SSH connection successful');
+
+  if (conn.hostKey === undefined) {
+    conn.hostKey = presentedHostKey(conn);
+    if (conn.hostKey) {
+      printInfo(`Trusting host key ${conn.hostKey} (first connection); compare it with \`ssh-keygen -lf\` on the server if you can.`);
+    }
+  }
 
   const archSpinner = createSpinner();
   archSpinner.start('Detecting server architecture...');
@@ -421,6 +430,7 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
     // root runs the binary directly (sudo may not even exist on minimal
     // systems); other users escalate through sudo.
     const flags = [...(opts.forwardFlags ?? [])];
+    if (conn.hostKey) flags.push('--host-key', shellQuote(conn.hostKey));
     if (opts.deployPassword) {
       const passwordFile = `${dir}/deploy-password`;
       await writePasswordFile(conn, passwordFile, opts.deployPassword);

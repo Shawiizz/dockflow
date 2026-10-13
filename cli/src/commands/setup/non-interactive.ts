@@ -101,6 +101,7 @@ export async function runNonInteractiveSetup(options: SetupOptions): Promise<voi
     skipDockerInstall: options.skipDockerInstall || false,
     installNginx: options.nginx || false,
     portFilter: options.portFilter !== false,
+    hostKey: options.hostKey,
   };
 
   printBlank();

@@ -63,12 +63,19 @@ Dockflow needs SSH credentials to connect to your servers. The recommended appro
       "port": 22,
       "user": "dockflow",
       "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\n...",
-      "password": "deploy-user-password"
+      "password": "deploy-user-password",
+      "hostKey": "SHA256:Zm9vYmFyZm9vYmFyZm9vYmFyZm9vYmFyZm9vYmFyMDA"
     }
     ```
 
     `password` is present when setup was given the deploy user's password; SSH falls back to it
     when the key is refused.
+
+    `hostKey` is the fingerprint of the server's SSH host key, in the form `ssh-keygen -lf` prints
+    it. It is public, not a secret. Every connection made with the string checks it and refuses a
+    server that presents another key (exit code `33`), so a reinstalled or impersonated server is
+    noticed instead of receiving the private key. A string without `hostKey` is not pinned. See
+    [Host key pinning](/en/cli#host-key-pinning) to accept a deliberate change.
 
     Store it as `[ENV]_[SERVERNAME]_CONNECTION`:
 
@@ -96,6 +103,10 @@ Dockflow needs SSH credentials to connect to your servers. The recommended appro
       `.env.dockflow` only. If one leaks, remove its public key from the deploy user's
       `~/.ssh/authorized_keys` on that server, change the user's password, then run
       `dockflow setup` again with a new key.
+
+      Pinning the host key protects that key: with `hostKey` in the string, a server that presents
+      another key never receives it. Without it, anyone able to intercept the connection can
+      pretend to be the server.
     </Callout>
   </Tabs.Tab>
   <Tabs.Tab>
@@ -106,9 +117,10 @@ Dockflow needs SSH credentials to connect to your servers. The recommended appro
     PRODUCTION_MAIN_SERVER_SSH_PRIVATE_KEY=<SSH key content>
     PRODUCTION_MAIN_SERVER_USER=deploy
     PRODUCTION_MAIN_SERVER_PORT=22
+    PRODUCTION_MAIN_SERVER_HOST_KEY=SHA256:Zm9vYmFyZm9vYmFyZm9vYmFyZm9vYmFyZm9vYmFyMDA
     ```
 
-    These follow the same naming convention and can be stored in `.env.dockflow` or as CI/CD secrets.
+    These follow the same naming convention and can be stored in `.env.dockflow` or as CI/CD secrets. `HOST_KEY` is optional: without it the server is not pinned.
   </Tabs.Tab>
 </Tabs>
 

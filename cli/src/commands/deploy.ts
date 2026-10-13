@@ -46,7 +46,7 @@ import {
   withErrorHandler,
 } from '../utils/errors';
 import { displayDeployDryRun, displayRenderedStack } from './deploy-dry-run';
-import type { ClusterNode, SSHKeyConnection } from '../types';
+import type { ClusterNode, ResolvedServer, SSHKeyConnection } from '../types';
 
 import * as Compose from '../services/compose';
 import { createStackBackend, createProxyBackend } from '../services/orchestrator/factory';
@@ -75,7 +75,8 @@ function getDeploymentTargets(options: DeployOptions) {
   return { deployApp: true, forceAccessories: false, skipAccessories: false };
 }
 
-function buildConnection(env: string, serverName: string, host: string, port: number, user: string): SSHKeyConnection {
+function buildConnection(env: string, server: ResolvedServer): SSHKeyConnection {
+  const { name: serverName, host, port, user, hostKey } = server;
   const privateKey = getServerPrivateKey(env, serverName);
   if (!privateKey) {
     throw new ConnectionError(
@@ -84,7 +85,7 @@ function buildConnection(env: string, serverName: string, host: string, port: nu
     );
   }
   const password = getServerPassword(env, serverName);
-  return { host, port, user, privateKey, password: password || undefined };
+  return { host, port, user, privateKey, password: password || undefined, hostKey };
 }
 
 // ---------------------------------------------------------------------------
@@ -166,18 +167,18 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
 
   // Build cluster
   const managerNode: ClusterNode = {
-    connection: buildConnection(env, manager.name, manager.host, manager.port, manager.user),
+    connection: buildConnection(env, manager),
     name: manager.name,
   };
   const workerNodes: ClusterNode[] = workers.map((w) => ({
-    connection: buildConnection(env, w.name, w.host, w.port, w.user),
+    connection: buildConnection(env, w),
     name: w.name,
   }));
   const otherManagerNodes: ClusterNode[] = [];
   for (const m of managers) {
     // a manager found down cannot run tasks: it gets no image or upload
     if (m.name === manager.name || unavailableManagers.includes(m.name)) continue;
-    try { otherManagerNodes.push({ connection: buildConnection(env, m.name, m.host, m.port, m.user), name: m.name }); }
+    try { otherManagerNodes.push({ connection: buildConnection(env, m), name: m.name }); }
     catch { printWarning(`History sync: no SSH key for ${m.name}`); }
   }
   const cluster = { manager: managerNode, workers: workerNodes, otherManagers: otherManagerNodes };

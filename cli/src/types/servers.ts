@@ -84,6 +84,8 @@ export interface ResolvedServer {
   port: number;
   /** SSH user */
   user: string;
+  /** Pinned SSH host key fingerprint, when the connection string or a secret carries one */
+  hostKey?: string;
   /** Merged environment variables (all → tag → server → CI) */
   env: EnvVars;
   /** Tags this server belongs to */

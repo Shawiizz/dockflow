@@ -92,6 +92,37 @@ describe('parseConnectionString', () => {
   });
 });
 
+const HOST_KEY = 'SHA256:' + 'Ab1+/'.repeat(8) + 'Ab1';
+
+describe('host key in a connection string', () => {
+  it('keeps the host key', () => {
+    const result = parseConnectionString(encode({ host: 'h', user: 'u', privateKey: FAKE_KEY, hostKey: HOST_KEY }));
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.hostKey).toBe(HOST_KEY);
+  });
+
+  it('has none when the string has none', () => {
+    const result = parseConnectionString(encode({ host: 'h', user: 'u', privateKey: FAKE_KEY }));
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.hostKey).toBeUndefined();
+  });
+
+  it('refuses a host key that is not a fingerprint rather than pinning nothing', () => {
+    for (const hostKey of ['', 'aa:bb:cc', 'SHA256:short', 42]) {
+      const result = parseConnectionString(encode({ host: 'h', user: 'u', privateKey: FAKE_KEY, hostKey }));
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe(ConnectionParseErrorCode.INVALID_HOST_KEY);
+    }
+  });
+
+  it('round-trips through generateConnectionString, and writes none when there is none', () => {
+    const conn = { host: 'srv', port: 22, user: 'root', privateKey: FAKE_KEY };
+    const pinned = parseConnectionString(generateConnectionString({ ...conn, hostKey: HOST_KEY }));
+    expect(pinned.success && pinned.data.hostKey).toBe(HOST_KEY);
+    expect(JSON.parse(Buffer.from(generateConnectionString(conn), 'base64').toString())).not.toHaveProperty('hostKey');
+  });
+});
+
 describe('generateConnectionString', () => {
   it('round-trips through parseConnectionString', () => {
     const conn = { host: 'srv', port: 2222, user: 'root', privateKey: FAKE_KEY + '\n', password: 'pw' };

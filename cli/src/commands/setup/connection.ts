@@ -9,6 +9,7 @@ import {
 } from '../../utils/connection-parser';
 import type { HostConfig } from './types';
 import type { SSHKeyConnection } from '../../types';
+import { localHostKey } from '../../utils/host-key';
 
 /**
  * Generate connection string (base64 encoded JSON)
@@ -19,6 +20,7 @@ export function generateConnectionString(config: {
   user: string;
   privateKey: string;
   password?: string;
+  hostKey?: string;
 }): string {
   return generateConnString(config as SSHKeyConnection);
 }
@@ -46,12 +48,14 @@ export function displayConnectionInfo(config: HostConfig, privateKey: string): v
   printWarning('━'.repeat(70));
   printBlank();
 
+  const hostKey = config.hostKey ?? localHostKey() ?? undefined;
   const connectionString = generateConnectionString({
     host: config.publicHost,
     port: config.sshPort,
     user: config.deployUser,
     privateKey: privateKey,
-    password: config.deployPassword
+    password: config.deployPassword,
+    hostKey,
   });
 
   printError('╔' + '═'.repeat(70) + '╗');
@@ -69,6 +73,12 @@ export function displayConnectionInfo(config: HostConfig, privateKey: string): v
   printBlank();
 
   printRaw(colors.info('Deployment User:') + ' ' + colors.bold(config.deployUser));
+  if (hostKey) {
+    printRaw(colors.info('Host key:') + ' ' + colors.bold(hostKey));
+    printDim('   Pinned in the connection string: dockflow refuses a server that presents another key.');
+  } else {
+    printWarning('The host key of this server could not be read: the connection string does not pin it.');
+  }
   printBlank();
   printWarning('Add this connection string to your CI/CD secrets:');
   printDim('   Secret name: [YOURENV]_CONNECTION');

@@ -21,6 +21,7 @@ import { runInteractiveSetup } from './interactive';
 import { runNonInteractiveSetup } from './non-interactive';
 import { runRemoteSetup, promptRemoteConnection } from './remote';
 import { buildForwardFlags, readPasswordFile } from './forward';
+import { isHostKeyFingerprint } from '../../utils/host-key';
 import { runSetupSwarm } from './swarm';
 import { CLIError, ConfigError, ErrorCode, withErrorHandler } from '../../utils/errors';
 import type { SetupOptions, ConnectionOptions, RemoteSetupOptions } from './types';
@@ -43,6 +44,7 @@ export function registerSetupCommand(program: Command): void {
     // Remote options
     .option('-k, --key <path>', 'Path to SSH private key (remote)')
     .option('--connection <string>', 'Dockflow connection string (remote)')
+    .option('--host-key <fingerprint>', 'Host key fingerprint (SHA256:...) the server must present (remote), or to pin in the connection string instead of the one sshd presents (local)')
     // Shared options
     .option('--password <password>', 'SSH password (remote) or password of the new deploy user (local)')
     .option('--password-file <path>', 'Read the password of the new deploy user (local) from a file instead of the command line')
@@ -61,6 +63,14 @@ export function registerSetupCommand(program: Command): void {
     .action(withErrorHandler(async (target: string | undefined, options: SetupOptions & { key?: string; connection?: string; dev?: boolean; deployPassword?: string }) => {
       let remoteOpts: RemoteSetupOptions | null = null;
 
+      if (options.hostKey !== undefined && !isHostKeyFingerprint(options.hostKey)) {
+        throw new CLIError(
+          `Invalid --host-key: "${options.hostKey}"`,
+          ErrorCode.INVALID_ARGUMENT,
+          'Use the SHA256:<base64> form that `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` prints on the server.',
+        );
+      }
+
       if (options.connection) {
         // Connection string mode
         const conn = parseConnectionString(options.connection);
@@ -71,6 +81,7 @@ export function registerSetupCommand(program: Command): void {
           user: conn.user,
           privateKey: conn.privateKey,
           password: conn.password,
+          hostKey: options.hostKey ?? conn.hostKey,
           dev: options.dev,
         };
       } else if (target) {
@@ -98,6 +109,7 @@ export function registerSetupCommand(program: Command): void {
           user: parsed.user,
           password: options.password,
           privateKey,
+          hostKey: options.hostKey,
           dev: options.dev,
         };
       }

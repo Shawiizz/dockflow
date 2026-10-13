@@ -9,6 +9,7 @@ import { DEFAULT_SSH_PORT } from '../constants';
 import type { SSHKeyConnection, Result } from '../types';
 import { ok, err } from '../types';
 import { normalizePrivateKey, isValidPrivateKey } from './ssh-keys';
+import { isHostKeyFingerprint } from './host-key';
 
 /**
  * Error types for connection parsing
@@ -26,6 +27,7 @@ export enum ConnectionParseErrorCode {
   MISSING_REQUIRED_FIELD = 'MISSING_REQUIRED_FIELD',
   INVALID_PRIVATE_KEY = 'INVALID_PRIVATE_KEY',
   INVALID_PORT = 'INVALID_PORT',
+  INVALID_HOST_KEY = 'INVALID_HOST_KEY',
 }
 
 /**
@@ -37,6 +39,7 @@ interface RawConnectionData {
   user?: unknown;
   privateKey?: unknown;
   password?: unknown;
+  hostKey?: unknown;
 }
 
 /**
@@ -101,6 +104,13 @@ export function parseConnectionString(connectionString: string): Result<SSHKeyCo
     port = parsedPort;
   }
 
+  if (data.hostKey !== undefined && !isHostKeyFingerprint(data.hostKey)) {
+    return err(new ConnectionParseError(
+      'Invalid hostKey: expected a fingerprint like SHA256:<base64>, as ssh-keygen -lf prints it',
+      ConnectionParseErrorCode.INVALID_HOST_KEY
+    ));
+  }
+
   // Step 5: Normalize and validate private key
   const normalizedKey = normalizePrivateKey(data.privateKey);
   if (!isValidPrivateKey(normalizedKey)) {
@@ -123,6 +133,10 @@ export function parseConnectionString(connectionString: string): Result<SSHKeyCo
     connection.password = data.password;
   }
 
+  if (data.hostKey !== undefined) {
+    connection.hostKey = data.hostKey as string;
+  }
+
   return ok(connection);
 }
 
@@ -136,6 +150,7 @@ export function generateConnectionString(conn: SSHKeyConnection): string {
     user: conn.user,
     privateKey: conn.privateKey,
     ...(conn.password && { password: conn.password }),
+    ...(conn.hostKey && { hostKey: conn.hostKey }),
   };
 
   return Buffer.from(JSON.stringify(data)).toString('base64');

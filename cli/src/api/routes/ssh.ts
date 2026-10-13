@@ -21,6 +21,7 @@ import { normalizePrivateKey } from '../../utils/ssh-keys';
 import { DEFAULT_SSH_PORT, SSH_READY_TIMEOUT_MS, SSH_KEEPALIVE_INTERVAL_MS } from '../../constants';
 import { getStackName, getAccessoriesStackName } from '../../utils/config';
 import { shellQuote } from '../../utils/ssh';
+import { hostKeyCheck, type HostKeyCheck } from '../../utils/host-key';
 import { findSwarmContainer } from '../../services/orchestrator/swarm/swarm-utils';
 import type { SSHKeyConnection } from '../../types';
 import { getAllNodeConnections, getManagerConnection, isValidDockerName } from './_helpers';
@@ -153,6 +154,7 @@ function resolveServerConnection(serverName: string) {
       port: found.port || DEFAULT_SSH_PORT,
       user: found.user,
       privateKey,
+      hostKey: found.hostKey,
     };
   }
   return null;
@@ -200,9 +202,10 @@ export const sshWebSocketHandlers = {
       const stacks = [getStackName(env), getAccessoriesStackName(env)].filter((name): name is string => !!name);
       const manager = await getManagerConnection(env) ?? nodes[0];
 
+      let hostKey: HostKeyCheck | undefined;
       client.on('error', (err) => {
         try {
-          ws.send(JSON.stringify({ type: 'error', message: err.message }));
+          ws.send(JSON.stringify({ type: 'error', message: hostKey?.failure()?.message ?? err.message }));
         } catch {
           // Ignore
         }
@@ -275,12 +278,13 @@ export const sshWebSocketHandlers = {
             );
           });
 
+          hostKey = hostKeyCheck(target.connection);
           client.connect({
             host: target.connection.host,
             port: target.connection.port,
             username: target.connection.user,
             privateKey: normalizePrivateKey(target.connection.privateKey),
-            hostVerifier: () => true,
+            hostVerifier: hostKey.verify,
             readyTimeout: SSH_READY_TIMEOUT_MS,
             keepaliveInterval: SSH_KEEPALIVE_INTERVAL_MS,
           });
@@ -365,9 +369,10 @@ export const sshWebSocketHandlers = {
       );
     });
 
+    const hostKey = hostKeyCheck(connShell);
     client2.on('error', (err) => {
       try {
-        ws.send(JSON.stringify({ type: 'error', message: err.message }));
+        ws.send(JSON.stringify({ type: 'error', message: hostKey.failure()?.message ?? err.message }));
       } catch {
         // Ignore
       }
@@ -389,7 +394,7 @@ export const sshWebSocketHandlers = {
       port: connShell.port,
       username: connShell.user,
       privateKey: normalizePrivateKey(connShell.privateKey),
-      hostVerifier: () => true,
+      hostVerifier: hostKey.verify,
       readyTimeout: 10000,
       keepaliveInterval: 15000,
     });

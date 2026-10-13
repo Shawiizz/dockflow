@@ -18,6 +18,7 @@ import { DEFAULT_SSH_PORT, SSH_READY_TIMEOUT_MS, SSH_KEEPALIVE_INTERVAL_MS, SSH_
 import { printDebug } from './output';
 import { installSignalHandlers } from './interrupt';
 import { ConnectionError, ErrorCode } from './errors';
+import { hostKeyCheck, type HostKeyCheck } from './host-key';
 
 
 // ─── Pool types ───────────────────────────────────────────────
@@ -36,10 +37,16 @@ interface PoolEntry {
 // ─── Pool state (module-level singleton) ──────────────────────
 
 const pool = new Map<string, PoolEntry>();
+const presentedHostKeys = new Map<string, string>();
 let exitHandlerRegistered = false;
 
 function poolKey(conn: ConnectionInfo): string {
   return `${conn.host}:${conn.port || DEFAULT_SSH_PORT}:${conn.user}`;
+}
+
+/** Fingerprint of the host key the server presented on the last connection made to it. */
+export function presentedHostKey(conn: ConnectionInfo): string | undefined {
+  return presentedHostKeys.get(poolKey(conn));
 }
 
 function ensureExitHandler(): void {
@@ -67,7 +74,7 @@ function isAuthenticationError(err: unknown): boolean {
 }
 
 function isRetryableConnectionError(err: unknown): boolean {
-  if (!(err instanceof Error) || isAuthenticationError(err)) return false;
+  if (!(err instanceof Error) || err instanceof ConnectionError || isAuthenticationError(err)) return false;
   const msg = err.message.toLowerCase();
   return (
     msg.includes('timed out while waiting for handshake') ||
@@ -109,12 +116,12 @@ function evictClient(conn: ConnectionInfo, client: SSHClient): void {
 
 // ─── Pool client acquisition ──────────────────────────────────
 
-function buildConnectConfig(conn: ConnectionInfo, keepalive: boolean): ConnectConfig {
+function buildConnectConfig(conn: ConnectionInfo, keepalive: boolean, hostKey: HostKeyCheck): ConnectConfig {
   const config: ConnectConfig = {
     host: conn.host,
     port: conn.port || DEFAULT_SSH_PORT,
     username: conn.user,
-    hostVerifier: () => true,
+    hostVerifier: hostKey.verify,
     readyTimeout: SSH_READY_TIMEOUT_MS,
   };
 
@@ -140,6 +147,7 @@ function buildConnectConfig(conn: ConnectionInfo, keepalive: boolean): ConnectCo
 function attemptConnect(conn: ConnectionInfo, keepalive: boolean, signal?: AbortSignal): Promise<SSHClient> {
   return new Promise<SSHClient>((resolve, reject) => {
     const client = new SSHClient();
+    const hostKey = hostKeyCheck(conn);
     const abandon = (): void => {
       client.destroy();
       reject(new Error(`SSH connection to ${conn.host} was abandoned: every connection is being closed`));
@@ -151,14 +159,16 @@ function attemptConnect(conn: ConnectionInfo, keepalive: boolean, signal?: Abort
     signal?.addEventListener('abort', abandon, { once: true });
     client.on('ready', () => {
       signal?.removeEventListener('abort', abandon);
+      const presented = hostKey.presented();
+      if (presented) presentedHostKeys.set(poolKey(conn), presented);
       resolve(client);
     });
     client.on('error', (err) => {
       signal?.removeEventListener('abort', abandon);
       try { client.end(); } catch { /* ignore */ }
-      reject(err);
+      reject(hostKey.failure() ?? err);
     });
-    client.connect(buildConnectConfig(conn, keepalive));
+    client.connect(buildConnectConfig(conn, keepalive, hostKey));
   });
 }
 

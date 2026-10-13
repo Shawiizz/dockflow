@@ -3,6 +3,7 @@ import {
   serverNameToEnvKey,
   getCISecret,
   getServerPrivateKey,
+  getServerHostKey,
   mergeEnvVars,
 } from '../utils/servers/ci-secrets';
 import { generateConnectionString } from '../utils/connection-parser';
@@ -77,6 +78,34 @@ describe('getServerPrivateKey', () => {
   });
 });
 
+describe('getServerHostKey', () => {
+  const HOST_KEY = 'SHA256:' + 'Ab1+/'.repeat(8) + 'Ab1';
+
+  it('reads the pin from the CONNECTION string', () => {
+    setEnv('PROD_WEB_CONNECTION', generateConnectionString({
+      host: 'h', port: 22, user: 'u', privateKey: FAKE_KEY, hostKey: HOST_KEY,
+    }));
+    expect(getServerHostKey('prod', 'web')).toBe(HOST_KEY);
+  });
+
+  it('reads the HOST_KEY secret, server-specific first', () => {
+    setEnv('PROD_HOST_KEY', 'SHA256:' + 'x'.repeat(43));
+    setEnv('PROD_WEB_HOST_KEY', HOST_KEY);
+    expect(getServerHostKey('prod', 'web')).toBe(HOST_KEY);
+    expect(getServerHostKey('prod', 'db')).toBe('SHA256:' + 'x'.repeat(43));
+  });
+
+  it('is undefined for a server nothing pins', () => {
+    setEnv('PROD_WEB_CONNECTION', generateConnectionString({ host: 'h', port: 22, user: 'u', privateKey: FAKE_KEY }));
+    expect(getServerHostKey('prod', 'web')).toBeUndefined();
+  });
+
+  it('fails on a HOST_KEY secret that is no fingerprint instead of leaving the server unpinned', () => {
+    setEnv('PROD_WEB_HOST_KEY', 'not-a-fingerprint');
+    expect(() => getServerHostKey('prod', 'web')).toThrow('PROD_WEB_HOST_KEY is not a host key fingerprint');
+  });
+});
+
 describe('mergeEnvVars', () => {
   const emptyConfig = {} as ServersConfig;
 
@@ -111,11 +140,14 @@ describe('mergeEnvVars', () => {
     setEnv('PRODUCTION_HOST', 'xxx');
     setEnv('PRODUCTION_SSH_PRIVATE_KEY', 'xxx');
     setEnv('PRODUCTION_MAIN_PASSWORD', 'xxx');
+    setEnv('PRODUCTION_HOST_KEY', 'xxx');
+    setEnv('PRODUCTION_MAIN_HOST_KEY', 'xxx');
     const result = mergeEnvVars(emptyConfig, 'production', 'main', undefined);
     expect(result.CONNECTION).toBeUndefined();
     expect(result.HOST).toBeUndefined();
     expect(result.SSH_PRIVATE_KEY).toBeUndefined();
     expect(result.PASSWORD).toBeUndefined();
+    expect(result.HOST_KEY).toBeUndefined();
   });
 
   it('vars from a different environment are ignored', () => {

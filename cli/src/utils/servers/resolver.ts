@@ -29,6 +29,7 @@ import {
   mergeEnvVars,
   getServerPrivateKey,
   getServerPassword,
+  getServerHostKey,
 } from './ci-secrets';
 
 /**
@@ -111,6 +112,7 @@ export function resolveServersForEnvironment(environment: string): ResolvedServe
       host: connection.host,
       port: connection.port,
       user: connection.user,
+      hostKey: getServerHostKey(environment, serverName),
       env: envVars,
       tags: serverConfig.tags,
     });
@@ -156,6 +158,7 @@ export function resolveServerByName(serverName: string, environment: string): Re
     host: connection.host,
     port: connection.port,
     user: connection.user,
+    hostKey: getServerHostKey(environment, serverName),
     env: envVars,
     tags: serverConfig.tags,
   };
@@ -256,6 +259,7 @@ export function getFullConnectionInfo(env: string, serverName: string): SSHKeyCo
     user: server.user,
     privateKey,
     password,
+    hostKey: server.hostKey,
   };
 }
 

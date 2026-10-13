@@ -12,6 +12,7 @@ const executed: string[] = [];
 const interactive: string[] = [];
 const channels: { command: string; stdin: string }[] = [];
 let channelExit = 0;
+let presented: string | undefined;
 
 const answer = (partial: Partial<SSHExecResult> | undefined): SSHExecResult => ({ stdout: '', stderr: '', exitCode: 0, ...partial });
 
@@ -24,6 +25,7 @@ const fakeChannel = (entry: { stdin: string }): Awaited<ReturnType<typeof realSs
   }) as unknown as Awaited<ReturnType<typeof realSsh.sshExecChannel>>;
 mock.module('../utils/ssh', () => ({
   ...realSsh,
+  presentedHostKey: (...args: Parameters<typeof realSsh.presentedHostKey>) => (scripted ? presented : realSsh.presentedHostKey(...args)),
   sshExec: async (...args: Parameters<typeof realSsh.sshExec>) => {
     if (!scripted) return realSsh.sshExec(...args);
     executed.push(args[1]);
@@ -55,6 +57,7 @@ beforeEach(() => {
   interactive.length = 0;
   channels.length = 0;
   channelExit = 0;
+  presented = undefined;
 });
 
 describe('detectRemoteArch', () => {
@@ -155,6 +158,26 @@ describe('runRemoteSetup in release mode', () => {
     respond = (command) => (command === 'uname -m' ? { stdout: 'riscv64\n' } : serverAnswers(command));
     await expect(runRemoteSetup(OPTS)).rejects.toThrow('Unsupported architecture riscv64');
     expect(executed.some((command) => command.startsWith('mktemp'))).toBe(false);
+  });
+
+  it('pins the host key seen on the first connection into the setup it runs', async () => {
+    respond = serverAnswers;
+    presented = 'SHA256:' + 'a'.repeat(43);
+    await runRemoteSetup(OPTS);
+    expect(interactive).toEqual([`sudo '${DIR}/dockflow' setup --host 'server.example.com' --host-key 'SHA256:${'a'.repeat(43)}'`]);
+  });
+
+  it('forwards the host key it was given instead of the one it saw', async () => {
+    respond = serverAnswers;
+    presented = 'SHA256:' + 'a'.repeat(43);
+    await runRemoteSetup({ ...OPTS, hostKey: 'SHA256:' + 'b'.repeat(43) });
+    expect(interactive[0]).toEndWith(`--host-key 'SHA256:${'b'.repeat(43)}'`);
+  });
+
+  it('forwards no host key when the connection presented none', async () => {
+    respond = serverAnswers;
+    await runRemoteSetup(OPTS);
+    expect(interactive[0]).not.toContain('--host-key');
   });
 
   it('runs the binary directly as root', async () => {

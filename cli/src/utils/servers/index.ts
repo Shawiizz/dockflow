@@ -14,6 +14,7 @@ export {
   getCISecret,
   getServerPrivateKey, 
   getServerPassword,
+  getServerHostKey,
   mergeEnvVars,
 } from './ci-secrets';
 

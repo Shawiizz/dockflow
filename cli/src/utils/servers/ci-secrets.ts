@@ -8,6 +8,8 @@
  */
 
 import { parseConnectionString } from '../connection-parser';
+import { isHostKeyFingerprint } from '../host-key';
+import { ConfigError } from '../errors';
 import type { ServersConfig, EnvVars } from '../../types';
 
 /**
@@ -79,6 +81,34 @@ export function getServerPassword(env: string, serverName: string): string | und
 }
 
 /**
+ * Get the pinned SSH host key fingerprint for a server from CI secrets.
+ * A server without one is not pinned.
+ *
+ * Checks:
+ * 1. CONNECTION string (hostKey)
+ * 2. HOST_KEY individual secret
+ */
+export function getServerHostKey(env: string, serverName: string): string | undefined {
+  const connectionString = getCISecret(env, serverName, 'CONNECTION');
+  if (connectionString) {
+    const result = parseConnectionString(connectionString);
+    if (result.success && result.data.hostKey) {
+      return result.data.hostKey;
+    }
+  }
+
+  const hostKey = getCISecret(env, serverName, 'HOST_KEY');
+  if (hostKey === undefined) return undefined;
+  if (!isHostKeyFingerprint(hostKey)) {
+    throw new ConfigError(
+      `${env.toUpperCase()}_${serverNameToEnvKey(serverName)}_HOST_KEY is not a host key fingerprint`,
+      'Use the SHA256:<base64> form that `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` prints on the server.',
+    );
+  }
+  return hostKey;
+}
+
+/**
  * Merge environment variables with proper priority
  * Priority: all -> tag -> server.env -> CI (ENV_VAR) -> CI (ENV_SERVER_VAR)
  * 
@@ -122,7 +152,7 @@ export function mergeEnvVars(
       const varName = globalMatch[1];
       // Skip connection-related vars and server-specific vars
       if (!varName.startsWith(serverKey + '_') && 
-          !['CONNECTION', 'HOST', 'USER', 'PORT', 'SSH_PRIVATE_KEY', 'PASSWORD'].includes(varName)) {
+          !['CONNECTION', 'HOST', 'USER', 'PORT', 'SSH_PRIVATE_KEY', 'PASSWORD', 'HOST_KEY'].includes(varName)) {
         result[varName] = value!;
       }
     }
@@ -132,7 +162,7 @@ export function mergeEnvVars(
     if (serverMatch) {
       const varName = serverMatch[1];
       // Skip connection-related vars
-      if (!['CONNECTION', 'HOST', 'USER', 'PORT', 'SSH_PRIVATE_KEY', 'PASSWORD'].includes(varName)) {
+      if (!['CONNECTION', 'HOST', 'USER', 'PORT', 'SSH_PRIVATE_KEY', 'PASSWORD', 'HOST_KEY'].includes(varName)) {
         result[varName] = value!;
       }
     }

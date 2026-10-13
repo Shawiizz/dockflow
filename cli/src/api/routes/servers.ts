@@ -203,6 +203,7 @@ async function checkServerStatus(serverName: string, url: URL): Promise<Response
     port: resolvedServer.port,
     user: resolvedServer.user,
     privateKey,
+    hostKey: resolvedServer.hostKey,
   };
 
   try {

@@ -46,6 +46,7 @@ function buildConnection(env: string, server: ResolvedServer): SSHKeyConnection 
     port: server.port,
     user: server.user,
     privateKey,
+    hostKey: server.hostKey,
   };
 }
 

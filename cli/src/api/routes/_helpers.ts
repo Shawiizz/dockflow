@@ -38,6 +38,7 @@ export interface ManagerConnection {
   port: number;
   user: string;
   privateKey: string;
+  hostKey?: string;
   /** `<project>-<env>`, the name of the app stack on the cluster */
   stackName: string;
 }
@@ -78,6 +79,7 @@ export async function getManagerConnection(env: string): Promise<ManagerConnecti
     port: manager.port || DEFAULT_SSH_PORT,
     user: manager.user,
     privateKey: getServerPrivateKey(env, manager.name)!,
+    hostKey: manager.hostKey,
     stackName: getStackName(env) ?? '',
   };
 }

@@ -9,6 +9,8 @@ export interface SSHConnectionInfo {
   host: string;
   port: number;
   user: string;
+  /** Pinned host key fingerprint (`SHA256:...`): a server presenting another key is refused */
+  hostKey?: string;
 }
 
 /**

@@ -32,6 +32,7 @@ export enum ErrorCode {
   CONNECTION_FAILED = 30,
   SSH_KEY_NOT_FOUND = 31,
   SSH_AUTH_FAILED = 32,
+  HOST_KEY_CHANGED = 33,
   
   // Docker errors (40-49)
   DOCKER_NOT_AVAILABLE = 40,

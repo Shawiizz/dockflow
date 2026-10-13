@@ -273,7 +273,8 @@ This generates the following structure at the root of your project, adds `.env.d
           **A connection string is the whole access to the server**: the deploy user's private key
           and, when setup was given it, its password, base64-encoded but not encrypted. Keep it in
           CI secrets only, and see [Secrets](/en/configuration/servers#secrets) for what to do if
-          one leaks.
+          one leaks. It also pins the server's SSH host key, so a server that presents another one
+          is refused.
         </Callout>
       </Tabs.Tab>
 
@@ -285,6 +286,7 @@ This generates the following structure at the root of your project, adds `.env.d
         | `[ENV]_[SERVERNAME]_USER` | SSH user (default: dockflow) | `PRODUCTION_MAIN_SERVER_USER` |
         | `[ENV]_[SERVERNAME]_PORT` | SSH port (default: 22) | `PRODUCTION_MAIN_SERVER_PORT` |
         | `[ENV]_[SERVERNAME]_PASSWORD` | Deploy user's password, which SSH falls back to (optional) | `PRODUCTION_MAIN_SERVER_PASSWORD` |
+        | `[ENV]_[SERVERNAME]_HOST_KEY` | Fingerprint of the server's SSH host key, which pins it (optional) | `PRODUCTION_MAIN_SERVER_HOST_KEY` |
         | `GIT_TOKEN` | Optional: for remote build strategy | GitHub/GitLab token |
       </Tabs.Tab>
     </Tabs>
