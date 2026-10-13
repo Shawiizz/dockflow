@@ -152,6 +152,13 @@ through a second service of the `traefik` stack,
 socket (read-only) and only answers `GET` requests on services, tasks, networks, nodes and
 system info, over an internal network that only Traefik joins.
 
+Before it installs or updates Traefik, Dockflow checks that ports 80 (and 443, unless
+`acme: false`) are free on the manager. A Swarm service that publishes one of them, or, on a
+first install, another program listening on it (found with `ss`, when the manager has it), stops
+the deploy with a message naming the service or the process. When `ss` is run by a user who is
+not root, a program may not be nameable; the message says so. Traefik's own service holding the
+ports is not a conflict: that is an update.
+
 ### Label injection
 
 Dockflow automatically injects Traefik routing labels into your app services (any service that has `ports:` defined):
@@ -284,7 +291,8 @@ a domain and path, or when a route without `path` takes the domain where service
 Traefik and the [nginx plugin](/en/configuration/plugins#nginx) do not know about each other.
 Traefik is deployed as a Swarm service publishing ports 80 and 443, while the plugin installs a
 vhost for the host's nginx and reloads it. A host nginx listening on port 80 and Traefik
-publishing port 80 cannot both bind it.
+publishing port 80 cannot both bind it: on a first install, the deploy stops and names the
+process that holds the port.
 
 Pick one: either drop the nginx plugin and route through Traefik labels, or leave
 `proxy.enabled: false` and serve through nginx.

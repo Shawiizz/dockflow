@@ -12,6 +12,7 @@ import type { SSHKeyConnection } from '../../../types';
 import type { ProxyConfig } from '../../../utils/config';
 import { shellQuote, sshExec, sshExecChannel } from '../../../utils/ssh';
 import { printDebug, printDim, printSuccess } from '../../../utils/output';
+import { DeployError, ErrorCode } from '../../../utils/errors';
 import {
   TRAEFIK_STACK_NAME,
   TRAEFIK_NETWORK_NAME,
@@ -23,8 +24,49 @@ import {
 import type { ProxyBackend } from '../interfaces';
 
 const CONFIG_HASH_LABEL = 'dockflow.config-hash';
+const TRAEFIK_SERVICE = `${TRAEFIK_STACK_NAME}_traefik`;
+const SERVICE_PORTS_FORMAT = '{{.Spec.Name}}|{{range .Endpoint.Ports}}{{.PublishedPort}}/{{.Protocol}}/{{.PublishMode}} {{end}}';
 const SOCKET_PROXY_SERVICE = 'socket-proxy';
 const SOCKET_PROXY_NETWORK = 'socket-proxy';
+
+interface PortHolder {
+  port: number;
+  description: string;
+}
+
+interface ServicePort {
+  port: number;
+  protocol: string;
+  mode: string;
+}
+
+/** Lines `name|80/tcp/ingress 443/tcp/host ` as SERVICE_PORTS_FORMAT prints them. */
+export function parseServicePorts(output: string): Array<{ name: string; ports: ServicePort[] }> {
+  const services: Array<{ name: string; ports: ServicePort[] }> = [];
+  for (const line of output.split('\n')) {
+    const [name, rest = ''] = line.trim().split('|');
+    if (!name) continue;
+    const ports = rest.split(/\s+/).flatMap((entry) => {
+      const [port, protocol, mode] = entry.split('/');
+      return port && Number(port) > 0 ? [{ port: Number(port), protocol, mode }] : [];
+    });
+    services.push({ name, ports });
+  }
+  return services;
+}
+
+/** The TCP listeners of `ss -ltnp`: local port and, when ss may show it, the process name. */
+export function parseListeners(output: string): Array<{ port: number; process?: string }> {
+  const listeners: Array<{ port: number; process?: string }> = [];
+  for (const line of output.split('\n')) {
+    const columns = line.trim().split(/\s+/);
+    if (columns[0] !== 'LISTEN' || columns.length < 5) continue;
+    const port = Number(columns[3].slice(columns[3].lastIndexOf(':') + 1));
+    if (!Number.isInteger(port)) continue;
+    listeners.push({ port, process: /users:\(\("([^"]+)"/.exec(line)?.[1] });
+  }
+  return listeners;
+}
 
 export class SwarmProxyBackend implements ProxyBackend {
   constructor(private readonly connection: SSHKeyConnection) {}
@@ -40,6 +82,8 @@ export class SwarmProxyBackend implements ProxyBackend {
       printDebug('Traefik stack already running');
       return;
     }
+
+    await this.assertPortsFree(proxyConfig, state.replicas !== '');
 
     printDim(state.replicas ? 'Updating Traefik reverse proxy...' : 'Deploying Traefik reverse proxy...');
 
@@ -72,9 +116,98 @@ export class SwarmProxyBackend implements ProxyBackend {
     printSuccess('Traefik reverse proxy deployed');
   }
 
+  /**
+   * Traefik publishes 80 (and 443 with ACME) on the manager: a port another service or a
+   * process already holds would fail the stack deploy with an error that names no one.
+   * Traefik's own service holding them is an update. A listener on the host is only looked
+   * for on a first install: while Traefik runs, it is the one holding the ports.
+   */
+  private async assertPortsFree(proxyConfig: ProxyConfig, traefikExists: boolean): Promise<void> {
+    const ports = SwarmProxyBackend.publishedPorts(proxyConfig);
+    const holders = await this.swarmServiceHolders(ports);
+    if (!traefikExists) {
+      const known = new Set(holders.map((holder) => holder.port));
+      holders.push(...(await this.hostListeners(ports)).filter((holder) => !known.has(holder.port)));
+    }
+    if (holders.length === 0) return;
+
+    throw new DeployError(
+      `Cannot deploy Traefik: ${holders.map((holder) => holder.description).join('; ')}`,
+      ErrorCode.DEPLOY_FAILED,
+      `Free the port, or move the holder to another one, then deploy again. Traefik needs ${ports.join(' and ')} on the manager.`,
+    );
+  }
+
+  static publishedPorts(proxyConfig: ProxyConfig): number[] {
+    return proxyConfig.acme !== false ? [80, 443] : [80];
+  }
+
+  /** Swarm services other than Traefik that publish one of the ports, host mode only when a task runs on a manager. */
+  private async swarmServiceHolders(ports: number[]): Promise<PortHolder[]> {
+    const listing = await sshExec(
+      this.connection,
+      `docker service ls -q | xargs -r docker service inspect --format ${shellQuote(SERVICE_PORTS_FORMAT)} 2>/dev/null`,
+    );
+    if (listing.exitCode !== 0) {
+      printDebug(`Could not list the published ports of the Swarm services: ${listing.stderr.trim() || `exit ${listing.exitCode}`}`);
+      return [];
+    }
+
+    const published = parseServicePorts(listing.stdout)
+      .filter((service) => service.name !== TRAEFIK_SERVICE)
+      .map((service) => ({ ...service, ports: service.ports.filter((p) => p.protocol === 'tcp' && ports.includes(p.port)) }))
+      .filter((service) => service.ports.length > 0);
+    if (published.length === 0) return [];
+
+    const managers = published.some((service) => service.ports.some((p) => p.mode === 'host')) ? await this.managerNodes() : new Set<string>();
+    const holders: PortHolder[] = [];
+    for (const service of published) {
+      for (const { port, mode } of service.ports) {
+        if (mode === 'host' && !(await this.runsOn(service.name, managers))) continue;
+        holders.push({
+          port,
+          description: `port ${port} is already published by the Swarm service "${service.name}"${mode === 'host' ? ' (host mode, on a manager)' : ''}`,
+        });
+      }
+    }
+    return holders;
+  }
+
+  private async managerNodes(): Promise<Set<string>> {
+    const result = await sshExec(this.connection, `docker node ls --filter role=manager --format '{{.Hostname}}' 2>/dev/null`);
+    return new Set(result.stdout.split('\n').map((line) => line.trim()).filter(Boolean));
+  }
+
+  private async runsOn(service: string, nodes: Set<string>): Promise<boolean> {
+    const result = await sshExec(
+      this.connection,
+      `docker service ps ${shellQuote(service)} --filter desired-state=running --format '{{.Node}}' 2>/dev/null`,
+    );
+    return result.stdout.split('\n').some((line) => nodes.has(line.trim()));
+  }
+
+  /** Listeners on the manager itself, by process name when `ss` may show it. Without `ss`, nothing is reported. */
+  private async hostListeners(ports: number[]): Promise<PortHolder[]> {
+    const result = await sshExec(this.connection, 'ss -ltnp 2>/dev/null');
+    if (result.exitCode !== 0) {
+      printDebug('ss is not available on the manager: the ports 80 and 443 were not checked for other listeners');
+      return [];
+    }
+    const listeners = parseListeners(result.stdout).filter((listener) => ports.includes(listener.port));
+    // IPv4 and IPv6 sockets of one process are two lines
+    return listeners
+      .filter((listener, i) => listeners.findIndex((other) => other.port === listener.port) === i)
+      .map((listener) => ({
+        port: listener.port,
+        description: listener.process
+          ? `port ${listener.port} is already in use on the manager by "${listener.process}"`
+          : `port ${listener.port} is already in use on the manager by a process Dockflow cannot name (run \`ss -ltnp\` as root there to see it)`,
+      }));
+  }
+
   /** Replicas of the Traefik service (empty when absent) and the config hash it was deployed with. */
   private async currentState(): Promise<{ replicas: string; configHash: string }> {
-    const service = `${TRAEFIK_STACK_NAME}_traefik`;
+    const service = TRAEFIK_SERVICE;
     const [replicas, labels] = await Promise.all([
       sshExec(this.connection, `docker service ls --filter ${shellQuote(`name=${service}`)} --format '{{.Replicas}}' 2>/dev/null`),
       sshExec(this.connection, `docker service inspect ${shellQuote(service)} --format '{{index .Spec.Labels "${CONFIG_HASH_LABEL}"}}' 2>/dev/null`),
