@@ -1,0 +1,1 @@
+dockflow-check-global: scale can only be used with replicated or replicated-job mode

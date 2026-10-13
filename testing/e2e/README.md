@@ -88,6 +88,26 @@ the command line of any process on the manager and the worker while the command 
 that the poller does see a marker. A command shorter than the poll can slip through it, so a clean
 run is evidence, not proof.
 
+**Recorded Docker errors.** `scripts/record-docker-errors.ts` provokes about a dozen real failures on
+the running Swarm cluster (a placement no node can satisfy, a missing image, a container that exits
+or is killed for its memory, a missing network, a volume in use, a stack with unsupported keys,
+`service scale` on a global service, a worker asked for cluster state...) and saves the exact text
+Docker printed to `cli/src/__tests__/fixtures/docker-errors/` (one `.txt` per case plus `index.json`,
+which says how each was obtained). The unit tests in `cli/src/__tests__/docker-errors.test.ts` feed
+those texts to the classifiers (`analyzeTaskError`, `dockerQueryError`, `stackDeployFailure`, the
+convergence timeout). A case marked `hand-written` in `index.json` was written from Docker's source
+and waits to be replaced by a recording:
+
+```bash
+bun run testing/e2e/scripts/record-docker-errors.ts [--only name,name]
+cd cli && bun test src/__tests__/docker-errors.test.ts
+```
+
+The cluster must be up (a Swarm suite run leaves it up; the script starts it otherwise). A failing
+test after a recording means Docker words a message differently from what the classifier expects:
+fix the classifier, not the fixture. Everything the script creates is named `dockflow-check-*` and
+removed at the end.
+
 **Failure dump.** The last three CLI invocations of a run are kept in
 `.artifacts/last-cli-invocations.txt` (git-ignored). When a Swarm job fails, CI runs
 `bun run testing/e2e/helpers/debug-dump.ts swarm`, which adds the state of the cluster

@@ -1,0 +1,84 @@
+{
+  "note": "A case marked hand-written was written from the messages in Docker's source and is replaced by the output of testing/e2e/scripts/record-docker-errors.ts, which marks it recorded.",
+  "docker": "unknown",
+  "cases": {
+    "no-suitable-node": {
+      "kind": "task-error",
+      "exitCode": 0,
+      "origin": "hand-written",
+      "command": "docker service ps --no-trunc --format '{{.Error}}' <service created with a constraint no node satisfies>"
+    },
+    "image-manifest-unknown": {
+      "kind": "task-error",
+      "exitCode": 0,
+      "origin": "hand-written",
+      "command": "docker service ps --no-trunc --format '{{.Error}}' <service whose image tag is not in the e2e registry>"
+    },
+    "image-pull-denied": {
+      "kind": "task-error",
+      "exitCode": 0,
+      "origin": "hand-written",
+      "command": "docker service ps --no-trunc --format '{{.Error}}' <service whose image repository does not exist>"
+    },
+    "container-exit-nonzero": {
+      "kind": "task-error",
+      "exitCode": 0,
+      "origin": "hand-written",
+      "command": "docker service ps --no-trunc --format '{{.Error}}' <service whose container exits with code 3>"
+    },
+    "oom-killed": {
+      "kind": "task-error",
+      "exitCode": 0,
+      "origin": "hand-written",
+      "command": "docker service ps --no-trunc --format '{{.Error}}' <service killed for exceeding --limit-memory>"
+    },
+    "network-external-missing": {
+      "kind": "stderr",
+      "exitCode": 1,
+      "origin": "hand-written",
+      "command": "docker stack deploy -c - <stack whose external network does not exist>"
+    },
+    "volume-in-use": {
+      "kind": "stderr",
+      "exitCode": 1,
+      "origin": "hand-written",
+      "command": "docker volume rm <volume a container still mounts>"
+    },
+    "stack-deploy-unsupported-options": {
+      "kind": "stderr",
+      "exitCode": 1,
+      "origin": "hand-written",
+      "command": "docker stack deploy -c - <stack with a build key and no image>"
+    },
+    "stack-deploy-deprecated-options": {
+      "kind": "stderr",
+      "exitCode": 1,
+      "origin": "hand-written",
+      "command": "docker stack deploy -c - <stack with a build key, a container_name and no image>"
+    },
+    "service-scale-global": {
+      "kind": "stderr",
+      "exitCode": 1,
+      "origin": "hand-written",
+      "command": "docker service scale --detach <global service>=2"
+    },
+    "worker-not-manager": {
+      "kind": "stderr",
+      "exitCode": 1,
+      "origin": "hand-written",
+      "command": "docker service ls, run on the worker"
+    },
+    "daemon-unreachable": {
+      "kind": "stderr",
+      "exitCode": 1,
+      "origin": "hand-written",
+      "command": "docker ps with DOCKER_HOST pointing at a closed port"
+    },
+    "socket-permission-denied": {
+      "kind": "stderr",
+      "exitCode": 1,
+      "origin": "hand-written",
+      "command": "docker ps as a user that cannot read the Docker socket"
+    }
+  }
+}
