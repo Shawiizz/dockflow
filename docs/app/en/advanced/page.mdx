@@ -48,7 +48,10 @@ Preview what a deployment would do without executing:
 
 ```bash
 dockflow deploy production --dry-run
+dockflow deploy production --dry-run --render   # print the Swarm stack that would be sent
 ```
+
+The rendered stack can hold secrets in clear (see [the CLI reference](/en/cli)).
 
 ## Debug Workflow
 

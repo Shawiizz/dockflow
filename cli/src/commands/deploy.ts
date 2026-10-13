@@ -45,7 +45,7 @@ import {
   ErrorCode,
   withErrorHandler,
 } from '../utils/errors';
-import { displayDeployDryRun } from './deploy-dry-run';
+import { displayDeployDryRun, displayRenderedStack } from './deploy-dry-run';
 import type { ClusterNode, SSHKeyConnection } from '../types';
 
 import * as Compose from '../services/compose';
@@ -60,7 +60,7 @@ import { onInterrupt, SIGINT_EXIT_CODE } from '../utils/interrupt';
 import { sshShell } from '../utils/remote-shell';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
-import { accessoriesKey, applyPublicPorts, rolledBackError, failureOutcome, cleanupManager, buildAndDistribute, loginManagerToRegistry, runDeployHook, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
+import { accessoriesKey, applyPublicPorts, composeWithImageTags, keepRunningImageTags, rolledBackError, failureOutcome, cleanupManager, buildAndDistribute, loginManagerToRegistry, runDeployHook, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
 import type { AppProgress, BuildResult } from './deploy-phases';
 import type { UploadRollbackPlan } from './deploy-phases';
 
@@ -266,18 +266,6 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
     }
   }
 
-  // Dry-run exit — after rendering and plugin expansion, so the summary lists the
-  // uploads and hook entries a deploy would actually run.
-  if (options.dryRun) {
-    displayDeployDryRun({
-      env, deployVersion, branchName, projectRoot, manager, workers,
-      deployApp: shouldDeployApp, forceAccessories, skipAccessories,
-      skipBuild: options.skipBuild, force: options.force, only: options.only, debug: options.debug,
-      config, pluginSummary: pluginsLoaded.pluginSummary,
-    });
-    return null;
-  }
-
   // Build context
   const managerConn = cluster.manager.connection;
   const ctx: DeployContext = {
@@ -292,6 +280,22 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
     audit: new Audit(managerConn),
     metrics: new Metrics(managerConn),
   };
+
+  // Dry-run exit — after rendering and plugin expansion, so the summary lists the
+  // uploads and hook entries a deploy would actually run.
+  if (options.dryRun) {
+    if (options.render) {
+      await displayRenderedStack(ctx);
+    } else {
+      displayDeployDryRun({
+        env, deployVersion, branchName, projectRoot, manager, workers,
+        deployApp: shouldDeployApp, forceAccessories, skipAccessories,
+        skipBuild: options.skipBuild, force: options.force, only: options.only, debug: options.debug,
+        config, pluginSummary: pluginsLoaded.pluginSummary,
+      });
+    }
+    return null;
+  }
 
   return { ctx };
 }
@@ -336,9 +340,7 @@ async function execute(ctx: DeployContext): Promise<void> {
   const stopHandlingInterrupts = onInterrupt(handleSignal);
 
   try {
-    let compose = Compose.loadFromString(ctx.composeContent, 'docker-compose.yml');
-
-    Compose.updateImageTags(compose, ctx.config, ctx.env, ctx.deployVersion, ctx.options.only);
+    let compose = composeWithImageTags(ctx);
 
     await checkUploadPermissions(ctx);
 
@@ -352,17 +354,7 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     await runDeployHook(ctx, 'pre-deploy');
 
-    // When --only targets specific services, borrow image tags from the server
-    // release for non-targeted services so both the deploy and the release file
-    // reflect what is actually running for those services.
-    // Falls back to the local compose as-is if no release exists yet.
-    if (ctx.options.only) {
-      const currentContent = await ctx.releases.getCurrentComposeContent(ctx.stackName);
-      if (currentContent) {
-        const filter = ctx.options.only.split(',').map((s: string) => s.trim());
-        compose = Compose.syncNonTargetedImageTags(compose, Compose.loadFromString(currentContent), filter);
-      }
-    }
+    compose = await keepRunningImageTags(ctx, compose);
 
     await applyPublicPorts(ctx);
 
@@ -492,6 +484,9 @@ async function execute(ctx: DeployContext): Promise<void> {
 
 export async function runDeploy(env: string | undefined, version: string | undefined, options: Partial<DeployOptions>): Promise<void> {
   if (options.debug) setVerbose(true);
+  if (options.render && !options.dryRun) {
+    throw new ConfigError('--render only works with --dry-run', 'Run: dockflow deploy <env> --dry-run --render');
+  }
   const setup = await resolveSetup(env, version, options);
   if (!setup) return;
   await execute(setup.ctx);
@@ -511,6 +506,7 @@ export function registerDeployCommand(program: Command): void {
     .option('--no-failover', 'Disable multi-manager failover (use first manager only)')
     .option('-s, --server <name>', 'Deploy through this manager (no failover)')
     .option('--dry-run', 'Show what would be deployed without executing')
+    .option('--render', 'With --dry-run, print the Swarm stack that would be sent')
     .option('--branch <branch>', 'Override auto-detected git branch')
     .option('--debug', 'Enable debug output')
     .action(

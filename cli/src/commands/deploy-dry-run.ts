@@ -3,11 +3,13 @@
  * Shows what would be deployed without executing
  */
 
-import { colors, printWarning, printDim, printBlank, printRaw } from '../utils/output';
+import { colors, printWarning, printDim, printBlank, printRaw, printInfo } from '../utils/output';
 import type { ResolvedServer } from '../types';
 import { HOOK_PHASES, type DockflowConfig } from '../utils/config';
 import { resolvePhaseEntries } from '../services/hook';
-import { uploadName } from './deploy-phases';
+import * as Compose from '../services/compose';
+import type { DeployContext } from './deploy-context';
+import { appStackInput, composeWithImageTags, keepRunningImageTags, uploadName } from './deploy-phases';
 
 interface DeployDryRunOptions {
   env: string;
@@ -137,4 +139,21 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
   printWarning('═'.repeat(60));
   printWarning('  To execute this deployment, remove the --dry-run flag');
   printWarning('═'.repeat(60));
+}
+
+/**
+ * Print, on stdout alone, the app stack a deploy would send to Swarm, so the output can be
+ * redirected to a file. Everything else goes to stderr.
+ */
+export async function displayRenderedStack(ctx: DeployContext): Promise<void> {
+  const compose = await keepRunningImageTags(ctx, composeWithImageTags(ctx));
+  if (!ctx.deployApp || !Compose.hasServices(compose)) {
+    printInfo('This deploy sends no app stack: there is nothing to render.');
+    return;
+  }
+  printWarning(
+    'The stack below is printed as it would be sent: values rendered from servers.yml and CI secrets ' +
+      '(current.env.*) appear in clear. Do not share or log it.',
+  );
+  printRaw(ctx.orchestrator.render(appStackInput(ctx, compose)).trimEnd());
 }

@@ -24,6 +24,8 @@ export interface DeployOptions {
   /** the manager to deploy through, instead of the failover choice */
   server?: string;
   dryRun?: boolean;
+  /** With a dry run, print the Swarm stack that would be sent. */
+  render?: boolean;
   branch?: string;
 }
 

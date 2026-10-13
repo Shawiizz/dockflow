@@ -135,6 +135,7 @@ Deploy the application to the specified environment. In CI, both `env` and `vers
 | `--no-failover` | Disable multi-manager failover (use first manager only) |
 | `-s, --server <name>` | Deploy through this manager, without failover |
 | `--dry-run` | Show what would be deployed without executing |
+| `--render` | With `--dry-run`, print the Swarm stack that would be sent |
 | `--branch <branch>` | Override auto-detected git branch |
 | `--debug` | Enable debug output |
 
@@ -150,7 +151,14 @@ dockflow deploy staging                   # Auto-generated version
 dockflow deploy production --accessories  # Force redeploy accessories only
 dockflow deploy production --all          # Deploy app + accessories
 dockflow deploy production --dry-run      # Preview without executing
+dockflow deploy production --dry-run --render > stack.yml   # The Swarm stack that would be sent
 ```
+
+`--dry-run --render` prints, on standard output, the app stack exactly as `dockflow deploy` would send it to `docker stack deploy`: templates rendered, image tags of the version, the `--only` filter applied, Swarm defaults and Traefik labels added, `build` sections removed. Nothing is built, uploaded or deployed, and every other line goes to standard error, so the output can be redirected to a file. It still reads from the manager (the active manager, the latest version when you give none, and under `--only` the tags of the running release). Accessories and Traefik itself are separate stacks and are not printed, and `--render` without `--dry-run` is refused.
+
+<Callout type="warning">
+  The stack is printed as it would be sent, so a value rendered from `servers.yml` or a CI secret (`{{ current.env.* }}`) appears in clear. A warning line says so before the YAML. Do not paste the output in a ticket or a CI log without reading it first.
+</Callout>
 
 ### Build
 
