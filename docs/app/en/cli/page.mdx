@@ -214,7 +214,7 @@ dockflow config path              # Show config directory
 ### Validate
 
 ```bash
-dockflow validate
+dockflow validate [env]
 ```
 
 Validate `.dockflow` configuration files against their schemas. Runs entirely offline — no SSH connection, no server required — which makes it the fastest way to check a config before pushing.
@@ -225,8 +225,11 @@ It checks `config.yml` and `servers.yml` (or `dockflow.yml` in the flat layout),
 |--------|-------------|
 | `--env <env>` | Also check that a specific environment exists in `servers.yml` |
 
+The environment can be given as an argument or with `--env`; giving two different ones is an error.
+
 ```bash
 dockflow validate                 # Validate every configuration file
+dockflow validate production      # Also check that production exists in servers.yml
 dockflow validate --env production
 ```
 

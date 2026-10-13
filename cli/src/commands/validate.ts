@@ -88,6 +88,16 @@ interface ValidateOptions {
   env?: string;
 }
 
+export function resolveValidateEnv(positional: string | undefined, flag: string | undefined): string | undefined {
+  if (positional && flag && positional !== flag) {
+    throw new ValidationError(
+      `Two different environments given: "${positional}" and --env "${flag}"`,
+      'Pass the environment once, either as an argument or with --env.',
+    );
+  }
+  return positional ?? flag;
+}
+
 /**
  * Run all validation checks and return whether everything passed.
  */
@@ -264,11 +274,11 @@ async function runValidate(options: ValidateOptions): Promise<void> {
 
 export function registerValidateCommand(program: Command): void {
   program
-    .command('validate')
+    .command('validate [env]')
     .description('Validate .dockflow configuration files without connecting to any server')
     .helpGroup('Setup')
     .option('--env <env>', 'Also check that a specific environment exists in servers.yml')
-    .action(withErrorHandler(async (options: ValidateOptions) => {
-      await runValidate(options);
+    .action(withErrorHandler(async (envArg: string | undefined, options: ValidateOptions) => {
+      await runValidate({ ...options, env: resolveValidateEnv(envArg, options.env) });
     }));
 }
