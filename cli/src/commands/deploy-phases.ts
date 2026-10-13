@@ -729,7 +729,27 @@ export function convergenceError(
   );
 }
 
-export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Promise<void> {
+/** How far the app deploy got, for what a failure must undo. */
+export interface AppProgress {
+  /** the stack reached Swarm: the new version may run */
+  sent: boolean;
+  /** Swarm put the previous version back by itself */
+  swarmRolledBack: boolean;
+}
+
+export type FailureOutcome = 'rollback' | 'keep' | 'forget';
+
+/**
+ * What a failed deploy does with its release: roll back to the previous one, keep the new one as
+ * current because it is what runs, or forget it because it never ran.
+ */
+export function failureOutcome(app: AppProgress, onFailure: HealthCheckConfig['on_failure'] = 'rollback', hasPrevious = true): FailureOutcome {
+  if (!app.sent) return 'forget';
+  if (onFailure === 'rollback' && hasPrevious) return 'rollback';
+  return app.swarmRolledBack ? 'forget' : 'keep';
+}
+
+export async function deployApp(ctx: DeployContext, compose: ParsedCompose, app: AppProgress = { sent: false, swarmRolledBack: false }): Promise<void> {
   if (!ctx.deployApp) return;
   if (!Compose.hasServices(compose)) return;
 
@@ -751,6 +771,7 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
   if (!deployResult.success) {
     throw deployResult.error;
   }
+  app.sent = true;
 
   const convergence = await ctx.orchestrator.waitConvergence(
     ctx.stackName,
@@ -758,7 +779,10 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose): Pro
     CONVERGENCE_INTERVAL_S,
     servicesFilter,
   );
-  if (!convergence.converged) throw convergenceError(convergence, ctx.env);
+  if (!convergence.converged) {
+    app.swarmRolledBack = convergence.rolledBack;
+    throw convergenceError(convergence, ctx.env);
+  }
 
   if (ctx.config.health_checks?.enabled !== false) {
     const health = new HealthCheck(ctx.cluster.manager.connection, ctx.orchestrator);

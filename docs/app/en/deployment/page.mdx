@@ -76,12 +76,16 @@ After deployment, Dockflow verifies:
 
 ### Rollback on Failure
 
-If health checks fail, Dockflow:
+Once the stack reached Swarm, any failure (services that do not converge, a failed internal check,
+a failed HTTP check) makes Dockflow, by default (`on_failure: rollback`):
 
-1. Detects the rollback via Swarm status
-2. Waits for the previous version to stabilize
-3. Cleans up the failed release
-4. Reports the deployment as failed
+1. Send the previous release's stack to Swarm again
+2. Wait for it to converge and run the health checks again
+3. Report the deployment as failed, naming the version it went back to
+
+With another [`on_failure`](/en/configuration/config-file#on_failure), nothing is rolled back: the
+new version is what runs, so it stays the current release and the command says so. Only when
+Swarm put the previous version back by itself is the failed release forgotten.
 </Steps>
 
 ## Release Management

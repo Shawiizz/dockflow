@@ -161,7 +161,7 @@ export class HealthCheck {
 
     if (failedEndpoints.length === 0) return [];
 
-    const onFailure = config.on_failure ?? 'fail';
+    const onFailure = config.on_failure ?? 'rollback';
 
     switch (onFailure) {
       case 'fail':

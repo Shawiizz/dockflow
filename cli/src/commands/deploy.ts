@@ -60,8 +60,8 @@ import { onInterrupt, SIGINT_EXIT_CODE } from '../utils/interrupt';
 import { sshShell } from '../utils/remote-shell';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
-import { accessoriesKey, applyPublicPorts, rolledBackError, buildAndDistribute, loginManagerToRegistry, runDeployHook, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
-import type { BuildResult } from './deploy-phases';
+import { accessoriesKey, applyPublicPorts, rolledBackError, failureOutcome, buildAndDistribute, loginManagerToRegistry, runDeployHook, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
+import type { AppProgress, BuildResult } from './deploy-phases';
 import type { UploadRollbackPlan } from './deploy-phases';
 
 // ---------------------------------------------------------------------------
@@ -308,7 +308,7 @@ async function execute(ctx: DeployContext): Promise<void> {
 
   const startTime = Date.now();
   let deployFailed = false;
-  let stackDeployed = false;
+  const app: AppProgress = { sent: false, swarmRolledBack: false };
   let uploadPlan: UploadRollbackPlan | null = null;
   let previousSymlink: string | null = null;
   let buildResult: BuildResult | null = null;
@@ -395,8 +395,7 @@ async function execute(ctx: DeployContext): Promise<void> {
     if (accessoriesOutcome.status === 'rejected') throw accessoriesOutcome.reason;
 
     applyStarted = true;
-    await deployApp(ctx, compose);
-    stackDeployed = ctx.deployApp !== false && Compose.hasServices(compose);
+    await deployApp(ctx, compose, app);
 
 
     await runHTTPHealthChecks(ctx);
@@ -417,7 +416,8 @@ async function execute(ctx: DeployContext): Promise<void> {
     }
 
     let rolledBackTo: string | null = null;
-    if (stackDeployed && ctx.config.health_checks?.on_failure === 'rollback' && previousSymlink) {
+    const outcome = failureOutcome(app, ctx.config.health_checks?.on_failure, previousSymlink !== null);
+    if (outcome === 'rollback' && previousSymlink) {
       // rollback() handles its own cleanup — calling removeRelease first would delete the failed release before rollback can list it.
       try {
         const rollbackStartedAt = new Date();
@@ -432,6 +432,8 @@ async function execute(ctx: DeployContext): Promise<void> {
         );
         await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
       }
+    } else if (outcome === 'keep') {
+      printWarning(`${ctx.deployVersion} reached Swarm and is what runs now: it stays the current release. Check it with \`dockflow status ${ctx.env}\`.`);
     } else if (releaseCreated) {
       // only a record this deploy wrote: before that, the version's directory may be the running release
       await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});

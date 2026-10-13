@@ -12,6 +12,7 @@ import {
   convergenceError,
   runPostRollbackHealthChecks,
   cleanupFailedImages,
+  failureOutcome,
 } from '../commands/deploy-phases';
 import { removeImagesCommand } from '../services/release';
 import * as ssh from '../utils/ssh';
@@ -284,5 +285,27 @@ describe('cleanupFailedImages', () => {
     } finally {
       exec.mockRestore();
     }
+  });
+});
+
+describe('failureOutcome', () => {
+  const sent = { sent: true, swarmRolledBack: false };
+
+  it('forgets a release that never reached Swarm', () => {
+    expect(failureOutcome({ sent: false, swarmRolledBack: false }, 'rollback', true)).toBe('forget');
+  });
+
+  it('rolls back by default once the stack reached Swarm', () => {
+    expect(failureOutcome(sent, undefined, true)).toBe('rollback');
+    expect(failureOutcome({ sent: true, swarmRolledBack: true }, undefined, true)).toBe('rollback');
+  });
+
+  it('keeps the new release as current when it runs and no rollback is wanted or possible', () => {
+    for (const onFailure of ['fail', 'notify', 'ignore'] as const) expect(failureOutcome(sent, onFailure, true)).toBe('keep');
+    expect(failureOutcome(sent, 'rollback', false)).toBe('keep');
+  });
+
+  it('forgets the new release when Swarm put the previous one back by itself', () => {
+    expect(failureOutcome({ sent: true, swarmRolledBack: true }, 'fail', true)).toBe('forget');
   });
 });

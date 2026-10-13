@@ -106,6 +106,8 @@ describe("remote HTTP health checks", () => {
       // Exit code 53 = HEALTH_CHECK_FAILED
       expect(result.exitCode).toBe(53);
       expect(result.stdout + result.stderr).toContain("HTTP health checks failed");
+      // on_failure: fail rolls nothing back: the version that runs stays the current release
+      expect(result.stdout + result.stderr).toContain("it stays the current release");
     }, 300_000);
   });
 });

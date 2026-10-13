@@ -85,8 +85,8 @@ export const HealthCheckConfigSchema = z.object({
   enabled: z.boolean().optional().default(true).describe(
     'Enable/disable health checks'
   ),
-  on_failure: z.enum(['notify', 'rollback', 'fail', 'ignore']).optional().default('notify').describe(
-    'Action on health check failure: notify (log only), rollback (revert), fail (stop), ignore'
+  on_failure: z.enum(['notify', 'rollback', 'fail', 'ignore']).optional().default('rollback').describe(
+    'Action when the deploy fails once the stack reached Swarm: rollback (default: redeploy the previous release and check it again), fail, notify (HTTP check failures only warn), ignore'
   ),
   timeout: z.number().int().min(10).max(600).optional().describe(
     'Swarm health check timeout in seconds (default: 120)'

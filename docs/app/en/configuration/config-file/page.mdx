@@ -121,15 +121,17 @@ Time to wait after deployment before running external health checks.
 Wait for Swarm internal healthchecks to pass before running external checks.
 
 ### `on_failure`
+**Default:** `"rollback"`
 
-Action when external health checks fail:
+What a deploy does when it fails after its stack reached Swarm: services that do not converge, a
+failed internal check or a failed HTTP check.
 
 | Value | Behavior |
 |-------|----------|
-| `"fail"` | Mark deployment as failed |
-| `"rollback"` | Rollback to the previous stack |
-| `"notify"` | Log a warning but continue |
-| `"ignore"` | Skip health check failures |
+| `"rollback"` | Send the previous release again, wait for it and run the checks again; the deploy fails |
+| `"fail"` | The deploy fails; the new version, which is what runs, stays the current release |
+| `"notify"` | A failed HTTP check only warns and the deploy succeeds; other failures act as `"fail"` |
+| `"ignore"` | HTTP checks are not judged; other failures act as `"fail"` |
 
 ### `endpoints`
 
