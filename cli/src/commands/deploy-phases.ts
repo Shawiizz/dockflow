@@ -729,6 +729,20 @@ export function convergenceError(
   );
 }
 
+/**
+ * The manager a failed deploy cleans up through: the one it deployed through while it answers,
+ * otherwise the first other manager that does; null when none answers.
+ */
+export async function cleanupManager(
+  cluster: ClusterConnection,
+  answers: (node: ClusterNode) => Promise<boolean> = (node) => sshExec(node.connection, 'true').then((r) => r.exitCode === 0, () => false),
+): Promise<ClusterNode | null> {
+  for (const node of [cluster.manager, ...cluster.otherManagers]) {
+    if (await answers(node)) return node;
+  }
+  return null;
+}
+
 /** How far the app deploy got, for what a failure must undo. */
 export interface AppProgress {
   /** the stack reached Swarm: the new version may run */

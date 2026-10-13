@@ -13,6 +13,7 @@ import {
   runPostRollbackHealthChecks,
   cleanupFailedImages,
   failureOutcome,
+  cleanupManager,
 } from '../commands/deploy-phases';
 import { removeImagesCommand } from '../services/release';
 import * as ssh from '../utils/ssh';
@@ -307,5 +308,25 @@ describe('failureOutcome', () => {
 
   it('forgets the new release when Swarm put the previous one back by itself', () => {
     expect(failureOutcome({ sent: true, swarmRolledBack: true }, 'fail', true)).toBe('forget');
+  });
+});
+
+describe('cleanupManager', () => {
+  const node = (name: string) => ({ name, connection: { host: name, port: 22, user: 'dockflow', privateKey: 'key' } }) as never;
+  const cluster = { manager: node('m1'), otherManagers: [node('m2'), node('m3')], workers: [node('w1')] } as never;
+
+  it('keeps the manager the deploy went through while it answers', async () => {
+    expect((await cleanupManager(cluster, async () => true))?.name).toBe('m1');
+  });
+
+  it('falls back to the first other manager that answers, never to a worker', async () => {
+    const asked: string[] = [];
+    const chosen = await cleanupManager(cluster, async (n) => {
+      asked.push(n.name);
+      return n.name === 'm3';
+    });
+    expect(chosen?.name).toBe('m3');
+    expect(asked).toEqual(['m1', 'm2', 'm3']);
+    expect(await cleanupManager(cluster, async () => false)).toBeNull();
   });
 });

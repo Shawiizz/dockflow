@@ -60,7 +60,7 @@ import { onInterrupt, SIGINT_EXIT_CODE } from '../utils/interrupt';
 import { sshShell } from '../utils/remote-shell';
 
 import type { DeployOptions, DeployContext } from './deploy-context';
-import { accessoriesKey, applyPublicPorts, rolledBackError, failureOutcome, buildAndDistribute, loginManagerToRegistry, runDeployHook, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
+import { accessoriesKey, applyPublicPorts, rolledBackError, failureOutcome, cleanupManager, buildAndDistribute, loginManagerToRegistry, runDeployHook, uploadFiles, checkUploadPermissions, rollbackUploads, commitUploads, ensureExternalNetworks, deployAccessories, deployApp, runHTTPHealthChecks, runPostRollbackHealthChecks, cleanupFailedImages, recordHistory } from './deploy-phases';
 import type { AppProgress, BuildResult } from './deploy-phases';
 import type { UploadRollbackPlan } from './deploy-phases';
 
@@ -417,26 +417,37 @@ async function execute(ctx: DeployContext): Promise<void> {
 
     let rolledBackTo: string | null = null;
     const outcome = failureOutcome(app, ctx.config.health_checks?.on_failure, previousSymlink !== null);
-    if (outcome === 'rollback' && previousSymlink) {
+    const needsManager = outcome === 'rollback' || (outcome === 'forget' && releaseCreated);
+    const through = needsManager ? await cleanupManager(ctx.cluster) : ctx.cluster.manager;
+    if (!through) {
+      printWarning(`No manager answers: ${ctx.deployVersion} could not be cleaned up. Run \`dockflow status ${ctx.env}\` once the cluster is back.`);
+    } else if (through !== ctx.cluster.manager) {
+      printWarning(`${ctx.cluster.manager.name} no longer answers: cleaning up through ${through.name}`);
+    }
+    const lost = through !== null && through !== ctx.cluster.manager;
+    const releases = lost ? new Release(through.connection) : ctx.releases;
+    const orchestrator = lost ? createStackBackend(through.connection) : ctx.orchestrator;
+
+    if (through && outcome === 'rollback' && previousSymlink) {
       // rollback() handles its own cleanup — calling removeRelease first would delete the failed release before rollback can list it.
       try {
         const rollbackStartedAt = new Date();
-        rolledBackTo = await ctx.releases.rollback(ctx.stackName, ctx.orchestrator, ctx.deployVersion, previousSymlink);
+        rolledBackTo = await releases.rollback(ctx.stackName, orchestrator, ctx.deployVersion, previousSymlink);
         printWarning(`Rolled back to ${rolledBackTo}`);
-        await runPostRollbackHealthChecks(ctx.cluster.manager.connection, ctx.orchestrator, ctx.stackName, ctx.config.health_checks, rollbackStartedAt);
+        await runPostRollbackHealthChecks(through.connection, orchestrator, ctx.stackName, ctx.config.health_checks, rollbackStartedAt);
       }
       catch (e) {
         printWarning(
           `Rollback failed: ${e instanceof Error ? e.message : String(e)}\n` +
           `The cluster may be in an inconsistent state. Run 'dockflow status' to check what is running.`
         );
-        await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
+        await releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
       }
     } else if (outcome === 'keep') {
       printWarning(`${ctx.deployVersion} reached Swarm and is what runs now: it stays the current release. Check it with \`dockflow status ${ctx.env}\`.`);
-    } else if (releaseCreated) {
+    } else if (through && releaseCreated) {
       // only a record this deploy wrote: before that, the version's directory may be the running release
-      await ctx.releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
+      await releases.removeRelease(ctx.stackName, ctx.deployVersion, previousSymlink).catch(() => {});
     }
 
     // after the rollback: until then the failed tasks' containers hold the images
