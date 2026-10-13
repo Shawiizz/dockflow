@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { convergenceError } from '../commands/deploy-phases';
 import { loadFromString, serialize } from '../services/compose';
 import { SwarmStackBackend } from '../services/orchestrator/swarm/swarm-stack';
-import { stackDeployFailure, type SwarmClock } from '../services/orchestrator/swarm/swarm-stack-ops';
+import { failedTasksByService, stackDeployFailure, type SwarmClock } from '../services/orchestrator/swarm/swarm-stack-ops';
 import type { SSHExecResult } from '../types';
 import { DeployError, ErrorCode } from '../utils/errors';
 import * as output from '../utils/output';
@@ -585,6 +585,27 @@ describe('SwarmStackBackend.waitConvergence', () => {
     expect(clock.sleeps).toEqual([5000, 5000, 5000, 5000]);
   });
 
+  it('gives up on a service that keeps crashing, counting only the failures since it started', async () => {
+    const failedTask = (n: number) => `t${n}|${WEB}.1|Failed ${n} seconds ago|task: non-zero exit (1)`;
+    let polls = 0;
+    script
+      .on(REPLICAS, { stdout: web('0/1') })
+      .on(UPDATE_STATES, { stdout: '' })
+      .on(/\{\{\.ID\}\}/, () => {
+        // an earlier deploy's failure is there from the start; then up to 4 new failures per poll
+        const newOnes = Array.from({ length: Math.min(polls * 4, 12) }, (_, i) => failedTask(i + 1));
+        polls++;
+        return { stdout: ['old|' + `${WEB}.1|Failed 1 hour ago|task: non-zero exit (2)`, ...newOnes.slice(-5)].join('\n') };
+      });
+
+    const result = await backend().waitConvergence(STACK, 300, 5);
+
+    expect(result.converged).toBe(false);
+    expect(result.timedOut).toBe(false);
+    expect(result.errorDetail).toBe(`${WEB} keeps failing: 12 of its tasks failed since the deploy started, the last with: task: non-zero exit (1)`);
+    expect(clock.sleeps.length).toBeLessThan(10);
+  });
+
   it('names what keeps the tasks from starting when it times out', async () => {
     script
       .on(REPLICAS, { stdout: web('0/2') })
@@ -929,5 +950,15 @@ describe('SwarmStackBackend queries', () => {
 
     expect(await backend().stackExists(STACK)).toBe(true);
     expect(await backend().stackExists('demo')).toBe(false);
+  });
+});
+
+describe('failedTasksByService', () => {
+  it('keeps the failed and rejected tasks, by service', () => {
+    const tasks = failedTasksByService(
+      ['a1|shop_web.1|Failed 3 seconds ago|task: non-zero exit (1)', 'a2|shop_web.1|Shutdown 1 minute ago|', 'b1|shop_db.1|Rejected 2 seconds ago|no suitable node', 'garbage'].join('\n'),
+    );
+    expect([...tasks.keys()]).toEqual(['shop_web', 'shop_db']);
+    expect([...(tasks.get('shop_web')?.entries() ?? [])]).toEqual([['a1', 'task: non-zero exit (1)']]);
   });
 });

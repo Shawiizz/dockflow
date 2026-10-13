@@ -39,10 +39,29 @@ interface UpdateState {
 
 /** A stack that did not converge, and how. */
 export class ConvergenceError extends DeployError {
-  constructor(message: string, readonly outcome: 'rolled-back' | 'paused' | 'timeout', suggestion?: string) {
+  constructor(message: string, readonly outcome: 'rolled-back' | 'paused' | 'timeout' | 'crash-loop', suggestion?: string) {
     super(message, ErrorCode.DEPLOY_FAILED, suggestion);
     this.name = 'ConvergenceError';
   }
+}
+
+/** Failed tasks of one service, counted since the convergence started, after which it is a crash loop. */
+export const CRASH_LOOP_FAILURES = 10;
+
+/**
+ * Failed tasks of `docker stack ps --format '{{.ID}}|{{.Name}}|{{.CurrentState}}|{{.Error}}'`, by
+ * service. Swarm keeps only a few tasks per slot, so the caller accumulates them across polls.
+ */
+export function failedTasksByService(stackPs: string): Map<string, Map<string, string>> {
+  const byService = new Map<string, Map<string, string>>();
+  for (const line of stackPs.trim().split('\n')) {
+    const [id, name, state, error] = line.split('|');
+    if (!id || !name || state === undefined || !/^(Failed|Rejected)\b/.test(state.trim())) continue;
+    const service = name.replace(/\.[^.]*$/, '');
+    if (!byService.has(service)) byService.set(service, new Map());
+    byService.get(service)?.set(id, (error ?? '').trim());
+  }
+  return byService;
 }
 
 /** The cause of a failed `docker stack deploy`, without the warnings it prints first about keys Swarm ignores. */
@@ -264,6 +283,9 @@ export class SwarmStackOps {
     spinner.start(`Waiting for ${ctx} convergence (timeout: ${timeout / 1000}s)...`);
 
     let lastStatuses: string[] = [];
+    // failed tasks seen before this convergence started belong to an earlier deploy
+    let earlierFailures: Set<string> | null = null;
+    const failures = new Map<string, Map<string, string>>();
 
     while (this.clock.now() < deadline) {
       const result = await sshExec(
@@ -337,6 +359,28 @@ export class SwarmStackOps {
           }
         }
         throw error;
+      }
+
+      const failed = await this.failedTasks(stackName);
+      if (earlierFailures === null) {
+        earlierFailures = new Set([...failed.values()].flatMap((tasks) => [...tasks.keys()]));
+      } else {
+        for (const [service, tasks] of failed) {
+          if (filterSet && !filterSet.has(service)) continue;
+          const seen = failures.get(service) ?? new Map<string, string>();
+          for (const [id, error] of tasks) if (!earlierFailures.has(id)) seen.set(id, error);
+          failures.set(service, seen);
+        }
+        const looping = [...failures].find(([, tasks]) => tasks.size >= CRASH_LOOP_FAILURES);
+        if (looping) {
+          const [service, tasks] = looping;
+          const lastError = [...tasks.values()].filter(Boolean).pop();
+          spinner.fail('Convergence failed');
+          throw new ConvergenceError(
+            `${service} keeps failing: ${tasks.size} of its tasks failed since the deploy started${lastError ? `, the last with: ${lastError}` : ''}`,
+            'crash-loop',
+          );
+        }
       }
 
       printDebug(`Convergence: ${statuses.join(', ')}`);
@@ -429,6 +473,14 @@ export class SwarmStackOps {
    * Fetch error messages from recently failed tasks in a stack.
    * Used to enrich rollback error messages with the actual failure reason.
    */
+  private async failedTasks(stackName: string): Promise<Map<string, Map<string, string>>> {
+    const result = await sshExec(
+      this.connection,
+      `docker stack ps ${shellQuote(stackName)} --no-trunc --filter 'desired-state=shutdown' --format '{{.ID}}|{{.Name}}|{{.CurrentState}}|{{.Error}}' 2>/dev/null || echo ""`,
+    ).catch(() => null);
+    return failedTasksByService(result?.stdout ?? '');
+  }
+
   private getFailedTaskErrors(stackName: string): Promise<string> {
     return this.taskErrors(stackName, 'shutdown');
   }

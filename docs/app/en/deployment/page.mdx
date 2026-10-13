@@ -76,6 +76,9 @@ After deployment, Dockflow verifies:
 
 ### Rollback on Failure
 
+Dockflow waits up to 300 seconds for the services to converge, but gives up as soon as a service's
+tasks have failed 10 times since the deploy started: a crash loop does not get better by waiting.
+
 Once the stack reached Swarm, any failure (services that do not converge, a failed internal check,
 a failed HTTP check) makes Dockflow, by default (`on_failure: rollback`):
 
