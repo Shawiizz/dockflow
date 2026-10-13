@@ -23,6 +23,7 @@ import { runRemoteSetup, promptRemoteConnection } from './remote';
 import { buildForwardFlags, readPasswordFile } from './forward';
 import { isHostKeyFingerprint } from '../../utils/host-key';
 import { runSetupSwarm } from './swarm';
+import { acquireSetupLock } from './lock';
 import { CLIError, ConfigError, ErrorCode, withErrorHandler } from '../../utils/errors';
 import type { SetupOptions, ConnectionOptions, RemoteSetupOptions } from './types';
 
@@ -162,10 +163,15 @@ export function registerSetupCommand(program: Command): void {
       // Config flags (--skip-docker-install, --nginx) don't trigger non-interactive mode
       const hasLocalFlags = options.host || options.user || options.sshKey || options.generateKey || options.yes;
 
-      if (hasLocalFlags) {
-        await runNonInteractiveSetup(options);
-      } else {
-        await runInteractiveSetup(options);
+      const lock = await acquireSetupLock();
+      try {
+        if (hasLocalFlags) {
+          await runNonInteractiveSetup(options);
+        } else {
+          await runInteractiveSetup(options);
+        }
+      } finally {
+        lock.release();
       }
     }));
 

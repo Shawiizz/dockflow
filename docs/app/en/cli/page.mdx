@@ -893,6 +893,8 @@ dockflow backup prune production --keep 5
 
 Configure servers for deployment. Must be run on a Linux host, or use `setup user@host` for remote servers.
 
+Only one setup runs on a server at a time: the run on the server takes a lock (`/run/lock/dockflow-setup.lock`), whether it was started by hand or over SSH, and a second one fails at once, naming the pid of the first. The lock is released when setup ends, however it ends; the lock of a setup that was killed is recognised as stale and replaced by the next run.
+
 ### Interactive Setup
 
 ```bash
