@@ -472,7 +472,7 @@ export const DockflowConfigSchema = z.object({
   ),
 
   firewall: FirewallConfigSchema.optional().describe(
-    'Which published container ports the internet may reach (Swarm)'
+    'Which published container ports the internet may reach'
   ),
 
   notifications: NotificationsConfigSchema.optional().describe(

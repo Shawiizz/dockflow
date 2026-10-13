@@ -172,7 +172,7 @@ export interface ProxyConfig {
 export type PublicPort = number | string | { port: number | string; from?: string[] };
 
 export interface FirewallConfig {
-  /** published container ports the internet may reach on Swarm hosts that `dockflow setup` filters */
+  /** published container ports the internet may reach on the servers `dockflow setup` filters */
   public_ports?: PublicPort[];
 }
 

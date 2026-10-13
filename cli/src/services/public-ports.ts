@@ -1,5 +1,5 @@
 /**
- * Public ports — the published container ports the internet may reach on Swarm hosts.
+ * Public ports — the published container ports the internet may reach on the servers.
  *
  * Docker publishes ports with DNAT rules that ufw and firewalld never see. `dockflow setup`
  * installs dockflow-public-ports (public-ports.sh) on each host: a chain at the top of Docker's

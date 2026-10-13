@@ -12,7 +12,7 @@ import { nodesOf, onEveryNode } from './nodes';
 export function registerPsCommand(program: Command): void {
   program
     .command('ps <env>')
-    .description('List running containers (Swarm only)')
+    .description('List running containers')
     .helpGroup('Inspect')
     .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .option('--tasks', 'Show tasks instead of containers')

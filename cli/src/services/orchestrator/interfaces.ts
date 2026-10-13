@@ -118,7 +118,7 @@ export interface StackBackend {
     servicesFilter?: string[],
   ): Promise<ConvergenceResult>;
 
-  /** Internal cluster-level health check (tasks/pods in desired state). */
+  /** Internal cluster-level health check (tasks in desired state). */
   checkInternalHealth(
     stackName: string,
     timeoutSeconds: number,
@@ -165,7 +165,7 @@ export interface LogsOptions {
   timestamps?: boolean;
   /** Stream a specific task only (Swarm task ID). */
   taskId?: string;
-  /** Include logs from terminated/historical task replicas (Swarm only). */
+  /** Include logs from terminated/historical task replicas. */
   allTasks?: boolean;
 }
 

@@ -4,7 +4,7 @@ import { Callout, Steps } from 'nextra/components'
 
 Docker publishes the `ports:` of your services through iptables rules of its own, which ufw and
 firewalld never see: a database published "to test" answers the whole internet, whatever ufw
-says. On Swarm hosts, `dockflow setup` installs a filter so that the internet reaches only the
+says. On every server, `dockflow setup` installs a filter so that the internet reaches only the
 published ports a project declares public. Every published port still answers the host itself
 (nginx proxying to `127.0.0.1:8080`, health checks) and private networks.
 
