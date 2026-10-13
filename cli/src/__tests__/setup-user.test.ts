@@ -324,12 +324,52 @@ describe.skipIf(!posix)('sudoers files on disk', () => {
       });
     });
 
-    it('still warns, and goes on, when a group change fails', () => {
-      withNginx();
-      commands['usermod -aG www-data deploy'] = { exitCode: 6, stderr: "usermod: group 'www-data' does not exist\n" };
-      configureServiceAccess('deploy', host());
-      expect(warnings[0]).toBe("Service access: nginx group membership failed: usermod: group 'www-data' does not exist");
-      expect(existsSync(userFile())).toBe(true);
+    describe('when a group or permission change fails', () => {
+      const failure = (setup: () => void) => {
+        setup();
+        try {
+          configureServiceAccess('deploy', host());
+        } catch (error) {
+          return error as CLIError;
+        }
+        throw new Error('configureServiceAccess did not throw');
+      };
+
+      it('fails naming the nginx group command and its error, and writes no sudoers rule', () => {
+        const error = failure(() => {
+          withNginx();
+          commands['usermod -aG www-data deploy'] = { exitCode: 6, stderr: "usermod: group 'www-data' does not exist\n" };
+        });
+        expect(error).toBeInstanceOf(CLIError);
+        expect(error.message).toBe(
+          "Could not give deploy its nginx group membership: \`usermod -aG www-data deploy\` failed: usermod: group 'www-data' does not exist",
+        );
+        expect(error.suggestion).toContain('run setup again');
+        expect(existsSync(userFile())).toBe(false);
+        expect(warnings).toEqual([]);
+      });
+
+      it('fails on the docker group', () => {
+        const error = failure(() => {
+          commands['getent group docker'] = { exitCode: 0 };
+          commands['usermod -aG docker deploy'] = { exitCode: 1, stderr: 'usermod: cannot lock /etc/group\n' };
+        });
+        expect(error.message).toContain('\`usermod -aG docker deploy\` failed: usermod: cannot lock /etc/group');
+      });
+
+      it('fails on chgrp and on chmod of sites-enabled, naming each', () => {
+        const chgrp = failure(() => {
+          withNginx();
+          commands[`chgrp -R -- www-data ${sitesEnabled}`] = { exitCode: 1, stderr: 'chgrp: Operation not permitted\n' };
+        });
+        expect(chgrp.message).toContain(`\`chgrp -R -- www-data ${sitesEnabled}\` failed: chgrp: Operation not permitted`);
+
+        const chmod = failure(() => {
+          commands[`chgrp -R -- www-data ${sitesEnabled}`] = { exitCode: 0 };
+          commands[`chmod -R g+rwX -- ${sitesEnabled}`] = { exitCode: 1 };
+        });
+        expect(chmod.message).toContain(`\`chmod -R g+rwX -- ${sitesEnabled}\` failed: exit 1`);
+      });
     });
   });
 });

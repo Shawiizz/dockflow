@@ -176,16 +176,22 @@ export function nginxUserFrom(configDump: string): string | null {
  * Safe to call multiple times — writes are idempotent.
  * Must be called AFTER nginx and the filter of published ports are installed, so call it again
  * post-provisioning if they were installed during setup.
+ *
+ * A group or permission change that fails throws, naming the command: a deploy user without the
+ * access it was set up for fails later and far from the cause.
  */
 export function configureServiceAccess(username: string, overrides: Partial<HostEnv> = {}): void {
   const host: HostEnv = { ...localHost, ...overrides };
   const sudoersRules: string[] = [];
 
-  /** Run a privileged config command; failures must be visible, not silent. */
-  const tryRun = (label: string, argv: string[]): void => {
+  const mustRun = (label: string, argv: string[]): void => {
     const result = host.run(argv, { quiet: true, timeoutMs: COMMAND_TIMEOUT_MS });
     if (!result.ok) {
-      host.warn(`Service access: ${label} failed: ${detailOf(result)}`);
+      throw new CLIError(
+        `Could not give ${username} its ${label}: \`${argv.join(' ')}\` failed: ${detailOf(result)}`,
+        ErrorCode.COMMAND_FAILED,
+        'Fix the cause above, then run setup again: it repeats safely.',
+      );
     }
   };
 
@@ -193,7 +199,7 @@ export function configureServiceAccess(username: string, overrides: Partial<Host
   // Docker is installed, which happens AFTER user creation — this re-run
   // post-provisioning is what actually grants the access.
   if (host.run(['getent', 'group', 'docker'], { quiet: true }).ok) {
-    tryRun('docker group membership', ['usermod', '-aG', 'docker', username]);
+    mustRun('docker group membership', ['usermod', '-aG', 'docker', username]);
   }
 
   // nginx: group-write on sites-enabled + restricted sudo for test/reload only
@@ -202,9 +208,9 @@ export function configureServiceAccess(username: string, overrides: Partial<Host
     const dump = host.run([nginxBin, '-T'], { quiet: true, timeoutMs: COMMAND_TIMEOUT_MS });
     const nginxUser = dump.ok ? nginxUserFrom(dump.stdout) : null;
     const nginxGroup = nginxUser ?? (host.run(['getent', 'group', 'nginx'], { quiet: true }).ok ? 'nginx' : 'www-data');
-    tryRun('nginx group membership', ['usermod', '-aG', nginxGroup, username]);
-    tryRun('sites-enabled group ownership', ['chgrp', '-R', '--', nginxGroup, host.sitesEnabled]);
-    tryRun('sites-enabled group permissions', ['chmod', '-R', 'g+rwX', '--', host.sitesEnabled]);
+    mustRun('nginx group membership', ['usermod', '-aG', nginxGroup, username]);
+    mustRun('sites-enabled group ownership', ['chgrp', '-R', '--', nginxGroup, host.sitesEnabled]);
+    mustRun('sites-enabled group permissions', ['chmod', '-R', 'g+rwX', '--', host.sitesEnabled]);
     sudoersRules.push(`${username} ALL=(ALL) NOPASSWD: ${nginxBin} -t, ${nginxBin} -s reload`);
   }
 
@@ -376,15 +382,12 @@ export function createDeployUser(username: string, password: string, publicKey: 
   let created: boolean;
   try {
     ({ created } = ensureDeployUser(username, password, publicKey));
+    // Called again post-provisioning, once nginx and the filter of published ports are installed
+    configureServiceAccess(username);
   } catch (error) {
     spinner.fail(error instanceof Error ? error.message : String(error));
     return false;
   }
-
-  // Configure service access — best-effort at user creation time.
-  // configureServiceAccess() must be called again post-provisioning if
-  // nginx or the filter of published ports is installed after this point.
-  configureServiceAccess(username);
 
   spinner.succeed(created ? `User ${username} created successfully` : `User ${username} is ready`);
   return true;

@@ -265,7 +265,10 @@ what a deployment actually needs.
 | nginx group | Group-write on `/etc/nginx/sites-enabled`, so the [nginx plugin](/en/configuration/plugins#nginx) writes vhosts without sudo |
 
 The nginx group is taken from the `user` directive in `nginx -T`, falling back to `nginx` and
-then `www-data`. Setup also runs `chgrp -R` and `chmod -R g+rwX` on `sites-enabled`.
+then `www-data`. Setup also runs `chgrp -R` and `chmod -R g+rwX` on `sites-enabled`. When one of
+these commands (`usermod`, `chgrp`, `chmod`) fails, setup stops with an error naming the command and
+what it printed, instead of leaving a deploy user without the access it needs; fix the cause and run
+setup again.
 
 **Sudo rules**
 
