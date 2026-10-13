@@ -40,13 +40,18 @@ const pool = new Map<string, PoolEntry>();
 const presentedHostKeys = new Map<string, string>();
 let exitHandlerRegistered = false;
 
-function poolKey(conn: ConnectionInfo): string {
+function serverKey(conn: ConnectionInfo): string {
   return `${conn.host}:${conn.port || DEFAULT_SSH_PORT}:${conn.user}`;
+}
+
+function poolKey(conn: ConnectionInfo): string {
+  // a connection checked against one pin is no answer for a caller holding another
+  return `${serverKey(conn)}:${conn.hostKey ?? ''}`;
 }
 
 /** Fingerprint of the host key the server presented on the last connection made to it. */
 export function presentedHostKey(conn: ConnectionInfo): string | undefined {
-  return presentedHostKeys.get(poolKey(conn));
+  return presentedHostKeys.get(serverKey(conn));
 }
 
 function ensureExitHandler(): void {
@@ -160,7 +165,7 @@ function attemptConnect(conn: ConnectionInfo, keepalive: boolean, signal?: Abort
     client.on('ready', () => {
       signal?.removeEventListener('abort', abandon);
       const presented = hostKey.presented();
-      if (presented) presentedHostKeys.set(poolKey(conn), presented);
+      if (presented) presentedHostKeys.set(serverKey(conn), presented);
       resolve(client);
     });
     client.on('error', (err) => {
