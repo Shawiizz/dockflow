@@ -50,7 +50,7 @@ beforeEach(() => {
     spyOn(Backup.prototype, 'replicaRefusal').mockResolvedValue(null),
     spyOn(Backup.prototype, 'restore').mockResolvedValue(ok(undefined)),
     spyOn(backupModule, 'restoreTypeMismatch').mockReturnValue(null),
-    spyOn(lockModule, 'createLock').mockReturnValue({
+    spyOn(lockModule, 'createEnvLock').mockResolvedValue({
       acquire: async () => ok({}),
       keepAlive: () => {},
       release: async () => ok(undefined),
@@ -90,7 +90,7 @@ describe('backup restore of a replicated service', () => {
     expect(errors.join('\n')).toContain('Scale it to 1.');
     expect(prompts.dangerousConfirmPrompt).not.toHaveBeenCalled();
     expect(Backup.prototype.restore).not.toHaveBeenCalled();
-    expect(lockModule.createLock).not.toHaveBeenCalled();
+    expect(lockModule.createEnvLock).not.toHaveBeenCalled();
   });
 
   it('gives the accessory hint for an accessory and the scale command for a service', async () => {

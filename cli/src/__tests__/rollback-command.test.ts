@@ -39,7 +39,7 @@ beforeEach(() => {
       { name: 'agent_1', connection: worker },
     ]),
     spyOn(factory, 'createStackBackend').mockReturnValue({} as never),
-    spyOn(lockModule, 'createLock').mockReturnValue({
+    spyOn(lockModule, 'createEnvLock').mockResolvedValue({
       acquire: async () => ok({}),
       keepAlive: () => {},
       release: async () => ok(undefined),
