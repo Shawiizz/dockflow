@@ -63,7 +63,6 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
   printRaw(`  ${colors.bold('Version:')}         ${deployVersion}`);
   printRaw(`  ${colors.bold('Branch:')}          ${branchName}`);
   printRaw(`  ${colors.bold('Project Root:')}    ${projectRoot}`);
-  printRaw(`  ${colors.bold('Engine:')}          TypeScript (direct SSH)`);
   printBlank();
 
   // Target Servers
