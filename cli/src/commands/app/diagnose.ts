@@ -44,6 +44,10 @@ const ERROR_PATTERNS: Array<{
     suggestion: 'Another service is using this port. Check running containers with: docker ps',
   },
   {
+    pattern: /unable to apply cgroup configuration|cgroup.*(not supported|no such file)/i,
+    suggestion: "This node's Docker cannot apply resource limits (cgroups). Remove deploy.resources.limits for this service, or enable the memory and cpu controllers on the node.",
+  },
+  {
     pattern: /\boom\b|out of memory/i,
     suggestion: 'Container ran out of memory. Increase memory limits or reduce memory usage.',
   },

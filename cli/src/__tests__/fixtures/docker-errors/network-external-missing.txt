@@ -1,1 +1,3 @@
+Since --detach=false was not specified, tasks will be created in the background.
+In a future release, --detach=false will become the default.
 network "dockflow-check-missing-net" is declared as external, but could not be found. You need to create a swarm-scoped network before the stack is deployed

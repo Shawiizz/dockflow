@@ -4,4 +4,4 @@ Ignoring deprecated options:
 
 container_name: Setting the container name is not supported.
 
-failed to create service dockflow-check-deprecated_web: Error response from daemon: rpc error: code = InvalidArgument desc = ContainerSpec: image reference must be provided
+invalid image reference for service web: no image specified

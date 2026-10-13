@@ -248,14 +248,16 @@ async function main(): Promise<void> {
       console.log(`[${entry.name}]`);
       try {
         const recording = await entry.run();
-        writeFileSync(join(FIXTURES_DIR, `${entry.name}.txt`), recording.text);
-        index.cases[entry.name] = {
+        // a node that cannot apply cgroup limits (the DinD nodes) answers that instead of an OOM kill
+        const name = entry.name === "oom-killed" && /cgroup/.test(recording.text) ? "cgroup-limits-unsupported" : entry.name;
+        writeFileSync(join(FIXTURES_DIR, `${name}.txt`), recording.text);
+        index.cases[name] = {
           kind: recording.kind,
           exitCode: recording.exitCode,
           origin: "recorded",
           command: recording.command,
         };
-        recorded.push(entry.name);
+        recorded.push(name);
         console.log(recording.text.trimEnd().split("\n").map((line) => `    ${line}`).join("\n"));
       } catch (error) {
         failed.push(entry.name);

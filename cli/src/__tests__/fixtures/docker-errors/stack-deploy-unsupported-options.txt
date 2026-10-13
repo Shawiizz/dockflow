@@ -1,3 +1,3 @@
 Ignoring unsupported options: build
 
-failed to create service dockflow-check-unsupported_web: Error response from daemon: rpc error: code = InvalidArgument desc = ContainerSpec: image reference must be provided
+invalid image reference for service web: no image specified

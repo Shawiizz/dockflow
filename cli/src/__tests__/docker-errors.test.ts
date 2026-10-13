@@ -86,6 +86,7 @@ describe('analyzeTaskError on recorded task errors', () => {
 
   it('says a container killed for its memory ran out of it', () => {
     expect(analyzeTaskError(recorded('oom-killed').trim())).toMatch(/memory/);
+    expect(analyzeTaskError(recorded('cgroup-limits-unsupported').trim())).toMatch(/cannot apply resource limits/);
   });
 });
 
