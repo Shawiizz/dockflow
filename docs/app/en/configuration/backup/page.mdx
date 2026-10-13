@@ -133,6 +133,7 @@ What a restore does:
 
 - It verifies the backup first, on the server that holds it. If the check fails, nothing is changed.
 - It refuses a backup whose type differs from the one configured for the service (a MySQL dump for a service configured as PostgreSQL), before asking for confirmation.
+- It refuses a service that runs more than one replica (or a global service on several servers), before asking for confirmation: the restore would write into one replica only. Scale the service to 1 first, restore, then scale it back; the error message gives the command.
 - If the service now runs on another server than the one that holds the backup, the backup is streamed there through your machine.
 - Without `--from`, the latest backup is used. If a server did not answer, the newest backup cannot be known, and the restore stops and asks for `--from <id>`. An exact backup ID wins over a prefix shared by other IDs.
 

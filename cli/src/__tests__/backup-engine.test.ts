@@ -1084,3 +1084,46 @@ describe('Backup.restore refusals', () => {
     expect(nodes.commands().some((command) => command.includes('docker exec'))).toBe(false);
   });
 });
+
+describe('Backup.replicaRefusal', () => {
+  const HINT = 'Scale it to 1.';
+  const inspect = (stdout: string, exitCode = 0) => nodes.on('docker service inspect', { stdout, exitCode });
+
+  it('refuses a service that runs several replicas, naming the count and carrying the hint', async () => {
+    inspect('2\n');
+    const error = await backupEngine().replicaRefusal('db', HINT);
+    expect(error).toBeInstanceOf(BackupError);
+    expect(error?.message).toBe('db runs 2 replicas; a restore writes into one of them only');
+    expect(error?.code).toBe(ErrorCode.RESTORE_FAILED);
+    expect(error?.suggestion).toBe(HINT);
+    expect(nodes.commands('manager')).toContain(
+      `docker service inspect '${STACK}_db' --format '{{if .Spec.Mode.Global}}global{{else if .Spec.Mode.Replicated}}{{.Spec.Mode.Replicated.Replicas}}{{end}}'`,
+    );
+  });
+
+  it('lets a single replica through', async () => {
+    inspect('1\n');
+    expect(await backupEngine().replicaRefusal('db', HINT)).toBeNull();
+  });
+
+  it('lets a service scaled to zero through', async () => {
+    inspect('0\n');
+    expect(await backupEngine().replicaRefusal('db', HINT)).toBeNull();
+  });
+
+  it('refuses a global service on a multi-server environment, but not on a single server', async () => {
+    inspect('global\n');
+    expect((await backupEngine().replicaRefusal('db', HINT))?.message).toBe(
+      'db runs on each of the 2 servers; a restore writes into one of them only',
+    );
+    const single = new Backup(MANAGER, STACK, [{ name: 'server_1', connection: MANAGER }]);
+    expect(await single.replicaRefusal('db', HINT)).toBeNull();
+  });
+
+  it('does not refuse when the manager does not say what the service runs', async () => {
+    inspect('', 1);
+    expect(await backupEngine().replicaRefusal('db', HINT)).toBeNull();
+    inspect('\n');
+    expect(await backupEngine().replicaRefusal('db', HINT)).toBeNull();
+  });
+});

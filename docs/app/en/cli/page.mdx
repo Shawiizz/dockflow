@@ -851,7 +851,7 @@ dockflow backup ls production postgres       # `ls` is an alias
 dockflow backup restore <env> [service]
 ```
 
-Restore a service or accessory database from a backup. The service is required. Restores the latest backup unless `--from` is given, and takes the [deploy lock](/en/advanced#deployment-locks) so that a deploy cannot replace the service meanwhile.
+Restore a service or accessory database from a backup. The service is required. Restores the latest backup unless `--from` is given, and takes the [deploy lock](/en/advanced#deployment-locks) so that a deploy cannot replace the service meanwhile. A service that runs more than one replica is refused before the confirmation (exit code 72), because the restore would reach one replica only: scale it to 1, restore, then scale it back.
 
 | Option | Description |
 |--------|-------------|

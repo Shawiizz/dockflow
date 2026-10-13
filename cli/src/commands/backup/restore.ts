@@ -12,7 +12,7 @@ import { dangerousConfirmPrompt } from '../../utils/prompts';
 import { printIntro, printOutro, printInfo, printWarning, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
 import { BackupError, CLIError, ErrorCode, ValidationError, withErrorHandler } from '../../utils/errors';
 import { createBackup, restoreTypeMismatch } from '../../services/backup';
-import { requireBackupConfig, resolveBackupStack, getBackupServiceNames, getBackupNodes } from './utils';
+import { requireBackupConfig, resolveBackupStack, getBackupServiceNames, getBackupNodes, scaleToOneHint } from './utils';
 
 export function registerBackupRestoreCommand(program: Command): void {
   program
@@ -54,6 +54,8 @@ export function registerBackupRestoreCommand(program: Command): void {
       const backup = resolveResult.data;
       const mismatch = restoreTypeMismatch(backup, service, backupConfig);
       if (mismatch) throw mismatch;
+      const replicated = await backupService.replicaRefusal(service, scaleToOneHint(env, service, source));
+      if (replicated) throw replicated;
 
       // Show backup details
       printWarning('You are about to restore from this backup:');

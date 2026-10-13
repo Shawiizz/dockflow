@@ -12,7 +12,7 @@ import { printDebug } from '../../utils/output';
 import { loadConfig, getStackName, getAccessoriesStackName, type BackupAccessoryConfig } from '../../utils/config';
 import { getManagerConnection, resolveEnvironment } from './_helpers';
 import { createBackup, type Backup, type BackupBaseEntry } from '../../services/backup';
-import { requireBackupConfig, listFromAllStacks, listGroupedFromAllStacks, getBackupNodes, type BackupSource } from '../../commands/backup/utils';
+import { requireBackupConfig, listFromAllStacks, listGroupedFromAllStacks, getBackupNodes, scaleToOneHint, type BackupSource } from '../../commands/backup/utils';
 import { createEnvLock, LockHeldError } from '../../services/lock';
 import type { ClusterNode, SSHKeyConnection } from '../../types';
 import type { BackupEntry, BackupListResponse, BackupActionResponse, BackupPruneResponse } from '../types';
@@ -26,6 +26,7 @@ interface BackupContext {
   backupService: Backup;
   backupConfig: BackupAccessoryConfig;
   compression: 'gzip' | 'none';
+  source: BackupSource;
 }
 
 /** Resolve env and connection — returns an error Response on failure */
@@ -52,6 +53,7 @@ function resolveBackupContextForService(env: string, conn: SSHKeyConnection, ser
     backupService: createBackup(conn, stackName, getBackupNodes(env)),
     backupConfig: cfg.backupConfig,
     compression: cfg.compression,
+    source: cfg.source,
   };
 }
 
@@ -189,6 +191,9 @@ async function restoreBackup(url: URL): Promise<Response> {
   if (!resolveResult.success) {
     return errorResponse(resolveResult.error.message, 404);
   }
+
+  const replicated = await ctx.backupService.replicaRefusal(service, scaleToOneHint(ctx.env, service, ctx.source));
+  if (replicated) return errorResponse(`${replicated.message}. ${replicated.suggestion ?? ''}`.trim(), 409);
 
   // A deploy or another restore rewriting the same stack at the same time would corrupt both
   const stackName = getStackName(base.env);

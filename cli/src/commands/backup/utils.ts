@@ -65,6 +65,13 @@ export function resolveBackupStack(env: string, source: BackupSource): string {
   return stackName;
 }
 
+/** How to bring a service down to one replica before a restore. */
+export function scaleToOneHint(env: string, service: string, source: BackupSource): string {
+  return source === 'services'
+    ? `Run \`dockflow scale ${env} ${service} 1\`, restore, then scale it back.`
+    : `Set replicas to 1 for ${service} in accessories.yml and run \`dockflow deploy ${env} --accessories\`, restore, then put the count back.`;
+}
+
 /**
  * Get all configured backup stack names for an environment.
  * Returns entries for both services and accessories stacks if configured.

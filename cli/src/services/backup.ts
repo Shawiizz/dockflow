@@ -17,7 +17,7 @@ import { ok, err, type Result } from '../types';
 import { BackupError, ErrorCode, ValidationError } from '../utils/errors';
 import { sshExec, sshExecChannel, sshExecChannelUnbuffered, shellQuote } from '../utils/ssh';
 import { formatBytes, printDebug, printInfo, printWarning } from '../utils/output';
-import { findSwarmContainer } from './orchestrator/swarm/swarm-utils';
+import { findSwarmContainer, qualifyServiceName } from './orchestrator/swarm/swarm-utils';
 import { SwarmStackBackend } from './orchestrator/swarm/swarm-stack';
 import { BACKUP_ORPHAN_GRACE_H, DOCKFLOW_BACKUPS_DIR } from '../constants';
 import {
@@ -771,6 +771,27 @@ export class Backup {
     entries.sort(newestBackupFirst);
 
     return ok({ entries, unreachable });
+  }
+
+  /**
+   * The error to refuse a restore with when the service runs several replicas: the restore writes
+   * into one of them only, and the others would keep, or replicate over, the old data. Null when
+   * it runs one, or when the manager does not say.
+   */
+  async replicaRefusal(service: string, scaleHint: string): Promise<BackupError | null> {
+    const result = await sshExec(
+      this.connection,
+      `docker service inspect ${shellQuote(qualifyServiceName(this.stackName, service))} ` +
+        `--format '{{if .Spec.Mode.Global}}global{{else if .Spec.Mode.Replicated}}{{.Spec.Mode.Replicated.Replicas}}{{end}}'`,
+    );
+    const mode = result.exitCode === 0 ? result.stdout.trim() : '';
+    const replicas = mode === 'global' ? (this.nodes.length > 1 ? this.nodes.length : 1) : Number(mode);
+    if (!Number.isInteger(replicas) || replicas <= 1) return null;
+    const runs = mode === 'global' ? `runs on each of the ${replicas} servers` : `runs ${replicas} replicas`;
+    return new BackupError(`${service} ${runs}; a restore writes into one of them only`, {
+      code: ErrorCode.RESTORE_FAILED,
+      suggestion: scaleHint,
+    });
   }
 
   /**

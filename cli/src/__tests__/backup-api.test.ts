@@ -40,6 +40,7 @@ beforeEach(() => {
     spyOn(helpers, 'getManagerConnection').mockResolvedValue(conn),
     spyOn(config, 'loadConfig').mockReturnValue({ backup: { retention_count: 1 } } as never),
     spyOn(config, 'getStackName').mockReturnValue('shop-production'),
+    spyOn(Backup.prototype, 'replicaRefusal').mockResolvedValue(null),
     spyOn(config, 'getAccessoriesStackName').mockReturnValue('shop-production-accessories'),
     spyOn(backupUtils, 'getBackupNodes').mockReturnValue([worker]),
     spyOn(backupUtils, 'requireBackupConfig').mockReturnValue({
@@ -164,5 +165,36 @@ describe('POST /api/backup/prune', () => {
       bytesFreed: 300,
       unreachableNodes: ['agent_1'],
     });
+  });
+});
+
+describe('POST /api/backup/restore of a replicated service', () => {
+  it('answers 409 with the way out, takes no lock and restores nothing', async () => {
+    spies.push(spyOn(Backup.prototype, 'resolveBackup').mockResolvedValue(ok(entry('20260501-100000-aaaa'))));
+    const restore = spyOn(Backup.prototype, 'restore').mockResolvedValue(ok(undefined));
+    spies.push(
+      restore,
+      spyOn(Backup.prototype, 'replicaRefusal').mockResolvedValue(
+        new BackupError('db runs 2 replicas; a restore writes into one of them only', { suggestion: 'Scale it to 1.' }),
+      ),
+    );
+
+    const response = await post('restore?env=production&service=db');
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: 'db runs 2 replicas; a restore writes into one of them only. Scale it to 1.' });
+    expect(restore).not.toHaveBeenCalled();
+    expect(lockModule.createEnvLock).not.toHaveBeenCalled();
+  });
+
+  it('asks for the hint of an accessory when the configuration says so', async () => {
+    spies.push(
+      spyOn(Backup.prototype, 'resolveBackup').mockResolvedValue(ok(entry('20260501-100000-aaaa'))),
+      spyOn(Backup.prototype, 'restore').mockResolvedValue(ok(undefined)),
+    );
+    const refusal = spyOn(Backup.prototype, 'replicaRefusal').mockResolvedValue(null);
+    spies.push(refusal);
+
+    await post('restore?env=production&service=db');
+    expect(refusal.mock.calls[0][1]).toContain('accessories.yml');
   });
 });
