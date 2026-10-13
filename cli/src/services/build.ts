@@ -10,7 +10,7 @@ import { resolve, join, relative } from 'path';
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { loadFromString } from './compose';
 import type { SSHKeyConnection } from '../types';
-import { sshExec, shellQuote } from '../utils/ssh';
+import { sshExec, sshExecChannel, shellQuote } from '../utils/ssh';
 import { printDim, printRaw, printSuccess, printWarning, createTaskLog } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import { createTar, type TarEntry } from '../utils/tar';
@@ -400,6 +400,24 @@ function buildGitAuthEnv(): string {
 }
 
 /**
+ * The shell script of a remote build, sent on stdin: build arg values are exported inside it and
+ * passed by name, so they never appear on a command line of the build node.
+ */
+export function remoteBuildScript(engine: string, args: Readonly<Record<string, string>>, rest: string): string {
+  const names = Object.keys(args);
+  const invalid = names.filter((name) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name));
+  if (invalid.length > 0) {
+    throw new DeployError(`Build arg names must be letters, digits and _: ${invalid.join(', ')}`, ErrorCode.VALIDATION_FAILED);
+  }
+  return [
+    ...names.map((name) => `export ${name}=${shellQuote(args[name])}`),
+    // never pushed, shipped with `save`: its id must follow its content (see buildEnv)
+    `BUILDX_NO_DEFAULT_ATTESTATIONS=1 exec ${engine} build${names.map((name) => ` --build-arg ${name}`).join('')} ${rest} 2>&1`,
+    '',
+  ].join('\n');
+}
+
+/**
  * Build images on a remote server via SSH.
  *
  * 1. Git clone the repo on the remote host
@@ -511,15 +529,9 @@ export async function buildRemote(
 
       const remoteEngine = target.engine || 'docker';
 
-      const buildArgStr = target.args
-        ? Object.entries(target.args).map(([k, v]) => `--build-arg ${shellQuote(`${k}=${v}`)}`).join(' ')
-        : '';
-
-      const buildResult = await sshExec(
-        connection,
-        // never pushed, shipped with `save`: its id must follow its content (see buildEnv)
-        `BUILDX_NO_DEFAULT_ATTESTATIONS=1 ${remoteEngine} build${buildArgStr ? ` ${buildArgStr}` : ''} -f ${qDockerfile} -t ${qTag} ${qContext} 2>&1`,
-      );
+      const { stream, done } = await sshExecChannel(connection, 'sh -s');
+      stream.end(remoteBuildScript(remoteEngine, target.args ?? {}, `-f ${qDockerfile} -t ${qTag} ${qContext}`));
+      const buildResult = await done;
 
       if (buildResult.exitCode !== 0) {
         printRaw(buildResult.stdout);

@@ -171,8 +171,4 @@ describe("secrets hygiene", () => {
 
     expectNoLeak(await runWatched(["--verbose", "lock", "status", TEST_ENV], fixture.dir, secrets), secrets);
   }, 420_000);
-
-  // The remote build runs `docker build --build-arg K=V` through an SSH command, so a build arg's
-  // value is on the build node's command line for the whole build.
-  test.todo("a remote build keeps build args out of the build node's command line", () => {});
 });

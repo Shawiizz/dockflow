@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
-import { resolve } from 'path';
-import { BUILD_KEYS_READ, buildEnv, getBuildTargets, getOverridesForTarget, ignoredKeysOf } from '../services/build';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join, resolve } from 'path';
+import { BUILD_KEYS_READ, buildEnv, getBuildTargets, getOverridesForTarget, ignoredKeysOf, remoteBuildScript } from '../services/build';
 import * as output from '../utils/output';
 import type { BuildTarget } from '../services/build';
 
@@ -241,5 +243,37 @@ services:
     expect(ignoredKeysOf('web', '.')).toEqual([]);
     expect(ignoredKeysOf('web', ['.'])).toEqual([]);
     expect(ignoredKeysOf('web', { context: '.', no_cache: true })).toEqual([{ service: 'web', key: 'no_cache' }]);
+  });
+});
+
+describe('remoteBuildScript', () => {
+  const secret = "s3cr'et $(id) value";
+
+  it('passes build args by name, their values only in the script', () => {
+    const script = remoteBuildScript('docker', { NPM_TOKEN: secret }, "-f 'Dockerfile' -t 'shop-web:1' '.'");
+    const command = script.split('\n').find((line) => line.includes(' build '));
+    expect(command).toBe("BUILDX_NO_DEFAULT_ATTESTATIONS=1 exec docker build --build-arg NPM_TOKEN -f 'Dockerfile' -t 'shop-web:1' '.' 2>&1");
+    expect(command).not.toContain('s3cr');
+  });
+
+  it.if(process.platform !== 'win32')('runs in a real shell: the engine gets the value from its environment, not its arguments', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dockflow-remote-build-'));
+    try {
+      writeFileSync(join(dir, 'docker'), '#!/bin/sh\necho "args: $*"\necho "env: $NPM_TOKEN"\n', { mode: 0o755 });
+      const proc = Bun.spawnSync(['sh', '-s'], {
+        cwd: dir,
+        env: { PATH: `${dir}:/usr/bin:/bin` },
+        stdin: Buffer.from(remoteBuildScript('docker', { NPM_TOKEN: secret }, '-t x .')),
+      });
+      const out = proc.stdout.toString();
+      expect(out).toContain('args: build --build-arg NPM_TOKEN -t x .');
+      expect(out).toContain(`env: ${secret}`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a build arg name a shell could misread', () => {
+    expect(() => remoteBuildScript('docker', { 'A;rm': 'x' }, '.')).toThrow(/Build arg names/);
   });
 });
