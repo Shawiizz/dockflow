@@ -108,6 +108,8 @@ Dockflow organizes releases on your server:
 
 The `current` symlink points to the active release, and `stack.yml` is the rendered stack a rollback re-applies. Release files contain your secrets, so only the deploy user can read them. By default, Dockflow keeps the last 3 releases, and always the current one (configurable via [`keep_releases`](/en/configuration/config-file#keep_releases)).
 
+At each cleanup, Dockflow also removes from every node the image tags it named for the project and environment (`<image>-<env>:<tag>`) that no kept release and no running service refers to, such as the leftovers of a failed deploy. It never removes `:latest`, an image a container is using, or anything that does not carry the project's `<image>-<env>` name. If a kept release cannot be read, nothing is swept.
+
 `dockflow rollback <env>` goes back to the release before `current`; running it again goes one release further back.
 
 Without a [registry](/en/configuration/registry), the nodes cannot pull the images of a release, so a stack rollback first checks that every image Dockflow built for the target release is present on every node of the environment. If one is missing, the rollback stops at once with exit code 52, naming the images and the nodes, instead of waiting for a service that never starts. Deploy that version again to rebuild and distribute its images. The check also runs for the automatic rollback after a failed deploy.

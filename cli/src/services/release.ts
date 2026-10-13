@@ -25,6 +25,7 @@ import { sshShell, type RemoteShell } from '../utils/remote-shell';
 import { printDebug, printInfo, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import { DOCKFLOW_STACKS_DIR, RELEASE_STACK_FILE } from '../constants';
+import { parseImageRef } from './compose';
 import type { StackBackend } from './orchestrator/interfaces';
 import type { DockflowConfig } from '../utils/config';
 
@@ -244,6 +245,49 @@ export function computeOrphanImages(
     }
   }
   return [...new Set(orphans)];
+}
+
+/** The repositories Dockflow names for the images it builds: `<image>-<env>`. */
+export function builtRepositories(composeYaml: string, env: string): string[] {
+  const names = extractComposeImages(composeYaml, true).map((image) => parseImageRef(image).name);
+  return [...new Set(names.filter((name) => name.endsWith(`-${env}`)))];
+}
+
+/** How many of the documents are compose files with services: a release whose file was unreadable is missing from the count. */
+function countComposeDocuments(yamlText: string): number {
+  let count = 0;
+  for (const doc of parseAllDocuments(yamlText)) {
+    if (doc.errors.length > 0) continue;
+    const value = doc.toJS({ maxAliasCount: 1000 }) as unknown;
+    if (isRecord(value) && isRecord(value.services)) count++;
+  }
+  return count;
+}
+
+function withoutDigest(image: string): string {
+  return image.replace(/@sha256:[0-9a-f]+$/, '');
+}
+
+/**
+ * The `repository:tag` of `docker images` output that belong to `repositories` and that nothing
+ * refers to: not `inUse` (the images of the kept releases and of the running services), never
+ * `:latest`, never an untagged image.
+ */
+export function computeStaleTags(
+  localImages: string,
+  repositories: ReadonlySet<string>,
+  inUse: Iterable<string>,
+): string[] {
+  const used = new Set([...inUse].map(withoutDigest));
+  const stale = new Set<string>();
+  for (const line of localImages.split('\n')) {
+    const ref = line.trim();
+    if (!ref) continue;
+    const { name, tag } = parseImageRef(ref);
+    if (!repositories.has(name) || tag === undefined || tag === 'latest' || tag === '<none>' || used.has(ref)) continue;
+    stale.add(ref);
+  }
+  return [...stale];
 }
 
 function failure(result: { stderr: string; exitCode: number }): string {
@@ -609,14 +653,13 @@ export class Release {
     const [releases, current] = await Promise.all([this.listReleases(stackName), this.currentVersion(stackName)]);
     const { kept, removed } = selectRetention(releases, current, keepN);
 
-    if (removed.length === 0) {
-      printDebug(`${releases.length} release(s), keeping ${keepN} — nothing to clean`);
-      return;
-    }
-
     // one YAML document per release
     const composeFiles = (list: ReleaseMetadata[]) =>
-      `for f in ${list.map(r => shellQuote(`${this.releaseDir(stackName, r.version)}/${COMPOSE_FILE}`)).join(' ')}; do cat "$f" 2>/dev/null; echo '---'; done`;
+      list.length === 0
+        ? Promise.resolve({ stdout: '', stderr: '', exitCode: 0 })
+        : this.shell.run(
+            `for f in ${list.map(r => shellQuote(`${this.releaseDir(stackName, r.version)}/${COMPOSE_FILE}`)).join(' ')}; do cat "$f" 2>/dev/null; echo '---'; done`,
+          );
 
     const [runningResult, keptResult, removeResult] = await Promise.all([
       this.shell.run(
@@ -624,11 +667,11 @@ export class Release {
           `docker stack services "$stack" --format '{{.Image}}' 2>/dev/null; ` +
         `done`,
       ),
-      this.shell.run(composeFiles(kept)),
-      this.shell.run(composeFiles(removed)),
+      composeFiles(kept),
+      composeFiles(removed),
     ]);
 
-    const orphanImages = computeOrphanImages(runningResult.stdout, keptResult.stdout, removeResult.stdout);
+    const orphanImages = removed.length === 0 ? [] : computeOrphanImages(runningResult.stdout, keptResult.stdout, removeResult.stdout);
 
     if (orphanImages.length > 0) {
       const command = removeImagesCommand(orphanImages);
@@ -636,10 +679,56 @@ export class Release {
       printDebug(`Removed ${orphanImages.length} orphaned image(s)`);
     }
 
+    await this.sweepStaleTags(kept, keptResult.stdout, removeResult.stdout, runningResult.stdout, orphanImages, [this.shell, ...otherNodes]).catch((error: unknown) =>
+      printDebug(`Image tag sweep failed: ${error instanceof Error ? error.message : String(error)}`),
+    );
+
+    if (removed.length === 0) {
+      printDebug(`${releases.length} release(s), keeping ${keepN} — nothing to clean`);
+      return;
+    }
+
     const paths = removed.flatMap(r => [this.releaseDir(stackName, r.version), this.backupDir(stackName, r.version)]);
     await this.shell.run(`timeout 60 rm -rf ${paths.map(shellQuote).join(' ')}`);
 
     printInfo(`Cleaned up ${removed.length} old release(s)`);
+  }
+
+  /**
+   * Removes, on every node, the `<image>-<env>:<tag>` tags of the project that no kept release and
+   * no running service refers to: failed deploys and releases cleaned before leave them behind.
+   * Nothing is swept unless every kept release was read, since an unread one would look unused.
+   */
+  private async sweepStaleTags(
+    kept: readonly ReleaseMetadata[],
+    keptCompose: string,
+    removedCompose: string,
+    runningImages: string,
+    alreadyRemoved: readonly string[],
+    nodes: readonly RemoteShell[],
+  ): Promise<void> {
+    const env = kept[0]?.env;
+    if (!env || countComposeDocuments(keptCompose) < kept.length) return;
+
+    const repositories = new Set([...builtRepositories(keptCompose, env), ...builtRepositories(removedCompose, env)]);
+    if (repositories.size === 0) return;
+    const lines = (text: string) => text.split('\n').map((line) => line.trim()).filter(Boolean);
+    const referenced = [...extractComposeImages(keptCompose), ...lines(runningImages), ...alreadyRemoved];
+
+    const swept = await Promise.allSettled(
+      nodes.map(async (node) => {
+        const [images, containers] = await Promise.all([
+          node.run(`docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null`),
+          node.run(`docker ps --format '{{.Image}}' 2>/dev/null`),
+        ]);
+        if (images.exitCode !== 0 || containers.exitCode !== 0) return 0;
+        const stale = computeStaleTags(images.stdout, repositories, [...referenced, ...lines(containers.stdout)]);
+        if (stale.length > 0) await node.run(removeImagesCommand(stale));
+        return stale.length;
+      }),
+    );
+    const count = swept.reduce((total, outcome) => total + (outcome.status === 'fulfilled' ? outcome.value : 0), 0);
+    if (count > 0) printDebug(`Removed ${count} unreferenced image tag(s)`);
   }
 
   /** Puts back the files a same-version create kept aside (only complete copies are kept aside). */

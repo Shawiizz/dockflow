@@ -3,7 +3,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync,
 import { join } from 'path';
 import {
   assertReleaseName,
+  builtRepositories,
   computeOrphanImages,
+  computeStaleTags,
   extractComposeImages,
   type ImageNode,
   missingImagesCommand,
@@ -656,5 +658,186 @@ describe('Release rollback and the images on the nodes', () => {
 
     expect(await release.rollback(STACK, fakeBackend().backend, null, null, { imageNodes: nodes })).toBe('1.0.0');
     expect(warnings).toContain('Could not check the images on agent_2: Timed out');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tag sweep at release cleanup
+// ---------------------------------------------------------------------------
+
+describe('builtRepositories', () => {
+  const compose = [
+    'services:',
+    '  web:',
+    '    image: shop-web-production:1.0.0',
+    '    build: ./web',
+    '  api:',
+    '    image: registry.example.com:5000/team/shop-api-production:1.0.0',
+    '    build: ./api',
+    '  worker:',
+    '    image: shop-worker:1.0.0',
+    '    build: ./worker',
+    '  db:',
+    '    image: postgres-production:16',
+    '',
+  ].join('\n');
+
+  it('names the repositories Dockflow tags for the environment, registry prefix included', () => {
+    expect(builtRepositories(compose, 'production')).toEqual(['shop-web-production', 'registry.example.com:5000/team/shop-api-production']);
+  });
+
+  it('is empty for another environment', () => {
+    expect(builtRepositories(compose, 'staging')).toEqual([]);
+  });
+});
+
+describe('computeStaleTags', () => {
+  const repositories = new Set(['shop-web-production']);
+  const local = [
+    'shop-web-production:1.0.0',
+    'shop-web-production:0.9.0',
+    'shop-web-production:latest',
+    'shop-web-production:<none>',
+    'shop-web-staging:0.9.0',
+    'other:0.9.0',
+    '',
+  ].join('\n');
+
+  it('keeps what a release or a service refers to, :latest, untagged images and other repositories', () => {
+    expect(computeStaleTags(local, repositories, ['shop-web-production:1.0.0'])).toEqual(['shop-web-production:0.9.0']);
+  });
+
+  it('reads an image running by digest as its tag', () => {
+    expect(computeStaleTags(local, repositories, ['shop-web-production:1.0.0@sha256:abc123', 'shop-web-production:0.9.0@sha256:def456'])).toEqual([]);
+  });
+});
+
+describe('Release cleanup sweeps the tags nothing refers to', () => {
+  const composeOf = (version: string) =>
+    [
+      'services:',
+      '  web:',
+      `    image: shop-web-production:${version}`,
+      '    build: ./web',
+      '  cache:',
+      '    image: redis:7',
+      '',
+    ].join('\n');
+  // a docker with local images in `images`, running ones in `running`; every call is logged in `calls`
+  const FAKE_DOCKER = [
+    '#!/bin/sh',
+    'echo "$*" >> calls',
+    'case "$1" in',
+    '  images) cat images ;;',
+    '  ps) case "$*" in *"{{.Image}}"*) cat running ;; esac ;;',
+    '  stack) ;;',
+    '  rmi) grep -qxF "$2" running && exit 1; grep -vxF "$2" images > images.new; mv images.new images ;;',
+    'esac',
+  ].join('\n');
+
+  let manager: LocalShell;
+  let worker: LocalShell;
+  let release: Release;
+  const config = (keep: number) => ({ project_name: 'shop', stack_management: { keep_releases: keep } }) as never;
+  const create = (version: string, epoch: number) =>
+    release.createRelease(STACK, version, composeOf(version), `stack ${version}\n`, { ...meta(version, epoch), env: 'production' });
+
+  /** a node whose docker has `images`, and `running` containers */
+  function node(shell: LocalShell, images: string[], running: string[] = []): RemoteShell {
+    mkdirSync(join(shell.root, 'bin'), { recursive: true });
+    writeFileSync(join(shell.root, 'bin', 'docker'), FAKE_DOCKER, { mode: 0o755 });
+    writeFileSync(join(shell.root, 'images'), images.map((image) => `${image}\n`).join(''));
+    writeFileSync(join(shell.root, 'running'), running.map((image) => `${image}\n`).join(''));
+    writeFileSync(join(shell.root, 'calls'), '');
+    return { run: (command, stdin) => shell.run(`PATH="$PWD/bin:$PATH"; ${command}`, stdin) };
+  }
+  const calls = (shell: LocalShell) => readFileSync(join(shell.root, 'calls'), 'utf8').trim().split('\n');
+  const images = (shell: LocalShell) => readFileSync(join(shell.root, 'images'), 'utf8').trim().split('\n').sort();
+  const removed = (shell: LocalShell) => calls(shell).filter((call) => call.startsWith('rmi ')).map((call) => call.slice(4)).sort();
+
+  const LEFTOVERS = [
+    'shop-web-production:0.9.0',
+    'shop-web-production:0.8.0',
+    'shop-web-production:latest',
+    'shop-web-staging:0.9.0',
+    'other:0.9.0',
+    'redis:6',
+  ];
+
+  beforeEach(() => {
+    manager = new LocalShell();
+    worker = new LocalShell();
+  });
+
+  afterEach(() => {
+    rmSync(manager.root, { recursive: true, force: true });
+    rmSync(worker.root, { recursive: true, force: true });
+  });
+
+  async function cleanup(keep: number, nodes: { manager: RemoteShell; worker: RemoteShell }) {
+    release = new Release(nodes.manager, { stacksDir: join(manager.root, 'stacks') });
+    await create('1.0.0', 100);
+    await create('1.0.1', 200);
+    await create('1.0.2', 300);
+    await release.cleanupOldReleases(STACK, config(keep), [nodes.worker]);
+  }
+
+  // The manager's shell also holds the release files: its docker is the fake one, its releases are real.
+  test.if(hasPosixShell)('removes the tags of the project no kept release refers to, on every node, and nothing else', async () => {
+    const kept = ['shop-web-production:1.0.2', 'shop-web-production:1.0.1'];
+    const managerNode = node(manager, [...kept, 'shop-web-production:1.0.0', ...LEFTOVERS]);
+    const workerNode = node(worker, [...kept, 'shop-web-production:0.9.0', 'other:0.9.0']);
+
+    await cleanup(2, { manager: managerNode, worker: workerNode });
+
+    expect(removed(manager)).toEqual(['shop-web-production:0.8.0', 'shop-web-production:0.9.0', 'shop-web-production:1.0.0']);
+    expect(images(manager)).toEqual(['other:0.9.0', 'redis:6', 'shop-web-production:1.0.1', 'shop-web-production:1.0.2', 'shop-web-production:latest', 'shop-web-staging:0.9.0']);
+    expect(removed(worker)).toEqual(['shop-web-production:0.9.0', 'shop-web-production:1.0.0']);
+    expect(images(worker)).toEqual(['other:0.9.0', 'shop-web-production:1.0.1', 'shop-web-production:1.0.2']);
+  });
+
+  test.if(hasPosixShell)('sweeps even when no release is dropped', async () => {
+    const kept = ['shop-web-production:1.0.2', 'shop-web-production:1.0.1', 'shop-web-production:1.0.0'];
+    const managerNode = node(manager, [...kept, 'shop-web-production:0.9.0']);
+    const workerNode = node(worker, kept);
+
+    await cleanup(3, { manager: managerNode, worker: workerNode });
+
+    expect(removed(manager)).toEqual(['shop-web-production:0.9.0']);
+    expect(removed(worker)).toEqual([]);
+    expect(readdirSync(join(manager.root, 'stacks', STACK)).sort()).toEqual(['1.0.0', '1.0.1', '1.0.2', 'current']);
+  });
+
+  test.if(hasPosixShell)('never removes the image of a running container, even one no release refers to', async () => {
+    const managerNode = node(manager, ['shop-web-production:1.0.2', 'shop-web-production:0.9.0', 'shop-web-production:0.8.0'], ['shop-web-production:0.8.0']);
+    const workerNode = node(worker, []);
+
+    await cleanup(3, { manager: managerNode, worker: workerNode });
+
+    expect(removed(manager)).toEqual(['shop-web-production:0.9.0']);
+    expect(images(manager)).toContain('shop-web-production:0.8.0');
+  });
+
+  test.if(hasPosixShell)('sweeps nothing when a kept release cannot be read', async () => {
+    const managerNode = node(manager, ['shop-web-production:1.0.2', 'shop-web-production:0.9.0']);
+    const workerNode = node(worker, ['shop-web-production:0.9.0']);
+    release = new Release(managerNode, { stacksDir: join(manager.root, 'stacks') });
+    await create('1.0.0', 100);
+    await create('1.0.1', 200);
+    rmSync(join(manager.root, 'stacks', STACK, '1.0.1', 'docker-compose.yml'));
+
+    await release.cleanupOldReleases(STACK, config(3), [workerNode]);
+
+    expect(removed(manager)).toEqual([]);
+    expect(removed(worker)).toEqual([]);
+  });
+
+  test.if(hasPosixShell)('a node whose docker does not answer is left alone and does not stop the others', async () => {
+    const managerNode = node(manager, ['shop-web-production:1.0.2', 'shop-web-production:0.9.0']);
+    const workerNode: RemoteShell = { run: async () => ({ stdout: '', stderr: 'Cannot connect to the Docker daemon', exitCode: 1 }) };
+
+    await cleanup(3, { manager: managerNode, worker: workerNode });
+
+    expect(removed(manager)).toEqual(['shop-web-production:0.9.0']);
   });
 });
