@@ -55,7 +55,7 @@ export function registerLockStatusCommand(parent: Command): void {
         printWarning('  Or run: dockflow lock release ' + env);
       } else {
         printDim('  A deployment is in progress. Wait for it to complete.');
-        printDim('  To force release: dockflow lock release ' + env + ' --force');
+        printDim('  To release it anyway: dockflow lock release ' + env);
       }
     })));
 }

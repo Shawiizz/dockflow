@@ -13,8 +13,7 @@ export function registerLockReleaseCommand(parent: Command): void {
     .command('release <env>')
     .description('Release a deployment lock')
     .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
-    .option('--force', 'Force release without confirmation')
-    .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string; force?: boolean }) => {
+    .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string }) => {
       const { stackName, connection, config } = await resolveEnv(env, options.server);
       const lockService = await createEnvLock(env, stackName, config.lock?.stale_threshold_minutes);
       const spinner = createSpinner();

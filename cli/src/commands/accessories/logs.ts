@@ -23,7 +23,6 @@ export function registerAccessoriesLogsCommand(program: Command): void {
     .option('-a, --all-tasks', 'Include logs from terminated/historical task replicas')
     .option('--pick', 'Interactively pick which task replica to show')
     .option('--no-prefix', 'Do not prefix lines with their instance')
-    .option('--raw', 'Accepted for compatibility; output is always raw')
     .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .action(withErrorHandler(withResolvedEnv(async (env: string, service: string | undefined, options: LogsCommandOptions) => {
       const { connection } = await resolveEnv(env, options.server);
