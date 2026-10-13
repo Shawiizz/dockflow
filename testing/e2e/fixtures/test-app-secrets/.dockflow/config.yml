@@ -1,0 +1,22 @@
+project_name: "test-app-sec"
+
+stack_management:
+  keep_releases: 3
+  cleanup_on_failure: true
+
+# The registry password and the app secret come from .env.dockflow (TEST_REGISTRY_PASSWORD,
+# TEST_APP_SECRET): the secrets test looks for them in the CLI output and in the nodes' processes
+registry:
+  type: custom
+  url: "localhost:35001"
+  username: e2e
+  password: "{{ current.env.registry_password }}"
+  additional_tags:
+    - "{env}-latest"
+
+# Runs on the manager, with the secret in the hook text and a pause that keeps the deploy in
+# progress long enough for the process poller to see what the hook starts
+hooks:
+  pre-deploy:
+    - name: use the secret
+      run: 'test -n "{{ current.env.app_secret }}" && sleep 3'

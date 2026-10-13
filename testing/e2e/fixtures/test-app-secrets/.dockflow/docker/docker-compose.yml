@@ -1,0 +1,21 @@
+services:
+  web:
+    image: test-sec-web-app
+    build:
+      context: ../..
+      dockerfile: Dockerfile.web
+    ports:
+      - "{{ current.env.web_port }}:80"
+    environment:
+      APP_SECRET: "{{ current.env.app_secret }}"
+    deploy:
+      replicas: 1
+      update_config:
+        monitor: 5s
+      # Pinned to the manager: the e2e registry lives there and is only
+      # reachable as localhost:35001 from that node.
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure

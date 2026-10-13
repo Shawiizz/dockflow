@@ -80,6 +80,14 @@ registry logs the machine's Docker engine in and logs it out in `afterAll`.
 **Secrets in fixtures are named `E2E_SECRET_<PURPOSE>_<suffix>`.** Everything the
 harness writes for a failed run is scrubbed of such values.
 
+**Secrets hygiene** (`16-secrets`): the marker secrets of the `test-app-secrets` fixture (registry
+password, an app secret templated into the compose file and a remote hook, the SSH key and the
+connection strings) must not appear in the CLI's output, `--debug` and `--verbose` included, nor in
+the command line of any process on the manager and the worker while the command runs.
+`helpers/leak-watch.ts` polls `/proc/<pid>/cmdline` on both nodes every 20 ms; a canary test checks
+that the poller does see a marker. A command shorter than the poll can slip through it, so a clean
+run is evidence, not proof.
+
 **Failure dump.** The last three CLI invocations of a run are kept in
 `.artifacts/last-cli-invocations.txt` (git-ignored). When a Swarm job fails, CI runs
 `bun run testing/e2e/helpers/debug-dump.ts swarm`, which adds the state of the cluster
