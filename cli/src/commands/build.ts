@@ -166,6 +166,7 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
   // Attach rendered overrides to each target
   for (const target of targets) {
     target.renderedOverrides = Build.getOverridesForTarget(rendered, target, projectRoot);
+    target.engine = config.container_engine;
   }
 
   const result = await Build.buildAll(targets);
@@ -182,13 +183,13 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
       url: config.registry.url!,
       username: config.registry.username,
       password: Compose.registryPassword(config)!,
-    });
+    }, config.container_engine);
     await Distribution.pushImages(result.images, config.registry.additional_tags?.length ? {
       tags: config.registry.additional_tags,
       env,
       version: 'latest',
       branch: branchName,
-    } : undefined);
+    } : undefined, config.container_engine);
   }
 
   printBlank();

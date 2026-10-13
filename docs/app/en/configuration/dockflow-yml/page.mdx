@@ -58,7 +58,7 @@ my-project/
 | Field | Type | Description | Default |
 |---|---|---|---|
 | `project_name` | string | Unique project identifier (DNS-safe, required) | — |
-| `container_engine` | `docker` \| `podman` | Build engine (auto-detected if unset) | auto |
+| `container_engine` | `docker` \| `podman` | Build engine (podman if the manager has it, otherwise docker, when unset) | detected |
 | `registry` | object | Docker registry config | — |
 | `options` | object | `remote_build`, `image_auto_tag`, `enable_debug_logs` | — |
 | `stack_management` | object | `keep_releases`, `cleanup_on_failure` | — |

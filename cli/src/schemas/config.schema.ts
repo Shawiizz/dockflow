@@ -429,7 +429,7 @@ export const DockflowConfigSchema = z.object({
 
   container_engine: z.enum(['docker', 'podman'])
     .optional()
-    .describe('Container engine for building & distributing images. Auto-detected on the remote if not set.'),
+    .describe('Container engine for building, pushing and distributing images. When not set, deploy uses podman if the manager has it installed, otherwise docker, and build uses docker.'),
 
   registry: RegistryConfigSchema.optional().describe(
     'Docker registry configuration for image storage'

@@ -13,10 +13,22 @@ container_engine: podman
 
 | Field | Type | Description | Default |
 |---|---|---|---|
-| `container_engine` | `"docker"` \| `"podman"` | Engine used for building and pushing images | Auto-detected |
+| `container_engine` | `"docker"` \| `"podman"` | Engine used for building and pushing images | Detected on the manager |
+
+## When it is not set
+
+`dockflow deploy` asks the manager over SSH whether `podman` is installed (`which podman`). If it is, the engine is `podman`; if not, `docker`. The manager's answer then applies everywhere the deploy uses an engine:
+
+- the build, which runs on your machine (or on the manager with `remote_build`),
+- the registry login (on your machine and on the manager) and the push,
+- `save` on the machine that holds the image and `load` on each node that receives it.
+
+The check looks at the manager only. A manager with Podman installed makes the deploy call `podman` on your machine too, so install Podman there as well, or set `container_engine: docker`.
+
+`dockflow build` never connects to a server, so it cannot detect anything: it uses `container_engine` when set and `docker` otherwise.
 
 <Callout type="info">
-  When omitted, Dockflow auto-detects the engine on the remote server. If `podman` is found, it's used automatically — otherwise it falls back to `docker`.
+  Set `container_engine` explicitly whenever the manager has both engines installed, or your machine has only one of them.
 </Callout>
 
 ## How It Works
