@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { printWarning, printNote, printDim, printBlank, createSpinner } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
-import { createLock } from '../../services';
+import { createEnvLock } from '../../services/lock';
 import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
 export function registerLockAcquireCommand(parent: Command): void {
@@ -17,7 +17,7 @@ export function registerLockAcquireCommand(parent: Command): void {
     .option('--force', 'Force acquire even if already locked')
     .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string; message?: string; force?: boolean }) => {
       const { stackName, connection, config } = await resolveEnv(env, options.server);
-      const lockService = createLock(connection, stackName, config.lock?.stale_threshold_minutes);
+      const lockService = await createEnvLock(env, stackName, config.lock?.stale_threshold_minutes);
       const spinner = createSpinner();
 
       // Check for existing lock (show info if blocked)

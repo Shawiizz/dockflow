@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { printInfo, printSuccess, printWarning, printDim, printBlank, printRaw, colors } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
-import { createLock } from '../../services';
+import { createEnvLock } from '../../services/lock';
 import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
 export function registerLockStatusCommand(parent: Command): void {
@@ -15,7 +15,7 @@ export function registerLockStatusCommand(parent: Command): void {
     .option('-s, --server <name>', 'Target manager (defaults to the leader, or the first manager that answers)')
     .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string }) => {
       const { stackName, connection, config } = await resolveEnv(env, options.server);
-      const lockService = createLock(connection, stackName, config.lock?.stale_threshold_minutes);
+      const lockService = await createEnvLock(env, stackName, config.lock?.stale_threshold_minutes);
 
       const result = await lockService.status();
 

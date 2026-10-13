@@ -6,7 +6,7 @@
 import type { Command } from 'commander';
 import { sshExec, shellQuote } from '../../utils/ssh';
 import type { SSHKeyConnection } from '../../types/connection';
-import { createLock, type Lock } from '../../services/lock';
+import { createEnvLock, type Lock } from '../../services/lock';
 import { stopIfInterrupted, withDeployLock } from '../with-lock';
 import { confirmPrompt, dangerousConfirmPrompt } from '../../utils/prompts';
 import { printInfo, printIntro, printOutro, printNote, printWarning, printError, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
@@ -33,7 +33,7 @@ export function registerAccessoriesRemoveCommand(program: Command): void {
     ) => {
       const { connection, stackName, config, serverName } = await resolveEnv(env, options.server);
       const nodes = nodesOf(env, { name: serverName, connection });
-      await removeAccessories(nodes, env, stackName, options, createLock(connection, stackName, config.lock?.stale_threshold_minutes));
+      await removeAccessories(nodes, env, stackName, options, await createEnvLock(env, stackName, config.lock?.stale_threshold_minutes));
     })));
 }
 

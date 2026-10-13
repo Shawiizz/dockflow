@@ -6,7 +6,7 @@
 import type { Command } from 'commander';
 import { validateEnv, withResolvedEnv } from '../../utils/validation';
 import { getStackName, loadConfig } from '../../utils/config';
-import { createLock } from '../../services/lock';
+import { createEnvLock } from '../../services/lock';
 import { withDeployLock } from '../with-lock';
 import { dangerousConfirmPrompt } from '../../utils/prompts';
 import { printIntro, printOutro, printInfo, printWarning, printBlank, printRaw, colors, createSpinner } from '../../utils/output';
@@ -83,7 +83,7 @@ export function registerBackupRestoreCommand(program: Command): void {
       printBlank();
       const spinner = createSpinner();
       // a deploy must not replace the service while its data is being restored
-      const lock = createLock(connection, getStackName(env) ?? stackName, loadConfig()?.lock?.stale_threshold_minutes);
+      const lock = await createEnvLock(env, getStackName(env) ?? stackName, loadConfig()?.lock?.stale_threshold_minutes);
       const result = await withDeployLock(lock, `Restore ${service}`, () => {
         spinner.start('Restoring backup...');
         return backupService.restore(service, backup, backupConfig, backup.compression, {

@@ -14,7 +14,7 @@ import * as Notification from '../../services/notification';
 import { withErrorHandler, DeployError, ErrorCode } from '../../utils/errors';
 import { runPostRollbackHealthChecks } from '../deploy-phases';
 import { requireAppService } from './service-name';
-import { createLock } from '../../services/lock';
+import { createEnvLock } from '../../services/lock';
 import { withDeployLock } from '../with-lock';
 
 export function registerRollbackCommand(program: Command): void {
@@ -41,7 +41,7 @@ export function registerRollbackCommand(program: Command): void {
       const startTime = Date.now();
 
       if (service) await requireAppService(connection, env, stackName, service, 'rollback');
-      const lock = createLock(connection, stackName, config.lock?.stale_threshold_minutes);
+      const lock = await createEnvLock(env, stackName, config.lock?.stale_threshold_minutes);
       // the audit, metrics and notification are written while the lock is held
       await withDeployLock(lock, service ? `Rollback ${service}` : `Rollback ${stackName}`, async () => {
         if (service) {

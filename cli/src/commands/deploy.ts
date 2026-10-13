@@ -51,7 +51,7 @@ import type { ClusterNode, SSHKeyConnection } from '../types';
 import * as Compose from '../services/compose';
 import { createStackBackend, createProxyBackend } from '../services/orchestrator/factory';
 import { assertReleaseName, Release, releaseEpoch } from '../services/release';
-import { createLock } from '../services/lock';
+import { createEnvLock } from '../services/lock';
 import { Audit } from '../services/audit';
 import { Metrics } from '../services/metrics';
 import * as Notification from '../services/notification';
@@ -288,7 +288,7 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
     orchestrator: createStackBackend(managerConn),
     proxyBackend: config.proxy?.enabled ? createProxyBackend(managerConn) : undefined,
     releases: new Release(managerConn),
-    lock: createLock(managerConn, stackName, config.lock?.stale_threshold_minutes),
+    lock: await createEnvLock(env, stackName, config.lock?.stale_threshold_minutes),
     audit: new Audit(managerConn),
     metrics: new Metrics(managerConn),
   };

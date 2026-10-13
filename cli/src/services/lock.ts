@@ -23,7 +23,9 @@ import { DOCKFLOW_LOCKS_DIR } from '../constants';
 import { LOCK_STALE_THRESHOLD_MINUTES } from '../constants';
 import { getPerformer } from '../utils/config';
 import { printDebug, printWarning } from '../utils/output';
-import { CLIError, ErrorCode } from '../utils/errors';
+import { CLIError, ConnectionError, ErrorCode } from '../utils/errors';
+import { sshExec } from '../utils/ssh';
+import { getFullConnectionInfo, getManagersForEnvironment } from '../utils/servers';
 
 /**
  * Lock information stored in the lock file
@@ -344,4 +346,30 @@ export function createLock(
   staleThresholdMinutes?: number,
 ): Lock {
   return new Lock(sshShell(connection), stackName, { staleThresholdMinutes });
+}
+
+/**
+ * The manager that holds an environment's locks: the first of servers.yml that answers. Commands
+ * reach Swarm through whichever manager leads, but two of them must meet on one lock file.
+ */
+export async function lockManager(
+  managers: readonly SSHKeyConnection[],
+  answers: (connection: SSHKeyConnection) => Promise<boolean> = (connection) => sshExec(connection, 'true').then((r) => r.exitCode === 0, () => false),
+): Promise<SSHKeyConnection> {
+  if (managers.length === 1) return managers[0];
+  for (const connection of managers) {
+    if (await answers(connection)) return connection;
+  }
+  throw new ConnectionError(
+    managers.length === 0 ? 'No manager with SSH credentials holds the deploy lock' : 'No manager answers: the deploy lock cannot be reached',
+    `Managers tried: ${managers.map((m) => m.host).join(', ') || 'none'}`,
+  );
+}
+
+/** The deploy lock of `stackName`, on the environment's lock manager. */
+export async function createEnvLock(env: string, stackName: string, staleThresholdMinutes?: number): Promise<Lock> {
+  const managers = getManagersForEnvironment(env)
+    .map((manager) => getFullConnectionInfo(env, manager.name))
+    .filter((connection): connection is SSHKeyConnection => connection !== null);
+  return createLock(await lockManager(managers), stackName, staleThresholdMinutes);
 }

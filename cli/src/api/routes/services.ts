@@ -15,7 +15,7 @@ import { getAvailableEnvironments } from '../../utils/servers';
 import { shellQuote, sshExec } from '../../utils/ssh';
 import { arrangeLogLines, parseDockerLogLines } from '../../utils/docker-logs';
 import type { SSHExecResult } from '../../types';
-import { createLock, type Lock } from '../../services/lock';
+import { createEnvLock, type Lock } from '../../services/lock';
 import { ErrorCode } from '../../utils/errors';
 import {
   getApiStacks,
@@ -393,7 +393,7 @@ async function rollbackService(serviceName: string, url: URL): Promise<Response>
     }
 
     const staleThreshold = loadConfig({ silent: true })?.lock?.stale_threshold_minutes;
-    const lock = createLock(conn, conn.stackName, staleThreshold);
+    const lock = await createEnvLock(env, conn.stackName, staleThreshold);
     return await withDeployLock(lock, `Rolling back ${target.service} via WebUI`, async () => {
       const result = await sshExec(conn, `docker service rollback --detach ${shellQuote(target.name)}`);
       const success = result.exitCode === 0;

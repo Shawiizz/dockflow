@@ -47,8 +47,8 @@ beforeEach(() => {
       compression: 'gzip',
       source: 'accessories',
     }),
-    spyOn(lockModule, 'createLock').mockImplementation(
-      () =>
+    spyOn(lockModule, 'createEnvLock').mockImplementation(
+      async () =>
         ({
           acquire: () => lockReply as never,
           release: async () => {
@@ -77,7 +77,7 @@ describe('POST /api/backup/restore', () => {
     expect(response.status).toBe(200);
     expect(restore).toHaveBeenCalledTimes(1);
     expect(restore.mock.calls[0][1]).toBe(resolved);
-    expect(lockModule.createLock).toHaveBeenCalledWith(conn, 'shop-production', undefined);
+    expect(lockModule.createEnvLock).toHaveBeenCalledWith('production', 'shop-production', undefined);
     expect(released).toBe(1);
   });
 

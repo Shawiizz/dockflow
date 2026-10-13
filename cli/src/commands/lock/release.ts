@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { printInfo, printNote, printBlank, printDim, createSpinner } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
-import { createLock } from '../../services';
+import { createEnvLock } from '../../services/lock';
 import { CLIError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
 export function registerLockReleaseCommand(parent: Command): void {
@@ -16,7 +16,7 @@ export function registerLockReleaseCommand(parent: Command): void {
     .option('--force', 'Force release without confirmation')
     .action(withErrorHandler(withResolvedEnv(async (env: string, options: { server?: string; force?: boolean }) => {
       const { stackName, connection, config } = await resolveEnv(env, options.server);
-      const lockService = createLock(connection, stackName, config.lock?.stale_threshold_minutes);
+      const lockService = await createEnvLock(env, stackName, config.lock?.stale_threshold_minutes);
       const spinner = createSpinner();
 
       // Check if lock exists

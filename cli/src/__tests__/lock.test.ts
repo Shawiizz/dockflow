@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, w
 import { join } from 'path';
 import { type Call, hasPosixShell, LocalShell } from './helpers/local-shell';
 import { DOCKFLOW_LOCKS_DIR } from '../constants';
-import { Lock, type LockData, type LockOptions } from '../services/lock';
+import { Lock, lockManager, type LockData, type LockOptions } from '../services/lock';
 import type { RemoteShell } from '../utils/remote-shell';
 import { ErrorCode } from '../utils/errors';
 import type { Result, SSHExecResult } from '../types';
@@ -348,5 +348,31 @@ describe('Lock when the server refuses', () => {
     expect(errorOf(await broken.status())).toBe('connection reset');
     expect(errorOf(await broken.acquire())).toBe('connection reset');
     expect(errorOf(await broken.release())).toBe('connection reset');
+  });
+});
+
+describe('lockManager', () => {
+  const manager = (host: string) => ({ host, port: 22, user: 'dockflow', privateKey: 'key' });
+
+  test('the first manager of servers.yml that answers holds the lock, whoever leads', async () => {
+    const asked: string[] = [];
+    const chosen = await lockManager([manager('m1'), manager('m2'), manager('m3')], async (conn) => {
+      asked.push(conn.host);
+      return conn.host !== 'm1';
+    });
+    expect(chosen.host).toBe('m2');
+    expect(asked).toEqual(['m1', 'm2']);
+  });
+
+  test('a single manager is used without asking', async () => {
+    const chosen = await lockManager([manager('m1')], async () => {
+      throw new Error('not asked');
+    });
+    expect(chosen.host).toBe('m1');
+  });
+
+  test('no manager answering is a connection failure', async () => {
+    const failure = await lockManager([manager('m1'), manager('m2')], async () => false).catch((error) => error);
+    expect(failure.code).toBe(ErrorCode.CONNECTION_FAILED);
   });
 });

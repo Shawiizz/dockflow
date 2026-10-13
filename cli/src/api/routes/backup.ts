@@ -13,7 +13,7 @@ import { loadConfig, getStackName, getAccessoriesStackName, type BackupAccessory
 import { getManagerConnection, resolveEnvironment } from './_helpers';
 import { createBackup, type Backup, type BackupBaseEntry } from '../../services/backup';
 import { requireBackupConfig, listFromAllStacks, listGroupedFromAllStacks, getBackupNodes, type BackupSource } from '../../commands/backup/utils';
-import { createLock, LockHeldError } from '../../services/lock';
+import { createEnvLock, LockHeldError } from '../../services/lock';
 import type { ClusterNode, SSHKeyConnection } from '../../types';
 import type { BackupEntry, BackupListResponse, BackupActionResponse, BackupPruneResponse } from '../types';
 
@@ -193,7 +193,7 @@ async function restoreBackup(url: URL): Promise<Response> {
   // A deploy or another restore rewriting the same stack at the same time would corrupt both
   const stackName = getStackName(base.env);
   if (!stackName) return errorResponse('No project configured', 400);
-  const lock = createLock(base.conn, stackName, loadConfig({ silent: true })?.lock?.stale_threshold_minutes);
+  const lock = await createEnvLock(base.env, stackName, loadConfig({ silent: true })?.lock?.stale_threshold_minutes);
   const acquired = await lock.acquire({ message: `Restore ${service} from backup ${resolveResult.data.id}` });
   if (!acquired.success) {
     return errorResponse(acquired.error.message, acquired.error instanceof LockHeldError ? 409 : 500);

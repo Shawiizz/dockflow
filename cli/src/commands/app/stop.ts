@@ -9,7 +9,7 @@ import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { createStackBackend } from '../../services/orchestrator/factory';
 import { loadConfig } from '../../utils/config';
 import { CLIError, DockerError, withServicesRequired, ConfigError } from '../../utils/errors';
-import { createLock } from '../../services/lock';
+import { createEnvLock } from '../../services/lock';
 import { withDeployLock } from '../with-lock';
 
 export function registerStopCommand(program: Command): void {
@@ -44,7 +44,7 @@ export function registerStopCommand(program: Command): void {
       const spinner = createSpinner();
 
       try {
-        await withDeployLock(createLock(connection, stackName, config.lock?.stale_threshold_minutes), `Stop ${stackName}`, async () => {
+        await withDeployLock(await createEnvLock(env, stackName, config.lock?.stale_threshold_minutes), `Stop ${stackName}`, async () => {
           spinner.start(`Stopping stack ${stackName}...`);
           await orchestrator.removeStack(stackName);
           spinner.succeed(`Stack ${stackName} stopped`);
