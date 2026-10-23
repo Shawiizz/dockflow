@@ -42,6 +42,8 @@ export class OperationStateService {
         this.buildSuccess.set(false);
         this.buildLogs.update(l => [...l, '--- Operation cancelled ---']);
       },
+      // 409: the operation had already ended
+      error: (err) => { if (err?.status === 409) this.building.set(false); },
     });
   }
 
@@ -64,6 +66,8 @@ export class OperationStateService {
         this.deploySuccess.set(false);
         this.deployLogs.update(l => [...l, '--- Operation cancelled ---']);
       },
+      // 409: the operation had already ended
+      error: (err) => { if (err?.status === 409) this.deploying.set(false); },
     });
   }
 

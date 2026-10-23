@@ -390,7 +390,7 @@ function attachToOperation(): Response {
  */
 function cancelOperation(): Response {
   if (!currentOperation || currentOperation.finished) {
-    return jsonResponse({ success: false, message: 'No operation is currently running' });
+    return jsonResponse({ success: false, message: 'No operation is currently running' }, 409);
   }
 
   const { type, environment } = currentOperation;

@@ -97,7 +97,10 @@ export class ResourcesComponent {
           this.loadLock(env);
           this.lockActioning.set(false);
         },
-        error: () => this.lockActioning.set(false),
+        error: (err) => {
+          this.lockActioning.set(false);
+          this.lockError.set(err?.error?.message || err?.error?.error || 'Failed to acquire the lock');
+        },
       });
   }
 
@@ -112,7 +115,10 @@ export class ResourcesComponent {
           this.loadLock(env);
           this.lockActioning.set(false);
         },
-        error: () => this.lockActioning.set(false),
+        error: (err) => {
+          this.lockActioning.set(false);
+          this.lockError.set(err?.error?.message || err?.error?.error || 'Failed to release the lock');
+        },
       });
   }
 

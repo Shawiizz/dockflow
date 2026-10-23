@@ -334,7 +334,7 @@ async function releaseLock(env: string): Promise<Response> {
       message: result.success
         ? `Lock released for ${conn.stackName}`
         : result.error.message,
-    } satisfies LockActionResponse);
+    } satisfies LockActionResponse, result.success ? 200 : 409);
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : 'Failed to release lock', 500);
   }

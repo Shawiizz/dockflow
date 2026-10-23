@@ -198,27 +198,13 @@ async function listServices(url: URL): Promise<Response> {
   const environments = getAvailableEnvironments();
   const env = envFilter || environments[0];
 
-  if (!env) {
-    return jsonResponse({
-      services: [],
-      stackName: config.project_name,
-      total: 0,
-      message: 'No environments configured.',
-    } satisfies ServicesListResponse);
-  }
+  if (!env) return errorResponse('No environments configured', 404);
 
   const stackName = getStackName(env) ?? config.project_name;
   const accessoriesStackName = getAccessoriesStackName(env) ?? `${stackName}-accessories`;
 
   const conn = await getManagerConnection(env);
-  if (!conn) {
-    return jsonResponse({
-      services: [],
-      stackName,
-      total: 0,
-      message: 'No manager server with credentials found for this environment.',
-    } satisfies ServicesListResponse);
-  }
+  if (!conn) return errorResponse('No manager server with credentials found', 404);
 
   try {
     const listed = await Promise.all(
@@ -226,14 +212,7 @@ async function listServices(url: URL): Promise<Response> {
     );
 
     const failed = listed.find((result) => result.exitCode !== 0);
-    if (failed) {
-      return jsonResponse({
-        services: [],
-        stackName,
-        total: 0,
-        message: failed.stderr.trim() || 'Failed to list services.',
-      } satisfies ServicesListResponse);
-    }
+    if (failed) return errorResponse(failed.stderr.trim() || 'Failed to list services', 502);
 
     const services = [
       ...parseServiceLs(listed[0].stdout, stackName, 'app'),
@@ -247,12 +226,7 @@ async function listServices(url: URL): Promise<Response> {
       total: services.length,
     } satisfies ServicesListResponse);
   } catch (error) {
-    return jsonResponse({
-      services: [],
-      stackName,
-      total: 0,
-      message: error instanceof Error ? error.message : 'Failed to list services.',
-    } satisfies ServicesListResponse);
+    return errorResponse(error instanceof Error ? error.message : 'Failed to list services', 500);
   }
 }
 
