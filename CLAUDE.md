@@ -116,7 +116,7 @@ Always throw these typed errors from commands. The `withErrorHandler` wrapper di
 
 A command run in a container exits with the container's own code through `ExecExitError`, which is not a `CLIError`: error codes are exit codes, and a container's 62 must not read as `INVALID_ARGUMENT`.
 
-**Interrupts:** `utils/interrupt.ts` owns SIGINT and SIGTERM. Work that must clean up before exiting registers with `onInterrupt()`; the first signal runs the handlers, a second one (or a signal with none registered) exits at once, with 130 for SIGINT and 143 for SIGTERM. A command that changes the stack runs inside `withDeployLock()` (`commands/with-lock.ts`), which takes the deploy lock, hands the action an `AbortSignal` and releases the lock in `finally`; `deploy` has its own handler because it must also undo its uploads and release record.
+**Interrupts:** `utils/interrupt.ts` owns SIGINT and SIGTERM. Work that must clean up before exiting registers with `onInterrupt()`; the first signal runs the handlers, a second one (or a signal with none registered) exits at once, with 130 for SIGINT and 143 for SIGTERM. A command that changes the stack runs inside `withDeployLock()` (`commands/with-lock.ts`), which takes the deploy lock, hands the action an `AbortSignal` and releases the lock in `finally`; `deploy` has its own handler (`DeployRun.interrupt`) because it must also undo its uploads and release record.
 
 ### Services Layer
 
@@ -164,7 +164,7 @@ Config field `container_engine: 'docker' | 'podman'` (auto-detected if not set).
 
 Services and modules use the `Result<T, E>` type pattern (`ok()` / `err()`) from `cli/src/types/`.
 
-**Multi-node awareness:** Classes that need to find or operate on containers (`Backup`, `SwarmContainers`) accept an `allConnections: SSHKeyConnection[]` parameter alongside the manager connection. This is required because in a multi-node Swarm, a container may run on any worker — not just the manager. Always pass `getAllNodeConnections(env)` when creating these.
+**Multi-node awareness:** Classes that need to find or operate on containers (`Backup`, `SwarmContainers`) accept an `allConnections: SSHKeyConnection[]` parameter alongside the manager connection. This is required because in a multi-node Swarm, a container may run on any worker — not just the manager. Always pass `getAllNodeConnections(env)` when creating these. Commands that read or clean every node use `nodesOf` and `onEveryNode` (`commands/app/nodes.ts`). A command that talks to a manager gets it from `resolveEnv()` (`utils/validation.ts`), which picks the active one when there are several.
 
 ### Console Output
 
@@ -195,18 +195,16 @@ Keys are passed in-memory (never written to temp files). Core functions: `sshExe
 
 The `dockflow deploy` command executes entirely in TypeScript via ssh2:
 
-1. Load config, resolve server connections, acquire deployment lock
-2. Detect container engine (Docker or Podman, auto-detected or from config)
-3. Render Nunjucks templates (docker-compose, env files)
-4. Prepare compose: load YAML, update image tags, inject deploy defaults, inject Traefik labels
-5. Build images (local or remote, Docker or Podman), distribute to nodes: streamed over SSH (`docker save | docker load`) or pushed to a registry
-6. Create release directory on manager, upload compose file
-7. Deploy: `docker stack deploy -c -` (accessories first with hash-based change detection)
-8. Health checks: internal (Swarm task states) + HTTP endpoint checks
-9. Cleanup old releases, write audit/metrics, sync history to all nodes
-10. Release lock (always, even on failure)
+1. Resolve the environment, config, manager (failover across managers) and version; render the Nunjucks templates and plugins; check `proxy.routes` and `--only` (dry runs stop here)
+2. Take the deploy lock, kept alive while the deploy runs
+3. Build images (local or remote, Docker or Podman) and distribute them: streamed over SSH (`docker save | docker load`) or pushed to a registry; run the upload hooks and upload files
+4. Prepare the cluster: published ports, external networks, registry login; render the Swarm stack (image tags, deploy defaults, Traefik labels)
+5. Write the release record and deploy the accessories (hash-based change detection) side by side, then `docker stack deploy` the app
+6. Health checks: internal (Swarm task states) + HTTP endpoint checks; then clean up old releases and commit the uploads
+7. On failure, undo: restore the uploads, roll back, keep or forget the release per `health_checks.on_failure`, remove the failed images, run the on-failure hooks
+8. Always: write audit/metrics, notify, release the lock
 
-All steps are in `cli/src/commands/deploy.ts` using the services layer.
+`commands/deploy.ts` resolves the context (step 1) and takes the lock; `DeployRun` (`commands/deploy-run.ts`) runs steps 3-6, undoes them on failure or Ctrl+C, and records the run; each step lives in `commands/deploy-phases/` (`build.ts`, `uploads.ts`, `networks.ts`, `accessories.ts`, `app.ts`, `health-checks.ts`, `failure.ts`, `history.ts`, …).
 
 ### Host Provisioning (`commands/setup/provision.ts`)
 
@@ -234,7 +232,9 @@ Routes in `cli/src/api/routes/`:
 
 WebSocket sessions include heartbeat (30s), idle timeout (15min), and watchdog cleanup (60s).
 
-Response helpers: `jsonResponse()`, `errorResponse()` — both include CORS headers.
+Response helpers: `jsonResponse()`, `errorResponse()`. The API is same-origin only (`api/origin.ts`), so no CORS headers are sent. A failure answers with an HTTP error status (400 bad request, 404 nothing to act on, 409 conflict such as a held lock, 502 when Docker refuses, 500 otherwise), never 200 with `success: false`; the UI reads the message from the error body.
+
+Routes reach the cluster through the CLI's own helpers: `getManagerConnection` (`routes/_helpers.ts`, the active manager cached per environment), `getAllNodes` (`utils/servers`) and `settleOnEveryNode` (`commands/app/nodes.ts`, one outcome per node).
 
 ### WebUI Architecture
 

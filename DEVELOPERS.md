@@ -70,6 +70,8 @@ Open `http://localhost:4201`. Without the Angular server, `dockflow ui` serves t
 
 When you run `dockflow deploy`, the CLI connects directly to servers via SSH (using the `ssh2` library). All deploy operations — template rendering, image building/distribution, stack deployment, health checks — happen in TypeScript over SSH. The only things that run on the servers are the `docker` commands the CLI sends.
 
+In the code, `commands/deploy.ts` resolves the environment, manager and version and takes the deploy lock; `DeployRun` (`commands/deploy-run.ts`) runs the steps, undoes them on failure or Ctrl+C and records the run; each step is a function of `commands/deploy-phases/`. The order and what each step does are in the *Deploy Flow* section of `CLAUDE.md`.
+
 `dockflow setup` provisions machines the same way: the CLI binary runs on the server (shipped over SSH for a remote setup) and configures it directly.
 
 ---
