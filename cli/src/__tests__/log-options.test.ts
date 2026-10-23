@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { dockerSinceValue, parseSince, parseTailOption, SINCE_ERROR_MESSAGE } from '../utils/log-options';
+import { dockerSinceValue, parseCountOption, parseSince, parseTailOption, SINCE_ERROR_MESSAGE } from '../utils/log-options';
 import { ValidationError } from '../utils/errors';
 
 function thrown(fn: () => unknown): unknown {
@@ -85,4 +85,16 @@ describe('--tail', () => {
       expect((error as ValidationError).suggestion).toBe('Use for example `--tail 100` or `--tail all`.');
     });
   }
+});
+
+describe('parseCountOption', () => {
+  it('reads a positive count', () => {
+    expect(parseCountOption('50', '--lines')).toBe(50);
+  });
+
+  it('refuses anything else, naming the option', () => {
+    for (const raw of ['abc', '0', '-3', '2.5', '']) {
+      expect(() => parseCountOption(raw, '--lines')).toThrow('--lines must be a positive integer');
+    }
+  });
 });

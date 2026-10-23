@@ -15,6 +15,7 @@ import {
 } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { withErrorHandler } from '../../utils/errors';
+import { parseCountOption } from '../../utils/log-options';
 import { nodesOf, onEveryNode, readFromFirstNode } from './nodes';
 import {
   Metrics,
@@ -162,7 +163,7 @@ export function registerMetricsCommand(program: Command): void {
         return;
       }
 
-      const limit = options.history ? parseInt(options.lines || '20', 10) : 1000;
+      const limit = options.history ? parseCountOption(options.lines || '20', '--lines') : 1000;
       const found = await readFromFirstNode(nodes, (node) => new Metrics(node.connection).fetch(stackName, limit), (data) => data.length === 0);
       const metricsData = found?.value ?? [];
 

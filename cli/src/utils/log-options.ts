@@ -120,6 +120,13 @@ export function dockerSinceValue(spec: SinceSpec): string {
 /** The CLI machine's zone, re-read at each instant. */
 export const LOCAL_OFFSET: LocalOffset = (at) => -at.getTimezoneOffset();
 
+/** A positive count given to `flag`, refused here rather than reaching the server as `NaN`. */
+export function parseCountOption(raw: string, flag: string): number {
+  const n = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  if (Number.isSafeInteger(n) && n > 0) return n;
+  throw new ValidationError(`${flag} must be a positive integer`, `Use for example \`${flag} 50\`.`);
+}
+
 /** `all` or a non-negative integer (`--tail all` used to reach the remote CLI as `--tail NaN`). */
 export function parseTailOption(raw: string | undefined, fallback: number): number | 'all' {
   if (raw === undefined) return fallback;

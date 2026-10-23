@@ -5,6 +5,7 @@ import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { nodesOf, readFromFirstNode } from './nodes';
 import { DockerError, withErrorHandler } from '../../utils/errors';
 import { DOCKFLOW_AUDIT_DIR } from '../../constants';
+import { parseCountOption } from '../../utils/log-options';
 
 interface AuditEntry {
   timestamp: string;
@@ -57,7 +58,7 @@ export function registerHistoryCommand(program: Command): void {
       printDebug('Connection validated', { stackName, lines: options.lines, json: options.json });
 
       const auditFile = `${DOCKFLOW_AUDIT_DIR}/${stackName}.log`;
-      const lines = options.all ? 1000 : parseInt(options.lines || '20', 10);
+      const lines = options.all ? 1000 : parseCountOption(options.lines || '20', '--lines');
 
       // every node keeps a copy: a manager down does not hide the history
       const nodes = options.server ? [{ name: serverName, connection }] : nodesOf(env, { name: serverName, connection });
